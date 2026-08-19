@@ -155,13 +155,23 @@ local naming = import 'naming.libsonnet';
       'sum(rate(' + metric + '_sum' + braced + '[$__rate_interval]))' + byClause +
       ' / sum(rate(' + metric + '_count' + braced + '[$__rate_interval]))' + byClause,
 
-  // preExpandHelpers replaces every `__hist_avg(metric|by|sel)__`
-  // sentinel emitted by queries.histogramAvg with the histogram-
-  // mode-appropriate PromQL. Runs before the walker so the emitted
-  // PromQL still goes through the regular prefix / unit-suffix /
-  // label rewriting like any other expression.
-  preExpandHelpers(expr, mode)::
-    local marker = '__hist_avg(';
+  expandHistSumRate(metric, by, selector, native)::
+    local byClause = if std.length(by) == 0 then '' else ' by (' + std.join(', ', by) + ')';
+    local braced = if selector == '' then '' else '{' + selector + '}';
+    if native then
+      'histogram_sum(sum(rate(' + metric + braced + '[$__rate_interval]))' + byClause + ')'
+    else
+      'sum(rate(' + metric + '_sum' + braced + '[$__rate_interval]))' + byClause,
+
+  expandHistCountRate(metric, by, selector, native)::
+    local byClause = if std.length(by) == 0 then '' else ' by (' + std.join(', ', by) + ')';
+    local braced = if selector == '' then '' else '{' + selector + '}';
+    if native then
+      'histogram_count(sum(rate(' + metric + braced + '[$__rate_interval]))' + byClause + ')'
+    else
+      'sum(rate(' + metric + '_count' + braced + '[$__rate_interval]))' + byClause,
+
+  expandHelper(expr, marker, mode, kind)::
     local chunks = std.split(expr, marker);
     if std.length(chunks) == 1 then expr
     else
@@ -178,11 +188,25 @@ local naming = import 'naming.libsonnet';
             if std.length(parts) < 2 || parts[1] == '' then []
             else std.split(parts[1], ',');
           local selector = if std.length(parts) < 3 then '' else parts[2];
-          $.expandHistAvg(metric, by, selector, cfg.native) + rest;
+          local expanded =
+            if kind == 'avg' then $.expandHistAvg(metric, by, selector, cfg.native)
+            else if kind == 'sum_rate' then $.expandHistSumRate(metric, by, selector, cfg.native)
+            else $.expandHistCountRate(metric, by, selector, cfg.native);
+          expanded + rest;
       chunks[0] + std.join('', [
         processChunk(chunks[i])
         for i in std.range(1, std.length(chunks) - 1)
       ]),
+
+  // preExpandHelpers replaces every `__hist_avg(metric|by|sel)__`
+  // sentinel emitted by queries.histogramAvg with the histogram-
+  // mode-appropriate PromQL. Runs before the walker so the emitted
+  // PromQL still goes through the regular prefix / unit-suffix /
+  // label rewriting like any other expression.
+  preExpandHelpers(expr, mode)::
+    local withAvg = $.expandHelper(expr, '__hist_avg(', mode, 'avg');
+    local withSums = $.expandHelper(withAvg, '__hist_sum_rate(', mode, 'sum_rate');
+    $.expandHelper(withSums, '__hist_count_rate(', mode, 'count_rate'),
 
   // dropLeFromGrouping removes the `le` label from PromQL grouping
   // clauses (by/without/on/ignoring/group_*). Used in native
@@ -398,10 +422,22 @@ local naming = import 'naming.libsonnet';
   // dashboard renders the final dashboard JSON for a given mode by
   // walking the source tree.
   dashboard(source, mode)::
-    $.walkValue(source, mode) + {
+    local transformed = $.walkValue(source, mode);
+    local datasource = if naming.modeConfig(mode).native then 'Prometheus Native' else 'Prometheus';
+    transformed + {
       // Distinguish the variants in Grafana so the operator can
       // import the one that matches their collector.
       title: std.get(source, 'title', 'Ledger Metrics') + ' (' + std.asciiUpper(mode) + ')',
       uid: std.get(source, 'uid', 'ledger-metrics') + '-' + $.uidSuffix(mode),
+      templating: transformed.templating + {
+        list: std.mapWithIndex(
+          function(i, variable)
+            if i == 0 then variable + {
+              current: { selected: true, text: datasource, value: datasource },
+            }
+            else variable,
+          transformed.templating.list,
+        ),
+      },
     },
 }

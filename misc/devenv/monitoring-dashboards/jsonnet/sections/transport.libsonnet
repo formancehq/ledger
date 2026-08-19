@@ -2,13 +2,14 @@
 // Edit freely: panel constructors live in ../lib/panels.libsonnet.
 
 local panels = import '../lib/panels.libsonnet';
+local queries = import '../lib/queries.libsonnet';
 
 panels.row('Transport & Queues', 1, [
   panels.timeseries(
     'Reception channel incoming messages',
     { h: 6, w: 24, x: 0, y: 2 },
     [
-      { expr: 'rate(raft.transport.recv.load_count{service.cluster=~"$cluster", service.node_id=~"$node", scope.name="raft.transport"}[30s])', legendFormat: 'Node {{service.node_id}}: p{{scope.attributes.priority}}' },
+      { expr: queries.histogramCountRate('raft.transport.recv.load', by=['service.node_id', 'priority', 'priority_name']), legendFormat: 'Node {{service.node_id}}: {{priority_name}}' },
     ], unit='short',
     description=|||
       Rate of Raft messages received from other nodes, grouped by message type.
@@ -28,12 +29,9 @@ panels.row('Transport & Queues', 1, [
   panels.heatmap(
     'Reception channel load (High Priority: Heartbeats)',
     { h: 10, w: 8, x: 0, y: 92 },
-    'sum(
-  rate(raft.transport.recv.load_bucket{service.cluster=~"$cluster", service.node_id=~"$node", scope.attributes.priority=~"1"}[$__rate_interval])
-) by (service.node_id, le)
-',
+    'sum(rate(raft.transport.recv.load_bucket{service.cluster=~"$cluster", service.node_id=~"$node", priority="0"}[$__rate_interval])) by (service.node_id, le)',
     description=|||
-      Heatmap showing queue depth distribution for high-priority received messages (priority 1).
+      Heatmap showing queue depth distribution for high-priority received messages (priority 0).
       
       High-priority messages include:
       - AppendEntries responses (AppResp)
@@ -50,9 +48,7 @@ panels.row('Transport & Queues', 1, [
   panels.heatmap(
     'Reception channel load (Medium Priority: Votes/Responses)',
     { h: 10, w: 8, x: 8, y: 92 },
-    'sum(
-  rate(raft.transport.recv.load_bucket{service.cluster=~"$cluster", service.node_id=~"$node", scope.attributes.priority=~"1"}[$__rate_interval])
-) by (service.node_id, le)',
+    'sum(rate(raft.transport.recv.load_bucket{service.cluster=~"$cluster", service.node_id=~"$node", priority="1"}[$__rate_interval])) by (service.node_id, le)',
     description=|||
       Heatmap showing queue depth distribution for medium-priority received messages (priority 1).
       
@@ -66,10 +62,7 @@ panels.row('Transport & Queues', 1, [
   panels.heatmap(
     'Reception channel load (Low Priority: Data)',
     { h: 10, w: 8, x: 16, y: 92 },
-    'sum(
-  rate(raft.transport.recv.load_bucket{service.cluster=~"$cluster", service.node_id=~"$node", scope.attributes.priority=~"2"}[$__rate_interval])
-) by (service.node_id, le)
-',
+    'sum(rate(raft.transport.recv.load_bucket{service.cluster=~"$cluster", service.node_id=~"$node", priority="2"}[$__rate_interval])) by (service.node_id, le)',
     description=|||
       Heatmap showing queue depth distribution for lower-priority received messages (priority 2).
       
@@ -85,7 +78,7 @@ panels.row('Transport & Queues', 1, [
   panels.gauge(
     'Reception channel full count',
     { h: 4, w: 24, x: 0, y: 102 },
-    'sum(increase(raft.transport.recv.full{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, scope.attributes.priority_name)', unit='short',
+    'sum(increase(raft.transport.recv.full{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, priority_name)', unit='short',
     description=|||
       Total number of times the reception channel was full and messages were dropped.
       
@@ -99,14 +92,14 @@ panels.row('Transport & Queues', 1, [
       Increase queue capacity or investigate why processing is slow.
       
       See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#reception-channel-metrics
-   |||, opts={ legendFormat: '{{scope.attributes.priority_name}}' },
+   |||, opts={ legendFormat: '{{priority_name}}' },
   ),
 
   panels.timeseries(
     'Transport Unreachable Channel - Incoming Messages',
     { h: 10, w: 8, x: 0, y: 106 },
     [
-      { expr: 'rate(raft.transport.unreachable.load_count{service.cluster=~"$cluster", service.node_id=~"$node", scope.name="raft.transport"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}' },
+      { expr: queries.histogramCountRate('raft.transport.unreachable.load', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}' },
     ], unit='ops',
     description=|||
       Rate of 'unreachable' notifications received. These indicate that a peer node could not be reached.
@@ -148,14 +141,14 @@ panels.row('Transport & Queues', 1, [
       Non-zero values indicate the system cannot process unreachable notifications fast enough, which may delay failure detection.
       
       See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#unreachable-channel-metrics
-   |||, opts={ legendFormat: '{{scope.name}}' },
+   |||, opts={ legendFormat: 'Node {{service.node_id}}' },
   ),
 
   panels.timeseries(
     'Pending Send Queue Throughput',
     { h: 10, w: 8, x: 0, y: 116 },
     [
-      { expr: 'sum(rate(raft.send.pending_messages.load_count{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Node {{service.node_id}}' },
+      { expr: queries.histogramCountRate('raft.send.pending_messages.load', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}' },
     ], unit='ops',
     description=|||
       Throughput of the pending send queue. This is the rate at which message batches are being queued for dispatch to peers.
@@ -197,7 +190,7 @@ panels.row('Transport & Queues', 1, [
     'Send channel incoming messages',
     { h: 6, w: 12, x: 0, y: 126 },
     [
-      { expr: 'sum(rate(raft.transport.peer.sending.load_count{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, scope.attributes.peer, type)', legendFormat: 'Node {{service.node_id}}: Peer {{scope.attributes.peer}}' },
+      { expr: queries.histogramCountRate('raft.transport.peer.sending.load', by=['service.node_id', 'peer', 'priority_name']), legendFormat: 'Node {{service.node_id}}: Peer {{peer}} / {{priority_name}}' },
     ], unit='short',
     description=|||
       Rate of Raft messages being queued for sending to each peer, grouped by message type.
@@ -217,7 +210,7 @@ panels.row('Transport & Queues', 1, [
     'Send channel full count',
     { h: 6, w: 12, x: 12, y: 126 },
     [
-      { expr: 'sum(increase(raft.transport.peer.sending.full{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, scope.attributes.priority_name)', legendFormat: 'Node {{service.node_id}} : Peer {{peer}}: p{{scope.attributes.priority}}' },
+      { expr: 'sum(increase(raft.transport.peer.sending.full{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, peer, priority_name)', legendFormat: 'Node {{service.node_id}}: Peer {{peer}} / {{priority_name}}' },
     ], unit='ops',
     description=|||
       Rate of times the per-peer send channel was full and messages were dropped.
@@ -238,12 +231,9 @@ panels.row('Transport & Queues', 1, [
   panels.heatmap(
     'Send channel load (High Priority: Heartbeats)',
     { h: 10, w: 8, x: 0, y: 132 },
-    'sum(
-  rate(raft.transport.peer.sending.load_bucket{service.cluster=~"$cluster", service.node_id=~"$node", scope.attributes.priority=~"1"}[$__rate_interval])
-) by (service.node_id, scope.attributes.peer, le)
-',
+    'sum(rate(raft.transport.peer.sending.load_bucket{service.cluster=~"$cluster", service.node_id=~"$node", priority="0"}[$__rate_interval])) by (service.node_id, peer, le)',
     description=|||
-      Heatmap showing per-peer send queue depth for high-priority messages (priority 1).
+      Heatmap showing per-peer send queue depth for high-priority messages (priority 0).
       
       High-priority outbound messages:
       - AppendEntries responses
@@ -260,9 +250,7 @@ panels.row('Transport & Queues', 1, [
   panels.heatmap(
     'Send channel load (Medium Priority: Votes/Responses)',
     { h: 10, w: 8, x: 8, y: 132 },
-    'sum(
-  rate(raft.transport.peer.sending.load_bucket{service.cluster=~"$cluster", service.node_id=~"$node", scope.attributes.priority=~"1"}[$__rate_interval])
-) by (service.node_id, le)',
+    'sum(rate(raft.transport.peer.sending.load_bucket{service.cluster=~"$cluster", service.node_id=~"$node", priority="1"}[$__rate_interval])) by (service.node_id, peer, le)',
     description=|||
       Heatmap showing queue depth distribution for medium-priority outgoing messages (priority 1).
       
@@ -276,10 +264,7 @@ panels.row('Transport & Queues', 1, [
   panels.heatmap(
     'Send channel load (Low Priority: Data)',
     { h: 10, w: 8, x: 16, y: 132 },
-    'sum(
-  rate(raft.transport.peer.sending.load_bucket{service.cluster=~"$cluster", service.node_id=~"$node", scope.attributes.priority=~"2"}[$__rate_interval])
-) by (service.node_id, scope.attributes.peer, le)
-',
+    'sum(rate(raft.transport.peer.sending.load_bucket{service.cluster=~"$cluster", service.node_id=~"$node", priority="2"}[$__rate_interval])) by (service.node_id, peer, le)',
     description=|||
       Heatmap showing per-peer send queue depth for lower-priority messages (priority 2).
       
@@ -299,7 +284,7 @@ panels.row('Transport & Queues', 1, [
     'Propose queue incoming messages',
     { h: 8, w: 8, x: 0, y: 142 },
     [
-      { expr: 'rate(admission.propose_queue.load_count{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}: Incoming' },
+      { expr: queries.histogramCountRate('admission.propose_queue.load', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}: Incoming' },
     ], unit='ops',
     description=|||
       Rate of proposals (transactions) entering and leaving the propose queue.
@@ -319,10 +304,7 @@ panels.row('Transport & Queues', 1, [
   panels.heatmap(
     'Propose channel load',
     { h: 8, w: 8, x: 8, y: 142 },
-    'sum(
-  rate(admission.propose_queue.load_bucket[$__rate_interval])
-) by (le)
-',
+    'sum(rate(admission.propose_queue.load_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id, le)',
     description=|||
       Heatmap showing propose queue depth distribution over time.
       
@@ -365,7 +347,7 @@ panels.row('Transport & Queues', 1, [
     'Pending responses',
     { h: 7, w: 12, x: 0, y: 150 },
     [
-      { expr: '{"raft.transport.sending.pending_response", service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Node {{service.node_id}} / Peer : {{scope.attributes.peer}}' },
+      { expr: '{"raft.transport.sending.pending_response", service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Node {{service.node_id}} / Peer {{peer}}' },
     ],
     description=|||
       Number of responses awaited from each peer node. Shows in-flight requests to other cluster members.

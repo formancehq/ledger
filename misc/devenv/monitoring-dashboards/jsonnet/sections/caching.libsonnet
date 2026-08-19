@@ -8,22 +8,13 @@ panels.row('Caching & Attributes', 167, [
     'Cache Size by Type',
     { h: 8, w: 12, x: 0, y: 89 },
     [
-      { expr: 'cache.size{service.cluster=~"$cluster", service.node_id=~"$node", type="volumes"}', legendFormat: 'Volumes (Node {{service.node_id}})' },
-      { expr: 'cache.size{service.cluster=~"$cluster", service.node_id=~"$node", type="account_metadata"}', legendFormat: 'Account Metadata (Node {{service.node_id}})' },
-      { expr: 'cache.size{service.cluster=~"$cluster", service.node_id=~"$node", type="idempotency_keys"}', legendFormat: 'Idempotency Keys (Node {{service.node_id}})' },
-      { expr: 'cache.size{service.cluster=~"$cluster", service.node_id=~"$node", type="boundaries"}', legendFormat: 'Boundaries (Node {{service.node_id}})' },
+      { expr: 'cache.size{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: '{{type}} (Node {{service.node_id}})' },
     ], unit='none',
     description=|||
       Number of entries in the attribute cache by type.
       
-      - volumes: Account volumes (input/output)
-      - account_metadata: Account metadata
-      - ledger_metadata: Ledger metadata
-      - reversions: Transaction reversion status
-      - idempotency_keys: Idempotency keys
-      - references: Transaction references
-      - ledgers: Ledger info
-      - boundaries: Ledger boundaries
+      The `type` label is displayed dynamically so newly introduced cache
+      registries appear without requiring a dashboard update.
    |||,
   ),
 

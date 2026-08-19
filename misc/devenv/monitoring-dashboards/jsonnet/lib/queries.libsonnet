@@ -35,6 +35,19 @@
     local sel = if selector == null then $.clusterNode else selector;
     '__hist_avg(' + metric + '|' + std.join(',', by) + '|' + sel + ')__',
 
+  // histogramSumRate and histogramCountRate expose the two components
+  // of a histogram rate without assuming the backend representation.
+  // Classic histograms use the generated _sum/_count series, whereas
+  // Prometheus native histograms use histogram_sum/histogram_count on
+  // the base histogram sample.
+  histogramSumRate(metric, by=[], selector=null)::
+    local sel = if selector == null then $.clusterNode else selector;
+    '__hist_sum_rate(' + metric + '|' + std.join(',', by) + '|' + sel + ')__',
+
+  histogramCountRate(metric, by=[], selector=null)::
+    local sel = if selector == null then $.clusterNode else selector;
+    '__hist_count_rate(' + metric + '|' + std.join(',', by) + '|' + sel + ')__',
+
   // cluster filters only by cluster (used for cluster-wide rollups
   // like the leader gauge).
   cluster:: 'service.cluster=~"$cluster"',

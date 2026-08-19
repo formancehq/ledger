@@ -9,7 +9,7 @@ panels.row('Applier', 164, [
     'Applying entries time passed',
     { h: 8, w: 12, x: 12, y: 1 },
     [
-      { expr: 'sum(rate(raft.apply_entries.duration_sum{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Node {{service.node_id}}' },
+      { expr: queries.histogramSumRate('raft.apply_entries.duration', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}' },
     ], unit='µs',
     description=|||
       Total time spent applying committed entries to the FSM (in microseconds per second).
@@ -74,7 +74,7 @@ panels.row('Applier', 164, [
     'Applying entries rate',
     { h: 8, w: 12, x: 12, y: 25 },
     [
-      { expr: 'rate(raft.apply_entries.duration_count{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}' },
+      { expr: queries.histogramCountRate('raft.apply_entries.duration', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}' },
     ], unit='ops',
     description=|||
       Rate of apply operations per second (how often the FSM processes batches).
@@ -120,24 +120,4 @@ panels.row('Applier', 164, [
     description='Time spent waiting for the previous batch\'s async commit to finish before starting the next prepare. Near zero = pipelining is effective (commit finishes before next batch arrives). Near commit duration = fully I/O-bound, no pipelining benefit.',
   ),
 
-  panels.timeseries(
-    'Prepare Duration (p50, p95, p99)',
-    { h: 8, w: 12, x: 0, y: 125 },
-    [
-      { expr: 'histogram_quantile(0.50, sum(rate(raft.fsm.prepare.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p50' },
-      { expr: 'histogram_quantile(0.95, sum(rate(raft.fsm.prepare.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p95' },
-      { expr: 'histogram_quantile(0.99, sum(rate(raft.fsm.prepare.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p99' },
-    ], unit='µs',
-  ),
-
-  panels.timeseries(
-    'Commit Wait Duration (p50, p95, p99)',
-    { h: 8, w: 12, x: 12, y: 125 },
-    [
-      { expr: 'histogram_quantile(0.50, sum(rate(raft.applier.commit_wait.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p50' },
-      { expr: 'histogram_quantile(0.95, sum(rate(raft.applier.commit_wait.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p95' },
-      { expr: 'histogram_quantile(0.99, sum(rate(raft.applier.commit_wait.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'p99' },
-    ], unit='µs',
-    description='Time spent waiting for the previous batch\'s async commit to finish. Near zero = pipelining effective.',
-  ),
 ])

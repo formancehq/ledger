@@ -2,6 +2,7 @@
 // Edit freely: panel constructors live in ../lib/panels.libsonnet.
 
 local panels = import '../lib/panels.libsonnet';
+local queries = import '../lib/queries.libsonnet';
 
 panels.row('System', 0, [
   panels.timeseries(
@@ -26,7 +27,7 @@ panels.row('System', 0, [
     'Ping latency',
     { h: 8, w: 12, x: 12, y: 1 },
     [
-      { expr: 'rate({"raft.transport.ping.latency_sum", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}} / Peer {{scope.attributes.peer}}' },
+      { expr: queries.histogramAvg('raft.transport.ping.latency', by=['service.node_id', 'peer']), legendFormat: 'Node {{service.node_id}} / Peer {{peer}}' },
     ], unit='µs',
     description=|||
       Round-trip time (RTT) latency of ping requests between nodes. Measures network health between cluster members.
@@ -46,7 +47,7 @@ panels.row('System', 0, [
     'HTTP requests count',
     { h: 8, w: 12, x: 0, y: 93 },
     [
-      { expr: 'sum(rate({"http.server.request.duration_count", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])) by (service.node_id, http.response.status_code)', legendFormat: 'Node {{service.node_id}} : {{http.response.status_code}}' },
+      { expr: queries.histogramCountRate('http.server.request.duration', by=['service.node_id', 'http.response.status_code']), legendFormat: 'Node {{service.node_id}} : {{http.response.status_code}}' },
     ], unit='ops',
     description=|||
       HTTP request rate per node, grouped by status code. Shows API traffic and error rates.
@@ -93,7 +94,6 @@ panels.row('System', 0, [
       { expr: 'max by (service.node_id) (
   go.processor.limit{service.cluster=~"$cluster", service.node_id=~"$node"}
 )', legendFormat: 'Node {{service.node_id}}: Limit' },
-      '',
     ], unit='percentunit',
     description=|||
       CPU utilization as a ratio of process CPU time to available processor limit. Shows how much CPU capacity the process is using.
@@ -166,7 +166,6 @@ panels.row('System', 0, [
     { h: 8, w: 8, x: 16, y: 109 },
     [
       { expr: '{"raft.node.lead", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}', legendFormat: 'Node {{service.node_id}}' },
-      { expr: '', legendFormat: '__auto' },
     ],
     description=|||
       Shows which node is recognized as the Raft leader by each node. All nodes should report the same leader ID.
