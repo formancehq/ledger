@@ -10,10 +10,12 @@ Usage:
 
 import argparse
 import copy
+import json
 import os
 import re
 import sys
 from datetime import timedelta
+from decimal import Decimal
 from pathlib import Path
 
 from hypothesis import HealthCheck, Phase, settings as hypothesis_settings
@@ -42,7 +44,7 @@ OPENAPI_PATH = Path(
 VALID_LEDGER_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{2,20}$")
 
 # Fixture ledger name every coerced/invalid ledgerName path parameter resolves
-# to. Seeded by run.sh with two transactions and a revert so
+# to. Seeded by run.sh with three transactions and a revert so
 # response_schema_conformance validates real rows instead of an empty [].
 FIXTURE_LEDGER_NAME = "test-ledger"
 # Sacrificial ledger name for DELETE /v3/{ledgerName} specifically — see the
@@ -55,6 +57,218 @@ SAMPLE_NUMSCRIPTS = [
 ]
 
 _numscript_idx = 0
+
+# --- EN-1779: the opt-in string-amount wire ------------------------------
+# openapi.yml declares this header (components.parameters.BigintAsString) on
+# every operation whose response carries posting amounts. A truthy value makes
+# each Posting.amount a quoted decimal string instead of a bare JSON number, so
+# a JavaScript client does not truncate above 2^53.
+BIGINT_AS_STRING_HEADER = "Formance-Bigint-As-String"
+
+# Mirrors wantsBigintAsString in internal/adapter/http/string_amounts.go:
+# true|yes|y|1, case-insensitive, surrounding whitespace ignored. Anything else,
+# including an unrecognised value, selects the default numeric encoding and is
+# never an error.
+BIGINT_TRUTHY_VALUES = frozenset({"true", "yes", "y", "1"})
+
+# Applied per operation, one entry per request, cycling. Half the steps opt in
+# (in two spellings, which also exercises the case-insensitive parse); `None`
+# omits the header entirely, which is the pre-EN-1779 request shape whose
+# response must stay a bare JSON number; the explicitly non-truthy value must be
+# treated as absent rather than rejected. Four tightly alternating steps mean
+# even an operation drawn only a handful of times covers both wire formats.
+#
+# Every value must be a valid HTTP header value. Do not pad one with leading
+# whitespace to exercise the server's TrimSpace: `requests` raises InvalidHeader
+# and never sends the request, Schemathesis reports that as `network_other`,
+# which `_is_network_error` below classifies as transient and ignores, and
+# Hypothesis stops generating for that operation after the first example. The
+# measured cost of a single padded value here was 28-50 examples per amount-
+# carrying operation collapsing to 1, with the run still printing ALL CHECKS
+# PASSED. Trimming is unobservable through a conforming client anyway, since Go's
+# net/http strips surrounding whitespace from header values before the handler
+# sees them.
+BIGINT_HEADER_ROTATION = ("true", None, "Yes", "false")
+
+# Per-operation rotation cursor, keyed by verbose_name ("GET /v3/...").
+_bigint_header_step = {}
+
+# A quoted amount must be a plain decimal integer, matching the `oneOf` string
+# branch in openapi.yml. Anchored here too so a value that is technically a
+# string but not losslessly readable (exponent notation, a leading "+", a
+# decimal point) is caught rather than accepted.
+_DECIMAL_STRING_RE = re.compile(r"^[0-9]+$")
+
+
+def _operation_declares_bigint_header(operation) -> bool:
+    """Report whether the operation declares the EN-1779 opt-in header.
+
+    Read from the loaded schema rather than a hardcoded path list, so this
+    follows openapi.yml automatically: the operations that return posting
+    amounts carry `$ref: '#/components/parameters/BigintAsString'`, and one
+    added later is covered without touching this file. Sending the header to an
+    operation that does not declare it would exercise the fuzzer, not the
+    feature.
+    """
+    return any(
+        parameter.name.lower() == BIGINT_AS_STRING_HEADER.lower()
+        for parameter in operation.headers
+    )
+
+
+def _remove_header(case, name):
+    """Drop every spelling of `name` from the case headers.
+
+    Generated headers are a plain dict, not a case-insensitive mapping, so
+    deleting only the canonical spelling could leave a differently-cased
+    duplicate behind and the server would receive two values for one header.
+    """
+    if not case.headers:
+        return
+
+    lowered = name.lower()
+    for key in [key for key in case.headers if key.lower() == lowered]:
+        del case.headers[key]
+
+
+def _sent_bigint_header(case):
+    """Return the Formance-Bigint-As-String value attached to the case, or None.
+
+    Read back from the case rather than from the rotation cursor so the
+    assertion below is driven by what was actually sent.
+    """
+    if not case.headers:
+        return None
+
+    lowered = BIGINT_AS_STRING_HEADER.lower()
+    for key, value in case.headers.items():
+        if key.lower() == lowered:
+            return value
+
+    return None
+
+
+def _requested_bigint_as_string(case) -> bool:
+    """Report whether the request opted into quoted amounts."""
+    value = _sent_bigint_header(case)
+    if not isinstance(value, str):
+        return False
+
+    return value.strip().lower() in BIGINT_TRUTHY_VALUES
+
+
+def _apply_bigint_as_string_header(case):
+    """Force a deterministic header value on the operations that declare it.
+
+    The generated value is always overwritten, never merged: the header schema
+    is a bare `type: string`, so the fuzzer draws mostly arbitrary text, which is
+    non-truthy — the opt-in branch of the amount `oneOf` would otherwise almost
+    never be exercised, and a `oneOf` validated against a single branch is close
+    to no constraint at all.
+
+    Determinism is the point. `derandomize=True` makes the generated inputs
+    reproducible, so a randomly chosen header would leave a wire-format
+    violation reproducing on only some runs. The rotation is a per-operation
+    counter (the same idiom as `_numscript_idx` above) rather than a hash of the
+    drawn inputs, because it guarantees an exact alternation even for an
+    operation whose inputs repeat — a hash would pin such an operation to one
+    mode forever. It is deterministic at workers=1, the only supported
+    configuration for the reproducible gate (see --workers).
+    """
+    if not _operation_declares_bigint_header(case.operation):
+        return
+
+    key = case.operation.verbose_name
+    step = _bigint_header_step.get(key, 0)
+    _bigint_header_step[key] = step + 1
+    value = BIGINT_HEADER_ROTATION[step % len(BIGINT_HEADER_ROTATION)]
+
+    _remove_header(case, BIGINT_AS_STRING_HEADER)
+    if value is not None:
+        if case.headers is None:
+            case.headers = {}
+        case.headers[BIGINT_AS_STRING_HEADER] = value
+
+
+def _iter_posting_amounts(node):
+    """Yield every `amount` found inside a `postings` array, at any depth.
+
+    Posting amounts sit at a different depth on every route (`data.postings`,
+    `data[].postings`, inside a cursor page, inside a bulk element, inside the
+    log payload chain), so the walk is recursive rather than per-route.
+
+    It anchors on the enclosing `postings` array instead of matching every key
+    named `amount`: metadata keys are client-supplied, and a fuzzed metadata key
+    called `amount` would otherwise be read as a posting amount and fail the run
+    for no reason. Postings contain no nested `postings`, so the generic descent
+    below never yields the same amount twice.
+    """
+    if isinstance(node, dict):
+        postings = node.get("postings")
+        if isinstance(postings, list):
+            for posting in postings:
+                if isinstance(posting, dict) and "amount" in posting:
+                    yield posting["amount"]
+
+        for value in node.values():
+            yield from _iter_posting_amounts(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _iter_posting_amounts(item)
+
+
+def _assert_amount_wire_format(case, response):
+    """Assert every posting amount uses the wire format the request asked for.
+
+    `response_schema_conformance` cannot do this: the amount schema is a `oneOf`
+    of a number and a string, so it accepts either branch whatever the request
+    header said. It would pass a server that ignored the header outright, or one
+    that quoted amounts nobody asked to have quoted (a breaking change for every
+    existing client). That comparison needs the request, which only a hook sees.
+
+    Non-2xx responses and responses without a posting amount are skipped rather
+    than failed — they are simply out of scope for this check.
+    """
+    if not 200 <= response.status_code < 300:
+        return
+
+    body = response.text
+    if not body:
+        return
+
+    try:
+        # parse_float=Decimal so nothing in the body can become a float:
+        # 9007199254740993 (seeded by run.sh) must survive the round trip
+        # exactly, and a float would truncate it to 9007199254740992 — the very
+        # defect this assertion exists to catch. Integer literals are parsed by
+        # Python's arbitrary-precision int, which is exact by construction, so
+        # the values compared and reported below are the ones on the wire.
+        payload = json.loads(body, parse_float=Decimal)
+    except ValueError:
+        return
+
+    amounts = list(_iter_posting_amounts(payload))
+    if not amounts:
+        return
+
+    wants_string = _requested_bigint_as_string(case)
+    for amount in amounts:
+        if wants_string:
+            # isinstance(str) is the wire-format assertion: a JSON string is the
+            # only thing json.loads turns into str.
+            valid = isinstance(amount, str) and bool(_DECIMAL_STRING_RE.match(amount))
+        else:
+            # bool is a subclass of int, so exclude it explicitly: JSON `true`
+            # would otherwise pass as a number.
+            valid = isinstance(amount, int) and not isinstance(amount, bool)
+
+        if not valid:
+            expected = "quoted decimal string" if wants_string else "bare JSON number"
+            raise AssertionError(
+                f"{case.operation.verbose_name}: requested {expected} amounts "
+                f"({BIGINT_AS_STRING_HEADER}={_sent_bigint_header(case)!r}) but a "
+                f"posting amount was {amount!r}. Body: {body[:400]}"
+            )
 
 
 def load_schema(base_url: str):
@@ -126,10 +340,13 @@ def before_call(context, case):
         if "metadata" in case.body and not isinstance(case.body["metadata"], dict):
             case.body["metadata"] = {}
 
+    # Last, so the rotation sees the request as it will actually be sent.
+    _apply_bigint_as_string_header(case)
+
 
 @schemathesis.hook
 def after_call(context, case, response):
-    """Log details of server errors and connection failures for debugging."""
+    """Log server errors, then assert the amount wire format matches the request."""
     if response is not None and response.status_code >= 500:
         print(
             f"  >> SERVER ERROR {response.status_code} on "
@@ -137,6 +354,9 @@ def after_call(context, case, response):
             f"body={case.body!r:.200} resp={response.text[:200]}",
             file=sys.stderr,
         )
+
+    if response is not None:
+        _assert_amount_wire_format(case, response)
 
 
 # --- Prepared-query body generation override -------------------------------

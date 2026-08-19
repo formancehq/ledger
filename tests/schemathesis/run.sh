@@ -110,6 +110,32 @@ seed "transaction 2" -X POST "$API/test-ledger/transactions" \
 # to succeed, and a prior alice->bob spend leaves her short.
 seed "revert transaction 1" -X POST "$API/test-ledger/transactions/1/revert"
 
+# EN-1779: an amount above 2^53, so the suite carries a value whose encoding is
+# actually observable. 9007199254740993 is 2^53 + 1, the smallest positive
+# integer an IEEE-754 double cannot represent: a client that reads the response
+# with JavaScript's JSON.parse gets 9007199254740992 back unless the amount
+# arrives quoted. Every other seeded amount is far below 2^53, where the numeric
+# and the string wire carry the same value, so without this row the `oneOf` on
+# PostingResponse.amount is only ever validated against amounts that could not
+# expose a truncation.
+#
+# Sourced from "world" for the same reason as transaction 2: it must not spend
+# alice's or bob's balance, because "revert transaction 1" above reverses
+# transaction 1 exactly and needs alice's full posted amount still there.
+# Seeded last on purpose — the list routes default to newest-first, so the
+# above-2^53 amount lands on the first page even at a small pageSize.
+#
+# The metadata value carries `<`, `>` and `&` deliberately. An account address
+# cannot: invariants.ValidateLedgerAccountAddress restricts addresses to
+# `[a-zA-Z0-9_-]+(:[a-zA-Z0-9_-]+)*`, while a metadata string accepts any
+# NUL-free text. Those three characters are the only bytes that differ between
+# this repository's two sonic encoder configurations (one HTML-escapes them, one
+# does not), so a response written through the wrong configuration is visible in
+# the captured report instead of passing silently.
+seed "transaction 3 (amount above 2^53)" -X POST "$API/test-ledger/transactions" \
+    -H 'Content-Type: application/json' \
+    -d '{"postings":[{"source":"world","destination":"carol:bigint","amount":9007199254740993,"asset":"USD/2"}],"metadata":{"kind":"seed","note":"amount > 2^53 & <js-unsafe>"},"reference":"seed-ref-3"}'
+
 # Set up Python venv and install deps if needed
 VENV_DIR="$SCRIPT_DIR/.venv"
 if [ ! -d "$VENV_DIR" ]; then
