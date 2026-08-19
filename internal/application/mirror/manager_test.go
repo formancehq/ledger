@@ -1,7 +1,9 @@
 package mirror
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,8 +14,10 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
+	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -62,11 +66,23 @@ func saveLedgerInfo(t *testing.T, store *dal.Store, info *commonpb.LedgerInfo) {
 	require.NoError(t, session.Commit())
 }
 
+// errProposer stands in for the Raft proposer. Unlike newWorkerForTest, these
+// tests run real worker loops: reconcile calls Worker.Start, and a worker
+// cancelled mid-fetch by teardown returns an error from processBatch, which
+// processLogs hands to reportError — and that proposes through
+// plan.Builder.Run, where a nil Proposer is dereferenced without a guard
+// (runner.go). Returning an error keeps reportError on its logging path.
+type errProposer struct{}
+
+func (errProposer) Propose(context.Context, *node.Proposal) (*futures.Future[state.ApplyResult], error) {
+	return nil, errors.New("no proposer in manager tests")
+}
+
 func newTestManager(t *testing.T, store *dal.Store, builder *plan.Builder) *Manager {
 	t.Helper()
 
 	m := NewManager(
-		store, nil, builder,
+		store, errProposer{}, builder,
 		logging.FromContext(logging.TestingContext()),
 		signal.NewNotifications(),
 		noop.NewMeterProvider(),
@@ -137,10 +153,10 @@ func TestManager_ReconcileStopsWorkerOnPromotion(t *testing.T) {
 // Deletion soft-deletes the ledger, which also drops it from ReadMirrorLedgers
 // (it filters DeletedAt == nil), so the same removal branch must fire.
 //
-// Note this test drives reconcile directly. On a live cluster the trigger is
-// missing: DeleteLedger sets no mirrorConfigChanged flag, so no ConfigChanged
-// notification fires and the worker survives until an unrelated reconcile.
-// That gap is covered end to end in the cluster suite.
+// This test drives reconcile directly. On a live cluster the trigger is
+// WriteSet.Absorb's DeleteLedger case, which marks the mirror config as changed
+// so a ConfigChanged notification reaches the manager — covered by
+// write_set_absorb_test.go and end to end in the cluster suite.
 func TestManager_ReconcileStopsWorkerOnDeletion(t *testing.T) {
 	t.Parallel()
 
