@@ -89,6 +89,13 @@ func (b *Builder) handleRemovedMetadataFieldType(
 		// witness: holding an index for the very field whose declaration just
 		// went away means the registry answered "absent" for an entry that is
 		// still live here, and the index now outlives its declaration.
+		// A ledger the builder holds no config for holds no indexes either,
+		// so there is nothing to cross-check. ledgerConfig returns nil for
+		// one, and the rest of this branch reads through it.
+		if cfg == nil {
+			return nil
+		}
+
 		canonical := indexes.Canonical(indexes.MetadataID(log.GetTargetType(), log.GetKey()))
 		if held, ok := cfg.byCanonical[canonical]; ok {
 			present := make([]string, 0, len(cfg.byCanonical))

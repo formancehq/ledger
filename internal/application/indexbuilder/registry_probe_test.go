@@ -52,3 +52,22 @@ func TestRegistryHasEntry(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, found, "a different target's index is a different entry")
 }
+
+// A ledger with no builder config yields a nil *ledgerIndexConfig, and a field
+// removal that dropped nothing reaches the cross-check with it. Reading through
+// that nil crashed the indexbuilder, taking the node down.
+func TestHandleRemovedMetadataFieldTypeNilConfig(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.seedActiveBatch(t)
+
+	require.NotPanics(t, func() {
+		err := b.handleRemovedMetadataFieldType(b.kb, nil, "no-config-ledger", &commonpb.RemovedMetadataFieldTypeLog{
+			TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			Key:        "k0",
+			// No DroppedIndex: the branch that cross-checks the builder's config.
+		})
+		require.NoError(t, err)
+	})
+}
