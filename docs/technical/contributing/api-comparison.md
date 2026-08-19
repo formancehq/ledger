@@ -415,6 +415,17 @@ date coercion (EN-1544), AND-combination, and the removed `prefix`/`reference`
 aliases (EN-1540) — is documented once in
 [query-filter.md](../architecture/subsystems/read-path/query-filter.md).
 
+### Amount output formats (dual-format contract, EN-1779)
+
+`Posting.amount` is emitted as a bare JSON number by default and as a quoted
+decimal string when the request carries the opt-in `Formance-Bigint-As-String`
+header, so JavaScript clients do not truncate above 2^53; on input both forms
+are accepted unconditionally. The full contract — truthy header values and
+lenient parsing, the eight operations that accept it, the unchanged default
+wire, the response-shape guarantee and the integer-metadata limitation — is
+documented once in
+[http-api.md](../architecture/subsystems/api/http-api.md#bigint-as-string-header).
+
 ### 10. Prepared Queries and User-Configurable Indexes
 
 Prepared queries are reusable, named filter queries stored per-ledger. They can be executed in two modes: `LIST` (returns matching entity IDs with cursor pagination) and `AGGREGATE_VOLUMES` (returns aggregated volumes per asset for matched accounts).

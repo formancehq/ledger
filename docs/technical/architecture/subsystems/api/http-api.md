@@ -172,6 +172,86 @@ Clients should:
 - **Idempotency**: Ensure write operations are idempotent to safely retry after leader election
 - **Monitoring**: Track `503` responses to monitor cluster health and leader election frequency
 
+### Bigint-As-String Header
+
+`Posting.amount` is a 256-bit unsigned integer, and it is the only money field on the v3 HTTP surface serialized as a bare JSON number — volume fields (`input`, `output`, `balance`) are already quoted decimal strings. A JavaScript `JSON.parse` decodes every JSON number into a `Number`, an IEEE-754 double that represents integers exactly only up to 2^53 - 1: the amount `9007199254740993` (2^53 + 1) silently becomes `9007199254740992`, with no error raised anywhere.
+
+`Formance-Bigint-As-String` is the opt-in request header that removes that truncation. When a request carries it with a truthy value, every posting amount in the response body is a quoted decimal string, which `JSON.parse` returns verbatim for the client to hand to `BigInt`. Without the header, response bodies are byte-identical to what the API emitted before the header existed.
+
+#### Header Value
+
+The truthy values are `true`, `yes`, `y` and `1`, compared case-insensitively with surrounding whitespace ignored. Any other value — including an unrecognised one — is treated exactly as if the header were absent. **A malformed header is never an error**: it never turns a readable response into a `400`. The header name and this lenient parsing match Ledger v2, so a client can send the same header to both versions (`internal/adapter/http/string_amounts.go`).
+
+#### Operations That Accept It
+
+| Operation | Route |
+|---|---|
+| Create a transaction | `POST /v3/{ledgerName}/transactions` |
+| Revert a transaction | `POST /v3/{ledgerName}/transactions/{transactionId}/revert` |
+| Get a transaction | `GET /v3/{ledgerName}/transactions/{transactionId}` |
+| List transactions | `GET /v3/{ledgerName}/transactions` |
+| List ledger logs | `GET /v3/{ledgerName}/logs` |
+| Get a log | `GET /v3/_/logs/{sequence}` |
+| Bulk operations | `POST /v3/{ledgerName}/bulk` |
+| Execute a prepared query | `POST /v3/{ledgerName}/prepared-queries/{queryName}/execute` |
+
+These are exactly the responses that can carry a posting — directly, or nested inside a log payload, a bulk result or a prepared-query cursor page. On any other route the header is inert. `openapi.yml` expresses the same set as the reusable `BigintAsString` header parameter, referenced from those eight operations; both `PostingRequest.amount` and `PostingResponse.amount` are typed as a `oneOf` of an integer and a quoted decimal string (`pattern: '^[0-9]+$'`, deliberately not `format: int64` — the value can exceed 2^64).
+
+#### Response Format
+
+Default (header absent), `GET /v3/{ledgerName}/transactions/{transactionId}`:
+
+```json
+{
+  "data": {
+    "transaction": {
+      "postings": [
+        {"source": "world", "destination": "alice", "amount": 9007199254740993, "asset": "USD/2", "color": ""}
+      ],
+      "metadata": {},
+      "id": 42,
+      "reverted": false
+    },
+    "receipt": ""
+  }
+}
+```
+
+With `Formance-Bigint-As-String: true`, the same request returns the same document with the amount quoted:
+
+```json
+{
+  "data": {
+    "transaction": {
+      "postings": [
+        {"source": "world", "destination": "alice", "amount": "9007199254740993", "asset": "USD/2", "color": ""}
+      ],
+      "metadata": {},
+      "id": 42,
+      "reverted": false
+    },
+    "receipt": ""
+  }
+}
+```
+
+**Only the amount's format changes; the response shape never does.** Field names, field presence, ordering and nesting are identical in both modes at every level of the payload — a nil child still renders `null`, and an empty collection still renders `[]`. That is mechanically enforced, not merely intended: each of the eight routes pins both bodies byte-for-byte and asserts they differ at the posting amounts and nowhere else. The implementation mechanism (how the mode travels down the marshaller chain, and what a new amount-bearing level must do) is specified in `internal/proto/commonpb/string_amounts.go`.
+
+#### Request Side
+
+Independently of the header, a posting amount is accepted **both** as a bare JSON number and as a quoted decimal string on input. A client that read string amounts can therefore post them back unchanged, with no conversion step and without sending the header on the write. This is a relaxation only — numeric input behaves exactly as before — and it is not gated by anything. Hexadecimal (`0x...`) is rejected in both forms.
+
+#### Known Limitation: Integer Metadata
+
+The header covers posting amounts and nothing else. Metadata values of integer type are **bare JSON numbers in both modes**, and an unsigned metadata value can reach 2^64 - 1, far above `Number.MAX_SAFE_INTEGER`. A JavaScript client that opts in will still truncate those silently. This is by design — the header's scope is the amount field, not every integer on the wire — but it means the header must not be read as "no truncation anywhere". A client that has to read large integer metadata losslessly needs a big-integer-aware JSON parser, or must take that field from the raw response text.
+
+#### Best Practices
+
+- **Send the header on writes as well as reads**: the response of a create, revert or bulk request carries postings too.
+- **Parse with `BigInt`**: `BigInt(posting.amount)` accepts the quoted decimal directly. Never route it through `Number` first — the truncation happens in `JSON.parse`, before any check the client could make.
+- **Do not branch on the mode when writing**: input accepts both forms unconditionally, so a client can pick one form and keep it.
+- **Skip the header when the client does not decode into a float**: Go, Java, Python and other arbitrary-precision decoders read the default numeric wire losslessly, and that wire is unchanged.
+
 ## Main Endpoints
 
 ### Ledgers
