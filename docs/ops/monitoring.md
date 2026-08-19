@@ -79,6 +79,14 @@ data, without `_bucket` / `_count` / `_sum` split and without the
 `le` label. The dashboard uses `histogram_quantile(rate(metric))`
 and `histogram_avg` directly on those names.
 
+Histogram sums and observation rates are also representation-aware:
+the generator uses `_sum`/`_count` for classic histograms and
+`histogram_sum`/`histogram_count` for native histograms. Generated
+classic dashboards default to the `Prometheus` Grafana datasource;
+native dashboards default to `Prometheus Native`. The standard
+devenv stack uses
+`ledger-metrics-prom-noprefix-normalized-native.json`.
+
 All seven are regenerated from the same Jsonnet source via
 `just generate-dashboards`. See
 [`misc/devenv/monitoring-dashboards/README.md`](../../misc/devenv/monitoring-dashboards/README.md).
