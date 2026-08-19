@@ -86,6 +86,47 @@ func TestSpinnerNonInteractiveMatchesPterm(t *testing.T) {
 	}
 }
 
+// TestSpinnerNonInteractiveUpdateTextMatchesPterm pins UpdateText to pterm's
+// raw-mode behaviour. pterm overwrites the current line with Fprinto only while
+// styling is enabled; in raw mode it prints the new text on its own line with
+// Fprintln, and Fprintln is not suppressed by RawOutput.
+func TestSpinnerNonInteractiveUpdateTextMatchesPterm(t *testing.T) {
+	t.Parallel()
+
+	var actual bytes.Buffer
+	startSpinner("working", false, &actual).UpdateText("still working")
+
+	var expected bytes.Buffer
+	reference := pterm.DefaultSpinner
+	reference.Writer = &expected
+	reference.Text = "working"
+	reference.UpdateText("still working")
+
+	assert.Equal(t, expected.String(), actual.String())
+}
+
+// TestSpinnerNonInteractiveUpdateTextRetargetsDefaultMessage checks that the
+// text a message-less terminal method falls back to follows UpdateText, as it
+// does in pterm, where UpdateText assigns SpinnerPrinter.Text.
+func TestSpinnerNonInteractiveUpdateTextRetargetsDefaultMessage(t *testing.T) {
+	t.Parallel()
+
+	var actual bytes.Buffer
+
+	spinner := startSpinner("working", false, &actual)
+	spinner.UpdateText("still working")
+	spinner.Success()
+
+	var expected bytes.Buffer
+	reference := pterm.DefaultSpinner
+	reference.Writer = &expected
+	reference.Text = "working"
+	reference.UpdateText("still working")
+	reference.Success()
+
+	assert.Equal(t, expected.String(), actual.String())
+}
+
 // TestSpinnerNonInteractiveDefaultsMessageToText mirrors pterm, which reuses the
 // spinner text when a terminal method is called with no message.
 func TestSpinnerNonInteractiveDefaultsMessageToText(t *testing.T) {

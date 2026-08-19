@@ -51,6 +51,10 @@ func startSpinner(text string, interactive bool, writer io.Writer) *Spinner {
 }
 
 // UpdateText replaces the message shown by the spinner.
+//
+// The non-interactive branch prints a line. That is what pterm itself does:
+// SpinnerPrinter.UpdateText overwrites the current line with Fprinto only while
+// styling is enabled, and falls back to Fprintln in raw mode.
 func (s *Spinner) UpdateText(text string) {
 	s.text = text
 
