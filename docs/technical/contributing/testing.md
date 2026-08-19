@@ -150,8 +150,10 @@ Three rules follow:
 - **Never compute one port from another.** The old convention derived the Raft
   port as `grpcPort - 1000`. That is what made two suites collide on 15200: one
   spec's gRPC port mapped onto another node's live HTTP port (EN-1784).
-- **Never bind a leased port yourself.** The lifecycle owns each listener it
-  adopts and closes it on stop.
+- **Never bind a leased port yourself.** The lifecycle owns every listener it is
+  given and releases all of them on stop, including one it never served — restore
+  mode is handed a Raft listener it does not use, and a phase that follows it
+  must find that port free.
 
 A spec that builds its own instrument list instead of using
 `DefaultTestInstruments` still passes leased values through the low-level

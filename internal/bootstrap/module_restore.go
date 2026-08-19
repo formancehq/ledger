@@ -57,6 +57,11 @@ func RestoreModule() fx.Option {
 			},
 		),
 		fx.Invoke(
+			// Registered first so it runs last on stop: every injected listener
+			// is released once the servers that adopted them have stopped.
+			func(lc fx.Lifecycle, bindings network.Bindings) {
+				lc.Append(releaseBindingsHook(bindings))
+			},
 			// Validate that the data directory is fresh: no checkpoints, no
 			// live/ database (normal startup prefers it over the restored
 			// checkpoint, silently booting the stale store under the

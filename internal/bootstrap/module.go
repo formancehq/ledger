@@ -877,6 +877,13 @@ func Module() fx.Option {
 			return mux
 		}),
 		fx.Invoke(
+			// Registered first so it runs last on stop: every injected listener
+			// is released once the servers that adopted them have stopped. Every
+			// binding is consumed in normal mode, so this is a safety net here
+			// and the actual release in restore mode.
+			func(lc fx.Lifecycle, bindings network.Bindings) {
+				lc.Append(releaseBindingsHook(bindings))
+			},
 			func(
 				lc fx.Lifecycle,
 				runtime *dal.Store,

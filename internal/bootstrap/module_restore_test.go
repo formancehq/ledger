@@ -1,7 +1,10 @@
 package bootstrap
 
 import (
+	"context"
+	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
@@ -64,4 +67,60 @@ func TestRestoreModeGraph_UngatedColdStorageIsUnbuildable(t *testing.T) {
 	err := fx.ValidateApp(restoreGraphOptions(t, false))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing type")
+}
+
+// TestRestoreModeReleasesEveryInjectedListener pins the ownership rule for a
+// listener no module consumes. Restore mode serves HTTP and the service gRPC
+// port but never the Raft one, so if the lifecycle left that socket open, the
+// next node on those ports could not rebind it — which is exactly what the
+// normal → restore → normal phases in tests/e2e/cluster do, and those specs are
+// behind the s3 build tag where neither the default suite nor CI runs them.
+func TestRestoreModeReleasesEveryInjectedListener(t *testing.T) {
+	t.Parallel()
+
+	httpListener := mustListenLoopback(t, 0)
+	serviceListener := mustListenLoopback(t, 0)
+	raftListener := mustListenLoopback(t, 0)
+
+	bindings := network.Bindings{
+		HTTP:    httpListener,
+		Service: serviceListener,
+		Raft:    raftListener,
+	}
+
+	cfg := Config{
+		ClusterID:     "restore-listener-test",
+		DataDir:       t.TempDir(),
+		Restore:       true,
+		RestoreListen: "127.0.0.1",
+		HTTPPort:      httpListener.Addr().(*net.TCPAddr).Port,
+		GRPCPort:      serviceListener.Addr().(*net.TCPAddr).Port,
+		TLSConfig:     TLSConfig{Mode: TLSModeDisabled},
+	}
+
+	app := fx.New(
+		fx.NopLogger,
+		fx.Supply(cfg),
+		fx.Supply(bindings),
+		fx.Provide(func() logging.Logger { return logging.Testing() }),
+		RestoreModule(),
+	)
+
+	startCtx, cancelStart := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelStart()
+
+	require.NoError(t, app.Start(startCtx))
+
+	stopCtx, cancelStop := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelStop()
+
+	require.NoError(t, app.Stop(stopCtx))
+
+	for _, listener := range []net.Listener{httpListener, serviceListener, raftListener} {
+		address := listener.Addr().String()
+
+		rebound, err := net.Listen("tcp4", address)
+		require.NoErrorf(t, err, "restore mode must release %s on stop", address)
+		require.NoError(t, rebound.Close())
+	}
 }

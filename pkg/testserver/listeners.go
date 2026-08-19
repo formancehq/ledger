@@ -149,12 +149,13 @@ type CommandFactory func(network.Bindings) *cobra.Command
 // The lifecycle adopts those very sockets, so there is no probe-then-bind
 // window for a concurrent test binary to slip into (EN-1784).
 //
-// A generation is one-shot: the lifecycle closes what it adopted. NextGeneration
-// therefore rebinds the same ports for a restart, which is the one moment the
-// ports are briefly unheld — the lease still owns the numbers, so no other
-// fixture in this process competes for them, and only an unrelated process
-// could interpose. Removing even that window would need a proxy in front of
-// every node, which is more machinery than these suites justify.
+// A generation is one-shot: the lifecycle releases every listener it was given,
+// including the ones it never served. NextGeneration therefore rebinds the same
+// ports for a restart, which is the one moment the ports are briefly unheld —
+// the lease still owns the numbers, so no other fixture in this process competes
+// for them, and only an unrelated process could interpose. Removing even that
+// window would need a proxy in front of every node, which is more machinery than
+// these suites justify.
 type NodeLease struct {
 	mu       sync.Mutex
 	ports    NodePorts

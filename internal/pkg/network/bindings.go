@@ -21,11 +21,15 @@ import "net"
 //
 // Ownership: once a listener reaches the fx graph, the lifecycle owns it and
 // closes it on stop — the gRPC servers through their Stop, the HTTP server
-// through http.Server.Shutdown. A listener that no module consumes (the Raft one
-// in restore mode, or any listener from an application that failed to build) is
-// still owned by whoever created it. Listeners are therefore one-shot: a node
-// that restarts needs a freshly bound generation on the same ports, which is
-// what testserver.NodeLease hands out.
+// through http.Server.Shutdown, and anything no module consumed (the Raft
+// listener in restore mode) through the release hook the modules register for
+// exactly that reason. Ownership is total, so a fixture never has to work out
+// which listeners an application actually served.
+//
+// Listeners are therefore one-shot: a node that restarts needs a freshly bound
+// generation on the same ports, which is what testserver.NodeLease hands out. An
+// application that failed to build never reached its lifecycle and never
+// released anything, so its listeners stay with whoever created them.
 type Bindings struct {
 	// HTTP serves the REST API.
 	HTTP net.Listener
