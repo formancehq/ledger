@@ -15,6 +15,27 @@ The commands are intentionally provider-agnostic. They may wrap Codex, Claude, a
 
 Each invocation creates a persistent, unique directory below `build/ai-review-loop/`. Review and fix payloads from concurrent or subsequent runs therefore never share file names. The selected directory is printed when the loop starts.
 
+## PR-oriented launcher
+
+For the common case of an existing GitHub pull request, use the higher-level launcher:
+
+```bash
+bash scripts/ai-pr-loop 1732
+```
+
+A full PR URL is accepted as well. The launcher:
+
+- resolves the current repository and PR metadata through `gh`;
+- requires an open same-repository PR and currently rejects fork/cross-repository heads;
+- fetches the exact GitHub-reported base and head refs and verifies both SHAs before running agents;
+- creates a detached linked worktree outside the primary checkout, under a sibling `.<repo>-ai-worktrees/pr-<number>` directory;
+- runs the standard Codex review + Claude fix composition against the PR base;
+- never checks out, edits, commits, pushes, comments, resolves threads, or merges from the primary checkout;
+- preserves the isolated worktree automatically when fixes remain so the resulting diff can be inspected manually;
+- removes a clean temporary worktree after the loop unless `--keep-worktree` is supplied.
+
+The launcher fails closed if an existing PR worktree contains local changes rather than overwriting or reusing it. Commit/push automation is intentionally out of scope: this layer only produces an isolated reviewed/fixed worktree and reports `READY_FOR_HUMAN_REVIEW`, `HUMAN_DECISION_REQUIRED`, or an orchestration error.
+
 ## Loop states
 
 The orchestrator emits exactly one terminal state:
