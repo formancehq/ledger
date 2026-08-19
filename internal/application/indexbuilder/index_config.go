@@ -199,6 +199,8 @@ func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 
 		ledgerName := idx.GetLedger()
 
+		indexes.MarkPresent(ledgerName, idx.GetId())
+
 		// Bucket-scoped entries are not attached to any ledger; the per-
 		// ledger lookup map skips them. The bucket-scope cache lives next
 		// to b.indexConfig for symmetry; introducing it as a separate field
