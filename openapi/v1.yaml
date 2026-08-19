@@ -1330,6 +1330,7 @@ components:
       properties:
         cursor:
           type: object
+          description: Paginated cursor wrapping the list of accounts
           required:
             - pageSize
             - hasMore
@@ -1361,6 +1362,7 @@ components:
       properties:
         cursor:
           type: object
+          description: Paginated cursor wrapping the list of balances
           required:
             - pageSize
             - hasMore
@@ -1392,6 +1394,7 @@ components:
       properties:
         cursor:
           type: object
+          description: Paginated cursor wrapping the list of transactions
           required:
             - pageSize
             - hasMore
@@ -1423,6 +1426,7 @@ components:
       properties:
         cursor:
           type: object
+          description: Paginated cursor wrapping the list of logs
           required:
             - pageSize
             - hasMore
@@ -1463,6 +1467,7 @@ components:
           $ref: '#/components/schemas/AssetsBalances'
     Config:
       type: object
+      description: Configuration the ledger server is running with
       properties:
         storage:
           $ref: '#/components/schemas/LedgerStorage'
@@ -1470,11 +1475,14 @@ components:
         - storage
     LedgerStorage:
       type: object
+      description: Storage backend the ledgers are held in
       properties:
         driver:
           type: string
+          description: Name of the storage driver backing the ledgers
         ledgers:
           type: array
+          description: Names of the ledgers held in this storage backend
           items:
             type: string
       required:
@@ -1483,18 +1491,23 @@ components:
     Metadata:
       type: object
       nullable: true
+      description: Arbitrary key/value pairs attached to the resource
       additionalProperties: {}
     ConfigInfo:
       type: object
+      description: Configuration and version information for the ledger server
       properties:
         config:
           $ref: '#/components/schemas/Config'
         server:
           type: string
+          description: Name of the server serving the API
         version:
           type: string
+          description: Version of the ledger service
         experimentalFeatures:
           type: array
+          description: Experimental feature flags enabled on this deployment
           items:
             type: string
       required:
@@ -1508,9 +1521,13 @@ components:
           $ref: '#/components/schemas/ErrorsEnum'
         errorMessage:
           type: string
+          description: Human-readable description of the error
           example: account had insufficient funds
         details:
           type: string
+          description: >-
+            Optional link carrying additional context about the error, such as a Numscript playground URL
+            reproducing it
           example: >-
             https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
         transaction:
@@ -1522,12 +1539,15 @@ components:
       properties:
         address:
           type: string
+          description: The account address, a colon-separated segmented path such as users:001
           example: users:001
         type:
           type: string
+          description: Free-form classification of the account
           example: virtual
         metadata:
           type: object
+          description: Arbitrary key/value pairs attached to the account
           additionalProperties: true
           example:
             admin: true
@@ -1536,17 +1556,21 @@ components:
                 key: value
     AccountWithVolumesAndBalances:
       type: object
+      description: An account together with its volumes and net balances per asset
       required:
         - address
       properties:
         address:
           type: string
+          description: The account address, a colon-separated segmented path such as users:001
           example: users:001
         type:
           type: string
+          description: Free-form classification of the account
           example: virtual
         metadata:
           type: object
+          description: Arbitrary key/value pairs attached to the account
           additionalProperties: true
           example:
             admin: true
@@ -1557,6 +1581,7 @@ components:
           $ref: '#/components/schemas/Volumes'
         balances:
           type: object
+          description: Net balance per asset, equal to input minus output
           additionalProperties:
             type: integer
             format: bigint
@@ -1575,6 +1600,7 @@ components:
           JPY: 21
     AssetsBalances:
       type: object
+      description: Balances keyed by asset
       additionalProperties:
         type: integer
         format: int64
@@ -1586,20 +1612,24 @@ components:
       properties:
         account:
           type: string
+          description: Account address, or pattern, the contract applies to
           example: users:001
         expr:
           type: object
+          description: Expression the account's balances must satisfy
       required:
         - accounts
         - expr
     Mapping:
       type: object
       nullable: true
+      description: Contracts constraining the balances a ledger's accounts may hold
       required:
         - contracts
       properties:
         contracts:
           type: array
+          description: Constraints enforced on the ledger's accounts
           items:
             $ref: '#/components/schemas/Contract'
     Posting:
@@ -1609,15 +1639,19 @@ components:
           type: integer
           format: bigint
           minimum: 0
+          description: Amount to move, as an arbitrary-precision integer expressed in the asset's smallest unit
           example: 100
         asset:
           type: string
+          description: The asset being moved, optionally carrying a scale suffix such as USD/2
           example: COIN
         destination:
           type: string
+          description: Address of the account credited by this posting
           example: users:002
         source:
           type: string
+          description: Address of the account debited by this posting
           example: users:001
       required:
         - amount
@@ -1629,9 +1663,11 @@ components:
       properties:
         plain:
           type: string
+          description: The Numscript program to execute
           example: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
         vars:
           type: object
+          description: Values bound to the script's declared variables, keyed by variable name
           additionalProperties: true
           example:
             user: users:042
@@ -1645,16 +1681,22 @@ components:
         - plain
     Transaction:
       type: object
+      description: A transaction recorded in the ledger, carrying its postings and metadata
       properties:
         timestamp:
           type: string
           format: date-time
+          description: >-
+            The transaction time: when the transaction is considered to have occurred. See [bi-
+            temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         postings:
           type: array
+          description: The fund movements making up the transaction
           items:
             $ref: '#/components/schemas/Posting'
         reference:
           type: string
+          description: Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
           example: ref:001
         metadata:
           $ref: '#/components/schemas/Metadata'
@@ -1662,6 +1704,7 @@ components:
           type: integer
           format: bigint
           minimum: 0
+          description: Unique sequential identifier for this transaction within the ledger
         preCommitVolumes:
           $ref: '#/components/schemas/AggregatedVolumes'
         postCommitVolumes:
@@ -1677,16 +1720,21 @@ components:
       properties:
         postings:
           type: array
+          description: The fund movements making up the transaction
           items:
             $ref: '#/components/schemas/Posting'
         reference:
           type: string
+          description: Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
           example: ref:001
         metadata:
           $ref: '#/components/schemas/Metadata'
         timestamp:
           type: string
           format: date-time
+          description: >-
+            The transaction time to record, letting you backdate or postdate the transaction. See [bi-
+            temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
     Transactions:
       required:
         - transactions
@@ -1694,6 +1742,7 @@ components:
       properties:
         transactions:
           type: array
+          description: The transactions to create, applied in order
           items:
             $ref: '#/components/schemas/TransactionData'
     PostTransaction:
@@ -1702,12 +1751,17 @@ components:
         timestamp:
           type: string
           format: date-time
+          description: >-
+            The transaction time to record, letting you backdate or postdate the transaction. See [bi-
+            temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         postings:
           type: array
+          description: Fund movements to apply. Mutually exclusive with script
           items:
             $ref: '#/components/schemas/Posting'
         script:
           type: object
+          description: A Numscript program executed to produce the postings. Mutually exclusive with postings
           properties:
             plain:
               type: string
@@ -1721,20 +1775,24 @@ components:
             - plain
         reference:
           type: string
+          description: Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
           example: ref:001
         metadata:
           $ref: '#/components/schemas/Metadata'
     Stats:
       type: object
+      description: Aggregate counts for a ledger
       properties:
         accounts:
           type: integer
           format: int64
           minimum: 0
+          description: Total number of accounts in the ledger
         transactions:
           type: integer
           format: int64
           minimum: 0
+          description: Total number of transactions in the ledger
       required:
         - accounts
         - transactions
@@ -1745,21 +1803,26 @@ components:
           type: integer
           format: int64
           minimum: 0
+          description: Unique sequential identifier for this log entry within the ledger
           example: 1234
         type:
           type: string
+          description: The type of operation this log represents
           enum:
             - NEW_TRANSACTION
             - SET_METADATA
         data:
           type: object
+          description: The payload of the log entry, whose shape depends on the log type
           additionalProperties: true
         hash:
           type: string
+          description: SHA256 hash of the log entry, chained from the previous log for integrity verification
           example: 9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e
         date:
           type: string
           format: date-time
+          description: Timestamp when the operation was recorded
       required:
         - id
         - type
@@ -1773,6 +1836,7 @@ components:
           items:
             $ref: '#/components/schemas/Transaction'
           type: array
+          description: The transactions that were created
       required:
         - data
     TransactionResponse:
@@ -1807,12 +1871,15 @@ components:
         input:
           type: integer
           format: bigint
+          description: Total amount credited for this asset
         output:
           type: integer
           format: bigint
+          description: Total amount debited for this asset
         balance:
           type: integer
           format: bigint
+          description: Net balance, equal to input minus output
       required:
         - input
         - output
@@ -1822,6 +1889,7 @@ components:
         balance: 80
     Volumes:
       type: object
+      description: Volumes per asset for a single account
       additionalProperties:
         $ref: '#/components/schemas/Volume'
       example:
@@ -1835,6 +1903,7 @@ components:
           balance: 90
     AggregatedVolumes:
       type: object
+      description: Volumes aggregated per account and per asset
       additionalProperties:
         $ref: '#/components/schemas/Volumes'
       example:
@@ -1858,13 +1927,18 @@ components:
           $ref: '#/components/schemas/ErrorsEnum'
         errorMessage:
           type: string
+          description: Human-readable description of the error
           example: '[INSUFFICIENT_FUND] account had insufficient funds'
         details:
           type: string
+          description: >-
+            Optional link carrying additional context about the error, such as a Numscript playground URL
+            reproducing it
           example: >-
             https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
     ErrorsEnum:
       type: string
+      description: Machine-readable error code identifying the failure
       enum:
         - INTERNAL
         - INSUFFICIENT_FUND
@@ -1883,12 +1957,15 @@ components:
           $ref: '#/components/schemas/LedgerInfo'
     LedgerInfo:
       type: object
+      description: Runtime information about a ledger, including the state of its storage migrations
       properties:
         name:
           type: string
+          description: Name of the ledger
           example: ledger001
         storage:
           type: object
+          description: Storage backend information, including the applied migrations
           properties:
             migrations:
               type: array
@@ -1900,15 +1977,19 @@ components:
         version:
           type: string
           minimum: 0
+          description: Sequence number of the migration
           example: 11
         name:
           type: string
+          description: Name of the migration
           example: migrations:001
         date:
           type: string
           format: date-time
+          description: When the migration was applied
         state:
           type: string
+          description: Current state of the migration
           enum:
             - TO DO
             - DONE
