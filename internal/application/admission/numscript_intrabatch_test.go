@@ -374,3 +374,51 @@ send [USD/2 1] (source = @world destination = $dst)
 	var businessErr *domain.BusinessError
 	require.ErrorAs(t, err, &businessErr)
 }
+
+// TestResolveScripts_IntraBatchNumscriptExactReference pins that an exact-semver
+// reference resolves against a save earlier in the same bulk, while that save is
+// still absent from Pebble: the overlay entry is the content source. The contrast
+// case — the same reference with nothing in the overlay — is NUMSCRIPT_NOT_FOUND,
+// which is what a Pebble-only lookup yields for a not-yet-committed save.
+func TestResolveScripts_IntraBatchNumscriptExactReference(t *testing.T) {
+	t.Parallel()
+
+	const refScript = `send [USD/2 7] (source = @world destination = @ib:exactref)`
+
+	store := createTestStore(t)
+	admission, _ := createTestAdmission(t, store)
+
+	// A save earlier in the same bulk. Nothing is written to Pebble.
+	overlay := newBulkOverlay()
+	overlay.recordNumscriptSave(testLedgerName, "pay", "1.0.0", refScript)
+
+	batch := []*raftcmdpb.Order{referenceOrder(testLedgerName, "pay", "1.0.0")}
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch, overlay)
+	require.NoError(t, err)
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), batch, overlay, needs, perOrder, false))
+
+	// The referenced script's destination was discovered, so its content resolved
+	// from the overlay.
+	destKey := domain.NewVolumeKey(testLedgerName, "ib:exactref", "USD/2", "")
+	require.True(t, needs.Has(dal.SubAttrVolume, destKey.Bytes()),
+		"destination discovered from an overlay-resolved exact reference must be preloaded")
+
+	// Coverage is declared for the exact version the reference names, so the FSM
+	// read of that content key is admitted.
+	require.True(t, needs.Has(dal.SubAttrNumscriptContent,
+		domain.NumscriptEntryKey{LedgerName: testLedgerName, Name: "pay", Version: "1.0.0"}.Bytes()),
+		"the exact content key must be covered")
+
+	require.Equal(t, "1.0.0", createTxOf(batch[0]).GetNumscriptReference().GetVersion())
+
+	// Same reference, no same-bulk save: nothing to resolve from either source.
+	bare := []*raftcmdpb.Order{referenceOrder(testLedgerName, "pay", "1.0.0")}
+	bareOverlay := newBulkOverlay()
+	needs, perOrder, err = admission.extractPreloadNeeds(context.Background(), bare, bareOverlay)
+	require.NoError(t, err)
+
+	err = admission.resolveScriptsAndEnrichNeeds(context.Background(), bare, bareOverlay, needs, perOrder, false)
+
+	var notFound *domain.ErrNumscriptNotFound
+	require.ErrorAs(t, err, &notFound, "an exact reference with no persisted or in-bulk save must be NUMSCRIPT_NOT_FOUND")
+}
