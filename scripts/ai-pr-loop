@@ -37,7 +37,7 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-for command in git gh; do
+for command in git gh jq; do
     if ! command -v "$command" >/dev/null 2>&1; then
         echo "ai-pr-loop: required command not found in PATH: $command" >&2
         exit 1
@@ -74,11 +74,6 @@ if [[ "$head_owner/$head_repo" != "$repo" ]]; then
     exit 1
 fi
 
-if ! command -v jq >/dev/null 2>&1; then
-    echo "ai-pr-loop: jq is required" >&2
-    exit 1
-fi
-
 remote=origin
 if ! git remote get-url "$remote" >/dev/null 2>&1; then
     echo "ai-pr-loop: required git remote '$remote' is missing" >&2
@@ -101,7 +96,11 @@ if [[ "$fetched_head" != "$head_sha" ]]; then
     exit 1
 fi
 
-worktree_parent="$repo_root/build/ai-pr-loop"
+# Keep linked worktrees outside the primary checkout so the review loop cannot
+# accidentally include launcher state in the PR worktree/fingerprint.
+repo_parent=$(dirname "$repo_root")
+repo_name=$(basename "$repo_root")
+worktree_parent="$repo_parent/.${repo_name}-ai-worktrees"
 mkdir -p "$worktree_parent"
 worktree="$worktree_parent/pr-$pr_number"
 
