@@ -417,6 +417,38 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		if baselineDB == nil {
 			c.logger.Error("no baseline checkpoint available for archived state comparison; skipping entry-by-entry verification")
 
+			// The two passes that need no baseline still run. Both of their
+			// expectations are already complete here: signing.foldArchived and
+			// verifyAuditHashChain ran above and neither reads the baseline, so the
+			// signing fold covers the whole history and chainBound.expectedLogMax is
+			// the audited maximum, not a prefix of it.
+			//
+			// They are cluster-global rather than per-ledger, which is why the
+			// deleted `lastSequence == 0` fast path used to duplicate the signing
+			// compare (EN-1515): a store can hold signing rows and log rows the audit
+			// never produced while every baseline-seeded per-ledger term is
+			// legitimately empty. Returning without them would report clean on
+			// exactly the injected-key and injected-log classes they exist to catch.
+			if err := signing.compare(snap, callback); err != nil {
+				return fmt.Errorf("comparing signing projections: %w", err)
+			}
+
+			// The replay loop below never runs, so the stored ceiling it normally
+			// accumulates has to be read directly.
+			storedLogMax, err := readStoredLogMax(snap)
+			if err != nil {
+				return fmt.Errorf("reading the highest stored log sequence: %w", err)
+			}
+
+			compareLogBounds(chainBound, storedLogMax, callback)
+
+			// compareReverseMapOrphans is deliberately NOT run here, even though the
+			// deleted fast path did call it. Its oracle terms — liveLedgers and
+			// replayedSchemas — are seeded from the baseline below and are still empty
+			// at this point, and they are consulted whenever the peer view is aligned,
+			// so every row of every baseline-declared ledger would be reported as an
+			// orphan. That is the false-positive class the pass is built to avoid; the
+			// reverse map is therefore unverified on this shape.
 			return nil
 		}
 

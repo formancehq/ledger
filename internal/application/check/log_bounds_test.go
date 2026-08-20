@@ -811,3 +811,105 @@ func TestCheckBoundsRetainedLogsUnderTheArchiveBoundary(t *testing.T) {
 		})
 	}
 }
+
+// TestCheckStillJudgesBaselineLessArchivedStores pins the two passes that keep
+// running when an archived store has no readable baseline checkpoint.
+//
+// Check() abandons entry-by-entry verification on that shape — without the
+// baseline there is no independent pre-archive state, so every per-ledger
+// projection comparison would run on a partial view. But two expectations are
+// already whole at that point: signing.foldArchived and verifyAuditHashChain ran
+// before it and neither reads the baseline. Both are cluster-global rather than
+// per-ledger, so a store can hold signing rows and log rows the audit never
+// produced while every baseline-seeded term is legitimately empty.
+//
+// Base covered this through the `lastSequence == 0` fast path, which called the
+// signing compare before the archived branch was reached. That path is gone, so
+// the two passes are pinned here instead: returning without them reports clean on
+// exactly the injected-key and injected-log classes they exist to catch.
+func TestCheckStillJudgesBaselineLessArchivedStores(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		// tamper plants one unaudited log row above the audited maximum and one
+		// signing row too short to decode.
+		tamper bool
+	}{
+		{name: "untampered", tamper: false},
+		{name: "unaudited log and undecodable signing row", tamper: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			engine := newTestEngine(t)
+
+			// Pre-boundary history: logs 1-2, audit entries 1-2.
+			engine.processAndCommit(createLedgerOrder("archived-era"))
+			engine.processAndCommit(createTransactionOrder("archived-era", true,
+				newPosting("world", "alice", "USD", 100)))
+
+			boundaryAuditHash := append([]byte(nil), engine.lastAuditHash...)
+
+			// Deliberately NO captureBoundaryBaseline: this is the checkpoint-only
+			// restore shape, where BaselineCheckpointPath finds nothing and Check()
+			// takes the baselineDB == nil return.
+
+			// Post-boundary history: logs 3-4, audit entries 3-4, so the audited
+			// maximum is 4 and the retained stream stops there too.
+			engine.processAndCommit(createTransactionOrder("archived-era", true,
+				newPosting("world", "bob", "USD", 50)))
+			engine.processAndCommit(createLedgerOrder("live-era"))
+
+			writeArchivedBoundary(t, engine, archivedBoundary{
+				closeSequence:      2,
+				closeAuditSequence: 2,
+				lastAuditHash:      boundaryAuditHash,
+				purgeLogRows:       true,
+			})
+
+			if tc.tamper {
+				const unaudited = 5
+
+				inject := engine.store.OpenWriteSession()
+				key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(unaudited).Build()
+				require.NoError(t, inject.SetProto(key, &commonpb.Log{Sequence: unaudited}))
+				require.NoError(t, inject.Commit())
+
+				// The undecodable class is the one signing finding that needs no
+				// audit oracle, so it is reported whether or not the cold fold was
+				// complete — which makes it the observable that proves the compare
+				// ran at all on a store with no cold reader attached.
+				writeRawSigningKeyRow(t, engine.store, "forged-key", []byte{0x01})
+			}
+
+			errs := collectCheckErrors(t, engine.store, engine.attrs)
+
+			unauditedErrors := errorsOfType(errs,
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
+			signingErrors := errorsOfType(errs,
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH)
+
+			if !tc.tamper {
+				require.Empty(t, unauditedErrors,
+					"the retained stream stops at the audited maximum, so the bound must stay silent")
+				require.Empty(t, signingErrors,
+					"no signing row was planted, so the compare must find nothing")
+
+				return
+			}
+
+			require.Len(t, unauditedErrors, 1,
+				"the log bound must still run without a baseline: it needs only the "+
+					"audited maximum from the chain walk and the highest stored key")
+			require.Equal(t, uint64(5), unauditedErrors[0].GetLogSequence())
+			require.Contains(t, unauditedErrors[0].GetMessage(), "authenticates no log above 4")
+
+			require.Len(t, signingErrors, 1,
+				"the signing compare must still run without a baseline: its expectation "+
+					"is folded from archived and live audit orders, never from the baseline")
+			require.Contains(t, signingErrors[0].GetMessage(), "forged-key")
+			require.Contains(t, signingErrors[0].GetMessage(), "undecodable stored row")
+		})
+	}
+}

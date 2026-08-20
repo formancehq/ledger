@@ -1,10 +1,44 @@
 package check
 
 import (
+	"encoding/binary"
 	"fmt"
 
+	"github.com/cockroachdb/pebble/v2"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+// readStoredLogMax returns the highest log sequence the store holds, taken from
+// the KEY, or 0 when the store holds no log row.
+//
+// Check()'s replay loop accumulates the same value as it walks, and that is the
+// value the bound normally uses. This is for the paths that skip the replay loop
+// and would otherwise pass a zero maximum to compareLogBounds, which reads as
+// "the store holds no log" and silently compares nothing.
+//
+// The iterator bounds MUST stay identical to the replay loop's, or the two
+// callers would disagree about which rows exist. A reverse seek is enough: the
+// key encoding is big-endian, so the last key in the range is the maximum.
+func readStoredLogMax(reader dal.PebbleReader) (uint64, error) {
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{dal.ZoneCold, dal.SubColdLog},
+		UpperBound: []byte{dal.ZoneCold, dal.SubColdLog, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("creating log iterator: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	if !iter.Last() {
+		return 0, iter.Error()
+	}
+
+	// [ZoneCold(1)][SubColdLog(1)][sequence(8)], as in the replay loop.
+	return binary.BigEndian.Uint64(iter.Key()[2:10]), iter.Error()
+}
 
 // compareLogBounds bounds the log stream from above with the audit hash chain.
 //
