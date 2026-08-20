@@ -20,31 +20,31 @@ func TestKindForHistoricalBalanceReasons(t *testing.T) {
 		{
 			name:   "building",
 			reason: commonpb.ErrorReason_ERROR_REASON_HISTORY_BUILDING,
-			number: 69,
+			number: 70,
 			kind:   KindUnavailable,
 		},
 		{
 			name:   "behind",
 			reason: commonpb.ErrorReason_ERROR_REASON_HISTORY_BEHIND,
-			number: 70,
+			number: 71,
 			kind:   KindUnavailable,
 		},
 		{
 			name:   "source missing",
 			reason: commonpb.ErrorReason_ERROR_REASON_HISTORY_SOURCE_MISSING,
-			number: 71,
+			number: 72,
 			kind:   KindInternal,
 		},
 		{
 			name:   "corrupt",
 			reason: commonpb.ErrorReason_ERROR_REASON_HISTORY_CORRUPT,
-			number: 72,
+			number: 73,
 			kind:   KindInternal,
 		},
 		{
 			name:   "unsupported temporal filter",
 			reason: commonpb.ErrorReason_ERROR_REASON_UNSUPPORTED_TEMPORAL_FILTER,
-			number: 73,
+			number: 74,
 			kind:   KindValidation,
 		},
 	}
