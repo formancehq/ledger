@@ -40,15 +40,12 @@ var _ = Describe("Cross-store value skew", Ordered, func() {
 		client servicepb.BucketServiceClient
 	)
 
-	const (
-		httpPort = 15710
-		grpcPort = 15810
-	)
-
 	const ledgerName = "cross-store-value-skew-ledger"
 
 	BeforeAll(func() {
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode()
+		client = node.Client
 
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 			{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: "tier", Type: commonpb.MetadataType_METADATA_TYPE_STRING},
