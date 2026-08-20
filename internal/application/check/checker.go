@@ -373,17 +373,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// RemovedMetadataFieldType logs. Compared against the stored
 		// LedgerInfo.MetadataSchema in compareSchema.
 		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
-		// Metadata fields the replay observed a RemovedMetadataFieldType log
-		// for. Unlike expectedSchemas this is append-only — a field removed
-		// and later re-declared stays recorded, and
-		// compareReverseMapOrphans resolves that case by checking
-		// expectedSchemas first. It is the positive-evidence oracle for the
-		// reverse-map orphan class: a verdict resting on a log the replay saw
-		// holds regardless of where the peer read-index cursor sits, whereas
-		// inferring removal from absence in a view pinned at lastSequence
-		// misreads a field created after that point. See ALIGNMENT in
-		// reverse_map_orphans.go.
-		removedSchemaFields = make(map[removedSchemaFieldKey]struct{})
 		// Expected LedgerBoundaries per ledger: id fields and replay-derivable
 		// counters, seeded from the baseline under archiving, advanced per
 		// replayed log, then topped up with the chain-bound audit-order
@@ -712,17 +701,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 							if l := d.RemovedMetadataFieldType; l != nil {
 								removeExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey())
-
-								// This is also the one log that runs
-								// purgeReverseMapForKey, so recording it gives
-								// compareReverseMapOrphans an oracle that does
-								// not depend on the peer read-index cursor
-								// sitting exactly at lastSequence.
-								removedSchemaFields[removedSchemaFieldKey{
-									ledger:  ledgerName,
-									target:  l.GetTargetType(),
-									metaKey: l.GetKey(),
-								}] = struct{}{}
 							}
 
 							// processRemoveMetadataFieldType cascades into a
@@ -856,7 +834,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		liveLedgers:           knownLedgers,
 		pendingCleanupLedgers: pendingCleanupLedgers,
 		replayedSchemas:       expectedSchemas,
-		removedFields:         removedSchemaFields,
 	}, callback)
 
 	c.compareMirrorV2LogID(snap, chainBound, deletedInReplay, callback)

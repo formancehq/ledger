@@ -231,3 +231,45 @@ func (b *Builder) purgeOrphanVersions() error {
 
 	return nil
 }
+
+// eventGCKeyBudget bounds how many event keys one tick's GC pass visits per
+// zone — enough to keep up with sustained metadata churn (the walk runs ~10
+// times a second) while keeping each pass well under the tick interval.
+const eventGCKeyBudget = 4096
+
+// runEventGC advances the incremental reclamation of superseded metadata /
+// exists index events (readstore.GCEventZone) by one budgeted slice per zone.
+//
+// The fold cursor is only a proposal: BeginGC lowers it to the minimum live
+// pin and publishes the result as the registry's reclaim floor, under the
+// same lock that admits new leases. A reader whose pin is already registered
+// keeps its history; one that arrives afterwards with a lower pin is refused
+// and re-pins. Nothing here may assume a future pin is at least the fold
+// cursor — a pin is read from a handle that can be arbitrarily older.
+func (b *Builder) runEventGC(cursor uint64) {
+	watermark := b.readStore.Leases().BeginGC(cursor)
+	if watermark == 0 {
+		return
+	}
+
+	if b.eventGCResume == nil {
+		b.eventGCResume = map[byte][]byte{}
+	}
+
+	for _, zone := range []byte{readstore.PrefixMetadataIndex, readstore.PrefixEntityExists} {
+		pruned, next, err := readstore.GCEventZone(b.readStore.DB(), zone, b.eventGCResume[zone], watermark, eventGCKeyBudget)
+		if err != nil {
+			// One zone failing says nothing about the other; sweeping it is
+			// what keeps the surviving zone from growing without bound.
+			b.logger.Errorf("event GC pass on zone %#x failed: %v", zone, err)
+
+			continue
+		}
+
+		b.eventGCResume[zone] = next
+
+		if pruned > 0 {
+			b.logger.Debugf("event GC reclaimed %d events in zone %#x", pruned, zone)
+		}
+	}
+}

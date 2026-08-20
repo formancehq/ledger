@@ -57,6 +57,79 @@ type InspectFacetEntry struct {
 	Count uint64
 }
 
+// forEachLiveGroup walks event keys in [lower, upper) and invokes fn for
+// every group (the bytes between prefixLen and the entity terminator) whose
+// latest event is an ADD — i.e. current membership. fn returns false to stop
+// early; its argument is only valid for the duration of the call.
+//
+// A key it cannot read is an error, not a skipped row: statistics derived from
+// the events around it would be plausible and wrong, hiding the corruption
+// they were computed over.
+func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen int, fn func(group []byte) bool) error {
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: lower,
+		UpperBound: upper,
+	})
+	if err != nil {
+		return err
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	suffix := metadataEventSuffixLen + 1
+
+	var (
+		group   []byte
+		started bool
+		live    bool
+	)
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+
+		tpos := len(key) - suffix
+		if tpos < prefixLen || key[tpos] != metadataEventTerminator {
+			return fmt.Errorf("malformed metadata event key %x", key)
+		}
+
+		g := key[prefixLen:tpos]
+		if !started || !bytes.Equal(g, group) {
+			if started && live && !fn(group) {
+				return iter.Error()
+			}
+
+			group = append(group[:0], g...)
+			started = true
+		}
+
+		if !validEventOp(key[tpos+9]) {
+			return fmt.Errorf("malformed metadata event key %x", key)
+		}
+
+		// Events are seq-ascending within a group: the last op wins.
+		live = key[tpos+9] == MetadataEventAdd
+	}
+
+	if started && live {
+		_ = fn(group)
+	}
+
+	return iter.Error()
+}
+
+// countLiveGroups counts current members under an event prefix.
+func countLiveGroups(reader dal.PebbleReader, prefix []byte) (uint64, error) {
+	var n uint64
+
+	err := forEachLiveGroup(reader, prefix, IncrementBytes(prefix), len(prefix), func([]byte) bool {
+		n++
+
+		return true
+	})
+
+	return n, err
+}
+
 // InspectIndex scans a metadata index and returns statistics or values.
 func InspectIndex(params InspectParams) (*InspectResult, error) {
 	switch params.Mode {
@@ -84,53 +157,51 @@ func inspectDistinctValues(params InspectParams) (*InspectResult, error) {
 		lower = IncrementBytes(seekKey)
 	}
 
-	iter, err := params.Reader.NewIter(&pebble.IterOptions{
-		LowerBound: lower,
-		UpperBound: upper,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating metadata index iterator: %w", err)
-	}
-
-	defer func() { _ = iter.Close() }()
-
 	pageSize := params.PageSize
 	if pageSize == 0 {
 		pageSize = defaultPageSize
 	}
 
 	result := &InspectResult{}
-	var prevValueBytes []byte
 
-	for iter.First(); iter.Valid(); iter.Next() {
-		key := iter.Key()
-		if len(key) <= len(prefix) {
-			continue
+	var (
+		prevValueBytes []byte
+		decodeErr      error
+	)
+
+	err := forEachLiveGroup(params.Reader, lower, upper, len(prefix), func(group []byte) bool {
+		_, consumed, decErr := DecodeValue(group)
+		if decErr != nil {
+			decodeErr = fmt.Errorf("malformed metadata event group %x: %w", group, decErr)
+
+			return false
 		}
 
-		valueData := key[len(prefix):]
-
-		_, consumed, err := DecodeValue(valueData)
-		if err != nil {
-			continue
-		}
-
-		currentValueBytes := valueData[:consumed]
+		currentValueBytes := group[:consumed]
 		if bytes.Equal(currentValueBytes, prevValueBytes) {
-			continue
+			return true
 		}
 
 		if uint32(len(result.Values)) >= pageSize {
 			result.HasMore = true
 
-			break
+			return false
 		}
 
-		decoded, _, _ := DecodeValue(valueData)
+		decoded, _, _ := DecodeValue(group)
 		result.Values = append(result.Values, decoded)
 		prevValueBytes = make([]byte, len(currentValueBytes))
 		copy(prevValueBytes, currentValueBytes)
 		result.NextCursor = prevValueBytes
+
+		return true
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scanning metadata index events: %w", err)
+	}
+
+	if decodeErr != nil {
+		return nil, decodeErr
 	}
 
 	return result, nil
@@ -149,16 +220,6 @@ func inspectFacets(params InspectParams) (*InspectResult, error) {
 		lower = IncrementBytes(seekKey)
 	}
 
-	iter, err := params.Reader.NewIter(&pebble.IterOptions{
-		LowerBound: lower,
-		UpperBound: upper,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating metadata index iterator: %w", err)
-	}
-
-	defer func() { _ = iter.Close() }()
-
 	pageSize := params.PageSize
 	if pageSize == 0 {
 		pageSize = defaultPageSize
@@ -170,27 +231,23 @@ func inspectFacets(params InspectParams) (*InspectResult, error) {
 		prevValueBytes []byte
 		currentValue   *commonpb.MetadataValue
 		currentCount   uint64
+		decodeErr      error
 	)
 
-	for iter.First(); iter.Valid(); iter.Next() {
-		key := iter.Key()
-		if len(key) <= len(prefix) {
-			continue
+	err := forEachLiveGroup(params.Reader, lower, upper, len(prefix), func(group []byte) bool {
+		_, consumed, decErr := DecodeValue(group)
+		if decErr != nil {
+			decodeErr = fmt.Errorf("malformed metadata event group %x: %w", group, decErr)
+
+			return false
 		}
 
-		valueData := key[len(prefix):]
-
-		_, consumed, err := DecodeValue(valueData)
-		if err != nil {
-			continue
-		}
-
-		currentValueBytes := valueData[:consumed]
+		currentValueBytes := group[:consumed]
 
 		if bytes.Equal(currentValueBytes, prevValueBytes) {
 			currentCount++
 
-			continue
+			return true
 		}
 
 		// Emit previous facet if any.
@@ -198,18 +255,27 @@ func inspectFacets(params InspectParams) (*InspectResult, error) {
 			if uint32(len(result.Facets)) >= pageSize {
 				result.HasMore = true
 
-				break
+				return false
 			}
 
 			result.Facets = append(result.Facets, InspectFacetEntry{Value: currentValue, Count: currentCount})
 			result.NextCursor = prevValueBytes
 		}
 
-		decoded, _, _ := DecodeValue(valueData)
+		decoded, _, _ := DecodeValue(group)
 		currentValue = decoded
 		currentCount = 1
 		prevValueBytes = make([]byte, len(currentValueBytes))
 		copy(prevValueBytes, currentValueBytes)
+
+		return true
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scanning metadata index events: %w", err)
+	}
+
+	if decodeErr != nil {
+		return nil, decodeErr
 	}
 
 	// Emit last facet.
@@ -233,36 +299,26 @@ func inspectSummary(params InspectParams) (*InspectResult, error) {
 	prefix := MetadataIndexPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
 	upper := IncrementBytes(prefix)
 
-	iter, err := params.Reader.NewIter(&pebble.IterOptions{
-		LowerBound: prefix,
-		UpperBound: upper,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating metadata index iterator: %w", err)
-	}
+	var (
+		prevValueBytes []byte
+		decodeErr      error
+	)
 
-	var prevValueBytes []byte
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		key := iter.Key()
-		if len(key) <= len(prefix) {
-			continue
-		}
-
-		valueData := key[len(prefix):]
-
-		_, consumed, decErr := DecodeValue(valueData)
+	err := forEachLiveGroup(params.Reader, prefix, upper, len(prefix), func(group []byte) bool {
+		_, consumed, decErr := DecodeValue(group)
 		if decErr != nil {
-			continue
+			decodeErr = fmt.Errorf("malformed metadata event group %x: %w", group, decErr)
+
+			return false
 		}
 
-		currentValueBytes := valueData[:consumed]
+		currentValueBytes := group[:consumed]
 
 		if bytes.Equal(currentValueBytes, prevValueBytes) {
-			continue
+			return true
 		}
 
-		decoded, _, _ := DecodeValue(valueData)
+		decoded, _, _ := DecodeValue(group)
 
 		result.Cardinality++
 
@@ -273,13 +329,20 @@ func inspectSummary(params InspectParams) (*InspectResult, error) {
 		result.Max = decoded
 		prevValueBytes = make([]byte, len(currentValueBytes))
 		copy(prevValueBytes, currentValueBytes)
+
+		return true
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scanning metadata index events: %w", err)
 	}
 
-	_ = iter.Close()
+	if decodeErr != nil {
+		return nil, decodeErr
+	}
 
 	// Count entities with key (non-null).
 	nonNullPrefix := EntityExistsNonNullPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
-	result.EntitiesWithKey, err = countPrefix(params.Reader, nonNullPrefix)
+	result.EntitiesWithKey, err = countLiveGroups(params.Reader, nonNullPrefix)
 
 	if err != nil {
 		return nil, fmt.Errorf("counting non-null entities: %w", err)
@@ -287,33 +350,11 @@ func inspectSummary(params InspectParams) (*InspectResult, error) {
 
 	// Count entities with null value.
 	nullPrefix := EntityExistsNullPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
-	result.EntitiesWithNull, err = countPrefix(params.Reader, nullPrefix)
+	result.EntitiesWithNull, err = countLiveGroups(params.Reader, nullPrefix)
 
 	if err != nil {
 		return nil, fmt.Errorf("counting null entities: %w", err)
 	}
 
 	return result, nil
-}
-
-// countPrefix counts the number of keys with the given prefix.
-func countPrefix(reader dal.PebbleReader, prefix []byte) (uint64, error) {
-	upper := IncrementBytes(prefix)
-
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: prefix,
-		UpperBound: upper,
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	var count uint64
-	for iter.First(); iter.Valid(); iter.Next() {
-		count++
-	}
-
-	return count, nil
 }

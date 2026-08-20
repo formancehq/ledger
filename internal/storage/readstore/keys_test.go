@@ -177,7 +177,7 @@ func TestParseReverseMapKey_MaxLengthLedgerNameRoundTrip(t *testing.T) {
 // TestParseReverseMapKey_Rejects covers every malformed-key shape
 // ParseReverseMapKey must reject. Convention: every entry builds its own
 // fresh dal.NewKeyBuilder() rather than sharing one across entries. Several
-// of the key builders in this package (e.g. MetadataIndexKeyV) hand back
+// of the key builders in this package (e.g. MetadataIndexEventKeyV) hand back
 // their result via KeyBuilder.Consume(), which aliases the builder's
 // backing array instead of copying it; reusing a single builder across
 // multiple table entries would let a later Build()/Reset() on that builder
@@ -206,7 +206,7 @@ func TestParseReverseMapKey_Rejects(t *testing.T) {
 			wantErr: ErrReverseMapKeyPrefix,
 		},
 		"wrong prefix byte must be rejected": {
-			key:     MetadataIndexKeyV(dal.NewKeyBuilder(), "main", NamespaceAccount, "wallet_id", 1, []byte{0x01}, []byte("users:1")),
+			key:     MetadataIndexEventKeyV(dal.NewKeyBuilder(), "main", NamespaceAccount, "wallet_id", 1, []byte{0x01}, []byte("users:1"), 1, MetadataEventAdd),
 			wantErr: ErrReverseMapKeyPrefix,
 		},
 		"key truncated before the namespace must be rejected": {

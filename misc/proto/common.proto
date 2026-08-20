@@ -1253,6 +1253,11 @@ enum ErrorReason {
   ERROR_REASON_PRELOAD_UNAVAILABLE = 66;
   ERROR_REASON_AGGREGATE_OVERFLOW = 67;
   ERROR_REASON_BALANCE_NOT_FOUND = 68;
+  // ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP: an indexed read needs the read
+  // index folded up to the main store's applied sequence and it did not get
+  // there within the alignment grace. Retryable (Kind=Unavailable): the fold
+  // is behind, not broken. See EN-1748.
+  ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP = 69;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

@@ -102,8 +102,8 @@ The read store partitions its keyspace by a single leading byte:
 
 | Prefix | Purpose | Helper |
 |--------|---------|--------|
-| `0x01` | Metadata index (forward) | `MetadataIndexPrefixV` / `MetadataIndexKeyV` |
-| `0x02` | Entity existence (null / non-null counters) | `EntityExistsKeyV`, `EntityExistsNonNullPrefixV`, `EntityExistsNullPrefixV` |
+| `0x01` | Metadata index (forward, append-only events — see [readstore-event-keys.md](../read-path/readstore-event-keys.md)) | `MetadataIndexPrefixV` / `MetadataIndexEventKeyV` |
+| `0x02` | Entity existence (null / non-null, append-only events) | `EntityExistsEventKeyV`, `EntityExistsNonNullPrefixV`, `EntityExistsNullPrefixV` |
 | `0x03` | Reverse map (entity → metadata values, for rewrites). The only limb that cannot be range-deleted by field, and the only one the checker scans — see [Reverse-map rows are checker-visible](indexes.md#reverse-map-rows-are-checker-visible) | `AccountReverseMapKeyV`, `TransactionReverseMapKeyV` |
 | `0x04` | Account → transaction mapping | `AccountTxKey` |
 | `0x05` | Source-account → transaction | dedicated key builder |
@@ -127,8 +127,14 @@ Internal sub-prefixes (`0xFE` + 1 B):
 ### The versioned metadata-index key
 
 ```
-[0x01] [ledger 64B] [ns:] [metadataKey \x00] [version 4B BE] [typedValue] [entityID]
+[0x01] [ledger 64B] [ns:] [metadataKey \x00] [version 4B BE] [typedValue] [entityID] \x00 [raftSeq 8B BE] [op 1B]
 ```
+
+The `\x00 + sequence + op` tail makes the limb an append-only event log: a
+mutation appends `ADD`/`DEL` rather than rewriting a row, and a read resolves
+the membership that held at its pinned sequence. See
+[readstore-event-keys.md](../read-path/readstore-event-keys.md) for the
+resolution and reclamation rules.
 
 `ledger` is fixed-width (`dal.LedgerNameFixedSize` = 64B, zero-padded). `ns:` is the entity namespace — currently `"a:"` for accounts and `"t:"` for transactions; not a fixed width, but always followed by `\x00` after `metadataKey`.
 

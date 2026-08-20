@@ -31,6 +31,7 @@ func TestIndexRevertedTransaction_WritesRevertedAtIndex(t *testing.T) {
 
 	batch := store.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 
 	cfg := newLedgerIndexConfig()
 	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT)
