@@ -205,11 +205,23 @@ func resolveCoverage[T interface {
 			// Preload: Get's gen0→gen1 fallback surfaces the value on
 			// read and Del's lazy promote fabricates a gen0 tombstone
 			// on delete. No Pebble read required.
-			mu.Lock()
-			plans = append(plans, slab.appendCoverage(id, tag, attrCode))
-			mu.Unlock()
+			//
+			// Index registry keys never take this shortcut: the classifier
+			// answers hit for any resident under the key's id — tombstoned or
+			// tag-mismatched included — while the apply-path read checks both
+			// and treats them as absent. Loading and seeding below keeps the
+			// plan carrying the durable truth for these rare keys; with the
+			// miss path already arbitrated, a finding that persists past this
+			// pins the divergence to the cache shadowing the seed at apply.
+			if attrCode != dal.SubAttrIndex {
+				mu.Lock()
+				plans = append(plans, slab.appendCoverage(id, tag, attrCode))
+				mu.Unlock()
 
-			continue
+				continue
+			}
+
+			fallthrough
 
 		case cache.CacheMiss:
 			// Bloom filter short-circuit: when the key is definitely not
