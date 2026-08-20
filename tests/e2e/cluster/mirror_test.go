@@ -331,7 +331,7 @@ var _ = Describe("Mirror", Ordered, func() {
 
 				// We expect at least 2 transactions from the v2 logs
 				g.Expect(len(txs)).To(BeNumerically(">=", 2))
-			}).Within(30 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should sync account metadata from v2", func() {
@@ -346,7 +346,7 @@ var _ = Describe("Mirror", Ordered, func() {
 				roleVal := actions.FindMetadataValue(account.Metadata, "role")
 				g.Expect(roleVal).NotTo(BeNil())
 				g.Expect(roleVal.GetStringValue()).To(Equal("admin"))
-			}).Within(30 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 		})
 	})
 
@@ -432,7 +432,7 @@ var _ = Describe("Mirror", Ordered, func() {
 				g.Expect(destinations).To(HaveKey("users:carol"))
 				// The dropped transaction's destination never lands.
 				g.Expect(destinations).NotTo(HaveKey("users:bob"))
-			}).Within(30 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should transform transaction metadata", func() {
@@ -458,7 +458,7 @@ var _ = Describe("Mirror", Ordered, func() {
 				kind := actions.FindMetadataValue(rewritten.GetMetadata(), "kind")
 				g.Expect(kind).NotTo(BeNil())
 				g.Expect(kind.GetStringValue()).To(Equal("payout"))
-			}).Within(30 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should reject creating a mirror ledger with an invalid CEL rule", func() {
@@ -523,7 +523,7 @@ var _ = Describe("Mirror", Ordered, func() {
 				txs, err := listAllTransactions(ctx, client, "mirror-promote", 10, 0)
 				g.Expect(err).To(Succeed())
 				g.Expect(len(txs)).To(BeNumerically(">=", 1))
-			}).Within(30 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should promote ledger from mirror to normal mode", func() {
@@ -624,7 +624,7 @@ var _ = Describe("Mirror", Ordered, func() {
 				g.Expect(err).To(Succeed())
 
 				g.Expect(len(txs)).To(BeNumerically(">=", 1))
-			}).Within(30 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 		})
 
 		It("Should have used the OAuth2 token for v2 API calls", func() {
@@ -648,7 +648,7 @@ var _ = Describe("Mirror", Ordered, func() {
 				providerVal := actions.FindMetadataValue(account.Metadata, "provider")
 				g.Expect(providerVal).NotTo(BeNil())
 				g.Expect(providerVal.GetStringValue()).To(Equal("oauth2"))
-			}).Within(30 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 		})
 	})
 })

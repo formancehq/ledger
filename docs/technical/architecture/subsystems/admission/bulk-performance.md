@@ -57,7 +57,7 @@ active, not that the order is skipped or trusted without validation.
 | Execution path | Numscript discovery | Expected impact |
 |----------------|---------------------|-----------------|
 | Bulk with repeated, variable-free script; same ledger, text, and `force`; empty volume/metadata read sets | First occurrence runs fully, later matches reuse it | Largest gain |
-| Bulk with unique scripts | Full path for every order | No direct effect |
+| Bulk with unique scripts | Full path for every order | No discovery saving; variable-free static scripts pay a small memo lookup/insertion cost |
 | Bulk with external variables | Full path for every order | No direct effect; variable bindings never share discovery |
 | Bulk with non-empty `ReadVolumes` / `ReadMetadata` (for example `balance()`, `meta()`, or a bounded balance-checked source) | Full path for every order against the evolving overlay | No direct effect; state-dependent scripts are never reused |
 | Different ledger, script text, or `force` value | Separate first discovery for each key | Later exact matches can still reuse |
@@ -70,21 +70,30 @@ added for every order, and the FSM still executes every accepted order.
 
 ## Measurements
 
-The admission microbenchmark isolates a 50-order preparation shape on
-Linux/arm64 with Go 1.26.5:
+The admission microbenchmarks isolate two 50-order preparation shapes on
+Darwin/arm64 (Apple M5 Pro) with Go 1.26.5: repeated static text exercises the
+memo-hit path, while semantically equivalent scripts with distinct trailing
+newlines exercise the no-hit path. Each iteration resets `Order.Technical`
+outside the timed region so the measured Numscript phase receives fresh order
+state, as it does in production.
 
 ```shell
 go test ./internal/application/admission \
   -run '^$' \
-  -bench '^BenchmarkResolveScriptsWorldToBankBulk50$' \
+  -bench '^BenchmarkResolveScriptsWorldToBank(Bulk50|UniqueBulk50)$' \
   -benchmem -benchtime=1s -count=12
 ```
 
-| Metric (median of 12) | Base | Optimized | Change |
-|-----------------------|-----:|----------:|-------:|
-| Time per bulk | 1,106,562 ns | 288,750 ns | -73.9% |
-| Bytes per bulk | 420,265 B | 129,769 B | -69.1% |
-| Allocations per bulk | 5,172 | 1,009 | -80.5% |
+| Workload (median of 12) | Metric | Base | Optimized | Change |
+|-------------------------|--------|-----:|----------:|-------:|
+| Repeated static script | Time per bulk | 211,291 ns | 65,235 ns | -69.1% |
+| Repeated static script | Bytes per bulk | 425,130 B | 134,596 B | -68.3% |
+| Repeated static script | Allocations per bulk | 5,222 | 1,059 | -79.7% |
+| Unique static scripts | Time per bulk | 219,839 ns | 228,050 ns | +3.7% |
+| Unique static scripts | Bytes per bulk | 425,223 B | 431,685 B | +1.5% |
+| Unique static scripts | Allocations per bulk | 5,223 | 5,232 | +0.2% |
 
 The gain is workload-specific. Bulks containing unique, variable-bearing, or
-state-reading scripts deliberately receive no discovery reuse.
+state-reading scripts deliberately receive no discovery reuse. The unique
+static benchmark quantifies the bounded request-local memo bookkeeping paid
+when static scripts do not repeat.

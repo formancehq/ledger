@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -154,12 +155,20 @@ func writeVolume(t *testing.T, admission *Admission, ledger, account, asset stri
 	require.NoError(t, batch.Commit())
 }
 
-func resolveHashFor(t *testing.T, admission *Admission, overlay *bulkOverlay, orders []*raftcmdpb.Order, idx int) []byte {
+func resolveOrders(t *testing.T, admission *Admission, overlay *bulkOverlay, orders []*raftcmdpb.Order) []*plan.Coverage {
 	t.Helper()
 
 	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
 	require.NoError(t, err)
 	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, false))
+
+	return perOrder
+}
+
+func resolveHashFor(t *testing.T, admission *Admission, overlay *bulkOverlay, orders []*raftcmdpb.Order, idx int) []byte {
+	t.Helper()
+
+	resolveOrders(t, admission, overlay, orders)
 
 	return orders[idx].GetTechnical().GetInputsResolutionHash()
 }
@@ -181,12 +190,26 @@ send $all (source = @memo:source destination = @memo:destination)
 
 	storeBatch := createTestStore(t)
 	admissionBatch, _ := createTestAdmission(t, storeBatch)
-	batchHash := resolveHashFor(t, admissionBatch, newBulkOverlay(), []*raftcmdpb.Order{
+	batch := []*raftcmdpb.Order{
 		scriptOrder(testLedgerName, deposit),
 		scriptOrder(testLedgerName, deposit), // reuses the first discovery
 		scriptOrder(testLedgerName, dependent),
-	}, 2)
+	}
+	perOrder := resolveOrders(t, admissionBatch, newBulkOverlay(), batch)
+	batchHash := batch[2].GetTechnical().GetInputsResolutionHash()
 	require.NotEmpty(t, batchHash)
+
+	// Both the fully-discovered first occurrence and the memo-hit second
+	// occurrence must declare their own FSM read horizon. The aggregate preload
+	// alone is insufficient: coverage_bits are computed from these per-order
+	// sets and gate every hot-path cache read.
+	for orderIdx := range 2 {
+		for _, account := range []string{"world", "memo:source"} {
+			key := domain.NewVolumeKey(testLedgerName, account, "USD/2", "")
+			require.Truef(t, perOrder[orderIdx].Has(dal.SubAttrVolume, key.Bytes()),
+				"order %d must cover volume %s", orderIdx, account)
+		}
+	}
 
 	// Reference: the dependent script resolved against the state the FSM sees
 	// after applying both deposits: 200, not one cached effect of 100.
