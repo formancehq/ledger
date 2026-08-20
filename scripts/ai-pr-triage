@@ -27,14 +27,17 @@ repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 remote_url=$(git remote get-url origin)
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
-metadata=$(gh pr view "$pr_number" --repo "$repo" --json number,state,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,title,body,url)
+metadata=$(gh pr view "$pr_number" --repo "$repo" --json number,state,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository,title,body,url)
 state=$(jq -r .state <<<"$metadata")
 [[ "$state" == "OPEN" ]] || { echo "ai-pr-triage: PR #$pr_number is not open" >&2; exit 1; }
 base_sha=$(jq -r .baseRefOid <<<"$metadata")
 head_sha=$(jq -r .headRefOid <<<"$metadata")
 head_owner=$(jq -r '.headRepositoryOwner.login // ""' <<<"$metadata")
-repo_owner=${repo%%/*}
-[[ "$head_owner" == "$repo_owner" ]] || { echo "ai-pr-triage: cross-repository PRs are not supported yet" >&2; exit 1; }
+head_repo=$(jq -r '.headRepository.name // ""' <<<"$metadata")
+[[ -n "$head_owner" && -n "$head_repo" && "$head_owner/$head_repo" == "$repo" ]] || {
+    echo "ai-pr-triage: cross-repository PRs are not supported yet" >&2
+    exit 1
+}
 
 git fetch --quiet origin "$base_sha" "$head_sha"
 git cat-file -e "${base_sha}^{commit}"
@@ -51,13 +54,25 @@ output=$(cd "$(dirname "$output")" && pwd)/$(basename "$output")
 original_home=${HOME:?HOME must be set}
 original_codex_home=${CODEX_HOME:-"$original_home/.codex"}
 isolation_root=$(mktemp -d "${TMPDIR:-/tmp}/ledger-pr-triage.XXXXXX")
-trap 'rm -rf -- "$isolation_root"' EXIT
+head_worktree="$isolation_root/head-worktree"
+cleanup() {
+    git -C "$repo_root" worktree remove --force "$head_worktree" >/dev/null 2>&1 || true
+    case "${isolation_root:-}" in
+        "${TMPDIR:-/tmp}"/ledger-pr-triage.*) rm -rf -- "$isolation_root" ;;
+    esac
+}
+trap cleanup EXIT
 mkdir -p "$isolation_root/home/.codex"
 [[ ! -f "$original_codex_home/auth.json" ]] || cp "$original_codex_home/auth.json" "$isolation_root/home/.codex/auth.json"
 prompt="$isolation_root/prompt.txt"
 result="$isolation_root/result.json"
 metadata_file="$isolation_root/pr.json"
 printf '%s\n' "$metadata" > "$metadata_file"
+
+# Bind every repository read to the immutable PR head instead of the caller's
+# checkout. The worktree shares the fetched object database, so the exact
+# base/head diff remains available without trusting mutable branch names.
+git worktree add --detach "$head_worktree" "$head_sha"
 
 cat > "$prompt" <<'EOF'
 You are performing advisory PR legitimacy triage for Ledger before technical code review.
@@ -85,10 +100,13 @@ EOF
   printf '\nInspect committed changes with exactly: `git diff --find-renames %s %s --`\n' "$base_sha" "$head_sha"
 } >> "$prompt"
 
-HOME="$isolation_root/home" CODEX_HOME="$isolation_root/home/.codex" codex exec \
-  --ephemeral --ignore-user-config --ignore-rules \
-  --disable hooks --disable plugins --disable apps --disable memories --disable multi_agent --disable skill_search \
-  --sandbox read-only --output-schema "$schema" -o "$result" - < "$prompt"
+(
+  cd "$head_worktree"
+  HOME="$isolation_root/home" CODEX_HOME="$isolation_root/home/.codex" codex exec \
+    --ephemeral --ignore-user-config --ignore-rules \
+    --disable hooks --disable plugins --disable apps --disable memories --disable multi_agent --disable skill_search \
+    --sandbox read-only --output-schema "$schema" -o "$result" - < "$prompt"
+)
 [[ -s "$result" ]] || { echo "ai-pr-triage: provider produced no result" >&2; exit 1; }
 jq -e --arg base "$base_sha" --arg head "$head_sha" '.base_sha == $base and .head == $head' "$result" >/dev/null || { echo "ai-pr-triage: result target mismatch" >&2; exit 1; }
 cp "$result" "$output"
