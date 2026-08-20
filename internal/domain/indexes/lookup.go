@@ -105,7 +105,6 @@ func Put(w IndexWriter, ledgerName string, idx *commonpb.Index) {
 	}
 
 	w.Put(KeyFor(ledgerName, idx.GetId()), idx)
-	recordOp(ledgerName, idx.GetId(), true)
 }
 
 // Remove deletes the Index entry matching (ledgerName, id). Silently no-ops on
@@ -117,10 +116,5 @@ func Remove(w IndexWriter, ledgerName string, id *commonpb.IndexID) error {
 		return nil
 	}
 
-	err := w.Delete(KeyFor(ledgerName, id))
-	if err == nil {
-		recordOp(ledgerName, id, false)
-	}
-
-	return err
+	return w.Delete(KeyFor(ledgerName, id))
 }

@@ -3,9 +3,7 @@ package indexbuilder
 import (
 	"bytes"
 	"fmt"
-	"sort"
 
-	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -43,39 +41,6 @@ import (
 // live path stops considering the index as active immediately, and
 // drops the per-replica IndexVersionState entry so the boot orphan
 // sweep doesn't try to GC versions of a field that no longer exists.
-// registryHasEntry reports whether the persisted index registry still holds
-// (ledgerName, canonical), read straight from Pebble rather than through the
-// apply path's cache. Only reached when a removal dropped nothing, so the scan
-// costs nothing on the hot path.
-func (b *Builder) registryHasEntry(ledgerName, canonical string) (bool, error) {
-	handle, err := b.pebbleStore.NewDirectReadHandle()
-	if err != nil {
-		return false, fmt.Errorf("creating read handle for registry probe: %w", err)
-	}
-
-	defer func() { _ = handle.Close() }()
-
-	iter, err := b.attrs.Index.NewStreamingIter(handle, nil)
-	if err != nil {
-		return false, fmt.Errorf("opening index registry iterator: %w", err)
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	for iter.Next() {
-		idx := iter.Entry().Value
-		if idx == nil || idx.GetId() == nil {
-			continue
-		}
-
-		if idx.GetLedger() == ledgerName && indexes.Canonical(idx.GetId()) == canonical {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
 func (b *Builder) handleRemovedMetadataFieldType(
 	kb *dal.KeyBuilder,
 	cfg *ledgerIndexConfig,
@@ -84,46 +49,6 @@ func (b *Builder) handleRemovedMetadataFieldType(
 ) error {
 	dropped := log.GetDroppedIndex()
 	if dropped == nil {
-		// The processor probes the Index registry and only sets dropped_index
-		// when it removed an entry. This replica's own config is the second
-		// witness: holding an index for the very field whose declaration just
-		// went away means the registry answered "absent" for an entry that is
-		// still live here, and the index now outlives its declaration.
-		// A ledger the builder holds no config for holds no indexes either,
-		// so there is nothing to cross-check. ledgerConfig returns nil for
-		// one, and the rest of this branch reads through it.
-		if cfg == nil {
-			return nil
-		}
-
-		canonical := indexes.Canonical(indexes.MetadataID(log.GetTargetType(), log.GetKey()))
-		if held, ok := cfg.byCanonical[canonical]; ok {
-			present := make([]string, 0, len(cfg.byCanonical))
-			for c := range cfg.byCanonical {
-				present = append(present, c)
-			}
-			sort.Strings(present)
-
-			// Whether storage still holds the entry splits the two ways this
-			// can happen: present means the registry kept it and the apply
-			// path could not see it, absent means the entry left storage with
-			// nothing logging a removal.
-			inStorage, storageErr := b.registryHasEntry(ledgerName, canonical)
-
-			fields := map[string]any{
-				"ledger":       ledgerName,
-				"canonical":    canonical,
-				"buildStatus":  held.GetBuildStatus().String(),
-				"fwdVersion":   held.GetForwardEncodingVersion(),
-				"builderHolds": present,
-				"inStorage":    inStorage,
-				"storageErr":   fmt.Sprint(storageErr),
-			}
-
-			b.logger.WithFields(fields).Errorf("Field removal dropped no index while this replica still holds one")
-			assert.Unreachable("field removal dropped no index the builder still holds", fields)
-		}
-
 		return nil
 	}
 

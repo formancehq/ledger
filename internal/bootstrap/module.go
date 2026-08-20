@@ -312,7 +312,6 @@ func Module() fx.Option {
 				recovery *state.Recovery,
 				synchronizer *state.Synchronizer,
 				membership *raftmembership.Membership,
-				indexBuilder *indexbuilder.Builder,
 				localResponses node.LocalResponses,
 			) (*node.Applier, error) {
 				return node.NewApplier(
@@ -327,13 +326,7 @@ func Module() fx.Option {
 					cfg.CompactionMargin,
 					cfg.ReplayBatchSize,
 					snapshotFetcherProvider,
-					// Everything derived from the store this replaces has to be
-					// rebuilt: the peer-address cache, and the index config the
-					// builder loaded from the store being swapped out.
-					func() {
-						membership.OnSnapshotInstalled()
-						indexBuilder.OnSnapshotInstalled()
-					},
+					membership.OnSnapshotInstalled,
 					localResponses,
 				)
 			},
