@@ -593,18 +593,8 @@ func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
 	}
 
 	// Validate hostPath / PVC mutual exclusion and automatic expansion for each volume.
-	volumes := []struct {
-		name                 string
-		spec                 *ledgerv1alpha1.VolumeSpec
-		defaultSize          string
-		autoExpansionAllowed bool
-	}{
-		{"persistence.wal", &ledger.Spec.Persistence.WAL, "5Gi", true},
-		{"persistence.data", &ledger.Spec.Persistence.Data, "10Gi", true},
-		{"persistence.coldCache", &ledger.Spec.Persistence.ColdCache, "10Gi", false},
-	}
-	for _, v := range volumes {
-		if err := validateVolumeSpec(v.name, v.spec, v.defaultSize, v.autoExpansionAllowed); err != nil {
+	for _, volume := range persistenceVolumeDefinitions(ledger) {
+		if err := validateVolumeSpec(volume.Field, volume.Spec, volume.DefaultSize, volume.AutoExpansionAllowed); err != nil {
 			return err
 		}
 	}

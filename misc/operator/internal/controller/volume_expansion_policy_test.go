@@ -211,6 +211,43 @@ func TestDecideVolumeExpansionHonorsCooldown(t *testing.T) {
 	assert.Equal(t, volumeExpansionDecisionCooldown, decision.Kind)
 }
 
+func TestDecideVolumeExpansionDoesNotPropagateRequestAboveMaximum(t *testing.T) {
+	t.Parallel()
+
+	policy := volumeExpansionPolicy{
+		ThresholdPercent: 70,
+		TargetPercent:    55,
+		MinimumIncrement: resource.MustParse("10Gi"),
+		MaximumSize:      resource.MustParse("150Gi"),
+		Cooldown:         8 * time.Hour,
+	}
+	now := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
+	pvc := func(name, size string) volumePVCState {
+		return volumePVCState{
+			Name:           name,
+			RequestedBytes: testQuantityValue(size),
+			CapacityBytes:  testQuantityValue(size),
+			Bound:          true,
+		}
+	}
+
+	decision := decideVolumeExpansion(policy, []volumePVCState{
+		pvc("data-0", "200Gi"),
+		pvc("data-1", "100Gi"),
+	}, nil, now)
+	assert.Equal(t, volumeExpansionDecisionAboveMax, decision.Kind)
+	assert.Equal(t, testQuantityValue("200Gi"), decision.LargestRequestBytes)
+	assert.Zero(t, decision.TargetBytes)
+
+	policy.MaximumSize = resource.MustParse("200Gi")
+	decision = decideVolumeExpansion(policy, []volumePVCState{
+		pvc("data-0", "200Gi"),
+		pvc("data-1", "100Gi"),
+	}, nil, now)
+	assert.Equal(t, volumeExpansionDecisionConverge, decision.Kind)
+	assert.Equal(t, testQuantityValue("200Gi"), decision.TargetBytes)
+}
+
 func testQuantityValue(value string) int64 {
 	quantity := resource.MustParse(value)
 

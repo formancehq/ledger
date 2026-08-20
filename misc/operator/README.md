@@ -151,8 +151,11 @@ and filesystem expansion. Shrinking, hostPath expansion, and cold-cache
 expansion are intentionally unsupported.
 
 All PVCs of one kind converge to the largest requested size before another
-capacity decision is made. A resize already in progress and the cooldown both
-block further growth. The PVC annotations
+capacity decision is made, unless that request exceeds the current
+`maximumSize`. In that case the operator emits `VolumeExpansionUnsupported`
+and leaves the group unchanged until the cap is raised to at least the largest
+live request. A resize already in progress and the cooldown both block further
+growth. The PVC annotations
 `ledger.formance.com/last-expansion-at` and
 `ledger.formance.com/last-expansion-target` make retries and operator restarts
 idempotent.
