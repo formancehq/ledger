@@ -1,0 +1,46 @@
+# AI PR legitimacy triage
+
+PR triage answers a different question from code review: **is this change worth spending review and maintenance capacity on?**
+
+It runs before the technical review/fix loop and is advisory. It never closes a PR, merges code, posts comments, or invents product intent.
+
+## Decisions
+
+- `KEEP`: repository evidence establishes a concrete need and the change is proportionate enough to justify technical review.
+- `QUESTION`: legitimacy depends on missing or ambiguous product/operational context. Human or author input is required before expensive review.
+- `REJECT`: repository evidence shows that the proposed change is unnecessary, duplicative, obsolete, or materially disproportionate to the documented need. This is advisory only; a human decides what to do with the PR.
+
+When uncertain between `KEEP` and another decision, use `QUESTION`. Never manufacture a rationale for a technical choice.
+
+## Product motivation rule
+
+Every **significant technical decision** must trace to a concrete documented product or operational need. Examples include a new abstraction or subsystem, persistence/cache/consistency strategy, API or semantic change, dependency, retry/idempotency mechanism, distributed-systems mechanism, or meaningful maintenance/complexity increase.
+
+Mechanical changes such as typo fixes, dead-import removal, narrow test-helper maintenance, or behavior-preserving renames do not require a separate product rationale.
+
+For significant decisions, identify:
+
+1. the documented need or observed limitation;
+2. evidence that the limitation exists now;
+3. why existing behavior or mechanisms are insufficient;
+4. the expected user/system/operational outcome;
+5. why the proposed complexity is proportionate now;
+6. the consequence of doing nothing.
+
+A technical preference (`cleaner`, `more generic`, `future-proof`, `best practice`) is not by itself a product need.
+
+## Evidence
+
+Use repository evidence first: PR title/body, linked issue/spec when present in the PR text, code and tests, technical/product documentation, and relevant repository history that is locally available. Do not require a Jira/issue link when the need is already clearly documented in-repo.
+
+Do not infer private roadmap priorities or undocumented stakeholder intent. Missing product context produces `QUESTION`, not an invented finding.
+
+## Scope and proportionality
+
+Evaluate whether the implementation scope is proportional to the established need. Look for duplicate mechanisms, speculative extensibility, premature abstraction, broad refactors attached to narrow needs, maintenance burden, and simpler existing alternatives.
+
+Do not turn this gate into style review or correctness review. If a PR is legitimate but buggy, return `KEEP`; the technical review loop handles correctness.
+
+## Output
+
+The structured result records the exact PR head/base, decision, problem statement, documented needs/evidence, significant technical decisions and their motivation status, existing alternatives, cost/proportionality assessment, consequence of doing nothing, and concise questions for the author when required.
