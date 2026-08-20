@@ -80,17 +80,27 @@ grep -rn "protowireutil\|AppendTag\|AppendFixed64" --include="*.go" internal/
 grep -rn "protowire.Consume" --include="*.go" internal/
 ```
 
-The two known sites behave differently, and only one of them is self-healing:
+The known sites behave differently, and only one of them is self-healing:
 
 | Site | Direction | Field numbers | Renumbering impact |
 |------|-----------|---------------|--------------------|
 | `internal/infra/plan/predicted_index.go` | write | read from the descriptor at init | Number self-heals. The **wire type** does not — it is baked into the `AppendFixed64` call, so changing the field's type silently corrupts the encoding. Pinned by `predicted_index_test.go`, which compares the append against canonical marshalling. |
 | `internal/application/indexbuilder/protowire_postings.go` | read | **hardcoded literals** (`case num == 1`, …) | Breaks silently. The parser skips the unrecognised field via `ConsumeFieldValue` and yields empty postings — no error, no failing build. |
+| `internal/application/usagebuilder/protowire_log.go` | read | **hardcoded literals** across `Log.payload` (2), `LogPayload.apply` (3), `ApplyLedgerLog.ledger_log` (2), `LedgerLog.data` (1) and volume lists (4–6), transaction oneofs, `Transaction.postings` (1), `Transaction.timestamp` (3), `TouchedVolume` (1–3), and `Timestamp.data` (1) | Breaks silently or changes the usage projection. Update the scanner and its canonical-decoder comparison tests whenever any listed message is renumbered. |
+| `internal/application/usagebuilder/protowire_order.go` | read | **hardcoded literals** across `Order` (1–3), `LedgerScopedOrder` (ledger 1 and payload oneof), `LedgerApplyOrder` (1–11), `CreateTransactionOrder` (1–8), `Script` (1–3), `NumscriptReference` (1–3), and `Timestamp.data` (1) | Breaks selective native-transaction usage decoding or oneof recognition. Update the scanner, oneof membership tables, and canonical-decoder comparison tests whenever any listed message is renumbered. |
 
 `protowire_postings.go` decodes `Log`, `LogPayload`, `ApplyLedgerLog`, `LedgerLog`,
 `CreatedTransaction`, `RevertedTransaction`, `Transaction`, `TouchedVolume` and `Posting`. If you
 renumber any field of those messages, update the corresponding `case num == N` arm in the same
 commit.
+
+The usagebuilder readers also decode `LogPayload`, `ApplyLedgerLog`, `LedgerLog`,
+`LedgerLogPayload`, `CreatedTransaction`, `RevertedTransaction`, `Transaction`,
+`TouchedVolume`, `Timestamp`, `Order`, `LedgerScopedOrder`, `LedgerApplyOrder`,
+`CreateTransactionOrder`, `Script`, and `NumscriptReference`. Treat every field
+renumbering in those messages as requiring an explicit audit of both
+`protowire_log.go` and `protowire_order.go`, followed by `just generate-proto`
+and the usagebuilder tests.
 
 ## vtprotobuf (Fast Serialization)
 
