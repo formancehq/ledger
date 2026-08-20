@@ -50,3 +50,7 @@ The qualified report must contain one challenge result for every original findin
 - recommended next action.
 
 A `CONFIRMED` result is suitable to become a backlog/Jira candidate after human or policy approval. `REJECTED` findings should remain in the audit history for deduplication rather than simply disappearing.
+
+The qualified report is rejected unless every result reuses an original finding id exactly once and preserves that finding's severity and title. A challenge pass may change the status, not the priority or the subject of the original finding.
+
+Publication is atomic and anchored to the validated destination directory. The qualified report must not overwrite tracked repository content or the source audit report, and a concurrent rename or symlink substitution of the output path must not redirect the final write into repository content.

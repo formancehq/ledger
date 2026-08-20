@@ -20,20 +20,24 @@ while [[ $# -gt 0 ]]; do
         *) echo "ai-audit-challenge: unknown argument: $1" >&2; usage >&2; exit 1 ;;
     esac
 done
-for command in codex git jq; do command -v "$command" >/dev/null 2>&1 || { echo "ai-audit-challenge: required command not found: $command" >&2; exit 1; }; done
+for command in codex git go jq; do command -v "$command" >/dev/null 2>&1 || { echo "ai-audit-challenge: required command not found: $command" >&2; exit 1; }; done
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
-source_report=$(cd "$(dirname "$source_report")" && pwd)/$(basename "$source_report")
+source_report=$(cd "$(dirname -- "$source_report")" && pwd -P)/$(basename -- "$source_report")
 [[ -f "$source_report" ]] || { echo "ai-audit-challenge: audit report not found: $source_report" >&2; exit 1; }
 
+# The audit_id is untrusted report content that is interpolated into the default
+# destination path, so it must be a single safe path component. Finding ids must
+# be unique for the per-finding metadata comparison below to be meaningful.
 if ! jq -e '
   type == "object" and
-  (.audit_id | type == "string" and length > 0) and
+  (.audit_id | type == "string" and test("^[a-z0-9][a-z0-9-]*$")) and
   (.head | type == "string" and test("^[0-9a-f]{40,64}$")) and
   (.findings | type == "array") and
   (.questions | type == "array") and
-  all(.findings[]; (.id | type == "string") and (.severity | IN("P0","P1","P2","P3")) and (.title | type == "string"))
+  all(.findings[]; (.id | type == "string") and (.severity | IN("P0","P1","P2","P3")) and (.title | type == "string")) and
+  ([.findings[].id] | length == (unique | length))
 ' "$source_report" >/dev/null; then
     echo "ai-audit-challenge: invalid source audit report" >&2
     exit 1
@@ -49,20 +53,37 @@ schema="$repo_root/scripts/codex-audit-challenge.schema.json"
 contract="$repo_root/docs/technical/contributing/ai-audit-challenge.md"
 [[ -f "$schema" && -f "$contract" ]] || { echo "ai-audit-challenge: contract/schema missing" >&2; exit 1; }
 if [[ -z "$output" ]]; then output="$repo_root/build/ai-audit/${audit_id}-${audited_head:0:12}-qualified.json"; fi
-mkdir -p "$(dirname "$output")"
-output=$(cd "$(dirname "$output")" && pwd)/$(basename "$output")
+output_dir=$(dirname -- "$output")
+mkdir -p "$output_dir"
+output_dir=$(cd "$output_dir" && pwd -P)
+output_basename=$(basename -- "$output")
+output="$output_dir/$output_basename"
 
-original_home=${HOME:?HOME must be set}
-original_codex_home=${CODEX_HOME:-"$original_home/.codex"}
-isolation_root=$(mktemp -d "${TMPDIR:-/tmp}/ledger-audit-challenge.XXXXXX")
-cleanup() { rm -rf -- "$isolation_root"; }
-trap cleanup EXIT
-mkdir -p "$isolation_root/home/.codex"
-if [[ -f "$original_codex_home/auth.json" ]]; then cp "$original_codex_home/auth.json" "$isolation_root/home/.codex/auth.json"; chmod 600 "$isolation_root/home/.codex/auth.json"; fi
-prompt="$isolation_root/prompt.txt"
-result="$isolation_root/result.json"
-source_copy="$isolation_root/source-audit.json"
-cp "$source_report" "$source_copy"
+# The challenge pass is read-only. The qualified report must never overwrite
+# tracked repository content, its own source report, or a symlink redirecting
+# publication into the challenged tree. Validate the resolved destination before
+# invoking the provider to fail fast on an obviously unsafe path; publication
+# below goes through the trusted publisher from an anchored directory so a swap
+# during the challenge cannot mutate repository state.
+[[ ! -L "$output" ]] || { echo "ai-audit-challenge: --output must not be a symlink: $output" >&2; exit 1; }
+[[ ! -e "$output" || -f "$output" ]] || { echo "ai-audit-challenge: --output must be a regular file: $output" >&2; exit 1; }
+[[ "$output" != "$source_report" ]] || { echo "ai-audit-challenge: --output must not overwrite the source audit report: $output" >&2; exit 1; }
+! git ls-files --error-unmatch -- "$output" >/dev/null 2>&1 || { echo "ai-audit-challenge: --output must not overwrite tracked repository content: $output" >&2; exit 1; }
+
+run_challenge() {
+    original_home=${HOME:?HOME must be set}
+    original_codex_home=${CODEX_HOME:-"$original_home/.codex"}
+    isolation_root=$(mktemp -d "${TMPDIR:-/tmp}/ledger-audit-challenge.XXXXXX")
+    cleanup() { rm -rf -- "$isolation_root"; }
+    trap cleanup EXIT
+    mkdir -p "$isolation_root/home/.codex"
+    if [[ -f "$original_codex_home/auth.json" ]]; then cp "$original_codex_home/auth.json" "$isolation_root/home/.codex/auth.json"; chmod 600 "$isolation_root/home/.codex/auth.json"; fi
+    prompt="$isolation_root/prompt.txt"
+    result="$isolation_root/result.json"
+    source_copy="$isolation_root/source-audit.json"
+    publisher_binary="$isolation_root/audit-publish"
+    cp "$source_report" "$source_copy"
+    (cd "$repo_root" && env -u GOROOT go build -o "$publisher_binary" ./scripts/auditpublish) || { echo "ai-audit-challenge: failed to build the trusted output publisher" >&2; exit 1; }
 
 cat > "$prompt" <<'EOF'
 You are independently challenging a prior Ledger deep-audit report.
@@ -83,26 +104,52 @@ Do not modify the repository. Do not implement reproducers. Do not create issues
 
 Copy audit_id and head exactly. Output only JSON matching the schema.
 EOF
-{
-  printf '\nTRUSTED TARGET\n- audit_id: %s\n- head: %s\n- source_report: %s\n' "$audit_id" "$audited_head" "$source_copy"
-} >> "$prompt"
+    {
+      printf '\nTRUSTED TARGET\n- audit_id: %s\n- head: %s\n- source_report: %s\n' "$audit_id" "$audited_head" "$source_copy"
+    } >> "$prompt"
 
-HOME="$isolation_root/home" CODEX_HOME="$isolation_root/home/.codex" codex exec \
-  --ephemeral --ignore-user-config --ignore-rules \
-  --disable hooks --disable plugins --disable apps --disable memories --disable multi_agent --disable skill_search \
-  --sandbox read-only --output-schema "$schema" -o "$result" - < "$prompt"
-[[ -s "$result" ]] || { echo "ai-audit-challenge: provider produced no result" >&2; exit 1; }
+    (
+        cd "$repo_root"
+        HOME="$isolation_root/home" CODEX_HOME="$isolation_root/home/.codex" codex exec \
+          --ephemeral --ignore-user-config --ignore-rules \
+          --disable hooks --disable plugins --disable apps --disable memories --disable multi_agent --disable skill_search \
+          --sandbox read-only --output-schema "$schema" -o "$result" - < "$prompt"
+    )
+    [[ -s "$result" ]] || { echo "ai-audit-challenge: provider produced no result" >&2; exit 1; }
 
-jq -e --arg id "$audit_id" --arg head "$audited_head" '.audit_id == $id and .head == $head' "$result" >/dev/null || { echo "ai-audit-challenge: result target mismatch" >&2; exit 1; }
-source_ids=$(jq -c '[.findings[].id] | sort' "$source_report")
-result_ids=$(jq -c '[.results[].id] | sort' "$result")
-[[ "$source_ids" == "$result_ids" ]] || { echo "ai-audit-challenge: result ids do not match source findings" >&2; exit 1; }
-current_head=$(git rev-parse HEAD)
-[[ "$current_head" == "$audited_head" && -z "$(git status --porcelain --untracked-files=normal)" ]] || { echo "ai-audit-challenge: repository state changed during challenge; refusing result" >&2; exit 1; }
+    jq -e --arg id "$audit_id" --arg head "$audited_head" '.audit_id == $id and .head == $head' "$result" >/dev/null || { echo "ai-audit-challenge: result target mismatch" >&2; exit 1; }
+    source_ids=$(jq -c '[.findings[].id] | sort' "$source_report")
+    result_ids=$(jq -c '[.results[].id] | sort' "$result")
+    [[ "$source_ids" == "$result_ids" ]] || { echo "ai-audit-challenge: result ids do not match source findings" >&2; exit 1; }
+    # The contract requires preserving each original severity and title, so the
+    # qualified report must not silently reprioritize or retitle a finding.
+    jq -e --slurpfile source "$source_report" '
+      ($source[0].findings | map({(.id): {severity: .severity, title: .title}}) | add // {}) as $original
+      | ([.results[].id] | length == (unique | length))
+        and all(.results[]; ($original[.id] // null) as $expected | $expected != null and .severity == $expected.severity and .title == $expected.title)
+    ' "$result" >/dev/null || { echo "ai-audit-challenge: result must preserve the original severity and title of every finding" >&2; exit 1; }
+    current_head=$(git -C "$repo_root" rev-parse HEAD)
+    [[ "$current_head" == "$audited_head" && -z "$(git -C "$repo_root" status --porcelain --untracked-files=normal)" ]] || { echo "ai-audit-challenge: repository state changed during challenge; refusing result" >&2; exit 1; }
 
-cp "$result" "$output"
-printf 'AI_AUDIT_CHALLENGE_RESULT: %s\n' "$output"
-printf 'AI_AUDIT_CHALLENGE_CONFIRMED: %s\n' "$(jq '[.results[] | select(.status == "CONFIRMED")] | length' "$output")"
-printf 'AI_AUDIT_CHALLENGE_LIKELY: %s\n' "$(jq '[.results[] | select(.status == "LIKELY")] | length' "$output")"
-printf 'AI_AUDIT_CHALLENGE_QUESTION: %s\n' "$(jq '[.results[] | select(.status == "QUESTION")] | length' "$output")"
-printf 'AI_AUDIT_CHALLENGE_REJECTED: %s\n' "$(jq '[.results[] | select(.status == "REJECTED")] | length' "$output")"
+    # The subshell's current directory remains bound to the validated output
+    # directory inode even if its pathname is renamed or replaced during the
+    # challenge. The helper uses rename(2) with basename-only paths from that
+    # anchored directory, so publication cannot follow a substituted parent,
+    # destination symlink, or hard link into tracked repository content.
+    "$publisher_binary" "$result" "$output_basename"
+
+    printf 'AI_AUDIT_CHALLENGE_RESULT: %s\n' "$output"
+    printf 'AI_AUDIT_CHALLENGE_CONFIRMED: %s\n' "$(jq '[.results[] | select(.status == "CONFIRMED")] | length' "$result")"
+    printf 'AI_AUDIT_CHALLENGE_LIKELY: %s\n' "$(jq '[.results[] | select(.status == "LIKELY")] | length' "$result")"
+    printf 'AI_AUDIT_CHALLENGE_QUESTION: %s\n' "$(jq '[.results[] | select(.status == "QUESTION")] | length' "$result")"
+    printf 'AI_AUDIT_CHALLENGE_REJECTED: %s\n' "$(jq '[.results[] | select(.status == "REJECTED")] | length' "$result")"
+}
+
+# Keep this subshell alive for the entire provider run. Its current directory is
+# the capability that anchors final publication to the directory validated
+# above; inner subshells may enter the repository without changing that anchor.
+(
+    cd -- "$output_dir"
+    [[ "$(pwd -P)" == "$output_dir" ]] || { echo "ai-audit-challenge: --output directory changed before it could be anchored: $output_dir" >&2; exit 1; }
+    run_challenge
+)
