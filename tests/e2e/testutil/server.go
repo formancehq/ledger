@@ -59,7 +59,7 @@ func NewGRPCClient(grpcPort int) (servicepb.BucketServiceClient, clusterpb.Clust
 }
 
 // NewGRPCClientWithRetry creates a new gRPC client with optional retry policy.
-func NewGRPCClientWithRetry(grpcPort int, withRetry bool) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
+func NewGRPCClientWithRetry(grpcPort int, withRetry bool, extraDialOptions ...grpc.DialOption) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	}
@@ -67,6 +67,8 @@ func NewGRPCClientWithRetry(grpcPort int, withRetry bool) (servicepb.BucketServi
 	if withRetry {
 		opts = append(opts, grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy))
 	}
+
+	opts = append(opts, extraDialOptions...)
 
 	conn, err := grpc.NewClient(
 		fmt.Sprintf("localhost:%d", grpcPort),

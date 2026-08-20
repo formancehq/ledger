@@ -5,7 +5,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strconv"
 
+	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -32,6 +34,21 @@ type ErrReadIndexNotCaughtUp struct {
 func (e *ErrReadIndexNotCaughtUp) Error() string {
 	return fmt.Sprintf("read index has not caught up to sequence %d (current: %d)", e.Requested, e.Current)
 }
+
+func (*ErrReadIndexNotCaughtUp) Reason() string { return domain.ErrReasonReadIndexNotCaughtUp }
+
+func (e *ErrReadIndexNotCaughtUp) Metadata() map[string]string {
+	return map[string]string{
+		"requested": strconv.FormatUint(e.Requested, 10),
+		"current":   strconv.FormatUint(e.Current, 10),
+	}
+}
+
+// Compile-time assertion that ErrReadIndexNotCaughtUp satisfies
+// domain.Describable. Without it the shared error edge cannot classify the
+// condition and every REST list endpoint renders a routine fold lag as an
+// opaque 500 rather than a retryable 503.
+var _ domain.Describable = (*ErrReadIndexNotCaughtUp)(nil)
 
 // EntityEnricher provides functions to hydrate raw entity IDs into full objects.
 type EntityEnricher struct {
@@ -88,33 +105,60 @@ func Execute(
 		return nil, errors.New("AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries")
 	}
 
-	// Check min_log_sequence freshness
-	if req.GetMinLogSequence() > 0 {
-		lastIndexed, err := rs.LastIndexedSequence()
-		if err != nil {
-			return nil, fmt.Errorf("reading index progress: %w", err)
-		}
-
-		if lastIndexed < req.GetMinLogSequence() {
-			return nil, &ErrReadIndexNotCaughtUp{
-				Requested: req.GetMinLogSequence(),
-				Current:   lastIndexed,
-			}
-		}
-	}
-
 	schema := SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), pq.GetTarget())
 
-	// Take a Pebble snapshot for the read index for consistent reads.
-	indexSnap := rs.NewSnapshot()
-	defer func() { _ = indexSnap.Close() }()
-
-	// Always open a read handle — needed for filter compilation and entity enrichment.
-	handle, err := pebbleStore.NewReadHandle()
+	// Always open a read handle — needed for filter compilation and entity
+	// enrichment. Opened BEFORE the index snapshot: alignment guarantees the
+	// snapshot's fold cursor covers everything the handle sees (EN-1748), and
+	// OpenQueryHandle holds reclamation still across the two steps.
+	handle, releaseHold, err := OpenQueryHandle(rs, pebbleStore, pq.GetFilter(), pq.GetTarget())
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
+
+	defer releaseHold()
 	defer func() { _ = handle.Close() }()
+
+	var (
+		indexSnap    *pebble.Snapshot
+		mainSeq      uint64
+		releaseLease func()
+	)
+
+	aligned := AlignmentOwed(pq.GetFilter(), pq.GetTarget())
+	if aligned {
+		indexSnap, mainSeq, releaseLease, err = AlignedIndexSnapshot(ctx, rs, handle, releaseHold)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		releaseHold()
+
+		// Both the universe and the enrichment come from the handle, so there
+		// is no index leaf to align against it and no pinned resolution for
+		// the event GC to respect. The snapshot is still opened: it backs the
+		// version resolver and the compile-time reads that every target shape
+		// shares.
+		mainSeq, err = ReadLastSequence(handle)
+		if err != nil {
+			return nil, fmt.Errorf("reading main-store sequence: %w", err)
+		}
+
+		indexSnap, releaseLease = rs.NewSnapshot(), func() {}
+	}
+
+	defer releaseLease()
+	defer func() { _ = indexSnap.Close() }()
+
+	// Check min_log_sequence freshness against the handle: alignment makes
+	// the index snapshot at least as fresh, so the handle's sequence is the
+	// response's consistent state.
+	if req.GetMinLogSequence() > 0 && mainSeq < req.GetMinLogSequence() {
+		return nil, &ErrReadIndexNotCaughtUp{
+			Requested: req.GetMinLogSequence(),
+			Current:   mainSeq,
+		}
+	}
 
 	kb := dal.NewKeyBuilder()
 
@@ -126,11 +170,20 @@ func Execute(
 	// (rewrite commit) return v_new from the resolver while the
 	// snapshot still holds an incomplete v_new keyspace — silent
 	// partial results.
-	indexVersionFor := readstore.SnapshotVersionResolver(indexSnap, ledgerInfo.GetName())
+	indexVersionFor := readstore.PinnedVersionResolver(indexSnap, ledgerInfo.GetName(), mainSeq)
 
-	iter, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, indexVersionFor, profile, handle)
+	compiled, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, indexVersionFor, profile, handle, mainSeq)
 	if compileErr != nil {
 		return nil, domain.WrapCompileError(compileErr)
+	}
+
+	// Trim to the handle's horizon: the aligned snapshot may hold entities
+	// committed after it, which the handle cannot enrich.
+	// Only an aligned read can hold membership the handle has not caught up
+	// to; an unaligned one drew every row from the handle itself.
+	var iter = compiled
+	if keep := MainHorizonKeep(pq.GetTarget(), handle, indexSnap, ledgerInfo.GetName(), mainSeq); aligned && keep != nil {
+		iter = readstore.NewFilterIterator(compiled, keep)
 	}
 	defer iter.Close()
 
