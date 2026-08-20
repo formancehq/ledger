@@ -31,6 +31,12 @@ type mockV2Server struct {
 	logs     []v2.V2Log
 	srv      *httptest.Server
 	requests int
+
+	// gate is a pass-through barrier held by the test, not by the handler: the
+	// handler acquires and immediately releases it before doing anything, so
+	// pause() parks every in-flight request at the door. Deliberately separate
+	// from mu so requestCount() stays answerable while requests are parked.
+	gate sync.Mutex
 }
 
 func newMockV2Server() *mockV2Server {
@@ -64,7 +70,42 @@ func (m *mockV2Server) requestCount() int {
 	return m.requests
 }
 
+// pause blocks every subsequent request at the handler entry, before the
+// request counter moves, until resume is called. It makes "no source fetch has
+// happened yet" a fact rather than a race: a spec that needs to observe state
+// the mirror worker would overwrite can pause, take its sample, then resume.
+func (m *mockV2Server) pause() {
+	m.gate.Lock()
+}
+
+// resume releases requests parked by pause.
+func (m *mockV2Server) resume() {
+	m.gate.Unlock()
+}
+
+// handler serves the two shapes the mirror worker issues against /logs, which
+// disagree about ordering and are distinguishable only by pageSize:
+//
+//   - HTTPSource.GetLatestLogID sends pageSize=1 with no "after" and reads
+//     Data[0] as the NEWEST log. PostgresSource implements the same interface
+//     method as SELECT MAX(id), so "newest" is the contract, and serving this
+//     shape ascending would report the OLDEST log as the source head — making
+//     MirrorSyncProgress.SourceLogCount unassertable and FOLLOWING satisfiable
+//     by any non-zero head.
+//   - HTTPSource.FetchLogs pages forward with "after" and needs ASCENDING
+//     logs; TranslateBatch enforces source-log-id contiguity. It also omits
+//     "after" when resuming from 0, which is why pageSize is the discriminator
+//     here rather than the presence of "after".
+//
+// That the two production call sites make opposite ordering assumptions about
+// the same request shape is a real question about the v2 API contract, not a
+// fixture concern. It is out of scope for this suite.
 func (m *mockV2Server) handler(w http.ResponseWriter, r *http.Request) {
+	// Park before the counter moves, so a paused mock leaves requestCount
+	// untouched. See pause.
+	m.gate.Lock()
+	m.gate.Unlock() //nolint:staticcheck // intentional pass-through barrier, not a critical section
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -77,6 +118,13 @@ func (m *mockV2Server) handler(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Sscanf(afterStr, "%d", &afterID)
 	}
 
+	// Respect pageSize
+	pageSizeStr := r.URL.Query().Get("pageSize")
+	pageSize := 100
+	if pageSizeStr != "" {
+		_, _ = fmt.Sscanf(pageSizeStr, "%d", &pageSize)
+	}
+
 	// Filter logs after the given ID (ascending order)
 	var result []v2.V2Log
 	for _, log := range m.logs {
@@ -85,15 +133,15 @@ func (m *mockV2Server) handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Respect pageSize
-	pageSizeStr := r.URL.Query().Get("pageSize")
-	pageSize := 100
-	if pageSizeStr != "" {
-		_, _ = fmt.Sscanf(pageSizeStr, "%d", &pageSize)
-	}
-
 	hasMore := false
-	if len(result) > pageSize {
+
+	if pageSize == 1 && afterStr == "" {
+		// Head probe: answer newest-first, as the contract requires.
+		if len(result) > 0 {
+			result = []v2.V2Log{result[len(result)-1]}
+			hasMore = len(m.logs) > 1
+		}
+	} else if len(result) > pageSize {
 		result = result[:pageSize]
 		hasMore = true
 	}

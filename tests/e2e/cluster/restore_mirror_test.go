@@ -265,6 +265,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				progress := syncProgress(g, client)
 				g.Expect(progress.GetError().GetMessage()).To(BeEmpty())
 				g.Expect(progress.GetCursor()).To(Equal(uint64(sourceLogCount)))
+				g.Expect(progress.GetSourceLogCount()).To(Equal(uint64(sourceLogCount)))
 				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
 
 				txs, err := listAllTransactions(ctx, client, ledgerName, 100, 0)
@@ -373,31 +374,33 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 
 			server = testservice.New(cmdserver.NewRunCommand, testservice.WithInstruments(instruments...))
 
+			// Park the source before the node exists. Manager.reconcile starts
+			// mirror workers on the leadership callback, which is not ordered
+			// against the sampling read below — so without this the worker
+			// could complete a fetch first and the sample would witness a
+			// re-ingest rather than the rebuild. Pausing makes "no source fetch
+			// has happened" a fact instead of a timing bet: parked requests are
+			// held at the handler entry, before the counter moves.
+			mockV2.pause()
 			preRestoreRequests = mockV2.requestCount()
+
 			Expect(server.Start(ctx)).To(Succeed())
 
 			var err error
 			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
 			Expect(err).To(Succeed())
 
-			// Sample the rebuilt high-water mark BEFORE waiting for leadership:
-			// Manager.reconcile only starts mirror workers once the node is
-			// leader, so the first answered read is the closest observation of
-			// what RebuildDelta actually wrote. GetLedger serves from local
-			// Pebble and needs no leader.
-			//
-			// The request counter is read AFTER GetLedger returns, so the pair
-			// witnesses "no source fetch completed before this read returned".
-			// It is asserted in the spec rather than here on purpose: inside the
-			// retry loop it could never match again once the worker's first
-			// fetch lands, turning a slow start on a CORRECT build into a 30s
-			// timeout instead of the cheap sample this is meant to be.
+			// Sample the rebuilt high-water mark while the source is still
+			// parked. GetLedger serves from local Pebble and needs no leader,
+			// so this answers whatever RebuildDelta wrote.
 			Eventually(func(g Gomega) {
 				info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
 				g.Expect(err).To(Succeed())
 				restoredCursor = info.GetMirrorSyncProgress().GetCursor()
 				requestsAtSample = mockV2.requestCount()
 			}).Within(30 * time.Second).ProbeEvery(50 * time.Millisecond).Should(Succeed())
+
+			mockV2.resume()
 
 			Eventually(func(g Gomega) bool {
 				state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
@@ -422,6 +425,9 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			// advances the cursor back to 4 — the same value a correct rebuild
 			// leaves. No source request means no ingest, so the value below was
 			// written by RebuildDelta.
+			//
+			// The mock was paused across the sample, so this holds by
+			// construction rather than by winning a race with the election.
 			Expect(requestsAtSample).To(Equal(preRestoreRequests),
 				"the mirror worker fetched from the source before the cursor was sampled, so this read cannot distinguish a rebuilt mark from a re-ingested one")
 
@@ -451,6 +457,12 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				g.Expect(progress.GetError().GetMessage()).To(BeEmpty())
 				g.Expect(progress.GetCursor()).To(Equal(preBackupCursor))
 				g.Expect(progress.GetRemainingLogs()).To(BeZero())
+				// Pin the published head itself, not just the derived state:
+				// FOLLOWING is `sourceHead > 0 && cursor >= sourceHead` and
+				// RemainingLogs is `sourceHead > cursor`, so both are satisfied
+				// by ANY head from 1 to sourceLogCount. Only this assertion
+				// separates "published the real head" from "published a head".
+				g.Expect(progress.GetSourceLogCount()).To(Equal(uint64(sourceLogCount)))
 				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
 			}).Within(60 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 		})
@@ -490,6 +502,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 
 				// FOLLOWING again after the fresh ingest advances both the
 				// cursor and the source head in lock-step.
+				g.Expect(progress.GetSourceLogCount()).To(Equal(uint64(postRestoreLogID)))
 				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
 				g.Expect(progress.GetRemainingLogs()).To(BeZero())
 			}).Within(60 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
