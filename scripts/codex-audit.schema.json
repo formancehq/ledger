@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "audit_id",
+    "head",
+    "summary",
+    "inspected_areas",
+    "findings",
+    "questions",
+    "residual_risk"
+  ],
+  "properties": {
+    "audit_id": { "type": "string", "minLength": 1 },
+    "head": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" },
+    "summary": { "type": "string" },
+    "inspected_areas": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "severity",
+          "title",
+          "location",
+          "violated_invariant",
+          "failure_path",
+          "impact",
+          "evidence",
+          "reproduction_plan",
+          "test_gap",
+          "confidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*/[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "severity": { "type": "string", "enum": ["P0", "P1", "P2", "P3"] },
+          "title": { "type": "string", "minLength": 1 },
+          "location": { "type": "string" },
+          "violated_invariant": { "type": "string", "minLength": 1 },
+          "failure_path": { "type": "string", "minLength": 1 },
+          "impact": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string", "minLength": 1 },
+          "reproduction_plan": { "type": "string", "minLength": 1 },
+          "test_gap": { "type": "string" },
+          "confidence": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"] }
+        }
+      }
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["location", "question", "why_it_matters"],
+        "properties": {
+          "location": { "type": "string" },
+          "question": { "type": "string", "minLength": 1 },
+          "why_it_matters": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "residual_risk": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] }
+  }
+}
