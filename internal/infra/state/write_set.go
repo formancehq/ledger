@@ -745,20 +745,20 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// sub-prefix. The (checkpoint_id BE 8) tail keeps per-call ordering
 	// deterministic; the contract is at zone+sub only.
 	for _, cp := range b.pendingQueryCheckpointSaves {
-		if err := saveQueryCheckpoint(batch, cp); err != nil {
+		if err := SaveQueryCheckpoint(batch, cp); err != nil {
 			return fmt.Errorf("saving query checkpoint %d: %w", cp.GetCheckpointId(), err)
 		}
 	}
 
 	for _, cpID := range b.pendingQueryCheckpointDeletes {
-		if err := deleteQueryCheckpointFromBatch(batch, cpID); err != nil {
+		if err := DeleteQueryCheckpointFromBatch(batch, cpID); err != nil {
 			return fmt.Errorf("deleting query checkpoint %d: %w", cpID, err)
 		}
 	}
 
 	// SubGlobNextQueryCheckpointID (0x0F)
 	if b.NextQueryCheckpointID != b.fsm.State.NextQueryCheckpointID {
-		if err := storeNextQueryCheckpointID(batch, b.NextQueryCheckpointID); err != nil {
+		if err := StoreNextQueryCheckpointID(batch, b.NextQueryCheckpointID); err != nil {
 			return fmt.Errorf("storing next query checkpoint ID: %w", err)
 		}
 	}

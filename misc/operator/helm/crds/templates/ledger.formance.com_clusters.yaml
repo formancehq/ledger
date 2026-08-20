@@ -2854,6 +2854,14 @@ spec:
                         type: string
                     type: object
                 type: object
+              queryCheckpointLimit:
+                description: |-
+                  QueryCheckpointLimit is the maximum number of live query checkpoints.
+                  Admission rejects creation beyond this (soft, per-node). Must be greater
+                  than zero. Default: 10.
+                format: int32
+                minimum: 1
+                type: integer
               queryProfileThreshold:
                 description: QueryProfileThreshold logs and emits OTel attributes
                   for queries exceeding this duration (0 to disable).

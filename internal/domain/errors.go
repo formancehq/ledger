@@ -225,6 +225,8 @@ const (
 	ErrReasonTransactionStateInconsistent  = "TRANSACTION_STATE_INCONSISTENT"
 	ErrReasonCheckpointIDRequired          = "CHECKPOINT_ID_REQUIRED"
 	ErrReasonCheckpointNotReady            = "CHECKPOINT_NOT_READY"
+	ErrReasonCheckpointLimitReached        = "CHECKPOINT_LIMIT_REACHED"
+	ErrReasonCheckpointNotFound            = "CHECKPOINT_NOT_FOUND"
 	ErrReasonNumscriptRuntime              = "NUMSCRIPT_RUNTIME"
 	ErrReasonVolumeNotMaterialized         = "VOLUME_NOT_MATERIALIZED"
 	ErrReasonStaleInputsResolution         = "STALE_INPUTS_RESOLUTION"
@@ -1017,6 +1019,38 @@ func (e *ErrCheckpointNotReady) Error() string {
 }
 func (*ErrCheckpointNotReady) Reason() string { return ErrReasonCheckpointNotReady }
 func (e *ErrCheckpointNotReady) Metadata() map[string]string {
+	return map[string]string{"checkpointId": strconv.FormatUint(e.CheckpointID, 10)}
+}
+
+// ErrCheckpointLimitReached — admission rejected a CreateQueryCheckpoint
+// because the leader already holds the maximum number of live query
+// checkpoints. Maps to KindResourceExhausted (gRPC ResourceExhausted / HTTP
+// 429). Creation never evicts; an operator must delete an existing checkpoint
+// before another can be created.
+type ErrCheckpointLimitReached struct {
+	Limit uint64
+}
+
+func (e *ErrCheckpointLimitReached) Error() string {
+	return fmt.Sprintf("query checkpoint limit reached (max %d); delete an existing checkpoint before creating another", e.Limit)
+}
+func (*ErrCheckpointLimitReached) Reason() string { return ErrReasonCheckpointLimitReached }
+func (e *ErrCheckpointLimitReached) Metadata() map[string]string {
+	return map[string]string{"limit": strconv.FormatUint(e.Limit, 10)}
+}
+
+// ErrCheckpointNotFound — admission rejected a DeleteQueryCheckpoint targeting a
+// checkpoint ID that is not live (never created, or already deleted). Maps to
+// KindNotFound.
+type ErrCheckpointNotFound struct {
+	CheckpointID uint64
+}
+
+func (e *ErrCheckpointNotFound) Error() string {
+	return fmt.Sprintf("query checkpoint %d not found", e.CheckpointID)
+}
+func (*ErrCheckpointNotFound) Reason() string { return ErrReasonCheckpointNotFound }
+func (e *ErrCheckpointNotFound) Metadata() map[string]string {
 	return map[string]string{"checkpointId": strconv.FormatUint(e.CheckpointID, 10)}
 }
 

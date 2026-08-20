@@ -886,6 +886,14 @@ enum CheckStoreErrorType {
   // never seeded from the live projection -- that would verify old,
   // never-touched keys against a copy of themselves.
   CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE = 23;
+  // Emitted when the live query-checkpoint rows (ZoneGlobal/SubGlobQueryCheckpoint)
+  // diverge from the set the checker re-derives from the CreatedQueryCheckpoint /
+  // DeletedQueryCheckpoint logs (baseline-seeded under archiving). Both directions
+  // are flagged: a stored id that was never created or was later deleted (phantom
+  // or stale row), and an audit-live checkpoint with no stored row (lost or
+  // dropped projection). The audit-rebuild path recreates the rows from the logs,
+  // so a missing row is corruption, not a restore artifact.
+  CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH = 24;
 }
 
 message CheckStoreError {

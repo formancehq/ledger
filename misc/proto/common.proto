@@ -544,6 +544,10 @@ message DeletedQueryCheckpointScheduleLog {}
 message CreatedQueryCheckpointLog {
   fixed64 checkpoint_id = 1;
   fixed64 max_sequence = 2;
+  // Creation timestamp, carried so a full audit rebuild reconstructs the same
+  // QueryCheckpointState.created_at the FSM originally wrote (rather than the
+  // zero value) and the checker can verify it. Set from the proposal date.
+  Timestamp created_at = 3;
 }
 
 // DeletedQueryCheckpointLog records a query checkpoint being deleted.
@@ -1253,6 +1257,14 @@ enum ErrorReason {
   ERROR_REASON_PRELOAD_UNAVAILABLE = 66;
   ERROR_REASON_AGGREGATE_OVERFLOW = 67;
   ERROR_REASON_BALANCE_NOT_FOUND = 68;
+  // ERROR_REASON_CHECKPOINT_LIMIT_REACHED: admission rejected a
+  // CreateQueryCheckpoint because the leader already holds the maximum number of
+  // live query checkpoints. Maps to gRPC ResourceExhausted / HTTP 429; delete an
+  // existing checkpoint before creating another.
+  ERROR_REASON_CHECKPOINT_LIMIT_REACHED = 69;
+  // ERROR_REASON_CHECKPOINT_NOT_FOUND: a DeleteQueryCheckpoint targeted a
+  // checkpoint ID that is not live. Maps to gRPC NotFound / HTTP 404.
+  ERROR_REASON_CHECKPOINT_NOT_FOUND = 70;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

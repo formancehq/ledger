@@ -72,7 +72,8 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_CHAPTER_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_PREPARED_QUERY_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_NOT_FOUND,
-		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND:
+		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,
+		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_FOUND:
 		return KindNotFound
 	case commonpb.ErrorReason_ERROR_REASON_LEDGER_ALREADY_EXISTS,
 		commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT,
@@ -114,7 +115,8 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_CLUSTER_UNHEALTHY,
 		commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW:
 		return KindUnavailable
-	case commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL:
+	case commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL,
+		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_LIMIT_REACHED:
 		return KindResourceExhausted
 	case commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
 		commonpb.ErrorReason_ERROR_REASON_INDEX_INCONSISTENT,

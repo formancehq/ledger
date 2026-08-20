@@ -209,6 +209,16 @@ func TestBuildEnvVars_MirrorMaxBatchSize(t *testing.T) {
 	assertEnv(t, envs, "MIRROR_MAX_BATCH_SIZE", "1000")
 }
 
+func TestBuildEnvVars_QueryCheckpointLimit(t *testing.T) {
+	t.Parallel()
+
+	ls := newMinimalCluster()
+	v := int32(25)
+	ls.Spec.QueryCheckpointLimit = &v
+	envs := buildEnvVars(ls, "disabled", nil)
+	assertEnv(t, envs, "QUERY_CHECKPOINT_LIMIT", "25")
+}
+
 // ---------------------------------------------------------------------------
 // Pebble compression
 // ---------------------------------------------------------------------------

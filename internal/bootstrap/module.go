@@ -741,6 +741,8 @@ func Module() fx.Option {
 					opts = append(opts, admission.WithAuthEnabled())
 				}
 
+				opts = append(opts, admission.WithQueryCheckpointLimit(cfg.QueryCheckpointLimit))
+
 				return admission.NewAdmission(
 					store,
 					logger,

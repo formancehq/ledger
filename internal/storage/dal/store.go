@@ -961,6 +961,38 @@ func (s *Store) DeleteQueryCheckpointFiles(id uint64) error {
 	return os.RemoveAll(dir)
 }
 
+// ListQueryCheckpointDirs returns the ids of every physical query-checkpoint
+// directory on this node (query-checkpoints/<id>/). Recovery uses it to reclaim
+// directories with no live row. Returns nil when the parent directory does not
+// exist (no checkpoint ever created); non-numeric entries are ignored.
+func (s *Store) ListQueryCheckpointDirs() ([]uint64, error) {
+	entries, err := os.ReadDir(filepath.Join(s.dataDir, queryCheckpointsDir))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("reading query checkpoints dir: %w", err)
+	}
+
+	var ids []uint64
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+
+		id, perr := strconv.ParseUint(e.Name(), 10, 64)
+		if perr != nil {
+			continue
+		}
+
+		ids = append(ids, id)
+	}
+
+	return ids, nil
+}
+
 // QueryCheckpointReadIndexDir returns the path for the read index within a query checkpoint.
 func (s *Store) QueryCheckpointReadIndexDir(id uint64) string {
 	return filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10), "readindex")

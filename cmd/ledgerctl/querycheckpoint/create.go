@@ -14,7 +14,7 @@ func newCreateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "create",
 		Short:             "Create a query checkpoint via Raft consensus",
-		Long:              "Create a query checkpoint that captures a physical Pebble snapshot of the current state. The checkpoint is replicated to all nodes and enables point-in-time queries.",
+		Long:              "Create a query checkpoint that captures a physical Pebble snapshot of the current state. The checkpoint is replicated to all nodes and enables point-in-time queries. At most 10 query checkpoints may be live at once; once the cap is reached creation fails and an existing checkpoint must be deleted to free a slot.",
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runCreate,

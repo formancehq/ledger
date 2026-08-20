@@ -138,7 +138,13 @@ func RebuildDelta(
 		ephemeralPurgeBuffer = replay.NewEphemeralPurgeBuffer()
 	}
 
-	var count uint64
+	var (
+		count uint64
+		// Highest query-checkpoint id seen across CreatedQueryCheckpoint logs
+		// (deleted ones included). Used after the replay to restore the
+		// monotonic SubGlobNextQueryCheckpointID counter.
+		maxQueryCheckpointID uint64
+	)
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -415,6 +421,36 @@ func RebuildDelta(
 				}
 			}
 
+		case *commonpb.LogPayload_CreatedQueryCheckpoint:
+			// Rebuild the metadata row (id + max_sequence) from the log. The
+			// physical checkpoint files cannot be reconstructed from the audit,
+			// so a rebuilt checkpoint reads as Unavailable until an operator
+			// deletes it — the same registered-but-not-ready state EN-1460
+			// already defines. The row keeps the projection audit-consistent so
+			// the cap and compareQueryCheckpoints stay correct after a rebuild.
+			if cp := p.CreatedQueryCheckpoint; cp != nil {
+				if err := state.SaveQueryCheckpoint(batch, &raftcmdpb.QueryCheckpointState{
+					CheckpointId: cp.GetCheckpointId(),
+					MaxSequence:  cp.GetMaxSequence(),
+					CreatedAt:    cp.GetCreatedAt(),
+				}); err != nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("rebuilding query checkpoint at log %d: %w", seq, err)
+				}
+
+				maxQueryCheckpointID = max(maxQueryCheckpointID, cp.GetCheckpointId())
+			}
+
+		case *commonpb.LogPayload_DeletedQueryCheckpoint:
+			if cp := p.DeletedQueryCheckpoint; cp != nil {
+				if err := state.DeleteQueryCheckpointFromBatch(batch, cp.GetCheckpointId()); err != nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("removing query checkpoint at log %d: %w", seq, err)
+				}
+			}
+
 		// Log types with no persistent state to rebuild:
 		case *commonpb.LogPayload_RemovedEventsSink:
 		case *commonpb.LogPayload_CloseChapter:
@@ -423,8 +459,6 @@ func RebuildDelta(
 		case *commonpb.LogPayload_ConfirmArchiveChapter:
 		case *commonpb.LogPayload_DeleteChapterSchedule:
 		case *commonpb.LogPayload_DeletedPreparedQuery:
-		case *commonpb.LogPayload_CreatedQueryCheckpoint:
-		case *commonpb.LogPayload_DeletedQueryCheckpoint:
 		case *commonpb.LogPayload_DeleteQueryCheckpointSchedule:
 		}
 
@@ -468,6 +502,18 @@ func RebuildDelta(
 			_ = batch.Cancel()
 
 			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)
+		}
+	}
+
+	// Restore the monotonic next-ID counter above every replayed checkpoint id
+	// (deleted ids included — the counter never rewinds), so post-rebuild
+	// creates allocate fresh ids instead of reissuing one and overwriting a
+	// rebuilt row.
+	if maxQueryCheckpointID > 0 {
+		if err := state.StoreNextQueryCheckpointID(batch, maxQueryCheckpointID+1); err != nil {
+			_ = batch.Cancel()
+
+			return fmt.Errorf("restoring next query checkpoint ID: %w", err)
 		}
 	}
 

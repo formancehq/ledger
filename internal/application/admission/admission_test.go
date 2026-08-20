@@ -62,7 +62,7 @@ func createTestStore(t *testing.T) *dal.Store {
 // createTestAdmission creates an Admission instance for testing.
 // It returns both the Admission and the Attributes so tests can set up
 // transaction state directly in Pebble.
-func createTestAdmission(t *testing.T, store *dal.Store) (*Admission, *attributes.Attributes) {
+func createTestAdmission(t *testing.T, store *dal.Store, opts ...func(*Admission)) (*Admission, *attributes.Attributes) {
 	t.Helper()
 
 	ctx := logging.TestingContext()
@@ -87,6 +87,7 @@ func createTestAdmission(t *testing.T, store *dal.Store) (*Admission, *attribute
 		attrs,
 		numscript.NewNumscriptCache(0),
 		func(context.Context) error { return nil },
+		opts...,
 	), attrs
 }
 

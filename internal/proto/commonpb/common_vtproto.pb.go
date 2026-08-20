@@ -1447,6 +1447,7 @@ func (m *CreatedQueryCheckpointLog) CloneVT() *CreatedQueryCheckpointLog {
 	r := new(CreatedQueryCheckpointLog)
 	r.CheckpointId = m.CheckpointId
 	r.MaxSequence = m.MaxSequence
+	r.CreatedAt = m.CreatedAt.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6906,6 +6907,9 @@ func (this *CreatedQueryCheckpointLog) EqualVT(that *CreatedQueryCheckpointLog) 
 		return false
 	}
 	if this.MaxSequence != that.MaxSequence {
+		return false
+	}
+	if !this.CreatedAt.EqualVT(that.CreatedAt) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -15715,6 +15719,16 @@ func (m *CreatedQueryCheckpointLog) MarshalToSizedBufferVT(dAtA []byte) (int, er
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.CreatedAt != nil {
+		size, err := m.CreatedAt.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
 	}
 	if m.MaxSequence != 0 {
 		i -= 8
@@ -24708,6 +24722,10 @@ func (m *CreatedQueryCheckpointLog) SizeVT() (n int) {
 	}
 	if m.MaxSequence != 0 {
 		n += 9
+	}
+	if m.CreatedAt != nil {
+		l = m.CreatedAt.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -36526,6 +36544,42 @@ func (m *CreatedQueryCheckpointLog) UnmarshalVT(dAtA []byte) error {
 			}
 			m.MaxSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CreatedAt", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.CreatedAt == nil {
+				m.CreatedAt = &Timestamp{}
+			}
+			if err := m.CreatedAt.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
