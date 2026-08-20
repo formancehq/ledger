@@ -42,9 +42,7 @@ var _ = Describe("Remove node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 		})
 
 		AfterAll(func() {
@@ -97,15 +95,15 @@ var _ = Describe("Remove node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 
 			// Add a learner node (phantom, not a real process)
+			raftAddr, serviceAddr := phantomPeer()
+
 			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         4,
-				RaftAddress:    "127.0.0.1:19000",
-				ServiceAddress: "127.0.0.1:19100",
+				RaftAddress:    raftAddr,
+				ServiceAddress: serviceAddr,
 			})
 			Expect(err).To(Succeed())
 
@@ -158,9 +156,7 @@ var _ = Describe("Remove node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 		})
 
 		AfterAll(func() {
@@ -210,9 +206,7 @@ var _ = Describe("Remove node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 		})
 
 		AfterAll(func() {
@@ -273,9 +267,7 @@ var _ = Describe("Remove node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 		})
 
 		AfterAll(func() {
@@ -318,9 +310,7 @@ var _ = Describe("Remove node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 		})
 
 		AfterAll(func() {
@@ -355,10 +345,12 @@ var _ = Describe("Remove node", func() {
 			lid := *leaderID
 
 			// Add a learner to remove
+			raftAddr, serviceAddr := phantomPeer()
+
 			_, err := servers[lid-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         6,
-				RaftAddress:    "127.0.0.1:19002",
-				ServiceAddress: "127.0.0.1:19102",
+				RaftAddress:    raftAddr,
+				ServiceAddress: serviceAddr,
 			})
 			Expect(err).To(Succeed())
 			waitForLearner(servers[lid-1].ClusterClient, lid, 6)

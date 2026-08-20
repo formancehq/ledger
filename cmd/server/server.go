@@ -36,6 +36,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/bytesize"
+	"github.com/formancehq/ledger/v3/internal/pkg/network"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -57,13 +58,33 @@ func NewRootCommand() *cobra.Command {
 }
 
 // NewRunCommand returns the run command for the ledger server.
-// This is exported for use in integration tests.
+//
+// The server binds its own listeners from the configured ports. This is the
+// production entry point; NewRunCommandWithBindings serves sockets the caller
+// already bound.
 func NewRunCommand() *cobra.Command {
+	return NewRunCommandWithBindings(network.Bindings{})
+}
+
+// NewRunCommandWithBindings returns the run command for the ledger server,
+// serving the listeners in bindings instead of binding those ports itself. A
+// nil listener falls back to binding the configured port, so the zero value is
+// exactly NewRunCommand.
+//
+// Tests use it to hold their node's ports from before the process starts until
+// the lifecycle owns the sockets; nothing in production passes a non-zero value.
+// The bindings are captured here rather than passed through a flag or the
+// command context because a socket is not configuration: it cannot be
+// serialized, and its ownership has to be explicit (see
+// network.Bindings).
+func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd := &cobra.Command{
 		Use:   "run",
 		Short: "Run the ledger server",
 		Long:  "Start the Ledger v3 POC server with Raft consensus cluster",
-		RunE:  runServer,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runServer(cmd, bindings)
+		},
 	}
 
 	// Add standard service flags
@@ -244,7 +265,7 @@ func NewRunCommand() *cobra.Command {
 	return runCmd
 }
 
-func runServer(cmd *cobra.Command, _ []string) error {
+func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 	cfg, err := LoadConfig(cmd.Context(), cmd)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -336,6 +357,9 @@ func runServer(cmd *cobra.Command, _ []string) error {
 	opts := []fx.Option{
 		// Provide configuration
 		fx.Supply(*cfg),
+		// Provide the network bindings: pre-bound listeners in tests, the zero
+		// value (bind from the configured ports) in production.
+		fx.Supply(bindings),
 		// Provide build metadata for version reporting
 		fx.Supply(info),
 		// Add OpenTelemetry modules from go-libs (using flags)

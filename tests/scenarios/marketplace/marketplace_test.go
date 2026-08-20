@@ -32,7 +32,7 @@ func TestMarketplaceLifecycle(t *testing.T) {
 		feePercent   = 3
 	)
 
-	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort, scenariotest.GRPCPort)
+	sc := scenariotest.SetupSingleNode(t)
 	ctx, client := sc.Ctx(), sc.Client
 
 	// Track expected balances

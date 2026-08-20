@@ -29,13 +29,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Dedicated port range for writes-only auth tests.
-const (
-	writesOnlyHTTPPort = 15810
-	writesOnlyGRPCPort = 15910
-	writesOnlyRaftPort = 14810
-)
-
 var _ = Describe("Auth writes-only mode", Ordered, func() {
 	var (
 		ctx        context.Context
@@ -73,12 +66,13 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 		certs, err := testserver.GenerateTestCerts(certDir)
 		Expect(err).To(Succeed())
 
+		lease := testserver.AllocateNodeLease()
+		ports := lease.Ports()
+
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
 			ClusterID: "test-cluster",
-			HTTPPort:  writesOnlyHTTPPort,
-			RaftPort:  writesOnlyRaftPort,
-			GRPCPort:  writesOnlyGRPCPort,
+			Ports:     ports,
 			WalDir:    walTmpDir,
 			DataDir:   dataTmpDir,
 			Debug:     testutil.Debug,
@@ -96,7 +90,7 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 			testserver.WithAuthAnonymousScopes("*:read"),
 		)
 
-		server := testservice.New(cmdserver.NewRunCommand,
+		server := lease.NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())
@@ -108,10 +102,10 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 		})
 
 		// Auth requires TLS: dial the server over TLS trusting the fixture CA.
-		client, clusterCli, grpcConn, err = newTLSGRPCClient(writesOnlyGRPCPort, certs.CACertFile)
+		client, clusterCli, grpcConn, err = newTLSGRPCClient(ports.GRPC(), certs.CACertFile)
 		Expect(err).To(Succeed())
 		DeferCleanup(func() { _ = grpcConn.Close() })
-		httpAddr = fmt.Sprintf("http://localhost:%d", writesOnlyHTTPPort)
+		httpAddr = fmt.Sprintf("http://localhost:%d", ports.HTTP())
 
 		// Wait for leader election (use a write-scoped token).
 		Eventually(func(g Gomega) bool {

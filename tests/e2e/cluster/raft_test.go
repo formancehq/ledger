@@ -30,7 +30,7 @@ var _ = Describe("Simple cluster", func() {
 
 		BeforeAll(func() {
 			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
+				countInstances,
 				testutil.WithGateway(),
 			)
 		})
@@ -100,7 +100,7 @@ var _ = Describe("Simple cluster", func() {
 
 		BeforeAll(func() {
 			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
+				countInstances,
 				testutil.WithGateway(),
 			)
 
@@ -192,7 +192,7 @@ var _ = Describe("Simple cluster", func() {
 
 		BeforeEach(func() {
 			ctx, servers, gateway, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
+				countInstances,
 				testutil.WithGateway(),
 			)
 		})

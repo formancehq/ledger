@@ -68,15 +68,12 @@ var _ = Describe("Audit entry purge after chapter archive", Ordered, func() {
 		client servicepb.BucketServiceClient
 	)
 
-	const (
-		httpPort = 15700
-		grpcPort = 15800
-	)
-
 	BeforeAll(func() {
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort,
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode(
 			testserver.WithColdStorageDriver("filesystem"),
 		)
+		client = node.Client
 	})
 
 	// This test verifies that audit entries are correctly purged when a chapter

@@ -4,8 +4,7 @@ package business
 
 import (
 	"context"
-	"fmt"
-	"strconv"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -22,31 +21,49 @@ var (
 	sharedClient        servicepb.BucketServiceClient
 	sharedClusterClient clusterpb.ClusterServiceClient
 	sharedCtx           context.Context
+	sharedHTTPPort      int
 )
 
 const signingKey = "test-receipt-signing-key-32bytes!"
 
+// sharedNodePorts carries the shared node's allocated ports from process 1 to
+// every other Ginkgo process. The ports are no longer constants, so they have
+// to travel with the SynchronizedBeforeSuite payload.
+type sharedNodePorts struct {
+	HTTP int `json:"http"`
+	GRPC int `json:"grpc"`
+}
+
 // SynchronizedBeforeSuite: process 1 starts the server, serializes port info.
 // All processes deserialize and create their gRPC clients.
 var _ = SynchronizedBeforeSuite(func() []byte {
-	// Process 1: start server, return serialized port info
-	ctx, client, clusterClient := testutil.SetupSingleNode(
-		testutil.TestSingleHTTPPort,
-		testutil.TestSingleGRPCPort,
+	ctx, node := testutil.SetupSingleNode(
 		testserver.WithReceiptSigningKey(signingKey),
 	)
 	sharedCtx = ctx
-	sharedClient = client
-	sharedClusterClient = clusterClient
-	// Serialize gRPC port for other processes
-	return []byte(fmt.Sprintf("%d", testutil.TestSingleGRPCPort))
+	sharedClient = node.Client
+	sharedClusterClient = node.ClusterClient
+	sharedHTTPPort = node.HTTPPort
+
+	payload, err := json.Marshal(sharedNodePorts{
+		HTTP: node.HTTPPort,
+		GRPC: node.GRPCPort,
+	})
+	Expect(err).To(Succeed())
+
+	return payload
 }, func(data []byte) {
-	// All processes: create gRPC client from serialized port
-	port, _ := strconv.Atoi(string(data))
-	client, clusterClient, conn, _ := testutil.NewGRPCClient(port)
+	var ports sharedNodePorts
+	Expect(json.Unmarshal(data, &ports)).To(Succeed())
+
+	client, clusterClient, conn, err := testutil.NewGRPCClient(ports.GRPC)
+	Expect(err).To(Succeed())
+
 	sharedClient = client
 	sharedClusterClient = clusterClient
 	sharedCtx = logging.TestingContext()
+	sharedHTTPPort = ports.HTTP
+
 	DeferCleanup(func() { _ = conn.Close() })
 })
 

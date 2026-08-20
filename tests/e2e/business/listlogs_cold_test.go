@@ -28,15 +28,15 @@ var _ = Describe("ListLogs reads archived logs from cold storage", Ordered, func
 		client servicepb.BucketServiceClient
 	)
 	const (
-		httpPort = 15706
-		grpcPort = 15806
-		ledger   = "listlogs-cold"
+		ledger = "listlogs-cold"
 	)
 
 	BeforeAll(func() {
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort,
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode(
 			testserver.WithColdStorageDriver("filesystem"),
 		)
+		client = node.Client
 	})
 
 	It("lists all logs after their chapter is archived", func() {

@@ -1,7 +1,6 @@
 package bootstrap
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 
@@ -14,8 +13,8 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
 
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
-	"github.com/formancehq/ledger/v3/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/pkg/network"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -31,7 +30,7 @@ import (
 func RestoreModule() fx.Option {
 	return fx.Options(
 		fx.Provide(
-			func(cfg Config, lc fx.Lifecycle, logger logging.Logger) (*grpcadp.ServiceServer, error) {
+			func(cfg Config, lc fx.Lifecycle, logger logging.Logger, bindings network.Bindings) (*grpcadp.ServiceServer, error) {
 				tlsCfg, reloader, err := ServerTLSConfig(cfg.TLSConfig)
 				if err != nil {
 					return nil, fmt.Errorf("loading TLS config for restore server: %w", err)
@@ -39,6 +38,10 @@ func RestoreModule() fx.Option {
 
 				RegisterCertReloaderLifecycle(lc, reloader, logger)
 
+				// An injected bindings.Service listener decides the bind
+				// address instead of host. Only tests inject one, and they bind
+				// loopback; production supplies the zero value, so
+				// --restore-listen stays the only lever in a deployment.
 				host := cfg.EffectiveRestoreListen()
 
 				if host != "127.0.0.1" && host != "localhost" && host != "::1" {
@@ -46,13 +49,19 @@ func RestoreModule() fx.Option {
 						Errorf("WARNING: restore mode bound to a non-loopback address (%s). The restore RPCs are not authenticated; ensure TLS and upstream firewalling are in place.", host)
 				}
 
-				return grpcadp.NewServiceServer(host, cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext())
+				return grpcadp.NewServiceServer(host, cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(),
+					listenerOptions(bindings.Service)...)
 			},
 			func(cfg Config, logger logging.Logger) *grpcadp.RestoreServiceServerImpl {
 				return grpcadp.NewRestoreServiceServer(cfg.DataDir, cfg.ClusterID, cfg.RestoreDownloadParallelism, logger)
 			},
 		),
 		fx.Invoke(
+			// Registered first so it runs last on stop: every injected listener
+			// is released once the servers that adopted them have stopped.
+			func(lc fx.Lifecycle, bindings network.Bindings) {
+				lc.Append(releaseBindingsHook(bindings))
+			},
 			// Validate that the data directory is fresh: no checkpoints, no
 			// live/ database (normal startup prefers it over the restored
 			// checkpoint, silently booting the stale store under the
@@ -84,40 +93,18 @@ func RestoreModule() fx.Option {
 				lc fx.Lifecycle,
 				serviceServer *grpcadp.ServiceServer,
 				logger logging.Logger,
+				shutdowner fx.Shutdowner,
 			) {
-				lc.Append(fx.Hook{
-					OnStart: func(ctx context.Context) error {
-						logger.Infof("Starting restore-mode gRPC server")
-
-						listening := make(chan struct{})
-
-						otlplogs.Go(func() {
-							err := serviceServer.Start(listening)
-							if err != nil {
-								panic(err)
-							}
-						}, logger)
-
-						select {
-						case <-ctx.Done():
-							return ctx.Err()
-						case <-listening:
-						}
-
-						logger.Infof("Restore-mode gRPC server started successfully")
-
-						return nil
-					},
-					OnStop: func(_ context.Context) error {
-						logger.Infof("Stopping restore-mode gRPC server")
-
-						return serviceServer.Stop()
-					},
-				})
+				lc.Append(grpcServerHook(grpcServerHookConfig{
+					Server:          serviceServer,
+					Name:            "restore-mode gRPC server",
+					Logger:          logger,
+					RequestShutdown: shutdownRequester(shutdowner),
+				}))
 			},
 			// Start minimal HTTP server with /health only, bound to the same
 			// host as the gRPC restore server (see comment on RestoreModule).
-			func(lc fx.Lifecycle, cfg Config) {
+			func(lc fx.Lifecycle, cfg Config, bindings network.Bindings) {
 				mux := http.NewServeMux()
 				mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(http.StatusOK)
@@ -125,7 +112,7 @@ func RestoreModule() fx.Option {
 				})
 
 				lc.Append(transportfx.FXHook(httpserver.NewHook(mux,
-					httpserver.WithAddress(fmt.Sprintf("%s:%d", cfg.EffectiveRestoreListen(), cfg.HTTPPort)),
+					httpListenerOption(bindings.HTTP, fmt.Sprintf("%s:%d", cfg.EffectiveRestoreListen(), cfg.HTTPPort)),
 				)))
 			},
 		),

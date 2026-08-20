@@ -28,8 +28,6 @@ const (
 	coldMinioSecretKey = "minioadmin"
 	coldS3Bucket       = "cold-storage-e2e"
 	coldS3Region       = "us-east-1"
-	coldHTTPPort       = 15500
-	coldGRPCPort       = 15600
 )
 
 var _ = Describe("Cold Storage S3", Ordered, func() {
@@ -81,9 +79,11 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 		GinkgoT().Setenv("AWS_SECRET_ACCESS_KEY", coldMinioSecretKey)
 
 		// Start single-node ledger server with S3 cold storage
-		ctx, client, _ = testutil.SetupSingleNode(coldHTTPPort, coldGRPCPort,
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode(
 			testserver.WithColdStorageS3(coldS3Bucket, coldS3Region, endpoint),
 		)
+		client = node.Client
 	})
 
 	It("Should archive a chapter to S3 and read back logs from cold storage", func() {

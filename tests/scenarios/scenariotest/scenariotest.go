@@ -23,13 +23,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// Port constants for scenario tests.
-// Using 16xxx range to avoid conflicts with e2e tests (15xxx).
-const (
-	GRPCPort = 16100
-	HTTPPort = 16200
-)
-
 // ScenarioCluster holds the state for a single-node scenario test cluster.
 // It supports restart (stop + start with same WAL/data dirs) to test WAL replay.
 type ScenarioCluster struct {
@@ -40,9 +33,11 @@ type ScenarioCluster struct {
 	Client  servicepb.BucketServiceClient
 	Cluster clusterpb.ClusterServiceClient
 
-	// Config captured at setup time, reused on restart.
-	httpPort  int
-	grpcPort  int
+	// Config captured at setup time, reused on restart. Keeping the same lease
+	// (rather than leasing new ports) is required: a restarted node must come
+	// back on the same Raft port, or its peers cannot reach it. The lease
+	// rebinds those ports for every start.
+	lease     *testserver.NodeLease
 	walDir    string
 	dataDir   string
 	extra     []testservice.Instrumentation
@@ -75,14 +70,10 @@ func (sc *ScenarioCluster) Restart() {
 func (sc *ScenarioCluster) startServer() {
 	sc.t.Helper()
 
-	raftPort := sc.grpcPort - 1000
-
 	instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 		NodeID:    1,
 		ClusterID: "scenario-cluster",
-		HTTPPort:  sc.httpPort,
-		RaftPort:  raftPort,
-		GRPCPort:  sc.grpcPort,
+		Ports:     sc.lease.Ports(),
 		WalDir:    sc.walDir,
 		DataDir:   sc.dataDir,
 		Debug:     os.Getenv("DEBUG") == "true",
@@ -94,13 +85,13 @@ func (sc *ScenarioCluster) startServer() {
 	}
 	instruments = append(instruments, sc.extra...)
 
-	sc.server = testservice.New(cmdserver.NewRunCommand,
+	sc.server = sc.lease.NewService(cmdserver.NewRunCommandWithBindings,
 		testservice.WithInstruments(instruments...),
 	)
 	require.NoError(sc.t, sc.server.Start(sc.ctx))
 
 	conn, err := grpc.NewClient(
-		fmt.Sprintf("localhost:%d", sc.grpcPort),
+		fmt.Sprintf("localhost:%d", sc.lease.Ports().GRPC()),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy),
 	)
@@ -123,14 +114,13 @@ func (sc *ScenarioCluster) startServer() {
 // SetupSingleNode creates a single-node cluster for scenario tests.
 // Returns the ScenarioCluster which holds ctx, clients, and supports Restart().
 // Cleanup is handled via t.Cleanup.
-func SetupSingleNode(t *testing.T, httpPort, grpcPort int, extra ...testservice.Instrumentation) *ScenarioCluster {
+func SetupSingleNode(t *testing.T, extra ...testservice.Instrumentation) *ScenarioCluster {
 	t.Helper()
 
 	sc := &ScenarioCluster{
 		t:         t,
 		ctx:       logging.TestingContext(),
-		httpPort:  httpPort,
-		grpcPort:  grpcPort,
+		lease:     testserver.AllocateNodeLease(),
 		walDir:    t.TempDir(),
 		dataDir:   t.TempDir(),
 		extra:     extra,

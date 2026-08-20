@@ -83,15 +83,21 @@ func newRestoreGRPCClient(grpcPort int) (restorepb.RestoreServiceClient, *grpc.C
 
 var _ = Describe("Restore", Ordered, func() {
 	const (
-		httpPort    = testutil.TestSingleHTTPPort
-		grpcPort    = testutil.TestSingleGRPCPort
-		raftPort    = grpcPort - 1000
 		ledgerName  = "restore-ledger"
 		ledger2     = "restore-ledger-2"
 		chartLedger = "restore-chart-ledger"
 		deltaLedger = "restore-ledger-delta"
 		deltaRef    = "delta-ref-1"
 	)
+
+	// Phase 1 is the source node, Phase 2 brings it back in restore mode on
+	// fresh directories and Phase 3 brings it back again as a normal node.
+	// That is one logical node returning three times, so every phase runs off
+	// the same lease: the lease keeps the node's ports for the whole test and
+	// rebinds them for each start, where a fresh set would surface as a Raft
+	// failure rather than as a port mistake.
+	lease := testserver.AllocateNodeLease()
+	ports := lease.Ports()
 
 	var (
 		ctx            context.Context
@@ -168,9 +174,7 @@ var _ = Describe("Restore", Ordered, func() {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
 				ClusterID: "test-cluster",
-				HTTPPort:  httpPort,
-				RaftPort:  raftPort,
-				GRPCPort:  grpcPort,
+				Ports:     ports,
 				WalDir:    walDir,
 				DataDir:   dataDir,
 				Debug:     testutil.Debug,
@@ -189,13 +193,13 @@ var _ = Describe("Restore", Ordered, func() {
 			// into several segments per type — exercising split-and-restore below.
 			instruments = append(instruments, testserver.WithBackupMaxSegmentBytes(1))
 
-			sourceServer = testservice.New(cmdserver.NewRunCommand,
+			sourceServer = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(instruments...),
 			)
 			Expect(sourceServer.Start(ctx)).To(Succeed())
 
 			var err error
-			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
+			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
@@ -417,24 +421,24 @@ var _ = Describe("Restore", Ordered, func() {
 		)
 
 		BeforeAll(func() {
-			server = testservice.New(cmdserver.NewRunCommand,
+			server = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(
 					testservice.DebugInstrumentation(testutil.Debug),
 					testservice.OutputInstrumentation(GinkgoWriter),
 					testserver.WithNodeID(1),
 					testserver.WithClusterID("test-cluster"),
-					testserver.WithHTTPPort(httpPort),
+					testserver.WithHTTPPort(ports.HTTP()),
 					testserver.WithWalDir(restoreWalDir),
 					testserver.WithDataDir(restoreDataDir),
-					testserver.WithRaftPort(raftPort),
-					testserver.WithGRPCPort(grpcPort),
+					testserver.WithRaftPort(ports.Raft()),
+					testserver.WithGRPCPort(ports.GRPC()),
 					testserver.WithRestore(),
 				),
 			)
 			Expect(server.Start(ctx)).To(Succeed())
 
 			var err error
-			restoreClient, grpcConn, err = newRestoreGRPCClient(grpcPort)
+			restoreClient, grpcConn, err = newRestoreGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 		})
 
@@ -572,9 +576,7 @@ var _ = Describe("Restore", Ordered, func() {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
 				ClusterID: "test-cluster",
-				HTTPPort:  httpPort,
-				RaftPort:  raftPort,
-				GRPCPort:  grpcPort,
+				Ports:     ports,
 				WalDir:    restoreWalDir,
 				DataDir:   restoreDataDir,
 				Debug:     testutil.Debug,
@@ -601,13 +603,13 @@ var _ = Describe("Restore", Ordered, func() {
 			// CacheUnreachable horizon.
 			instruments = append(instruments, testserver.WithCacheRotationThreshold(3))
 
-			server = testservice.New(cmdserver.NewRunCommand,
+			server = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(instruments...),
 			)
 			Expect(server.Start(ctx)).To(Succeed())
 
 			var err error
-			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
+			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
@@ -840,11 +842,8 @@ var _ = Describe("Restore", Ordered, func() {
 			// row (found by the Antithesis model test as an aggregated volume
 			// imbalance on the joiner). The join must instead be forced
 			// through the snapshot → checkpoint-sync path.
-			const (
-				joinerGRPCPort = grpcPort + 7
-				joinerHTTPPort = httpPort + 7
-				joinerRaftPort = raftPort + 7
-			)
+			joinerLease := testserver.AllocateNodeLease()
+			joinerPorts := joinerLease.Ports()
 
 			// Committed on the restored leader only: its replication to the
 			// learner proves the learner finished catching up on the
@@ -860,17 +859,15 @@ var _ = Describe("Restore", Ordered, func() {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    2,
 				ClusterID: "test-cluster",
-				HTTPPort:  joinerHTTPPort,
-				RaftPort:  joinerRaftPort,
-				GRPCPort:  joinerGRPCPort,
+				Ports:     joinerPorts,
 				WalDir:    GinkgoT().TempDir(),
 				DataDir:   GinkgoT().TempDir(),
 				Debug:     testutil.Debug,
 				Output:    GinkgoWriter,
 			})
-			instruments = append(instruments, testserver.WithJoin(fmt.Sprintf("127.0.0.1:%d", raftPort)))
+			instruments = append(instruments, testserver.WithJoin(fmt.Sprintf("127.0.0.1:%d", ports.Raft())))
 
-			joiner := testservice.New(cmdserver.NewRunCommand,
+			joiner := joinerLease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(instruments...),
 			)
 			Expect(joiner.Start(ctx)).To(Succeed())
@@ -880,7 +877,7 @@ var _ = Describe("Restore", Ordered, func() {
 				_ = joiner.Stop(stopCtx)
 			})
 
-			joinerClient, _, joinerConn, err := testutil.NewGRPCClient(joinerGRPCPort)
+			joinerClient, _, joinerConn, err := testutil.NewGRPCClient(joinerPorts.GRPC())
 			Expect(err).To(Succeed())
 			DeferCleanup(func() { _ = joinerConn.Close() })
 

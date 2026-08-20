@@ -368,6 +368,13 @@ exists, so that the StatefulSet's `OrderedReady` policy can bring up peer pods
 during a cold start. The stricter "cluster is actually serving" signal lives
 on `/clusterz`.
 
+None of these probes covers a gRPC listener that dies after startup: `/readyz`
+only reflects the local Raft loop. So a Raft or service gRPC server whose `Serve`
+returns unexpectedly logs the failure at error level and shuts the application
+down, which surfaces as a pod restart rather than as a Ready pod with a dead
+endpoint. A bind failure at startup is reported the same way — through a failed
+startup, not a panic.
+
 #### Liveness Probe
 
 ```yaml

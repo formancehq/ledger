@@ -33,13 +33,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Dedicated port range for Ed25519 auth tests (separate from OIDC auth tests).
-const (
-	ed25519AuthTestHTTPPort = 15810
-	ed25519AuthTestGRPCPort = 15910
-	ed25519AuthTestRaftPort = 14810
-)
-
 // signEdDSAJWT creates a signed EdDSA JWT token with the given claims.
 func signEdDSAJWT(privKey ed25519.PrivateKey, keyID string, claims *oidc.AccessTokenClaims) (string, error) {
 	signer, err := jose.NewSigner(jose.SigningKey{
@@ -150,12 +143,13 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 		certs, err := testserver.GenerateTestCerts(certDir)
 		Expect(err).To(Succeed())
 
+		lease := testserver.AllocateNodeLease()
+		ports := lease.Ports()
+
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
 			ClusterID: "test-cluster",
-			HTTPPort:  ed25519AuthTestHTTPPort,
-			RaftPort:  ed25519AuthTestRaftPort,
-			GRPCPort:  ed25519AuthTestGRPCPort,
+			Ports:     ports,
 			WalDir:    walTmpDir,
 			DataDir:   dataTmpDir,
 			Debug:     testutil.Debug,
@@ -171,7 +165,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 		)
 
-		server := testservice.New(cmdserver.NewRunCommand,
+		server := lease.NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())
@@ -183,7 +177,7 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 		})
 
 		// Auth requires TLS: dial the server over TLS trusting the fixture CA.
-		client, clusterClient, grpcConn, err = newTLSGRPCClient(ed25519AuthTestGRPCPort, certs.CACertFile)
+		client, clusterClient, grpcConn, err = newTLSGRPCClient(ports.GRPC(), certs.CACertFile)
 		Expect(err).To(Succeed())
 		DeferCleanup(func() { _ = grpcConn.Close() })
 
@@ -314,13 +308,6 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 	})
 })
 
-// Dedicated port range for Ed25519 scope restriction tests.
-const (
-	ed25519ScopeTestHTTPPort = 15820
-	ed25519ScopeTestGRPCPort = 15920
-	ed25519ScopeTestRaftPort = 14820
-)
-
 var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 	var (
 		ctx           context.Context
@@ -358,12 +345,13 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 		certs, err := testserver.GenerateTestCerts(certDir)
 		Expect(err).To(Succeed())
 
+		lease := testserver.AllocateNodeLease()
+		ports := lease.Ports()
+
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
 			ClusterID: "test-cluster",
-			HTTPPort:  ed25519ScopeTestHTTPPort,
-			RaftPort:  ed25519ScopeTestRaftPort,
-			GRPCPort:  ed25519ScopeTestGRPCPort,
+			Ports:     ports,
 			WalDir:    walTmpDir,
 			DataDir:   dataTmpDir,
 			Debug:     testutil.Debug,
@@ -379,7 +367,7 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 		)
 
-		server := testservice.New(cmdserver.NewRunCommand,
+		server := lease.NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())
@@ -391,7 +379,7 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 		})
 
 		// Auth requires TLS: dial the server over TLS trusting the fixture CA.
-		client, clusterClient, grpcConn, err = newTLSGRPCClient(ed25519ScopeTestGRPCPort, certs.CACertFile)
+		client, clusterClient, grpcConn, err = newTLSGRPCClient(ports.GRPC(), certs.CACertFile)
 		Expect(err).To(Succeed())
 		DeferCleanup(func() { _ = grpcConn.Close() })
 
@@ -457,13 +445,6 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 		})
 	})
 })
-
-// Dedicated port range for Ed25519 god-mode tests.
-const (
-	ed25519GodTestHTTPPort = 15830
-	ed25519GodTestGRPCPort = 15930
-	ed25519GodTestRaftPort = 14830
-)
 
 // writeEd25519GodKeysConfig generates two Ed25519 keypairs — one god-mode key and one regular key —
 // and writes the auth-keys.json config file. Returns both private keys and the config file path.
@@ -551,12 +532,13 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 		certs, err := testserver.GenerateTestCerts(certDir)
 		Expect(err).To(Succeed())
 
+		lease := testserver.AllocateNodeLease()
+		ports := lease.Ports()
+
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
 			ClusterID: "test-cluster",
-			HTTPPort:  ed25519GodTestHTTPPort,
-			RaftPort:  ed25519GodTestRaftPort,
-			GRPCPort:  ed25519GodTestGRPCPort,
+			Ports:     ports,
 			WalDir:    walTmpDir,
 			DataDir:   dataTmpDir,
 			Debug:     testutil.Debug,
@@ -572,7 +554,7 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 			testserver.WithTLSKeyFile(certs.ServerKeyFile),
 		)
 
-		server := testservice.New(cmdserver.NewRunCommand,
+		server := lease.NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())
@@ -584,7 +566,7 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 		})
 
 		// Auth requires TLS: dial the server over TLS trusting the fixture CA.
-		client, clusterClient, grpcConn, err = newTLSGRPCClient(ed25519GodTestGRPCPort, certs.CACertFile)
+		client, clusterClient, grpcConn, err = newTLSGRPCClient(ports.GRPC(), certs.CACertFile)
 		Expect(err).To(Succeed())
 		DeferCleanup(func() { _ = grpcConn.Close() })
 

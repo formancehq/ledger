@@ -32,9 +32,7 @@ var _ = Describe("Events Sinks Databricks", Ordered, func() {
 	)
 
 	const (
-		httpPort = 9600
-		grpcPort = 8600
-		table    = "ledger_events_e2e"
+		table = "ledger_events_e2e"
 	)
 
 	BeforeAll(func() {
@@ -49,7 +47,9 @@ var _ = Describe("Events Sinks Databricks", Ordered, func() {
 		}
 
 		// Start single-node ledger server
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode()
+		client = node.Client
 	})
 
 	AfterAll(func() {
