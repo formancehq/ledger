@@ -47,7 +47,7 @@ if [[ ! "$domain" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
     exit 1
 fi
 
-for command in codex git jq; do
+for command in codex git go jq; do
     if ! command -v "$command" >/dev/null 2>&1; then
         echo "ai-audit: required command not found in PATH: $command" >&2
         exit 1
@@ -91,26 +91,54 @@ if [[ -z "$output" ]]; then
 fi
 output_dir=$(dirname "$output")
 mkdir -p "$output_dir"
-output=$(cd "$output_dir" && pwd)/$(basename "$output")
+output_dir=$(cd "$output_dir" && pwd -P)
+output_basename=$(basename -- "$output")
+output="$output_dir/$output_basename"
 
-original_home=${HOME:?HOME must be set}
-original_codex_home=${CODEX_HOME:-"$original_home/.codex"}
-isolation_root=$(mktemp -d "${TMPDIR:-/tmp}/ledger-codex-audit.XXXXXX")
-cleanup() {
-    case "${isolation_root:-}" in
-        "${TMPDIR:-/tmp}"/ledger-codex-audit.*) rm -rf -- "$isolation_root" ;;
-    esac
-}
-trap cleanup EXIT
-isolated_home="$isolation_root/home"
-isolated_codex_home="$isolated_home/.codex"
-prompt_file="$isolation_root/prompt.txt"
-provider_output="$isolation_root/result.json"
-mkdir -p "$isolated_codex_home"
-if [[ -f "$original_codex_home/auth.json" ]]; then
-    cp "$original_codex_home/auth.json" "$isolated_codex_home/auth.json"
-    chmod 600 "$isolated_codex_home/auth.json"
+# The audit is read-only and bound to the exact HEAD validated above. The
+# report must never overwrite tracked repository content, and the destination
+# must not be a symlink that redirects the final copy into the audited source
+# tree. Validate the resolved destination before invoking the provider to fail
+# fast on an obviously unsafe path; the destination is re-validated and the
+# result is published atomically below so a swap during the audit cannot mutate
+# audited source state.
+if [[ -L "$output" ]]; then
+    echo "ai-audit: --output must not be a symlink: $output" >&2
+    exit 1
 fi
+if [[ -e "$output" && ! -f "$output" ]]; then
+    echo "ai-audit: --output must be a regular file: $output" >&2
+    exit 1
+fi
+if git -C "$repo_root" ls-files --error-unmatch -- "$output" >/dev/null 2>&1; then
+    echo "ai-audit: --output must not overwrite tracked repository content: $output" >&2
+    exit 1
+fi
+
+run_audit() {
+    original_home=${HOME:?HOME must be set}
+    original_codex_home=${CODEX_HOME:-"$original_home/.codex"}
+    isolation_root=$(mktemp -d "${TMPDIR:-/tmp}/ledger-codex-audit.XXXXXX")
+    cleanup() {
+        case "${isolation_root:-}" in
+            "${TMPDIR:-/tmp}"/ledger-codex-audit.*) rm -rf -- "$isolation_root" ;;
+        esac
+    }
+    trap cleanup EXIT
+    isolated_home="$isolation_root/home"
+    isolated_codex_home="$isolated_home/.codex"
+    prompt_file="$isolation_root/prompt.txt"
+    provider_output="$isolation_root/result.json"
+    publisher_binary="$isolation_root/audit-publish"
+    mkdir -p "$isolated_codex_home"
+    if [[ -f "$original_codex_home/auth.json" ]]; then
+        cp "$original_codex_home/auth.json" "$isolated_codex_home/auth.json"
+        chmod 600 "$isolated_codex_home/auth.json"
+    fi
+    if ! (cd "$repo_root" && env -u GOROOT go build -o "$publisher_binary" ./scripts/auditpublish); then
+        echo "ai-audit: failed to build the trusted output publisher" >&2
+        exit 1
+    fi
 
 cat >"$prompt_file" <<'EOF'
 You are performing a deep correctness audit of the existing Ledger codebase, not a pull-request review.
@@ -148,39 +176,61 @@ EOF
     printf '\nCopy audit_id and head exactly into the result.\n'
 } >>"$prompt_file"
 
-set +e
-HOME="$isolated_home" CODEX_HOME="$isolated_codex_home" codex exec \
-    --ephemeral --ignore-user-config --ignore-rules \
-    --disable hooks --disable plugins --disable apps --disable memories \
-    --disable multi_agent --disable skill_search \
-    --sandbox read-only \
-    --output-schema "$schema" \
-    -o "$provider_output" \
-    - <"$prompt_file"
-codex_status=$?
-set -e
-if [[ $codex_status -ne 0 ]]; then
-    exit "$codex_status"
-fi
-if [[ ! -s "$provider_output" ]]; then
-    echo "ai-audit: Codex exited successfully but did not produce a result" >&2
-    exit 1
-fi
-current_head=$(git rev-parse HEAD)
-if [[ "$current_head" != "$head_sha" || -n "$(git status --porcelain --untracked-files=normal)" ]]; then
-    echo "ai-audit: repository state changed during audit; refusing result" >&2
-    exit 1
-fi
-if ! jq -e --arg id "$domain" --arg head "$head_sha" '
-    .audit_id == $id and .head == $head and
-    (.findings | type == "array") and (.questions | type == "array")
-' "$provider_output" >/dev/null; then
-    echo "ai-audit: provider result does not match the requested audit target" >&2
-    exit 1
-fi
-cp "$provider_output" "$output"
+    set +e
+    (
+        cd "$repo_root"
+        HOME="$isolated_home" CODEX_HOME="$isolated_codex_home" codex exec \
+            --ephemeral --ignore-user-config --ignore-rules \
+            --disable hooks --disable plugins --disable apps --disable memories \
+            --disable multi_agent --disable skill_search \
+            --sandbox read-only \
+            --output-schema "$schema" \
+            -o "$provider_output" \
+            - <"$prompt_file"
+    )
+    codex_status=$?
+    set -e
+    if [[ $codex_status -ne 0 ]]; then
+        exit "$codex_status"
+    fi
+    if [[ ! -s "$provider_output" ]]; then
+        echo "ai-audit: Codex exited successfully but did not produce a result" >&2
+        exit 1
+    fi
+    current_head=$(git -C "$repo_root" rev-parse HEAD)
+    if [[ "$current_head" != "$head_sha" || -n "$(git -C "$repo_root" status --porcelain --untracked-files=normal)" ]]; then
+        echo "ai-audit: repository state changed during audit; refusing result" >&2
+        exit 1
+    fi
+    if ! jq -e --arg id "$domain" --arg head "$head_sha" '
+        .audit_id == $id and .head == $head and
+        (.findings | type == "array") and (.questions | type == "array")
+    ' "$provider_output" >/dev/null; then
+        echo "ai-audit: provider result does not match the requested audit target" >&2
+        exit 1
+    fi
 
-printf 'AI_AUDIT_RESULT: %s\n' "$output"
-printf 'AI_AUDIT_HEAD: %s\n' "$head_sha"
-printf 'AI_AUDIT_FINDINGS: %s\n' "$(jq '.findings | length' "$provider_output")"
-printf 'AI_AUDIT_QUESTIONS: %s\n' "$(jq '.questions | length' "$provider_output")"
+    # The subshell's current directory remains bound to the validated output
+    # directory inode even if its pathname is renamed or replaced during the
+    # audit. The helper uses rename(2) with basename-only paths from that
+    # anchored directory, so publication cannot follow a substituted parent,
+    # destination symlink, or hard link into tracked repository content.
+    "$publisher_binary" "$provider_output" "$output_basename"
+
+    printf 'AI_AUDIT_RESULT: %s\n' "$output"
+    printf 'AI_AUDIT_HEAD: %s\n' "$head_sha"
+    printf 'AI_AUDIT_FINDINGS: %s\n' "$(jq '.findings | length' "$provider_output")"
+    printf 'AI_AUDIT_QUESTIONS: %s\n' "$(jq '.questions | length' "$provider_output")"
+}
+
+# Keep this subshell alive for the entire provider run. Its current directory
+# is the capability that anchors final publication to the directory validated
+# above; inner subshells may enter the repository without changing that anchor.
+(
+    cd -- "$output_dir"
+    if [[ "$(pwd -P)" != "$output_dir" ]]; then
+        echo "ai-audit: --output directory changed before it could be anchored: $output_dir" >&2
+        exit 1
+    fi
+    run_audit
+)

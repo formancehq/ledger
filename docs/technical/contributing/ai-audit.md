@@ -46,4 +46,6 @@ A future campaign orchestrator may run independent auditors and challenge findin
 
 `bash scripts/ai-audit <domain>` writes a structured JSON report. The report records the audited HEAD, manifest id, findings, questions, inspected areas, and residual risk.
 
+Publication is atomic and anchored to the validated destination directory. A concurrent rename or symlink substitution of the output path must not redirect the final write into repository content.
+
 The audit command exits non-zero when the provider or output contract fails. The presence of findings itself is not an execution failure.
