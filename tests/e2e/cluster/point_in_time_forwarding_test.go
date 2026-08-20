@@ -33,13 +33,7 @@ var _ = Describe("Point-in-time balances forwarding", Ordered, Serial, func() {
 	)
 
 	BeforeAll(func() {
-		ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-			countInstances,
-			17000,
-			17100,
-			17200,
-			17300,
-		)
+		ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 	})
 
 	AfterAll(func() {

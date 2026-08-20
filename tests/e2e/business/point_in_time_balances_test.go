@@ -24,7 +24,8 @@ const pointInTimeViewTrailerKey = "x-historical-balance-view-bin"
 
 var _ = Describe("Point-in-time balances", Serial, func() {
 	It("serves v2-compatible historical monetary views through the real gRPC server", func() {
-		ctx, client, _ := testutil.SetupSingleNode(9710, 8710)
+		ctx, node := testutil.SetupSingleNode()
+		client := node.Client
 
 		By("separating effective time from insertion time and honoring read-after-write")
 		const axesLedger = "pit-e2e-axes"
@@ -392,7 +393,8 @@ var _ = Describe("Point-in-time balances", Serial, func() {
 	})
 
 	It("gates historical-balance reads by client-configured ledger name", func() {
-		ctx, client, _ := testutil.SetupSingleNode(9711, 8711)
+		ctx, node := testutil.SetupSingleNode()
+		client := node.Client
 
 		const (
 			allowedLedger = "pit-canary"
