@@ -513,3 +513,39 @@ func (b *Builder) handleDroppedIndexLog(ledger string, log *commonpb.DroppedInde
 		b.removeSchemaRewriteTaskByField(ledger, meta.Metadata.GetTarget(), meta.Metadata.GetKey())
 	}
 }
+
+// OnSnapshotInstalled tells the builder that a leader snapshot has been
+// installed and the store it reads is about to be — or already has been —
+// replaced by the leader's checkpoint. The index config it built at boot
+// describes the old store: it can hold indexes the restored registry has
+// dropped, whose read-store rows nothing would purge and whose declaration
+// removal would report no index to drop, and miss indexes created while this
+// node was behind, which then never build here.
+//
+// Called from the applier goroutine, so it only raises a flag — indexConfig
+// belongs to the builder loop, which rebuilds at its next safe point.
+func (b *Builder) OnSnapshotInstalled() {
+	b.configReloadPending.Store(true)
+}
+
+// reloadConfigIfRequested rebuilds the index config when a snapshot install has
+// swapped the store under it. Runs in the builder loop, which owns indexConfig.
+// On failure the request is raised again so the next iteration retries rather
+// than indexing on against a config describing a store that is gone.
+func (b *Builder) reloadConfigIfRequested(ctx context.Context) error {
+	if !b.configReloadPending.Swap(false) {
+		return nil
+	}
+
+	b.logger.WithFields(map[string]any{
+		"cmp": "index-builder",
+	}).Infof("Rebuilding index config after a snapshot install")
+
+	if err := b.initIndexConfig(ctx); err != nil {
+		b.configReloadPending.Store(true)
+
+		return fmt.Errorf("rebuilding index config after snapshot install: %w", err)
+	}
+
+	return nil
+}

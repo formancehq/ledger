@@ -46,6 +46,10 @@ type Builder struct {
 	metricsRegistration     metric.Registration // tailworker gauge triplet
 	logsIndexedRegistration metric.Registration // builder-specific logs_indexed_total gauge
 
+	// Raised when a leader snapshot install has swapped the store this cache
+	// was built from, and lowered by the loop once it has rebuilt.
+	configReloadPending atomic.Bool
+
 	// Per-ledger index configuration cache.
 	indexConfig map[string]*ledgerIndexConfig
 
@@ -539,6 +543,13 @@ func (b *Builder) loop(ctx context.Context) {
 			return
 		case <-b.notifications.LogCommitted.C():
 		case <-ticker.C:
+		}
+
+		// Ahead of touching the store: a snapshot install may have replaced it
+		// with the leader's checkpoint, leaving the config describing a store
+		// that is gone.
+		if err := b.reloadConfigIfRequested(ctx); err != nil {
+			b.logger.Errorf("%v", err)
 		}
 
 		// Fast path: skip Pebble iterator + batch commit when the FSM
