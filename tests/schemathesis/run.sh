@@ -6,7 +6,7 @@
 #
 # Usage: bash tests/schemathesis/run.sh
 # Env vars: HTTP_PORT, GRPC_PORT, RAFT_PORT, MAX_EXAMPLES, SCHEMATHESIS_WORKERS,
-#   SCHEMATHESIS_SHRINK
+#   SCHEMATHESIS_SHRINK, REPO_ROOT, SCHEMATHESIS_OPENAPI_PATH
 #   SCHEMATHESIS_WORKERS=N runs the endpoint suite across N concurrent workers
 #   (default 1). Keep at 1 for the reproducible gate: >1 breaks the
 #   `derandomize` determinism (see test_api.py). The suite is fast at 1 worker.
@@ -15,7 +15,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+SCHEMATHESIS_OPENAPI_PATH="${SCHEMATHESIS_OPENAPI_PATH:-$REPO_ROOT/openapi.yml}"
 
 HTTP_PORT=${HTTP_PORT:-9099}
 GRPC_PORT=${GRPC_PORT:-8899}
@@ -133,7 +134,7 @@ fi
 # Tee the full run (stdout+stderr) to an uploadable report. `set -o pipefail`
 # (see `set` above) makes the pipeline inherit test_api.py's non-zero exit, so a
 # conformity failure still fails the job. Filename matches the CI artifact glob.
-python3 "$SCRIPT_DIR/test_api.py" \
+SCHEMATHESIS_OPENAPI_PATH="$SCHEMATHESIS_OPENAPI_PATH" python3 "$SCRIPT_DIR/test_api.py" \
     --base-url "http://localhost:$HTTP_PORT" \
     --max-examples "$MAX_EXAMPLES" \
     --workers "$SCHEMATHESIS_WORKERS" \

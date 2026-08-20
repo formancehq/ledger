@@ -26,6 +26,7 @@
 #
 # Environment:
 #   REPO              path to the ledger repo checkout (default: the repo root, two levels up from this script)
+#   MODEL_HARNESS_REPO path providing the trusted model driver/oracle sources (default: REPO)
 #   NODES             node count (default 1); --nodes / --cluster override it
 #   GRPC_BASE         base gRPC port; raft = +100, http = +200 per band (default: random)
 #   RESTART_INTERVAL  seconds to soak between restarts, N>1 only; 0 disables restarts (default: 15)
@@ -120,6 +121,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # This script lives at tests/antithesis/ inside the repo; default REPO to the
 # repo root (two levels up). Override REPO=... to point at another checkout.
 REPO="${REPO:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+MODEL_HARNESS_REPO="${MODEL_HARNESS_REPO:-$REPO}"
 
 # Randomized port bands per run: a leaked node/driver from a killed shell can
 # never reach a new run's cluster (fixed ports would let an orphan corrupt a
@@ -267,6 +269,10 @@ if [ ! -d "$REPO" ]; then
 	echo "ERROR: REPO not found at $REPO (set REPO=...)" >&2
 	exit 2
 fi
+if [ ! -d "$MODEL_HARNESS_REPO/tests/antithesis/workload" ]; then
+	echo "ERROR: model harness not found under $MODEL_HARNESS_REPO (set MODEL_HARNESS_REPO=...)" >&2
+	exit 2
+fi
 
 # --- Launch one node ------------------------------------------------------
 # mode: bootstrap (new cluster) | join (learner via node 1's Raft transport,
@@ -379,7 +385,7 @@ build_cmd="go build $server_tags -o '$SERVER_BIN' . && "
 if [ "$NODES" -gt 1 ] || [ "$RESTORE" = 1 ]; then
 	build_cmd="${build_cmd}go build $server_tags -o '$LEDGERCTL_BIN' ./cmd/ledgerctl && "
 fi
-build_cmd="${build_cmd}cd tests/antithesis/workload && go build -o '$DRIVER_BIN' ./bin/cmds/model/singleton_driver_model"
+build_cmd="${build_cmd}cd '$MODEL_HARNESS_REPO/tests/antithesis/workload' && go build -o '$DRIVER_BIN' ./bin/cmds/model/singleton_driver_model"
 
 # Build inside the nix dev shell for a reproducible toolchain — unless we are
 # already in one (CI runs this as `nix develop --command just test-model`), in

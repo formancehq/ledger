@@ -188,6 +188,35 @@ The blocker payload and originating review result are immutable inputs. The orch
 
 After a successful fix command, the orchestrator runs `bash scripts/agent-check` by default. A validation failure stops the loop immediately. Only after validation succeeds does it invoke the reviewer again.
 
+## Local PR validation helper
+
+`scripts/agent-check-pr` provides the local validation profile that can be
+selected from an immutable base-to-worktree diff:
+
+```bash
+AI_REVIEW_BASE_SHA="$(git rev-parse origin/release/v3.0)" \
+  bash scripts/agent-check-pr
+```
+
+It always runs the baseline checks and unit tests, then selects additional
+local gates for production Go paths, scenarios and Numscript, HTTP/OpenAPI,
+the operator module, and stateful cluster paths. Stateful changes run the
+three-node model checker with rolling restarts. These gates are local
+correctness profiles selected for the changed architecture, not a mirror of
+GitHub Actions jobs.
+
+The helper routes Just recipes through `scripts/agent-just`. That wrapper pins
+the recipe definitions to the checkout containing the wrapper, disables dotenv
+loading, and keeps the reviewed repository as the recipe working directory.
+Script-backed Schemathesis and model-checker gates use runners from that same
+tool checkout while building the reviewed server and reading reviewed inputs
+through explicit paths. The model driver and oracle remain tool-pinned.
+
+This helper is intentionally introduced independently of the `review-loop`
+approval policy. Wiring it as a mandatory guarded-publish validator is a
+separate activation step, after the helper exists in the base-pinned trusted
+tool worktree.
+
 ## Claude Code fix adapter
 
 `scripts/ai-fix-claude` is the first provider-specific fixer adapter. It deliberately exposes a narrower autonomous surface than an interactive Claude Code session.
