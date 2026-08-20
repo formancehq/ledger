@@ -3,7 +3,6 @@ package cluster
 import (
 	"fmt"
 
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
@@ -68,7 +67,7 @@ func runMaintenance(cmd *cobra.Command, args []string) error {
 		action = "Disabling"
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start(action + " maintenance mode...")
+	spinner := cmdutil.StartSpinner(action + " maintenance mode...")
 
 	requests := []*servicepb.Request{
 		{

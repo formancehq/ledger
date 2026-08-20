@@ -68,7 +68,7 @@ func runConfiguration(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching configuration for %s...", ledgerName))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching configuration for %s...", ledgerName))
 
 	// Fetch ledger info (metadata schema, account types). Indexes are fetched
 	// separately via BucketService.ListIndexes since they no longer live in

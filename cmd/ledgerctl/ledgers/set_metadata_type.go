@@ -112,7 +112,7 @@ func runSetMetadataType(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Setting metadata type %s.%s = %s on %s...",
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Setting metadata type %s.%s = %s on %s...",
 		cmdutil.TargetTypeString(targetType), key, cmdutil.MetadataTypeString(mdType), ledgerName))
 
 	requests := []*servicepb.Request{

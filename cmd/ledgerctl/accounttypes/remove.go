@@ -46,7 +46,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Removing account type %s...", typeName))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Removing account type %s...", typeName))
 
 	requests := []*servicepb.Request{
 		{

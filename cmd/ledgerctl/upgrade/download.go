@@ -13,8 +13,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/pterm/pterm"
-
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 )
 
@@ -45,7 +43,7 @@ func parseChecksums(r io.Reader) (map[string]string, error) {
 // downloadAndVerify downloads the archive and checksums, verifies the archive's
 // SHA256 hash, then extracts the ledgerctl binary to a temp file.
 // Returns the path to the temp file containing the extracted binary.
-func downloadAndVerify(archiveAsset, checksumsAsset *assetInfo, spinner *pterm.SpinnerPrinter) (string, error) {
+func downloadAndVerify(archiveAsset, checksumsAsset *assetInfo, spinner *cmdutil.Spinner) (string, error) {
 	// 1. Download checksums.txt (small, in memory).
 	spinner.UpdateText("Downloading checksums...")
 

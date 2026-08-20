@@ -44,7 +44,7 @@ func runPrimaryMetrics(cmd *cobra.Command, _ []string) error {
 
 	nodeID, _ := cmd.Flags().GetUint32("node-id")
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching store metrics...")
+	spinner := cmdutil.StartSpinner("Fetching store metrics...")
 
 	resp, err := client.GetPrimaryMetrics(ctx, &servicepb.GetPrimaryMetricsRequest{
 		NodeId: nodeID,

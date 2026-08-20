@@ -90,7 +90,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Deleting ledger %s...", name))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Deleting ledger %s...", name))
 
 	requests := []*servicepb.Request{
 		{
