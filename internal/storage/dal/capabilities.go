@@ -104,6 +104,9 @@ type CheckpointStaging interface {
 type QueryCheckpoints interface {
 	CreateQueryCheckpoint(id uint64) (string, error)
 	DeleteQueryCheckpointFiles(id uint64) error
+	// ListQueryCheckpointDirs returns the ids of the physical checkpoint
+	// directories present on this node, so recovery can reclaim orphans.
+	ListQueryCheckpointDirs() ([]uint64, error)
 }
 
 // ColdStorageScanner exposes the cold-storage iteration primitive used to

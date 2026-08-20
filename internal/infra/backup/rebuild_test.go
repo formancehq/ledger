@@ -1001,6 +1001,17 @@ func registerSigningKeyLog(seq uint64, keyID string, pub []byte, parentKeyID str
 	}
 }
 
+func createdQueryCheckpointLog(seq, id, maxSeq uint64) *commonpb.Log {
+	return &commonpb.Log{
+		Sequence: seq,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
+				CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: id, MaxSequence: maxSeq, CreatedAt: &commonpb.Timestamp{Data: maxSeq * 10}},
+			},
+		},
+	}
+}
+
 func revokeSigningKeyLog(seq uint64, keyID string, cascaded []string) *commonpb.Log {
 	return &commonpb.Log{
 		Sequence: seq,
@@ -1009,6 +1020,17 @@ func revokeSigningKeyLog(seq uint64, keyID string, cascaded []string) *commonpb.
 				RevokeSigningKey: &commonpb.RevokedSigningKeyLog{
 					KeyId: keyID, CascadedKeyIds: cascaded,
 				},
+			},
+		},
+	}
+}
+
+func deletedQueryCheckpointLog(seq, id uint64) *commonpb.Log {
+	return &commonpb.Log{
+		Sequence: seq,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_DeletedQueryCheckpoint{
+				DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: id},
 			},
 		},
 	}
@@ -1096,4 +1118,49 @@ func TestRebuildDelta_ReplaysRevokeSigningKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRebuildDelta_ReplaysQueryCheckpoints pins that the audit-rebuild path
+// recreates the query-checkpoint metadata rows from the CreatedQueryCheckpoint /
+// DeletedQueryCheckpoint logs (id + max_sequence) and honors deletes, so the
+// projection the cap and compareQueryCheckpoints read stays audit-consistent
+// after a rebuild.
+func TestRebuildDelta_ReplaysQueryCheckpoints(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	// Create 1..5, then delete the two highest live ones (4, 5). The counter
+	// must still land at 6: it is monotonic and must never reissue 5, even
+	// though the highest surviving row is 3.
+	batch := store.OpenWriteSession()
+	for id := uint64(1); id <= 5; id++ {
+		require.NoError(t, batch.SetProto(coldLogKey(id), createdQueryCheckpointLog(id, id, id*10)))
+	}
+	require.NoError(t, batch.SetProto(coldLogKey(6), deletedQueryCheckpointLog(6, 4)))
+	require.NoError(t, batch.SetProto(coldLogKey(7), deletedQueryCheckpointLog(7, 5)))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	ids, err := query.ReadLiveQueryCheckpointIDs(handle)
+	require.NoError(t, err)
+	require.Equal(t, map[uint64]struct{}{1: {}, 2: {}, 3: {}}, ids,
+		"rebuild must recreate live checkpoint rows and drop deleted ones")
+
+	cp, err := query.ReadQueryCheckpoint(handle, 3)
+	require.NoError(t, err)
+	require.NotNil(t, cp)
+	require.Equal(t, uint64(30), cp.GetMaxSequence(), "max_sequence must survive the rebuild")
+	require.Equal(t, uint64(300), cp.GetCreatedAt().GetData(), "created_at must survive the rebuild")
+
+	// The monotonic counter must be restored to max(created)+1 = 6, not
+	// max(surviving)+1 = 4 — else a post-rebuild create would reissue id 4/5.
+	next, err := query.ReadNextQueryCheckpointID(handle)
+	require.NoError(t, err)
+	require.Equal(t, uint64(6), next, "next-ID counter must sit above every created id, deleted ones included")
 }

@@ -104,7 +104,9 @@ type Scope interface {
 	SetNumscriptLatestVersion(ledgerName string, name, version string)
 	ResolveNumscriptContent(ledgerName string, name, version string) (commonpb.NumscriptInfoReader, error)
 
-	// Query checkpoint operations
+	// Query checkpoint operations. Enforcement of the live-checkpoint limit and
+	// delete existence is done softly at admission, so the FSM apply path neither
+	// counts nor gates — it only assigns ids and stages saves/deletes.
 	GetNextQueryCheckpointID() uint64
 	IncrementNextQueryCheckpointID() uint64
 	SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState)

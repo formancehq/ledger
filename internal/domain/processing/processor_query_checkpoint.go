@@ -6,8 +6,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
+// processCreateQueryCheckpoint applies a CreateQueryCheckpoint order
+// unconditionally: the live-checkpoint limit is enforced softly at admission, so
+// a committed create always applies identically on every node regardless of that
+// node's configured limit (FSM determinism).
 func processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
+
 	checkpointID := s.IncrementNextQueryCheckpointID()
 
 	cp := &raftcmdpb.QueryCheckpointState{
@@ -25,16 +30,16 @@ func processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, c
 			CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
 				CheckpointId: checkpointID,
 				MaxSequence:  cp.GetMaxSequence(),
+				CreatedAt:    cp.GetCreatedAt(),
 			},
 		},
 	}, nil
 }
 
+// processDeleteQueryCheckpoint applies a delete unconditionally (id validity and
+// existence are checked softly at admission). Emitting the log on every node is
+// what drives the per-node physical file cleanup.
 func processDeleteQueryCheckpoint(order *raftcmdpb.DeleteQueryCheckpointOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
-	if order.GetCheckpointId() == 0 {
-		return nil, domain.ErrCheckpointIDRequired
-	}
-
 	ctx.Scope.DeleteQueryCheckpoint(order.GetCheckpointId())
 	// QueryCheckpointDeleted is derived from DeletedQueryCheckpointLog by
 	// deriveSignals.

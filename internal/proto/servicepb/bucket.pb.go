@@ -168,6 +168,14 @@ const (
 	// never seeded from the live projection -- that would verify old,
 	// never-touched keys against a copy of themselves.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE CheckStoreErrorType = 23
+	// Emitted when the live query-checkpoint rows (ZoneGlobal/SubGlobQueryCheckpoint)
+	// diverge from the set the checker re-derives from the CreatedQueryCheckpoint /
+	// DeletedQueryCheckpoint logs (baseline-seeded under archiving). Both directions
+	// are flagged: a stored id that was never created or was later deleted (phantom
+	// or stale row), and an audit-live checkpoint with no stored row (lost or
+	// dropped projection). The audit-rebuild path recreates the rows from the logs,
+	// so a missing row is corruption, not a restore artifact.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH CheckStoreErrorType = 24
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -197,6 +205,7 @@ var (
 		21: "CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH",
 		22: "CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH",
 		23: "CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE",
+		24: "CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                     0,
@@ -223,6 +232,7 @@ var (
 		"CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH":            21,
 		"CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH":         22,
 		"CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE": 23,
+		"CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH":       24,
 	}
 )
 
@@ -9712,7 +9722,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xfc\b\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xb2\t\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9738,7 +9748,8 @@ const file_bucket_proto_rawDesc = "" +
 	")CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN\x10\x14\x12/\n" +
 	"+CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH\x10\x15\x122\n" +
 	".CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH\x10\x16\x12:\n" +
-	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17*W\n" +
+	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17\x124\n" +
+	"0CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH\x10\x18*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +

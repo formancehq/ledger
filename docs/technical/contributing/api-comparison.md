@@ -939,6 +939,8 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Storage operation failed | `INTERNAL` | `STORAGE_OPERATION_FAILED` | `operation` |
 | Preload coverage miss (admission contract violation) | `INTERNAL` | `COVERAGE_MISS` | `attribute`, `canonicalHex`, `idHex`, `raftIndex` |
 | Checkpoint ID required | `INVALID_ARGUMENT` | `CHECKPOINT_ID_REQUIRED` | *(none)* |
+| Checkpoint limit reached | `RESOURCE_EXHAUSTED` | `CHECKPOINT_LIMIT_REACHED` | `limit` |
+| Checkpoint not found | `NOT_FOUND` | `CHECKPOINT_NOT_FOUND` | `checkpointId` |
 
 ### REST/HTTP Error Mapping
 

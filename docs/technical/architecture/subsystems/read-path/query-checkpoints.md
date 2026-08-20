@@ -35,6 +35,21 @@ The read index materializes asynchronously and **per-replica** (step 5). Readine
 
 The `.ready` marker and the checkpoint directories are rebuildable filesystem lifecycle state (a projection of the audit log), not a persisted Pebble projection, so they are outside the checker's scope.
 
+## Retention and the Live Checkpoint Limit
+
+The number of live query checkpoints is bounded by a **per-node startup limit** (`--query-checkpoint-limit`, default **10**), enforced softly at admission. There is no automatic eviction — once the live count reaches the limit, creation fails until an operator deletes one.
+
+**Why a limit, why configurable, and why 10 by default.** Each query checkpoint is a full `db.Checkpoint()` of the main store plus a read-index snapshot — directories of hard-linked SSTs that pin disk as the live store compacts. Left unbounded, a scheduler or a client loop grows disk and `ListQueryCheckpoints` payloads without end (the EN-1501 hazard). The *right* ceiling depends on deployment (disk headroom, checkpoint cadence, how many point-in-time views a workload needs), so it is an infrastructure setting rather than a baked-in constant. **10 is a conservative default**, not a derived optimum: enough for typical point-in-time use while keeping worst-case disk bounded.
+
+- **Enforcement is soft, at admission — the FSM apply path is unconditional.** Before proposing a `CreateQueryCheckpoint`, the leader counts its current live checkpoints (`query.ReadLiveQueryCheckpointIDs`, a proposer-side Pebble read) and rejects at the limit with `ErrCheckpointLimitReached` — reason `CHECKPOINT_LIMIT_REACHED`, gRPC `ResourceExhausted` / HTTP 429. The committed command carries no limit and the apply path counts nothing: `processCreateQueryCheckpoint` always applies identically on every node (FSM determinism, invariant #2), so the node-local limit never enters replicated state. This is why the limit can be a plain startup flag rather than a Raft-committed setting.
+- **Delete existence is also checked at admission.** `DeleteQueryCheckpoint` for an id that is zero or not live is rejected before proposal with `ErrCheckpointNotFound` — reason `CHECKPOINT_NOT_FOUND`, gRPC `NotFound` / HTTP 404. A committed delete applies unconditionally: emitting the `DeletedQueryCheckpointLog` on every node is what drives the per-node physical file cleanup.
+- **Bounded overshoot, no reservation machinery.** Because the count is read at propose time and the limit is not serialized into the command, concurrent in-flight creates can each pass the check before any commits, briefly overshooting the limit by up to the number of simultaneous creates. This is accepted deliberately — a slot reservation / serialization scheme would add complexity for a soft disk ceiling that tolerates a small transient overshoot.
+- **Rolling-upgrade behavior.** Enforcement lives on whichever node is leader when a create is admitted. A pre-upgrade leader that lacks the check will not enforce; an upgraded leader will. Because the check is admission-side and the committed command is unchanged, the two never disagree about *applied* state — only about whether a given create was admitted — so replicas stay deterministic throughout the upgrade. Operators wanting uniform enforcement should complete the rollout.
+- **Checker coverage.** The stored checkpoint rows are verified against the audit chain **both ways**: the checker re-derives the live set from the `CreatedQueryCheckpointLog` / `DeletedQueryCheckpointLog` stream (baseline-seeded under archiving) and flags a stored row with no create / a later delete *and* an audit-live checkpoint with no stored row (`CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH`), per invariant #8. For a present row it also compares `max_sequence`, `created_at`, and the key-vs-payload `checkpoint_id`. The audit-rebuild path (`internal/infra/backup`) recreates the metadata rows and the monotonic next-ID counter from the logs — the physical files cannot be, so a rebuilt checkpoint reads `Unavailable` until deleted — so a missing row is always corruption, never a restore artifact. The limit itself is not a persisted projection, so there is no limit checker pass. `NextQueryCheckpointID` is monotonic and is **not** the live count (deletes do not decrement it).
+- **Orphaned directory reclamation.** A follower caught up by a snapshot install receives the leader's row-absent state without running the per-entry file-delete hook, so its local `query-checkpoints/<id>/` can survive with no live row. Recovery (`RecoverState`, at boot and after every follower sync) sweeps `query-checkpoints/*` against the live IDs read from Pebble (`query.ReadLiveQueryCheckpointIDs`) and removes any directory with no live row — best-effort, so a transient filesystem error never blocks recovery. Without it those hard-linked Pebble checkpoints would pin disk indefinitely, since deletion is otherwise only log-driven.
+
+Because the live cardinality is bounded by the limit, `ListQueryCheckpoints` stays small and is intentionally not paginated.
+
 ## Automatic Checkpoint Creation (Cron Scheduler)
 
 Checkpoint creation can be automated via a cron schedule. The schedule is a runtime-modifiable configuration stored in Raft, following the same pattern as chapter schedule (`SetChapterSchedule`).
@@ -65,7 +80,7 @@ The `QueryCheckpointScheduler` runs on every node but only triggers checkpoint c
 2. When the schedule changes, a notification signal wakes the scheduler goroutine to recompute the next fire time.
 3. On leader change, the new leader's scheduler is already running and will fire at the next scheduled time.
 
-Checkpoints accumulate over time. Old checkpoints are **not** automatically cleaned up — use `ledgerctl query-checkpoint delete` to remove them when no longer needed.
+Checkpoints are never automatically evicted, but the number live at once is capped by the [per-node limit](#retention-and-the-live-checkpoint-limit). Once the limit is reached the scheduler stops creating checkpoints — logging the condition once rather than on every tick — and resumes automatically after an operator frees a slot with `ledgerctl query-checkpoint delete`.
 
 **File**: `internal/infra/state/query_checkpoint_scheduler.go`
 
@@ -126,6 +141,8 @@ ledgerctl query-checkpoint delete-schedule
 # Show current schedule
 ledgerctl query-checkpoint get-schedule
 ```
+
+The live-checkpoint limit is a per-node startup flag (`--query-checkpoint-limit`, default 10), not a runtime command.
 
 ## Storage
 

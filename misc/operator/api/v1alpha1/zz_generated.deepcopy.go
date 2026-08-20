@@ -653,6 +653,11 @@ func (in *ClusterSpec) DeepCopyInto(out *ClusterSpec) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.QueryCheckpointLimit != nil {
+		in, out := &in.QueryCheckpointLimit, &out.QueryCheckpointLimit
+		*out = new(int32)
+		**out = **in
+	}
 	if in.UnsafeSkipConfigValidation != nil {
 		in, out := &in.UnsafeSkipConfigValidation, &out.UnsafeSkipConfigValidation
 		*out = new(bool)

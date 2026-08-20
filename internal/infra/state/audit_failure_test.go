@@ -468,6 +468,21 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"checkpointId": "18"},
 		},
 		{
+			// Admission-only (soft cap) rejection; carried here because the type is
+			// a Describable and the coverage test forces a row for every one.
+			name:        "CheckpointLimitReached",
+			err:         &domain.ErrCheckpointLimitReached{Limit: 10},
+			wantReason:  domain.ErrReasonCheckpointLimitReached,
+			wantContext: map[string]string{"limit": "10"},
+		},
+		{
+			// Admission-only (soft existence check) rejection; see above.
+			name:        "CheckpointNotFound",
+			err:         &domain.ErrCheckpointNotFound{CheckpointID: 7},
+			wantReason:  domain.ErrReasonCheckpointNotFound,
+			wantContext: map[string]string{"checkpointId": "7"},
+		},
+		{
 			// The Go field is Detail; the wire key is "reason" (legacy contract,
 			// errors.go:1051) — a rename here would break the audited key set.
 			name:        "InvalidReceipt",

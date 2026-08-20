@@ -1,10 +1,12 @@
 package state
 
 import (
+	"errors"
 	"time"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
@@ -20,6 +22,12 @@ type QueryCheckpointScheduler struct {
 	proposeFn       func() error
 	scheduleChanged signal.Signal
 	w               worker.Worker
+
+	// limitReached remembers that the last fire was rejected because the
+	// checkpoint cap is full, so the condition is logged once rather than on
+	// every subsequent tick. Cleared on the next successful creation. Accessed
+	// only from the single scheduler goroutine.
+	limitReached bool
 }
 
 // NewQueryCheckpointScheduler creates a new QueryCheckpointScheduler.
@@ -49,6 +57,15 @@ func (s *QueryCheckpointScheduler) Start() {
 // Stop signals the scheduler to stop and waits for it to finish.
 func (s *QueryCheckpointScheduler) Stop() {
 	s.w.Stop()
+}
+
+// isCheckpointLimitReached reports whether err is the typed
+// CHECKPOINT_LIMIT_REACHED business rejection, so the scheduler can treat a
+// full cap as an expected steady state rather than a transient failure.
+func isCheckpointLimitReached(err error) bool {
+	var describable domain.Describable
+
+	return errors.As(err, &describable) && describable.Reason() == domain.ErrReasonCheckpointLimitReached
 }
 
 // loop is the main scheduler loop.
@@ -111,7 +128,20 @@ func (s *QueryCheckpointScheduler) loop(stop <-chan struct{}) {
 			if s.isLeader() {
 				s.logger.Infof("Query checkpoint scheduler firing: proposing CreateQueryCheckpoint")
 
-				if err := s.proposeFn(); err != nil {
+				switch err := s.proposeFn(); {
+				case err == nil:
+					s.limitReached = false
+				case isCheckpointLimitReached(err):
+					// Expected steady-state once the cap is full: keep the
+					// timer armed so creation resumes automatically once an
+					// operator deletes a checkpoint, but log only on entry to
+					// avoid a per-tick error every cron period.
+					if !s.limitReached {
+						s.limitReached = true
+
+						s.logger.Infof("Query checkpoint limit reached; skipping scheduled creation until a checkpoint is deleted")
+					}
+				default:
 					s.logger.Errorf("Failed to propose CreateQueryCheckpoint: %v (will retry on next tick)", err)
 				}
 			}
