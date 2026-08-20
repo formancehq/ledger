@@ -867,19 +867,12 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 		// the re-fetched logs arrive as v2LogID == last+1 — the APPLY branch,
 		// not the idempotent skip (EN-1776).
 		//
-		// Max, not assignment: a same-ledger effect can carry no source id at
-		// all. DecodeOrderEffects returns a non-empty Ledger with
-		// MirrorV2LogID == 0 for a script-sourced CreateTransaction, so one
-		// numscript order in the delta of a promoted ex-mirror ledger would,
-		// under an assignment, rewind the checkpoint-seeded mark boundaryFor
-		// loaded to 0 — and compareMirrorV2LogID is a strict equality check
-		// against its own max fold, so the checker would then report
-		// CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH on a healthy store.
-		// Pinned by TestRebuildDelta_NumscriptOrderDoesNotClobberMirrorMark.
-		//
-		// It also matches the checker's own fold in
-		// recordMirrorIngestMutations, so rebuild and checker agree by
-		// construction.
+		// Max, not assignment: it matches the checker's own fold in
+		// recordMirrorIngestMutations, so the rebuild and the checker's
+		// oracle agree by construction. compareMirrorV2LogID is a strict
+		// equality check against that fold, so a divergence here would
+		// surface as CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH on a
+		// healthy store. Pinned by TestRebuildDelta_FoldsHighestMirrorV2LogID.
 		if effects.MirrorV2LogID > b.GetLastMirrorV2LogId() {
 			b.LastMirrorV2LogId = effects.MirrorV2LogID
 		}

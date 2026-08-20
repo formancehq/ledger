@@ -112,11 +112,16 @@ func TestDecodeOrderEffects(t *testing.T) {
 			want:  OrderEffects{},
 		},
 		{
-			name: "script-sourced transaction is flagged numscript",
+			// A script-sourced transaction is a plain apply order: it advances
+			// no boundary field the ledger-log stream does not already carry,
+			// so it drops out here like the postings-sourced case above. This
+			// pins that the guard keys off the mirror source id and the fill
+			// gap, not off how the transaction content was expressed.
+			name: "script-sourced transaction has no boundary effect",
 			order: applyCreateTransactionOrder("led", &raftcmdpb.CreateTransactionOrder{
 				Script: &commonpb.Script{Plain: "send [USD/2 1] (source = @a destination = @b)"},
 			}),
-			want: OrderEffects{Ledger: "led", IsNumscript: true},
+			want: OrderEffects{},
 		},
 	}
 

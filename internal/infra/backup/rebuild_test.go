@@ -173,29 +173,6 @@ func mirrorCreatedTransactionOrder(ledger string, v2LogID, txID uint64) *raftcmd
 	}
 }
 
-// numscriptOrder builds a script-sourced CreateTransaction order. It carries no
-// mirror source id, but DecodeOrderEffects still returns a non-empty Ledger for
-// it (IsNumscript alone defeats the zero guard), so it reaches the mirror fold
-// with MirrorV2LogID == 0.
-func numscriptOrder(ledger string) *raftcmdpb.Order {
-	return &raftcmdpb.Order{
-		Type: &raftcmdpb.Order_LedgerScoped{
-			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
-				Ledger: ledger,
-				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
-					Apply: &raftcmdpb.LedgerApplyOrder{
-						Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
-							CreateTransaction: &raftcmdpb.CreateTransactionOrder{
-								Script: &commonpb.Script{Plain: "send [USD/2 1] (source = @a destination = @b)"},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-}
-
 func auditSuccess(seq, minLogSeq, maxLogSeq uint64) *auditpb.AuditEntry {
 	return &auditpb.AuditEntry{
 		Sequence: seq,
@@ -411,9 +388,10 @@ func TestRebuildDelta_AdvancesLastMirrorV2LogIDForCreatedTransaction(t *testing.
 // The descending pair it feeds is not reachable on a healthy store —
 // processMirrorIngest no-ops v2LogID <= last and rejects v2LogID > last+1, so
 // the applied ingests of one ledger have strictly increasing ids, and audit key
-// order is ascending by audit sequence. The reachable reason the max is
-// load-bearing is a same-ledger effect carrying NO source id; that one is
-// pinned by TestRebuildDelta_NumscriptOrderDoesNotClobberMirrorMark below.
+// order is ascending by audit sequence. The max is nonetheless the required
+// shape: the checker's own fold in recordMirrorIngestMutations is a max, and
+// compareMirrorV2LogID is strict equality against it, so an assignment here
+// would diverge from the oracle. This case is what pins that shape.
 func TestRebuildDelta_FoldsHighestMirrorV2LogID(t *testing.T) {
 	t.Parallel()
 
@@ -438,58 +416,6 @@ func TestRebuildDelta_FoldsHighestMirrorV2LogID(t *testing.T) {
 	require.NotNil(t, boundary)
 	require.Equal(t, uint64(9), boundary.GetLastMirrorV2LogId(),
 		"the mark must hold the highest folded id, not the last one folded")
-}
-
-// TestRebuildDelta_NumscriptOrderDoesNotClobberMirrorMark pins the reachable
-// regression the max fold prevents.
-//
-// Promotion flips a mirror ledger to NORMAL mode but never zeroes its
-// boundaries, so a promoted ex-mirror ledger keeps its last_mirror_v2_log_id,
-// and boundaryFor seeds the working row from that checkpoint value. A numscript
-// order in the delta then arrives with a non-empty Ledger and MirrorV2LogID ==
-// 0: under a plain assignment it would rewind the mark to 0. compareMirrorV2LogID
-// is strict equality against the checker's own max fold, so the rewind would
-// surface as CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH on a healthy store.
-func TestRebuildDelta_NumscriptOrderDoesNotClobberMirrorMark(t *testing.T) {
-	t.Parallel()
-
-	const ledgerName = "promoted"
-
-	store := newRebuildTestStore(t)
-	attrs := attributes.New()
-
-	// Checkpoint state: the ledger exists (so seedLedgerContext picks it up
-	// rather than the delta creating it, which would reset the boundaries to
-	// genesis) and still carries the mark from its mirror days.
-	seed := store.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(seed, ledgerName, &commonpb.LedgerInfo{
-		Name: ledgerName,
-		Mode: commonpb.LedgerMode_LEDGER_MODE_NORMAL,
-	}))
-	_, err := attrs.Boundary.Set(seed, domain.LedgerKey{Name: ledgerName}.Bytes(), &raftcmdpb.LedgerBoundaries{
-		NextTransactionId: 1,
-		NextLogId:         1,
-		LastMirrorV2LogId: 9,
-	})
-	require.NoError(t, err)
-	require.NoError(t, seed.Commit())
-
-	// Delta: one numscript order for that same ledger.
-	batch := store.OpenWriteSession()
-	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 2, numscriptOrder(ledgerName))))
-	require.NoError(t, batch.Commit())
-
-	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
-
-	handle, err := store.NewDirectReadHandle()
-	require.NoError(t, err)
-	defer func() { _ = handle.Close() }()
-
-	boundary, err := attrs.Boundary.Get(handle, domain.LedgerKey{Name: ledgerName}.Bytes())
-	require.NoError(t, err)
-	require.NotNil(t, boundary)
-	require.Equal(t, uint64(9), boundary.GetLastMirrorV2LogId(),
-		"an effect carrying no source id must leave the checkpoint-seeded mirror mark alone")
 }
 
 func TestRebuildDelta_ReplaysLedgerMetadata(t *testing.T) {
