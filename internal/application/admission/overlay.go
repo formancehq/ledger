@@ -81,6 +81,15 @@ type bulkOverlay struct {
 	// order: the FSM re-derives them from the coverage-gated TransactionState,
 	// and only caller intent is bound into the audit chain.
 	revertOriginalPostings map[domain.TransactionKey][]*commonpb.Posting
+
+	// Query-checkpoint effects staged earlier in this bulk, so the admission
+	// limit/existence checks see committed Pebble plus same-bulk changes:
+	// checkpointCreates counts creates admitted so far; checkpointDeletes holds
+	// the committed-live ids a delete has already targeted. Without this, a
+	// batch that deletes a checkpoint then creates one is rejected at the limit
+	// even though the delete frees a slot atomically.
+	checkpointCreates int
+	checkpointDeletes map[uint64]struct{}
 }
 
 func newBulkOverlay() *bulkOverlay {
@@ -89,7 +98,34 @@ func newBulkOverlay() *bulkOverlay {
 		numscriptLatest:        newOverlay[numscriptNameKey, string](),
 		sinks:                  newOverlay[string, *commonpb.SinkConfig](),
 		revertOriginalPostings: make(map[domain.TransactionKey][]*commonpb.Posting),
+		checkpointDeletes:      make(map[uint64]struct{}),
 	}
+}
+
+// recordCheckpointCreate marks that a CreateQueryCheckpoint was admitted earlier
+// in this bulk, so a later create in the same bulk counts it against the limit.
+func (o *bulkOverlay) recordCheckpointCreate() {
+	o.checkpointCreates++
+}
+
+// recordCheckpointDelete marks a committed-live id as deleted earlier in this
+// bulk, so it both frees a limit slot and is no longer deletable again.
+func (o *bulkOverlay) recordCheckpointDelete(id uint64) {
+	o.checkpointDeletes[id] = struct{}{}
+}
+
+// isCheckpointDeletedInBulk reports whether a delete for id was already staged
+// in this bulk.
+func (o *bulkOverlay) isCheckpointDeletedInBulk(id uint64) bool {
+	_, ok := o.checkpointDeletes[id]
+
+	return ok
+}
+
+// checkpointNetLive returns the same-bulk delta to add to the committed live
+// count: creates staged so far minus committed-live ids deleted so far.
+func (o *bulkOverlay) checkpointNetLive() int {
+	return o.checkpointCreates - len(o.checkpointDeletes)
 }
 
 // recordRevertOriginalPostings stores the postings admission resolved for a

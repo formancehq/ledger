@@ -184,6 +184,9 @@ type Config struct {
 	BackupMaxSegmentBytes int64
 	NumscriptCacheSize    int
 	MirrorMaxBatchSize    int
+	// QueryCheckpointLimit is the operator-configured max live query checkpoints,
+	// enforced softly at admission (not a replicated setting).
+	QueryCheckpointLimit uint64
 	// MaxExecutionPlanSize caps the number of AttributeCoverage entries an
 	// ExecutionPlan may carry. 0 disables the cap. See plan.Builder.
 	MaxExecutionPlanSize        int
@@ -297,6 +300,11 @@ func (c Config) Validate() error {
 	}
 	if err := validateHealthThresholds(c.HealthConfig.DataThreshold, c.HealthConfig.DataResumeThreshold); err != nil {
 		return fmt.Errorf("data: %w", err)
+	}
+
+	// Zero would reject every checkpoint creation, silently disabling the feature.
+	if c.QueryCheckpointLimit == 0 {
+		return errors.New("--query-checkpoint-limit must be greater than zero")
 	}
 
 	return nil

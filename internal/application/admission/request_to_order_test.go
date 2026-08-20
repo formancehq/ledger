@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -514,6 +515,13 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 	}
 
 	store := createTestStore(t)
+
+	// The delete_query_checkpoint variant passes through admission's existence
+	// check, so seed a live checkpoint (id 1) for it to target.
+	seed := store.OpenWriteSession()
+	require.NoError(t, state.SaveQueryCheckpoint(seed, &raftcmdpb.QueryCheckpointState{CheckpointId: 1}))
+	require.NoError(t, seed.Commit())
+
 	admission, _ := createTestAdmission(t, store)
 
 	for _, tc := range cases {

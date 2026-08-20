@@ -19,8 +19,8 @@ func newListCommand() *cobra.Command {
 		Short:   "List all query checkpoints",
 		Long: `List all query checkpoints registered on the cluster.
 
-Query checkpoints are stored in replicated state and naturally bounded in size;
-this endpoint is intentionally not paginated.`,
+Query checkpoints are stored in replicated state and capped at 10 live
+checkpoints, so the result set is small and this endpoint is not paginated.`,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runList,

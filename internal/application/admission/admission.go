@@ -69,6 +69,12 @@ type Admission struct {
 	authEnabled        bool
 	waitLeaderReady    func(context.Context) error
 
+	// queryCheckpointLimit is the operator-configured max live query checkpoints,
+	// enforced softly here (admission rejects a create at the limit) rather than
+	// in the FSM apply path — a committed CreateQueryCheckpoint always applies
+	// identically on every node regardless of this node's configured value.
+	queryCheckpointLimit uint64
+
 	// Metrics (noop when metricsEnabled is false)
 	metricsEnabled                 bool
 	commandDurationHistogram       metric.Int64Histogram
@@ -155,6 +161,17 @@ func WithAuthEnabled() func(*Admission) {
 	}
 }
 
+// DefaultQueryCheckpointLimit is the max live query checkpoints when the operator
+// configures none. Enforced softly at admission; not a Raft protocol invariant.
+const DefaultQueryCheckpointLimit uint64 = 10
+
+// WithQueryCheckpointLimit sets the operator-configured max live query checkpoints.
+func WithQueryCheckpointLimit(limit uint64) func(*Admission) {
+	return func(a *Admission) {
+		a.queryCheckpointLimit = limit
+	}
+}
+
 func NewAdmission(
 	store *dal.Store,
 	logger logging.Logger,
@@ -170,16 +187,17 @@ func NewAdmission(
 	opts ...func(*Admission),
 ) *Admission {
 	a := &Admission{
-		store:           store,
-		logger:          logger,
-		proposer:        proposer,
-		builder:         builder,
-		writeGate:       writeGate,
-		keyStore:        keyStore,
-		sharedState:     sharedState,
-		attrs:           attrs,
-		numscriptCache:  numscriptCache,
-		waitLeaderReady: waitLeaderReady,
+		store:                store,
+		logger:               logger,
+		proposer:             proposer,
+		builder:              builder,
+		writeGate:            writeGate,
+		keyStore:             keyStore,
+		sharedState:          sharedState,
+		attrs:                attrs,
+		numscriptCache:       numscriptCache,
+		waitLeaderReady:      waitLeaderReady,
+		queryCheckpointLimit: DefaultQueryCheckpointLimit,
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -1981,6 +1999,72 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 	return nil
 }
 
+// checkQueryCheckpointLimit rejects a create once the live checkpoint count has
+// reached the configured limit. Soft enforcement: it reads the leader's committed
+// count from Pebble and folds in same-bulk creates/deletes via the overlay, so a
+// batch that deletes a checkpoint then creates one is admitted atomically.
+// Concurrent creates across separate proposals may still overshoot until a
+// checkpoint is deleted. The FSM applies a committed create unconditionally.
+// Records the admitted create in the overlay so a later create in the same bulk
+// counts it.
+func (a *Admission) checkQueryCheckpointLimit(overlay *bulkOverlay) error {
+	handle, err := a.store.NewReadHandle()
+	if err != nil {
+		return fmt.Errorf("reading query checkpoints: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	ids, err := query.ReadLiveQueryCheckpointIDs(handle)
+	if err != nil {
+		return fmt.Errorf("counting query checkpoints: %w", err)
+	}
+
+	live := len(ids) + overlay.checkpointNetLive()
+	if live >= int(a.queryCheckpointLimit) {
+		return &domain.ErrCheckpointLimitReached{Limit: a.queryCheckpointLimit}
+	}
+
+	overlay.recordCheckpointCreate()
+
+	return nil
+}
+
+// checkQueryCheckpointExists rejects a delete for a checkpoint id that is zero,
+// has no committed row, or was already deleted earlier in this bulk. Soft: it
+// reads committed state, so a create/delete in flight across proposals can race.
+// Records the delete in the overlay so it frees a limit slot for a same-bulk
+// create and a repeated delete in the same bulk is rejected.
+func (a *Admission) checkQueryCheckpointExists(id uint64, overlay *bulkOverlay) error {
+	if id == 0 {
+		return domain.ErrCheckpointIDRequired
+	}
+
+	if overlay.isCheckpointDeletedInBulk(id) {
+		return &domain.ErrCheckpointNotFound{CheckpointID: id}
+	}
+
+	handle, err := a.store.NewReadHandle()
+	if err != nil {
+		return fmt.Errorf("reading query checkpoint: %w", err)
+	}
+
+	defer func() { _ = handle.Close() }()
+
+	cp, err := query.ReadQueryCheckpoint(handle, id)
+	if err != nil {
+		return fmt.Errorf("reading query checkpoint %d: %w", id, err)
+	}
+
+	if cp == nil {
+		return &domain.ErrCheckpointNotFound{CheckpointID: id}
+	}
+
+	overlay.recordCheckpointDelete(id)
+
+	return nil
+}
+
 // requestToOrder converts a single Request into its ledger- or system-scoped
 // raftcmdpb.Order. batchSig is consulted only by the signing-key registration
 // path, to record the signing key as the new key's parent.
@@ -2246,12 +2330,20 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 			reqType.SaveNumscript.GetContent(),
 		)
 	case *servicepb.Request_CreateQueryCheckpoint:
+		if err := a.checkQueryCheckpointLimit(overlay); err != nil {
+			return nil, err
+		}
+
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{
 				CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{},
 			},
 		})
 	case *servicepb.Request_DeleteQueryCheckpoint:
+		if err := a.checkQueryCheckpointExists(reqType.DeleteQueryCheckpoint.GetCheckpointId(), overlay); err != nil {
+			return nil, err
+		}
+
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint{
 				DeleteQueryCheckpoint: &raftcmdpb.DeleteQueryCheckpointOrder{

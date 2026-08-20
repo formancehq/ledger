@@ -360,6 +360,8 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrMetadataFieldNotInSchema":      &ErrMetadataFieldNotInSchema{},
 		"ErrIndexBuilding":                 &ErrIndexBuilding{},
 		"ErrCheckpointNotReady":            &ErrCheckpointNotReady{},
+		"ErrCheckpointLimitReached":        &ErrCheckpointLimitReached{},
+		"ErrCheckpointNotFound":            &ErrCheckpointNotFound{},
 		"ErrIndexInconsistent":             &ErrIndexInconsistent{},
 		"ErrInvalidReceipt":                &ErrInvalidReceipt{},
 		"ErrNumscriptNotFound":             &ErrNumscriptNotFound{},

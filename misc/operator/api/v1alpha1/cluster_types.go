@@ -176,6 +176,13 @@ type ClusterSpec struct {
 	// +optional
 	MaxExecutionPlanSize *int32 `json:"maxExecutionPlanSize,omitempty"`
 
+	// QueryCheckpointLimit is the maximum number of live query checkpoints.
+	// Admission rejects creation beyond this (soft, per-node). Must be greater
+	// than zero. Default: 10.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	QueryCheckpointLimit *int32 `json:"queryCheckpointLimit,omitempty"`
+
 	// IdempotencyTTL is the time-to-live for idempotency keys (0 = never expire).
 	// Default: 24h.
 	// +optional

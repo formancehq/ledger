@@ -165,7 +165,7 @@ collection is bounded by design:
 | `indexes list` | Streamed in full from the `SubAttrIndex` registry; cardinality bounded by ledger config (per-ledger / bucket-scope). |
 | `events list` | Raft-state cluster-wide sink config; cardinality bounded by deployment topology. |
 | `queries list` | Raft-state per-ledger prepared queries; cardinality bounded by ledger config. |
-| `querycheckpoint list` | Replicated state; cardinality bounded by retention policy. |
+| `querycheckpoint list` | Replicated state; cardinality bounded by the per-node live-checkpoint limit (`--query-checkpoint-limit`, default 10). |
 
 These commands still honor `--json` / `--yaml`.
 
@@ -3854,6 +3854,22 @@ ledger run --node-id 1 --cluster-id prod-ledger --bootstrap ...
 ledger run --node-id 1 --cluster-id prod-ledger --bootstrap --mirror-max-batch-size 1000 ...
 ```
 
+### Server `--query-checkpoint-limit` Flag
+
+Caps the number of live query checkpoints. Enforced softly at admission: before proposing a create, the leader counts its live checkpoints and rejects at the limit with `CHECKPOINT_LIMIT_REACHED`. There is no automatic eviction. Because enforcement is admission-side (not part of the committed command), concurrent in-flight creates can briefly overshoot the limit. Must be greater than zero — the server refuses to start otherwise.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--query-checkpoint-limit` | `10` | Maximum number of live query checkpoints (soft, per-node; must be > 0) |
+
+```bash
+# Use default (10 live checkpoints)
+ledger run --node-id 1 --cluster-id prod-ledger --bootstrap ...
+
+# Raise the ceiling on deployments with more disk headroom
+ledger run --node-id 1 --cluster-id prod-ledger --bootstrap --query-checkpoint-limit 25 ...
+```
+
 ---
 
 ### Server `--unsafe-skip-config-validation` Flag
@@ -4988,6 +5004,7 @@ ledgerctl query-checkpoint create [flags]
 - The FSM commits pending state and creates a main store Pebble checkpoint; the read index checkpoint is created asynchronously by the index builder
 - Checkpoints are stored under `{dataDir}/query-checkpoints/{id}/main/` and `{dataDir}/query-checkpoints/{id}/readindex/`
 - Not cleaned up on restart — use `query-checkpoint delete` to remove
+- The number of live checkpoints is bounded by a per-node startup limit (`--query-checkpoint-limit`, default 10), enforced softly at admission: before proposing a create, the leader counts its live checkpoints and rejects at the limit. Once the limit is reached, creation fails with `CHECKPOINT_LIMIT_REACHED` (gRPC `ResourceExhausted` / HTTP 429); delete a checkpoint to free a slot. There is no automatic eviction. Because enforcement is admission-side and not part of the committed command, concurrent in-flight creates can briefly overshoot the limit.
 
 **Example:**
 
@@ -5139,3 +5156,5 @@ ledgerctl query-checkpoint get-schedule
 # Output (no schedule):
 #  SUCCESS  No query checkpoint schedule configured (automatic creation disabled)
 ```
+
+The live-checkpoint limit is a per-node startup setting (`--query-checkpoint-limit`, default 10), not a runtime CLI command — see the `query-checkpoint create` behavior notes above.

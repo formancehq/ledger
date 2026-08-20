@@ -54,6 +54,7 @@ func validBaseConfig() Config {
 			WALResumeThreshold:  0.75,
 			DataResumeThreshold: 0.75,
 		},
+		QueryCheckpointLimit: 10,
 	}
 }
 
@@ -114,6 +115,16 @@ func TestValidateClusterSecretRequiresTLS(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateQueryCheckpointLimit(t *testing.T) {
+	t.Parallel()
+
+	cfg := validBaseConfig()
+	cfg.QueryCheckpointLimit = 0
+	err := cfg.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "--query-checkpoint-limit must be greater than zero")
 }
 
 func TestValidateTLSConfig(t *testing.T) {

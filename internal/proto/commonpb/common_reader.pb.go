@@ -4207,6 +4207,7 @@ func NewDeletedQueryCheckpointScheduleLogListReader(s []*DeletedQueryCheckpointS
 type CreatedQueryCheckpointLogReader interface {
 	GetCheckpointId() uint64
 	GetMaxSequence() uint64
+	GetCreatedAt() TimestampReader
 	Mutate() *CreatedQueryCheckpointLog
 }
 
@@ -4218,6 +4219,14 @@ func (r *createdQueryCheckpointLogReadonly) GetCheckpointId() uint64 {
 
 func (r *createdQueryCheckpointLogReadonly) GetMaxSequence() uint64 {
 	return (*CreatedQueryCheckpointLog)(r).GetMaxSequence()
+}
+
+func (r *createdQueryCheckpointLogReadonly) GetCreatedAt() TimestampReader {
+	v := (*CreatedQueryCheckpointLog)(r).GetCreatedAt()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *createdQueryCheckpointLogReadonly) Mutate() *CreatedQueryCheckpointLog {

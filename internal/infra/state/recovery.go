@@ -215,7 +215,49 @@ func (r *Recovery) RecoverState() error {
 		"pendingCleanups":       len(newState.PendingLedgerCleanups),
 	}).Infof("Recovered FSM state from store")
 
+	// Reclaim any physical query-checkpoint directory with no live row
+	// (best-effort). The live-ID set is read straight from Pebble.
+	r.reclaimOrphanedQueryCheckpoints(handle)
+
 	return nil
+}
+
+// reclaimOrphanedQueryCheckpoints removes physical query-checkpoint directories
+// whose id has no live row in the store. Orphans arise when a node is caught up
+// by a snapshot install (or crashes) and so never runs the per-entry post-commit
+// file-delete hook for a checkpoint the leader had already removed — deletion is
+// otherwise only log-driven, and without this sweep the directory (a hard-linked
+// Pebble checkpoint) would pin disk forever. Runs at boot and after every
+// follower sync via RecoverState. Best-effort: failures are logged, never fatal,
+// so a transient filesystem error cannot block recovery.
+func (r *Recovery) reclaimOrphanedQueryCheckpoints(handle *dal.ReadHandle) {
+	dirs, err := r.apply.queryCheckpoints.ListQueryCheckpointDirs()
+	if err != nil {
+		r.apply.logger.Errorf("listing query checkpoint dirs for orphan reclamation: %v", err)
+
+		return
+	}
+
+	live, err := query.ReadLiveQueryCheckpointIDs(handle)
+	if err != nil {
+		r.apply.logger.Errorf("reading live query checkpoint IDs for orphan reclamation: %v", err)
+
+		return
+	}
+
+	for _, id := range dirs {
+		if _, ok := live[id]; ok {
+			continue
+		}
+
+		if err := r.apply.queryCheckpoints.DeleteQueryCheckpointFiles(id); err != nil {
+			r.apply.logger.Errorf("reclaiming orphaned query checkpoint %d: %v", id, err)
+
+			continue
+		}
+
+		r.apply.logger.Infof("reclaimed orphaned query checkpoint directory %d (no live row)", id)
+	}
 }
 
 // RestoreCacheFromStore re-hydrates the in-memory cache from the 0xFF zone in
