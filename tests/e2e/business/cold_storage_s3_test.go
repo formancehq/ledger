@@ -40,7 +40,7 @@ var _ = Describe("Cold Storage S3", Ordered, func() {
 
 	BeforeAll(func() {
 		// Start MinIO container
-		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
+		container, err := testcontainers.Run(context.Background(), testutil.MinIOImage,
 			testcontainers.WithEnv(map[string]string{
 				"MINIO_ROOT_USER":     coldMinioAccessKey,
 				"MINIO_ROOT_PASSWORD": coldMinioSecretKey,

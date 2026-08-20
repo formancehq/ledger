@@ -509,6 +509,48 @@ ginkgo run -tags e2e ./tests/e2e
 go test -tags e2e ./tests/e2e/...
 ```
 
+#### Feature-gated suites
+
+Some e2e files carry an extra build tag on top of `e2e` (for example
+`//go:build e2e && s3`). They are compiled only when that tag is passed, so a
+plain `-tags e2e` run neither builds nor runs them:
+
+| Tag | Coverage | External dependency |
+|-----|----------|---------------------|
+| `s3` | backup, restore, bootstrap, cold storage | MinIO (Testcontainers) |
+| `azure` | Azure Blob backup | Azurite (Testcontainers) |
+| `clickhouse` | ClickHouse event sink | ClickHouse (Testcontainers) |
+| `nats` | NATS event sink | none (embedded in-process server) |
+| `databricks` | Databricks event sink | real workspace credentials; skips itself when unset |
+
+`just test-e2e` runs the light set for a fast local loop. **CI runs the full tag
+set** through `just test-e2e-coverage`, so a green `just test-e2e` does not
+guarantee a green pipeline. Reproduce the CI set locally with:
+
+```bash
+just test-e2e-full
+```
+
+`just lint` does not pass the `e2e` tag, so it excludes these packages even
+when feature tags are configured. The full CI run is therefore responsible
+for both compiling these files and exercising their assertions.
+
+The MinIO and Azurite images used by this required gate are version-pinned in
+`tests/e2e/testutil/containers.go`. Update those pins deliberately and validate
+the complete full-tag suite when upgrading either emulator.
+
+#### Docker socket on macOS
+
+Testcontainers looks for `/var/run/docker.sock`. When Docker Desktop is
+installed but stopped, that path exists as a symlink to its inactive socket,
+and container startup fails with `Cannot connect to the Docker daemon` even
+though the `docker` CLI works against another runtime. With OrbStack, point
+Testcontainers at the right socket:
+
+```bash
+export DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock
+```
+
 ### Operator Integration Tests
 
 ```bash

@@ -34,7 +34,7 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 
 	BeforeAll(func() {
 		// Start ClickHouse container
-		container, err := chmodule.Run(context.Background(), "clickhouse/clickhouse-server:24-alpine")
+		container, err := chmodule.Run(context.Background(), testutil.ClickHouseImage)
 		Expect(err).To(Succeed())
 
 		DeferCleanup(func() {
