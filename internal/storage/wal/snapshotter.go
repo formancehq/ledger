@@ -55,6 +55,14 @@ func (s *Snapshotter) Save(snap *raftpb.Snapshot) error {
 		return fmt.Errorf("recreating snapshot directory: %w", err)
 	}
 
+	// The rename below is made durable by fsyncing s.dir, which says nothing
+	// about s.dir's own entry in its parent. A crash after Save returns and the
+	// WAL snapshot record is written would then leave the WAL pointing at a
+	// directory that recovery cannot find, so fsync the parent too.
+	if err := syncDir(filepath.Dir(s.dir)); err != nil {
+		return fmt.Errorf("syncing snapshot directory parent: %w", err)
+	}
+
 	f, err := os.Create(tmpPath)
 	if err != nil {
 		return fmt.Errorf("creating temp snap file: %w", err)
