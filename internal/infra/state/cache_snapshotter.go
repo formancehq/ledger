@@ -177,10 +177,14 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 	// U128 id. With the tag check, only a tombstone for THIS key
 	// short-circuits.
 	if existing, ok := s.ac.Gen1().Get(id); ok && existing.Deleted && existing.Tag == tag {
+		reportSuppressedIndexSeed(s.cacheType, "gen1")
+
 		return nil
 	}
 
 	if existing, ok := s.ac.Gen0().Get(id); ok && existing.Deleted && existing.Tag == tag {
+		reportSuppressedIndexSeed(s.cacheType, "gen0")
+
 		return nil
 	}
 
@@ -937,4 +941,19 @@ func (s *CacheSnapshotter) replayBloomFromCache(ctx context.Context) error {
 // Stop interrupts any running bloom task and waits for it to finish.
 func (s *CacheSnapshotter) Stop() {
 	s.bloomExecutor.Interrupt()
+}
+
+// reportSuppressedIndexSeed fires when a cache tombstone discards a seeded
+// index registry value. Admission now loads and seeds these keys on every
+// path, so a suppression here is the only remaining way an index durably in
+// Pebble reads as absent at apply — a tombstone outliving the row it was
+// paired with.
+func reportSuppressedIndexSeed(cacheType byte, gen string) {
+	if cacheType != dal.SubAttrIndex {
+		return
+	}
+
+	assert.Unreachable("index seed suppressed by cache tombstone", map[string]any{
+		"gen": gen,
+	})
 }
