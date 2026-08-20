@@ -49,6 +49,7 @@ func (v *V2PostTransactionScript) GetVars() map[string]string {
 // #region class-body-v2posttransactionscript
 // #endregion class-body-v2posttransactionscript
 
+// V2PostTransaction - Transaction and account metadata are limited to 256 KiB in total for one command.
 type V2PostTransaction struct {
 	// The transaction time to record, letting you backdate or postdate the transaction. Defaults to current machine time if omitted. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
 	Timestamp *time.Time `json:"timestamp,omitempty"`
@@ -60,7 +61,10 @@ type V2PostTransaction struct {
 	Runtime *Runtime `json:"runtime,omitempty"`
 	// Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
 	Reference *string `json:"reference,omitempty"`
-	// Arbitrary key/value pairs attached to the resource
+	// Metadata accepted by transaction and account write commands. A metadata object
+	// is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per
+	// value, and 64 KiB total across keys and values.
+	//
 	Metadata map[string]string `json:"metadata"`
 	// Metadata to set on the accounts involved in the transaction, keyed by account address
 	AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`

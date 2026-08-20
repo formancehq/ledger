@@ -1,7 +1,6 @@
 package v2
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -16,8 +15,7 @@ import (
 
 func insertSchema(w http.ResponseWriter, r *http.Request) {
 	data := ledger.SchemaData{}
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		api.BadRequest(w, common.ErrValidation, err)
+	if !common.DecodeBody(w, r, &data) {
 		return
 	}
 
