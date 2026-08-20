@@ -31,6 +31,8 @@ A full PR URL is accepted as well. The launcher:
 - creates a detached linked worktree outside the primary checkout, under a unique sibling `.<repo>-ai-worktrees/pr-<number>.<run>/worktree` directory;
 - passes the verified base commit SHA to `review-loop`, so a later update of the shared remote-tracking ref cannot change the reviewed delta;
 - runs the standard Codex review + Claude fix composition against the PR base;
+- runs repository validation locally before accepting any approval; no GitHub
+  Actions status participates in the decision;
 - never checks out or edits the primary checkout;
 - preserves the isolated worktree automatically when fixes remain so the resulting diff can be inspected manually;
 - removes a clean temporary worktree after the loop unless `--keep-worktree` is supplied.
@@ -47,7 +49,7 @@ bash scripts/ai-pr-loop 1732 --push
 
 `--push` does not weaken the review boundary. If the first bounded loop reaches `READY_FOR_HUMAN_REVIEW` with a dirty worktree, the launcher:
 
-1. creates a second detached worktree at the exact verified base SHA, builds the policy engine in that base's pinned Nix environment, and uses only the base-pinned reviewer/fixer adapters; the PR under review cannot supply the tooling that authorizes its own publication;
+1. creates a second detached worktree at the exact verified base SHA, builds the policy engine in that base's pinned Nix environment, and uses only the base-pinned reviewer, fixer, and validation tools; the PR under review cannot supply the tooling that authorizes its own publication;
 2. stages the complete isolated fix set and creates one local `fix: address AI review findings` candidate commit;
 3. runs a second **review-only** pass on that exact clean commit, with no fixer configured;
 4. refuses publication unless that candidate commit is approved as-is, `HEAD` still equals its immutable SHA, and the worktree remains clean;
@@ -186,36 +188,32 @@ The fix agent must:
 
 The blocker payload and originating review result are immutable inputs. The orchestrator snapshots both files before invoking the fixer and rejects the pass if either file's contents change or can no longer be read.
 
-After a successful fix command, the orchestrator runs `bash scripts/agent-check` by default. A validation failure stops the loop immediately. Only after validation succeeds does it invoke the reviewer again.
-
-## Local PR validation helper
-
-`scripts/agent-check-pr` provides the local validation profile that can be
-selected from an immutable base-to-worktree diff:
-
-```bash
-AI_REVIEW_BASE_SHA="$(git rev-parse origin/release/v3.0)" \
-  bash scripts/agent-check-pr
-```
-
-It always runs the baseline checks and unit tests, then selects additional
-local gates for production Go paths, scenarios and Numscript, HTTP/OpenAPI,
-the operator module, and stateful cluster paths. Stateful changes run the
-three-node model checker with rolling restarts. These gates are local
+After a successful fix command, the orchestrator runs
+`bash scripts/agent-check-pr` by default. It runs the baseline checks and unit
+tests, then selects additional local gates from the complete
+base-to-worktree diff: E2E tests for production Go paths, scenario tests for
+scenario/Numscript paths, Schemathesis for the HTTP/OpenAPI surface, and
+operator tests for the operator module. Changes to FSM, admission, Raft,
+cluster membership, cache/preload, primary persistence, snapshot/restore, or
+the model-checker harness additionally run the three-node
+`just test-model-cluster 180` gate with rolling restarts. These are local
 correctness profiles selected for the changed architecture, not a mirror of
-GitHub Actions jobs.
+GitHub Actions jobs. A validation failure stops the loop immediately. Only
+after validation succeeds does it invoke the reviewer again.
 
-The helper routes Just recipes through `scripts/agent-just`. That wrapper pins
-the recipe definitions to the checkout containing the wrapper, disables dotenv
-loading, and keeps the reviewed repository as the recipe working directory.
-Script-backed Schemathesis and model-checker gates use runners from that same
-tool checkout while building the reviewed server and reading reviewed inputs
-through explicit paths. The model driver and oracle remain tool-pinned.
-
-This helper is intentionally introduced independently of the `review-loop`
-approval policy. Wiring it as a mandatory guarded-publish validator is a
-separate activation step, after the helper exists in the base-pinned trusted
-tool worktree.
+The same local validation runs after an `APPROVE` decision and before
+`READY_FOR_HUMAN_REVIEW` is emitted. The orchestrator fingerprints the
+workspace again and rejects readiness if a validator changed the state that the
+reviewer approved. It passes the immutable review-base SHA to the validator as
+`AI_REVIEW_BASE_SHA`; in guarded publish mode, the validator itself comes from
+the base-pinned trusted tool worktree. Its `agent-just` wrapper also loads the
+base-pinned `justfile` with dotenv loading disabled while setting the reviewed
+PR worktree as the recipe working directory. A PR therefore cannot replace a
+required recipe with a no-op. Script-backed gates are split the same way:
+Schemathesis and model-checker runners come from the trusted base, while their
+server build, OpenAPI input, and other reviewed sources come from the candidate
+worktree. The model driver/oracle is also base-pinned. The loop does not query
+or wait for GitHub Actions checks.
 
 ## Claude Code fix adapter
 
@@ -240,7 +238,8 @@ The adapter:
 - uses `--permission-mode dontAsk` with project-relative `Read(/**)` and `Edit(/**)` approval, so repository inspection and edits succeed while parent, sibling-worktree, and other external filesystem access fails closed without an interactive prompt;
 - explicitly denies `Bash`, `WebFetch`, `WebSearch`, and edits to `.git` as defense in depth, so the fixer cannot run tests, mutate Git/GitHub state, or access the network through those tools;
 - instructs Claude to make only finding-traceable edits and to avoid guessing through product/design/invariant ambiguity;
-- leaves all validation to the orchestrator's mandatory `bash scripts/agent-check` step before re-review.
+- leaves all validation to the orchestrator's mandatory local
+  `bash scripts/agent-check-pr` gates before re-review and final readiness.
 
 Safe mode deliberately disables automatic instruction discovery, so the trusted prompt explicitly tells Claude to read the repository's `AGENTS.md` and only the relevant subsystem documentation. Administrator-managed policy still applies and may further restrict the invocation, but repository/user settings and extensions are not loaded. The adapter does not use `--dangerously-skip-permissions`. Authentication and the installed Claude Code binary remain machine prerequisites.
 

@@ -429,6 +429,69 @@ func TestVerifyFileSnapshotsUnchangedRejectsFixerStateMutation(t *testing.T) {
 	require.ErrorContains(t, err, resultPath+" content changed")
 }
 
+func TestApprovedReviewFailsWhenLocalValidationFails(t *testing.T) {
+	t.Parallel()
+
+	repository := t.TempDir()
+	runGit(t, repository, "init")
+	require.NoError(t, os.WriteFile(filepath.Join(repository, "base.txt"), []byte("base\n"), 0o644))
+	runGit(t, repository, "add", "base.txt")
+	runGit(t, repository, "-c", "user.name=Review Loop Test", "-c", "user.email=review-loop@example.com", "commit", "-m", "base")
+	baseSHA := strings.TrimSpace(runGitOutput(t, repository, "rev-parse", "HEAD"))
+
+	reviewer := filepath.Join(repository, "reviewer.sh")
+	require.NoError(t, os.WriteFile(reviewer, []byte(`#!/usr/bin/env bash
+set -euo pipefail
+cat > "$AI_REVIEW_RESULT" <<EOF
+{"decision":"APPROVE","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[],"findings":[],"residual_risk":"LOW","human_decision_context":""}
+EOF
+`), 0o755))
+	validationBase := filepath.Join(t.TempDir(), "validation-base")
+	validator := filepath.Join(repository, "validator.sh")
+	require.NoError(t, os.WriteFile(validator, []byte(`#!/usr/bin/env bash
+set -euo pipefail
+printf '%s' "$AI_REVIEW_BASE_SHA" > "$TEST_VALIDATION_BASE"
+exit 42
+`), 0o755))
+
+	binary := filepath.Join(t.TempDir(), "review-loop")
+	build := exec.Command("go", "build", "-o", binary, ".")
+	build.Dir = "."
+	output, err := build.CombinedOutput()
+	require.NoError(t, err, string(output))
+
+	command := exec.Command(binary,
+		"--base", baseSHA,
+		"--review-cmd", "bash reviewer.sh",
+		"--validation-cmd", "bash validator.sh",
+		"--state-dir", filepath.Join(repository, ".review-state"),
+	)
+	command.Dir = repository
+	command.Env = append(os.Environ(), "TEST_VALIDATION_BASE="+validationBase)
+	output, err = command.CombinedOutput()
+	require.Error(t, err, string(output))
+	require.Contains(t, string(output), "local validation before readiness")
+	require.Contains(t, string(output), "local validation failed before readiness")
+	content, readErr := os.ReadFile(validationBase)
+	require.NoError(t, readErr)
+	require.Equal(t, baseSHA, string(content))
+
+	require.NoError(t, os.WriteFile(validator, []byte(`#!/usr/bin/env bash
+set -euo pipefail
+printf 'changed by validation\n' > base.txt
+`), 0o755))
+	command = exec.Command(binary,
+		"--base", baseSHA,
+		"--review-cmd", "bash reviewer.sh",
+		"--validation-cmd", "bash validator.sh",
+		"--state-dir", filepath.Join(repository, ".review-state"),
+	)
+	command.Dir = repository
+	output, err = command.CombinedOutput()
+	require.Error(t, err, string(output))
+	require.Contains(t, string(output), "local validation changed the approved workspace")
+}
+
 func writeReviewResult(t *testing.T, content string) string {
 	t.Helper()
 

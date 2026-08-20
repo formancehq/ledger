@@ -61,10 +61,23 @@ func TestPushUsesBasePinnedReviewToolchain(t *testing.T) {
 	require.Contains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
 }
 
+func TestPushRefusesBaseWithoutTrustedValidator(t *testing.T) {
+	t.Parallel()
+
+	fixture := newPushFixture(t, pushFixtureOptions{omitTrustedValidator: true})
+	output, exitCode := fixture.run(t)
+	require.Equal(t, 1, exitCode, output)
+	require.Contains(t, output, "trusted base does not provide executable scripts/agent-check-pr")
+
+	remoteHead := runGitOutput(t, fixture.root, "--git-dir", fixture.remote, "rev-parse", "refs/heads/feature")
+	require.Equal(t, fixture.headSHA, remoteHead)
+}
+
 type pushFixtureOptions struct {
 	moveRemote            bool
 	moveLocalHead         bool
 	tamperTargetToolchain bool
+	omitTrustedValidator  bool
 }
 
 type pushFixture struct {
@@ -95,12 +108,18 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 	launcher, err := os.ReadFile(launcherPath(t))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-loop"), launcher, 0o755))
+	if !options.omitTrustedValidator {
+		validator, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "agent-check-pr"))
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "agent-check-pr"), validator, 0o755))
+	}
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 0\n")
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-fix-claude"), "#!/usr/bin/env bash\nexit 0\n")
 	writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), `#!/usr/bin/env bash
 set -euo pipefail
 review_cmd=""
 fix_cmd=""
+validation_cmd=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --review-cmd)
@@ -109,6 +128,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --fix-cmd)
             fix_cmd=$2
+            shift 2
+            ;;
+        --validation-cmd)
+            validation_cmd=$2
             shift 2
             ;;
         *)
@@ -126,6 +149,10 @@ if [[ -n "$fix_cmd" ]]; then
         *) exit 94 ;;
     esac
 fi
+case "$validation_cmd" in
+    *trusted-tools/scripts/agent-check-pr) ;;
+    *) exit 93 ;;
+esac
 count=0
 if [[ -f "$TEST_REVIEW_COUNT_FILE" ]]; then
     count=$(cat "$TEST_REVIEW_COUNT_FILE")
@@ -157,10 +184,11 @@ exit 0
 		writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), "#!/usr/bin/env bash\nexit 97\n")
 		writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 97\n")
 		writeExecutable(t, filepath.Join(seed, "scripts", "ai-fix-claude"), "#!/usr/bin/env bash\nexit 97\n")
+		writeExecutable(t, filepath.Join(seed, "scripts", "agent-check-pr"), "#!/usr/bin/env bash\nexit 97\n")
 	}
 	runGit(t, seed, "add", "feature.txt")
 	if options.tamperTargetToolchain {
-		runGit(t, seed, "add", "scripts/review-loop", "scripts/ai-review-codex", "scripts/ai-fix-claude")
+		runGit(t, seed, "add", "scripts/review-loop", "scripts/ai-review-codex", "scripts/ai-fix-claude", "scripts/agent-check-pr")
 	}
 	runGit(t, seed, "commit", "-m", "feature")
 	headSHA := runGitOutput(t, seed, "rev-parse", "HEAD")
