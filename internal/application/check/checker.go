@@ -2653,37 +2653,39 @@ func (c *Checker) verifyAuditHashChain(
 			// log range with a hole in it, and the maximum accumulated below would
 			// then bound a stream the chain never covered end to end.
 			//
-			// The skipped-span case is handled by `expectedLogMax > 0`, NOT by the
-			// archiveEndSeq conjunct below. The walk starts after the highest
-			// ARCHIVED close-audit-sequence, so an un-archived chapter below that
-			// boundary has its audit entries skipped while its logs stay retained
-			// (the out-of-order archiving shape the replay loop clips at
-			// `seq <= archiveEndSeq`). Across that skipped span the audited range
-			// legitimately jumps — but it jumps at the FIRST entry the walk visits,
-			// where expectedLogMax is still 0 and there is nothing to abut. Later
-			// entries abut normally, because the walk visits audit entries
+			// `expectedLogMax > 0` — and nothing else — is what makes the first
+			// visited entry's jump legal. Two shapes rely on it.
+			//
+			// After an archived boundary the walk starts at CloseAuditSequence + 1,
+			// which is the archived chapter's OWN CloseChapter audit entry (purge
+			// deletes [start, CloseAuditSequence] inclusive, see the comment above
+			// the cursor). Its min_log_sequence is that chapter's close_sequence, so
+			// it lands AT or BELOW archiveEndSeq — the two fields are asymmetric by
+			// construction: close_sequence is the CloseChapter log's own sequence
+			// (processor_chapter.go, GetNextSequenceID) while close_audit_sequence is
+			// one BELOW its own audit entry (GetNextAuditSequenceID() - 1). So a
+			// comparison against archiveEndSeq would NOT excuse that entry; only the
+			// zero expectedLogMax does.
+			//
+			// The same holds across a skipped span: an un-archived chapter below the
+			// highest ARCHIVED close-audit-sequence has its audit entries skipped
+			// while its logs stay retained (the out-of-order archiving shape the
+			// replay loop clips at `seq <= archiveEndSeq`). The audited range
+			// legitimately jumps there, and again it jumps at the FIRST entry the walk
+			// visits, where expectedLogMax is still 0 and there is nothing to abut.
+			// Later entries abut normally, because the walk visits audit entries
 			// contiguously upward and any purged span lies below its start.
 			//
-			// The `minLogSeq > signing.archiveEndSeq` conjunct is therefore inert on
-			// any store whose chapter metadata is self-consistent: archiveEndSeq is
-			// the max archived close_sequence and the walk starts after the max
-			// archived close_audit_sequence, both assigned at the same CloseChapter
-			// apply from monotonic counters, so every visited entry already carries
-			// minLogSeq > archiveEndSeq. Dropping it regresses no test in this
-			// package.
-			//
-			// Its one reachable effect is a SUPPRESSION: an archived close_sequence
-			// that reaches into the live audited range silences this finding. That
-			// is corruption rather than out-of-order archiving, and close_sequence
-			// is the forgeable field — the sealing hash over it is UNKEYED (see
-			// verifySealingHash, and the argument in log_bounds.go). So the conjunct
-			// currently lets a forged close_sequence hide a hole in the audited log
-			// range, which is the EN-1526 defect shape inside the assertion meant to
-			// catch it. Removal is pending an explicit decision; it is a production
-			// behaviour change on a security boundary, so it is not folded in here.
+			// Deliberately NOT gated on archiveEndSeq. min/max_log_sequence are inside
+			// the keyed hash pre-image (state.buildAuditSuccessPayload), while
+			// close_sequence is covered only by the UNKEYED sealing hash
+			// (verifySealingHash — whoever edits it recomputes it). Admitting the
+			// forgeable field here would let a forged close_sequence reaching into the
+			// live audited range silence this finding, which is the EN-1526 defect
+			// shape inside the assertion meant to catch it. Same doctrine as
+			// compareLogBounds; see the argument in log_bounds.go.
 			if minLogSeq := success.GetMinLogSequence(); minLogSeq > 0 &&
 				chainBound.expectedLogMax > 0 &&
-				minLogSeq > signing.archiveEndSeq &&
 				minLogSeq != chainBound.expectedLogMax+1 {
 				assert.Unreachable("check: audited log range is discontinuous", map[string]any{
 					"auditSequence":  entry.GetSequence(),
