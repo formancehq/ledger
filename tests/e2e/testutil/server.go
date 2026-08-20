@@ -332,6 +332,52 @@ func StopServers(ctx context.Context, servers []*ServiceWithClient) {
 	}
 }
 
+// assertPortsAvailableForNode fails the spec when an auxiliary node would bind
+// a port belonging to the shared single-node server. In the business suite that
+// server is started once by SynchronizedBeforeSuite and stays up for the whole
+// run, so any overlap is fatal rather than merely untidy.
+//
+// The Raft port is the trap: SetupSingleNode derives it as grpcPort-1000, so a
+// caller who picks gRPC 16200 lands on Raft 15200 — TestSingleHTTPPort. The
+// server then dies with an opaque "bind: address already in use" panic raised
+// deep in the boot path, which aborts the suite and buries the spec that was
+// actually failing. Fail here instead, naming the offending constant.
+//
+// The shared node itself legitimately owns these ports, so it is exempt.
+func nodePortConflict(httpPort, grpcPort, raftPort int) error {
+	if httpPort == TestSingleHTTPPort && grpcPort == TestSingleGRPCPort {
+		return nil
+	}
+
+	reserved := map[int]string{
+		TestSingleHTTPPort:        "TestSingleHTTPPort",
+		TestSingleGRPCPort:        "TestSingleGRPCPort",
+		TestSingleGRPCPort - 1000: "the shared node's derived Raft port",
+	}
+
+	for _, p := range []struct {
+		value int
+		label string
+	}{
+		{httpPort, "HTTP port"},
+		{grpcPort, "gRPC port"},
+		{raftPort, fmt.Sprintf("Raft port (derived from gRPC port %d minus 1000)", grpcPort)},
+	} {
+		name, clashes := reserved[p.value]
+		if clashes {
+			return fmt.Errorf(
+				"%s %d is reserved for the shared single-node server (%s); pick another port",
+				p.label, p.value, name)
+		}
+	}
+
+	return nil
+}
+
+func assertPortsAvailableForNode(httpPort, grpcPort, raftPort int) {
+	Expect(nodePortConflict(httpPort, grpcPort, raftPort)).NotTo(HaveOccurred())
+}
+
 // SetupSingleNode creates a single-node cluster for tests that don't need Raft consensus.
 // Returns the context, client, and cluster client.
 // Cleanup is handled automatically via DeferCleanup.
@@ -347,6 +393,8 @@ func SetupSingleNode(httpPort, grpcPort int, extraInstruments ...testservice.Ins
 
 	// Derive Raft port from gRPC port (e.g., 8100 -> 7100)
 	raftPort := grpcPort - 1000
+
+	assertPortsAvailableForNode(httpPort, grpcPort, raftPort)
 
 	instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 		NodeID:    1,

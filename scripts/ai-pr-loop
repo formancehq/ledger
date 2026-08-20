@@ -1,0 +1,336 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: bash scripts/ai-pr-loop <pr-number-or-url> [--keep-worktree] [--push]
+
+Creates an isolated git worktree for the PR head and runs the bounded
+Codex review -> Claude fix -> validation -> re-review loop against the
+PR base branch.
+
+By default the launcher never commits or pushes. With --push, fixes are
+committed locally, that exact clean commit is reviewed once more, and it
+is pushed only if the remote PR branch still equals the SHA observed at
+startup. The launcher never comments, resolves threads, or merges.
+EOF
+}
+
+case "${1:-}" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
+
+if [[ $# -lt 1 ]]; then
+    usage >&2
+    exit 1
+fi
+
+pr=$1
+shift
+keep_worktree=false
+push_changes=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --keep-worktree)
+            keep_worktree=true
+            ;;
+        --push)
+            push_changes=true
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "ai-pr-loop: unknown argument: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+for command in git gh jq; do
+    if ! command -v "$command" >/dev/null 2>&1; then
+        echo "ai-pr-loop: required command not found in PATH: $command" >&2
+        exit 1
+    fi
+done
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
+
+pr_number=$(jq -r '.number' <<<"$pr_json")
+pr_url=$(jq -r '.url' <<<"$pr_json")
+state=$(jq -r '.state' <<<"$pr_json")
+is_draft=$(jq -r '.isDraft' <<<"$pr_json")
+base_ref=$(jq -r '.baseRefName' <<<"$pr_json")
+base_sha=$(jq -r '.baseRefOid' <<<"$pr_json")
+head_ref=$(jq -r '.headRefName' <<<"$pr_json")
+head_sha=$(jq -r '.headRefOid' <<<"$pr_json")
+head_owner=$(jq -r '.headRepositoryOwner.login // empty' <<<"$pr_json")
+head_repo=$(jq -r '.headRepository.name // empty' <<<"$pr_json")
+
+if [[ "$state" != "OPEN" ]]; then
+    echo "ai-pr-loop: PR #$pr_number is not open (state=$state)" >&2
+    exit 1
+fi
+if [[ -z "$head_owner" || -z "$head_repo" ]]; then
+    echo "ai-pr-loop: could not resolve PR head repository" >&2
+    exit 1
+fi
+if [[ "$head_owner/$head_repo" != "$repo" ]]; then
+    echo "ai-pr-loop: fork/cross-repository PRs are not supported yet: $head_owner/$head_repo" >&2
+    exit 1
+fi
+
+remote=origin
+if ! git remote get-url "$remote" >/dev/null 2>&1; then
+    echo "ai-pr-loop: required git remote '$remote' is missing" >&2
+    exit 1
+fi
+
+# Fetch exactly the GitHub-resolved base/head refs before creating the worktree.
+git fetch --no-tags "$remote" \
+    "+refs/heads/$base_ref:refs/remotes/$remote/$base_ref" \
+    "+refs/heads/$head_ref:refs/remotes/$remote/$head_ref"
+
+fetched_base=$(git rev-parse "refs/remotes/$remote/$base_ref")
+fetched_head=$(git rev-parse "refs/remotes/$remote/$head_ref")
+if [[ "$fetched_base" != "$base_sha" ]]; then
+    echo "ai-pr-loop: fetched base SHA does not match GitHub: got $fetched_base expected $base_sha" >&2
+    exit 1
+fi
+if [[ "$fetched_head" != "$head_sha" ]]; then
+    echo "ai-pr-loop: fetched head SHA does not match GitHub: got $fetched_head expected $head_sha" >&2
+    exit 1
+fi
+
+# Keep linked worktrees outside the primary checkout so the review loop cannot
+# accidentally include launcher state in the PR worktree/fingerprint.
+repo_parent=$(dirname "$repo_root")
+repo_name=$(basename "$repo_root")
+worktree_parent="$repo_parent/.${repo_name}-ai-worktrees"
+mkdir -p "$worktree_parent"
+worktree_run_dir=$(mktemp -d "$worktree_parent/pr-$pr_number.XXXXXX")
+worktree="$worktree_run_dir/worktree"
+trusted_tool_worktree=""
+review_loop_binary=""
+
+cleanup() {
+    exit_status=$?
+    trap - EXIT
+    if [[ -n "$trusted_tool_worktree" ]] && [[ -d "$trusted_tool_worktree" ]] && git -C "$trusted_tool_worktree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        git worktree remove "$trusted_tool_worktree" >/dev/null 2>&1 || true
+    fi
+    if [[ -n "$review_loop_binary" ]] && [[ "$review_loop_binary" == "$worktree_run_dir/review-loop" ]]; then
+        rm -f -- "$review_loop_binary"
+    fi
+    if [[ "$keep_worktree" == false ]]; then
+        if [[ -d "$worktree" ]] && git -C "$worktree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            if [[ -z "$(git -C "$worktree" status --porcelain 2>/dev/null || true)" ]]; then
+                git worktree remove "$worktree" >/dev/null 2>&1 || true
+            fi
+        fi
+        rmdir "$worktree_run_dir" >/dev/null 2>&1 || true
+    fi
+    exit "$exit_status"
+}
+trap cleanup EXIT
+
+git worktree add --detach "$worktree" "$head_sha"
+
+review_loop=(bash scripts/review-loop)
+review_cmd='bash scripts/ai-review-codex'
+fix_cmd='bash scripts/ai-fix-claude'
+validation_cmd='bash scripts/agent-check-pr'
+if [[ "$push_changes" == "true" ]]; then
+    if ! command -v nix >/dev/null 2>&1; then
+        echo "ai-pr-loop: required command not found in PATH: nix" >&2
+        exit 1
+    fi
+
+    # A PR must not supply the policy engine, provider adapters, or validator
+    # that authorize its own publication. Build the orchestrator from the exact
+    # verified base commit and invoke its tools from that immutable worktree.
+    trusted_tool_worktree="$worktree_run_dir/trusted-tools"
+    review_loop_binary="$worktree_run_dir/review-loop"
+    git worktree add --detach "$trusted_tool_worktree" "$base_sha"
+    for trusted_tool in ai-review-codex ai-fix-claude agent-check-pr; do
+        trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
+        if [[ ! -x "$trusted_tool_path" ]]; then
+            echo "ai-pr-loop: trusted base does not provide executable scripts/$trusted_tool" >&2
+            exit 1
+        fi
+    done
+    nix develop "path:$trusted_tool_worktree" --command \
+        env -u GOROOT go -C "$trusted_tool_worktree" build \
+        -o "$review_loop_binary" ./scripts/reviewloop
+    review_loop=("$review_loop_binary")
+    printf -v review_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-review-codex"
+    printf -v fix_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-fix-claude"
+    printf -v validation_cmd \
+        'env -u GOROOT nix develop %q --command env LEDGER_AGENT_CHECK_IN_NIX=1 bash %q' \
+        "path:$trusted_tool_worktree" \
+        "$trusted_tool_worktree/scripts/agent-check-pr"
+fi
+
+printf '==> ai-pr-loop: PR #%s\n' "$pr_number"
+printf '    URL: %s\n' "$pr_url"
+printf '    base: %s (%s)\n' "$base_ref" "$base_sha"
+printf '    head: %s (%s)\n' "$head_ref" "$head_sha"
+printf '    worktree: %s\n' "$worktree"
+if [[ "$is_draft" == "true" ]]; then
+    echo "    note: PR is currently draft"
+fi
+if [[ "$push_changes" == "true" ]]; then
+    echo "    publish: guarded commit + push enabled"
+fi
+
+cd "$worktree"
+
+run_full_loop() {
+    "${review_loop[@]}" \
+        --base "$base_sha" \
+        --review-cmd "$review_cmd" \
+        --fix-cmd "$fix_cmd" \
+        --validation-cmd "$validation_cmd"
+}
+
+run_commit_review() {
+    # No fixer on this pass: the exact clean commit that may be pushed must be
+    # approved as-is. Any new blocker stops publication and requires a rerun.
+    "${review_loop[@]}" \
+        --base "$base_sha" \
+        --review-cmd "$review_cmd" \
+        --validation-cmd "$validation_cmd"
+}
+
+set +e
+run_full_loop
+loop_status=$?
+set -e
+
+echo
+case "$loop_status" in
+    0)
+        echo "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW"
+        ;;
+    2)
+        echo "AI_PR_LOOP_RESULT: HUMAN_DECISION_REQUIRED"
+        ;;
+    *)
+        echo "AI_PR_LOOP_RESULT: ERROR (review-loop exit $loop_status)"
+        ;;
+esac
+
+if [[ "$loop_status" -ne 0 ]]; then
+    if [[ -n "$(git status --porcelain)" ]]; then
+        echo "Worktree contains fixes to inspect: $worktree"
+        keep_worktree=true
+    fi
+    exit "$loop_status"
+fi
+
+if [[ "$push_changes" == "false" ]]; then
+    if [[ -n "$(git status --porcelain)" ]]; then
+        echo "Worktree contains fixes to inspect: $worktree"
+        keep_worktree=true
+    else
+        echo "Worktree is clean."
+    fi
+    exit 0
+fi
+
+if [[ -z "$(git status --porcelain)" ]]; then
+    echo "No local fixes to publish; remote PR branch is unchanged."
+    echo "AI_PR_LOOP_PUSH_RESULT: NO_CHANGES"
+    exit 0
+fi
+
+# The worktree is isolated and all mutations came from the bounded fixer.
+# Stage the complete resulting fix set, then create one local candidate commit.
+git add -A
+if git diff --cached --quiet; then
+    echo "ai-pr-loop: worktree reported changes but nothing is staged" >&2
+    keep_worktree=true
+    exit 1
+fi
+
+git commit -m "fix: address AI review findings"
+candidate_sha=$(git rev-parse HEAD)
+printf '==> ai-pr-loop: candidate commit %s\n' "$candidate_sha"
+
+set +e
+run_commit_review
+commit_review_status=$?
+set -e
+
+if [[ "$commit_review_status" -ne 0 ]]; then
+    echo "AI_PR_LOOP_PUSH_RESULT: REFUSED (candidate commit was not approved)"
+    echo "Candidate worktree preserved for inspection: $worktree"
+    keep_worktree=true
+    exit "$commit_review_status"
+fi
+
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "ai-pr-loop: candidate review left the worktree dirty; refusing push" >&2
+    echo "Candidate worktree preserved for inspection: $worktree"
+    keep_worktree=true
+    exit 1
+fi
+
+current_head=$(git rev-parse HEAD)
+if [[ "$current_head" != "$candidate_sha" ]]; then
+    echo "AI_PR_LOOP_PUSH_RESULT: REFUSED (reviewed candidate HEAD changed)"
+    echo "Reviewed: $candidate_sha"
+    echo "Current:  $current_head"
+    echo "Candidate worktree preserved for inspection: $worktree"
+    keep_worktree=true
+    exit 1
+fi
+
+# Verify the remote still points at the exact PR head observed before any agent
+# ran. The explicit force-with-lease is used only as an atomic compare-and-swap
+# guard; candidate_sha is a normal descendant of head_sha, so the update itself
+# remains a fast-forward.
+remote_head=""
+read -r remote_head _ < <(git ls-remote --exit-code "$remote" "refs/heads/$head_ref") || true
+if [[ -z "$remote_head" ]]; then
+    echo "ai-pr-loop: could not resolve current remote PR head" >&2
+    keep_worktree=true
+    exit 1
+fi
+if [[ "$remote_head" != "$head_sha" ]]; then
+    echo "AI_PR_LOOP_PUSH_RESULT: REFUSED (remote PR head moved)"
+    echo "Expected: $head_sha"
+    echo "Current:  $remote_head"
+    echo "Candidate worktree preserved for inspection: $worktree"
+    keep_worktree=true
+    exit 2
+fi
+
+if ! git merge-base --is-ancestor "$head_sha" "$candidate_sha"; then
+    echo "ai-pr-loop: candidate commit is not a descendant of the original PR head" >&2
+    keep_worktree=true
+    exit 1
+fi
+
+if ! git push \
+    --force-with-lease="refs/heads/$head_ref:$head_sha" \
+    "$remote" \
+    "$candidate_sha:refs/heads/$head_ref"; then
+    echo "AI_PR_LOOP_PUSH_RESULT: REFUSED (remote changed during push or push failed)"
+    echo "Candidate worktree preserved for inspection: $worktree"
+    keep_worktree=true
+    exit 2
+fi
+
+echo "AI_PR_LOOP_PUSH_RESULT: PUSHED $candidate_sha"
+exit 0

@@ -55,8 +55,8 @@ just generate-dashboards
 ```
 
 The recipe runs `jb install` once to vendor `grafonnet`, then
-`jsonnet -m config/dashboards jsonnet/main.jsonnet`. The output is two
-JSON files under `config/dashboards/`. Both are committed so Pulumi
+`jsonnet -m config/dashboards jsonnet/main.jsonnet`. The output is seven
+JSON files under `config/dashboards/`. All seven are committed so Pulumi
 can deploy without invoking Jsonnet.
 
 `generate-dashboards` is part of `just pre-commit`; CI fails if the
@@ -113,6 +113,17 @@ This is necessary because `histogram_avg` is undefined on classic
 histograms and the `_sum` / `_count` series do not exist on native
 histograms. The helper picks the right form at generation time so
 every variant has working ratio panels.
+
+Panels that need the cumulative value or observation rate use the
+companion `queries.histogramSumRate` and
+`queries.histogramCountRate` helpers. They expand to `_sum`/`_count`
+series for classic histograms and to `histogram_sum`/
+`histogram_count` for native histograms.
+
+The generated datasource default follows the histogram mode:
+classic variants select `Prometheus`, while native variants select
+`Prometheus Native`. In the standard devenv monitoring stack use
+`ledger-metrics-prom-noprefix-normalized-native.json`.
 
 The "**normalised**" variants assume the standard OTel→Prom
 transformation: dots → underscores, the UCUM unit suffix (`By` →

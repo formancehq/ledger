@@ -132,10 +132,8 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		// Disable pterm interactive/animated output for test stability
-		pterm.DisableColor()
-		pterm.DisableStyling()
-
+		// pterm output is disabled once for the whole suite in TestCluster. Its
+		// settings are package-level globals, so specs must not mutate them.
 		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
 	})
 

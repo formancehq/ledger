@@ -77,8 +77,14 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 	BeforeAll(func() {
 		// Start Azurite (the Azure Storage emulator). --blobHost 0.0.0.0 is
 		// required so the mapped port is reachable from the host process.
-		container, err := testcontainers.Run(context.Background(), "mcr.microsoft.com/azure-storage/azurite:latest",
-			testcontainers.WithCmd("azurite-blob", "--blobHost", "0.0.0.0"),
+		//
+		// --skipApiVersionCheck is required because the azblob SDK advertises
+		// an x-ms-version newer than the one Azurite recognises, and Azurite
+		// rejects the request with HTTP 400 InvalidHeaderValue rather than
+		// negotiating down. The emulator serves the request correctly once the
+		// check is skipped; without it the suite fails on every SDK bump.
+		container, err := testcontainers.Run(context.Background(), testutil.AzuriteImage,
+			testcontainers.WithCmd("azurite-blob", "--blobHost", "0.0.0.0", "--skipApiVersionCheck"),
 			testcontainers.WithExposedPorts("10000/tcp"),
 			testcontainers.WithWaitStrategy(
 				wait.ForListeningPort("10000/tcp").WithStartupTimeout(30*time.Second),

@@ -355,7 +355,7 @@ local promTarget(expr, refId='A', legendFormat=null) = {
     targets: [{
       datasource: pyroDatasource,
       groupBy: [],
-      labelSelector: '{service_name="ledger", version="$version"}',
+      labelSelector: '{service_name="ledger"}',
       profileTypeId: profileType,
       queryType: 'profile',
       refId: 'A',

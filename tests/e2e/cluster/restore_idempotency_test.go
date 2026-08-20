@@ -125,7 +125,7 @@ var _ = Describe("Restore idempotency keys", Ordered, func() {
 	BeforeAll(func() {
 		ctx = logging.TestingContext()
 
-		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
+		container, err := testcontainers.Run(context.Background(), testutil.MinIOImage,
 			testcontainers.WithEnv(map[string]string{
 				"MINIO_ROOT_USER":     restoreMinioAccessKey,
 				"MINIO_ROOT_PASSWORD": restoreMinioSecretKey,

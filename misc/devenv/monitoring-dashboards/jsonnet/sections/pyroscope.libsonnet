@@ -11,7 +11,6 @@ panels.row('Profiling (Pyroscope)', 174, [
     description=|||
       CPU flame graph from Pyroscope continuous profiling. Shows where CPU time is spent in the application.
       
-      Use the version tag to compare profiles between different builds.
    |||,
   ),
 
@@ -32,7 +31,7 @@ panels.row('Profiling (Pyroscope)', 174, [
   panels.flamegraph(
     'Goroutines Flame Graph',
     { h: 20, w: 24, x: 0, y: 152 },
-    'goroutine:goroutine:count:goroutine:count',
+    'goroutines:goroutine:count:goroutine:count',
     description='Goroutine flame graph from Pyroscope. Shows goroutine stack traces.',
   ),
 ])

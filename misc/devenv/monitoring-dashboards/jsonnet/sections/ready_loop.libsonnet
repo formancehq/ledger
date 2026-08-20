@@ -9,7 +9,7 @@ panels.row('Ready Loop', 2, [
     'Process ready entry time passed',
     { h: 8, w: 12, x: 0, y: 3 },
     [
-      { expr: 'rate({"raft.process_entry_sum", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}' },
+      { expr: queries.histogramSumRate('raft.process_entry', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}' },
     ], unit='µs',
     description=|||
       Time spent processing Raft 'Ready' state (in microseconds). The Ready loop is the main Raft processing cycle.
@@ -30,7 +30,7 @@ panels.row('Ready Loop', 2, [
     'Process ready entry rate',
     { h: 8, w: 12, x: 0, y: 11 },
     [
-      { expr: 'sum(rate(raft.process_entry_count{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Node {{service.node_id}}' },
+      { expr: queries.histogramCountRate('raft.process_entry', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}' },
     ], unit='ops',
     description=|||
       Number of Raft ready entries processed per second.
@@ -66,7 +66,7 @@ panels.row('Ready Loop', 2, [
     'Append entries time passed',
     { h: 8, w: 12, x: 0, y: 27 },
     [
-      { expr: 'sum(rate(raft.append_entries_sum{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Node {{service.node_id}}' },
+      { expr: queries.histogramSumRate('raft.append_entries', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}' },
     ], unit='µs',
     description=|||
       Time spent appending entries to the Write-Ahead Log (WAL) in microseconds.
@@ -122,28 +122,10 @@ panels.row('Ready Loop', 2, [
   ),
 
   panels.timeseries(
-    'WAL cache update time',
-    { h: 8, w: 12, x: 0, y: 51 },
-    [
-      { expr: 'rate(wal.append.cache.duration_sum{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}' },
-    ], unit='µs',
-    description=|||
-      Time spent updating the in-memory cache (s.entries) during WAL append operations, in microseconds.
-      
-      This measures the time to update the in-memory entry cache before persisting to disk. Should be very fast as it's purely in-memory operations.
-      
-      High values may indicate:
-      - Memory pressure
-      - Large entry batches
-      - GC pauses
-   |||, opts={ fillOpacity: 0, showPoints: 'auto' },
-  ),
-
-  panels.timeseries(
     'WAL save time',
     { h: 8, w: 12, x: 12, y: 59 },
     [
-      { expr: 'rate(wal.append.save.duration_sum{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}' },
+      { expr: queries.histogramSumRate('wal.append.save.duration', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}' },
     ], unit='µs',
     description=|||
       Time spent saving entries to the Write-Ahead Log (WAL) on disk, in microseconds.
@@ -203,7 +185,7 @@ panels.row('Ready Loop', 2, [
     'Ready rate',
     { h: 8, w: 12, x: 0, y: 83 },
     [
-      { expr: 'sum(rate(raft.node.ready.wait_duration_count{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Node {{service.node_id}}' },
+      { expr: queries.histogramCountRate('raft.node.ready.wait_duration', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}' },
     ], unit='ops',
     description=|||
       Number of Ready events processed per second. Each Ready contains a batch of entries to apply to the state machine.
@@ -218,7 +200,7 @@ panels.row('Ready Loop', 2, [
     'Ready wait cumulated',
     { h: 8, w: 12, x: 12, y: 91 },
     [
-      { expr: 'rate({"raft.node.ready.wait_duration_sum", "service.cluster"=~"$cluster", "service.node_id"=~"$node"}[$__rate_interval])', legendFormat: '__auto' },
+      { expr: queries.histogramSumRate('raft.node.ready.wait_duration', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}' },
     ], unit='µs', opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 
@@ -240,7 +222,7 @@ panels.row('Ready Loop', 2, [
     'Unspool duration',
     { h: 7, w: 12, x: 0, y: 115 },
     [
-      { expr: 'rate(raft.node.unspool.duration_sum{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}' },
+      { expr: queries.histogramSumRate('raft.node.unspool.duration', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}' },
     ], unit='µs',
     description=|||
       Time spent in unspoolAndResume after a maintenance task (snapshot or checkpoint restore). During this time, spooled entries are replayed into the store.
@@ -281,8 +263,8 @@ panels.row('Ready Loop', 2, [
     'Gating timeline (snapshot creation vs replay spool)',
     { h: 7, w: 24, x: 0, y: 143 },
     [
-      { expr: 'rate(raft.node.maintenance.snapshot_creation.duration_sum{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}: Snapshot creation' },
-      { expr: 'rate(raft.node.maintenance.replay_spool.duration_sum{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}: Replay spool' },
+      { expr: queries.histogramSumRate('raft.node.maintenance.snapshot_creation.duration', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}: Snapshot creation' },
+      { expr: queries.histogramSumRate('raft.node.maintenance.replay_spool.duration', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}: Replay spool' },
     ], unit='µs',
     description=|||
       Gating timeline breakdown: snapshot creation time vs replay spool time (stacked bars).
@@ -301,7 +283,7 @@ panels.row('Ready Loop', 2, [
     'FSM rotation duration',
     { h: 7, w: 8, x: 0, y: 150 },
     [
-      { expr: 'rate(raft.fsm.rotation.duration_sum{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])', legendFormat: 'Node {{service.node_id}}' },
+      { expr: queries.histogramSumRate('raft.fsm.rotation.duration', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}' },
     ], unit='µs',
     description=|||
       Time spent in generation rotation (boundary flush) during ApplyEntries.

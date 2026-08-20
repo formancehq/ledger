@@ -85,7 +85,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 
 	BeforeAll(func() {
 		// Start MinIO container
-		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
+		container, err := testcontainers.Run(context.Background(), testutil.MinIOImage,
 			testcontainers.WithEnv(map[string]string{
 				"MINIO_ROOT_USER":     backupMinioAccessKey,
 				"MINIO_ROOT_PASSWORD": backupMinioSecretKey,
@@ -256,7 +256,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 			Prefix: aws.String("no-prior/"),
 		})
 		Expect(listErr).To(Succeed())
-		Expect(listOut.KeyCount).To(BeEquivalentTo(0),
+		Expect(listOut.Contents).To(BeEmpty(),
 			"no object of any kind must be published under the no-prior/ prefix")
 	})
 

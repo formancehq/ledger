@@ -7,14 +7,16 @@
 
 {
   // The templating variable list. Two datasources (Prometheus +
-  // Pyroscope) followed by three query variables (cluster, node,
-  // version). Regex fields use the OTel dot-notation form;
+  // Pyroscope) followed by two query variables (cluster and node).
+  // Regex fields use the OTel dot-notation form;
   // transform.libsonnet rewrites them for the prom variant.
   templating(uidSuffix='')::
     {
       list: [
         {
-          current: { selected: true, text: 'VictoriaMetrics', value: 'VictoriaMetrics' },
+          // transform.dashboard replaces this with the datasource that
+          // matches the generated histogram mode.
+          current: { selected: true, text: 'Prometheus', value: 'Prometheus' },
           includeAll: false,
           label: 'Datasource',
           multi: false,
@@ -72,25 +74,6 @@
           },
           refresh: 1,
           regex: '/service\\.node_id="([^"]+)"/',
-          sort: 1,
-          type: 'query',
-        },
-        {
-          allValue: '.*',
-          datasource: { type: 'grafana-pyroscope-datasource', uid: '${pyroscope}' },
-          definition: '',
-          description: 'Select a version to filter Pyroscope profiles (for comparison)',
-          includeAll: true,
-          label: 'Version',
-          name: 'version',
-          options: [],
-          query: {
-            labelSelector: '{service_name="ledger"}',
-            profileTypeId: 'process_cpu:cpu:nanoseconds:cpu:nanoseconds',
-            refId: 'PyroscopeVariableQueryEditor-VariableQuery',
-          },
-          refresh: 1,
-          regex: '/version="([^"]+)"/',
           sort: 1,
           type: 'query',
         },

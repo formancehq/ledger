@@ -11,12 +11,13 @@ fi
 
 # Never inherit a host GOROOT into pinned Go commands.
 unset GOROOT || true
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "==> agent-check: mechanical repository invariants"
-bash scripts/check-repo-invariants
+bash "$SCRIPT_DIR/check-repo-invariants"
 
 echo "==> agent-check: repository pre-commit validation"
-just pre-commit
+bash "$SCRIPT_DIR/agent-just" pre-commit
 
 echo "==> agent-check: compile all root-module packages"
 go build ./...
