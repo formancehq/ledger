@@ -12,17 +12,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRunnerExecutesCodexAtExactPRHead(t *testing.T) {
+func TestRunnerPinsPolicyToBaseAndExposesExactPRHeadAsEvidence(t *testing.T) {
 	fixture := newFixture(t, "repo")
 
 	output, err := fixture.run(t)
 	require.NoError(t, err, output)
-	require.Equal(t, fixture.headSHA, strings.TrimSpace(readFile(t, fixture.codexHeadCapture)))
+	require.Equal(t, fixture.baseSHA, strings.TrimSpace(readFile(t, fixture.codexHeadCapture)))
+	require.Equal(t, fixture.headSHA, strings.TrimSpace(readFile(t, fixture.evidenceHeadCapture)))
+	require.Equal(t, "trusted", strings.TrimSpace(readFile(t, fixture.trustedInstructionsCapture)))
 	require.Equal(t, "false", strings.TrimSpace(readFile(t, fixture.callerMarkerCapture)))
 
 	codexDirectory := strings.TrimSpace(readFile(t, fixture.codexDirectoryCapture))
 	require.NoDirExists(t, codexDirectory)
 	require.FileExists(t, fixture.resultPath)
+}
+
+func TestRunnerDiffsFromMergeBaseWhenBaseAdvances(t *testing.T) {
+	fixture := newFixture(t, "repo")
+
+	output, err := fixture.run(t)
+	require.NoError(t, err, output)
+	prompt := readFile(t, fixture.promptCapture)
+	require.Contains(t, prompt, "- base_sha: "+fixture.baseSHA)
+	require.Contains(t, prompt, "- merge_base: "+fixture.mergeBaseSHA)
+	require.Contains(t, prompt, "diff --find-renames "+fixture.mergeBaseSHA+" "+fixture.headSHA+" --")
+	require.NotContains(t, prompt, "diff --find-renames "+fixture.baseSHA+" "+fixture.headSHA+" --")
 }
 
 func TestRunnerRejectsDifferentRepositoryWithSameOwner(t *testing.T) {
@@ -35,15 +49,19 @@ func TestRunnerRejectsDifferentRepositoryWithSameOwner(t *testing.T) {
 }
 
 type fixture struct {
-	checkout              string
-	fakeBin               string
-	baseSHA               string
-	headSHA               string
-	headRepository        string
-	resultPath            string
-	codexHeadCapture      string
-	codexDirectoryCapture string
-	callerMarkerCapture   string
+	checkout                   string
+	fakeBin                    string
+	baseSHA                    string
+	mergeBaseSHA               string
+	headSHA                    string
+	headRepository             string
+	resultPath                 string
+	codexHeadCapture           string
+	evidenceHeadCapture        string
+	codexDirectoryCapture      string
+	callerMarkerCapture        string
+	promptCapture              string
+	trustedInstructionsCapture string
 }
 
 func newFixture(t *testing.T, headRepository string) fixture {
@@ -67,20 +85,34 @@ func newFixture(t *testing.T, headRepository string) fixture {
 		[]byte("# AI PR triage contract\n"),
 		0o644,
 	))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(seed, "docs", "technical", "agent-context.md"),
+		[]byte("# Trusted agent context\n"),
+		0o644,
+	))
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "AGENTS.md"), []byte("trusted base instruction\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "base.txt"), []byte("base\n"), 0o644))
 	runGit(t, seed, "add", "--", ".")
 	runGit(t, seed, "commit", "-m", "base")
 	runGit(t, seed, "branch", "-M", "release/v3.0")
-	baseSHA := gitOutput(t, seed, "rev-parse", "HEAD")
+	mergeBaseSHA := gitOutput(t, seed, "rev-parse", "HEAD")
 	runGit(t, seed, "remote", "add", "origin", remote)
 	runGit(t, seed, "push", "-u", "origin", "release/v3.0")
 
 	runGit(t, seed, "checkout", "-b", "feature")
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "AGENTS.md"), []byte("untrusted head instruction\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "head.txt"), []byte("head\n"), 0o644))
-	runGit(t, seed, "add", "--", "head.txt")
+	runGit(t, seed, "add", "--", "AGENTS.md", "head.txt")
 	runGit(t, seed, "commit", "-m", "feature")
 	headSHA := gitOutput(t, seed, "rev-parse", "HEAD")
 	runGit(t, seed, "push", "-u", "origin", "feature")
+
+	runGit(t, seed, "checkout", "release/v3.0")
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "base-tip.txt"), []byte("advanced base\n"), 0o644))
+	runGit(t, seed, "add", "--", "base-tip.txt")
+	runGit(t, seed, "commit", "-m", "advance base")
+	baseSHA := gitOutput(t, seed, "rev-parse", "HEAD")
+	runGit(t, seed, "push", "origin", "release/v3.0")
 	runGit(t, testRoot, "clone", "--branch", "release/v3.0", remote, checkout)
 	require.NoError(t, os.WriteFile(filepath.Join(checkout, "caller-only.txt"), []byte("caller\n"), 0o644))
 
@@ -111,23 +143,33 @@ while [[ $# -gt 0 ]]; do
   fi
   shift
 done
-cat >/dev/null
+cat >"$TEST_PROMPT_CAPTURE"
 pwd >"$TEST_CODEX_DIRECTORY_CAPTURE"
 git rev-parse HEAD >"$TEST_CODEX_HEAD_CAPTURE"
+git -C ../head-worktree rev-parse HEAD >"$TEST_EVIDENCE_HEAD_CAPTURE"
+if grep -qx 'trusted base instruction' AGENTS.md && grep -qx 'untrusted head instruction' ../head-worktree/AGENTS.md; then
+  printf 'trusted\n' >"$TEST_TRUSTED_INSTRUCTIONS_CAPTURE"
+else
+  printf 'untrusted\n' >"$TEST_TRUSTED_INSTRUCTIONS_CAPTURE"
+fi
 if [[ -e caller-only.txt ]]; then printf 'true\n'; else printf 'false\n'; fi >"$TEST_CALLER_MARKER_CAPTURE"
 printf '{"decision":"KEEP","base_sha":"%s","head":"%s","problem_statement":"test","documented_needs":[],"technical_decisions":[],"existing_alternatives":[],"cost_assessment":"test","consequence_of_doing_nothing":"test","questions_for_author":[],"summary":"test"}\n' "$TEST_BASE_SHA" "$TEST_HEAD_SHA" >"$output"
 `)
 
 	return fixture{
-		checkout:              checkout,
-		fakeBin:               fakeBin,
-		baseSHA:               baseSHA,
-		headSHA:               headSHA,
-		headRepository:        headRepository,
-		resultPath:            filepath.Join(testRoot, "result.json"),
-		codexHeadCapture:      filepath.Join(testRoot, "codex-head"),
-		codexDirectoryCapture: filepath.Join(testRoot, "codex-directory"),
-		callerMarkerCapture:   filepath.Join(testRoot, "caller-marker"),
+		checkout:                   checkout,
+		fakeBin:                    fakeBin,
+		baseSHA:                    baseSHA,
+		mergeBaseSHA:               mergeBaseSHA,
+		headSHA:                    headSHA,
+		headRepository:             headRepository,
+		resultPath:                 filepath.Join(testRoot, "result.json"),
+		codexHeadCapture:           filepath.Join(testRoot, "codex-head"),
+		evidenceHeadCapture:        filepath.Join(testRoot, "evidence-head"),
+		codexDirectoryCapture:      filepath.Join(testRoot, "codex-directory"),
+		callerMarkerCapture:        filepath.Join(testRoot, "caller-marker"),
+		promptCapture:              filepath.Join(testRoot, "prompt"),
+		trustedInstructionsCapture: filepath.Join(testRoot, "trusted-instructions"),
 	}
 }
 
@@ -143,8 +185,11 @@ func (f fixture) run(t *testing.T) (string, error) {
 		"TEST_HEAD_SHA="+f.headSHA,
 		"TEST_HEAD_REPOSITORY="+f.headRepository,
 		"TEST_CODEX_HEAD_CAPTURE="+f.codexHeadCapture,
+		"TEST_EVIDENCE_HEAD_CAPTURE="+f.evidenceHeadCapture,
 		"TEST_CODEX_DIRECTORY_CAPTURE="+f.codexDirectoryCapture,
 		"TEST_CALLER_MARKER_CAPTURE="+f.callerMarkerCapture,
+		"TEST_PROMPT_CAPTURE="+f.promptCapture,
+		"TEST_TRUSTED_INSTRUCTIONS_CAPTURE="+f.trustedInstructionsCapture,
 	)
 
 	output, err := command.CombinedOutput()

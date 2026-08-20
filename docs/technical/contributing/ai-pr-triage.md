@@ -4,6 +4,23 @@ PR triage answers a different question from code review: **is this change worth 
 
 It runs before the technical review/fix loop and is advisory. It never closes a PR, merges code, posts comments, or invents product intent.
 
+## Trust boundary
+
+Launch the triage runner from a trusted checkout, never from the PR head being
+evaluated. After GitHub resolves the exact target and head commits, the runner
+creates two detached worktrees:
+
+- the target commit is the trust root for `AGENTS.md`, agent context, this
+  contract, the structured-output schema, and the Codex working directory;
+- the head commit is exposed separately and only as untrusted evidence.
+
+The committed PR delta starts at the immutable merge base of those commits, not
+at the current target tip. This prevents later target-branch changes from being
+attributed to the PR. A PR cannot supply or replace the policy used to decide
+its own legitimacy. Consequently, a newly introduced triage policy becomes
+available only after it reaches the target branch; its bootstrap review uses the
+normal technical review workflow.
+
 ## Decisions
 
 - `KEEP`: repository evidence establishes a concrete need and the change is proportionate enough to justify technical review.
