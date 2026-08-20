@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -48,6 +49,20 @@ func TestComputeSpecHash_ExcludesNonPodFields(t *testing.T) {
 	optOut := false
 	withDeletionProtection.Persistence.DeletionProtection = &optOut
 	assert.Equal(t, baseHash, computeSpecHash(withDeletionProtection), "DeletionProtection change should not affect hash")
+
+	// Changing a volume SIZE must NOT change the hash: size maps to the
+	// VolumeClaimTemplate / PVC, not the pod template. Online expansion recreates
+	// the StatefulSet, and a changed hash would roll the adopted pods.
+	withSize := base.DeepCopy()
+	withSize.Persistence.Data.Size = resource.MustParse("100Gi")
+	assert.Equal(t, baseHash, computeSpecHash(withSize), "volume size change should not affect hash")
+
+	// The other PVC-only VolumeSpec fields must not affect the hash either.
+	withPVCFields := base.DeepCopy()
+	withPVCFields.Persistence.Data.StorageClass = "fast"
+	withPVCFields.Persistence.Data.AccessMode = "ReadWriteOncePod"
+	withPVCFields.Persistence.Data.VolumeAttributesClassName = "gold"
+	assert.Equal(t, baseHash, computeSpecHash(withPVCFields), "PVC-only VolumeSpec fields should not affect hash")
 }
 
 func TestComputeSpecHash_IncludesPodFields(t *testing.T) {
@@ -103,4 +118,11 @@ func TestComputeSpecHash_IncludesPodFields(t *testing.T) {
 		LedgerMetadata: &ledgerv1alpha1.BloomFilterConfig{FPRate: "0.001"},
 	}
 	assert.NotEqual(t, baseHash, computeSpecHash(withBloomLedgerMetadata), "Bloom.LedgerMetadata change should affect hash")
+
+	// Switching a volume to hostPath DOES change the pod template (inline hostPath
+	// volume vs PVC mount), so it must still affect the hash even though the other
+	// VolumeSpec fields are excluded.
+	withHostPath := base.DeepCopy()
+	withHostPath.Persistence.Data.HostPath = &ledgerv1alpha1.HostPathVolumeSpec{Path: "/mnt/nvme0/data"}
+	assert.NotEqual(t, baseHash, computeSpecHash(withHostPath), "hostPath switch should affect hash")
 }

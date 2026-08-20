@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/resource"
+
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
@@ -33,6 +35,22 @@ func computeSpecHash(spec *ledgerv1alpha1.ClusterSpec) string {
 	// it has no pod-template effect, so toggling it must not roll the StatefulSet.
 	// Persistence is a value field, so zeroing it on the shallow copy is safe.
 	cp.Persistence.DeletionProtection = nil
+
+	// The PVC-only VolumeSpec fields (size, storageClass, accessMode,
+	// volumeAttributesClassName) map to the VolumeClaimTemplates / live PVCs, not
+	// the pod template — they never appear in buildPodTemplate. A volume resize is
+	// applied online by reconcilePVCExpansion (PVC patch + orphan StatefulSet
+	// recreate); it MUST NOT bump the pod-template hash, or the recreated
+	// StatefulSet would compute a different ControllerRevision from the adopted
+	// pods and (with Partition 0) roll them — defeating the no-restart expansion.
+	// HostPath is deliberately kept: switching a volume between PVC and hostPath
+	// mode DOES change the pod template (inline hostPath volume vs PVC mount).
+	for _, v := range []*ledgerv1alpha1.VolumeSpec{&cp.Persistence.WAL, &cp.Persistence.Data, &cp.Persistence.ColdCache} {
+		v.Size = resource.Quantity{}
+		v.StorageClass = ""
+		v.AccessMode = ""
+		v.VolumeAttributesClassName = ""
+	}
 
 	data, _ := json.Marshal(&cp) //nolint:errchkjson // spec is always serializable
 

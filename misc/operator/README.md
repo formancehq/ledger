@@ -99,6 +99,28 @@ spec:
 | `pvcProtection.allowDeletionAnnotation` | `formance.com/allow-deletion` | Annotation key whose value `true` opts a volume out of deletion protection |
 | `pvcProtection.additionalExemptServiceAccounts` | `[]` | Extra ServiceAccount usernames (`system:serviceaccount:<ns>:<name>`) exempt from the policies — sibling operator releases managing protected ledgers, or managed workload/GitOps controllers |
 
+## Volume Resizing
+
+Increasing a volume size in the Cluster spec (`spec.persistence.wal|data|coldCache.size`)
+is applied online. Because a StatefulSet's `volumeClaimTemplates` are **immutable**,
+the operator does not (and cannot) edit them in place; instead it:
+
+1. Patches every existing PVC's `spec.resources.requests.storage` upward, which
+   triggers CSI online expansion of the live disks. This requires the volume's
+   `StorageClass` to have `allowVolumeExpansion: true` and a driver that supports it.
+2. Recreates the StatefulSet with orphan propagation (pods and PVCs are retained and
+   re-adopted, so there is no pod restart) so the refreshed template carries the new
+   size — future scale-out ordinals are then born at the new size.
+
+Resizing is **grow-only**. A requested size below the largest live PVC for a volume
+is rejected with a `VolumeShrinkRejected` warning event, and that volume's template is
+clamped back up to the current size (Kubernetes does not support shrinking a PVC). The
+floor is taken from the live PVCs, not the StatefulSet template, so a rejected shrink
+never leaks into a rebuilt template across the recreate — including when the same
+update grows one volume and shrinks another. Each successful expansion emits a
+`VolumeExpanded` event. The StatefulSet's `volumeClaimTemplates` keep reporting the
+previous size until the recreate lands; the authoritative size is on the PVCs.
+
 ## Volume Deletion Protection
 
 Protection is **on by default**: a freshly deployed ledger is protected without
