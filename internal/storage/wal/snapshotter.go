@@ -47,6 +47,14 @@ func (s *Snapshotter) Save(snap *raftpb.Snapshot) error {
 	path := filepath.Join(s.dir, name)
 	tmpPath := path + ".tmp"
 
+	// The directory is created in NewSnapshotter, so reaching here without it
+	// means it went away underneath a running node. Recreate it: the snapshot
+	// this call is persisting is how a follower catches up, and failing the
+	// save propagates as a task-pool panic that takes the node down.
+	if err := os.MkdirAll(s.dir, 0755); err != nil {
+		return fmt.Errorf("recreating snapshot directory: %w", err)
+	}
+
 	f, err := os.Create(tmpPath)
 	if err != nil {
 		return fmt.Errorf("creating temp snap file: %w", err)
