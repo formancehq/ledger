@@ -29,8 +29,9 @@ but different colors operate on strictly isolated balances.
 - `commonpb.AccountVolume{asset, color, volumes}` — `Account.volumes` is a
   list sorted by `(asset, color)` ascending. Deterministic serialization is
   required for stable JSON / snapshot tests.
-- `commonpb.VolumeEntry{asset, color, volumes}` — same shape, used inside
-  `PostCommitVolumes.volumes_by_account[account].volumes`.
+- `commonpb.PostCommitVolume{account, asset, color, input, output}` — immutable
+  transaction snapshot row. `PostCommitVolumes.volumes` is sorted by
+  `(account, asset, color)`; REST rendering groups these rows by account.
 - `commonpb.AggregatedVolume.color: string` — set on every entry returned by
   `AggregateVolumes`. By default one entry per `(asset, color)` tuple;
   `collapse_colors` flag sums across colors.
@@ -53,6 +54,22 @@ The color sits between account and asset so prefix scans behave naturally:
 - `[ledgerName][account]\x00[color]\x00` returns every asset for that color.
 - The trailing `precision` byte can be `0x00` (e.g. `"EUR"`) without
   encoding ambiguity because nothing follows it.
+
+## Post-commit snapshot construction
+
+The FSM builds each transaction's immutable `PostCommitVolumes` while applying
+its postings. Every successful source or destination mutation captures the
+latest `VolumePair` for that exact `VolumeKey`; another posting touching the
+same tuple replaces the earlier captured value. This removes the former second
+pass of coverage-gated cache reads after all postings had already been applied.
+
+The accumulator keeps four entries inline and uses a linear lookup through the
+first eight distinct tuples. On the ninth tuple it builds an index map; larger
+transactions keep constant-time replacement without imposing a map allocation
+on the common one-posting case. At the end it converts values to immutable
+decimal rows and sorts by `(account, asset, color)`, so every Raft replica emits
+the same bytes. Creates, Numscripts, reverts and mirror ingestion all use the
+same capture semantics.
 
 ## Numscript contract
 

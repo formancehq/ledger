@@ -219,11 +219,6 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// Post-commit volumes are part of every persisted transaction: compute
 	// them unconditionally from the volume state after this transaction's
 	// postings applied (before any proposal-level ephemeral purge).
-	postCommitVolumes, pcvErr := buildPostCommitVolumes(s, ledger, result.Postings)
-	if pcvErr != nil {
-		return nil, pcvErr
-	}
-
 	// Get the current open chapter ID for the receipt
 	var chapterID uint64
 	if p, ok := s.GetCurrentOpenChapter(); ok {
@@ -241,7 +236,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 					Id:                nextTransactionID,
 					InsertedAt:        s.GetDate().Mutate(),
 					UpdatedAt:         s.GetDate().Mutate(),
-					PostCommitVolumes: postCommitVolumes,
+					PostCommitVolumes: result.PostCommitVolumes,
 				},
 				AccountMetadata: accountMetadata,
 				ChapterId:       chapterID,
@@ -281,6 +276,7 @@ type produceResult struct {
 	Postings            []*commonpb.Posting
 	TransactionMetadata map[string]*commonpb.MetadataValue            // Metadata from set_tx_meta in Numscript
 	AccountsMetadata    map[string]map[string]*commonpb.MetadataValue // Metadata from set_account_meta in Numscript
+	PostCommitVolumes   *commonpb.PostCommitVolumes
 }
 
 type postingProducer interface {
@@ -292,9 +288,11 @@ type stdPostingProducer struct {
 }
 
 func (p *stdPostingProducer) produce(s Scope, ledger string, order *raftcmdpb.CreateTransactionOrder, _ *commonpb.Script) (*produceResult, domain.Describable) {
+	var postCommit postCommitVolumeAccumulator
+	postCommit.init(len(order.GetPostings()))
 	for _, posting := range order.GetPostings() {
 		// Skip balance check when Force is true
-		err := applyPosting(s, ledger, posting, order.GetForce(), p.assetCache)
+		err := applyPosting(s, ledger, posting, order.GetForce(), p.assetCache, &postCommit)
 		if err != nil {
 			return nil, err
 		}
@@ -303,5 +301,6 @@ func (p *stdPostingProducer) produce(s Scope, ledger string, order *raftcmdpb.Cr
 	return &produceResult{
 		Postings:            order.GetPostings(),
 		TransactionMetadata: nil, // No script metadata for standard postings
+		PostCommitVolumes:   postCommit.build(),
 	}, nil
 }

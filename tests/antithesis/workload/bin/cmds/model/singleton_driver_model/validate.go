@@ -776,29 +776,16 @@ func accountMetaMapEqual(a, b map[string]*commonpb.MetadataMap) bool {
 // for this driver model. ok is false when the cell is absent or the values
 // don't parse.
 func postCommitVolume(pcv *commonpb.PostCommitVolumes, key oracle.VolumeKey) (in, out uint256.Int, ok bool) {
-	byAsset, found := pcv.GetVolumesByAccount()[key.Address]
-	if !found {
+	row := pcv.FindVolume(key.Address, key.Asset, "")
+	if row == nil {
 		return in, out, false
 	}
 
-	var vol *commonpb.Volumes
-	for _, entry := range byAsset.GetVolumes() {
-		if entry.GetAsset() == key.Asset && entry.GetColor() == "" {
-			vol = entry.GetVolumes()
-
-			break
-		}
-	}
-
-	if vol == nil {
+	if err := in.SetFromDecimal(row.GetInput()); err != nil {
 		return in, out, false
 	}
 
-	if err := in.SetFromDecimal(vol.GetInput()); err != nil {
-		return in, out, false
-	}
-
-	if err := out.SetFromDecimal(vol.GetOutput()); err != nil {
+	if err := out.SetFromDecimal(row.GetOutput()); err != nil {
 		return in, out, false
 	}
 

@@ -3930,7 +3930,7 @@ Application-level bloom filters that avoid Pebble reads for keys known not to ex
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--bloom-volumes-expected-keys` | uint | `0` | Expected unique volume keys (0 = disabled by default) |
+| `--bloom-volumes-expected-keys` | uint | `1000000` | Expected unique volume keys (0 = disable). The default consumes about 1.4 MiB at the default 1% false-positive target. |
 | `--bloom-volumes-fp-rate` | float64 | `0` | False positive rate for volumes (0 = use 0.01 when enabled) |
 | `--bloom-metadata-expected-keys` | uint | `0` | Expected unique metadata keys (0 = disabled by default) |
 | `--bloom-metadata-fp-rate` | float64 | `0` | False positive rate for metadata (0 = use 0.01 when enabled) |
@@ -3953,10 +3953,23 @@ Application-level bloom filters that avoid Pebble reads for keys known not to ex
 | `--bloom-prepared-queries-expected-keys` | uint | `0` | Expected unique prepared query keys (0 = disabled by default) |
 | `--bloom-prepared-queries-fp-rate` | float64 | `0` | False positive rate for prepared queries (0 = use 0.01 when enabled) |
 
-Bloom filters are disabled by default. Enable only the attribute types that avoid enough missing-key Pebble reads to justify the memory cost.
+The volume filter is enabled by default because every transaction preload must
+establish whether each touched volume already exists. The other attribute
+filters remain disabled by default. Set a type's `expected-keys` to `0` to
+disable it, or size it to the expected live cardinality when the default volume
+capacity is too small.
+
+An undersized filter remains correct: false positives fall back to Pebble. Its
+performance benefit decreases as it fills. Estimate the observed false-positive
+rate as `bloom.false_positives / (bloom.negatives + bloom.false_positives)` and
+increase `expected-keys` when that ratio materially exceeds the configured
+target.
 
 ```bash
-# Default config (all bloom filters disabled)
+# Disable the default volume filter
+ledger run --bloom-volumes-expected-keys 0 [other flags...]
+
+# Default config (1,000,000 expected volume keys; other filters disabled)
 ledger run [other flags...]
 
 # Enable filters for common hot-path misses

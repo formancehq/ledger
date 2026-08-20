@@ -26,6 +26,36 @@ func TestLoadBloomConfigIncludesLedgerMetadata(t *testing.T) {
 	require.Equal(t, 0.01, cfg.GetBloomLedgerMetadata().GetFpRate())
 }
 
+func TestLoadBloomConfigVolumeDefaultAndExplicitDisable(t *testing.T) {
+	t.Parallel()
+
+	t.Run("default volume filter", func(t *testing.T) {
+		t.Parallel()
+
+		cmd := &cobra.Command{}
+		registerBloomFlags(cmd)
+
+		cfg := &commonpb.ClusterConfig{}
+		loadBloomConfig(cmd, cfg)
+
+		require.Equal(t, uint64(defaultVolumeBloomExpectedKeys), cfg.GetBloomVolumes().GetExpectedKeys())
+		require.Equal(t, 0.01, cfg.GetBloomVolumes().GetFpRate())
+	})
+
+	t.Run("zero disables the default", func(t *testing.T) {
+		t.Parallel()
+
+		cmd := &cobra.Command{}
+		registerBloomFlags(cmd)
+		require.NoError(t, cmd.Flags().Set("bloom-volumes-expected-keys", "0"))
+
+		cfg := &commonpb.ClusterConfig{}
+		loadBloomConfig(cmd, cfg)
+
+		require.Nil(t, cfg.GetBloomVolumes())
+	})
+}
+
 // TestLoadConfig_ZeroPreservedForSentinelFlags pins the fix for #324.
 // Several flags document `0` as a meaningful sentinel (disable /
 // never expire). The pre-fix helpers swallowed any value-zero through

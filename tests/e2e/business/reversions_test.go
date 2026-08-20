@@ -483,12 +483,12 @@ var _ = Describe("Reversions", Ordered, func() {
 
 		// revertPCV returns the post-commit volume snapshot carried on the
 		// compensating transaction. It is part of every reversion, so never nil.
-		revertPCV := func(resp *servicepb.ApplyResponse) map[string]*commonpb.VolumesByAssets {
+		revertPCV := func(resp *servicepb.ApplyResponse) *commonpb.PostCommitVolumes {
 			revertedTx := resp.Logs[0].Payload.GetApply().Log.Data.GetRevertedTransaction()
 			Expect(revertedTx.GetRevertTransaction().GetPostCommitVolumes()).NotTo(BeNil(),
 				"every compensating transaction must carry post-commit volumes")
 
-			return revertedTx.GetRevertTransaction().GetPostCommitVolumes().GetVolumesByAccount()
+			return revertedTx.GetRevertTransaction().GetPostCommitVolumes()
 		}
 
 		BeforeAll(func() {
@@ -509,11 +509,11 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			pcv := revertPCV(revertResp)
 			// After revert: ev-rv-expand sent 100 back to world -> input=100, output=100
-			Expect(pcv).To(HaveKey("ev-rv-expand"))
-			Expect(pcv["ev-rv-expand"].FindVolume("USD", "").Input).To(Equal("100"))
-			Expect(pcv["ev-rv-expand"].FindVolume("USD", "").Output).To(Equal("100"))
+			Expect(pcv.FindVolume("ev-rv-expand", "USD", "")).NotTo(BeNil())
+			Expect(pcv.FindVolume("ev-rv-expand", "USD", "").Input).To(Equal("100"))
+			Expect(pcv.FindVolume("ev-rv-expand", "USD", "").Output).To(Equal("100"))
 
-			Expect(pcv).To(HaveKey("world"))
+			Expect(pcv.FindVolume("world", "USD", "")).NotTo(BeNil())
 		})
 
 		It("Should leave the original transaction's creation-time snapshot untouched after revert", func() {
@@ -537,7 +537,7 @@ var _ = Describe("Reversions", Ordered, func() {
 				g.Expect(tx.GetReverted()).To(BeTrue())
 				g.Expect(tx.GetPostCommitVolumes()).NotTo(BeNil())
 
-				original := tx.GetPostCommitVolumes().GetVolumesByAccount()["ev-rv-original"].FindVolume("USD", "")
+				original := tx.GetPostCommitVolumes().FindVolume("ev-rv-original", "USD", "")
 				g.Expect(original).NotTo(BeNil())
 				g.Expect(original.GetInput()).To(Equal("250"))
 				g.Expect(original.GetOutput()).To(Equal("0"))
@@ -565,9 +565,9 @@ var _ = Describe("Reversions", Ordered, func() {
 
 			pcv := revertPCV(revertResp)
 			// ev-rv-force: input=100 (original), output=200 (100 spent + 100 reverted)
-			Expect(pcv).To(HaveKey("ev-rv-force"))
-			Expect(pcv["ev-rv-force"].FindVolume("USD", "").Input).To(Equal("100"))
-			Expect(pcv["ev-rv-force"].FindVolume("USD", "").Output).To(Equal("200"))
+			Expect(pcv.FindVolume("ev-rv-force", "USD", "")).NotTo(BeNil())
+			Expect(pcv.FindVolume("ev-rv-force", "USD", "").Input).To(Equal("100"))
+			Expect(pcv.FindVolume("ev-rv-force", "USD", "").Output).To(Equal("200"))
 		})
 	})
 })

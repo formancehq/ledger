@@ -344,8 +344,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 				// the FSM apply path must not silently drop tombstones —
 				// route through StoreFailure so a coverage miss reaches the
 				// audit chain under its own reason and anything else fails
-				// loudly as a storage fault (mirrors buildPostCommitVolumes
-				// / applyPosting).
+				// loudly as a storage fault (mirrors applyPosting).
 				return nil, domain.StoreFailure("committing order overlay", err)
 			}
 		}

@@ -202,8 +202,10 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 	s := ctx.Scope
 
 	// Apply each posting with force=true (skip balance checks, auto-init missing volumes)
+	var postCommit postCommitVolumeAccumulator
+	postCommit.init(len(ct.GetPostings()))
 	for _, posting := range ct.GetPostings() {
-		if err := applyPosting(s, ledger, posting, true, ctx.AssetCache); err != nil {
+		if err := applyPosting(s, ledger, posting, true, ctx.AssetCache, &postCommit); err != nil {
 			// applyPosting already returns a Describable (ErrBalanceNotPreloaded,
 			// ErrInsufficientFunds, ErrVolumeOverflow); propagate verbatim.
 			return nil, err
@@ -266,11 +268,6 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 	// Post-commit volumes are part of every persisted transaction, mirrored
 	// ones included: compute them from the volume state after the mirrored
 	// postings applied.
-	postCommitVolumes, pcvErr := buildPostCommitVolumes(s, ledger, ct.GetPostings())
-	if pcvErr != nil {
-		return nil, pcvErr
-	}
-
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 			CreatedTransaction: &commonpb.CreatedTransaction{
@@ -282,7 +279,7 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 					Id:                txID,
 					InsertedAt:        s.GetDate().Mutate(),
 					UpdatedAt:         s.GetDate().Mutate(),
-					PostCommitVolumes: postCommitVolumes,
+					PostCommitVolumes: postCommit.build(),
 				},
 				AccountMetadata: accountMetadata,
 				ChapterId:       chapterID,
@@ -394,8 +391,10 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 	s := ctx.Scope
 
 	// Apply reversed postings with force=true (auto-init missing volumes)
+	var postCommit postCommitVolumeAccumulator
+	postCommit.init(len(rt.GetReversePostings()))
 	for _, posting := range rt.GetReversePostings() {
-		if err := applyPosting(s, ledger, posting, true, ctx.AssetCache); err != nil {
+		if err := applyPosting(s, ledger, posting, true, ctx.AssetCache, &postCommit); err != nil {
 			return nil, err
 		}
 	}
@@ -447,11 +446,6 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 	// Post-commit volumes are part of every persisted transaction, mirrored
 	// reverts included: compute them from the volume state after the reverse
 	// postings applied.
-	postCommitVolumes, pcvErr := buildPostCommitVolumes(s, ledger, rt.GetReversePostings())
-	if pcvErr != nil {
-		return nil, pcvErr
-	}
-
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 			RevertedTransaction: &commonpb.RevertedTransaction{
@@ -464,7 +458,7 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 					InsertedAt:         s.GetDate().Mutate(),
 					UpdatedAt:          s.GetDate().Mutate(),
 					RevertsTransaction: rt.GetRevertedTransactionId(),
-					PostCommitVolumes:  postCommitVolumes,
+					PostCommitVolumes:  postCommit.build(),
 				},
 			},
 		},

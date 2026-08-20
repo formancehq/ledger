@@ -59,6 +59,19 @@ func TestFilter_DirtyTracking(t *testing.T) {
 	require.Equal(t, 0, count, "should have no dirty blocks after clear")
 }
 
+func TestFilter_DuplicateAddDoesNotRedirtyBlock(t *testing.T) {
+	t.Parallel()
+
+	f := newTestFilter(t)
+	key := hashKey([]byte("stable-key"))
+	f.Add(key)
+	clear(f.dirty)
+
+	f.Add(key)
+
+	require.Empty(t, maps.Collect(f.dirtyBlocks()))
+}
+
 func TestFilter_DirtyBlocks_MultipleBlocks(t *testing.T) {
 	t.Parallel()
 

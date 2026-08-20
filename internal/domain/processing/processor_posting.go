@@ -83,7 +83,14 @@ func cachedVolumeKey(ledgerName, account, asset, color string, assetCache map[st
 // Color is carried into both source and destination volume keys, so balances are
 // strictly segregated per (account, asset, color). The empty color is the
 // uncolored bucket and is itself one of these segregated buckets.
-func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBalanceCheck bool, assetCache map[string]cachedAssetPrecision) domain.Describable {
+func applyPosting(
+	s Scope,
+	ledgerName string,
+	posting *commonpb.Posting,
+	skipBalanceCheck bool,
+	assetCache map[string]cachedAssetPrecision,
+	postCommit *postCommitVolumeAccumulator,
+) domain.Describable {
 	color := posting.GetColor()
 	sourceKey := cachedVolumeKey(ledgerName, posting.GetSource(), posting.GetAsset(), color, assetCache)
 
@@ -165,6 +172,7 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 
 	sourceVol.GetOutput().SetFromUint256(&sum)
 	s.Volumes().Put(sourceKey, sourceVol)
+	postCommit.capture(sourceKey, sourceVol)
 
 	// Destination receives credit - increase Input
 	destKey := cachedVolumeKey(ledgerName, posting.GetDestination(), posting.GetAsset(), color, assetCache)
@@ -197,6 +205,7 @@ func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBal
 
 	destVol.GetInput().SetFromUint256(&sum)
 	s.Volumes().Put(destKey, destVol)
+	postCommit.capture(destKey, destVol)
 
 	return nil
 }

@@ -8,9 +8,9 @@ This page covers the pipeline mechanics. For the **what** of counters (definitio
 
 ## Why the audit chain, not the log stream
 
-The subsystem tails `AuditEntry + AuditItem` (`ZoneCold` / `SubColdAudit` + `SubColdAuditItem`), not `ZoneCold` / `SubColdLog`. The reason is Numscript template usage: the log's `CreatedTransaction` payload does not carry the `NumscriptReference` of the order — only the resolved postings and metadata. The reference survives on `AuditItem.SerializedOrder`, which is the deterministic serialised bytes of the original `raftcmdpb.Order`. Reading the audit chain lets the usagebuilder unmarshal the order, extract `NumscriptReference.Name` for template tracking, and decide whether the order should feed the numscript-execution counter.
+The subsystem tails `AuditEntry + AuditItem` (`ZoneCold` / `SubColdAudit` + `SubColdAuditItem`), not `ZoneCold` / `SubColdLog`. The reason is Numscript template usage: the log's `CreatedTransaction` payload does not carry the `NumscriptReference` of the order — only the resolved postings and metadata. The reference survives on `AuditItem.SerializedOrder`, which is the deterministic serialised bytes of the original `raftcmdpb.Order`. Reading the audit chain lets the usagebuilder extract `NumscriptReference.Name` for template tracking and decide whether the order should feed the numscript-execution counter.
 
-For counters that live on the log directly (posting count, purge lists), the usagebuilder fetches the specific log at `AuditItem.LogSequence` via `query.ReadLogBySequence` — a single point read on the hot Pebble cache.
+For counters that live on the log directly (posting count, purge lists), the usagebuilder performs a raw point lookup at `AuditItem.LogSequence` and decodes only the projection fields it consumes.
 
 ## Builder Lifecycle
 
@@ -53,9 +53,9 @@ flowchart TB
     E --> F[Read AuditItems for entry]
     F --> G{Iterate items}
     G -->|LogSequence == 0| G
-    G -->|non-zero| H[Unmarshal SerializedOrder → raftcmdpb.Order]
+    G -->|non-zero| H[Decode usage view; full-proto fallback for uncommon orders]
     H --> I[dispatchOrder — switch on Apply payload]
-    I --> J[Fetch log via ReadLogBySequence for posting / volume counts]
+    I --> J[Raw log Get + selective projection decode]
     J --> K[Accumulate counter + template deltas in batchState]
     K --> G
     G -->|EOF for entry| C
@@ -72,8 +72,32 @@ flowchart TB
   - Failure outcomes are skipped — no state change to project.
   - For successful entries, fetches the matching `AppliedProposal` (`query.ReadAppliedProposal(ctx, handle, entry.GetSequence())`) once. Its `TransientVolumes` map (per-ledger) feeds `CounterTransientUsed` — a single per-entry Get that avoids re-reading it per item.
   - Reads all `AuditItem` rows for the entry (`query.ReadAuditItems`).
-  - For each item with `LogSequence != 0` (skipping idempotent replays and non-log-producing orders), unmarshals `SerializedOrder` and dispatches on the order variant. `dispatchCreateTransaction` and `dispatchRevertTransaction` fetch the produced log via `ReadLogBySequence` to extract resolved posting count + the three volume-annotation lists — see [counters.md](counters.md) for the fields.
+  - For each item with `LogSequence != 0` (skipping idempotent replays and non-log-producing orders), extracts the usage view and dispatches on the order variant. Native `CreateTransaction` orders take the selective path; every other order keeps the generated Protobuf decoder as the authoritative fallback.
+  - `dispatchCreateTransaction` and `dispatchRevertTransaction` fetch the produced log with a raw Pebble `Get` and extract resolved posting count + the three volume-annotation lists — see [counters.md](counters.md) for the fields.
 - All deltas accumulate into a per-batch `batchState` (per-ledger counter map + per-(ledger, template) usage map).
+
+### Selective protobuf views
+
+Usage projection needs only a small subset of two large messages:
+
+- from a native `CreateTransactionOrder`: ledger, reference presence, script
+  presence, template name and optional timestamp;
+- from a produced `Log`: transaction kind, posting cardinality, effective
+  timestamp and the three touched-volume lists.
+
+`protowire_order.go` and `protowire_log.go` walk the canonical protobuf bytes
+without materialising postings, metadata, script variables, post-commit volume
+snapshots or unrelated log payloads. The order decoder preserves final-oneof
+semantics and delegates duplicate singular-message encodings to the generated
+decoder, whose merge behaviour remains authoritative. Uncommon order variants
+always use the generated decoder. The log decoder reuses builder-owned slice
+scratch between sequential folds, clearing retained pointers before reuse; it
+copies every string that survives the Pebble value closer.
+
+These readers do not change the persisted bytes or the counter formulas. They
+reject truncated and non-canonical relevant fields loudly, accept unknown
+fields for protobuf forward evolution, and are tested against the generated
+decoder on created, reverted and non-transaction logs.
 
 ### Pass 2 — commit
 

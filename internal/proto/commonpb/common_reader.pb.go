@@ -1118,17 +1118,104 @@ func NewVolumeEntryListReader(s []*VolumeEntry) VolumeEntryListReader {
 	return volumeEntryListReadonly(s)
 }
 
+// PostCommitVolumeReader provides read-only access to PostCommitVolume.
+// Call Mutate() to obtain a mutable clone.
+type PostCommitVolumeReader interface {
+	GetAccount() string
+	GetAsset() string
+	GetColor() string
+	GetInput() string
+	GetOutput() string
+	Mutate() *PostCommitVolume
+}
+
+type postCommitVolumeReadonly PostCommitVolume
+
+func (r *postCommitVolumeReadonly) GetAccount() string {
+	return (*PostCommitVolume)(r).GetAccount()
+}
+
+func (r *postCommitVolumeReadonly) GetAsset() string {
+	return (*PostCommitVolume)(r).GetAsset()
+}
+
+func (r *postCommitVolumeReadonly) GetColor() string {
+	return (*PostCommitVolume)(r).GetColor()
+}
+
+func (r *postCommitVolumeReadonly) GetInput() string {
+	return (*PostCommitVolume)(r).GetInput()
+}
+
+func (r *postCommitVolumeReadonly) GetOutput() string {
+	return (*PostCommitVolume)(r).GetOutput()
+}
+
+func (r *postCommitVolumeReadonly) Mutate() *PostCommitVolume {
+	return (*PostCommitVolume)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this PostCommitVolume.
+func (m *PostCommitVolume) AsReader() PostCommitVolumeReader {
+	if m == nil {
+		return nil
+	}
+	return (*postCommitVolumeReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this PostCommitVolume.
+func (m *PostCommitVolume) Mutate() *PostCommitVolume {
+	return m.CloneVT()
+}
+
+// PostCommitVolumeListReader provides read-only iteration over []*PostCommitVolume.
+type PostCommitVolumeListReader interface {
+	Len() int
+	Get(i int) PostCommitVolumeReader
+	Range(yield func(int, PostCommitVolumeReader) bool)
+}
+
+type postCommitVolumeListReadonly []*PostCommitVolume
+
+func (l postCommitVolumeListReadonly) Len() int { return len(l) }
+
+func (l postCommitVolumeListReadonly) Get(i int) PostCommitVolumeReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l postCommitVolumeListReadonly) Range(yield func(int, PostCommitVolumeReader) bool) {
+	for i, v := range l {
+		var r PostCommitVolumeReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPostCommitVolumeListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPostCommitVolumeListReader(s []*PostCommitVolume) PostCommitVolumeListReader {
+	return postCommitVolumeListReadonly(s)
+}
+
 // PostCommitVolumesReader provides read-only access to PostCommitVolumes.
 // Call Mutate() to obtain a mutable clone.
 type PostCommitVolumesReader interface {
-	GetVolumesByAccount() PostCommitVolumes_VolumesByAccountMapReader
+	GetVolumes() PostCommitVolumeListReader
 	Mutate() *PostCommitVolumes
 }
 
 type postCommitVolumesReadonly PostCommitVolumes
 
-func (r *postCommitVolumesReadonly) GetVolumesByAccount() PostCommitVolumes_VolumesByAccountMapReader {
-	return postCommitVolumes_volumesByAccountMapReadonly((*PostCommitVolumes)(r).GetVolumesByAccount())
+func (r *postCommitVolumesReadonly) GetVolumes() PostCommitVolumeListReader {
+	return NewPostCommitVolumeListReader((*PostCommitVolumes)(r).GetVolumes())
 }
 
 func (r *postCommitVolumesReadonly) Mutate() *PostCommitVolumes {
@@ -1183,37 +1270,6 @@ func (l postCommitVolumesListReadonly) Range(yield func(int, PostCommitVolumesRe
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewPostCommitVolumesListReader(s []*PostCommitVolumes) PostCommitVolumesListReader {
 	return postCommitVolumesListReadonly(s)
-}
-
-// PostCommitVolumes_VolumesByAccountMapReader provides read-only access to PostCommitVolumes.VolumesByAccount.
-type PostCommitVolumes_VolumesByAccountMapReader interface {
-	Len() int
-	Get(k string) (VolumesByAssetsReader, bool)
-	Range(yield func(string, VolumesByAssetsReader) bool)
-}
-
-type postCommitVolumes_volumesByAccountMapReadonly map[string]*VolumesByAssets
-
-func (m postCommitVolumes_volumesByAccountMapReadonly) Len() int { return len(m) }
-
-func (m postCommitVolumes_volumesByAccountMapReadonly) Get(k string) (VolumesByAssetsReader, bool) {
-	v, ok := m[k]
-	if !ok || v == nil {
-		return nil, ok
-	}
-	return v.AsReader(), true
-}
-
-func (m postCommitVolumes_volumesByAccountMapReadonly) Range(yield func(string, VolumesByAssetsReader) bool) {
-	for k, v := range m {
-		var r VolumesByAssetsReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(k, r) {
-			return
-		}
-	}
 }
 
 // AccountVolumeReader provides read-only access to AccountVolume.

@@ -19,18 +19,18 @@ type pcvRow struct {
 }
 
 func buildPCV(rows ...pcvRow) *commonpb.PostCommitVolumes {
-	byAccount := map[string]*commonpb.VolumesByAssets{}
+	volumes := make([]*commonpb.PostCommitVolume, 0, len(rows))
 	for _, r := range rows {
-		byAccount[r.account] = &commonpb.VolumesByAssets{
-			Volumes: append(byAccount[r.account].GetVolumes(), &commonpb.VolumeEntry{
-				Asset:   r.asset,
-				Color:   r.color,
-				Volumes: &commonpb.Volumes{Input: r.input, Output: r.output},
-			}),
-		}
+		volumes = append(volumes, &commonpb.PostCommitVolume{
+			Account: r.account,
+			Asset:   r.asset,
+			Color:   r.color,
+			Input:   r.input,
+			Output:  r.output,
+		})
 	}
 
-	return &commonpb.PostCommitVolumes{VolumesByAccount: byAccount}
+	return &commonpb.PostCommitVolumes{Volumes: volumes}
 }
 
 func coloredPosting(source, destination, asset, color string, amount int64) *commonpb.Posting {

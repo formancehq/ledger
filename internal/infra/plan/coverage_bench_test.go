@@ -30,7 +30,7 @@ type benchOrder struct {
 // CreateTransaction: add the ledger + boundary + N*(source volume,
 // destination volume) keys onto an order-scoped Coverage.
 func buildPerOrderCoverage(o benchOrder, orderIdx int) *Coverage {
-	c := NewCoverage()
+	c := NewCoverageWithHint(2 + 2*o.postings)
 
 	ledgerBytes := domain.LedgerKey{Name: o.ledger}.Bytes()
 	c.Add(dal.SubAttrLedger, ledgerBytes)
@@ -147,6 +147,10 @@ func benchmarkPipeline(b *testing.B, orders int, postingsPerOrder int) {
 
 func BenchmarkAdmissionCoverage_10Orders_1Posting(b *testing.B) {
 	benchmarkPipeline(b, 10, 1)
+}
+
+func BenchmarkAdmissionCoverage_50Orders_1Posting(b *testing.B) {
+	benchmarkPipeline(b, 50, 1)
 }
 
 func BenchmarkAdmissionCoverage_50Orders_2Postings(b *testing.B) {

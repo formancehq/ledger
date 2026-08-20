@@ -527,22 +527,22 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 			// First transaction's PCV: world → staging:reuse 50.
 			// staging:reuse should read {50, 0} — fresh, not cumulative {150, 100}.
-			pcv1 := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().GetTransaction().GetPostCommitVolumes().GetVolumesByAccount()
-			Expect(pcv1).To(HaveKey("staging:reuse"))
-			Expect(pcv1["staging:reuse"].FindVolume("USD", "").Input).To(Equal("50"),
+			pcv1 := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().GetTransaction().GetPostCommitVolumes()
+			Expect(pcv1.FindVolume("staging:reuse", "USD", "")).NotTo(BeNil())
+			Expect(pcv1.FindVolume("staging:reuse", "USD", "").Input).To(Equal("50"),
 				"transient input should reflect this batch only, not accumulate across batches")
-			Expect(pcv1["staging:reuse"].FindVolume("USD", "").Output).To(Equal("0"))
+			Expect(pcv1.FindVolume("staging:reuse", "USD", "").Output).To(Equal("0"))
 
 			// Second transaction's PCV: staging:reuse → wallet:b 50.
 			// staging:reuse now {50, 50} — the per-batch zero-balance — not {150, 150}.
-			pcv2 := resp.Logs[1].Payload.GetApply().Log.Data.GetCreatedTransaction().GetTransaction().GetPostCommitVolumes().GetVolumesByAccount()
-			Expect(pcv2).To(HaveKey("staging:reuse"))
-			Expect(pcv2["staging:reuse"].FindVolume("USD", "").Input).To(Equal("50"))
-			Expect(pcv2["staging:reuse"].FindVolume("USD", "").Output).To(Equal("50"))
+			pcv2 := resp.Logs[1].Payload.GetApply().Log.Data.GetCreatedTransaction().GetTransaction().GetPostCommitVolumes()
+			Expect(pcv2.FindVolume("staging:reuse", "USD", "")).NotTo(BeNil())
+			Expect(pcv2.FindVolume("staging:reuse", "USD", "").Input).To(Equal("50"))
+			Expect(pcv2.FindVolume("staging:reuse", "USD", "").Output).To(Equal("50"))
 
 			// And the wallet sees its fresh +50.
-			Expect(pcv2["wallet:b"].FindVolume("USD", "").Input).To(Equal("50"))
-			Expect(pcv2["wallet:b"].FindVolume("USD", "").Output).To(Equal("0"))
+			Expect(pcv2.FindVolume("wallet:b", "USD", "").Input).To(Equal("50"))
+			Expect(pcv2.FindVolume("wallet:b", "USD", "").Output).To(Equal("0"))
 		})
 	})
 })

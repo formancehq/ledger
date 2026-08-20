@@ -40,6 +40,23 @@ func writeJSONResponse(w http.ResponseWriter, statusCode int, data any) {
 	}
 }
 
+// writeBufferedJSONResponse marshals before writing the headers. Only the bulk
+// endpoint uses this path: its response cardinality is capped by the server's
+// bulk limit, so the allocation is bounded while avoiding the many small writes
+// made by the streaming encoder for arrays of response entries. Unbounded list
+// endpoints continue to use writeJSONResponse.
+func writeBufferedJSONResponse(w http.ResponseWriter, statusCode int, data any) {
+	body, err := json.Marshal(data)
+	if err != nil {
+		statusCode = http.StatusInternalServerError
+		body = []byte(`{"errorCode":"INTERNAL_ERROR","errorMessage":"failed to marshal response"}`)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_, _ = w.Write(body)
+}
+
 // writeErrorResponse writes an error response with the given status code, error code, and error.
 func writeErrorResponse(w http.ResponseWriter, statusCode int, errorCode string, err error) {
 	errorMsg := ""

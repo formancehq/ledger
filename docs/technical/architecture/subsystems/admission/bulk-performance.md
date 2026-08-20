@@ -49,20 +49,32 @@ are the proof that the result cannot observe the evolving overlay. The maps and
 `big.Int` values in the memo are not mutated: coverage only iterates the maps,
 and `batchEffects.mergeDiscovery` copies a delta before accumulating it.
 
+## Bounded bulk-response buffering
+
+HTTP bulk cardinality is capped by the server's bulk limit. The endpoint can
+therefore marshal the complete response into one bounded buffer before writing
+headers. This avoids many small writes and lets a marshal failure become a clean
+500 before headers are committed. Unbounded list endpoints keep streaming.
+This response-path mechanism changes no HTTP schema, accepted order, audit
+serialization, or FSM behavior.
+
 ## Impact by execution path
 
 “No discovery reuse” below means the original per-order admission path remains
 active, not that the order is skipped or trusted without validation.
 
-| Execution path | Numscript discovery | Expected impact |
-|----------------|---------------------|-----------------|
-| Bulk with repeated, variable-free script; same ledger, text, and `force`; empty volume/metadata read sets | First occurrence runs fully, later matches reuse it | Largest gain |
-| Bulk with unique scripts | Full path for every order | No discovery saving; variable-free static scripts pay a small memo lookup/insertion cost |
-| Bulk with external variables | Full path for every order | No direct effect; variable bindings never share discovery |
-| Bulk with non-empty `ReadVolumes` / `ReadMetadata` (for example `balance()`, `meta()`, or a bounded balance-checked source) | Full path for every order against the evolving overlay | No direct effect; state-dependent scripts are never reused |
-| Different ledger, script text, or `force` value | Separate first discovery for each key | Later exact matches can still reuse |
-| Unitary request | Full path (there is no later match) | No direct effect |
-| FSM, Raft, Pebble writes, audit, storage, or response encoding | Unchanged | No effect |
+| Execution path | Numscript discovery | HTTP JSON encoding | Expected impact |
+|----------------|---------------------|--------------------|-----------------|
+| Bulk with repeated, variable-free script; same ledger, text, and `force`; empty volume/metadata read sets | First occurrence runs fully, later matches reuse it | One bounded response buffer | Largest gain; both optimizations apply on HTTP |
+| Same eligible bulk over gRPC | Reused | Unchanged | Admission gain only |
+| HTTP bulk with unique scripts | Full path for every order | Bounded buffer | Buffering gain only; static scripts pay a small memo lookup/insertion cost |
+| HTTP bulk with external variables | Full path for every order | Bounded buffer | Buffering gain only; variable bindings never share discovery |
+| HTTP bulk with non-empty `ReadVolumes` / `ReadMetadata` (for example `balance()`, `meta()`, or a bounded balance-checked source) | Full path for every order against the evolving overlay | Bounded buffer | Buffering gain only; no discovery reuse |
+| Same state-reading or variable-bearing bulk over gRPC | Full path for every order | Unchanged | No direct effect from this change |
+| Different ledger, script text, or `force` value | Separate first discovery for each key | Bounded buffer on HTTP bulk | No reuse across keys; later exact matches can still reuse |
+| Unitary HTTP request | Full path (there is no later match) | Unchanged | No direct effect |
+| Unitary gRPC request | Full path (there is no later match) | Unchanged | No direct effect from this change |
+| FSM, Raft, Pebble writes, audit, or storage | Unchanged | Not applicable | No effect |
 
 Changing the ledger, script text, or `force` mode creates a different memo key.
 Even on the accelerated path, preload coverage and predicted effects are still

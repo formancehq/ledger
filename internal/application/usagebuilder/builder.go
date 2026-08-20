@@ -59,7 +59,8 @@ type Builder struct {
 	logger        logging.Logger
 	meter         metric.Meter
 
-	batchSize int
+	batchSize  int
+	logScratch logVolumeAnnotations
 
 	// lastProcessedAuditSeq mirrors usagestore.ReadProgress() and is
 	// updated on every successful commit — the atomic hint lets external

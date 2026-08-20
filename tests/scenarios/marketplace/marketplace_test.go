@@ -227,7 +227,7 @@ func TestMarketplaceLifecycle(t *testing.T) {
 		require.NotNil(t, applyLog, "expected apply log payload")
 		tx := applyLog.Log.Data.GetCreatedTransaction()
 		require.NotNil(t, tx, "expected created transaction in log")
-		require.NotEmpty(t, tx.GetTransaction().GetPostCommitVolumes().GetVolumesByAccount(),
+		require.NotEmpty(t, tx.GetTransaction().GetPostCommitVolumes().GetVolumes(),
 			"every transaction should carry post-commit volumes")
 	})
 

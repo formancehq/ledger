@@ -69,12 +69,14 @@ func TestBlockedFilter_AddReturnsBlockIndex(t *testing.T) {
 
 	f := newBlockedFilter(BlockBits*64, 5) // 64 blocks
 
-	idx := f.Add(0xDEADBEEF_CAFEBABE)
+	idx, changed := f.Add(0xDEADBEEF_CAFEBABE)
 	require.Less(t, idx, uint32(64), "block index should be within range")
+	require.True(t, changed)
 
 	// Same hash should always map to the same block.
-	idx2 := f.Add(0xDEADBEEF_CAFEBABE)
+	idx2, changed := f.Add(0xDEADBEEF_CAFEBABE)
 	require.Equal(t, idx, idx2)
+	require.False(t, changed)
 }
 
 func TestBlockedFilter_SetBlock_Roundtrip(t *testing.T) {

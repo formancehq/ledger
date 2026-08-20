@@ -41,7 +41,7 @@ func TestApplyPosting_WorldAccount_SkipsBalanceCheck(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, "test", posting, false, nil)
+	err := applyPosting(mockStore, "test", posting, false, nil, nil)
 	require.NoError(t, err)
 }
 
@@ -70,7 +70,7 @@ func TestApplyPosting_InsufficientFunds(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, "test", posting, false, nil)
+	err := applyPosting(mockStore, "test", posting, false, nil, nil)
 	require.Error(t, err)
 
 	var insufficientFunds *domain.ErrInsufficientFunds
@@ -105,7 +105,7 @@ func TestApplyPosting_ZeroInputBalance(t *testing.T) {
 	}
 
 	// Zero input means posting amount > 0 triggers ErrInsufficientFunds
-	err := applyPosting(mockStore, "test", posting, false, nil)
+	err := applyPosting(mockStore, "test", posting, false, nil, nil)
 	require.Error(t, err)
 
 	var insufficientFunds *domain.ErrInsufficientFunds
@@ -147,7 +147,7 @@ func TestApplyPosting_ForceSkipsBalanceCheck(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, "test", posting, true, nil)
+	err := applyPosting(mockStore, "test", posting, true, nil, nil)
 	require.NoError(t, err)
 }
 
@@ -170,7 +170,7 @@ func TestApplyPosting_NotPreloaded(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, "test", posting, false, nil)
+	err := applyPosting(mockStore, "test", posting, false, nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "balance not preloaded")
 }
@@ -207,7 +207,7 @@ func TestApplyPosting_AbsentVolumes_TreatedAsZero(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	require.NoError(t, applyPosting(mockStore, "test", posting, false, nil))
+	require.NoError(t, applyPosting(mockStore, "test", posting, false, nil, nil))
 }
 
 // TestApplyPosting_AbsentNonWorldSource_InsufficientFunds confirms the
@@ -238,7 +238,7 @@ func TestApplyPosting_AbsentNonWorldSource_InsufficientFunds(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, "test", posting, false, nil)
+	err := applyPosting(mockStore, "test", posting, false, nil, nil)
 	require.Error(t, err)
 
 	var insufficientFunds *domain.ErrInsufficientFunds
@@ -299,7 +299,7 @@ func TestApplyPosting_DestinationInputOverflow_Rejects(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, "test", posting, false, nil)
+	err := applyPosting(mockStore, "test", posting, false, nil, nil)
 	require.Error(t, err)
 
 	var overflowErr *domain.ErrVolumeOverflow
@@ -339,7 +339,7 @@ func TestApplyPosting_SourceOutputOverflow_Rejects(t *testing.T) {
 		Asset:       "USD",
 	}
 
-	err := applyPosting(mockStore, "test", posting, false, nil)
+	err := applyPosting(mockStore, "test", posting, false, nil, nil)
 	require.Error(t, err)
 
 	var overflowErr *domain.ErrVolumeOverflow

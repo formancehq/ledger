@@ -38,7 +38,7 @@ type Builder struct {
 
 	// resolvers[attrCode] holds the per-attribute-cache resolve pipeline
 	// (cache, loader, getValue, bloom, typeName). Populated once at
-	// NewBuilder; buildPreloadsAt iterates over needs.Attributes and
+	// NewBuilder; buildPreloadsAt iterates over the aggregate attribute sets and
 	// dispatches through this map. Adding a new attribute cache is a
 	// single-line change in buildAttrResolvers.
 	resolvers map[byte]attrResolver
@@ -308,6 +308,7 @@ type buildResult struct {
 // in parallel to reduce wall-clock time and shard lock hold duration.
 func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, needs *Coverage) (*raftcmdpb.ExecutionPlan, *preload.CleanupToken, error) {
 	boundary := cache.BoundaryIndex(nextIndex, snap.GenerationThreshold)
+	attributeSets := needs.attributeSets()
 
 	if p.logger.Enabled(logging.TraceLevel) {
 		p.logger.WithFields(map[string]any{
@@ -321,8 +322,8 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 	// Pre-count active attribute caches so results[] can be
 	// fixed-size: each goroutine writes to a distinct index without
 	// any synchronization on the slice header.
-	activeAttrCodes := make([]byte, 0, len(needs.Attributes))
-	for attrCode, set := range needs.Attributes {
+	activeAttrCodes := make([]byte, 0, len(attributeSets))
+	for attrCode, set := range attributeSets {
 		if len(set) == 0 {
 			continue
 		}
@@ -345,7 +346,7 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 			// on the apply side, violating invariant #6.
 			assert.Unreachable("plan builder: no resolver registered for attrCode — extend buildAttrResolvers", map[string]any{
 				"attrCode": attrCode,
-				"keys":     len(needs.Attributes[attrCode]),
+				"keys":     len(attributeSets[attrCode]),
 			})
 
 			return nil, nil, fmt.Errorf("plan builder: no resolver for attrCode 0x%x", attrCode)
@@ -371,7 +372,7 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 	}
 
 	for _, attrCode := range activeAttrCodes {
-		set := needs.Attributes[attrCode]
+		set := attributeSets[attrCode]
 		resolver := p.resolvers[attrCode] // pre-validated non-nil above
 
 		launch(func(i int) {

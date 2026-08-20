@@ -18,11 +18,11 @@ The cache write happens later, on the **FSM apply path**: `CacheSnapshotter.Mirr
 
 The single most important thing to internalise: **declaration is generic; resolution and loading stayed typed.**
 
-An earlier design carried one typed field per attribute kind all the way from the producer down to the loader. Only the *declaration* layer was collapsed into a generic map keyed by attribute code. Below it, `internal/infra/plan/attribute_resolvers.go` still holds a typed resolver per code, and `preload.Loaders` still has one named field per attribute type. Reading a generic shape at the top and concluding that the whole pipeline went generic is the mistake to avoid.
+An earlier design carried one typed field per attribute kind all the way from the producer down to the loader. Only the *declaration* layer was collapsed into a generic representation keyed by attribute code. Below it, `internal/infra/plan/attribute_resolvers.go` still holds a typed resolver per code, and `preload.Loaders` still has one named field per attribute type. Reading a generic shape at the top and concluding that the whole pipeline went generic is the mistake to avoid.
 
 ```mermaid
 flowchart TB
-    D["Declaration — GENERIC<br/>plan.Coverage<br/>Attributes[attrCode][U128] = CoverageEntry"]
+    D["Declaration — GENERIC<br/>plan.Coverage<br/>inline up to 8 keys, then Attributes[attrCode][U128]"]
     R["Resolution — TYPED<br/>attrResolver registry<br/>12 dal.SubAttr* codes"]
     L["Loading — TYPED<br/>preload.Loaders<br/>12 named fields"]
     D -->|"attrCode dispatch"| R --> L
@@ -41,15 +41,31 @@ type CoverageEntry struct {
 type Coverage struct {
     Attributes      map[byte]map[attributes.U128]CoverageEntry
     IdempotencyKeys map[domain.IdempotencyKey]struct{}
+    inline           []inlineCoverageEntry // up to 8 attribute keys
     collision       error // first XXH3-128 collision, surfaced at Build via Err()
 }
 ```
 
-The map-of-maps shape collapses **12** of the 13 former typed key fields into a single generic dispatch keyed by attribute code — the same code the FSM uses to route through `AttributeCoverage.attr_code`. The 13th, idempotency, did **not** collapse: it survives as the separate `IdempotencyKeys` field and is never routed by `attr_code`. See [idempotency keys are a separate channel](#idempotency-keys-are-a-separate-channel) for why.
+Small order-scoped declarations dominate admission. `Coverage` therefore keeps
+up to eight `(attrCode, U128, entry)` values in one compact allocation and uses
+a linear lookup at that size. The ninth distinct key promotes those entries to
+the grouped map representation used by the parallel resolvers. The proposal-wide
+aggregate also materialises that grouped form exactly once before resolution;
+per-order values remain inline while `coverage_bits` are built. Native posting
+orders whose cardinality is known to exceed the threshold use
+`NewCoverageWithHint` to allocate the grouped form directly. The representation
+choice affects allocations only — `Add`, `Merge`, collision detection and the
+emitted bitset have identical semantics on both paths.
+
+The generic representation collapses **12** of the 13 former typed key fields
+into a single dispatch keyed by attribute code — the same code the FSM uses to
+route through `AttributeCoverage.attr_code`. The 13th, idempotency, did **not**
+collapse: it survives as the separate `IdempotencyKeys` field and is never
+routed by `attr_code`. See [idempotency keys are a separate channel](#idempotency-keys-are-a-separate-channel) for why.
 
 **`Coverage.Add(attrCode byte, canonical []byte)`** records one key. `attributes.MakeKey(canonical)` returns `(id attributes.U128, tag uint64)`; the `id` becomes the map key and the `tag` is stored alongside the canonical bytes. `Add` is **idempotent** — a repeat `Add` for the same key is a no-op, so duplicate declarations within one proposal deduplicate for free. The caller **transfers ownership** of the slice: it must not mutate `canonical` afterwards.
 
-**Why `CoverageEntry.Tag` exists.** The map holds exactly one entry per 128-bit `id`. If two genuinely distinct canonical keys collide on that id (~2^-128), the second would be **silently dropped**, and the order would reach apply without its Pebble seed — a silent cache miss, which is precisely the failure mode preload exists to prevent. The stored `Tag` makes that case detectable: same `id`, different `tag` means a real collision. `Add` then fails loudly rather than quietly — `assert.Unreachable(...)` plus a recorded, returnable `attributes.ErrCollisionDetected` that `Build` picks up through `Coverage.Err()` and turns into a hard proposal failure. This is [invariant #7](../../../../../AGENTS.md): never silently skip a branch that is impossible by design.
+**Why `CoverageEntry.Tag` exists.** Both representations hold exactly one entry per `(attrCode, 128-bit id)`. If two genuinely distinct canonical keys collide on that id (~2^-128), the second would be **silently dropped**, and the order would reach apply without its Pebble seed — a silent cache miss, which is precisely the failure mode preload exists to prevent. The stored `Tag` makes that case detectable: same `id`, different `tag` means a real collision. `Add` then fails loudly rather than quietly — `assert.Unreachable(...)` plus a recorded, returnable `attributes.ErrCollisionDetected` that `Build` picks up through `Coverage.Err()` and turns into a hard proposal failure. This is [invariant #7](../../../../../AGENTS.md): never silently skip a branch that is impossible by design.
 
 **`Coverage.AddIdempotencyKey(key string)`** allocates the `IdempotencyKeys` map lazily. Most proposals — system-scoped orders, index management, chapter operations — carry none, so paying an empty-map header per order would be waste.
 

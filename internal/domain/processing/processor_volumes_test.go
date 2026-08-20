@@ -1,107 +1,82 @@
 package processing
 
 import (
-	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-// TestBuildPostCommitVolumes_PropagatesReadError pins EN-1440: a
-// non-ErrNotFound volume-read error (on the gated FSM scope, that is
-// *state.ErrCoverageMiss — an admission-contract violation (invariants #6/#9)
-// that is impossible by design) must reject the order, not be swallowed into a
-// truncated volume map. The processing package cannot import
-// state.ErrCoverageMiss (import cycle: state imports processing), so a generic
-// sentinel stands in for any non-ErrNotFound error; the fix propagates all of
-// them identically.
-func TestBuildPostCommitVolumes_PropagatesReadError(t *testing.T) {
+func TestPostCommitVolumeAccumulatorInlineAndPromotion(t *testing.T) {
 	t.Parallel()
 
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+	var accumulator postCommitVolumeAccumulator
+	accumulator.init(6)
 
-	mockStore := NewMockScope(ctrl)
-	volumes := setupVolumesStub(mockStore)
+	keys := make([]domain.VolumeKey, 10)
+	for i := range keys {
+		keys[i] = domain.NewVolumeKey("ledger", fmt.Sprintf("account:%02d", 9-i), "USD", "")
+		accumulator.capture(keys[i], testVolumePair(uint64(i+1), uint64((i+1)*10)))
 
-	sentinel := errors.New("simulated coverage miss")
-	// First pair read is the posting source ("world"); program it to fail.
-	volumes.expectGet(domain.NewVolumeKey("test", "world", "USD", ""), nil, sentinel)
+		if i == 3 {
+			// Replacement while the accumulator is still using its linear inline
+			// lookup must keep one row and expose the latest value.
+			accumulator.capture(keys[0], testVolumePair(101, 102))
+		}
+	}
 
-	postings := []*commonpb.Posting{{
-		Source:      "world",
-		Destination: "users:001",
-		Amount:      commonpb.NewUint256FromUint64(500),
-		Asset:       "USD",
-	}}
+	// Replacement after promotion to the index map exercises the other lookup
+	// path and must retain exactly the same semantics.
+	accumulator.capture(keys[5], testVolumePair(201, 202))
 
-	result, err := buildPostCommitVolumes(mockStore, "test", postings)
-	require.Nil(t, result, "no volume map must be returned when a read fails")
-	require.Error(t, err)
+	got := accumulator.build()
+	require.Len(t, got.GetVolumes(), len(keys))
 
-	var storageErr *domain.ErrStorageOperation
-	require.ErrorAs(t, err, &storageErr, "read error must surface as ErrStorageOperation")
-	require.ErrorIs(t, err, sentinel, "the underlying cause must be preserved for errors.As/Is")
+	// build sorts by (account, asset, color), independently of capture order.
+	for i, row := range got.GetVolumes() {
+		require.Equal(t, fmt.Sprintf("account:%02d", i), row.GetAccount())
+	}
+
+	first := findFlatPostCommitVolume(got, keys[0])
+	require.NotNil(t, first)
+	require.Equal(t, "101", first.GetInput())
+	require.Equal(t, "102", first.GetOutput())
+
+	afterPromotion := findFlatPostCommitVolume(got, keys[5])
+	require.NotNil(t, afterPromotion)
+	require.Equal(t, "201", afterPromotion.GetInput())
+	require.Equal(t, "202", afterPromotion.GetOutput())
 }
 
-// TestBuildPostCommitVolumes_FoundAndAbsent covers the happy path: a present
-// volume is reported with its real Input/Output, and a declared-but-absent key
-// (ErrNotFound) is reported as "0"/"0" — byte-identical to the pre-fix output.
-func TestBuildPostCommitVolumes_FoundAndAbsent(t *testing.T) {
+func TestPostCommitVolumeAccumulatorKeepsColorsDistinct(t *testing.T) {
 	t.Parallel()
 
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+	var accumulator postCommitVolumeAccumulator
+	accumulator.init(1)
+	accumulator.capture(domain.NewVolumeKey("ledger", "account", "USD", ""), testVolumePair(1, 2))
+	accumulator.capture(domain.NewVolumeKey("ledger", "account", "USD", "BLUE"), testVolumePair(3, 4))
 
-	mockStore := NewMockScope(ctrl)
-	volumes := setupVolumesStub(mockStore)
-
-	// Source present with real volumes; destination left unregistered so the
-	// stub returns ErrNotFound -> synthesised zero balance.
-	sourceVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(100),
-		Output: commonpb.NewUint256FromUint64(40),
-	}
-	volumes.expectGet(domain.NewVolumeKey("test", "bank", "USD", ""), sourceVol.AsReader(), nil)
-
-	postings := []*commonpb.Posting{{
-		Source:      "bank",
-		Destination: "users:001",
-		Amount:      commonpb.NewUint256FromUint64(60),
-		Asset:       "USD",
-	}}
-
-	result, err := buildPostCommitVolumes(mockStore, "test", postings)
-	require.Nil(t, err)
-	require.NotNil(t, result)
-
-	bank := findVolumeEntry(result, "bank", "USD", "")
-	require.NotNil(t, bank)
-	require.Equal(t, "100", bank.GetInput())
-	require.Equal(t, "40", bank.GetOutput())
-
-	users := findVolumeEntry(result, "users:001", "USD", "")
-	require.NotNil(t, users)
-	require.Equal(t, "0", users.GetInput())
-	require.Equal(t, "0", users.GetOutput())
+	got := accumulator.build()
+	require.Len(t, got.GetVolumes(), 2)
+	require.Equal(t, "", got.GetVolumes()[0].GetColor())
+	require.Equal(t, "BLUE", got.GetVolumes()[1].GetColor())
 }
 
-// findVolumeEntry looks up the Volumes for a single (account, asset, color)
-// tuple in the flat per-account VolumeEntry list. Returns nil when absent.
-func findVolumeEntry(pcv *commonpb.PostCommitVolumes, account, asset, color string) *commonpb.Volumes {
-	byAssets, ok := pcv.GetVolumesByAccount()[account]
-	if !ok {
-		return nil
+func testVolumePair(input, output uint64) *raftcmdpb.VolumePair {
+	return &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(input),
+		Output: commonpb.NewUint256FromUint64(output),
 	}
+}
 
-	for _, e := range byAssets.GetVolumes() {
-		if e.GetAsset() == asset && e.GetColor() == color {
-			return e.GetVolumes()
+func findFlatPostCommitVolume(pcv *commonpb.PostCommitVolumes, key domain.VolumeKey) *commonpb.PostCommitVolume {
+	for _, row := range pcv.GetVolumes() {
+		if row.GetAccount() == key.Account && row.GetAsset() == key.Asset && row.GetColor() == key.Color {
+			return row
 		}
 	}
 

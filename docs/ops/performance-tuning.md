@@ -257,7 +257,7 @@ Each attribute type has its own filter with independent `expected-keys` and `fp-
 
 | Type | Expected Keys | FP Rate | Enabled |
 |------|--------------|---------|---------|
-| Volumes | 0 | — | No |
+| Volumes | 1,000,000 | 1% | Yes (~1.4 MiB) |
 | Metadata | 0 | — | No |
 | References | 0 | — | No |
 | Ledgers | 0 | — | No |
@@ -268,13 +268,16 @@ Each attribute type has its own filter with independent `expected-keys` and `fp-
 | Numscript contents | 0 | — | No |
 | Ledger metadata | 0 | — | No |
 
-Bloom filters are disabled by default. Enable only the attribute types that are expected to avoid enough missing-key Pebble reads to justify the memory cost.
+The volume filter is enabled by default because every transaction preload checks
+the existence of its touched volumes. Other attribute filters remain disabled.
+Set `--bloom-volumes-expected-keys=0` to disable the default filter.
 
 **Tuning guidelines:**
 
 - Set `expected-keys` to the number of unique keys you expect for that attribute type. Over-estimating wastes memory; under-estimating increases false positives.
 - A lower `fp-rate` reduces false positives but increases memory usage. The default 1% is a good starting point.
 - Monitor `bloom.negatives` (Pebble Gets avoided) and `bloom.lookups` (total checks). A high negatives/lookups ratio means the filter is effective.
+- Monitor `bloom.false_positives`. If `false_positives / (negatives + false_positives)` rises materially above the configured target, the live cardinality has outgrown the filter; increase `expected-keys`. Saturation affects performance only: a positive still falls back to Pebble.
 - Changing any bloom configuration triggers a full repopulation from Pebble on next startup.
 
 See [CLI Reference](./cli.md#server-bloom-filter-flags) for all flags.

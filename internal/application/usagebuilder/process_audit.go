@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -214,8 +215,24 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 					continue
 				}
 
+				rawOrder := item.GetSerializedOrder()
+				createOrder, matched, err := parseUsageCreateOrder(rawOrder)
+				if err != nil {
+					return cursor, fmt.Errorf("parsing audit item order (audit_seq=%d, idx=%d): %w",
+						entry.GetSequence(), item.GetOrderIndex(), err)
+				}
+				if matched {
+					if err := b.dispatchCreateTransactionUsage(
+						ctx, handle, createOrder, item.GetLogSequence(), state, entryState,
+					); err != nil {
+						return cursor, err
+					}
+
+					continue
+				}
+
 				order := &raftcmdpb.Order{}
-				if err := proto.Unmarshal(item.GetSerializedOrder(), order); err != nil {
+				if err := proto.Unmarshal(rawOrder, order); err != nil {
 					return cursor, fmt.Errorf("unmarshaling audit item order (audit_seq=%d, idx=%d): %w",
 						entry.GetSequence(), item.GetOrderIndex(), err)
 				}
@@ -457,6 +474,33 @@ func (b *Builder) dispatchCreateTransaction(
 	state *batchState,
 	entry *entryVolumeState,
 ) error {
+	create := usageCreateOrder{
+		ledger:       ledger,
+		hasReference: order.GetReference() != "",
+		isScripted: order.GetNumscriptReference() != nil ||
+			(order.GetScript() != nil && order.GetScript().GetPlain() != ""),
+		timestamp: order.GetTimestamp(),
+	}
+	if ref := order.GetNumscriptReference(); ref != nil {
+		create.usesTemplate = true
+		create.template = ref.GetName()
+	}
+
+	return b.dispatchCreateTransactionUsage(ctx, handle, create, logSeq, state, entry)
+}
+
+func (b *Builder) dispatchCreateTransactionUsage(
+	ctx context.Context,
+	handle dal.PebbleGetter,
+	order usageCreateOrder,
+	logSeq uint64,
+	state *batchState,
+	entry *entryVolumeState,
+) error {
+	if order.ledger == "" {
+		return nil
+	}
+
 	// Resolved posting count and volume annotations live on the log — the
 	// order carries raw postings only for the non-scripted path, and never
 	// carries purge info.
@@ -466,10 +510,10 @@ func (b *Builder) dispatchCreateTransaction(
 	}
 
 	if ann.postings > 0 {
-		state.addCounter(ledger, usagestore.CounterPosting, counterDelta(ann.postings))
+		state.addCounter(order.ledger, usagestore.CounterPosting, counterDelta(ann.postings))
 	}
 
-	applyVolumeAnnotations(ledger, ann, state, entry)
+	applyVolumeAnnotations(order.ledger, ann, state, entry)
 
 	// A skipped CreateTransaction produces an OrderSkipped log, not a
 	// CreatedTransaction, so readLog reports no real transaction. Such an order
@@ -481,29 +525,26 @@ func (b *Builder) dispatchCreateTransaction(
 		return nil
 	}
 
-	if order.GetReference() != "" {
-		state.addCounter(ledger, usagestore.CounterReference, 1)
+	if order.hasReference {
+		state.addCounter(order.ledger, usagestore.CounterReference, 1)
 	}
 
-	isScripted := order.GetNumscriptReference() != nil ||
-		(order.GetScript() != nil && order.GetScript().GetPlain() != "")
-
-	if isScripted {
-		state.addCounter(ledger, usagestore.CounterNumscriptExecution, 1)
+	if order.isScripted {
+		state.addCounter(order.ledger, usagestore.CounterNumscriptExecution, 1)
 	}
 
-	if ref := order.GetNumscriptReference(); ref != nil {
+	if order.usesTemplate {
 		// Prefer the order's client-supplied timestamp so template usage
 		// tracks the wall clock the client cares about; when omitted, fall
 		// back to the effective timestamp the FSM stamped on the produced
 		// log (either the client value or the proposal date resolved by
 		// processor_transaction.go). Either way we end up with a
 		// deterministic non-nil timestamp on every replay.
-		ts := order.GetTimestamp()
+		ts := order.timestamp
 		if ts == nil {
 			ts = ann.txTimestamp
 		}
-		state.addTemplateUsage(ledger, ref.GetName(), ts)
+		state.addTemplateUsage(order.ledger, order.template, ts)
 	}
 
 	return nil
@@ -567,55 +608,30 @@ type logVolumeAnnotations struct {
 // three disjoint volume-annotation lists. Empty when the log does not exist
 // or carries no transaction / annotation.
 func (b *Builder) readLog(ctx context.Context, handle dal.PebbleGetter, logSeq uint64) (logVolumeAnnotations, error) {
-	log, err := query.ReadLogBySequence(ctx, handle, logSeq)
+	_ = ctx // Raw lookup mirrors query.ReadLogBySequence without decoding the full message.
+
+	kb := dal.NewKeyBuilder()
+	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(logSeq)
+
+	value, closer, err := handle.Get(kb.Build())
 	if err != nil {
+		if errors.Is(err, pebble.ErrNotFound) {
+			return logVolumeAnnotations{}, nil
+		}
+
 		return logVolumeAnnotations{}, fmt.Errorf("reading log at seq %d: %w", logSeq, err)
 	}
+	defer func() {
+		// Pebble's value closer currently cannot fail in practice; the parsed
+		// result owns every string it retains beyond this function.
+		_ = closer.Close()
+	}()
 
-	if log == nil {
-		return logVolumeAnnotations{}, nil
+	if err := parseUsageLog(value, &b.logScratch); err != nil {
+		return logVolumeAnnotations{}, fmt.Errorf("parsing log at seq %d: %w", logSeq, err)
 	}
 
-	apply, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
-	if !ok || apply.Apply == nil {
-		return logVolumeAnnotations{}, nil
-	}
-
-	ledgerLog := apply.Apply.GetLog()
-	if ledgerLog == nil {
-		return logVolumeAnnotations{}, nil
-	}
-
-	// PurgedVolumes / NewKeptVolumes / EphemeralVolumes live on LedgerLog
-	// directly (not on the payload variant). The three lists are DISJOINT
-	// at the FSM emission site, but a single (account, asset) key can
-	// still appear in multiple orders' lists within the SAME batch because
-	// each order tracks the volumes IT touched. The counter side of the
-	// pipeline deduplicates per audit entry — see applyVolumeDelta.
-	result := logVolumeAnnotations{
-		purged:    ledgerLog.GetPurgedVolumes(),
-		newKept:   ledgerLog.GetNewKeptVolumes(),
-		ephemeral: ledgerLog.GetEphemeralVolumes(),
-	}
-
-	if ledgerLog.GetData() == nil {
-		return result, nil
-	}
-
-	switch p := ledgerLog.GetData().GetPayload().(type) {
-	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		tx := p.CreatedTransaction.GetTransaction()
-		result.postings = len(tx.GetPostings())
-		result.txTimestamp = tx.GetTimestamp()
-		result.isCreatedTx = true
-	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		tx := p.RevertedTransaction.GetRevertTransaction()
-		result.postings = len(tx.GetPostings())
-		result.txTimestamp = tx.GetTimestamp()
-		result.isRevertedTx = true
-	}
-
-	return result, nil
+	return b.logScratch, nil
 }
 
 // commitBatch applies the accumulated counter / template deltas to the

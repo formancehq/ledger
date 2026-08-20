@@ -70,12 +70,11 @@ func TestLoadBoundariesPropagatesCoverageMiss(t *testing.T) {
 	require.Equal(t, miss, err, "the violation must propagate verbatim, not re-wrapped")
 }
 
-// TestBuildPostCommitVolumesPropagatesCoverageMiss extends the EN-1379 contract
-// to the volume read path. EN-1440 already established that a non-NotFound read
-// here must reject the order rather than truncate the PCV payload; the reason
-// carried by that rejection must still be COVERAGE_MISS when the cause is an
-// admission-contract violation.
-func TestBuildPostCommitVolumesPropagatesCoverageMiss(t *testing.T) {
+// TestApplyPostingPropagatesCoverageMiss extends the EN-1379 contract to the
+// volume read path. The post-commit snapshot is now captured from the same
+// successful mutations, so there is no second read that could mask the original
+// coverage violation.
+func TestApplyPostingPropagatesCoverageMiss(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -85,17 +84,16 @@ func TestBuildPostCommitVolumesPropagatesCoverageMiss(t *testing.T) {
 	miss := coverageMissDescribable{}
 	expectGetVolume(mockStore, domain.NewVolumeKey("l-a", "alice", "USD", ""), nil, miss)
 
-	postings := []*commonpb.Posting{{
+	posting := &commonpb.Posting{
 		Source:      "alice",
 		Destination: "bob",
 		Asset:       "USD",
 		Amount:      commonpb.NewUint256FromUint64(10),
-	}}
+	}
 
-	volumes, err := buildPostCommitVolumes(mockStore, "l-a", postings)
-	require.Nil(t, volumes)
+	err := applyPosting(mockStore, "l-a", posting, false, nil, nil)
 	require.NotNil(t, err)
 	require.Equal(t, domain.ErrReasonCoverageMiss, err.Reason(),
-		"a coverage miss on the post-commit volume read must not be relabelled as a storage fault (EN-1440)")
+		"a coverage miss on the posting volume read must not be relabelled as a storage fault")
 	require.Equal(t, miss, err, "the violation must propagate verbatim, not re-wrapped")
 }

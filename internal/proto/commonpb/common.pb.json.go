@@ -189,20 +189,29 @@ func (x *OrderSkippedLog) UnmarshalJSON(data []byte) error {
 
 // MarshalJSON implements json.Marshaler for PostCommitVolumes. The wire shape
 // is a flat `{"addr": [{asset, color, input, output}]}` map — one array of
-// (asset, color) tuples per account. protojson would otherwise emit the raw
-// proto wrappers (`{"volumesByAccount": {"addr": {"volumes": [...]}}}`) two
-// levels deep. This replaces the pre-color EN-1465 `{"addr": {"asset": Volumes}}`
-// map shape, which can no longer key a bucket uniquely once a color dimension
-// exists, while keeping the flatten intent (no protojson wrappers).
+// (asset, color) tuples per account. The persisted proto is already a flat row
+// list; this adapter only regroups it to preserve the public JSON contract.
 func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
-	byAccount := x.GetVolumesByAccount()
-	if len(byAccount) == 0 {
+	if len(x.GetVolumes()) == 0 {
 		return []byte("{}"), nil
 	}
 
-	flat := make(map[string][]*VolumeEntry, len(byAccount))
-	for addr, va := range byAccount {
-		flat[addr] = va.GetVolumes()
+	type row struct {
+		Asset  string `json:"asset"`
+		Color  string `json:"color"`
+		Input  string `json:"input"`
+		Output string `json:"output"`
+	}
+
+	flat := make(map[string][]row)
+	for _, volume := range x.GetVolumes() {
+		account := volume.GetAccount()
+		flat[account] = append(flat[account], row{
+			Asset:  volume.GetAsset(),
+			Color:  volume.GetColor(),
+			Input:  volume.GetInput(),
+			Output: volume.GetOutput(),
+		})
 	}
 
 	return json.Marshal(flat)
@@ -210,10 +219,9 @@ func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
 
 // (No custom UnmarshalJSON for PostCommitVolumes.) The type is response-only:
 // the server emits it, no request payload ever carries it, so there is no
-// production caller for reverse conversion. Client-side consumers wanting to
-// parse the flat shape can decode straight into a
-// `map[string][]VolumeEntry` — the same structure MarshalJSON emits, where each
-// VolumeEntry is `{asset, color, input, output}`.
+// production caller for reverse conversion. Client-side consumers can decode
+// the response into an account-keyed map whose row shape is
+// `{asset, color, input, output}`.
 
 // MarshalJSON implements json.Marshaler for VolumeEntry. Color is always
 // emitted (even when empty) so clients can distinguish the uncolored bucket

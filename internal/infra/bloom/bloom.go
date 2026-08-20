@@ -104,8 +104,10 @@ func (f *Filter) addBatch(ids []attributes.U128) {
 }
 
 func (f *Filter) add(id attributes.U128) {
-	idx := f.filter.Add(id.Hi())
-	atomic.OrUint64(&f.dirty[idx/64], 1<<(uint64(idx)%64))
+	idx, changed := f.filter.Add(id.Hi())
+	if changed {
+		atomic.OrUint64(&f.dirty[idx/64], 1<<(uint64(idx)%64))
+	}
 }
 
 // PersistDirtyBlocks writes all blocks modified since the last flush to
@@ -761,7 +763,6 @@ func newFilter(expectedKeys uint, fpRate float64, attrCode byte, meter metric.Me
 		"bloom.false_positives",
 		metric.WithDescription("Bloom filter checks that returned maybe-present but Pebble Get found nothing"),
 	)
-
 	bf := newBlockedFilterOptimized(uint64(expectedKeys), fpRate)
 
 	return &Filter{
