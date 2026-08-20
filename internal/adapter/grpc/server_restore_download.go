@@ -216,7 +216,7 @@ func (s *RestoreServiceServerImpl) prepareDownload(
 		bucketID = s.clusterID
 	}
 
-	manifestKey := bucketID + "/backups/manifest.json"
+	manifestKey := backup.ManifestKey(bucketID)
 
 	manifestReader, err := storage.GetFile(ctx, manifestKey)
 	if err != nil {
