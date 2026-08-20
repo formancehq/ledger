@@ -10,6 +10,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -26,6 +27,12 @@ func TestIndexVersionState_RoundTrip(t *testing.T) {
 		CurrentVersion:  3,
 		PendingVersion:  4,
 		RewriteProgress: []byte("cursor-bytes"),
+		// STRING is enum value zero, so it is exactly the value that would
+		// vanish if "declared" were conflated with the type's zero value.
+		CurrentType:         commonpb.MetadataType_METADATA_TYPE_STRING,
+		CurrentTypeDeclared: true,
+		PendingType:         commonpb.MetadataType_METADATA_TYPE_UINT32,
+		PendingTypeDeclared: true,
 	}
 
 	batch := store.NewBatch()
@@ -38,6 +45,10 @@ func TestIndexVersionState_RoundTrip(t *testing.T) {
 	assert.Equal(t, state.CurrentVersion, got.CurrentVersion)
 	assert.Equal(t, state.PendingVersion, got.PendingVersion)
 	assert.Equal(t, state.RewriteProgress, got.RewriteProgress)
+	assert.Equal(t, state.CurrentType, got.CurrentType)
+	assert.True(t, got.CurrentTypeDeclared, "declared STRING must not decode as undeclared")
+	assert.Equal(t, state.PendingType, got.PendingType)
+	assert.True(t, got.PendingTypeDeclared)
 }
 
 func TestIndexVersionState_NoRewriteProgress(t *testing.T) {
@@ -163,9 +174,10 @@ func TestSnapshotVersionResolver_TornReadIsImpossible(t *testing.T) {
 
 	// The snapshot, taken before the switch, MUST still see v=1.
 	resolveFromSnap := readstore.SnapshotVersionResolver(snap, ledger)
-	gotSnap, err := resolveFromSnap(canonical)
+	gotSnap, primed, err := resolveFromSnap(canonical)
 	require.NoError(t, err)
-	assert.Equal(t, uint32(1), gotSnap,
+	require.True(t, primed)
+	assert.Equal(t, uint32(1), gotSnap.Version,
 		"snapshot resolver must hold the pre-switch version — otherwise a query that already iterates a pre-switch keyspace would receive a post-switch version, scanning a half-populated v_new range")
 
 	// Sanity: the live store has of course flipped.
@@ -237,9 +249,10 @@ func TestSnapshotVersionResolver_AbsentReturnsZero(t *testing.T) {
 
 	defer func() { _ = snap.Close() }()
 
-	got, err := readstore.SnapshotVersionResolver(snap, "ledger1")("acct:metadata:never-built")
-	require.NoError(t, err, "absent state must NOT be reported as an error — that's the not-yet-built case the query layer translates into ErrIndexBuilding")
-	assert.Equal(t, uint32(0), got)
+	got, primed, err := readstore.SnapshotVersionResolver(snap, "ledger1")("acct:metadata:never-built")
+	require.NoError(t, err, "absent state must NOT be reported as an error — the query layer decides what an absent record means")
+	assert.Equal(t, uint32(0), got.Version)
+	assert.False(t, primed, "absent means no record was ever written for this index on this replica")
 }
 
 // discardLogger implements logging.Logger silently. The readstore package

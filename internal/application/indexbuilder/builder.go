@@ -46,6 +46,10 @@ type Builder struct {
 	metricsRegistration     metric.Registration // tailworker gauge triplet
 	logsIndexedRegistration metric.Registration // builder-specific logs_indexed_total gauge
 
+	// Raised when a leader snapshot install has swapped the store this cache
+	// was built from, and lowered by the loop once it has rebuilt.
+	configReloadPending atomic.Bool
+
 	// Per-ledger index configuration cache.
 	indexConfig map[string]*ledgerIndexConfig
 
@@ -65,6 +69,10 @@ type Builder struct {
 
 	// Max time budget per tick for backfill processing (default 50ms).
 	backfillBudget time.Duration
+
+	// Per-zone resume cursors for the incremental event GC (see
+	// runEventGC); nil resumes from the zone start.
+	eventGCResume map[byte][]byte
 
 	// Round-robin index for fair scheduling across backfill tasks.
 	nextBackfillIdx int
@@ -117,6 +125,19 @@ type Builder struct {
 // (0, 0) to "version 1" via effectiveCurrentVersion below because
 // Index.ForwardEncodingVersion is initialised to 1 at CreateIndex /
 // first SetMetadataFieldType apply.
+// versionStateFor returns the full cached per-replica version state for an
+// index, false when this replica has never written one.
+func (b *Builder) versionStateFor(ledgerName, canonicalID string) (readstore.IndexVersionState, bool) {
+	inner, ok := b.indexVersions[ledgerName]
+	if !ok {
+		return readstore.IndexVersionState{}, false
+	}
+
+	state, ok := inner[canonicalID]
+
+	return state, ok
+}
+
 func (b *Builder) versionFor(ledgerName, canonicalID string) (current uint32, pending uint32) {
 	if b.indexVersions == nil {
 		return 0, 0
@@ -152,32 +173,53 @@ func (b *Builder) putVersionState(ledgerName, canonicalID string, state readstor
 	inner[canonicalID] = state
 }
 
-// dropVersionState removes a per-index version state from the cache —
-// used when an index is dropped via RemoveMetadataFieldType / DropIndex.
-func (b *Builder) dropVersionState(ledgerName, canonicalID string) {
-	if b.indexVersions == nil {
-		return
+// tombstoneVersionState replaces an index's version state with the dropped
+// marker {cur:0, pend:0, HighWater} — in the cache and, when a fold batch is
+// active, in the store. The high-water mark is what the next incarnation's
+// CreateIndex builds on: versions are single-use per (ledger, canonical), so
+// a fresh builder pass never writes into a keyspace an earlier incarnation's
+// permanent events already occupy (the same-sequence retraction such reuse
+// forces can never win — see IndexVersionState.HighWater).
+func (b *Builder) tombstoneVersionState(ledgerName, canonicalID string) error {
+	prior, _ := b.versionStateFor(ledgerName, canonicalID)
+
+	tomb := readstore.IndexVersionState{
+		HighWater: max(prior.HighWater, prior.CurrentVersion, prior.PendingVersion),
 	}
 
-	inner, ok := b.indexVersions[ledgerName]
-	if !ok {
-		return
+	batch := b.wb.Batch()
+	if batch == nil {
+		return fmt.Errorf(
+			"invariant: no readstore write batch bound while tombstoning %s/%s",
+			ledgerName, canonicalID)
 	}
 
-	delete(inner, canonicalID)
+	if err := b.readStore.WriteIndexVersionState(batch, ledgerName, canonicalID, tomb); err != nil {
+		return fmt.Errorf("persisting version tombstone: %w", err)
+	}
+
+	b.putVersionState(ledgerName, canonicalID, tomb)
+
+	return nil
 }
 
 // effectiveCurrentVersion returns the forward-encoding version live
-// writes and queries should currently target on this replica. The
-// indexer hot path calls this for every metadata index touched.
+// writes should currently target on this replica. The indexer hot
+// path calls this for every metadata index touched.
 //
-// Promotion of 0 → 1: a never-seen index defaults to v1, matching the
-// FSM-side initialisation in processCreateIndex (and the version=1
-// embedded by the non-V key helpers). The actual switch to higher
-// versions happens in the rewrite-completion path (atomicSwitch).
+// current == 0 with a build in flight targets the PENDING version: during a
+// creation backfill the pending keyspace is the only one this incarnation
+// owns, and versions are single-use (IndexVersionState.HighWater), so
+// defaulting to v1 would write into whatever a dropped predecessor left
+// there. A never-tracked index (no state at all) keeps the v1 default,
+// matching the FSM-side initialisation in processCreateIndex.
 func (b *Builder) effectiveCurrentVersion(ledgerName, canonicalID string) uint32 {
-	current, _ := b.versionFor(ledgerName, canonicalID)
+	current, pending := b.versionFor(ledgerName, canonicalID)
 	if current == 0 {
+		if pending != 0 {
+			return pending
+		}
+
 		return 1
 	}
 
@@ -226,22 +268,67 @@ func (b *Builder) dualWriteMetadataIndex(
 	kb *dal.KeyBuilder,
 	ledger, ns, metaKey string,
 	target commonpb.TargetType,
-	newEncoded, entityID []byte,
+	value *commonpb.MetadataValue,
+	entityID []byte,
 	rmapKeyAtVersion reverseKeyForVersion,
 ) error {
 	current, pending := b.metadataIndexVersions(ledger, target, metaKey)
 
-	if err := b.writeMetadataIndexAtVersion(kb, ledger, ns, metaKey, current, newEncoded, entityID, rmapKeyAtVersion(current)); err != nil {
+	if err := b.writeMetadataIndexAtVersion(kb, ledger, ns, metaKey, target, current, value, entityID, rmapKeyAtVersion(current)); err != nil {
 		return err
 	}
 
 	if pending != 0 && pending != current {
-		if err := b.writeMetadataIndexAtVersion(kb, ledger, ns, metaKey, pending, newEncoded, entityID, rmapKeyAtVersion(pending)); err != nil {
+		if err := b.writeMetadataIndexAtVersion(kb, ledger, ns, metaKey, target, pending, value, entityID, rmapKeyAtVersion(pending)); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// coerceForVersion coerces a metadata value under the declared type BOUND to
+// the version being written, not the live schema. During a retype's
+// conversion window the two differ, and the difference is the point: rows at
+// v_current must keep the old type's encoding so queries served from it see
+// the complete old-typed index until the atomic switch, while v_pending rows
+// carry the retype's target (EN-1724). A version bound to no declared type
+// encodes each value verbatim, exactly as writes did before any declaration.
+func (b *Builder) coerceForVersion(ledger string, target commonpb.TargetType, key string, version uint32, v *commonpb.MetadataValue) (*commonpb.MetadataValue, error) {
+	canonical := indexes.Canonical(indexes.MetadataID(target, key))
+
+	state, ok := b.versionStateFor(ledger, canonical)
+	if !ok {
+		// No per-replica record: an index served at the promoted v1 that no
+		// rewrite has ever touched. The live declared type is the bound type.
+		return b.coerceForLedger(ledger, target, key, v)
+	}
+
+	switch {
+	case state.PendingVersion != 0 && version == state.PendingVersion:
+		return coerceToBound(v, state.PendingType, state.PendingTypeDeclared), nil
+	case version == state.CurrentVersion,
+		state.CurrentVersion == 0 && version == 1:
+		// The second arm is effectiveCurrentVersion's 0→1 promotion during a
+		// creation backfill whose pending is already past 1 — same binding.
+		return coerceToBound(v, state.CurrentType, state.CurrentTypeDeclared), nil
+	default:
+		// Versions come from the same state the caller consulted, so a write
+		// targeting one the state does not bind is a wiring bug; encoding it
+		// under a guessed type would plant a row no query interprets right.
+		return nil, fmt.Errorf("invariant: write at version %d of %s/%s, which the version state (current=%d pending=%d) does not bind",
+			version, ledger, canonical, state.CurrentVersion, state.PendingVersion)
+	}
+}
+
+// coerceToBound is CoerceToDeclaredType with the version-bound type standing
+// in for the schema lookup.
+func coerceToBound(v *commonpb.MetadataValue, t commonpb.MetadataType, declared bool) *commonpb.MetadataValue {
+	if !declared || v == nil || commonpb.TypeMatches(v, t) {
+		return v
+	}
+
+	return commonpb.ConvertMetadataValue(v, t)
 }
 
 // writeMetadataIndexAtVersion resolves the version-scoped reverse-map
@@ -252,9 +339,18 @@ func (b *Builder) dualWriteMetadataIndex(
 func (b *Builder) writeMetadataIndexAtVersion(
 	kb *dal.KeyBuilder,
 	ledger, ns, metaKey string,
+	target commonpb.TargetType,
 	version uint32,
-	newEncoded, entityID, reverseKey []byte,
+	value *commonpb.MetadataValue,
+	entityID, reverseKey []byte,
 ) error {
+	coerced, err := b.coerceForVersion(ledger, target, metaKey, version, value)
+	if err != nil {
+		return err
+	}
+
+	newEncoded := readstore.EncodeMetadataValue(nil, coerced)
+
 	oldEncoded, err := b.reverseMapValue(reverseKey)
 	if err != nil {
 		return err
@@ -541,6 +637,13 @@ func (b *Builder) loop(ctx context.Context) {
 		case <-ticker.C:
 		}
 
+		// Ahead of touching the store: a snapshot install may have replaced it
+		// with the leader's checkpoint, leaving the config describing a store
+		// that is gone.
+		if err := b.reloadConfigIfRequested(ctx); err != nil {
+			b.logger.Errorf("%v", err)
+		}
+
 		// Fast path: skip Pebble iterator + batch commit when the FSM
 		// hasn't advanced past our cursor.
 		logsProcessed := false
@@ -570,6 +673,7 @@ func (b *Builder) loop(ctx context.Context) {
 		}
 
 		b.processBackgroundTasks(ctx, stop, cursor)
+		b.runEventGC(cursor)
 
 		// Always wake WaitForSequence waiters so they can re-check progress.
 		// Without this, a waiter that enters Wait() between the last

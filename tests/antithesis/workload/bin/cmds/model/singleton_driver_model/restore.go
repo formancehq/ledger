@@ -116,6 +116,11 @@ func runRestoreCycle(ctx context.Context, c *Checker, trigger RestoreTrigger, in
 		log.Printf("restore cycle: drained, firing restore")
 		err := func() error {
 			defer c.resume()
+			// LIFO: demote before workers wake. The restored node rebuilds its
+			// read-store from the log, so its indexes re-enter BUILDING until the
+			// backfill catches up; the model must tolerate a not-ready rejection
+			// again until the poller reconfirms readiness.
+			defer c.demoteAllIndexes()
 			return trigger.Fire(ctx)
 		}()
 		if err != nil {
@@ -125,6 +130,13 @@ func runRestoreCycle(ctx context.Context, c *Checker, trigger RestoreTrigger, in
 			// green run with this never hit exercised nothing (the local
 			// runner's zero-cycles guard, for Antithesis).
 			assert.Sometimes(true, "singleton_driver_model: restore cycle completed", internal.Details{})
+
+			// The restored nodes rebuild their read-stores from the log under
+			// the live schema, so nothing serves an old-typed index anymore:
+			// open retype windows are over, and their pre-restore closure
+			// observations describe fold cursors that no longer exist.
+			c.closeAllRetypeWindows()
+
 			log.Printf("restore cycle: complete, resumed")
 		}
 	}

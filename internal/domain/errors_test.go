@@ -166,6 +166,11 @@ func TestErrorTypes(t *testing.T) {
 			expected: "chapter 5 is not in ARCHIVING state",
 		},
 		{
+			name:     "ErrChapterArchiveOutOfOrder",
+			err:      &ErrChapterArchiveOutOfOrder{ChapterID: 5, BlockingChapterID: 3},
+			expected: "chapter 5 cannot be archived while older chapter 3 is not archived",
+		},
+		{
 			name:     "ErrInvalidCronExpression",
 			err:      &ErrInvalidCronExpression{Expression: "bad", Details: "parse failed"},
 			expected: `invalid cron expression "bad": parse failed`,
@@ -349,6 +354,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrChapterNotClosing":             &ErrChapterNotClosing{},
 		"ErrChapterNotClosed":              &ErrChapterNotClosed{},
 		"ErrChapterNotArchiving":           &ErrChapterNotArchiving{},
+		"ErrChapterArchiveOutOfOrder":      &ErrChapterArchiveOutOfOrder{},
 		"ErrInvalidCronExpression":         &ErrInvalidCronExpression{},
 		"ErrLedgerInMirrorMode":            &ErrLedgerInMirrorMode{},
 		"ErrLedgerNotInMirrorMode":         &ErrLedgerNotInMirrorMode{},

@@ -213,6 +213,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	var (
 		hasArchivedChapters  bool
 		archiveEndSeq        uint64 // max close_sequence among archived chapters
+		archiveAuditEndSeq   uint64 // max close_audit_sequence among archived chapters
 		archiveLastAuditHash []byte // last_audit_hash from the latest archived chapter
 	)
 
@@ -231,6 +232,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			if p.GetCloseSequence() > archiveEndSeq {
 				archiveEndSeq = p.GetCloseSequence()
 				archiveLastAuditHash = p.GetLastAuditHash()
+			}
+
+			if p.GetCloseAuditSequence() > archiveAuditEndSeq {
+				archiveAuditEndSeq = p.GetCloseAuditSequence()
 			}
 		}
 	}
@@ -373,17 +378,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// RemovedMetadataFieldType logs. Compared against the stored
 		// LedgerInfo.MetadataSchema in compareSchema.
 		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
-		// Metadata fields the replay observed a RemovedMetadataFieldType log
-		// for. Unlike expectedSchemas this is append-only — a field removed
-		// and later re-declared stays recorded, and
-		// compareReverseMapOrphans resolves that case by checking
-		// expectedSchemas first. It is the positive-evidence oracle for the
-		// reverse-map orphan class: a verdict resting on a log the replay saw
-		// holds regardless of where the peer read-index cursor sits, whereas
-		// inferring removal from absence in a view pinned at lastSequence
-		// misreads a field created after that point. See ALIGNMENT in
-		// reverse_map_orphans.go.
-		removedSchemaFields = make(map[removedSchemaFieldKey]struct{})
 		// Expected LedgerBoundaries per ledger: id fields and replay-derivable
 		// counters, seeded from the baseline under archiving, advanced per
 		// replayed log, then topped up with the chain-bound audit-order
@@ -712,17 +706,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 							if l := d.RemovedMetadataFieldType; l != nil {
 								removeExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey())
-
-								// This is also the one log that runs
-								// purgeReverseMapForKey, so recording it gives
-								// compareReverseMapOrphans an oracle that does
-								// not depend on the peer read-index cursor
-								// sitting exactly at lastSequence.
-								removedSchemaFields[removedSchemaFieldKey{
-									ledger:  ledgerName,
-									target:  l.GetTargetType(),
-									metaKey: l.GetKey(),
-								}] = struct{}{}
 							}
 
 							// processRemoveMetadataFieldType cascades into a
@@ -805,7 +788,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// projection. Combined with the LedgerLog.PurgedVolumes already
 	// accumulated above, `stored` now represents the full per-ledger
 	// exclusion set the index builder will consume.
-	if err := c.collectStoredTransientVolumes(ctx, snap, addStored); err != nil {
+	//
+	// The scan starts strictly above the archived audit boundary, mirroring
+	// the replay loop's `seq <= archiveEndSeq` skip on the log side: the
+	// derived set only covers post-boundary history, and rows at or below the
+	// boundary can legitimately sit in hot storage — a restore re-ingests the
+	// backfilled archived ranges and never re-purges them, and out-of-order
+	// archiving leaves an un-archived chapter's rows below the max archived
+	// close — so comparing them against a replay that skipped their logs
+	// reports a healthy store as corrupt. Same trade-off as the log-side
+	// skip: retained sub-boundary rows go unverified.
+	if err := c.collectStoredTransientVolumes(ctx, snap, archiveAuditEndSeq, addStored); err != nil {
 		return fmt.Errorf("reading applied proposals for exclusion check: %w", err)
 	}
 
@@ -856,7 +849,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		liveLedgers:           knownLedgers,
 		pendingCleanupLedgers: pendingCleanupLedgers,
 		replayedSchemas:       expectedSchemas,
-		removedFields:         removedSchemaFields,
 	}, callback)
 
 	c.compareMirrorV2LogID(snap, chainBound, deletedInReplay, callback)
@@ -910,9 +902,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 func (c *Checker) collectStoredTransientVolumes(
 	ctx context.Context,
 	reader dal.PebbleReader,
+	archiveAuditEndSeq uint64,
 	addStored func(ledger, account, asset, color string),
 ) error {
-	proposals, err := query.ReadAppliedProposals(ctx, reader, nil)
+	// Proposals at or below the archived audit boundary are outside the
+	// replay's derivation window (see the call site) — start above it.
+	var afterSeq *uint64
+	if archiveAuditEndSeq > 0 {
+		afterSeq = &archiveAuditEndSeq
+	}
+
+	proposals, err := query.ReadAppliedProposals(ctx, reader, afterSeq)
 	if err != nil {
 		return fmt.Errorf("reading applied proposals: %w", err)
 	}

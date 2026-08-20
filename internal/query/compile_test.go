@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 // TestCompile_RejectsDeeplyNestedFilter is the regression for #341 /
@@ -786,7 +787,9 @@ func TestBuiltinCompilers_GateOnLocalReadiness(t *testing.T) {
 	// indexResolverZero simulates a replica whose initial backfill
 	// has not yet completed. Real production wiring uses
 	// readstore.SnapshotVersionResolver against the iteration snapshot.
-	indexResolverZero := func(string) (uint32, error) { return 0, nil }
+	indexResolverZero := func(string) (readstore.ResolvedIndexVersion, bool, error) {
+		return readstore.ResolvedIndexVersion{BindingKnown: true}, true, nil
+	}
 
 	info := &commonpb.LedgerInfo{Name: ledgerName}
 
@@ -867,7 +870,7 @@ func TestBuiltinCompilers_GateOnLocalReadiness(t *testing.T) {
 
 			_, err := Compile(
 				nil, nil, tc.filter, tc.target, ledgerName,
-				nil, nil, info, indexRegistry, indexResolverZero, nil, nil)
+				nil, nil, info, indexRegistry, indexResolverZero, nil, nil, 0)
 			require.Error(t, err, "compiler must refuse when CurrentVersion=0")
 
 			var building *domain.ErrIndexBuilding
@@ -895,11 +898,13 @@ func TestRequireIndexReady_SurfacesPebbleError(t *testing.T) {
 	}
 
 	ctx := &compileCtx{
-		target:          commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-		indexRegistry:   indexRegistry,
-		ledgerName:      "ledger1",
-		info:            info,
-		indexVersionFor: func(string) (uint32, error) { return 0, pebbleErr },
+		target:        commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		indexRegistry: indexRegistry,
+		ledgerName:    "ledger1",
+		info:          info,
+		indexVersionFor: func(string) (readstore.ResolvedIndexVersion, bool, error) {
+			return readstore.ResolvedIndexVersion{}, false, pebbleErr
+		},
 	}
 
 	_, err := requireIndexReady(ctx,
@@ -954,7 +959,7 @@ func TestCompile_RejectsUnsupportedTarget(t *testing.T) {
 
 			iter, err := Compile(
 				nil, nil, tc.filter, badTarget, "ledger1",
-				nil, nil, info, nil, nil, nil, nil)
+				nil, nil, info, nil, nil, nil, nil, 0)
 			require.Error(t, err, "unsupported target must fail loudly, not return an (empty) iterator")
 			require.Nil(t, iter)
 
@@ -992,4 +997,74 @@ func (s staticIndexLookup) Get(key domain.IndexKey) (commonpb.IndexReader, error
 	}
 
 	return idx.AsReader(), nil
+}
+
+// An absent per-replica record means the index was REMOVED, not that it is
+// still building: checkIndexed only passes because the registry lists the
+// index at this read's pin, and alignment puts the fold cursor at or beyond
+// that pin, so the builder must already have written the record when it
+// folded the CreateIndex log. Reporting "building" would tell the client to
+// wait for a readiness that will never come.
+func TestCompile_AbsentVersionRecordIsRemovedNotBuilding(t *testing.T) {
+	t.Parallel()
+
+	const ledgerName = "ledger1"
+
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k2")
+	indexRegistry := staticIndexLookup{
+		indexes.KeyFor(ledgerName, id): {Ledger: ledgerName, Id: id},
+	}
+
+	info := &commonpb.LedgerInfo{Name: ledgerName}
+	schema := map[string]*commonpb.MetadataFieldSchema{
+		"k2": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+	}
+
+	filter := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field:     &commonpb.FieldRef{Metadata: "k2"},
+				Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+			},
+		},
+	}
+
+	for _, tc := range []struct {
+		name   string
+		primed bool
+		assert func(t *testing.T, err error)
+	}{
+		{
+			name:   "record absent — removed",
+			primed: false,
+			assert: func(t *testing.T, err error) {
+				var notFound *domain.ErrIndexNotFound
+				require.ErrorAs(t, err, &notFound)
+			},
+		},
+		{
+			name:   "record present at version 0 — still building",
+			primed: true,
+			assert: func(t *testing.T, err error) {
+				var building *domain.ErrIndexBuilding
+				require.ErrorAs(t, err, &building)
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := Compile(
+				nil, nil, filter,
+				commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
+				nil, schema, info, indexRegistry,
+				func(string) (readstore.ResolvedIndexVersion, bool, error) {
+					return readstore.ResolvedIndexVersion{BindingKnown: true}, tc.primed, nil
+				},
+				nil, nil, 0,
+			)
+			require.Error(t, err)
+			tc.assert(t, err)
+		})
+	}
 }

@@ -139,13 +139,25 @@ func TestHandleDroppedIndexLog(t *testing.T) {
 	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 
 	b := newTestBuilderWithStore(t)
+
+	batch := b.readStore.NewBatch()
+	defer func() { _ = batch.Cancel() }()
+	b.initBatch(batch)
+
 	b.handleCreatedIndexLog("ledger1", &commonpb.CreatedIndexLog{Id: id})
 	require.Len(t, b.backfillTasks, 1)
 	assert.True(t, b.indexConfig["ledger1"].isIndexed(id))
 
-	b.handleDroppedIndexLog("ledger1", &commonpb.DroppedIndexLog{Id: id})
+	require.NoError(t, b.handleDroppedIndexLog(b.kb, "ledger1", &commonpb.DroppedIndexLog{Id: id}))
 	assert.False(t, b.indexConfig["ledger1"].isIndexed(id))
 	assert.Empty(t, b.backfillTasks)
+
+	// The version high-water survives the drop, so this incarnation's
+	// versions are retired forever.
+	state, ok := b.versionStateFor("ledger1", indexes.Canonical(id))
+	require.True(t, ok)
+	assert.True(t, state.Tombstoned())
+	assert.Equal(t, uint32(1), state.HighWater)
 }
 
 func TestAddBackfillTask_NoDuplicates(t *testing.T) {
@@ -643,6 +655,7 @@ func TestAddSchemaRewriteTask_ResetsInFlightBackfill(t *testing.T) {
 	b := &Builder{
 		indexConfig: make(map[string]*ledgerIndexConfig),
 		readStore:   store,
+		wb:          readstore.NewWriteBatch(),
 	}
 
 	cfg := newLedgerIndexConfig()
@@ -663,6 +676,19 @@ func TestAddSchemaRewriteTask_ResetsInFlightBackfill(t *testing.T) {
 		},
 	}
 
+	// A backfill task always coexists with its version state and runs inside
+	// an active fold batch — CreateIndex writes both in one commit, and boot
+	// rebuilds the task FROM the persisted state.
+	b.putVersionState("ledger1", indexes.Canonical(id), readstore.IndexVersionState{
+		CurrentVersion: 0,
+		PendingVersion: 1,
+		HighWater:      1,
+	})
+
+	batch := store.NewBatch()
+	defer func() { _ = batch.Cancel() }()
+	b.initBatch(batch)
+
 	require.NoError(t, b.addSchemaRewriteTask(cfg, "ledger1", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "score",
@@ -675,6 +701,15 @@ func TestAddSchemaRewriteTask_ResetsInFlightBackfill(t *testing.T) {
 	assert.Equal(t, uint64(0), b.backfillTasks[0].cursor,
 		"existing backfill must restart from 0 so it replays under the new declared_type")
 	assert.Equal(t, uint64(0), b.backfillTasks[0].appliedProposalSeq, "audit cursor must reset too")
+
+	state, ok := b.versionStateFor("ledger1", indexes.Canonical(id))
+	require.True(t, ok)
+	assert.Equal(t, uint32(2), state.PendingVersion,
+		"the restart must fill a FRESH keyspace — refolding the half-built one re-encodes values at their original sequences, and those retractions lose the same-seq tie forever")
+	assert.Equal(t, uint32(2), state.HighWater)
+	require.True(t, state.PendingTypeDeclared)
+	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_UINT64, state.PendingType,
+		"the fresh keyspace is bound to the retype's target type")
 }
 
 // TestAddSchemaRewriteTask_ResetsBackfillEvenWhenIndexStripped pins the
@@ -700,6 +735,7 @@ func TestAddSchemaRewriteTask_ResetsBackfillEvenWhenIndexStripped(t *testing.T) 
 	b := &Builder{
 		indexConfig: make(map[string]*ledgerIndexConfig),
 		readStore:   store,
+		wb:          readstore.NewWriteBatch(),
 	}
 
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
@@ -721,6 +757,19 @@ func TestAddSchemaRewriteTask_ResetsBackfillEvenWhenIndexStripped(t *testing.T) 
 		},
 	}
 
+	// stripBuildingIndexes hides the index from cfg, but the version state and
+	// the fold batch are untouched by the strip — both still exist whenever a
+	// backfill task does.
+	b.putVersionState("ledger1", indexes.Canonical(id), readstore.IndexVersionState{
+		CurrentVersion: 0,
+		PendingVersion: 1,
+		HighWater:      1,
+	})
+
+	batch := store.NewBatch()
+	defer func() { _ = batch.Cancel() }()
+	b.initBatch(batch)
+
 	require.NoError(t, b.addSchemaRewriteTask(cfg, "ledger1", &commonpb.SetMetadataFieldTypeLog{
 		TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		Key:        "score",
@@ -732,6 +781,13 @@ func TestAddSchemaRewriteTask_ResetsBackfillEvenWhenIndexStripped(t *testing.T) 
 		"stripped index must not block the retype reset — backfill must restart from 0")
 	assert.Equal(t, uint64(0), b.backfillTasks[0].appliedProposalSeq)
 	assert.Empty(t, b.schemaRewriteTasks, "no separate schema rewrite needed; backfill replay covers it")
+
+	state, ok := b.versionStateFor("ledger1", indexes.Canonical(id))
+	require.True(t, ok)
+	require.True(t, state.PendingTypeDeclared)
+	assert.Equal(t, uint32(2), state.PendingVersion,
+		"the restarted backfill fills a fresh keyspace bound to the retype's target type")
+	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_UINT64, state.PendingType)
 }
 
 // TestAddSchemaRewriteTask_DoesNotResetOtherLedgersBackfill guards against
@@ -1148,6 +1204,46 @@ func TestHandleCreatedIndexLog_DuplicateAfterLive_IsIdempotent(t *testing.T) {
 	current, pending = b.versionFor(ledger, canonical)
 	require.Equal(t, uint32(1), current, "index stays live after a duplicate create")
 	require.Equal(t, uint32(0), pending, "no pending backfill after a duplicate create")
+}
+
+// TestHandleCreatedIndexLog_DuplicateDuringBackfill_KeepsPending pins the
+// creation-in-flight half of the idempotency guard: while a creation backfill
+// is running (current=0, pending!=0), a duplicate CreatedIndexLog must keep
+// the pending version the running task is filling. Allocating a fresh number
+// orphans the half-built keyspace, and the task's caught-up cursor then
+// promotes the never-filled replacement — a permanently empty index.
+func TestHandleCreatedIndexLog_DuplicateDuringBackfill_KeepsPending(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+
+	const ledger = "test"
+	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	canonical := indexes.Canonical(id)
+
+	// A prior incarnation raised the high-water mark, so a fresh allocation
+	// is observable as pending != 1.
+	b.putVersionState(ledger, canonical, readstore.IndexVersionState{HighWater: 4})
+
+	first := b.readStore.NewBatch()
+	b.initBatch(first)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.wb.Flush())
+
+	require.Len(t, b.backfillTasks, 1)
+	current, pending := b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(0), current)
+	require.Equal(t, uint32(5), pending, "creation targets the incarnation above the high-water mark")
+
+	second := b.readStore.NewBatch()
+	b.initBatch(second)
+	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.wb.Flush())
+
+	require.Len(t, b.backfillTasks, 1, "duplicate create must not schedule another backfill")
+	current, pending = b.versionFor(ledger, canonical)
+	require.Equal(t, uint32(0), current)
+	require.Equal(t, uint32(5), pending, "the running backfill's target version must survive a duplicate create")
 }
 
 // TestDropLedgerVersionState_EvictsOnlyThatLedger pins the eviction the live

@@ -379,8 +379,15 @@ check_fail_fast() {
 # ---------------------------------------------------------------------------
 # --restore drives S3 backups (to MinIO), so the server and ledgerctl need the
 # s3 build tag; the light default build stubs S3 out.
-server_tags=""
-[ "$RESTORE" = 1 ] && server_tags="-tags s3"
+#
+# Pebble's internal invariant checks (iterator bound violations, key ordering,
+# ...) ride the `invariants` build tag — the Antithesis image gets them
+# through -race, and a misuse they catch panics loudly there while an
+# untagged build silently tolerates it. The local server is always built with
+# the tag so both environments police the same store invariants; the cost is
+# a few percent, not race-detector overhead.
+server_tags="-tags invariants"
+[ "$RESTORE" = 1 ] && server_tags="-tags invariants,s3"
 build_cmd="go build $server_tags -o '$SERVER_BIN' . && "
 if [ "$NODES" -gt 1 ] || [ "$RESTORE" = 1 ]; then
 	build_cmd="${build_cmd}go build $server_tags -o '$LEDGERCTL_BIN' ./cmd/ledgerctl && "
@@ -464,6 +471,7 @@ fi
 LEDGER_GRPC_ADDR="$ADDR_LIST" \
 ANTITHESIS_SDK_LOCAL_OUTPUT="$ASSERTIONS" \
 MODEL_DEBUG="${MODEL_DEBUG:-}" \
+MODEL_DUMP_BATCHES="${MODEL_DUMP_BATCHES:-}" \
 MODEL_LEDGERS="${MODEL_LEDGERS:-}" \
 MODEL_WORKERS="${MODEL_WORKERS:-}" \
 MODEL_MAX_SECONDS="$(( DURATION + 15 ))" \

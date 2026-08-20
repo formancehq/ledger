@@ -15,6 +15,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
 )
@@ -54,7 +55,24 @@ type Store struct {
 	// NotifyProgress after each WriteProgress to wake up waiters.
 	progressMu   sync.Mutex
 	progressCond *sync.Cond
+
+	// readOnly marks a store opened via OpenReadOnly — a frozen view (query
+	// checkpoint) whose fold cursor will never advance, so freshness waits
+	// are meaningless against it.
+	readOnly bool
+
+	// leases tracks the pinned sequences of live reads so the event GC never
+	// reclaims history a pinned reader could still resolve (see read_lease.go
+	// and event_gc.go). Nil on frozen stores — no GC runs against them.
+	leases *LeaseRegistry
 }
+
+// Leases returns the read-lease registry gating the event GC.
+func (s *Store) Leases() *LeaseRegistry { return s.leases }
+
+// Frozen reports whether this store is an immutable read-only view (a query
+// checkpoint) rather than the live, builder-fed read index.
+func (s *Store) Frozen() bool { return s.readOnly }
 
 // New opens or creates a Pebble database at the given directory for the read index.
 func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
@@ -129,6 +147,7 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 		db:     db,
 		logger: logger.WithFields(map[string]any{"cmp": "read-store"}),
 		dir:    dir,
+		leases: NewLeaseRegistry(),
 	}
 	s.progressCond = sync.NewCond(&s.progressMu)
 
@@ -148,9 +167,11 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 	}
 
 	s := &Store{
-		db:     db,
-		logger: logger.WithFields(map[string]any{"cmp": "read-store-readonly"}),
-		dir:    dirPath,
+		db:       db,
+		logger:   logger.WithFields(map[string]any{"cmp": "read-store-readonly"}),
+		dir:      dirPath,
+		readOnly: true,
+		leases:   NewLeaseRegistry(),
 	}
 	s.progressCond = sync.NewCond(&s.progressMu)
 
@@ -333,10 +354,61 @@ type IndexVersionState struct {
 	// PendingVersion is the target version of an in-flight local
 	// rewrite. Zero when no rewrite is running.
 	PendingVersion uint32
+	// ActivationSequence is the log sequence CurrentVersion's keyspace
+	// became complete at. A rewrite stamps every event it writes with the
+	// FSM sequence it read from, so a reader pinned below that sequence
+	// resolves the promoted keyspace as empty; queries compare their pin
+	// against this and refuse rather than serve nothing. Zero for a version
+	// built by an initial backfill, whose events carry the sequences of the
+	// logs they were folded from and are therefore resolvable at any pin.
+	ActivationSequence uint64
 	// RewriteProgress is the cursor of the in-flight rewrite (e.g. the
 	// last reverse-map key processed). Empty when no rewrite is
 	// running. Variable-length, opaque to the readstore.
 	RewriteProgress []byte
+
+	// HighWater is the highest forward-encoding version this index has ever
+	// allocated on this replica. It is what makes version numbers single-use:
+	// dropping the index tombstones the record ({0, 0, HighWater}) instead of
+	// deleting it, and a re-created index starts at HighWater+1 — so a fresh
+	// builder pass can never write into a keyspace an earlier incarnation
+	// already wrote. Events are permanent and stamped with the sequence of
+	// the log that caused them; a keyspace shared by two passes can hold two
+	// events for one log at one sequence under different encodings, and the
+	// retraction such a pass emits loses the same-sequence tie to the
+	// standing ADD — an immortal row. Reuse is the only way into that state.
+	HighWater uint32
+
+	// CurrentType is the declared metadata type CurrentVersion's rows are
+	// encoded under, bound when the version was built and changed only by
+	// the atomic switch. It is what makes a retype invisible to queries
+	// until the switch: the schema flips at FSM apply, but a query serves
+	// CurrentVersion and must validate and encode its conditions under the
+	// type those rows actually carry — a condition compiled under the new
+	// declared type over old-encoded rows sees only the rows written after
+	// the retype (type-tagged encodings occupy disjoint byte ranges), i.e.
+	// partial results (EN-1724).
+	//
+	// CurrentTypeDeclared distinguishes "bound to no declared type" (the
+	// key had no schema entry when the version was built; rows carry each
+	// value's natural encoding) from METADATA_TYPE_STRING, which is enum
+	// value zero. Only meaningful on metadata indexes.
+	CurrentType         commonpb.MetadataType
+	CurrentTypeDeclared bool
+
+	// PendingType is the declared type PendingVersion's rows are encoded
+	// under: the retype's target, bound when the rewrite starts. Live
+	// dual-writes encode each value once per version, under that version's
+	// bound type.
+	PendingType         commonpb.MetadataType
+	PendingTypeDeclared bool
+}
+
+// Tombstoned reports whether the record marks a dropped index: no servable
+// version, no build in flight, only the high-water mark held so the next
+// incarnation cannot reuse a version number.
+func (s IndexVersionState) Tombstoned() bool {
+	return s.CurrentVersion == 0 && s.PendingVersion == 0
 }
 
 // IndexVersionStateEntry is the decoded form returned by
@@ -349,38 +421,73 @@ type IndexVersionStateEntry struct {
 }
 
 // encodeIndexVersionState packs the state to a single byte slice.
-// Layout: [current(4B BE)][pending(4B BE)][rewrite_progress…].
+// Layout: [current(4B BE)][pending(4B BE)][activation(8B BE)][high_water(4B BE)]
+// [current_type(1B)][pending_type(1B)][rewrite_progress…].
+// A type byte holds 0 for "no declared type bound" and 1+MetadataType
+// otherwise, so undeclared stays distinct from METADATA_TYPE_STRING (0).
 func encodeIndexVersionState(s IndexVersionState) []byte {
-	out := make([]byte, 8+len(s.RewriteProgress))
+	out := make([]byte, indexVersionStateHeaderLen+len(s.RewriteProgress))
 	binary.BigEndian.PutUint32(out[0:4], s.CurrentVersion)
 	binary.BigEndian.PutUint32(out[4:8], s.PendingVersion)
-	copy(out[8:], s.RewriteProgress)
+	binary.BigEndian.PutUint64(out[8:16], s.ActivationSequence)
+	binary.BigEndian.PutUint32(out[16:20], s.HighWater)
+	out[20] = encodeBoundType(s.CurrentType, s.CurrentTypeDeclared)
+	out[21] = encodeBoundType(s.PendingType, s.PendingTypeDeclared)
+	copy(out[indexVersionStateHeaderLen:], s.RewriteProgress)
 
 	return out
+}
+
+const indexVersionStateHeaderLen = 22
+
+func encodeBoundType(t commonpb.MetadataType, declared bool) byte {
+	if !declared {
+		return 0
+	}
+
+	return byte(t) + 1
+}
+
+func decodeBoundType(b byte) (commonpb.MetadataType, bool) {
+	if b == 0 {
+		return 0, false
+	}
+
+	return commonpb.MetadataType(b - 1), true
 }
 
 // decodeIndexVersionState parses a stored value back to IndexVersionState.
 // Returns (zero, false) on any malformed input — caller treats it as
 // "absent" and re-initializes.
 func decodeIndexVersionState(v []byte) (IndexVersionState, bool) {
-	if len(v) < 8 {
+	if len(v) < indexVersionStateHeaderLen {
 		return IndexVersionState{}, false
 	}
 
-	progress := make([]byte, len(v)-8)
-	copy(progress, v[8:])
+	progress := make([]byte, len(v)-indexVersionStateHeaderLen)
+	copy(progress, v[indexVersionStateHeaderLen:])
 
-	return IndexVersionState{
-		CurrentVersion:  binary.BigEndian.Uint32(v[0:4]),
-		PendingVersion:  binary.BigEndian.Uint32(v[4:8]),
-		RewriteProgress: progress,
-	}, true
+	st := IndexVersionState{
+		CurrentVersion:     binary.BigEndian.Uint32(v[0:4]),
+		PendingVersion:     binary.BigEndian.Uint32(v[4:8]),
+		ActivationSequence: binary.BigEndian.Uint64(v[8:16]),
+		HighWater:          binary.BigEndian.Uint32(v[16:20]),
+		RewriteProgress:    progress,
+	}
+	st.CurrentType, st.CurrentTypeDeclared = decodeBoundType(v[20])
+	st.PendingType, st.PendingTypeDeclared = decodeBoundType(v[21])
+
+	return st, true
 }
 
 // WriteIndexVersionState persists the per-replica version state for an
 // index. canonicalID must be indexes.Canonical(id) bytes.
 func (s *Store) WriteIndexVersionState(batch *dal.WriteSession, ledgerName string, canonicalID string, state IndexVersionState) error {
 	key := IndexVersionStateKey(dal.NewKeyBuilder(), ledgerName, canonicalID)
+
+	tracef("MIDXTRACE vstate ledger=%s canon=%s cur=%d pend=%d act=%d hw=%d curType=%d/%v pendType=%d/%v",
+		ledgerName, canonicalID, state.CurrentVersion, state.PendingVersion, state.ActivationSequence,
+		state.HighWater, state.CurrentType, state.CurrentTypeDeclared, state.PendingType, state.PendingTypeDeclared)
 
 	return batch.SetBytes(key, encodeIndexVersionState(state))
 }
@@ -435,14 +542,81 @@ func (s *Store) ReadIndexVersionState(ledgerName, canonicalID string) (IndexVers
 // Returns (0, error) on a real Pebble I/O failure; (0, nil) when no
 // version state has been written yet (caller should translate to
 // ErrIndexBuilding at query boundaries).
-func SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) func(canonical string) (uint32, error) {
-	return func(canonical string) (uint32, error) {
-		state, _, err := ReadIndexVersionStateFrom(reader, ledgerName, canonical)
+func SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) IndexVersionResolver {
+	return PinnedVersionResolver(reader, ledgerName, 0)
+}
+
+// ResolvedIndexVersion is what a query learns about an index from the
+// version state at its pin: the version to scan and the declared type
+// bound to it. The bound type — not the live schema — is what the
+// version's rows are encoded under, so conditions must be validated and
+// encoded against it (EN-1724); during a retype's conversion window the
+// two legitimately differ.
+type ResolvedIndexVersion struct {
+	Version uint32
+	// Type/TypeDeclared mirror IndexVersionState.CurrentType*: the type
+	// Version's rows carry, or "none was declared when it was built".
+	Type         commonpb.MetadataType
+	TypeDeclared bool
+	// BindingKnown is true for every resolution built from a stored version
+	// state — TypeDeclared=false is then an affirmative "built with no
+	// declared type", not missing information. Only query.Compile's
+	// pre-versioning test default leaves it false, telling the compiler to
+	// fall back to the live schema.
+	BindingKnown bool
+}
+
+// IndexVersionResolver resolves an index's servable version at the pin of
+// the snapshot it was built over. ok=false means no version state exists —
+// the index was removed (callers tell it apart from building via the
+// registry, see requireIndexReady).
+type IndexVersionResolver func(canonical string) (ResolvedIndexVersion, bool, error)
+
+// PinnedVersionResolver is the pin-aware variant: a version promoted by a
+// schema rewrite is only servable at pins at or above its activation
+// sequence, because the rewrite stamps every event it writes with the one
+// FSM sequence it read from. Below that, the promoted keyspace resolves
+// empty at the pin — indistinguishable from "no rows match" — so the
+// resolver reports the index as not yet live (version 0) and the caller
+// surfaces ErrIndexBuilding instead of an empty page.
+//
+// A pin of 0 means "no pin" (introspection paths that do not resolve rows
+// at a sequence) and skips the check.
+func PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint64) IndexVersionResolver {
+	return func(canonical string) (ResolvedIndexVersion, bool, error) {
+		state, present, err := ReadIndexVersionStateFrom(reader, ledgerName, canonical)
 		if err != nil {
-			return 0, err
+			return ResolvedIndexVersion{}, false, err
 		}
 
-		return state.CurrentVersion, nil
+		tracef("MIDXTRACE resolve ledger=%s canon=%s pin=%d present=%v cur=%d pend=%d act=%d hw=%d",
+			ledgerName, canonical, pin, present, state.CurrentVersion, state.PendingVersion,
+			state.ActivationSequence, state.HighWater)
+
+		if !present {
+			// No record at all. Callers use this to tell a removed index
+			// apart from one still being built — see requireIndexReady.
+			return ResolvedIndexVersion{}, false, nil
+		}
+
+		if state.Tombstoned() {
+			// A dropped index. The record survives only to hold the
+			// high-water version for the next incarnation; to queries it
+			// must read exactly like the removed index it is, never as one
+			// still building.
+			return ResolvedIndexVersion{}, false, nil
+		}
+
+		if pin > 0 && state.ActivationSequence > pin {
+			return ResolvedIndexVersion{}, true, nil
+		}
+
+		return ResolvedIndexVersion{
+			Version:      state.CurrentVersion,
+			Type:         state.CurrentType,
+			TypeDeclared: state.CurrentTypeDeclared,
+			BindingKnown: true,
+		}, true, nil
 	}
 }
 
@@ -730,15 +904,22 @@ func (s *Store) WaitForSequence(ctx context.Context, minSeq uint64) error {
 		return nil
 	}
 
-	// Spawn a goroutine that broadcasts when the context is cancelled so
-	// the Wait() below is unblocked.
+	// Broadcast on cancellation while holding progressMu, exactly as
+	// WaitForCheckpoint does. Taking the lock is what closes the missed-wakeup
+	// window: the loop below checks ctx.Err() and calls Wait() under the same
+	// lock, and Wait releases it only once parked. Broadcasting without the
+	// lock can land between that check and Wait, stranding the waiter until an
+	// unrelated NotifyProgress arrives — so an alignment wait would outlive
+	// its caller's cancellation instead of ending with it.
 	done := make(chan struct{})
 	defer close(done)
 
 	go func() {
 		select {
 		case <-ctx.Done():
+			s.progressMu.Lock()
 			s.progressCond.Broadcast()
+			s.progressMu.Unlock()
 		case <-done:
 		}
 	}()

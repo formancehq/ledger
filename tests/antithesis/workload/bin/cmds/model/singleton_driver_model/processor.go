@@ -33,6 +33,26 @@ func (c *Checker) registerRead() uint64 {
 	return t
 }
 
+// observedFrontier is the highest log sequence the checker knows to be
+// committed: the drained frontier plus every observed-but-undrained pending
+// success. Reads MUST pin Read.MinLogSequence to THIS, never to committedSeq
+// alone: tryDrain folds a pending bulk beneath any read registered after the
+// bulk was observed, which is only sound when the read cannot have been
+// served below that bulk — a committedSeq pin lags observation whenever
+// draining is deferred, letting the server serve a pre-bulk snapshot the
+// folded model can no longer represent (an unexplainable, spurious finding).
+// Caller holds c.mu.
+func (c *Checker) observedFrontier() uint64 {
+	f := c.committedSeq
+	for _, pe := range c.pending {
+		if s := maxLogSequence(pe.obs.resp.GetLogs()); s > f {
+			f = s
+		}
+	}
+
+	return f
+}
+
 // finishRead drops an outstanding read and resumes any draining it held back.
 func (c *Checker) finishRead(ticket uint64) {
 	c.mu.Lock()
@@ -131,6 +151,12 @@ func (c *Checker) tryDrain() {
 
 		c.pending = c.pending[1:]
 		c.validateBulkSuccess(head.obs.bulk, head.obs.resp)
+
+		// Advance the committed frontier: this bulk is now in modelState, so a
+		// read pinned to this sequence sees at least everything modelState holds.
+		if s := maxLogSequence(head.obs.resp.GetLogs()); s > c.committedSeq {
+			c.committedSeq = s
+		}
 	}
 }
 
@@ -159,4 +185,15 @@ func minLogSequence(logs []*commonpb.Log) uint64 {
 		}
 	}
 	return min
+}
+
+// Largest Log.Sequence in logs, or 0 if none.
+func maxLogSequence(logs []*commonpb.Log) uint64 {
+	var max uint64
+	for _, l := range logs {
+		if s := l.GetSequence(); s > max {
+			max = s
+		}
+	}
+	return max
 }

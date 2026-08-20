@@ -597,6 +597,37 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		return err
 	}
 
+	// Registry rows go missing from storage with nothing accounting for it, and
+	// the indexbuilder only notices later, when a removal finds nothing to drop.
+	// Recording the row's creation and its deletion here dates both ends: a
+	// canonical that was written, never deleted, and is gone from Pebble was
+	// lost by something other than a delete.
+	for _, u := range indexUpdates {
+		if u.Old.IsDefined() {
+			continue
+		}
+
+		var k domain.IndexKey
+		if err := k.Unmarshal(u.CanonicalKey); err == nil {
+			b.fsm.logger.WithFields(map[string]any{
+				"cmp":       "index-registry",
+				"ledger":    k.LedgerName,
+				"canonical": k.Canonical,
+			}).Infof("Index registry row written")
+		}
+	}
+
+	for _, d := range indexDeletions {
+		var k domain.IndexKey
+		if err := k.Unmarshal(d.CanonicalKey); err == nil {
+			b.fsm.logger.WithFields(map[string]any{
+				"cmp":       "index-registry",
+				"ledger":    k.LedgerName,
+				"canonical": k.Canonical,
+			}).Infof("Index registry row deleted")
+		}
+	}
+
 	// SubAttrIndex (0x0C) — bucket-scoped index registry (per-ledger or bucket).
 	if err := flushAttributeAndCache(b.attrs.Index, batch, genByte, dal.SubAttrIndex, indexUpdates, indexDeletions, &b.bloomUpdates.Indexes, "indexes"); err != nil {
 		return err
@@ -860,6 +891,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		b.fsm.Chapters.SetCurrentOpenChapter(b.chapters.CurrentOpenChapter())
 		b.fsm.Chapters.SetClosingChapters(b.chapters.ClosingChapters())
 		b.fsm.Chapters.SetNextChapterID(b.chapters.NextChapterID())
+		b.fsm.Chapters.SetArchivedThroughID(b.chapters.ArchivedThroughID())
 	}
 
 	return nil
@@ -1628,6 +1660,21 @@ func (b *WriteSet) IncrementNextChapterID() uint64 {
 	b.chapters.SetNextChapterID(id + 1)
 
 	return id
+}
+
+func (b *WriteSet) GetArchivedThroughChapterID() uint64 {
+	b.ensureChapters()
+
+	return b.chapters.ArchivedThroughID()
+}
+
+// AdvanceArchivedThroughChapterID extends the archived prefix by one on the
+// buffer, so a later order in the SAME proposal (a batched ApplyRequest can
+// carry ConfirmArchiveChapter for N and ArchiveChapter for N+1) observes it.
+// Merge propagates the value to the FSM tracker.
+func (b *WriteSet) AdvanceArchivedThroughChapterID() {
+	b.ensureChapters()
+	b.chapters.SetArchivedThroughID(b.chapters.ArchivedThroughID() + 1)
 }
 
 // GetChapterByID looks up a chapter by ID from in-memory state only.

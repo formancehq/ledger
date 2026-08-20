@@ -245,7 +245,8 @@ func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 		// completed backfill and trip the pending==0 invariant in
 		// completeBackfill, stranding the task in a BUILDING logging loop. A
 		// backfill is only needed while current_version == 0 (never built
-		// locally); a drop+recreate clears the version state so a genuine
+		// locally); a drop+recreate tombstones the version state (current
+		// and pending both zero, only the high-water kept), so a genuine
 		// rebuild still re-enters this branch with current == 0.
 		if current, _ := b.versionFor(ledgerName, canonical); current != 0 {
 			continue
@@ -407,6 +408,30 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 // backfill scheduling so the builder does not redo work that has already
 // completed — and, more importantly, does not knock a live index back into
 // ErrIndexBuilding.
+// boundTypeAtCreation resolves the declared type an index's first version is
+// bound to: the schema entry in force when the CreateIndex log folds. Only
+// metadata indexes carry one; for every other kind — and for a key declared
+// after the index — the version is bound to no type and rows keep each
+// value's natural encoding.
+func (b *Builder) boundTypeAtCreation(ledgerName string, id *commonpb.IndexID) (commonpb.MetadataType, bool) {
+	meta, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+	if !ok || meta.Metadata == nil || b.batchSchema == nil {
+		return 0, false
+	}
+
+	schema, err := b.batchSchema.For(ledgerName)
+	if err != nil || schema == nil {
+		return 0, false
+	}
+
+	_, fs := commonpb.SchemaFieldForTarget(schema, meta.Metadata.GetTarget(), meta.Metadata.GetKey())
+	if fs == nil {
+		return 0, false
+	}
+
+	return fs.GetType(), true
+}
+
 func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.CreatedIndexLog) {
 	id := log.GetId()
 	if id == nil {
@@ -425,7 +450,14 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	// backfill would flip an already-live index back to ErrIndexBuilding. This
 	// mirrors the loadIndexRegistry boot guard and covers both the EN-1564
 	// initial fast path and the normal post-backfill live state.
-	if current, _ := b.versionFor(ledgerName, indexes.Canonical(id)); current != 0 {
+	if current, pending := b.versionFor(ledgerName, indexes.Canonical(id)); current != 0 {
+		return
+	} else if pending != 0 {
+		// A build for this incarnation is already in flight: the running
+		// backfill fills that pending version and will promote it. Allocating
+		// a fresh number here would orphan the half-built keyspace while the
+		// task's caught-up cursor promotes the never-filled replacement — a
+		// permanently empty index. The duplicate create is a no-op.
 		return
 	}
 
@@ -439,10 +471,19 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	// replay. Promote it straight to live (current=1) and skip the backfill;
 	// the live indexing path maintains it from ledger birth. Persist so a reboot
 	// sees current!=0 and loadIndexRegistry skips scheduling a backfill.
+	// A prior incarnation's tombstone holds the high-water version; a fresh
+	// index allocates above it so no keyspace is ever written by two passes.
+	prior, _ := b.versionStateFor(ledgerName, indexes.Canonical(id))
+	next := prior.HighWater + 1
+
 	if log.GetInitial() {
+		boundType, declared := b.boundTypeAtCreation(ledgerName, id)
 		state := readstore.IndexVersionState{
-			CurrentVersion: 1,
-			PendingVersion: 0,
+			CurrentVersion:      next,
+			PendingVersion:      0,
+			HighWater:           next,
+			CurrentType:         boundType,
+			CurrentTypeDeclared: declared,
 		}
 
 		if b.wb != nil && b.readStore != nil {
@@ -470,9 +511,13 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	// boot recovery would otherwise have to guess from cfg.byCanonical
 	// alone, which loses the distinction between "fresh index" and
 	// "stale READY index from a snapshot install".
+	boundType, declared := b.boundTypeAtCreation(ledgerName, id)
 	state := readstore.IndexVersionState{
-		CurrentVersion: 0,
-		PendingVersion: 1,
+		CurrentVersion:      0,
+		PendingVersion:      next,
+		HighWater:           next,
+		PendingType:         boundType,
+		PendingTypeDeclared: declared,
 	}
 
 	if b.wb != nil && b.readStore != nil {
@@ -492,24 +537,100 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	b.scheduleBackfillForIndex(ledgerName, id)
 }
 
-// handleDroppedIndexLog updates the index config cache when a DropIndex log is processed.
-// It also removes any active backfill / schema-rewrite task tied to the
-// dropped index — without that, a rewrite finishing post-drop would wait
-// forever for an IndexReady that applyIndexReady silently ignores once
-// the index has been removed.
-func (b *Builder) handleDroppedIndexLog(ledger string, log *commonpb.DroppedIndexLog) {
+// handleDroppedIndexLog updates the index config cache when a DropIndex log
+// is processed, purges the dropped metadata index's rows, and removes any
+// active backfill / schema-rewrite task tied to the index — without that, a
+// rewrite finishing post-drop would wait forever for an IndexReady that
+// applyIndexReady silently ignores once the index has been removed.
+func (b *Builder) handleDroppedIndexLog(kb *dal.KeyBuilder, ledger string, log *commonpb.DroppedIndexLog) error {
 	id := log.GetId()
 	if id == nil {
-		return
+		return nil
 	}
 
 	cfg := b.getOrCreateLedgerConfig(ledger)
 	delete(cfg.byCanonical, indexes.Canonical(id))
 	b.removeBackfillTask(ledger, id)
-	b.dropVersionState(ledger, indexes.Canonical(id))
-	_ = b.readStore.DeleteIndexVersionState(ledger, indexes.Canonical(id))
+
+	// Tombstoned, never deleted: the record keeps the high-water version so a
+	// re-created index cannot reuse a keyspace this incarnation wrote.
+	// Queries read a tombstone exactly like an absent record (removed, not
+	// building) — see PinnedVersionResolver.
+	if err := b.tombstoneVersionState(ledger, indexes.Canonical(id)); err != nil {
+		return err
+	}
 
 	if meta, ok := id.GetKind().(*commonpb.IndexID_Metadata); ok && meta.Metadata != nil {
 		b.removeSchemaRewriteTaskByField(ledger, meta.Metadata.GetTarget(), meta.Metadata.GetKey())
+
+		// The rows go with the index, in the same fold batch: all versions of
+		// the forward index and the exists index by range, the reverse map by
+		// point-delete scan — its key shape has no per-key range. The purge
+		// is what keeps a re-created index's replay from ever meeting this
+		// incarnation's permanent events; the version high-water above is the
+		// isolation that holds even if a purge misses a row.
+		ns := namespaceForTarget(meta.Metadata.GetTarget())
+		if ns == "" {
+			return nil
+		}
+
+		key := meta.Metadata.GetKey()
+
+		batch := b.wb.Batch()
+		if batch == nil {
+			return fmt.Errorf(
+				"invariant: no readstore write batch bound during DropIndex for ledger %q field %q",
+				ledger, key)
+		}
+
+		if err := deleteReadStoreRange(batch, readstore.MetadataIndexFieldPrefix(kb, ledger, ns, key)); err != nil {
+			return err
+		}
+
+		if err := deleteReadStoreRange(batch, readstore.EntityExistsFieldPrefix(kb, ledger, ns, key)); err != nil {
+			return err
+		}
+
+		if err := b.purgeReverseMapForKey(kb, ledger, ns, key); err != nil {
+			return err
+		}
 	}
+
+	return nil
+}
+
+// OnSnapshotInstalled tells the builder that a leader snapshot has been
+// installed and the store it reads is about to be — or already has been —
+// replaced by the leader's checkpoint. The index config it built at boot
+// describes the old store: it can hold indexes the restored registry has
+// dropped, whose read-store rows nothing would purge and whose declaration
+// removal would report no index to drop, and miss indexes created while this
+// node was behind, which then never build here.
+//
+// Called from the applier goroutine, so it only raises a flag — indexConfig
+// belongs to the builder loop, which rebuilds at its next safe point.
+func (b *Builder) OnSnapshotInstalled() {
+	b.configReloadPending.Store(true)
+}
+
+// reloadConfigIfRequested rebuilds the index config when a snapshot install has
+// swapped the store under it. Runs in the builder loop, which owns indexConfig.
+// On failure the request is raised again so the next iteration retries rather
+// than indexing on against a config describing a store that is gone.
+func (b *Builder) reloadConfigIfRequested(ctx context.Context) error {
+	if !b.configReloadPending.Swap(false) {
+		return nil
+	}
+
+	b.logger.WithFields(map[string]any{
+		"cmp": "index-builder",
+	}).Infof("Rebuilding index config after a snapshot install")
+
+	if err := b.initIndexConfig(ctx); err != nil {
+		b.configReloadPending.Store(true)
+
+		return fmt.Errorf("rebuilding index config after snapshot install: %w", err)
+	}
+
+	return nil
 }

@@ -243,6 +243,66 @@ func TestGlobalState_Apply_TransientGrandfather(t *testing.T) {
 	require.Equal(t, "8", dec(rl.vol(VolumeKey{"g:1", "USD"}).Input))
 }
 
+// Asset touches land in everAsset iff the cell escapes the server's exclusion
+// projection, which is derived at END of bulk (end-of-bulk chart, final merged
+// volumes) — not per order.
+func TestGlobalState_Apply_AssetTouchExclusions(t *testing.T) {
+	t.Parallel()
+
+	// Transient at order time but un-churned within the same bulk: the
+	// end-of-bulk chart classifies the cell NORMAL, so the touch is recorded.
+	churned := NewGlobalState().Apply(bulkOf(
+		oracletest.AddTypeReqP("t", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+		oracletest.TxReq("world", "t:1", "USD", 5),
+		oracletest.TxReq("t:1", "world", "USD", 5),
+		oracletest.RemoveTypeReq("t"),
+	))
+	require.True(t, churned.OK)
+	require.True(t, churned.State.Ledger("L").HasEverAsset("t:1", "USD", 0))
+
+	// Steady-state transient (zero pre-bulk value, transient at end of bulk):
+	// carried on TransientVolumes, never recorded.
+	steady := NewGlobalState().Apply(bulkOf(
+		oracletest.AddTypeReqP("t", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+		oracletest.TxReq("world", "t:1", "USD", 5),
+		oracletest.TxReq("t:1", "world", "USD", 5),
+	))
+	require.True(t, steady.OK)
+	require.False(t, steady.State.Ledger("L").HasEverAsset("t:1", "USD", 0))
+
+	eph := NewGlobalState().Apply(bulkOf(oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))).State
+
+	// Ephemeral drained across two orders of one bulk: the purge is decided on
+	// the end-of-bulk balance, so the touch is excluded even though the first
+	// order left the cell non-zero.
+	drained := eph.Apply(bulkOf(
+		oracletest.TxReq("world", "e:1", "USD", 5),
+		oracletest.TxReq("e:1", "world", "USD", 5),
+	))
+	require.True(t, drained.OK)
+	require.False(t, drained.State.Ledger("L").HasEverAsset("e:1", "USD", 0))
+
+	// Ephemeral left non-zero: kept, recorded.
+	kept := eph.Apply(bulkOf(oracletest.TxReq("world", "e:1", "USD", 5)))
+	require.True(t, kept.OK)
+	require.True(t, kept.State.Ledger("L").HasEverAsset("e:1", "USD", 0))
+
+	// Exclusion is per (account, asset) cell: a recorded USD touch survives a
+	// later bulk whose EUR wash on the same (now transient) account is excluded.
+	funded := NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "g:1", "USD", 5)))
+	require.True(t, funded.OK)
+	require.True(t, funded.State.Ledger("L").HasEverAsset("g:1", "USD", 0))
+
+	washed := funded.State.Apply(bulkOf(
+		oracletest.AddTypeReqP("g", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+		oracletest.TxReq("world", "g:1", "EUR", 3),
+		oracletest.TxReq("g:1", "world", "EUR", 3),
+	))
+	require.True(t, washed.OK)
+	require.True(t, washed.State.Ledger("L").HasEverAsset("g:1", "USD", 0))
+	require.False(t, washed.State.Ledger("L").HasEverAsset("g:1", "EUR", 0))
+}
+
 func TestGlobalState_Apply_EphemeralPurge(t *testing.T) {
 	t.Parallel()
 
@@ -525,4 +585,23 @@ func TestApplyTransaction_EmptyBeatsFsmRejection(t *testing.T) {
 	}})
 	require.False(t, res.OK)
 	require.Equal(t, domain.ErrReasonValidation, res.Reason)
+}
+
+func TestHasAccount_MetadataOnlyMembership(t *testing.T) {
+	t.Parallel()
+
+	// a:1 holds volumes; m:1 holds ONLY metadata (no volume cell). Both are in
+	// the merged V+M universe; z:9 is in neither. The metadata-only account is
+	// the regression case: a volumes-map miss must fall through to the
+	// metadata scan.
+	s := NewGlobalState().Apply(bulkOf(
+		oracletest.TxReq("world", "a:1", "USD", 5),
+		oracletest.AddAccountMetaReq("m:1", "k", commonpb.NewStringValue("v")),
+	)).State
+
+	ls := s.Ledger("L")
+	require.True(t, ls.HasAccount("a:1"))
+	require.True(t, ls.HasAccount("world"))
+	require.True(t, ls.HasAccount("m:1"))
+	require.False(t, ls.HasAccount("z:9"))
 }
