@@ -431,19 +431,19 @@ func writeIdempotencyEntry(t *testing.T, store *dal.Store, key string, value *co
 func runChainVerifier(t *testing.T, store *dal.Store, clusterID string) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	mismatches, _ := runChainVerifierWithSigning(t, store, clusterID)
+	mismatches, _, _ := runChainVerifierWithSigning(t, store, clusterID)
 
 	return mismatches
 }
 
-// runChainVerifierWithSigning is runChainVerifier plus the signing verifier the
-// walk folded into, so a test can assert on the coverage state the walk left
-// behind and not only on the events it emitted.
+// runChainVerifierWithSigning is runChainVerifier plus the signing verifier and
+// the chain-bound state the walk folded into, so a test can assert on the
+// coverage state the walk left behind and not only on the events it emitted.
 func runChainVerifierWithSigning(
 	t *testing.T,
 	store *dal.Store,
 	clusterID string,
-) ([]*servicepb.CheckStoreError, *signingVerifier) {
+) ([]*servicepb.CheckStoreError, *signingVerifier, *chainBoundState) {
 	t.Helper()
 
 	attrs := attributes.New()
@@ -456,16 +456,17 @@ func runChainVerifierWithSigning(
 	var mismatches []*servicepb.CheckStoreError
 
 	signing := newSigningVerifier()
+	chainBound := newChainBoundState()
 
 	// This test isolates HASH_MISMATCH; the idempotency TTL is irrelevant.
-	_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, newChainBoundState(), nil, signing, func(event *servicepb.CheckStoreEvent) {
+	_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, chainBound, nil, signing, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok && e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH {
 			mismatches = append(mismatches, e.Error)
 		}
 	})
 	require.NoError(t, err)
 
-	return mismatches, signing
+	return mismatches, signing, chainBound
 }
 
 // TestVerifyAuditHashChain_MarksSigningFoldTruncatedOnEveryBreak pins the wiring
@@ -520,17 +521,21 @@ func TestVerifyAuditHashChain_MarksSigningFoldTruncatedOnEveryBreak(t *testing.T
 			persistAuditEntry(t, store, entry, items, clusterID)
 
 			// The untampered walk reaches the end of the range, so the fold is whole.
-			_, clean := runChainVerifierWithSigning(t, store, clusterID)
+			_, clean, cleanBound := runChainVerifierWithSigning(t, store, clusterID)
 			require.False(t, clean.liveTruncated,
 				"a chain that verifies to the end leaves the signing fold complete")
+			require.False(t, cleanBound.logCoverageIncomplete,
+				"a chain that verifies to the end leaves the audited log maximum comparable")
 
 			tc.mutate(entry, items)
 			rewriteAuditEntry(t, store, entry, items)
 
-			mismatches, broken := runChainVerifierWithSigning(t, store, clusterID)
+			mismatches, broken, brokenBound := runChainVerifierWithSigning(t, store, clusterID)
 			require.NotEmpty(t, mismatches, "the break itself must still be reported")
 			require.True(t, broken.liveTruncated,
 				"an early exit on a chain break must mark the signing fold truncated, or the pass compares a prefix")
+			require.True(t, brokenBound.logCoverageIncomplete,
+				"an early exit on a chain break must mark the log coverage incomplete, or compareLogBounds compares a prefix maximum")
 		})
 	}
 }
