@@ -31,6 +31,8 @@ Do not judge a finding true because the first model sounded confident. Do not re
 
 Challenge runs are bound to the exact `head` recorded in the source audit report. The local repository must be clean and currently checked out at that exact commit. If the audit target and repository state differ, fail closed instead of silently challenging newer code.
 
+The source report itself is caller-owned and may live outside the worktree, where the repository cleanliness check cannot observe it. A run therefore snapshots it once, before validation, and binds everything to that snapshot: the trusted `audit_id`/`head`, the evidence handed to the challenger, and the final id/severity/title comparisons. Editing or replacing the external report while a challenge runs cannot retarget or alter the published qualification.
+
 ## Mutation policy
 
 The challenge pass is read-only. It must not edit code, add a reproducer, create issues, commit, push, comment, or resolve anything. Reproducer implementation is a separate later phase.
@@ -53,4 +55,4 @@ A `CONFIRMED` result is suitable to become a backlog/Jira candidate after human 
 
 The qualified report is rejected unless every result reuses an original finding id exactly once and preserves that finding's severity and title. A challenge pass may change the status, not the priority or the subject of the original finding.
 
-Publication is atomic and anchored to the validated destination directory. The qualified report must not overwrite tracked repository content or the source audit report, and a concurrent rename or symlink substitution of the output path must not redirect the final write into repository content.
+Publication is atomic and anchored to the validated destination directory. The qualified report must not overwrite tracked repository content, Git metadata, or the source audit report, and a concurrent rename or symlink substitution of the output path must not redirect the final write into repository content. Repository-local reports are allowed only at ignored paths below `build/`; an unignored or differently located worktree output is rejected before the challenge starts.
