@@ -16,6 +16,15 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 )
 
+// s3UploadPartSize is the multipart part size for backup object uploads.
+// The aws-sdk-go-v2 default is 5 MiB; at the 10,000-part ceiling that caps a
+// single object at ~48.8 GiB and produces thousands of parts for a multi-GB
+// checkpoint blob, widening the window for a single part failure to fail the
+// whole CompleteMultipartUpload. 32 MiB cuts the part count ~6.4x (lifting the
+// single-object ceiling to ~312 GiB) while keeping per-part memory bounded
+// (partSize x concurrency).
+const s3UploadPartSize = 32 << 20 // 32 MiB
+
 // S3Storage implements Storage using Amazon S3 (or S3-compatible stores like MinIO).
 type S3Storage struct {
 	client   *s3.Client
@@ -25,10 +34,21 @@ type S3Storage struct {
 
 // NewS3Storage creates a new S3Storage backed by the given S3 client and bucket.
 func NewS3Storage(client *s3.Client, bucket string) *S3Storage {
+	return newS3StorageWithPartSize(client, bucket, s3UploadPartSize)
+}
+
+// newS3StorageWithPartSize is NewS3Storage with an explicit multipart part
+// size. Production always uses s3UploadPartSize; tests use it to force a small
+// part size so a modest payload still exercises the multipart path
+// (CreateMultipartUpload / UploadPart / CompleteMultipartUpload) rather than a
+// single PutObject, independent of the production default.
+func newS3StorageWithPartSize(client *s3.Client, bucket string, partSize int64) *S3Storage {
 	return &S3Storage{
-		client:   client,
-		uploader: manager.NewUploader(client),
-		bucket:   bucket,
+		client: client,
+		uploader: manager.NewUploader(client, func(u *manager.Uploader) {
+			u.PartSize = partSize
+		}),
+		bucket: bucket,
 	}
 }
 

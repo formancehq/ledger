@@ -79,10 +79,13 @@ func TestS3Storage_PutFileMultipartLargeObject(t *testing.T) {
 	t.Parallel()
 
 	client := setupMinIOBackup(t)
-	storage := NewS3Storage(client, backupTestBucket)
+	// Force a 5 MiB part size so the 12 MiB payload takes the multipart path
+	// (this PR raised the production default to 32 MiB, which would otherwise
+	// route a 12 MiB object through a single PutObject).
+	storage := newS3StorageWithPartSize(client, backupTestBucket, 5<<20)
 	ctx := context.Background()
 
-	// 12 MiB > the 5 MiB default part size → at least 3 parts.
+	// 12 MiB > the 5 MiB part size set above → at least 3 parts.
 	const size = 12 << 20
 
 	payload := make([]byte, size)
@@ -110,7 +113,10 @@ func TestS3Storage_PutFileStreamsUnknownLengthReader(t *testing.T) {
 	t.Parallel()
 
 	client := setupMinIOBackup(t)
-	storage := NewS3Storage(client, backupTestBucket)
+	// Force a 5 MiB part size so the 12 MiB payload takes the multipart path
+	// (this PR raised the production default to 32 MiB, which would otherwise
+	// route a 12 MiB object through a single PutObject).
+	storage := newS3StorageWithPartSize(client, backupTestBucket, 5<<20)
 	ctx := context.Background()
 
 	const size = 12 << 20
