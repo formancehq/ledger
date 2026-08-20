@@ -44,7 +44,7 @@ var _ = Describe("GetTransaction forwarded receipt (heterogeneous signer)", Orde
 		// Only node 0 — the bootstrap node, which becomes leader — gets a
 		// receipt-signing key; the followers get none.
 		ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-			countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
+			countInstances,
 			testutil.WithNodeInstruments(0, testserver.WithReceiptSigningKey(receiptKey)),
 		)
 

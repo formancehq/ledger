@@ -149,24 +149,36 @@ git worktree add --detach "$worktree" "$head_sha"
 review_loop=(bash scripts/review-loop)
 review_cmd='bash scripts/ai-review-codex'
 fix_cmd='bash scripts/ai-fix-claude'
+validation_cmd='bash scripts/agent-check-pr'
 if [[ "$push_changes" == "true" ]]; then
     if ! command -v nix >/dev/null 2>&1; then
         echo "ai-pr-loop: required command not found in PATH: nix" >&2
         exit 1
     fi
 
-    # A PR must not supply the policy engine or provider adapters that authorize
-    # its own publication. Build the orchestrator from the exact verified base
-    # commit and invoke the adapters from the same immutable tool worktree.
+    # A PR must not supply the policy engine, provider adapters, or validator
+    # that authorize its own publication. Build the orchestrator from the exact
+    # verified base commit and invoke its tools from that immutable worktree.
     trusted_tool_worktree="$worktree_run_dir/trusted-tools"
     review_loop_binary="$worktree_run_dir/review-loop"
     git worktree add --detach "$trusted_tool_worktree" "$base_sha"
+    for trusted_tool in ai-review-codex ai-fix-claude agent-check-pr; do
+        trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
+        if [[ ! -x "$trusted_tool_path" ]]; then
+            echo "ai-pr-loop: trusted base does not provide executable scripts/$trusted_tool" >&2
+            exit 1
+        fi
+    done
     nix develop "path:$trusted_tool_worktree" --command \
         env -u GOROOT go -C "$trusted_tool_worktree" build \
         -o "$review_loop_binary" ./scripts/reviewloop
     review_loop=("$review_loop_binary")
     printf -v review_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-review-codex"
     printf -v fix_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-fix-claude"
+    printf -v validation_cmd \
+        'env -u GOROOT nix develop %q --command env LEDGER_AGENT_CHECK_IN_NIX=1 bash %q' \
+        "path:$trusted_tool_worktree" \
+        "$trusted_tool_worktree/scripts/agent-check-pr"
 fi
 
 printf '==> ai-pr-loop: PR #%s\n' "$pr_number"
@@ -187,7 +199,8 @@ run_full_loop() {
     "${review_loop[@]}" \
         --base "$base_sha" \
         --review-cmd "$review_cmd" \
-        --fix-cmd "$fix_cmd"
+        --fix-cmd "$fix_cmd" \
+        --validation-cmd "$validation_cmd"
 }
 
 run_commit_review() {
@@ -195,7 +208,8 @@ run_commit_review() {
     # approved as-is. Any new blocker stops publication and requires a rerun.
     "${review_loop[@]}" \
         --base "$base_sha" \
-        --review-cmd "$review_cmd"
+        --review-cmd "$review_cmd" \
+        --validation-cmd "$validation_cmd"
 }
 
 set +e

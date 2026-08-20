@@ -249,7 +249,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 	It("Should accept signed and unsigned batches and record audit entries", func() {
 		// Create a fresh node for signing tests to avoid interfering with other tests
-		sigCtx, sigClient, _ := testutil.SetupSingleNode(9109, 8109)
+		sigCtx, sigNode := testutil.SetupSingleNode()
+		sigClient := sigNode.Client
 
 		// Generate a keypair
 		pubKey, privKey, genErr := ed25519.GenerateKey(rand.Reader)

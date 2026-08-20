@@ -24,7 +24,7 @@ const (
 	exitHumanDecision    = 2
 	exitAutoFixRequired  = 3
 	defaultMaxPasses     = 3
-	defaultValidationCmd = "bash scripts/agent-check"
+	defaultValidationCmd = "bash scripts/agent-check-pr"
 	changeTargetKind     = "BASE_COMPARISON"
 )
 
@@ -102,7 +102,7 @@ func main() {
 
 	flag.StringVar(&reviewCmd, "review-cmd", "", "command that writes the review JSON to $AI_REVIEW_RESULT")
 	flag.StringVar(&fixCmd, "fix-cmd", "", "command that fixes findings from $AI_REVIEW_FINDINGS")
-	flag.StringVar(&validationCmd, "validation-cmd", defaultValidationCmd, "command run after every auto-fix pass")
+	flag.StringVar(&validationCmd, "validation-cmd", defaultValidationCmd, "local validation command run after fixes and before approval")
 	flag.StringVar(&stateDir, "state-dir", "build/ai-review-loop", "directory for review-loop state")
 	flag.StringVar(&baseRef, "base", "", "explicit git ref for committed changes under review")
 	flag.IntVar(&maxPasses, "max-passes", defaultMaxPasses, "maximum review passes")
@@ -110,6 +110,9 @@ func main() {
 
 	if strings.TrimSpace(reviewCmd) == "" {
 		fatal(errors.New("--review-cmd is required"))
+	}
+	if strings.TrimSpace(validationCmd) == "" {
+		fatal(errors.New("--validation-cmd must not be empty"))
 	}
 	if strings.TrimSpace(baseRef) == "" {
 		fatal(errors.New("--base is required"))
@@ -124,6 +127,9 @@ func main() {
 	base, err := resolveReviewBase(repositoryRoot, baseRef)
 	if err != nil {
 		fatal(err)
+	}
+	validationEnv := map[string]string{
+		"AI_REVIEW_BASE_SHA": base.SHA,
 	}
 	runStateDir, err := createRunStateDir(stateDir)
 	if err != nil {
@@ -198,6 +204,23 @@ func main() {
 
 		switch action {
 		case actionReady:
+			fmt.Println("==> review-loop: local validation before readiness")
+			if err := runCommand(validationCmd, validationEnv); err != nil {
+				fatal(fmt.Errorf("local validation failed before readiness: %w", err))
+			}
+			validatedState, err := captureWorkspaceState(repositoryRoot, runStateDir)
+			if err != nil {
+				fatal(err)
+			}
+			if validatedState != reviewedState {
+				fatal(fmt.Errorf(
+					"local validation changed the approved workspace: before %s/%s, after %s/%s",
+					reviewedState.Head,
+					reviewedState.Fingerprint,
+					validatedState.Head,
+					validatedState.Fingerprint,
+				))
+			}
 			printOutcome(action, pass, result, blockers)
 
 			return
@@ -237,7 +260,7 @@ func main() {
 			}
 
 			fmt.Println("==> review-loop: validation after auto-fix")
-			if err := runCommand(validationCmd, nil); err != nil {
+			if err := runCommand(validationCmd, validationEnv); err != nil {
 				fatal(fmt.Errorf("validation failed after auto-fix: %w", err))
 			}
 			previousResult = resultPath

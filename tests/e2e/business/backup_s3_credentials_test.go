@@ -24,8 +24,6 @@ import (
 )
 
 const (
-	s3CredsHTTPPort  = 16100
-	s3CredsGRPCPort  = 16200
 	s3CredsBucket    = "creds-e2e"
 	s3CredsRegion    = "us-east-1"
 	s3CredsAccessKey = "minioadmin"
@@ -42,7 +40,7 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 
 	BeforeAll(func() {
 		// Start MinIO container
-		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
+		container, err := testcontainers.Run(context.Background(), testutil.MinIOImage,
 			testcontainers.WithEnv(map[string]string{
 				"MINIO_ROOT_USER":     s3CredsAccessKey,
 				"MINIO_ROOT_PASSWORD": s3CredsSecretKey,
@@ -83,7 +81,10 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 		GinkgoT().Setenv("AWS_ACCESS_KEY_ID", "INVALID_KEY")
 		GinkgoT().Setenv("AWS_SECRET_ACCESS_KEY", "INVALID_SECRET")
 
-		ctx, client, clusterClient = testutil.SetupSingleNode(s3CredsHTTPPort, s3CredsGRPCPort)
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode()
+		client = node.Client
+		clusterClient = node.ClusterClient
 	})
 
 	It("should succeed with explicit credentials in the backup request", func() {

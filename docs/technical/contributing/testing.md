@@ -94,34 +94,99 @@ var _ = Describe("Simple cluster", func() {
 
 ### Cluster Setup
 
-E2E tests create a 3-node cluster:
+E2E tests create a cluster through `tests/e2e/testutil`, which allocates the
+ports, boots the nodes and waits for a leader:
 
 ```go
 BeforeEach(func() {
-    servers = make([]serviceWithClient, 0, 3)
-    for i := range 3 {
-        server := testservice.New(
-            cmdserver.NewRootCommand,
-            testservice.WithInstruments(
-                testserver.WithNodeID(i+1),
-                testserver.WithHTTPPort(9000+i),
-                // ...
-            ),
-        )
-        servers = append(servers, serviceWithClient{
-            service: server,
-            client: client.New(...),
-        })
-    }
+    ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(3)
 })
 ```
+
+`SetupSingleNode` does the same for a one-node cluster. Both accept extra
+instruments for the node under test.
+
+### Ports are leased, never chosen
+
+A test node's ports come from `testserver.AllocateNodeLease()`. Do not write a
+port number in a test.
+
+```go
+lease := testserver.AllocateNodeLease()
+ports := lease.Ports()
+
+instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
+    NodeID:    1,
+    ClusterID: "test-cluster",
+    Ports:     ports,
+    WalDir:    walDir,
+    DataDir:   dataDir,
+})
+
+server := lease.NewService(cmdserver.NewRunCommandWithBindings,
+    testservice.WithInstruments(instruments...),
+)
+```
+
+The lease binds three loopback sockets up front and **keeps them open**. A port
+number alone is not a reservation: any scheme that probes a port and releases it
+leaves a window in which another process — typically a sibling test binary
+starting at the same moment — binds the same number first. That is what EN-1784
+was. Because `lease.NewService` hands those very sockets to the run command
+(`network.Bindings`, adopted by `httpserver.WithListener` and the gRPC adapter's
+`WithListener`), there is no window at all: the socket the spec holds while it
+builds join addresses is the socket the node serves.
+
+`NodePorts` has unexported fields, so a lease is its only source and
+`TestNodeConfig` cannot be given a hand-picked port.
+
+Three rules follow:
+
+- **Keep the lease for the node's whole life.** A restart must go through the
+  same lease — `RestartNode` and `ScenarioCluster.Restart` do — because peers
+  still hold the node's old Raft address. The lease rebinds the same ports for
+  each start; it panics if the previous generation is still bound, which means
+  the node was not stopped.
+- **Never compute one port from another.** The old convention derived the Raft
+  port as `grpcPort - 1000`. That is what made two suites collide on 15200: one
+  spec's gRPC port mapped onto another node's live HTTP port (EN-1784).
+- **Never bind a leased port yourself.** The lifecycle owns every listener it is
+  given and releases all of them on stop, including one it never served — restore
+  mode is handed a Raft listener it does not use, and a phase that follows it
+  must find that port free.
+
+A spec that builds its own instrument list instead of using
+`DefaultTestInstruments` still passes leased values through the low-level
+instruments — `testserver.WithHTTPPort(ports.HTTP())`,
+`WithRaftPort(ports.Raft())`, `WithGRPCPort(ports.GRPC())`. Those take a plain
+`int`, so a literal would still compile there. So would one passed to
+`testserver.WithJoin(raftAddr)`, or one written into an RPC field that carries an
+address — for example `AddLearnerRequest.RaftAddress`, which is a plain string.
+The `NodePorts` guard reaches none of these. Feed every one of them from a lease.
+`testserver.NewGateway(logger, nodes)` takes no ports at all: it binds its own.
+
+Peers that are deliberately never started need
+`testserver.AllocateDeadAddress()`. A hand-picked address for a phantom node can
+name a port a live node later gets, which points the leader's Raft transport at a
+real listener in its own cluster instead of at a dead address. A dead address is
+bound long enough to claim the number for this process and then released, so
+connections are refused and no later allocation can reuse it. `phantomPeer()` in
+`tests/e2e/cluster` is built from it.
+
+One window remains, by design: between a node's stop and its restart the ports
+are unbound, so only an unrelated process could interpose. Closing that too
+would mean putting a proxy in front of every node, which these suites do not
+justify.
 
 ### Test Helpers
 
 The package `pkg/testserver` provides helpers:
 
+- `AllocateNodeLease()`: Lease the node's HTTP, gRPC and Raft ports, binding
+  the sockets the node will serve
+- `AllocateDeadAddress()`: Claim a loopback address that nothing listens on
+- `DefaultTestInstruments()`: Build the standard instrument set for a node
 - `WithNodeID()`: Configure the Node ID
-- `WithHTTPPort()`: Configure the HTTP port
 - `WithRaftElectionTick()`: Configure Raft parameters
 - `WithRaftTickInterval()`: Configure the tick interval
 
@@ -507,6 +572,48 @@ ginkgo run -tags e2e ./tests/e2e
 
 # Or with go test
 go test -tags e2e ./tests/e2e/...
+```
+
+#### Feature-gated suites
+
+Some e2e files carry an extra build tag on top of `e2e` (for example
+`//go:build e2e && s3`). They are compiled only when that tag is passed, so a
+plain `-tags e2e` run neither builds nor runs them:
+
+| Tag | Coverage | External dependency |
+|-----|----------|---------------------|
+| `s3` | backup, restore, bootstrap, cold storage | MinIO (Testcontainers) |
+| `azure` | Azure Blob backup | Azurite (Testcontainers) |
+| `clickhouse` | ClickHouse event sink | ClickHouse (Testcontainers) |
+| `nats` | NATS event sink | none (embedded in-process server) |
+| `databricks` | Databricks event sink | real workspace credentials; skips itself when unset |
+
+`just test-e2e` runs the light set for a fast local loop. **CI runs the full tag
+set** through `just test-e2e-coverage`, so a green `just test-e2e` does not
+guarantee a green pipeline. Reproduce the CI set locally with:
+
+```bash
+just test-e2e-full
+```
+
+`just lint` does not pass the `e2e` tag, so it excludes these packages even
+when feature tags are configured. The full CI run is therefore responsible
+for both compiling these files and exercising their assertions.
+
+The MinIO and Azurite images used by this required gate are version-pinned in
+`tests/e2e/testutil/containers.go`. Update those pins deliberately and validate
+the complete full-tag suite when upgrading either emulator.
+
+#### Docker socket on macOS
+
+Testcontainers looks for `/var/run/docker.sock`. When Docker Desktop is
+installed but stopped, that path exists as a symlink to its inactive socket,
+and container startup fails with `Cannot connect to the Docker daemon` even
+though the `docker` CLI works against another runtime. With OrbStack, point
+Testcontainers at the right socket:
+
+```bash
+export DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock
 ```
 
 ### Operator Integration Tests

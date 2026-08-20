@@ -78,17 +78,6 @@ func (f reverseMapFixture) runScope(scope reverseMapOrphanScope) []*servicepb.Ch
 	return events
 }
 
-// removedFieldSet builds the replay's positive-evidence oracle: the metadata
-// fields a RemovedMetadataFieldType log was observed for.
-func removedFieldSet(fields ...schemaField) map[removedSchemaFieldKey]struct{} {
-	set := make(map[removedSchemaFieldKey]struct{}, len(fields))
-	for _, field := range fields {
-		set[removedSchemaFieldKey{ledger: field.ledger, target: field.target, metaKey: field.key}] = struct{}{}
-	}
-
-	return set
-}
-
 func newReverseMapFixture(t *testing.T, in reverseMapFixtureInput) reverseMapFixture {
 	t.Helper()
 
@@ -328,64 +317,36 @@ func TestCompareReverseMapOrphans_AggregatesPerField(t *testing.T) {
 
 // TestCompareReverseMapOrphans_IdentityIncludesTarget pins that a row's
 // identity is (ledger, target, metadata key) — never the key alone. The same
-// metadata key covered for accounts but not for transactions must leave the
-// account rows alone and flag only the transaction rows.
-//
-// Both terms of the oracle are checked for target-scoping independently: a
-// key-only match in either one would wrongly absolve the transaction row.
+// metadata key registered for accounts but not for transactions must leave the
+// account rows alone and flag only the transaction rows; a key-only registry
+// match would wrongly absolve the transaction row.
 func TestCompareReverseMapOrphans_IdentityIncludesTarget(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name  string
-		input reverseMapFixtureInput
-	}{
-		{
-			name: "covered by the registry term",
-			input: reverseMapFixtureInput{
-				registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "shared"),
-			},
-		},
-		{
-			name: "covered by the schema term",
-			input: reverseMapFixtureInput{
-				schemas: replayedSchemas(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "shared"}),
-			},
+	kb := dal.NewKeyBuilder()
+
+	input := reverseMapFixtureInput{
+		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "shared"),
+		progress: 3,
+		rmapKeys: [][]byte{
+			readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "shared", 1),
+			readstore.TransactionReverseMapKeyV(kb, "L1", 9, "shared", 1),
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+	events := newReverseMapFixture(t, input).run(3, ledgerNameSet("L1"), nil)
 
-			kb := dal.NewKeyBuilder()
-
-			input := test.input
-			input.progress = 3
-			input.rmapKeys = [][]byte{
-				readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "shared", 1),
-				readstore.TransactionReverseMapKeyV(kb, "L1", 9, "shared", 1),
-			}
-
-			events := newReverseMapFixture(t, input).run(3, ledgerNameSet("L1"), nil)
-
-			require.Len(t, events, 1)
-			require.Contains(t, events[0].GetError().GetMessage(), `namespace "t:"`)
-			require.Contains(t, events[0].GetError().GetMessage(), "sample transaction 9")
-		})
-	}
+	require.Len(t, events, 1)
+	require.Contains(t, events[0].GetError().GetMessage(), `namespace "t:"`)
+	require.Contains(t, events[0].GetError().GetMessage(), "sample transaction 9")
 }
 
-// TestCompareReverseMapOrphans_DropIndexResidueNotFlagged is the regression
-// guard for the EN-1621 finding. handleDroppedIndexLog reclaims nothing from
-// the read index, and processDropIndex leaves the schema field declared, so a
-// dropped metadata index leaves rmap rows behind forever on a healthy cluster.
-// A registry-only oracle would report them on every Check() run — permanently
-// red on a legitimate operator action, with no warning channel to soften it.
-//
-// The second half is the sensitivity twin: the same rows with the schema field
-// gone MUST be flagged, so the silence above cannot come from an early return.
-func TestCompareReverseMapOrphans_DropIndexResidueNotFlagged(t *testing.T) {
+// TestCompareReverseMapOrphans_PurgeMissFlaggedAndLabelled: a live rmap row
+// with no registered index is a purge miss, full stop — handleDroppedIndexLog
+// purges on DropIndex exactly as RemovedMetadataFieldType always has, so
+// neither lifecycle leaves residue on a healthy store. The replayed schema no
+// longer legitimises anything; it only names which purge path missed.
+func TestCompareReverseMapOrphans_PurgeMissFlaggedAndLabelled(t *testing.T) {
 	t.Parallel()
 
 	kb := dal.NewKeyBuilder()
@@ -394,23 +355,28 @@ func TestCompareReverseMapOrphans_DropIndexResidueNotFlagged(t *testing.T) {
 		readstore.AccountReverseMapKeyV(kb, "L1", "users:2", "role", 1),
 	}
 
+	// Schema still declared ⇒ the index can only have gone away via DropIndex.
 	dropped := newReverseMapFixture(t, reverseMapFixtureInput{
-		// DropIndex removed the registry entry; the schema field survives.
 		schemas:  replayedSchemas(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
 		rmapKeys: rows,
 		progress: 3,
 	})
 
-	require.Empty(t, dropped.run(3, ledgerNameSet("L1"), nil),
-		"DropIndex residue must not be flagged: the schema field is still declared (EN-1621)")
+	events := dropped.run(3, ledgerNameSet("L1"), nil)
+	require.Len(t, events, 1,
+		"rows surviving a DropIndex are a purge miss and must be flagged")
+	require.Contains(t, events[0].GetError().GetMessage(), "DropIndex purge")
+	require.Contains(t, events[0].GetError().GetMessage(), "rows=2")
 
+	// Schema gone ⇒ the removal's point-delete scan missed them.
 	removed := newReverseMapFixture(t, reverseMapFixtureInput{
 		rmapKeys: rows,
 		progress: 3,
 	})
 
-	require.Len(t, removed.run(3, ledgerNameSet("L1"), nil), 1,
-		"the same rows with the schema field gone must be flagged, proving the scan reached them")
+	events = removed.run(3, ledgerNameSet("L1"), nil)
+	require.Len(t, events, 1)
+	require.Contains(t, events[0].GetError().GetMessage(), "RemovedMetadataFieldType scan")
 }
 
 // TestCompareReverseMapOrphans_RemovedFieldTypeResidueFlagged is EN-1458's
@@ -742,38 +708,32 @@ func TestCompareReverseMapOrphans_CursorAhead(t *testing.T) {
 	require.Empty(t, withoutAheadDiagnostic(t, newLedger.run(10, ledgerNameSet("L1"), nil)),
 		"a ledger created after the pinned oracle must not be reported as absent from the live set")
 
-	// An observed removal is no exception. The removal set is append-only while
-	// the replayed schema is pinned, so a field removed at or before lastSequence
-	// and RE-DECLARED after the pin carries the removal on record forever while
-	// the re-declaration is invisible — and an ahead peer holds the new,
-	// legitimate rows. Treating the removal as skew-immune evidence reports those
-	// healthy rows as orphans.
+	// A field whose index was re-created after the pin is the sharp case: the
+	// registry entry the post-pin CreateIndex wrote is invisible to the pinned
+	// oracle, and an ahead peer holds the new, legitimate rows. Only the
+	// alignment gate keeps those healthy rows from being reported.
 	redeclaredAfterPin := newReverseMapFixture(t, reverseMapFixtureInput{
-		// The registry entry the post-pin CreateIndex wrote is equally invisible to
-		// the pinned oracle, so neither term can vouch for the rows.
 		rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 1)},
 		progress: 12,
 	})
 
 	require.Empty(t, withoutAheadDiagnostic(t, redeclaredAfterPin.runScope(reverseMapOrphanScope{
-		lastSequence:  10,
-		liveLedgers:   ledgerNameSet("L1"),
-		removedFields: removedFieldSet(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
-	})), "a field re-declared after the pinned oracle must not be reported as an orphan on an ahead cursor")
+		lastSequence: 10,
+		liveLedgers:  ledgerNameSet("L1"),
+	})), "no orphan verdict may be reached on an ahead cursor")
 
 	// The aligned twin proves the silence above is earned by the gate and not by
-	// the fixture: the very same removal evidence and rows, judged on an aligned
-	// view, must be reported.
+	// the fixture: the very same rows, judged on an aligned view with no
+	// registered index, must be reported.
 	aligned := newReverseMapFixture(t, reverseMapFixtureInput{
 		rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 1)},
 		progress: 10,
 	})
 
 	require.Len(t, aligned.runScope(reverseMapOrphanScope{
-		lastSequence:  10,
-		liveLedgers:   ledgerNameSet("L1"),
-		removedFields: removedFieldSet(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
-	}), 1, "the same removal must be reported on an aligned view")
+		lastSequence: 10,
+		liveLedgers:  ledgerNameSet("L1"),
+	}), 1, "the same rows must be reported on an aligned view")
 
 	// A ledger deleted in the replay is judged by absence from the live set like
 	// any other, so it is suppressed too. Rows for a ledger deleted and recreated
@@ -822,28 +782,38 @@ func TestCompareReverseMapOrphans_RecreatedLedgerStaysSilent(t *testing.T) {
 		"rows of a recreated ledger must not be reported as absent from the live set")
 }
 
-// TestCompareReverseMapOrphans_RemovedThenRedeclared pins that the removal set
-// being append-only is safe. A field removed and later re-declared by a second
-// SetMetadataFieldType has a RemovedMetadataFieldType on record forever, so the
-// verdict must consult the replayed schema first or every re-declared field
-// would be reported as an orphan.
-func TestCompareReverseMapOrphans_RemovedThenRedeclared(t *testing.T) {
+// TestCompareReverseMapOrphans_RedeclaredWithoutIndexStillOrphan pins the case
+// the schema term used to hide: a removal's point-delete scan misses rows, and
+// the field is later RE-DECLARED (without a new index). Under the old rule the
+// re-declaration legitimised the leftovers through the schema; under the
+// registry-only rule they stay what they are — a scan miss. The sensitivity
+// twin: once an index is registered again, the rows are legitimate.
+func TestCompareReverseMapOrphans_RedeclaredWithoutIndexStillOrphan(t *testing.T) {
 	t.Parallel()
 
 	kb := dal.NewKeyBuilder()
+	rows := [][]byte{readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 1)}
 
-	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
-		rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "role", 1)},
+	redeclared := newReverseMapFixture(t, reverseMapFixtureInput{
+		rmapKeys: rows,
 		// The re-declaration is what the replayed schema ends up holding.
 		schemas:  replayedSchemas(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
 		progress: 10,
 	})
 
-	require.Empty(t, fixture.runScope(reverseMapOrphanScope{
-		lastSequence:  10,
-		liveLedgers:   ledgerNameSet("L1"),
-		removedFields: removedFieldSet(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
-	}), "a field re-declared after its removal must not be reported as an orphan")
+	events := redeclared.run(10, ledgerNameSet("L1"), nil)
+	require.Len(t, events, 1,
+		"re-declaring a field must not legitimise rows an earlier purge missed")
+
+	reindexed := newReverseMapFixture(t, reverseMapFixtureInput{
+		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
+		schemas:  replayedSchemas(schemaField{"L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"}),
+		rmapKeys: rows,
+		progress: 10,
+	})
+
+	require.Empty(t, reindexed.run(10, ledgerNameSet("L1"), nil),
+		"a registered index is the one thing that legitimises rmap rows")
 }
 
 // TestCompareReverseMapOrphans_EmptyAudit pins that an audit with no logs does

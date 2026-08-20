@@ -8,11 +8,12 @@ if [[ "${LEDGER_AGENT_CHECK_IN_NIX:-}" != "1" ]]; then
 fi
 
 unset GOROOT || true
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "==> agent-check-full: baseline validation"
-bash scripts/agent-check
+bash "$SCRIPT_DIR/agent-check"
 
 echo "==> agent-check-full: root-module unit tests"
-just test
+bash "$SCRIPT_DIR/agent-just" test
 
 echo "==> agent-check-full: PASS"

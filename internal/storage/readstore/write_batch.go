@@ -20,6 +20,19 @@ type WriteBatch struct {
 	// Callers resolve the index's current value for a key via ReverseMapOverlay
 	// (uncommitted batch) before falling back to committed state.
 	rmapOverlay map[string][]byte
+
+	// eventSeq is the raft sequence stamped onto midx/eidx event keys, set by
+	// the caller per folded log (SetEventSequence). Zero means unset — event
+	// writes fail loudly rather than stamping a stale or absent sequence.
+	eventSeq uint64
+}
+
+// SetEventSequence declares the raft sequence for subsequent metadata /
+// exists index event writes. The fold sets it once per log before
+// dispatching; the schema-rewrite backfill sets it to the FSM handle's
+// applied sequence for the scan batch.
+func (wb *WriteBatch) SetEventSequence(seq uint64) {
+	wb.eventSeq = seq
 }
 
 // NewWriteBatch creates a new WriteBatch.
@@ -33,6 +46,7 @@ func NewWriteBatch() *WriteBatch {
 func (wb *WriteBatch) Init(batch *dal.WriteSession) {
 	wb.batch = batch
 	wb.rmapOverlay = make(map[string][]byte)
+	wb.eventSeq = 0
 }
 
 // ReverseMapOverlay returns the encoded value this batch last wrote for
@@ -60,6 +74,7 @@ func (wb *WriteBatch) Reset() {
 	wb.batch = nil
 	wb.count = 0
 	wb.rmapOverlay = nil
+	wb.eventSeq = 0
 }
 
 // put sets a key-value pair in the batch.
@@ -147,79 +162,24 @@ func (wb *WriteBatch) WriteDestinationAccountTxMapping(kb *dal.KeyBuilder, ledge
 }
 
 // WriteAccountByAssetIndex records that an account has ever touched (assetBase,
-// precision). Presence-only (nil value); the Put is idempotent so repeated
-// writes for the same cell are harmless.
+// precision). The value is the writing fold's raft sequence — the account's
+// FIRST touch, because the indexer dedups repeated cells before calling here
+// (writeAccountByAssetDedup) and never rewrites an existing row. A pinned read
+// admits the row only when that stamp is at or below its pin, which is what
+// keeps an aligned snapshot that folded ahead of the main handle from serving
+// members the handle cannot enrich (see compileAccountHasAssetCondition).
 func (wb *WriteBatch) WriteAccountByAssetIndex(kb *dal.KeyBuilder, ledgerName, account, assetBase string, precision uint8) error {
+	seq, err := wb.eventSequence()
+	if err != nil {
+		return err
+	}
+
 	key := AccountByAssetKey(kb, ledgerName, assetBase, precision, account)
 
-	return wb.put(key, nil)
-}
+	var stamp [8]byte
+	binary.BigEndian.PutUint64(stamp[:], seq)
 
-// WriteMetadataIndex inserts a forward index entry in the metadata inverted
-// index under version 1. Equivalent to WriteMetadataIndexV(..., 1, ...) —
-// kept for callers not yet aware of versioning.
-func (wb *WriteBatch) WriteMetadataIndex(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey string, encodedValue, entityID []byte) error {
-	return wb.WriteMetadataIndexV(kb, ledgerName, ns, metadataKey, 1, encodedValue, entityID)
-}
-
-// WriteMetadataIndexV inserts a forward index entry at an explicit
-// forward-encoding version. Used by the indexer hot path to write
-// against local_current_version and (during a rewrite) pending_version.
-func (wb *WriteBatch) WriteMetadataIndexV(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey string, version uint32, encodedValue, entityID []byte) error {
-	key := MetadataIndexKeyV(kb, ledgerName, ns, metadataKey, version, encodedValue, entityID)
-
-	return wb.put(key, nil)
-}
-
-// DeleteMetadataIndex removes a forward index entry under version 1.
-func (wb *WriteBatch) DeleteMetadataIndex(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey string, encodedValue, entityID []byte) error {
-	return wb.DeleteMetadataIndexV(kb, ledgerName, ns, metadataKey, 1, encodedValue, entityID)
-}
-
-// DeleteMetadataIndexV is the version-aware variant of DeleteMetadataIndex.
-func (wb *WriteBatch) DeleteMetadataIndexV(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey string, version uint32, encodedValue, entityID []byte) error {
-	key := MetadataIndexKeyV(kb, ledgerName, ns, metadataKey, version, encodedValue, entityID)
-
-	return wb.del(key)
-}
-
-// WriteEntityExists inserts an entry in the entity-ordered existence index
-// under version 1.
-func (wb *WriteBatch) WriteEntityExists(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string, isNull bool, entityID []byte) error {
-	return wb.WriteEntityExistsV(kb, ledgerName, ns, metaKey, 1, isNull, entityID)
-}
-
-// WriteEntityExistsV is the version-aware variant of WriteEntityExists.
-func (wb *WriteBatch) WriteEntityExistsV(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string, version uint32, isNull bool, entityID []byte) error {
-	key := EntityExistsKeyV(kb, ledgerName, ns, metaKey, version, isNull, entityID)
-
-	return wb.put(key, nil)
-}
-
-// DeleteEntityExists removes an entry from the entity-ordered existence index
-// under version 1.
-func (wb *WriteBatch) DeleteEntityExists(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string, isNull bool, entityID []byte) error {
-	return wb.DeleteEntityExistsV(kb, ledgerName, ns, metaKey, 1, isNull, entityID)
-}
-
-// DeleteEntityExistsV is the version-aware variant of DeleteEntityExists.
-func (wb *WriteBatch) DeleteEntityExistsV(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string, version uint32, isNull bool, entityID []byte) error {
-	key := EntityExistsKeyV(kb, ledgerName, ns, metaKey, version, isNull, entityID)
-
-	return wb.del(key)
-}
-
-// ReplaceMetadataIndex replaces a metadata index entry at version 1 (the
-// default for callers that have not been versioned yet). See
-// ReplaceMetadataIndexV for the explicit-version variant used by the
-// indexer hot path.
-func (wb *WriteBatch) ReplaceMetadataIndex(
-	kb *dal.KeyBuilder,
-	reverseKey []byte,
-	ledgerName string, ns, metadataKey string,
-	newEncodedValue, oldEncodedValue, entityID []byte,
-) error {
-	return wb.ReplaceMetadataIndexV(kb, reverseKey, ledgerName, ns, metadataKey, 1, newEncodedValue, oldEncodedValue, entityID)
+	return wb.put(key, stamp[:])
 }
 
 // ReplaceMetadataIndexV replaces a metadata index entry at an explicit
@@ -235,22 +195,38 @@ func (wb *WriteBatch) ReplaceMetadataIndexV(
 	version uint32,
 	newEncodedValue, oldEncodedValue, entityID []byte,
 ) error {
+	// Same encoded value re-set: membership is identical at every pin and
+	// the rmap row already holds newEncodedValue, so there is nothing to
+	// write. Load-bearing for the schema rewrite racing a live dual-write
+	// at the same sequence — a same-seq DEL cannot win against the
+	// standing ADD (op ordering), so it must not be emitted.
+	if bytes.Equal(oldEncodedValue, newEncodedValue) {
+		return nil
+	}
+
+	nullFlagChanged := oldEncodedValue == nil ||
+		isNullEncoded(oldEncodedValue) != isNullEncoded(newEncodedValue)
+
 	if oldEncodedValue != nil {
-		if err := wb.DeleteMetadataIndexV(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID); err != nil {
+		if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID, MetadataEventDel); err != nil {
 			return err
 		}
 
-		if err := wb.DeleteEntityExistsV(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID); err != nil {
-			return err
+		if nullFlagChanged {
+			if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID, MetadataEventDel); err != nil {
+				return err
+			}
 		}
 	}
 
-	if err := wb.WriteMetadataIndexV(kb, ledgerName, ns, metadataKey, version, newEncodedValue, entityID); err != nil {
+	if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, newEncodedValue, entityID, MetadataEventAdd); err != nil {
 		return err
 	}
 
-	if err := wb.WriteEntityExistsV(kb, ledgerName, ns, metadataKey, version, isNullEncoded(newEncodedValue), entityID); err != nil {
-		return err
+	if nullFlagChanged {
+		if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(newEncodedValue), entityID, MetadataEventAdd); err != nil {
+			return err
+		}
 	}
 
 	if err := wb.put(reverseKey, newEncodedValue); err != nil {
@@ -260,17 +236,6 @@ func (wb *WriteBatch) ReplaceMetadataIndexV(
 	wb.rmapOverlay[string(reverseKey)] = bytes.Clone(newEncodedValue)
 
 	return nil
-}
-
-// DeleteMetadataEntryWithPrevious removes a metadata entry at version 1.
-// See DeleteMetadataEntryWithPreviousV for the explicit-version variant.
-func (wb *WriteBatch) DeleteMetadataEntryWithPrevious(
-	kb *dal.KeyBuilder,
-	reverseKey []byte,
-	ledgerName string, ns, metadataKey string,
-	oldEncodedValue, entityID []byte,
-) error {
-	return wb.DeleteMetadataEntryWithPreviousV(kb, reverseKey, ledgerName, ns, metadataKey, 1, oldEncodedValue, entityID)
 }
 
 // DeleteMetadataEntryWithPreviousV removes both the forward index and the
@@ -284,11 +249,11 @@ func (wb *WriteBatch) DeleteMetadataEntryWithPreviousV(
 	oldEncodedValue, entityID []byte,
 ) error {
 	if oldEncodedValue != nil {
-		if err := wb.DeleteMetadataIndexV(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID); err != nil {
+		if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID, MetadataEventDel); err != nil {
 			return err
 		}
 
-		if err := wb.DeleteEntityExistsV(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID); err != nil {
+		if err := wb.appendEntityExistsEvent(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID, MetadataEventDel); err != nil {
 			return err
 		}
 	}
@@ -323,11 +288,25 @@ func (wb *WriteBatch) WriteTransactionInsertedAtIndex(kb *dal.KeyBuilder, ledger
 	return wb.put(key, nil)
 }
 
-// WriteTransactionRevertedAtIndex inserts an entry in the transaction reverted_at index.
+// WriteTransactionRevertedAtIndex inserts an entry in the transaction
+// reverted_at index. The value is the revert fold's raft sequence: unlike the
+// other transaction builtins, this row appears AFTER the transaction's
+// creation, so main-store existence proves nothing about it at a pin — the
+// stamp is what lets a pinned read exclude a revert that folded past its
+// handle (see compileRevertedAtCondition). A transaction reverts at most
+// once, so the single write needs no dedup.
 func (wb *WriteBatch) WriteTransactionRevertedAtIndex(kb *dal.KeyBuilder, ledgerName string, timestamp, txID uint64) error {
+	seq, err := wb.eventSequence()
+	if err != nil {
+		return err
+	}
+
 	key := TransactionRevertedAtKey(kb, ledgerName, timestamp, txID)
 
-	return wb.put(key, nil)
+	var stamp [8]byte
+	binary.BigEndian.PutUint64(stamp[:], seq)
+
+	return wb.put(key, stamp[:])
 }
 
 // WriteLedgerLogDateIndex inserts an entry in the per-ledger log date index.

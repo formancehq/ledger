@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -40,12 +41,31 @@ const (
 
 var _ = Describe("Bootstrap from backup", Ordered, func() {
 	const (
-		httpPort   = testutil.TestSingleHTTPPort
-		grpcPort   = testutil.TestSingleGRPCPort
-		raftPort   = grpcPort - 1000
 		ledgerName = "bootstrap-ledger"
 		ledger2    = "bootstrap-ledger-2"
 	)
+
+	// USD amounts posted to bootstrap-ledger. Phase 3 derives its expected
+	// volumes from these constants instead of restating them as literals, so
+	// changing an amount cannot leave a stale expectation behind. Adding a new
+	// bank payout before the backup still needs bankOutput updated by hand.
+	const (
+		bankFunding     = 10000 // world -> bank
+		aliceTransfer   = 3000  // bank -> alice
+		bobTransfer     = 2000  // bank -> bob
+		eveTransfer     = 500   // bank -> eve, posted after the first full backup
+		charlieTransfer = 1000  // bank -> charlie, posted after the bootstrap
+	)
+
+	// Everything bank paid out before the full backup that Phase 2 restores
+	// from. The eve posting is included because the second full backup taken
+	// in Phase 1 captures it.
+	const bankOutput = aliceTransfer + bobTransfer + eveTransfer
+
+	// Phase 1 takes the backup and Phase 3 brings the same logical node back on
+	// the offline-prepared data, so both phases reuse the same allocated ports.
+	lease := testserver.AllocateNodeLease()
+	ports := lease.Ports()
 
 	var (
 		ctx              context.Context
@@ -58,7 +78,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		ctx = logging.TestingContext()
 
 		// Start MinIO container
-		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
+		container, err := testcontainers.Run(context.Background(), testutil.MinIOImage,
 			testcontainers.WithEnv(map[string]string{
 				"MINIO_ROOT_USER":     bootstrapMinioAccessKey,
 				"MINIO_ROOT_PASSWORD": bootstrapMinioSecretKey,
@@ -123,9 +143,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
 				ClusterID: bootstrapBucketID,
-				HTTPPort:  httpPort,
-				RaftPort:  raftPort,
-				GRPCPort:  grpcPort,
+				Ports:     ports,
 				WalDir:    walDir,
 				DataDir:   dataDir,
 				Debug:     testutil.Debug,
@@ -133,13 +151,13 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			})
 			instruments = append(instruments, testserver.WithBootstrap())
 
-			sourceServer = testservice.New(cmdserver.NewRunCommand,
+			sourceServer = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(instruments...),
 			)
 			Expect(sourceServer.Start(ctx)).To(Succeed())
 
 			var err error
-			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
+			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
@@ -152,13 +170,13 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
+				actions.NewPosting("world", "bank", big.NewInt(bankFunding), "USD"),
 			}, map[string]string{"type": "funding"}, nil)))
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("bank", "alice", big.NewInt(3000), "USD"),
-				actions.NewPosting("bank", "bob", big.NewInt(2000), "USD"),
+				actions.NewPosting("bank", "alice", big.NewInt(aliceTransfer), "USD"),
+				actions.NewPosting("bank", "bob", big.NewInt(bobTransfer), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
@@ -200,7 +218,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should run incremental backup after adding more data", func() {
 			// Add more data after the full backup
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("bank", "eve", big.NewInt(500), "USD"),
+				actions.NewPosting("bank", "eve", big.NewInt(eveTransfer), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
@@ -297,9 +315,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
 				ClusterID: bootstrapBucketID,
-				HTTPPort:  httpPort,
-				RaftPort:  raftPort,
-				GRPCPort:  grpcPort,
+				Ports:     ports,
 				WalDir:    bootstrapWalDir,
 				DataDir:   bootstrapDataDir,
 				Debug:     testutil.Debug,
@@ -307,13 +323,13 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 			})
 			instruments = append(instruments, testserver.WithBootstrap())
 
-			server = testservice.New(cmdserver.NewRunCommand,
+			server = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(instruments...),
 			)
 			Expect(server.Start(ctx)).To(Succeed())
 
 			var err error
-			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
+			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
@@ -345,12 +361,12 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should have the correct account balances", func() {
 			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
-			Expect(aliceResp.FindVolume("USD", "").Input).To(Equal("3000"))
+			Expect(aliceResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(aliceTransfer)))
 
 			bankResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "bank"})
 			Expect(err).To(Succeed())
-			Expect(bankResp.FindVolume("USD", "").Input).To(Equal("10000"))
-			Expect(bankResp.FindVolume("USD", "").Output).To(Equal("5000"))
+			Expect(bankResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(bankFunding)))
+			Expect(bankResp.FindVolume("USD", "").Output).To(Equal(strconv.Itoa(bankOutput)))
 		})
 
 		It("should have the correct account metadata", func() {
@@ -362,18 +378,18 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should have the data added after the first backup (via second full backup)", func() {
 			eveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "eve"})
 			Expect(err).To(Succeed())
-			Expect(eveResp.FindVolume("USD", "").Input).To(Equal("500"))
+			Expect(eveResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(eveTransfer)))
 		})
 
 		It("should accept new transactions after bootstrap", func() {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-				actions.NewPosting("bank", "charlie", big.NewInt(1000), "USD"),
+				actions.NewPosting("bank", "charlie", big.NewInt(charlieTransfer), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
 
 			charlieResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "charlie"})
 			Expect(err).To(Succeed())
-			Expect(charlieResp.FindVolume("USD", "").Input).To(Equal("1000"))
+			Expect(charlieResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(charlieTransfer)))
 		})
 	})
 })

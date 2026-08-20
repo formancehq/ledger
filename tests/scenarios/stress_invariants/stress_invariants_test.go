@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/tests/scenarios/scenariotest"
@@ -27,7 +27,7 @@ func TestStressInvariants(t *testing.T) {
 		depositAmt  = 1_000_000 // USD/2 per account
 	)
 
-	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort+3, scenariotest.GRPCPort+3)
+	sc := scenariotest.SetupSingleNode(t)
 	ctx, client := sc.Ctx(), sc.Client
 
 	// Track reverted trade indices to avoid double-revert

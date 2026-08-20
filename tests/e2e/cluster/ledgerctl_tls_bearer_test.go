@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"net"
 	"os"
 	"time"
 
@@ -35,7 +34,8 @@ import (
 var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func() {
 	var (
 		certs      *testserver.TestCerts
-		grpcPort   int
+		lease      *testserver.NodeLease
+		ports      testserver.NodePorts
 		clusterTok = "test-cluster-secret-840bef"
 	)
 
@@ -53,16 +53,13 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 			_ = os.RemoveAll(dataTmpDir)
 		})
 
-		grpcPort = freeTLSReproPort()
-		raftPort := freeTLSReproPort()
-		httpPort := freeTLSReproPort()
+		lease = testserver.AllocateNodeLease()
+		ports = lease.Ports()
 
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:    1,
 			ClusterID: "test-cluster",
-			HTTPPort:  httpPort,
-			RaftPort:  raftPort,
-			GRPCPort:  grpcPort,
+			Ports:     ports,
 			WalDir:    walTmpDir,
 			DataDir:   dataTmpDir,
 			Debug:     testutil.Debug,
@@ -80,7 +77,7 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 			}),
 		)
 
-		server := testservice.New(cmdserver.NewRunCommand,
+		server := lease.NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())
@@ -99,7 +96,7 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 			RootCAs:    pool,
 			MinVersion: tls.VersionTLS12,
 		}
-		addr := fmt.Sprintf("localhost:%d", grpcPort)
+		addr := fmt.Sprintf("localhost:%d", ports.GRPC())
 		conn, err := grpc.NewClient(addr,
 			grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)),
 		)
@@ -119,10 +116,3 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 		}).Within(10 * time.Second).Should(Succeed())
 	})
 })
-
-func freeTLSReproPort() int {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	Expect(err).To(Succeed())
-	defer func() { _ = l.Close() }()
-	return l.Addr().(*net.TCPAddr).Port
-}
