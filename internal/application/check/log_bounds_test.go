@@ -709,3 +709,105 @@ func TestCheckReportsDiscontinuityAboveAnArchivedBoundary(t *testing.T) {
 	require.Contains(t, gaps[0].GetMessage(), "the audited log range is discontinuous")
 	require.Contains(t, gaps[0].GetMessage(), "authenticates logs from 6 but the highest previously audited log was 3")
 }
+
+// TestCheckBoundsRetainedLogsUnderTheArchiveBoundary pins WHERE the stored
+// ceiling is raised in the replay loop: before the `seq <= archiveEndSeq` skip,
+// not after it.
+//
+// Every other fixture keeps the highest stored log ABOVE the boundary, so the
+// row that sets storedLogMax never meets the skip and both placements agree.
+// This one puts the whole log stream at or under the boundary. close_sequence is
+// 5 while the live audited range only reaches log 4, which is not out-of-order
+// archiving but the forgeable shape log_bounds.go names: the sealing hash is
+// UNKEYED, so whoever edits close_sequence just recomputes it
+// (sealArchivedChapter does exactly that here) and verifySealingHash still
+// accepts the chapter.
+//
+// Raising the ceiling after the skip would let that forged close_sequence hide
+// the injected row: every stored key would be skipped, storedLogMax would stay
+// 0, and the one pass that can see a log no proposal produced would compare
+// nothing. That is the archiveEndSeq-gated threshold compareLogBounds exists to
+// refuse, reached through the replay loop instead of through the comparison.
+//
+// The retained-only variant is the control: it proves the finding in the other
+// variant comes from the injected row and not from the forged boundary itself.
+func TestCheckBoundsRetainedLogsUnderTheArchiveBoundary(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		// injectAtBoundary writes one log row AT close_sequence, above the live
+		// audited maximum and therefore authenticated by nothing.
+		injectAtBoundary bool
+		wantUnaudited    bool
+	}{
+		{name: "retained logs only", injectAtBoundary: false, wantUnaudited: false},
+		{name: "row injected at the boundary", injectAtBoundary: true, wantUnaudited: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			engine := newTestEngine(t)
+
+			// Pre-boundary history: logs 1-2, audit entries 1-2.
+			engine.processAndCommit(createLedgerOrder("archived-era"))
+			engine.processAndCommit(createTransactionOrder("archived-era", true,
+				newPosting("world", "alice", "USD", 100)))
+
+			boundaryAuditHash := append([]byte(nil), engine.lastAuditHash...)
+
+			captureBoundaryBaseline(t, engine)
+
+			// Post-boundary history: logs 3-4, audit entries 3-4. The live walk
+			// starts at audit 3, so the audited maximum is 4.
+			engine.processAndCommit(createTransactionOrder("archived-era", true,
+				newPosting("world", "bob", "USD", 50)))
+			engine.processAndCommit(createLedgerOrder("live-era"))
+
+			// close_sequence 5 covers the whole retained stream and one sequence
+			// beyond it, while close_audit_sequence stays at 2 so the live chain
+			// walk still verifies. Log rows are retained, so nothing below the
+			// boundary is deleted either.
+			writeArchivedBoundary(t, engine, archivedBoundary{
+				closeSequence:      5,
+				closeAuditSequence: 2,
+				lastAuditHash:      boundaryAuditHash,
+				purgeLogRows:       false,
+			})
+
+			if tc.injectAtBoundary {
+				const unaudited = 5
+
+				inject := engine.store.OpenWriteSession()
+				key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(unaudited).Build()
+				require.NoError(t, inject.SetProto(key, &commonpb.Log{Sequence: unaudited}))
+				require.NoError(t, inject.Commit())
+			}
+
+			// A forged boundary clips the replay above the whole live range, so
+			// the run legitimately reports volume, transaction, boundary,
+			// unaudited-ledger and signing-incomplete findings as well. Only the
+			// bound is under test here, hence the type filter.
+			unauditedErrors := errorsOfType(
+				collectCheckErrors(t, engine.store, engine.attrs),
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
+
+			if !tc.wantUnaudited {
+				require.Empty(t, unauditedErrors,
+					"the highest retained row is the audited maximum, so the bound must "+
+						"stay silent: the finding in the other variant comes from the "+
+						"injected row, not from the forged close_sequence")
+
+				return
+			}
+
+			require.Len(t, unauditedErrors, 1,
+				"a row at close_sequence is above the audited maximum and must be "+
+					"reported exactly once: the stored ceiling has to be raised before "+
+					"the archive-boundary skip, or a forged close_sequence suppresses it")
+			require.Equal(t, uint64(5), unauditedErrors[0].GetLogSequence())
+			require.Contains(t, unauditedErrors[0].GetMessage(), "authenticates no log above 4")
+			require.Contains(t, unauditedErrors[0].GetMessage(), "extends 1 sequence(s) past the audited maximum")
+		})
+	}
+}
