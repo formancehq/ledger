@@ -141,7 +141,7 @@ func TestParseUsageCreateOrderHonorsFinalOneofMember(t *testing.T) {
 	// Append a system-scoped member after the ledger-scoped one. Protobuf oneof
 	// decoding keeps the final member, so the fast path must not treat this as a
 	// native create transaction.
-	raw = protowire.AppendTag(raw, 3, protowire.BytesType)
+	raw = protowire.AppendTag(raw, 2, protowire.BytesType)
 	raw = protowire.AppendBytes(raw, nil)
 
 	_, matched, err := parseUsageCreateOrder(raw)
@@ -183,8 +183,8 @@ func TestParseUsageCreateOrderRejectsMalformedWire(t *testing.T) {
 		name string
 		raw  []byte
 	}{
-		{name: "truncated ledger scoped order", raw: []byte{0x12, 0x80}},
-		{name: "wrong technical wire type", raw: appendUsageVarintField(nil, 1, 1)},
+		{name: "truncated ledger scoped order", raw: []byte{0x0a, 0x80}},
+		{name: "wrong technical wire type", raw: appendUsageVarintField(nil, 3, 1)},
 		{name: "wrong posting wire type", raw: wrapUsageCreateTransaction(appendUsageVarintField(nil, 1, 1))},
 		{name: "wrong force wire type", raw: wrapUsageCreateTransaction(appendUsageBytesField(nil, 7, nil))},
 		{name: "wrong script vars wire type", raw: wrapUsageCreateTransaction(
@@ -211,7 +211,7 @@ func wrapUsageCreateTransaction(create []byte) []byte {
 	scoped := appendUsageBytesField(nil, 1, []byte("ledger"))
 	scoped = appendUsageBytesField(scoped, 2, apply)
 
-	return appendUsageBytesField(nil, 2, scoped)
+	return appendUsageBytesField(nil, 1, scoped)
 }
 
 func appendUsageVarintField(dst []byte, num protowire.Number, value uint64) []byte {

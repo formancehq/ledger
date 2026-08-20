@@ -67,7 +67,7 @@ func usageOrderLedgerScoped(data []byte) ([]byte, bool, error) {
 		}
 		data = data[n:]
 
-		if num == 1 {
+		if num == 3 {
 			if typ != protowire.BytesType {
 				return nil, false, fmt.Errorf("protowire: invalid wire type %d for Order.technical", typ)
 			}
@@ -80,7 +80,7 @@ func usageOrderLedgerScoped(data []byte) ([]byte, bool, error) {
 			continue
 		}
 
-		if num == 2 || num == 3 {
+		if num == 1 || num == 2 {
 			if typ != protowire.BytesType {
 				return nil, false, fmt.Errorf("protowire: invalid wire type %d for Order field %d", typ, num)
 			}
@@ -89,7 +89,7 @@ func usageOrderLedgerScoped(data []byte) ([]byte, bool, error) {
 				return nil, false, fmt.Errorf("protowire: invalid bytes for Order field %d", num)
 			}
 			activeType = num
-			if num == 2 {
+			if num == 1 {
 				ledgerScoped = value
 			}
 			data = data[size:]
@@ -104,7 +104,7 @@ func usageOrderLedgerScoped(data []byte) ([]byte, bool, error) {
 		data = data[size:]
 	}
 
-	return ledgerScoped, activeType == 2, nil
+	return ledgerScoped, activeType == 1, nil
 }
 
 func usageLedgerApply(data []byte) (string, []byte, bool, error) {
