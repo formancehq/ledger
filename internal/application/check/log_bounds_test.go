@@ -630,35 +630,31 @@ func TestCheckDoesNotBoundLogsBelowTrailingFailures(t *testing.T) {
 }
 
 // TestCheckReportsDiscontinuityAboveAnArchivedBoundary covers the abutment
-// assertion's interaction with an archive boundary — the eighth case, added
-// after case 7 was found to exercise the assertion only with
-// signing.archiveEndSeq == 0.
+// assertion's interaction with an archive boundary, on a store where
+// signing.archiveEndSeq is non-zero rather than trivially 0.
 //
-// The fixture has a real boundary: the archived chapter closes at log 2, so
-// signing.archiveEndSeq is 2, not 0, and the `minLogSeq > signing.archiveEndSeq`
-// conjunct is genuinely evaluated rather than trivially satisfied. A live entry
-// then jumps from the audited maximum 3 straight to 6, and the finding is still
-// reported. That is the half that protects the audit: a boundary must not become
-// a blanket excuse that swallows a hole in the audited range.
+// The archived chapter closes at log 2, so a live entry jumping from the audited
+// maximum 3 straight to 6 is a hole ABOVE the boundary, and it is reported. A
+// boundary must not become a blanket excuse that swallows a hole in the audited
+// range.
 //
-// It does NOT pin the conjunct's excusing direction, and no test can, because
-// that direction is unreachable on a store whose chapter metadata is internally
-// consistent. close_sequence and close_audit_sequence are both assigned at
-// CloseChapter apply time from monotonic counters, so across archived chapters
-// they rise together and the SAME chapter supplies both maxima. The live walk
-// starts after the highest archived close_audit_sequence, so every entry it
-// visits was applied after that chapter closed, and therefore carries
-// minLogSeq > that chapter's close_sequence == signing.archiveEndSeq. The
-// scenario the conjunct was written for — an un-archived chapter below the
-// boundary — is in fact handled by the `chainBound.expectedLogMax > 0` guard
-// instead: the skipped span leaves the maximum at 0 at the first visited entry.
+// The assertion is deliberately not gated on archiveEndSeq at all. It once
+// carried a `minLogSeq > signing.archiveEndSeq` conjunct, on the theory that a
+// boundary needed excusing; that was wrong in both directions. It never excused
+// anything reachable, because what actually legalises the first visited entry is
+// `chainBound.expectedLogMax > 0` — the maximum is still 0 there, with nothing to
+// abut. And it could only ever SUPPRESS: close_sequence overlapping the live
+// audited range is corruption, not out-of-order archiving, and close_sequence is
+// the forgeable field (unkeyed sealing hash) while min/max_log_sequence are
+// inside the keyed pre-image. Gating a keyed-hash finding on a forgeable field is
+// the EN-1526 defect shape, so the conjunct is gone; see log_bounds.go.
 //
-// Reaching the excuse requires an archived close_sequence that overlaps the live
-// audited range, which is corruption rather than out-of-order archiving — and
-// close_sequence is the attacker-forgeable field (unkeyed sealing hash, see
-// log_bounds.go). Pinning that as expected behaviour would bless a forgeable
-// suppression of an invariant finding, so this test pins the reachable half and
-// the unreachable half is reported instead.
+// Note the counter asymmetry that makes the old theory fail, since it is easy to
+// re-derive backwards: close_sequence is the CloseChapter log's OWN sequence
+// while close_audit_sequence is one BELOW its own audit entry. The walk starts at
+// close_audit_sequence + 1, i.e. at that chapter's own CloseChapter entry, whose
+// min_log_sequence therefore sits at or below archiveEndSeq — so a comparison
+// against archiveEndSeq would not have excused the first entry either.
 func TestCheckReportsDiscontinuityAboveAnArchivedBoundary(t *testing.T) {
 	t.Parallel()
 
