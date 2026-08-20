@@ -62,7 +62,7 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start("Analyzing transactions...")
+	spinner := cmdutil.StartSpinner("Analyzing transactions...")
 
 	stream, err := client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
 		Ledger:            ledgerName,

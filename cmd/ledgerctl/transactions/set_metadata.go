@@ -130,7 +130,7 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Setting metadata on transaction #%d...", txID))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Setting metadata on transaction #%d...", txID))
 
 	// Build request
 	requests := []*servicepb.Request{

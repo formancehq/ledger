@@ -136,7 +136,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Creating index %s on %s...", indexDesc, ledgerName))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Creating index %s on %s...", indexDesc, ledgerName))
 
 	requests := []*servicepb.Request{
 		{

@@ -45,7 +45,7 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 	}
 
 	var (
-		spinner, _ = pterm.DefaultSpinner.Start("Validating backup integrity...")
+		spinner    = cmdutil.StartSpinner("Validating backup integrity...")
 		errorCount int
 	)
 

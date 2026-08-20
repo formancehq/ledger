@@ -77,7 +77,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 		ctx = cmdutil.ProfileContext(ctx)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Aggregating volumes...")
+	spinner := cmdutil.StartSpinner("Aggregating volumes...")
 
 	var trailer metadata.MD
 

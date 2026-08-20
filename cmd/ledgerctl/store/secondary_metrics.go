@@ -41,7 +41,7 @@ func runSecondaryMetrics(cmd *cobra.Command, _ []string) error {
 
 	nodeID, _ := cmd.Flags().GetUint32("node-id")
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching read index metrics...")
+	spinner := cmdutil.StartSpinner("Fetching read index metrics...")
 
 	resp, err := client.GetSecondaryMetrics(ctx, &servicepb.GetSecondaryMetricsRequest{
 		NodeId: nodeID,

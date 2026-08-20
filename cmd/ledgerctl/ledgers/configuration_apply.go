@@ -123,7 +123,7 @@ func runConfigurationApply(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Applying %d changes to %s...", len(actions), ledgerName))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Applying %d changes to %s...", len(actions), ledgerName))
 
 	resp, err := client.Apply(ctx, applyReq)
 	if err != nil {

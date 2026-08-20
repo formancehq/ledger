@@ -101,7 +101,7 @@ func fetchAllTransactions(cmd *cobra.Command, client servicepb.BucketServiceClie
 		ctx = cmdutil.ProfileContext(ctx)
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching all transactions...")
+	spinner := cmdutil.StartSpinner("Fetching all transactions...")
 
 	var lastTrailer metadata.MD
 
@@ -162,7 +162,7 @@ func fetchTransactionsWithPager(cmd *cobra.Command, client servicepb.BucketServi
 			ctx = cmdutil.ProfileContext(ctx)
 		}
 
-		spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching page %d...", pageNum))
+		spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching page %d...", pageNum))
 
 		stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 			Ledger:  ledgerName,

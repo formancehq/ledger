@@ -89,7 +89,7 @@ func runPromote(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Promoting ledger %s...", name))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Promoting ledger %s...", name))
 
 	requests := []*servicepb.Request{
 		{

@@ -111,7 +111,7 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Deleting metadata key %q from account %s...", key, address))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Deleting metadata key %q from account %s...", key, address))
 
 	requests := []*servicepb.Request{
 		{

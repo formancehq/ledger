@@ -361,7 +361,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start("Creating transaction...")
+	spinner := cmdutil.StartSpinner("Creating transaction...")
 
 	requests := []*servicepb.Request{
 		{

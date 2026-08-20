@@ -332,7 +332,7 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Adding event sink %s...", name))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Adding event sink %s...", name))
 
 	requests := []*servicepb.Request{
 		{

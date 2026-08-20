@@ -45,7 +45,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching ledger %s...", ledgerName))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching ledger %s...", ledgerName))
 
 	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{
 		Ledger: ledgerName,

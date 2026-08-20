@@ -36,7 +36,7 @@ func runGetSchedule(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching query checkpoint schedule...")
+	spinner := cmdutil.StartSpinner("Fetching query checkpoint schedule...")
 
 	resp, err := client.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
 	if err != nil {

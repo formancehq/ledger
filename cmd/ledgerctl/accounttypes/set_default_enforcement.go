@@ -57,7 +57,7 @@ func runSetDefaultEnforcement(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Setting default enforcement mode to %s...", modeStr))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Setting default enforcement mode to %s...", modeStr))
 
 	requests := []*servicepb.Request{
 		{
