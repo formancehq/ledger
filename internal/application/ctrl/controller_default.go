@@ -1059,7 +1059,7 @@ func (ctrl *DefaultController) AggregateVolumes(
 	indexStart := time.Now()
 	if historicalView != nil {
 		compileCurrent := func(ctx context.Context, currentFilter *commonpb.QueryFilter) ([]string, error) {
-			iter, err := query.Compile(snap, kb, currentFilter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.SnapshotVersionResolver(snap, ledgerInfo.GetName()), profile, handle)
+			iter, err := query.Compile(snap, kb, currentFilter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), profile, handle, mainSeq)
 			if err != nil {
 				return nil, domain.WrapCompileError(err)
 			}
