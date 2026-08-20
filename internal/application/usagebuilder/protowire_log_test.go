@@ -182,6 +182,76 @@ func TestParseUsageLogRejectsMalformedWire(t *testing.T) {
 	}
 }
 
+func TestUsageLogWireHelpersRejectMalformedFields(t *testing.T) {
+	t.Parallel()
+
+	invalidTag := []byte{0}
+	truncatedBytes := func(num protowire.Number) []byte {
+		return append(protowire.AppendTag(nil, num, protowire.BytesType), 0x80)
+	}
+	truncatedFixed64 := protowire.AppendTag(nil, 1, protowire.Fixed64Type)
+	duplicateTarget := appendUsageBytesField(nil, 2, nil)
+	duplicateTarget = appendUsageBytesField(duplicateTarget, 2, nil)
+	duplicateOneof := appendUsageBytesField(nil, 1, nil)
+	duplicateOneof = appendUsageBytesField(duplicateOneof, 2, nil)
+
+	testCases := []struct {
+		name string
+		raw  []byte
+		scan func([]byte) error
+	}{
+		{name: "bytes scanner invalid tag", raw: invalidTag, scan: scanUsageBytesField},
+		{name: "bytes scanner target wrong type", raw: appendUsageVarintField(nil, 2, 1), scan: scanUsageBytesField},
+		{name: "bytes scanner duplicate target", raw: duplicateTarget, scan: scanUsageBytesField},
+		{name: "bytes scanner truncated target", raw: truncatedBytes(2), scan: scanUsageBytesField},
+		{name: "bytes scanner truncated unknown", raw: truncatedBytes(99), scan: scanUsageBytesField},
+		{name: "oneof scanner invalid tag", raw: invalidTag, scan: scanUsageOneofBytesField},
+		{name: "oneof scanner member wrong type", raw: appendUsageVarintField(nil, 1, 1), scan: scanUsageOneofBytesField},
+		{name: "oneof scanner duplicate member", raw: duplicateOneof, scan: scanUsageOneofBytesField},
+		{name: "oneof scanner truncated member", raw: truncatedBytes(1), scan: scanUsageOneofBytesField},
+		{name: "oneof scanner truncated unknown", raw: truncatedBytes(99), scan: scanUsageOneofBytesField},
+		{name: "touched volume invalid tag", raw: invalidTag, scan: scanUsageTouchedVolume},
+		{name: "touched volume wrong type", raw: appendUsageVarintField(nil, 1, 1), scan: scanUsageTouchedVolume},
+		{name: "touched volume truncated string", raw: truncatedBytes(1), scan: scanUsageTouchedVolume},
+		{name: "touched volume truncated unknown", raw: truncatedBytes(99), scan: scanUsageTouchedVolume},
+		{name: "timestamp invalid tag", raw: invalidTag, scan: scanUsageTimestamp},
+		{name: "timestamp wrong type", raw: appendUsageVarintField(nil, 1, 1), scan: scanUsageTimestamp},
+		{name: "timestamp truncated fixed64", raw: truncatedFixed64, scan: scanUsageTimestamp},
+		{name: "timestamp truncated unknown", raw: truncatedBytes(99), scan: scanUsageTimestamp},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Error(t, tc.scan(tc.raw))
+		})
+	}
+}
+
+func scanUsageBytesField(raw []byte) error {
+	_, err := usageScanBytesField(raw, 2)
+
+	return err
+}
+
+func scanUsageOneofBytesField(raw []byte) error {
+	_, err := usageScanOneofBytesField(raw, 1, usageIsLogPayloadField, "LogPayload")
+
+	return err
+}
+
+func scanUsageTouchedVolume(raw []byte) error {
+	_, err := parseUsageTouchedVolume(raw)
+
+	return err
+}
+
+func scanUsageTimestamp(raw []byte) error {
+	_, err := parseUsageTimestamp(raw)
+
+	return err
+}
+
 func usageApplyLog(ledgerLog *commonpb.LedgerLog) *commonpb.Log {
 	return &commonpb.Log{Payload: &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{

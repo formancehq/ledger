@@ -206,6 +206,102 @@ func TestParseUsageCreateOrderRejectsMalformedWire(t *testing.T) {
 	}
 }
 
+func TestUsageOrderWireScannersRejectMalformedFields(t *testing.T) {
+	t.Parallel()
+
+	invalidTag := []byte{0}
+	truncatedBytes := func(num protowire.Number) []byte {
+		return append(protowire.AppendTag(nil, num, protowire.BytesType), 0x80)
+	}
+	truncatedVarint := func(num protowire.Number) []byte {
+		return protowire.AppendTag(nil, num, protowire.VarintType)
+	}
+
+	testCases := []struct {
+		name string
+		raw  []byte
+		scan func([]byte) error
+	}{
+		{name: "order invalid tag", raw: invalidTag, scan: scanUsageOrderLedgerScoped},
+		{name: "order ledger wrong type", raw: appendUsageVarintField(nil, 1, 1), scan: scanUsageOrderLedgerScoped},
+		{name: "order ledger truncated", raw: truncatedBytes(1), scan: scanUsageOrderLedgerScoped},
+		{name: "order technical truncated", raw: truncatedBytes(3), scan: scanUsageOrderLedgerScoped},
+		{name: "order unknown truncated", raw: truncatedBytes(99), scan: scanUsageOrderLedgerScoped},
+		{name: "ledger scoped invalid tag", raw: invalidTag, scan: scanUsageLedgerApply},
+		{name: "ledger name wrong type", raw: appendUsageVarintField(nil, 1, 1), scan: scanUsageLedgerApply},
+		{name: "ledger name truncated", raw: truncatedBytes(1), scan: scanUsageLedgerApply},
+		{name: "ledger payload wrong type", raw: appendUsageVarintField(nil, 2, 1), scan: scanUsageLedgerApply},
+		{name: "ledger payload truncated", raw: truncatedBytes(2), scan: scanUsageLedgerApply},
+		{name: "ledger unknown truncated", raw: truncatedBytes(99), scan: scanUsageLedgerApply},
+		{name: "apply invalid tag", raw: invalidTag, scan: scanUsageLedgerCreateTransaction},
+		{name: "apply payload wrong type", raw: appendUsageVarintField(nil, 1, 1), scan: scanUsageLedgerCreateTransaction},
+		{name: "apply payload truncated", raw: truncatedBytes(1), scan: scanUsageLedgerCreateTransaction},
+		{name: "apply unknown truncated", raw: truncatedBytes(99), scan: scanUsageLedgerCreateTransaction},
+		{name: "create invalid tag", raw: invalidTag, scan: scanUsageCreateTransaction},
+		{name: "create script wrong type", raw: appendUsageVarintField(nil, 2, 1), scan: scanUsageCreateTransaction},
+		{name: "create script truncated", raw: truncatedBytes(2), scan: scanUsageCreateTransaction},
+		{name: "create postings wrong type", raw: appendUsageVarintField(nil, 1, 1), scan: scanUsageCreateTransaction},
+		{name: "create postings truncated", raw: truncatedBytes(1), scan: scanUsageCreateTransaction},
+		{name: "create force truncated", raw: truncatedVarint(7), scan: scanUsageCreateTransaction},
+		{name: "create unknown truncated", raw: truncatedBytes(99), scan: scanUsageCreateTransaction},
+		{name: "script invalid tag", raw: invalidTag, scan: scanUsageScriptPlain},
+		{name: "script plain wrong type", raw: appendUsageVarintField(nil, 1, 1), scan: scanUsageScriptPlain},
+		{name: "script plain truncated", raw: truncatedBytes(1), scan: scanUsageScriptPlain},
+		{name: "script vars wrong type", raw: appendUsageVarintField(nil, 2, 1), scan: scanUsageScriptPlain},
+		{name: "script vars truncated", raw: truncatedBytes(2), scan: scanUsageScriptPlain},
+		{name: "script unknown truncated", raw: truncatedBytes(99), scan: scanUsageScriptPlain},
+		{name: "numscript invalid tag", raw: invalidTag, scan: scanUsageNumscriptName},
+		{name: "numscript name wrong type", raw: appendUsageVarintField(nil, 1, 1), scan: scanUsageNumscriptName},
+		{name: "numscript name truncated", raw: truncatedBytes(1), scan: scanUsageNumscriptName},
+		{name: "numscript vars wrong type", raw: appendUsageVarintField(nil, 2, 1), scan: scanUsageNumscriptName},
+		{name: "numscript vars truncated", raw: truncatedBytes(2), scan: scanUsageNumscriptName},
+		{name: "numscript unknown truncated", raw: truncatedBytes(99), scan: scanUsageNumscriptName},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Error(t, tc.scan(tc.raw))
+		})
+	}
+}
+
+func scanUsageOrderLedgerScoped(raw []byte) error {
+	_, _, err := usageOrderLedgerScoped(raw)
+
+	return err
+}
+
+func scanUsageLedgerApply(raw []byte) error {
+	_, _, _, err := usageLedgerApply(raw)
+
+	return err
+}
+
+func scanUsageLedgerCreateTransaction(raw []byte) error {
+	_, _, err := usageLedgerCreateTransaction(raw)
+
+	return err
+}
+
+func scanUsageCreateTransaction(raw []byte) error {
+	_, _, err := usageCreateTransaction(raw)
+
+	return err
+}
+
+func scanUsageScriptPlain(raw []byte) error {
+	_, err := usageScriptPlain(raw)
+
+	return err
+}
+
+func scanUsageNumscriptName(raw []byte) error {
+	_, err := usageNumscriptName(raw)
+
+	return err
+}
+
 func wrapUsageCreateTransaction(create []byte) []byte {
 	apply := appendUsageBytesField(nil, 1, create)
 	scoped := appendUsageBytesField(nil, 1, []byte("ledger"))
