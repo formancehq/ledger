@@ -139,6 +139,22 @@ def after_call(context, case, response):
         )
 
 
+def not_an_unexpected_server_error(ctx, response, case):
+    """Allow only the retryable historical 503s documented by OpenAPI."""
+    if (
+        response.status_code == 503
+        and case.path == "/v3/{ledgerName}/volumes"
+    ):
+        try:
+            error_code = response.json().get("errorCode")
+        except (AttributeError, TypeError, ValueError):
+            error_code = None
+        if error_code in {"HISTORY_BUILDING", "HISTORY_BEHIND"}:
+            return None
+
+    return not_a_server_error(ctx, response, case)
+
+
 # --- Prepared-query body generation override -------------------------------
 # The prepared-query create/update bodies embed QueryFilter, a *recursive* JSON
 # DSL ($and/$or/$not -> QueryFilter, each operator object with
@@ -284,7 +300,7 @@ def main():
     runner = from_schema(
         schema,
         checks=[
-            not_a_server_error,
+            not_an_unexpected_server_error,
             status_code_conformance,
             response_schema_conformance,
         ],
