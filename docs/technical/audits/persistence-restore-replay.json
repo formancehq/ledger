@@ -1,0 +1,52 @@
+{
+  "id": "persistence-restore-replay",
+  "title": "Persistence, restore, snapshot, and replay",
+  "purpose": "Find latent correctness failures that can lose, duplicate, reorder, or reconstruct ledger state incorrectly across persistence, replay, snapshot, restore, and restart boundaries.",
+  "paths": [
+    "internal/storage/**",
+    "internal/infra/state/**",
+    "internal/infra/backup/**",
+    "internal/application/backup/**",
+    "internal/domain/replay/**",
+    "internal/infra/preload/**",
+    "internal/infra/cache/**",
+    "misc/proto/snapshot.proto",
+    "misc/proto/restore.proto",
+    "tests/antithesis/**",
+    "tests/oracle/**"
+  ],
+  "related_docs": [
+    "AGENTS.md",
+    "docs/technical/agent-context.md",
+    "docs/technical/architecture/README.md",
+    "docs/technical/contributing/ai-audit.md"
+  ],
+  "invariants": [
+    "An acknowledged committed write must not disappear after crash, restart, snapshot install, or restore.",
+    "Replay of the same committed log must reconstruct the same externally observable ledger state.",
+    "Snapshot and restore must preserve balances, metadata, sequencing, and any state required for subsequent deterministic execution.",
+    "A partially completed backup, restore, snapshot, or persistence operation must fail closed rather than expose a silently incomplete state as valid.",
+    "Caches and preload paths must never become authoritative over persisted primary state after restart or restore.",
+    "Repeated retry or resume of a restore/replay operation must not duplicate committed effects.",
+    "State written before a durable boundary must not be observed as committed if the corresponding durable record can still be lost.",
+    "Version or format validation must reject incompatible persisted/snapshot data before mutating authoritative state."
+  ],
+  "adversarial_questions": [
+    "Where can the process crash between durable write, projection/state update, acknowledgement, and snapshot bookkeeping?",
+    "Which operations are not idempotent when replayed after a crash or retry?",
+    "Can restore expose a mixture of old and new state if interrupted?",
+    "Can a stale cache or preload overwrite or mask newer persisted state?",
+    "Can corrupted, truncated, reordered, duplicated, or partially written persisted input be accepted as valid?",
+    "Can snapshot installation race with reads, writes, membership changes, or background persistence?",
+    "Are sequence numbers, offsets, watermarks, or checkpoints advanced before all state they represent is durable?",
+    "Do backup and restore paths preserve all data that runtime correctness depends on, including non-obvious metadata?"
+  ],
+  "dynamic_checks_to_consider": [
+    "just test-model-cluster 180",
+    "crash/restart at persistence boundaries",
+    "restore interruption and retry",
+    "snapshot corruption/truncation",
+    "race-enabled tests",
+    "property tests comparing replayed state with uninterrupted execution"
+  ]
+}
