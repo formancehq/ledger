@@ -47,10 +47,14 @@ import (
 // transaction count, is the assertion that cannot be masked by a race with the
 // mirror worker.
 var _ = Describe("Restore mirror resume position", Ordered, func() {
+	// One logical node returns three times (live, restore-mode, restarted), so
+	// every phase runs off the same lease: it keeps the node's ports for the
+	// whole test and rebinds them on each start, where a fresh set would
+	// surface as a Raft failure rather than as a port mistake (EN-1784).
+	lease := testserver.AllocateNodeLease()
+	ports := lease.Ports()
+
 	const (
-		httpPort   = testutil.TestSingleHTTPPort
-		grpcPort   = testutil.TestSingleGRPCPort
-		raftPort   = grpcPort - 1000
 		ledgerName = "mirror-restore-ledger"
 		s3Bucket   = "restore-mirror-cursor"
 		clusterID  = "mirror-restore-cluster"
@@ -198,9 +202,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
 				ClusterID: clusterID,
-				HTTPPort:  httpPort,
-				RaftPort:  raftPort,
-				GRPCPort:  grpcPort,
+				Ports:     ports,
 				WalDir:    GinkgoT().TempDir(),
 				DataDir:   GinkgoT().TempDir(),
 				Debug:     testutil.Debug,
@@ -208,11 +210,11 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			})
 			instruments = append(instruments, testserver.WithBootstrap())
 
-			sourceServer = testservice.New(cmdserver.NewRunCommand, testservice.WithInstruments(instruments...))
+			sourceServer = lease.NewService(cmdserver.NewRunCommandWithBindings, testservice.WithInstruments(instruments...))
 			Expect(sourceServer.Start(ctx)).To(Succeed())
 
 			var err error
-			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
+			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
@@ -307,24 +309,24 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		)
 
 		BeforeAll(func() {
-			server = testservice.New(cmdserver.NewRunCommand,
+			server = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(
 					testservice.DebugInstrumentation(testutil.Debug),
 					testservice.OutputInstrumentation(GinkgoWriter),
 					testserver.WithNodeID(1),
 					testserver.WithClusterID(clusterID),
-					testserver.WithHTTPPort(httpPort),
+					testserver.WithHTTPPort(ports.HTTP()),
 					testserver.WithWalDir(restoreWalDir),
 					testserver.WithDataDir(restoreDataDir),
-					testserver.WithRaftPort(raftPort),
-					testserver.WithGRPCPort(grpcPort),
+					testserver.WithRaftPort(ports.Raft()),
+					testserver.WithGRPCPort(ports.GRPC()),
 					testserver.WithRestore(),
 				),
 			)
 			Expect(server.Start(ctx)).To(Succeed())
 
 			var err error
-			restoreClient, grpcConn, err = newRestoreGRPCClient(grpcPort)
+			restoreClient, grpcConn, err = newRestoreGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 		})
 
@@ -362,9 +364,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
 				ClusterID: clusterID,
-				HTTPPort:  httpPort,
-				RaftPort:  raftPort,
-				GRPCPort:  grpcPort,
+				Ports:     ports,
 				WalDir:    restoreWalDir,
 				DataDir:   restoreDataDir,
 				Debug:     testutil.Debug,
@@ -372,7 +372,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			})
 			instruments = append(instruments, testserver.WithBootstrap())
 
-			server = testservice.New(cmdserver.NewRunCommand, testservice.WithInstruments(instruments...))
+			server = lease.NewService(cmdserver.NewRunCommandWithBindings, testservice.WithInstruments(instruments...))
 
 			// Park the source before the node exists. Manager.reconcile starts
 			// mirror workers on the leadership callback, which is not ordered
@@ -387,7 +387,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			Expect(server.Start(ctx)).To(Succeed())
 
 			var err error
-			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
+			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 
 			// Sample the rebuilt high-water mark while the source is still
