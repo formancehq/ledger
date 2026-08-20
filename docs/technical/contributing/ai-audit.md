@@ -21,7 +21,7 @@ The auditor must inspect the current code, tests, and relevant technical documen
 
 Audit findings are held to a higher evidence standard than ordinary review suggestions. Every finding must include:
 
-- a stable id;
+- a stable id in the form `<audit-id>/<short-kebab-case-name>`, unique within the report;
 - severity `P0`, `P1`, `P2`, or `P3`;
 - an exact location when possible;
 - the violated invariant or expected property;

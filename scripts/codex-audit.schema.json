@@ -38,7 +38,10 @@
           "confidence"
         ],
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*/[a-z0-9]+(-[a-z0-9]+)*$"
+          },
           "severity": { "type": "string", "enum": ["P0", "P1", "P2", "P3"] },
           "title": { "type": "string", "minLength": 1 },
           "location": { "type": "string" },

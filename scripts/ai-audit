@@ -204,7 +204,12 @@ EOF
     fi
     if ! jq -e --arg id "$domain" --arg head "$head_sha" '
         .audit_id == $id and .head == $head and
-        (.findings | type == "array") and (.questions | type == "array")
+        (.findings | type == "array") and (.questions | type == "array") and
+        all(.findings[];
+            (.id | startswith($id + "/")) and
+            (.id | ltrimstr($id + "/") | test("^[a-z0-9]+(-[a-z0-9]+)*$"))
+        ) and
+        ([.findings[].id] | length == (unique | length))
     ' "$provider_output" >/dev/null; then
         echo "ai-audit: provider result does not match the requested audit target" >&2
         exit 1
