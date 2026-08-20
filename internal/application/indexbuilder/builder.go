@@ -543,6 +543,22 @@ func (b *Builder) loop(ctx context.Context) {
 		default:
 		}
 
+		// Catch-up can run for hours, so a snapshot install landing mid-way
+		// cannot wait for the main loop: the config would describe the
+		// pre-swap store for the rest of it. The stripped view is rebuilt
+		// from the reloaded config, since restoreIndexes closes over the old.
+		if b.configReloadPending.Load() {
+			restoreIndexes()
+
+			if err := b.reloadConfigIfRequested(ctx); err != nil {
+				b.logger.Errorf("%v", err)
+
+				break
+			}
+
+			restoreIndexes = b.stripBuildingIndexes()
+		}
+
 		before := cursor
 		deadline := time.Now().Add(catchUpBudget)
 
@@ -587,7 +603,13 @@ func (b *Builder) loop(ctx context.Context) {
 		// with the leader's checkpoint, leaving the config describing a store
 		// that is gone.
 		if err := b.reloadConfigIfRequested(ctx); err != nil {
+			// initIndexConfig clears the config before repopulating it, so a
+			// failed reload leaves it incomplete — indexing against that skips
+			// writes the restored store needs. The request stays raised, so
+			// sit this tick out and retry on the next.
 			b.logger.Errorf("%v", err)
+
+			continue
 		}
 
 		// Fast path: skip Pebble iterator + batch commit when the FSM
