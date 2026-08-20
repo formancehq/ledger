@@ -302,6 +302,30 @@ func resolveCoverage[T interface {
 					return
 				}
 
+				// The loader dedupes and caches loads keyed by boundary and
+				// cache epoch, so a stale cached absence would poison every
+				// later preload of the key — deterministically, since the
+				// plan is replicated. For index keys, arbitrate an absent
+				// answer against a fresh read before trusting it.
+				if !hasValue && attrCode == dal.SubAttrIndex {
+					if fresh, freshErr := getValue(store, canonicalKey); freshErr == nil && any(fresh) != any(zero) {
+						logger.WithFields(map[string]any{
+							"type": typeName,
+							"key":  hex.EncodeToString(canonicalKey),
+						}).Errorf("Index preload served absence for a row Pebble holds")
+						assert.Unreachable("index preload served stale absence", map[string]any{
+							"type": typeName,
+							"key":  hex.EncodeToString(canonicalKey),
+						})
+
+						if attrValue, mErr := buildPreloadPayload(attrCode, fresh); mErr == nil {
+							plans = append(plans, slab.appendSeed(id, tag, attrCode, attrValue))
+
+							return
+						}
+					}
+				}
+
 				// Pebble had no value either — coverage-only entry. If a
 				// concurrent write populated the cache between admission
 				// and apply, Get's gen0→gen1 fallback will surface it at
