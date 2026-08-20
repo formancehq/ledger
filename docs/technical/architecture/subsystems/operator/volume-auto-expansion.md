@@ -47,8 +47,10 @@ The group size comes from `StatefulSet.spec.replicas`, not from the Cluster spec
 if an invalid Cluster update is rejected while the previous StatefulSet keeps
 running, every live replica remains covered. Before consulting usage, the
 reconciler repairs a partially-applied prior request by raising every smaller
-PVC request to the largest request already present. This makes a crash or
-Kubernetes patch failure self-healing.
+PVC request to the largest request already present, provided that request does
+not exceed the current `maximumSize`. This makes a crash or Kubernetes patch
+failure self-healing without propagating a request that violates a subsequently
+lowered policy cap or an external PVC edit.
 
 When the threshold is crossed, the new capacity is:
 
@@ -82,8 +84,12 @@ client or cloud credentials.
 - Maximum reached while usage remains high: emit
   `VolumeExpansionLimitReached`; operators must increase the explicit cap or
   reduce data growth.
+- A live PVC request above the current `maximumSize`: emit
+  `VolumeExpansionUnsupported` and leave the group unchanged; operators must
+  raise the cap to at least the largest live request before convergence resumes.
 - Partial patch: the largest PVC request becomes the recovery target on the
-  next pass; cooldown does not prevent convergence.
+  next pass when it remains within `maximumSize`; cooldown does not prevent
+  convergence.
 
 Structured logs record the decision, current/target/max bytes, highest usage,
 and failed measurement count. Kubernetes events provide the human-facing state.

@@ -194,7 +194,13 @@ func TestVolumeExpansionReconcilerRejectsNonExpandableStorageClass(t *testing.T)
 		},
 	}
 
-	retry, err := reconciler.reconcileVolume(ctx, ledger, volumeExpansionDefinition{Name: "data", Policy: ledger.Spec.Persistence.Data.AutoExpansion}, "disabled", replicas)
+	retry, err := reconciler.reconcileVolume(ctx, ledger, persistenceVolumeDefinition{
+		Name:                 "data",
+		Field:                "persistence.data",
+		Spec:                 &ledger.Spec.Persistence.Data,
+		DefaultSize:          "10Gi",
+		AutoExpansionAllowed: true,
+	}, "disabled", replicas)
 	require.NoError(t, err)
 	assert.True(t, retry)
 
@@ -202,6 +208,159 @@ func TestVolumeExpansionReconcilerRejectsNonExpandableStorageClass(t *testing.T)
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: pvc.Name}, &got))
 	request := got.Spec.Resources.Requests[corev1.ResourceStorage]
 	assert.Equal(t, "100Gi", request.String())
+}
+
+func TestVolumeExpansionReconcilerRejectsHostPathPolicyBeforeSideEffects(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	require.NoError(t, appsv1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+
+	maximum := resource.MustParse("200Gi")
+	replicas := int32(1)
+	ledger := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "host-path", Namespace: "default"},
+		Spec: ledgerv1alpha1.ClusterSpec{
+			Replicas: &replicas,
+			Persistence: ledgerv1alpha1.PersistenceSpec{
+				Data: ledgerv1alpha1.VolumeSpec{
+					HostPath: &ledgerv1alpha1.HostPathVolumeSpec{Path: "/data"},
+					AutoExpansion: &ledgerv1alpha1.VolumeAutoExpansionSpec{
+						Enabled:     true,
+						MaximumSize: &maximum,
+					},
+				},
+			},
+		},
+	}
+	pvc := boundTestPVC("data-ledger-host-path-0", "fixed", "100Gi")
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(
+		ledger,
+		&appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{Name: "ledger-host-path", Namespace: "default"},
+			Spec:       appsv1.StatefulSetSpec{Replicas: &replicas},
+		},
+		pvc,
+	).Build()
+	recorder := record.NewFakeRecorder(10)
+	readCalls := 0
+	reconciler := &VolumeExpansionReconciler{
+		Client:    k8sClient,
+		APIReader: k8sClient,
+		Recorder:  recorder,
+		ReadDiskUsage: func(context.Context, *ledgerv1alpha1.Cluster, string, string) (podDiskUsage, error) {
+			readCalls++
+
+			return podDiskUsage{}, errors.New("must not be called")
+		},
+	}
+
+	result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{
+		Namespace: ledger.Namespace,
+		Name:      ledger.Name,
+	}})
+	require.NoError(t, err)
+	assert.Equal(t, volumeExpansionRequeueInterval, result.RequeueAfter)
+	assert.Zero(t, readCalls)
+
+	var got corev1.PersistentVolumeClaim
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: pvc.Name}, &got))
+	request := got.Spec.Resources.Requests[corev1.ResourceStorage]
+	assert.Equal(t, "100Gi", request.String())
+
+	select {
+	case event := <-recorder.Events:
+		assert.Contains(t, event, "VolumeExpansionUnsupported")
+		assert.Contains(t, event, "mutually exclusive")
+	case <-time.After(time.Second):
+		t.Fatal("expected invalid hostPath policy event")
+	}
+}
+
+func TestVolumeExpansionReconcilerDoesNotConvergeAboveMaximum(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	require.NoError(t, appsv1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
+	require.NoError(t, storagev1.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+
+	allowExpansion := true
+	storageClassName := "expandable"
+	maximum := resource.MustParse("150Gi")
+	replicas := int32(2)
+	ledger := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "above-maximum", Namespace: "default"},
+		Spec: ledgerv1alpha1.ClusterSpec{
+			Replicas: &replicas,
+			Persistence: ledgerv1alpha1.PersistenceSpec{
+				Data: ledgerv1alpha1.VolumeSpec{
+					AutoExpansion: &ledgerv1alpha1.VolumeAutoExpansionSpec{
+						Enabled:     true,
+						MaximumSize: &maximum,
+					},
+				},
+			},
+		},
+	}
+	pvc0 := boundTestPVC("data-ledger-above-maximum-0", storageClassName, "200Gi")
+	pvc1 := boundTestPVC("data-ledger-above-maximum-1", storageClassName, "100Gi")
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(
+		ledger,
+		&appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{Name: "ledger-above-maximum", Namespace: "default"},
+			Spec:       appsv1.StatefulSetSpec{Replicas: &replicas},
+		},
+		&storagev1.StorageClass{
+			ObjectMeta:           metav1.ObjectMeta{Name: storageClassName},
+			AllowVolumeExpansion: &allowExpansion,
+		},
+		pvc0,
+		pvc1,
+	).Build()
+	recorder := record.NewFakeRecorder(10)
+	readCalls := 0
+	reconciler := &VolumeExpansionReconciler{
+		Client:    k8sClient,
+		APIReader: k8sClient,
+		Recorder:  recorder,
+		ReadDiskUsage: func(context.Context, *ledgerv1alpha1.Cluster, string, string) (podDiskUsage, error) {
+			readCalls++
+
+			return podDiskUsage{}, errors.New("must not be called")
+		},
+	}
+
+	result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{
+		Namespace: ledger.Namespace,
+		Name:      ledger.Name,
+	}})
+	require.NoError(t, err)
+	assert.Equal(t, volumeExpansionRequeueInterval, result.RequeueAfter)
+	assert.Zero(t, readCalls)
+
+	for name, expected := range map[string]string{
+		pvc0.Name: "200Gi",
+		pvc1.Name: "100Gi",
+	} {
+		var got corev1.PersistentVolumeClaim
+		require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: name}, &got))
+		request := got.Spec.Resources.Requests[corev1.ResourceStorage]
+		assert.Equal(t, expected, request.String())
+	}
+
+	select {
+	case event := <-recorder.Events:
+		assert.Contains(t, event, "VolumeExpansionUnsupported")
+		assert.Contains(t, event, "exceeds maximumSize")
+	case <-time.After(time.Second):
+		t.Fatal("expected above-maximum policy event")
+	}
 }
 
 func TestEnabledVolumeExpansionDefinitionsIsStrictlyOptIn(t *testing.T) {
