@@ -149,32 +149,39 @@ func (r *VolumeExpansionReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return ctrl.Result{RequeueAfter: nextRequeue}, nil
 }
 
-type volumeExpansionDefinition struct {
-	Name   string
-	Policy *ledgerv1alpha1.VolumeAutoExpansionSpec
-}
-
-func enabledVolumeExpansionDefinitions(ledger *ledgerv1alpha1.Cluster) []volumeExpansionDefinition {
-	var definitions []volumeExpansionDefinition
-	if auto := ledger.Spec.Persistence.WAL.AutoExpansion; auto != nil && auto.Enabled {
-		definitions = append(definitions, volumeExpansionDefinition{Name: "wal", Policy: auto})
-	}
-	if auto := ledger.Spec.Persistence.Data.AutoExpansion; auto != nil && auto.Enabled {
-		definitions = append(definitions, volumeExpansionDefinition{Name: "data", Policy: auto})
+func enabledVolumeExpansionDefinitions(ledger *ledgerv1alpha1.Cluster) []persistenceVolumeDefinition {
+	var enabled []persistenceVolumeDefinition
+	for _, definition := range persistenceVolumeDefinitions(ledger) {
+		auto := definition.Spec.AutoExpansion
+		if definition.AutoExpansionAllowed && auto != nil && auto.Enabled {
+			enabled = append(enabled, definition)
+		}
 	}
 
-	return definitions
+	return enabled
 }
 
 func (r *VolumeExpansionReconciler) reconcileVolume(
 	ctx context.Context,
 	ledger *ledgerv1alpha1.Cluster,
-	definition volumeExpansionDefinition,
+	definition persistenceVolumeDefinition,
 	tlsMode string,
 	replicas int32,
 ) (bool, error) {
 	logger := ctrl.LoggerFrom(ctx).WithValues("volume", definition.Name)
-	policy, err := resolveVolumeExpansionPolicy(definition.Policy)
+	if err := validateVolumeSpec(
+		definition.Field,
+		definition.Spec,
+		definition.DefaultSize,
+		definition.AutoExpansionAllowed,
+	); err != nil {
+		r.recordWarningf(ledger, "VolumeExpansionUnsupported", "%s auto-expansion policy is invalid: %v", definition.Name, err)
+		volumeExpansionErrorsMetric.WithLabelValues("policy", definition.Name).Inc()
+
+		return false, nil
+	}
+
+	policy, err := resolveVolumeExpansionPolicy(definition.Spec.AutoExpansion)
 	if err != nil {
 		r.recordWarningf(ledger, "VolumeExpansionUnsupported", "%s auto-expansion policy is invalid: %v", definition.Name, err)
 		volumeExpansionErrorsMetric.WithLabelValues("policy", definition.Name).Inc()
@@ -259,6 +266,19 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 		logger.Info("volume expansion maximum reached")
 		r.recordWarningf(ledger, "VolumeExpansionLimitReached", "%s PVCs reached maximumSize %s at %.1f%% usage", definition.Name, policy.MaximumSize.String(), decision.MaxUsageRatio*100)
 		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "limit-reached").Inc()
+
+		return false, nil
+	case volumeExpansionDecisionAboveMax:
+		logger.Info("volume request exceeds the configured maximum")
+		r.recordWarningf(
+			ledger,
+			"VolumeExpansionUnsupported",
+			"%s PVC request %s exceeds maximumSize %s; refusing to propagate it to the remaining replicas",
+			definition.Name,
+			formatBytesAsQuantity(decision.LargestRequestBytes),
+			policy.MaximumSize.String(),
+		)
+		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "above-maximum").Inc()
 
 		return false, nil
 	case volumeExpansionDecisionExpand:

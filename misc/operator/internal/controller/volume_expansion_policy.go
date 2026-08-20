@@ -29,6 +29,40 @@ type volumeExpansionPolicy struct {
 	Cooldown         time.Duration
 }
 
+type persistenceVolumeDefinition struct {
+	Name                 string
+	Field                string
+	Spec                 *ledgerv1alpha1.VolumeSpec
+	DefaultSize          string
+	AutoExpansionAllowed bool
+}
+
+func persistenceVolumeDefinitions(ledger *ledgerv1alpha1.Cluster) []persistenceVolumeDefinition {
+	return []persistenceVolumeDefinition{
+		{
+			Name:                 "wal",
+			Field:                "persistence.wal",
+			Spec:                 &ledger.Spec.Persistence.WAL,
+			DefaultSize:          "5Gi",
+			AutoExpansionAllowed: true,
+		},
+		{
+			Name:                 "data",
+			Field:                "persistence.data",
+			Spec:                 &ledger.Spec.Persistence.Data,
+			DefaultSize:          "10Gi",
+			AutoExpansionAllowed: true,
+		},
+		{
+			Name:                 "cold-cache",
+			Field:                "persistence.coldCache",
+			Spec:                 &ledger.Spec.Persistence.ColdCache,
+			DefaultSize:          "10Gi",
+			AutoExpansionAllowed: false,
+		},
+	}
+}
+
 func resolveVolumeExpansionPolicy(spec *ledgerv1alpha1.VolumeAutoExpansionSpec) (volumeExpansionPolicy, error) {
 	if spec == nil || !spec.Enabled {
 		return volumeExpansionPolicy{}, errors.New("policy is not enabled")
@@ -101,6 +135,7 @@ const (
 	volumeExpansionDecisionIncomplete volumeExpansionDecisionKind = "measurement-incomplete"
 	volumeExpansionDecisionExpand     volumeExpansionDecisionKind = "expand"
 	volumeExpansionDecisionLimit      volumeExpansionDecisionKind = "limit-reached"
+	volumeExpansionDecisionAboveMax   volumeExpansionDecisionKind = "above-maximum"
 )
 
 type volumeExpansionDecision struct {
@@ -148,9 +183,18 @@ func decideVolumeExpansion(
 		}
 	}
 
+	maximumBytes := policy.MaximumSize.Value()
+	if decision.LargestRequestBytes > maximumBytes {
+		decision.Kind = volumeExpansionDecisionAboveMax
+
+		return decision
+	}
+
 	// A previous multi-PVC patch may have succeeded only partially. Complete
 	// that target before consulting usage, resize state, or cooldown so every
-	// Raft replica converges to one capacity.
+	// Raft replica converges to one capacity. The guard above prevents a lowered
+	// policy cap or an external PVC edit from propagating an oversized request
+	// to the rest of the group.
 	if smallestRequest < decision.LargestRequestBytes {
 		decision.Kind = volumeExpansionDecisionConverge
 		decision.TargetBytes = decision.LargestRequestBytes
@@ -202,7 +246,6 @@ func decideVolumeExpansion(
 		return decision
 	}
 
-	maximumBytes := policy.MaximumSize.Value()
 	if decision.LargestRequestBytes >= maximumBytes {
 		decision.Kind = volumeExpansionDecisionLimit
 		decision.TargetBytes = maximumBytes
