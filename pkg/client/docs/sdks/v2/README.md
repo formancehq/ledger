@@ -1531,6 +1531,11 @@ func main() {
         ID: big.NewInt(1234),
         DryRun: client.Pointer(true),
         SchemaVersion: client.Pointer("v1.0.0"),
+        V2RevertTransactionRequest: &components.V2RevertTransactionRequest{
+            Metadata: map[string]string{
+                "admin": "true",
+            },
+        },
     })
     if err != nil {
         log.Fatal(err)

@@ -4,6 +4,10 @@
 
 > Scroll down for code samples, example requests and responses. Select a language for code samples from the tabs above or the mobile navigation menu.
 
+Non-streaming JSON request bodies are limited to 4 MiB. Streaming log import and
+streaming bulk media types are excluded so historical ledgers and large streams
+can be processed incrementally.
+
 Base URLs:
 
 * <a href="http://localhost:8080/">http://localhost:8080/</a>
@@ -1327,7 +1331,7 @@ Idempotency-Key: string
 |dryRun|query|boolean|false|Set the dry run mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 |Idempotency-Key|header|string|false|Use an idempotency key|
 |schemaVersion|query|string|false|Schema version to use for validation|
-|body|body|[V2Metadata](#schemav2metadata)|true|metadata|
+|body|body|[V2WriteMetadata](#schemav2writemetadata)|true|metadata|
 
 #### Detailed descriptions
 
@@ -2053,7 +2057,7 @@ Idempotency-Key: string
 |dryRun|query|boolean|false|Set the dryRun mode. Dry run mode doesn't add the logs to the database or publish a message to the message broker.|
 |Idempotency-Key|header|string|false|Use an idempotency key|
 |schemaVersion|query|string|false|Schema version to use for validation|
-|body|body|[V2Metadata](#schemav2metadata)|true|metadata|
+|body|body|[V2WriteMetadata](#schemav2writemetadata)|true|metadata|
 
 > Example responses
 
@@ -2109,8 +2113,7 @@ Idempotency-Key: string
 ```json
 {
   "metadata": {
-    "property1": "string",
-    "property2": "string"
+    "admin": "true"
   }
 }
 ```
@@ -4140,6 +4143,30 @@ This operation does not require authentication
 |---|---|---|---|---|
 |**additionalProperties**|string|false|none|none|
 
+<h2 id="tocS_V2WriteMetadata">V2WriteMetadata</h2>
+<!-- backwards compatibility -->
+<a id="schemav2writemetadata"></a>
+<a id="schema_V2WriteMetadata"></a>
+<a id="tocSv2writemetadata"></a>
+<a id="tocsv2writemetadata"></a>
+
+```json
+{
+  "admin": "true"
+}
+
+```
+
+Metadata accepted by transaction and account write commands. A metadata object
+is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per
+value, and 64 KiB total across keys and values.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|**additionalProperties**|string|false|none|none|
+
 <h2 id="tocS_V2ConfigInfo">V2ConfigInfo</h2>
 <!-- backwards compatibility -->
 <a id="schemav2configinfo"></a>
@@ -4428,6 +4455,8 @@ This operation does not require authentication
 
 ```
 
+Transaction and account metadata are limited to 256 KiB in total for one command.
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
@@ -4441,9 +4470,9 @@ This operation does not require authentication
 |»» **additionalProperties**|string|false|none|none|
 |runtime|[Runtime](#schemaruntime)|false|none|The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.|
 |reference|string|false|none|none|
-|metadata|[V2Metadata](#schemav2metadata)|true|none|none|
+|metadata|[V2WriteMetadata](#schemav2writemetadata)|true|none|Metadata accepted by transaction and account write commands. A metadata object<br>is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per<br>value, and 64 KiB total across keys and values.|
 |accountMetadata|object|false|none|none|
-|» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|none|
+|» **additionalProperties**|[V2WriteMetadata](#schemav2writemetadata)|false|none|Metadata accepted by transaction and account write commands. A metadata object<br>is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per<br>value, and 64 KiB total across keys and values.|
 |force|boolean|false|none|none|
 
 <h2 id="tocS_V2Stats">V2Stats</h2>
@@ -5791,7 +5820,7 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
-|» data|[V2PostTransaction](#schemav2posttransaction)|false|none|none|
+|» data|[V2PostTransaction](#schemav2posttransaction)|false|none|Transaction and account metadata are limited to 256 KiB in total for one command.|
 
 <h2 id="tocS_V2TargetId">V2TargetId</h2>
 <!-- backwards compatibility -->
@@ -5859,8 +5888,7 @@ xor
     "targetId": "string",
     "targetType": "TRANSACTION",
     "metadata": {
-      "property1": "string",
-      "property2": "string"
+      "admin": "true"
     }
   }
 }
@@ -5883,8 +5911,7 @@ and
 |» data|object|false|none|none|
 |»» targetId|[V2TargetId](#schemav2targetid)|true|none|none|
 |»» targetType|[V2TargetType](#schemav2targettype)|true|none|none|
-|»» metadata|object|true|none|none|
-|»»» **additionalProperties**|string|false|none|none|
+|»» metadata|[V2WriteMetadata](#schemav2writemetadata)|true|none|Metadata accepted by transaction and account write commands. A metadata object<br>is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per<br>value, and 64 KiB total across keys and values.|
 
 <h2 id="tocS_V2BulkElementRevertTransaction">V2BulkElementRevertTransaction</h2>
 <!-- backwards compatibility -->
@@ -5926,7 +5953,7 @@ and
 |»» id|integer(bigint)|true|none|none|
 |»» force|boolean|false|none|none|
 |»» atEffectiveDate|boolean|false|none|none|
-|»» metadata|[V2Metadata](#schemav2metadata)|false|none|none|
+|»» metadata|[V2WriteMetadata](#schemav2writemetadata)|false|none|Metadata accepted by transaction and account write commands. A metadata object<br>is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per<br>value, and 64 KiB total across keys and values.|
 
 <h2 id="tocS_V2BulkElementDeleteMetadata">V2BulkElementDeleteMetadata</h2>
 <!-- backwards compatibility -->
@@ -7614,8 +7641,7 @@ and
 ```json
 {
   "metadata": {
-    "property1": "string",
-    "property2": "string"
+    "admin": "true"
   }
 }
 
@@ -7625,8 +7651,7 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|metadata|object|false|none|none|
-|» **additionalProperties**|string|false|none|none|
+|metadata|[V2WriteMetadata](#schemav2writemetadata)|false|none|Metadata accepted by transaction and account write commands. A metadata object<br>is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per<br>value, and 64 KiB total across keys and values.|
 
 <h2 id="tocS_V2CreatePipelineRequest">V2CreatePipelineRequest</h2>
 <!-- backwards compatibility -->
