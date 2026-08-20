@@ -100,7 +100,7 @@ classify_path() {
 
 while IFS= read -r -d '' path; do
     classify_path "$path"
-done < <(git diff --name-only --diff-filter=ACDMRTUXB -z "$base_sha" --)
+done < <(git diff --no-renames --name-only --diff-filter=ACDMRTUXB -z "$base_sha" --)
 while IFS= read -r -d '' path; do
     classify_path "$path"
 done < <(git ls-files --others --exclude-standard -z)

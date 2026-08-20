@@ -16,7 +16,9 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 
 	testCases := []struct {
 		name           string
+		basePaths      []string
 		paths          []string
+		renames        [][2]string
 		leaveUntracked bool
 		expected       []string
 	}{
@@ -51,6 +53,14 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 			paths:    []string{"misc/operator/internal/example.go"},
 			expected: []string{"agent-check-full", "test-operator"},
 		},
+		{
+			name:      "production file renamed outside gated paths",
+			basePaths: []string{"internal/domain/example.go"},
+			renames: [][2]string{
+				{"internal/domain/example.go", "docs/example.md"},
+			},
+			expected: []string{"agent-check-full", "test-e2e"},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -60,14 +70,20 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 			repository := t.TempDir()
 			runGit(t, repository, "init")
 			require.NoError(t, os.WriteFile(filepath.Join(repository, "base.txt"), []byte("base\n"), 0o644))
-			runGit(t, repository, "add", "base.txt")
+			for _, path := range testCase.basePaths {
+				writeTestFile(t, repository, path)
+			}
+			runGit(t, repository, "add", ".")
 			runGit(t, repository, "-c", "user.name=Agent Check PR Test", "-c", "user.email=agent-check-pr@example.com", "commit", "-m", "base")
 			baseSHA := runGitOutput(t, repository, "rev-parse", "HEAD")
 
 			for _, path := range testCase.paths {
-				absolutePath := filepath.Join(repository, filepath.FromSlash(path))
-				require.NoError(t, os.MkdirAll(filepath.Dir(absolutePath), 0o755))
-				require.NoError(t, os.WriteFile(absolutePath, []byte("change\n"), 0o644))
+				writeTestFile(t, repository, path)
+			}
+			for _, rename := range testCase.renames {
+				destination := filepath.Join(repository, filepath.FromSlash(rename[1]))
+				require.NoError(t, os.MkdirAll(filepath.Dir(destination), 0o755))
+				runGit(t, repository, "mv", "--", rename[0], rename[1])
 			}
 			if !testCase.leaveUntracked {
 				runGit(t, repository, "add", ".")
@@ -82,6 +98,14 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 			require.Equal(t, testCase.expected, strings.Fields(string(output)))
 		})
 	}
+}
+
+func writeTestFile(t *testing.T, repository, path string) {
+	t.Helper()
+
+	absolutePath := filepath.Join(repository, filepath.FromSlash(path))
+	require.NoError(t, os.MkdirAll(filepath.Dir(absolutePath), 0o755))
+	require.NoError(t, os.WriteFile(absolutePath, []byte("change\n"), 0o644))
 }
 
 func selectorPath(t *testing.T) string {
