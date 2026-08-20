@@ -126,7 +126,7 @@ if err != nil {
   10 min deadline.
 - Drivers that own their `main()` (singletons, first-, eventually-, or
   parallel drivers that need to create their own ledger from scratch) should
-  use `internal.PlatformSingletonContext()` (12 min) when Composer must observe
+  use `internal.PlatformSingletonContext()` (6 min) when Composer must observe
   completion in a 20-minute run, `internal.SingletonContext()` (90 min) for
   longer suites, or `internal.DriverContext()` (10 min) for parallel paths.
   Avoid bare `context.Background()` so a SUT hang surfaces as a timeout.
