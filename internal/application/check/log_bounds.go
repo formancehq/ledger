@@ -70,10 +70,20 @@ func readStoredLogMax(reader dal.PebbleReader) (uint64, error) {
 //
 // Only one direction is reported here. Stored above audited means a row exists
 // that no proposal produced. The opposite — the chain authenticating a log the
-// store does not hold — is a missing log like any other and is already reported
-// as SEQUENCE_GAP by the gap detection in the replay loop, which walks up to the
-// highest stored sequence; adding a second finding for it would double-report
-// the same fault under two names.
+// store does not hold — is a missing log like any other, and it is already
+// covered, but by two different passes depending on where the hole is:
+//
+//   - INTERIOR holes go to the gap detection in the replay loop. That loop runs
+//     inside the iteration (`for expectedSeq < seq`), so it fills the span
+//     between two stored rows and stops at the highest stored key; expectedSeq is
+//     never consulted after the loop. SEQUENCE_GAP, one per missing sequence.
+//   - A lost TAIL above the highest stored key is invisible to that loop, and to
+//     this pass. It is reported by compareBoundaries: the stored Boundary row
+//     keeps its NextLogId while the replayed expectation shrinks with the deleted
+//     logs, so it comes out as BOUNDARY_MISMATCH.
+//
+// Adding a third finding for either would double-report one fault under two
+// names.
 //
 // archiveEndSeq is deliberately absent from this comparison, and must stay
 // absent. It is not a weaker guarantee than the chain — it is a DIFFERENT one:
@@ -97,9 +107,10 @@ func readStoredLogMax(reader dal.PebbleReader) (uint64, error) {
 // non-hash-bound projection field steering verification, rebuilt in a new place.
 //
 // The accepted consequence, stated plainly so nobody has to rediscover it: a
-// store with archived chapters, a baseline checkpoint, log rows retained at or
-// under the archive boundary, and ZERO live audit entries would report a false
-// LOG_UNAUDITED. That shape is unreachable through the archive flow — archiving
+// store with archived chapters, log rows retained at or under the archive
+// boundary, and ZERO live audit entries would report a false LOG_UNAUDITED. (The
+// baseline checkpoint is irrelevant to it — this pass also runs on the
+// baseline-less archived path, where storedLogMax comes from readStoredLogMax.) That shape is unreachable through the archive flow — archiving
 // emits its own logs above the range it purges, so at least one log and its live
 // audit entry always survive (see the note above the signingVerifier
 // construction in Check) — and a false positive on an unreachable shape is the
