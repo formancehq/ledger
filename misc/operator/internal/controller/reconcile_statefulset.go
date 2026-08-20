@@ -142,6 +142,29 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *le
 			// reconciliation creates the new StatefulSet and the orphaned pods are adopted.
 			return ctrl.Result{}, nil
 		}
+
+		grown, shrunk := volumeClaimTemplateSizeChanges(existing.Spec.VolumeClaimTemplates, desired.VolumeClaimTemplates)
+		for _, tmpl := range shrunk {
+			logger.Info("ignoring volume shrink request, PVC storage is grow-only", "template", tmpl)
+			if r.Recorder != nil {
+				r.Recorder.Eventf(ledger, corev1.EventTypeWarning, "VolumeShrinkIgnored",
+					"Ignoring size reduction for volume %q: PVC storage can only grow", tmpl)
+			}
+		}
+		if len(grown) > 0 {
+			if err := r.expandClusterPVCs(ctx, ledger, existing, grown); err != nil {
+				return ctrl.Result{}, fmt.Errorf("expanding PVCs: %w", err)
+			}
+			logger.Info("VolumeClaimTemplate sizes grew, recreating StatefulSet with orphan propagation")
+			orphan := metav1.DeletePropagationOrphan
+			if err := r.Delete(ctx, existing, &client.DeleteOptions{
+				PropagationPolicy: &orphan,
+			}); err != nil {
+				return ctrl.Result{}, fmt.Errorf("deleting StatefulSet for VolumeClaimTemplate growth: %w", err)
+			}
+
+			return ctrl.Result{}, nil
+		}
 	}
 
 	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, sts, func() error {
