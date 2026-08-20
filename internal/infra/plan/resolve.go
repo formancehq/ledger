@@ -7,7 +7,9 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/preload"
@@ -213,7 +215,14 @@ func resolveCoverage[T interface {
 			// Bloom filter short-circuit: when the key is definitely not
 			// in Pebble, skip the goroutine + Pebble Get and emit Declare
 			// (coverage-only, no value to seed).
-			if bloomFilter != nil && !bloomFilter.MayContain(id) {
+			//
+			// Index registry keys are exempt: they are rare enough that the
+			// Pebble read costs nothing, and a false negative here would make
+			// every replica read an existing index as absent — the removal
+			// then reports nothing dropped while the row sits in Pebble.
+			// The load below both corrects it and proves the filter wrong.
+			bloomAbsent := bloomFilter != nil && !bloomFilter.MayContain(id)
+			if bloomAbsent && attrCode != dal.SubAttrIndex {
 				mu.Lock()
 				plans = append(plans, slab.appendCoverage(id, tag, attrCode))
 				mu.Unlock()
@@ -260,6 +269,17 @@ func resolveCoverage[T interface {
 
 				var zero T
 				hasValue := any(result.Value) != any(zero)
+
+				if hasValue && bloomAbsent {
+					logger.WithFields(map[string]any{
+						"type": typeName,
+						"key":  hex.EncodeToString(canonicalKey),
+					}).Errorf("Bloom filter denied a key Pebble holds")
+					assert.Unreachable("index preload bloom false negative", map[string]any{
+						"type": typeName,
+						"key":  hex.EncodeToString(canonicalKey),
+					})
+				}
 
 				// Track bloom false positives: MayContain said "maybe" but Pebble
 				// had nothing. Only counts loads we actually performed (FromLoad).
