@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import copy
+import os
 import re
 import sys
 from datetime import timedelta
@@ -31,7 +32,12 @@ from schemathesis.runner import from_schema
 from schemathesis.runner.events import AfterExecution, Finished
 from schemathesis.stateful import Stateful
 
-OPENAPI_PATH = Path(__file__).resolve().parents[2] / "openapi.yml"
+OPENAPI_PATH = Path(
+    os.environ.get(
+        "SCHEMATHESIS_OPENAPI_PATH",
+        Path(__file__).resolve().parents[2] / "openapi.yml",
+    )
+)
 
 VALID_LEDGER_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{2,20}$")
 
