@@ -1658,6 +1658,14 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 	// and be rejected as STALE_INPUTS_RESOLUTION on every retry.
 	effects := newBatchEffects()
 
+	// Identical scripts with no variables are common in bulk ingestion (the
+	// perf-world-to-bank workload sends 50 of them at a time). Once discovery
+	// proves that a script performs no state reads, its dependencies and effects
+	// are a pure function of this key and can be shared by later orders in this
+	// bulk. Keep the memo request-local: it needs no synchronization and cannot
+	// retain arbitrary caller script text beyond admission.
+	var staticDiscoveries map[staticNumscriptDiscoveryKey]*numscript.DiscoveryResult
+
 	for orderIdx, order := range orders {
 		ls := order.GetLedgerScoped()
 		if ls == nil {
@@ -1858,31 +1866,59 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			continue
 		}
 
-		valueSource := &admissionValueSource{admission: a, ledgerName: ledgerName, effects: effects}
-
-		discovered, err := numscript.DiscoverNumscriptDependencies(
-			a.numscriptCache,
-			scriptText,
-			scriptVars,
-			ledgerName,
-			valueSource,
-			createTx.CreateTransaction.GetForce(),
+		var (
+			discovered      *numscript.DiscoveryResult
+			staticKey       staticNumscriptDiscoveryKey
+			staticCandidate bool
 		)
-		if err != nil {
-			// Discovery couldn't resolve the script against current state (e.g. an
-			// idempotent retry whose `meta(@cfg,"dest")` account was deleted after
-			// the original success). This is a preparation gap, NOT an authoritative
-			// verdict: with an idempotency key the batch may be a replay of a frozen
-			// outcome, and only the FSM (log-ordered) can decide. When the failure is
-			// state-dependent, classifyResolutionFailure marks the order
-			// preload_unavailable and forwards it — the FSM replays the
-			// frozen outcome, or rejects with the retryable, non-frozen
-			// ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to
-			// preserve, so it fails fast (DEPENDENCY_DISCOVERY_FAILED). See EN-1406.
-			if forwarded, ferr := a.classifyResolutionFailure(order, err, refIsLatest, hasIdempotencyKey); ferr != nil {
-				return ferr
-			} else if forwarded {
-				continue
+
+		// Variables can change resolved accounts, assets, amounts and metadata.
+		// The common no-variable shape gets a zero-allocation comparable key;
+		// variable-bearing scripts retain the full per-order resolution path.
+		if len(scriptVars) == 0 {
+			staticCandidate = true
+			staticKey = staticNumscriptDiscoveryKey{
+				ledger: ledgerName,
+				script: scriptText,
+				force:  createTx.CreateTransaction.GetForce(),
+			}
+			discovered = staticDiscoveries[staticKey]
+		}
+
+		if discovered == nil {
+			valueSource := &admissionValueSource{admission: a, ledgerName: ledgerName, effects: effects}
+
+			discovered, err = numscript.DiscoverNumscriptDependencies(
+				a.numscriptCache,
+				scriptText,
+				scriptVars,
+				ledgerName,
+				valueSource,
+				createTx.CreateTransaction.GetForce(),
+			)
+			if err != nil {
+				// Discovery couldn't resolve the script against current state (e.g. an
+				// idempotent retry whose `meta(@cfg,"dest")` account was deleted after
+				// the original success). This is a preparation gap, NOT an authoritative
+				// verdict: with an idempotency key the batch may be a replay of a frozen
+				// outcome, and only the FSM (log-ordered) can decide. When the failure is
+				// state-dependent, classifyResolutionFailure marks the order
+				// preload_unavailable and forwards it — the FSM replays the
+				// frozen outcome, or rejects with the retryable, non-frozen
+				// ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to
+				// preserve, so it fails fast (DEPENDENCY_DISCOVERY_FAILED). See EN-1406.
+				if forwarded, ferr := a.classifyResolutionFailure(order, err, refIsLatest, hasIdempotencyKey); ferr != nil {
+					return ferr
+				} else if forwarded {
+					continue
+				}
+			}
+
+			if staticCandidate && reusableNumscriptDiscovery(discovered) {
+				if staticDiscoveries == nil {
+					staticDiscoveries = make(map[staticNumscriptDiscoveryKey]*numscript.DiscoveryResult)
+				}
+				staticDiscoveries[staticKey] = discovered
 			}
 		}
 
@@ -1979,6 +2015,27 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 	}
 
 	return nil
+}
+
+// staticNumscriptDiscoveryKey identifies the variable-free script shapes whose
+// discovery may be reused within one bulk after reusableNumscriptDiscovery has
+// proved that they do not observe the evolving batch state.
+type staticNumscriptDiscoveryKey struct {
+	ledger string
+	script string
+	force  bool
+}
+
+// reusableNumscriptDiscovery is deliberately stricter than InputsHash == nil.
+// A bounded source is a state read even when its current balance does not affect
+// dependency resolution (and therefore contributes no hash); reusing its first
+// execution effects could make later orders observe phantom balance changes.
+// Requiring both read sets to be empty proves that neither dependency discovery
+// nor the best-effort effect execution can depend on the intra-bulk state.
+func reusableNumscriptDiscovery(discovered *numscript.DiscoveryResult) bool {
+	return discovered != nil &&
+		len(discovered.ReadVolumes) == 0 &&
+		len(discovered.ReadMetadata) == 0
 }
 
 // requestToOrder converts a single Request into its ledger- or system-scoped

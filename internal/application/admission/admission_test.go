@@ -31,7 +31,7 @@ import (
 const testLedgerName = "test-ledger"
 
 // createTestStore creates a test store with a registered ledger.
-func createTestStore(t *testing.T) *dal.Store {
+func createTestStore(t testing.TB) *dal.Store {
 	t.Helper()
 	tmpDir := t.TempDir()
 	ctx := logging.TestingContext()
@@ -62,7 +62,7 @@ func createTestStore(t *testing.T) *dal.Store {
 // createTestAdmission creates an Admission instance for testing.
 // It returns both the Admission and the Attributes so tests can set up
 // transaction state directly in Pebble.
-func createTestAdmission(t *testing.T, store *dal.Store) (*Admission, *attributes.Attributes) {
+func createTestAdmission(t testing.TB, store *dal.Store) (*Admission, *attributes.Attributes) {
 	t.Helper()
 
 	ctx := logging.TestingContext()

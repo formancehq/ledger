@@ -7,10 +7,38 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestReusableNumscriptDiscovery(t *testing.T) {
+	t.Parallel()
+
+	static := &numscript.DiscoveryResult{}
+	require.True(t, reusableNumscriptDiscovery(static))
+
+	boundedRead := &numscript.DiscoveryResult{
+		ReadVolumes: map[domain.VolumeKey]struct{}{
+			domain.NewVolumeKey(testLedgerName, "wallet", "USD/2", ""): {},
+		},
+	}
+	require.False(t, reusableNumscriptDiscovery(boundedRead),
+		"a bounded source reads state even when its resolution hash is empty")
+
+	metadataRead := &numscript.DiscoveryResult{
+		ReadMetadata: map[domain.MetadataKey]struct{}{
+			{
+				AccountKey: domain.AccountKey{LedgerName: testLedgerName, Account: "config"},
+				Key:        "destination",
+			}: {},
+		},
+	}
+	require.False(t, reusableNumscriptDiscovery(metadataRead))
+	require.False(t, reusableNumscriptDiscovery(nil))
+}
 
 // scriptOrder builds a ledger-scoped inline-script CreateTransaction order.
 func scriptOrder(ledger, plain string) *raftcmdpb.Order {
@@ -30,6 +58,13 @@ func scriptOrder(ledger, plain string) *raftcmdpb.Order {
 			},
 		},
 	}
+}
+
+func scriptOrderWithVars(ledger, plain string, vars map[string]string) *raftcmdpb.Order {
+	order := scriptOrder(ledger, plain)
+	createTxOf(order).GetScript().Vars = vars
+
+	return order
 }
 
 func createTxOf(order *raftcmdpb.Order) *raftcmdpb.CreateTransactionOrder {
@@ -120,14 +155,197 @@ func writeVolume(t *testing.T, admission *Admission, ledger, account, asset stri
 	require.NoError(t, batch.Commit())
 }
 
-func resolveHashFor(t *testing.T, admission *Admission, overlay *bulkOverlay, orders []*raftcmdpb.Order, idx int) []byte {
+func resolveOrders(t *testing.T, admission *Admission, overlay *bulkOverlay, orders []*raftcmdpb.Order) []*plan.Coverage {
 	t.Helper()
 
 	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), orders, overlay)
 	require.NoError(t, err)
 	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(context.Background(), orders, overlay, needs, perOrder, false))
 
+	return perOrder
+}
+
+func resolveHashFor(t *testing.T, admission *Admission, overlay *bulkOverlay, orders []*raftcmdpb.Order, idx int) []byte {
+	t.Helper()
+
+	resolveOrders(t, admission, overlay, orders)
+
 	return orders[idx].GetTechnical().GetInputsResolutionHash()
+}
+
+// TestResolveScripts_ReusedStaticEffectsAccumulate pins the optimized path:
+// reusing dependency discovery must not reuse the effect only once. Every
+// occurrence still contributes its own delta to the intra-batch overlay, so a
+// later state-reading script observes the sum the sequential FSM will apply.
+func TestResolveScripts_ReusedStaticEffectsAccumulate(t *testing.T) {
+	t.Parallel()
+
+	const deposit = `send [USD/2 100] (source = @world destination = @memo:source)`
+	dependent := `
+vars {
+  monetary $all = balance(@memo:source, USD/2)
+}
+send $all (source = @memo:source destination = @memo:destination)
+`
+
+	storeBatch := createTestStore(t)
+	admissionBatch, _ := createTestAdmission(t, storeBatch)
+	batch := []*raftcmdpb.Order{
+		scriptOrder(testLedgerName, deposit),
+		scriptOrder(testLedgerName, deposit), // reuses the first discovery
+		scriptOrder(testLedgerName, dependent),
+	}
+	perOrder := resolveOrders(t, admissionBatch, newBulkOverlay(), batch)
+	batchHash := batch[2].GetTechnical().GetInputsResolutionHash()
+	require.NotEmpty(t, batchHash)
+
+	// Both the fully-discovered first occurrence and the memo-hit second
+	// occurrence must declare their own FSM read horizon. The aggregate preload
+	// alone is insufficient: coverage_bits are computed from these per-order
+	// sets and gate every hot-path cache read.
+	for orderIdx := range 2 {
+		for _, account := range []string{"world", "memo:source"} {
+			key := domain.NewVolumeKey(testLedgerName, account, "USD/2", "")
+			require.Truef(t, perOrder[orderIdx].Has(dal.SubAttrVolume, key.Bytes()),
+				"order %d must cover volume %s", orderIdx, account)
+		}
+	}
+
+	// Reference: the dependent script resolved against the state the FSM sees
+	// after applying both deposits: 200, not one cached effect of 100.
+	storeRef := createTestStore(t)
+	admissionRef, _ := createTestAdmission(t, storeRef)
+	writeVolume(t, admissionRef, testLedgerName, "memo:source", "USD/2", 200, 0)
+	refHash := resolveHashFor(t, admissionRef, newBulkOverlay(), []*raftcmdpb.Order{
+		scriptOrder(testLedgerName, dependent),
+	}, 0)
+	require.Equal(t, refHash, batchHash,
+		"every reused occurrence must merge its effect into the later balance read")
+
+	// Sanity: merging the reused result only once would expose 100 and produce a
+	// different inputs-resolution hash.
+	storeOnce := createTestStore(t)
+	admissionOnce, _ := createTestAdmission(t, storeOnce)
+	writeVolume(t, admissionOnce, testLedgerName, "memo:source", "USD/2", 100, 0)
+	onceHash := resolveHashFor(t, admissionOnce, newBulkOverlay(), []*raftcmdpb.Order{
+		scriptOrder(testLedgerName, dependent),
+	}, 0)
+	require.NotEqual(t, onceHash, batchHash)
+}
+
+// TestResolveScripts_BoundedSourceKeepsFullDiscoveryPath pins a no-reuse path.
+// The first order leaves only 50 on a bounded source. Rediscovering the
+// identical second order against that state produces no best-effort effect
+// (insufficient funds is authoritatively decided later by the FSM), so a third
+// balance-reading order must still observe 50. Reusing the first successful
+// discovery would incorrectly fold a second -100 effect.
+func TestResolveScripts_BoundedSourceKeepsFullDiscoveryPath(t *testing.T) {
+	t.Parallel()
+
+	const bounded = `send [USD/2 100] (source = @bounded:source destination = @bounded:destination)`
+	dependent := `
+vars {
+  monetary $all = balance(@bounded:source, USD/2)
+}
+send $all (source = @bounded:source destination = @bounded:remainder)
+`
+
+	storeBatch := createTestStore(t)
+	admissionBatch, _ := createTestAdmission(t, storeBatch)
+	writeVolume(t, admissionBatch, testLedgerName, "bounded:source", "USD/2", 150, 0)
+	batchHash := resolveHashFor(t, admissionBatch, newBulkOverlay(), []*raftcmdpb.Order{
+		scriptOrder(testLedgerName, bounded),
+		scriptOrder(testLedgerName, bounded),
+		scriptOrder(testLedgerName, dependent),
+	}, 2)
+	require.NotEmpty(t, batchHash)
+
+	// Reference: only the first fixed draw contributes a predicted effect. The
+	// second one cannot execute against the remaining 50 during best-effort
+	// admission evaluation, so the dependent order resolves exactly as if the
+	// store already held 50.
+	storeRef := createTestStore(t)
+	admissionRef, _ := createTestAdmission(t, storeRef)
+	writeVolume(t, admissionRef, testLedgerName, "bounded:source", "USD/2", 50, 0)
+	refHash := resolveHashFor(t, admissionRef, newBulkOverlay(), []*raftcmdpb.Order{
+		scriptOrder(testLedgerName, dependent),
+	}, 0)
+	require.Equal(t, refHash, batchHash,
+		"a bounded source must be rediscovered against the effects of earlier orders")
+}
+
+// TestResolveScripts_MetadataReadKeepsFullDiscoveryPath pins that identical
+// script text is rediscovered after an intervening metadata write. The second
+// occurrence must resolve the new destination rather than reuse the first one.
+func TestResolveScripts_MetadataReadKeepsFullDiscoveryPath(t *testing.T) {
+	t.Parallel()
+
+	const metadataDependent = `
+vars {
+  account $dst = meta(@metadata:config, "destination")
+}
+send [USD/2 1] (source = @world destination = $dst)
+`
+
+	store := createTestStore(t)
+	admission, _ := createTestAdmission(t, store)
+	writeAccountMetadata(t, admission, testLedgerName, "metadata:config", "destination",
+		commonpb.NewStringValue("metadata:first"))
+
+	batch := []*raftcmdpb.Order{
+		scriptOrder(testLedgerName, metadataDependent),
+		addAccountMetaOrder(testLedgerName, "metadata:config", "destination", "metadata:second"),
+		scriptOrder(testLedgerName, metadataDependent),
+	}
+	overlay := newBulkOverlay()
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch, overlay)
+	require.NoError(t, err)
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(
+		context.Background(), batch, overlay, needs, perOrder, false,
+	))
+
+	first := domain.NewVolumeKey(testLedgerName, "metadata:first", "USD/2", "")
+	second := domain.NewVolumeKey(testLedgerName, "metadata:second", "USD/2", "")
+	require.True(t, needs.Has(dal.SubAttrVolume, first.Bytes()))
+	require.True(t, needs.Has(dal.SubAttrVolume, second.Bytes()),
+		"the repeated script must rediscover the metadata value written between occurrences")
+}
+
+// TestResolveScripts_ExternalVariablesKeepFullDiscoveryPath pins that the memo
+// never crosses variable bindings. Identical source text with two destinations
+// must discover and preload both resolved volume keys.
+func TestResolveScripts_ExternalVariablesKeepFullDiscoveryPath(t *testing.T) {
+	t.Parallel()
+
+	const variableDependent = `
+vars {
+  account $destination
+}
+send [USD/2 1] (source = @world destination = $destination)
+`
+
+	batch := []*raftcmdpb.Order{
+		scriptOrderWithVars(testLedgerName, variableDependent, map[string]string{
+			"destination": "variables:first",
+		}),
+		scriptOrderWithVars(testLedgerName, variableDependent, map[string]string{
+			"destination": "variables:second",
+		}),
+	}
+	store := createTestStore(t)
+	admission, _ := createTestAdmission(t, store)
+	overlay := newBulkOverlay()
+	needs, perOrder, err := admission.extractPreloadNeeds(context.Background(), batch, overlay)
+	require.NoError(t, err)
+	require.NoError(t, admission.resolveScriptsAndEnrichNeeds(
+		context.Background(), batch, overlay, needs, perOrder, false,
+	))
+
+	first := domain.NewVolumeKey(testLedgerName, "variables:first", "USD/2", "")
+	second := domain.NewVolumeKey(testLedgerName, "variables:second", "USD/2", "")
+	require.True(t, needs.Has(dal.SubAttrVolume, first.Bytes()))
+	require.True(t, needs.Has(dal.SubAttrVolume, second.Bytes()),
+		"different variable bindings must retain their own discovery result")
 }
 
 // TestResolveScripts_IntraBatchBalanceDependency pins EN-1406 P1-1: within one

@@ -11,6 +11,7 @@ The admission pipeline (`internal/application/admission`) is the gateway every w
 | [validation.md](validation.md) | Structural validation (admission, fast UX feedback) vs behavioural validation (FSM, audit-bound). Shared sentinels. |
 | [idempotency.md](idempotency.md) | Idempotency key mechanism, hash-based conflict detection, and TTL eviction. |
 | [admission-cache-horizon.md](admission-cache-horizon.md) | Rejecting proposals when the predicted apply-time generation is ≥ 2 ahead of the FSM's current generation. |
+| [bulk-performance.md](bulk-performance.md) | Request-local Numscript discovery memoization, safety boundaries, and benchmark results. |
 
 ## Related
 
