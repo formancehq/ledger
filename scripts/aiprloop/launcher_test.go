@@ -29,10 +29,10 @@ func TestLauncherUsesUniqueWorktreesImmutableBaseAndKeepTriage(t *testing.T) {
 
 	fixture := newLauncherFixture(t)
 	firstCapture := filepath.Join(fixture.root, "first-args")
-	firstOutput, firstErr := runLauncher(t, fixture, firstCapture, "KEEP")
+	firstOutput, firstErr := runLauncher(t, fixture, firstCapture, triageResult{decision: "KEEP"})
 	require.NoError(t, firstErr, firstOutput)
 	secondCapture := filepath.Join(fixture.root, "second-args")
-	secondOutput, secondErr := runLauncher(t, fixture, secondCapture, "KEEP")
+	secondOutput, secondErr := runLauncher(t, fixture, secondCapture, triageResult{decision: "KEEP"})
 	require.NoError(t, secondErr, secondOutput)
 
 	firstWorktree := worktreeFromOutput(t, firstOutput)
@@ -50,7 +50,7 @@ func TestLauncherStopsBeforeReviewForQuestionAndReject(t *testing.T) {
 		t.Run(decision, func(t *testing.T) {
 			fixture := newLauncherFixture(t)
 			capture := filepath.Join(fixture.root, "review-args")
-			output, err := runLauncher(t, fixture, capture, decision)
+			output, err := runLauncher(t, fixture, capture, triageResult{decision: decision})
 			require.Error(t, err, output)
 			require.NoFileExists(t, capture, "technical review must not run")
 			if decision == "QUESTION" {
@@ -58,6 +58,28 @@ func TestLauncherStopsBeforeReviewForQuestionAndReject(t *testing.T) {
 			} else {
 				require.Contains(t, output, "AI_PR_LOOP_RESULT: LEGITIMACY_REJECTED")
 			}
+		})
+	}
+}
+
+func TestLauncherRefusesTriageResultForAnotherTarget(t *testing.T) {
+	for _, moved := range []string{"head", "base"} {
+		t.Run(moved, func(t *testing.T) {
+			fixture := newLauncherFixture(t)
+			// A base-pinned triage tool that ignores the launcher-provided
+			// expected SHAs can answer for a PR state the launcher never
+			// fetched.
+			triage := triageResult{decision: "KEEP"}
+			if moved == "head" {
+				triage.headSHA = fixture.baseSHA
+			} else {
+				triage.baseSHA = fixture.headSHA
+			}
+			capture := filepath.Join(fixture.root, "review-args")
+			output, err := runLauncher(t, fixture, capture, triage)
+			require.Error(t, err, output)
+			require.NoFileExists(t, capture, "technical review must not run")
+			require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (triage target mismatch)")
 		})
 	}
 }
@@ -103,7 +125,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 [[ -n "$output" ]]
-printf '{"decision":"%s"}\n' "$TEST_TRIAGE_DECISION" > "$output"
+printf '{"decision":"%s","base_sha":"%s","head":"%s"}\n' \
+    "$TEST_TRIAGE_DECISION" "$TEST_TRIAGE_BASE_SHA" "$TEST_TRIAGE_HEAD_SHA" > "$output"
 `)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "base.txt"), []byte("base\n"), 0o644))
 	runGit(t, seed, "add", ".")
@@ -141,11 +164,26 @@ func launcherPath(t *testing.T) string {
 	t.Helper()
 	path, err := filepath.Abs(filepath.Join("..", "ai-pr-loop"))
 	require.NoError(t, err)
+
 	return path
 }
 
-func runLauncher(t *testing.T, fixture launcherFixture, capturePath, decision string) (string, error) {
+// triageResult is the result the fake triage tool reports. Empty SHAs mean the
+// tool answers for the exact target the launcher verified.
+type triageResult struct {
+	decision string
+	baseSHA  string
+	headSHA  string
+}
+
+func runLauncher(t *testing.T, fixture launcherFixture, capturePath string, triage triageResult) (string, error) {
 	t.Helper()
+	if triage.baseSHA == "" {
+		triage.baseSHA = fixture.baseSHA
+	}
+	if triage.headSHA == "" {
+		triage.headSHA = fixture.headSHA
+	}
 	command := exec.Command("bash", filepath.Join(fixture.checkout, "scripts", "ai-pr-loop"), "123", "--keep-worktree")
 	command.Dir = fixture.checkout
 	command.Env = append(os.Environ(),
@@ -153,9 +191,12 @@ func runLauncher(t *testing.T, fixture launcherFixture, capturePath, decision st
 		"TEST_BASE_SHA="+fixture.baseSHA,
 		"TEST_HEAD_SHA="+fixture.headSHA,
 		"TEST_CAPTURE_FILE="+capturePath,
-		"TEST_TRIAGE_DECISION="+decision,
+		"TEST_TRIAGE_DECISION="+triage.decision,
+		"TEST_TRIAGE_BASE_SHA="+triage.baseSHA,
+		"TEST_TRIAGE_HEAD_SHA="+triage.headSHA,
 	)
 	output, err := command.CombinedOutput()
+
 	return string(output), err
 }
 
@@ -167,6 +208,7 @@ func worktreeFromOutput(t *testing.T, output string) string {
 		}
 	}
 	t.Fatalf("worktree path not found in output:\n%s", output)
+
 	return ""
 }
 
@@ -181,6 +223,7 @@ func baseArgument(t *testing.T, capturePath string) string {
 		}
 	}
 	t.Fatalf("--base not found in captured arguments: %q", content)
+
 	return ""
 }
 
@@ -200,5 +243,6 @@ func runGitOutput(t *testing.T, directory string, arguments ...string) string {
 	command.Dir = directory
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, fmt.Sprintf("git %s:\n%s", strings.Join(arguments, " "), output))
+
 	return strings.TrimSpace(string(output))
 }

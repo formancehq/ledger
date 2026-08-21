@@ -161,6 +161,16 @@ if [[ $triage_status -ne 0 ]]; then
     echo "AI_PR_LOOP_RESULT: ERROR (triage exit $triage_status)"
     exit "$triage_status"
 fi
+# The trusted base may predate the launcher-provided SHA binding, so the
+# launcher must itself confirm that the triaged target is the state it fetched
+# and is about to review.
+if ! jq -e --arg base "$base_sha" --arg head "$head_sha" \
+    '.base_sha == $base and .head == $head' "$triage_result" >/dev/null; then
+    echo "ai-pr-loop: triage result does not describe the verified PR target" >&2
+    printf 'ai-pr-loop: expected base %s head %s\n' "$base_sha" "$head_sha" >&2
+    echo "AI_PR_LOOP_RESULT: ERROR (triage target mismatch)"
+    exit 1
+fi
 triage_decision=$(jq -r '.decision' "$triage_result")
 printf '==> ai-pr-loop: legitimacy triage %s\n' "$triage_decision"
 printf '    triage result: %s\n' "$triage_result"

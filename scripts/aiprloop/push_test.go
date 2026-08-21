@@ -115,6 +115,24 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 	}
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 0\n")
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-fix-claude"), "#!/usr/bin/env bash\nexit 0\n")
+	writeExecutable(t, filepath.Join(seed, "scripts", "ai-pr-triage"), `#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		--output)
+			output=$2
+			shift 2
+			;;
+		*)
+			shift
+			;;
+	esac
+done
+[[ -n "$output" ]]
+printf '{"decision":"KEEP","base_sha":"%s","head":"%s"}\n' \
+	"$AI_PR_TRIAGE_EXPECT_BASE_SHA" "$AI_PR_TRIAGE_EXPECT_HEAD_SHA" > "$output"
+`)
 	writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), `#!/usr/bin/env bash
 set -euo pipefail
 review_cmd=""

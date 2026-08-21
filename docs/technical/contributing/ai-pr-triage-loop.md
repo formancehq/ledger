@@ -19,3 +19,5 @@ The triage result is persisted in the launcher run directory and its path is pri
 The PR head may not choose or modify the triage policy that authorizes its own review. `ai-pr-loop` therefore uses a base-pinned trusted triage adapter for every invocation, not only guarded publish mode.
 
 `ai-pr-triage` accepts optional launcher-provided expected base/head SHAs. It still resolves current GitHub metadata itself, but refuses to run if those SHAs no longer match. This turns a concurrent PR update into a safe restart instead of triaging one state and reviewing another.
+
+The base-pinned triage adapter may predate that binding, so `ai-pr-loop` does not rely on the tool enforcing it: before accepting any decision, the launcher requires the result's `base_sha` and `head` to equal the SHAs it fetched and verified. A result describing another PR state is a target mismatch and stops the run.
