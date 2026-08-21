@@ -122,6 +122,7 @@ func requestScopeCases() map[string]scopeCase {
 		"delete_query_checkpoint":          {&servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{}}, ScopeClusterWrite},
 		"set_query_checkpoint_schedule":    {&servicepb.Request{Type: &servicepb.Request_SetQueryCheckpointSchedule{}}, ScopeClusterWrite},
 		"delete_query_checkpoint_schedule": {&servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpointSchedule{}}, ScopeClusterWrite},
+		"set_cluster_policy":               {&servicepb.Request{Type: &servicepb.Request_SetClusterPolicy{}}, ScopeClusterWrite},
 
 		// Metadata & chart of accounts — HTTP requireMetadataWrite group
 		// (handler.go:188-200).
