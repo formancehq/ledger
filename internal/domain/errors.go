@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
@@ -176,62 +177,63 @@ const (
 	// lives in internal/query — it is a query-only outcome, not FSM-emitted —
 	// but the reason string and its KindForReason classification are the
 	// shared wire contract and stay here.
-	ErrReasonAggregateOverflow             = "AGGREGATE_OVERFLOW"
-	ErrReasonBalanceNotFound               = "BALANCE_NOT_FOUND"
-	ErrReasonBalanceNotPreloaded           = "BALANCE_NOT_PRELOADED"
-	ErrReasonNumscriptParseError           = "NUMSCRIPT_PARSE_ERROR"
-	ErrReasonValidation                    = "VALIDATION"
-	ErrReasonAuditDisabled                 = "AUDIT_DISABLED"
-	ErrReasonSinkAlreadyExists             = "SINK_ALREADY_EXISTS"
-	ErrReasonSinkNotFound                  = "SINK_NOT_FOUND"
-	ErrReasonSinkBatchSizeTooLarge         = "SINK_BATCH_SIZE_TOO_LARGE"
-	ErrReasonNoChapterOpen                 = "NO_CHAPTER_OPEN"
-	ErrReasonChapterNotFound               = "CHAPTER_NOT_FOUND"
-	ErrReasonChapterNotClosing             = "CHAPTER_NOT_CLOSING"
-	ErrReasonChapterNotClosed              = "CHAPTER_NOT_CLOSED"
-	ErrReasonChapterNotArchiving           = "CHAPTER_NOT_ARCHIVING"
-	ErrReasonMetadataNotFound              = "METADATA_NOT_FOUND"
-	ErrReasonInvalidReceipt                = "INVALID_RECEIPT"
-	ErrReasonMaintenanceMode               = "MAINTENANCE_MODE"
-	ErrReasonStaleProposal                 = "STALE_PROPOSAL"
-	ErrReasonInvalidCronExpression         = "INVALID_CRON_EXPRESSION"
-	ErrReasonLedgerInMirrorMode            = "LEDGER_IN_MIRROR_MODE"
-	ErrReasonLedgerNotInMirrorMode         = "LEDGER_NOT_IN_MIRROR_MODE"
-	ErrReasonPreparedQueryAlreadyExists    = "PREPARED_QUERY_ALREADY_EXISTS"
-	ErrReasonPreparedQueryNotFound         = "PREPARED_QUERY_NOT_FOUND"
-	ErrReasonIndexNotFound                 = "INDEX_NOT_FOUND"
-	ErrReasonIndexBuilding                 = "INDEX_BUILDING"
-	ErrReasonReadIndexNotCaughtUp          = "READ_INDEX_NOT_CAUGHT_UP"
-	ErrReasonIndexInconsistent             = "INDEX_INCONSISTENT"
-	ErrReasonMetadataFieldNotInSchema      = "METADATA_FIELD_NOT_IN_SCHEMA"
-	ErrReasonNumscriptNotFound             = "NUMSCRIPT_NOT_FOUND"
-	ErrReasonNumscriptVersionAlreadyExists = "NUMSCRIPT_VERSION_ALREADY_EXISTS"
-	ErrReasonNumscriptInvalidVersion       = "NUMSCRIPT_INVALID_VERSION"
-	ErrReasonAccountNotMatchingType        = "ACCOUNT_NOT_MATCHING_TYPE"
-	ErrReasonAccountTypeNotFound           = "ACCOUNT_TYPE_NOT_FOUND"
-	ErrReasonAccountTypeAlreadyExists      = "ACCOUNT_TYPE_ALREADY_EXISTS"
-	ErrReasonInvalidPattern                = "INVALID_PATTERN"
-	ErrReasonAccountTypeHasAccounts        = "ACCOUNT_TYPE_HAS_ACCOUNTS"
-	ErrReasonAccountTypeConflict           = "ACCOUNT_TYPE_CONFLICT"
-	ErrReasonColdStorageDisabled           = "COLD_STORAGE_DISABLED"
-	ErrReasonTransientAccountNonZero       = "TRANSIENT_ACCOUNT_NON_ZERO"
-	ErrReasonFilterCompilation             = "FILTER_COMPILATION_ERROR"
-	ErrReasonInvalidOrderType              = "INVALID_ORDER_TYPE"
-	ErrReasonInvalidApplyType              = "INVALID_APPLY_TYPE"
-	ErrReasonInvalidExecutionPlan          = "INVALID_EXECUTION_PLAN"
-	ErrReasonExecutionPlanTooLarge         = "EXECUTION_PLAN_TOO_LARGE"
-	ErrReasonCoverageMiss                  = "COVERAGE_MISS"
-	ErrReasonIdempotencyCheckFailed        = "IDEMPOTENCY_CHECK_FAILED"
-	ErrReasonStorageOperation              = "STORAGE_OPERATION_FAILED"
-	ErrReasonTransactionStateInconsistent  = "TRANSACTION_STATE_INCONSISTENT"
-	ErrReasonCheckpointIDRequired          = "CHECKPOINT_ID_REQUIRED"
-	ErrReasonCheckpointNotReady            = "CHECKPOINT_NOT_READY"
-	ErrReasonNumscriptRuntime              = "NUMSCRIPT_RUNTIME"
-	ErrReasonVolumeNotMaterialized         = "VOLUME_NOT_MATERIALIZED"
-	ErrReasonStaleInputsResolution         = "STALE_INPUTS_RESOLUTION"
-	ErrReasonPreloadUnavailable            = "PRELOAD_UNAVAILABLE"
-	ErrReasonMirrorV2LogIDGap              = "MIRROR_V2_LOG_ID_GAP"
-	ErrReasonMirrorV2LogIDInvalid          = "MIRROR_V2_LOG_ID_INVALID"
+	ErrReasonAggregateOverflow              = "AGGREGATE_OVERFLOW"
+	ErrReasonBalanceNotFound                = "BALANCE_NOT_FOUND"
+	ErrReasonBalanceNotPreloaded            = "BALANCE_NOT_PRELOADED"
+	ErrReasonNumscriptParseError            = "NUMSCRIPT_PARSE_ERROR"
+	ErrReasonValidation                     = "VALIDATION"
+	ErrReasonAuditDisabled                  = "AUDIT_DISABLED"
+	ErrReasonSinkAlreadyExists              = "SINK_ALREADY_EXISTS"
+	ErrReasonSinkNotFound                   = "SINK_NOT_FOUND"
+	ErrReasonSinkBatchSizeTooLarge          = "SINK_BATCH_SIZE_TOO_LARGE"
+	ErrReasonNoChapterOpen                  = "NO_CHAPTER_OPEN"
+	ErrReasonChapterNotFound                = "CHAPTER_NOT_FOUND"
+	ErrReasonChapterNotClosing              = "CHAPTER_NOT_CLOSING"
+	ErrReasonChapterNotClosed               = "CHAPTER_NOT_CLOSED"
+	ErrReasonChapterNotArchiving            = "CHAPTER_NOT_ARCHIVING"
+	ErrReasonChapterArchiveIdentityMismatch = "CHAPTER_ARCHIVE_IDENTITY_MISMATCH"
+	ErrReasonMetadataNotFound               = "METADATA_NOT_FOUND"
+	ErrReasonInvalidReceipt                 = "INVALID_RECEIPT"
+	ErrReasonMaintenanceMode                = "MAINTENANCE_MODE"
+	ErrReasonStaleProposal                  = "STALE_PROPOSAL"
+	ErrReasonInvalidCronExpression          = "INVALID_CRON_EXPRESSION"
+	ErrReasonLedgerInMirrorMode             = "LEDGER_IN_MIRROR_MODE"
+	ErrReasonLedgerNotInMirrorMode          = "LEDGER_NOT_IN_MIRROR_MODE"
+	ErrReasonPreparedQueryAlreadyExists     = "PREPARED_QUERY_ALREADY_EXISTS"
+	ErrReasonPreparedQueryNotFound          = "PREPARED_QUERY_NOT_FOUND"
+	ErrReasonIndexNotFound                  = "INDEX_NOT_FOUND"
+	ErrReasonIndexBuilding                  = "INDEX_BUILDING"
+	ErrReasonReadIndexNotCaughtUp           = "READ_INDEX_NOT_CAUGHT_UP"
+	ErrReasonIndexInconsistent              = "INDEX_INCONSISTENT"
+	ErrReasonMetadataFieldNotInSchema       = "METADATA_FIELD_NOT_IN_SCHEMA"
+	ErrReasonNumscriptNotFound              = "NUMSCRIPT_NOT_FOUND"
+	ErrReasonNumscriptVersionAlreadyExists  = "NUMSCRIPT_VERSION_ALREADY_EXISTS"
+	ErrReasonNumscriptInvalidVersion        = "NUMSCRIPT_INVALID_VERSION"
+	ErrReasonAccountNotMatchingType         = "ACCOUNT_NOT_MATCHING_TYPE"
+	ErrReasonAccountTypeNotFound            = "ACCOUNT_TYPE_NOT_FOUND"
+	ErrReasonAccountTypeAlreadyExists       = "ACCOUNT_TYPE_ALREADY_EXISTS"
+	ErrReasonInvalidPattern                 = "INVALID_PATTERN"
+	ErrReasonAccountTypeHasAccounts         = "ACCOUNT_TYPE_HAS_ACCOUNTS"
+	ErrReasonAccountTypeConflict            = "ACCOUNT_TYPE_CONFLICT"
+	ErrReasonColdStorageDisabled            = "COLD_STORAGE_DISABLED"
+	ErrReasonTransientAccountNonZero        = "TRANSIENT_ACCOUNT_NON_ZERO"
+	ErrReasonFilterCompilation              = "FILTER_COMPILATION_ERROR"
+	ErrReasonInvalidOrderType               = "INVALID_ORDER_TYPE"
+	ErrReasonInvalidApplyType               = "INVALID_APPLY_TYPE"
+	ErrReasonInvalidExecutionPlan           = "INVALID_EXECUTION_PLAN"
+	ErrReasonExecutionPlanTooLarge          = "EXECUTION_PLAN_TOO_LARGE"
+	ErrReasonCoverageMiss                   = "COVERAGE_MISS"
+	ErrReasonIdempotencyCheckFailed         = "IDEMPOTENCY_CHECK_FAILED"
+	ErrReasonStorageOperation               = "STORAGE_OPERATION_FAILED"
+	ErrReasonTransactionStateInconsistent   = "TRANSACTION_STATE_INCONSISTENT"
+	ErrReasonCheckpointIDRequired           = "CHECKPOINT_ID_REQUIRED"
+	ErrReasonCheckpointNotReady             = "CHECKPOINT_NOT_READY"
+	ErrReasonNumscriptRuntime               = "NUMSCRIPT_RUNTIME"
+	ErrReasonVolumeNotMaterialized          = "VOLUME_NOT_MATERIALIZED"
+	ErrReasonStaleInputsResolution          = "STALE_INPUTS_RESOLUTION"
+	ErrReasonPreloadUnavailable             = "PRELOAD_UNAVAILABLE"
+	ErrReasonMirrorV2LogIDGap               = "MIRROR_V2_LOG_ID_GAP"
+	ErrReasonMirrorV2LogIDInvalid           = "MIRROR_V2_LOG_ID_INVALID"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -839,6 +841,39 @@ func (e *ErrChapterNotClosed) Error() string {
 func (*ErrChapterNotClosed) Reason() string { return ErrReasonChapterNotClosed }
 func (e *ErrChapterNotClosed) Metadata() map[string]string {
 	return map[string]string{"chapterId": strconv.FormatUint(e.ChapterID, 10)}
+}
+
+// ErrChapterArchiveIdentityMismatch — the confirm names a chapter incarnation
+// that is not the one in history. A chapter's sealing hash commits it to its
+// content, so the archiver carries the hash it built the archive for and the
+// handler compares it immediately before the purge. A mismatch means the archive
+// the purge would trade hot history for belongs to a timeline this store no
+// longer has: restoring an older backup over a surviving cold-storage namespace
+// can reuse a chapter id with the same log and audit ranges but different
+// operations, and the ranges alone cannot tell the two apart.
+type ErrChapterArchiveIdentityMismatch struct {
+	ChapterID uint64
+	// Expected is the sealing hash of the chapter now in history; Got is the one
+	// the confirm carried.
+	Expected []byte
+	Got      []byte
+}
+
+func (e *ErrChapterArchiveIdentityMismatch) Error() string {
+	return fmt.Sprintf("chapter %d has sealing hash %x, but the archive confirmation carries %x",
+		e.ChapterID, e.Expected, e.Got)
+}
+
+func (*ErrChapterArchiveIdentityMismatch) Reason() string {
+	return ErrReasonChapterArchiveIdentityMismatch
+}
+
+func (e *ErrChapterArchiveIdentityMismatch) Metadata() map[string]string {
+	return map[string]string{
+		"chapterId":           strconv.FormatUint(e.ChapterID, 10),
+		"expectedSealingHash": hex.EncodeToString(e.Expected),
+		"gotSealingHash":      hex.EncodeToString(e.Got),
+	}
 }
 
 // ErrChapterNotArchiving — attempting to confirm archive of a chapter not in ARCHIVING state.
