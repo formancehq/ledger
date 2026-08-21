@@ -61,23 +61,33 @@ func TestPushUsesBasePinnedReviewToolchain(t *testing.T) {
 	require.Contains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
 }
 
+func TestPushAcceptsNonExecutableBasePinnedScripts(t *testing.T) {
+	t.Parallel()
+
+	fixture := newPushFixture(t, pushFixtureOptions{trustedToolsNonExecutable: true})
+	output, exitCode := fixture.run(t)
+	require.Equal(t, 0, exitCode, output)
+	require.Contains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
+}
+
 func TestPushRefusesBaseWithoutTrustedValidator(t *testing.T) {
 	t.Parallel()
 
 	fixture := newPushFixture(t, pushFixtureOptions{omitTrustedValidator: true})
 	output, exitCode := fixture.run(t)
 	require.Equal(t, 1, exitCode, output)
-	require.Contains(t, output, "trusted base does not provide executable scripts/agent-check-pr")
+	require.Contains(t, output, "trusted base does not provide scripts/agent-check-pr")
 
 	remoteHead := runGitOutput(t, fixture.root, "--git-dir", fixture.remote, "rev-parse", "refs/heads/feature")
 	require.Equal(t, fixture.headSHA, remoteHead)
 }
 
 type pushFixtureOptions struct {
-	moveRemote            bool
-	moveLocalHead         bool
-	tamperTargetToolchain bool
-	omitTrustedValidator  bool
+	moveRemote                bool
+	moveLocalHead             bool
+	tamperTargetToolchain     bool
+	omitTrustedValidator      bool
+	trustedToolsNonExecutable bool
 }
 
 type pushFixture struct {
@@ -108,13 +118,17 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 	launcher, err := os.ReadFile(launcherPath(t))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-loop"), launcher, 0o755))
+	trustedToolMode := os.FileMode(0o755)
+	if options.trustedToolsNonExecutable {
+		trustedToolMode = 0o644
+	}
 	if !options.omitTrustedValidator {
 		validator, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "agent-check-pr"))
 		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "agent-check-pr"), validator, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "agent-check-pr"), validator, trustedToolMode))
 	}
-	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 0\n")
-	writeExecutable(t, filepath.Join(seed, "scripts", "ai-fix-claude"), "#!/usr/bin/env bash\nexit 0\n")
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-review-codex"), []byte("#!/usr/bin/env bash\nexit 0\n"), trustedToolMode))
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-fix-claude"), []byte("#!/usr/bin/env bash\nexit 0\n"), trustedToolMode))
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-triage"), []byte(`#!/usr/bin/env bash
 set -euo pipefail
 output=""

@@ -216,8 +216,16 @@ PR worktree as the recipe working directory. A PR therefore cannot replace a
 required recipe with a no-op. Script-backed gates are split the same way:
 Schemathesis and model-checker runners come from the trusted base, while their
 server build, OpenAPI input, and other reviewed sources come from the candidate
-worktree. The model driver/oracle is also base-pinned. The loop does not query
-or wait for GitHub Actions checks.
+worktree. When the candidate exposes historical balances, the trusted
+Schemathesis runner enables the projection on its fixture ledger and waits for
+its first readable manifest. Before a generated historical-volume GET, it also
+retries only the documented replica-local `HISTORY_BUILDING` and
+`HISTORY_BEHIND` states for a bounded interval; persistent lag and every other
+5xx still fail `not_a_server_error`. Its ephemeral server sets disk-write
+thresholds to 100%, so host occupancy cannot replace API conformance failures
+with environment-specific `WRITES_BLOCKED_DISK_FULL` responses. The model
+driver/oracle is also base-pinned. The loop does not query or wait for GitHub
+Actions checks.
 
 ## Claude Code fix adapter
 
