@@ -1120,7 +1120,11 @@ func Module() fx.Option {
 						go handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
 					case node.LeaderReadyEvent:
 						proposeClusterConfigIfNeeded(n, builder, store, cfg, logger)
-						proposeClusterPolicyIfNeeded(admission, store, cfg, logger)
+						// Dispatched off the observer thread: proposeClusterPolicyIfNeeded
+						// calls Admit, which waits on the leader-ready channel that node.go
+						// closes only AFTER this event handler returns. Running it inline
+						// would block the close and deadlock leadership readiness.
+						go proposeClusterPolicyIfNeeded(admission, store, cfg, logger)
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
@@ -1752,8 +1756,14 @@ func proposeClusterPolicyIfNeeded(admission ctrl.Admission, store *dal.Store, cf
 
 	logger.Infof("Proposing cluster policy revision %d on leadership acquisition", desired.GetRevision())
 
+	// Bounded timeout: this runs off the observer thread with no stop-derived
+	// context, so a leadership loss between the readiness gate closing and Admit
+	// returning would otherwise pin the goroutine.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	if _, err := admission.Admit(
-		internalauth.WithSystemActor(context.Background(), commands.ComponentClusterPolicy),
+		internalauth.WithSystemActor(ctx, commands.ComponentClusterPolicy),
 		servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_SetClusterPolicy{
 				SetClusterPolicy: &servicepb.SetClusterPolicyRequest{Policy: desired},
