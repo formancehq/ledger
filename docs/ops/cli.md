@@ -3751,6 +3751,15 @@ ledgerctl restore validate
 
 **Behavior:** Exits non-zero if any integrity error is found, so `restore validate && restore finalize` stops before finalizing a corrupt backup.
 
+Findings come in two kinds, and only one of them affects the exit status:
+
+| Line | Meaning | Counts toward the verdict |
+|------|---------|---------------------------|
+| `ERROR` | A divergence was found — the backup contradicts its own audit chain | Yes |
+| `WARNING` | A pass could not be completed, so part of the store was not verified | No |
+
+The distinction matters on **archived** clusters. Validation runs against the staged backup with no cold storage attached, and the baseline checkpoint is not part of a backup, so the signing-key expectation cannot be completed for keys registered before the archive boundary. A healthy backup of an archived cluster therefore always reports at least one `WARNING`. Those lines say what was *not* checked; they are not evidence of corruption, and the command still reports the backup valid.
+
 #### restore preview
 
 Display a summary of the staged backup data.

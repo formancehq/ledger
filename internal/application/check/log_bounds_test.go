@@ -898,6 +898,24 @@ func TestCheckStillJudgesBaselineLessArchivedStores(t *testing.T) {
 				require.Empty(t, signingErrors,
 					"no signing row was planted, so the compare must find nothing")
 
+				// Everything this healthy store reports must be a coverage gap
+				// rather than a divergence. The distinction is load-bearing off
+				// the end of this package: ValidateRestore forwards findings to
+				// `ledgerctl restore validate`, which counts divergences into its
+				// exit status. Since no cold reader is attached here — nor on
+				// either production caller — a divergence escaping this fixture
+				// means a valid backup is rejected.
+				for _, e := range errs {
+					require.True(t, IsCoverageGap(e.GetErrorType()),
+						"a healthy baseline-less archived store must report only "+
+							"incomplete coverage, never a divergence; got %s: %s",
+						e.GetErrorType(), e.GetMessage())
+				}
+
+				require.NotEmpty(t, errs,
+					"the signing expectation cannot be completed without a cold reader, "+
+						"so the run must SAY so rather than fall silent")
+
 				return
 			}
 

@@ -45,8 +45,14 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 	}
 
 	var (
-		spinner    = cmdutil.StartSpinner("Validating backup integrity...")
-		errorCount int
+		spinner = cmdutil.StartSpinner("Validating backup integrity...")
+		// errorCount drives the exit status and counts DIVERGENCES only.
+		// coverageGaps are reported to the operator but excluded from the
+		// verdict: the checker gets no cold reader on the restore path, so a
+		// healthy backup of an archived cluster always reports at least one
+		// pass it could not complete. Counting those rejected valid backups.
+		errorCount   int
+		coverageGaps int
 	)
 
 	for {
@@ -69,6 +75,14 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 					t.Progress.GetLogsChecked(), t.Progress.GetTotalLogs(), pct))
 			}
 		case *restorepb.ValidateRestoreEvent_Error:
+			if t.Error.GetCoverageGap() {
+				coverageGaps++
+
+				pterm.Printf("  %s %s\n", pterm.Yellow("WARNING"), t.Error.GetMessage())
+
+				continue
+			}
+
 			errorCount++
 
 			pterm.Printf("  %s %s\n", pterm.Red("ERROR"), t.Error.GetMessage())
@@ -81,6 +95,12 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 
 	if err := cmdutil.IntegrityResult("backup validation", errorCount); err != nil {
 		return err
+	}
+
+	if coverageGaps > 0 {
+		pterm.Success.Printfln("Backup is valid - no integrity errors found (%d verification gap(s) reported above)", coverageGaps)
+
+		return nil
 	}
 
 	pterm.Success.Println("Backup is valid - no integrity errors found")

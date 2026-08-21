@@ -102,6 +102,16 @@ message ValidateRestoreEvent {
 
 message ValidateRestoreError {
   string message = 1;
+  // True when the finding reports that part of the store could NOT be verified,
+  // rather than a divergence that was found. Set from
+  // check.IsCoverageGap over the underlying CheckStoreErrorType.
+  //
+  // A healthy backup of an archived cluster always produces at least one of
+  // these: the checker gets no cold reader on this path, so the pre-boundary
+  // signing expectation cannot be completed. Counting it as an integrity error
+  // made `restore validate` reject valid backups, so the verdict excludes this
+  // class while still reporting it to the operator.
+  bool coverage_gap = 2;
 }
 
 message ValidateRestoreProgress {

@@ -587,6 +587,7 @@ func NewValidateRestoreEventListReader(s []*ValidateRestoreEvent) ValidateRestor
 // Call Mutate() to obtain a mutable clone.
 type ValidateRestoreErrorReader interface {
 	GetMessage() string
+	GetCoverageGap() bool
 	Mutate() *ValidateRestoreError
 }
 
@@ -594,6 +595,10 @@ type validateRestoreErrorReadonly ValidateRestoreError
 
 func (r *validateRestoreErrorReadonly) GetMessage() string {
 	return (*ValidateRestoreError)(r).GetMessage()
+}
+
+func (r *validateRestoreErrorReadonly) GetCoverageGap() bool {
+	return (*ValidateRestoreError)(r).GetCoverageGap()
 }
 
 func (r *validateRestoreErrorReadonly) Mutate() *ValidateRestoreError {
