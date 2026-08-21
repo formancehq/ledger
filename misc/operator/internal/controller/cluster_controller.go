@@ -12,6 +12,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -591,17 +592,9 @@ func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
 		return err
 	}
 
-	// Validate hostPath / PVC mutual exclusion for each volume.
-	volumes := []struct {
-		name string
-		spec *ledgerv1alpha1.VolumeSpec
-	}{
-		{"persistence.wal", &ledger.Spec.Persistence.WAL},
-		{"persistence.data", &ledger.Spec.Persistence.Data},
-		{"persistence.coldCache", &ledger.Spec.Persistence.ColdCache},
-	}
-	for _, v := range volumes {
-		if err := validateVolumeSpec(v.name, v.spec); err != nil {
+	// Validate hostPath / PVC mutual exclusion and automatic expansion for each volume.
+	for _, volume := range persistenceVolumeDefinitions(ledger) {
+		if err := validateVolumeSpec(volume.Field, volume.Spec, volume.DefaultSize, volume.AutoExpansionAllowed); err != nil {
 			return err
 		}
 	}
@@ -673,19 +666,43 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 	return nil
 }
 
-// validateVolumeSpec checks that hostPath and PVC fields are mutually exclusive.
-func validateVolumeSpec(field string, spec *ledgerv1alpha1.VolumeSpec) error {
-	if spec.HostPath == nil {
+// validateVolumeSpec checks hostPath/PVC exclusivity and the opt-in automatic
+// expansion policy. Runtime validation complements the generated CRD rules so
+// Clusters constructed in-process receive the same guarantees.
+func validateVolumeSpec(field string, spec *ledgerv1alpha1.VolumeSpec, defaultSize string, autoExpansionAllowed bool) error {
+	if spec.HostPath != nil {
+		if spec.HostPath.Path == "" {
+			return fmt.Errorf("%s.hostPath.path must not be empty", field)
+		}
+		if spec.StorageClass != "" {
+			return fmt.Errorf("%s: storageClass and hostPath are mutually exclusive", field)
+		}
+		if spec.VolumeAttributesClassName != "" {
+			return fmt.Errorf("%s: volumeAttributesClassName and hostPath are mutually exclusive", field)
+		}
+		if spec.AutoExpansion != nil && spec.AutoExpansion.Enabled {
+			return fmt.Errorf("%s: autoExpansion and hostPath are mutually exclusive", field)
+		}
+	}
+
+	auto := spec.AutoExpansion
+	if auto == nil || !auto.Enabled {
 		return nil
 	}
-	if spec.HostPath.Path == "" {
-		return fmt.Errorf("%s.hostPath.path must not be empty", field)
+	if !autoExpansionAllowed {
+		return fmt.Errorf("%s: autoExpansion is supported only for wal and data volumes", field)
 	}
-	if spec.StorageClass != "" {
-		return fmt.Errorf("%s: storageClass and hostPath are mutually exclusive", field)
+
+	policy, err := resolveVolumeExpansionPolicy(auto)
+	if err != nil {
+		return fmt.Errorf("%s.autoExpansion: %w", field, err)
 	}
-	if spec.VolumeAttributesClassName != "" {
-		return fmt.Errorf("%s: volumeAttributesClassName and hostPath are mutually exclusive", field)
+	initialSize := spec.Size
+	if initialSize.IsZero() {
+		initialSize = resource.MustParse(defaultSize)
+	}
+	if policy.MaximumSize.Cmp(initialSize) <= 0 {
+		return fmt.Errorf("%s.autoExpansion.maximumSize must be greater than initial size %s", field, initialSize.String())
 	}
 
 	return nil

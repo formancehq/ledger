@@ -1130,9 +1130,16 @@ type VolumeSpec struct {
 	// +optional
 	AccessMode string `json:"accessMode,omitempty"`
 
-	// Size of the volume.
+	// Size is the initial and minimum requested capacity of the volume. Automatic
+	// expansion updates the live PVCs only and never rewrites this field or the
+	// StatefulSet VolumeClaimTemplates.
 	// +optional
 	Size resource.Quantity `json:"size,omitempty"`
+
+	// AutoExpansion configures opt-in automatic growth for PVC-backed WAL and
+	// data volumes. It is unsupported for hostPath and cold-cache volumes.
+	// +optional
+	AutoExpansion *VolumeAutoExpansionSpec `json:"autoExpansion,omitempty"`
 
 	// VolumeAttributesClassName is the name of the VolumeAttributesClass to use for the PVC.
 	// Requires the VolumeAttributesClass feature gate to be enabled (beta in K8s 1.31+).
@@ -1148,6 +1155,48 @@ type VolumeSpec struct {
 	// Mutually exclusive with storageClass, accessMode, and volumeAttributesClassName.
 	// +optional
 	HostPath *HostPathVolumeSpec `json:"hostPath,omitempty"`
+}
+
+// VolumeAutoExpansionSpec defines the policy used to grow a PVC before the
+// Ledger disk-full write gate is reached.
+//
+// +kubebuilder:validation:XValidation:rule="!self.enabled || has(self.maximumSize)",message="maximumSize is required when auto-expansion is enabled"
+// +kubebuilder:validation:XValidation:rule="!has(self.targetPercent) || !has(self.thresholdPercent) || self.targetPercent < self.thresholdPercent",message="targetPercent must be lower than thresholdPercent"
+type VolumeAutoExpansionSpec struct {
+	// Enabled opts this volume into automatic expansion. It defaults to false.
+	// +kubebuilder:default=false
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// ThresholdPercent is the utilization percentage that triggers expansion.
+	// +kubebuilder:default=70
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=99
+	// +optional
+	ThresholdPercent *int32 `json:"thresholdPercent,omitempty"`
+
+	// TargetPercent is the utilization percentage the new capacity targets.
+	// +kubebuilder:default=55
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=98
+	// +optional
+	TargetPercent *int32 `json:"targetPercent,omitempty"`
+
+	// MinimumIncrement is the smallest capacity increase requested at once.
+	// +kubebuilder:default="10Gi"
+	// +optional
+	MinimumIncrement *resource.Quantity `json:"minimumIncrement,omitempty"`
+
+	// MaximumSize is the hard upper bound for automatic expansion. It is
+	// required when Enabled is true.
+	// +optional
+	MaximumSize *resource.Quantity `json:"maximumSize,omitempty"`
+
+	// Cooldown is the minimum delay between completed expansion decisions.
+	// EBS policies must use at least six hours; the default is eight hours.
+	// +kubebuilder:default="8h"
+	// +optional
+	Cooldown *metav1.Duration `json:"cooldown,omitempty"`
 }
 
 // HostPathVolumeSpec configures a host-local volume.
