@@ -27,6 +27,8 @@
               inherit system;
               overlays = [ nur.overlays.default ];
               config.allowUnfreePredicate = pkg: builtins.elem (nixpkgs.lib.getName pkg) [
+                "acli"
+                "acli-unwrapped"
                 "goreleaser-pro"
               ];
             };
@@ -42,6 +44,7 @@
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         let
           stablePackages = with pkgs; [
+            acli
             go_1_26
             ffmpeg
             ginkgo

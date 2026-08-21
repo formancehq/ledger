@@ -62,6 +62,7 @@ Key rules that apply broadly:
 - Do not ignore errors. Handle them explicitly, or use `_ = ...` with a justification comment when intentional.
 - Keep a struct's methods colocated with the struct; extract composed sub-types rather than scattering methods across files.
 - Prefer existing repository patterns and DRY solutions over parallel abstractions.
+- Every CLI invoked by repository scripts or documented as a contributor prerequisite must be provided by the Nix development environment and pinned through `flake.lock`; do not add host-only CLI dependencies.
 - Build artifacts belong under `build/`, never the repository root.
 - JSON properties use camelCase.
 - In tests, do not use `time.Sleep`; prefer `require.Eventually` or deterministic synchronization.
