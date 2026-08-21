@@ -12,7 +12,8 @@
 Need: required user/customer/operator/reliability outcome.
 Current limitation: why existing behavior is insufficient now.
 Requirement / constraint: observable property that must hold.
-Evidence: issue/spec/incident/test/doc link or repository path. -->
+Evidence: issue/spec/incident/test/doc link or repository path.
+Durable repository evidence: committed documentation, contract, or code-comment path; the PR description alone is not sufficient. -->
 
 N/A
 

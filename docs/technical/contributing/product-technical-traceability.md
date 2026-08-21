@@ -63,7 +63,7 @@ Record materially credible alternatives when they existed, including the simples
 
 ### 5. Implementation
 
-Identify where the decision is implemented. For large decisions this may be an ADR/design document plus several PRs; for smaller decisions the PR itself can be sufficient.
+Identify where the decision is implemented and where its durable intent is committed. For large decisions this may be an ADR/design document plus several PRs. Smaller decisions do not require a separate ADR: the same PR may add a concise explanation to the owning subsystem documentation, an API or behavior contract, or a relevant code comment.
 
 ### 6. Validation
 
@@ -73,9 +73,11 @@ Define how we know the original requirement is satisfied. Prefer tests, model ch
 
 The repository is the durable source of technical intent. Jira, support cases, incidents, customer requests, or roadmap items may establish the need, but significant technical decisions must leave enough evidence in-repo for a future reviewer or auditor to understand the requirement and decision without private conversation history.
 
-A PR may satisfy this contract by linking an authoritative existing document instead of duplicating it. Do not copy large product specifications into PR descriptions.
+A PR description may satisfy its authoring role by linking an authoritative existing committed document instead of duplicating it. External issues, specifications, or incidents may establish the need, but the committed repository evidence must retain enough requirement and decision context to remain understandable without those private or mutable sources. Do not copy large product specifications into PR descriptions.
 
-For a significant change with no existing design document, the PR description should at minimum provide:
+For a significant change with no existing committed evidence, add or update durable evidence in the same PR. This can be the owning subsystem documentation, a focused decision document, an API or behavior contract, or a relevant code comment. The PR description should summarize the chain and point to that committed path, but it is not the sole durable record.
+
+Use this minimum PR-description summary:
 
 ```markdown
 ## Product / operational motivation
@@ -84,6 +86,7 @@ Need: <required outcome>
 Current limitation: <why current behavior is insufficient>
 Requirement / constraint: <observable property that must hold>
 Evidence: <issue/spec/incident/test/doc links or repository paths>
+Durable repository evidence: <committed documentation, contract, or code-comment path>
 
 ## Technical decision
 
