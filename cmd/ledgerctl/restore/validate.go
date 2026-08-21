@@ -24,11 +24,15 @@ func NewValidateCommand() *cobra.Command {
 	}
 
 	cmd.Flags().Duration("timeout", 5*cmdutil.DefaultTimeout, "Request timeout")
+	cmd.Flags().Bool("allow-incomplete", false,
+		"Exit zero when passes could not be completed, accepting a backup whose projections were never verified")
 
 	return cmd
 }
 
 func runValidate(cmd *cobra.Command, _ []string) error {
+	allowIncomplete, _ := cmd.Flags().GetBool("allow-incomplete")
+
 	client, conn, err := getRestoreClient(cmd)
 	if err != nil {
 		return err
@@ -46,13 +50,19 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 
 	var (
 		spinner = cmdutil.StartSpinner("Validating backup integrity...")
-		// errorCount drives the exit status and counts DIVERGENCES only.
-		// coverageGaps are passes the checker could not complete. They are kept out
-		// of the exit status — the checker gets no cold reader and no baseline on the
-		// restore path, so a healthy backup of an archived cluster always reports at
-		// least one, and counting those rejected valid backups — but they DO change
-		// the verdict line, because a run that skipped the projection comparisons
-		// has not established that the backup is valid.
+		// errorCount counts DIVERGENCES: the backup contradicts its own audit
+		// chain. coverageGaps counts passes the checker could not complete, so
+		// part of the backup was never compared. The two are counted apart
+		// because they mean different things and only one of them can ever be
+		// accepted: the checker gets no cold reader and no baseline on the restore
+		// path, so a healthy backup of an archived cluster always reports at least
+		// one gap, and treating that as a divergence would reject valid backups.
+		//
+		// Both nonetheless fail the command. A run that skipped the projection
+		// comparisons has not established that the backup is valid, and this
+		// return value is the automation gate for `restore validate &&
+		// restore finalize`. --allow-incomplete is how an operator accepts an
+		// unverified backup; nothing accepts a divergent one.
 		errorCount   int
 		coverageGaps int
 	)
@@ -96,9 +106,10 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 	pterm.Println()
 
 	return cmdutil.ReportIntegrityVerdict(cmdutil.IntegrityVerdictInput{
-		Subject:      "backup validation",
-		CleanMessage: "Backup is valid - no integrity errors found",
-		Errors:       errorCount,
-		CoverageGaps: coverageGaps,
+		Subject:         "backup validation",
+		CleanMessage:    "Backup is valid - no integrity errors found",
+		Errors:          errorCount,
+		CoverageGaps:    coverageGaps,
+		AllowIncomplete: allowIncomplete,
 	})
 }

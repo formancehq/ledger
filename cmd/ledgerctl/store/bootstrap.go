@@ -45,6 +45,8 @@ This is a purely offline operation — no server needed.`,
 	cmd.Flags().String("bucket-id", "", "Namespace prefix for backup files (default: uses cluster-id from config)")
 	cmd.Flags().String("data-dir", "", "Target data directory (required, must be fresh)")
 	cmd.Flags().Bool("validate", false, "Run integrity checks after download")
+	cmd.Flags().Bool("allow-incomplete", false,
+		"With --validate, proceed when passes could not be completed, accepting a backup whose projections were never verified")
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 
 	_ = cmd.MarkFlagRequired("data-dir")
@@ -54,10 +56,11 @@ This is a purely offline operation — no server needed.`,
 
 func runBootstrap(cmd *cobra.Command, _ []string) error {
 	var (
-		bucketID, _ = cmd.Flags().GetString("bucket-id")
-		dataDir, _  = cmd.Flags().GetString("data-dir")
-		validate, _ = cmd.Flags().GetBool("validate")
-		yes, _      = cmd.Flags().GetBool("yes")
+		bucketID, _        = cmd.Flags().GetString("bucket-id")
+		dataDir, _         = cmd.Flags().GetString("data-dir")
+		validate, _        = cmd.Flags().GetBool("validate")
+		allowIncomplete, _ = cmd.Flags().GetBool("allow-incomplete")
+		yes, _             = cmd.Flags().GetBool("yes")
 	)
 
 	// Ensure the data directory is fresh: no RESTORED marker, no live/
@@ -239,7 +242,11 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	pterm.Println()
 
 	if validate {
-		err := runBootstrapValidation(cmd.Context(), stagingDir, logger)
+		err := runBootstrapValidation(cmd.Context(), bootstrapValidationInput{
+			StagingDir:      stagingDir,
+			Logger:          logger,
+			AllowIncomplete: allowIncomplete,
+		})
 		if err != nil {
 			return err
 		}
@@ -411,9 +418,21 @@ func printBootstrapPreview(lastAppliedIndex, lastAppliedTimestamp uint64, ledger
 		Render()
 }
 
+// bootstrapValidationInput carries the parameters of one staging-store
+// validation.
+type bootstrapValidationInput struct {
+	// StagingDir is the downloaded backup to validate.
+	StagingDir string
+	// Logger is handed to the checker.
+	Logger logging.Logger
+	// AllowIncomplete accepts a backup whose projections could not be compared.
+	// It never accepts a divergence. See cmdutil.ReportIntegrityVerdict.
+	AllowIncomplete bool
+}
+
 // runBootstrapValidation runs the integrity checker on a staging directory.
-func runBootstrapValidation(ctx context.Context, stagingDir string, logger logging.Logger) error {
-	store, err := dal.OpenReadOnly(stagingDir, logger)
+func runBootstrapValidation(ctx context.Context, in bootstrapValidationInput) error {
+	store, err := dal.OpenReadOnly(in.StagingDir, in.Logger)
 	if err != nil {
 		return fmt.Errorf("opening staging store for validation: %w", err)
 	}
@@ -434,15 +453,21 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 	// backup, so the idempotency pass keeps the post-archive boundary as its
 	// verification floor. nil TTL: no trusted runtime config for a foreign
 	// backup, so the pass falls back to the backup's persisted TTL.
-	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), nil, nil, nil, logger)
+	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), nil, nil, nil, in.Logger)
 
 	pterm.Info.Println("Validating backup integrity...")
 
-	// Same split as `restore validate`: divergences drive the exit status,
-	// passes the checker could not complete do not. This path builds the checker
-	// with no cold reader and validates a staging store that carries no baseline
-	// checkpoint, so an archived backup ALWAYS reports incomplete coverage —
-	// counting it here failed the bootstrap on perfectly healthy backups.
+	// Same split as `restore validate`: divergences and incomplete coverage are
+	// counted apart because they mean different things, and only one of them can
+	// be accepted. This path builds the checker with no cold reader and validates
+	// a staging store that carries no baseline checkpoint, so an archived backup
+	// ALWAYS reports incomplete coverage — conflating that with a divergence
+	// failed the bootstrap on perfectly healthy backups.
+	//
+	// Both still abort the bootstrap: this error is what stops the finalize at
+	// runBootstrap, and finalizing over projections nothing compared is the shape
+	// the split exists to disclose, not to wave through. --allow-incomplete is
+	// how an operator accepts an unverified backup.
 	//
 	// The classification is read straight off the servicepb error type rather than
 	// through restorepb's CoverageGap projection: this is an in-process checker,
@@ -486,9 +511,10 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 	pterm.Println()
 
 	return cmdutil.ReportIntegrityVerdict(cmdutil.IntegrityVerdictInput{
-		Subject:      "backup validation",
-		CleanMessage: "Backup is valid - no integrity errors found",
-		Errors:       errorCount,
-		CoverageGaps: coverageGaps,
+		Subject:         "backup validation",
+		CleanMessage:    "Backup is valid - no integrity errors found",
+		Errors:          errorCount,
+		CoverageGaps:    coverageGaps,
+		AllowIncomplete: in.AllowIncomplete,
 	})
 }

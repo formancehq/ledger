@@ -1,6 +1,7 @@
 package cmdutil
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -39,25 +40,35 @@ func TestIntegrityResult(t *testing.T) {
 	}
 }
 
-// TestReportIntegrityVerdict pins the three-outcome mapping, and in particular
-// that a coverage gap is neither a failure nor a clean bill of health.
+// TestReportIntegrityVerdict pins the three-outcome mapping and, separately,
+// which of those outcomes may exit zero.
 //
-// Both halves are regressions that have actually happened on this code:
-// counting gaps as errors failed `store bootstrap --validate` on healthy
-// archived backups, and printing the clean message over them let
-// `restore validate` report a backup valid while the projection comparisons had
-// been skipped wholesale. The outcome and the exit status are therefore asserted
-// as two independent properties: the outcome decides which line is printed, and
-// only IntegrityOutcomeFailed may exit non-zero.
+// Two independent properties, because two different regressions live here. The
+// outcome decides which line the operator reads: counting gaps as errors failed
+// `store bootstrap --validate` on healthy archived backups, and printing the
+// clean message over them let `restore validate` report a backup valid while the
+// projection comparisons had been skipped wholesale.
+//
+// The exit status is the automation gate, and it fails closed. An incomplete run
+// established nothing about the projections, so returning nil for it let
+// `restore validate && restore finalize` act on a store nothing compared —
+// changing the printed verdict informs a human and protects no script. Only an
+// explicit AllowIncomplete may exit zero on that outcome, and it must never
+// touch a divergence.
 func TestReportIntegrityVerdict(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		errors       int
-		coverageGaps int
-		wantOutcome  IntegrityOutcome
-		wantErr      string
+		name            string
+		errors          int
+		coverageGaps    int
+		allowIncomplete bool
+		wantOutcome     IntegrityOutcome
+		wantErr         string
+		// wantIncomplete asserts the error is the incomplete sentinel rather
+		// than a divergence, so the two stay distinguishable by type and not
+		// only by their message.
+		wantIncomplete bool
 	}{
 		{
 			name:        "nothing found is clean",
@@ -65,11 +76,23 @@ func TestReportIntegrityVerdict(t *testing.T) {
 		},
 		{
 			// The load-bearing case: no divergence, but part of the store was never
-			// compared. Must NOT fail — the gap is permanent on a restore path, so
-			// failing here dead-ends every archived cluster.
-			name:         "coverage gaps alone do not fail",
-			coverageGaps: 2,
-			wantOutcome:  IntegrityOutcomeIncomplete,
+			// compared. Must fail — this return value is the automation gate, and an
+			// unverified store must not pass it silently.
+			name:           "coverage gaps alone fail closed",
+			coverageGaps:   2,
+			wantOutcome:    IntegrityOutcomeIncomplete,
+			wantIncomplete: true,
+			wantErr: "backup validation incomplete: 2 pass(es) could not be completed, " +
+				"so the projections were NOT verified; " +
+				"pass --allow-incomplete to accept an unverified store: verification incomplete",
+		},
+		{
+			// The escape hatch. The gap is permanent on a restore path, so without
+			// this an archived cluster could never validate a backup at all.
+			name:            "acknowledged coverage gaps pass",
+			coverageGaps:    2,
+			allowIncomplete: true,
+			wantOutcome:     IntegrityOutcomeIncomplete,
 		},
 		{
 			name:        "a divergence fails",
@@ -86,6 +109,16 @@ func TestReportIntegrityVerdict(t *testing.T) {
 			wantOutcome:  IntegrityOutcomeFailed,
 			wantErr:      "backup validation failed: 3 integrity error(s)",
 		},
+		{
+			// The acknowledgement is scoped to what was not checked. It says "an
+			// unverified store is acceptable", never "a wrong one is".
+			name:            "allow-incomplete never accepts a divergence",
+			errors:          1,
+			coverageGaps:    4,
+			allowIncomplete: true,
+			wantOutcome:     IntegrityOutcomeFailed,
+			wantErr:         "backup validation failed: 1 integrity error(s)",
+		},
 	}
 
 	for _, tt := range tests {
@@ -94,17 +127,23 @@ func TestReportIntegrityVerdict(t *testing.T) {
 
 			require.Equal(t, tt.wantOutcome,
 				ClassifyIntegrity(tt.errors, tt.coverageGaps),
-				"the outcome decides which verdict line the operator sees")
+				"the outcome decides which verdict line the operator sees, and is "+
+					"independent of whether the run is accepted")
 
 			err := ReportIntegrityVerdict(IntegrityVerdictInput{
-				Subject:      "backup validation",
-				CleanMessage: "Backup is valid - no integrity errors found",
-				Errors:       tt.errors,
-				CoverageGaps: tt.coverageGaps,
+				Subject:         "backup validation",
+				CleanMessage:    "Backup is valid - no integrity errors found",
+				Errors:          tt.errors,
+				CoverageGaps:    tt.coverageGaps,
+				AllowIncomplete: tt.allowIncomplete,
 			})
 
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
+				require.Equal(t, tt.wantIncomplete,
+					errors.Is(err, ErrIncompleteVerification),
+					"an unverified store and a divergent one must be told apart by "+
+						"type: only the former is ever acceptable")
 
 				return
 			}

@@ -2205,6 +2205,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 | `--bucket-id` | `default` | Namespace prefix for backup files (default: uses cluster-id from config) |
 | `--data-dir` | | Target data directory (required, must be fresh) |
 | `--validate` | `false` | Run integrity checks after download |
+| `--allow-incomplete` | `false` | With `--validate`, proceed when passes could not be completed, accepting a backup whose projections were never verified |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 
 **Behavior:**
@@ -2213,7 +2214,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 2. Downloads backup files from the configured backend into a staging directory
 3. Applies export segments and rebuilds derived state from logs (if any)
 4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
-5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
+5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found, or if the run could not complete every pass unless `--allow-incomplete` is given (see [restore validate](#restore-validate) for the three verdicts)
 6. Prompts for confirmation (unless `--yes`)
 7. Prepares attributes for backup (Global-zone resets): preserves the applied index as the genesis boundary (the WAL-snapshot index the restored genesis occupies, so joiners must sync a checkpoint; fallback 1 for a genesis checkpoint), strips persisted config, drops persisted bloom blocks; the attribute zone is left intact
 8. Hard-links staging to `checkpoints/0`, writes `RESTORED` marker
@@ -3749,15 +3750,16 @@ ledgerctl restore validate
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--timeout` | No | Request timeout (default: 50s) |
+| `--allow-incomplete` | No | Exit zero when passes could not be completed, accepting a backup whose projections were never verified (default: `false`) |
 
-**Behavior:** Exits non-zero if any integrity error is found, so `restore validate && restore finalize` stops before finalizing a corrupt backup.
+**Behavior:** Exits non-zero if any integrity error is found, so `restore validate && restore finalize` stops before finalizing a corrupt backup. It also exits non-zero when the run could not complete every pass, unless `--allow-incomplete` is given.
 
-Findings come in two kinds, and only one of them affects the exit status:
+Findings come in two kinds, and they mean different things:
 
-| Line | Meaning | Counts toward the verdict |
-|------|---------|---------------------------|
-| `ERROR` | A divergence was found — the backup contradicts its own audit chain | Yes |
-| `WARNING` | A pass could not be completed, so part of the store was not verified | No |
+| Line | Meaning | Can be accepted |
+|------|---------|-----------------|
+| `ERROR` | A divergence was found — the backup contradicts its own audit chain | Never |
+| `WARNING` | A pass could not be completed, so part of the store was not verified | Only with `--allow-incomplete` |
 
 The distinction matters on **archived** clusters. Validation runs against the staged backup with no cold storage attached and no baseline checkpoint (the baseline is never part of a backup), so a healthy backup of an archived cluster always reports at least one `WARNING`. Those lines say what was *not* checked; they are not evidence of corruption.
 
@@ -3771,12 +3773,14 @@ The command therefore closes with one of three lines:
 | Verdict line | Meaning | Exit |
 |--------------|---------|------|
 | `Backup is valid - no integrity errors found` | Every pass ran and found nothing wrong | 0 |
-| `Audit chain verified; N pass(es) could not be completed` | Nothing diverged, but part of the store was never compared | 0 |
+| `Audit chain verified; N pass(es) could not be completed` | Nothing diverged, but part of the store was never compared | non-zero, or 0 with `--allow-incomplete` |
 | `backup validation failed: N integrity error(s)` | A divergence was found | non-zero |
 
-The middle verdict deliberately still exits zero: the gap is unavoidable on the restore path, so failing on it would leave archived clusters unable to validate a backup at all. It is **not** a statement that the projections are correct — only that the audit chain is. A corrupt volume row on an archived backup is not detectable by this command; see [Coverage on an archived backup](backup-restore.md#coverage-on-an-archived-backup).
+The middle verdict **fails closed**. It is not a statement that the projections are correct — only that the audit chain is — and this exit status is the automation gate for `restore validate && restore finalize`, so exiting zero on it would let a chain finalize over projections nothing compared. A corrupt volume row on an archived backup is not detectable by this command; see [Coverage on an archived backup](backup-restore.md#coverage-on-an-archived-backup).
 
-`store bootstrap --validate` applies the same three-way verdict to the same checker.
+The gap is nevertheless permanent on the restore path — there is no cold reader and no baseline to attach — so `--allow-incomplete` is the way through for an archived cluster. It downgrades the middle verdict to a warning and exits zero, and it prints `Accepted as incomplete (--allow-incomplete)` so the acknowledgement is visible in the output. It has no effect on a divergence: `ERROR` findings fail with or without it.
+
+`store bootstrap --validate` applies the same three-way verdict, the same fail-closed rule, and the same `--allow-incomplete` flag to the same checker.
 
 #### restore preview
 

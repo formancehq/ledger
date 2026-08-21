@@ -902,10 +902,11 @@ func TestCheckStillJudgesBaselineLessArchivedStores(t *testing.T) {
 				// Everything this healthy store reports must be a coverage gap
 				// rather than a divergence. The distinction is load-bearing off
 				// the end of this package: ValidateRestore forwards findings to
-				// `ledgerctl restore validate`, which counts divergences into its
-				// exit status. Since no cold reader is attached here — nor on
-				// either production caller — a divergence escaping this fixture
-				// means a valid backup is rejected.
+				// `ledgerctl restore validate`, which counts the two apart and
+				// lets --allow-incomplete accept gaps but never a divergence.
+				// Since no cold reader is attached here — nor on either
+				// production caller — a divergence escaping this fixture means a
+				// valid backup can no longer be validated at all.
 				for _, e := range errs {
 					require.True(t, IsCoverageGap(e.GetErrorType()),
 						"a healthy baseline-less archived store must report only "+
@@ -1317,7 +1318,8 @@ func TestBaselineLessArchivedLeavesProjectionsUnverified(t *testing.T) {
 
 			require.Len(t, archivedGaps, 1,
 				"the run must report that the projections were not verified; reporting "+
-					"nothing here is what let `restore validate` certify this store")
+					"nothing here is what let `restore validate` certify this store, and "+
+					"is what its exit status now keys off")
 
 			// The gap must not be mistaken for a divergence by any consumer that
 			// builds a verdict: it says a pass did not run, not that the store is
