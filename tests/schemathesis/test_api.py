@@ -12,6 +12,8 @@ import argparse
 import copy
 import re
 import sys
+import urllib.error
+import urllib.request
 from datetime import timedelta
 from pathlib import Path
 
@@ -438,7 +440,75 @@ def main():
             else:
                 print("RESULT: ALL CHECKS PASSED")
 
-    sys.exit(1 if has_failures or has_errors else 0)
+    # Non-vacuity gate. Everything above this point verifies the fixtures only
+    # BEFORE the run (run.sh's seed/ctl status checks and the currentVersion
+    # poll), and the exit status is driven by has_failures/has_errors alone —
+    # nothing asserts that any route was ever observed returning 200. So the
+    # whole suite's meaning rested on before_call's coercion being complete, and
+    # when it was not (twice on this branch, see the comments on the DELETE
+    # coercions above) a fuzzed DELETE destroyed a fixture, every later request
+    # validated against an error schema, and this function still exited 0.
+    #
+    # Checked here rather than in run.sh so it sits next to the exit status it
+    # protects, and so it cannot be skipped by a caller that invokes this module
+    # directly.
+    fixtures_intact = assert_fixtures_survived(args.base_url)
+
+    sys.exit(1 if has_failures or has_errors or not fixtures_intact else 0)
+
+
+def assert_fixtures_survived(base_url: str) -> bool:
+    """Re-read the fixture index after the fuzz run.
+
+    Returns False (and explains) if it is gone or has lost its target. Demanding
+    TARGET_TYPE_ACCOUNT specifically is what makes this unable to pass
+    vacuously: that enum member is value 0, and its disappearance under
+    protojson is the original EN-1791 defect.
+    """
+    url = f"{base_url}/v3/{FIXTURE_LEDGER_NAME}/indexes/{FIXTURE_INDEX_CANONICAL}"
+    print("=" * 60)
+    print(f"Re-asserting the fixture index survived the run: {url}")
+
+    # urllib rather than requests: requests reaches this file only as a
+    # transitive schemathesis dependency, and requirements.txt pins directly on
+    # purpose. A stdlib call needs nothing added.
+    try:
+        with urllib.request.urlopen(url, timeout=10) as raw:  # noqa: S310 - fixed localhost URL
+            status = raw.status
+            body = raw.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        body = exc.read().decode("utf-8", errors="replace")
+    except (urllib.error.URLError, OSError) as exc:
+        print(f"ERROR: could not re-read the fixture index: {exc}", file=sys.stderr)
+
+        return False
+
+    if status != 200:
+        print(
+            f"ERROR: fixture index is gone after the fuzz run (HTTP {status}).\n"
+            "       A fuzzed destructive route de-seeded the suite, so every later request\n"
+            "       validated against an error schema and the conformance checks above are\n"
+            "       vacuous. Extend before_call to coerce that route away from the fixtures.\n"
+            f"Body: {body[:500]}",
+            file=sys.stderr,
+        )
+
+        return False
+
+    if "TARGET_TYPE_ACCOUNT" not in body:
+        print(
+            "ERROR: fixture index responded 200 but without its TARGET_TYPE_ACCOUNT target —\n"
+            "       the exact field the EN-1791 defect dropped.\n"
+            f"Body: {body[:500]}",
+            file=sys.stderr,
+        )
+
+        return False
+
+    print("    Fixture index intact.")
+
+    return True
 
 
 def _is_network_error(error):
