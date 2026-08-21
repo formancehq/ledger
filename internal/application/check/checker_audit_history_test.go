@@ -257,3 +257,64 @@ func TestCheckVerifiesFrozenIdempotencyOnFailureOnlyStore(t *testing.T) {
 			"verifyAuditHashChain, so gating that walk on the log projection left a "+
 			"failure-only store's forged business error undetected (EN-1526)")
 }
+
+// TestCheckJudgesProjectionsOnAWipedLogStream covers the shape the deleted
+// `lastSequence == 0` gate actually unlocked: a store that lost its whole log
+// stream but kept every projection row.
+//
+// That gate returned above the entire replay-and-compare phase, so on a zero-log
+// store the per-ledger projection family was reachable by nothing. Every other
+// zero-log fixture in this package pairs the empty log stream with
+// empty-or-near-empty projections -- a failure-only chain, a frozen idempotency
+// row, one index row, two hand-built audit entries -- and the pre-existing
+// EmptyAuditWiring pair is a bare store plus one row. The FIELD shape is the
+// opposite one, and it had no fixture at all.
+//
+// This is also the residual-exposure case rather than a theoretical one.
+// Restoring the whole gate is already well pinned, and so is an early return
+// before the compare phase. But gating only the per-ledger compares --
+// `if lastSequence > 0 { compareVolumes; compareMetadata; compareTransactions }`,
+// or the same around compareLedgerPresence and compareBoundaries -- suppresses
+// every finding below and ships fully green. The `if lastSequence > 0` idiom is
+// one screen away in Check(), around pendingCleanupLedgers, so a future author
+// re-applying it there is the realistic path back to base behaviour. The input is
+// untrusted: ValidateRestore runs Check() over a staged FOREIGN backup.
+//
+// Asserted per type via errorsOfType rather than as a total count: the exact
+// cardinality shifts with unrelated passes, while "the projection family spoke at
+// all" is the property under test.
+func TestCheckJudgesProjectionsOnAWipedLogStream(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	engine.processAndCommit(createLedgerOrder("ledger"))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("world", "alice", "USD", 100)))
+
+	require.Empty(t, collectCheckErrors(t, engine.store, engine.attrs),
+		"the control must be clean, or the findings below cannot be attributed to "+
+			"the wiped log stream")
+
+	// Delete the log rows and nothing else. Every projection -- LedgerInfo,
+	// volumes, transaction states, boundaries -- stays exactly as the FSM wrote
+	// it, so the audit-derived expectation collapses to empty while the stored
+	// state still describes a healthy ledger.
+	batch := engine.store.OpenWriteSession()
+	require.NoError(t, batch.DeleteRange(
+		[]byte{dal.ZoneCold, dal.SubColdLog},
+		[]byte{dal.ZoneCold, dal.SubColdLog + 1},
+		nil))
+	require.NoError(t, batch.Commit())
+
+	errs := collectCheckErrors(t, engine.store, engine.attrs)
+
+	require.NotEmpty(t,
+		errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER),
+		"a stored LedgerInfo with no CreateLedger left in the replayed history must "+
+			"be reported: this is the pass the deleted zero-log gate returned above")
+	require.NotEmpty(t,
+		errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH),
+		"stored volumes with an empty replayed expectation must be reported: gating "+
+			"only compareVolumes on lastSequence ships green without this assertion")
+}

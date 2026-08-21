@@ -1050,3 +1050,136 @@ func TestCheckRejectsMalformedLogKeys(t *testing.T) {
 				"stream as unaudited")
 	})
 }
+
+// TestCheckReportsDiscontinuityUnderAnArchivedBoundary is the mirror of
+// TestCheckReportsDiscontinuityAboveAnArchivedBoundary, and it exists to pin the
+// one thing that fixture cannot: that the abutment assertion is independent of
+// signing.archiveEndSeq.
+//
+// The guard once carried a `minLogSeq > signing.archiveEndSeq &&` conjunct. Every
+// other fixture in this file keeps its hole ABOVE the boundary, where both
+// variants of the guard fire, so the conjunct could be re-added with the whole
+// package green -- and re-adding it is not a hypothetical refactor, it is the
+// change this PR made, argued at length above compareLogBounds and above the
+// guard itself.
+//
+// Here the audited range jumps from log 3 to log 6 while close_sequence is 6, so
+// the jump lands AT the boundary rather than above it. HEAD reports the
+// discontinuity; the conjunct suppresses it entirely. That is the whole point:
+// close_sequence is covered only by the UNKEYED sealing hash, which
+// sealArchivedChapter recomputes here exactly as an attacker would, while
+// min/max_log_sequence sit inside the keyed audit pre-image. Letting the
+// forgeable field gate the keyed-hash finding is the EN-1526 defect shape rebuilt
+// inside the assertion meant to catch it.
+//
+// close_sequence 6 against close_audit_sequence 2 is a tampered shape, not
+// out-of-order archiving -- which is correct for this checker's threat model, and
+// one number away from what TestCheckBoundsRetainedLogsUnderTheArchiveBoundary
+// already ships. purgeLogRows is false so the rows in the claimed range survive,
+// as they would under a forged boundary.
+func TestCheckReportsDiscontinuityUnderAnArchivedBoundary(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	// Pre-boundary history: logs 1-2, audit entries 1-2.
+	engine.processAndCommit(createLedgerOrder("archived-era"))
+	engine.processAndCommit(createTransactionOrder("archived-era", true,
+		newPosting("world", "alice", "USD", 100)))
+
+	boundaryAuditHash := append([]byte(nil), engine.lastAuditHash...)
+
+	captureBoundaryBaseline(t, engine)
+
+	// Two live entries, correctly chained so the walk reaches the second: log 3,
+	// then a jump to log 6. Logs 4 and 5 are authenticated by nothing.
+	serialized := createLedgerOrder("live-era").MarshalDeterministicVT(nil)
+
+	for _, logSeq := range []uint64{3, 6} {
+		appendChainedAuditEntry(t, engine, &auditpb.AuditEntry{
+			Timestamp:  &commonpb.Timestamp{Data: 1700000010 + logSeq},
+			ProposalId: 100 + logSeq,
+			OrderCount: 1,
+			Outcome: &auditpb.AuditEntry_Success{
+				Success: &auditpb.AuditSuccess{MinLogSequence: logSeq, MaxLogSequence: logSeq},
+			},
+		}, []*auditpb.AuditItem{{OrderIndex: 0, SerializedOrder: serialized, LogSequence: logSeq}})
+	}
+
+	// close_sequence 6 puts the whole discontinuity at or below archiveEndSeq,
+	// which is the only configuration in which the deleted conjunct changes the
+	// outcome. close_audit_sequence stays 2 so the live walk still starts below
+	// the two entries above and verifies them.
+	writeArchivedBoundary(t, engine, archivedBoundary{
+		closeSequence:      6,
+		closeAuditSequence: 2,
+		lastAuditHash:      boundaryAuditHash,
+		purgeLogRows:       false,
+	})
+
+	gaps := errorsOfType(
+		collectCheckErrors(t, engine.store, engine.attrs),
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP)
+
+	require.Len(t, gaps, 1,
+		"a hole in the audited log range must be reported even when a forged "+
+			"close_sequence reaches over it: archiveEndSeq is covered by an unkeyed "+
+			"hash and must never gate a keyed-hash finding")
+	require.Equal(t, uint64(6), gaps[0].GetLogSequence())
+	require.Contains(t, gaps[0].GetMessage(), "the audited log range is discontinuous")
+	require.Contains(t, gaps[0].GetMessage(), "authenticates logs from 6 but the highest previously audited log was 3")
+}
+
+// TestCheckDetectsALostLogTailThroughTheBoundaryPass pins the detection
+// compareLogBounds formally defers to.
+//
+// compareLogBounds is max-only by design and says so: a lost TAIL above the
+// highest stored key is invisible both to it and to the replay loop's gap
+// detection, which runs INSIDE the iteration and therefore stops at the last
+// stored row. The comment above compareLogBounds does not merely describe that
+// division of labour, it justifies NOT adding a third finding for the opposite
+// direction -- and audit-chain.md repeats the guarantee. The delegate is a single
+// entry in compareBoundaries' field list, `{"nextLogId", ...}`, and nothing
+// asserted on it: deleting that one line left the package green.
+//
+// The fixture is a NO-OP metadata tail on purpose, not a transaction tail. On an
+// ordinary transaction tail four other passes also fire, so the deletion is
+// masked and a count assertion is unstable. Re-setting a metadata key to the
+// value it already holds is entirely ordinary traffic whose projection effect is
+// nil, so the surviving prefix replays to byte-identical projections and this one
+// field is the SOLE detector. That single-finding property is itself what is
+// worth pinning.
+func TestCheckDetectsALostLogTailThroughTheBoundaryPass(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+
+	engine.processAndCommit(createLedgerOrder("ledger"))
+	engine.processAndCommit(saveAccountMetadataOrder("ledger", "alice", map[string]string{"k": "v"}))
+	// Same key, same value: the log exists and moves NextLogId, but folding it
+	// changes no projection, so dropping it leaves every other pass silent.
+	engine.processAndCommit(saveAccountMetadataOrder("ledger", "alice", map[string]string{"k": "v"}))
+
+	require.Empty(t, collectCheckErrors(t, engine.store, engine.attrs),
+		"the fixture must be clean before the tail is removed, or the assertion "+
+			"below cannot attribute its finding to the deletion")
+
+	// Drop the log row alone. The audit entry that authenticates it stays, so the
+	// audited maximum still reaches 3 while the replay only reaches 2 -- the
+	// mirror image of the LOG_UNAUDITED direction, and the per-type
+	// backup-segment shape.
+	batch := engine.store.OpenWriteSession()
+	require.NoError(t, batch.DeleteKey(
+		dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(3).Build()))
+	require.NoError(t, batch.Commit())
+
+	errs := collectCheckErrors(t, engine.store, engine.attrs)
+
+	require.Len(t, errs, 1,
+		"a lost log tail whose payload changed no projection is detectable through "+
+			"the replayed boundary expectation and nowhere else")
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH,
+		errs[0].GetErrorType())
+	require.Contains(t, errs[0].GetMessage(), "boundary field nextLogId mismatch: stored 3, expected 2")
+}
