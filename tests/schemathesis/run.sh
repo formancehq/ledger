@@ -173,6 +173,22 @@ seed "create delete-sacrifice index" -X POST "$API/test-ledger/indexes" \
     -H 'Content-Type: application/json' \
     -d '{"id":"metadata:TARGET_TYPE_TRANSACTION:sacrifice"}'
 
+# Sacrificial metadata-schema field for
+# DELETE /v3/{ledgerName}/metadata-schema/{targetType}/{key}. That operation is
+# fuzzed too, and it is destructive at one remove: removing a schema field
+# cascade-drops the index attached to it (processRemoveMetadataFieldType), so a
+# delete aimed at ("account", "color") would take the fixture index above with
+# it. test_api.py's before_call coerces {key} here; declared on all three
+# targetType values because the parameter is an enum the fuzzer enumerates in
+# full, and a sacrifice that is only declared for one of them leaves the other
+# two 404-ing instead of exercising the route.
+for target in account transaction ledger; do
+    seed "declare $target metadata-schema sacrifice" \
+        -X PUT "$API/test-ledger/metadata-schema/$target/schema-sacrifice" \
+        -H 'Content-Type: application/json' \
+        -d '{"type":"string"}'
+done
+
 # Wait for the replica to finish building the fixture index. This is a
 # determinism requirement, not an optimisation: `IndexEntry.currentVersion` is
 # per-replica and starts at 0, and the routes gated on it (notably
@@ -324,8 +340,53 @@ fi
 # Tee the full run (stdout+stderr) to an uploadable report. `set -o pipefail`
 # (see `set` above) makes the pipeline inherit test_api.py's non-zero exit, so a
 # conformity failure still fails the job. Filename matches the CI artifact glob.
+#
+# The status is captured rather than allowed to abort the script: the fixtures
+# must be re-checked below on the success path, and on the failure path the
+# original exit code still has to be the one this script returns.
+set +e
 python3 "$SCRIPT_DIR/test_api.py" \
     --base-url "http://localhost:$HTTP_PORT" \
     --max-examples "$MAX_EXAMPLES" \
     --workers "$SCHEMATHESIS_WORKERS" \
     $SHRINK_FLAG 2>&1 | tee /tmp/schemathesis-report.txt
+FUZZ_STATUS=$?
+set -e
+
+# Non-vacuity check. Everything above verifies the fixtures BEFORE the fuzz run;
+# nothing verified they were still there afterwards, and test_api.py exits on
+# has_failures/has_errors alone - it never asserts that any route was observed
+# returning 200. So the whole gate rested on before_call's coercion being
+# complete, and when it was not (twice on this branch: see the comments in
+# test_api.py) a fuzzed DELETE destroyed a fixture, every later request
+# validated against an error schema, and the suite still reported green.
+#
+# Re-assert the fixture index positively and fail hard. This is the one check
+# that cannot pass vacuously: it demands a 200 with the ACCOUNT target present,
+# which is exactly the field the original EN-1791 defect dropped.
+echo "==> Re-asserting the fixture index survived the fuzz run..."
+FIXTURE_AFTER=$(curl -s -w '\n%{http_code}' \
+    "$API/test-ledger/indexes/metadata:TARGET_TYPE_ACCOUNT:color")
+FIXTURE_CODE=$(printf '%s' "$FIXTURE_AFTER" | tail -n1)
+FIXTURE_BODY=$(printf '%s' "$FIXTURE_AFTER" | sed '$d')
+
+if [ "$FIXTURE_CODE" != "200" ]; then
+    echo "ERROR: fixture index is gone after the fuzz run (HTTP $FIXTURE_CODE)." >&2
+    echo "       A fuzzed destructive route de-seeded the suite, so every later" >&2
+    echo "       request validated against an error schema and the conformance" >&2
+    echo "       checks above are vacuous. Extend before_call in test_api.py to" >&2
+    echo "       coerce that route away from the fixtures." >&2
+    echo "Body: $FIXTURE_BODY" >&2
+    exit 1
+fi
+
+if ! printf '%s' "$FIXTURE_BODY" | grep -q '"TARGET_TYPE_ACCOUNT"'; then
+    echo "ERROR: fixture index responded 200 but without its TARGET_TYPE_ACCOUNT" >&2
+    echo "       target - the exact field the EN-1791 defect dropped." >&2
+    echo "Body: $FIXTURE_BODY" >&2
+    exit 1
+fi
+
+echo "    Fixture index intact."
+
+exit "$FUZZ_STATUS"

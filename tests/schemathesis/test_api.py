@@ -53,6 +53,16 @@ FIXTURE_INDEX_CANONICAL = "metadata:TARGET_TYPE_ACCOUNT:color"
 # specifically — see the before_call hook below for why it needs its own index.
 DELETE_INDEX_SACRIFICE_CANONICAL = "metadata:TARGET_TYPE_TRANSACTION:sacrifice"
 
+# The metadata key run.sh declares purely so a fuzzed
+# DELETE /v3/{ledgerName}/metadata-schema/{targetType}/{key} has something
+# harmless to remove. Removing a schema field cascade-drops the index attached
+# to it (processRemoveMetadataFieldType), so a delete aimed at the ("account",
+# "color") pair would destroy FIXTURE_INDEX_CANONICAL and take every index route
+# down with it - the same silent de-seeding as the two sacrifices above, one
+# level of indirection further away.
+DELETE_METADATA_SCHEMA_SACRIFICE_KEY = "schema-sacrifice"
+METADATA_SCHEMA_KEY_PATH = "/v3/{ledgerName}/metadata-schema/{targetType}/{key}"
+
 SAMPLE_NUMSCRIPTS = [
     'send [USD/2 100] (\n  source = @world\n  destination = @user:001\n)',
     'send [EUR/2 50] (\n  source = @users:alice\n  destination = @users:bob\n)',
@@ -128,6 +138,27 @@ def before_call(context, case):
             case.path_parameters["canonicalId"] = DELETE_INDEX_SACRIFICE_CANONICAL
         else:
             case.path_parameters["canonicalId"] = FIXTURE_INDEX_CANONICAL
+
+    # Removing a metadata schema field cascade-drops the index built on it
+    # (internal/domain/processing/processor_metadata_schema.go), so this DELETE
+    # is destructive at one remove: {ledgerName} is already coerced to the
+    # fixture ledger above, and the generated {key} could name the fixture
+    # field. Point it at a key declared for the purpose, exactly as the ledger
+    # and index deletes are pointed at their sacrifices.
+    #
+    # Not currently reachable - {key} is a bare `type: string` with no example
+    # and nothing links into it, so derandomize=True keeps the generated set
+    # away from "color" - but it becomes reachable the moment anyone adds an
+    # `example:` to that parameter or picks a guessable fixture key, and the
+    # failure mode is a green suite validating every later request against an
+    # error schema. Coerce it now rather than rely on that.
+    if (
+        case.path == METADATA_SCHEMA_KEY_PATH
+        and case.method == "DELETE"
+        and case.path_parameters
+        and "key" in case.path_parameters
+    ):
+        case.path_parameters["key"] = DELETE_METADATA_SCHEMA_SACRIFICE_KEY
 
     if case.body and isinstance(case.body, dict):
         # Transaction: postings/script mutual exclusion
