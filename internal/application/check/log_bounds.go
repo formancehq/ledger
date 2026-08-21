@@ -153,7 +153,8 @@ func decodeLogSequence(key []byte) (uint64, error) {
 // store with archived chapters, log rows retained at or under the archive
 // boundary, and ZERO live audit entries would report a false LOG_UNAUDITED. (The
 // baseline checkpoint is irrelevant to it — this pass also runs on the
-// baseline-less archived path, where storedLogMax comes from readStoredLogMax.) That shape is unreachable through the archive flow — archiving
+// baseline-less archived path, where storedLogMax comes from readStoredLogMax.)
+// That shape is unreachable through the archive flow — archiving
 // emits its own logs above the range it purges, so at least one log and its live
 // audit entry always survive (see the note above the signingVerifier
 // construction in Check) — and a false positive on an unreachable shape is the

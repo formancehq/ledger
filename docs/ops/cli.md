@@ -1951,6 +1951,11 @@ ledgerctl store check [flags]
 - **HASH_MISMATCH**: Log hash does not match expected hash chain value
 - **VOLUME_MISMATCH**: Stored volume (input/output) does not match expected value from log replay
 - **METADATA_MISMATCH**: Stored account metadata does not match expected value from log replay
+- **LOG_UNAUDITED**: The store holds a log above the highest sequence the audit chain authenticates, so it was written outside the audited apply path
+- **LOG_VERIFICATION_INCOMPLETE**: The audit chain walk stopped early, so the audited log maximum is only a prefix maximum and the log stream could not be bounded in this run
+- **SIGNING_VERIFICATION_INCOMPLETE**: The signing-key expectation could not be completed (archived orders unreadable, or the live chain fold cut short), so the key and config comparisons were skipped
+
+This list is not exhaustive; `CheckStoreErrorType` in `misc/proto/bucket.proto` is the complete set.
 
 **Example:**
 

@@ -68,6 +68,11 @@ For each account metadata key/value encountered during replay (excluding deleted
 | `METADATA_MISMATCH` | Account metadata value does not match log replay |
 | `UNKNOWN_LEDGER` | A log references a ledger not created by any prior log |
 | `TRANSACTION_UPDATE_MISMATCH` | Transaction updates in Pebble do not match log replay |
+| `LOG_UNAUDITED` | The store holds a log above the audited maximum, so it was written outside the audited apply path |
+| `LOG_VERIFICATION_INCOMPLETE` | The chain walk was truncated, so the audited log maximum is a prefix maximum and the log stream could not be bounded |
+| `SIGNING_VERIFICATION_INCOMPLETE` | The signing-key expectation could not be completed, so the key and config comparisons were skipped |
+
+The table above is a selection, not the full enumeration. `CheckStoreErrorType` in `misc/proto/bucket.proto` is the authoritative list.
 
 ### CLI Usage
 

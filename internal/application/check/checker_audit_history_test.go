@@ -160,9 +160,15 @@ func TestCheckDetectsLogKeyValueSequenceDivergence(t *testing.T) {
 		}
 	}
 
-	require.NotEmpty(t, divergences,
+	// SEQUENCE_GAP has three distinct producers, so the type and sequence filter
+	// above is not enough on its own: the count and the message are what
+	// distinguish the key/value disagreement from a genuine hole in the stream.
+	require.Len(t, divergences, 1,
 		"a log row whose value sequence disagrees with its key is unreachable through "+
-			"AppendLogs and must be reported, not silently steer ReadLastSequence")
+			"AppendLogs and must be reported exactly once, not silently steer "+
+			"ReadLastSequence")
+	require.Contains(t, divergences[0].GetMessage(), "carries value sequence 0")
+	require.Contains(t, divergences[0].GetMessage(), "written outside AppendLogs")
 }
 
 // TestCheckVerifiesFrozenIdempotencyOnFailureOnlyStore pins the most

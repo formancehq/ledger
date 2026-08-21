@@ -20,10 +20,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// errorsOfType filters a Check() run down to one error type. The fixtures below
-// inject rows that legitimately trip other passes as well (a payload-less log
-// row also reaches the elision guard), so pinning the log-bounds findings needs
-// the type filter rather than a total count.
+// errorsOfType filters a Check() run down to one error type.
+//
+// The filter is load-bearing on the fixtures that report many findings at once —
+// the archived and forged-boundary shapes, where a clipped replay legitimately
+// trips the volume, transaction, boundary, unaudited-ledger and signing passes
+// as well. Fixtures whose injected row reaches nothing else assert a total count
+// instead, which is the stronger claim; prefer that where it holds.
 func errorsOfType(errs []*servicepb.CheckStoreError, errorType servicepb.CheckStoreErrorType) []*servicepb.CheckStoreError {
 	var out []*servicepb.CheckStoreError
 
