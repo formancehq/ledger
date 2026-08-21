@@ -2,7 +2,7 @@
   "id": "raft-membership-leadership",
   "title": "Raft, membership, and leadership transitions",
   "purpose": "Find latent distributed-correctness failures around leadership changes, quorum, membership mutation, transport, snapshot installation, and follower/leader routing.",
-  "paths": ["internal/infra/node/**", "internal/infra/transport/**", "internal/infra/membership/**", "internal/application/membership/**", "internal/application/admission/**", "internal/application/ctrl/**", "misc/proto/raft.proto", "misc/proto/cluster.proto", "tests/antithesis/**", "tests/oracle/**"],
+  "paths": ["internal/infra/node/**", "internal/infra/transport/**", "internal/infra/membership/**", "internal/application/membership/**", "internal/application/admission/**", "internal/application/ctrl/**", "misc/proto/raft_transport.proto", "misc/proto/raft_cmd.proto", "misc/proto/cluster_bootstrap.proto", "misc/proto/cluster.proto", "tests/antithesis/**", "tests/oracle/**"],
   "related_docs": ["AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/consensus/", "docs/technical/architecture/subsystems/admission/", "docs/technical/contributing/ai-audit.md"],
   "invariants": [
     "Only a valid leader with quorum may cause a write to become committed and acknowledged.",
