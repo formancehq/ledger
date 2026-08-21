@@ -29,6 +29,8 @@ A full PR URL is accepted as well. The launcher:
 - requires an open same-repository PR and currently rejects fork/cross-repository heads;
 - fetches the exact GitHub-reported base and head refs and verifies both SHAs before running agents;
 - creates a detached linked worktree outside the primary checkout, under a unique sibling `.<repo>-ai-worktrees/pr-<number>.<run>/worktree` directory;
+- runs the [legitimacy triage](ai-pr-triage-loop.md) before any technical review, using the `scripts/ai-pr-triage` adapter from a detached worktree pinned at the verified base SHA, so the PR under review cannot supply the policy that authorizes its own review;
+- accepts a triage result only when its `base_sha` and `head` equal the SHAs the launcher fetched and verified, and continues into technical review only on a `KEEP` decision;
 - passes the verified base commit SHA to `review-loop`, so a later update of the shared remote-tracking ref cannot change the reviewed delta;
 - runs the standard Codex review + Claude fix composition against the PR base;
 - runs repository validation locally before accepting any approval; no GitHub
@@ -37,7 +39,9 @@ A full PR URL is accepted as well. The launcher:
 - preserves the isolated worktree automatically when fixes remain so the resulting diff can be inspected manually;
 - removes a clean temporary worktree after the loop unless `--keep-worktree` is supplied.
 
-Each invocation owns a unique worktree and never reuses or removes another invocation's directory. Without `--push`, the launcher performs no commit or push and only reports `READY_FOR_HUMAN_REVIEW`, `HUMAN_DECISION_REQUIRED`, or an orchestration error.
+Each invocation owns a unique worktree and never reuses or removes another invocation's directory. Without `--push`, the launcher performs no commit or push and only reports `READY_FOR_HUMAN_REVIEW`, `HUMAN_DECISION_REQUIRED`, `LEGITIMACY_REJECTED`, or an orchestration error.
+
+`LEGITIMACY_REJECTED` is emitted when triage returns `REJECT`; a `QUESTION` decision stops the run with `HUMAN_DECISION_REQUIRED`. Both stop before technical review and exit `2`. A triage provider error or target mismatch fails closed as an orchestration error. Every triage outcome is advisory: the launcher never closes, comments on, or otherwise changes the PR.
 
 ### Guarded publish mode
 
