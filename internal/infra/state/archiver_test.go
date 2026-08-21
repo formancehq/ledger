@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/v2/bloom"
+	"github.com/cockroachdb/pebble/v2/sstable"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
@@ -287,6 +289,79 @@ func buildArchiveBytesForRequest(t *testing.T, req ArchiveRequest) []byte {
 	require.NoError(t, err)
 
 	return data
+}
+
+// buildArchiveBytesWithoutMetadata builds an SST holding cold data but no
+// metadata row, the way an archive written by something that never embedded one
+// would look.
+func buildArchiveBytesWithoutMetadata(t *testing.T) []byte {
+	t.Helper()
+
+	tmpFile, err := os.CreateTemp(t.TempDir(), "no-metadata-*.sst")
+	require.NoError(t, err)
+
+	writer := sstable.NewWriter(newFileWritable(tmpFile), sstable.WriterOptions{
+		Compression:  sstable.SnappyCompression,
+		FilterPolicy: bloom.FilterPolicy(10),
+	})
+
+	// A cold-zone key, which sorts after the 0x00-prefixed metadata row the real
+	// builder writes first.
+	require.NoError(t, writer.Set([]byte{dal.ZoneCold, dal.SubColdLog, 0x01}, []byte("log")))
+	require.NoError(t, writer.Close())
+
+	data, err := os.ReadFile(tmpFile.Name())
+	require.NoError(t, err)
+
+	return data
+}
+
+// The checksum only says the bytes are the ones that were uploaded, never which
+// chapter they hold. An archive carrying no metadata row therefore cannot be shown
+// to match the request at all, so the archiver refuses it rather than confirming a
+// purge against an object whose contents it cannot identify.
+func TestArchiverAlreadyArchivedWithoutMetadataRefusesConfirm(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	req := ArchiveRequest{ChapterID: 5, StartSequence: 1, CloseSequence: 10, SealingHash: []byte("incarnation")}
+
+	cs, csState := newMockColdStorage(t)
+	data := buildArchiveBytesWithoutMetadata(t)
+	expected, err := coldstorage.ComputeSHA256(bytes.NewReader(data))
+	require.NoError(t, err)
+	csState.seed("test-bucket", req.ChapterID, data, expected)
+
+	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
+
+	var proposedChapterID atomic.Uint64
+
+	a := NewArchiver(
+		logger,
+		nil, // no dataStore needed: the exists path never builds
+		cs,
+		archiveReqCh,
+		func(chapterID uint64, _ []byte) error {
+			proposedChapterID.Store(chapterID)
+
+			return nil
+		},
+		func() bool { return true }, // is leader
+		newArchivingChapterState(t),
+		"test-bucket",
+		func(<-chan struct{}) {},
+	)
+	a.Start()
+	t.Cleanup(a.Stop)
+
+	archiveReqCh.TrySend(req, "test")
+
+	require.Never(t, func() bool {
+		return proposedChapterID.Load() != 0
+	}, time.Second, 50*time.Millisecond,
+		"an archive with no metadata row must never be confirmed")
 }
 
 func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
