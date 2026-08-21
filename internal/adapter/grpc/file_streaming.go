@@ -55,14 +55,25 @@ func buildManifest(ctx context.Context, dirPath string) (*snapshotpb.SnapshotMan
 	return &snapshotpb.SnapshotManifest{Files: files}, nil
 }
 
-// streamOneFile reads a single file in chunks and sends them via send.
+// streamOneFile reads a single file beneath dirPath in chunks and sends it via
+// send. The rooted open is load-bearing: a network-supplied path or symlink
+// must not escape the prepared snapshot checkpoint.
 func streamOneFile(
 	dirPath string,
 	relPath string,
 	buf []byte,
 	send func(*snapshotpb.FetchFileResponse) error,
 ) error {
-	f, err := os.Open(filepath.Join(dirPath, relPath))
+	root, err := os.OpenRoot(dirPath)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		_ = root.Close()
+	}()
+
+	f, err := root.Open(relPath)
 	if err != nil {
 		return err
 	}

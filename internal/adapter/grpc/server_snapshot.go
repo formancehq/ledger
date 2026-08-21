@@ -138,10 +138,7 @@ func (s *SnapshotServiceServerImpl) FetchFile(req *snapshotpb.FetchFileRequest, 
 
 	// Validate the path stays within the checkpoint directory.
 	relPath := req.GetPath()
-	fullPath := filepath.Join(session.checkpointPath, relPath)
-
-	resolved, err := filepath.Rel(session.checkpointPath, fullPath)
-	if err != nil || resolved != relPath {
+	if !filepath.IsLocal(relPath) {
 		return status.Errorf(codes.InvalidArgument, "invalid file path: %s", relPath)
 	}
 

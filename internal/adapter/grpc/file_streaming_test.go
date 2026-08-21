@@ -132,3 +132,55 @@ func TestStreamOneFile_Empty(t *testing.T) {
 	digest := sha256.Sum256(nil)
 	require.Equal(t, hex.EncodeToString(digest[:]), chunks[0].GetSha256())
 }
+
+func TestStreamOneFile_PathConfinement(t *testing.T) {
+	t.Parallel()
+
+	checkpointDir := t.TempDir()
+	outsideDir := t.TempDir()
+	outsidePath := filepath.Join(outsideDir, "secret.txt")
+	require.NoError(t, os.WriteFile(outsidePath, []byte("secret"), 0644))
+
+	nestedDir := filepath.Join(checkpointDir, "nested")
+	require.NoError(t, os.MkdirAll(nestedDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(nestedDir, "data.txt"), []byte("nested data"), 0644))
+
+	symlinkPath := filepath.Join(checkpointDir, "outside-link")
+	require.NoError(t, os.Symlink(outsidePath, symlinkPath))
+
+	traversalPath, err := filepath.Rel(checkpointDir, outsidePath)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name    string
+		path    string
+		wantErr bool
+	}{
+		{name: "nested file", path: filepath.Join("nested", "data.txt")},
+		{name: "parent traversal", path: traversalPath, wantErr: true},
+		{name: "symlink escape", path: filepath.Base(symlinkPath), wantErr: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			var content []byte
+			err := streamOneFile(checkpointDir, test.path, make([]byte, defaultChunkSize), func(resp *snapshotpb.FetchFileResponse) error {
+				content = append(content, resp.GetData()...)
+
+				return nil
+			})
+
+			if test.wantErr {
+				require.Error(t, err)
+				require.Empty(t, content)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, "nested data", string(content))
+		})
+	}
+}

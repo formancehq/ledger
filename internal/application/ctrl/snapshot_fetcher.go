@@ -183,7 +183,15 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir st
 	}
 
 	sessionID := resp.GetSessionId()
+	// The server created a temporary checkpoint with this session. Close it on
+	// every later failure, including a rejected manifest.
+	defer f.closeSession(sessionID)
+
 	manifest := resp.GetManifest()
+	if err := validateSnapshotManifest(manifest); err != nil {
+		return 0, fmt.Errorf("validating snapshot manifest: %w", err)
+	}
+
 	totalSize := manifestTotalSize(manifest)
 
 	logger.WithFields(map[string]any{
@@ -192,9 +200,6 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir st
 		"totalSize":  totalSize,
 		"duration":   time.Since(prepareStart).String(),
 	}).Infof("Snapshot session prepared")
-
-	// Always try to close the session on exit.
-	defer f.closeSession(sessionID)
 
 	// 2. Fetch every file in this session. The manifest intentionally carries
 	// no content digest, so a file from an earlier session cannot be trusted

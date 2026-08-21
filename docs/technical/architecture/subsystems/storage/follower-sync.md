@@ -32,21 +32,54 @@ resumes.
 ## Retries and staging
 
 A transient `FetchFile` failure retries that file within the current session.
-The retry rewrites its `.tmp` file from the beginning. A new session fetches
-every manifest file again: without a content digest in the manifest, a file
-left by an earlier checkpoint cannot be trusted from path and size alone.
+Each attempt creates the same `.tmp` path with truncation and initializes fresh
+byte-count and SHA-256 state. A regression test delivers a partial first
+attempt, injects one transient stream failure, then verifies that the second
+attempt produces only the complete file. A new session fetches every manifest
+file again: without a content digest in the manifest, a file left by an earlier
+checkpoint cannot be trusted from path and size alone.
 
 The final rename is the trust boundary. Truncated content, excess content, a
 missing or malformed digest, and a digest mismatch all leave the final path
 untouched.
 
+## Filesystem confinement
+
+Paths in `FetchFileRequest` and `SnapshotManifest` cross the peer-network trust
+boundary. String normalization alone is not containment: joining a checkpoint
+root with `../secret` and calculating the relative path returns the same
+traversal string.
+
+The serving RPC rejects non-local paths with `filepath.IsLocal`, then
+`streamOneFile` opens the file through an `os.Root` bound to the prepared
+checkpoint. The rooted open is the authoritative defense against traversal,
+symlink escape, and validation/open races.
+
+The follower applies the symmetric controls. It validates every manifest path
+before scheduling downloads, validates again in the per-file fetcher, and uses
+an `os.Root` bound to the staging directory for parent creation, temporary-file
+creation, cleanup, and final rename. A peer therefore cannot use a manifest
+path or a pre-existing staging symlink to write outside the staging directory.
+
+Tests must preserve both sides of this boundary: valid root and nested files,
+parent traversal, absolute paths, and symlink escapes. See
+`docs/technical/contributing/testing.md`.
+
 ## WAL reclamation after restore
 
-Installing a received Raft snapshot durably writes the snapshot record and
-HardState, clears cached entries through the snapshot index, then releases etcd
-WAL segment locks through that index. Lock release is shared with normal log
-compaction and runs after the in-memory WAL mutex is released because filesystem
-cleanup may be slow.
+Installing a received Raft snapshot first replaces the in-memory snapshot
+pointer, discards the entire cached entry slice, and raises the in-memory
+HardState commit when necessary. It then writes the full snapshot file, buffers
+the HardState WAL record, and writes the WAL snapshot record; etcd's
+`SaveSnapshot` sync durably flushes both WAL records. After cleaning old
+snapshot files, it drops the in-memory WAL mutex and releases etcd WAL segment
+locks through the installed index. A durable-write failure is returned but does
+not roll back the earlier in-memory replacement and cache clear.
+
+Normal maintenance remains an independent reclamation trigger: it creates a
+snapshot and calls `Compact`, which releases locks through the compaction index.
+Regression coverage must retain both the steady-state `Compact` trigger and the
+received-snapshot trigger.
 
 Lock release is best effort: failure is logged but cannot roll back an already
 persisted snapshot or completed in-memory compaction. The background WAL purger

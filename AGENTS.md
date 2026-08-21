@@ -70,6 +70,8 @@ Key rules that apply broadly:
 - In tests, do not use `time.Sleep`; prefer `require.Eventually` or deterministic synchronization.
 - Unit tests should use `t.Parallel()` where supported by existing test conventions.
 - Do not hand-roll mocks for mockgen-managed interfaces; regenerate generated mocks after interface changes.
+- Treat every path received through an API, RPC, manifest, archive, or peer as untrusted. Validate lexical locality and enforce containment with a root-scoped filesystem capability at the final `open`/`create`/`remove`/`rename`; `filepath.Join`, `Clean`, or `Rel` string equality is not a containment boundary. See the follower-sync storage documentation for the canonical `filepath.IsLocal` + `os.Root` pattern.
+- Regression tests are additive across production triggers: adding coverage for a new caller or failure path must not replace the existing regression trigger. Assertions must uniquely identify the intended branch, and retry tests must execute a real fail-then-success sequence and verify final bytes, attempt count, and temporary-file cleanup. See `docs/technical/contributing/testing.md`.
 
 Before changing Protocol Buffers, tests, Numscript, or contributor workflow, read the matching document listed in `docs/technical/agent-context.md`.
 
@@ -81,6 +83,7 @@ Documentation is part of the change when behavior, architecture, interfaces, CLI
 - API endpoint change: update `docs/technical/contributing/api-comparison.md`; update `openapi.yml` for HTTP changes.
 - CLI behavior/flag/command change: update `docs/ops/cli.md`; regenerate demo GIFs when applicable.
 - Interface/behavior change: update relevant code comments.
+- Durability and recovery documentation must state the actual in-memory mutation order, durable-write order, and residual state after failure; do not describe the intended end state as if it were the execution sequence.
 - Documentation is written in English.
 
 Do not use `docs/drafts/**` as evidence of current behavior unless the task explicitly references that design.

@@ -22,8 +22,9 @@ import (
 )
 
 // fileStreamScript drives a MockServerStreamingClient[snapshotpb.FetchFileResponse]:
-// it returns `responses` in order, then io.EOF. If failAt >= 0, the call at
-// that index returns failErr instead of the scripted response.
+// it returns `responses` in order, then io.EOF. If failAt >= 0, the first call
+// at that index returns failErr; the failure is consumed so a retry can resume
+// the script at the same response.
 type fileStreamScript struct {
 	responses []*snapshotpb.FetchFileResponse
 	failAt    int
@@ -36,8 +37,11 @@ func newFileStream(t *testing.T, script fileStreamScript) *MockServerStreamingCl
 	s := NewMockServerStreamingClient[snapshotpb.FetchFileResponse](gomock.NewController(t))
 
 	idx := 0
+	failed := false
 	s.EXPECT().Recv().DoAndReturn(func() (*snapshotpb.FetchFileResponse, error) {
-		if script.failAt >= 0 && idx == script.failAt {
+		if script.failAt >= 0 && idx == script.failAt && !failed {
+			failed = true
+
 			return nil, script.failErr
 		}
 
@@ -219,6 +223,68 @@ func TestGRPCSnapshotFetcher_HashMismatch(t *testing.T) {
 	require.Contains(t, err.Error(), "hash mismatch")
 }
 
+func TestGRPCSnapshotFetcher_RejectsNonLocalManifestPath(t *testing.T) {
+	t.Parallel()
+
+	targetDir := t.TempDir()
+	outsidePath := filepath.Join(t.TempDir(), "written-outside.txt")
+	traversalPath, err := filepath.Rel(targetDir, outsidePath)
+	require.NoError(t, err)
+
+	client, clientState := newMockSnapshotClient(t,
+		&snapshotpb.PrepareSnapshotResponse{
+			SessionId: "test-session",
+			Manifest: &snapshotpb.SnapshotManifest{Files: []*snapshotpb.FileEntry{
+				{Path: traversalPath, Size: 1},
+			}},
+		},
+		nil,
+		nil,
+	)
+
+	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 1, retryCount: 1, fileRetryCount: 1}
+	_, err = fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
+	require.ErrorContains(t, err, "invalid snapshot path")
+	require.Zero(t, clientState.fetchFileCalls.Load())
+	require.Equal(t, int32(1), clientState.closeCalled.Load())
+	require.NoFileExists(t, outsidePath)
+}
+
+func TestGRPCSnapshotFetcher_RejectsSymlinkEscape(t *testing.T) {
+	t.Parallel()
+
+	targetDir := t.TempDir()
+	outsideDir := t.TempDir()
+	require.NoError(t, os.Symlink(outsideDir, filepath.Join(targetDir, "outside-link")))
+
+	entryPath := filepath.Join("outside-link", "written-outside.txt")
+	content := []byte("attacker-controlled")
+	streams := map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]{
+		entryPath: newFileStream(t, fileStreamScript{
+			responses: []*snapshotpb.FetchFileResponse{
+				{Data: content, Eof: true, Sha256: fileSHA256(content)},
+			},
+			failAt: -1,
+		}),
+	}
+	client, clientState := newMockSnapshotClient(t,
+		&snapshotpb.PrepareSnapshotResponse{
+			SessionId: "test-session",
+			Manifest: &snapshotpb.SnapshotManifest{Files: []*snapshotpb.FileEntry{
+				{Path: entryPath, Size: uint64(len(content))},
+			}},
+		},
+		nil,
+		streams,
+	)
+
+	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 1, retryCount: 1, fileRetryCount: 1}
+	_, err := fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
+	require.ErrorContains(t, err, "creating parent directory")
+	require.Equal(t, int32(1), clientState.fetchFileCalls.Load())
+	require.NoFileExists(t, filepath.Join(outsideDir, "written-outside.txt"))
+}
+
 func TestGRPCSnapshotFetcher_MissingDigest(t *testing.T) {
 	t.Parallel()
 
@@ -280,11 +346,14 @@ func TestGRPCSnapshotFetcher_SizeMismatch(t *testing.T) {
 func TestGRPCSnapshotFetcher_RejectsExcessBytes(t *testing.T) {
 	t.Parallel()
 
-	data := []byte("content")
+	targetDir := t.TempDir()
+	declared := []byte("data")
+	excess := []byte("!")
 	streams := map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]{
 		"data.bin": newFileStream(t, fileStreamScript{
 			responses: []*snapshotpb.FetchFileResponse{
-				{Data: data, Eof: true, Sha256: fileSHA256(data)},
+				{Data: declared},
+				{Data: excess},
 			},
 			failAt: -1,
 		}),
@@ -293,7 +362,7 @@ func TestGRPCSnapshotFetcher_RejectsExcessBytes(t *testing.T) {
 		&snapshotpb.PrepareSnapshotResponse{
 			SessionId: "test-session",
 			Manifest: &snapshotpb.SnapshotManifest{Files: []*snapshotpb.FileEntry{
-				{Path: "data.bin", Size: uint64(len(data) - 1)},
+				{Path: "data.bin", Size: uint64(len(declared))},
 			}},
 		},
 		nil,
@@ -301,9 +370,48 @@ func TestGRPCSnapshotFetcher_RejectsExcessBytes(t *testing.T) {
 	)
 
 	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 1, retryCount: 1, fileRetryCount: 1}
-	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 0)
+	_, err := fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "size mismatch")
+	require.ErrorContains(t, err, "got at least 5")
+	require.NoFileExists(t, filepath.Join(targetDir, "data.bin.tmp"))
+}
+
+func TestGRPCSnapshotFetcher_RetryRewritesPartialFile(t *testing.T) {
+	t.Parallel()
+
+	targetDir := t.TempDir()
+	partial := []byte("stale")
+	complete := []byte("complete-content")
+	streams := map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]{
+		"data.bin": newFileStream(t, fileStreamScript{
+			responses: []*snapshotpb.FetchFileResponse{
+				{Data: partial},
+				{Data: complete, Eof: true, Sha256: fileSHA256(complete)},
+			},
+			failAt:  1,
+			failErr: status.Error(codes.Unavailable, "transient stream failure"),
+		}),
+	}
+	client, csState := newMockSnapshotClient(t,
+		&snapshotpb.PrepareSnapshotResponse{
+			SessionId: "test-session",
+			Manifest: &snapshotpb.SnapshotManifest{Files: []*snapshotpb.FileEntry{
+				{Path: "data.bin", Size: uint64(len(complete))},
+			}},
+		},
+		nil,
+		streams,
+	)
+
+	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 1, retryCount: 1, fileRetryCount: 2}
+	_, err := fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
+	require.NoError(t, err)
+	require.Equal(t, int32(2), csState.fetchFileCalls.Load())
+
+	data, err := os.ReadFile(filepath.Join(targetDir, "data.bin"))
+	require.NoError(t, err)
+	require.Equal(t, complete, data)
+	require.NoFileExists(t, filepath.Join(targetDir, "data.bin.tmp"))
 }
 
 func TestGRPCSnapshotFetcher_UnavailableWrapsErrNotAvailable(t *testing.T) {
