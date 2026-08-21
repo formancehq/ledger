@@ -374,6 +374,15 @@ func (m *SystemScopedOrder_DeleteQueryCheckpointSchedule) CloneVT() isSystemScop
 	return r
 }
 
+func (m *SystemScopedOrder_SetClusterPolicy) CloneVT() isSystemScopedOrder_Payload {
+	if m == nil {
+		return (*SystemScopedOrder_SetClusterPolicy)(nil)
+	}
+	r := new(SystemScopedOrder_SetClusterPolicy)
+	r.SetClusterPolicy = m.SetClusterPolicy.CloneVT()
+	return r
+}
+
 func (m *CreatePreparedQueryOrder) CloneVT() *CreatePreparedQueryOrder {
 	if m == nil {
 		return (*CreatePreparedQueryOrder)(nil)
@@ -614,6 +623,23 @@ func (m *SetMaintenanceModeOrder) CloneVT() *SetMaintenanceModeOrder {
 }
 
 func (m *SetMaintenanceModeOrder) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *SetClusterPolicyOrder) CloneVT() *SetClusterPolicyOrder {
+	if m == nil {
+		return (*SetClusterPolicyOrder)(nil)
+	}
+	r := new(SetClusterPolicyOrder)
+	r.Policy = m.Policy.CloneVT()
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *SetClusterPolicyOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -3019,6 +3045,31 @@ func (this *SystemScopedOrder_DeleteQueryCheckpointSchedule) EqualVT(thatIface i
 	return true
 }
 
+func (this *SystemScopedOrder_SetClusterPolicy) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
+	that, ok := thatIface.(*SystemScopedOrder_SetClusterPolicy)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.SetClusterPolicy, that.SetClusterPolicy; p != q {
+		if p == nil {
+			p = &SetClusterPolicyOrder{}
+		}
+		if q == nil {
+			q = &SetClusterPolicyOrder{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *CreatePreparedQueryOrder) EqualVT(that *CreatePreparedQueryOrder) bool {
 	if this == that {
 		return true
@@ -3279,6 +3330,25 @@ func (this *SetMaintenanceModeOrder) EqualVT(that *SetMaintenanceModeOrder) bool
 
 func (this *SetMaintenanceModeOrder) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*SetMaintenanceModeOrder)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *SetClusterPolicyOrder) EqualVT(that *SetClusterPolicyOrder) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if !this.Policy.EqualVT(that.Policy) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *SetClusterPolicyOrder) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SetClusterPolicyOrder)
 	if !ok {
 		return false
 	}
@@ -6599,6 +6669,27 @@ func (m *SystemScopedOrder_DeleteQueryCheckpointSchedule) MarshalToSizedBufferVT
 	}
 	return len(dAtA) - i, nil
 }
+func (m *SystemScopedOrder_SetClusterPolicy) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SystemScopedOrder_SetClusterPolicy) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SetClusterPolicy != nil {
+		size, err := m.SetClusterPolicy.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0x8a
+	}
+	return len(dAtA) - i, nil
+}
 func (m *CreatePreparedQueryOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -7172,6 +7263,49 @@ func (m *SetMaintenanceModeOrder) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 		}
 		i--
 		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SetClusterPolicyOrder) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SetClusterPolicyOrder) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SetClusterPolicyOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Policy != nil {
+		size, err := m.Policy.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -11641,6 +11775,18 @@ func (m *SystemScopedOrder_DeleteQueryCheckpointSchedule) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *SystemScopedOrder_SetClusterPolicy) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SetClusterPolicy != nil {
+		l = m.SetClusterPolicy.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *CreatePreparedQueryOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -11836,6 +11982,20 @@ func (m *SetMaintenanceModeOrder) SizeVT() (n int) {
 	_ = l
 	if m.Enabled {
 		n += 2
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *SetClusterPolicyOrder) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Policy != nil {
+		l = m.Policy.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -14998,6 +15158,47 @@ func (m *SystemScopedOrder) UnmarshalVT(dAtA []byte) error {
 				m.Payload = &SystemScopedOrder_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: v}
 			}
 			iNdEx = postIndex
+		case 17:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetClusterPolicy", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Payload.(*SystemScopedOrder_SetClusterPolicy); ok {
+				if err := oneof.SetClusterPolicy.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SetClusterPolicyOrder{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Payload = &SystemScopedOrder_SetClusterPolicy{SetClusterPolicy: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -16187,6 +16388,93 @@ func (m *SetMaintenanceModeOrder) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Enabled = bool(v != 0)
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SetClusterPolicyOrder) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SetClusterPolicyOrder: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SetClusterPolicyOrder: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Policy", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Policy == nil {
+				m.Policy = &commonpb.ClusterPolicy{}
+			}
+			if err := m.Policy.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

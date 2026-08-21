@@ -139,7 +139,7 @@ func TestVerifyAuditHashChain_SigningFoldIgnoresLegacyReplayReferences(t *testin
 	// chain itself must still be intact — a mismatching entry is not folded, so a
 	// broken chain would skip the revoke and pass for the wrong reason.
 	_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil,
-		newChainBoundState(), nil, verifier, func(*servicepb.CheckStoreEvent) {})
+		newChainBoundState(), nil, verifier, newClusterPolicyVerifier(), func(*servicepb.CheckStoreEvent) {})
 	require.NoError(t, err)
 
 	require.NotContains(t, verifier.keys, "legacy-key",

@@ -602,6 +602,8 @@ func (s *scopeImpl) RemoveSigningKey(_ string)                                 {
 func (s *scopeImpl) GetSigningKeyChildren(_ string) []string                   { return nil }
 func (s *scopeImpl) SetRequireSignatures(_ bool)                               {}
 func (s *scopeImpl) SetMaintenanceMode(_ bool)                                 {}
+func (s *scopeImpl) GetClusterPolicy() *commonpb.ClusterPolicy                 { return &commonpb.ClusterPolicy{} }
+func (s *scopeImpl) SetClusterPolicy(_ *commonpb.ClusterPolicy)                {}
 func (s *scopeImpl) GetSinkConfig(_ string) (commonpb.SinkConfigReader, error) { return nil, nil }
 
 func (s *scopeImpl) GetLastLogHash() []byte {

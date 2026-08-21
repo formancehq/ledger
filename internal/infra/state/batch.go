@@ -207,6 +207,11 @@ func saveClusterState(b *dal.WriteSession, state *commonpb.PersistedClusterState
 	return b.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig}, state)
 }
 
+// SaveClusterPolicy stores the replicated cluster policy in the batch.
+func SaveClusterPolicy(b *dal.WriteSession, policy *commonpb.ClusterPolicy) error {
+	return b.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, policy)
+}
+
 // SaveChapterSchedule stores the chapter schedule cron expression in the batch.
 func SaveChapterSchedule(b *dal.WriteSession, cron string) error {
 	err := b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobChapterSchedule}, []byte(cron))

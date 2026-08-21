@@ -394,6 +394,9 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrNumscriptRuntime":               &ErrNumscriptRuntime{},
 		"ErrVolumeNotMaterialized":          &ErrVolumeNotMaterialized{},
 		"errCheckpointIDRequired":           errCheckpointIDRequired{},
+		"ErrStaleClusterPolicy":             &ErrStaleClusterPolicy{},
+		"ErrClusterPolicyRevisionConflict":  &ErrClusterPolicyRevisionConflict{},
+		"ErrClusterPolicyInvalid":           &ErrClusterPolicyInvalid{},
 		// Unexported sentinel struct types; each is exposed once via a
 		// package-level Describable var (ErrColdStorageDisabled, etc.)
 		// and must implement the interface.

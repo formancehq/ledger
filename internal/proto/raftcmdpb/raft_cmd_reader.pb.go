@@ -1213,6 +1213,77 @@ func NewSetMaintenanceModeOrderListReader(s []*SetMaintenanceModeOrder) SetMaint
 	return setMaintenanceModeOrderListReadonly(s)
 }
 
+// SetClusterPolicyOrderReader provides read-only access to SetClusterPolicyOrder.
+// Call Mutate() to obtain a mutable clone.
+type SetClusterPolicyOrderReader interface {
+	GetPolicy() commonpb.ClusterPolicyReader
+	Mutate() *SetClusterPolicyOrder
+}
+
+type setClusterPolicyOrderReadonly SetClusterPolicyOrder
+
+func (r *setClusterPolicyOrderReadonly) GetPolicy() commonpb.ClusterPolicyReader {
+	v := (*SetClusterPolicyOrder)(r).GetPolicy()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *setClusterPolicyOrderReadonly) Mutate() *SetClusterPolicyOrder {
+	return (*SetClusterPolicyOrder)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SetClusterPolicyOrder.
+func (m *SetClusterPolicyOrder) AsReader() SetClusterPolicyOrderReader {
+	if m == nil {
+		return nil
+	}
+	return (*setClusterPolicyOrderReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SetClusterPolicyOrder.
+func (m *SetClusterPolicyOrder) Mutate() *SetClusterPolicyOrder {
+	return m.CloneVT()
+}
+
+// SetClusterPolicyOrderListReader provides read-only iteration over []*SetClusterPolicyOrder.
+type SetClusterPolicyOrderListReader interface {
+	Len() int
+	Get(i int) SetClusterPolicyOrderReader
+	Range(yield func(int, SetClusterPolicyOrderReader) bool)
+}
+
+type setClusterPolicyOrderListReadonly []*SetClusterPolicyOrder
+
+func (l setClusterPolicyOrderListReadonly) Len() int { return len(l) }
+
+func (l setClusterPolicyOrderListReadonly) Get(i int) SetClusterPolicyOrderReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l setClusterPolicyOrderListReadonly) Range(yield func(int, SetClusterPolicyOrderReader) bool) {
+	for i, v := range l {
+		var r SetClusterPolicyOrderReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSetClusterPolicyOrderListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSetClusterPolicyOrderListReader(s []*SetClusterPolicyOrder) SetClusterPolicyOrderListReader {
+	return setClusterPolicyOrderListReadonly(s)
+}
+
 // SetChapterScheduleOrderReader provides read-only access to SetChapterScheduleOrder.
 // Call Mutate() to obtain a mutable clone.
 type SetChapterScheduleOrderReader interface {

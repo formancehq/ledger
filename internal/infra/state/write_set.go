@@ -38,6 +38,11 @@ type maintenanceModeUpdate struct {
 	enabled bool
 }
 
+// clusterPolicyUpdate represents a pending cluster-policy change.
+type clusterPolicyUpdate struct {
+	policy *commonpb.ClusterPolicy
+}
+
 type WriteSet struct {
 	fsm                   *Machine
 	attrs                 *attributes.Attributes
@@ -51,6 +56,7 @@ type WriteSet struct {
 	pendingSigningKeyUpdates      []signingKeyUpdate
 	pendingSigningConfigUpdate    *signingConfigUpdate
 	pendingMaintenanceModeUpdate  *maintenanceModeUpdate
+	pendingClusterPolicyUpdate    *clusterPolicyUpdate
 	chapterScheduleUpdate         *string
 	queryCheckpointScheduleUpdate *string
 	sinkConfigChanged             bool
@@ -724,6 +730,16 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		b.fsm.sharedState.SetMaintenanceMode(b.pendingMaintenanceModeUpdate.enabled)
 	}
 
+	// SubGlobClusterPolicy (0x16)
+	if b.pendingClusterPolicyUpdate != nil {
+		err := SaveClusterPolicy(batch, b.pendingClusterPolicyUpdate.policy)
+		if err != nil {
+			return fmt.Errorf("saving cluster policy: %w", err)
+		}
+
+		b.fsm.State.UpdateClusterPolicy(b.pendingClusterPolicyUpdate.policy)
+	}
+
 	// SubGlobChapterSchedule (0x0D)
 	if b.chapterScheduleUpdate != nil {
 		if *b.chapterScheduleUpdate == "" {
@@ -902,6 +918,7 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.pendingSigningKeyUpdates = b.pendingSigningKeyUpdates[:0]
 	b.pendingSigningConfigUpdate = nil
 	b.pendingMaintenanceModeUpdate = nil
+	b.pendingClusterPolicyUpdate = nil
 	b.chapterScheduleUpdate = nil
 	b.queryCheckpointScheduleUpdate = nil
 	b.sinkConfigChanged = false
@@ -1432,6 +1449,23 @@ func (b *WriteSet) SetRequireSignatures(require bool) {
 func (b *WriteSet) SetMaintenanceMode(enabled bool) {
 	b.pendingMaintenanceModeUpdate = &maintenanceModeUpdate{
 		enabled: enabled,
+	}
+}
+
+// GetClusterPolicy returns the effective cluster policy for the revision check:
+// the update staged earlier in this proposal if any, otherwise the committed
+// policy in FSMState. Never nil (NewFSMState seeds the default).
+func (b *WriteSet) GetClusterPolicy() *commonpb.ClusterPolicy {
+	if b.pendingClusterPolicyUpdate != nil {
+		return b.pendingClusterPolicyUpdate.policy
+	}
+
+	return b.fsm.State.ClusterPolicy
+}
+
+func (b *WriteSet) SetClusterPolicy(policy *commonpb.ClusterPolicy) {
+	b.pendingClusterPolicyUpdate = &clusterPolicyUpdate{
+		policy: policy,
 	}
 }
 

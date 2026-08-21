@@ -307,6 +307,15 @@ func RebuildDelta(
 				}
 			}
 
+		case *commonpb.LogPayload_SetClusterPolicy:
+			if p.SetClusterPolicy != nil {
+				if err := state.SaveClusterPolicy(batch, p.SetClusterPolicy.GetPolicy()); err != nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("saving cluster policy at log %d: %w", seq, err)
+				}
+			}
+
 		case *commonpb.LogPayload_AddedEventsSink:
 			if p.AddedEventsSink != nil && p.AddedEventsSink.GetConfig() != nil {
 				cfg := p.AddedEventsSink.GetConfig()
