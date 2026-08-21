@@ -41,9 +41,11 @@ func TestNewIndexDTO_MetadataOneof(t *testing.T) {
 
 // The oneof switch in newIndexIDDTO has no default, so a fifth variant would
 // silently render `"id": {}` with nothing failing to compile. golangci-lint's
-// `exhaustive` linter does not cover type switches over oneof wrappers, which
-// makes this table the only exhaustiveness guard: it must produce all four
-// variants, and each case asserts the other three fields stay nil.
+// `exhaustive` linter does not cover type switches over oneof wrappers. This
+// table pins the rendered shape of all four variants — each case asserts the
+// other three fields stay nil — but being hand-written it cannot notice a FIFTH
+// variant appearing in the proto. TestNewIndexIDDTO_KindOneofExhaustive in
+// dto_oneof_exhaustiveness_test.go is the descriptor-driven gate for that.
 func TestNewIndexIDDTO_AllOneofVariants(t *testing.T) {
 	t.Parallel()
 
