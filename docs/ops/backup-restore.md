@@ -357,7 +357,7 @@ The run reports this as an `ARCHIVED_STATE_VERIFICATION_INCOMPLETE` finding, and
 
 That verdict **fails closed**: the exit status is what gates `restore validate && restore finalize`, so a run that compared nothing must not let a chain proceed. Because the gap is unavoidable on this path, `--allow-incomplete` is how an archived cluster gets through — it accepts the unverified backup explicitly, on the command line, instead of leaving the acceptance implicit in a zero exit code. It never accepts a divergence.
 
-> `ledgerctl store check` runs the same checker, but not with the same coverage: during normal operations it has both a cold reader and the node's baseline checkpoint, so the passes listed above do run there.
+> `ledgerctl store check` runs the same checker against a live node, so it always has a cold reader — but the baseline checkpoint is not guaranteed. The baseline is written when a chapter closes ([`createBaselineSnapshot`](../../internal/infra/node/applier.go), non-fatal on error), and it is not part of a backup. So a node whose store came from a restore holds archived chapters with no baseline until it closes a chapter of its own, and a single failed snapshot leaves the same shape until the following close. On that shape `store check` reports `ARCHIVED_STATE_VERIFICATION_INCOMPLETE` too, with the same three-way verdict and the same `--allow-incomplete` acknowledgement. Once the node has closed a chapter, the passes listed above do run there.
 
 ### Step 3: Preview
 

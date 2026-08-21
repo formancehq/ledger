@@ -1938,13 +1938,25 @@ ledgerctl store check [flags]
 |------|---------|-------------|
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `50s` | Request timeout |
+| `--allow-incomplete` | `false` | Exit zero when passes could not be completed, accepting a store whose projections were never verified |
 
 **Behavior:**
 - Iterates all logs and verifies the BLAKE3 hash chain
 - Replays logs to compute expected volumes and metadata
 - Compares expected state against actual stored state
 - Streams progress and errors in real-time
-- Exits non-zero when integrity errors are found so it can gate scripts (the `--json` output instead reports `valid: false` and exits zero)
+- Applies the same three-way verdict as [restore validate](#restore-validate): a pass that could not be completed is reported as a `WARNING` and is **not** an integrity error. Exits non-zero for a divergence, and non-zero for incomplete coverage unless `--allow-incomplete` is given (the `--json` output instead reports the verdict in its payload and exits zero)
+
+The three `*_VERIFICATION_INCOMPLETE` types below are the incomplete-coverage class. They are routine here on a store that holds archived chapters with no baseline checkpoint — a node restored from a backup reports them until it closes a chapter of its own — and counting them as divergences would announce a store as corrupt on the strength of a pass that never ran.
+
+**Structured output (`--json` / `--yaml`):**
+
+| Field | Meaning |
+|-------|---------|
+| `valid` | `true` only for the clean outcome: every pass ran and none found a divergence |
+| `outcome` | `clean`, `incomplete` (nothing diverged, but part of the store was never compared), or `failed` (a divergence was found; it outranks any number of gaps) |
+| `errorCount` / `errors` | Divergences only |
+| `coverageGapCount` / `coverageGaps` | Passes that could not be completed |
 
 **Checks performed:**
 - **SEQUENCE_GAP**: Missing log entries in the sequence
@@ -1966,6 +1978,9 @@ ledgerctl store check
 
 # Output as JSON (for scripting)
 ledgerctl store check --json
+
+# Accept a store whose projections could not be compared (archived chapters, no baseline)
+ledgerctl store check --allow-incomplete
 ```
 
 #### store primary compact

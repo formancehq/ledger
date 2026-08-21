@@ -67,6 +67,27 @@ const (
 	IntegrityOutcomeFailed
 )
 
+// String names the outcome for a machine-readable payload.
+//
+// Kept next to the constants so the JSON vocabulary a consumer switches on
+// cannot drift away from the Go one, the way a name spelled out at the call site
+// would.
+func (o IntegrityOutcome) String() string {
+	switch o {
+	case IntegrityOutcomeClean:
+		return "clean"
+	case IntegrityOutcomeIncomplete:
+		return "incomplete"
+	case IntegrityOutcomeFailed:
+		return "failed"
+	default:
+		// Unreachable: ClassifyIntegrity is the only producer and it returns one
+		// of the three above. Named rather than left blank so a value that did
+		// escape reads as a defect instead of an empty verdict.
+		return "unknown"
+	}
+}
+
 // ClassifyIntegrity maps a check's findings onto one of three outcomes.
 //
 // Three, not two. Divergences fail. Everything verified with nothing wrong is
