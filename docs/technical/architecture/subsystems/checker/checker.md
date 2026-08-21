@@ -149,6 +149,16 @@ Only the one direction is reported. The opposite — the chain authenticating a 
 
 **It also runs without a baseline checkpoint.** An archived store whose baseline is missing skips entry-by-entry verification, but the audited maximum comes from the chain walk and the stored maximum from a reverse seek (`readStoredLogMax`'s iterator bounds match the replay loop's), so neither side needs the baseline. The signing compare runs on that path for the same reason. `compareReverseMapOrphans` does not: its `liveLedgers` and `replayedSchemas` terms are baseline-seeded and would report every declared ledger's rows as orphaned.
 
+### The baseline-less archived shape reports its own coverage
+
+An archived store with no baseline checkpoint returns from `Check` early, after the audit hash chain, the chapter sealing hashes, the signing compare and the log bound — and *before* every projection comparison. That skip emits `ARCHIVED_STATE_VERIFICATION_INCOMPLETE`, naming the passes that did not run.
+
+The finding exists because the skip was previously announced only through `c.logger.Error`, which never reaches the event stream. `CheckStoreEvent` has only `Progress` and `Error` arms, so the consumers that build a pass/fail verdict see nothing else — and a `Check` that returns with no findings is indistinguishable from one that verified everything. `restore validate` therefore reported a clean backup over a dozen passes that never ran. Emitting it does not narrow the hole; it stops the hole being reported as a clean bill of health.
+
+It is classified as a coverage gap (`IsCoverageGap`), not a divergence: nothing about the shape says the store is wrong, and it is routine rather than exceptional — the baseline lives beside the checkpoint directory rather than inside it, so it is never part of a backup and **every** restore-side run of an archived cluster reports it. Both offline callers (`ValidateRestore`, `store bootstrap --validate`) keep it out of their exit status for that reason, while refusing to call the backup valid. Counting it as a divergence instead is what made those commands reject healthy archived backups.
+
+The residual limitation is real and deliberate: a tampered `Volume` row on this shape is not detected by anything, since `Volume` projections sit outside the audit hash pre-image and `compareVolumes` is the only verifier. `TestBaselineLessArchivedLeavesProjectionsUnverified` pins that, with a baseline-present control proving the same row *is* caught when the baseline exists. Closing it means making the baseline (or cold state) available on the restore path, not relaxing that test.
+
 ## Replay machinery
 
 Three building blocks under `internal/domain/replay/`:

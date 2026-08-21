@@ -71,6 +71,7 @@ For each account metadata key/value encountered during replay (excluding deleted
 | `LOG_UNAUDITED` | The store holds a log above the audited maximum, so it was written outside the audited apply path |
 | `LOG_VERIFICATION_INCOMPLETE` | The chain walk was truncated, so the audited log maximum is a prefix maximum and the log stream could not be bounded |
 | `SIGNING_VERIFICATION_INCOMPLETE` | The signing-key expectation could not be completed, so the key and config comparisons were skipped |
+| `ARCHIVED_STATE_VERIFICATION_INCOMPLETE` | Archived chapters exist with no baseline checkpoint, so the entry-by-entry projection comparison was skipped wholesale |
 
 The table above is a selection, not the full enumeration. `CheckStoreErrorType` in `misc/proto/bucket.proto` is the authoritative list.
 

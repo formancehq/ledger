@@ -1954,6 +1954,7 @@ ledgerctl store check [flags]
 - **LOG_UNAUDITED**: The store holds a log above the highest sequence the audit chain authenticates, so it was written outside the audited apply path
 - **LOG_VERIFICATION_INCOMPLETE**: The audit chain walk stopped early, so the audited log maximum is only a prefix maximum and the log stream could not be bounded in this run
 - **SIGNING_VERIFICATION_INCOMPLETE**: The signing-key expectation could not be completed (archived orders unreadable, or the live chain fold cut short), so the key and config comparisons were skipped
+- **ARCHIVED_STATE_VERIFICATION_INCOMPLETE**: Archived chapters exist with no baseline checkpoint to compare against, so the entry-by-entry projection comparison was skipped wholesale (volumes, metadata, transactions, references, reversions, schema, account types, boundaries, ledger presence, indexes, numscripts, reverse map)
 
 This list is not exhaustive; `CheckStoreErrorType` in `misc/proto/bucket.proto` is the complete set.
 
@@ -3758,7 +3759,24 @@ Findings come in two kinds, and only one of them affects the exit status:
 | `ERROR` | A divergence was found — the backup contradicts its own audit chain | Yes |
 | `WARNING` | A pass could not be completed, so part of the store was not verified | No |
 
-The distinction matters on **archived** clusters. Validation runs against the staged backup with no cold storage attached, and the baseline checkpoint is not part of a backup, so the signing-key expectation cannot be completed for keys registered before the archive boundary. A healthy backup of an archived cluster therefore always reports at least one `WARNING`. Those lines say what was *not* checked; they are not evidence of corruption, and the command still reports the backup valid.
+The distinction matters on **archived** clusters. Validation runs against the staged backup with no cold storage attached and no baseline checkpoint (the baseline is never part of a backup), so a healthy backup of an archived cluster always reports at least one `WARNING`. Those lines say what was *not* checked; they are not evidence of corruption.
+
+Two passes are affected, and the second is the wide one:
+
+- the **signing-key expectation** cannot be completed for keys registered before the archive boundary (`SIGNING_VERIFICATION_INCOMPLETE`);
+- the **entry-by-entry projection comparison is skipped wholesale** (`ARCHIVED_STATE_VERIFICATION_INCOMPLETE`) — volumes, metadata, transactions, references, reversions, schema, account types, boundaries, ledger presence, indexes, numscripts and the reverse map are all unverified for the run.
+
+The command therefore closes with one of three lines:
+
+| Verdict line | Meaning | Exit |
+|--------------|---------|------|
+| `Backup is valid - no integrity errors found` | Every pass ran and found nothing wrong | 0 |
+| `Audit chain verified; N pass(es) could not be completed` | Nothing diverged, but part of the store was never compared | 0 |
+| `backup validation failed: N integrity error(s)` | A divergence was found | non-zero |
+
+The middle verdict deliberately still exits zero: the gap is unavoidable on the restore path, so failing on it would leave archived clusters unable to validate a backup at all. It is **not** a statement that the projections are correct — only that the audit chain is. A corrupt volume row on an archived backup is not detectable by this command; see [Coverage on an archived backup](backup-restore.md#coverage-on-an-archived-backup).
+
+`store bootstrap --validate` applies the same three-way verdict to the same checker.
 
 #### restore preview
 
