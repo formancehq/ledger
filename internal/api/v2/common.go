@@ -2,7 +2,6 @@ package v2
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -14,6 +13,7 @@ import (
 	. "github.com/formancehq/go-libs/v5/pkg/types/collections"
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
+	"github.com/formancehq/ledger/internal/api/common"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
 )
 
@@ -51,7 +51,7 @@ func getExporterID(r *http.Request) string {
 func getQueryBuilder(r *http.Request) (query.Builder, error) {
 	q := r.URL.Query().Get("query")
 	if q == "" {
-		data, err := io.ReadAll(r.Body)
+		data, err := common.ReadBody(r)
 		if err != nil {
 			return nil, err
 		}

@@ -21,7 +21,9 @@ It has been generated successfully based on your OpenAPI spec. However, it is no
 <!-- Start Summary [summary] -->
 ## Summary
 
-
+Ledger API: Non-streaming JSON request bodies are limited to 4 MiB. Streaming log import and
+streaming bulk media types are excluded so historical ledgers and large streams
+can be processed incrementally.
 <!-- End Summary [summary] -->
 
 <!-- Start Table of Contents [toc] -->
