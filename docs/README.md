@@ -38,7 +38,7 @@ Experimental ideas, advanced concepts, and future design proposals. These docume
 |-------|------|
 | Agent context routing | [technical/agent-context.md](./technical/agent-context.md) |
 | CLI reference | [ops/cli.md](./ops/cli.md) |
-| Deployment guide | [ops/deployment.md](./ops/deployment.md) |
+| Deployment guide | [ops/deployment-profiles.md](./ops/deployment-profiles.md) |
 | Architecture overview | [technical/architecture/overview.md](./technical/architecture/overview.md) |
 | API comparison (v2 parity) | [technical/contributing/api-comparison.md](./technical/contributing/api-comparison.md) |
 | Query filtering (QueryFilter) | [technical/architecture/subsystems/read-path/query-filter.md](./technical/architecture/subsystems/read-path/query-filter.md) |
