@@ -32,6 +32,16 @@ state=$(jq -r .state <<<"$metadata")
 [[ "$state" == "OPEN" ]] || { echo "ai-pr-triage: PR #$pr_number is not open" >&2; exit 1; }
 base_sha=$(jq -r .baseRefOid <<<"$metadata")
 head_sha=$(jq -r .headRefOid <<<"$metadata")
+expected_base=${AI_PR_TRIAGE_EXPECT_BASE_SHA:-}
+expected_head=${AI_PR_TRIAGE_EXPECT_HEAD_SHA:-}
+if [[ -n "$expected_base" && "$base_sha" != "$expected_base" ]]; then
+    echo "ai-pr-triage: PR base moved since launcher verification: got $base_sha expected $expected_base" >&2
+    exit 2
+fi
+if [[ -n "$expected_head" && "$head_sha" != "$expected_head" ]]; then
+    echo "ai-pr-triage: PR head moved since launcher verification: got $head_sha expected $expected_head" >&2
+    exit 2
+fi
 head_owner=$(jq -r '.headRepositoryOwner.login // ""' <<<"$metadata")
 head_repo=$(jq -r '.headRepository.name // ""' <<<"$metadata")
 [[ -n "$head_owner" && -n "$head_repo" && "$head_owner/$head_repo" == "$repo" ]] || {
