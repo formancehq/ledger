@@ -3909,7 +3909,7 @@ Controls the time-to-live for idempotency keys. After the TTL expires, an idempo
 | `--idempotency-ttl` | duration | `24h` | Time-to-live for idempotency keys (0 = never expire) |
 | `--idempotency-eviction-interval` | duration | `60s` | How often the leader proposes eviction of expired keys |
 
-The TTL is persisted in the startup config and validated on subsequent boots (same as `--cache-rotation-threshold`). Changing it requires `--unsafe-skip-config-validation`.
+A persisted non-zero TTL is validated on subsequent boots; changing one requires `--unsafe-skip-config-validation`. For backward compatibility, a persisted `0` is treated as an older unset field and may transition to a finite value without the override. Plan either change as an intentional migration and keep the configured value consistent across nodes.
 
 ```bash
 # Default: 24h TTL, eviction every 60s
@@ -4169,7 +4169,7 @@ Configure in-memory caches used by the FSM and Numscript parser.
 |------|------|---------|-------------|
 | `--cache-rotation-threshold` | uint64 | `1000` | Cache rotation threshold: number of Raft entries applied before rotating the FSM attribute cache generation (0 = use default 1000) |
 
-The FSM attribute cache uses a two-generation scheme. After `cache-rotation-threshold` entries are applied, the active generation is rotated. Higher values use more memory but reduce cache misses. This setting is persisted in the startup config and validated on subsequent boots; changing it requires `--unsafe-skip-config-validation`.
+The FSM attribute cache uses a two-generation scheme. After `cache-rotation-threshold` entries are applied, the active generation is rotated. Higher values use more memory but reduce cache misses. This is a mutable cluster-wide setting: change it with the [rolling upgrade procedure](./cluster-operations.md#cluster-configuration-updates) so the leader propagates the new value deterministically through Raft.
 
 ```bash
 # Default: rotate every 1000 entries
