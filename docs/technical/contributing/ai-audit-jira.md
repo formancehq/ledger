@@ -26,6 +26,12 @@ The marker identifies the logical finding across repeated audits and HEADs. The 
 
 Default project: `EN`.
 Default issue type: `Bug`.
+Default component: `Ledger`.
+
+Use `--component <name>` when the target Jira project requires a different
+component. The publisher sends creation data through ACLI's structured JSON
+input because Jira Components are not exposed by ACLI's simple create flags.
+The description is encoded as Atlassian Document Format in that same request.
 
 The ticket description records:
 
