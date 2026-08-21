@@ -47,6 +47,8 @@ Each invocation owns a unique worktree and never reuses or removes another invoc
 
 GitHub's reported base SHA describes the PR snapshot and may legitimately lag behind the current target branch. Reviewing against a historical base can miss semantic conflicts introduced since the PR was opened, so the launcher compares the freshly fetched target-branch tip with that reported base SHA before creating any worktree:
 
+When the checkout is shallow and the first ancestry check is negative, the launcher unshallows history for the exact fetched target SHA and retries the check. A shallow boundary therefore cannot by itself turn normal target advancement into a rewrite/divergence result. Failure to restore that history is an orchestration error.
+
 - identical: the reviewed base is current and the run continues into triage;
 - the reported base is still an ancestor of the tip: the target branch advanced since the PR snapshot, so the launcher prints both SHAs, reports `AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED`, and exits `3`. Synchronize the PR with its target branch — merge or rebase, push the PR head — and rerun the launcher;
 - the reported base is not an ancestor of the tip: the target branch was rewritten or diverged, reported as `AI_PR_LOOP_RESULT: ERROR (target base rewritten or diverged)` with exit `1`;

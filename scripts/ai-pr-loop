@@ -125,7 +125,22 @@ if [[ "$current_base" != "$base_sha" ]]; then
         echo "ai-pr-loop: GitHub-reported PR base commit is unavailable locally: $base_sha" >&2
         exit 1
     fi
+    base_is_ancestor=false
     if git merge-base --is-ancestor "$base_sha" "$current_base"; then
+        base_is_ancestor=true
+    elif [[ "$(git rev-parse --is-shallow-repository)" == "true" ]]; then
+        # A shallow repository can contain both commits without their connecting
+        # history. Restore ancestry for the exact fetched target before treating
+        # a negative merge-base result as evidence of a rewrite or divergence.
+        if ! git fetch --no-tags --unshallow "$remote" "$current_base" >/dev/null 2>&1; then
+            echo "ai-pr-loop: could not deepen shallow history for target base classification" >&2
+            exit 1
+        fi
+        if git merge-base --is-ancestor "$base_sha" "$current_base"; then
+            base_is_ancestor=true
+        fi
+    fi
+    if [[ "$base_is_ancestor" == "true" ]]; then
         printf 'ai-pr-loop: target branch %s advanced since this PR snapshot\n' "$base_ref" >&2
         printf 'ai-pr-loop: PR base:      %s\n' "$base_sha" >&2
         printf 'ai-pr-loop: current base: %s\n' "$current_base" >&2
