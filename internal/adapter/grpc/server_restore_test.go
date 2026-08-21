@@ -121,6 +121,13 @@ func TestValidateEventFromCheckEvent(t *testing.T) {
 			wantCoverageGap: true,
 		},
 		{
+			// The widest gap of the three: it covers the projection comparisons
+			// wholesale, and it is the one an archived backup always reports.
+			name:            "archived state coverage gap",
+			errorType:       servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ARCHIVED_STATE_VERIFICATION_INCOMPLETE,
+			wantCoverageGap: true,
+		},
+		{
 			name:            "hash mismatch is a divergence",
 			errorType:       servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
 			wantCoverageGap: false,

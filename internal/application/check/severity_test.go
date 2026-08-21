@@ -41,8 +41,8 @@ func TestIsCoverageGapClassifiesEveryIncompleteClass(t *testing.T) {
 				"healthy backup", name)
 	}
 
-	require.Equal(t, 2, incomplete,
-		"the signing and log-bound passes are the two that can report incomplete "+
-			"coverage; a third means this test's expectation needs revisiting alongside "+
-			"IsCoverageGap")
+	require.Equal(t, 3, incomplete,
+		"the signing, log-bound and archived-state passes are the three that can "+
+			"report incomplete coverage; a fourth means this test's expectation needs "+
+			"revisiting alongside IsCoverageGap")
 }

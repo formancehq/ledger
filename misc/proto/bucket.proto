@@ -901,6 +901,20 @@ enum CheckStoreErrorType {
   // path. The opposite direction -- a log the audit expects but the store lacks
   // -- is reported as SEQUENCE_GAP, since it is a missing log like any other.
   CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED = 25;
+  // Emitted when archived chapters exist but no baseline checkpoint does, so the
+  // entry-by-entry comparison of the primary-store projections was skipped
+  // wholesale. The baseline is the checker's only independent source of
+  // pre-archive state and backfilling it from the live store would verify the
+  // data against a copy of itself, so the passes cannot run at all -- volumes,
+  // metadata, transactions, references, reversions, schema, account types,
+  // boundaries, ledger presence, indexes, numscripts and the reverse map are all
+  // unverified for the run.
+  //
+  // Reachable on every restore-side caller: the baseline lives beside the
+  // checkpoint directory rather than inside it, so it is never part of a backup.
+  // The skip used to be announced only in the server log, which left the client
+  // reporting a clean verdict over passes that never ran.
+  CHECK_STORE_ERROR_TYPE_ARCHIVED_STATE_VERIFICATION_INCOMPLETE = 26;
 }
 
 message CheckStoreError {

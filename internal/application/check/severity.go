@@ -6,8 +6,8 @@ import "github.com/formancehq/ledger/v3/internal/proto/servicepb"
 // verified" rather than "this is wrong".
 //
 // CheckStoreEvent has only Error and Progress variants, so a pass that cannot
-// build a trustworthy expectation has to ride the error channel to say so. Two
-// passes do exactly that, and both are reachable on entirely healthy stores:
+// build a trustworthy expectation has to ride the error channel to say so. Three
+// passes do exactly that, and all are reachable on entirely healthy stores:
 //
 //   - SIGNING_VERIFICATION_INCOMPLETE, whenever archived chapters exist and no
 //     cold reader is attached. Both restore-side callers pass none by
@@ -15,6 +15,11 @@ import "github.com/formancehq/ledger/v3/internal/proto/servicepb"
 //     backup of an archived cluster produces this finding every time.
 //   - LOG_VERIFICATION_INCOMPLETE, when the chain walk stopped short and the
 //     audited log maximum is only a prefix maximum.
+//   - ARCHIVED_STATE_VERIFICATION_INCOMPLETE, whenever archived chapters exist
+//     without a baseline checkpoint, which skips the projection comparisons
+//     wholesale. Same trigger shape as the signing gap and therefore just as
+//     routine on a restore-side run, but it covers far more passes -- which is
+//     exactly why it needs its own finding rather than riding the signing one.
 //
 // Neither is a divergence. Suppressing them was considered and rejected — the
 // statement is true and a checker that silently skips a pass is worse than one
@@ -27,7 +32,8 @@ import "github.com/formancehq/ledger/v3/internal/proto/servicepb"
 func IsCoverageGap(errorType servicepb.CheckStoreErrorType) bool {
 	switch errorType {
 	case servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE:
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ARCHIVED_STATE_VERIFICATION_INCOMPLETE:
 		return true
 	default:
 		return false

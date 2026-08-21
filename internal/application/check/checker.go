@@ -417,6 +417,27 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		if baselineDB == nil {
 			c.logger.Error("no baseline checkpoint available for archived state comparison; skipping entry-by-entry verification")
 
+			// Say it on the event stream too, not just in the server log. The
+			// consumers that turn findings into a verdict see only this channel, so a
+			// log-only skip let `restore validate` report a clean backup over a dozen
+			// passes that never ran. The message names them: the operator has to be
+			// able to tell "the audit chain checks out" from "the projections were
+			// verified", and on this shape only the former is true.
+			//
+			// Classified as a coverage gap rather than a divergence (IsCoverageGap):
+			// nothing here says the store is wrong, and the shape is routine — the
+			// baseline is never part of a backup, so every restore-side run of an
+			// archived cluster reports it.
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ARCHIVED_STATE_VERIFICATION_INCOMPLETE,
+				"archived state could not be verified: no baseline checkpoint accompanies the "+
+					"archived chapters, so the entry-by-entry comparison was skipped. Volumes, "+
+					"metadata, transactions, references, reversions, schema, account types, "+
+					"boundaries, ledger presence, indexes, numscripts and the reverse map are "+
+					"UNVERIFIED for this run. The audit hash chain and the checks below it were "+
+					"verified and are unaffected",
+				0, "", "", ""))
+
 			// The two passes that need no baseline still run. Both of their
 			// expectations are already complete here: signing.foldArchived and
 			// verifyAuditHashChain ran above and neither reads the baseline, so the

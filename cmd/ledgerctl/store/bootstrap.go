@@ -438,7 +438,19 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 
 	pterm.Info.Println("Validating backup integrity...")
 
-	var errorCount int
+	// Same split as `restore validate`: divergences drive the exit status,
+	// passes the checker could not complete do not. This path builds the checker
+	// with no cold reader and validates a staging store that carries no baseline
+	// checkpoint, so an archived backup ALWAYS reports incomplete coverage —
+	// counting it here failed the bootstrap on perfectly healthy backups.
+	//
+	// The classification is read straight off the servicepb error type rather than
+	// through restorepb's CoverageGap projection: this is an in-process checker,
+	// not a gRPC client, so the type never leaves the process.
+	var (
+		errorCount   int
+		coverageGaps int
+	)
 
 	err = checker.Check(ctx, func(event *servicepb.CheckStoreEvent) {
 		switch t := event.GetType().(type) {
@@ -449,6 +461,14 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 					t.Progress.GetLogsChecked(), t.Progress.GetTotalLogs(), pct)
 			}
 		case *servicepb.CheckStoreEvent_Error:
+			if check.IsCoverageGap(t.Error.GetErrorType()) {
+				coverageGaps++
+
+				pterm.Printf("\n  %s %s\n", pterm.Yellow("WARNING"), t.Error.GetMessage())
+
+				return
+			}
+
 			errorCount++
 
 			pterm.Printf("\n  %s %s\n", pterm.Red("ERROR"), t.Error.GetMessage())
@@ -465,11 +485,10 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 
 	pterm.Println()
 
-	if err := cmdutil.IntegrityResult("backup validation", errorCount); err != nil {
-		return err
-	}
-
-	pterm.Success.Println("Backup is valid - no integrity errors found")
-
-	return nil
+	return cmdutil.ReportIntegrityVerdict(cmdutil.IntegrityVerdictInput{
+		Subject:      "backup validation",
+		CleanMessage: "Backup is valid - no integrity errors found",
+		Errors:       errorCount,
+		CoverageGaps: coverageGaps,
+	})
 }

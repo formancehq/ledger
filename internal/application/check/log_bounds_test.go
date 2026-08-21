@@ -10,6 +10,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -916,6 +917,21 @@ func TestCheckStillJudgesBaselineLessArchivedStores(t *testing.T) {
 					"the signing expectation cannot be completed without a cold reader, "+
 						"so the run must SAY so rather than fall silent")
 
+				// The projection comparisons were skipped wholesale, and that has to
+				// reach the STREAM, not just the server log. Consumers that build a
+				// verdict see only this channel, so a log-only skip let
+				// `restore validate` report a clean backup over a dozen passes that
+				// never ran. Pinned here because the finding is the operator's only
+				// signal that "the audit chain checks out" is not "the projections
+				// were verified".
+				archivedGaps := errorsOfType(errs,
+					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ARCHIVED_STATE_VERIFICATION_INCOMPLETE)
+				require.Len(t, archivedGaps, 1,
+					"the baseline-less archived skip must be reported on the event stream")
+				require.Contains(t, archivedGaps[0].GetMessage(), "UNVERIFIED",
+					"the message must name the skipped passes as unverified, not merely "+
+						"mention that a baseline was missing")
+
 				return
 			}
 
@@ -1203,4 +1219,110 @@ func TestCheckDetectsALostLogTailThroughTheBoundaryPass(t *testing.T) {
 		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH,
 		errs[0].GetErrorType())
 	require.Contains(t, errs[0].GetMessage(), "boundary field nextLogId mismatch: stored 3, expected 2")
+}
+
+// TestBaselineLessArchivedLeavesProjectionsUnverified pins the residual coverage
+// hole rather than hiding it.
+//
+// Without a baseline the projection comparisons cannot run at all: the baseline
+// is the checker's only independent source of pre-archive state, and backfilling
+// it from the live store would verify the data against a copy of itself. So a
+// corrupted Volume row on this shape goes unreported, and the run says so
+// instead of reporting clean — which is the whole point of the archived-state
+// finding.
+//
+// The subtests are a matched pair. The baseline-present control proves the
+// tampered row IS detectable, so the baseline-absent case is measuring the
+// missing baseline and not a fixture that forgot to corrupt anything. Delete
+// either half and the remaining one stops meaning what it claims.
+//
+// This is a limitation barrier, not an approval: if the baseline ever becomes
+// available on the restore path, the absent case starts reporting VOLUME_MISMATCH
+// and this test must be rewritten rather than relaxed.
+func TestBaselineLessArchivedLeavesProjectionsUnverified(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		// withBaseline captures the boundary baseline, giving compareVolumes the
+		// independent pre-archive expectation it needs.
+		withBaseline bool
+	}{
+		{name: "baseline absent - projections unverified", withBaseline: false},
+		{name: "baseline present - corruption detected", withBaseline: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			engine := newTestEngine(t)
+
+			// Pre-boundary history: logs 1-2.
+			engine.processAndCommit(createLedgerOrder("archived-era"))
+			engine.processAndCommit(createTransactionOrder("archived-era", true,
+				newPosting("world", "alice", "USD", 100)))
+
+			boundaryAuditHash := append([]byte(nil), engine.lastAuditHash...)
+
+			if tc.withBaseline {
+				captureBoundaryBaseline(t, engine)
+			}
+
+			// Post-boundary history: logs 3-4. bob/USD is credited 50 here, so its
+			// volume row is inside the post-archive delta either way.
+			engine.processAndCommit(createTransactionOrder("archived-era", true,
+				newPosting("world", "bob", "USD", 50)))
+			engine.processAndCommit(createLedgerOrder("live-era"))
+
+			writeArchivedBoundary(t, engine, archivedBoundary{
+				closeSequence:      2,
+				closeAuditSequence: 2,
+				lastAuditHash:      boundaryAuditHash,
+				purgeLogRows:       true,
+			})
+
+			// Inflate bob's input from the audited 50 to 999.
+			batch := engine.store.OpenWriteSession()
+			tamperedKey := domain.VolumeKey{
+				AccountKey: domain.AccountKey{LedgerName: "archived-era", Account: "bob"},
+				Asset:      "USD",
+			}
+			_, err := engine.attrs.Volume.Set(batch, tamperedKey.Bytes(), &raftcmdpb.VolumePair{
+				Input:  commonpb.NewUint256FromUint64(999),
+				Output: commonpb.NewUint256FromUint64(0),
+			})
+			require.NoError(t, err)
+			require.NoError(t, batch.Commit())
+
+			errs := collectCheckErrors(t, engine.store, engine.attrs)
+
+			volumeErrors := errorsOfType(errs,
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH)
+			archivedGaps := errorsOfType(errs,
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ARCHIVED_STATE_VERIFICATION_INCOMPLETE)
+
+			if tc.withBaseline {
+				require.Len(t, volumeErrors, 1,
+					"with a baseline the volume comparison runs and must catch the inflated input")
+				require.Contains(t, volumeErrors[0].GetMessage(), "999")
+				require.Empty(t, archivedGaps,
+					"the archived state WAS compared, so nothing may claim it was skipped")
+
+				return
+			}
+
+			require.Empty(t, volumeErrors,
+				"without a baseline compareVolumes cannot run, so the corruption is "+
+					"genuinely undetected on this shape — if this starts failing the "+
+					"baseline became available and this test needs rewriting, not relaxing")
+
+			require.Len(t, archivedGaps, 1,
+				"the run must report that the projections were not verified; reporting "+
+					"nothing here is what let `restore validate` certify this store")
+
+			// The gap must not be mistaken for a divergence by any consumer that
+			// builds a verdict: it says a pass did not run, not that the store is
+			// wrong. The corruption above is real, but this run did not establish it.
+			require.True(t, IsCoverageGap(archivedGaps[0].GetErrorType()))
+		})
+	}
 }
