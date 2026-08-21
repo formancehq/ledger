@@ -1,8 +1,10 @@
 package http
 
 import (
+	"cmp"
 	"encoding/hex"
 	"net/http"
+	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -39,6 +41,19 @@ func newSigningKeyDTOList(src []*commonpb.SigningKey) []signingKeyDTO {
 			ParentKeyID: k.GetParentKeyId(),
 		})
 	}
+
+	// Sorted for the same reason the sibling events-sinks arrays are
+	// (dto_sinks.go): the upstream source is a Go map, so the order is not
+	// stable across calls. query.ReadSigningKeys returns
+	// map[string]SigningKeyEntry and ReadSigningKeysCursor builds its slice by
+	// ranging over it, so without this two identical requests return the same
+	// set in a different order and any client that diffs or displays the list
+	// sees churn that is not there. Sorted here rather than in the cursor: the
+	// gRPC surface has its own bidirectional-cursor ordering contract, and
+	// ordering is an HTTP wire-shape concern the DTO owns.
+	slices.SortFunc(out, func(a, b signingKeyDTO) int {
+		return cmp.Compare(a.KeyID, b.KeyID)
+	})
 
 	return out
 }

@@ -6016,7 +6016,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SigningKey'
-          description: Registered signing keys. Empty when none is registered.
+          description: >
+            Registered signing keys, sorted by `keyId`. Empty when none is
+            registered.
 
     ListIndexesResponse:
       type: object
