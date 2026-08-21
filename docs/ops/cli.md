@@ -3909,7 +3909,7 @@ Controls the time-to-live for idempotency keys. After the TTL expires, an idempo
 | `--idempotency-ttl` | duration | `24h` | Time-to-live for idempotency keys (0 = never expire) |
 | `--idempotency-eviction-interval` | duration | `60s` | How often the leader proposes eviction of expired keys |
 
-The TTL is persisted in the startup config and validated on subsequent boots (same as `--cache-rotation-threshold`). Changing it requires `--unsafe-skip-config-validation`.
+A persisted non-zero TTL is validated on subsequent boots; changing one requires `--unsafe-skip-config-validation`. For backward compatibility, a persisted `0` is treated as an older unset field and may transition to a finite value without the override. Plan either change as an intentional migration and keep the configured value consistent across nodes.
 
 ```bash
 # Default: 24h TTL, eviction every 60s
@@ -3952,6 +3952,8 @@ Application-level bloom filters that avoid Pebble reads for keys known not to ex
 | `--bloom-ledger-metadata-fp-rate` | float64 | `0` | False positive rate for ledger metadata (0 = use 0.01 when enabled) |
 | `--bloom-prepared-queries-expected-keys` | uint | `0` | Expected unique prepared query keys (0 = disabled by default) |
 | `--bloom-prepared-queries-fp-rate` | float64 | `0` | False positive rate for prepared queries (0 = use 0.01 when enabled) |
+| `--bloom-indexes-expected-keys` | uint | `0` | Expected unique index registry keys (0 = disabled by default) |
+| `--bloom-indexes-fp-rate` | float64 | `0` | False positive rate for index registry entries (0 = use 0.01 when enabled) |
 
 Bloom filters are disabled by default. Enable only the attribute types that avoid enough missing-key Pebble reads to justify the memory cost.
 
@@ -3959,17 +3961,24 @@ Bloom filters are disabled by default. Enable only the attribute types that avoi
 # Default config (all bloom filters disabled)
 ledger run [other flags...]
 
-# Enable filters for common hot-path misses
-ledger run --bloom-volumes-expected-keys 100000000 \
-  --bloom-metadata-expected-keys 10000000 \
-  --bloom-references-expected-keys 10000000 \
+# Example where live keys at rebuild plus additions before the next rebuild
+# are capped at 25 million volumes and 250,000 metadata keys, plus 25% headroom
+ledger run --bloom-volumes-expected-keys 32000000 \
+  --bloom-metadata-expected-keys 320000 \
   [other flags...]
 
-# Enable transaction filter for a specific workload
-ledger run --bloom-transactions-expected-keys 50000000 [other flags...]
+# Use a lower false-positive target only after measuring expensive misses
+ledger run --bloom-volumes-expected-keys 32000000 \
+  --bloom-volumes-fp-rate 0.001 \
+  [other flags...]
 ```
 
-Changing any bloom filter configuration triggers a full repopulation scan on next startup.
+Changing Bloom configuration purges the old blocks and triggers a full
+asynchronous repopulation scan. While the filter is not ready, preloads safely
+fall back to Pebble. See
+[Deployment Profiles and Sizing](./deployment-profiles.md#enable-application-bloom-filters-only-with-a-cardinality-plan)
+before choosing a capacity: a fixed-size filter needs either a reliable bound
+between rebuilds or an explicit resize policy.
 
 ---
 
@@ -4097,7 +4106,7 @@ ledger run --pebble-value-separation --pebble-value-separation-min-size 1Ki \
   --pebble-value-separation-garbage-ratio 0.10
 
 # Use zstd compression on all levels
-ledger run --pebble-compression zstd [other flags...]
+ledger run --pebble-compression "zstd,zstd,zstd,zstd,zstd,zstd,zstd" [other flags...]
 
 # Per-level compression (L0-L6)
 ledger run --pebble-compression "none,snappy,zstd,zstd,zstd,zstd,zstd" [other flags...]
@@ -4169,7 +4178,7 @@ Configure in-memory caches used by the FSM and Numscript parser.
 |------|------|---------|-------------|
 | `--cache-rotation-threshold` | uint64 | `1000` | Cache rotation threshold: number of Raft entries applied before rotating the FSM attribute cache generation (0 = use default 1000) |
 
-The FSM attribute cache uses a two-generation scheme. After `cache-rotation-threshold` entries are applied, the active generation is rotated. Higher values use more memory but reduce cache misses. This setting is persisted in the startup config and validated on subsequent boots; changing it requires `--unsafe-skip-config-validation`.
+The FSM attribute cache uses a two-generation scheme. After `cache-rotation-threshold` entries are applied, the active generation is rotated. Higher values use more memory but reduce cache misses. This is a mutable cluster-wide setting: change it with the [rolling upgrade procedure](./cluster-operations.md#cluster-configuration-updates) so the leader propagates the new value deterministically through Raft.
 
 ```bash
 # Default: rotate every 1000 entries
