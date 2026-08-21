@@ -6072,8 +6072,10 @@ func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, 
 
 // collectAuditOrderBoundaryEffects iterates the post-archive AuditItem rows
 // and folds the order-level boundary effects (mirror fill-gap advances) into
-// the expected boundaries — the same fold backup.RebuildDelta performs on
-// restore. Items with log_sequence 0 (failed proposals, idempotent replays) or
+// the expected boundaries. backup.RebuildDelta folds the same order effects on
+// restore, but not the same SET: the mirror high-water mark it also derives
+// here comes from recordMirrorIngestMutations instead, so the two are not
+// interchangeable. Items with log_sequence 0 (failed proposals, idempotent replays) or
 // at/below the archive boundary contribute nothing; effects for ledgers
 // without an expectation (deleted, or flagged UNKNOWN_LEDGER during replay)
 // are skipped.

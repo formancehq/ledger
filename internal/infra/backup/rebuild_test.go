@@ -148,6 +148,31 @@ func fillGapOrder(ledger string, v2LogID uint64, skippedIDs ...uint64) *raftcmdp
 	}
 }
 
+// mirrorCreatedTransactionOrder builds a MirrorIngest order carrying a
+// CreatedTransaction entry — the common ingest kind, and the one that has no
+// fill-gap to hang its source id on.
+func mirrorCreatedTransactionOrder(ledger string, v2LogID, txID uint64) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+						Entry: &raftcmdpb.MirrorLogEntry{
+							V2LogId: v2LogID,
+							Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
+								CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
+									TransactionId: txID,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func auditSuccess(seq, minLogSeq, maxLogSeq uint64) *auditpb.AuditEntry {
 	return &auditpb.AuditEntry{
 		Sequence: seq,
@@ -318,6 +343,79 @@ func TestRebuildDelta_AdvancesBoundariesForMirrorFillGap(t *testing.T) {
 	require.Equal(t, uint64(10), boundary.GetNextTransactionId(),
 		"the fill-gap's highest skipped id (9) must advance NextTransactionId to 10; the ids live on the order in AuditItem, not on FilledGapLog")
 	require.Equal(t, uint64(3), boundary.GetNextLogId())
+	require.Equal(t, uint64(7), boundary.GetLastMirrorV2LogId(),
+		"the ingest's source v2 log id must advance the mirror high-water mark, as processMirrorIngest does on the live path")
+}
+
+// TestRebuildDelta_AdvancesLastMirrorV2LogIDForCreatedTransaction pins the half
+// of EN-1776 that a fill-gap-only fix would miss. CreatedTransaction is the
+// common ingest kind and carries no fill-gap, so DecodeOrderEffects used to
+// return the zero OrderEffects for it — dropping the ledger name and with it
+// any chance of reconstructing LastMirrorV2LogId.
+//
+// Left unreconstructed, the restored worker and the FSM read the same stale row
+// and agree on a position behind the data that was replayed; the re-fetched
+// logs then arrive as v2LogID == last+1 and take the APPLY branch instead of
+// the idempotent skip, re-applying transactions at the source's fixed ids.
+func TestRebuildDelta_AdvancesLastMirrorV2LogIDForCreatedTransaction(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 2, mirrorCreatedTransactionOrder("ledger", 42, 1))))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+
+	boundary, err := attrs.Boundary.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, boundary)
+	require.Equal(t, uint64(42), boundary.GetLastMirrorV2LogId(),
+		"a non-fill-gap ingest carries its source id only on the wrapping MirrorLogEntry; the rebuild must still fold it")
+}
+
+// TestRebuildDelta_FoldsHighestMirrorV2LogID pins the shape of the fold: the
+// mark holds the highest id seen, not the last one folded.
+//
+// The descending pair it feeds is not reachable on a healthy store —
+// processMirrorIngest no-ops v2LogID <= last and rejects v2LogID > last+1, so
+// the applied ingests of one ledger have strictly increasing ids, and audit key
+// order is ascending by audit sequence. The max is nonetheless the required
+// shape: the checker's own fold in recordMirrorIngestMutations is a max, and
+// compareMirrorV2LogID is strict equality against it, so an assignment here
+// would diverge from the oracle. This case is what pins that shape.
+func TestRebuildDelta_FoldsHighestMirrorV2LogID(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 2, mirrorCreatedTransactionOrder("ledger", 9, 1))))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(2, 0), auditItem(t, 3, mirrorCreatedTransactionOrder("ledger", 4, 2))))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+
+	boundary, err := attrs.Boundary.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, boundary)
+	require.Equal(t, uint64(9), boundary.GetLastMirrorV2LogId(),
+		"the mark must hold the highest folded id, not the last one folded")
 }
 
 func TestRebuildDelta_ReplaysLedgerMetadata(t *testing.T) {
