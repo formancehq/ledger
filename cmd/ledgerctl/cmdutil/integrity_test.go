@@ -55,9 +55,17 @@ func TestIntegrityResult(t *testing.T) {
 // changing the printed verdict informs a human and protects no script. Only an
 // explicit AllowIncomplete may exit zero on that outcome, and it must never
 // touch a divergence.
+//
+// Deliberately not parallel, at either level. ReportIntegrityVerdict prints
+// through pterm's package-level printers, and PrefixPrinter.Printfln takes a
+// pointer receiver and moves LineNumberOffset around the write, so two
+// goroutines calling it mutate the shared pterm.Warning (EN-1781 is the same
+// class of problem). Go holds parallel tests until the sequential phase of their
+// parent finishes, so dropping t.Parallel() here also keeps this test from
+// overlapping the parallel tests elsewhere in the package. ClassifyIntegrity is
+// split out of ReportIntegrityVerdict precisely so the mapping can be asserted
+// without any of that, and it is asserted separately below.
 func TestReportIntegrityVerdict(t *testing.T) {
-	t.Parallel()
-
 	tests := []struct {
 		name            string
 		errors          int
@@ -123,8 +131,6 @@ func TestReportIntegrityVerdict(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
 			require.Equal(t, tt.wantOutcome,
 				ClassifyIntegrity(tt.errors, tt.coverageGaps),
 				"the outcome decides which verdict line the operator sees, and is "+
