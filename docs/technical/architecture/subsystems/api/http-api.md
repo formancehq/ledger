@@ -235,7 +235,7 @@ With `Formance-Bigint-As-String: true`, the same request returns the same docume
 }
 ```
 
-**Only the amount's format changes; the response shape never does.** Field names, field presence, ordering and nesting are identical in both modes at every level of the payload — a nil child still renders `null`, and an empty collection still renders `[]`. That is mechanically enforced, not merely intended: each of the eight routes pins both bodies byte-for-byte and asserts they differ at the posting amounts and nowhere else. The implementation mechanism (how the mode travels down the marshaller chain, and what a new amount-bearing level must do) is specified in `internal/proto/commonpb/string_amounts.go`.
+**Only the amount's format changes; the response shape never does.** Field names, field presence, ordering and nesting are identical in both modes at every level of the payload — a nil child renders identically in both modes, `null` where the field is always present and omitted where it is optional, and an empty collection still renders `[]`. That is mechanically enforced, not merely intended: each of the eight routes pins both bodies byte-for-byte and asserts they differ at the posting amounts and nowhere else. The implementation mechanism (how the mode travels down the marshaller chain, and what a new amount-bearing level must do) is specified in `internal/proto/commonpb/string_amounts.go`.
 
 #### Request Side
 
