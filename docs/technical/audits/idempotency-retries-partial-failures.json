@@ -1,0 +1,28 @@
+{
+  "id": "idempotency-retries-partial-failures",
+  "title": "Idempotency, retries, timeouts, and partial failures",
+  "purpose": "Find operations that can be lost, duplicated, partially executed, or ambiguously acknowledged when clients, nodes, storage, or transports retry or fail.",
+  "paths": ["internal/application/**", "internal/adapter/http/**", "internal/adapter/grpc/**", "internal/domain/**", "internal/infra/node/**", "internal/infra/transport/**", "internal/storage/**", "internal/query/**", "tests/**"],
+  "related_docs": ["AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/admission/", "docs/technical/architecture/subsystems/api/", "docs/technical/architecture/subsystems/fsm/", "docs/technical/contributing/ai-audit.md"],
+  "invariants": [
+    "Retrying one logical mutation must not create duplicate committed business effects when the API promises or relies on idempotence.",
+    "A timeout or cancelled response must not be interpreted internally as proof that the mutation did not commit.",
+    "Bulk or compound operations must satisfy their documented atomicity boundary under failures.",
+    "Failure after durable commit but before response must have a recoverable and consistent retry outcome.",
+    "Failure before commit must not leak partial authoritative state.",
+    "Retry state, idempotency keys, or deduplication state required for correctness must survive the lifecycle boundaries promised by the system.",
+    "Leader changes and transport retries must preserve the same logical-operation identity.",
+    "Background retries must be bounded/cancellable and must not resurrect obsolete work after shutdown or superseding state."
+  ],
+  "adversarial_questions": [
+    "Where can a request commit and then lose its response?",
+    "What does a client retry after timeout, cancellation, connection reset, or leader change do?",
+    "Which operations have no stable logical identity across retries?",
+    "Can bulk handlers commit a prefix before a later element fails?",
+    "Can storage retry repeat a non-idempotent side effect?",
+    "Can duplicate transport delivery reach apply twice through different paths?",
+    "Can retry metadata disappear on restart while the original effect remains?",
+    "Can shutdown race with a retry worker and execute work after ownership has ended?"
+  ],
+  "dynamic_checks_to_consider": ["fault injection after commit before response", "duplicate request/property tests", "leader change during retry", "connection reset during bulk", "storage transient-error injection", "restart between effect and dedupe persistence"]
+}
