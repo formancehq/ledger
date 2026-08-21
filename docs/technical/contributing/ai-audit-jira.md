@@ -16,6 +16,10 @@ Every ticket contains a machine-readable marker:
 
 Before creation, the publisher searches the configured Jira project for that exact marker. If a matching issue already exists, it reports the existing key and does not create a duplicate.
 
+Jira text search is word-based, so the search is only a prefilter. The publisher paginates through every result, requests each description, and accepts an issue as an existing duplicate only when one of its description lines is exactly the marker, which is how the description writes it. The match is confined to the description: a returned issue that carries no marker, carries the marker only in its summary, carries another finding's marker, or carries a longer marker sharing this one's prefix is not a duplicate, and publication proceeds to creation.
+
+Because the marker becomes part of that search, the publisher re-validates finding ids instead of trusting its input: a challenge result is rejected unless every finding id is unique and has the canonical `<audit-id>/<short-kebab-case-name>` form described in `ai-audit.md`. An id carrying quotes or query operators can never reach the Jira search.
+
 The marker identifies the logical finding across repeated audits and HEADs. The audited HEAD remains recorded separately as evidence provenance.
 
 ## Jira mapping
@@ -41,7 +45,11 @@ Severity remains the audit severity; this first publisher deliberately does not 
 
 `ai-audit-jira` is dry-run by default. Jira writes require an explicit `--publish` flag. It never edits existing issues, transitions issues, assigns people, comments, commits, pushes, or modifies GitHub.
 
-The command uses the authenticated Atlassian CLI (`acli`). Authentication is an operator prerequisite and credentials are never read or copied by repository scripts.
+The command uses the Atlassian CLI (`acli`) provided by the repository's Nix development environment. Authentication is an operator prerequisite and credentials are never read or copied by repository scripts.
+
+## Input binding
+
+The challenge result is caller-owned and may live outside the worktree, so it can be edited or replaced while Jira writes are in flight. A run snapshots it once, before validation, into a private temporary directory and reads every later value from that snapshot. Replacing the external file mid-run cannot retarget publication or introduce unvalidated findings.
 
 ## Failure behavior
 
