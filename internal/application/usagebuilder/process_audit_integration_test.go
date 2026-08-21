@@ -418,7 +418,7 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 					order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{
 						Reference:          "ref-1",
 						Timestamp:          ts,
-						NumscriptReference: &raftcmdpb.NumscriptReference{Name: "payout"},
+						NumscriptReference: &raftcmdpb.NumscriptReference{Name: "payout", Version: "latest"},
 					}),
 					logSeq: 10,
 					log: createdTxLog(10, ledger, ts,
@@ -731,7 +731,7 @@ func TestProcessAuditEntries_SkippedCreateDoesNotCount(t *testing.T) {
 		items: []seedAuditItem{{
 			order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{
 				Reference:          "ref-1",
-				NumscriptReference: &raftcmdpb.NumscriptReference{Name: "payout"},
+				NumscriptReference: &raftcmdpb.NumscriptReference{Name: "payout", Version: "latest"},
 			}),
 			logSeq: 10,
 			log:    skippedLog,
