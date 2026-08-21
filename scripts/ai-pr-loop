@@ -207,8 +207,11 @@ if [[ "$push_changes" == "true" ]]; then
     review_loop_binary="$worktree_run_dir/review-loop"
     for trusted_tool in ai-review-codex ai-fix-claude agent-check-pr; do
         trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
-        if [[ ! -x "$trusted_tool_path" ]]; then
-            echo "ai-pr-loop: trusted base does not provide executable scripts/$trusted_tool" >&2
+        # These adapters are invoked explicitly through bash below. Requiring
+        # an executable bit adds no trust boundary and made publish mode reject
+        # otherwise valid base-pinned scripts after a mode-only merge drift.
+        if [[ ! -f "$trusted_tool_path" ]]; then
+            echo "ai-pr-loop: trusted base does not provide scripts/$trusted_tool" >&2
             exit 1
         fi
     done

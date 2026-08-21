@@ -23,6 +23,10 @@ GRPC_PORT=${GRPC_PORT:-8899}
 RAFT_PORT=${RAFT_PORT:-7779}
 MAX_EXAMPLES=${MAX_EXAMPLES:-50}
 SCHEMATHESIS_WORKERS=${SCHEMATHESIS_WORKERS:-1}
+HISTORICAL_BALANCES_AVAILABLE=false
+if grep -q '^message ConfigureHistoricalBalancesRequest' "$REPO_ROOT/misc/proto/bucket.proto" 2>/dev/null; then
+    HISTORICAL_BALANCES_AVAILABLE=true
+fi
 
 TMPDIR=$(mktemp -d)
 # On exit, preserve the server log as an uploadable diagnostic BEFORE removing
@@ -38,12 +42,18 @@ trap 'kill "${SERVER_PID:-}" 2>/dev/null || true; wait "${SERVER_PID:-}" 2>/dev/
 echo "==> Building server..."
 cd "$REPO_ROOT"
 go build -o "$TMPDIR/ledger-server" .
+if [[ "$HISTORICAL_BALANCES_AVAILABLE" == true ]]; then
+    go build -o "$TMPDIR/ledgerctl" ./cmd/ledgerctl
+fi
 
 echo "==> Starting server (single-node, bootstrap, no auth)..."
+# The temporary store shares the developer/agent host filesystem. Keep API
+# conformance independent from that host's production disk-pressure threshold.
 "$TMPDIR/ledger-server" run \
     --node-id 1 --cluster-id schemathesis-test --bootstrap \
     --bind-addr "127.0.0.1:$RAFT_PORT" \
     --wal-dir "$TMPDIR/wal" --data-dir "$TMPDIR/data" \
+    --health-wal-threshold 1 --health-data-threshold 1 \
     --http-port "$HTTP_PORT" --grpc-port "$GRPC_PORT" \
     > "$TMPDIR/server.log" 2>&1 &
 SERVER_PID=$!
@@ -109,6 +119,45 @@ seed "transaction 2" -X POST "$API/test-ledger/transactions" \
 # still hold the full posted amount for the revert (which reverses it exactly)
 # to succeed, and a prior alice->bob spend leaves her short.
 seed "revert transaction 1" -X POST "$API/test-ledger/transactions/1/revert"
+
+if [[ "$HISTORICAL_BALANCES_AVAILABLE" == true ]]; then
+    echo "==> Enabling historical balances for fixture ledger..."
+    if ! "$TMPDIR/ledgerctl" \
+        --server "localhost:$GRPC_PORT" --insecure \
+        ledgers historical-balances enable test-ledger --timeout 10s; then
+        echo "ERROR: failed to enable historical balances" >&2
+        echo "Server log:" >&2
+        cat "$TMPDIR/server.log" >&2
+        exit 1
+    fi
+
+    echo "==> Waiting for historical balance readiness..."
+    for i in $(seq 1 100); do
+        code=$(curl -s -o "$TMPDIR/history-readiness.json" -w '%{http_code}' \
+            "$API/test-ledger/volumes?at=2100-01-01T00%3A00%3A00Z")
+        case "$code" in
+            200)
+                echo "    Historical balances ready."
+                break
+                ;;
+            503)
+                if [[ "$i" -eq 100 ]]; then
+                    echo "ERROR: historical balances did not become ready" >&2
+                    cat "$TMPDIR/history-readiness.json" >&2
+                    cat "$TMPDIR/server.log" >&2
+                    exit 1
+                fi
+                sleep 0.1
+                ;;
+            *)
+                echo "ERROR: historical readiness probe returned $code" >&2
+                cat "$TMPDIR/history-readiness.json" >&2
+                cat "$TMPDIR/server.log" >&2
+                exit 1
+                ;;
+        esac
+    done
+fi
 
 # Set up Python venv and install deps if needed
 VENV_DIR="$SCRIPT_DIR/.venv"

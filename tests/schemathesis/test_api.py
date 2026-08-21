@@ -13,6 +13,7 @@ import copy
 import os
 import re
 import sys
+import time
 from datetime import timedelta
 from pathlib import Path
 
@@ -48,6 +49,12 @@ FIXTURE_LEDGER_NAME = "test-ledger"
 # Sacrificial ledger name for DELETE /v3/{ledgerName} specifically — see the
 # before_call hook below for why it needs its own name.
 DELETE_LEDGER_SACRIFICE_NAME = "delete-me-ledger"
+
+HISTORICAL_READ_RETRY_ATTEMPTS = 100
+HISTORICAL_READ_RETRY_DELAY_SECONDS = 0.1
+TRANSIENT_HISTORY_ERROR_CODES = frozenset(
+    {"HISTORY_BUILDING", "HISTORY_BEHIND"}
+)
 
 SAMPLE_NUMSCRIPTS = [
     'send [USD/2 100] (\n  source = @world\n  destination = @user:001\n)',
@@ -125,6 +132,57 @@ def before_call(context, case):
         # Metadata: ensure it's a valid object
         if "metadata" in case.body and not isinstance(case.body["metadata"], dict):
             case.body["metadata"] = {}
+
+    _wait_for_historical_read(case)
+
+
+def _wait_for_historical_read(case):
+    """Wait out only the documented asynchronous history lag states.
+
+    The Schemathesis runner is intentionally single-worker by default, so once
+    this probe observes a non-transient response no other generated operation
+    can move the projection before the real checked request. The direct
+    transport call bypasses hooks and therefore cannot recurse into this hook.
+    Persistent lag still reaches the real request after the bounded retries and
+    remains a blocking ``not_a_server_error`` failure.
+    """
+    if (
+        case.path != "/v3/{ledgerName}/volumes"
+        or case.method != "GET"
+        or not isinstance(case.query, dict)
+        or "at" not in case.query
+    ):
+        return
+
+    for attempt in range(HISTORICAL_READ_RETRY_ATTEMPTS):
+        response = case.operation.schema.transport.send(
+            case,
+            base_url=case.operation.schema.base_url,
+        )
+        if not _is_transient_history_response(response):
+            return
+        if attempt + 1 < HISTORICAL_READ_RETRY_ATTEMPTS:
+            time.sleep(HISTORICAL_READ_RETRY_DELAY_SECONDS)
+
+    print(
+        "  >> historical projection remained transient after "
+        f"{HISTORICAL_READ_RETRY_ATTEMPTS} readiness probes",
+        file=sys.stderr,
+    )
+
+
+def _is_transient_history_response(response):
+    if response.status_code != 503:
+        return False
+    try:
+        payload = response.json()
+    except (TypeError, ValueError):
+        return False
+
+    return (
+        isinstance(payload, dict)
+        and payload.get("errorCode") in TRANSIENT_HISTORY_ERROR_CODES
+    )
 
 
 @schemathesis.hook
