@@ -884,7 +884,6 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 // ApplySnapshot applies a snapshot to the storage.
 func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	s.logger.WithFields(map[string]any{
 		"snapIndex":      snap.GetMetadata().GetIndex(),
@@ -907,20 +906,15 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
 		}
 	}
 
-	// Write the snapshot record + updated HardState to the etcd WAL first.
-	// This is the source of truth for crash safety: on restart, ReadAll()
-	// returns a HardState with Commit >= snapshot.Index. The etcd WAL fsyncs
-	// both records together in the Save call.
-	//
-	// Order matters: WAL before state file. If we crash between the two,
-	// the state file has the old snapshot (stale Data) but the WAL has the
-	// correct {Index, Term, HardState}. On restart the node will be marked
-	// out-of-sync and re-fetch the checkpoint from the leader.
-	// Save the full snapshot file first, then the WAL record + HardState.
-	// Order follows etcd's pattern: an orphaned snap file is harmless (cleaned
-	// up on the next snapshot), but a WAL snapshot record without a corresponding
-	// snap file would cause issues at restart.
+	// Persist the full snapshot file before its WAL record, following etcd's
+	// crash-safety order: an orphaned snap file is harmless and cleaned up by a
+	// later snapshot, while a WAL snapshot record without its snap file would
+	// make restart fail. The in-memory snapshot and entry cache were already
+	// replaced above; a persistence failure returns an error but does not roll
+	// those in-memory mutations back.
 	if err := s.snapshotter.Save(snap); err != nil {
+		s.mu.Unlock()
+
 		return fmt.Errorf("saving snapshot file: %w", err)
 	}
 
@@ -929,16 +923,31 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
 		Term:      new(snap.GetMetadata().GetTerm()),
 		ConfState: snap.GetMetadata().GetConfState(),
 	}
-	if err := s.wal.SaveSnapshot(walSnap); err != nil {
-		return fmt.Errorf("saving snapshot to WAL: %w", err)
+	// Buffer HardState before the snapshot record. A commit-only HardState
+	// update does not make etcd WAL Save sync by itself; SaveSnapshot always
+	// syncs and therefore durably flushes both records in this order. This keeps
+	// ApplySnapshot self-sufficient instead of depending on processReady having
+	// appended the same HardState first.
+	if err := s.wal.Save(s.hardState, nil); err != nil {
+		s.mu.Unlock()
+
+		return fmt.Errorf("saving HardState before snapshot to WAL: %w", err)
 	}
 
-	if err := s.wal.Save(s.hardState, nil); err != nil {
-		return fmt.Errorf("saving HardState after snapshot to WAL: %w", err)
+	if err := s.wal.SaveSnapshot(walSnap); err != nil {
+		s.mu.Unlock()
+
+		return fmt.Errorf("saving snapshot to WAL: %w", err)
 	}
 
 	// Safe to clean up old snap files now — the WAL record is persisted.
 	s.snapshotter.CleanupOlderThan(snap.GetMetadata().GetIndex())
+	s.mu.Unlock()
+
+	// Applying a received snapshot discards the entire cached entry slice.
+	// Release the matching etcd WAL segment locks immediately; this
+	// node may not apply local entries soon enough for Compact to do it.
+	s.releaseLockTo(snap.GetMetadata().GetIndex())
 
 	return nil
 }
@@ -995,16 +1004,22 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 	// This allows the etcd WAL to release memory associated with old log entries
 	// and potentially remove old WAL segment files.
 	// Without this call, the etcd WAL keeps file handles and memory indefinitely.
-	err := s.wal.ReleaseLockTo(compactIndex)
-	if err != nil {
-		s.logger.WithFields(map[string]any{
-			"compactIndex": compactIndex,
-			"error":        err,
-		}).Errorf("Failed to release WAL lock")
-		// Don't return error - the in-memory compaction succeeded
-	}
+	s.releaseLockTo(compactIndex)
 
 	return nil
+}
+
+// releaseLockTo makes WAL segment reclamation best-effort after the in-memory
+// state has already advanced. Failure must not roll back a persisted snapshot
+// or a completed in-memory compaction.
+func (s *DefaultWAL) releaseLockTo(index uint64) {
+	err := s.wal.ReleaseLockTo(index)
+	if err != nil {
+		s.logger.WithFields(map[string]any{
+			"index": index,
+			"error": err,
+		}).Errorf("Failed to release WAL lock")
+	}
 }
 
 // Close closes the DefaultWAL. Safe to call multiple times.

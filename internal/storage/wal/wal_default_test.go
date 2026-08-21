@@ -84,6 +84,25 @@ func newTestWAL(t *testing.T, opts ...Option) *DefaultWAL {
 func TestPurgeOldWALSegments(t *testing.T) {
 	t.Parallel()
 
+	t.Run("after normal compaction", func(t *testing.T) {
+		assertOldWALSegmentsPurged(t, func(w *DefaultWAL, snapshotIndex uint64) {
+			require.NoError(t, w.CreateSnapshot(snapshotIndex, &raftpb.ConfState{Voters: []uint64{1}}, nil))
+			require.NoError(t, w.Compact(snapshotIndex))
+		})
+	})
+
+	t.Run("after received snapshot", func(t *testing.T) {
+		assertOldWALSegmentsPurged(t, func(w *DefaultWAL, snapshotIndex uint64) {
+			require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{
+				Metadata: snapshotMeta(snapshotIndex, 1, &raftpb.ConfState{Voters: []uint64{1}}),
+			}))
+		})
+	})
+}
+
+func assertOldWALSegmentsPurged(t *testing.T, triggerReclamation func(*DefaultWAL, uint64)) {
+	t.Helper()
+
 	w := newTestWAL(t, withPurgeInterval(100*time.Millisecond))
 
 	// Write enough data to force WAL segment rotation.
@@ -104,10 +123,7 @@ func TestPurgeOldWALSegments(t *testing.T) {
 	segmentsAfterWrite := countWALFiles(t, w.etcdWalDir)
 	require.GreaterOrEqual(t, segmentsAfterWrite, 3, "writing ~200MB should create at least 3 WAL segments")
 
-	// Create a snapshot at a high index and compact to release locks on old segments.
-	cs := &raftpb.ConfState{Voters: []uint64{1}}
-	require.NoError(t, w.CreateSnapshot(numEntries, cs, nil))
-	require.NoError(t, w.Compact(numEntries))
+	triggerReclamation(w, numEntries)
 
 	// The background purger should eventually delete old unlocked segments.
 	require.Eventually(t, func() bool {
@@ -858,6 +874,20 @@ func TestApplySnapshot(t *testing.T) {
 	idx, err := w.LastIndex()
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), idx, "last index should be snapshot index after apply")
+}
+
+func TestApplySnapshotUnlocksOnSnapshotSaveFailure(t *testing.T) {
+	t.Parallel()
+
+	w := newTestWAL(t)
+	w.snapshotter.dir = filepath.Join(t.TempDir(), "missing", "snap")
+
+	err := w.ApplySnapshot(&raftpb.Snapshot{
+		Metadata: snapshotMeta(10, 2, &raftpb.ConfState{Voters: []uint64{1}}),
+	})
+	require.ErrorContains(t, err, "saving snapshot file")
+	require.True(t, w.mu.TryLock(), "ApplySnapshot must unlock after a persistence failure")
+	w.mu.Unlock()
 }
 
 // --- Append edge cases ---

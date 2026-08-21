@@ -12,6 +12,29 @@ Ledger v3 POC uses a multi-level testing strategy to ensure system quality and r
 
 **Objective**: Test individual functions and methods
 
+#### Regression preservation and branch proof
+
+A regression test is a guard for a specific production path, not merely an
+example that reaches nearby code.
+
+- When a shared mechanism gains a second production trigger, preserve an
+  independent case for the original trigger. Extract expensive setup into a
+  helper and drive sibling cases rather than replacing the old trigger with the
+  new one.
+- Failure-path assertions must distinguish the intended branch. Do not assert a
+  substring shared by an earlier guard and a later fallback when the earlier
+  guard is the behavior being protected.
+- Retry tests must inject a failure exactly once, then succeed. Verify the
+  attempt count, final bytes, reset/truncation of partial state, and temporary
+  file cleanup; a fixture that fails forever does not test retry recovery.
+- Filesystem-boundary tests cover both directions of transfer and include valid
+  root/nested paths, lexical traversal, absolute paths, and symlink escapes.
+  The final filesystem operation must remain confined even if lexical
+  validation is removed or raced.
+- When practical, mutation-check the regression by temporarily removing or
+  bypassing the guarded production call and confirming that the focused test
+  fails. Never keep the mutation in the worktree.
+
 **Example**:
 ```go
 func TestValidateBucketConfig(t *testing.T) {

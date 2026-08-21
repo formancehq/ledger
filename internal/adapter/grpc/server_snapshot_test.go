@@ -60,8 +60,8 @@ func (noopLogger) WithFields(_ map[string]any) logging.Logger   { return noopLog
 func (noopLogger) WithContext(_ context.Context) logging.Logger { return noopLogger{} }
 func (noopLogger) Writer() io.Writer                            { return io.Discard }
 
-func (s *testSnapshotServer) PrepareSnapshot(_ context.Context, _ *snapshotpb.PrepareSnapshotRequest) (*snapshotpb.PrepareSnapshotResponse, error) {
-	manifest, err := buildManifest(s.checkpointDir)
+func (s *testSnapshotServer) PrepareSnapshot(ctx context.Context, _ *snapshotpb.PrepareSnapshotRequest) (*snapshotpb.PrepareSnapshotResponse, error) {
+	manifest, err := buildManifest(ctx, s.checkpointDir)
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +163,7 @@ func TestSnapshotService_FullRoundTrip(t *testing.T) {
 		require.NoError(t, err)
 
 		var fileData []byte
+		var expectedHash string
 
 		for {
 			chunk, err := stream.Recv()
@@ -173,13 +174,15 @@ func TestSnapshotService_FullRoundTrip(t *testing.T) {
 			fileData = append(fileData, chunk.GetData()...)
 
 			if chunk.GetEof() {
+				expectedHash = chunk.GetSha256()
+
 				break
 			}
 		}
 
 		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(targetDir, entry.GetPath())), 0755))
 		require.NoError(t, os.WriteFile(filepath.Join(targetDir, entry.GetPath()), fileData, 0644))
-		require.Equal(t, entry.GetSha256(), sha256Hex(fileData))
+		require.Equal(t, expectedHash, sha256Hex(fileData))
 	}
 
 	// CloseSession.
@@ -269,6 +272,32 @@ func TestSnapshotService_InvalidSessionID(t *testing.T) {
 	s, ok := status.FromError(err)
 	require.True(t, ok)
 	require.Equal(t, codes.NotFound, s.Code())
+}
+
+func TestSnapshotService_FetchFileRejectsNonLocalPath(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range []string{"../outside", filepath.Join(string(filepath.Separator), "outside")} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			sessions := newSnapshotSessionStore(nil, noopLogger{}, defaultSessionTTL)
+			t.Cleanup(sessions.stop)
+
+			sessionID, err := sessions.create("test-sync", t.TempDir())
+			require.NoError(t, err)
+
+			server := &SnapshotServiceServerImpl{sessions: sessions}
+			stream := newFakeServerStream[snapshotpb.FetchFileResponse](t)
+			err = server.FetchFile(&snapshotpb.FetchFileRequest{
+				SessionId: sessionID,
+				Path:      path,
+			}, stream)
+
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
+			require.Empty(t, stream.sent)
+		})
+	}
 }
 
 func TestSnapshotService_EmptyCheckpoint(t *testing.T) {
