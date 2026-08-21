@@ -114,6 +114,7 @@ message SystemScopedOrder {
     DeleteQueryCheckpointOrder delete_query_checkpoint = 14;
     SetQueryCheckpointScheduleOrder set_query_checkpoint_schedule = 15;
     DeleteQueryCheckpointScheduleOrder delete_query_checkpoint_schedule = 16;
+    SetClusterPolicyOrder set_cluster_policy = 17;
   }
 }
 
@@ -175,6 +176,12 @@ message ConfirmArchiveChapterOrder {
 
 message SetMaintenanceModeOrder {
   bool enabled = 1;
+}
+
+// SetClusterPolicyOrder updates the Raft-replicated cluster policy. The FSM
+// validates the revision before applying (see ClusterPolicy.revision).
+message SetClusterPolicyOrder {
+  common.ClusterPolicy policy = 1;
 }
 
 message SetChapterScheduleOrder {

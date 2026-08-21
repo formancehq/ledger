@@ -198,6 +198,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return fmt.Errorf("comparing signing projections: %w", err)
 		}
 
+		// The cluster policy is cluster-global too: a zero-log store proves no
+		// SetClusterPolicy order was audited, so a stored policy row is unaudited.
+		policy := newClusterPolicyVerifier()
+		if err := policy.foldArchived(ctx, chapters, c.coldReader, c.logger); err != nil {
+			return fmt.Errorf("folding archived cluster policy orders: %w", err)
+		}
+
+		if err := policy.compare(snap, callback); err != nil {
+			return fmt.Errorf("comparing cluster policy projection: %w", err)
+		}
+
 		callback(&servicepb.CheckStoreEvent{
 			Type: &servicepb.CheckStoreEvent_Progress{
 				Progress: &servicepb.CheckStoreProgress{
@@ -305,6 +316,13 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("folding archived signing orders: %w", err)
 	}
 
+	// Cluster policy: re-derived from chain-bound SetClusterPolicy orders, archived
+	// history folded first from cold storage (see clusterPolicyVerifier).
+	policy := newClusterPolicyVerifier()
+	if err := policy.foldArchived(ctx, chapters, c.coldReader, c.logger); err != nil {
+		return fmt.Errorf("folding archived cluster policy orders: %w", err)
+	}
+
 	baselineReferencesAvailable, err := c.foldBaselineReferences(baselineDB, chainBound.references, chainBound.referenceTxIDs)
 	if err != nil {
 		return fmt.Errorf("loading baseline references: %w", err)
@@ -325,7 +343,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// stored orders, chaining from archiveLastAuditHash. Populates
 	// expectedSkippable + layers live mutations onto chainBound and the
 	// live-range signing orders onto `signing`.
-	expectedSkippable, err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, chainBound, idempotencyTTLMicros, signing, callback)
+	expectedSkippable, err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, chainBound, idempotencyTTLMicros, signing, policy, callback)
 	if err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
@@ -866,6 +884,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	if err := signing.compare(snap, callback); err != nil {
 		return fmt.Errorf("comparing signing projections: %w", err)
+	}
+
+	if err := policy.compare(snap, callback); err != nil {
+		return fmt.Errorf("comparing cluster policy projection: %w", err)
 	}
 
 	if err := c.compareReversions(snap, ledgerRevertedTxIDs, knownLedgers, callback); err != nil {
@@ -2348,6 +2370,7 @@ func (c *Checker) verifyAuditHashChain(
 	chainBound *chainBoundState,
 	idempotencyTTLMicros *uint64,
 	signing *signingVerifier,
+	policy *clusterPolicyVerifier,
 	callback func(*servicepb.CheckStoreEvent),
 ) (map[uint64]*expectedSkippableOrder, error) {
 	// Find the last archived audit sequence to start iteration after it.
@@ -2459,6 +2482,7 @@ func (c *Checker) verifyAuditHashChain(
 			// later revocation as a lost row. Mark it incomplete so it
 			// reports the gap instead of those false positives.
 			signing.markLiveTruncated()
+			policy.markLiveTruncated()
 
 			return expectedSkippable, nil
 		}
@@ -2500,6 +2524,7 @@ func (c *Checker) verifyAuditHashChain(
 			// later revocation as a lost row. Mark it incomplete so it
 			// reports the gap instead of those false positives.
 			signing.markLiveTruncated()
+			policy.markLiveTruncated()
 
 			return expectedSkippable, nil
 		}
@@ -2546,6 +2571,7 @@ func (c *Checker) verifyAuditHashChain(
 			// later revocation as a lost row. Mark it incomplete so it
 			// reports the gap instead of those false positives.
 			signing.markLiveTruncated()
+			policy.markLiveTruncated()
 
 			return expectedSkippable, nil
 		}
@@ -2634,6 +2660,7 @@ func (c *Checker) verifyAuditHashChain(
 				}
 
 				signing.applyOrder(order)
+				policy.applyOrder(order)
 			}
 		}
 	}

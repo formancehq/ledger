@@ -67,6 +67,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
@@ -847,11 +848,17 @@ func Module() fx.Option {
 					servicePool,
 				), defaultCtrl
 			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``, `optional:"true"`, ``, ``)),
-			func(serviceServer *grpcadp.ServiceServer, n *node.Node) *clusterhealth.GRPCHealthUpdater {
+			func(serviceServer *grpcadp.ServiceServer, n *node.Node, store *dal.Store) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
 
-				return clusterhealth.NewGRPCHealthUpdater(n, hs)
+				clusterPolicyReady := func() bool {
+					policy, err := query.ReadClusterPolicy(store)
+
+					return err == nil && policy.GetRevision() > 0
+				}
+
+				return clusterhealth.NewGRPCHealthUpdater(n, hs, clusterPolicyReady)
 			},
 		),
 		fx.Decorate(func(
@@ -1091,6 +1098,7 @@ func Module() fx.Option {
 				eventsManager *events.Manager,
 				mirrorManager *mirror.Manager,
 				backupOrchestrator *backupapp.Orchestrator,
+				admission ctrl.Admission,
 			) {
 				n.SetObserver(node.NewObserver(func(event any) {
 					switch e := event.(type) {
@@ -1112,6 +1120,7 @@ func Module() fx.Option {
 						go handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
 					case node.LeaderReadyEvent:
 						proposeClusterConfigIfNeeded(n, builder, store, cfg, logger)
+						proposeClusterPolicyIfNeeded(admission, store, cfg, logger)
 					default:
 						logger.Errorf("Unknown observer event type: %T", event)
 					}
@@ -1707,6 +1716,53 @@ func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *da
 		logger.WithFields(map[string]any{
 			"error": err,
 		}).Errorf("Failed to propose cluster config update")
+	}
+}
+
+// proposeClusterPolicyIfNeeded proposes the desired cluster policy when its
+// revision exceeds the applied one. Called when the node becomes leader and the
+// FSM is caught up (LeaderReadyEvent). Unlike the cluster config, the policy
+// flows through Admit (as an audited SetClusterPolicy order) so the checker can
+// re-derive it; the write-readiness gate exempts the policy request so this
+// proposal is never blocked by its own gate.
+func proposeClusterPolicyIfNeeded(admission ctrl.Admission, store *dal.Store, cfg Config, logger logging.Logger) {
+	applied, _ := query.ReadClusterPolicy(store)
+	appliedRev := applied.GetRevision()
+
+	desired := &commonpb.ClusterPolicy{
+		Revision:             cfg.ClusterPolicyRevision,
+		IdempotencyTtlMicros: uint64(cfg.IdempotencyTTL.Microseconds()),
+		QueryCheckpointLimit: cfg.QueryCheckpointLimit,
+	}
+
+	switch {
+	case desired.GetRevision() < appliedRev:
+		// A newer policy is already applied; the FSM would reject this as stale.
+		return
+	case desired.GetRevision() == appliedRev:
+		// Same revision must carry the same payload; a divergence means the
+		// control plane assigned one revision to two policies — surface it and
+		// refuse to re-propose (the FSM would reject it as a revision conflict).
+		if applied != nil && !applied.EqualVT(desired) {
+			logger.Errorf("cluster policy revision %d is already applied with a different payload; bump --cluster-policy-revision to change it", appliedRev)
+		}
+
+		return
+	}
+
+	logger.Infof("Proposing cluster policy revision %d on leadership acquisition", desired.GetRevision())
+
+	if _, err := admission.Admit(
+		internalauth.WithSystemActor(context.Background(), commands.ComponentClusterPolicy),
+		servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_SetClusterPolicy{
+				SetClusterPolicy: &servicepb.SetClusterPolicyRequest{Policy: desired},
+			},
+		}),
+	); err != nil {
+		logger.WithFields(map[string]any{
+			"error": err,
+		}).Errorf("Failed to propose cluster policy update")
 	}
 }
 

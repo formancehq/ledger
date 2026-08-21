@@ -49,6 +49,12 @@ type FSMState struct {
 	// the value from the swapped state instead of issuing a second Pebble Get.
 	CacheEpoch uint64
 
+	// ClusterPolicy is the applied Raft-replicated cluster policy. Persisted
+	// under ZoneGlobal so it survives restarts and rides inside snapshots and
+	// backups. Never nil: NewFSMState seeds the revision-0 default so the apply
+	// path and the readiness gate can read it before any policy is committed.
+	ClusterPolicy *commonpb.ClusterPolicy
+
 	// ClusterID is the immutable identifier injected at boot. Kept here so
 	// rebuilds of HashGenerator (after a ClusterConfig change) have it at
 	// hand without having to plumb it from elsewhere.
@@ -65,7 +71,14 @@ func NewFSMState(clusterID string) *FSMState {
 		PendingLedgerCleanups: map[string]uint64{},
 		HashGenerator:         processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID),
 		ClusterID:             clusterID,
+		ClusterPolicy:         &commonpb.ClusterPolicy{},
 	}
+}
+
+// UpdateClusterPolicy installs policy as the applied cluster policy. Revision
+// monotonicity is enforced by the caller (the FSM apply path) before this runs.
+func (s *FSMState) UpdateClusterPolicy(policy *commonpb.ClusterPolicy) {
+	s.ClusterPolicy = policy
 }
 
 // AdvanceHLC enforces Hybrid Logical Clock monotonicity over LastAppliedTimestamp.
@@ -194,6 +207,15 @@ func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle, cl
 		s.LastClusterConfig = clusterState.GetConfig()
 		s.HashGenerator = processing.NewHashGenerator(clusterState.GetConfig().GetHashAlgorithm(), clusterID)
 		s.CacheEpoch = clusterState.GetCacheEpoch()
+	}
+
+	clusterPolicy, err := query.ReadClusterPolicy(reader)
+	if err != nil {
+		return nil, fmt.Errorf("reading cluster policy: %w", err)
+	}
+
+	if clusterPolicy != nil {
+		s.ClusterPolicy = clusterPolicy
 	}
 
 	return s, nil

@@ -308,6 +308,10 @@ const (
 	// still-alive removed pod from rejoining and being auto-promoted. See
 	// docs/technical/architecture/subsystems/consensus/removed-member-registry.md.
 	SubGlobRemovedMembers byte = 0x15
+	// SubGlobClusterPolicy stores the Raft-replicated cluster policy (EN-1827):
+	// [ZoneGlobal][SubGlobClusterPolicy] → common.ClusterPolicy. A single global
+	// row; revision monotonicity is validated in the FSM apply path.
+	SubGlobClusterPolicy byte = 0x16
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).

@@ -309,6 +309,19 @@ func TestProcessOrder_DispatchEverySystemScopedVariant(t *testing.T) {
 			setup: func(_ *MockScope) {},
 			check: func(t *testing.T, got error) { t.Helper(); require.NoError(t, got) },
 		},
+		{
+			name: "set_cluster_policy",
+			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
+				SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{
+					Policy: &commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 1},
+				},
+			}},
+			setup: func(m *MockScope) {
+				m.EXPECT().GetClusterPolicy().Return(&commonpb.ClusterPolicy{})
+				m.EXPECT().SetClusterPolicy(gomock.Any())
+			},
+			check: func(t *testing.T, got error) { t.Helper(); require.NoError(t, got) },
+		},
 	}
 
 	for _, tc := range cases {

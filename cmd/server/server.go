@@ -224,6 +224,10 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd.Flags().Duration("idempotency-ttl", 24*time.Hour, "Idempotency key time-to-live (0 = never expire)")
 	runCmd.Flags().Duration("idempotency-eviction-interval", 60*time.Second, "How often the leader proposes idempotency eviction")
 
+	// Cluster policy (replicated via Raft; see EN-1827)
+	runCmd.Flags().Uint64("cluster-policy-revision", 1, "Desired revision of the replicated cluster policy (must be greater than zero)")
+	runCmd.Flags().Uint64("query-checkpoint-limit", 10, "Maximum number of live query checkpoints, carried in the replicated cluster policy (must be greater than zero)")
+
 	// Snapshot sync configuration
 	runCmd.Flags().Duration("snapshot-session-ttl", 5*time.Minute, "Server-side session TTL for snapshot sync (reaper cleans up expired sessions)")
 	runCmd.Flags().Int("snapshot-parallelism", 4, "Number of parallel file fetch workers during snapshot sync")
@@ -649,6 +653,8 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	// Idempotency TTL
 	cfg.IdempotencyTTL = getDuration("idempotency-ttl", 24*time.Hour)
 	cfg.IdempotencyEvictionInterval = getDuration("idempotency-eviction-interval", 60*time.Second)
+	cfg.ClusterPolicyRevision = getUint64("cluster-policy-revision", 1)
+	cfg.QueryCheckpointLimit = getUint64("query-checkpoint-limit", 10)
 
 	// Snapshot sync configuration
 	cfg.SnapshotSyncConfig = bootstrap.SnapshotSyncConfig{

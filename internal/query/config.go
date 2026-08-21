@@ -41,6 +41,17 @@ func ReadClusterState(reader dal.PebbleGetter) (*commonpb.PersistedClusterState,
 	return state, nil
 }
 
+// ReadClusterPolicy loads the replicated cluster policy from the given reader.
+// Returns nil if the key does not exist (no policy committed yet).
+func ReadClusterPolicy(reader dal.PebbleGetter) (*commonpb.ClusterPolicy, error) {
+	policy, err := dal.ReadProto[*commonpb.ClusterPolicy](reader, []byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy})
+	if err != nil {
+		return nil, fmt.Errorf("loading cluster policy: %w", err)
+	}
+
+	return policy, nil
+}
+
 // ReadPersistedConfig loads the persisted node/cluster configuration block
 // from the given reader. Returns nil if the key does not exist (first boot).
 //

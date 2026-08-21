@@ -1468,7 +1468,8 @@ func extractSystemScopedNeeds(p *plan.Coverage, ss *raftcmdpb.SystemScopedOrder)
 		*raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint,
 		*raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint,
 		*raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule,
-		*raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule:
+		*raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule,
+		*raftcmdpb.SystemScopedOrder_SetClusterPolicy:
 		// Nothing to preload; payload identifier silenced via underscore
 		// — the case exists purely so the default catches genuinely new
 		// variants.
@@ -2128,6 +2129,14 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 			Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{
 				SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{
 					Enabled: reqType.SetMaintenanceMode.GetEnabled(),
+				},
+			},
+		})
+	case *servicepb.Request_SetClusterPolicy:
+		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
+			Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
+				SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{
+					Policy: reqType.SetClusterPolicy.GetPolicy(),
 				},
 			},
 		})

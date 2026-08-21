@@ -62,7 +62,8 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_INVALID_PATTERN,
 		commonpb.ErrorReason_ERROR_REASON_FILTER_COMPILATION_ERROR,
 		commonpb.ErrorReason_ERROR_REASON_EXECUTION_PLAN_TOO_LARGE,
-		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_ID_REQUIRED:
+		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_ID_REQUIRED,
+		commonpb.ErrorReason_ERROR_REASON_CLUSTER_POLICY_INVALID:
 		return KindValidation
 	case commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND,
@@ -87,7 +88,8 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_LEDGER_IN_MIRROR_MODE,
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_HAS_ACCOUNTS,
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_CONFLICT,
-		commonpb.ErrorReason_ERROR_REASON_CHAPTER_ALREADY_ARCHIVED:
+		commonpb.ErrorReason_ERROR_REASON_CHAPTER_ALREADY_ARCHIVED,
+		commonpb.ErrorReason_ERROR_REASON_STALE_CLUSTER_POLICY:
 		return KindConflict
 	case commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 		commonpb.ErrorReason_ERROR_REASON_VOLUME_OVERFLOW,
@@ -132,7 +134,8 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_RUNTIME,
 		commonpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_GAP,
 		commonpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_INVALID,
-		commonpb.ErrorReason_ERROR_REASON_VOLUME_NOT_MATERIALIZED:
+		commonpb.ErrorReason_ERROR_REASON_VOLUME_NOT_MATERIALIZED,
+		commonpb.ErrorReason_ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT:
 		return KindInternal
 	default:
 		return KindInternal
