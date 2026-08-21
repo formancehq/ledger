@@ -146,8 +146,8 @@ git worktree add --detach "$worktree" "$head_sha"
 # Legitimacy policy must not come from the PR that it is judging.
 git worktree add --detach "$trusted_tool_worktree" "$base_sha"
 triage_tool="$trusted_tool_worktree/scripts/ai-pr-triage"
-if [[ ! -x "$triage_tool" ]]; then
-    echo "ai-pr-loop: trusted base does not provide executable scripts/ai-pr-triage" >&2
+if [[ ! -f "$triage_tool" ]]; then
+    echo "ai-pr-loop: trusted base does not provide scripts/ai-pr-triage" >&2
     exit 1
 fi
 triage_result="$worktree_run_dir/triage.json"
@@ -205,7 +205,7 @@ if [[ "$push_changes" == "true" ]]; then
     # that authorize its own publication. Build the orchestrator from the exact
     # verified base commit and invoke its tools from that immutable worktree.
     review_loop_binary="$worktree_run_dir/review-loop"
-    for trusted_tool in ai-pr-triage ai-review-codex ai-fix-claude agent-check-pr; do
+    for trusted_tool in ai-review-codex ai-fix-claude agent-check-pr; do
         trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
         if [[ ! -x "$trusted_tool_path" ]]; then
             echo "ai-pr-loop: trusted base does not provide executable scripts/$trusted_tool" >&2

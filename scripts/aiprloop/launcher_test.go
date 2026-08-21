@@ -125,7 +125,7 @@ func newLauncherFixture(t *testing.T) launcherFixture {
 set -euo pipefail
 printf '%s\n' "$@" > "$TEST_CAPTURE_FILE"
 `)
-	writeExecutable(t, filepath.Join(seed, "scripts", "ai-pr-triage"), `#!/usr/bin/env bash
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-triage"), []byte(`#!/usr/bin/env bash
 set -euo pipefail
 [[ "${AI_PR_TRIAGE_EXPECT_BASE_SHA:-}" == "$TEST_BASE_SHA" ]]
 [[ "${AI_PR_TRIAGE_EXPECT_HEAD_SHA:-}" == "$TEST_HEAD_SHA" ]]
@@ -142,7 +142,7 @@ done
 [[ -n "$output" ]]
 printf '{"decision":"%s","base_sha":"%s","head":"%s"}\n' \
     "$TEST_TRIAGE_DECISION" "$TEST_TRIAGE_BASE_SHA" "$TEST_TRIAGE_HEAD_SHA" > "$output"
-`)
+`), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "base.txt"), []byte("base\n"), 0o644))
 	runGit(t, seed, "add", ".")
 	runGit(t, seed, "commit", "-m", "base")
