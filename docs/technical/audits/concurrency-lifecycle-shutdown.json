@@ -1,0 +1,28 @@
+{
+  "id": "concurrency-lifecycle-shutdown",
+  "title": "Concurrency, lifecycle, cancellation, and shutdown",
+  "purpose": "Find races, deadlocks, leaks, use-after-close behavior, shutdown corruption, and background-work ownership bugs across Ledger runtime components.",
+  "paths": ["cmd/**", "internal/application/**", "internal/infra/**", "internal/storage/**", "internal/query/**", "tests/**"],
+  "related_docs": ["AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/overview.md", "docs/technical/contributing/testing.md", "docs/technical/contributing/ai-audit.md"],
+  "invariants": [
+    "Cancellation and shutdown must not leave authoritative mutations half-applied or acknowledged incorrectly.",
+    "Every long-lived goroutine must have a bounded ownership/lifecycle and a reliable termination path.",
+    "Channels, queues, workers, stores, and transports must not be used after their owning component is closed.",
+    "Shutdown ordering must respect dependencies between admission, consensus/apply, persistence, projections, transport, and serving layers.",
+    "Concurrent start/stop/error paths must not deadlock or double-close shared resources.",
+    "Context cancellation must propagate without converting committed work into an inconsistent local rollback.",
+    "Background work must not outlive the generation/configuration/state that authorized it.",
+    "Races must not change deterministic FSM/business outcomes."
+  ],
+  "adversarial_questions": [
+    "Which goroutines can block forever if a downstream consumer exits first?",
+    "Where can close/cancel race with send, receive, flush, apply, snapshot, or retry?",
+    "Can shutdown acknowledge completion before durable/background work has actually stopped?",
+    "Can a worker from an old generation mutate state after restart/reconfiguration?",
+    "Are errors during startup unwound in strict reverse ownership order?",
+    "Can multiple error paths close the same channel/store/transport?",
+    "Can context cancellation interrupt an operation after an irreversible side effect but before bookkeeping?",
+    "Do tests rely on sleeps that hide races or fail to reach the intended concurrent state?"
+  ],
+  "dynamic_checks_to_consider": ["go test -race on targeted packages", "repeated start/stop stress", "SIGTERM during writes/snapshot/restore", "fault injection in startup unwinding", "goroutine leak detection", "synctest for timing-sensitive unit tests"]
+}
