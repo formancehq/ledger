@@ -596,13 +596,20 @@ func (w *Worker) reportError(ctx context.Context, message string) {
 		},
 	}
 
-	if !w.proposeMirrorSync(ctx, update, "mirror error report") {
-		return
-	}
-
-	// An error is now persisted, so the next idle tick must issue a clear even
-	// if the source head has not moved.
+	// Marked dirty BEFORE the propose, reading the bit as "an error may now be
+	// persisted". proposeMirrorSync reports confirmation, not application: both
+	// its waits abandon on context cancellation (futures.Future.Wait returns
+	// ctx.Err() on an unresolved future) and abandoning a wait does not
+	// un-commit a Raft entry, so a committed error report can return false.
+	// Deferring the write to a confirmed apply would leave the bit true with an
+	// error in the store, and publishIdleStatus would then suppress the clear
+	// for as long as the source head does not move. Being wrong this way costs
+	// one idempotent idle publish; being wrong the other way costs a permanent
+	// error on a healthy mirror — the same asymmetry the field's zero value
+	// already resolves in this direction (EN-1773).
 	w.statusClearConfirmed = false
+
+	w.proposeMirrorSync(ctx, update, "mirror error report")
 }
 
 // proposeMirrorSync proposes a technical-only MirrorSyncUpdate and reports
@@ -611,9 +618,11 @@ func (w *Worker) reportError(ctx context.Context, message string) {
 // which differ only in their payload.
 //
 // label names the operation in the failure logs. The bool return is what makes
-// the caller's bookkeeping safe: only a confirmed application may advance the
-// caller's published state, or a rejected proposal would suppress the retry on
-// the next tick.
+// publishIdleStatus's bookkeeping safe: only a confirmed application may
+// advance the published state, or a rejected proposal would suppress the retry
+// on the next tick. reportError ignores it on purpose — it marks the status
+// dirty up front, because for that direction an unconfirmed-but-applied
+// proposal is the dangerous case.
 func (w *Worker) proposeMirrorSync(ctx context.Context, update *raftcmdpb.MirrorSyncUpdate, label string) bool {
 	cmd := &raftcmdpb.Proposal{
 		Date:           &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},

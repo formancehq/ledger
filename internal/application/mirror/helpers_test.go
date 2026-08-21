@@ -92,6 +92,12 @@ const (
 	proposeRaftReject
 	proposeFSMError
 	proposeBusinessError
+	// proposeWaitAbandoned models the one outcome the other four cannot: the
+	// entry is committed and will apply on every node, but the caller never
+	// learns it. Neither future is resolved, so a caller waiting on a
+	// cancelled context gets ctx.Err() back and proposeMirrorSync reports
+	// false for a proposal that did take effect.
+	proposeWaitAbandoned
 )
 
 // stubProposer stands in for the Raft proposer on the happy path: it resolves
@@ -131,6 +137,8 @@ func (s *stubProposer) Propose(_ context.Context, proposal *node.Proposal) (*fut
 	fsmFuture := futures.New[state.ApplyResult]()
 
 	switch outcome {
+	case proposeWaitAbandoned:
+		// Deliberately resolves nothing.
 	case proposeRaftReject:
 		proposal.Resolve(nil, errors.New("stub proposer: raft rejected"))
 	case proposeFSMError:
@@ -145,6 +153,15 @@ func (s *stubProposer) Propose(_ context.Context, proposal *node.Proposal) (*fut
 	}
 
 	return fsmFuture, nil
+}
+
+// setOutcome switches the stage the next proposals fail at, so one worker can
+// reach a confirmed steady state before the failure under test.
+func (s *stubProposer) setOutcome(outcome proposeOutcome) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.outcome = outcome
 }
 
 // recorded snapshots the intercepted proposals under the stub's lock.

@@ -382,3 +382,58 @@ func TestWorker_IdleStatusRetriesAfterFailedPropose(t *testing.T) {
 		})
 	}
 }
+
+// A committed error report whose confirmation wait is abandoned must still
+// mark the status dirty. proposeMirrorSync reports confirmation, not
+// application: cancelling a wait does not un-commit a Raft entry, so treating
+// its false as "nothing was persisted" would leave the worker believing the
+// status is clean while an error sits in the store — and publishIdleStatus
+// would then suppress the clear until the source head moved.
+func TestWorker_ReportErrorMarksStatusDirtyWithoutConfirmation(t *testing.T) {
+	t.Parallel()
+
+	builder, store := newTestBuilder(t)
+	writeBoundaries(t, store, "mirrored", &raftcmdpb.LedgerBoundaries{LastMirrorV2LogId: 4})
+
+	ctrl := gomock.NewController(t)
+	source := v2.NewMockSource(ctrl)
+	source.EXPECT().GetLatestLogID(gomock.Any()).Return(uint64(4), nil).AnyTimes()
+	source.EXPECT().FetchLogs(gomock.Any(), uint64(4), gomock.Any()).Return(nil, false, nil).AnyTimes()
+
+	proposer := &stubProposer{outcome: proposeApplied}
+	w := newWorkerWithProposer(t, "mirrored", source, store, builder, proposer)
+
+	w.refreshSourceHead(context.Background())
+
+	// Caught-up steady state: the head is published and no error is outstanding.
+	_, err := w.processBatch(context.Background())
+	require.NoError(t, err)
+	require.Len(t, proposer.recorded(), 1)
+	require.True(t, w.statusClearConfirmed)
+
+	// The error report commits, but the worker's wait is interrupted before it
+	// resolves, so proposeMirrorSync returns false for an applied proposal.
+	proposer.setOutcome(proposeWaitAbandoned)
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	w.reportError(cancelled, "source unreachable")
+
+	recorded := proposer.recorded()
+	require.Len(t, recorded, 2, "the error report must still reach Raft")
+	require.Equal(t, "source unreachable", recorded[1].update.GetError().GetMessage())
+	require.False(t, w.statusClearConfirmed,
+		"an unconfirmed error report may still have been applied, so the status must be marked dirty")
+
+	// The consequence that matters: the source recovers with no new log, and
+	// the clear is issued even though the head never moved.
+	proposer.setOutcome(proposeApplied)
+
+	_, err = w.processBatch(context.Background())
+	require.NoError(t, err)
+
+	recorded = proposer.recorded()
+	require.Len(t, recorded, 3, "a recovered source must clear the possibly-persisted error")
+	require.True(t, recorded[2].update.GetClearError())
+}
