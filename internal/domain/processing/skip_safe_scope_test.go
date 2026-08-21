@@ -48,6 +48,7 @@ func TestSkipSafeScope_TrapsNonBufferedMutations(t *testing.T) {
 		{"SetNumscriptLatestVersion", func() { trap.SetNumscriptLatestVersion("L", "n", "1.0.0") }},
 		{"SaveQueryCheckpoint", func() { trap.SaveQueryCheckpoint(&raftcmdpb.QueryCheckpointState{}) }},
 		{"DeleteQueryCheckpoint", func() { trap.DeleteQueryCheckpoint(7) }},
+		{"SetClusterPolicy", func() { trap.SetClusterPolicy(&commonpb.ClusterPolicy{}) }},
 	}
 
 	for _, tc := range cases {
@@ -102,6 +103,10 @@ func TestSkipSafeScope_ReadsAndBufferedWritesPassThrough(t *testing.T) {
 	// Non-buffered counter reads (audit seq is monotonic, read-only via
 	// Scope) pass through.
 	require.Equal(t, uint64(50), trap.GetNextAuditSequenceID())
+
+	// GetClusterPolicy is a read and passes through.
+	s.parent.EXPECT().GetClusterPolicy().Return(&commonpb.ClusterPolicy{Revision: 3}).Times(1)
+	require.Equal(t, uint64(3), trap.GetClusterPolicy().GetRevision())
 
 	// PutReverted is buffered.
 	tk := domain.TransactionKey{LedgerName: "L", ID: 1}

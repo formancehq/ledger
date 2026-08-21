@@ -118,4 +118,42 @@ func TestReconcileClusterPolicy(t *testing.T) {
 
 		require.Zero(t, admission.callCount(), "an already-applied revision must not be re-proposed")
 	})
+
+	t.Run("no re-propose on same revision with a different payload", func(t *testing.T) {
+		t.Parallel()
+
+		store := newReconcilerTestStore(t)
+		cfg := validBaseConfig()
+
+		batch := store.OpenWriteSession()
+		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+			Revision:             cfg.ClusterPolicyRevision,
+			QueryCheckpointLimit: cfg.QueryCheckpointLimit + 1,
+		}))
+		require.NoError(t, batch.Commit())
+
+		admission := &fakeAdmission{}
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
+
+		require.Zero(t, admission.callCount(), "a same-revision/different-payload conflict must not be re-proposed")
+	})
+
+	t.Run("no propose when a newer revision is already applied", func(t *testing.T) {
+		t.Parallel()
+
+		store := newReconcilerTestStore(t)
+		cfg := validBaseConfig()
+
+		batch := store.OpenWriteSession()
+		require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+			Revision:             cfg.ClusterPolicyRevision + 1,
+			QueryCheckpointLimit: cfg.QueryCheckpointLimit,
+		}))
+		require.NoError(t, batch.Commit())
+
+		admission := &fakeAdmission{}
+		reconcileClusterPolicy(context.Background(), admission, store, cfg, func() bool { return true }, logging.Testing())
+
+		require.Zero(t, admission.callCount(), "a newer applied revision must not be overwritten")
+	})
 }
