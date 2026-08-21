@@ -21,6 +21,7 @@ func TestRunnerPinsPolicyToBaseAndExposesExactPRHeadAsEvidence(t *testing.T) {
 	require.Equal(t, fixture.headSHA, strings.TrimSpace(readFile(t, fixture.evidenceHeadCapture)))
 	require.Equal(t, "trusted", strings.TrimSpace(readFile(t, fixture.trustedInstructionsCapture)))
 	require.Equal(t, "false", strings.TrimSpace(readFile(t, fixture.callerMarkerCapture)))
+	require.Contains(t, readFile(t, fixture.promptCapture), "product-technical-traceability.md")
 
 	codexDirectory := strings.TrimSpace(readFile(t, fixture.codexDirectoryCapture))
 	require.NoDirExists(t, codexDirectory)
@@ -83,6 +84,11 @@ func newFixture(t *testing.T, headRepository string) fixture {
 	require.NoError(t, os.WriteFile(
 		filepath.Join(seed, "docs", "technical", "contributing", "ai-pr-triage.md"),
 		[]byte("# AI PR triage contract\n"),
+		0o644,
+	))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(seed, "docs", "technical", "contributing", "product-technical-traceability.md"),
+		[]byte("# Product to technical traceability\n"),
 		0o644,
 	))
 	require.NoError(t, os.WriteFile(

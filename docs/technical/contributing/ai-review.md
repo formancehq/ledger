@@ -13,6 +13,8 @@ A review should answer four questions:
 3. Are the tests and validation strong enough to catch the regression class being changed?
 4. Is there any concrete risk that should block merge or be surfaced to a human?
 
+For significant technical decisions, also consume `docs/technical/contributing/product-technical-traceability.md` as the canonical intent chain. Use the documented product/operational need and observable requirement to judge implementation correctness. Never invent missing motivation or rewrite the requirement to match the code; missing or conflicting intent is a human-decision question, not a rationale to manufacture.
+
 Do not use review bandwidth for personal style preferences, speculative refactors, or restating what the diff already says.
 
 ## Severity and blocking status
@@ -40,7 +42,7 @@ Every finding must identify a concrete failure mechanism. A valid finding should
 - the user/system impact;
 - what condition would make the finding resolved.
 
-Prefer evidence from current code, tests, authoritative subsystem documentation, generated/API contracts, or reproducible command output.
+Prefer evidence from current code, tests, authoritative subsystem documentation, generated/API contracts, documented product/operational requirements, or reproducible command output.
 
 Do not file a finding based only on:
 
@@ -80,7 +82,7 @@ If a pre-existing issue prevents the new change from being safe, explain that de
 
 ## Test review
 
-Do not accept a test merely because it passes. Check that the observation actually proves the behavior claimed by the test.
+Do not accept a test merely because it passes. Check that the observation actually proves the behavior claimed by the test and, for significant decisions, the observable requirement recorded in the traceability chain.
 
 For concurrency, timing, retry, and failure-path tests, prefer synchronization on an observable state transition over arbitrary sleeps. In particular, verify that a rewritten test still reaches the original regression state rather than only a nearby proxy state.
 
@@ -128,7 +130,7 @@ At least one unresolved blocking finding remains. List only the blockers needed 
 
 ### HUMAN DECISION REQUIRED
 
-Use this only when repository evidence cannot decide the issue, for example a genuine product choice, conflicting authoritative sources, or a proposed change to a non-negotiable invariant.
+Use this only when repository evidence cannot decide the issue, for example a genuine product choice, conflicting authoritative sources, missing traceability for a significant technical decision, or a proposed change to a non-negotiable invariant.
 
 ## Review summary
 

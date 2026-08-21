@@ -87,8 +87,9 @@ git worktree add --detach "$head_worktree" "$head_sha"
 
 schema="$trusted_worktree/scripts/codex-pr-triage.schema.json"
 contract="$trusted_worktree/docs/technical/contributing/ai-pr-triage.md"
+traceability="$trusted_worktree/docs/technical/contributing/product-technical-traceability.md"
 agent_context="$trusted_worktree/docs/technical/agent-context.md"
-for trusted_file in "$trusted_worktree/AGENTS.md" "$agent_context" "$contract" "$schema"; do
+for trusted_file in "$trusted_worktree/AGENTS.md" "$agent_context" "$contract" "$traceability" "$schema"; do
     [[ -f "$trusted_file" ]] || { echo "ai-pr-triage: trusted base is missing $trusted_file" >&2; exit 1; }
 done
 
@@ -115,8 +116,8 @@ REJECT is advisory and requires positive repository evidence that the change is 
 Copy base_sha and head exactly. Output only JSON matching the schema.
 EOF
 {
-  printf '\nTRUSTED POLICY FILES\n- AGENTS: `%s`\n- agent context: `%s`\n- triage contract: `%s`\n' \
-    "$trusted_worktree/AGENTS.md" "$agent_context" "$contract"
+  printf '\nTRUSTED POLICY FILES\n- AGENTS: `%s`\n- agent context: `%s`\n- triage contract: `%s`\n- traceability contract: `%s`\n' \
+    "$trusted_worktree/AGENTS.md" "$agent_context" "$contract" "$traceability"
   printf '\nTRUSTED TARGET\n- PR: %s\n- base_sha: %s\n- merge_base: %s\n- head: %s\n- metadata_file: `%s`\n- untrusted_head_worktree: `%s`\n' \
     "$pr_number" "$base_sha" "$merge_base" "$head_sha" "$metadata_file" "$head_worktree"
   printf '\nInspect committed changes with exactly: `git -C %q diff --find-renames %s %s --`\n' \
