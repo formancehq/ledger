@@ -368,7 +368,17 @@ func TestWriteCheckedStatus(t *testing.T) {
 				w := httptest.NewRecorder()
 				r := httptest.NewRequest(http.MethodPost, "/", nil)
 
+				// A caller that chose its status before the marshal may also
+				// have set the retry hint for it — writeBulkResponse does on its
+				// 503 infra rollup. The status is never written when the marshal
+				// fails, so the hint must not ride along on the 500.
+				w.Header().Set("Retry-After", "1")
+
 				wr.write(w, r, failingMarshaler{})
+
+				require.Empty(t, w.Header().Get("Retry-After"),
+					"a marshal failure answers 500, which is not retryable: the "+
+						"hint set for the intended status must not outlive it")
 
 				// The status must NOT have been committed before the marshal:
 				// a writer that writes its header first turns a marshal failure
@@ -429,6 +439,56 @@ func TestWriteCheckedStatus(t *testing.T) {
 					require.Equal(t, ref.Header(), w.Header())
 				})
 			}
+		})
+	}
+}
+
+// noLeaderMarshaler is a payload whose MarshalJSON fails with an error wrapping
+// commonpb.ErrNoLeader, the one marshal failure that legitimately earns a
+// Retry-After. It is the positive control for failCheckedWrite's Del: clearing
+// the caller's stale hint must not also suppress the hint handleError owes for
+// the status it actually writes.
+type noLeaderMarshaler struct{}
+
+// MarshalJSON implements json.Marshaler, always failing with a retryable error.
+func (noLeaderMarshaler) MarshalJSON() ([]byte, error) {
+	return nil, fmt.Errorf("marshal: %w", commonpb.ErrNoLeader)
+}
+
+// TestCheckedWriters_RetryableFailureKeepsRetryAfter is the counterpart to the
+// stale-hint assertion in TestWriteCheckedStatus: that one proves the hint is
+// dropped, this one proves it is dropped by clearing the map and not by
+// suppressing handleError's own Set. Without it, a failCheckedWrite that moved
+// the Del after handleError — or a handleError that stopped setting the header —
+// would still pass the negative test.
+func TestCheckedWriters_RetryableFailureKeepsRetryAfter(t *testing.T) {
+	t.Parallel()
+
+	writers := map[string]func(w http.ResponseWriter, r *http.Request, data any){
+		"writeOKChecked": func(w http.ResponseWriter, r *http.Request, data any) {
+			writeOKChecked(w, r, data)
+		},
+		"writeCheckedBody": func(w http.ResponseWriter, r *http.Request, data any) {
+			writeCheckedBody(w, r, http.StatusServiceUnavailable, data)
+		},
+		"writeCheckedStatus": func(w http.ResponseWriter, r *http.Request, data any) {
+			writeCheckedStatus(w, r, http.StatusServiceUnavailable, data)
+		},
+	}
+
+	for name, write := range writers {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			w := httptest.NewRecorder()
+			write(w, httptest.NewRequest(http.MethodPost, "/", nil), noLeaderMarshaler{})
+
+			require.Equal(t, http.StatusServiceUnavailable, w.Code)
+			require.Equal(t, "1", w.Header().Get("Retry-After"),
+				"handleError owes a retry hint for the 503 it writes itself")
+
+			resp := decodeResponse[ErrorResponse](t, w)
+			require.Equal(t, "NO_LEADER", resp.ErrorCode)
 		})
 	}
 }

@@ -67,6 +67,25 @@ func writeCreated(w http.ResponseWriter, data any) {
 	})
 }
 
+// failCheckedWrite routes a buffered-marshal failure to handleError, dropping
+// Retry-After first.
+//
+// A caller may have set that hint for the status it intended — writeBulkResponse
+// does, on its 503 infra rollup — but that status is never written when the
+// marshal fails, and handleError only ever Sets the header, never clears it. The
+// hint would then outlive the status it was chosen for and tell a client to retry
+// a non-retryable 500. For bulk that is not cosmetic: the operations are already
+// applied by the time the response is written, so a retry without an idempotency
+// key risks duplicating committed work. handleError re-sets the header for the
+// statuses that do earn it, so the legitimate 503 hint is unaffected.
+//
+// Only Retry-After is cleared: the header map also carries middleware-set
+// entries (CORS, correlation) that must survive the status change.
+func failCheckedWrite(w http.ResponseWriter, r *http.Request, err error) {
+	w.Header().Del("Retry-After")
+	handleError(w, r, err)
+}
+
 // writeOKChecked writes a 200 OK response like writeOK, but marshals the body
 // to a buffer BEFORE writing any header, so a marshal failure is routed through
 // handleError (a clean 500 with no partial body) instead of being appended to
@@ -86,7 +105,7 @@ func writeCreated(w http.ResponseWriter, data any) {
 func writeOKChecked(w http.ResponseWriter, r *http.Request, data any) {
 	body, err := json.Marshal(BaseResponse[any]{Data: data})
 	if err != nil {
-		handleError(w, r, err)
+		failCheckedWrite(w, r, err)
 
 		return
 	}
@@ -110,7 +129,7 @@ func writeCheckedBody(w http.ResponseWriter, r *http.Request, statusCode int, bo
 	var buf bytes.Buffer
 
 	if err := json.MarshalWrite(&buf, body); err != nil {
-		handleError(w, r, err)
+		failCheckedWrite(w, r, err)
 
 		return
 	}
