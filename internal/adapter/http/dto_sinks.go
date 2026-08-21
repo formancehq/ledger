@@ -29,6 +29,23 @@ import (
 // display logic applied after the secrets had already crossed the wire.
 // dto_sinks_test.go and handlers_get_events_sinks_test.go both assert absence.
 //
+// NOT a claim that no credential can reach this route. Two URL fields are
+// returned verbatim, userinfo included:
+//
+//	NatsSinkConfig.url        nats://user:pass@host:4222
+//	HttpSinkConfig.endpoint   https://user:pass@host/hook
+//
+// NatsSinkConfig has no credential field at all — nats.Connect takes the user
+// and token from the URL userinfo (sink_nats.go), so that IS the NATS auth
+// channel, and there is no alternative to prefer. HttpSinkConfig is weaker:
+// `secret` signs the payload to the receiver rather than authenticating this
+// client, so endpoint userinfo also reaches the wire, but the signed-payload
+// pattern is the primary mechanism there. Nothing validates or strips userinfo
+// on admission (no url.Parse in internal/application/events/) and
+// cmd/ledgerctl/events/redact.go has no Nats case, so the CLI does not mask it
+// either. openapi.yml states this on both fields; do not shorten it back to
+// "every credential-bearing setting is omitted", which is false for NATS.
+//
 // The gRPC surface still returns these fields and is deliberately out of scope
 // here; it is tracked separately.
 

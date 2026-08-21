@@ -5740,7 +5740,12 @@ components:
       properties:
         url:
           type: string
-          description: NATS server URL.
+          description: >
+            NATS server URL, returned verbatim. `NatsSinkConfig` has no
+            credential field — `nats.Connect` takes the user and token from the
+            URL userinfo, so `nats://user:pass@host:4222` is the only way to
+            authenticate a NATS sink, and this field returns that password to
+            any caller holding `ledger:OpsRead`.
         topic:
           type: string
           description: Target subject.
@@ -5757,7 +5762,10 @@ components:
       properties:
         table:
           type: string
-          description: Destination table name.
+          description: >
+            Destination table name. `""` means the server default
+            (`ledger_events`) — resolved when the sink connects, so this is a
+            sentinel rather than the effective value.
 
     KafkaSinkConfig:
       type: object
@@ -5811,7 +5819,12 @@ components:
       properties:
         endpoint:
           type: string
-          description: Target webhook URL.
+          description: >
+            Target webhook URL, returned verbatim **including any userinfo it
+            embeds**. The signing secret above authenticates the payload to the
+            receiver, not this client to the endpoint, so basic-auth credentials
+            placed in the URL do reach the wire and are returned here. Nothing
+            strips or masks them.
           example: https://example.com/webhooks/ledger
 
     DatabricksOAuthM2M:
@@ -5860,11 +5873,16 @@ components:
           description: Schema name.
         table:
           type: string
-          description: Destination table name.
+          description: >
+            Destination table name. `""` means the server default
+            (`ledger_events`) — resolved when the sink connects, so this is a
+            sentinel rather than the effective value.
         port:
           type: integer
           format: int32
-          description: Port number.
+          description: >
+            Port number. `0` means the server default (443), resolved when the
+            sink connects.
         authMethod:
           type: string
           enum:
@@ -5886,10 +5904,20 @@ components:
       description: >
         An event sink configuration. At most one of `nats`, `clickhouse`,
         `kafka`, `http` and `databricks` is present, naming the sink kind; all
-        five are absent when the stored configuration names no kind. Every
-        credential-bearing setting is deliberately omitted — see the individual
-        sink schemas. Serialized by the HTTP adapter's response DTO with
-        camelCase keys, integers as JSON numbers and RFC3339 timestamps.
+        five are absent when the stored configuration names no kind.
+
+        The five secret-only settings are deliberately omitted: Kafka
+        `saslPassword`, HTTP `secret`, ClickHouse `dsn`, Databricks `token` and
+        OAuth M2M `clientSecret` have no field in this schema at all. That is
+        not the same as "no credential can appear here": `nats.url` and
+        `http.endpoint` are returned in full, **including any userinfo they
+        embed** (`nats://user:pass@host:4222`). URL userinfo is the only way to
+        authenticate a NATS sink, and nothing strips or masks it. Treat
+        `ledger:OpsRead` on this route as read access to those two URLs
+        verbatim. See the individual sink schemas.
+
+        Serialized by the HTTP adapter's response DTO with camelCase keys,
+        integers as JSON numbers and RFC3339 timestamps.
       required:
         - name
         - format
@@ -5916,15 +5944,23 @@ components:
           type: string
           description: >
             Payload encoding, `json` or `protobuf`. Not enum-constrained on the
-            wire.
+            wire. `""` means the server default (`json`) — the stored
+            configuration is reported verbatim and the default is applied when
+            the emitter starts, so this is a sentinel, not the effective value.
         batchSize:
           type: integer
           format: int32
-          description: Maximum number of events per published batch.
+          description: >
+            Maximum number of events per published batch. `0` means the server
+            default (64) — `ledgerctl events add-sink` leaves this flag at `0`,
+            so an ordinary sink reports `0` here while actually batching 64.
         batchDelayMs:
           type: integer
           format: int64
-          description: Maximum delay in milliseconds before a partial batch is flushed.
+          description: >
+            Maximum delay in milliseconds before a partial batch is flushed.
+            `0` means the server default (10) — as with `batchSize`, an ordinary
+            sink reports `0` here while actually flushing every 10 ms.
         eventTypes:
           type: array
           items:
