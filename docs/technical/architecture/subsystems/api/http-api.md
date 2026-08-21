@@ -627,12 +627,14 @@ EN-1791 removed the last response-side `protojson` call sites and deleted `write
 
 `writeOK` streams the body, so it writes the 200 header before the encoder finishes. `writeOKChecked` marshals to a buffer first and writes no header until the marshal succeeds, so a failure becomes a clean 500 through `handleError` instead of an error object appended to an already-committed 200.
 
-Use `writeOKChecked` when the marshaller can genuinely fail:
+**Hand-written response DTOs use `writeOKChecked` by default.** All nine routes EN-1791 converted do, and new DTO routes should follow them rather than re-derive the choice per route: the uniform rule removes a judgement call whose wrong answer is an error object appended to a committed 200, and one buffer on a low-frequency read is not a cost worth reasoning about. `writeOK` stays for the streaming routes that predate the DTOs.
+
+`writeOKChecked` is *required*, not merely preferred, where the marshaller can genuinely fail:
 
 - the audit DTOs, which render chain-bound submessages whose marshalling can fail on invalid UTF-8 (invariant #7 — a truncated record that still looks valid must not be served);
 - the EN-1622 types, whose `MarshalJSON` marshals a metadata map.
 
-The remaining routes keep `writeOK`: plain struct marshalling cannot fail, so buffering would only add an allocation. The reasoning is also on the doc comment of `writeOKChecked`.
+The same reasoning is on the doc comment of `writeOKChecked`.
 
 ### The replacement pattern
 

@@ -79,8 +79,13 @@ func writeCreated(w http.ResponseWriter, data any) {
 // legitimate caller (EN-1622): their payload types carry a hand-written
 // MarshalJSON that marshals a metadata map and can genuinely fail, so the
 // streaming writeOK would append an error object to an already-committed 200.
-// The remaining list/get handlers keep writeOK: their struct marshaling cannot
-// fail, so buffering would only add an allocation.
+//
+// Beyond those two, this is also the DEFAULT for hand-written response DTOs.
+// All nine routes EN-1791 converted call it even though a plain struct cannot
+// fail to marshal: a uniform rule removes a per-route judgement call whose
+// wrong answer commits a 200 it cannot take back, and the buffer costs one
+// allocation on a low-frequency read. writeOK remains for the streaming
+// routes that predate the DTOs.
 func writeOKChecked(w http.ResponseWriter, r *http.Request, data any) {
 	body, err := json.Marshal(BaseResponse[any]{Data: data})
 	if err != nil {
