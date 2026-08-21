@@ -116,14 +116,13 @@ func buildMockClient(t *testing.T, files map[string][]byte) (*MockSnapshotServic
 
 	for path, data := range files {
 		entries = append(entries, &snapshotpb.FileEntry{
-			Path:   path,
-			Size:   uint64(len(data)),
-			Sha256: fileSHA256(data),
+			Path: path,
+			Size: uint64(len(data)),
 		})
 
 		streams[path] = newFileStream(t, fileStreamScript{
 			responses: []*snapshotpb.FetchFileResponse{
-				{Data: data, Eof: true},
+				{Data: data, Eof: true, Sha256: fileSHA256(data)},
 			},
 			failAt: -1,
 		})
@@ -191,11 +190,12 @@ func TestGRPCSnapshotFetcher_HashMismatch(t *testing.T) {
 
 	dir := t.TempDir()
 	correctData := []byte("correct-content")
+	corruptedData := []byte("corrupt-content")
 
 	streams := map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]{
 		"data.bin": newFileStream(t, fileStreamScript{
 			responses: []*snapshotpb.FetchFileResponse{
-				{Data: []byte("corrupted-data!!"), Eof: true},
+				{Data: corruptedData, Eof: true, Sha256: fileSHA256(correctData)},
 			},
 			failAt: -1,
 		}),
@@ -205,7 +205,7 @@ func TestGRPCSnapshotFetcher_HashMismatch(t *testing.T) {
 			SessionId: "test-session",
 			Manifest: &snapshotpb.SnapshotManifest{
 				Files: []*snapshotpb.FileEntry{
-					{Path: "data.bin", Size: uint64(len(correctData)), Sha256: fileSHA256(correctData)},
+					{Path: "data.bin", Size: uint64(len(correctData))},
 				},
 			},
 		},
@@ -217,6 +217,93 @@ func TestGRPCSnapshotFetcher_HashMismatch(t *testing.T) {
 	_, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "hash mismatch")
+}
+
+func TestGRPCSnapshotFetcher_MissingDigest(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("content")
+	streams := map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]{
+		"data.bin": newFileStream(t, fileStreamScript{
+			responses: []*snapshotpb.FetchFileResponse{
+				{Data: data, Eof: true},
+			},
+			failAt: -1,
+		}),
+	}
+	client, _ := newMockSnapshotClient(t,
+		&snapshotpb.PrepareSnapshotResponse{
+			SessionId: "test-session",
+			Manifest: &snapshotpb.SnapshotManifest{Files: []*snapshotpb.FileEntry{
+				{Path: "data.bin", Size: uint64(len(data))},
+			}},
+		},
+		nil,
+		streams,
+	)
+
+	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 1, retryCount: 1, fileRetryCount: 1}
+	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 0)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid or missing SHA-256 digest")
+}
+
+func TestGRPCSnapshotFetcher_SizeMismatch(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("short")
+	streams := map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]{
+		"data.bin": newFileStream(t, fileStreamScript{
+			responses: []*snapshotpb.FetchFileResponse{
+				{Data: data, Eof: true, Sha256: fileSHA256(data)},
+			},
+			failAt: -1,
+		}),
+	}
+	client, _ := newMockSnapshotClient(t,
+		&snapshotpb.PrepareSnapshotResponse{
+			SessionId: "test-session",
+			Manifest: &snapshotpb.SnapshotManifest{Files: []*snapshotpb.FileEntry{
+				{Path: "data.bin", Size: uint64(len(data) + 1)},
+			}},
+		},
+		nil,
+		streams,
+	)
+
+	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 1, retryCount: 1, fileRetryCount: 1}
+	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 0)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "size mismatch")
+}
+
+func TestGRPCSnapshotFetcher_RejectsExcessBytes(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("content")
+	streams := map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]{
+		"data.bin": newFileStream(t, fileStreamScript{
+			responses: []*snapshotpb.FetchFileResponse{
+				{Data: data, Eof: true, Sha256: fileSHA256(data)},
+			},
+			failAt: -1,
+		}),
+	}
+	client, _ := newMockSnapshotClient(t,
+		&snapshotpb.PrepareSnapshotResponse{
+			SessionId: "test-session",
+			Manifest: &snapshotpb.SnapshotManifest{Files: []*snapshotpb.FileEntry{
+				{Path: "data.bin", Size: uint64(len(data) - 1)},
+			}},
+		},
+		nil,
+		streams,
+	)
+
+	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 1, retryCount: 1, fileRetryCount: 1}
+	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 0)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "size mismatch")
 }
 
 func TestGRPCSnapshotFetcher_UnavailableWrapsErrNotAvailable(t *testing.T) {
@@ -256,7 +343,7 @@ func TestGRPCSnapshotFetcher_ProgressTracking(t *testing.T) {
 	require.Equal(t, uint64(2), progress.FilesCompleted())
 }
 
-func TestGRPCSnapshotFetcher_ResumeSkipsCompletedFiles(t *testing.T) {
+func TestGRPCSnapshotFetcher_RedownloadsCompletedFiles(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -268,9 +355,15 @@ func TestGRPCSnapshotFetcher_ResumeSkipsCompletedFiles(t *testing.T) {
 	bContent := []byte("bbb")
 
 	streams := map[string]*MockServerStreamingClient[snapshotpb.FetchFileResponse]{
+		"a.txt": newFileStream(t, fileStreamScript{
+			responses: []*snapshotpb.FetchFileResponse{
+				{Data: aContent, Eof: true, Sha256: fileSHA256(aContent)},
+			},
+			failAt: -1,
+		}),
 		"b.txt": newFileStream(t, fileStreamScript{
 			responses: []*snapshotpb.FetchFileResponse{
-				{Data: bContent, Eof: true},
+				{Data: bContent, Eof: true, Sha256: fileSHA256(bContent)},
 			},
 			failAt: -1,
 		}),
@@ -280,8 +373,8 @@ func TestGRPCSnapshotFetcher_ResumeSkipsCompletedFiles(t *testing.T) {
 			SessionId: "test-session",
 			Manifest: &snapshotpb.SnapshotManifest{
 				Files: []*snapshotpb.FileEntry{
-					{Path: "a.txt", Size: uint64(len(aContent)), Sha256: fileSHA256(aContent)},
-					{Path: "b.txt", Size: uint64(len(bContent)), Sha256: fileSHA256(bContent)},
+					{Path: "a.txt", Size: uint64(len(aContent))},
+					{Path: "b.txt", Size: uint64(len(bContent))},
 				},
 			},
 		},
@@ -293,8 +386,9 @@ func TestGRPCSnapshotFetcher_ResumeSkipsCompletedFiles(t *testing.T) {
 	_, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
 	require.NoError(t, err)
 
-	// Only b.txt should have been fetched (a.txt was already on disk).
-	require.Equal(t, int32(1), csState.fetchFileCalls.Load())
+	// Both files must be fetched because the manifest has no content digest
+	// with which to trust a file created by an earlier session.
+	require.Equal(t, int32(2), csState.fetchFileCalls.Load())
 
 	data, err := os.ReadFile(filepath.Join(dir, "b.txt"))
 	require.NoError(t, err)
@@ -316,7 +410,7 @@ func TestGRPCSnapshotFetcher_CloseSessionAlwaysCalled(t *testing.T) {
 			SessionId: "test-session",
 			Manifest: &snapshotpb.SnapshotManifest{
 				Files: []*snapshotpb.FileEntry{
-					{Path: "fail.txt", Size: 10, Sha256: "deadbeef"},
+					{Path: "fail.txt", Size: 10},
 				},
 			},
 		},

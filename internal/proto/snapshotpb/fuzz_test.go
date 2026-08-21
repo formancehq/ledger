@@ -11,7 +11,7 @@ func FuzzPrepareSnapshotResponseUnmarshalVT(f *testing.F) {
 		SessionId: "abc123",
 		Manifest: &SnapshotManifest{
 			Files: []*FileEntry{
-				{Path: "MANIFEST-000001", Size: 1024, Sha256: "abcdef0123456789"},
+				{Path: "MANIFEST-000001", Size: 1024},
 			},
 		},
 	}
@@ -45,7 +45,10 @@ func FuzzFetchFileResponseUnmarshalVT(f *testing.F) {
 		f.Add(data)
 	}
 
-	eofChunk := &FetchFileResponse{Eof: true}
+	eofChunk := &FetchFileResponse{
+		Eof:    true,
+		Sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	}
 	if data, err := eofChunk.MarshalVT(); err == nil {
 		f.Add(data)
 	}

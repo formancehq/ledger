@@ -104,10 +104,12 @@ func TestPurgeOldWALSegments(t *testing.T) {
 	segmentsAfterWrite := countWALFiles(t, w.etcdWalDir)
 	require.GreaterOrEqual(t, segmentsAfterWrite, 3, "writing ~200MB should create at least 3 WAL segments")
 
-	// Create a snapshot at a high index and compact to release locks on old segments.
-	cs := &raftpb.ConfState{Voters: []uint64{1}}
-	require.NoError(t, w.CreateSnapshot(numEntries, cs, nil))
-	require.NoError(t, w.Compact(numEntries))
+	// Applying a received snapshot clears all cached entries. It must release
+	// old segment locks itself because a later Compact call has no entries on
+	// which to operate.
+	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{
+		Metadata: snapshotMeta(numEntries, 1, &raftpb.ConfState{Voters: []uint64{1}}),
+	}))
 
 	// The background purger should eventually delete old unlocked segments.
 	require.Eventually(t, func() bool {

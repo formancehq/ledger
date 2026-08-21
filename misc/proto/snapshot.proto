@@ -44,6 +44,8 @@ message FetchFileResponse {
   bytes data = 1;
   // True on the last chunk for this file.
   bool eof = 2;
+  // Lowercase hexadecimal SHA-256 digest. Set on the EOF response.
+  string sha256 = 3;
 }
 
 message CloseSessionRequest {
@@ -60,5 +62,4 @@ message SnapshotManifest {
 message FileEntry {
   string path = 1;
   fixed64 size = 2;
-  string sha256 = 3;
 }

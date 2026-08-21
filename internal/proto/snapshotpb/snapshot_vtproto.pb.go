@@ -80,6 +80,7 @@ func (m *FetchFileResponse) CloneVT() *FetchFileResponse {
 	}
 	r := new(FetchFileResponse)
 	r.Eof = m.Eof
+	r.Sha256 = m.Sha256
 	if rhs := m.Data; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -159,7 +160,6 @@ func (m *FileEntry) CloneVT() *FileEntry {
 	r := new(FileEntry)
 	r.Path = m.Path
 	r.Size = m.Size
-	r.Sha256 = m.Sha256
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -247,6 +247,9 @@ func (this *FetchFileResponse) EqualVT(that *FetchFileResponse) bool {
 		return false
 	}
 	if this.Eof != that.Eof {
+		return false
+	}
+	if this.Sha256 != that.Sha256 {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -337,9 +340,6 @@ func (this *FileEntry) EqualVT(that *FileEntry) bool {
 		return false
 	}
 	if this.Size != that.Size {
-		return false
-	}
-	if this.Sha256 != that.Sha256 {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -525,6 +525,13 @@ func (m *FetchFileResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.Sha256) > 0 {
+		i -= len(m.Sha256)
+		copy(dAtA[i:], m.Sha256)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Sha256)))
+		i--
+		dAtA[i] = 0x1a
+	}
 	if m.Eof {
 		i--
 		if m.Eof {
@@ -693,13 +700,6 @@ func (m *FileEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Sha256) > 0 {
-		i -= len(m.Sha256)
-		copy(dAtA[i:], m.Sha256)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Sha256)))
-		i--
-		dAtA[i] = 0x1a
-	}
 	if m.Size != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Size))
@@ -782,6 +782,10 @@ func (m *FetchFileResponse) SizeVT() (n int) {
 	if m.Eof {
 		n += 2
 	}
+	l = len(m.Sha256)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -838,10 +842,6 @@ func (m *FileEntry) SizeVT() (n int) {
 	}
 	if m.Size != 0 {
 		n += 9
-	}
-	l = len(m.Sha256)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1257,6 +1257,38 @@ func (m *FetchFileResponse) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Eof = bool(v != 0)
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Sha256", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Sha256 = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -1569,38 +1601,6 @@ func (m *FileEntry) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Size = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Sha256", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Sha256 = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

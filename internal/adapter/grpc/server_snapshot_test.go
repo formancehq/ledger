@@ -60,8 +60,8 @@ func (noopLogger) WithFields(_ map[string]any) logging.Logger   { return noopLog
 func (noopLogger) WithContext(_ context.Context) logging.Logger { return noopLogger{} }
 func (noopLogger) Writer() io.Writer                            { return io.Discard }
 
-func (s *testSnapshotServer) PrepareSnapshot(_ context.Context, _ *snapshotpb.PrepareSnapshotRequest) (*snapshotpb.PrepareSnapshotResponse, error) {
-	manifest, err := buildManifest(s.checkpointDir)
+func (s *testSnapshotServer) PrepareSnapshot(ctx context.Context, _ *snapshotpb.PrepareSnapshotRequest) (*snapshotpb.PrepareSnapshotResponse, error) {
+	manifest, err := buildManifest(ctx, s.checkpointDir)
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +163,7 @@ func TestSnapshotService_FullRoundTrip(t *testing.T) {
 		require.NoError(t, err)
 
 		var fileData []byte
+		var expectedHash string
 
 		for {
 			chunk, err := stream.Recv()
@@ -173,13 +174,15 @@ func TestSnapshotService_FullRoundTrip(t *testing.T) {
 			fileData = append(fileData, chunk.GetData()...)
 
 			if chunk.GetEof() {
+				expectedHash = chunk.GetSha256()
+
 				break
 			}
 		}
 
 		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(targetDir, entry.GetPath())), 0755))
 		require.NoError(t, os.WriteFile(filepath.Join(targetDir, entry.GetPath()), fileData, 0644))
-		require.Equal(t, entry.GetSha256(), sha256Hex(fileData))
+		require.Equal(t, expectedHash, sha256Hex(fileData))
 	}
 
 	// CloseSession.

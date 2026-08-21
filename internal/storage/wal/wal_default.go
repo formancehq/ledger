@@ -884,7 +884,6 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 // ApplySnapshot applies a snapshot to the storage.
 func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	s.logger.WithFields(map[string]any{
 		"snapIndex":      snap.GetMetadata().GetIndex(),
@@ -921,6 +920,8 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
 	// up on the next snapshot), but a WAL snapshot record without a corresponding
 	// snap file would cause issues at restart.
 	if err := s.snapshotter.Save(snap); err != nil {
+		s.mu.Unlock()
+
 		return fmt.Errorf("saving snapshot file: %w", err)
 	}
 
@@ -930,15 +931,25 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
 		ConfState: snap.GetMetadata().GetConfState(),
 	}
 	if err := s.wal.SaveSnapshot(walSnap); err != nil {
+		s.mu.Unlock()
+
 		return fmt.Errorf("saving snapshot to WAL: %w", err)
 	}
 
 	if err := s.wal.Save(s.hardState, nil); err != nil {
+		s.mu.Unlock()
+
 		return fmt.Errorf("saving HardState after snapshot to WAL: %w", err)
 	}
 
 	// Safe to clean up old snap files now — the WAL record is persisted.
 	s.snapshotter.CleanupOlderThan(snap.GetMetadata().GetIndex())
+	s.mu.Unlock()
+
+	// Applying a received snapshot clears every cached entry through its
+	// index. Release the matching etcd WAL segment locks immediately; this
+	// node may not apply local entries soon enough for Compact to do it.
+	s.releaseLockTo(snap.GetMetadata().GetIndex())
 
 	return nil
 }
@@ -995,16 +1006,22 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 	// This allows the etcd WAL to release memory associated with old log entries
 	// and potentially remove old WAL segment files.
 	// Without this call, the etcd WAL keeps file handles and memory indefinitely.
-	err := s.wal.ReleaseLockTo(compactIndex)
-	if err != nil {
-		s.logger.WithFields(map[string]any{
-			"compactIndex": compactIndex,
-			"error":        err,
-		}).Errorf("Failed to release WAL lock")
-		// Don't return error - the in-memory compaction succeeded
-	}
+	s.releaseLockTo(compactIndex)
 
 	return nil
+}
+
+// releaseLockTo makes WAL segment reclamation best-effort after the in-memory
+// state has already advanced. Failure must not roll back a persisted snapshot
+// or a completed in-memory compaction.
+func (s *DefaultWAL) releaseLockTo(index uint64) {
+	err := s.wal.ReleaseLockTo(index)
+	if err != nil {
+		s.logger.WithFields(map[string]any{
+			"index": index,
+			"error": err,
+		}).Errorf("Failed to release WAL lock")
+	}
 }
 
 // Close closes the DefaultWAL. Safe to call multiple times.

@@ -97,7 +97,7 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 	}).Infof("Temporary checkpoint created for follower sync")
 
 	manifestStart := time.Now()
-	manifest, err := buildManifest(checkpointPath)
+	manifest, err := buildManifest(ctx, checkpointPath)
 	if err != nil {
 		// Clean up checkpoint on manifest build failure.
 		if rmErr := s.store.RemoveTemporaryCheckpoint(syncName); rmErr != nil {

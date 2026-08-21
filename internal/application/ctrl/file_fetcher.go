@@ -78,6 +78,8 @@ func (f *fileFetcher) fetchFileOnce(ctx context.Context, entry *snapshotpb.FileE
 	}
 
 	hash := sha256.New()
+	var received uint64
+	var expectedHash string
 
 	defer func() {
 		_ = tmpFile.Close()
@@ -90,6 +92,11 @@ func (f *fileFetcher) fetchFileOnce(ctx context.Context, entry *snapshotpb.FileE
 		}
 
 		if len(resp.GetData()) > 0 {
+			received += uint64(len(resp.GetData()))
+			if received > entry.GetSize() {
+				return fmt.Errorf("size mismatch for %s: expected %d bytes, got at least %d", entry.GetPath(), entry.GetSize(), received)
+			}
+
 			if _, err := tmpFile.Write(resp.GetData()); err != nil {
 				return fmt.Errorf("writing chunk for %s: %w", entry.GetPath(), err)
 			}
@@ -104,6 +111,8 @@ func (f *fileFetcher) fetchFileOnce(ctx context.Context, entry *snapshotpb.FileE
 		}
 
 		if resp.GetEof() {
+			expectedHash = resp.GetSha256()
+
 			break
 		}
 	}
@@ -112,9 +121,18 @@ func (f *fileFetcher) fetchFileOnce(ctx context.Context, entry *snapshotpb.FileE
 		return fmt.Errorf("closing temp file for %s: %w", entry.GetPath(), err)
 	}
 
+	if received != entry.GetSize() {
+		return fmt.Errorf("size mismatch for %s: expected %d bytes, got %d", entry.GetPath(), entry.GetSize(), received)
+	}
+
+	expectedDigest, err := hex.DecodeString(expectedHash)
+	if err != nil || len(expectedDigest) != sha256.Size {
+		return fmt.Errorf("invalid or missing SHA-256 digest for %s", entry.GetPath())
+	}
+
 	gotHash := hex.EncodeToString(hash.Sum(nil))
-	if entry.GetSha256() != gotHash {
-		return fmt.Errorf("hash mismatch for %s: expected %s, got %s", entry.GetPath(), entry.GetSha256(), gotHash)
+	if expectedHash != gotHash {
+		return fmt.Errorf("hash mismatch for %s: expected %s, got %s", entry.GetPath(), expectedHash, gotHash)
 	}
 
 	finalPath := filepath.Join(targetDir, entry.GetPath())

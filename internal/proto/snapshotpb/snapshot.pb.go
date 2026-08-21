@@ -191,7 +191,9 @@ type FetchFileResponse struct {
 	// Raw file data.
 	Data []byte `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
 	// True on the last chunk for this file.
-	Eof           bool `protobuf:"varint,2,opt,name=eof,proto3" json:"eof,omitempty"`
+	Eof bool `protobuf:"varint,2,opt,name=eof,proto3" json:"eof,omitempty"`
+	// Lowercase hexadecimal SHA-256 digest. Set on the EOF response.
+	Sha256        string `protobuf:"bytes,3,opt,name=sha256,proto3" json:"sha256,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -238,6 +240,13 @@ func (x *FetchFileResponse) GetEof() bool {
 		return x.Eof
 	}
 	return false
+}
+
+func (x *FetchFileResponse) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
 }
 
 type CloseSessionRequest struct {
@@ -369,7 +378,6 @@ type FileEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
 	Size          uint64                 `protobuf:"fixed64,2,opt,name=size,proto3" json:"size,omitempty"`
-	Sha256        string                 `protobuf:"bytes,3,opt,name=sha256,proto3" json:"sha256,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -418,13 +426,6 @@ func (x *FileEntry) GetSize() uint64 {
 	return 0
 }
 
-func (x *FileEntry) GetSha256() string {
-	if x != nil {
-		return x.Sha256
-	}
-	return ""
-}
-
 var File_snapshot_proto protoreflect.FileDescriptor
 
 const file_snapshot_proto_rawDesc = "" +
@@ -440,20 +441,20 @@ const file_snapshot_proto_rawDesc = "" +
 	"\x10FetchFileRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x12\n" +
-	"\x04path\x18\x02 \x01(\tR\x04path\"9\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"Q\n" +
 	"\x11FetchFileResponse\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x10\n" +
-	"\x03eof\x18\x02 \x01(\bR\x03eof\"4\n" +
+	"\x03eof\x18\x02 \x01(\bR\x03eof\x12\x16\n" +
+	"\x06sha256\x18\x03 \x01(\tR\x06sha256\"4\n" +
 	"\x13CloseSessionRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"\x16\n" +
 	"\x14CloseSessionResponse\"@\n" +
 	"\x10SnapshotManifest\x12,\n" +
-	"\x05files\x18\x01 \x03(\v2\x16.snapshot.v1.FileEntryR\x05files\"K\n" +
+	"\x05files\x18\x01 \x03(\v2\x16.snapshot.v1.FileEntryR\x05files\"3\n" +
 	"\tFileEntry\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
-	"\x04size\x18\x02 \x01(\x06R\x04size\x12\x16\n" +
-	"\x06sha256\x18\x03 \x01(\tR\x06sha2562\x92\x02\n" +
+	"\x04size\x18\x02 \x01(\x06R\x04size2\x92\x02\n" +
 	"\x0fSnapshotService\x12\\\n" +
 	"\x0fPrepareSnapshot\x12#.snapshot.v1.PrepareSnapshotRequest\x1a$.snapshot.v1.PrepareSnapshotResponse\x12L\n" +
 	"\tFetchFile\x12\x1d.snapshot.v1.FetchFileRequest\x1a\x1e.snapshot.v1.FetchFileResponse0\x01\x12S\n" +
