@@ -123,10 +123,10 @@ func TestPublisherSupportsAnExplicitJiraComponent(t *testing.T) {
 
 	fixture := newFixture(t)
 
-	output, err := fixture.run(t, challengeResult(confirmedResult(testFindingID)), "--publish", "--component", "Ledger Platform")
+	output, err := fixture.run(t, challengeResult(confirmedResult(testFindingID)), "--publish", "--component", "Ledger / Platform (&)")
 	require.NoError(t, err, output)
 	require.Equal(t, map[string]any{
-		"components": []any{map[string]any{"name": "Ledger Platform"}},
+		"components": []any{map[string]any{"name": "Ledger / Platform (&)"}},
 	}, fixture.createdRequest(t)["additionalAttributes"])
 }
 

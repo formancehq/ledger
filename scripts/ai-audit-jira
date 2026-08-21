@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --publish) publish=true; shift ;;
         --project) [[ $# -ge 2 && "$2" =~ ^[A-Z][A-Z0-9_]*$ ]] || { echo "ai-audit-jira: invalid --project" >&2; exit 1; }; project=$2; shift 2 ;;
-        --component) [[ $# -ge 2 && "$2" =~ ^[A-Za-z0-9][A-Za-z0-9._[:space:]-]*$ ]] || { echo "ai-audit-jira: invalid --component" >&2; exit 1; }; component=$2; shift 2 ;;
+        --component) [[ $# -ge 2 && -n "$2" ]] || { echo "ai-audit-jira: invalid --component" >&2; exit 1; }; component=$2; shift 2 ;;
         *) echo "ai-audit-jira: unknown argument: $1" >&2; usage >&2; exit 1 ;;
     esac
 done
