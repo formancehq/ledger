@@ -3924,6 +3924,23 @@ ledger run --idempotency-ttl 0 [other flags...]
 
 ---
 
+### Server Cluster Policy Flags
+
+The cluster policy is a Raft-replicated record of settings that must apply identically on every node. It carries a monotonic revision: a leader-gated reconciler proposes the desired policy, and the FSM applies it only when the revision advances (a lower revision is rejected as stale, the same revision with a different payload as a conflict). A node reports not-serving for writes until a policy has been committed at least once.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--cluster-policy-revision` | uint64 | `1` | Desired revision of the replicated cluster policy. The leader proposes the policy only when this exceeds the applied revision. Must be greater than zero. |
+| `--query-checkpoint-limit` | uint64 | `10` | Maximum number of live query checkpoints, carried in the cluster policy. Must be greater than zero. |
+
+To change a policy value, raise `--cluster-policy-revision` so the new policy supersedes the applied one:
+
+```bash
+ledger run --cluster-policy-revision 2 --query-checkpoint-limit 20 [other flags...]
+```
+
+---
+
 ### Server Bloom Filter Flags
 
 Application-level bloom filters that avoid Pebble reads for keys known not to exist. Each attribute type has its own filter with independent sizing. Set `expected-keys` to `0` to disable a type.
