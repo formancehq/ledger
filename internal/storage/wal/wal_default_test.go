@@ -862,6 +862,20 @@ func TestApplySnapshot(t *testing.T) {
 	require.Equal(t, uint64(10), idx, "last index should be snapshot index after apply")
 }
 
+func TestApplySnapshotUnlocksOnSnapshotSaveFailure(t *testing.T) {
+	t.Parallel()
+
+	w := newTestWAL(t)
+	w.snapshotter.dir = filepath.Join(t.TempDir(), "missing", "snap")
+
+	err := w.ApplySnapshot(&raftpb.Snapshot{
+		Metadata: snapshotMeta(10, 2, &raftpb.ConfState{Voters: []uint64{1}}),
+	})
+	require.ErrorContains(t, err, "saving snapshot file")
+	require.True(t, w.mu.TryLock(), "ApplySnapshot must unlock after a persistence failure")
+	w.mu.Unlock()
+}
+
 // --- Append edge cases ---
 
 func TestAppend_NoChangeNoOp(t *testing.T) {
