@@ -2782,11 +2782,13 @@ components:
       description: Payload for REVERTED_TRANSACTION log entries. Contains both the original reverted transaction and the new reverting transaction.
       properties:
         revertedTransaction:
-          $ref: "#/components/schemas/V2LogTransaction"
           description: The original transaction that was reverted
+          allOf:
+            - $ref: "#/components/schemas/V2LogTransaction"
         transaction:
-          $ref: "#/components/schemas/V2LogTransaction"
           description: The new reverting transaction created to cancel the original
+          allOf:
+            - $ref: "#/components/schemas/V2LogTransaction"
       required:
         - revertedTransaction
         - transaction
