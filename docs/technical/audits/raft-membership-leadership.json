@@ -1,0 +1,28 @@
+{
+  "id": "raft-membership-leadership",
+  "title": "Raft, membership, and leadership transitions",
+  "purpose": "Find latent distributed-correctness failures around leadership changes, quorum, membership mutation, transport, snapshot installation, and follower/leader routing.",
+  "paths": ["internal/infra/node/**", "internal/infra/transport/**", "internal/infra/membership/**", "internal/application/membership/**", "internal/application/admission/**", "internal/application/ctrl/**", "misc/proto/raft.proto", "misc/proto/cluster.proto", "tests/antithesis/**", "tests/oracle/**"],
+  "related_docs": ["AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/consensus/", "docs/technical/architecture/subsystems/admission/", "docs/technical/contributing/ai-audit.md"],
+  "invariants": [
+    "Only a valid leader with quorum may cause a write to become committed and acknowledged.",
+    "Leadership changes must not lose, duplicate, or reorder committed ledger effects.",
+    "Followers must not execute leader-only mutations locally when routing or leadership information is stale.",
+    "Membership changes must preserve quorum safety and must not create split-brain committed histories.",
+    "A node joining, leaving, restarting, or receiving a snapshot must converge to the committed cluster state before serving behavior that requires that state.",
+    "Read consistency guarantees must remain true across leader changes and partitions.",
+    "Transport retries, duplicate messages, delayed messages, and reconnects must not turn one logical proposal into multiple committed effects.",
+    "Node-local configuration or timing must not make deterministic committed application diverge across replicas."
+  ],
+  "adversarial_questions": [
+    "What happens if leadership changes after admission but before proposal, commit, apply, or response?",
+    "Can stale leader/follower knowledge route a mutation to the wrong execution path?",
+    "Can two concurrent membership operations violate assumptions about quorum or node identity?",
+    "What state is visible while a snapshot is being installed or a follower is catching up?",
+    "Can transport reconnect/retry duplicate a proposal or acknowledgement?",
+    "Can a removed node continue serving reads or writes with stale authority?",
+    "Can cancellation or timeout make the client retry an operation that actually committed?",
+    "Are there lock/channel/lifecycle paths that deadlock specifically during leadership or membership transitions?"
+  ],
+  "dynamic_checks_to_consider": ["just test-model-cluster 300", "network partition/heal", "leader kill at proposal/commit/apply boundaries", "concurrent membership changes", "snapshot install during traffic", "race-enabled consensus tests"]
+}
