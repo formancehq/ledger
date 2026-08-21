@@ -1078,6 +1078,7 @@ func NewArchiveChapterOrderListReader(s []*ArchiveChapterOrder) ArchiveChapterOr
 // Call Mutate() to obtain a mutable clone.
 type ConfirmArchiveChapterOrderReader interface {
 	GetChapterId() uint64
+	GetSealingHash() []byte
 	Mutate() *ConfirmArchiveChapterOrder
 }
 
@@ -1085,6 +1086,10 @@ type confirmArchiveChapterOrderReadonly ConfirmArchiveChapterOrder
 
 func (r *confirmArchiveChapterOrderReadonly) GetChapterId() uint64 {
 	return (*ConfirmArchiveChapterOrder)(r).GetChapterId()
+}
+
+func (r *confirmArchiveChapterOrderReadonly) GetSealingHash() []byte {
+	return bytes.Clone((*ConfirmArchiveChapterOrder)(r).GetSealingHash())
 }
 
 func (r *confirmArchiveChapterOrderReadonly) Mutate() *ConfirmArchiveChapterOrder {

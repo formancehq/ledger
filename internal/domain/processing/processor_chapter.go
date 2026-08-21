@@ -1,6 +1,8 @@
 package processing
 
 import (
+	"bytes"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -135,6 +137,22 @@ func processConfirmArchiveChapter(order *raftcmdpb.ConfirmArchiveChapterOrder, c
 
 	if chapterReader.GetStatus() != commonpb.ChapterStatus_CHAPTER_ARCHIVING {
 		return nil, &domain.ErrChapterNotArchiving{ChapterID: order.GetChapterId()}
+	}
+
+	// The confirm trades hot history for a cold archive, so it must name the
+	// incarnation the archive was built for. Ranges alone do not identify one: a
+	// store restored from an older backup over a surviving cold-storage namespace
+	// can reuse a chapter id and reach the same log and audit counts over different
+	// operations, so confirming against the stale archive would purge history that
+	// archive does not contain. The sealing hash commits a chapter to its content,
+	// and comparing it here — in apply, against the chapter the FSM holds — puts the
+	// check in the same step as the purge it authorises.
+	if !bytes.Equal(order.GetSealingHash(), chapterReader.GetSealingHash()) {
+		return nil, &domain.ErrChapterArchiveIdentityMismatch{
+			ChapterID: order.GetChapterId(),
+			Expected:  chapterReader.GetSealingHash(),
+			Got:       order.GetSealingHash(),
+		}
 	}
 
 	chapter := chapterReader.Mutate()

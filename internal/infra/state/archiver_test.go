@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/pebble/v2/bloom"
+	"github.com/cockroachdb/pebble/v2/sstable"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
@@ -195,7 +197,7 @@ func TestArchiverStartStop(t *testing.T) {
 	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
 	cs, _ := newMockColdStorage(t)
 
-	a := NewArchiver(logger, nil, cs, archiveReqCh, func(chapterID uint64) error { return nil }, func() bool { return true }, newArchivingChapterState(t), "test-bucket", func(<-chan struct{}) {})
+	a := NewArchiver(logger, nil, cs, archiveReqCh, func(chapterID uint64, _ []byte) error { return nil }, func() bool { return true }, newArchivingChapterState(t), "test-bucket", func(<-chan struct{}) {})
 	a.Start()
 	a.Stop()
 	// No deadlock or panic means success
@@ -231,7 +233,7 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 		dataStore,
 		cs,
 		archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -263,15 +265,117 @@ func TestArchiverArchivesAndProposes(t *testing.T) {
 	require.True(t, exists)
 }
 
+// buildArchiveBytesForRequest builds the real SST archive bytes the Archiver
+// would upload for req, over an empty data store (metadata row only). Used to
+// seed the mock cold storage with an archive whose embedded metadata is
+// decodable — the crash-recovery verification reads it before confirming.
+func buildArchiveBytesForRequest(t *testing.T, req ArchiveRequest) []byte {
+	t.Helper()
+
+	logger := logging.FromContext(logging.TestingContext())
+	meter := noop.NewMeterProvider().Meter("test")
+
+	dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dataStore.Close() })
+
+	a := &Archiver{dataStore: dataStore}
+
+	tmpPath, _, err := a.buildSSTArchive(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Remove(tmpPath) })
+
+	data, err := os.ReadFile(tmpPath)
+	require.NoError(t, err)
+
+	return data
+}
+
+// buildArchiveBytesWithoutMetadata builds an SST holding cold data but no
+// metadata row, the way an archive written by something that never embedded one
+// would look.
+func buildArchiveBytesWithoutMetadata(t *testing.T) []byte {
+	t.Helper()
+
+	tmpFile, err := os.CreateTemp(t.TempDir(), "no-metadata-*.sst")
+	require.NoError(t, err)
+
+	writer := sstable.NewWriter(newFileWritable(tmpFile), sstable.WriterOptions{
+		Compression:  sstable.SnappyCompression,
+		FilterPolicy: bloom.FilterPolicy(10),
+	})
+
+	// A cold-zone key, which sorts after the 0x00-prefixed metadata row the real
+	// builder writes first.
+	require.NoError(t, writer.Set([]byte{dal.ZoneCold, dal.SubColdLog, 0x01}, []byte("log")))
+	require.NoError(t, writer.Close())
+
+	data, err := os.ReadFile(tmpFile.Name())
+	require.NoError(t, err)
+
+	return data
+}
+
+// The checksum only says the bytes are the ones that were uploaded, never which
+// chapter they hold. An archive carrying no metadata row therefore cannot be shown
+// to match the request at all, so the archiver refuses it rather than confirming a
+// purge against an object whose contents it cannot identify.
+func TestArchiverAlreadyArchivedWithoutMetadataRefusesConfirm(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	req := ArchiveRequest{ChapterID: 5, StartSequence: 1, CloseSequence: 10, SealingHash: []byte("incarnation")}
+
+	cs, csState := newMockColdStorage(t)
+	data := buildArchiveBytesWithoutMetadata(t)
+	expected, err := coldstorage.ComputeSHA256(bytes.NewReader(data))
+	require.NoError(t, err)
+	csState.seed("test-bucket", req.ChapterID, data, expected)
+
+	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
+
+	var proposedChapterID atomic.Uint64
+
+	a := NewArchiver(
+		logger,
+		nil, // no dataStore needed: the exists path never builds
+		cs,
+		archiveReqCh,
+		func(chapterID uint64, _ []byte) error {
+			proposedChapterID.Store(chapterID)
+
+			return nil
+		},
+		func() bool { return true }, // is leader
+		newArchivingChapterState(t),
+		"test-bucket",
+		func(<-chan struct{}) {},
+	)
+	a.Start()
+	t.Cleanup(a.Stop)
+
+	archiveReqCh.TrySend(req, "test")
+
+	require.Never(t, func() bool {
+		return proposedChapterID.Load() != 0
+	}, time.Second, 50*time.Millisecond,
+		"an archive with no metadata row must never be confirmed")
+}
+
 func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
 	t.Parallel()
 
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 
+	req := ArchiveRequest{ChapterID: 5, StartSequence: 1, CloseSequence: 10}
+
 	cs, csState := newMockColdStorage(t)
-	// Pre-populate: archive already exists with a consistent checksum.
-	data := []byte("existing archive contents")
+	// Pre-populate: the archive for this exact request already exists with a
+	// consistent checksum (leader crashed after upload, before confirm).
+	data := buildArchiveBytesForRequest(t, req)
 	expected, err := coldstorage.ComputeSHA256(bytes.NewReader(data))
 	require.NoError(t, err)
 	csState.seed("test-bucket", 5, data, expected)
@@ -285,7 +389,7 @@ func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
 		nil, // no dataStore needed since archive already exists
 		cs,
 		archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -298,11 +402,7 @@ func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
 	a.Start()
 
 	// Send request for already-archived chapter
-	archiveReqCh.TrySend(ArchiveRequest{
-		ChapterID:     5,
-		StartSequence: 1,
-		CloseSequence: 10,
-	}, "test")
+	archiveReqCh.TrySend(req, "test")
 
 	// Leader should still propose ConfirmArchiveChapter (crash recovery)
 	require.Eventually(t, func() bool {
@@ -310,6 +410,172 @@ func TestArchiverAlreadyArchivedLeaderProposes(t *testing.T) {
 	}, 5*time.Second, 50*time.Millisecond, "leader should propose for already-archived chapter")
 
 	a.Stop()
+}
+
+// TestArchiverAlreadyArchivedMismatchedRangesRefusesConfirm is the EN-1750
+// defense-in-depth guard: an existing archive whose embedded metadata does not
+// match the request's ranges is a different chapter incarnation (e.g. a
+// registry rewound by a lossy restore re-allocated an archived id). Confirming
+// would purge the request's ranges with only the old object's ranges archived,
+// so the archiver must refuse — the intact-object checksum alone must never be
+// enough to confirm.
+func TestArchiverAlreadyArchivedMismatchedRangesRefusesConfirm(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	// The stored archive covers logs [1, 10]; the request claims the same
+	// chapter id now spans [1, 500].
+	stored := ArchiveRequest{ChapterID: 5, StartSequence: 1, CloseSequence: 10}
+	impostor := ArchiveRequest{ChapterID: 5, StartSequence: 1, CloseSequence: 500}
+
+	cs, csState := newMockColdStorage(t)
+	data := buildArchiveBytesForRequest(t, stored)
+	expected, err := coldstorage.ComputeSHA256(bytes.NewReader(data))
+	require.NoError(t, err)
+	csState.seed("test-bucket", 5, data, expected)
+
+	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
+
+	var proposedChapterID atomic.Uint64
+
+	a := NewArchiver(
+		logger,
+		nil, // no dataStore needed: the exists path never builds
+		cs,
+		archiveReqCh,
+		func(chapterID uint64, _ []byte) error {
+			proposedChapterID.Store(chapterID)
+
+			return nil
+		},
+		func() bool { return true }, // is leader
+		newArchivingChapterState(t),
+		"test-bucket",
+		func(<-chan struct{}) {},
+	)
+	a.Start()
+	t.Cleanup(a.Stop)
+
+	archiveReqCh.TrySend(impostor, "test")
+
+	require.Never(t, func() bool {
+		return proposedChapterID.Load() != 0
+	}, time.Second, 50*time.Millisecond,
+		"a range-mismatched archive must never be confirmed (its purge would delete unarchived data)")
+}
+
+// The ranges cannot tell two chapter incarnations apart on their own: a store
+// restored from an older backup over a surviving cold-storage namespace can reuse
+// a chapter id and reach the same log and audit counts over different operations,
+// so the stored object's metadata tuple matches while its contents belong to a
+// history this store no longer has. The sealing hash commits a chapter to its
+// content, so the archiver refuses to confirm an archive built for a different one.
+func TestArchiverAlreadyArchivedMismatchedIncarnationRefusesConfirm(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	// Identical ranges, different incarnation.
+	stored := ArchiveRequest{ChapterID: 5, StartSequence: 1, CloseSequence: 10, SealingHash: []byte("old-incarnation")}
+	current := ArchiveRequest{ChapterID: 5, StartSequence: 1, CloseSequence: 10, SealingHash: []byte("new-incarnation")}
+
+	cs, csState := newMockColdStorage(t)
+	data := buildArchiveBytesForRequest(t, stored)
+	expected, err := coldstorage.ComputeSHA256(bytes.NewReader(data))
+	require.NoError(t, err)
+	csState.seed("test-bucket", 5, data, expected)
+
+	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
+
+	var proposedChapterID atomic.Uint64
+
+	a := NewArchiver(
+		logger,
+		nil, // no dataStore needed: the exists path never builds
+		cs,
+		archiveReqCh,
+		func(chapterID uint64, _ []byte) error {
+			proposedChapterID.Store(chapterID)
+
+			return nil
+		},
+		func() bool { return true }, // is leader
+		newArchivingChapterState(t),
+		"test-bucket",
+		func(<-chan struct{}) {},
+	)
+	a.Start()
+	t.Cleanup(a.Stop)
+
+	archiveReqCh.TrySend(current, "test")
+
+	require.Never(t, func() bool {
+		return proposedChapterID.Load() != 0
+	}, time.Second, 50*time.Millisecond,
+		"an archive built for another incarnation must never be confirmed, even with matching ranges")
+}
+
+// The confirm carries the incarnation the archive was built for, so the FSM can
+// re-check it in the same step as the purge.
+func TestArchiverProposesTheArchivedIncarnation(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	req := ArchiveRequest{ChapterID: 5, StartSequence: 1, CloseSequence: 10, SealingHash: []byte("incarnation")}
+
+	cs, csState := newMockColdStorage(t)
+	data := buildArchiveBytesForRequest(t, req)
+	expected, err := coldstorage.ComputeSHA256(bytes.NewReader(data))
+	require.NoError(t, err)
+	csState.seed("test-bucket", 5, data, expected)
+
+	archiveReqCh := worker.NewChannel[ArchiveRequest](logger, "test-archive", 1)
+
+	var (
+		mu        sync.Mutex
+		proposed  []byte
+		proposeOK bool
+	)
+
+	a := NewArchiver(
+		logger,
+		nil,
+		cs,
+		archiveReqCh,
+		func(_ uint64, sealingHash []byte) error {
+			mu.Lock()
+			defer mu.Unlock()
+
+			proposed = sealingHash
+			proposeOK = true
+
+			return nil
+		},
+		func() bool { return true },
+		newArchivingChapterState(t),
+		"test-bucket",
+		func(<-chan struct{}) {},
+	)
+	a.Start()
+	t.Cleanup(a.Stop)
+
+	archiveReqCh.TrySend(req, "test")
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+
+		return proposeOK
+	}, 5*time.Second, 50*time.Millisecond, "the archiver should confirm a matching archive")
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, req.SealingHash, proposed)
 }
 
 func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
@@ -334,7 +600,7 @@ func TestArchiverAlreadyArchivedFollowerDoesNotPropose(t *testing.T) {
 		nil,
 		cs,
 		archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -380,7 +646,7 @@ func TestArchiverRejectsStaleRequest(t *testing.T) {
 		nil, // no dataStore needed: guard rejects before iteration
 		cs,
 		archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -431,7 +697,7 @@ func TestArchiverNonLeaderRetries(t *testing.T) {
 		dataStore,
 		cs,
 		archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -504,7 +770,7 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 		dataStore,
 		cs,
 		archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -588,7 +854,7 @@ func TestArchiver_FreshUploadPersistsChecksum(t *testing.T) {
 	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(logger, dataStore, cs, archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -619,7 +885,7 @@ func TestArchiver_CrashRecoveryWithValidArchive(t *testing.T) {
 	logger := logging.FromContext(ctx)
 
 	cs, csState := newMockColdStorage(t)
-	data := []byte("intact archive bytes")
+	data := buildArchiveBytesForRequest(t, ArchiveRequest{ChapterID: 11, StartSequence: 1, CloseSequence: 1})
 	expected, err := coldstorage.ComputeSHA256(bytes.NewReader(data))
 	require.NoError(t, err)
 	csState.seed("test-bucket", 11, data, expected)
@@ -629,7 +895,7 @@ func TestArchiver_CrashRecoveryWithValidArchive(t *testing.T) {
 	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(logger, nil, cs, archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -666,7 +932,7 @@ func TestArchiver_CrashRecoveryWithCorruptArchive(t *testing.T) {
 	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(logger, nil, cs, archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
@@ -702,7 +968,7 @@ func TestArchiver_LegacyDataOnlyTriggersReupload(t *testing.T) {
 	var proposedChapterID atomic.Uint64
 
 	a := NewArchiver(logger, dataStore, cs, archiveReqCh,
-		func(chapterID uint64) error {
+		func(chapterID uint64, _ []byte) error {
 			proposedChapterID.Store(chapterID)
 
 			return nil
