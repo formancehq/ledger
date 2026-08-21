@@ -534,8 +534,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return ctx.Err()
 		}
 
-		// Extract sequence from key: [ZoneCold(1)][SubColdLog(1)][sequence(8)]
-		seq := binary.BigEndian.Uint64(logIter.Key()[2:10])
+		// Extract sequence from key: [ZoneCold(1)][SubColdLog(1)][sequence(8)].
+		// A malformed key aborts the pass rather than decoding to a fabricated
+		// sequence — see decodeLogSequence for why a short key reaches this loop
+		// and why the gap-emission loop below makes guessing unaffordable.
+		seq, err := decodeLogSequence(logIter.Key())
+		if err != nil {
+			return fmt.Errorf("decoding log key during replay: %w", err)
+		}
 
 		// Raise the stored ceiling BEFORE the archive-boundary skip below. A row
 		// retained at or under the boundary is still a row the store holds, and

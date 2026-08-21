@@ -1,11 +1,14 @@
 package check
 
 import (
+	"context"
 	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/zeebo/blake3"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -908,4 +911,142 @@ func TestCheckStillJudgesBaselineLessArchivedStores(t *testing.T) {
 			require.Contains(t, signingErrors[0].GetMessage(), "undecodable stored row")
 		})
 	}
+}
+
+// runCheckCollecting runs Check() and returns both the error events and the
+// error, instead of asserting the latter away.
+//
+// collectCheckErrors requires NoError, which is the right default everywhere
+// else: a malformed row is normally a finding, not a checker failure. A log key
+// that cannot be decoded is the exception — the pass cannot name the sequence
+// the row claims, so it can neither replay it nor bound it and has to abort.
+func runCheckCollecting(t *testing.T, store *dal.Store, attrs *attributes.Attributes) ([]*servicepb.CheckStoreError, error) {
+	t.Helper()
+
+	checker := NewChecker(store, attrs, "test-cluster", nil, nil, nil, logging.Testing())
+
+	var errs []*servicepb.CheckStoreError
+
+	err := checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+			errs = append(errs, e.Error)
+		}
+	})
+
+	return errs, err
+}
+
+// writeShortLogKey plants a log-prefix row whose key is too short to hold a
+// sequence.
+//
+// Such a key is INSIDE both log iterators' range and sorts above every
+// realistic sequence. The iterators run from the bare two-byte zone prefix to a
+// ten-byte all-0xFF key, so a short key filled toward 0xFF is a strict prefix of
+// the upper bound; and because "shorter is less" only breaks ties on a shared
+// prefix, byte 2 decides — 0x01 here against the 0x00 that every real sequence
+// below 2^56 starts with. So it is the last key in the range, which is where
+// readStoredLogMax's reverse seek lands and where the replay loop's forward walk
+// ends.
+//
+// Four bytes rather than the minimum two on purpose: the bare prefix is the one
+// short key that sorts FIRST, so it would exercise neither position.
+func writeShortLogKey(t *testing.T, store *dal.Store) {
+	t.Helper()
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(
+		[]byte{dal.ZoneCold, dal.SubColdLog, 0x01, 0xFF},
+		&commonpb.Log{Sequence: 1}))
+	require.NoError(t, batch.Commit())
+}
+
+// TestCheckRejectsMalformedLogKeys pins the length check on the log-key decode.
+//
+// Both decode sites slice the sequence out of the key, and Go bounds-checks a
+// slice expression against CAPACITY rather than length. Pebble hands back keys
+// from an internal buffer, so an unchecked decode of a short key is not reliably
+// a panic: it is a panic OR eight adjacent buffer bytes read as a sequence,
+// decided by allocation state. The fabricated-sequence half is the worse one —
+// in the replay loop it feeds `for expectedSeq < seq`, which on a near-2^64
+// value emits SEQUENCE_GAP until the run is killed.
+//
+// Every repository writer goes through KeyBuilder.PutUint64 and emits exactly
+// ten bytes, so this row is Pebble-level corruption or direct store access.
+// It is still in scope: ValidateRestore runs Check() over an untrusted foreign
+// staged backup (see the checker construction in
+// RestoreServiceServerImpl.ValidateRestore, which is also the caller that passes
+// no cold reader).
+//
+// Both decode sites are covered because they are reached on DISJOINT paths, and
+// fixing only one leaves the more damaging half in place:
+//
+//   - the replay loop, on an ordinary store;
+//   - readStoredLogMax, on the baseline-less archived store, where Check()
+//     abandons entry-by-entry verification and the replay loop never runs.
+func TestCheckRejectsMalformedLogKeys(t *testing.T) {
+	t.Parallel()
+
+	t.Run("replay loop", func(t *testing.T) {
+		t.Parallel()
+
+		engine := newTestEngine(t)
+
+		engine.processAndCommit(createLedgerOrder("ledger"))
+		engine.processAndCommit(createTransactionOrder("ledger", true,
+			newPosting("world", "alice", "USD", 100)))
+
+		writeShortLogKey(t, engine.store)
+
+		errs, err := runCheckCollecting(t, engine.store, engine.attrs)
+
+		require.ErrorContains(t, err, "is 4 bytes, want 10",
+			"a log key too short to hold a sequence must abort the replay with a "+
+				"contextual error, not decode to whatever follows it in Pebble's buffer")
+		require.Empty(t,
+			errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
+			"the bound must not report a fabricated sequence as an unaudited log")
+		require.Empty(t,
+			errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
+			"the gap emission loop must never be reached with a fabricated sequence: "+
+				"on a near-2^64 value it does not terminate")
+	})
+
+	t.Run("baseline-less archived store", func(t *testing.T) {
+		t.Parallel()
+
+		engine := newTestEngine(t)
+
+		// Pre-boundary history: logs 1-2, audit entries 1-2.
+		engine.processAndCommit(createLedgerOrder("archived-era"))
+		engine.processAndCommit(createTransactionOrder("archived-era", true,
+			newPosting("world", "alice", "USD", 100)))
+
+		boundaryAuditHash := append([]byte(nil), engine.lastAuditHash...)
+
+		// No captureBoundaryBaseline: this is the checkpoint-only restore shape,
+		// where Check() takes the baselineDB == nil return and readStoredLogMax is
+		// the only reader of the log keys.
+		engine.processAndCommit(createTransactionOrder("archived-era", true,
+			newPosting("world", "bob", "USD", 50)))
+		engine.processAndCommit(createLedgerOrder("live-era"))
+
+		writeArchivedBoundary(t, engine, archivedBoundary{
+			closeSequence:      2,
+			closeAuditSequence: 2,
+			lastAuditHash:      boundaryAuditHash,
+			purgeLogRows:       true,
+		})
+
+		writeShortLogKey(t, engine.store)
+
+		errs, err := runCheckCollecting(t, engine.store, engine.attrs)
+
+		require.ErrorContains(t, err, "is 4 bytes, want 10",
+			"readStoredLogMax reverse-seeks straight onto the short key, so the "+
+				"baseline-less archived path has to reject it too")
+		require.Empty(t,
+			errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
+			"a fabricated ceiling read off the buffer would report the whole live "+
+				"stream as unaudited")
+	})
 }

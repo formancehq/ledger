@@ -36,8 +36,51 @@ func readStoredLogMax(reader dal.PebbleReader) (uint64, error) {
 		return 0, iter.Error()
 	}
 
-	// [ZoneCold(1)][SubColdLog(1)][sequence(8)], as in the replay loop.
-	return binary.BigEndian.Uint64(iter.Key()[2:10]), iter.Error()
+	seq, err := decodeLogSequence(iter.Key())
+	if err != nil {
+		return 0, fmt.Errorf("reading the highest stored log key: %w", err)
+	}
+
+	return seq, iter.Error()
+}
+
+// logKeyLen is the exact byte length of a log row key:
+// [ZoneCold(1)][SubColdLog(1)][sequence(8)].
+const logKeyLen = 10
+
+// decodeLogSequence reads the sequence a log row key encodes, rejecting any key
+// that is not exactly logKeyLen bytes.
+//
+// The length check is not defensive noise. Both log iterators are bounded below
+// by the bare two-byte zone prefix and above by a ten-byte all-0xFF key, so ANY
+// key of length 2..9 under that prefix is inside the range: a short key filled
+// toward 0xFF is a strict prefix of the upper bound, and "shorter is less" sorts
+// it ABOVE every ten-byte key whose first sequence byte is below 0xFF — that is,
+// above every realistic sequence, which is exactly where readStoredLogMax's
+// reverse seek lands.
+//
+// Slicing such a key unchecked is bounds-checked by Go against CAPACITY rather
+// than length, so the outcome depends on Pebble's internal key buffer: either a
+// panic, or eight adjacent buffer bytes decoded as a fabricated sequence that
+// the replay loop then treats as real. The fabricated value is the worse half —
+// in the replay loop it feeds the `for expectedSeq < seq` emission below, which
+// on a near-2^64 sequence never terminates.
+//
+// Every repository writer goes through KeyBuilder.PutUint64 and emits exactly
+// ten bytes, so a short key is Pebble-level corruption or direct store access.
+// That input is inside this component's threat model all the same:
+// ValidateRestore runs Check() over an untrusted foreign staged backup.
+//
+// Reported as an error rather than as a finding event: the row's claimed
+// sequence is unknowable, so the pass can neither replay it nor bound it, and
+// continuing would mean guessing.
+func decodeLogSequence(key []byte) (uint64, error) {
+	if len(key) != logKeyLen {
+		return 0, fmt.Errorf("log key %x is %d bytes, want %d ([ZoneCold][SubColdLog][sequence(8)])",
+			key, len(key), logKeyLen)
+	}
+
+	return binary.BigEndian.Uint64(key[2:]), nil
 }
 
 // compareLogBounds bounds the log stream from above with the audit hash chain.
