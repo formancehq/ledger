@@ -24,11 +24,15 @@ func NewValidateCommand() *cobra.Command {
 	}
 
 	cmd.Flags().Duration("timeout", 5*cmdutil.DefaultTimeout, "Request timeout")
+	cmd.Flags().Bool("allow-incomplete", false,
+		"Exit zero when passes could not be completed, accepting a backup whose projections were never verified")
 
 	return cmd
 }
 
 func runValidate(cmd *cobra.Command, _ []string) error {
+	allowIncomplete, _ := cmd.Flags().GetBool("allow-incomplete")
+
 	client, conn, err := getRestoreClient(cmd)
 	if err != nil {
 		return err
@@ -45,8 +49,22 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 	}
 
 	var (
-		spinner    = cmdutil.StartSpinner("Validating backup integrity...")
-		errorCount int
+		spinner = cmdutil.StartSpinner("Validating backup integrity...")
+		// errorCount counts DIVERGENCES: the backup contradicts its own audit
+		// chain. coverageGaps counts passes the checker could not complete, so
+		// part of the backup was never compared. The two are counted apart
+		// because they mean different things and only one of them can ever be
+		// accepted: the checker gets no cold reader and no baseline on the restore
+		// path, so a healthy backup of an archived cluster always reports at least
+		// one gap, and treating that as a divergence would reject valid backups.
+		//
+		// Both nonetheless fail the command. A run that skipped the projection
+		// comparisons has not established that the backup is valid, and this
+		// return value is the automation gate for `restore validate &&
+		// restore finalize`. --allow-incomplete is how an operator accepts an
+		// unverified backup; nothing accepts a divergent one.
+		errorCount   int
+		coverageGaps int
 	)
 
 	for {
@@ -69,6 +87,14 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 					t.Progress.GetLogsChecked(), t.Progress.GetTotalLogs(), pct))
 			}
 		case *restorepb.ValidateRestoreEvent_Error:
+			if t.Error.GetCoverageGap() {
+				coverageGaps++
+
+				pterm.Printf("  %s %s\n", pterm.Yellow("WARNING"), t.Error.GetMessage())
+
+				continue
+			}
+
 			errorCount++
 
 			pterm.Printf("  %s %s\n", pterm.Red("ERROR"), t.Error.GetMessage())
@@ -79,11 +105,11 @@ func runValidate(cmd *cobra.Command, _ []string) error {
 
 	pterm.Println()
 
-	if err := cmdutil.IntegrityResult("backup validation", errorCount); err != nil {
-		return err
-	}
-
-	pterm.Success.Println("Backup is valid - no integrity errors found")
-
-	return nil
+	return cmdutil.ReportIntegrityVerdict(cmdutil.IntegrityVerdictInput{
+		Subject:         "backup validation",
+		CleanMessage:    "Backup is valid - no integrity errors found",
+		Errors:          errorCount,
+		CoverageGaps:    coverageGaps,
+		AllowIncomplete: allowIncomplete,
+	})
 }

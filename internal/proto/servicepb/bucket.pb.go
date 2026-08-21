@@ -168,6 +168,35 @@ const (
 	// never seeded from the live projection -- that would verify old,
 	// never-touched keys against a copy of themselves.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE CheckStoreErrorType = 23
+	// Emitted when the log-bounds comparison could not be trusted: the audit hash
+	// chain broke, or the live chain fold stopped short of the end of the range.
+	// The expected maximum log sequence is accumulated over the chain walk, so a
+	// truncated walk yields a PREFIX maximum -- comparing it would report every
+	// log above the break as unaudited. The pass reports this instead of
+	// presenting a partial derivation as a clean comparison (the same shape as
+	// SIGNING_VERIFICATION_INCOMPLETE).
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE CheckStoreErrorType = 24
+	// Emitted when the store holds a log above the highest sequence the audit
+	// chain authenticates. Every persisted log is allocated by one of the two
+	// producers in processing.ProcessOrders and committed in the same batch as its
+	// audit entry, so a log beyond the audited maximum was written outside that
+	// path. The opposite direction -- a log the audit expects but the store lacks
+	// -- is reported as SEQUENCE_GAP, since it is a missing log like any other.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED CheckStoreErrorType = 25
+	// Emitted when archived chapters exist but no baseline checkpoint does, so the
+	// entry-by-entry comparison of the primary-store projections was skipped
+	// wholesale. The baseline is the checker's only independent source of
+	// pre-archive state and backfilling it from the live store would verify the
+	// data against a copy of itself, so the passes cannot run at all -- volumes,
+	// metadata, transactions, references, reversions, schema, account types,
+	// boundaries, ledger presence, indexes, numscripts and the reverse map are all
+	// unverified for the run.
+	//
+	// Reachable on every restore-side caller: the baseline lives beside the
+	// checkpoint directory rather than inside it, so it is never part of a backup.
+	// The skip used to be announced only in the server log, which left the client
+	// reporting a clean verdict over passes that never ran.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ARCHIVED_STATE_VERIFICATION_INCOMPLETE CheckStoreErrorType = 26
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -197,32 +226,38 @@ var (
 		21: "CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH",
 		22: "CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH",
 		23: "CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE",
+		24: "CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE",
+		25: "CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED",
+		26: "CHECK_STORE_ERROR_TYPE_ARCHIVED_STATE_VERIFICATION_INCOMPLETE",
 	}
 	CheckStoreErrorType_value = map[string]int32{
-		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                     0,
-		"CHECK_STORE_ERROR_TYPE_HASH_MISMATCH":                   1,
-		"CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP":                    2,
-		"CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH":                 3,
-		"CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH":               4,
-		"CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER":                  5,
-		"CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH":     6,
-		"CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH":               7,
-		"CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH":       8,
-		"CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH":            9,
-		"CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH":                  10,
-		"CHECK_STORE_ERROR_TYPE_INVALID_SKIP":                    11,
-		"CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH":         12,
-		"CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH":                 13,
-		"CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH":           14,
-		"CHECK_STORE_ERROR_TYPE_MISSING_LEDGER":                  15,
-		"CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER":                16,
-		"CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH":              17,
-		"CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH":               18,
-		"CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH":              19,
-		"CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN":              20,
-		"CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH":            21,
-		"CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH":         22,
-		"CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE": 23,
+		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                            0,
+		"CHECK_STORE_ERROR_TYPE_HASH_MISMATCH":                          1,
+		"CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP":                           2,
+		"CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH":                        3,
+		"CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH":                      4,
+		"CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER":                         5,
+		"CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH":            6,
+		"CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH":                      7,
+		"CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH":              8,
+		"CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH":                   9,
+		"CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH":                         10,
+		"CHECK_STORE_ERROR_TYPE_INVALID_SKIP":                           11,
+		"CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH":                12,
+		"CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH":                        13,
+		"CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH":                  14,
+		"CHECK_STORE_ERROR_TYPE_MISSING_LEDGER":                         15,
+		"CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER":                       16,
+		"CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH":                     17,
+		"CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH":                      18,
+		"CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH":                     19,
+		"CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN":                     20,
+		"CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH":                   21,
+		"CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH":                22,
+		"CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE":        23,
+		"CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE":            24,
+		"CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED":                          25,
+		"CHECK_STORE_ERROR_TYPE_ARCHIVED_STATE_VERIFICATION_INCOMPLETE": 26,
 	}
 )
 
@@ -9726,7 +9761,8 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xfc\b\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xa1\n" +
+	"\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9752,7 +9788,10 @@ const file_bucket_proto_rawDesc = "" +
 	")CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN\x10\x14\x12/\n" +
 	"+CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH\x10\x15\x122\n" +
 	".CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH\x10\x16\x12:\n" +
-	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17*W\n" +
+	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17\x126\n" +
+	"2CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE\x10\x18\x12(\n" +
+	"$CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED\x10\x19\x12A\n" +
+	"=CHECK_STORE_ERROR_TYPE_ARCHIVED_STATE_VERIFICATION_INCOMPLETE\x10\x1a*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +

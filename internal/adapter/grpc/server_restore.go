@@ -223,29 +223,47 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), nil, nil, nil, s.logger)
 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
-		var restoreEvent restorepb.ValidateRestoreEvent
-
-		switch t := event.GetType().(type) {
-		case *servicepb.CheckStoreEvent_Progress:
-			restoreEvent.Type = &restorepb.ValidateRestoreEvent_Progress{
-				Progress: &restorepb.ValidateRestoreProgress{
-					LogsChecked: t.Progress.GetLogsChecked(),
-					TotalLogs:   t.Progress.GetTotalLogs(),
-				},
-			}
-		case *servicepb.CheckStoreEvent_Error:
-			restoreEvent.Type = &restorepb.ValidateRestoreEvent_Error{
-				Error: &restorepb.ValidateRestoreError{
-					Message: t.Error.GetMessage(),
-				},
-			}
-		}
-
-		err := stream.Send(&restoreEvent)
+		err := stream.Send(validateEventFromCheckEvent(event))
 		if err != nil {
 			s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to send validate event")
 		}
 	})
+}
+
+// validateEventFromCheckEvent projects one checker event onto the restore
+// stream's wire type.
+//
+// CoverageGap is decided HERE, and cannot be decided anywhere downstream:
+// CheckStoreError carries the error type while ValidateRestoreError deliberately
+// does not (restorepb stays independent of servicepb), so the CLI receives the
+// classification rather than the type it would need to derive it.
+//
+// The distinction is not cosmetic. ValidateRestore constructs the checker with a
+// nil cold reader by design, and the baseline checkpoint is not part of a backup,
+// so the pre-boundary signing expectation cannot be completed on any archived
+// cluster. A healthy backup therefore always produces at least one finding here,
+// and counting it as a divergence made `restore validate` reject valid backups.
+func validateEventFromCheckEvent(event *servicepb.CheckStoreEvent) *restorepb.ValidateRestoreEvent {
+	var restoreEvent restorepb.ValidateRestoreEvent
+
+	switch t := event.GetType().(type) {
+	case *servicepb.CheckStoreEvent_Progress:
+		restoreEvent.Type = &restorepb.ValidateRestoreEvent_Progress{
+			Progress: &restorepb.ValidateRestoreProgress{
+				LogsChecked: t.Progress.GetLogsChecked(),
+				TotalLogs:   t.Progress.GetTotalLogs(),
+			},
+		}
+	case *servicepb.CheckStoreEvent_Error:
+		restoreEvent.Type = &restorepb.ValidateRestoreEvent_Error{
+			Error: &restorepb.ValidateRestoreError{
+				Message:     t.Error.GetMessage(),
+				CoverageGap: check.IsCoverageGap(t.Error.GetErrorType()),
+			},
+		}
+	}
+
+	return &restoreEvent
 }
 
 // PreviewRestore returns a summary of the staged backup data.

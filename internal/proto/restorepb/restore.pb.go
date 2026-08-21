@@ -528,8 +528,18 @@ func (*ValidateRestoreEvent_Error) isValidateRestoreEvent_Type() {}
 func (*ValidateRestoreEvent_Progress) isValidateRestoreEvent_Type() {}
 
 type ValidateRestoreError struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Message       string                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Message string                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
+	// True when the finding reports that part of the store could NOT be verified,
+	// rather than a divergence that was found. Set from
+	// check.IsCoverageGap over the underlying CheckStoreErrorType.
+	//
+	// A healthy backup of an archived cluster always produces at least one of
+	// these: the checker gets no cold reader on this path, so the pre-boundary
+	// signing expectation cannot be completed. Counting it as an integrity error
+	// made `restore validate` reject valid backups, so the verdict excludes this
+	// class while still reporting it to the operator.
+	CoverageGap   bool `protobuf:"varint,2,opt,name=coverage_gap,json=coverageGap,proto3" json:"coverage_gap,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -569,6 +579,13 @@ func (x *ValidateRestoreError) GetMessage() string {
 		return x.Message
 	}
 	return ""
+}
+
+func (x *ValidateRestoreError) GetCoverageGap() bool {
+	if x != nil {
+		return x.CoverageGap
+	}
+	return false
 }
 
 type ValidateRestoreProgress struct {
@@ -846,9 +863,10 @@ const file_restore_proto_rawDesc = "" +
 	"\x14ValidateRestoreEvent\x125\n" +
 	"\x05error\x18\x01 \x01(\v2\x1d.restore.ValidateRestoreErrorH\x00R\x05error\x12>\n" +
 	"\bprogress\x18\x02 \x01(\v2 .restore.ValidateRestoreProgressH\x00R\bprogressB\x06\n" +
-	"\x04type\"0\n" +
+	"\x04type\"S\n" +
 	"\x14ValidateRestoreError\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage\"[\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\x12!\n" +
+	"\fcoverage_gap\x18\x02 \x01(\bR\vcoverageGap\"[\n" +
 	"\x17ValidateRestoreProgress\x12!\n" +
 	"\flogs_checked\x18\x01 \x01(\x06R\vlogsChecked\x12\x1d\n" +
 	"\n" +

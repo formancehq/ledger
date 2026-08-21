@@ -45,6 +45,7 @@ Each pass takes a persisted projection, re-derives the expected value by replayi
 | 12 | `compareNumscripts` | `SubAttrNumscriptContent` immutable version entries and `SubAttrNumscriptVersion` latest pointers (the greatest stored semver) match the saved versions | Replay of `SavedNumscript` / `DeleteLedger` logs | `NUMSCRIPT_MISMATCH` |
 | 13 | `compareReverseMapOrphans` | Reverse-map (`0x03`) rows in the **peer readstore** whose `(ledger, target, metadata key)` is in **neither** the stored `SubAttrIndex` registry **nor** the audit-replayed `MetadataSchema`; also rows belonging to a ledger the audit does not list as live, and keys that do not decode | Stored index registry **and** the replayed schema (`CreateLedger.initial_schema` + `SetMetadataFieldType` / `RemovedMetadataFieldType`) | `REVERSE_MAP_ORPHAN` |
 | 14 | `signingVerifier.compare` | The `SubGlobSigningKey` rows (public-key bytes + `parent_key_id`) and the `SubGlobSigningConfig` require-signatures flag, compared in both directions | Fold of the chain-bound `RegisterSigningKey` / `RevokeSigningKey` / `SetSigningConfig` orders over the archived (cold-storage) then live audit ranges | `SIGNING_KEY_MISMATCH`, `SIGNING_CONFIG_MISMATCH`, `SIGNING_VERIFICATION_INCOMPLETE` |
+| 15 | `compareLogBounds` | That the log stream does not extend **past** the highest sequence the audit chain authenticates — the one relation every other pass is blind to, because they are all driven *from* the log stream | `chainBound.expectedLogMax`, the maximum `AuditSuccess.max_log_sequence` accumulated over the chain walk, against the maximum log **key** in the store | `LOG_UNAUDITED`, `LOG_VERIFICATION_INCOMPLETE` |
 
 Notes:
 
@@ -120,7 +121,43 @@ This is why `foldChapter` walks archived audit **entries** and reads each entry'
 
 Public-key **bytes never appear in an event message**. The key ID plus the name of the diverging field identifies the problem completely, and the material is sensitive-adjacent.
 
-**The pass also runs on the empty-audit fast path.** `Check()` returns early when the store holds no logs (`lastSequence == 0`), before the replay and therefore before the compare phase the other projection passes live in. Signing is not per-ledger, so skipping it there would be wrong: the projections are cluster-global and a zero-log store can still hold `SubGlobSigningKey` rows. Because every successful signing order writes a log — `processOrder` assigns each returned payload a global sequence — a zero-log store *proves* the audit registered no key, so the expectation is legitimately empty and every stored row is unaudited by construction. Reporting clean there would have left an injected key on a freshly bootstrapped cluster undetected, which is precisely the tamper class this pass exists to catch. `foldArchived` still runs on that path rather than hardcoding complete coverage: archived chapters are unreachable at `lastSequence == 0` today, since the archive flow emits its own logs above the range it purges and at least one log therefore always survives, but that is a property of that flow's log emission rather than an invariant of this pass — folding cold storage keeps a fully-archived store reporting one `SIGNING_VERIFICATION_INCOMPLETE` instead of a spurious mismatch per legitimate key if it ever stops holding. The chapter read is hoisted above the fast path to feed it.
+**The pass also runs over a store with no logs.** There used to be an `lastSequence == 0` fast path that returned before the replay, duplicating this pass (and one other, `compareReverseMapOrphans`) inside the early return; EN-1526 deleted it, because gating audit verification on the *log* projection let one unhashed field disable the whole chain walk. This pass now reaches a zero-log store through the single normal call site. That matters here because signing is not per-ledger: the projections are cluster-global and a zero-log store can still hold `SubGlobSigningKey` rows. Because every successful signing order writes a log — `processOrder` assigns each returned payload a global sequence — a zero-log store *proves* the audit registered no key, so the expectation is legitimately empty and every stored row is unaudited by construction. Reporting clean there would have left an injected key on a freshly bootstrapped cluster undetected, which is precisely the tamper class this pass exists to catch. `foldArchived` runs rather than hardcoding complete coverage: archived chapters are unreachable with no logs today, since the archive flow emits its own logs above the range it purges and at least one log therefore always survives, but that is a property of that flow's log emission rather than an invariant of this pass — folding cold storage keeps a fully-archived store reporting one `SIGNING_VERIFICATION_INCOMPLETE` instead of a spurious mismatch per legitimate key if it ever stops holding.
+
+### Log bounds
+
+`compareLogBounds` (`log_bounds.go`) is the only pass that checks the log stream itself rather than a projection folded from it. Every other pass is driven *from* the logs, so none of them can notice the stream continuing past the point the audit chain vouches for: a row appended above the audited maximum is replayed as authoritative, its transactions and volumes become part of the expectation the projections are compared against, and the store reports clean.
+
+The comparison is **max-only**, and deliberately so. Everything *inside* the audited range is already covered — the replay loop reports each missing sequence as `SEQUENCE_GAP`, `verifySkippedOrder` pins each log's outcome to its chain-bound order, and the projection passes compare what the logs fold into. Only the upper bound is unowned.
+
+| Side | Source | Why |
+|------|--------|-----|
+| Stored maximum | The highest log **key**, captured in the replay loop | The key is what `AppendLogs` derives from the FSM counter. The value's `sequence` field is not hash-bound — it is the EN-1526 bypass, and a separate assertion now reports any row whose key and value disagree |
+| Audited maximum | `max(AuditSuccess.max_log_sequence)` over the chain walk | Log sequences are allocated by the two producers in `processing.ProcessOrders` and committed in the same batch as the audit entry, so the audit range *is* the allocator's record |
+
+Two error types:
+
+| Error type | Emitted for |
+|------------|-------------|
+| `LOG_UNAUDITED` | The store holds a log above the audited maximum, so it was written outside the audited apply path |
+| `LOG_VERIFICATION_INCOMPLETE` | The chain walk was truncated (a hash-chain break, or a live fold cut short), leaving `expectedLogMax` a *prefix* maximum that cannot be compared |
+
+**Fail-closed, and for a concrete reason.** A truncated walk makes every log above the break look unaudited, so a single chain break would emit one `LOG_UNAUDITED` per surviving log — a flood that buries the break that caused it. The pass reports incomplete coverage once and compares nothing, the same choice `SIGNING_VERIFICATION_INCOMPLETE` makes.
+
+Only the one direction is reported. The opposite — the chain authenticating a log the store lacks — is a missing log like any other, and where it is reported depends on where the hole is. An **interior** hole is `SEQUENCE_GAP`: that detector is the `for expectedSeq < seq` loop *inside* the log iteration, so it fills the span between two stored rows and stops at the highest stored key. A lost **tail** above that key is invisible to it, and to this pass; it surfaces through the replayed boundary expectation instead (see the qualification in [audit-chain.md](audit-chain.md#tampering-model--what-the-chain-detects)). Adding a third finding for either would double-report one fault under two names.
+
+**`archiveEndSeq` is excluded from the comparison on purpose.** It is read from the chapters projection, whose only guard is an *unkeyed* sealing hash (`verifySealingHash` recomputes plain BLAKE3 over `(id, close_sequence, …)`), unlike the audit chain's keyed MAC. Whoever edits `close_sequence` recomputes that hash, so `archiveEndSeq` is attacker-controlled and must never gate which rows are compared nor raise the threshold — clamping to it would let a forged `close_sequence` lift the bound above an injected row, which is the EN-1526 defect shape rather than a refinement of it. The accepted cost is documented in `log_bounds.go`: a store with archived chapters, retained sub-boundary rows and *zero* live audit entries would report a false `LOG_UNAUDITED`, a shape the archive flow cannot produce.
+
+**It also runs without a baseline checkpoint.** An archived store whose baseline is missing skips entry-by-entry verification, but the audited maximum comes from the chain walk and the stored maximum from a reverse seek (`readStoredLogMax`'s iterator bounds match the replay loop's), so neither side needs the baseline. The signing compare runs on that path for the same reason. `compareReverseMapOrphans` does not: its `liveLedgers` and `replayedSchemas` terms are baseline-seeded and would report every declared ledger's rows as orphaned.
+
+### The baseline-less archived shape reports its own coverage
+
+An archived store with no baseline checkpoint returns from `Check` early, after the audit hash chain, the chapter sealing hashes, the signing compare and the log bound — and *before* every projection comparison. That skip emits `ARCHIVED_STATE_VERIFICATION_INCOMPLETE`, naming the passes that did not run.
+
+The finding exists because the skip was previously announced only through `c.logger.Error`, which never reaches the event stream. `CheckStoreEvent` has only `Progress` and `Error` arms, so the consumers that build a pass/fail verdict see nothing else — and a `Check` that returns with no findings is indistinguishable from one that verified everything. `restore validate` therefore reported a clean backup over a dozen passes that never ran. Emitting it does not narrow the hole; it stops the hole being reported as a clean bill of health.
+
+It is classified as a coverage gap (`IsCoverageGap`), not a divergence: nothing about the shape says the store is wrong, and it is routine rather than exceptional — the baseline lives beside the checkpoint directory rather than inside it, so it is never part of a backup and **every** restore-side run of an archived cluster reports it. Counting it as a divergence is what made `restore validate` and `store bootstrap --validate` reject healthy archived backups, so all three CLI consumers — those two and `store check` — count gaps apart from divergences through `IsCoverageGap` and report the three-way verdict from `cmdutil.ReportIntegrityVerdict`. Apart, but not ignored: the verdict fails closed, and `--allow-incomplete` is how an operator accepts an unverified store explicitly instead of leaving the acceptance implicit in a zero exit code. It never accepts a divergence.
+
+The residual limitation is real and deliberate: a tampered `Volume` row on this shape is not detected by anything, since `Volume` projections sit outside the audit hash pre-image and `compareVolumes` is the only verifier. `TestBaselineLessArchivedLeavesProjectionsUnverified` pins that, with a baseline-present control proving the same row *is* caught when the baseline exists. Closing it means making the baseline (or cold state) available on the restore path, not relaxing that test.
 
 ## Replay machinery
 
@@ -201,6 +238,9 @@ enum CheckStoreErrorType {
   SIGNING_KEY_MISMATCH        = 21;
   SIGNING_CONFIG_MISMATCH     = 22;
   SIGNING_VERIFICATION_INCOMPLETE = 23;
+  LOG_VERIFICATION_INCOMPLETE = 24;
+  LOG_UNAUDITED               = 25;
+  ARCHIVED_STATE_VERIFICATION_INCOMPLETE = 26;
 }
 ```
 

@@ -335,8 +335,9 @@ ledgerctl restore validate
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--timeout` | No | Request timeout (default: 50s) |
+| `--allow-incomplete` | No | Exit zero when passes could not be completed, accepting a backup whose projections were never verified |
 
-Calls `RestoreService.ValidateRestore` (server-streaming). The server opens the staging directory as a read-only Pebble database and runs the full integrity checker (`check.Checker`). The checker performs three passes:
+Calls `RestoreService.ValidateRestore` (server-streaming). The server opens the staging directory as a read-only Pebble database and runs the integrity checker (`check.Checker`). On a backup with no archived chapters the checker performs three passes:
 
 1. **Log sequence verification**: Iterates all logs from sequence 1 to the last sequence. Verifies sequence continuity (no gaps).
 
@@ -346,7 +347,17 @@ Calls `RestoreService.ValidateRestore` (server-streaming). The server opens the 
 
 Progress events (percentage) and error events are streamed back to the client in real time.
 
-> **This is the same checker used by `ledgerctl store check` during normal operations.**
+#### Coverage on an archived backup
+
+**Passes 1-3 above do not run on a backup taken from a cluster with archived chapters.** They need the baseline checkpoint as an independent source of pre-archive state, and the baseline lives beside the checkpoint directory rather than inside it, so it is never part of a backup. Backfilling the expectation from the staged data instead would verify that data against a copy of itself, so the comparison is skipped rather than weakened.
+
+What still runs on that shape: the audit hash chain, archived chapter sealing-hash decomposition, the signing-projection comparison, and the log-sequence bound derived from the audit chain. What does **not**: volumes, metadata, transactions, references, reversions, schema, account types, boundaries, ledger presence, indexes, numscripts, and the reverse map.
+
+The run reports this as an `ARCHIVED_STATE_VERIFICATION_INCOMPLETE` finding, and `restore validate` prints it as a `WARNING` and closes with `Audit chain verified; N pass(es) could not be completed` instead of declaring the backup valid. **Treat it as "the audit chain checks out", not as "the projections were verified".**
+
+That verdict **fails closed**: the exit status is what gates `restore validate && restore finalize`, so a run that compared nothing must not let a chain proceed. Because the gap is unavoidable on this path, `--allow-incomplete` is how an archived cluster gets through — it accepts the unverified backup explicitly, on the command line, instead of leaving the acceptance implicit in a zero exit code. It never accepts a divergence.
+
+> `ledgerctl store check` runs the same checker against a live node, so it always has a cold reader — but the baseline checkpoint is not guaranteed. The baseline is written when a chapter closes ([`createBaselineSnapshot`](../../internal/infra/node/applier.go), non-fatal on error), and it is not part of a backup. So a node whose store came from a restore holds archived chapters with no baseline until it closes a chapter of its own, and a single failed snapshot leaves the same shape until the following close. On that shape `store check` reports `ARCHIVED_STATE_VERIFICATION_INCOMPLETE` too, with the same three-way verdict and the same `--allow-incomplete` acknowledgement. Once the node has closed a chapter, the passes listed above do run there.
 
 ### Step 3: Preview
 
@@ -544,7 +555,7 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 | **Consistent snapshot** | Backup checkpoint is created as a direct Pebble checkpoint. Boundaries are always up-to-date in Pebble (written on every commit), so the checkpoint is consistent without Raft consensus or FSM gating. |
 | **Incremental efficiency** | SST files are immutable — same name means same content. Only new/changed files are uploaded; stale files are deleted. |
 | **Self-contained on restore** | During restore finalize, the applied index is preserved as the genesis boundary and persisted config and bloom blocks are reset (Global-zone); the attribute zone is preserved byte-for-byte. The new log's index space starts at the boundary; nothing depends on the original cluster's later Raft indices. |
-| **Data integrity (content)** | `ValidateRestore` runs the full integrity checker: log sequence continuity, volume balance verification, metadata consistency. |
+| **Data integrity (content)** | `ValidateRestore` runs the integrity checker: log sequence continuity, volume balance verification, metadata consistency. **On a backup with archived chapters those passes are skipped** — the baseline checkpoint they compare against is not part of a backup — and the run reports `ARCHIVED_STATE_VERIFICATION_INCOMPLETE` rather than declaring the backup valid, exiting non-zero unless `--allow-incomplete` acknowledges it. The audit hash chain is verified on every shape. See [Coverage on an archived backup](#coverage-on-an-archived-backup). |
 | **Fresh directory required** | Restore mode refuses to start if existing checkpoints are found in `checkpoints/`, preventing accidental overwrites. |
 | **Atomic finalize** | Checkpoint placement uses `HardLink()` (temp directory + atomic `os.Rename`) for crash safety. |
 | **Idempotent marker** | The RESTORED marker is consumed exactly once on the next normal boot, then deleted. |

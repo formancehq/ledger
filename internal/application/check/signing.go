@@ -537,7 +537,7 @@ func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servic
 	// are skipped entirely and the run reports only that it could not verify.
 	// Suppressing detection for that run is the honest outcome — claiming a mismatch
 	// we cannot substantiate is worse than admitting the gap, and the same reasoning
-	// is why the empty-audit path folds cold storage instead of assuming an empty
+	// is why a store with no logs folds cold storage instead of assuming an empty
 	// expectation.
 	//
 	// Two independent causes, same consequence: the archived range was never

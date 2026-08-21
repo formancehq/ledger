@@ -139,7 +139,7 @@ func countKeysInSub(t *testing.T, store *dal.Store, sub byte) int {
 // audits [1,4]) is ARCHIVED and purged, hot activity continues to log 12 /
 // audit 8, and a cold store holds the chapter's purged entries. Audit seqs 2
 // and 4 are successes carrying an item and an applied proposal; 1 and 3 are
-// failures (no item, no proposal).
+// failures, which also carry one item each (LogSequence = 0) but no proposal.
 func archivedChapterFixture(t *testing.T) (hot, cold *dal.Store, chapter *commonpb.Chapter) {
 	t.Helper()
 
@@ -239,7 +239,7 @@ func TestRunIncrementalBackup_BackfillsArchivedRangesFromCold(t *testing.T) {
 	require.Equal(t, []uint64{3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, readLogSequences(t, restored, 2),
 		"restored store must hold the archived range — pre-fix it silently lost logs 3..7")
 	require.Equal(t, 7, countKeysInSub(t, restored, dal.SubColdAudit), "audits 2..8")
-	require.Equal(t, 6, countKeysInSub(t, restored, dal.SubColdAuditItem), "items at 2, 4, 5..8")
+	require.Equal(t, 7, countKeysInSub(t, restored, dal.SubColdAuditItem), "items at 2, 3, 4, 5..8 (every audit entry writes one, including the failure at 3)")
 	require.Equal(t, 2, countKeysInSub(t, restored, dal.SubColdAppliedProposal), "proposals at 2, 4")
 }
 

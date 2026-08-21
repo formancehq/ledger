@@ -498,7 +498,18 @@ var _ = Describe("Restore", Ordered, func() {
 			stream, err := restoreClient.ValidateRestore(ctx, &restorepb.ValidateRestoreRequest{})
 			Expect(err).To(Succeed())
 
-			var gotErrors bool
+			// Assert on divergences only, the same split `restore validate` applies.
+			// A coverage gap says a pass could not be completed, not that the backup
+			// is wrong, and it is routine on an archived cluster: validation runs
+			// against the staged backup with no cold reader, and the baseline
+			// checkpoint is never part of a backup. This fixture does not archive
+			// today, so no gap is expected — counting them anyway would turn this
+			// spec red on a healthy backup the moment it does.
+			var (
+				gotErrors bool
+				gotGaps   int
+			)
+
 			for {
 				event, err := stream.Recv()
 				if err == io.EOF {
@@ -506,13 +517,23 @@ var _ = Describe("Restore", Ordered, func() {
 				}
 				Expect(err).To(Succeed())
 
-				if event.GetError() != nil {
-					gotErrors = true
-					GinkgoWriter.Printf("Validation error: %s\n", event.GetError().Message)
+				if event.GetError() == nil {
+					continue
 				}
+
+				if event.GetError().GetCoverageGap() {
+					gotGaps++
+					GinkgoWriter.Printf("Validation coverage gap: %s\n", event.GetError().GetMessage())
+
+					continue
+				}
+
+				gotErrors = true
+				GinkgoWriter.Printf("Validation error: %s\n", event.GetError().GetMessage())
 			}
 
-			Expect(gotErrors).To(BeFalse(), "validation should not report errors")
+			Expect(gotErrors).To(BeFalse(), "validation should not report divergences")
+			Expect(gotGaps).To(BeZero(), "this fixture archives nothing, so every pass should complete")
 		})
 
 		It("should preview the backup", func() {
