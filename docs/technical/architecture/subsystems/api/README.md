@@ -14,4 +14,5 @@ Client-facing transport layers (`internal/adapter/grpc`, `internal/adapter/http`
 ## Related
 
 - [Admission](../admission/) — what every write request enters next.
+- [Historical balances](../read-path/historical-balances.md) — native gRPC and v2-compatible HTTP selectors for exact account-balance history.
 - [Scripting](../scripting/) — numscript library available through the API.

@@ -285,7 +285,13 @@ message GetLedgerStatsResponse {
 rpc GetLedgerStats(GetLedgerStatsRequest) returns (GetLedgerStatsResponse);
 ```
 
-### 5.4 Point-in-Time Reads — Why They Don't Work (and alternatives)
+### 5.4 Primary-Attribute Historical Reads — Why They Don't Work
+
+> **Superseded:** the accepted balance-only design now lives in
+> [historical-balances.md](../technical/architecture/subsystems/read-path/historical-balances.md).
+> The primary attribute store remains current-state-only, but arbitrary PIT
+> balances are provided by a dedicated asynchronous monetary projection rather
+> than by retaining attribute versions.
 
 #### The Problem: Compaction Destroys History
 
@@ -332,7 +338,11 @@ Fork a Pebble instance that receives the same writes but never runs compaction. 
 - **Con**: unbounded storage growth (defeats the purpose of compaction), operational complexity
 - **Best for**: environments where storage is cheap and PIT is critical
 
-**Recommendation**: Point-in-time reads are **out of scope** for this draft. Option B (log replay from chapter boundary) is the most promising long-term approach and naturally builds on the data retention infrastructure. Option A (checkpoints) can be a quick win for coarse-granularity PIT.
+**Historical recommendation for this draft**: general primary-attribute
+point-in-time reads remain out of scope. The accepted balance-only design uses
+a dedicated monetary projection instead of primary-attribute history. Query
+checkpoints remain the coarse-grained alternative for complete applied-state
+snapshots.
 
 ### 5.5 Transactions by Account
 

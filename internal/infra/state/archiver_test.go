@@ -533,8 +533,9 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 	coldReader := coldstorage.NewColdReader(cs, "test-bucket", cacheDir, 4, 0, logger)
 	t.Cleanup(func() { _ = coldReader.Close() })
 
-	pebbleReader, err := coldReader.GetReader(ctx, 1)
+	pebbleReader, release, err := coldReader.AcquireReader(ctx, 1)
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, release()) })
 
 	// Verify the log is readable from the ingested SST
 	log, err := query.ReadLogBySequence(ctx, pebbleReader, 1)

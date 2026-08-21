@@ -28,6 +28,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/internal/storage/balancehistorystore"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
@@ -116,6 +117,7 @@ type DefaultController struct {
 	attrs         *attributes.Attributes
 	readStore     *readstore.Store
 	usageStore    *usagestore.Store
+	volumeViews   VolumeViewProvider
 	receiptSigner *receipt.Signer
 	coldReader    *coldstorage.ColdReader
 
@@ -126,7 +128,8 @@ type DefaultController struct {
 	// otherwise historical response would produce a non-deterministic view.
 	historical bool
 
-	applyDuration metric.Int64Histogram
+	applyDuration    metric.Int64Histogram
+	historyAggregate historicalBalanceAggregateMetrics
 }
 
 // NewDefaultController creates a new default controller.
@@ -141,6 +144,7 @@ func NewDefaultController(
 	attrs *attributes.Attributes,
 	readStore *readstore.Store,
 	usageStore *usagestore.Store,
+	volumeViews VolumeViewProvider,
 	coldReader *coldstorage.ColdReader,
 	receiptSigner *receipt.Signer,
 	meter metric.Meter,
@@ -156,17 +160,23 @@ func NewDefaultController(
 	if err != nil {
 		panic(err)
 	}
+	historyAggregate, err := newHistoricalBalanceAggregateMetrics(meter)
+	if err != nil {
+		panic(err)
+	}
 
 	return &DefaultController{
-		logger:        logger,
-		admission:     admission,
-		store:         store,
-		attrs:         attrs,
-		readStore:     readStore,
-		usageStore:    usageStore,
-		coldReader:    coldReader,
-		receiptSigner: receiptSigner,
-		applyDuration: applyDuration,
+		logger:           logger,
+		admission:        admission,
+		store:            store,
+		attrs:            attrs,
+		readStore:        readStore,
+		usageStore:       usageStore,
+		volumeViews:      volumeViews,
+		coldReader:       coldReader,
+		receiptSigner:    receiptSigner,
+		applyDuration:    applyDuration,
+		historyAggregate: historyAggregate,
 	}
 }
 
@@ -947,10 +957,22 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 }
 
 // AggregateVolumes returns per-asset aggregated volumes for filtered accounts.
-func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
-	ctx, span := tracer.Start(ctx, "ctrl.aggregate_volumes",
-		trace.WithAttributes(attribute.String("ledger", ledgerName)))
+func (ctrl *DefaultController) AggregateVolumes(
+	ctx context.Context,
+	ledgerName string,
+	filter *commonpb.QueryFilter,
+	opts query.AggregateOptions,
+	read AggregateVolumesReadOptions,
+) (_ *AggregateVolumesResult, retErr error) {
+	ctx, span := tracer.Start(ctx, "ctrl.aggregate_volumes")
 	defer span.End()
+
+	if read.HistoricalBalance != nil {
+		observation := ctrl.historyAggregate.start(ctx, span, *read.HistoricalBalance, filter, opts)
+		defer func() {
+			ctrl.historyAggregate.finish(ctx, span, observation, retErr)
+		}()
+	}
 
 	profile := query.ProfileFromContext(ctx)
 
@@ -970,12 +992,47 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 		return nil, err
 	}
 
+	var historicalView *HistoricalVolumeView
+	if read.HistoricalBalance != nil {
+		if ctrl.historical {
+			return nil, errors.New("historical balance selector and query checkpoint are mutually exclusive")
+		}
+		if ctrl.volumeViews == nil {
+			return nil, &balancehistorystore.ErrSourceMissing{Detail: "balance history projection is not configured"}
+		}
+
+		// A historical balance request without an explicit minLogSequence still means
+		// "restated history known by this read". Bind it to the primary
+		// snapshot's current monetary-log head so an asynchronously lagging
+		// projection cannot silently return an older known-through view.
+		requiredLogSequence := read.MinLogSequence
+		currentLogSequence, err := query.ReadLastSequence(handle)
+		if err != nil {
+			return nil, fmt.Errorf("reading current log sequence for historical balance aggregation: %w", err)
+		}
+		if currentLogSequence > requiredLogSequence {
+			requiredLogSequence = currentLogSequence
+		}
+
+		historicalView, err = ctrl.volumeViews.Open(ctx, ledgerInfo.GetName(), *read.HistoricalBalance, requiredLogSequence)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = historicalView.Close() }()
+	}
+
 	// Fast path: unfiltered aggregation scans Pebble volumes in a single pass.
 	// No index interaction needed — Pebble snapshot is the source of truth.
 	if filter == nil {
 		enrichStart := time.Now()
 
-		result, aggErr := query.AggregateAllVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), opts)
+		var result *commonpb.AggregateResult
+		var aggErr error
+		if historicalView != nil {
+			result, aggErr = historicalView.Aggregate(ctx, nil, opts)
+		} else {
+			result, aggErr = query.AggregateAllVolumes(handle, ctrl.attrs.Volume, ledgerInfo.GetName(), opts)
+		}
 		if aggErr != nil {
 			return nil, fmt.Errorf("aggregating volumes: %w", aggErr)
 		}
@@ -984,7 +1041,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 			profile.EnrichmentDuration = time.Since(enrichStart)
 		}
 
-		return result, nil
+		return aggregateVolumesResult(result, historicalView), nil
 	}
 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
@@ -1000,6 +1057,48 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 	kb := dal.NewKeyBuilder()
 
 	indexStart := time.Now()
+	if historicalView != nil {
+		compileCurrent := func(ctx context.Context, currentFilter *commonpb.QueryFilter) ([]string, error) {
+			iter, err := query.Compile(snap, kb, currentFilter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), profile, handle, mainSeq)
+			if err != nil {
+				return nil, domain.WrapCompileError(err)
+			}
+			defer iter.Close()
+
+			accounts := make([]string, 0)
+			for iter.Next() {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				accounts = append(accounts, string(iter.Current()))
+			}
+			if err := iter.Err(); err != nil {
+				return nil, fmt.Errorf("iterating current account filter for historical balance aggregation: %w", err)
+			}
+
+			return accounts, nil
+		}
+
+		selection, err := prepareTemporalAccountSelection(ctx, filter, compileCurrent)
+		if err != nil {
+			return nil, err
+		}
+
+		if profile != nil {
+			profile.IndexDuration = time.Since(indexStart)
+		}
+
+		enrichStart := time.Now()
+		result, err := historicalView.aggregate(ctx, selection.accounts, selection.accountPrefixes, selection.match, opts)
+		if err != nil {
+			return nil, fmt.Errorf("aggregating volumes: %w", err)
+		}
+		if profile != nil {
+			profile.EnrichmentDuration = time.Since(enrichStart)
+		}
+
+		return aggregateVolumesResult(result, historicalView), nil
+	}
 
 	compiled, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), profile, handle, mainSeq)
 	if err != nil {
@@ -1027,7 +1126,41 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 		profile.EnrichmentDuration = time.Since(enrichStart)
 	}
 
-	return result, nil
+	return aggregateVolumesResult(result, historicalView), nil
+}
+
+func (ctrl *DefaultController) GetHistoricalBalancesStatus(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	handle, err := ctrl.store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle for historical-balance status: %w", err)
+	}
+	defer func() { _ = handle.Close() }()
+	if _, err := query.GetLedgerByName(ctx, handle, ledgerName); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
+		}
+
+		return nil, fmt.Errorf("checking ledger %q for historical-balance status: %w", ledgerName, err)
+	}
+	if ctrl.volumeViews == nil {
+		return &servicepb.GetHistoricalBalancesStatusResponse{
+			Ledger: ledgerName,
+			State:  servicepb.GetHistoricalBalancesStatusResponse_STATE_ERROR,
+			Error:  "historical-balance provider is unavailable",
+		}, nil
+	}
+
+	return ctrl.volumeViews.Status(ctx, ledgerName)
+}
+
+func aggregateVolumesResult(result *commonpb.AggregateResult, view *HistoricalVolumeView) *AggregateVolumesResult {
+	response := &AggregateVolumesResult{Aggregate: result}
+	if view != nil {
+		token := view.Token()
+		response.View = &token
+	}
+
+	return response
 }
 
 // InspectIndex scans a metadata index and returns distinct values, facets, or a summary.

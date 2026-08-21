@@ -3,9 +3,11 @@ package coldstorage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -16,7 +18,23 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+// GetReader preserves the old unleased shape only inside cache lifecycle
+// tests. Production code has no unpinned reader API.
+func (r *ColdReader) GetReader(ctx context.Context, chapterID uint64) (dal.PebbleReader, error) {
+	reader, release, err := r.AcquireReader(ctx, chapterID)
+	if err != nil {
+		return nil, err
+	}
+	if err := release(); err != nil {
+		return nil, err
+	}
+
+	return reader, nil
+}
 
 // ComputeSHA256OrPanic is a test helper that returns the SHA-256 of b. It
 // panics on any read error (impossible from a bytes.Reader) to keep call
@@ -431,6 +449,179 @@ func TestColdReaderTTLEviction(t *testing.T) {
 
 		return os.IsNotExist(err)
 	}, 1*time.Second, 25*time.Millisecond, "chapter-1 should be evicted after TTL")
+}
+
+func TestColdReaderLeaseDefersCapacityEviction(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	cs := newInMemoryColdStorage()
+	cacheDir := t.TempDir()
+	for chapterID := uint64(1); chapterID <= 2; chapterID++ {
+		sstData := buildTestSST(t, [][2][]byte{
+			{fmt.Appendf(nil, "key-%d", chapterID), fmt.Appendf(nil, "value-%d", chapterID)},
+		})
+		require.NoError(t, cs.Archive(ctx, "bucket", chapterID, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
+	}
+
+	reader := NewColdReader(cs, "bucket", cacheDir, 1, 0, logger)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	leased, release, err := reader.AcquireReader(ctx, 1)
+	require.NoError(t, err)
+
+	_, err = reader.GetReader(ctx, 2)
+	require.NoError(t, err)
+	require.DirExists(t, filepath.Join(cacheDir, "chapter-1"), "leased chapter must survive capacity eviction")
+
+	value, closer, err := leased.Get([]byte("key-1"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("value-1"), value)
+	require.NoError(t, closer.Close())
+
+	require.NoError(t, release())
+	require.NoError(t, release(), "release is deliberately idempotent")
+	require.Eventually(t, func() bool {
+		_, statErr := os.Stat(filepath.Join(cacheDir, "chapter-1"))
+
+		return os.IsNotExist(statErr)
+	}, time.Second, 10*time.Millisecond, "pending capacity eviction must run after the final release")
+}
+
+func TestColdReaderConcurrentLeasesSurviveSweepAndCapacity(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	cs := newInMemoryColdStorage()
+	cacheDir := t.TempDir()
+	for chapterID := uint64(1); chapterID <= 3; chapterID++ {
+		sstData := buildTestSST(t, [][2][]byte{
+			{fmt.Appendf(nil, "key-%d", chapterID), fmt.Appendf(nil, "value-%d", chapterID)},
+		})
+		require.NoError(t, cs.Archive(ctx, "bucket", chapterID, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
+	}
+
+	reader := NewColdReader(cs, "bucket", cacheDir, 1, time.Hour, logger)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	const leaseCount = 8
+	startReads := make(chan struct{})
+	acquired := make(chan struct{}, leaseCount)
+	errorsCh := make(chan error, leaseCount)
+	for range leaseCount {
+		go func() {
+			leased, release, err := reader.AcquireReader(ctx, 1)
+			if err != nil {
+				errorsCh <- err
+
+				return
+			}
+			acquired <- struct{}{}
+			<-startReads
+
+			value, closer, err := leased.Get([]byte("key-1"))
+			if err != nil {
+				errorsCh <- errors.Join(err, release())
+
+				return
+			}
+			if !bytes.Equal(value, []byte("value-1")) {
+				_ = closer.Close()
+				errorsCh <- errors.Join(fmt.Errorf("leased value is %q", value), release())
+
+				return
+			}
+			errorsCh <- errors.Join(closer.Close(), release())
+		}()
+	}
+	for range leaseCount {
+		select {
+		case <-acquired:
+		case err := <-errorsCh:
+			require.NoError(t, err)
+		case <-time.After(time.Second):
+			require.FailNow(t, "timed out acquiring cold reader leases")
+		}
+	}
+
+	reader.mu.Lock()
+	reader.cache[1].lastAccess = time.Now().Add(-2 * reader.ttl)
+	reader.mu.Unlock()
+	reader.sweepExpired()
+	_, err := reader.GetReader(ctx, 2)
+	require.NoError(t, err)
+	_, err = reader.GetReader(ctx, 3)
+	require.NoError(t, err)
+	require.DirExists(t, filepath.Join(cacheDir, "chapter-1"), "leased chapter must survive sweep and LRU pressure")
+
+	close(startReads)
+	for range leaseCount {
+		require.NoError(t, <-errorsCh)
+	}
+	require.Eventually(t, func() bool {
+		_, statErr := os.Stat(filepath.Join(cacheDir, "chapter-1"))
+
+		return os.IsNotExist(statErr)
+	}, time.Second, 10*time.Millisecond, "expired leased chapter must be evicted after all readers release")
+}
+
+func TestColdReaderCloseDefersLeasedChapter(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	cs := newInMemoryColdStorage()
+	cacheDir := t.TempDir()
+	sstData := buildTestSST(t, [][2][]byte{{[]byte("key"), []byte("value")}})
+	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
+
+	reader := NewColdReader(cs, "bucket", cacheDir, 1, 0, logger)
+	leased, release, err := reader.AcquireReader(ctx, 1)
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+	require.DirExists(t, filepath.Join(cacheDir, "chapter-1"), "Close must defer leased chapter cleanup")
+
+	value, closer, err := leased.Get([]byte("key"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("value"), value)
+	require.NoError(t, closer.Close())
+	_, _, err = reader.AcquireReader(ctx, 1)
+	require.ErrorIs(t, err, ErrReaderClosed)
+
+	require.NoError(t, release())
+	require.Eventually(t, func() bool {
+		_, statErr := os.Stat(filepath.Join(cacheDir, "chapter-1"))
+
+		return os.IsNotExist(statErr)
+	}, time.Second, 10*time.Millisecond, "release after Close must finish deferred cleanup")
+	require.NoError(t, reader.Close(), "Close must be idempotent")
+}
+
+func TestColdReaderReleaseSurfacesInvariantViolations(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	cs := newInMemoryColdStorage()
+	cacheDir := t.TempDir()
+	sstData := buildTestSST(t, [][2][]byte{{[]byte("key"), []byte("value")}})
+	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
+
+	reader := NewColdReader(cs, "bucket", cacheDir, 1, 0, logger)
+	t.Cleanup(func() { _ = reader.Close() })
+	_, release, err := reader.AcquireReader(ctx, 1)
+	require.NoError(t, err)
+
+	reader.mu.Lock()
+	actual := reader.cache[1]
+	reader.mu.Unlock()
+	require.ErrorContains(t, reader.releaseChapter(99, actual), "cache entry is absent")
+	require.ErrorContains(t, reader.releaseChapter(1, &cachedChapter{}), "stale cold reader lease")
+	require.NoError(t, release())
+	require.ErrorContains(t, reader.releaseChapter(1, actual), "zero refcount")
+	require.NoError(t, release(), "public release remains idempotent after the first successful release")
 }
 
 func TestColdReaderTTLRefreshedOnAccess(t *testing.T) {

@@ -891,9 +891,20 @@ paths:
     get:
       summary: Aggregate volumes
       description: |
-        Returns aggregated volumes (input/output/balance per asset) across all accounts in the ledger.
+        Returns aggregated volumes (input/output/balance per asset) across accounts in the ledger.
         Supports filtering accounts with the generic `filter` parameter, grouping by account prefixes,
-        and max-precision merging.
+        color collapse, and max-precision merging.
+
+        Without `at`, this endpoint reads the current volume projection. With `at`, it returns exact
+        monetary history from the asynchronous balance-history projection. Effective temporality is
+        the default; set `temporality=insertion` to select insertion time. Clients enable or disable
+        the projection per ledger through the native ConfigureHistoricalBalances apply request.
+
+        Historical balances cover monetary effects only. Metadata, metadata schemas, account types,
+        and asset-existence indexes are not historized: conditions that depend on them are evaluated
+        against one current read-store snapshot. Direct address and address-prefix selections use the
+        historical account keys. The service never substitutes live state, a query checkpoint, the
+        nearest timestamp, or an incomplete set of history segments for an exact result.
         Requires `ledger:AccountRead` scope.
       operationId: aggregateVolumes
       tags:
@@ -924,15 +935,59 @@ paths:
           schema:
             type: boolean
             default: false
+        - name: at
+          in: query
+          required: false
+          description: |
+            Historical balance cutoff in RFC3339 format. Fractional seconds are accepted and the
+            value is normalized to Unix microseconds before evaluation; timestamps before
+            1970-01-01T00:00:00Z are rejected. Effective temporality is the default.
+
+            The result is evaluated against one immutable history manifest. If exact, complete history
+            is not available, the request fails with a typed `HISTORY_*` error instead of falling back
+            to live state or an approximate timestamp.
+          schema:
+            type: string
+            format: date-time
+          example: '2026-01-15T12:30:45.123456Z'
+        - name: temporality
+          in: query
+          required: false
+          description: |
+            Selects which transaction timestamp is compared with `at`: `effective` uses the business
+            timestamp and `insertion` uses the FSM-assigned insertion timestamp. Supplying this
+            parameter without `at` is invalid.
+          schema:
+            type: string
+            enum: [effective, insertion]
+            default: effective
       responses:
         '200':
-          description: Aggregated volumes retrieved successfully
+          description: |
+            Aggregated volumes retrieved successfully. For a historical request, the
+            `X-Historical-Balance-View` header identifies the exact immutable view used.
+          headers:
+            X-Historical-Balance-View:
+              description: |
+                Present only for a successful historical request. Standard-base64 encoding of the
+                protobuf binary `HistoricalBalanceView`, containing the requested timestamp,
+                temporality, ledger name, audit and log watermarks, history-manifest version,
+                and an opaque view token. Protobuf timestamps are unsigned Unix microseconds.
+              schema:
+                type: string
+                format: byte
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/AggregateVolumesResponse'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: |
+            Invalid historical timestamp or parameter combination,
+            `UNSUPPORTED_TEMPORAL_FILTER`, or another invalid aggregate request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -940,9 +995,31 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          description: |
+            Service temporarily unavailable. History-specific reasons are `HISTORY_BUILDING` (no readable
+            initial manifest) and `HISTORY_BEHIND` (the manifest has not reached the required source
+            watermark). Clients may retry these reasons; the response includes `Retry-After: 1`.
+          headers:
+            Retry-After:
+              description: Number of seconds to wait before retrying, when supplied by the server
+              schema:
+                type: integer
+                format: int32
+                minimum: 1
+                example: 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
-          $ref: '#/components/responses/InternalServerError'
+          description: |
+            Internal server error. History-specific reasons are `HISTORY_SOURCE_MISSING` when a required
+            hot or cold source range is absent, and `HISTORY_CORRUPT` when integrity verification fails.
+            Both fail closed and require repair or rebuild rather than client-side approximation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 

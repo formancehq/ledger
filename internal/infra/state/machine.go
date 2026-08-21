@@ -1363,6 +1363,17 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			result.Error = &domain.BusinessError{Err: err}
 		} else {
 			result.Logs = logs
+			firstLogSequence := uint64(0)
+			if len(logs) > 0 {
+				firstLogSequence = logs[0].GetReferenceSequence()
+			}
+			assert.Reachable("pit: keyed apply replay returned original log references without audit write", map[string]any{
+				"idempotency_key":    idempotencyKey,
+				"proposal_id":        proposal.GetId(),
+				"raft_index":         raftIndex,
+				"first_log_sequence": firstLogSequence,
+				"log_count":          len(logs),
+			})
 		}
 
 		return result, nil

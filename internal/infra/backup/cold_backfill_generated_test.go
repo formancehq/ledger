@@ -39,41 +39,42 @@ func (m *MockColdChapterReader) EXPECT() *MockColdChapterReaderMockRecorder {
 	return m.recorder
 }
 
-// GetReader mocks base method.
-func (m *MockColdChapterReader) GetReader(ctx context.Context, chapterID uint64) (dal.PebbleReader, error) {
+// AcquireReader mocks base method.
+func (m *MockColdChapterReader) AcquireReader(ctx context.Context, chapterID uint64) (dal.PebbleReader, func() error, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetReader", ctx, chapterID)
+	ret := m.ctrl.Call(m, "AcquireReader", ctx, chapterID)
 	ret0, _ := ret[0].(dal.PebbleReader)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(func() error)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
-// GetReader indicates an expected call of GetReader.
-func (mr *MockColdChapterReaderMockRecorder) GetReader(ctx, chapterID any) *MockColdChapterReaderGetReaderCall {
+// AcquireReader indicates an expected call of AcquireReader.
+func (mr *MockColdChapterReaderMockRecorder) AcquireReader(ctx, chapterID any) *MockColdChapterReaderAcquireReaderCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetReader", reflect.TypeOf((*MockColdChapterReader)(nil).GetReader), ctx, chapterID)
-	return &MockColdChapterReaderGetReaderCall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcquireReader", reflect.TypeOf((*MockColdChapterReader)(nil).AcquireReader), ctx, chapterID)
+	return &MockColdChapterReaderAcquireReaderCall{Call: call}
 }
 
-// MockColdChapterReaderGetReaderCall wrap *gomock.Call
-type MockColdChapterReaderGetReaderCall struct {
+// MockColdChapterReaderAcquireReaderCall wrap *gomock.Call
+type MockColdChapterReaderAcquireReaderCall struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockColdChapterReaderGetReaderCall) Return(arg0 dal.PebbleReader, arg1 error) *MockColdChapterReaderGetReaderCall {
-	c.Call = c.Call.Return(arg0, arg1)
+func (c *MockColdChapterReaderAcquireReaderCall) Return(arg0 dal.PebbleReader, arg1 func() error, arg2 error) *MockColdChapterReaderAcquireReaderCall {
+	c.Call = c.Call.Return(arg0, arg1, arg2)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockColdChapterReaderGetReaderCall) Do(f func(context.Context, uint64) (dal.PebbleReader, error)) *MockColdChapterReaderGetReaderCall {
+func (c *MockColdChapterReaderAcquireReaderCall) Do(f func(context.Context, uint64) (dal.PebbleReader, func() error, error)) *MockColdChapterReaderAcquireReaderCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockColdChapterReaderGetReaderCall) DoAndReturn(f func(context.Context, uint64) (dal.PebbleReader, error)) *MockColdChapterReaderGetReaderCall {
+func (c *MockColdChapterReaderAcquireReaderCall) DoAndReturn(f func(context.Context, uint64) (dal.PebbleReader, func() error, error)) *MockColdChapterReaderAcquireReaderCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

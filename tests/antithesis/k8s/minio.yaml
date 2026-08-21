@@ -1,4 +1,17 @@
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+  annotations:
+    kapp.k14s.io/owned-for-deletion: ""
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -41,6 +54,13 @@ spec:
             memory: 128Mi
           limits:
             memory: 512Mi
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: minio-data
 ---
 apiVersion: v1
 kind: Service

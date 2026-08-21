@@ -7,6 +7,7 @@ import (
 	"io"
 	"strconv"
 
+	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
@@ -379,14 +380,49 @@ func (g *BucketGrpcClient) AnalyzeTransactions(ctx context.Context, ledgerName s
 	}
 }
 
-func (g *BucketGrpcClient) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
-	return g.client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
-		Ledger:          ledgerName,
-		Filter:          filter,
-		UseMaxPrecision: opts.UseMaxPrecision,
-		CollapseColors:  opts.CollapseColors,
-		GroupByPrefixes: opts.GroupByPrefixes,
-	})
+func (g *BucketGrpcClient) AggregateVolumes(
+	ctx context.Context,
+	ledgerName string,
+	filter *commonpb.QueryFilter,
+	opts query.AggregateOptions,
+	read ctrl.AggregateVolumesReadOptions,
+) (*ctrl.AggregateVolumesResult, error) {
+	historicalBalance, err := selectorToProto(read.HistoricalBalance)
+	if err != nil {
+		return nil, err
+	}
+	request := &servicepb.AggregateVolumesRequest{
+		Ledger:            ledgerName,
+		Filter:            filter,
+		MinLogSequence:    read.MinLogSequence,
+		UseMaxPrecision:   opts.UseMaxPrecision,
+		CollapseColors:    opts.CollapseColors,
+		GroupByPrefixes:   opts.GroupByPrefixes,
+		HistoricalBalance: historicalBalance,
+	}
+
+	var trailer metadata.MD
+	result, err := g.client.AggregateVolumes(ctx, request, ggrpc.Trailer(&trailer))
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ctrl.AggregateVolumesResult{Aggregate: result}
+	if read.HistoricalBalance != nil {
+		response.View, err = historicalBalanceViewFromMetadata(trailer)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateHistoricalBalanceView(read.HistoricalBalance, response.View); err != nil {
+			return nil, err
+		}
+	}
+
+	return response, nil
+}
+
+func (g *BucketGrpcClient) GetHistoricalBalancesStatus(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	return g.client.GetHistoricalBalancesStatus(ctx, &servicepb.GetHistoricalBalancesStatusRequest{Ledger: ledgerName})
 }
 
 func (g *BucketGrpcClient) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {

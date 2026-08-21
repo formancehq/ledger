@@ -19,6 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/internal/storage/balancehistorystore"
 )
 
 // newRecvStream returns a generated mock ServerStreamingClient[T] that yields
@@ -743,15 +744,16 @@ func TestAggregateVolumes_Success(t *testing.T) {
 	expected := &commonpb.AggregateResult{}
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	mock.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any()).Return(expected, nil)
+	mock.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any()).Return(expected, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	result, err := client.AggregateVolumes(context.Background(), "ledger1", nil, query.AggregateOptions{
 		UseMaxPrecision: true,
 		GroupByPrefixes: []string{"user:"},
-	})
+	}, appctrl.AggregateVolumesReadOptions{})
 	require.NoError(t, err)
-	require.Equal(t, expected, result)
+	require.Equal(t, expected, result.Aggregate)
+	require.Nil(t, result.View)
 }
 
 func TestAggregateVolumes_Error(t *testing.T) {
@@ -759,11 +761,179 @@ func TestAggregateVolumes_Error(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	mock.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any()).Return(nil, errors.New("aggregate error"))
+	mock.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errors.New("aggregate error"))
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.AggregateVolumes(context.Background(), "ledger1", nil, query.AggregateOptions{})
+	_, err := client.AggregateVolumes(context.Background(), "ledger1", nil, query.AggregateOptions{}, appctrl.AggregateVolumesReadOptions{})
 	require.Error(t, err)
+}
+
+func TestAggregateVolumes_HistoricalBalanceForwardsSelectorAndReturnsView(t *testing.T) {
+	t.Parallel()
+
+	expectedAggregate := &commonpb.AggregateResult{}
+	filter := &commonpb.QueryFilter{}
+	selector := &appctrl.HistoricalBalanceSelector{
+		At:          1_704_164_645_123_456,
+		Temporality: balancehistorystore.TemporalityInsertion,
+	}
+	expectedView := &appctrl.HistoricalBalanceViewToken{
+		RequestedAt:     selector.At,
+		Temporality:     selector.Temporality,
+		Ledger:          "main",
+		AuditWatermark:  99,
+		LogWatermark:    88,
+		ManifestVersion: 7,
+		Token:           "immutable-view-token",
+	}
+
+	mockCtrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(mockCtrl)
+	mock.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, req *servicepb.AggregateVolumesRequest, callOptions ...grpc.CallOption) (*commonpb.AggregateResult, error) {
+			require.Equal(t, "ledger1", req.GetLedger())
+			require.Same(t, filter, req.GetFilter())
+			require.Equal(t, uint64(42), req.GetMinLogSequence())
+			require.True(t, req.GetUseMaxPrecision())
+			require.True(t, req.GetCollapseColors())
+			require.Equal(t, []string{"users:", "merchants:"}, req.GetGroupByPrefixes())
+			require.NotNil(t, req.GetHistoricalBalance())
+			require.Equal(t, selector.At, req.GetHistoricalBalance().GetAt().GetData())
+			require.Equal(t, servicepb.HistoricalBalanceTemporality_HISTORICAL_BALANCE_TEMPORALITY_INSERTION, req.GetHistoricalBalance().GetTemporality())
+
+			require.Len(t, callOptions, 1)
+			trailerOption, ok := callOptions[0].(grpc.TrailerCallOption)
+			require.True(t, ok)
+			trailer, err := historicalBalanceViewMetadata(expectedView)
+			require.NoError(t, err)
+			*trailerOption.TrailerAddr = trailer
+
+			return expectedAggregate, nil
+		})
+
+	client := NewLedgerGrpcClient(mock)
+	result, err := client.AggregateVolumes(
+		context.Background(),
+		"ledger1",
+		filter,
+		query.AggregateOptions{
+			UseMaxPrecision: true,
+			CollapseColors:  true,
+			GroupByPrefixes: []string{"users:", "merchants:"},
+		},
+		appctrl.AggregateVolumesReadOptions{
+			HistoricalBalance: selector,
+			MinLogSequence:    42,
+		},
+	)
+
+	require.NoError(t, err)
+	require.Same(t, expectedAggregate, result.Aggregate)
+	require.Equal(t, expectedView, result.View)
+}
+
+func TestAggregateVolumes_HistoricalBalanceFailsClosedWithoutViewTrailer(t *testing.T) {
+	t.Parallel()
+
+	mockCtrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(mockCtrl)
+	mock.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&commonpb.AggregateResult{}, nil)
+
+	client := NewLedgerGrpcClient(mock)
+	result, err := client.AggregateVolumes(
+		context.Background(),
+		"ledger1",
+		nil,
+		query.AggregateOptions{},
+		appctrl.AggregateVolumesReadOptions{HistoricalBalance: &appctrl.HistoricalBalanceSelector{
+			At:          1,
+			Temporality: balancehistorystore.TemporalityEffective,
+		}},
+	)
+
+	require.Nil(t, result)
+	require.ErrorContains(t, err, "missing its immutable view trailer")
+}
+
+func TestAggregateVolumes_HistoricalBalanceFailsClosedOnMismatchedView(t *testing.T) {
+	t.Parallel()
+
+	selector := &appctrl.HistoricalBalanceSelector{
+		At:          10,
+		Temporality: balancehistorystore.TemporalityEffective,
+	}
+	for _, tc := range []struct {
+		name string
+		view *appctrl.HistoricalBalanceViewToken
+	}{
+		{
+			name: "requested timestamp",
+			view: &appctrl.HistoricalBalanceViewToken{
+				RequestedAt: 11,
+				Temporality: balancehistorystore.TemporalityEffective,
+				Token:       "wrong-timestamp-view",
+			},
+		},
+		{
+			name: "axis",
+			view: &appctrl.HistoricalBalanceViewToken{
+				RequestedAt: 10,
+				Temporality: balancehistorystore.TemporalityInsertion,
+				Token:       "wrong-axis-view",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockCtrl := gomock.NewController(t)
+			mock := NewMockBucketServiceClient(mockCtrl)
+			mock.EXPECT().AggregateVolumes(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ *servicepb.AggregateVolumesRequest, callOptions ...grpc.CallOption) (*commonpb.AggregateResult, error) {
+					require.Len(t, callOptions, 1)
+					trailerOption, ok := callOptions[0].(grpc.TrailerCallOption)
+					require.True(t, ok)
+					trailer, err := historicalBalanceViewMetadata(tc.view)
+					require.NoError(t, err)
+					*trailerOption.TrailerAddr = trailer
+
+					return &commonpb.AggregateResult{}, nil
+				})
+
+			client := NewLedgerGrpcClient(mock)
+			result, err := client.AggregateVolumes(
+				context.Background(),
+				"ledger1",
+				nil,
+				query.AggregateOptions{},
+				appctrl.AggregateVolumesReadOptions{HistoricalBalance: selector},
+			)
+
+			require.Nil(t, result)
+			require.ErrorContains(t, err, "does not match requested selector")
+		})
+	}
+}
+
+func TestAggregateVolumes_HistoricalBalanceRejectsUnknownClientTemporality(t *testing.T) {
+	t.Parallel()
+
+	mockCtrl := gomock.NewController(t)
+	client := NewLedgerGrpcClient(NewMockBucketServiceClient(mockCtrl))
+	result, err := client.AggregateVolumes(
+		context.Background(),
+		"ledger1",
+		nil,
+		query.AggregateOptions{},
+		appctrl.AggregateVolumesReadOptions{HistoricalBalance: &appctrl.HistoricalBalanceSelector{
+			At:          1,
+			Temporality: balancehistorystore.Temporality(99),
+		}},
+	)
+
+	require.Nil(t, result)
+	require.ErrorContains(t, err, "unknown historical-balance temporality value 99")
 }
 
 func TestListPreparedQueries_Success(t *testing.T) {

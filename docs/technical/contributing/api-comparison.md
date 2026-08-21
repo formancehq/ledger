@@ -6,7 +6,9 @@ This document compares the POC's API with the original Formance ledger API and d
 > `/v3` prefix (e.g. `POST /v3/{ledgerName}/transactions`). Ops endpoints
 > (`/health`, `/livez`, `/readyz`, `/clusterz`, `/_info`, `/debug/pprof`) are
 > intentionally unversioned. The original ledger's `/v2` is **not** preserved
-> by this POC — there is no compatibility shim.
+> by this POC — there is no general compatibility shim. Historical balances
+> use the v3-native `at` and `temporality` vocabulary and cover monetary
+> account volumes only.
 
 ## Summary
 
@@ -56,7 +58,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Get account balances | ⚠️ | ✅ | Included in account volumes |
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
 | Analyze accounts | ✅ | ❌ | Suggest Chart of Accounts from address patterns |
-| Aggregate volumes | ✅ | ✅ | Per-asset aggregated volumes for filtered accounts (direct RPC, no prepared query needed) |
+| Aggregate volumes | ✅ | ✅ | Current or exact historical monetary aggregation for filtered accounts (effective/insertion temporalities; metadata filters remain current) |
 | **Logs** |
 | List logs | ✅ | ✅ | gRPC stream, supports `--filter 'ledger == "foo"'` for per-ledger listing (opt-in index) |
 | **Import/Export** |
@@ -405,6 +407,56 @@ A never-invoked template returns a zero-valued response (not 404), so clients ha
 - `lastUsed` (string, date-time, nullable): Timestamp of the most recent invocation. Absent when count is 0.
 
 On a fresh ledger the counter builds up organically from cursor=0. On an existing ledger whose audit chain has been partially archived to cold storage, only invocations still present in the primary Pebble store are counted.
+
+### Historical balance aggregation
+
+`GET /v3/{ledgerName}/volumes` and the native `AggregateVolumes` gRPC method
+support exact monetary history in addition to current aggregation. Clients
+enable or disable the feature per ledger with the
+`ConfigureHistoricalBalances` apply request. Configuration is audit-bound and
+identical on every replica; changing the projected set triggers a local replay.
+
+| Selector | Meaning |
+|----------|---------|
+| no `at` / no `historical_balance` | Current volume projection |
+| `at=<RFC3339>` | Effective-time history, matching the transaction business timestamp |
+| `at=<RFC3339>&temporality=insertion` | Insertion-time history, matching the FSM-assigned insertion timestamp |
+| gRPC `historical_balance { at, temporality }` | Native selector; `at` is unsigned Unix microseconds and omitted temporality means effective time |
+
+The HTTP timestamp is normalized to Unix microseconds and must not predate the
+Unix epoch. `temporality` is invalid without `at`.
+
+The compatibility boundary is monetary and transport-level only. The v3 route,
+aggregate response, color behavior, and precision behavior remain unchanged;
+there are no new `/v2` routes and no v2 moves API. Metadata, account types,
+schemas, and prepared-query definitions are not historized. A metadata or
+current asset-existence filter is evaluated against one current read-store
+snapshot, while direct address and address-prefix selection reads historical
+account keys. Selecting insertion time does not change those filter semantics.
+
+Every successful historical response is bound to one immutable history
+manifest. HTTP returns a standard-base64-encoded protobuf
+`HistoricalBalanceView` in `X-Historical-Balance-View`; gRPC returns the same
+message in the `x-historical-balance-view-bin` trailer. It identifies the
+normalized requested timestamp, temporality, ledger name, audit/log
+watermarks, manifest version, and opaque token.
+
+Historical balances and `checkpoint_id` are mutually exclusive.
+Query checkpoints freeze the complete applied projection at a pre-created
+cutoff; balance history reconstructs monetary effects at an arbitrary effective or
+insertion timestamp and keeps metadata current.
+
+Historical reads fail closed with `HISTORY_BUILDING`, `HISTORY_BEHIND`,
+`HISTORY_SOURCE_MISSING`, `HISTORY_CORRUPT`, or
+`UNSUPPORTED_TEMPORAL_FILTER`. They never substitute current state, the nearest
+checkpoint or timestamp, or a partial set of history segments.
+
+For the same selected identities and segment topology, age changes seek
+positions rather than requiring replay from ledger creation. Unfiltered reads
+scan account rows because no ledger-level aggregate is persisted. See the
+[historical balance architecture](../architecture/subsystems/read-path/historical-balances.md)
+and its linked performance model.
+
 ### Filter input formats (dual-format contract, EN-1511)
 
 Every filtered surface accepts one `filter` in either the textual `filterexpr`
@@ -689,7 +741,7 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
 | `GET /v3/{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
 | `GET /v3/{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
-| `GET /v3/{ledgerName}/volumes` | ✅ | ✅ | Aggregate volumes (per-asset, generic account `filter`) |
+| `GET /v3/{ledgerName}/volumes` | ✅ | ✅ | Current or historical aggregate volumes (`at` + `temporality`, current metadata semantics) |
 | `GET /v3/{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs. Supports `?after=` for pagination. Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`) on both transports |
 | `GET /v3/{ledgerName}/stats` | ✅ | ✅ | Ledger usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts) |
 | `GET /v3/{ledgerName}` | ✅ | ✅ | Get ledger info |
@@ -810,7 +862,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `AnalyzeAccounts` | Analyze accounts and suggest Chart of Accounts | ✅ |
 | `GetIndexStatus` | Read index builder progress (lag, file size) | ✅ |
 | `GetLedgerStats` | Get aggregate usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts) | ✅ |
-| `AggregateVolumes` | Per-asset aggregated volumes for filtered accounts | ✅ |
+| `AggregateVolumes` | Current or historical per-asset aggregation. History uses additive `historical_balance` field 8, is incompatible with `checkpoint_id`, and returns an immutable `HistoricalBalanceView` trailer | ✅ |
 | `InspectIndex` | Inspect metadata index (distinct values, facets, summary) | ✅ |
 
 ### Apply Method
@@ -895,6 +947,11 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Volume not materialized | `INTERNAL` | `VOLUME_NOT_MATERIALIZED` | `account`, `asset`, `side` |
 | Balance not found | `FAILED_PRECONDITION` | `BALANCE_NOT_FOUND` | `account`, `asset` |
 | Balance not preloaded | `FAILED_PRECONDITION` | `BALANCE_NOT_PRELOADED` | `account`, `asset` |
+| Balance history building | `UNAVAILABLE` | `HISTORY_BUILDING` | `currentLogSequence`, `targetLogSequence` |
+| Balance history behind | `UNAVAILABLE` | `HISTORY_BEHIND` | `currentLogSequence`, `requiredLogSequence` |
+| Balance history source missing | `INTERNAL` | `HISTORY_SOURCE_MISSING` | *(none)* |
+| Balance history corrupt | `INTERNAL` | `HISTORY_CORRUPT` | *(none)* |
+| Unsupported temporal filter | `INVALID_ARGUMENT` | `UNSUPPORTED_TEMPORAL_FILTER` | `filterCategory` when classified |
 | Numscript parse error | `INVALID_ARGUMENT` | `NUMSCRIPT_PARSE_ERROR` | `details` |
 | Numscript runtime error | `INTERNAL` | `NUMSCRIPT_RUNTIME` | `detail` |
 | Numscript not found | `NOT_FOUND` | `NUMSCRIPT_NOT_FOUND` | `name` |
@@ -956,6 +1013,13 @@ The REST adapter uses the same `Describable.Reason()` as the JSON `errorCode` fi
 | `KindUnauthenticated` | 401 Unauthorized |
 | `KindPermissionDenied` | 403 Forbidden |
 | `KindInternal` | 500 Internal Server Error |
+
+For historical balance aggregation this yields HTTP 503 for `HISTORY_BUILDING` and
+`HISTORY_BEHIND`, HTTP 400 for `UNSUPPORTED_TEMPORAL_FILTER`, and HTTP 500 for `HISTORY_SOURCE_MISSING` and
+`HISTORY_CORRUPT`. Only the first two are retryable without repair. The target
+HTTP behavior is to include `Retry-After` for those retryable history reasons
+when the handler can provide a bounded delay; clients must always branch on the
+stable `errorCode`.
 
 **Breaking change in #432**: HTTP `errorCode` JSON field previously used HTTP-specific codes (`"CONFLICT"`, `"NOT_FOUND"`, `"SCRIPT_PARSE_ERROR"`, `"INSUFFICIENT_FUNDS"`, ...) that were sometimes the same as the gRPC Reason and sometimes different. After the Describable refactor (#432) it is uniformly `Reason()` from the table above — e.g. `"LEDGER_ALREADY_EXISTS"` (was `"CONFLICT"`), `"NUMSCRIPT_PARSE_ERROR"` (was `"SCRIPT_PARSE_ERROR"`). Update REST clients to widen pattern matching accordingly.
 

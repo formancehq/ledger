@@ -675,6 +675,16 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x8a
 		}
+	case *Request_ConfigureHistoricalBalances:
+		if v.ConfigureHistoricalBalances != nil {
+			size, _ := v.ConfigureHistoricalBalances.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x2
+			i--
+			dAtA[i] = 0x92
+		}
 	}
 	return len(dAtA) - i, nil
 }
@@ -770,6 +780,17 @@ func (m *SaveLedgerMetadataRequest) MarshalToSizedBufferDeterministicVT(dAtA []b
 }
 
 func (m *DeleteLedgerMetadataRequest) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *ConfigureHistoricalBalancesRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -2490,7 +2511,51 @@ func (m *GetLedgerStatsRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
+func (m *HistoricalBalanceSelector) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *HistoricalBalanceView) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
 func (m *AggregateVolumesRequest) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *GetHistoricalBalancesStatusRequest) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
+}
+
+func (m *GetHistoricalBalancesStatusResponse) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

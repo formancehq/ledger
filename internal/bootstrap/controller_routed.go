@@ -271,13 +271,34 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 }
 
-func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
-	c, _, err := b.readCtrl(ctx)
+func (b *RoutedController) AggregateVolumes(
+	ctx context.Context,
+	ledgerName string,
+	filter *commonpb.QueryFilter,
+	opts query.AggregateOptions,
+	read ctrl.AggregateVolumesReadOptions,
+) (*ctrl.AggregateVolumesResult, error) {
+	routingCtx := ctx
+	cancelRouting := func() {}
+	if read.HistoricalBalance != nil {
+		routingCtx, cancelRouting = antithesisHistoricalBalanceBarrierContext(ctx)
+	}
+	defer cancelRouting()
+
+	c, _, err := b.readCtrl(routingCtx)
 	if err != nil {
+		if read.HistoricalBalance != nil {
+			reachAntithesisHistoricalBalanceBarrierFailure(
+				ctx,
+				b.Node,
+				err,
+			)
+		}
+
 		return nil, err
 	}
 
-	return c.AggregateVolumes(ctx, ledgerName, filter, opts)
+	return c.AggregateVolumes(ctx, ledgerName, filter, opts, read)
 }
 
 func (b *RoutedController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
@@ -296,6 +317,15 @@ func (b *RoutedController) GetMetadataSchemaStatus(ctx context.Context, ledgerNa
 	}
 
 	return c.GetMetadataSchemaStatus(ctx, ledgerName)
+}
+
+func (b *RoutedController) GetHistoricalBalancesStatus(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	c, _, err := b.readCtrl(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.GetHistoricalBalancesStatus(ctx, ledgerName)
 }
 
 func (b *RoutedController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeAccountsResponse, error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -73,10 +74,16 @@ func coldReaderFor(t *testing.T, ctrl *gomock.Controller, chapterID uint64, cold
 	t.Cleanup(func() { _ = handle.Close() })
 
 	reader := NewMockColdChapterReader(ctrl)
+	var releases atomic.Int64
+	t.Cleanup(func() { require.Equal(t, int64(1), releases.Load()) })
 	reader.EXPECT().
-		GetReader(gomock.Any(), chapterID).
-		Return(handle, nil).
-		AnyTimes()
+		AcquireReader(gomock.Any(), chapterID).
+		Return(handle, func() error {
+			releases.Add(1)
+
+			return nil
+		}, nil).
+		Times(1)
 
 	return reader
 }

@@ -710,7 +710,12 @@ message LedgerLogPayload {
     RemovedAccountTypeLog removed_account_type = 11;
     UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 12;
     OrderSkippedLog order_skipped = 13;
+    ConfiguredHistoricalBalancesLog configured_historical_balances = 14;
   }
+}
+
+message ConfiguredHistoricalBalancesLog {
+  bool enabled = 1;
 }
 
 // OrderSkippedLog records an order that the FSM rejected with a business
@@ -1258,6 +1263,11 @@ enum ErrorReason {
   // there within the alignment grace. Retryable (Kind=Unavailable): the fold
   // is behind, not broken. See EN-1748.
   ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP = 69;
+  ERROR_REASON_HISTORY_BUILDING = 70;
+  ERROR_REASON_HISTORY_BEHIND = 71;
+  ERROR_REASON_HISTORY_SOURCE_MISSING = 72;
+  ERROR_REASON_HISTORY_CORRUPT = 73;
+  ERROR_REASON_UNSUPPORTED_TEMPORAL_FILTER = 74;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

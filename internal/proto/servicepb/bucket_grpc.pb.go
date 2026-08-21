@@ -21,45 +21,46 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	BucketService_ListLedgers_FullMethodName             = "/ledger.BucketService/ListLedgers"
-	BucketService_GetLedger_FullMethodName               = "/ledger.BucketService/GetLedger"
-	BucketService_GetAccount_FullMethodName              = "/ledger.BucketService/GetAccount"
-	BucketService_GetTransaction_FullMethodName          = "/ledger.BucketService/GetTransaction"
-	BucketService_ListTransactions_FullMethodName        = "/ledger.BucketService/ListTransactions"
-	BucketService_ListAccounts_FullMethodName            = "/ledger.BucketService/ListAccounts"
-	BucketService_Apply_FullMethodName                   = "/ledger.BucketService/Apply"
-	BucketService_GetPrimaryMetrics_FullMethodName       = "/ledger.BucketService/GetPrimaryMetrics"
-	BucketService_GetSecondaryMetrics_FullMethodName     = "/ledger.BucketService/GetSecondaryMetrics"
-	BucketService_CheckStore_FullMethodName              = "/ledger.BucketService/CheckStore"
-	BucketService_ListAuditEntries_FullMethodName        = "/ledger.BucketService/ListAuditEntries"
-	BucketService_GetAuditEntry_FullMethodName           = "/ledger.BucketService/GetAuditEntry"
-	BucketService_GetEventsSinks_FullMethodName          = "/ledger.BucketService/GetEventsSinks"
-	BucketService_ListChapters_FullMethodName            = "/ledger.BucketService/ListChapters"
-	BucketService_ListLogs_FullMethodName                = "/ledger.BucketService/ListLogs"
-	BucketService_GetLog_FullMethodName                  = "/ledger.BucketService/GetLog"
-	BucketService_GetChapterSchedule_FullMethodName      = "/ledger.BucketService/GetChapterSchedule"
-	BucketService_ListSigningKeys_FullMethodName         = "/ledger.BucketService/ListSigningKeys"
-	BucketService_Discovery_FullMethodName               = "/ledger.BucketService/Discovery"
-	BucketService_GetMetadataSchemaStatus_FullMethodName = "/ledger.BucketService/GetMetadataSchemaStatus"
-	BucketService_AnalyzeAccounts_FullMethodName         = "/ledger.BucketService/AnalyzeAccounts"
-	BucketService_AnalyzeTransactions_FullMethodName     = "/ledger.BucketService/AnalyzeTransactions"
-	BucketService_CreatePreparedQuery_FullMethodName     = "/ledger.BucketService/CreatePreparedQuery"
-	BucketService_UpdatePreparedQuery_FullMethodName     = "/ledger.BucketService/UpdatePreparedQuery"
-	BucketService_DeletePreparedQuery_FullMethodName     = "/ledger.BucketService/DeletePreparedQuery"
-	BucketService_ListPreparedQueries_FullMethodName     = "/ledger.BucketService/ListPreparedQueries"
-	BucketService_ExecutePreparedQuery_FullMethodName    = "/ledger.BucketService/ExecutePreparedQuery"
-	BucketService_GetIndexStatus_FullMethodName          = "/ledger.BucketService/GetIndexStatus"
-	BucketService_GetIndex_FullMethodName                = "/ledger.BucketService/GetIndex"
-	BucketService_GetIndexEntryStatus_FullMethodName     = "/ledger.BucketService/GetIndexEntryStatus"
-	BucketService_ListIndexes_FullMethodName             = "/ledger.BucketService/ListIndexes"
-	BucketService_GetLedgerStats_FullMethodName          = "/ledger.BucketService/GetLedgerStats"
-	BucketService_AggregateVolumes_FullMethodName        = "/ledger.BucketService/AggregateVolumes"
-	BucketService_GetNumscript_FullMethodName            = "/ledger.BucketService/GetNumscript"
-	BucketService_ListNumscripts_FullMethodName          = "/ledger.BucketService/ListNumscripts"
-	BucketService_GetTemplateUsage_FullMethodName        = "/ledger.BucketService/GetTemplateUsage"
-	BucketService_ListNumscriptVersions_FullMethodName   = "/ledger.BucketService/ListNumscriptVersions"
-	BucketService_InspectIndex_FullMethodName            = "/ledger.BucketService/InspectIndex"
-	BucketService_Barrier_FullMethodName                 = "/ledger.BucketService/Barrier"
+	BucketService_ListLedgers_FullMethodName                 = "/ledger.BucketService/ListLedgers"
+	BucketService_GetLedger_FullMethodName                   = "/ledger.BucketService/GetLedger"
+	BucketService_GetAccount_FullMethodName                  = "/ledger.BucketService/GetAccount"
+	BucketService_GetTransaction_FullMethodName              = "/ledger.BucketService/GetTransaction"
+	BucketService_ListTransactions_FullMethodName            = "/ledger.BucketService/ListTransactions"
+	BucketService_ListAccounts_FullMethodName                = "/ledger.BucketService/ListAccounts"
+	BucketService_Apply_FullMethodName                       = "/ledger.BucketService/Apply"
+	BucketService_GetPrimaryMetrics_FullMethodName           = "/ledger.BucketService/GetPrimaryMetrics"
+	BucketService_GetSecondaryMetrics_FullMethodName         = "/ledger.BucketService/GetSecondaryMetrics"
+	BucketService_CheckStore_FullMethodName                  = "/ledger.BucketService/CheckStore"
+	BucketService_ListAuditEntries_FullMethodName            = "/ledger.BucketService/ListAuditEntries"
+	BucketService_GetAuditEntry_FullMethodName               = "/ledger.BucketService/GetAuditEntry"
+	BucketService_GetEventsSinks_FullMethodName              = "/ledger.BucketService/GetEventsSinks"
+	BucketService_ListChapters_FullMethodName                = "/ledger.BucketService/ListChapters"
+	BucketService_ListLogs_FullMethodName                    = "/ledger.BucketService/ListLogs"
+	BucketService_GetLog_FullMethodName                      = "/ledger.BucketService/GetLog"
+	BucketService_GetChapterSchedule_FullMethodName          = "/ledger.BucketService/GetChapterSchedule"
+	BucketService_ListSigningKeys_FullMethodName             = "/ledger.BucketService/ListSigningKeys"
+	BucketService_Discovery_FullMethodName                   = "/ledger.BucketService/Discovery"
+	BucketService_GetMetadataSchemaStatus_FullMethodName     = "/ledger.BucketService/GetMetadataSchemaStatus"
+	BucketService_AnalyzeAccounts_FullMethodName             = "/ledger.BucketService/AnalyzeAccounts"
+	BucketService_AnalyzeTransactions_FullMethodName         = "/ledger.BucketService/AnalyzeTransactions"
+	BucketService_CreatePreparedQuery_FullMethodName         = "/ledger.BucketService/CreatePreparedQuery"
+	BucketService_UpdatePreparedQuery_FullMethodName         = "/ledger.BucketService/UpdatePreparedQuery"
+	BucketService_DeletePreparedQuery_FullMethodName         = "/ledger.BucketService/DeletePreparedQuery"
+	BucketService_ListPreparedQueries_FullMethodName         = "/ledger.BucketService/ListPreparedQueries"
+	BucketService_ExecutePreparedQuery_FullMethodName        = "/ledger.BucketService/ExecutePreparedQuery"
+	BucketService_GetIndexStatus_FullMethodName              = "/ledger.BucketService/GetIndexStatus"
+	BucketService_GetIndex_FullMethodName                    = "/ledger.BucketService/GetIndex"
+	BucketService_GetIndexEntryStatus_FullMethodName         = "/ledger.BucketService/GetIndexEntryStatus"
+	BucketService_ListIndexes_FullMethodName                 = "/ledger.BucketService/ListIndexes"
+	BucketService_GetLedgerStats_FullMethodName              = "/ledger.BucketService/GetLedgerStats"
+	BucketService_AggregateVolumes_FullMethodName            = "/ledger.BucketService/AggregateVolumes"
+	BucketService_GetHistoricalBalancesStatus_FullMethodName = "/ledger.BucketService/GetHistoricalBalancesStatus"
+	BucketService_GetNumscript_FullMethodName                = "/ledger.BucketService/GetNumscript"
+	BucketService_ListNumscripts_FullMethodName              = "/ledger.BucketService/ListNumscripts"
+	BucketService_GetTemplateUsage_FullMethodName            = "/ledger.BucketService/GetTemplateUsage"
+	BucketService_ListNumscriptVersions_FullMethodName       = "/ledger.BucketService/ListNumscriptVersions"
+	BucketService_InspectIndex_FullMethodName                = "/ledger.BucketService/InspectIndex"
+	BucketService_Barrier_FullMethodName                     = "/ledger.BucketService/Barrier"
 )
 
 // BucketServiceClient is the client API for BucketService service.
@@ -136,6 +137,8 @@ type BucketServiceClient interface {
 	GetLedgerStats(ctx context.Context, in *GetLedgerStatsRequest, opts ...grpc.CallOption) (*commonpb.LedgerStats, error)
 	// AggregateVolumes returns per-asset aggregated volumes for filtered accounts
 	AggregateVolumes(ctx context.Context, in *AggregateVolumesRequest, opts ...grpc.CallOption) (*commonpb.AggregateResult, error)
+	// GetHistoricalBalancesStatus returns this replica's projection state for a ledger.
+	GetHistoricalBalancesStatus(ctx context.Context, in *GetHistoricalBalancesStatusRequest, opts ...grpc.CallOption) (*GetHistoricalBalancesStatusResponse, error)
 	// GetNumscript returns a numscript by name and optional version
 	GetNumscript(ctx context.Context, in *GetNumscriptRequest, opts ...grpc.CallOption) (*commonpb.NumscriptInfo, error)
 	// ListNumscripts streams all numscripts (latest version of each)
@@ -592,6 +595,16 @@ func (c *bucketServiceClient) AggregateVolumes(ctx context.Context, in *Aggregat
 	return out, nil
 }
 
+func (c *bucketServiceClient) GetHistoricalBalancesStatus(ctx context.Context, in *GetHistoricalBalancesStatusRequest, opts ...grpc.CallOption) (*GetHistoricalBalancesStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetHistoricalBalancesStatusResponse)
+	err := c.cc.Invoke(ctx, BucketService_GetHistoricalBalancesStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *bucketServiceClient) GetNumscript(ctx context.Context, in *GetNumscriptRequest, opts ...grpc.CallOption) (*commonpb.NumscriptInfo, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(commonpb.NumscriptInfo)
@@ -735,6 +748,8 @@ type BucketServiceServer interface {
 	GetLedgerStats(context.Context, *GetLedgerStatsRequest) (*commonpb.LedgerStats, error)
 	// AggregateVolumes returns per-asset aggregated volumes for filtered accounts
 	AggregateVolumes(context.Context, *AggregateVolumesRequest) (*commonpb.AggregateResult, error)
+	// GetHistoricalBalancesStatus returns this replica's projection state for a ledger.
+	GetHistoricalBalancesStatus(context.Context, *GetHistoricalBalancesStatusRequest) (*GetHistoricalBalancesStatusResponse, error)
 	// GetNumscript returns a numscript by name and optional version
 	GetNumscript(context.Context, *GetNumscriptRequest) (*commonpb.NumscriptInfo, error)
 	// ListNumscripts streams all numscripts (latest version of each)
@@ -860,6 +875,9 @@ func (UnimplementedBucketServiceServer) GetLedgerStats(context.Context, *GetLedg
 }
 func (UnimplementedBucketServiceServer) AggregateVolumes(context.Context, *AggregateVolumesRequest) (*commonpb.AggregateResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method AggregateVolumes not implemented")
+}
+func (UnimplementedBucketServiceServer) GetHistoricalBalancesStatus(context.Context, *GetHistoricalBalancesStatusRequest) (*GetHistoricalBalancesStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetHistoricalBalancesStatus not implemented")
 }
 func (UnimplementedBucketServiceServer) GetNumscript(context.Context, *GetNumscriptRequest) (*commonpb.NumscriptInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetNumscript not implemented")
@@ -1417,6 +1435,24 @@ func _BucketService_AggregateVolumes_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BucketService_GetHistoricalBalancesStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetHistoricalBalancesStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BucketServiceServer).GetHistoricalBalancesStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BucketService_GetHistoricalBalancesStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BucketServiceServer).GetHistoricalBalancesStatus(ctx, req.(*GetHistoricalBalancesStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _BucketService_GetNumscript_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetNumscriptRequest)
 	if err := dec(in); err != nil {
@@ -1612,6 +1648,10 @@ var BucketService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AggregateVolumes",
 			Handler:    _BucketService_AggregateVolumes_Handler,
+		},
+		{
+			MethodName: "GetHistoricalBalancesStatus",
+			Handler:    _BucketService_GetHistoricalBalancesStatus_Handler,
 		},
 		{
 			MethodName: "GetNumscript",

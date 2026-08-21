@@ -69,7 +69,8 @@ type Controller interface {
 	AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeTransactionsResponse, error)
 
 	// Aggregation operations
-	AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error)
+	AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions, read AggregateVolumesReadOptions) (*AggregateVolumesResult, error)
+	GetHistoricalBalancesStatus(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error)
 
 	// Prepared query operations (read-only)
 	ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error)

@@ -2,6 +2,7 @@ package coldstorage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -36,12 +37,18 @@ type ColdReader struct {
 	lru         []uint64 // eviction order, oldest first
 	logger      logging.Logger
 	stopSweep   chan struct{}
+	closed      bool
 }
 
 type cachedChapter struct {
-	db         *pebble.DB
-	lastAccess time.Time
+	db              *pebble.DB
+	lastAccess      time.Time
+	leases          int
+	evictionPending bool
 }
+
+// ErrReaderClosed is returned when a read is requested after ColdReader.Close.
+var ErrReaderClosed = errors.New("cold reader is closed")
 
 // NewColdReader creates a ColdReader that caches up to maxCached opened Pebble DBs.
 // Entries unused for longer than ttl are evicted in the background.
@@ -72,18 +79,52 @@ func NewColdReader(
 	return r
 }
 
-// GetReader returns a PebbleReader for the given archived chapter.
-// It downloads and caches the SST file if not already cached.
-func (r *ColdReader) GetReader(ctx context.Context, chapterID uint64) (dal.PebbleReader, error) {
+// AcquireReader returns a cached chapter reader protected from LRU, TTL, and
+// shutdown eviction until release is called. release is idempotent, reports
+// impossible lease-state violations, and must be called as soon as the caller
+// finishes every point lookup and iterator that uses the returned reader.
+func (r *ColdReader) AcquireReader(
+	ctx context.Context,
+	chapterID uint64,
+) (dal.PebbleReader, func() error, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	cached, err := r.getOrLoadLocked(ctx, chapterID)
+	if err != nil {
+		r.mu.Unlock()
+
+		return nil, nil, err
+	}
+	cached.leases++
+	r.mu.Unlock()
+
+	var (
+		once       sync.Once
+		releaseErr error
+	)
+	release := func() error {
+		once.Do(func() {
+			releaseErr = r.releaseChapter(chapterID, cached)
+		})
+
+		return releaseErr
+	}
+
+	return cached.db, release, nil
+}
+
+// getOrLoadLocked returns the cached chapter, downloading and ingesting it on
+// a miss. The caller must hold r.mu.
+func (r *ColdReader) getOrLoadLocked(ctx context.Context, chapterID uint64) (*cachedChapter, error) {
+	if r.closed {
+		return nil, ErrReaderClosed
+	}
 
 	// Cache hit
 	if cached, ok := r.cache[chapterID]; ok {
 		cached.lastAccess = time.Now()
 		r.touchLRU(chapterID)
 
-		return cached.db, nil
+		return cached, nil
 	}
 
 	// Cache miss: fetch, ingest, cache
@@ -106,15 +147,72 @@ func (r *ColdReader) GetReader(ctx context.Context, chapterID uint64) (dal.Pebbl
 		return nil, fmt.Errorf("ingesting SST for chapter %d: %w", chapterID, err)
 	}
 
-	// Evict oldest if at capacity
-	if len(r.cache) >= r.maxCached {
+	// Evict unleased entries before inserting. If every candidate is leased,
+	// temporarily exceed the capacity; releaseChapter will converge the cache
+	// once a lease ends.
+	for len(r.cache) >= r.capacity() {
+		before := len(r.cache)
 		r.evictOldest()
+		if len(r.cache) == before {
+			break
+		}
 	}
 
-	r.cache[chapterID] = &cachedChapter{db: db, lastAccess: time.Now()}
+	cached := &cachedChapter{db: db, lastAccess: time.Now()}
+	r.cache[chapterID] = cached
 	r.lru = append(r.lru, chapterID)
 
-	return db, nil
+	return cached, nil
+}
+
+func (r *ColdReader) capacity() int {
+	if r.maxCached <= 0 {
+		return 1
+	}
+
+	return r.maxCached
+}
+
+func (r *ColdReader) releaseChapter(chapterID uint64, leased *cachedChapter) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	cached, ok := r.cache[chapterID]
+	if !ok {
+		return fmt.Errorf("invariant: releasing cold reader lease for chapter %d but cache entry is absent", chapterID)
+	}
+	if cached != leased {
+		return fmt.Errorf("invariant: releasing stale cold reader lease for chapter %d", chapterID)
+	}
+	if cached.leases <= 0 {
+		return fmt.Errorf("invariant: releasing cold reader lease for chapter %d with zero refcount", chapterID)
+	}
+	cached.leases--
+	cached.lastAccess = time.Now()
+	if cached.leases > 0 {
+		return nil
+	}
+	if r.closed || cached.evictionPending {
+		r.evictByID(chapterID)
+
+		return nil
+	}
+
+	r.evictToCapacity()
+
+	return nil
+}
+
+// evictToCapacity removes the oldest unleased entries until the configured
+// bound is restored. The caller must hold r.mu.
+func (r *ColdReader) evictToCapacity() {
+	for len(r.cache) > r.capacity() {
+		before := len(r.cache)
+		r.evictOldest()
+		if len(r.cache) == before {
+			return
+		}
+	}
 }
 
 func (r *ColdReader) downloadSST(ctx context.Context, chapterID uint64, destPath string) error {
@@ -185,21 +283,20 @@ func (r *ColdReader) touchLRU(chapterID uint64) {
 }
 
 func (r *ColdReader) evictOldest() {
-	if len(r.lru) == 0 {
+	for _, id := range r.lru {
+		cached, ok := r.cache[id]
+		if !ok {
+			continue
+		}
+		if cached.leases > 0 {
+			cached.evictionPending = true
+
+			continue
+		}
+
+		r.evictByID(id)
+
 		return
-	}
-
-	oldest := r.lru[0]
-	r.lru = r.lru[1:]
-
-	if cached, ok := r.cache[oldest]; ok {
-		r.logger.WithFields(map[string]any{"chapterId": oldest}).Infof("Evicting cached chapter")
-
-		_ = cached.db.Close()
-		delete(r.cache, oldest)
-
-		chapterDir := filepath.Join(r.cacheDir, "chapter-"+strconv.FormatUint(oldest, 10))
-		_ = os.RemoveAll(chapterDir)
 	}
 }
 
@@ -227,6 +324,11 @@ func (r *ColdReader) sweepExpired() {
 
 	for id, cached := range r.cache {
 		if now.Sub(cached.lastAccess) > r.ttl {
+			if cached.leases > 0 {
+				cached.evictionPending = true
+
+				continue
+			}
 			expired = append(expired, id)
 		}
 	}
@@ -241,8 +343,13 @@ func (r *ColdReader) evictByID(id uint64) {
 	if !ok {
 		return
 	}
+	if cached.leases > 0 {
+		cached.evictionPending = true
 
-	r.logger.WithFields(map[string]any{"chapterId": id}).Infof("Evicting expired cached chapter")
+		return
+	}
+
+	r.logger.WithFields(map[string]any{"chapterId": id}).Infof("Evicting cached chapter")
 
 	_ = cached.db.Close()
 	delete(r.cache, id)
@@ -260,22 +367,24 @@ func (r *ColdReader) evictByID(id uint64) {
 	_ = os.RemoveAll(chapterDir)
 }
 
-// Close closes all cached Pebble databases and removes the cache directory contents.
+// Close prevents new reads, closes every unleased Pebble database, and marks
+// leased chapters for cleanup by their final release callback. It is idempotent.
 func (r *ColdReader) Close() error {
-	close(r.stopSweep)
-
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
-	for id, cached := range r.cache {
-		_ = cached.db.Close()
-
-		chapterDir := filepath.Join(r.cacheDir, "chapter-"+strconv.FormatUint(id, 10))
-		_ = os.RemoveAll(chapterDir)
+	if r.closed {
+		return nil
 	}
+	r.closed = true
+	close(r.stopSweep)
 
-	r.cache = make(map[uint64]*cachedChapter)
-	r.lru = nil
+	ids := make([]uint64, 0, len(r.cache))
+	for id := range r.cache {
+		ids = append(ids, id)
+	}
+	for _, id := range ids {
+		r.evictByID(id)
+	}
 
 	return nil
 }

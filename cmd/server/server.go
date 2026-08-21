@@ -104,6 +104,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 
 	// Add trace sampling flags
 	addTraceSamplingFlags(runCmd.Flags())
+	addBalanceHistoryFlags(runCmd)
 
 	// Add application-specific flags
 	runCmd.Flags().Uint64("node-id", 0, "Numeric node ID for this instance (must be non-zero)")
@@ -657,6 +658,9 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 		RetryCount:     getInt("snapshot-retry-count", 5),
 		FileRetryCount: getInt("snapshot-file-retry-count", 3),
 	}
+
+	// Asynchronous historical-balance projection.
+	cfg.BalanceHistoryConfig = balanceHistoryConfigFromFlags(cmd)
 
 	// Configuration safety
 	cfg.UnsafeSkipConfigValidation = getBool("unsafe-skip-config-validation", false)

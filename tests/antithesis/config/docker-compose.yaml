@@ -46,6 +46,15 @@ x-ledger-common: &ledger-common
     AWS_ACCESS_KEY_ID: "minioadmin"
     AWS_SECRET_ACCESS_KEY: "minioadmin"
 
+    # Historical-balance projection cadence. Ledger scope is configured by the
+    # workload through the client API.
+    BALANCE_HISTORY_BUILDER_BATCH_SIZE: "32"
+    BALANCE_HISTORY_BACKFILL_YIELD: "1ms"
+    BALANCE_HISTORY_SEGMENT_COMPACTION_THRESHOLD: "2"
+    BALANCE_HISTORY_MAINTENANCE_INTERVAL: "200ms"
+    BALANCE_HISTORY_MAX_COMPACTIONS_PER_PASS: "1"
+    BALANCE_HISTORY_WAL_SYNC_INTERVAL: "5s"
+
 services:
   etcd-0:
     <<: *etcd-common
@@ -160,7 +169,7 @@ services:
         if [ -d "/data/app/checkpoints" ] && [ "$(ls -A /data/app/checkpoints 2>/dev/null)" ]; then
           JOIN_FLAG=""
         else
-          JOIN_FLAG="--join ledger-0:8888"
+          JOIN_FLAG="--join ledger-0:7777"
         fi
         exec ./ledger-server run \
           --node-id 2 \
@@ -185,7 +194,7 @@ services:
         if [ -d "/data/app/checkpoints" ] && [ "$(ls -A /data/app/checkpoints 2>/dev/null)" ]; then
           JOIN_FLAG=""
         else
-          JOIN_FLAG="--join ledger-0:8888"
+          JOIN_FLAG="--join ledger-0:7777"
         fi
         exec ./ledger-server run \
           --node-id 3 \

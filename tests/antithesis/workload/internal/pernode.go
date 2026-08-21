@@ -81,8 +81,14 @@ func nodeAddresses() []string {
 
 // DialPerNode opens one single-target gRPC connection per node address in
 // LEDGER_PER_NODE_GRPC_ADDR. Each connection uses the same insecure credentials
-// and UNAVAILABLE retry interceptors as NewGRPCConn but dials a SINGLE target
-// (no round-robin), so reads are attributable to the node that received them.
+// as NewGRPCConn but dials a SINGLE target (no round-robin), so reads are
+// attributable to the node that received them. retryEnabled preserves the
+// historical UNAVAILABLE retry behavior; false makes each RPC one temporally
+// attributable attempt for partition or ambiguous-response properties once
+// the caller has a server acknowledgement. grpc-go may still transparently
+// retry before an RPC reaches the server; `WithDisableRetry` disables only
+// configured retries, so temporal properties must not count an unacknowledged
+// attempt as coverage.
 //
 // Dialing is error-tolerant: grpc.NewClient is lazy and never fails on an
 // unreachable address, so a node that is down is simply skipped at read time
@@ -92,10 +98,12 @@ func nodeAddresses() []string {
 // Each connection's NodeID is best-effort resolved once from the local node's
 // GetClusterState; if the node is unreachable at dial time the NodeID stays 0
 // and the connection is still returned (keyed by Addr).
-func DialPerNode(ctx context.Context) (PerNodeConns, error) {
+func DialPerNode(ctx context.Context, retryEnabled bool) (PerNodeConns, error) {
 	addrs := nodeAddresses()
 
-	serviceConfig := `{
+	serviceConfig := `{}`
+	if retryEnabled {
+		serviceConfig = `{
 		"methodConfig": [{
 			"name": [{}],
 			"retryPolicy": {
@@ -107,12 +115,23 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 			}
 		}]
 	}`
+	}
 
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(serviceConfig),
-		grpc.WithUnaryInterceptor(retryUnaryInterceptor(retryMaxAttempts)),
-		grpc.WithStreamInterceptor(retryStreamInterceptor(retryMaxAttempts)),
+	}
+	if retryEnabled {
+		opts = append(opts,
+			grpc.WithUnaryInterceptor(retryUnaryInterceptor(retryMaxAttempts)),
+			grpc.WithStreamInterceptor(retryStreamInterceptor(retryMaxAttempts)),
+		)
+	} else {
+		opts = append(opts,
+			grpc.WithDisableRetry(),
+			grpc.WithUnaryInterceptor(classifyUnaryInterceptor()),
+			grpc.WithStreamInterceptor(classifyStreamInterceptor()),
+		)
 	}
 
 	var conns PerNodeConns

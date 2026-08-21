@@ -2330,6 +2330,19 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 				},
 			},
 		})
+	case *servicepb.Request_ConfigureHistoricalBalances:
+		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
+			Ledger: reqType.ConfigureHistoricalBalances.GetLedger(),
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+				Apply: &raftcmdpb.LedgerApplyOrder{
+					Data: &raftcmdpb.LedgerApplyOrder_ConfigureHistoricalBalances{
+						ConfigureHistoricalBalances: &raftcmdpb.ConfigureHistoricalBalancesOrder{
+							Enabled: reqType.ConfigureHistoricalBalances.GetEnabled(),
+						},
+					},
+				},
+			},
+		})
 	default:
 		return nil, fmt.Errorf("unsupported request type: %T", req.GetType())
 	}

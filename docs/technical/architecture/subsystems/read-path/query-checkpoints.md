@@ -2,6 +2,12 @@
 
 Query checkpoints are coordinated point-in-time snapshots of both the main Pebble store and the read index. They enable consistent historical queries without affecting live operations.
 
+They capture **applied state at a pre-created cutoff**. They do not implement
+arbitrary effective-time history: a later-inserted backdated transaction cannot
+appear in an older checkpoint. For the accepted effective/insertion-time
+monetary-history design, see
+[historical-balances.md](historical-balances.md).
+
 ## Lifecycle
 
 1. **Create** via `ledgerctl query-checkpoint create` or automatic cron schedule.

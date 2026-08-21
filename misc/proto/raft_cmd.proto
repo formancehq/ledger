@@ -285,6 +285,7 @@ message LedgerApplyOrder {
     AddAccountTypeOrder add_account_type = 9;
     RemoveAccountTypeOrder remove_account_type = 10;
     UpdateDefaultEnforcementModeOrder update_default_enforcement_mode = 11;
+    ConfigureHistoricalBalancesOrder configure_historical_balances = 13;
   }
   // skippable_reasons opts the apply order into a "continue-on-failure"
   // mode: when the FSM produces a business error whose `Reason()`
@@ -311,6 +312,10 @@ message LedgerApplyOrder {
   // SystemScoped signing key operations, chapter management, etc.
   // have no business error that maps to a legitimate skip semantic.
   repeated common.ErrorReason skippable_reasons = 12;
+}
+
+message ConfigureHistoricalBalancesOrder {
+  bool enabled = 1;
 }
 
 // CreateIndexOrder requests the creation of a new index.
@@ -802,4 +807,3 @@ message AttributeID {
   bytes id = 1;           // 16-byte U128 identifier
   fixed64 tag = 2;
 }
-

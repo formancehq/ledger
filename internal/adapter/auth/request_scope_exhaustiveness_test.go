@@ -109,12 +109,13 @@ func TestRequiredScopeForLedgerApply_ProtoExhaustive(t *testing.T) {
 func requestScopeCases() map[string]scopeCase {
 	return map[string]scopeCase{
 		// Ledger lifecycle — HTTP requireLedgersWrite group (handler.go:172-179).
-		"create_ledger":  {&servicepb.Request{Type: &servicepb.Request_CreateLedger{}}, ScopeLedgersWrite},
-		"delete_ledger":  {&servicepb.Request{Type: &servicepb.Request_DeleteLedger{}}, ScopeLedgersWrite},
-		"promote_ledger": {&servicepb.Request{Type: &servicepb.Request_PromoteLedger{}}, ScopeLedgersWrite},
-		"create_index":   {&servicepb.Request{Type: &servicepb.Request_CreateIndex{}}, ScopeLedgersWrite},
-		"drop_index":     {&servicepb.Request{Type: &servicepb.Request_DropIndex{}}, ScopeLedgersWrite},
-		"save_numscript": {&servicepb.Request{Type: &servicepb.Request_SaveNumscript{}}, ScopeLedgersWrite},
+		"create_ledger":                 {&servicepb.Request{Type: &servicepb.Request_CreateLedger{}}, ScopeLedgersWrite},
+		"delete_ledger":                 {&servicepb.Request{Type: &servicepb.Request_DeleteLedger{}}, ScopeLedgersWrite},
+		"promote_ledger":                {&servicepb.Request{Type: &servicepb.Request_PromoteLedger{}}, ScopeLedgersWrite},
+		"create_index":                  {&servicepb.Request{Type: &servicepb.Request_CreateIndex{}}, ScopeLedgersWrite},
+		"drop_index":                    {&servicepb.Request{Type: &servicepb.Request_DropIndex{}}, ScopeLedgersWrite},
+		"save_numscript":                {&servicepb.Request{Type: &servicepb.Request_SaveNumscript{}}, ScopeLedgersWrite},
+		"configure_historical_balances": {&servicepb.Request{Type: &servicepb.Request_ConfigureHistoricalBalances{}}, ScopeLedgersWrite},
 
 		// Cluster operations — ClusterService requires ledger:ClusterWrite
 		// (server_cluster.go:442, 481), granted only by ledger:admin.

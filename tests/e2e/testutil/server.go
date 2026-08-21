@@ -398,3 +398,47 @@ func SetupSingleNode(extra ...testservice.Instrumentation) (context.Context, *Se
 		lease:         lease,
 	}
 }
+
+// ConfigureHistoricalBalances changes the ledger-scoped projection through
+// the same client API used by production callers.
+func ConfigureHistoricalBalances(
+	ctx context.Context,
+	client servicepb.BucketServiceClient,
+	ledger string,
+	enabled bool,
+) error {
+	response, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		Type: &servicepb.Request_ConfigureHistoricalBalances{
+			ConfigureHistoricalBalances: &servicepb.ConfigureHistoricalBalancesRequest{
+				Ledger:  ledger,
+				Enabled: enabled,
+			},
+		},
+	}))
+	if err != nil {
+		return fmt.Errorf("configuring historical balances for ledger %q: %w", ledger, err)
+	}
+	if len(response.GetLogs()) != 1 ||
+		response.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetConfiguredHistoricalBalances() == nil {
+		return fmt.Errorf("configuring historical balances for ledger %q: unexpected response", ledger)
+	}
+
+	return nil
+}
+
+// WaitForHistoricalBalancesReady waits until this replica has rebuilt the
+// client-configured ledger projection.
+func WaitForHistoricalBalancesReady(
+	ctx context.Context,
+	client servicepb.BucketServiceClient,
+	ledger string,
+) {
+	Eventually(func(g Gomega) {
+		status, err := client.GetHistoricalBalancesStatus(ctx, &servicepb.GetHistoricalBalancesStatusRequest{
+			Ledger: ledger,
+		})
+		g.Expect(err).To(Succeed())
+		g.Expect(status.GetState()).To(Equal(servicepb.GetHistoricalBalancesStatusResponse_STATE_READY),
+			status.GetError())
+	}).Within(30 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+}

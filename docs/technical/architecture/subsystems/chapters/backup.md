@@ -158,7 +158,7 @@ The Operator's `Backup` CRD (`misc/operator/api/v1alpha1/`) wraps backups behind
 ## What backup doesn't do
 
 - **It does not back up cold storage wholesale.** Cold storage is durable by the driver's own guarantees. A full checkpoint reconstructs only the hot Pebble database; chapters archived before it stay in their cold-storage location and the restored cluster reads them through the same `coldstorage.Reader` interface. (Ranges archived *inside an incremental export window* are the exception — those are backfilled into the backup chain, see above.)
-- **It does not provide point-in-time queries.** A backup is a *Pebble* snapshot, not a logical "as of this transaction" snapshot. For point-in-time logical reads, use [query checkpoints](../read-path/query-checkpoints.md) instead.
+- **It does not provide historical queries.** A backup is a *Pebble* snapshot, not a logical "as of" read model. Use [query checkpoints](../read-path/query-checkpoints.md) for explicitly materialized applied-state snapshots, or [historical balances](../read-path/historical-balances.md) for effective- or insertion-time monetary aggregation.
 - **It does not retain by policy.** Retention (how many manifests to keep, how long incremental segments live) is operator-driven. The system will happily back up to the same destination forever.
 
 ## Where to look in the code

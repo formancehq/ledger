@@ -2744,6 +2744,73 @@ func NewLedgerApplyOrderListReader(s []*LedgerApplyOrder) LedgerApplyOrderListRe
 	return ledgerApplyOrderListReadonly(s)
 }
 
+// ConfigureHistoricalBalancesOrderReader provides read-only access to ConfigureHistoricalBalancesOrder.
+// Call Mutate() to obtain a mutable clone.
+type ConfigureHistoricalBalancesOrderReader interface {
+	GetEnabled() bool
+	Mutate() *ConfigureHistoricalBalancesOrder
+}
+
+type configureHistoricalBalancesOrderReadonly ConfigureHistoricalBalancesOrder
+
+func (r *configureHistoricalBalancesOrderReadonly) GetEnabled() bool {
+	return (*ConfigureHistoricalBalancesOrder)(r).GetEnabled()
+}
+
+func (r *configureHistoricalBalancesOrderReadonly) Mutate() *ConfigureHistoricalBalancesOrder {
+	return (*ConfigureHistoricalBalancesOrder)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ConfigureHistoricalBalancesOrder.
+func (m *ConfigureHistoricalBalancesOrder) AsReader() ConfigureHistoricalBalancesOrderReader {
+	if m == nil {
+		return nil
+	}
+	return (*configureHistoricalBalancesOrderReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ConfigureHistoricalBalancesOrder.
+func (m *ConfigureHistoricalBalancesOrder) Mutate() *ConfigureHistoricalBalancesOrder {
+	return m.CloneVT()
+}
+
+// ConfigureHistoricalBalancesOrderListReader provides read-only iteration over []*ConfigureHistoricalBalancesOrder.
+type ConfigureHistoricalBalancesOrderListReader interface {
+	Len() int
+	Get(i int) ConfigureHistoricalBalancesOrderReader
+	Range(yield func(int, ConfigureHistoricalBalancesOrderReader) bool)
+}
+
+type configureHistoricalBalancesOrderListReadonly []*ConfigureHistoricalBalancesOrder
+
+func (l configureHistoricalBalancesOrderListReadonly) Len() int { return len(l) }
+
+func (l configureHistoricalBalancesOrderListReadonly) Get(i int) ConfigureHistoricalBalancesOrderReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l configureHistoricalBalancesOrderListReadonly) Range(yield func(int, ConfigureHistoricalBalancesOrderReader) bool) {
+	for i, v := range l {
+		var r ConfigureHistoricalBalancesOrderReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewConfigureHistoricalBalancesOrderListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewConfigureHistoricalBalancesOrderListReader(s []*ConfigureHistoricalBalancesOrder) ConfigureHistoricalBalancesOrderListReader {
+	return configureHistoricalBalancesOrderListReadonly(s)
+}
+
 // CreateIndexOrderReader provides read-only access to CreateIndexOrder.
 // Call Mutate() to obtain a mutable clone.
 type CreateIndexOrderReader interface {

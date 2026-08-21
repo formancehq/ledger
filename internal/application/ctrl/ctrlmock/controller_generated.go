@@ -45,18 +45,18 @@ func (m *MockController) EXPECT() *MockControllerMockRecorder {
 }
 
 // AggregateVolumes mocks base method.
-func (m *MockController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
+func (m *MockController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions, read ctrl.AggregateVolumesReadOptions) (*ctrl.AggregateVolumesResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AggregateVolumes", ctx, ledgerName, filter, opts)
-	ret0, _ := ret[0].(*commonpb.AggregateResult)
+	ret := m.ctrl.Call(m, "AggregateVolumes", ctx, ledgerName, filter, opts, read)
+	ret0, _ := ret[0].(*ctrl.AggregateVolumesResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AggregateVolumes indicates an expected call of AggregateVolumes.
-func (mr *MockControllerMockRecorder) AggregateVolumes(ctx, ledgerName, filter, opts any) *gomock.Call {
+func (mr *MockControllerMockRecorder) AggregateVolumes(ctx, ledgerName, filter, opts, read any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AggregateVolumes", reflect.TypeOf((*MockController)(nil).AggregateVolumes), ctx, ledgerName, filter, opts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AggregateVolumes", reflect.TypeOf((*MockController)(nil).AggregateVolumes), ctx, ledgerName, filter, opts, read)
 }
 
 // AnalyzeAccounts mocks base method.
@@ -193,6 +193,21 @@ func (m *MockController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkCo
 func (mr *MockControllerMockRecorder) GetEventsSinks(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEventsSinks", reflect.TypeOf((*MockController)(nil).GetEventsSinks), ctx)
+}
+
+// GetHistoricalBalancesStatus mocks base method.
+func (m *MockController) GetHistoricalBalancesStatus(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHistoricalBalancesStatus", ctx, ledgerName)
+	ret0, _ := ret[0].(*servicepb.GetHistoricalBalancesStatusResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHistoricalBalancesStatus indicates an expected call of GetHistoricalBalancesStatus.
+func (mr *MockControllerMockRecorder) GetHistoricalBalancesStatus(ctx, ledgerName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHistoricalBalancesStatus", reflect.TypeOf((*MockController)(nil).GetHistoricalBalancesStatus), ctx, ledgerName)
 }
 
 // GetIndex mocks base method.

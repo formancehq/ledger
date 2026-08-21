@@ -72,6 +72,20 @@ spec:
   # Chaos-tuned: 256 KiB spool segments (default 256 MiB) so rotation seals segments and Prune has work to do.
   - name: SPOOL_SEGMENT_MAX_BYTES
     value: "262144"
+  # Historical-balance cadence: small bounded work units make publication and
+  # compaction reachable in short runs. Ledger scope is client-configured.
+  - name: BALANCE_HISTORY_BUILDER_BATCH_SIZE
+    value: "32"
+  - name: BALANCE_HISTORY_BACKFILL_YIELD
+    value: "1ms"
+  - name: BALANCE_HISTORY_SEGMENT_COMPACTION_THRESHOLD
+    value: "2"
+  - name: BALANCE_HISTORY_MAINTENANCE_INTERVAL
+    value: "200ms"
+  - name: BALANCE_HISTORY_MAX_COMPACTIONS_PER_PASS
+    value: "1"
+  - name: BALANCE_HISTORY_WAL_SYNC_INTERVAL
+    value: "5s"
   - name: AWS_ACCESS_KEY_ID
     value: minioadmin
   - name: AWS_SECRET_ACCESS_KEY

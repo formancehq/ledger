@@ -1795,8 +1795,27 @@ func (m *LedgerLogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int
 			i--
 			dAtA[i] = 0x6a
 		}
+	case *LedgerLogPayload_ConfiguredHistoricalBalances:
+		if v.ConfiguredHistoricalBalances != nil {
+			size, _ := v.ConfiguredHistoricalBalances.MarshalToSizedBufferVT(dAtA[:i])
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x72
+		}
 	}
 	return len(dAtA) - i, nil
+}
+
+func (m *ConfiguredHistoricalBalancesLog) MarshalDeterministicVT(dAtA []byte) []byte {
+	if m == nil {
+		return dAtA
+	}
+	b, err := m.MarshalVT()
+	if err != nil {
+		panic("MarshalDeterministicVT: " + err.Error())
+	}
+	return append(dAtA, b...)
 }
 
 func (m *OrderSkippedLog) MarshalDeterministicVT(dAtA []byte) []byte {

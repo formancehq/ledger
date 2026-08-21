@@ -255,12 +255,14 @@ func ReadLogBySequenceWithCold(
 	}
 
 	// Read from cold storage
-	coldPebble, err := coldReader.GetReader(ctx, chapterID)
+	coldPebble, release, err := coldReader.AcquireReader(ctx, chapterID)
 	if err != nil {
 		return nil, fmt.Errorf("getting cold reader for chapter %d: %w", chapterID, err)
 	}
 
-	return ReadLogBySequence(ctx, coldPebble, sequence)
+	log, readErr := ReadLogBySequence(ctx, coldPebble, sequence)
+
+	return log, errors.Join(readErr, release())
 }
 
 // findArchivedChapterForSequence iterates chapters to find an archived one containing the given sequence.

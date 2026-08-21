@@ -38,6 +38,7 @@ trap 'kill "${SERVER_PID:-}" 2>/dev/null || true; wait "${SERVER_PID:-}" 2>/dev/
 echo "==> Building server..."
 cd "$REPO_ROOT"
 go build -o "$TMPDIR/ledger-server" .
+go build -o "$TMPDIR/ledgerctl" ./cmd/ledgerctl
 
 echo "==> Starting server (single-node, bootstrap, no auth)..."
 "$TMPDIR/ledger-server" run \
@@ -109,6 +110,30 @@ seed "transaction 2" -X POST "$API/test-ledger/transactions" \
 # still hold the full posted amount for the revert (which reverses it exactly)
 # to succeed, and a prior alice->bob spend leaves her short.
 seed "revert transaction 1" -X POST "$API/test-ledger/transactions/1/revert"
+
+# Schemathesis now fuzzes the historical selector on GET /volumes. Enable the
+# audit-backed projection for the fixture and wait for a readable manifest so
+# the generic not_a_server_error check exercises successful historical reads
+# instead of deterministically stopping at the documented HISTORY_BUILDING 503.
+"$TMPDIR/ledgerctl" --server "localhost:$GRPC_PORT" --insecure \
+    ledgers historical-balances enable test-ledger >/dev/null
+
+echo "==> Waiting for historical-balance fixture readiness..."
+for i in $(seq 1 30); do
+    history_code=$(curl -s -o /dev/null -w '%{http_code}' \
+        "$API/test-ledger/volumes?pit=2030-01-01T00%3A00%3A00Z")
+    if [ "$history_code" = "200" ]; then
+        echo "    Historical balances ready."
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo "ERROR: Historical balances did not become readable within 30s (last HTTP $history_code)" >&2
+        echo "Server log:" >&2
+        cat "$TMPDIR/server.log" >&2
+        exit 1
+    fi
+    sleep 1
+done
 
 # Set up Python venv and install deps if needed
 VENV_DIR="$SCRIPT_DIR/.venv"

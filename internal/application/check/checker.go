@@ -5156,16 +5156,33 @@ func (c *Checker) reDeriveArchivedIdempotency(
 	})
 
 	for _, ch := range archived {
-		coldPebble, err := c.coldReader.GetReader(ctx, ch.GetId())
+		coldPebble, release, err := c.coldReader.AcquireReader(ctx, ch.GetId())
 		if err != nil {
 			c.logger.Infof("reading archived chapter %d for idempotency window failed: %v", ch.GetId(), err)
 
 			return false
 		}
 
-		last, err := query.ReadLastAuditEntry(coldPebble)
-		if err != nil {
-			c.logger.Infof("reading last audit entry of archived chapter %d failed: %v", ch.GetId(), err)
+		var (
+			last             *auditpb.AuditEntry
+			windowStartsHere bool
+		)
+		readErr := func() (err error) {
+			defer func() {
+				err = errors.Join(err, release())
+			}()
+
+			last, err = query.ReadLastAuditEntry(coldPebble)
+			if err != nil || last == nil || last.GetTimestamp().GetData() < ttlCutoff {
+				return err
+			}
+
+			windowStartsHere, err = c.collectChapterIdempotency(ctx, coldPebble, ttlCutoff, expected)
+
+			return err
+		}()
+		if readErr != nil {
+			c.logger.Infof("reading archived chapter %d for idempotency window failed: %v", ch.GetId(), readErr)
 
 			return false
 		}
@@ -5174,13 +5191,6 @@ func (c *Checker) reDeriveArchivedIdempotency(
 		// entirely below the TTL window — nothing here can still be live.
 		if last == nil || last.GetTimestamp().GetData() < ttlCutoff {
 			break
-		}
-
-		windowStartsHere, err := c.collectChapterIdempotency(ctx, coldPebble, ttlCutoff, expected)
-		if err != nil {
-			c.logger.Infof("re-deriving idempotency from archived chapter %d failed: %v", ch.GetId(), err)
-
-			return false
 		}
 
 		if windowStartsHere {

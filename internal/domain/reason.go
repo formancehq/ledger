@@ -62,7 +62,8 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_INVALID_PATTERN,
 		commonpb.ErrorReason_ERROR_REASON_FILTER_COMPILATION_ERROR,
 		commonpb.ErrorReason_ERROR_REASON_EXECUTION_PLAN_TOO_LARGE,
-		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_ID_REQUIRED:
+		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_ID_REQUIRED,
+		commonpb.ErrorReason_ERROR_REASON_UNSUPPORTED_TEMPORAL_FILTER:
 		return KindValidation
 	case commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND,
@@ -113,7 +114,9 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_READY,
 		commonpb.ErrorReason_ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP,
 		commonpb.ErrorReason_ERROR_REASON_CLUSTER_UNHEALTHY,
-		commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW:
+		commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW,
+		commonpb.ErrorReason_ERROR_REASON_HISTORY_BUILDING,
+		commonpb.ErrorReason_ERROR_REASON_HISTORY_BEHIND:
 		return KindUnavailable
 	case commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL:
 		return KindResourceExhausted
@@ -129,7 +132,9 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_RUNTIME,
 		commonpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_GAP,
 		commonpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_INVALID,
-		commonpb.ErrorReason_ERROR_REASON_VOLUME_NOT_MATERIALIZED:
+		commonpb.ErrorReason_ERROR_REASON_VOLUME_NOT_MATERIALIZED,
+		commonpb.ErrorReason_ERROR_REASON_HISTORY_SOURCE_MISSING,
+		commonpb.ErrorReason_ERROR_REASON_HISTORY_CORRUPT:
 		return KindInternal
 	default:
 		return KindInternal

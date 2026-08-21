@@ -171,6 +171,11 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		return nil, err
 	}
 
+	// The default build is a no-op. The Antithesis build can hold a
+	// workload-tagged keyed response after the commit future resolved, creating
+	// the exact ambiguous-response window needed to validate idempotent replay.
+	awaitAntithesisIdempotencyCommitProbe(ctx, batch.GetIdempotencyKey(), logs)
+
 	skipResponse := req.GetSkipResponse()
 
 	if !skipResponse {
@@ -1391,6 +1396,13 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
+	if req.GetCheckpointId() != 0 && req.GetHistoricalBalance() != nil {
+		return nil, status.Error(codes.InvalidArgument, "checkpoint_id and historical_balance are mutually exclusive")
+	}
+	selector, err := selectorFromProto(req.GetHistoricalBalance())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 
 	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
 	if err != nil {
@@ -1399,7 +1411,7 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 	defer cleanup()
 
 	// minLogSequence only gates live reads; a checkpoint is a fixed snapshot.
-	if req.GetCheckpointId() == 0 {
+	if req.GetCheckpointId() == 0 && selector == nil {
 		if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
 			return nil, err
 		}
@@ -1411,10 +1423,47 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 		UseMaxPrecision: req.GetUseMaxPrecision(),
 		GroupByPrefixes: req.GetGroupByPrefixes(),
 		CollapseColors:  req.GetCollapseColors(),
+	}, ctrl.AggregateVolumesReadOptions{
+		HistoricalBalance: selector,
+		MinLogSequence:    req.GetMinLogSequence(),
 	})
 	impl.emitProfile(ctx, profile)
+	if err != nil {
+		return nil, err
+	}
+	if selector != nil {
+		if result == nil || result.View == nil {
+			return nil, status.Error(codes.Internal, "historical-balance aggregation returned no immutable view token")
+		}
+		if err := validateHistoricalBalanceView(selector, result.View); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		trailer, trailerErr := historicalBalanceViewMetadata(result.View)
+		if trailerErr != nil {
+			return nil, trailerErr
+		}
+		if trailerErr := ggrpc.SetTrailer(ctx, trailer); trailerErr != nil {
+			return nil, fmt.Errorf("setting historical-balance view trailer: %w", trailerErr)
+		}
+	}
 
-	return result, err
+	return result.Aggregate, nil
+}
+
+func (impl *BucketServiceServerImpl) GetHistoricalBalancesStatus(ctx context.Context, req *servicepb.GetHistoricalBalancesStatusRequest) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
+		return nil, err
+	}
+	if req.GetLedger() == "" {
+		return nil, domain.ErrLedgerNameRequired
+	}
+	c, cleanup, err := impl.readController(ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	return c.GetHistoricalBalancesStatus(ctx, req.GetLedger())
 }
 
 func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *servicepb.GetNumscriptRequest) (*commonpb.NumscriptInfo, error) {

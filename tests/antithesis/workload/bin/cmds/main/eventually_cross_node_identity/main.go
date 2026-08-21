@@ -81,7 +81,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), overallTimeout)
 	defer cancel()
 
-	conns, err := internal.DialPerNode(ctx)
+	conns, err := internal.DialPerNode(ctx, true)
 	if err != nil || len(conns) == 0 {
 		log.Printf("composer: could not dial per-node connections: %v", err)
 
@@ -158,40 +158,27 @@ type readyNode struct {
 // below on fault-window noise and undermine the cross-node identity
 // oracle's reliability.
 func waitForQuiescence(ctx context.Context, client servicepb.BucketServiceClient) uint64 {
-	var last uint64
-	for attempt := 1; attempt <= quiescenceAttempts; attempt++ {
-		resp, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
-		if err != nil {
-			if internal.IsTransient(err) {
-				continue
-			}
+	commitIndex, err := internal.WaitForQuiescentCommitIndex(ctx, client, quiescenceAttempts)
+	if err != nil {
+		assert.Unreachable("cross-node oracle barrier unexpected error", internal.Details{"error": err})
 
-			assert.Unreachable("cross-node oracle barrier unexpected error", internal.Details{"error": err, "attempt": attempt})
-
-			return 0
-		}
-
-		cur := resp.GetCommitIndex()
-		if last > 0 && cur == last+1 {
-			log.Printf("composer: quiescence confirmed at commitIndex=%d", cur)
-
-			return cur
-		}
-
-		last = cur
+		return 0
+	}
+	if commitIndex > 0 {
+		log.Printf("composer: quiescence confirmed at commitIndex=%d", commitIndex)
 	}
 
-	return 0
+	return commitIndex
 }
 
 // singleBarrier issues one Barrier and returns its commit index (0 on error).
 func singleBarrier(ctx context.Context, client servicepb.BucketServiceClient) uint64 {
-	resp, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
+	commitIndex, err := internal.BarrierCommitIndex(ctx, client)
 	if err != nil {
 		return 0
 	}
 
-	return resp.GetCommitIndex()
+	return commitIndex
 }
 
 // nodesAtExactIndex polls each per-node connection until its locally-reported

@@ -54,6 +54,38 @@
   // ctrl — internal/application/ctrl/controller_default.go
   ctrl:: {
     apply_duration: 'ctrl.apply.duration',
+    historical_balance_aggregate_requests: 'ctrl.historical_balance.aggregate.requests',
+    historical_balance_aggregate_errors: 'ctrl.historical_balance.aggregate.errors',
+    historical_balance_aggregate_duration: 'ctrl.historical_balance.aggregate.duration',
+  },
+
+  // balancehistory.builder — internal/application/balancehistory/builder.go
+  balancehistory_builder:: {
+    last_indexed_sequence: 'balancehistory.builder.last_indexed_sequence',
+    audit_last_sequence: 'balancehistory.builder.audit_last_sequence',
+    lag: 'balancehistory.builder.lag',
+    effects_processed: 'balancehistory.builder.effects.processed',
+    postings_processed: 'balancehistory.builder.postings.processed',
+    publications: 'balancehistory.builder.publications',
+    rebuilds: 'balancehistory.builder.rebuilds',
+    resets: 'balancehistory.builder.resets',
+    batch_duration: 'balancehistory.builder.batch.duration',
+    batch_proposals: 'balancehistory.builder.batch.proposals',
+    publish_lag: 'balancehistory.builder.publish_lag',
+    last_durable_audit_sequence: 'balancehistory.builder.last_durable_audit_sequence',
+    durability_sync_failures: 'balancehistory.builder.durability_sync_failures',
+    durability_sync_error: 'balancehistory.builder.durability_sync_error',
+  },
+
+  // balancehistory.store — internal/storage/balancehistorystore/metrics.go
+  balancehistory_store:: {
+    level_bytes: 'balancehistory.store.level.bytes',
+    segments: 'balancehistory.store.segments',
+    summary_entries: 'balancehistory.store.summary_entries',
+    memtable_bytes: 'balancehistory.store.memtable.bytes',
+    compaction_debt_bytes: 'balancehistory.store.compaction_debt.bytes',
+    cache_hits: 'balancehistory.store.cache.hits',
+    cache_misses: 'balancehistory.store.cache.misses',
   },
 
   // grpc (custom) — internal/adapter/grpc/server_bucket.go

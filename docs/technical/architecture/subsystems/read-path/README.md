@@ -10,7 +10,9 @@ The CQRS read side (`internal/application/ctrl` reads, `internal/query`, `intern
 | [iterator-seek-contract.md](iterator-seek-contract.md) | Absolute SeekGE/SeekLE semantics across the iterator algebra, and the seekFloor/seekCeil exhaustion-proof cache. |
 | [read-snapshot-consistency.md](read-snapshot-consistency.md) | Single-snapshot rule for controller reads that stitch LedgerInfo with attribute data. |
 | [prepared-queries.md](prepared-queries.md) | Named pre-validated query templates: lifecycle, filter DSL, execution, bloom acceleration. |
-| [query-checkpoints.md](query-checkpoints.md) | Point-in-time snapshots of main store and read index for historical queries. |
+| [query-checkpoints.md](query-checkpoints.md) | Pre-created applied-state snapshots of the main store and read index. |
+| [historical-balances.md](historical-balances.md) | Contract, data flow, Pebble key/value layout, client configuration, and fail-closed behavior for monetary balance history. |
+| [historical-balances-performance.md](historical-balances-performance.md) | Cost model, trade-offs, benchmark command, and performance acceptance criteria. |
 | [typed-metadata.md](typed-metadata.md) | Typed metadata values, per-ledger schema, and hybrid conversion strategy. |
 | [query-filter.md](query-filter.md) | Canonical HTTP QueryFilter surface: dual-format filter, parameter classification, textual/structured asymmetries, date coercion, AND-combination, audit text-only. |
 

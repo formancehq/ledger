@@ -518,6 +518,85 @@ func TestReadLogBySequenceWithCold_ColdFallback(t *testing.T) {
 	require.Equal(t, uint64(5), log.GetSequence())
 }
 
+func TestReadLogBySequenceWithCold_LeaseSurvivesConcurrentEviction(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	s := newTestStore(t)
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	requested := &commonpb.Log{
+		Sequence: 5,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
+			CreateLedger: &commonpb.CreatedLedgerLog{Name: "cold-ledger", CreatedAt: commonpb.NewTimestamp(libtime.Now())},
+		}},
+	}
+	churn := &commonpb.Log{
+		Sequence: 20,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
+			CreateLedger: &commonpb.CreatedLedgerLog{Name: "churn-ledger", CreatedAt: commonpb.NewTimestamp(libtime.Now())},
+		}},
+	}
+	cs := newTestColdStorage()
+	for chapterID, log := range map[uint64]*commonpb.Log{1: requested, 2: churn} {
+		sstData := buildColdSST(t, log)
+		require.NoError(t, cs.Archive(ctx, "bucket", chapterID, bytes.NewReader(sstData), sha256OrPanic(sstData)))
+	}
+	storeChapter(t, s, &commonpb.Chapter{
+		Id:            1,
+		Status:        commonpb.ChapterStatus_CHAPTER_ARCHIVED,
+		StartSequence: 1,
+		CloseSequence: 10,
+	})
+
+	coldReader := coldstorage.NewColdReader(cs, "bucket", t.TempDir(), 1, 0, logger)
+	t.Cleanup(func() { _ = coldReader.Close() })
+
+	const iterations = 100
+	start := make(chan struct{})
+	churnDone := make(chan error, 1)
+	go func() {
+		<-start
+		for range iterations {
+			_, release, err := coldReader.AcquireReader(ctx, 2)
+			if err != nil {
+				churnDone <- err
+
+				return
+			}
+			if err := release(); err != nil {
+				churnDone <- err
+
+				return
+			}
+			_, release, err = coldReader.AcquireReader(ctx, 1)
+			if err != nil {
+				churnDone <- err
+
+				return
+			}
+			if err := release(); err != nil {
+				churnDone <- err
+
+				return
+			}
+		}
+		churnDone <- nil
+	}()
+	close(start)
+
+	for range iterations {
+		log, err := query.ReadLogBySequenceWithCold(ctx, handle, coldReader, 5)
+		require.NoError(t, err)
+		require.NotNil(t, log)
+		require.Equal(t, uint64(5), log.GetSequence())
+	}
+	require.NoError(t, <-churnDone)
+}
+
 func TestReadLogBySequenceWithCold_NotInCold(t *testing.T) {
 	t.Parallel()
 

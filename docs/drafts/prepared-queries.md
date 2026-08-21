@@ -1154,9 +1154,14 @@ Response:
 | **Volume aggregation** | Cross-store merge-scan (bbolt → Pebble), not volume replication | Volumes change on every transaction (high write volume) — replicating them in bbolt would undermine its low-write I/O profile. Instead: filter accounts in bbolt, read volumes from Pebble via sequential `ForEachInPrefix`. Both stores are sorted by account → merge-scan pattern, no random I/O. See Section 9. |
 | **ExistsCondition on untyped keys** | Allowed | `ExistsCondition` checks for key presence, not the value type — it works regardless of whether the key has a declared schema. Some clients store large amounts of untyped metadata; `ExistsCondition` lets them query key presence without requiring a schema declaration first. |
 | **Volume-based filters** | Out of scope — not viable as index-backed filters | A condition like `balance(USD/2) > 1000` cannot be backed by an inverted index in bbolt because volumes change on every transaction — the index would need to be rewritten for every posting. This is the same write amplification problem that ruled out replicating volumes in bbolt (Section 9.2). The only viable approach is post-filtering: run the metadata filter first, then load volumes from Pebble for each candidate and apply the balance condition. This breaks the streaming/lazy cursor model — the executor must materialize candidates, perform N Pebble reads, and re-filter. For a metadata filter matching 10K accounts, that's 10K `ComputeValue` calls before the balance condition even applies. If needed in the future, it should be implemented as a separate post-filter step with a hard limit on candidate set size, not as a `FieldRef` in the filter tree. |
-| **Point-in-time queries** | Not supported (arbitrary PIT); [chapter](../technical/architecture/subsystems/chapters/lifecycle.md)-boundary snapshots recommended instead | v2 proved that storing all diffs indefinitely causes unbounded storage growth and progressive performance degradation. v3's generational compaction and chapter archival are designed to bound the hot dataset — PIT negates both. Chapter-boundary snapshots (file copy at chapter close) provide auditable historical queries without fighting the architecture. See Section 14. |
+| **Historical queries** | Superseded by the accepted [balance-only historical design](../technical/architecture/subsystems/read-path/historical-balances.md) | Metadata remains current-state-only. Monetary history moves to a dedicated asynchronous projection instead of versioning the prepared-query read store or primary attributes. See Section 14 for the rejected general-MVCC alternatives. |
 
-## 14. Point-in-Time Queries
+## 14. Historical Queries
+
+> **Superseded:** arbitrary monetary PIT is now accepted through the dedicated
+> [historical-balance projection](../technical/architecture/subsystems/read-path/historical-balances.md).
+> This section remains as the rationale for rejecting historical metadata,
+> general primary-store MVCC, and query-time replay as the interactive path.
 
 ### 14.1 Context — Ledger v2
 
@@ -1197,9 +1202,16 @@ To support arbitrary PIT in the prepared query read store:
 | **Complexity** | Single-version index, simple cursors | Multi-version index, timestamp filtering, Raft index translation |
 | **Compaction compatibility** | Fully compatible | Incompatible — PIT requires retaining everything compaction is designed to remove |
 
-### 14.3 Recommendation — No Arbitrary PIT
+### 14.3 Recommendation — No General-Purpose MVCC
 
-**Arbitrary point-in-time queries are not supported.** The v2 experience demonstrated that storing all diffs indefinitely creates unbounded storage growth and progressive performance degradation. The v3 architecture is explicitly designed to avoid this: generational compaction, [chapter](../technical/architecture/subsystems/chapters/lifecycle.md) archival, and cold storage are all mechanisms to bound the hot dataset size.
+**General-purpose point-in-time queries over primary attributes and metadata are
+not supported.** The accepted balance-only design stores monetary effects in a
+dedicated asynchronous projection. The v2 experience demonstrated that storing
+every attribute and metadata diff indefinitely creates unbounded storage growth
+and progressive performance degradation. The primary v3 architecture is
+explicitly designed to avoid this: generational compaction,
+[chapter](../technical/architecture/subsystems/chapters/lifecycle.md) archival,
+and cold storage all bound the hot primary dataset.
 
 Adding PIT to the prepared query system would:
 
@@ -1253,7 +1265,10 @@ At a configurable interval (e.g., daily, weekly), the index builder captures a f
 | **Compaction compatible** | No | Yes | Yes | Yes |
 | **Cold storage compatible** | No | Yes (snapshot in cold) | Yes (replays from cold) | Yes (snapshot in cold) |
 
-**Recommendation**: start with **Option A** (chapter-boundary snapshots) — it has the best cost/value ratio and aligns naturally with the existing [chapter lifecycle](../technical/architecture/subsystems/chapters/lifecycle.md). Option B can be added later for ad-hoc audit queries.
+**Historical recommendation:** chapter-boundary snapshots remain appropriate
+for complete applied-state snapshots. They are no longer the selected approach
+for monetary balances; that decision is specified in
+[historical-balances.md](../technical/architecture/subsystems/read-path/historical-balances.md).
 
 ## 15. Open Questions
 

@@ -46,18 +46,18 @@ func (m *MockBackend) EXPECT() *MockBackendMockRecorder {
 }
 
 // AggregateVolumes mocks base method.
-func (m *MockBackend) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
+func (m *MockBackend) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions, read ctrl.AggregateVolumesReadOptions) (*ctrl.AggregateVolumesResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AggregateVolumes", ctx, ledgerName, filter, opts)
-	ret0, _ := ret[0].(*commonpb.AggregateResult)
+	ret := m.ctrl.Call(m, "AggregateVolumes", ctx, ledgerName, filter, opts, read)
+	ret0, _ := ret[0].(*ctrl.AggregateVolumesResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AggregateVolumes indicates an expected call of AggregateVolumes.
-func (mr *MockBackendMockRecorder) AggregateVolumes(ctx, ledgerName, filter, opts any) *MockBackendAggregateVolumesCall {
+func (mr *MockBackendMockRecorder) AggregateVolumes(ctx, ledgerName, filter, opts, read any) *MockBackendAggregateVolumesCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AggregateVolumes", reflect.TypeOf((*MockBackend)(nil).AggregateVolumes), ctx, ledgerName, filter, opts)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AggregateVolumes", reflect.TypeOf((*MockBackend)(nil).AggregateVolumes), ctx, ledgerName, filter, opts, read)
 	return &MockBackendAggregateVolumesCall{Call: call}
 }
 
@@ -67,19 +67,19 @@ type MockBackendAggregateVolumesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBackendAggregateVolumesCall) Return(arg0 *commonpb.AggregateResult, arg1 error) *MockBackendAggregateVolumesCall {
+func (c *MockBackendAggregateVolumesCall) Return(arg0 *ctrl.AggregateVolumesResult, arg1 error) *MockBackendAggregateVolumesCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBackendAggregateVolumesCall) Do(f func(context.Context, string, *commonpb.QueryFilter, query.AggregateOptions) (*commonpb.AggregateResult, error)) *MockBackendAggregateVolumesCall {
+func (c *MockBackendAggregateVolumesCall) Do(f func(context.Context, string, *commonpb.QueryFilter, query.AggregateOptions, ctrl.AggregateVolumesReadOptions) (*ctrl.AggregateVolumesResult, error)) *MockBackendAggregateVolumesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBackendAggregateVolumesCall) DoAndReturn(f func(context.Context, string, *commonpb.QueryFilter, query.AggregateOptions) (*commonpb.AggregateResult, error)) *MockBackendAggregateVolumesCall {
+func (c *MockBackendAggregateVolumesCall) DoAndReturn(f func(context.Context, string, *commonpb.QueryFilter, query.AggregateOptions, ctrl.AggregateVolumesReadOptions) (*ctrl.AggregateVolumesResult, error)) *MockBackendAggregateVolumesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -471,6 +471,45 @@ func (c *MockBackendGetEventsSinksCall) Do(f func(context.Context) ([]*commonpb.
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockBackendGetEventsSinksCall) DoAndReturn(f func(context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error)) *MockBackendGetEventsSinksCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// GetHistoricalBalancesStatus mocks base method.
+func (m *MockBackend) GetHistoricalBalancesStatus(ctx context.Context, ledgerName string) (*servicepb.GetHistoricalBalancesStatusResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetHistoricalBalancesStatus", ctx, ledgerName)
+	ret0, _ := ret[0].(*servicepb.GetHistoricalBalancesStatusResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetHistoricalBalancesStatus indicates an expected call of GetHistoricalBalancesStatus.
+func (mr *MockBackendMockRecorder) GetHistoricalBalancesStatus(ctx, ledgerName any) *MockBackendGetHistoricalBalancesStatusCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHistoricalBalancesStatus", reflect.TypeOf((*MockBackend)(nil).GetHistoricalBalancesStatus), ctx, ledgerName)
+	return &MockBackendGetHistoricalBalancesStatusCall{Call: call}
+}
+
+// MockBackendGetHistoricalBalancesStatusCall wrap *gomock.Call
+type MockBackendGetHistoricalBalancesStatusCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockBackendGetHistoricalBalancesStatusCall) Return(arg0 *servicepb.GetHistoricalBalancesStatusResponse, arg1 error) *MockBackendGetHistoricalBalancesStatusCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockBackendGetHistoricalBalancesStatusCall) Do(f func(context.Context, string) (*servicepb.GetHistoricalBalancesStatusResponse, error)) *MockBackendGetHistoricalBalancesStatusCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockBackendGetHistoricalBalancesStatusCall) DoAndReturn(f func(context.Context, string) (*servicepb.GetHistoricalBalancesStatusResponse, error)) *MockBackendGetHistoricalBalancesStatusCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

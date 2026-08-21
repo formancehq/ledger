@@ -841,6 +841,24 @@ VALUE          COUNT
 "enterprise"   12
 ```
 
+#### ledgers historical-balances
+
+Configure the asynchronous historical-balance projection per ledger. The
+setting is written through Raft and the audit log, so every replica derives the
+same configured ledger set.
+
+```bash
+ledgerctl ledgers historical-balances enable my-ledger
+ledgerctl ledgers historical-balances status my-ledger
+ledgerctl ledgers historical-balances disable my-ledger
+```
+
+`enable` and `disable` require ledger write scope. `status` reports
+`DISABLED`, `BUILDING`, `READY`, or `ERROR`, plus the local audit/log
+watermarks. Enabling or disabling changes the projected set and triggers a
+local full replay; reads remain fail-closed until that replica reaches the
+observed source head.
+
 #### ledgers configuration
 
 Show a ledger's full configuration: chart of accounts, indexes, prepared queries, and numscript library.
@@ -1781,9 +1799,23 @@ ledgerctl accounts aggregate-volumes [flags]
 | `--filter` | | Filter expression (same DSL as account list) |
 | `--min-log-sequence` | `0` | Minimum log sequence before reading |
 | `--checkpoint-id` | `0` | Query checkpoint ID (0 = live data) |
+| `--at` | | RFC3339 timestamp at which to aggregate historical balances |
+| `--temporality` | `effective` | Timestamp semantics: `effective` or `insertion` |
 | `--analyze` | `false` | Display query execution profile |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
+
+`--at` enables the historical-balance projection and defaults to effective
+temporality. Set `--temporality insertion` to reconstruct balances according to
+when transactions were inserted. Historical reads cannot be combined with
+`--checkpoint-id`. Timestamps must be RFC3339 and at or after the Unix epoch.
+
+Every successful historical read emits the immutable view selected by the
+server on stderr as `historical_balance_view=<json>`. The JSON includes
+the requested timestamp and temporality, ledger name, audit and log watermarks, manifest
+version, and opaque `viewToken`. Keeping it on stderr preserves
+the existing table, JSON, and YAML result shape on stdout. The command fails
+closed if the server omits or returns an incomplete view trailer.
 
 **Example:**
 
@@ -1796,6 +1828,14 @@ ledgerctl accounts aggregate-volumes --ledger my-ledger --prefix users:
 
 # Aggregate with filter
 ledgerctl accounts aggregate-volumes --ledger my-ledger --filter "metadata[category] == premium"
+
+# Aggregate balances by effective time
+ledgerctl accounts aggregate-volumes --ledger my-ledger --at 2026-01-15T12:00:00Z
+
+# Aggregate balances by insertion time at the same timestamp
+ledgerctl accounts aggregate-volumes --ledger my-ledger \
+  --at 2026-01-15T12:00:00Z \
+  --temporality insertion
 
 # Output as JSON
 ledgerctl accounts aggregate-volumes --ledger my-ledger --json
@@ -2326,7 +2366,7 @@ full-chain scan.
 > **Consistency note.** The audit secondary index is maintained by an
 > asynchronous per-node worker, so any *filtered* audit read (including an
 > `ledger` or `outcome` filter) is eventually consistent — a
-> just-applied entry may take up to ~200 ms to appear. `--min-log-sequence`
+> post-commit notification normally wakes the projection immediately; 200 ms is the missed-notification fallback. `--min-log-sequence`
 > gates the read-side log index, not the audit index. An *unfiltered* read
 > (plain `audit list`, optionally with `--reverse` / `seq` bounds) reads
 > the audit zone directly and is strongly consistent.
@@ -4018,6 +4058,58 @@ ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create -
 ```
 
 Clients can also discover the server's public key via the `Discovery` RPC.
+
+---
+
+### Server Historical Balance Resource Flags
+
+The historical-balance peer store and worker run on every replica. Ledger
+activation is configured by clients with `ledgerctl ledgers historical-balances`;
+server flags control only replica-local resource usage.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--balance-history-dir` | string | `""` | Directory for the peer store (default: `<data-dir>/balance-history`). Put it on a dedicated volume to isolate backfill/compaction I/O. |
+| `--balance-history-builder-batch-size` | int | `200` | Maximum complete audit proposals published in one immutable segment. |
+| `--balance-history-segment-compaction-threshold` | int | `4` | Logical segments at one level before asynchronous compaction. Must be at least 2. |
+| `--balance-history-maintenance-interval` | duration | `1s` | Fallback interval for local compaction when no store-change notification arrives. Publications normally wake maintenance immediately. |
+| `--balance-history-max-compactions-per-pass` | int | `2` | Compactions per scheduling slice. Exhausted slices continue immediately while eligible work remains. Must be between 1 and 1000. |
+| `--balance-history-backfill-yield` | duration | `5ms` | Cooperative pause between bounded boot-time backfill batches. Steady-state tailing does not sleep. |
+| `--balance-history-wal-sync-interval` | duration | `5s` | Maximum durability window for asynchronously published history. A crash may replay this suffix from audit; committed ledger data is unaffected. |
+
+Passing `0` for a duration/count whose shipped default is non-zero selects the
+shipped default; negative values and a compaction threshold below 2 are
+rejected at startup. The projection has no cold tier or projection-level
+checksum; it is local and rebuildable from the audit stream. Existing archived
+audit chapters are read through the platform ColdReader when required.
+
+```bash
+# Put the peer store on a dedicated disk and reduce boot-time disk contention.
+ledger run \
+  --balance-history-dir /var/lib/ledger/balance-history \
+  --balance-history-builder-batch-size 100 \
+  --balance-history-backfill-yield 20ms \
+  [other flags...]
+```
+
+As with other server flags, each option is available through its upper-case,
+underscore-separated environment variable, for example
+`BALANCE_HISTORY_BUILDER_BATCH_SIZE`, `BALANCE_HISTORY_WAL_SYNC_INTERVAL`,
+`BALANCE_HISTORY_MAINTENANCE_INTERVAL`, and
+`BALANCE_HISTORY_SEGMENT_COMPACTION_THRESHOLD`.
+
+The Ledger operator intentionally does not add a second typed copy of these
+advanced controls. Set them through `spec.extraEnv` when required:
+
+```yaml
+spec:
+  extraEnv:
+    - name: BALANCE_HISTORY_BUILDER_BATCH_SIZE
+      value: "100"
+```
+
+The architecture, key layout, fail-closed states, and performance model are in
+[Historical Balances](../technical/architecture/subsystems/read-path/historical-balances.md).
 
 ---
 

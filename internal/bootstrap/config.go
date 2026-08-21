@@ -197,6 +197,7 @@ type Config struct {
 	IdempotencyTTL              time.Duration
 	IdempotencyEvictionInterval time.Duration
 	SnapshotSyncConfig          SnapshotSyncConfig
+	BalanceHistoryConfig        BalanceHistoryConfig `json:"balanceHistory" yaml:"balanceHistory"`
 }
 
 // EffectiveRestoreListen returns the bind host for restore mode, falling
@@ -289,6 +290,10 @@ func (c Config) Validate() error {
 	}
 
 	if err := c.SnapshotSyncConfig.Validate(); err != nil {
+		return err
+	}
+
+	if err := c.BalanceHistoryConfig.Validate(); err != nil {
 		return err
 	}
 

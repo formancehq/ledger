@@ -3,6 +3,7 @@ package check
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -385,6 +386,87 @@ func TestReDeriveArchivedIdempotency_Bounds(t *testing.T) {
 		require.True(t, c.reDeriveArchivedIdempotency(ctx, []*commonpb.Chapter{archived(40, 2)}, 2000, expected))
 		require.Empty(t, expected)
 	})
+}
+
+func TestReDeriveArchivedIdempotency_LeaseSurvivesConcurrentEviction(t *testing.T) {
+	t.Parallel()
+
+	const (
+		bucketID   = "lease-check-bucket"
+		entryCount = 300
+	)
+
+	serialized := (&raftcmdpb.Order{}).MarshalDeterministicVT(nil)
+	entries := make([]*auditpb.AuditEntry, 0, entryCount)
+	items := make(map[uint64][]*auditpb.AuditItem, entryCount)
+	for sequence := uint64(1); sequence <= entryCount; sequence++ {
+		entries = append(entries, &auditpb.AuditEntry{
+			Sequence:    sequence,
+			Timestamp:   &commonpb.Timestamp{Data: 3000 + sequence},
+			OrderCount:  1,
+			Idempotency: &commonpb.Idempotency{Key: fmt.Sprintf("key-%d", sequence)},
+			Outcome:     idemAuditFailure("failure", nil),
+		})
+		items[sequence] = []*auditpb.AuditItem{{OrderIndex: 0, SerializedOrder: serialized}}
+	}
+
+	archives := map[uint64][]byte{
+		1: buildColdAuditSST(t, entries, items),
+		2: buildColdAuditSST(t, []*auditpb.AuditEntry{{Sequence: 1001, Timestamp: &commonpb.Timestamp{Data: 5001}}}, nil),
+		3: buildColdAuditSST(t, []*auditpb.AuditEntry{{Sequence: 1002, Timestamp: &commonpb.Timestamp{Data: 5002}}}, nil),
+	}
+	fs := coldstorage.NewFilesystemStorage(t.TempDir())
+	for chapterID, sst := range archives {
+		checksum, err := coldstorage.ComputeSHA256(bytes.NewReader(sst))
+		require.NoError(t, err)
+		require.NoError(t, fs.Archive(context.Background(), bucketID, chapterID, bytes.NewReader(sst), checksum))
+	}
+	reader := coldstorage.NewColdReader(fs, bucketID, t.TempDir(), 1, 0, logging.Testing())
+	t.Cleanup(func() { _ = reader.Close() })
+
+	const churnIterations = 25
+	start := make(chan struct{})
+	churnDone := make(chan error, 1)
+	go func() {
+		<-start
+		for range churnIterations {
+			_, release, err := reader.AcquireReader(context.Background(), 2)
+			if err != nil {
+				churnDone <- err
+
+				return
+			}
+			if err := release(); err != nil {
+				churnDone <- err
+
+				return
+			}
+			_, release, err = reader.AcquireReader(context.Background(), 3)
+			if err != nil {
+				churnDone <- err
+
+				return
+			}
+			if err := release(); err != nil {
+				churnDone <- err
+
+				return
+			}
+		}
+		churnDone <- nil
+	}()
+	close(start)
+
+	checker := NewChecker(createTestStore(t), attributes.New(), "x", reader, nil, nil, logging.Testing())
+	expected := map[idemExpectedKey]expectedIdempotency{}
+	require.True(t, checker.reDeriveArchivedIdempotency(
+		context.Background(),
+		[]*commonpb.Chapter{{Id: 1, Status: commonpb.ChapterStatus_CHAPTER_ARCHIVED, CloseAuditSequence: entryCount}},
+		1,
+		expected,
+	))
+	require.NoError(t, <-churnDone)
+	require.Len(t, expected, entryCount)
 }
 
 // TestCheck_DerivesIdempotencyTTLWindowFromPersistedConfig exercises the

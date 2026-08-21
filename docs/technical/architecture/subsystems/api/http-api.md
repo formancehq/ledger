@@ -385,6 +385,43 @@ DELETE /v3/{ledgerName}/accounts/{address}/metadata/{key}
 
 **Response**: `204 No Content`
 
+### Volume Aggregation and Point-in-Time Reads
+
+```http
+GET /v3/{ledgerName}/volumes?pit=2026-01-15T12%3A30%3A45.123456Z&useInsertionDate=true
+```
+
+Without `pit`, the endpoint aggregates the current volume projection. With
+`pit`, it returns an exact monetary historical view. Effective time is the
+default; `useInsertionDate=true` selects the insertion axis. The deprecated
+`use_insertion_date` spelling is accepted as a legacy alias, but the two
+spellings must agree when both are present. Either axis parameter is invalid
+without `pit`.
+
+`pit` is an RFC3339 timestamp on or after the Unix epoch. It is normalized to
+Unix microseconds; sub-microsecond precision is not retained.
+
+PIT does not historize metadata, schemas, account types, or asset-existence
+indexes. Metadata-dependent filters use one current read-store snapshot.
+Direct address and address-prefix selection can use historical account keys.
+
+A successful historical response includes `X-Historical-Balance-View`, a
+standard-base64-encoded protobuf `HistoricalBalanceView`. It binds the
+aggregate to the normalized timestamp, temporality, ledger name, audit/log
+watermarks, manifest version, and opaque view token. Clients
+must reject a historical success that lacks this header.
+
+Historical reads fail closed. `HISTORY_BUILDING` and `HISTORY_BEHIND` are
+retryable 503 errors with `Retry-After: 1`; `UNSUPPORTED_TEMPORAL_FILTER` is a
+400 error; `HISTORY_SOURCE_MISSING` and `HISTORY_CORRUPT` are 500 errors that
+require repair or rebuild. The server never substitutes live state, a query
+checkpoint, a nearby timestamp, or partial history.
+
+This preserves the v2 `pit`/`useInsertionDate` monetary semantics on the v3
+aggregate route; it is not a general `/v2` compatibility layer. See
+[Historical Balance Queries](../read-path/historical-balances.md) for the
+full consistency and performance contract.
+
 ### Audit
 
 Audit reads expose the tamper-evident audit trail over HTTP (mirroring the gRPC
