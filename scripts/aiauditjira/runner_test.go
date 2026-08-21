@@ -32,6 +32,13 @@ set -euo pipefail
 if [[ "$*" == *" search "* ]]; then
 	printf '%s\n' "$FAKE_ACLI_SEARCH_JSON"
 else
+	for ((index = 1; index <= $#; index++)); do
+		if [[ "${!index}" == "--from-json" ]]; then
+			next=$((index + 1))
+			cp -- "${!next}" "$FAKE_ACLI_CREATE_REQUEST"
+			break
+		fi
+	done
 	printf '%s\n' "$FAKE_ACLI_CREATE_JSON"
 fi
 `
@@ -84,6 +91,43 @@ func TestPublisherSearchesForTheExactQuotedMarker(t *testing.T) {
 	invocations := fixture.invocations(t)
 	require.Contains(t, invocations, "\t--paginate\t")
 	require.NotContains(t, invocations, "\t--limit\t")
+}
+
+func TestPublisherCreatesWithRequiredLedgerComponentInStructuredRequest(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFixture(t)
+
+	output, err := fixture.run(t, challengeResult(confirmedResult(testFindingID)), "--publish")
+	require.NoError(t, err, output)
+	request := fixture.createdRequest(t)
+	require.Equal(t, "EN", request["projectKey"])
+	require.Equal(t, "Bug", request["type"])
+	require.Equal(t, "[P2] Original title of "+testFindingID, request["summary"])
+	require.Equal(t, []any{"ai-audit"}, request["labels"])
+	require.Equal(t, map[string]any{
+		"components": []any{map[string]any{"name": "Ledger"}},
+	}, request["additionalAttributes"])
+	description, err := json.Marshal(request["description"])
+	require.NoError(t, err)
+	require.Contains(t, string(description), "AI-AUDIT:"+testFindingID)
+	require.Contains(t, string(description), testHead)
+
+	invocations := fixture.invocations(t)
+	require.Contains(t, invocations, "\t--from-json\t")
+	require.NotContains(t, invocations, "\t--description-file\t")
+}
+
+func TestPublisherSupportsAnExplicitJiraComponent(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFixture(t)
+
+	output, err := fixture.run(t, challengeResult(confirmedResult(testFindingID)), "--publish", "--component", "Ledger Platform")
+	require.NoError(t, err, output)
+	require.Equal(t, map[string]any{
+		"components": []any{map[string]any{"name": "Ledger Platform"}},
+	}, fixture.createdRequest(t)["additionalAttributes"])
 }
 
 func TestPublisherStaysBoundToValidatedSnapshotWhenInputIsReplaced(t *testing.T) {
@@ -236,6 +280,7 @@ func searchResponse(t *testing.T, key string, description string) string {
 type fixture struct {
 	inputPath       string
 	logPath         string
+	createRequest   string
 	fakeBin         string
 	searchJSON      string
 	realJQ          string
@@ -255,12 +300,13 @@ func newFixture(t *testing.T) *fixture {
 	require.NoError(t, err)
 
 	return &fixture{
-		inputPath:    filepath.Join(root, "qualified.json"),
-		logPath:      filepath.Join(root, "acli-invocations.log"),
-		fakeBin:      fakeBin,
-		searchJSON:   `{"issues":[]}`,
-		realJQ:       realJQ,
-		replacedPath: filepath.Join(root, "jq-replaced-input"),
+		inputPath:     filepath.Join(root, "qualified.json"),
+		logPath:       filepath.Join(root, "acli-invocations.log"),
+		createRequest: filepath.Join(root, "acli-create-request.json"),
+		fakeBin:       fakeBin,
+		searchJSON:    `{"issues":[]}`,
+		realJQ:        realJQ,
+		replacedPath:  filepath.Join(root, "jq-replaced-input"),
 	}
 }
 
@@ -276,6 +322,7 @@ func (f *fixture) run(t *testing.T, result map[string]any, arguments ...string) 
 		"FAKE_ACLI_LOG="+f.logPath,
 		"FAKE_ACLI_SEARCH_JSON="+f.searchJSON,
 		`FAKE_ACLI_CREATE_JSON={"key":"`+createdKey+`"}`,
+		"FAKE_ACLI_CREATE_REQUEST="+f.createRequest,
 		"FAKE_REAL_JQ="+f.realJQ,
 		"FAKE_JQ_INPUT="+f.inputPath,
 		"FAKE_JQ_REPLACEMENT="+f.replacementPath,
@@ -320,6 +367,17 @@ func (f *fixture) invocations(t *testing.T) string {
 	require.NoError(t, err)
 
 	return string(contents)
+}
+
+func (f *fixture) createdRequest(t *testing.T) map[string]any {
+	t.Helper()
+
+	contents, err := os.ReadFile(f.createRequest)
+	require.NoError(t, err)
+	request := map[string]any{}
+	require.NoError(t, json.Unmarshal(contents, &request))
+
+	return request
 }
 
 func challengeResult(results ...map[string]any) map[string]any {

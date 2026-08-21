@@ -3,10 +3,10 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: bash scripts/ai-audit-jira <challenge-result.json> [--publish] [--project <key>]
+Usage: bash scripts/ai-audit-jira <challenge-result.json> [--publish] [--project <key>] [--component <name>]
 
 Previews Jira bugs for CONFIRMED audit findings. Jira writes require --publish.
-Default project: EN.
+Default project: EN. Default component: Ledger.
 EOF
 }
 
@@ -16,10 +16,12 @@ input=$1
 shift
 publish=false
 project=EN
+component=Ledger
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --publish) publish=true; shift ;;
         --project) [[ $# -ge 2 && "$2" =~ ^[A-Z][A-Z0-9_]*$ ]] || { echo "ai-audit-jira: invalid --project" >&2; exit 1; }; project=$2; shift 2 ;;
+        --component) [[ $# -ge 2 && "$2" =~ ^[A-Za-z0-9][A-Za-z0-9._[:space:]-]*$ ]] || { echo "ai-audit-jira: invalid --component" >&2; exit 1; }; component=$2; shift 2 ;;
         *) echo "ai-audit-jira: unknown argument: $1" >&2; usage >&2; exit 1 ;;
     esac
 done
@@ -84,6 +86,7 @@ while IFS= read -r finding; do
     marker="AI-AUDIT:$id"
     summary="[$severity] $title"
     description_file="$tmp/description.txt"
+    create_request_file="$tmp/create-request.json"
 
     {
         printf 'Confirmed Ledger deep-audit finding.\n\n'
@@ -145,12 +148,38 @@ while IFS= read -r finding; do
         continue
     fi
 
+    # ACLI's simple create flags do not expose Jira Components. Build its
+    # structured request instead so the project-required component is supplied
+    # together with an Atlassian Document Format description. jq keeps every
+    # report-derived value data: none of it can alter the request structure.
+    jq -n \
+        --arg project "$project" \
+        --arg summary "$summary" \
+        --arg component "$component" \
+        --rawfile description "$description_file" '
+        {
+          projectKey: $project,
+          type: "Bug",
+          summary: $summary,
+          description: {
+            version: 1,
+            type: "doc",
+            content: ($description | rtrimstr("\n") | split("\n") | map(
+              if length == 0 then
+                {type: "paragraph", content: []}
+              else
+                {type: "paragraph", content: [{type: "text", text: .}]}
+              end
+            ))
+          },
+          labels: ["ai-audit"],
+          additionalAttributes: {
+            components: [{name: $component}]
+          }
+        }
+    ' > "$create_request_file"
     create_json=$(acli jira workitem create \
-        --project "$project" \
-        --type Bug \
-        --summary "$summary" \
-        --description-file "$description_file" \
-        --label ai-audit \
+        --from-json "$create_request_file" \
         --json)
     created_key=$(jq -r '.. | objects | .key? // empty' <<<"$create_json" | head -n1)
     [[ -n "$created_key" ]] || { echo "ai-audit-jira: Jira creation succeeded but no issue key was returned" >&2; exit 1; }
