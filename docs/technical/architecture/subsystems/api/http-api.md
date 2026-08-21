@@ -601,11 +601,18 @@ func (r *RoutedController) Apply(ctx context.Context, requests ...*servicepb.Req
 
 **One encoder serves HTTP response bodies: sonic, through `internal/adapter/json`.** The three writers are `writeOK`, `writeOKChecked` and `writeCreated`, all in `internal/adapter/http/response.go`.
 
-**No response body in this package is serialized by `protojson`.** This is the invariant, and it is stated deliberately about the *encoder*, not about the payload types. It does **not** say that no `proto.Message` reaches a response body: `handlers_list_numscript_versions.go` embeds a `*commonpb.Timestamp` in a DTO served by `writeOK`, and that is correct — sonic calls that type's own `MarshalJSON`, which emits RFC3339Nano.
+**No `protojson` call site in this package serializes a response body.** That is the invariant, and the scope is the point: it is a statement about *this package's call sites*, which is exactly what `encoder_contract_test.go` enforces and all it can enforce. It does **not** say that no `proto.Message` reaches a response body, and it does **not** say that no response byte is ever produced by protojson.
+
+Two things remain true underneath it:
+
+- **A `proto.Message` may sit inside a DTO.** `handlers_list_numscript_versions.go` embeds a `*commonpb.Timestamp` in a DTO served by `writeOK`, and that is correct — sonic calls that type's own `MarshalJSON`, which emits RFC3339Nano.
+- **A payload type's own `MarshalJSON` may delegate to protojson, and three of them do.** `commonpb.Log.MarshalJSON` routes `responseSignature` through `protoFieldJSON` → `protojson.Marshal` on every variant, and `commonpb.LogPayload.MarshalJSON` falls through to a bare `protojson.Marshal` for every oneof variant except `createLedger`, `deleteLedger` and `apply` (`internal/proto/commonpb/common.pb.json.go:25,46,70-71`). `auditpb.AuditEntry.MarshalJSON` does the same for its chain-bound submessages (`internal/proto/auditpb/audit.pb.json.go:50`). So `GET /v3/_/logs/{sequence}` — `handlers_get_log.go:30` passes a raw `*commonpb.Log` to `writeOKChecked` — and the audit reads do emit protojson-rendered bytes, `{"data":<micros>}` timestamps and quoted `uint64` included, inside a body this package handed to sonic.
+
+The gate cannot see the second case: its AST scan is `os.ReadDir(".")`, so it covers `internal/adapter/http` and nothing else, and neither a test nor a linter covers `internal/proto/**`. Read the invariant as what it is — this package writes no protojson — and not as a claim that the `{v0}` / `{data}` class is extinct on every route it serves.
 
 ### Why `protojson` is not used for responses
 
-`protojson` is descriptor-driven, so the wire shape follows the `.proto` file rather than this package:
+`protojson` is descriptor-driven, so the wire shape follows the `.proto` file rather than this package. These are properties of the *encoder*, so they hold wherever it runs — including inside the three `MarshalJSON` implementations named above:
 
 - `uint64` is emitted quoted;
 - `commonpb.Timestamp` renders as `{"data":<micros>}`;

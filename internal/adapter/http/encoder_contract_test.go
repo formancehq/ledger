@@ -85,18 +85,32 @@ func TestProtojsonImportIsRestricted(t *testing.T) {
 			}
 
 			require.Truef(t, allowedProtojsonImporters[name],
-				"%s imports protojson directly. No response body in this package may be "+
-					"serialized by protojson: write a hand-rolled DTO that owns the wire "+
-					"shape instead (see dto_indexes.go). If %s only DECODES a request body "+
-					"with protojson.Unmarshal, add it to allowedProtojsonImporters with a "+
-					"comment saying so.",
+				"%s imports protojson directly. No protojson call site in this package "+
+					"may serialize a response body: write a hand-rolled DTO that owns the "+
+					"wire shape instead (see dto_indexes.go). If %s only DECODES a request "+
+					"body with protojson.Unmarshal, add it to allowedProtojsonImporters "+
+					"with a comment saying so.",
 				name, name)
 		}
 	}
 }
 
-// TestNoProtojsonMarshalInResponsePath is the primary enforcement: no response
-// body in this package is serialized by protojson.
+// TestNoProtojsonMarshalInResponsePath is the primary enforcement: no
+// protojson call site in THIS PACKAGE serializes a response body.
+//
+// Mind the scope. The scan is os.ReadDir(".") below, so it sees
+// internal/adapter/http and nothing else. It therefore does NOT prove that no
+// response byte is produced by protojson: a payload type's own MarshalJSON may
+// delegate, and three do. commonpb.Log.MarshalJSON routes responseSignature
+// through protoFieldJSON -> protojson.Marshal on every variant;
+// commonpb.LogPayload.MarshalJSON falls through to a bare protojson.Marshal
+// for every oneof variant except createLedger / deleteLedger / apply
+// (internal/proto/commonpb/common.pb.json.go:25,46,70-71); and
+// auditpb.AuditEntry.MarshalJSON does the same for its chain-bound
+// submessages. GET /v3/_/logs/{sequence} (handlers_get_log.go passes a raw
+// *commonpb.Log) and the audit reads consequently still emit protojson bytes.
+// Nothing here or in .golangci.yaml covers internal/proto/**. Narrowing those
+// marshallers is a separate change; this test guards the call sites.
 //
 // protojson works off protobuf reflection and ignores json.Marshaler, so a type
 // that has BOTH is silently rendered by the wrong one. That was the EN-1622
