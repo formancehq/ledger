@@ -1,0 +1,28 @@
+{
+  "id": "accounting-invariants",
+  "title": "Accounting invariants and transaction processing",
+  "purpose": "Find latent failures that produce incorrect transactions, balances, volumes, metadata, sequencing, or non-deterministic business state.",
+  "paths": ["internal/domain/**", "internal/domain/processing/**", "internal/application/admission/**", "internal/infra/state/**", "internal/infra/plan/**", "internal/infra/preload/**", "internal/infra/cache/**", "internal/storage/**", "internal/query/**", "tests/**"],
+  "related_docs": ["AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/fsm/", "docs/technical/architecture/audit-vs-technical-state.md", "docs/technical/architecture/subsystems/scripting/", "docs/technical/contributing/ai-audit.md"],
+  "invariants": [
+    "Every committed transaction must conserve each asset according to Ledger accounting semantics.",
+    "The same committed order sequence must produce identical business state on every replica.",
+    "Balances and volumes exposed by authoritative reads must correspond to committed transaction history.",
+    "Failed, skipped, or rolled-back execution must not leave partial business effects.",
+    "Preload, planning, and cache behavior must not change the semantic result of an order.",
+    "Numscript expansion and direct API commands expressing equivalent operations must preserve the same accounting invariants.",
+    "Metadata updates and transaction/account creation must be atomic at the command semantics promised to callers.",
+    "Integer/amount handling must not overflow, truncate, change sign, or silently cross asset boundaries."
+  ],
+  "adversarial_questions": [
+    "Can a multi-posting or multi-asset transaction partially apply?",
+    "Can insufficient preload/coverage produce a result that differs from a fully loaded execution?",
+    "Can rollback or skip paths leave cache/state mutations behind?",
+    "Can Numscript generate an order sequence whose validation differs before and during apply?",
+    "Can metadata merges or account creation alter accounting state before a later failure?",
+    "Are zero, negative, extreme, or boundary amounts treated consistently everywhere?",
+    "Can transaction sequencing or id assignment diverge under retry or concurrent proposals?",
+    "Do balance/volume projections agree with recomputation from committed history?"
+  ],
+  "dynamic_checks_to_consider": ["property tests for asset conservation", "model-cluster differential state checks", "Numscript/direct-command equivalence tests", "rollback fault injection", "extreme integer boundary tests", "recompute balances from audit history"]
+}
