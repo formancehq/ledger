@@ -168,6 +168,26 @@ ledger run \
 ledgerctl chapters set-schedule "0 0 * * *"
 ```
 
+With the Kubernetes operator, the cold cache path is fixed to
+`/data/cold-cache`; size its separate volume through
+`spec.persistence.coldCache`:
+
+```yaml
+spec:
+  coldStorage:
+    driver: s3
+    s3:
+      bucket: customer-ledger-archive
+      region: eu-west-1
+  persistence:
+    coldCache:
+      size: 50Gi
+```
+
+The `--cold-cache-dir` path is configurable only outside the operator. Set
+`spec.coldStorage.s3.endpoint` as well when using an S3-compatible service such
+as MinIO.
+
 Closing a chapter does not archive it by itself. Verify the close, seal, archive,
 and purge lifecycle, and remember that current attributes such as balances and
 metadata remain in the primary store. Cold storage also does not replace
@@ -195,7 +215,7 @@ separate schedules.
 | Read latency is high and disk reads dominate | Increase `--pebble-cache-size`; for filtered listings, increase `--read-index-cache-size` and create only the required indexes | Directly increases RSS. An index improves its matching query but adds build, storage, and write cost. |
 | Admission preloads are slow and active keys are reused | Increase `--cache-rotation-threshold` from the default `1000` | Approximately linear cache-memory growth; roll the value consistently across the cluster. |
 | Workload continually creates unique accounts | Keep the cache threshold near the default and focus on fast storage | A larger cache provides little benefit without key reuse. |
-| Many Pebble lookups are for absent keys | Enable Bloom filters only for the affected attribute types and size `expected-keys` from measured cardinality | Filters consume memory and must be repopulated after configuration changes. Do not enable them by habit. |
+| Many Pebble lookups are for absent keys | Enable Bloom filters only for affected attribute types with a reliable distinct-key bound between rebuilds or an explicit resize policy | Filters consume fixed memory on every node and lose effectiveness when `expectedKeys` is exceeded. Do not enable them by habit. |
 | More Numscript texts than the `1024`-entry cache | First replace generated scripts with variables; only then increase `--numscript-cache-size` | Increasing the cache hides inefficient script templating and consumes memory. |
 | Propose queue fills | Use bulks, check leader CPU and WAL latency, then consider `--raft-propose-queue-capacity` | A larger queue absorbs bursts but does not increase sustainable throughput and increases latency under overload. |
 | Pebble write stalls | Check storage latency and compaction metrics; consider more IOPS or `--pebble-max-concurrent-compactions` | More compactions consume CPU, I/O, and temporary memory. |
@@ -203,6 +223,182 @@ separate schedules.
 | Followers join slowly | Increase `--snapshot-parallelism` from `4` and, for very large snapshots, `--snapshot-session-ttl` | More parallelism consumes network, disk I/O, file descriptors, and memory on both nodes. |
 | Large values cause compaction amplification | Load-test `--pebble-value-separation` | Can reduce compaction I/O but adds read amplification and blob lifecycle tuning. |
 | High-cardinality observability is expensive | Keep `--admission-metrics` disabled in steady-state high-throughput production; sample successful traces | Reduces diagnostic detail. Re-enable temporarily while investigating. |
+
+For operator-managed clusters, the flags in this table map to the following CR
+fields:
+
+| CLI control | Operator field |
+|-------------|----------------|
+| `--pebble-cache-size`, `--pebble-memtable-size` | `spec.pebble.cacheSize`, `spec.pebble.memTableSize` |
+| `--read-index-cache-size` | `spec.readIndex.pebble.cacheSize` |
+| `--cache-rotation-threshold` | `spec.cache.rotationThreshold` |
+| `--numscript-cache-size` | `spec.numscriptCacheSize` |
+| `--raft-propose-queue-capacity` | `spec.raft.proposeQueueCapacity` |
+| `--pebble-max-concurrent-compactions` | `spec.pebble.maxConcurrentCompactions` |
+| `--grpc-compression` | `spec.grpcCompression` |
+| `--snapshot-parallelism`, `--snapshot-session-ttl` | `spec.snapshot.parallelism`, `spec.snapshot.sessionTTL` |
+| `--pebble-value-separation` | `spec.pebble.valueSeparation.enabled` |
+| `--admission-metrics` | `spec.admissionMetrics` |
+
+### Choose Pebble compression from the LSM workload
+
+Compression is configured independently for the primary store and the read
+index. Each value selects the profile used when Pebble writes a new SST block
+at one of the seven LSM levels, from L0 through L6. It does not compress the
+WAL. A change takes effect on new flushes and compactions; existing SSTs adopt
+it gradually as Pebble rewrites them.
+
+Ledger's default is:
+
+```text
+fastest,fastest,fastest,fastest,fast,fast,balanced
+```
+
+This keeps the frequently rewritten L0-L3 levels cheap, applies adaptive
+compression to L4-L5, and spends more CPU on L6, where most long-lived data
+normally resides. Keep this default until measurements identify CPU, storage
+capacity, or storage bandwidth as the limiting resource.
+
+| Profile | Behavior with the currently pinned Pebble 2.1.4 | Workload fit | Main cost |
+|---------|-------------------------------------------------|--------------|-----------|
+| `none` | Stores blocks without block compression | Only after profiling proves that even the compression attempt is material and the data is already incompressible | Maximum disk footprint, read I/O, backup size, and compaction I/O |
+| `snappy` | Attempts Snappy for data, values, indexes, filters, and metadata, retaining blocks uncompressed when reduction is insufficient | Predictable low-CPU compatibility profile | Usually a lower compression ratio than adaptive profiles |
+| `default` | Currently the same as `snappy` in the pinned Pebble version | Acceptable when following Pebble's version-dependent default is intentional | Its meaning may change after a Pebble upgrade; use `snappy` for a stable explicit choice |
+| `fastest` | MinLZ-fastest on most architectures and Snappy on arm64; skips compression when the reduction is too small | Hot levels, CPU-bound writes, and latency-sensitive compactions | Favors CPU over disk reduction |
+| `fast` | Fastest for data and metadata blocks, Zstd level 1 for value blocks, with adaptive fallback | Warm levels containing compressible values | More CPU than `fastest`, primarily for values |
+| `balanced` | Zstd level 1 for data and value blocks, fastest for other blocks, with adaptive fallback | Cold, read-heavy data when storage bandwidth or capacity matters | Higher compaction and decompression CPU |
+| `good` | Zstd level 3 for data and value blocks, fastest for other blocks, with adaptive fallback | Deep cold levels when disk reduction is worth additional background CPU | Highest CPU cost among the adaptive profiles |
+| `zstd` | Zstd level 3 uniformly for every compressible block type | A deliberate uniform policy validated by benchmarks | Can spend CPU on hot data and non-data blocks where it has little payoff |
+
+Use exactly seven comma-separated values. The following starting points change
+only the levels justified by the workload:
+
+| Observed constraint | Starting profile | Why |
+|---------------------|------------------|-----|
+| Balanced production workload | `fastest,fastest,fastest,fastest,fast,fast,balanced` | Preserves Ledger's tested default. |
+| CPU-bound ingestion with healthy disk headroom | `fastest,fastest,fastest,fastest,fastest,fastest,fastest` | Reduces compaction CPU before considering `none`; `fastest` already abandons blocks that do not compress enough. |
+| Storage-bound or large read-heavy history with spare CPU | `fastest,fastest,fastest,fastest,fast,balanced,good` | Keeps hot levels cheap and concentrates stronger compression on long-lived levels. |
+| Incompressible payloads and measured compression CPU | `none,none,none,none,none,none,none` | Use only if a representative benchmark shows an end-to-end gain after accounting for extra I/O. |
+
+For Kubernetes, configure the stores separately so an index-heavy read
+workload does not force the same choice on the consensus store:
+
+```yaml
+spec:
+  pebble:
+    compression: "fastest,fastest,fastest,fastest,fast,fast,balanced"
+  readIndex:
+    pebble:
+      compression: "fastest,fastest,fastest,fastest,fast,balanced,good"
+```
+
+Compare steady-state CPU, compaction duration, write stalls, Pebble VFS
+operations, storage-level throughput, disk growth, backup size, and read
+latency before and after the change. Run the comparison after enough
+compaction has occurred to rewrite a representative share of the old SSTs. A
+smaller database immediately after a configuration change is not evidence that
+foreground latency improved.
+
+### Enable application Bloom filters only with a cardinality plan
+
+Ledger has two different Bloom-filter layers:
+
+- Pebble SSTable filters are always configured internally at 10 bits per key
+  on every LSM level. They help Pebble avoid reading irrelevant SSTables after
+  a request reaches the database and have no customer-facing sizing flag.
+- Ledger's application Bloom filters sit before Pebble in the shared
+  execution-plan preload resolver used by admission, mirror, and other
+  proposal producers. They are optional and configured independently for each
+  attribute type with `expectedKeys` and `fpRate`. A definite absence avoids
+  the Pebble lookup entirely.
+
+The application filters are useful only when all of the following are true:
+
+1. Cache misses frequently ask for keys that do not exist. Existing-key reads
+   cannot be skipped by a Bloom filter.
+2. The live keys loaded by the last rebuild plus the distinct keys added since
+   then have a reliable bound, or the operator has an explicit policy to
+   measure, redimension, and rebuild the filter before its capacity is
+   exhausted. The filter is monotonic: deleting a key does not clear its bits,
+   so high churn can exhaust the capacity even when the live dataset stays
+   small.
+3. Avoided storage latency is worth the per-node memory and rebuild I/O.
+
+Exceeding `expectedKeys` does not create false negatives or corrupt results.
+The bitset stays at its allocated size, false positives rise, and the filter
+eventually stops avoiding useful reads. For an unbounded ledger without a
+monitored resize policy, leaving the filter disabled is better than assigning
+an arbitrary large number.
+
+The blocked-filter implementation uses approximately 11 bits per expected key
+at a 1% target false-positive rate and 17 bits per key at 0.1%, rounded to
+512-bit blocks. The allocation exists independently on every node:
+
+| `expectedKeys` | Memory per node at `fpRate: "0.01"` | Memory per node at `fpRate: "0.001"` |
+|----------------|--------------------------------------|---------------------------------------|
+| 1 million | about 1.3 MiB | about 2.0 MiB |
+| 10 million | about 13 MiB | about 20 MiB |
+| 100 million | about 131 MiB | about 203 MiB |
+
+These figures cover the main bitset; allow additional runtime and persisted
+block-tracking overhead. Start at 1%. A false positive is safe and costs only
+the Pebble read that the filter failed to avoid, so lowering the rate is useful
+only when storage misses remain expensive after the 1% filter is enabled.
+
+Choose types from the actual preload workload:
+
+| Type | Cardinality unit | When it can help | Typical decision |
+|------|------------------|------------------|------------------|
+| `volumes` | One key per ledger, account, asset, and color combination | First-touch postings produce many absent-key preloads and storage misses are expensive | Best high-throughput candidate when the maximum combination count is contractually bounded; often the largest filter |
+| `metadata` | One key per account metadata field | A bounded entity population receives a fixed metadata schema and many fields are written for the first time | Enable selectively; arbitrary field names or create/delete churn make the cumulative bound unreliable |
+| `references` | One key per retained transaction reference | A finite import or a product has a hard ceiling or a managed resize/rebuild schedule | Usually disable for indefinitely growing transaction history without that schedule |
+| `transactions` | One state key per transaction | Revert or transaction-metadata traffic contains many non-existent IDs | Normal traffic targets existing transactions, so the negative ratio is usually too low to justify a large filter |
+| `ledgers`, `boundaries` | Approximately one key of each type per ledger | Requests frequently target unknown ledger names | Cheap when ledger count is bounded, but normal traffic is mostly positive; validate the avoided-read ratio |
+| `numscriptVersions`, `numscriptContents` | One latest pointer per script name and one key per saved version | A finite script catalog has repeated first-save or missing-version checks | Reasonable for a bounded catalog; usually small and management-path only |
+| `ledgerMetadata` | One key per ledger metadata field | Ledger metadata keys come from a small governed schema | Bounded but normally too low-frequency to matter |
+| `preparedQueries` | One key per named prepared query | The catalog is bounded and management calls often probe new or missing names | Usually negligible compared with volume preloads |
+| `sinkConfigs` | One key per event sink | Control-plane calls frequently probe missing sink names | Usually too few operations to justify enabling |
+| `indexes` | One key per index registry entry | Index-management operations repeatedly probe missing definitions | Low-cardinality control plane; CLI-only in the current operator API and normally not worth enabling |
+
+Derive `expectedKeys` from the live cardinality loaded at rebuild plus the
+forecast cumulative distinct additions before the next rebuild, then add
+explicit headroom and a resize threshold. This example is valid only for a
+customer whose sizing period caps that combined population at 25 million
+volume keys and 250,000 metadata keys; it adds roughly 25% headroom:
+
+```yaml
+spec:
+  bloom:
+    volumes:
+      expectedKeys: 32000000
+      fpRate: "0.01"
+    metadata:
+      expectedKeys: 320000
+      fpRate: "0.01"
+```
+
+Leave every other type omitted, which is equivalent to `expectedKeys: 0`.
+Changing any one setting purges the persisted Bloom namespace, rebuilds all
+enabled application filters from a full attribute scan, and temporarily sets
+the global `bloom.ready` gauge to `0`. While it is not ready, preload
+resolution safely falls back to Pebble reads. Roll out one sizing change at a
+time and wait for every node to report ready before judging performance.
+
+Validate ratios per attribute `type`. Validate `bloom.ready` globally for the
+whole filter set:
+
+- `bloom.negatives / bloom.lookups` is the fraction of filter checks that
+  avoid Pebble. If it remains low, disable that type.
+- `bloom.false_positives / (bloom.negatives + bloom.false_positives)`
+  approximates the observed false-positive rate for absent keys. Sustained
+  growth above the target indicates that the cardinality assumption is stale.
+- `bloom.ready` must return to `1`; also verify that preload resolution latency
+  and Pebble VFS read operations actually fall.
+
+See [Performance Tuning](./performance-tuning.md#54-bloom-filters),
+[Monitoring](./monitoring.md#bloom-filter-metrics), and the
+[CLI reference](./cli.md#server-bloom-filter-flags) for the related controls
+and metrics.
 
 Do not tune Raft election ticks, heartbeat ticks, message size, or processing
 intervals from a generic profile. Change them only after measuring actual

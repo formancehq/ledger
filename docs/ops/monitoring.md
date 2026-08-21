@@ -433,16 +433,28 @@ Bloom filters provide probabilistic key existence checks to avoid unnecessary Pe
 | `bloom.negatives` | Counter | 1 | Checks that returned definitely-not-present (Pebble Get avoided) |
 | `bloom.false_positives` | Counter | 1 | Checks that returned maybe-present but Pebble Get found nothing |
 | `bloom.adds` | Counter | 1 | Keys added to the bloom filter |
-| `bloom.ready` | Gauge | 1 | Readiness state (1 = ready, 0 = populating) |
+| `bloom.ready` | Gauge | 1 | Readiness when reported (1 = ready, 0 = rebuilding after a configuration change); it may be absent when filters are disabled or before first population completes |
 
 **Attributes**:
-- `type`: Attribute type (`volumes`, `metadata`, `idempotency`, `references`, `ledgers`, `boundaries`, `transactions`)
+- `type` on the counters: attribute type (`volumes`, `metadata`, `references`,
+  `ledgers`, `boundaries`, `transactions`, `sink_configs`,
+  `numscript_versions`, `numscript_contents`, `ledger_metadata`,
+  `prepared_queries`, or `indexes`). `bloom.ready` is global and has no
+  `type` attribute.
 
 **Key ratios**:
 - **Negative rate** = `negatives / lookups` — fraction of lookups that avoided Pebble I/O. Higher is better.
-- **False positive rate** = `false_positives / (lookups - negatives)` — fraction of Pebble Gets that were unnecessary. Should stay below the configured `fpRate` (default 1%).
+- **Observed absent-key false positive rate** = `false_positives / (negatives + false_positives)` — approximate fraction of known-absent lookups that the filter failed to reject. Compare it with the configured `fpRate` (default 1%).
 
-**Lifecycle**: Bloom filters are never persisted in checkpoints. At startup, they are rebuilt from a full Pebble attribute scan in the background. During this scan (`bloom.ready = 0`), MayContain always returns true (no optimization, no false negatives).
+**Lifecycle**: Dirty Bloom blocks are persisted incrementally in Pebble. An
+unchanged restart restores those blocks synchronously and replays the two cache
+generations to cover recent writes. First boot, missing or stale persisted
+blocks, and configuration changes trigger a full asynchronous attribute scan.
+During a full rebuild, preloads bypass the filter and read Pebble directly, so
+the optimization is unavailable but false negatives are not introduced.
+`bloom.ready` is `0` during a configuration-change rebuild but may be absent
+until an initial population completes; an enabled filter set is usable only
+after the gauge reports `1`.
 
 ## Configuration
 
