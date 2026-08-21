@@ -17,13 +17,13 @@ One mirror worker runs per mirror ledger, **on the leader only**. The Manager (`
 
 Reconciliation is in `Manager.reconcile()` (`manager.go:112-179`).
 
-The Worker (`worker.go:27-167`) is a polling loop:
+The Worker (`worker.go:27-175`) is a polling loop:
 
 | Setting | Default | Source |
 |---------|---------|--------|
 | Batch size | 100 logs | `MirrorSourceConfig.batch_size` |
 | Poll interval | 5 s | Worker-local |
-| Prefetch | Next batch fetched async while previous one is applying | `worker.go:425-447` |
+| Prefetch | Next batch fetched async while previous one is applying | `worker.go:464-490` |
 
 On startup the worker reads `LedgerBoundaries` from Pebble once, before its first fetch, and takes both its ingestion position (`last_mirror_v2_log_id`) and `NextTransactionId` from it. The value it keeps in memory afterwards is a cache, not an authority: it advances only after both Raft acceptance and successful FSM application, and it is dropped on any batch error so the next tick re-reads the durable boundary. See [Audit-Bound vs Technical State](../../audit-vs-technical-state.md) for why this is the only durable ingestion position.
 
@@ -91,6 +91,8 @@ When the worker is fully caught up it fetches no logs, so the ingest path never 
 - **A recorded error still needs clearing.** A source that fails and then recovers *without producing a new log* leaves the head unchanged, so gating on the head alone would suppress the clear and the API would keep serving a stale error indefinitely. An empty source could never clear at all.
 
 A head that has never been observed carries no information and is skipped, but an observed head of zero is a legitimate value that must still be able to clear an error — which is why the worker records *that* it has observed a head, separately from the value. Once a publication is confirmed applied, an idle mirror stops re-proposing (EN-1773).
+
+The error report marks the status as needing a clear *before* it proposes, not after the apply is confirmed. The propose helper reports confirmation, not application — a wait abandoned on context cancellation does not un-commit the Raft entry — so waiting for confirmation could leave the worker believing the status is clean while an error is persisted. The failure directions are asymmetric: marking dirty for a proposal that never applied costs one idempotent idle publish, while the reverse costs a permanent error on a healthy mirror.
 
 ## Storage layout
 
@@ -170,7 +172,7 @@ This applies to any mode; it is documented here because mirror ledgers are the p
 | Trigger | Worker behaviour |
 |---------|------------------|
 | Manual delete | Manager stops the worker on reconcile. The status / source-head rows remain in Pebble until the covering cleanup purge runs. |
-| Source unreachable | `FetchLogs` returns an error → the worker writes the error into `MirrorStatus` via a small technical-update proposal, then retries with exponential backoff (`worker.go:225-237`). |
+| Source unreachable | `FetchLogs` returns an error → the worker writes the error into `MirrorStatus` via a small technical-update proposal, then retries with exponential backoff (`worker.go:253-275`). |
 | Translation error (e.g. malformed v2 log) | Same path — error persisted, batch is **not** advanced, retried until the operator intervenes or the source heals. |
 | Promotion | Manager stops the worker. The boundary's `last_mirror_v2_log_id` is preserved for audit. |
 | Pebble write-stall | The worker pauses (`worker.go:240-250`) until back-pressure clears, then resumes. |
@@ -180,7 +182,7 @@ There is no automatic "skip the broken log" mode. Operators investigate, fix the
 ## Performance notes
 
 - **Async prefetch**: the next batch is fetched from the source while the previous batch is still applying through Raft + FSM. This overlaps source latency with consensus latency.
-- **Coverage pre-declaration**: the worker pre-computes the per-order `plan.Coverage` for the whole batch in one pass (`extractMirrorNeeds`, `worker.go:701-791`), so the per-proposal preload work is amortised.
+- **Coverage pre-declaration**: the worker pre-computes the per-order `plan.Coverage` for the whole batch in one pass (`extractMirrorNeeds`, `worker.go:710-800`), so the per-proposal preload work is amortised.
 - **Single-writer on the live path**: `last_mirror_v2_log_id` is only ever written by the FSM applying a `MirrorIngestOrder`, so there is no contention to manage. The one other writer is offline: `backup.RebuildDelta` reconstructs the mark from the replayed delta during a restore, when no worker and no FSM are running (EN-1776).
 
 ## What the mirror does not do
