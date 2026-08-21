@@ -438,6 +438,44 @@ func (c *MockScopeGetClosingChaptersCall) DoAndReturn(f func() []commonpb.Chapte
 	return c
 }
 
+// GetClusterPolicy mocks base method.
+func (m *MockScope) GetClusterPolicy() *commonpb.ClusterPolicy {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetClusterPolicy")
+	ret0, _ := ret[0].(*commonpb.ClusterPolicy)
+	return ret0
+}
+
+// GetClusterPolicy indicates an expected call of GetClusterPolicy.
+func (mr *MockScopeMockRecorder) GetClusterPolicy() *MockScopeGetClusterPolicyCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClusterPolicy", reflect.TypeOf((*MockScope)(nil).GetClusterPolicy))
+	return &MockScopeGetClusterPolicyCall{Call: call}
+}
+
+// MockScopeGetClusterPolicyCall wrap *gomock.Call
+type MockScopeGetClusterPolicyCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeGetClusterPolicyCall) Return(arg0 *commonpb.ClusterPolicy) *MockScopeGetClusterPolicyCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeGetClusterPolicyCall) Do(f func() *commonpb.ClusterPolicy) *MockScopeGetClusterPolicyCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeGetClusterPolicyCall) DoAndReturn(f func() *commonpb.ClusterPolicy) *MockScopeGetClusterPolicyCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetCurrentOpenChapter mocks base method.
 func (m *MockScope) GetCurrentOpenChapter() (commonpb.ChapterReader, bool) {
 	m.ctrl.T.Helper()
@@ -1418,6 +1456,42 @@ func (c *MockScopeSaveQueryCheckpointCall) Do(f func(*raftcmdpb.QueryCheckpointS
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeSaveQueryCheckpointCall) DoAndReturn(f func(*raftcmdpb.QueryCheckpointState)) *MockScopeSaveQueryCheckpointCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// SetClusterPolicy mocks base method.
+func (m *MockScope) SetClusterPolicy(policy *commonpb.ClusterPolicy) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetClusterPolicy", policy)
+}
+
+// SetClusterPolicy indicates an expected call of SetClusterPolicy.
+func (mr *MockScopeMockRecorder) SetClusterPolicy(policy any) *MockScopeSetClusterPolicyCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetClusterPolicy", reflect.TypeOf((*MockScope)(nil).SetClusterPolicy), policy)
+	return &MockScopeSetClusterPolicyCall{Call: call}
+}
+
+// MockScopeSetClusterPolicyCall wrap *gomock.Call
+type MockScopeSetClusterPolicyCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeSetClusterPolicyCall) Return() *MockScopeSetClusterPolicyCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeSetClusterPolicyCall) Do(f func(*commonpb.ClusterPolicy)) *MockScopeSetClusterPolicyCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeSetClusterPolicyCall) DoAndReturn(f func(*commonpb.ClusterPolicy)) *MockScopeSetClusterPolicyCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

@@ -111,5 +111,6 @@ func systemScopedCoveredByDispatchTest(t *testing.T) map[string]struct{} {
 		"delete_query_checkpoint":          {},
 		"set_query_checkpoint_schedule":    {},
 		"delete_query_checkpoint_schedule": {},
+		"set_cluster_policy":               {},
 	}
 }

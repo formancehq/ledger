@@ -245,6 +245,24 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{},
 		},
 		{
+			name:        "StaleClusterPolicy",
+			err:         &domain.ErrStaleClusterPolicy{ProposedRevision: 3, AppliedRevision: 5},
+			wantReason:  domain.ErrReasonStaleClusterPolicy,
+			wantContext: map[string]string{"proposedRevision": "3", "appliedRevision": "5"},
+		},
+		{
+			name:        "ClusterPolicyRevisionConflict",
+			err:         &domain.ErrClusterPolicyRevisionConflict{Revision: 7},
+			wantReason:  domain.ErrReasonClusterPolicyRevisionConflict,
+			wantContext: map[string]string{"revision": "7"},
+		},
+		{
+			name:        "ClusterPolicyInvalid",
+			err:         &domain.ErrClusterPolicyInvalid{Detail: "query_checkpoint_limit must be at least 1"},
+			wantReason:  domain.ErrReasonClusterPolicyInvalid,
+			wantContext: map[string]string{"detail": "query_checkpoint_limit must be at least 1"},
+		},
+		{
 			name:        "InvalidCronExpression",
 			err:         &domain.ErrInvalidCronExpression{Expression: "* * * *", Details: "expected 5 or 6 fields"},
 			wantReason:  domain.ErrReasonInvalidCronExpression,

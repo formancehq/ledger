@@ -123,7 +123,7 @@ func TestCompareIdempotencyOutcomes_ArchivedFreezeWithinTTLWindow(t *testing.T) 
 		var got []*servicepb.CheckStoreError
 
 		ttl := uint64(ttlMicros)
-		_, err = checker.verifyAuditHashChain(context.Background(), handle, chapters, nil, newChainBoundState(), &ttl, newSigningVerifier(),
+		_, err = checker.verifyAuditHashChain(context.Background(), handle, chapters, nil, newChainBoundState(), &ttl, newSigningVerifier(), newClusterPolicyVerifier(),
 			func(event *servicepb.CheckStoreEvent) {
 				if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
 					e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
@@ -235,7 +235,7 @@ func TestCompareIdempotencyOutcomes_NeverExpireScansFullArchivedHistory(t *testi
 		// TTL 0 is never-expire: the derived cutoff is 0, so the cold pass scans
 		// the full archived history.
 		neverExpire := uint64(0)
-		_, err = checker.verifyAuditHashChain(context.Background(), handle, chapters, nil, newChainBoundState(), &neverExpire, newSigningVerifier(),
+		_, err = checker.verifyAuditHashChain(context.Background(), handle, chapters, nil, newChainBoundState(), &neverExpire, newSigningVerifier(), newClusterPolicyVerifier(),
 			func(event *servicepb.CheckStoreEvent) {
 				if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
 					e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {

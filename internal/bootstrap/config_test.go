@@ -35,9 +35,11 @@ func TestServiceAdvertiseAddr_WithoutPort(t *testing.T) {
 // Validate() only fails on the aspect under test.
 func validBaseConfig() Config {
 	return Config{
-		ClusterID:  "test-cluster",
-		RaftConfig: node.NodeConfig{NodeID: 1},
-		TLSConfig:  TLSConfig{Mode: TLSModeDisabled},
+		ClusterID:             "test-cluster",
+		RaftConfig:            node.NodeConfig{NodeID: 1},
+		TLSConfig:             TLSConfig{Mode: TLSModeDisabled},
+		ClusterPolicyRevision: 1,
+		QueryCheckpointLimit:  10,
 		TransportConfig: node.TransportConfig{
 			Reception: []int{10, 512, 512},
 			Send:      []int{10, 512, 512},
@@ -114,6 +116,26 @@ func TestValidateClusterSecretRequiresTLS(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateClusterPolicyFields(t *testing.T) {
+	t.Parallel()
+
+	t.Run("zero revision rejected", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validBaseConfig()
+		cfg.ClusterPolicyRevision = 0
+		require.ErrorContains(t, cfg.Validate(), "--cluster-policy-revision must be greater than zero")
+	})
+
+	t.Run("zero query checkpoint limit rejected", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validBaseConfig()
+		cfg.QueryCheckpointLimit = 0
+		require.ErrorContains(t, cfg.Validate(), "--query-checkpoint-limit must be greater than zero")
+	})
 }
 
 func TestValidateTLSConfig(t *testing.T) {

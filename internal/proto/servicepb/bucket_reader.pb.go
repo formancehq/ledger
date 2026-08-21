@@ -1211,6 +1211,77 @@ func NewDeleteQueryCheckpointRequestListReader(s []*DeleteQueryCheckpointRequest
 	return deleteQueryCheckpointRequestListReadonly(s)
 }
 
+// SetClusterPolicyRequestReader provides read-only access to SetClusterPolicyRequest.
+// Call Mutate() to obtain a mutable clone.
+type SetClusterPolicyRequestReader interface {
+	GetPolicy() commonpb.ClusterPolicyReader
+	Mutate() *SetClusterPolicyRequest
+}
+
+type setClusterPolicyRequestReadonly SetClusterPolicyRequest
+
+func (r *setClusterPolicyRequestReadonly) GetPolicy() commonpb.ClusterPolicyReader {
+	v := (*SetClusterPolicyRequest)(r).GetPolicy()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *setClusterPolicyRequestReadonly) Mutate() *SetClusterPolicyRequest {
+	return (*SetClusterPolicyRequest)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SetClusterPolicyRequest.
+func (m *SetClusterPolicyRequest) AsReader() SetClusterPolicyRequestReader {
+	if m == nil {
+		return nil
+	}
+	return (*setClusterPolicyRequestReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SetClusterPolicyRequest.
+func (m *SetClusterPolicyRequest) Mutate() *SetClusterPolicyRequest {
+	return m.CloneVT()
+}
+
+// SetClusterPolicyRequestListReader provides read-only iteration over []*SetClusterPolicyRequest.
+type SetClusterPolicyRequestListReader interface {
+	Len() int
+	Get(i int) SetClusterPolicyRequestReader
+	Range(yield func(int, SetClusterPolicyRequestReader) bool)
+}
+
+type setClusterPolicyRequestListReadonly []*SetClusterPolicyRequest
+
+func (l setClusterPolicyRequestListReadonly) Len() int { return len(l) }
+
+func (l setClusterPolicyRequestListReadonly) Get(i int) SetClusterPolicyRequestReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l setClusterPolicyRequestListReadonly) Range(yield func(int, SetClusterPolicyRequestReader) bool) {
+	for i, v := range l {
+		var r SetClusterPolicyRequestReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSetClusterPolicyRequestListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSetClusterPolicyRequestListReader(s []*SetClusterPolicyRequest) SetClusterPolicyRequestListReader {
+	return setClusterPolicyRequestListReadonly(s)
+}
+
 // PromoteLedgerRequestReader provides read-only access to PromoteLedgerRequest.
 // Call Mutate() to obtain a mutable clone.
 type PromoteLedgerRequestReader interface {
