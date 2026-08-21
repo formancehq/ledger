@@ -11,7 +11,8 @@ evaluated. After GitHub resolves the exact target and head commits, the runner
 creates two detached worktrees:
 
 - the target commit is the trust root for `AGENTS.md`, agent context, this
-  contract, the structured-output schema, and the Codex working directory;
+  contract, the product-technical-traceability contract, the structured-output
+  schema, and the Codex working directory;
 - the head commit is exposed separately and only as untrusted evidence.
 
 The committed PR delta starts at the immutable merge base of those commits, not
