@@ -98,6 +98,7 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_CHAPTER_NOT_CLOSED,
 		commonpb.ErrorReason_ERROR_REASON_CHAPTER_NOT_ARCHIVING,
 		commonpb.ErrorReason_ERROR_REASON_CHAPTER_ARCHIVE_IDENTITY_MISMATCH,
+		commonpb.ErrorReason_ERROR_REASON_CHAPTER_ARCHIVE_OUT_OF_ORDER,
 		commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE,
 		commonpb.ErrorReason_ERROR_REASON_INDEX_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA,

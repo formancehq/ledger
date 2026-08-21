@@ -426,6 +426,12 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"chapterId": "7", "expectedSealingHash": "dead", "gotSealingHash": "beef"},
 		},
 		{
+			name:        "ChapterArchiveOutOfOrder",
+			err:         &domain.ErrChapterArchiveOutOfOrder{ChapterID: 7, BlockingChapterID: 5},
+			wantReason:  domain.ErrReasonChapterArchiveOutOfOrder,
+			wantContext: map[string]string{"chapterId": "7", "blockingChapterId": "5"},
+		},
+		{
 			name:        "MirrorV2LogIDGap",
 			err:         &domain.ErrMirrorV2LogIDGap{Name: "mirror-ledger", Got: 12, Expected: 9},
 			wantReason:  domain.ErrReasonMirrorV2LogIDGap,

@@ -191,6 +191,7 @@ const (
 	ErrReasonChapterNotClosing              = "CHAPTER_NOT_CLOSING"
 	ErrReasonChapterNotClosed               = "CHAPTER_NOT_CLOSED"
 	ErrReasonChapterNotArchiving            = "CHAPTER_NOT_ARCHIVING"
+	ErrReasonChapterArchiveOutOfOrder       = "CHAPTER_ARCHIVE_OUT_OF_ORDER"
 	ErrReasonChapterArchiveIdentityMismatch = "CHAPTER_ARCHIVE_IDENTITY_MISMATCH"
 	ErrReasonMetadataNotFound               = "METADATA_NOT_FOUND"
 	ErrReasonInvalidReceipt                 = "INVALID_RECEIPT"
@@ -873,6 +874,28 @@ func (e *ErrChapterArchiveIdentityMismatch) Metadata() map[string]string {
 		"chapterId":           strconv.FormatUint(e.ChapterID, 10),
 		"expectedSealingHash": hex.EncodeToString(e.Expected),
 		"gotSealingHash":      hex.EncodeToString(e.Got),
+	}
+}
+
+// ErrChapterArchiveOutOfOrder — attempting to archive a CLOSED chapter while an
+// older one is not ARCHIVED yet. Archived chapters must form a contiguous
+// prefix: the purge deletes everything up to the archived chapter's close
+// sequence, so a hole would leave an un-archived chapter's logs retained below
+// the archive boundary, where the checker's replay skips them.
+type ErrChapterArchiveOutOfOrder struct {
+	ChapterID uint64
+	// BlockingChapterID is the oldest chapter that must be archived first.
+	BlockingChapterID uint64
+}
+
+func (e *ErrChapterArchiveOutOfOrder) Error() string {
+	return fmt.Sprintf("chapter %d cannot be archived while older chapter %d is not archived", e.ChapterID, e.BlockingChapterID)
+}
+func (*ErrChapterArchiveOutOfOrder) Reason() string { return ErrReasonChapterArchiveOutOfOrder }
+func (e *ErrChapterArchiveOutOfOrder) Metadata() map[string]string {
+	return map[string]string{
+		"chapterId":         strconv.FormatUint(e.ChapterID, 10),
+		"blockingChapterId": strconv.FormatUint(e.BlockingChapterID, 10),
 	}
 }
 

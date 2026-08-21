@@ -860,6 +860,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		b.fsm.Chapters.SetCurrentOpenChapter(b.chapters.CurrentOpenChapter())
 		b.fsm.Chapters.SetClosingChapters(b.chapters.ClosingChapters())
 		b.fsm.Chapters.SetNextChapterID(b.chapters.NextChapterID())
+		b.fsm.Chapters.SetArchivedThroughID(b.chapters.ArchivedThroughID())
 	}
 
 	return nil
@@ -1647,6 +1648,21 @@ func (b *WriteSet) IncrementNextChapterID() uint64 {
 	b.chapters.SetNextChapterID(id + 1)
 
 	return id
+}
+
+func (b *WriteSet) GetArchivedThroughChapterID() uint64 {
+	b.ensureChapters()
+
+	return b.chapters.ArchivedThroughID()
+}
+
+// AdvanceArchivedThroughChapterID extends the archived prefix by one on the
+// buffer, so a later order in the SAME proposal (a batched ApplyRequest can
+// carry ConfirmArchiveChapter for N and ArchiveChapter for N+1) observes it.
+// Merge propagates the value to the FSM tracker.
+func (b *WriteSet) AdvanceArchivedThroughChapterID() {
+	b.ensureChapters()
+	b.chapters.SetArchivedThroughID(b.chapters.ArchivedThroughID() + 1)
 }
 
 // GetChapterByID looks up a chapter by ID from in-memory state only.

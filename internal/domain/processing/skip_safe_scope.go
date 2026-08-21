@@ -198,6 +198,14 @@ func (s *skipSafeScope) RemoveClosingChapter(chapterID uint64) {
 func (s *skipSafeScope) GetNextChapterID() uint64       { return s.inner.GetNextChapterID() }
 func (s *skipSafeScope) IncrementNextChapterID() uint64 { return s.inner.IncrementNextChapterID() }
 
+func (s *skipSafeScope) GetArchivedThroughChapterID() uint64 {
+	return s.inner.GetArchivedThroughChapterID()
+}
+
+func (s *skipSafeScope) AdvanceArchivedThroughChapterID() {
+	trapUnbuffered("AdvanceArchivedThroughChapterID", nil)
+}
+
 func (s *skipSafeScope) GetChapterByID(chapterID uint64) (commonpb.ChapterReader, bool) {
 	return s.inner.GetChapterByID(chapterID)
 }
