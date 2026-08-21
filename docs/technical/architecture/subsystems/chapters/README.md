@@ -10,6 +10,7 @@ Chapters partition a ledger's transaction history into discrete sealed segments.
 | [cold-storage.md](cold-storage.md) | Export of sealed chapter logs to durable cold storage (filesystem, S3) with a two-phase archive flow. |
 | [receipts.md](receipts.md) | HMAC-signed JWT receipts that allow reverting archived transactions without re-reading cold storage. |
 | [backup.md](backup.md) | Full-database backup (Pebble checkpoint + incremental segments) to S3, Azure, or filesystem; restore for disaster recovery. |
+| [incremental-restore-contract.md](incremental-restore-contract.md) | Required parity between live apply and checkpoint-plus-delta restore for persisted state. |
 
 ## Related
 
