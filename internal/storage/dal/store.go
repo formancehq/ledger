@@ -10,7 +10,9 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -28,6 +30,11 @@ import (
 // ErrStoreClosed is returned when a store operation is attempted after the
 // Pebble database has been closed. This prevents panics during shutdown races.
 var ErrStoreClosed = errors.New("store closed")
+
+const (
+	storeOpenLockRetryTimeout = 5 * time.Second
+	storeOpenLockRetryDelay   = 50 * time.Millisecond
+)
 
 const (
 	liveDir = "live"
@@ -507,7 +514,7 @@ func NewStore(
 
 	openStart := time.Now()
 
-	db, err = pebble.Open(liveDir, opts)
+	db, err = openPebbleAfterPreviousProcess(liveDir, opts)
 	if err != nil {
 		return nil, fmt.Errorf("opening pebble database: %w", err)
 	}
@@ -561,6 +568,39 @@ func NewStore(
 	store.cleanupIncomingRestore()
 
 	return store, nil
+}
+
+// openPebbleAfterPreviousProcess tolerates the short overlap between a
+// terminating process and its replacement. Kubernetes normally waits for the
+// old container to exit, but fault injection can expose a window where the new
+// process starts before Pebble's LOCK is released. Retrying only lock-contention
+// errors preserves fail-fast startup for corruption and configuration errors.
+func openPebbleAfterPreviousProcess(dirname string, opts *pebble.Options) (*pebble.DB, error) {
+	return openPebbleWithLockRetry(
+		func() (*pebble.DB, error) { return pebble.Open(dirname, opts) },
+		storeOpenLockRetryTimeout,
+		storeOpenLockRetryDelay,
+	)
+}
+
+func openPebbleWithLockRetry(open func() (*pebble.DB, error), timeout, delay time.Duration) (*pebble.DB, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		db, err := open()
+		if err == nil {
+			return db, nil
+		}
+		if !isPebbleLockContention(err) || time.Now().Add(delay).After(deadline) {
+			return nil, err
+		}
+		time.Sleep(delay)
+	}
+}
+
+func isPebbleLockContention(err error) bool {
+	return errors.Is(err, syscall.EAGAIN) ||
+		errors.Is(err, syscall.EACCES) ||
+		strings.Contains(err.Error(), "lock held by current process")
 }
 
 // DataDir returns the base data directory path for this store.

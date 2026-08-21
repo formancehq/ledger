@@ -149,6 +149,7 @@ func (t *fileTrigger) Fire(ctx context.Context) error {
 	cap := restoreTimeout()
 	timeout := time.NewTimer(cap)
 	defer timeout.Stop()
+	ctxDone := ctx.Done()
 
 	for {
 		if data, err := os.ReadFile(t.respPath); err == nil {
@@ -161,9 +162,15 @@ func (t *fileTrigger) Fire(ctx context.Context) error {
 		}
 
 		select {
-		case <-ctx.Done():
-			t.withdraw()
-			return ctx.Err()
+		case <-ctxDone:
+			if t.withdraw() {
+				return ctx.Err()
+			}
+			// The orchestrator won the claim race. From this point onward the
+			// cluster may be torn down and the only safe exit is its response;
+			// disable the already-closed cancellation channel and keep waiting.
+			log.Printf("restore cycle: command deadline expired after the request was claimed; waiting for the orchestrator")
+			ctxDone = nil
 		case <-timeout.C:
 			if t.withdraw() {
 				return fmt.Errorf("restore timed out after %s (request never claimed)", cap)

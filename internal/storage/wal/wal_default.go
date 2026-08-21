@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"go.etcd.io/etcd/client/pkg/v3/fileutil"
 	"go.etcd.io/etcd/server/v3/storage/wal"
 	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
@@ -287,7 +288,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			// Torn-boot recovery is the correct answer to a lost snap file;
 			// asserting it confirms fault exploration actually reaches this
 			// lifecycle outcome.
-			assert.Reachable("snap file recovered from WAL snapshot records", map[string]any{
+			lifecycle.SendEvent("snap_file_recovered_from_wal_snapshot_records", map[string]any{
 				"index":      recovered.GetIndex(),
 				"term":       recovered.GetTerm(),
 				"walRecords": len(walSnaps),

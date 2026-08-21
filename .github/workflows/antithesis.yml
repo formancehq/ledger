@@ -1,0 +1,154 @@
+name: Run Antithesis
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: Name shown in the Antithesis report
+        required: true
+        type: string
+        default: Ledger v3 manual validation
+      duration_minutes:
+        description: Test duration in minutes
+        required: true
+        type: number
+        default: 20
+      include:
+        description: Optional comma-separated driver paths
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: antithesis-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-publish-launch:
+    name: Build, publish, and launch
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    timeout-minutes: 180
+    environment: antithesis
+    env:
+      ANTITHESIS_API_KEY: ${{ secrets.ANTITHESIS_API_KEY }}
+      ANTITHESIS_REGISTRY_KEY_JSON: ${{ secrets.ANTITHESIS_REGISTRY_KEY_JSON }}
+      ANTITHESIS_REPOSITORY: ${{ vars.ANTITHESIS_REPOSITORY }}
+      ANTITHESIS_REPORT_RECIPIENT: ${{ vars.ANTITHESIS_REPORT_RECIPIENT }}
+      ANTITHESIS_TENANT: ${{ vars.ANTITHESIS_TENANT }}
+      GOPATH: /tmp/go
+      INCLUDE: ${{ inputs.include }}
+      RUN_DESCRIPTION: ${{ inputs.name }}
+      RUN_DURATION_MINUTES: ${{ inputs.duration_minutes }}
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
+        with:
+          fetch-depth: 0
+          dissociate: true
+
+      - name: Setup environment
+        uses: ./.github/actions/default
+
+      - name: Set up Docker Buildx
+        uses: namespacelabs/nscloud-setup-buildx-action@d059ed7184f0bc7c8b27e8810cea153d02bcc6dd # v0.0.23
+
+      - name: Validate configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${ANTITHESIS_API_KEY:?Set the ANTITHESIS_API_KEY environment secret}"
+          : "${ANTITHESIS_REGISTRY_KEY_JSON:?Set the ANTITHESIS_REGISTRY_KEY_JSON environment secret}"
+          : "${ANTITHESIS_REPOSITORY:?Set the ANTITHESIS_REPOSITORY environment variable}"
+          : "${ANTITHESIS_REPORT_RECIPIENT:?Set the ANTITHESIS_REPORT_RECIPIENT environment variable}"
+          : "${ANTITHESIS_TENANT:?Set the ANTITHESIS_TENANT environment variable}"
+          if ! [[ "$RUN_DURATION_MINUTES" =~ ^[1-9][0-9]*$ ]]; then
+            echo "duration_minutes must be a positive integer" >&2
+            exit 1
+          fi
+
+      - name: Login to the Antithesis registry
+        shell: bash
+        run: |
+          printf '%s' "$ANTITHESIS_REGISTRY_KEY_JSON" |
+            docker login --username _json_key --password-stdin https://us-central1-docker.pkg.dev
+
+      - name: Compute immutable image tag
+        id: image
+        shell: bash
+        run: |
+          short_sha="${GITHUB_SHA:0:12}"
+          tag="ci-${short_sha}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build and publish AMD64 images
+        working-directory: tests/antithesis
+        run: >-
+          nix develop --command just
+          tag='${{ steps.image.outputs.tag }}'
+          k8s-push-images "$INCLUDE"
+
+      - name: Check published image freshness
+        working-directory: tests/antithesis
+        run: >-
+          nix develop --command just
+          tag='${{ steps.image.outputs.tag }}'
+          check-k8s-image-freshness
+
+      - name: Launch Antithesis run
+        id: launch
+        working-directory: tests/antithesis
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$RUNNER_TEMP/antithesis-launch-response"
+          nix develop --command just --quiet \
+            tag='${{ steps.image.outputs.tag }}' \
+            k8s-launch-minutes "$RUN_DURATION_MINUTES" "$RUN_DESCRIPTION" \
+            > "$response_file"
+
+          response="$(cat "$response_file")"
+          if jq -e . >/dev/null 2>&1 <<<"$response"; then
+            run_id="$(jq -r '.run_id // .runId // .id // .data.run_id // empty' <<<"$response")"
+            report_url="$(jq -r '.report_url // .reportUrl // .url // .data.report_url // empty' <<<"$response")"
+          else
+            run_id=''
+            report_url=''
+          fi
+
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "report_url=$report_url" >> "$GITHUB_OUTPUT"
+          echo "Antithesis accepted the launch request."
+
+      - name: Summarize launch
+        if: always()
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          REPORT_URL: ${{ steps.launch.outputs.report_url }}
+          RUN_ID: ${{ steps.launch.outputs.run_id }}
+        run: |
+          summary_name="${RUN_DESCRIPTION//$'\n'/ }"
+          summary_name="${summary_name//|/\\|}"
+          {
+            echo "## Antithesis run"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Name | ${summary_name} |"
+            echo "| Git ref | \`${GITHUB_REF_NAME}\` |"
+            echo "| Commit | \`${GITHUB_SHA}\` |"
+            echo "| Image tag | \`${IMAGE_TAG:-not published}\` |"
+            echo "| Duration | ${RUN_DURATION_MINUTES} minutes |"
+            if [[ -n "${RUN_ID:-}" ]]; then
+              echo "| Run ID | \`${RUN_ID}\` |"
+            fi
+            if [[ -n "${REPORT_URL:-}" ]]; then
+              echo "| Report | [Open in Antithesis](${REPORT_URL}) |"
+            else
+              echo "| Report | Sent to ${ANTITHESIS_REPORT_RECIPIENT} when ready |"
+            fi
+            echo
+            echo "The GitHub runner stops after the launch request is accepted; the Antithesis run continues independently."
+          } >> "$GITHUB_STEP_SUMMARY"

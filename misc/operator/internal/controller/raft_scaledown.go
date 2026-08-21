@@ -113,10 +113,12 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 		}
 	}
 
-	// Partition nodes-to-remove into never-joined, crashed (force), and alive (normal).
-	// Never-joined nodes (Pending, not scheduled) are skipped entirely.
+	// Partition nodes-to-remove into crashed (force) and alive (normal).
 	// Force-removing crashed nodes first restores quorum for subsequent
-	// consensus-based removals.
+	// consensus-based removals. Never infer that a Raft node never joined from
+	// the current Pod object: StatefulSet may already have recreated a deleted
+	// voter as Pending. Attempting to remove a truly absent member is safe because
+	// removeNode handles "not in cluster" idempotently.
 	type nodeToRemove struct {
 		ordinal int32
 		nodeID  int32
@@ -130,15 +132,6 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 	for ordinal := currentReplicas - 1; ordinal >= desiredReplicas; ordinal-- {
 		nodeID := ordinal + 1
 		pod := podName(ledger.Name, int(ordinal))
-
-		if neverJoined := isPodNeverReady(ctx, clientset, ledger.Namespace, pod); neverJoined {
-			logger.Info("pod was never ready, skipping Raft removal (node never joined cluster)",
-				"nodeID", nodeID,
-				"podOrdinal", ordinal,
-			)
-
-			continue
-		}
 
 		crashed := isPodCrashed(ctx, clientset, ledger.Namespace, pod)
 		n := nodeToRemove{ordinal: ordinal, nodeID: nodeID, crashed: crashed}
@@ -319,35 +312,16 @@ func ledgerctlTLSFlag(tlsMode string) string {
 	return "--insecure"
 }
 
-// isPodNeverReady returns true if the pod has never been ready: not found,
-// still Pending (not scheduled), or no container has ever started.
-// These pods could never have joined the Raft cluster.
-func isPodNeverReady(ctx context.Context, clientset kubernetes.Interface, namespace, podName string) bool {
-	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
-	if err != nil {
-		// Not found → never existed, never joined.
-		return kerrors.IsNotFound(err)
-	}
-
-	// Pending pods have never started.
-	if pod.Status.Phase == corev1.PodPending {
-		return true
-	}
-
-	// If the pod exists but no container has ever started, it never joined.
-	for _, cs := range pod.Status.ContainerStatuses {
-		if cs.RestartCount > 0 || cs.Ready || cs.State.Running != nil || cs.State.Terminated != nil || cs.LastTerminationState.Running != nil || cs.LastTerminationState.Terminated != nil {
-			return false
-		}
-	}
-
-	// No container statuses at all means the pod was never scheduled.
-	return len(pod.Status.ContainerStatuses) == 0
-}
-
+// isPodNeverReady returns true if an existing pod has never been ready: it is
+// still Pending (not scheduled), or no container has ever started. A missing
+// pod is not enough evidence that the replica never joined Raft: it may have
+// been deleted after becoming a voter, so isPodCrashed must classify it and
+// let the idempotent force-remove path handle either case.
 // isPodCrashed returns true if the pod is permanently unreachable: not found,
-// in Failed phase, or has a container in CrashLoopBackOff/Error/OOMKilled state.
-// Pending and Running pods are considered alive (they may recover).
+// Pending without a started container, in Failed phase, or has a container in
+// CrashLoopBackOff/Error/OOMKilled state. A Pending replacement is treated as
+// crashed because the prior pod at that ordinal may already be a Raft voter;
+// the current Pod object cannot prove otherwise.
 func isPodCrashed(ctx context.Context, clientset kubernetes.Interface, namespace, podName string) bool {
 	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
@@ -360,6 +334,9 @@ func isPodCrashed(ctx context.Context, clientset kubernetes.Interface, namespace
 	}
 
 	if pod.Status.Phase == corev1.PodFailed {
+		return true
+	}
+	if pod.Status.Phase == corev1.PodPending || len(pod.Status.ContainerStatuses) == 0 {
 		return true
 	}
 

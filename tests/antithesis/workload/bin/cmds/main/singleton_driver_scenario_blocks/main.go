@@ -21,7 +21,7 @@ import (
 func main() {
 	log.Println("composer: scenario_blocks")
 
-	ctx, cancel := internal.SingletonContext()
+	ctx, cancel := internal.PlatformSingletonContext()
 	defer cancel()
 	client, conn, err := internal.NewClient()
 	if err != nil {

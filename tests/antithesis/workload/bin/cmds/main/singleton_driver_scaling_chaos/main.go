@@ -51,16 +51,7 @@ func main() {
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
 	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		// Wait a bit between chaos rounds so the cluster has some quiet time.
-		case <-time.After(60 * time.Second):
-		}
-
-		chaosRound(ctx, lsClient, clusterClient)
-	}
+	chaosRound(ctx, lsClient, clusterClient)
 }
 
 func chaosRound(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClient clusterpb.ClusterServiceClient) {

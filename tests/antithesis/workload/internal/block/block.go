@@ -68,8 +68,9 @@ func Scenarios() []string {
 	return names
 }
 
-// RunLoop picks random blocks and runs them in a loop.
-// It calls Setup once per group, then loops forever picking random blocks.
+// RunLoop calls Setup once per group, then executes a bounded number of passes
+// over every block. The command must return so Test Composer can schedule the
+// rest of the singleton suite during a short platform run.
 func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups []*scenario.BlockGroup) {
 	// Collect all blocks and run setups. Retry on Unavailable since the
 	// cluster may not have elected a leader yet at startup.
@@ -79,11 +80,7 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 			actions := g.Setup()
 			if len(actions) > 0 {
 				var setupErr error
-				for {
-					if ctx.Err() != nil {
-						return
-					}
-
+				for ctx.Err() == nil {
 					_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions...))
 					if err == nil || isAlreadyExists(err) {
 						break
@@ -109,18 +106,19 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 		return
 	}
 
-	log.Printf("scenario_blocks: %d blocks active, entering loop", len(allBlocks))
+	const passes = 4
+	log.Printf("scenario_blocks: running %d passes over %d active blocks", passes, len(allBlocks))
 
 	registerBlockProperties(allBlocks)
 
 	randFn := scenario.RandFunc(func() uint64 { return internal.Rand().Uint64() })
 
-	for {
+	for attempt := 0; attempt < passes*len(allBlocks); attempt++ {
 		if ctx.Err() != nil {
 			return
 		}
 
-		b := allBlocks[internal.Rand().Uint64()%uint64(len(allBlocks))]
+		b := allBlocks[attempt%len(allBlocks)]
 		details := internal.Details{"block": b.Name}
 
 		resp, err := b.Run(ctx, client, randFn)
@@ -140,6 +138,8 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 			log.Printf("scenario_blocks: %s failed: %v", b.Name, err)
 		}
 	}
+
+	log.Println("scenario_blocks: bounded passes completed")
 }
 
 // The per-block properties are data-driven, so the antithesis-go-instrumentor

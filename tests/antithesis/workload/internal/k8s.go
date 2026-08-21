@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"golang.org/x/net/context"
+	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -340,10 +341,18 @@ func WaitForStatefulSetReady(ctx context.Context, clientset kubernetes.Interface
 			continue
 		}
 		seen = true
-		if sts.Status.ReadyReplicas == expected && sts.Status.CurrentRevision == sts.Status.UpdateRevision {
+		if statefulSetReady(sts, expected) {
 			return true
 		}
 	}
+}
+
+func statefulSetReady(sts *appsv1.StatefulSet, expected int32) bool {
+	return sts.Spec.Replicas != nil &&
+		*sts.Spec.Replicas == expected &&
+		sts.Status.Replicas == expected &&
+		sts.Status.ReadyReplicas == expected &&
+		sts.Status.CurrentRevision == sts.Status.UpdateRevision
 }
 
 // GetPodUID returns the UID of the named pod, or "" if not found.

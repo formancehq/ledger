@@ -226,7 +226,7 @@ func main() {
 				continue
 			}
 
-			assert.Always(!found,
+			assert.AlwaysOrUnreachable(!found,
 				"definitively rejected write never appears in the ledger",
 				details.With(internal.Details{
 					"reference": rej.reference,

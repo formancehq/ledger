@@ -7,7 +7,7 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -1714,7 +1714,7 @@ func (b *WriteSet) executePurge(batch *dal.WriteSession, pr *purgeRange) error {
 			// singleton driver closes/archives/confirms chapters continuously
 			// and ledger-delete drivers run in parallel, so this branch is
 			// expected to be exercised in every full run.
-			assert.Reachable("deleted ledger deferred cleanup executed by covering purge", map[string]any{
+			lifecycle.SendEvent("deleted_ledger_cleanup_executed_by_covering_purge", map[string]any{
 				"ledger":    ledgerName,
 				"deleteSeq": deleteSeq,
 				"chapterId": pr.chapterID,

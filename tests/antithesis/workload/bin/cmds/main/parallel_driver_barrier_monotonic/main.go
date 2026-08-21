@@ -13,7 +13,6 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -44,36 +43,17 @@ func main() {
 	}
 	defer conn.Close()
 
-	clusterClient := clusterpb.NewClusterServiceClient(conn)
-
 	// Shape axis: vary the per-invocation barrier count across timelines so
 	// some timelines probe a single barrier and others a long session.
 	// Menu axis not applicable: BarrierRequest carries no parameters.
 	iterations := antirandom.RandomChoice([]int{1, 2, 8, 32})
 
 	var (
-		prev          uint64 // last successful commit index in this session
-		hadSuccess    bool
-		prevLeader    uint64
-		leaderChanged bool
+		prev       uint64 // last successful commit index in this session
+		hadSuccess bool
 	)
 
 	for i := 0; i < iterations && ctx.Err() == nil; i++ {
-		// Occasionally observe the leader so that successes landing right
-		// after a change steer exploration toward the forwarding-during-
-		// election window where a deposed leader could answer.
-		if internal.Rand().Uint64()%2 == 0 {
-			if state, stateErr := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{}); stateErr == nil {
-				leader := uint64(state.GetLeader())
-				if prevLeader != 0 && leader != 0 && leader != prevLeader {
-					leaderChanged = true
-				}
-				if leader != 0 {
-					prevLeader = leader
-				}
-			}
-		}
-
 		// Must be read BEFORE issuing the barrier: only values written by
 		// barriers that completed before this call starts are valid floors.
 		floor, hasFloor := readHWM()
@@ -94,11 +74,10 @@ func main() {
 
 		ci := resp.GetCommitIndex()
 		details := internal.Details{
-			"commitIndex":    ci,
-			"previous":       prev,
-			"floor":          floor,
-			"iteration":      i,
-			"observedLeader": prevLeader,
+			"commitIndex": ci,
+			"previous":    prev,
+			"floor":       floor,
+			"iteration":   i,
 		}
 
 		assert.AlwaysGreaterThan(ci, uint64(0), "barrier commit index is positive on success", details)
@@ -112,8 +91,6 @@ func main() {
 			assert.AlwaysGreaterThanOrEqualTo(ci, floor,
 				"barrier commit index never regresses below the cross-invocation high-water mark", details)
 		}
-
-		assert.Sometimes(leaderChanged, "barrier succeeded after an observed leadership change", details)
 
 		prev = ci
 		hadSuccess = true

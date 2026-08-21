@@ -105,6 +105,10 @@ spec:
         # MODEL_DUMP_BATCHES env at config-image build.
         - name: MODEL_DUMP_BATCHES
           value: "__MODEL_DUMP_BATCHES__"
+        # Bound the model command below the shortest supported platform run so
+        # Test Composer can observe at least one clean command completion.
+        - name: MODEL_MAX_SECONDS
+          value: "180"
         # Restore-cycle rendezvous with the restore-orchestrator sidecar (only
         # the model driver writes requests; other templates leave it idle).
         # The interval and lease are k8s-sized: one cycle is a full cluster
@@ -114,7 +118,7 @@ spec:
         - name: MODEL_RESTORE_RESP
           value: /var/run/restore/resp
         - name: MODEL_RESTORE_INTERVAL
-          value: "180"
+          value: "30"
         - name: MODEL_RESTORE_TIMEOUT
           value: "900"
         volumeMounts:

@@ -33,9 +33,9 @@ import (
 var qrSentinelLedger = internal.PrefixSentinel.WithSuffix("quorum-recovery")
 
 const (
-	qrCooldown         = 5 * time.Minute
-	qrScaleDownTimeout = 8 * time.Minute
-	qrScaleUpTimeout   = 15 * time.Minute
+	qrNormalizeTimeout = 90 * time.Second
+	qrScaleDownTimeout = 2 * time.Minute
+	qrScaleUpTimeout   = 2 * time.Minute
 
 	// qrConfChangeLatencyBudget is the "should be fast" threshold for the
 	// force-remove ConfChange to bring voters down to 1 after scale-down.
@@ -50,7 +50,7 @@ const (
 func main() {
 	log.Println("composer: singleton_driver_quorum_recovery")
 
-	ctx, cancel := internal.SingletonContext()
+	ctx, cancel := internal.PlatformSingletonContext()
 	defer cancel()
 	dynClient, err := internal.NewK8sClient()
 	if err != nil {
@@ -77,15 +77,7 @@ func main() {
 		log.Printf("cannot create sentinel ledger: %s", err)
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(qrCooldown):
-		}
-
-		runRound(ctx, lsClient, clientset, clusterClient, client)
-	}
+	runRound(ctx, lsClient, clientset, clusterClient, client)
 }
 
 func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client servicepb.BucketServiceClient) {
@@ -95,8 +87,14 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 		return
 	}
 	if current != 3 {
-		log.Printf("quorum-recovery: cluster not at N=3 (got %d), skipping", current)
-		return
+		log.Printf("quorum-recovery: normalizing cluster from %d to 3 replicas", current)
+		if err := internal.PatchReplicas(ctx, lsClient, internal.ClusterName, 3); err != nil {
+			log.Printf("quorum-recovery: cannot normalize replicas: %s", err)
+			return
+		}
+		if !internal.WaitForVoters(ctx, clusterClient, 3, qrNormalizeTimeout, internal.Details{"phase": "normalize"}) {
+			return
+		}
 	}
 
 	sentinel, err := internal.PreCommitSentinel(ctx, client, qrSentinelLedger)
@@ -145,21 +143,32 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 	// operator scale-down and every subsequent driver runs against a broken
 	// cluster for the rest of the experiment.
 	defer func() {
-		if err := internal.PatchReplicas(context.Background(), lsClient, internal.ClusterName, 3); err != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), qrScaleUpTimeout)
+		defer cancel()
+
+		if err := internal.PatchReplicas(cleanupCtx, lsClient, internal.ClusterName, 3); err != nil {
 			log.Printf("quorum-recovery: cleanup PatchReplicas(3) failed: %s", err)
 		}
 		// Best-effort wait for the cluster to settle back to N=3 voters before
 		// releasing the singleton slot. If it doesn't recover we let the next
 		// driver iteration deal with it.
-		_ = internal.WaitForVoters(context.Background(), clusterClient, 3, qrScaleUpTimeout, details)
+		_ = internal.WaitForVoters(cleanupCtx, clusterClient, 3, qrScaleUpTimeout, details)
 	}()
 
+	deleted := 0
 	for _, v := range victims {
 		err := internal.DeletePod(ctx, clientset, v)
 		assert.Sometimes(err == nil, "quorum-recovery pod delete should succeed",
 			details.With(internal.Details{"pod": v, "error": err}))
+		if err == nil {
+			deleted++
+		}
 	}
-	assert.Reachable("quorum-recovery killed both non-leader pods", details)
+	assert.Sometimes(deleted == len(victims), "quorum-recovery killed both non-leader pods",
+		details.With(internal.Details{"deleted": deleted}))
+	if deleted != len(victims) {
+		return
+	}
 
 	err = internal.PatchReplicas(ctx, lsClient, internal.ClusterName, 1)
 	assert.Sometimes(err == nil, "scale-down to 1 should succeed", details.With(internal.Details{"error": err}))
@@ -194,6 +203,17 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 	assert.Sometimes(elapsed < qrConfChangeLatencyBudget,
 		"force-remove ConfChange applies within latency budget after scale-down (EN-1043)",
 		details.With(internal.Details{"elapsed": elapsed.String(), "budget": qrConfChangeLatencyBudget.String()}))
+
+	// WaitForVoters observes the leader's in-memory ConfState before the
+	// operator necessarily finishes updating the StatefulSet to one replica.
+	// Returning earlier runs the deferred scale-up concurrently with that
+	// in-flight scale-down, which can recreate a pod with fresh storage while
+	// the leader still has stale progress for its node ID. Pin the Kubernetes
+	// side of the transition before allowing cleanup to restore three replicas.
+	if !internal.WaitForStatefulSetReady(ctx, clientset, internal.LedgerStatefulSetName(), 1, qrScaleDownTimeout) {
+		log.Printf("quorum-recovery: StatefulSet did not settle at one replica")
+		return
+	}
 
 	sentinel.Verify(ctx, client, "after_quorum_recovery")
 }

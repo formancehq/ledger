@@ -1,8 +1,10 @@
 // parallel_driver_stats_consistency verifies that GetLedgerStats returns
 // self-consistent values and that AggregateVolumes sums to zero (double-entry).
 //
-// All invariants hold at any point in time regardless of concurrent writes:
-//   - Structural: logCount >= txCount, postingCount >= txCount, etc.
+// The primary-store invariants hold at any point in time regardless of
+// concurrent writes. Usage counters are deliberately not related to the
+// primary counters here: they are eventually-consistent projections.
+//   - Structural: logCount >= txCount.
 //   - Double-entry: sum(input) == sum(output) for each asset (AggregateVolumes
 //     reads from the sequentially-applied read-index, so a transaction is either
 //     fully included or not — partial postings are impossible).
@@ -47,10 +49,6 @@ func main() {
 		assert.Always(stats.GetTransactionCount() >= 0, "transaction count must be non-negative", statsDetails)
 		assert.Always(stats.GetLogCount() >= stats.GetTransactionCount(),
 			"log count must be >= transaction count (logs include metadata, reverts, etc.)", statsDetails)
-		assert.Always(stats.GetPostingCount() >= stats.GetTransactionCount(),
-			"posting count must be >= transaction count (each tx has at least one posting)", statsDetails)
-		assert.Always(stats.GetRevertCount() <= stats.GetTransactionCount(),
-			"revert count must be <= transaction count", statsDetails)
 
 		// Aggregate volumes must sum to zero (double-entry invariant).
 		aggResp, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{

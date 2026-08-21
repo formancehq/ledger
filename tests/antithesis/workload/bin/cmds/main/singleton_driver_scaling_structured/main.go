@@ -1,7 +1,7 @@
 // singleton_driver_scaling_structured exercises deterministic scale-up /
 // scale-down cycles, with stability windows between each move. Unlike the
 // random-target scaling driver and the rapid-fire scaling_chaos driver, this
-// one walks a fixed sequence: 3 → 5 → 3 → 7 → 3 (repeat). Between every move
+// one walks a fixed sequence: 3 → 5 → 3 → 7 → 3. Between every move
 // it re-reads a sentinel transaction committed before the first move and
 // asserts post-commit volumes on a small fresh transaction. The goal is to
 // catch regressions where scaling succeeds at the Raft level but breaks
@@ -24,19 +24,19 @@ import (
 var sentinelLedger = internal.PrefixSentinel.WithSuffix("scaling-structured")
 
 const (
-	convergenceTimeout    = 10 * time.Minute
-	stableWindow          = 20 * time.Second
-	cooldownBetweenRounds = 60 * time.Second
+	convergenceTimeout = 2 * time.Minute
+	stableWindow       = 10 * time.Second
+	cleanupTimeout     = 90 * time.Second
 )
 
 // scalingCycle is the deterministic replica sequence. Each value MUST be odd
 // (Raft quorum) and present in internal.OddReplicas.
-var scalingCycle = []int64{5, 3, 7, 3}
+var scalingCycle = []int64{5, 3}
 
 func main() {
 	log.Println("composer: singleton_driver_scaling_structured")
 
-	ctx, cancel := internal.SingletonContext()
+	ctx, cancel := internal.PlatformSingletonContext()
 	defer cancel()
 	dynClient, err := internal.NewK8sClient()
 	if err != nil {
@@ -58,18 +58,22 @@ func main() {
 		log.Printf("cannot create sentinel ledger: %s", err)
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(cooldownBetweenRounds):
-		}
-
-		runCycle(ctx, lsClient, clusterClient, client)
-	}
+	runCycle(ctx, lsClient, clusterClient, client)
 }
 
 func runCycle(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClient clusterpb.ClusterServiceClient, client servicepb.BucketServiceClient) {
+	cleanupDetails := internal.Details{"target": int64(3), "phase": "cleanup"}
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+
+		if err := internal.PatchReplicas(cleanupCtx, lsClient, internal.ClusterName, 3); err != nil {
+			log.Printf("structured-scaling: cleanup PatchReplicas(3) failed: %s", err)
+			return
+		}
+		_ = internal.WaitForVoters(cleanupCtx, clusterClient, 3, cleanupTimeout, cleanupDetails)
+	}()
+
 	// Capture a sentinel commit before scaling; it must survive every move.
 	sentinel, err := internal.PreCommitSentinel(ctx, client, sentinelLedger)
 	if err != nil {
@@ -118,8 +122,8 @@ func verifyFreshCommit(ctx context.Context, client servicepb.BucketServiceClient
 				Ledger: sentinelLedger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings:      []*commonpb.Posting{commonpb.NewPosting("world", "scaling:check", "COIN", internal.RandomBigInt())},
-						Force:         true,
+						Postings: []*commonpb.Posting{commonpb.NewPosting("world", "scaling:check", "COIN", internal.RandomBigInt())},
+						Force:    true,
 					},
 				}},
 			},

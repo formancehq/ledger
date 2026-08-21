@@ -24,21 +24,18 @@ func main() {
 	}
 	defer conn.Close()
 
-	// Chapter lifecycle loop:
+	// Chapter lifecycle pass:
 	// 1. Close the current chapter (triggers checkpoint)
 	// 2. Find CLOSED chapters (sealed by the leader automatically)
 	// 3. Archive them (uploads to cold storage / S3)
 	// 4. Confirm the archive
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(5 * time.Second):
-		}
-
-		closeChapter(ctx, client)
-		archiveClosedChapters(ctx, client)
+	closeChapter(ctx, client)
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(5 * time.Second):
 	}
+	archiveClosedChapters(ctx, client)
 }
 
 func closeChapter(ctx context.Context, client servicepb.BucketServiceClient) {

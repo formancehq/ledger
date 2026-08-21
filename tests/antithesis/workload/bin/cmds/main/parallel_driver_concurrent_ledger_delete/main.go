@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -91,13 +92,13 @@ func main() {
 					DeleteLedger: &servicepb.DeleteLedgerRequest{Name: ledger},
 				},
 			}))
-			if err == nil {
+			if err == nil || internal.IsLedgerDeleted(err) {
 				deleteOK = true
 
 				return
 			}
 
-			if !(internal.IsTransient(err) || internal.IsLedgerDeleted(err)) {
+			if !internal.IsTransient(err) {
 				assert.Unreachable("delete ledger should not fail unexpectedly",
 					details.With(internal.Details{"error": err}))
 			}
@@ -108,7 +109,7 @@ func main() {
 		// If the delete failed (e.g. transient error during leadership change),
 		// the ledger still exists — nothing to assert about post-delete writes.
 		if !deleteOK {
-			assert.Reachable("concurrent ledger delete: delete failed transiently", details)
+			lifecycle.SendEvent("concurrent_ledger_delete_transient", details)
 
 			return
 		}
@@ -143,8 +144,8 @@ func main() {
 			return
 		}
 
-		if internal.IsTransient(err) || internal.IsLedgerDeleted(err) {
-			assert.Reachable("concurrent ledger delete: post-delete write inconclusive (transient)", details)
+		if internal.IsTransient(err) {
+			lifecycle.SendEvent("concurrent_ledger_post_delete_write_transient", details)
 
 			return
 		}

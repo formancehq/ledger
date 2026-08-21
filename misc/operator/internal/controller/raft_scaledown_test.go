@@ -117,7 +117,11 @@ func TestIsPodCrashed_Pending(t *testing.T) {
 	_, err = cs.CoreV1().Pods(ns).UpdateStatus(ctx, pod, metav1.UpdateOptions{})
 	require.NoError(t, err)
 
-	require.False(t, isPodCrashed(ctx, cs, ns, "pending-pod"))
+	// The current Pending pod may be a replacement for a replica that was a
+	// committed voter before its predecessor was deleted. Kubernetes pod state
+	// cannot prove Raft membership history, so scale-down must attempt a force
+	// removal. That operation is idempotent if the node truly never joined.
+	require.True(t, isPodCrashed(ctx, cs, ns, "pending-pod"))
 }
 
 func TestIsPodCrashed_OOMKilled(t *testing.T) {

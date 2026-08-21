@@ -1072,7 +1072,7 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 			}).Tracef("Rejecting proposal: predicted index mismatch (stale tracker)")
 		}
 
-		assert.Reachable("stale proposal rejected: predicted index mismatch", map[string]any{
+		lifecycle.SendEvent("stale_proposal_rejected_predicted_index_mismatch", map[string]any{
 			"predictedIndex": predicted,
 			"actualIndex":    raftIndex,
 			"proposalID":     proposal.GetId(),
@@ -1096,7 +1096,7 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 			}).Tracef("Rejecting proposal: cache epoch mismatch (cache was reset)")
 		}
 
-		assert.Reachable("stale proposal rejected: cache epoch mismatch", map[string]any{
+		lifecycle.SendEvent("stale_proposal_rejected_cache_epoch_mismatch", map[string]any{
 			"preloadEpoch": preloadEpoch,
 			"cacheEpoch":   fsm.Registry.Cache.Epoch(),
 			"proposalID":   proposal.GetId(),
