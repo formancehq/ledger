@@ -159,7 +159,7 @@ triage_status=$?
 set -e
 if [[ $triage_status -ne 0 ]]; then
     echo "AI_PR_LOOP_RESULT: ERROR (triage exit $triage_status)"
-    exit "$triage_status"
+    exit 1
 fi
 # The trusted base may predate the launcher-provided SHA binding, so the
 # launcher must itself confirm that the triaged target is the state it fetched

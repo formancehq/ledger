@@ -84,6 +84,18 @@ func TestLauncherRefusesTriageResultForAnotherTarget(t *testing.T) {
 	}
 }
 
+func TestLauncherTreatsTriageFailureAsOrchestrationError(t *testing.T) {
+	fixture := newLauncherFixture(t)
+	capture := filepath.Join(fixture.root, "review-args")
+	output, err := runLauncher(t, fixture, capture, triageResult{exitCode: 2})
+	require.Error(t, err, output)
+	var exitError *exec.ExitError
+	require.ErrorAs(t, err, &exitError)
+	require.Equal(t, 1, exitError.ExitCode(), output)
+	require.NoFileExists(t, capture, "technical review must not run")
+	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (triage exit 2)")
+}
+
 type launcherFixture struct {
 	root     string
 	checkout string
@@ -117,6 +129,9 @@ printf '%s\n' "$@" > "$TEST_CAPTURE_FILE"
 set -euo pipefail
 [[ "${AI_PR_TRIAGE_EXPECT_BASE_SHA:-}" == "$TEST_BASE_SHA" ]]
 [[ "${AI_PR_TRIAGE_EXPECT_HEAD_SHA:-}" == "$TEST_HEAD_SHA" ]]
+if [[ "$TEST_TRIAGE_EXIT_CODE" -ne 0 ]]; then
+    exit "$TEST_TRIAGE_EXIT_CODE"
+fi
 output=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -174,6 +189,7 @@ type triageResult struct {
 	decision string
 	baseSHA  string
 	headSHA  string
+	exitCode int
 }
 
 func runLauncher(t *testing.T, fixture launcherFixture, capturePath string, triage triageResult) (string, error) {
@@ -194,6 +210,7 @@ func runLauncher(t *testing.T, fixture launcherFixture, capturePath string, tria
 		"TEST_TRIAGE_DECISION="+triage.decision,
 		"TEST_TRIAGE_BASE_SHA="+triage.baseSHA,
 		"TEST_TRIAGE_HEAD_SHA="+triage.headSHA,
+		fmt.Sprintf("TEST_TRIAGE_EXIT_CODE=%d", triage.exitCode),
 	)
 	output, err := command.CombinedOutput()
 
