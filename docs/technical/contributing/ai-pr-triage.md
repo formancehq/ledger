@@ -31,20 +31,15 @@ When uncertain between `KEEP` and another decision, use `QUESTION`. Never manufa
 
 ## Product motivation rule
 
-Every **significant technical decision** must trace to a concrete documented product or operational need. Examples include a new abstraction or subsystem, persistence/cache/consistency strategy, API or semantic change, dependency, retry/idempotency mechanism, distributed-systems mechanism, or meaningful maintenance/complexity increase.
+Use `docs/technical/contributing/product-technical-traceability.md` as the canonical contract for significant technical decisions.
 
-Mechanical changes such as typo fixes, dead-import removal, narrow test-helper maintenance, or behavior-preserving renames do not require a separate product rationale.
+Every significant decision must trace through a concrete product or operational need, observable requirement/constraint, chosen technical decision, implementation, and validation evidence. Examples include a new abstraction or subsystem, persistence/cache/consistency strategy, API or semantic change, dependency, retry/idempotency mechanism, distributed-systems mechanism, compatibility strategy, or meaningful maintenance/complexity increase.
 
-For significant decisions, identify:
-
-1. the documented need or observed limitation;
-2. evidence that the limitation exists now;
-3. why existing behavior or mechanisms are insufficient;
-4. the expected user/system/operational outcome;
-5. why the proposed complexity is proportionate now;
-6. the consequence of doing nothing.
+Mechanical changes such as typo fixes, dead-import removal, narrow test-helper maintenance, generated-file refreshes, or behavior-preserving renames do not require a separate product rationale.
 
 A technical preference (`cleaner`, `more generic`, `future-proof`, `best practice`) is not by itself a product need.
+
+If a significant decision is present and one or more links in the traceability chain are missing, prefer `QUESTION` over reconstructing a plausible rationale from implementation details.
 
 ## Evidence
 
