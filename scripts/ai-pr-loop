@@ -5,14 +5,14 @@ usage() {
     cat <<'EOF'
 Usage: bash scripts/ai-pr-loop <pr-number-or-url> [--keep-worktree] [--push]
 
-Creates an isolated git worktree for the PR head and runs the bounded
-Codex review -> Claude fix -> validation -> re-review loop against the
-PR base branch.
+Creates an isolated git worktree for the PR head, runs the base-pinned
+legitimacy triage, then (for KEEP) runs the bounded Codex review -> Claude
+fix -> validation -> re-review loop against the PR base branch.
 
 By default the launcher never commits or pushes. With --push, fixes are
 committed locally, that exact clean commit is reviewed once more, and it
 is pushed only if the remote PR branch still equals the SHA observed at
-startup. The launcher never comments, resolves threads, or merges.
+startup. The launcher never comments, resolves threads, closes, or merges.
 EOF
 }
 
@@ -96,7 +96,7 @@ if ! git remote get-url "$remote" >/dev/null 2>&1; then
     exit 1
 fi
 
-# Fetch exactly the GitHub-resolved base/head refs before creating the worktree.
+# Fetch exactly the GitHub-resolved base/head refs before creating worktrees.
 git fetch --no-tags "$remote" \
     "+refs/heads/$base_ref:refs/remotes/$remote/$base_ref" \
     "+refs/heads/$head_ref:refs/remotes/$remote/$head_ref"
@@ -112,21 +112,19 @@ if [[ "$fetched_head" != "$head_sha" ]]; then
     exit 1
 fi
 
-# Keep linked worktrees outside the primary checkout so the review loop cannot
-# accidentally include launcher state in the PR worktree/fingerprint.
 repo_parent=$(dirname "$repo_root")
 repo_name=$(basename "$repo_root")
 worktree_parent="$repo_parent/.${repo_name}-ai-worktrees"
 mkdir -p "$worktree_parent"
 worktree_run_dir=$(mktemp -d "$worktree_parent/pr-$pr_number.XXXXXX")
 worktree="$worktree_run_dir/worktree"
-trusted_tool_worktree=""
+trusted_tool_worktree="$worktree_run_dir/trusted-tools"
 review_loop_binary=""
 
 cleanup() {
     exit_status=$?
     trap - EXIT
-    if [[ -n "$trusted_tool_worktree" ]] && [[ -d "$trusted_tool_worktree" ]] && git -C "$trusted_tool_worktree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if [[ -d "$trusted_tool_worktree" ]] && git -C "$trusted_tool_worktree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         git worktree remove "$trusted_tool_worktree" >/dev/null 2>&1 || true
     fi
     if [[ -n "$review_loop_binary" ]] && [[ "$review_loop_binary" == "$worktree_run_dir/review-loop" ]]; then
@@ -145,6 +143,53 @@ cleanup() {
 trap cleanup EXIT
 
 git worktree add --detach "$worktree" "$head_sha"
+# Legitimacy policy must not come from the PR that it is judging.
+git worktree add --detach "$trusted_tool_worktree" "$base_sha"
+triage_tool="$trusted_tool_worktree/scripts/ai-pr-triage"
+if [[ ! -f "$triage_tool" ]]; then
+    echo "ai-pr-loop: trusted base does not provide scripts/ai-pr-triage" >&2
+    exit 1
+fi
+triage_result="$worktree_run_dir/triage.json"
+set +e
+AI_PR_TRIAGE_EXPECT_BASE_SHA="$base_sha" \
+AI_PR_TRIAGE_EXPECT_HEAD_SHA="$head_sha" \
+    bash "$triage_tool" "$pr_number" --output "$triage_result"
+triage_status=$?
+set -e
+if [[ $triage_status -ne 0 ]]; then
+    echo "AI_PR_LOOP_RESULT: ERROR (triage exit $triage_status)"
+    exit 1
+fi
+# The trusted base may predate the launcher-provided SHA binding, so the
+# launcher must itself confirm that the triaged target is the state it fetched
+# and is about to review.
+if ! jq -e --arg base "$base_sha" --arg head "$head_sha" \
+    '.base_sha == $base and .head == $head' "$triage_result" >/dev/null; then
+    echo "ai-pr-loop: triage result does not describe the verified PR target" >&2
+    printf 'ai-pr-loop: expected base %s head %s\n' "$base_sha" "$head_sha" >&2
+    echo "AI_PR_LOOP_RESULT: ERROR (triage target mismatch)"
+    exit 1
+fi
+triage_decision=$(jq -r '.decision' "$triage_result")
+printf '==> ai-pr-loop: legitimacy triage %s\n' "$triage_decision"
+printf '    triage result: %s\n' "$triage_result"
+case "$triage_decision" in
+    KEEP)
+        ;;
+    QUESTION)
+        echo "AI_PR_LOOP_RESULT: HUMAN_DECISION_REQUIRED"
+        exit 2
+        ;;
+    REJECT)
+        echo "AI_PR_LOOP_RESULT: LEGITIMACY_REJECTED"
+        exit 2
+        ;;
+    *)
+        echo "ai-pr-loop: invalid triage decision: $triage_decision" >&2
+        exit 1
+        ;;
+esac
 
 review_loop=(bash scripts/review-loop)
 review_cmd='bash scripts/ai-review-codex'
@@ -159,9 +204,7 @@ if [[ "$push_changes" == "true" ]]; then
     # A PR must not supply the policy engine, provider adapters, or validator
     # that authorize its own publication. Build the orchestrator from the exact
     # verified base commit and invoke its tools from that immutable worktree.
-    trusted_tool_worktree="$worktree_run_dir/trusted-tools"
     review_loop_binary="$worktree_run_dir/review-loop"
-    git worktree add --detach "$trusted_tool_worktree" "$base_sha"
     for trusted_tool in ai-review-codex ai-fix-claude agent-check-pr; do
         trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
         if [[ ! -x "$trusted_tool_path" ]]; then
@@ -204,8 +247,6 @@ run_full_loop() {
 }
 
 run_commit_review() {
-    # No fixer on this pass: the exact clean commit that may be pushed must be
-    # approved as-is. Any new blocker stops publication and requires a rerun.
     "${review_loop[@]}" \
         --base "$base_sha" \
         --review-cmd "$review_cmd" \
@@ -219,15 +260,9 @@ set -e
 
 echo
 case "$loop_status" in
-    0)
-        echo "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW"
-        ;;
-    2)
-        echo "AI_PR_LOOP_RESULT: HUMAN_DECISION_REQUIRED"
-        ;;
-    *)
-        echo "AI_PR_LOOP_RESULT: ERROR (review-loop exit $loop_status)"
-        ;;
+    0) echo "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW" ;;
+    2) echo "AI_PR_LOOP_RESULT: HUMAN_DECISION_REQUIRED" ;;
+    *) echo "AI_PR_LOOP_RESULT: ERROR (review-loop exit $loop_status)" ;;
 esac
 
 if [[ "$loop_status" -ne 0 ]]; then
@@ -254,8 +289,6 @@ if [[ -z "$(git status --porcelain)" ]]; then
     exit 0
 fi
 
-# The worktree is isolated and all mutations came from the bounded fixer.
-# Stage the complete resulting fix set, then create one local candidate commit.
 git add -A
 if git diff --cached --quiet; then
     echo "ai-pr-loop: worktree reported changes but nothing is staged" >&2
@@ -296,10 +329,6 @@ if [[ "$current_head" != "$candidate_sha" ]]; then
     exit 1
 fi
 
-# Verify the remote still points at the exact PR head observed before any agent
-# ran. The explicit force-with-lease is used only as an atomic compare-and-swap
-# guard; candidate_sha is a normal descendant of head_sha, so the update itself
-# remains a fast-forward.
 remote_head=""
 read -r remote_head _ < <(git ls-remote --exit-code "$remote" "refs/heads/$head_ref") || true
 if [[ -z "$remote_head" ]]; then
