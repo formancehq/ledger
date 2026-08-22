@@ -8,9 +8,9 @@ management:
   releaseVersion: 0.10.2
   configChecksum: dd46b48d25fdb2a8e05e819ac208a15f
 persistentEdits:
-  generation_id: 5a5a3d85-29c5-4a1d-9a5c-b301bebdcd03
-  pristine_commit_hash: 18c279600b5aa951dd2531589b182024ccd91f0b
-  pristine_tree_hash: 68267e0853dfb5e3d77d5d7a7ebe126252dd2265
+  generation_id: 1a17c3d2-f4ac-407b-8207-3e8776e7d3bd
+  pristine_commit_hash: cb7667b466541ca23b0d5b074f108e50244f4867
+  pristine_tree_hash: a460036d0f3b172b7a91c87b159b83a8b241b4d6
 features:
   go:
     additionalDependencies: 0.1.0
@@ -1213,8 +1213,8 @@ trackedFiles:
     pristine_git_object: dd78ad70410e0573a1d35dcac2b87fe4fc7f5123
   go.mod:
     id: c47645c391ad
-    last_write_checksum: sha1:9481735dadbe077f42117b5b8610f98ebe679cc6
-    pristine_git_object: df282eeb5664c53f6ad630da987dcb8bc792a3c1
+    last_write_checksum: sha1:018ff18e5e42b6c8ee64204e402c02af8cd79c0a
+    pristine_git_object: c2d088310ca32d668bd1eb0915a0bc06632446d3
   internal/config/sdkconfiguration.go:
     id: 33b8bfac5265
     last_write_checksum: sha1:45bf85e21afc64cb18a61e93b827f86f70ce83d1
