@@ -1,12 +1,14 @@
 package wal
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"sort"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -24,7 +26,7 @@ type Snapshotter struct {
 
 // NewSnapshotter creates a Snapshotter that stores files in dir.
 func NewSnapshotter(dir string, logger logging.Logger) (*Snapshotter, error) {
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := mkdirSynced(dir); err != nil {
 		return nil, fmt.Errorf("creating snapshot directory: %w", err)
 	}
 
@@ -43,25 +45,13 @@ func (s *Snapshotter) Save(snap *raftpb.Snapshot) error {
 		return fmt.Errorf("marshaling snapshot: %w", err)
 	}
 
+	if err := s.ensureDir(); err != nil {
+		return err
+	}
+
 	name := snapFileName(snap.GetMetadata().GetTerm(), snap.GetMetadata().GetIndex())
 	path := filepath.Join(s.dir, name)
 	tmpPath := path + ".tmp"
-
-	// The directory is created in NewSnapshotter, so reaching here without it
-	// means it went away underneath a running node. Recreate it: the snapshot
-	// this call is persisting is how a follower catches up, and failing the
-	// save propagates as a task-pool panic that takes the node down.
-	if err := os.MkdirAll(s.dir, 0755); err != nil {
-		return fmt.Errorf("recreating snapshot directory: %w", err)
-	}
-
-	// The rename below is made durable by fsyncing s.dir, which says nothing
-	// about s.dir's own entry in its parent. A crash after Save returns and the
-	// WAL snapshot record is written would then leave the WAL pointing at a
-	// directory that recovery cannot find, so fsync the parent too.
-	if err := syncDir(filepath.Dir(s.dir)); err != nil {
-		return fmt.Errorf("syncing snapshot directory parent: %w", err)
-	}
 
 	f, err := os.Create(tmpPath)
 	if err != nil {
@@ -100,6 +90,85 @@ func (s *Snapshotter) Save(snap *raftpb.Snapshot) error {
 	}
 
 	return nil
+}
+
+// ensureDir recreates the snapshot directory when it is gone. NewSnapshotter
+// creates it, so its absence means it went away underneath a running node:
+// nothing in the node removes it, and a snapshot that cannot be persisted fails
+// the Ready loop, which stops the node.
+func (s *Snapshotter) ensureDir() error {
+	_, err := os.Stat(s.dir)
+	if err == nil {
+		return nil
+	}
+
+	if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("checking snapshot directory: %w", err)
+	}
+
+	// The parent holds the etcd WAL, the creation marker and the instance id. If
+	// it went too, this node has already lost its consensus identity: the next
+	// restart finds no marker, rebuilds an empty WAL and registers as a new
+	// member, so recreating the snapshot directory hides a far larger loss.
+	_, parentErr := os.Stat(filepath.Dir(s.dir))
+	details := map[string]any{
+		"dir":          s.dir,
+		"parentExists": parentErr == nil,
+	}
+
+	assert.Unreachable("snapshot directory disappeared underneath a running node", details)
+
+	s.logger.WithFields(details).Errorf("Snapshot directory is missing, recreating it")
+
+	if err := mkdirSynced(s.dir); err != nil {
+		return fmt.Errorf("recreating snapshot directory: %w", err)
+	}
+
+	return nil
+}
+
+// mkdirSynced creates dir and any missing ancestor, fsyncing the parent of each
+// one it creates: a directory entry is only durable once the directory holding
+// it has been fsynced.
+func mkdirSynced(dir string) error {
+	missing, err := missingAncestors(dir)
+	if err != nil {
+		return err
+	}
+
+	// Outermost first, so each level lands in a parent that already exists.
+	for _, path := range slices.Backward(missing) {
+		if err := os.Mkdir(path, 0755); err != nil && !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("creating %s: %w", path, err)
+		}
+
+		if err := syncDir(filepath.Dir(path)); err != nil {
+			return fmt.Errorf("syncing %s: %w", filepath.Dir(path), err)
+		}
+	}
+
+	return nil
+}
+
+// missingAncestors returns dir and each of its ancestors that does not exist,
+// deepest first, stopping at the first one that does.
+func missingAncestors(dir string) ([]string, error) {
+	var missing []string
+
+	for path := dir; path != filepath.Dir(path); path = filepath.Dir(path) {
+		_, err := os.Stat(path)
+		if err == nil {
+			return missing, nil
+		}
+
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("checking %s: %w", path, err)
+		}
+
+		missing = append(missing, path)
+	}
+
+	return missing, nil
 }
 
 // syncDir fsyncs a directory to ensure file creates/renames are durable.
