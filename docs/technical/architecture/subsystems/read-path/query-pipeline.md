@@ -2,7 +2,7 @@
 
 ## Overview
 
-Every read goes through four stages: a **Raft `ReadIndex`** barrier for linearizability, an optional **`min_log_sequence`** wait for read-side freshness, a **Pebble snapshot** for point-in-time consistency, and a **composable iterator pipeline** over the read store. The result is streamed back through gRPC with cursor-based pagination.
+Every read goes through four stages: a **Raft `ReadIndex`** barrier for linearizability, an optional **`min_log_sequence`** wait for read-side freshness, coordinated **Pebble snapshots** for the main and read stores, and a **composable iterator pipeline** over the read store. The result is streamed back through gRPC with cursor-based pagination. The snapshots are aligned but distinct; their per-target consistency exceptions are described below.
 
 The pipeline is deliberately uniform across endpoints: `ListAccounts`, `ListTransactions`, `ListLogs`, and `GetX` variants all go through the same controller layer and the same iterator algebra. The differences are which read-store prefix is scanned and how iterators are composed.
 
@@ -15,7 +15,8 @@ sequenceDiagram
     participant N as Node<br/>(ReadIndex)
     participant Raft as Raft peers
     participant FSM
-    participant Peb as Pebble<br/>(main + read store)
+    participant Main as Pebble<br/>(main store)
+    participant Index as Pebble<br/>(read store)
 
     C->>G: ListAccounts(filter, min_log_seq, cursor)
     G->>G: Auth + extract min_log_seq
@@ -26,11 +27,13 @@ sequenceDiagram
     N->>FSM: WaitForApplied(commitIndex)
     FSM-->>N: applied up to commitIndex
     N-->>Ctrl: ReadBarrierInfo
-    Ctrl->>Peb: store.NewReadHandle()
-    Note over Ctrl,Peb: Pebble snapshot — point-in-time
+    Ctrl->>Main: store.NewReadHandle()
+    Ctrl->>Index: NewSnapshot / AlignedIndexSnapshot
+    Note over Ctrl,Index: Separate snapshots coordinated to the main-store horizon
     Ctrl->>Ctrl: Resolve ledger + schema
     Ctrl->>Ctrl: Compile filter → iterator tree
-    Ctrl->>Peb: Iterate read store + enrich from main store
+    Ctrl->>Index: Iterate read store
+    Ctrl->>Main: Enrich from main store
     Ctrl-->>G: Cursor[T] (page + next cursor)
     G-->>C: Streamed response
 ```
@@ -87,9 +90,9 @@ Checkpoint reads (see below) ignore `min_log_sequence` — a frozen checkpoint i
 
 ## Pebble snapshot
 
-`store.NewReadHandle()` returns a Pebble snapshot. Within one controller request, the read-store iterators (inverted index) and main-store enrichment (volumes, metadata, transaction bodies) use the **same** snapshot. The handle is owned by the returned cursor and is closed when that cursor is closed. A paginated API call is streamed from that one cursor; when a client requests a subsequent page using the `x-next-cursor`, the server creates a new controller request and therefore a new snapshot.
+`store.NewReadHandle()` returns a Pebble snapshot. Within one controller request, main-store leaves and enrichment (volumes, metadata, transaction bodies) all read through the **one** main-store handle `query.OpenQueryHandle` opened. The read-store iterators (inverted index) run against a **separate** Pebble snapshot of the read store: `readStore.NewSnapshot()` when the read consults no index leaf, and otherwise `query.AlignedIndexSnapshot`, which returns an index snapshot whose fold cursor covers the main handle's sequence. The two are therefore *coordinated*, not identical — the index view may be **ahead** of the main handle, and `query.MainHorizonKeep` trims that excess back to the main-store horizon for TRANSACTIONS and LOGS (ACCOUNTS are served as folded). The contract and its per-target exceptions live in [read-snapshot-consistency.md](read-snapshot-consistency.md#cross-store-alignment-en-1748). The main handle — with the reclaim hold taken alongside it — is owned by the returned cursor and closed when that cursor is closed; the index snapshot and its read lease are released once the page's index iteration ends, before enrichment reads the handle. A paginated API call is streamed from that one cursor; when a client requests a subsequent page using the `x-next-cursor`, the server creates a new controller request and therefore fresh snapshot state.
 
-The cursor carries only the exclusive resume position (for example, an account address or transaction ID); it does not identify or retain the Pebble snapshot. Consequently, point-in-time consistency is guaranteed within each request/page, but there is no general snapshot-consistency guarantee across separate pages. Inserts, deletes, or updates committed between requests may therefore affect later pages according to the documented cursor ordering and filtering semantics. Duplications or omissions across pages under concurrent writes are not, by themselves, evidence of a product defect unless an API contract explicitly promises a cross-page snapshot.
+The cursor carries only the exclusive resume position (for example, an account address or transaction ID); it does not identify or retain the Pebble snapshot. Within one request/page, results are served under the coordinated consistency contract described above: main-store leaves and enrichment reflect that request's single pin, subject to the per-target cross-store exceptions — ACCOUNTS membership is served as folded, so a page may include index members absent from the pinned main store. Because the cursor does not retain that snapshot state, there is no general snapshot-consistency guarantee across separate pages. Inserts, deletes, or updates committed between requests may therefore affect later pages according to the documented cursor ordering and filtering semantics. Duplications or omissions across pages under concurrent writes are not, by themselves, evidence of a product defect unless an API contract explicitly promises a cross-page snapshot.
 
 Multiple concurrent readers share snapshots cheaply (Pebble's snapshot is a versioned reference, not a copy).
 
