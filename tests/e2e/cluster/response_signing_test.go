@@ -40,8 +40,6 @@ var _ = Describe("Response Signing", func() {
 		)
 
 		const (
-			httpPort   = 9230
-			grpcPort   = 8230
 			ledgerName = "response-signing-test"
 		)
 
@@ -56,9 +54,11 @@ var _ = Describe("Response Signing", func() {
 
 			seedPath := writeTestSeedFile(seed)
 
-			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort,
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode(
 				testserver.WithResponseSigningKey(seedPath),
 			)
+			client = node.Client
 
 			// Create a test ledger
 			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
@@ -152,13 +152,13 @@ var _ = Describe("Response Signing", func() {
 		)
 
 		const (
-			httpPort   = 9231
-			grpcPort   = 8231
 			ledgerName = "no-response-signing"
 		)
 
 		BeforeAll(func() {
-			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
 
 			// Create a test ledger
 			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))

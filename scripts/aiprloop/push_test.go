@@ -101,6 +101,7 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 
 	runGit(t, root, "init", "--bare", remote)
 	require.NoError(t, os.MkdirAll(filepath.Join(seed, "scripts"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(seed, "docs", "technical", "contributing"), 0o755))
 	runGit(t, seed, "init")
 	runGit(t, seed, "config", "user.name", "AI PR Loop Test")
 	runGit(t, seed, "config", "user.email", "ai-pr-loop@example.com")
@@ -114,7 +115,50 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 		require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "agent-check-pr"), validator, 0o755))
 	}
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 0\n")
+	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-known-findings"), "#!/usr/bin/env bash\nexit 0\n")
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-fix-claude"), "#!/usr/bin/env bash\nexit 0\n")
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-known-findings"), []byte(`#!/usr/bin/env bash
+set -euo pipefail
+pr=$1
+shift
+head=""
+output=""
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		--head)
+			head=$2
+			shift 2
+			;;
+		--output)
+			output=$2
+			shift 2
+			;;
+		*)
+			shift
+			;;
+	esac
+done
+[[ -n "$head" && -n "$output" ]]
+printf '{"version":1,"pr_number":%s,"head":"%s","findings":[]}\n' "$pr" "$head" > "$output"
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-triage"), []byte(`#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		--output)
+			output=$2
+			shift 2
+			;;
+		*)
+			shift
+			;;
+	esac
+done
+[[ -n "$output" ]]
+printf '{"decision":"KEEP","base_sha":"%s","head":"%s"}\n' \
+	"$AI_PR_TRIAGE_EXPECT_BASE_SHA" "$AI_PR_TRIAGE_EXPECT_HEAD_SHA" > "$output"
+`), 0o644))
 	writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), `#!/usr/bin/env bash
 set -euo pipefail
 review_cmd=""
@@ -140,9 +184,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 case "$review_cmd" in
-    *trusted-tools/scripts/ai-review-codex) ;;
+    *trusted-tools/scripts/ai-review-known-findings) ;;
     *) exit 95 ;;
 esac
+review_script=${review_cmd#bash }
+trusted_root=$(git -C "$(dirname "$review_script")" rev-parse --show-toplevel)
+grep -qx 'trusted known-findings contract' "$trusted_root/docs/technical/contributing/ai-pr-known-findings.md" || exit 91
+[[ -n "${AI_REVIEW_KNOWN_FINDINGS:-}" && -f "$AI_REVIEW_KNOWN_FINDINGS" ]] || exit 92
 if [[ -n "$fix_cmd" ]]; then
     case "$fix_cmd" in
         *trusted-tools/scripts/ai-fix-claude) ;;
@@ -170,6 +218,7 @@ elif [[ "$count" -eq 2 && "${TEST_MOVE_LOCAL_HEAD:-false}" == "true" ]]; then
 fi
 exit 0
 `)
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "docs", "technical", "contributing", "ai-pr-known-findings.md"), []byte("trusted known-findings contract\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "base.txt"), []byte("base\n"), 0o644))
 	runGit(t, seed, "add", ".")
 	runGit(t, seed, "commit", "-m", "base")
@@ -183,12 +232,15 @@ exit 0
 	if options.tamperTargetToolchain {
 		writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), "#!/usr/bin/env bash\nexit 97\n")
 		writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 97\n")
+		writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-known-findings"), "#!/usr/bin/env bash\nexit 97\n")
+		writeExecutable(t, filepath.Join(seed, "scripts", "ai-pr-known-findings"), "#!/usr/bin/env bash\nexit 97\n")
 		writeExecutable(t, filepath.Join(seed, "scripts", "ai-fix-claude"), "#!/usr/bin/env bash\nexit 97\n")
 		writeExecutable(t, filepath.Join(seed, "scripts", "agent-check-pr"), "#!/usr/bin/env bash\nexit 97\n")
+		require.NoError(t, os.WriteFile(filepath.Join(seed, "docs", "technical", "contributing", "ai-pr-known-findings.md"), []byte("target-controlled contract\n"), 0o644))
 	}
 	runGit(t, seed, "add", "feature.txt")
 	if options.tamperTargetToolchain {
-		runGit(t, seed, "add", "scripts/review-loop", "scripts/ai-review-codex", "scripts/ai-fix-claude", "scripts/agent-check-pr")
+		runGit(t, seed, "add", "scripts/review-loop", "scripts/ai-review-codex", "scripts/ai-review-known-findings", "scripts/ai-pr-known-findings", "scripts/ai-fix-claude", "scripts/agent-check-pr", "docs/technical/contributing/ai-pr-known-findings.md")
 	}
 	runGit(t, seed, "commit", "-m", "feature")
 	headSHA := runGitOutput(t, seed, "rev-parse", "HEAD")

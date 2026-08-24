@@ -28,14 +28,12 @@ var _ = Describe("Query after metadata field removal", Ordered, func() {
 		client servicepb.BucketServiceClient
 	)
 
-	const (
-		httpPort = 15714
-		grpcPort = 15814
-		metaKey  = "k2"
-	)
+	const metaKey = "k2"
 
 	BeforeAll(func() {
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode()
+		client = node.Client
 	})
 
 	apply := func(reqs ...*servicepb.Request) {

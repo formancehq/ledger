@@ -1442,8 +1442,7 @@ func (b *Builder) buildBackfillConfig(task *backfillTask) *ledgerIndexConfig {
 	}
 
 	cfg.byCanonical[indexes.Canonical(task.index)] = &commonpb.Index{
-		Id:          task.index,
-		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
+		Id: task.index,
 	}
 
 	return cfg

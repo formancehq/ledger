@@ -14,7 +14,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -28,7 +27,7 @@ var _ = Describe("PreparedQuery REST shape (EN-1465)", Ordered, func() {
 	const ledgerName = "pq-rest-shape"
 
 	restURL := func(path string) string {
-		return fmt.Sprintf("http://localhost:%d/v3/%s%s", testutil.TestSingleHTTPPort, ledgerName, path)
+		return fmt.Sprintf("http://localhost:%d/v3/%s%s", sharedHTTPPort, ledgerName, path)
 	}
 
 	BeforeAll(func() {

@@ -112,7 +112,7 @@ func runRemoveMetadataType(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Removing metadata type %s.%s from %s...",
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Removing metadata type %s.%s from %s...",
 		cmdutil.TargetTypeString(targetType), key, ledgerName))
 
 	requests := []*servicepb.Request{

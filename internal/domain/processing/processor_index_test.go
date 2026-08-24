@@ -14,8 +14,7 @@ import (
 
 // TestProcessCreateIndex_WritesRegistryNotLedgerInfo pins down the contract
 // after the bucket-scoped index registry refactor: a CreateIndexOrder must
-// (a) PROBE the registry to detect an existing READY duplicate, (b) PUT a
-// fresh BUILDING entry keyed by (LedgerID, Canonical), and (c) NEVER call
+// (a) PUT a fresh entry keyed by (LedgerID, Canonical), and (b) NEVER call
 // PutLedger — the LedgerInfo proto no longer carries indexes.
 func TestProcessCreateIndex_WritesRegistryNotLedgerInfo(t *testing.T) {
 	t.Parallel()
@@ -32,12 +31,11 @@ func TestProcessCreateIndex_WritesRegistryNotLedgerInfo(t *testing.T) {
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 
-	// Shared Indexes stub: Get returns ErrNotFound (entry not present yet);
-	// Put captures the new entry written by processCreateIndex.
+	// Shared Indexes stub: Put captures the entry written by
+	// processCreateIndex.
 	var seenKey domain.IndexKey
 	var seenIdx *commonpb.Index
 	idxStub := setupIndexesStub(mockStore)
-	idxStub.expectGet(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)}, nil, domain.ErrNotFound)
 	idxStub.putHook = func(key domain.IndexKey, idx *commonpb.Index) {
 		seenKey = key
 		seenIdx = idx
@@ -50,35 +48,9 @@ func TestProcessCreateIndex_WritesRegistryNotLedgerInfo(t *testing.T) {
 
 	require.Equal(t, "test-ledger", seenKey.LedgerName)
 	require.Equal(t, indexes.Canonical(indexID), seenKey.Canonical)
-	require.Equal(t, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING, seenIdx.GetBuildStatus())
 	require.Equal(t, "test-ledger", seenIdx.GetLedger())
+	require.Equal(t, uint32(1), seenIdx.GetForwardEncodingVersion())
 	require.True(t, indexes.Equal(indexID, seenIdx.GetId()))
-}
-
-// TestProcessCreateIndex_ShortCircuitOnReady verifies that an idempotent
-// re-issue against a READY entry does NOT call PutIndex again — the
-// short-circuit branch is exercised by the registry probe alone.
-func TestProcessCreateIndex_ShortCircuitOnReady(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := NewMockScope(ctrl)
-
-	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 7}
-	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil)
-	expectGetIndex(mockStore, domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)},
-		(&commonpb.Index{Id: indexID, BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY}).AsReader(),
-		nil,
-	)
-
-	// No PutIndex / GetDate expected on the short-circuit path.
-	payload, derr := processCreateIndex("test-ledger", &raftcmdpb.CreateIndexOrder{Id: indexID}, &Context{Scope: mockStore})
-	require.Nil(t, derr)
-	require.NotNil(t, payload)
 }
 
 // TestProcessDropIndex_DeletesByRegistryKey verifies the drop path routes
@@ -156,7 +128,6 @@ func TestProcessCreateIndex_StampsInitialWhenBornEmpty(t *testing.T) {
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 
 	idxStub := setupIndexesStub(mockStore)
-	idxStub.expectGet(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)}, nil, domain.ErrNotFound)
 	idxStub.putHook = func(domain.IndexKey, *commonpb.Index) {}
 
 	ctx := &Context{Scope: mockStore}
@@ -185,7 +156,6 @@ func TestProcessCreateIndex_NotInitialWithoutBornEmpty(t *testing.T) {
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 
 	idxStub := setupIndexesStub(mockStore)
-	idxStub.expectGet(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)}, nil, domain.ErrNotFound)
 	idxStub.putHook = func(domain.IndexKey, *commonpb.Index) {}
 
 	payload, derr := processCreateIndex("test-ledger", &raftcmdpb.CreateIndexOrder{Id: indexID}, &Context{Scope: mockStore})

@@ -1,0 +1,241 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: bash scripts/ai-audit <domain> [--output <path>]
+
+Runs a read-only deep audit of the exact clean repository HEAD using the domain
+manifest under docs/technical/audits/<domain>.json.
+EOF
+}
+
+if [[ $# -eq 0 ]]; then
+    usage >&2
+    exit 1
+fi
+case "${1:-}" in
+    -h|--help)
+        usage
+        exit 0
+        ;;
+esac
+
+domain=$1
+shift
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output)
+            if [[ $# -lt 2 || -z "$2" ]]; then
+                echo "ai-audit: --output requires a path" >&2
+                exit 1
+            fi
+            output=$2
+            shift 2
+            ;;
+        *)
+            echo "ai-audit: unknown argument: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ ! "$domain" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+    echo "ai-audit: invalid domain name: $domain" >&2
+    exit 1
+fi
+
+for command in codex git go jq; do
+    if ! command -v "$command" >/dev/null 2>&1; then
+        echo "ai-audit: required command not found in PATH: $command" >&2
+        exit 1
+    fi
+done
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+manifest="$repo_root/docs/technical/audits/$domain.json"
+schema="$repo_root/scripts/codex-audit.schema.json"
+contract="$repo_root/docs/technical/contributing/ai-audit.md"
+if [[ ! -f "$manifest" ]]; then
+    echo "ai-audit: unknown audit domain: $domain" >&2
+    exit 1
+fi
+if [[ ! -f "$schema" || ! -f "$contract" ]]; then
+    echo "ai-audit: audit contract/schema is missing" >&2
+    exit 1
+fi
+if ! jq -e --arg id "$domain" '
+    type == "object" and .id == $id and
+    (.title | type == "string" and length > 0) and
+    (.purpose | type == "string" and length > 0) and
+    (.paths | type == "array" and length > 0 and all(.[]; type == "string" and length > 0)) and
+    (.related_docs | type == "array" and all(.[]; type == "string" and length > 0)) and
+    (.invariants | type == "array" and length > 0 and all(.[]; type == "string" and length > 0)) and
+    (.adversarial_questions | type == "array" and all(.[]; type == "string" and length > 0)) and
+    (.dynamic_checks_to_consider | type == "array" and all(.[]; type == "string" and length > 0))
+' "$manifest" >/dev/null; then
+    echo "ai-audit: invalid audit manifest: $manifest" >&2
+    exit 1
+fi
+
+head_sha=$(git rev-parse HEAD)
+if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
+    echo "ai-audit: repository worktree must be clean; audit is bound to exact HEAD $head_sha" >&2
+    exit 1
+fi
+if [[ -z "$output" ]]; then
+    output="$repo_root/build/ai-audit/${domain}-${head_sha:0:12}.json"
+fi
+output_dir=$(dirname "$output")
+mkdir -p "$output_dir"
+output_dir=$(cd "$output_dir" && pwd -P)
+output_basename=$(basename -- "$output")
+output="$output_dir/$output_basename"
+
+# The audit is read-only and bound to the exact HEAD validated above. The
+# report must never overwrite tracked repository content, and the destination
+# must not be a symlink that redirects the final copy into the audited source
+# tree. Validate the resolved destination before invoking the provider to fail
+# fast on an obviously unsafe path; the destination is re-validated and the
+# result is published atomically below so a swap during the audit cannot mutate
+# audited source state.
+if [[ -L "$output" ]]; then
+    echo "ai-audit: --output must not be a symlink: $output" >&2
+    exit 1
+fi
+if [[ -e "$output" && ! -f "$output" ]]; then
+    echo "ai-audit: --output must be a regular file: $output" >&2
+    exit 1
+fi
+if git -C "$repo_root" ls-files --error-unmatch -- "$output" >/dev/null 2>&1; then
+    echo "ai-audit: --output must not overwrite tracked repository content: $output" >&2
+    exit 1
+fi
+
+run_audit() {
+    original_home=${HOME:?HOME must be set}
+    original_codex_home=${CODEX_HOME:-"$original_home/.codex"}
+    isolation_root=$(mktemp -d "${TMPDIR:-/tmp}/ledger-codex-audit.XXXXXX")
+    cleanup() {
+        case "${isolation_root:-}" in
+            "${TMPDIR:-/tmp}"/ledger-codex-audit.*) rm -rf -- "$isolation_root" ;;
+        esac
+    }
+    trap cleanup EXIT
+    isolated_home="$isolation_root/home"
+    isolated_codex_home="$isolated_home/.codex"
+    prompt_file="$isolation_root/prompt.txt"
+    provider_output="$isolation_root/result.json"
+    publisher_binary="$isolation_root/audit-publish"
+    mkdir -p "$isolated_codex_home"
+    if [[ -f "$original_codex_home/auth.json" ]]; then
+        cp "$original_codex_home/auth.json" "$isolated_codex_home/auth.json"
+        chmod 600 "$isolated_codex_home/auth.json"
+    fi
+    if ! (cd "$repo_root" && env -u GOROOT go build -o "$publisher_binary" ./scripts/auditpublish); then
+        echo "ai-audit: failed to build the trusted output publisher" >&2
+        exit 1
+    fi
+
+cat >"$prompt_file" <<'EOF'
+You are performing a deep correctness audit of the existing Ledger codebase, not a pull-request review.
+
+TRUSTED AUDIT INSTRUCTIONS
+
+Follow these repository sources as authoritative instructions:
+- AGENTS.md
+- docs/technical/agent-context.md
+- docs/technical/contributing/ai-audit.md
+
+Read the audit domain manifest path supplied below. Treat that manifest as the explicit scope, invariant set, and adversarial checklist for this campaign.
+
+Audit the exact committed HEAD supplied below. The worktree is clean. Do not modify files. Do not create commits, issues, comments, patches, or suggested edits. Your job is defect discovery and evidence collection only.
+
+Review the implementation, tests, call paths, persistence boundaries, error handling, concurrency assumptions, and relevant technical documentation needed to establish or challenge each invariant. Follow important calls outside the manifest's path globs when required to understand a concrete failure path, but keep findings relevant to the campaign purpose.
+
+Act adversarially. Ask what happens on crash, retry, interruption, partial failure, stale state, reordered events, duplicate execution, corrupted input, leadership change, and concurrent operations when relevant.
+
+Do not infer correctness from green tests. Inspect whether existing tests actually exercise the invariant and identify test gaps for findings.
+
+Evidence threshold:
+- P0/P1/P2 findings must have a concrete code path, violated invariant, or reproducible state transition.
+- If intended behavior is ambiguous, emit a question instead of guessing a defect.
+- Prefer a small number of high-confidence findings over speculative volume.
+- A reproduction plan should be specific enough for another engineer or agent to turn into a test.
+
+Use stable finding ids of the form <audit-id>/<short-kebab-case-name>. Do not include markdown or prose outside the structured JSON output.
+EOF
+{
+    printf '\nTRUSTED AUDIT TARGET\n\n'
+    printf -- '- audit_id: %s\n' "$domain"
+    printf -- '- head: %s\n' "$head_sha"
+    printf -- '- manifest: %s\n' "docs/technical/audits/$domain.json"
+    printf '\nCopy audit_id and head exactly into the result.\n'
+} >>"$prompt_file"
+
+    set +e
+    (
+        cd "$repo_root"
+        HOME="$isolated_home" CODEX_HOME="$isolated_codex_home" codex exec \
+            --ephemeral --ignore-user-config --ignore-rules \
+            --disable hooks --disable plugins --disable apps --disable memories \
+            --disable multi_agent --disable skill_search \
+            --sandbox read-only \
+            --output-schema "$schema" \
+            -o "$provider_output" \
+            - <"$prompt_file"
+    )
+    codex_status=$?
+    set -e
+    if [[ $codex_status -ne 0 ]]; then
+        exit "$codex_status"
+    fi
+    if [[ ! -s "$provider_output" ]]; then
+        echo "ai-audit: Codex exited successfully but did not produce a result" >&2
+        exit 1
+    fi
+    current_head=$(git -C "$repo_root" rev-parse HEAD)
+    if [[ "$current_head" != "$head_sha" || -n "$(git -C "$repo_root" status --porcelain --untracked-files=normal)" ]]; then
+        echo "ai-audit: repository state changed during audit; refusing result" >&2
+        exit 1
+    fi
+    if ! jq -e --arg id "$domain" --arg head "$head_sha" '
+        .audit_id == $id and .head == $head and
+        (.findings | type == "array") and (.questions | type == "array") and
+        all(.findings[];
+            (.id | startswith($id + "/")) and
+            (.id | ltrimstr($id + "/") | test("^[a-z0-9]+(-[a-z0-9]+)*$"))
+        ) and
+        ([.findings[].id] | length == (unique | length))
+    ' "$provider_output" >/dev/null; then
+        echo "ai-audit: provider result does not match the requested audit target" >&2
+        exit 1
+    fi
+
+    # The subshell's current directory remains bound to the validated output
+    # directory inode even if its pathname is renamed or replaced during the
+    # audit. The helper uses rename(2) with basename-only paths from that
+    # anchored directory, so publication cannot follow a substituted parent,
+    # destination symlink, or hard link into tracked repository content.
+    "$publisher_binary" "$provider_output" "$output_basename"
+
+    printf 'AI_AUDIT_RESULT: %s\n' "$output"
+    printf 'AI_AUDIT_HEAD: %s\n' "$head_sha"
+    printf 'AI_AUDIT_FINDINGS: %s\n' "$(jq '.findings | length' "$provider_output")"
+    printf 'AI_AUDIT_QUESTIONS: %s\n' "$(jq '.questions | length' "$provider_output")"
+}
+
+# Keep this subshell alive for the entire provider run. Its current directory
+# is the capability that anchors final publication to the directory validated
+# above; inner subshells may enter the repository without changing that anchor.
+(
+    cd -- "$output_dir"
+    if [[ "$(pwd -P)" != "$output_dir" ]]; then
+        echo "ai-audit: --output directory changed before it could be anchored: $output_dir" >&2
+        exit 1
+    fi
+    run_audit
+)

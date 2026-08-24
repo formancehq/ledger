@@ -3,7 +3,6 @@ package signing
 import (
 	"fmt"
 
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
@@ -64,7 +63,7 @@ func runRequire(cmd *cobra.Command, args []string) error {
 		action = "Disabling"
 	}
 
-	spinner, _ := pterm.DefaultSpinner.Start(action + " mandatory signatures...")
+	spinner := cmdutil.StartSpinner(action + " mandatory signatures...")
 
 	requests := []*servicepb.Request{
 		{

@@ -2017,7 +2017,6 @@ func NewIndexIDListReader(s []*IndexID) IndexIDListReader { return indexIDListRe
 // Call Mutate() to obtain a mutable clone.
 type IndexReader interface {
 	GetId() IndexIDReader
-	GetBuildStatus() IndexBuildStatus
 	GetCreatedAt() TimestampReader
 	GetLedger() string
 	GetForwardEncodingVersion() uint32
@@ -2032,10 +2031,6 @@ func (r *indexReadonly) GetId() IndexIDReader {
 		return nil
 	}
 	return v.AsReader()
-}
-
-func (r *indexReadonly) GetBuildStatus() IndexBuildStatus {
-	return (*Index)(r).GetBuildStatus()
 }
 
 func (r *indexReadonly) GetCreatedAt() TimestampReader {

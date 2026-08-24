@@ -64,11 +64,9 @@ func CreateLogBuiltinIndexAction(ledger string, index commonpb.LogBuiltinIndex) 
 // performed the atomic switch into a live keyspace, so queries that
 // require this index would short-read.
 //
-// Replaces the BuildStatus-based ready check: EN-1323 made BuildStatus
-// informational only. The cluster-wide IndexReady proposal that used
-// to flip BuildStatus to READY is gone; each replica advances its
-// IndexVersionState independently as soon as its local backfill / rewrite
-// finishes.
+// Each replica advances its IndexVersionState independently as soon as
+// its local backfill / rewrite finishes (EN-1323) — readiness is always
+// a per-replica question.
 func indexReadyOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*commonpb.IndexID) bool, label string) error {
 	for _, entry := range resp.GetIndexes() {
 		if entry.GetLedger() != ledger || !matches(entry.GetIndex().GetId()) {

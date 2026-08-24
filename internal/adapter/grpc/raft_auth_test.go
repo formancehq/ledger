@@ -29,17 +29,11 @@ func startTestRaftServerWithSecret(t *testing.T, clusterSecret string) *serverTe
 
 	healthpb.RegisterHealthServer(srv.GetServer(), healthShim{})
 
-	listening := make(chan struct{})
+	require.NoError(t, srv.Listen())
 
 	go func() {
-		_ = srv.Start(listening)
+		_ = srv.Serve()
 	}()
-
-	select {
-	case <-listening:
-	case <-time.After(2 * time.Second):
-		t.Fatal("server did not start listening")
-	}
 
 	t.Cleanup(func() { _ = srv.Stop() })
 

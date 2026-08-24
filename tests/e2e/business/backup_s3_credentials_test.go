@@ -24,11 +24,6 @@ import (
 )
 
 const (
-	s3CredsHTTPPort = 16100
-	// SetupSingleNode derives the Raft port as gRPC-1000, so this yields
-	// 16200. The previous value of 16200 derived 15200, the suite-wide node's
-	// HTTP port, and panicked the whole suite on startup.
-	s3CredsGRPCPort  = 17200
 	s3CredsBucket    = "creds-e2e"
 	s3CredsRegion    = "us-east-1"
 	s3CredsAccessKey = "minioadmin"
@@ -86,7 +81,10 @@ var _ = Describe("S3 Backup with explicit credentials", Ordered, func() {
 		GinkgoT().Setenv("AWS_ACCESS_KEY_ID", "INVALID_KEY")
 		GinkgoT().Setenv("AWS_SECRET_ACCESS_KEY", "INVALID_SECRET")
 
-		ctx, client, clusterClient = testutil.SetupSingleNode(s3CredsHTTPPort, s3CredsGRPCPort)
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode()
+		client = node.Client
+		clusterClient = node.ClusterClient
 	})
 
 	It("should succeed with explicit credentials in the backup request", func() {

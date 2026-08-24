@@ -48,10 +48,7 @@ var _ = Describe("MetadataIndexPerReplicaConsistency", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		ctx, servers, _, _ = testutil.SetupMultiNodeCluster(
-			countInstances,
-			testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-		)
+		ctx, servers, _, _ = testutil.SetupMultiNodeCluster(countInstances)
 	})
 
 	AfterAll(func() {

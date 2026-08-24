@@ -10,8 +10,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/tests/scenarios/scenariotest"
@@ -57,7 +57,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 		promoCoins = 500 // free coins per promo
 	)
 
-	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort+7, scenariotest.GRPCPort+7)
+	sc := scenariotest.SetupSingleNode(t)
 	ctx, client := sc.Ctx(), sc.Client
 
 	// Balance tracking
@@ -84,7 +84,6 @@ func TestGamingWalletLifecycle(t *testing.T) {
 	t.Run("Setup", func(t *testing.T) {
 		scenariotest.ApplyActions(t, ctx, client, scenario.GamingWalletSetupActions()...)
 	})
-
 
 	// --- Phase 2: Top-Ups (buy coins with real money) ---
 	t.Run("TopUps", func(t *testing.T) {

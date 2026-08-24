@@ -93,7 +93,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	manifestKey := bucketID + "/backups/manifest.json"
 
 	// Read manifest
-	spinner, _ := pterm.DefaultSpinner.Start("Reading backup manifest...")
+	spinner := cmdutil.StartSpinner("Reading backup manifest...")
 
 	manifestReader, err := storage.GetFile(cmd.Context(), manifestKey)
 	if err != nil {
@@ -142,7 +142,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 
 	// Download checkpoint files (if any)
 	if manifest.Checkpoint != nil && len(manifest.Checkpoint.Files) > 0 {
-		dlSpinner, _ := pterm.DefaultSpinner.Start("Downloading checkpoint files...")
+		dlSpinner := cmdutil.StartSpinner("Downloading checkpoint files...")
 
 		var totalBytes uint64
 
@@ -194,7 +194,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 
 	// Apply export segments and rebuild derived state (if any).
 	if len(manifest.Exports) > 0 {
-		exportSpinner, _ := pterm.DefaultSpinner.Start("Applying export segments and rebuilding derived state...")
+		exportSpinner := cmdutil.StartSpinner("Applying export segments and rebuilding derived state...")
 
 		exportStore, err := dal.OpenDirect(stagingDir, logger)
 		if err != nil {
@@ -268,7 +268,7 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Prepare attributes for backup (Global-zone resets; no compaction).
-	prepareSpinner, _ := pterm.DefaultSpinner.Start("Preparing attributes for restore compatibility...")
+	prepareSpinner := cmdutil.StartSpinner("Preparing attributes for restore compatibility...")
 
 	prepareStore, err := dal.OpenDirect(stagingDir, logger)
 	if err != nil {

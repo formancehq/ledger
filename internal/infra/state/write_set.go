@@ -984,6 +984,7 @@ func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 			CloseSequence:      c.GetCloseSequence(),
 			StartAuditSequence: c.GetStartAuditSequence(),
 			CloseAuditSequence: c.GetCloseAuditSequence(),
+			SealingHash:        c.GetSealingHash(),
 		})
 	case *commonpb.LogPayload_ConfirmArchiveChapter:
 		c := p.ConfirmArchiveChapter.GetChapter()
@@ -1021,6 +1022,23 @@ func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 		// SubAttrBoundary coverage is consumed on the gated path instead
 		// of via this raw, ungated overlay delete (invariant #9).
 		b.deletedLedgers = append(b.deletedLedgers, p.DeleteLedger.GetName())
+		// Deleting a mirror ledger reshapes the worker set exactly as
+		// promoting one does: ReadMirrorLedgers filters DeletedAt == nil, so
+		// the ledger drops out of the desired set and reconcile must stop its
+		// worker. Without this the ConfigChanged notification never fires
+		// (machine.go only raises it for sink/mirror config changes) and the
+		// worker keeps polling the v2 source and proposing ingests the FSM
+		// rejects, until an unrelated reconcile happens to run.
+		//
+		// Set unconditionally rather than only for mirror ledgers: the mode
+		// lives on LedgerInfo, not on DeletedLedgerLog or the order, and
+		// reaching into Derived.Ledgers here would re-introduce the raw,
+		// ungated overlay access this case was deliberately moved away from
+		// (invariant #9). A deletion of a non-mirror ledger therefore costs one
+		// spurious reconcile in every ConfigChanged consumer — signal.FanOut
+		// dispatches to all of them, so it is a read handle each, not one
+		// overall. Idempotent, and ledger deletion is rare.
+		b.mirrorConfigChanged = true
 	case *commonpb.LogPayload_CloseChapter:
 		// Admission + FSM (ClassifyCheckpointOrderPosition) guarantee
 		// CloseChapter is the last order of its proposal, so at most one
@@ -1059,8 +1077,9 @@ func (b *WriteSet) ChapterClosing() bool {
 	return b.chapterClosing
 }
 
-// MirrorConfigChanged reports whether a mirror-config change (mirror
-// CreateLedger or PromoteLedger) was absorbed during this proposal.
+// MirrorConfigChanged reports whether a change that reshapes the mirror worker
+// set (mirror CreateLedger, PromoteLedger, or any DeleteLedger) was absorbed
+// during this proposal.
 func (b *WriteSet) MirrorConfigChanged() bool {
 	return b.mirrorConfigChanged
 }

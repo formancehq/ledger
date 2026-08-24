@@ -252,8 +252,7 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 
 		It("Should show reference index as ready locally via GetIndexStatus", func() {
 			// Per-replica readiness lives in IndexEntry.current_version
-			// on GetIndexStatus since EN-1323 (BuildStatus is informational
-			// only). The registry entry itself is exercised by
+			// on GetIndexStatus (EN-1323). The registry entry itself is exercised by
 			// ListIndexes elsewhere.
 			Expect(actions.WaitForBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)).
 				To(Succeed())

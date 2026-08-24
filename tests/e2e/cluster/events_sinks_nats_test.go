@@ -30,9 +30,7 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 	)
 
 	const (
-		httpPort = 9400
-		grpcPort = 8400
-		topic    = "ledger-e2e-events"
+		topic = "ledger-e2e-events"
 	)
 
 	BeforeAll(func() {
@@ -67,7 +65,9 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Start single-node ledger server
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode()
+		client = node.Client
 	})
 
 	AfterAll(func() {

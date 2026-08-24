@@ -31,16 +31,16 @@ var _ = Describe("Idempotency replay resolves archived logs from cold storage", 
 	)
 
 	const (
-		httpPort = 15704
-		grpcPort = 15804
-		ledger   = "idem-replay-cold"
-		idemKey  = "replay-cold-key"
+		ledger  = "idem-replay-cold"
+		idemKey = "replay-cold-key"
 	)
 
 	BeforeAll(func() {
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort,
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode(
 			testserver.WithColdStorageDriver("filesystem"),
 		)
+		client = node.Client
 	})
 
 	keyedTx := func() *servicepb.ApplyRequest {

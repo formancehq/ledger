@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
@@ -191,6 +192,7 @@ const (
 	ErrReasonChapterNotClosed              = "CHAPTER_NOT_CLOSED"
 	ErrReasonChapterNotArchiving           = "CHAPTER_NOT_ARCHIVING"
 	ErrReasonChapterArchiveOutOfOrder      = "CHAPTER_ARCHIVE_OUT_OF_ORDER"
+	ErrReasonChapterArchiveIdentityMismatch = "CHAPTER_ARCHIVE_IDENTITY_MISMATCH"
 	ErrReasonMetadataNotFound              = "METADATA_NOT_FOUND"
 	ErrReasonInvalidReceipt                = "INVALID_RECEIPT"
 	ErrReasonMaintenanceMode               = "MAINTENANCE_MODE"
@@ -861,6 +863,39 @@ func (e *ErrChapterArchiveOutOfOrder) Metadata() map[string]string {
 	return map[string]string{
 		"chapterId":         strconv.FormatUint(e.ChapterID, 10),
 		"blockingChapterId": strconv.FormatUint(e.BlockingChapterID, 10),
+	}
+}
+
+// ErrChapterArchiveIdentityMismatch — the confirm names a chapter incarnation
+// that is not the one in history. A chapter's sealing hash commits it to its
+// content, so the archiver carries the hash it built the archive for and the
+// handler compares it immediately before the purge. A mismatch means the archive
+// the purge would trade hot history for belongs to a timeline this store no
+// longer has: restoring an older backup over a surviving cold-storage namespace
+// can reuse a chapter id with the same log and audit ranges but different
+// operations, and the ranges alone cannot tell the two apart.
+type ErrChapterArchiveIdentityMismatch struct {
+	ChapterID uint64
+	// Expected is the sealing hash of the chapter now in history; Got is the one
+	// the confirm carried.
+	Expected []byte
+	Got      []byte
+}
+
+func (e *ErrChapterArchiveIdentityMismatch) Error() string {
+	return fmt.Sprintf("chapter %d has sealing hash %x, but the archive confirmation carries %x",
+		e.ChapterID, e.Expected, e.Got)
+}
+
+func (*ErrChapterArchiveIdentityMismatch) Reason() string {
+	return ErrReasonChapterArchiveIdentityMismatch
+}
+
+func (e *ErrChapterArchiveIdentityMismatch) Metadata() map[string]string {
+	return map[string]string{
+		"chapterId":           strconv.FormatUint(e.ChapterID, 10),
+		"expectedSealingHash": hex.EncodeToString(e.Expected),
+		"gotSealingHash":      hex.EncodeToString(e.Got),
 	}
 }
 

@@ -27,8 +27,10 @@ A full PR URL is accepted as well. The launcher:
 
 - resolves the current repository and PR metadata through `gh`;
 - requires an open same-repository PR and currently rejects fork/cross-repository heads;
-- fetches the exact GitHub-reported base and head refs and verifies both SHAs before running agents;
+- fetches the current target-branch tip and the PR head ref, requires the fetched head to equal the GitHub-reported head SHA, and requires the fetched target tip to still equal the GitHub-reported base SHA before running agents;
 - creates a detached linked worktree outside the primary checkout, under a unique sibling `.<repo>-ai-worktrees/pr-<number>.<run>/worktree` directory;
+- runs the [legitimacy triage](ai-pr-triage-loop.md) before any technical review, using the `scripts/ai-pr-triage` adapter from a detached worktree pinned at the verified base SHA, so the PR under review cannot supply the policy that authorizes its own review;
+- accepts a triage result only when its `base_sha` and `head` equal the SHAs the launcher fetched and verified, and continues into technical review only on a `KEEP` decision;
 - passes the verified base commit SHA to `review-loop`, so a later update of the shared remote-tracking ref cannot change the reviewed delta;
 - runs the standard Codex review + Claude fix composition against the PR base;
 - runs repository validation locally before accepting any approval; no GitHub
@@ -37,7 +39,22 @@ A full PR URL is accepted as well. The launcher:
 - preserves the isolated worktree automatically when fixes remain so the resulting diff can be inspected manually;
 - removes a clean temporary worktree after the loop unless `--keep-worktree` is supplied.
 
-Each invocation owns a unique worktree and never reuses or removes another invocation's directory. Without `--push`, the launcher performs no commit or push and only reports `READY_FOR_HUMAN_REVIEW`, `HUMAN_DECISION_REQUIRED`, or an orchestration error.
+Each invocation owns a unique worktree and never reuses or removes another invocation's directory. Without `--push`, the launcher performs no commit or push and only reports `READY_FOR_HUMAN_REVIEW`, `HUMAN_DECISION_REQUIRED`, `LEGITIMACY_REJECTED`, `BASE_UPDATE_REQUIRED`, or an orchestration error.
+
+`LEGITIMACY_REJECTED` is emitted when triage returns `REJECT`; a `QUESTION` decision stops the run with `HUMAN_DECISION_REQUIRED`. Both stop before technical review and exit `2`. A triage provider error or target mismatch fails closed as an orchestration error. Every triage outcome is advisory: the launcher never closes, comments on, or otherwise changes the PR.
+
+### Stale PR base
+
+GitHub's reported base SHA describes the PR snapshot and may legitimately lag behind the current target branch. Reviewing against a historical base can miss semantic conflicts introduced since the PR was opened, so the launcher compares the freshly fetched target-branch tip with that reported base SHA before creating any worktree:
+
+When the checkout is shallow and the first ancestry check is negative, the launcher unshallows history for the exact fetched target SHA and retries the check. A shallow boundary therefore cannot by itself turn normal target advancement into a rewrite/divergence result. Failure to restore that history is an orchestration error.
+
+- identical: the reviewed base is current and the run continues into triage;
+- the reported base is still an ancestor of the tip: the target branch advanced since the PR snapshot, so the launcher prints both SHAs, reports `AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED`, and exits `3`. Synchronize the PR with its target branch — merge or rebase, push the PR head — and rerun the launcher;
+- the reported base is not an ancestor of the tip: the target branch was rewritten or diverged, reported as `AI_PR_LOOP_RESULT: ERROR (target base rewritten or diverged)` with exit `1`;
+- the reported base cannot be resolved even after an explicit fetch: an orchestration error with exit `1`.
+
+Only the first case reaches an agent; every other case stops before triage, so no legitimacy triage, technical review, fix, or validation runs.
 
 ### Guarded publish mode
 
@@ -247,12 +264,25 @@ The adapter does not commit, push, comment on GitHub, resolve threads, or decide
 
 ## Exit codes
 
+`review-loop`:
+
 | Code | Meaning |
 |---|---|
 | `0` | `READY_FOR_HUMAN_REVIEW` |
 | `1` | orchestration/reviewer/fixer/validation error |
 | `2` | `HUMAN_DECISION_REQUIRED` |
 | `3` | `AUTO_FIX_REQUIRED` but no `--fix-cmd` was supplied |
+
+`ai-pr-loop` has its own exit semantics. It forwards the bounded loop's status, but adds pre-triage outcomes of its own, so its codes must not be read with the `review-loop` meanings above:
+
+| Code | Meaning |
+|---|---|
+| `0` | `READY_FOR_HUMAN_REVIEW`, including the `--push` results `NO_CHANGES` and `PUSHED` |
+| `1` | orchestration error, including a rewritten or diverged target branch |
+| `2` | `HUMAN_DECISION_REQUIRED`, `LEGITIMACY_REJECTED`, or a `--push` refusal caused by a candidate review needing human judgment, a moved remote head, or a rejected push |
+| `3` | `BASE_UPDATE_REQUIRED` — the target branch advanced past the PR base, or, in `--push` mode, the review-only candidate pass returned `AUTO_FIX_REQUIRED` |
+
+Because one launcher exit code can cover several outcomes, automation must key on the emitted `AI_PR_LOOP_RESULT` / `AI_PR_LOOP_PUSH_RESULT` line and use the exit status only as a success/failure signal.
 
 ## Safety boundary
 

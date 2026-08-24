@@ -2083,6 +2083,7 @@ func NewArchiveChapterRequestListReader(s []*ArchiveChapterRequest) ArchiveChapt
 // Call Mutate() to obtain a mutable clone.
 type ConfirmArchiveChapterRequestReader interface {
 	GetChapterId() uint64
+	GetSealingHash() []byte
 	Mutate() *ConfirmArchiveChapterRequest
 }
 
@@ -2090,6 +2091,10 @@ type confirmArchiveChapterRequestReadonly ConfirmArchiveChapterRequest
 
 func (r *confirmArchiveChapterRequestReadonly) GetChapterId() uint64 {
 	return (*ConfirmArchiveChapterRequest)(r).GetChapterId()
+}
+
+func (r *confirmArchiveChapterRequestReadonly) GetSealingHash() []byte {
+	return bytes.Clone((*ConfirmArchiveChapterRequest)(r).GetSealingHash())
 }
 
 func (r *confirmArchiveChapterRequestReadonly) Mutate() *ConfirmArchiveChapterRequest {

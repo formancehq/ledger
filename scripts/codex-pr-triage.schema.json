@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["decision", "base_sha", "head", "problem_statement", "documented_needs", "technical_decisions", "existing_alternatives", "cost_assessment", "consequence_of_doing_nothing", "questions_for_author", "summary"],
+  "properties": {
+    "decision": {"type": "string", "enum": ["KEEP", "QUESTION", "REJECT"]},
+    "base_sha": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "head": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "problem_statement": {"type": "string"},
+    "documented_needs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["need", "evidence"],
+        "properties": {
+          "need": {"type": "string"},
+          "evidence": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "technical_decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["decision", "significant", "product_motivation_status", "motivation_evidence"],
+        "properties": {
+          "decision": {"type": "string"},
+          "significant": {"type": "boolean"},
+          "product_motivation_status": {"type": "string", "enum": ["DOCUMENTED", "MISSING", "NOT_REQUIRED"]},
+          "motivation_evidence": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "existing_alternatives": {"type": "array", "items": {"type": "string"}},
+    "cost_assessment": {"type": "string"},
+    "consequence_of_doing_nothing": {"type": "string"},
+    "questions_for_author": {"type": "array", "items": {"type": "string"}},
+    "summary": {"type": "string"}
+  }
+}

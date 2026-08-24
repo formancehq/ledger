@@ -752,8 +752,6 @@ var _ = Describe("CheckStore", Ordered, func() {
 	Context("Across a chapter-archive boundary", Ordered, func() {
 		const (
 			ledgerName = "check-schema-archived-ledger"
-			httpPort   = 15702
-			grpcPort   = 15802
 		)
 
 		var (
@@ -764,9 +762,11 @@ var _ = Describe("CheckStore", Ordered, func() {
 		BeforeAll(func() {
 			// Own node with a filesystem cold-storage backend so chapters can be
 			// archived; the shared suite server has cold storage disabled.
-			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort,
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode(
 				testserver.WithColdStorageDriver("filesystem"),
 			)
+			client = node.Client
 
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
 				actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{

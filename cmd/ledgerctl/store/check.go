@@ -50,13 +50,13 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 	}
 
 	var (
-		spinner     *pterm.SpinnerPrinter
+		spinner     *cmdutil.Spinner
 		errorCount  int
 		checkErrors []*servicepb.CheckStoreError
 	)
 
 	if !structuredOutput {
-		spinner, _ = pterm.DefaultSpinner.Start("Checking store integrity...")
+		spinner = cmdutil.StartSpinner("Checking store integrity...")
 	}
 
 	for {

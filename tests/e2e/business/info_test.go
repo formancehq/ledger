@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -34,7 +33,7 @@ var _ = Describe("Server info", func() {
 	})
 
 	It("Should expose server info via the unauthenticated HTTP GET /_info", func() {
-		url := fmt.Sprintf("http://localhost:%d/_info", testutil.TestSingleHTTPPort)
+		url := fmt.Sprintf("http://localhost:%d/_info", sharedHTTPPort)
 		req, err := http.NewRequestWithContext(sharedCtx, http.MethodGet, url, nil)
 		Expect(err).To(Succeed())
 

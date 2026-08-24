@@ -938,9 +938,10 @@ func (w *attributeReplayWriter) ensureNextChapterID() error {
 
 // applyAuditOrderEffects folds order-level boundary effects that the ledger-log
 // stream does not carry: MirrorFillGap's skipped transaction ids (FilledGapLog
-// keeps only the original v2 id). These live on the order itself, which
-// AuditItem.serialized_order preserves — bound into the audit hash chain and
-// shipped by the incremental export's auditItem segments.
+// keeps only the original v2 id) and every MirrorIngest's source v2 log id
+// (only FilledGapLog echoes it back into the log stream). These live on the
+// order itself, which AuditItem.serialized_order preserves — bound into the
+// audit hash chain and shipped by the incremental export's auditItem segments.
 //
 // Items with log_sequence == 0 (failed proposals, idempotent replays) and items
 // at or below fromLogSeq (already folded into the checkpoint) contribute
@@ -1004,6 +1005,24 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 			if next := id + 1; next > b.GetNextTransactionId() {
 				b.NextTransactionId = next
 			}
+		}
+
+		// Mirror high-water mark. Only the FSM writes LastMirrorV2LogId on the
+		// live path, and the ledger-log stream does not carry the source id
+		// except for fill-gaps, so without this fold a restored mirror keeps
+		// the checkpoint's value while the delta's ingests are replayed. Worker
+		// and FSM both read that one row, so they agree on a stale position and
+		// the re-fetched logs arrive as v2LogID == last+1 — the APPLY branch,
+		// not the idempotent skip (EN-1776).
+		//
+		// Max, not assignment: it matches the checker's own fold in
+		// recordMirrorIngestMutations, so the rebuild and the checker's
+		// oracle agree by construction. compareMirrorV2LogID is a strict
+		// equality check against that fold, so a divergence here would
+		// surface as CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH on a
+		// healthy store. Pinned by TestRebuildDelta_FoldsHighestMirrorV2LogID.
+		if effects.MirrorV2LogID > b.GetLastMirrorV2LogId() {
+			b.LastMirrorV2LogId = effects.MirrorV2LogID
 		}
 	}
 

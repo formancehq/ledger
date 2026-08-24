@@ -58,7 +58,7 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching indexes for %s...", ledgerName))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching indexes for %s...", ledgerName))
 
 	stream, err := client.ListIndexes(ctx, &servicepb.ListIndexesRequest{
 		Scope:  servicepb.ListIndexesRequest_SCOPE_LEDGER,
@@ -87,11 +87,10 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		entries = append(entries, idx)
 	}
 
-	// EN-1323: BuildStatus is informational only; the per-replica
-	// readiness signal lives in IndexEntry.current_version (>0 ⇒ local
-	// atomic switch has fired). Fetch IndexStatus unconditionally so
-	// the status column reflects the local replica's view rather than
-	// the never-updated FSM-side BUILDING flag.
+	// The per-replica readiness signal lives in IndexEntry.current_version
+	// (>0 ⇒ local atomic switch has fired; EN-1323). Fetch IndexStatus
+	// unconditionally so the status column reflects the local replica's
+	// view.
 	//
 	// statusOK distinguishes "RPC succeeded, got real data" from "RPC
 	// failed, no version info available" — the renderer uses it to

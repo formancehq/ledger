@@ -12,11 +12,12 @@ import (
 
 // TestNodeConfig holds the common configuration for a test node.
 type TestNodeConfig struct {
-	NodeID       int
-	ClusterID    string
-	HTTPPort     int
-	RaftPort     int
-	GRPCPort     int
+	NodeID    int
+	ClusterID string
+	// Ports must come from a NodeLease. It replaces the former
+	// HTTPPort/RaftPort/GRPCPort int fields so a hand-picked port cannot be
+	// passed here at all (EN-1784).
+	Ports        NodePorts
 	WalDir       string
 	DataDir      string
 	Debug        bool
@@ -27,6 +28,11 @@ type TestNodeConfig struct {
 // DefaultTestInstruments returns the standard set of test instruments for a node.
 // Callers append extra instruments (e.g. WithBootstrap, TLS, auth) to the returned slice.
 func DefaultTestInstruments(cfg TestNodeConfig) []testservice.Instrumentation {
+	if !cfg.Ports.Allocated() {
+		panic("testserver: TestNodeConfig.Ports must come from testserver.AllocateNodeLease().Ports(); " +
+			"hand-picked ports are what caused EN-1784")
+	}
+
 	if cfg.TickInterval == 0 {
 		cfg.TickInterval = 10 * time.Millisecond
 	}
@@ -36,11 +42,11 @@ func DefaultTestInstruments(cfg TestNodeConfig) []testservice.Instrumentation {
 		testservice.OutputInstrumentation(cfg.Output),
 		WithNodeID(cfg.NodeID),
 		WithClusterID(cfg.ClusterID),
-		WithHTTPPort(cfg.HTTPPort),
+		WithHTTPPort(cfg.Ports.HTTP()),
 		WithWalDir(cfg.WalDir),
 		WithDataDir(cfg.DataDir),
-		WithRaftPort(cfg.RaftPort),
-		WithGRPCPort(cfg.GRPCPort),
+		WithRaftPort(cfg.Ports.Raft()),
+		WithGRPCPort(cfg.Ports.GRPC()),
 		WithMaintenanceInterval(5 * time.Second),
 		WithDebug(cfg.Debug),
 		WithRaftTickInterval(cfg.TickInterval),

@@ -9,8 +9,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/tests/scenarios/scenariotest"
@@ -23,7 +23,7 @@ import (
 func TestMultiCurrencyTreasury(t *testing.T) {
 	const ledger = scenario.MultiCurrencyLedger
 
-	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort+1, scenariotest.GRPCPort+1)
+	sc := scenariotest.SetupSingleNode(t)
 	ctx, client := sc.Ctx(), sc.Client
 
 	// FX operation definition
@@ -135,7 +135,6 @@ func TestMultiCurrencyTreasury(t *testing.T) {
 			}, nil),
 		)
 	})
-
 
 	// --- Phase 2: FX Operations (20 ops = 40 Apply calls) ---
 	t.Run("FXOperations", func(t *testing.T) {

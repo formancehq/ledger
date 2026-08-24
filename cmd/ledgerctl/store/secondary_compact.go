@@ -3,7 +3,6 @@ package store
 import (
 	"fmt"
 
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
@@ -40,9 +39,9 @@ func runSecondaryCompact(cmd *cobra.Command, _ []string) error {
 
 	structuredOutput := cmdutil.IsStructuredOutput(cmd)
 
-	var spinner *pterm.SpinnerPrinter
+	var spinner *cmdutil.Spinner
 	if !structuredOutput {
-		spinner, _ = pterm.DefaultSpinner.Start("Compacting read index...")
+		spinner = cmdutil.StartSpinner("Compacting read index...")
 	}
 
 	resp, err := client.CompactSecondary(ctx, &clusterpb.CompactSecondaryRequest{})

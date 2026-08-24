@@ -31,13 +31,14 @@ var _ = Describe("Query Checkpoints", func() {
 		)
 
 		const (
-			httpPort   = 9220
-			grpcPort   = 8220
 			ledgerName = "qcp-test"
 		)
 
 		BeforeAll(func() {
-			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
+			clusterClient = node.ClusterClient
 
 			// Create a ledger.
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
@@ -191,15 +192,16 @@ var _ = Describe("Query Checkpoints", func() {
 		)
 
 		const (
-			httpPort   = 9221
-			grpcPort   = 8221
 			ledgerName = "qcp-progressive"
 		)
 
 		var checkpoint1ID, checkpoint2ID uint64
 
 		BeforeAll(func() {
-			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
+			clusterClient = node.ClusterClient
 
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
@@ -296,8 +298,6 @@ var _ = Describe("Query Checkpoints", func() {
 		)
 
 		const (
-			httpPort   = 9222
-			grpcPort   = 8222
 			ledgerName = "qcp-progressive-balance"
 			acc        = "users:test"
 			asset      = "USD"
@@ -306,7 +306,10 @@ var _ = Describe("Query Checkpoints", func() {
 		var cpA, cpB, cpC uint64
 
 		BeforeAll(func() {
-			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
+			clusterClient = node.ClusterClient
 
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
@@ -391,13 +394,14 @@ var _ = Describe("Query Checkpoints", func() {
 		)
 
 		const (
-			httpPort   = 9224
-			grpcPort   = 8224
 			ledgerName = "qcp-race"
 		)
 
 		BeforeAll(func() {
-			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
+			clusterClient = node.ClusterClient
 
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
@@ -450,10 +454,7 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		ctx, servers, _, _ = testutil.SetupMultiNodeCluster(
-			countInstances,
-			testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-		)
+		ctx, servers, _, _ = testutil.SetupMultiNodeCluster(countInstances)
 
 		_, err := servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())

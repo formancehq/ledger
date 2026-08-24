@@ -83,7 +83,7 @@ func runSave(cmd *cobra.Command, args []string) error {
 
 	version, _ := cmd.Flags().GetString("version")
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Saving numscript %s...", name))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Saving numscript %s...", name))
 
 	requests := []*servicepb.Request{
 		{

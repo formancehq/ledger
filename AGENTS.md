@@ -40,6 +40,7 @@ These are guardrails, not complete explanations. Before changing the affected su
 8. **Audit is business truth:** the audit chain is authoritative. New persisted primary-store projections must be checker-verified or have an explicitly documented valid exemption.
 9. **Never bypass the coverage gate:** use the scoped/gated cache APIs in order/TU handlers; never read the parent registry/key store directly from the FSM path.
 10. **Accepted orders are immutable until audit capture:** do not mutate business payloads, including indirectly through aliased maps/slices/messages. Only the explicitly technical order fields are outside business-intent hashing.
+11. **Incremental restore parity:** every committed effect intended to survive a cross-cluster restore must be preserved by the checkpoint or reconstructed from the exported delta. Changes to persisted state, audited orders, or deletion cascades must classify their restore behavior and prove it with a non-empty post-checkpoint delta. See [the incremental restore contract](docs/technical/architecture/subsystems/chapters/incremental-restore-contract.md).
 
 Required reading for FSM/cache/preload work:
 - `docs/technical/architecture/subsystems/fsm/`
@@ -48,6 +49,7 @@ Required reading for FSM/cache/preload work:
 Required reading for persisted projections/checker work:
 - `docs/technical/architecture/subsystems/checker/`
 - `docs/technical/architecture/audit-vs-technical-state.md`
+- `docs/technical/architecture/subsystems/chapters/incremental-restore-contract.md` when the projection changes during audited apply or another lifecycle path covered by incremental backup
 
 The pre-refactor, fully expanded instruction set is retained temporarily at `docs/technical/agent-reference-legacy.md` for migration safety. It is **reference material, not automatically loaded context**. If a rule in this file or current subsystem documentation conflicts with that legacy snapshot, the current file/subsystem documentation wins.
 
@@ -62,6 +64,7 @@ Key rules that apply broadly:
 - Do not ignore errors. Handle them explicitly, or use `_ = ...` with a justification comment when intentional.
 - Keep a struct's methods colocated with the struct; extract composed sub-types rather than scattering methods across files.
 - Prefer existing repository patterns and DRY solutions over parallel abstractions.
+- Every CLI invoked by repository scripts or documented as a contributor prerequisite must be provided by the Nix development environment and pinned through `flake.lock`; do not add host-only CLI dependencies.
 - Build artifacts belong under `build/`, never the repository root.
 - JSON properties use camelCase.
 - In tests, do not use `time.Sleep`; prefer `require.Eventually` or deterministic synchronization.

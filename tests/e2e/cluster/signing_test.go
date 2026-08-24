@@ -28,16 +28,16 @@ var _ = Describe("Request Signing", func() {
 		)
 
 		const (
-			httpPort = 9200
-			grpcPort = 8200
-			keyID    = "admin-key"
+			keyID = "admin-key"
 		)
 
 		BeforeAll(func() {
 			var err error
 			pubKey, privKey, err = actions.GenerateTestKeypair()
 			Expect(err).To(Succeed())
-			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
 		})
 
 		It("should accept unsigned requests when no keys exist", func() {
@@ -155,8 +155,6 @@ var _ = Describe("Request Signing", func() {
 		)
 
 		const (
-			httpPort   = 9201
-			grpcPort   = 8201
 			ledgerName = "signing-verification"
 			keyID      = "verify-key"
 		)
@@ -167,7 +165,9 @@ var _ = Describe("Request Signing", func() {
 			pubKey, privKey, err = actions.GenerateTestKeypair()
 			Expect(err).To(Succeed())
 
-			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
 
 			// Bootstrap: register the first key (unsigned)
 			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyID, pubKey)))
@@ -298,8 +298,6 @@ var _ = Describe("Request Signing", func() {
 		)
 
 		const (
-			httpPort   = 9202
-			grpcPort   = 8202
 			ledgerName = "signing-multi-keys"
 			keyID1     = "key-1"
 			keyID2     = "key-2"
@@ -313,7 +311,9 @@ var _ = Describe("Request Signing", func() {
 			pubKey2, privKey2, err = actions.GenerateTestKeypair()
 			Expect(err).To(Succeed())
 
-			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
 
 			// Bootstrap: register the first key (unsigned)
 			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyID1, pubKey1)))
@@ -396,11 +396,9 @@ var _ = Describe("Request Signing", func() {
 		)
 
 		const (
-			httpPort = 9204
-			grpcPort = 8204
-			keyIDA   = "nc-key-A"
-			keyIDB   = "nc-key-B"
-			keyIDC   = "nc-key-C"
+			keyIDA = "nc-key-A"
+			keyIDB = "nc-key-B"
+			keyIDC = "nc-key-C"
 		)
 
 		BeforeAll(func() {
@@ -413,7 +411,9 @@ var _ = Describe("Request Signing", func() {
 			pubKeyC, _, err = actions.GenerateTestKeypair()
 			Expect(err).To(Succeed())
 
-			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
 
 			// Register root key A (bootstrap, unsigned)
 			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyIDA, pubKeyA)))
@@ -475,11 +475,9 @@ var _ = Describe("Request Signing", func() {
 		)
 
 		const (
-			httpPort = 9203
-			grpcPort = 8203
-			keyIDA   = "key-A"
-			keyIDB   = "key-B"
-			keyIDC   = "key-C"
+			keyIDA = "key-A"
+			keyIDB = "key-B"
+			keyIDC = "key-C"
 		)
 
 		BeforeAll(func() {
@@ -492,7 +490,9 @@ var _ = Describe("Request Signing", func() {
 			pubKeyC, privKeyC, err = actions.GenerateTestKeypair()
 			Expect(err).To(Succeed())
 
-			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
 
 			// Register root key A (bootstrap, unsigned)
 			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyIDA, pubKeyA)))

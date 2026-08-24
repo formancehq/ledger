@@ -168,6 +168,9 @@ message ArchiveChapterOrder {
 
 message ConfirmArchiveChapterOrder {
   fixed64 chapter_id = 1;
+  // sealing_hash is the chapter incarnation the archive belongs to; the handler
+  // refuses the confirm unless it matches the chapter's own.
+  bytes sealing_hash = 2;
 }
 
 message SetMaintenanceModeOrder {

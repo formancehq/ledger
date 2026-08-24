@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
@@ -56,17 +58,11 @@ func startTestRaftServer(t *testing.T, certs *testserver.TestCerts, allowTLS, ac
 
 	healthpb.RegisterHealthServer(srv.GetServer(), healthShim{})
 
-	listening := make(chan struct{})
+	require.NoError(t, srv.Listen())
 
 	go func() {
-		_ = srv.Start(listening)
+		_ = srv.Serve()
 	}()
-
-	select {
-	case <-listening:
-	case <-time.After(2 * time.Second):
-		t.Fatal("server did not start listening")
-	}
 
 	t.Cleanup(func() { _ = srv.Stop() })
 
@@ -200,4 +196,127 @@ func requireHealthFails(t *testing.T, conn *grpc.ClientConn) {
 
 	_, err := client.Check(ctx, &healthpb.HealthCheckRequest{})
 	require.Error(t, err)
+}
+
+func TestListenReturnsErrorWhenPortIsBusy(t *testing.T) {
+	t.Parallel()
+
+	// Hold the port the server will try to bind.
+	blocker, err := net.Listen("tcp4", "0.0.0.0:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = blocker.Close() })
+
+	port := blocker.Addr().(*net.TCPAddr).Port
+
+	srv, err := NewRaftServer(port, noopLogger{}, nil, true, "")
+	require.NoError(t, err)
+
+	// EN-1784: this used to be reachable only from inside the serving
+	// goroutine, where the error became panic(err) and killed the process.
+	// Listen must hand the error back to the caller instead.
+	require.NotPanics(t, func() {
+		err = srv.Listen()
+	})
+	require.Error(t, err)
+	require.ErrorIs(t, err, syscall.EADDRINUSE)
+	require.Contains(t, err.Error(), strconv.Itoa(port),
+		"the error must name the port that failed to bind")
+}
+
+// TestServeAfterStopIsNotAnError pins the shutdown ordering introduced by the
+// Listen/Serve split. Serve re-reads s.listener and closeListener sets it to
+// nil, so a startup that fails in a LATER fx hook can run Stop before the
+// serve goroutine is ever scheduled. Nothing guarantees a new goroutine runs
+// before the goroutine that spawned it continues, so this needs no unusual
+// timing. It is a normal shutdown and must not be reported as an error.
+func TestServeAfterStopIsNotAnError(t *testing.T) {
+	t.Parallel()
+
+	srv, err := NewRaftServer(freeTCPPort(t), noopLogger{}, nil, true, "")
+	require.NoError(t, err)
+
+	require.NoError(t, srv.Listen())
+	require.NoError(t, srv.Stop())
+
+	// Stands in for the serve goroutine being scheduled only after Stop.
+	require.NoError(t, srv.Serve())
+}
+
+// TestServeWithoutListenFailsLoudly keeps the genuine contract violation loud:
+// a Serve with no preceding Listen is a programming error, and an unreachable-
+// by-contract branch must surface it rather than silently returning nil.
+func TestServeWithoutListenFailsLoudly(t *testing.T) {
+	t.Parallel()
+
+	srv, err := NewRaftServer(freeTCPPort(t), noopLogger{}, nil, true, "")
+	require.NoError(t, err)
+
+	err = srv.Serve()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "before a successful Listen")
+}
+
+// TestListenAdoptsAnInjectedListener pins the seam the e2e fixtures rely on: a
+// test binds the port itself and keeps the socket, so nothing can take the port
+// between the moment the test learns the number and the moment the node serves
+// it (EN-1784). The configured port is deliberately held by another socket here:
+// Listen must not touch it.
+func TestListenAdoptsAnInjectedListener(t *testing.T) {
+	t.Parallel()
+
+	injected, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	blocker, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = blocker.Close() })
+
+	configuredPort := blocker.Addr().(*net.TCPAddr).Port
+
+	srv, err := NewRaftServer(configuredPort, noopLogger{}, nil, true, "", WithListener(injected))
+	require.NoError(t, err)
+
+	healthpb.RegisterHealthServer(srv.GetServer(), healthShim{})
+
+	require.NoError(t, srv.Listen(), "an adopted listener must not be re-bound")
+
+	go func() {
+		_ = srv.Serve()
+	}()
+
+	t.Cleanup(func() { _ = srv.Stop() })
+
+	conn, err := grpc.NewClient(injected.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	_, err = healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{})
+	require.NoError(t, err, "the server must serve the adopted listener")
+}
+
+// TestStopClosesAnInjectedListener pins the ownership rule: once a listener
+// reaches the server, the lifecycle closes it. A test fixture that had to
+// remember which listeners the application consumed would leak the ones it
+// forgot, and a node that restarts must find its port free.
+func TestStopClosesAnInjectedListener(t *testing.T) {
+	t.Parallel()
+
+	injected, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	addr := injected.Addr().String()
+	port := injected.Addr().(*net.TCPAddr).Port
+
+	srv, err := NewRaftServer(port, noopLogger{}, nil, true, "", WithListener(injected))
+	require.NoError(t, err)
+
+	require.NoError(t, srv.Listen())
+	require.NoError(t, srv.Stop())
+
+	rebound, err := net.Listen("tcp4", addr)
+	require.NoError(t, err, "Stop must release the adopted listener")
+	require.NoError(t, rebound.Close())
 }

@@ -25,7 +25,7 @@ func TestHandleListBucketIndexes_DefaultScopeAll(t *testing.T) {
 			capturedScope = req.GetScope()
 
 			return cursor.NewSliceCursor([]*commonpb.Index{
-				{BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY},
+				{ForwardEncodingVersion: 1},
 			}), nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -38,12 +38,13 @@ func TestHandleListBucketIndexes_DefaultScopeAll(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, servicepb.ListIndexesRequest_SCOPE_ALL, capturedScope)
 
-	// Each list element must serialize in protobuf-JSON camelCase (buildStatus)
-	// inside the {data:[...]} envelope, not the snake_case Go struct tag
-	// (build_status). See writeProtoListOK.
+	// Each list element must serialize in protobuf-JSON camelCase
+	// (forwardEncodingVersion) inside the {data:[...]} envelope, not the
+	// snake_case Go struct tag (forward_encoding_version). See
+	// writeProtoListOK.
 	body := w.Body.String()
-	require.Contains(t, body, `"buildStatus":`)
-	require.NotContains(t, body, "build_status")
+	require.Contains(t, body, `"forwardEncodingVersion":`)
+	require.NotContains(t, body, "forward_encoding_version")
 }
 
 func TestHandleListBucketIndexes_ExplicitBucketScope(t *testing.T) {

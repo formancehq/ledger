@@ -10,8 +10,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/tests/scenarios/scenariotest"
@@ -45,13 +45,13 @@ func TestLendingLifecycle(t *testing.T) {
 		monthlyRate  = 2       // 2% monthly interest (simplified)
 	)
 
-	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort+5, scenariotest.GRPCPort+5)
+	sc := scenariotest.SetupSingleNode(t)
 	ctx, client := sc.Ctx(), sc.Client
 
 	// Expected balances tracking
 	fundingBalance := new(big.Int)
-	borrowerLoanBalance := make(map[int]*big.Int, numBorrowers)    // outstanding principal
-	borrowerWalletBalance := make(map[int]*big.Int, numBorrowers)  // wallet balance
+	borrowerLoanBalance := make(map[int]*big.Int, numBorrowers)   // outstanding principal
+	borrowerWalletBalance := make(map[int]*big.Int, numBorrowers) // wallet balance
 	interestRevenue := new(big.Int)
 	provisionBalance := new(big.Int)
 	recoveryBalance := new(big.Int)
@@ -78,7 +78,6 @@ func TestLendingLifecycle(t *testing.T) {
 		)
 		fundingBalance.SetInt64(int64(loanAmount * numBorrowers))
 	})
-
 
 	// --- Phase 2: Loan Disbursements ---
 	t.Run("Disbursements", func(t *testing.T) {

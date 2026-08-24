@@ -3,7 +3,6 @@ package querycheckpoint
 import (
 	"fmt"
 
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
@@ -53,7 +52,7 @@ func runSetSchedule(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Setting query checkpoint schedule to %q...", cronExpr))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Setting query checkpoint schedule to %q...", cronExpr))
 
 	requests := []*servicepb.Request{
 		{

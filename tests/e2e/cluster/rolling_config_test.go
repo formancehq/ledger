@@ -136,9 +136,7 @@ var _ = Describe("Rolling cluster config update", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-			countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-		)
+		ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 	})
 
 	AfterAll(func() { testutil.StopServers(ctx, servers) })

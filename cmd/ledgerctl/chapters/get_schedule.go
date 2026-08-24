@@ -36,7 +36,7 @@ func runGetSchedule(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching chapter schedule...")
+	spinner := cmdutil.StartSpinner("Fetching chapter schedule...")
 
 	resp, err := client.GetChapterSchedule(ctx, &servicepb.GetChapterScheduleRequest{})
 	if err != nil {

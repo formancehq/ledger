@@ -17,7 +17,7 @@ import (
 // is therefore O(1) and never blocks on a background converter; type
 // changes can be issued back-to-back without waiting.
 //
-// If an index covers this field, its BuildStatus is flipped to BUILDING so
+// If an index covers this field, its forward_encoding_version is bumped so
 // the indexer schedules a rewrite to re-encode forward entries under the
 // new declared_type.
 func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFieldTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
@@ -59,11 +59,9 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 
 	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
 
-	// If an index covers this field, flip it back to BUILDING (informational
-	// since EN-1323) and bump its forward_encoding_version. The version bump
-	// is what triggers each replica to rewrite locally into the new versioned
-	// keyspace; BuildStatus = BUILDING is kept for the API surface but no
-	// longer gates queries.
+	// If an index covers this field, bump its forward_encoding_version. The
+	// version bump is what triggers each replica to rewrite locally into the
+	// new versioned keyspace.
 	//
 	// The Index entry lives in the bucket-scoped registry (not in
 	// LedgerInfo), so we Mutate() a copy and Put it back rather than mutating
@@ -81,7 +79,6 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 
 	if existing != nil {
 		updated := existing.Mutate()
-		updated.BuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
 		updated.ForwardEncodingVersion++
 		indexes.Put(s.Indexes(), ledger, updated)
 

@@ -30,8 +30,6 @@ const (
 	azuriteAccountKey  = "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
 
 	backupAzureContainer = "backup-e2e"
-	azureBackupHTTPPort  = 16300
-	azureBackupGRPCPort  = 16400
 	azureManifestKey     = "test-cluster/backups/manifest.json"
 	azureBackupDataPfx   = "test-cluster/backups/data/"
 )
@@ -112,7 +110,10 @@ var _ = Describe("Azure Blob Backup", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Start single-node ledger server (backend config travels in the request).
-		ctx, client, clusterClient = testutil.SetupSingleNode(azureBackupHTTPPort, azureBackupGRPCPort)
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode()
+		client = node.Client
+		clusterClient = node.ClusterClient
 	})
 
 	azureStorage := func() *commonpb.BackupStorage {

@@ -1540,8 +1540,8 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 // registry for (ctx.ledgerName, id). Returns ErrIndexNotFound when the
 // entry is missing.
 //
-// No BuildStatus check: per EN-1323, BuildStatus is informational only.
-// Per-replica readiness is signalled by IndexVersionState — see
+// Per-replica readiness is signalled by IndexVersionState (EN-1323) —
+// see
 // requireIndexReady for the combined declaration + local-readiness
 // gate every indexed read should use.
 func checkIndexed(ctx *compileCtx, id *commonpb.IndexID, label string) error {

@@ -780,6 +780,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 					CloseSequence:      p.GetCloseSequence(),
 					StartAuditSequence: p.GetStartAuditSequence(),
 					CloseAuditSequence: p.GetCloseAuditSequence(),
+					SealingHash:        p.GetSealingHash(),
 				})
 			}
 		}
@@ -1841,6 +1842,7 @@ func (fsm *Machine) DispatchArchiveRequests(stop <-chan struct{}) {
 				CloseSequence:      p.GetCloseSequence(),
 				StartAuditSequence: p.GetStartAuditSequence(),
 				CloseAuditSequence: p.GetCloseAuditSequence(),
+				SealingHash:        p.GetSealingHash(),
 			}
 
 			if stop != nil {

@@ -48,8 +48,8 @@ func KeyFor(ledgerName string, id *commonpb.IndexID) domain.IndexKey {
 // Find returns the Index entry for the (ledgerName, id) tuple.
 //
 //   - (idx, nil) on hit. The returned value is a Reader; callers that need
-//     to mutate (e.g. flip BuildStatus) MUST call Mutate() to obtain a
-//     writable clone before Put-ing it back through the IndexWriter.
+//     to mutate (e.g. bump ForwardEncodingVersion) MUST call Mutate() to
+//     obtain a writable clone before Put-ing it back through the IndexWriter.
 //   - (nil, nil) on legitimate absence (domain.ErrNotFound from the lookup).
 //   - (nil, err) for any other error (notably *state.ErrCoverageMiss on the
 //     FSM hot path); callers MUST propagate so the apply rejects the order.
@@ -71,30 +71,6 @@ func Find(r Lookup, ledgerName string, id *commonpb.IndexID) (commonpb.IndexRead
 	}
 
 	return idx, nil
-}
-
-// IsReady reports whether the index at (ledgerName, id) is registered and READY.
-// Infrastructure errors collapse to "not ready"; callers that need to surface
-// them must call Find directly.
-func IsReady(r Lookup, ledgerName string, id *commonpb.IndexID) bool {
-	idx, err := Find(r, ledgerName, id)
-	if err != nil || idx == nil {
-		return false
-	}
-
-	return idx.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY
-}
-
-// Status returns the build status for (ledgerName, id), or UNSPECIFIED if absent
-// (or on any read error). Callers that need to distinguish "absent" from
-// "UNSPECIFIED but registered" should call Find directly.
-func Status(r Lookup, ledgerName string, id *commonpb.IndexID) commonpb.IndexBuildStatus {
-	idx, err := Find(r, ledgerName, id)
-	if err != nil || idx == nil {
-		return commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_UNSPECIFIED
-	}
-
-	return idx.GetBuildStatus()
 }
 
 // Put upserts an Index entry. The caller is responsible for ensuring

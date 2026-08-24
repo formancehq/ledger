@@ -496,7 +496,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
-		It("Should flip IndexBuildStatus back to READY after the reverse-map rewrite", func() {
+		It("Should report the index ready locally after the reverse-map rewrite", func() {
 			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
 				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score",
 				commonpb.MetadataType_METADATA_TYPE_INT64)))
@@ -510,12 +510,12 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 				g.Expect(resp.AccountFields).To(HaveKey("score"))
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			// The #275 claim: after the reverse-map rewrite completes,
-			// processSchemaRewrites proposes IndexReady so the field's
-			// IndexBuildStatus flips back from BUILDING to READY. Pre-fix
-			// this would have stayed BUILDING forever; WaitForMetadataIndexReady
-			// would time out and every typed query stayed permanently
-			// rejected by the "index is still building" guard.
+			// After the retype's version bump, this replica rewrites its
+			// reverse map and atomic-switches the new version live;
+			// WaitForMetadataIndexReady polls the per-replica
+			// current_version until the switch fires. A rewrite that never
+			// completes would keep every typed query rejected by the
+			// "index is still building" guard.
 			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName,
 				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")).To(Succeed())
 
@@ -533,13 +533,11 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			Expect(strVal.StringValue).To(Equal("42"))
 
 			// NOTE: a follow-up test asserting that the typed range filter
-			// finds the account is intentionally NOT added here. With the
-			// #275 fix the index status reaches READY (this test), and the
-			// reverse map has been re-encoded under the new type (locked by
-			// the #188 unit roundtrip), but a separate behaviour leaves the
-			// forward index lookup returning empty on this exact path.
-			// Tracked separately; out of scope for #275 which is purely the
-			// IndexReady proposal.
+			// finds the account is intentionally NOT added here. The index
+			// reaches local readiness (this test), and the reverse map has
+			// been re-encoded under the new type (locked by the #188 unit
+			// roundtrip), but a separate behaviour leaves the forward index
+			// lookup returning empty on this exact path. Tracked separately.
 		})
 	})
 })
@@ -547,9 +545,7 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 // Note: an end-to-end test covering the schema-change rewrite of an indexed
 // reverse-map (the R-028 path) would create an index, populate it, change
 // the field type, and query through the new type. Such a test is blocked
-// today because the SetMetadataFieldType apply leaves
-// IndexBuildStatus = BUILDING with no path to re-reach READY, so the post-
-// rewrite typed query is rejected by the "index is still building" guard.
-// The unit roundtrip in internal/storage/readstore/encode_metadata_test.go
-// covers the bug at the decoder level; the e2e gap will be closed once the
-// separate index-status reset path lands.
+// today because the forward index lookup returns empty on that exact path
+// (see the NOTE inside the rewrite test above). The unit roundtrip in
+// internal/storage/readstore/encode_metadata_test.go covers the bug at the
+// decoder level.

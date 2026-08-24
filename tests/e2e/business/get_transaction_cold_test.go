@@ -30,18 +30,18 @@ var _ = Describe("GetTransaction reads archived transactions from cold storage",
 	)
 
 	const (
-		httpPort = 15702
-		grpcPort = 15802
-		ledger   = "get-tx-cold"
-		txRef    = "cold-tx-ref"
-		txID     = 1 // first transaction in a fresh ledger
+		ledger = "get-tx-cold"
+		txRef  = "cold-tx-ref"
+		txID   = 1 // first transaction in a fresh ledger
 	)
 
 	BeforeAll(func() {
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort,
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode(
 			testserver.WithColdStorageDriver("filesystem"),
 			testserver.WithReceiptSigningKey("get-tx-cold-receipt-key"),
 		)
+		client = node.Client
 	})
 
 	It("returns the full transaction and its receipt after its chapter is archived", func() {

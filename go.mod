@@ -84,7 +84,10 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
-require github.com/benbjohnson/immutable v0.4.3
+require (
+	github.com/benbjohnson/immutable v0.4.3
+	go.uber.org/goleak v1.3.0
+)
 
 require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect

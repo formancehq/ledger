@@ -39,13 +39,14 @@ var _ = Describe("Maintenance Mode", func() {
 		)
 
 		const (
-			httpPort   = 9210
-			grpcPort   = 8210
 			ledgerName = "maintenance-test"
 		)
 
 		BeforeAll(func() {
-			ctx, client, clusterClient = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
+			clusterClient = node.ClusterClient
 
 			// Create a ledger before enabling maintenance mode
 			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
@@ -144,13 +145,13 @@ var _ = Describe("Maintenance Mode", func() {
 		)
 
 		const (
-			httpPort   = 9211
-			grpcPort   = 8211
 			ledgerName = "maintenance-bulk"
 		)
 
 		BeforeAll(func() {
-			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
 
 			// Create a ledger
 			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
@@ -188,8 +189,6 @@ var _ = Describe("Maintenance Mode", func() {
 		)
 
 		const (
-			httpPort   = 9212
-			grpcPort   = 8212
 			ledgerName = "maintenance-signing"
 			keyID      = "maint-key"
 		)
@@ -200,7 +199,9 @@ var _ = Describe("Maintenance Mode", func() {
 			pubKey, privKey, err = actions.GenerateTestKeypair()
 			Expect(err).To(Succeed())
 
-			ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+			var node *testutil.ServiceWithClient
+			ctx, node = testutil.SetupSingleNode()
+			client = node.Client
 
 			// Bootstrap signing key
 			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.RegisterSigningKeyAction(keyID, pubKey)))
