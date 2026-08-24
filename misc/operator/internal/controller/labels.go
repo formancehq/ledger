@@ -11,6 +11,14 @@ const (
 	annotationSpecHash     = "ledger.formance.com/spec-hash"
 	annotationAuthKeysHash = "ledger.formance.com/auth-keys-hash"
 
+	// annotationKubectlRestartedAt is stamped on the pod template by
+	// `kubectl rollout restart`. It is user-owned state, not drift: the
+	// StatefulSet reconciler must carry it over when rebuilding the template
+	// from the Cluster CR, otherwise the reconcile triggered by kubectl's own
+	// patch reverts the template and cancels the rolling restart after the
+	// first (highest-ordinal) pod (EN-1850).
+	annotationKubectlRestartedAt = "kubectl.kubernetes.io/restartedAt"
+
 	// labelDeletionProtection (set to labelDeletionProtectionValue) is stamped on
 	// the PVCs and bound PVs of a Cluster whose spec.persistence.deletionProtection
 	// is true. The volume deletion-protection ValidatingAdmissionPolicyBinding scopes

@@ -268,6 +268,12 @@ kubectl ledger scale my-ledger --replicas 7
 kubectl ledger restart my-ledger -y
 ```
 
+Plain `kubectl rollout restart statefulset/<name>` also works: the operator
+preserves the `kubectl.kubernetes.io/restartedAt` annotation kubectl stamps on
+the pod template instead of reverting it on the next reconcile. Prefer
+`kubectl ledger restart`, which records the restart on the Cluster CR itself
+(`spec.podAnnotations`) and therefore survives StatefulSet recreation.
+
 ## Development
 
 ### Setup

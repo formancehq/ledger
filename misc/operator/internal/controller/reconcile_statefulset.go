@@ -90,7 +90,7 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *le
 					sts.Spec = desired
 				} else {
 					sts.Spec.Replicas = desired.Replicas
-					sts.Spec.Template = desired.Template
+					sts.Spec.Template = withKubectlRestartedAt(sts.Spec.Template, desired.Template)
 					sts.Spec.UpdateStrategy = desired.UpdateStrategy
 					sts.Spec.PersistentVolumeClaimRetentionPolicy = desired.PersistentVolumeClaimRetentionPolicy
 					sts.Spec.MinReadySeconds = desired.MinReadySeconds
@@ -155,7 +155,7 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *le
 			// ServiceName, Selector, PodManagementPolicy and
 			// VolumeClaimTemplates are immutable after creation.
 			sts.Spec.Replicas = desired.Replicas
-			sts.Spec.Template = desired.Template
+			sts.Spec.Template = withKubectlRestartedAt(sts.Spec.Template, desired.Template)
 			sts.Spec.UpdateStrategy = desired.UpdateStrategy
 			sts.Spec.PersistentVolumeClaimRetentionPolicy = desired.PersistentVolumeClaimRetentionPolicy
 			sts.Spec.MinReadySeconds = desired.MinReadySeconds
@@ -496,6 +496,29 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 		},
 		Spec: podSpec,
 	}
+}
+
+// withKubectlRestartedAt returns the desired pod template, carrying over the
+// kubectl.kubernetes.io/restartedAt annotation from the existing template when
+// present. `kubectl rollout restart` works by stamping that annotation on the
+// pod template; the operator rebuilds the template from the Cluster CR on every
+// reconcile, so dropping the stamp would revert kubectl's patch and cancel the
+// rolling restart after the first (highest-ordinal) pod (EN-1850).
+//
+// The annotations map is copied before mutation: the desired template built by
+// buildStatefulSetSpec may be shared across retries of a mutate function.
+func withKubectlRestartedAt(existing, desired corev1.PodTemplateSpec) corev1.PodTemplateSpec {
+	restartedAt, ok := existing.Annotations[annotationKubectlRestartedAt]
+	if !ok {
+		return desired
+	}
+
+	annotations := make(map[string]string, len(desired.Annotations)+1)
+	maps.Copy(annotations, desired.Annotations)
+	annotations[annotationKubectlRestartedAt] = restartedAt
+	desired.Annotations = annotations
+
+	return desired
 }
 
 func buildAffinity(ledger *ledgerv1alpha1.Cluster) *corev1.Affinity {
