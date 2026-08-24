@@ -2,12 +2,16 @@ package node
 
 import (
 	"context"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/storage/wal"
 )
 
 // newTestMaintenanceNode builds a minimal *Node sufficient to exercise
@@ -61,7 +65,7 @@ func TestDoMaintenance_NoEntries_NoOp(t *testing.T) {
 	snapBefore, err := node.wal.Snapshot()
 	require.NoError(t, err)
 
-	node.doMaintenance()
+	require.NoError(t, node.doMaintenance())
 
 	snapAfter, err := node.wal.Snapshot()
 	require.NoError(t, err)
@@ -87,7 +91,7 @@ func TestDoMaintenance_AdvancesSnapshotAndCheckpoint(t *testing.T) {
 	persisted := node.fsm.LastPersistedIndex()
 	require.Equal(t, uint64(1), persisted)
 
-	node.doMaintenance()
+	require.NoError(t, node.doMaintenance())
 
 	snapAfter, err := node.wal.Snapshot()
 	require.NoError(t, err)
@@ -122,7 +126,7 @@ func TestDoMaintenance_SyncWALFailure_SkipsSnapshotAndCheckpoint(t *testing.T) {
 	// snapshot or the checkpoint marker.
 	require.NoError(t, setup.store.Close())
 
-	node.doMaintenance()
+	require.NoError(t, node.doMaintenance())
 
 	snapAfter, err := node.wal.Snapshot()
 	require.NoError(t, err)
@@ -131,4 +135,35 @@ func TestDoMaintenance_SyncWALFailure_SkipsSnapshotAndCheckpoint(t *testing.T) {
 		"WAL snapshot must not advance when SyncWAL fails")
 	require.Zero(t, node.lastCheckpointPersistedIndex,
 		"lastCheckpointPersistedIndex must not advance when SyncWAL fails")
+}
+
+// TestBackgroundMaintenance_WALDirectoryMissing_StopsTheLoop exercises the one
+// failure the next tick cannot retry: with the WAL directory gone, everything
+// this node acknowledges as persisted is unrecoverable, so the maintenance loop
+// must exit with the error — which stops the node — rather than log it and tick
+// again.
+func TestBackgroundMaintenance_WALDirectoryMissing_StopsTheLoop(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	node, setup := newTestMaintenanceNode(t)
+	node.config.MaintenanceInterval = time.Millisecond
+
+	entry, _ := makeCreateLedgerEntry(t, 1, "test-ledger")
+	setup.applyEntry(t, ctx, entry)
+
+	require.NoError(t, os.RemoveAll(setup.walDir))
+
+	stop := make(chan struct{})
+	exited := make(chan error, 1)
+
+	go func() { exited <- node.runBackgroundMaintenance(ctx, stop) }()
+
+	select {
+	case err := <-exited:
+		require.ErrorIs(t, err, wal.ErrWALDirectoryMissing)
+	case <-time.After(10 * time.Second):
+		close(stop)
+		t.Fatal("maintenance loop kept ticking with the WAL directory gone")
+	}
 }
