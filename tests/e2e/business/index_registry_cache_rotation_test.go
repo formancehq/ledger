@@ -34,8 +34,6 @@ var _ = Describe("Index registry survives cache rotation", Ordered, func() {
 	)
 
 	const (
-		httpPort          = 15718
-		grpcPort          = 15818
 		rotationThreshold = uint64(10)
 		// Enough no-op proposals to push the registry entry past gen1. Each
 		// Barrier preloads nothing, so none of them refresh it.
@@ -45,9 +43,11 @@ var _ = Describe("Index registry survives cache rotation", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort,
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode(
 			testserver.WithCacheRotationThreshold(rotationThreshold),
 		)
+		client = node.Client
 
 		// Declare the field and index it: the registry entry lands in Pebble
 		// and in the current cache generation.

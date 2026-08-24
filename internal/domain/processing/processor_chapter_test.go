@@ -470,6 +470,7 @@ func TestProcessConfirmArchiveChapter_RefusesAnotherIncarnation(t *testing.T) {
 				SealingHash:   []byte("seal-hash"),
 			}
 
+			mockStore.EXPECT().GetArchivedThroughChapterID().Return(uint64(0))
 			mockStore.EXPECT().GetChapterByID(uint64(1)).Return(archivingChapter.AsReader(), true)
 
 			payload, err := processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{

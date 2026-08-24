@@ -744,20 +744,18 @@ func (w *attributeReplayWriter) SetMetadataFieldType(ledger string, target commo
 	}
 
 	row = row.CloneVT()
-	row.BuildStatus = commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING
 	row.ForwardEncodingVersion++
 
 	return w.putIndex(ledger, id, row)
 }
 
 // CreateIndex writes the registry row the live processCreateIndex writes: a
-// fresh BUILDING entry at forward-encoding version 1, stamped with the log's
-// apply date. A duplicate CreateIndex overwrites the row, matching the live
+// fresh entry at forward-encoding version 1, stamped with the log's apply
+// date. A duplicate CreateIndex overwrites the row, matching the live
 // handler.
 func (w *attributeReplayWriter) CreateIndex(ledger string, id *commonpb.IndexID, createdAt *commonpb.Timestamp) error {
 	return w.putIndex(ledger, id, &commonpb.Index{
 		Id:                     id,
-		BuildStatus:            commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 		CreatedAt:              createdAt,
 		Ledger:                 ledger,
 		ForwardEncodingVersion: 1,

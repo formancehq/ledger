@@ -31,14 +31,12 @@ var _ = Describe("Index registry survives schema churn", Ordered, func() {
 		client servicepb.BucketServiceClient
 	)
 
-	const (
-		httpPort = 15716
-		grpcPort = 15816
-		metaKey  = "k3"
-	)
+	const metaKey = "k3"
 
 	BeforeAll(func() {
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode()
+		client = node.Client
 	})
 
 	apply := func(reqs ...*servicepb.Request) *servicepb.ApplyResponse {

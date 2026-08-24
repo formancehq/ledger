@@ -1306,7 +1306,6 @@ func TestRebuildDelta_BumpsCheckpointIndexOnRetype(t *testing.T) {
 	seed := store.OpenWriteSession()
 	_, err := attrs.Index.Set(seed, indexes.KeyFor("ledger", metaID).Bytes(), &commonpb.Index{
 		Id:                     metaID,
-		BuildStatus:            commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 		CreatedAt:              &commonpb.Timestamp{Data: 111},
 		Ledger:                 "ledger",
 		ForwardEncodingVersion: 2,
