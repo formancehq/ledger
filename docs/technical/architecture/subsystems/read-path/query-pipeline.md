@@ -96,6 +96,10 @@ The cursor carries only the exclusive resume position (for example, an account a
 
 Multiple concurrent readers share snapshots cheaply (Pebble's snapshot is a versioned reference, not a copy).
 
+For `ListLogs`, the index snapshot and read lease remain live through
+`ReadLedgerLogsCompiled` while the page is loaded; the earlier release timing
+applies to the `ListAccounts` and `ListTransactions` paths.
+
 ## The generic list pipeline
 
 `internal/application/ctrl/list_entities.go:57` — `listEntities[T]` is the shared dispatcher for everything that returns a page of entities:
