@@ -27,6 +27,12 @@ type Writer interface {
 	// a canonical attribute key.
 	SetMetadataFieldType(ledger string, target commonpb.TargetType, key string, fieldType commonpb.MetadataType) error
 	RemoveMetadataFieldType(ledger string, target commonpb.TargetType, key string) error
+	// Index registry rows live in the SubAttrIndex attribute zone, keyed by
+	// (ledger, IndexID). The removal cascade carries the dropped id on the
+	// RemovedMetadataFieldType log, so ReplayLedgerLog routes it through
+	// DropIndex with no schema lookup.
+	CreateIndex(ledger string, id *commonpb.IndexID, createdAt *commonpb.Timestamp) error
+	DropIndex(ledger string, id *commonpb.IndexID) error
 	// Account types also live on LedgerInfo and are keyed by ledger.
 	AddAccountType(ledger string, accountType *commonpb.AccountType) error
 	RemoveAccountType(ledger string, name string) error

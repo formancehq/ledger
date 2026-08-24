@@ -398,6 +398,17 @@ func (s *replayStore) RemoveMetadataFieldType(string, commonpb.TargetType, strin
 	return nil
 }
 
+// CreateIndex / DropIndex are no-ops here: the checker folds the index
+// registry itself (expectedIndexes in the Check() replay loop) and verifies
+// it against the stored rows in compareIndexes.
+func (s *replayStore) CreateIndex(string, *commonpb.IndexID, *commonpb.Timestamp) error {
+	return nil
+}
+
+func (s *replayStore) DropIndex(string, *commonpb.IndexID) error {
+	return nil
+}
+
 // AddAccountType / RemoveAccountType are no-ops here for the same reason as the
 // schema callbacks: account types live on LedgerInfo, not in this attribute merge
 // store. The checker maintains the account-type chart via ReplayLedgerLog's

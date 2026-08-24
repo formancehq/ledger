@@ -11,6 +11,8 @@ import (
 )
 
 // ReplayLedgerLog updates expected state in the writer based on a ledger log payload.
+// date is the enclosing LedgerLog's date — the apply-time effective date a
+// replayed CreateIndex stamps on its registry row.
 // rawLedgerTypes tracks the raw account type map for add/remove mutations.
 // ledgerAccountTypes tracks pre-compiled account types for ephemeral purge simulation.
 //
@@ -20,6 +22,7 @@ func ReplayLedgerLog(
 	ledger string,
 	seq uint64,
 	payload *commonpb.LedgerLogPayload,
+	date *commonpb.Timestamp,
 	w Writer,
 	rawLedgerTypes map[string]map[string]*commonpb.AccountType,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
@@ -206,15 +209,31 @@ func ReplayLedgerLog(
 			if err := w.RemoveMetadataFieldType(ledger, l.GetTargetType(), l.GetKey()); err != nil {
 				return fmt.Errorf("replaying removed metadata field type: %w", err)
 			}
+
+			// The cascade: the log names the index the removal dropped, so
+			// the registry row is deleted from the log alone.
+			if dropped := l.GetDroppedIndex(); dropped != nil {
+				if err := w.DropIndex(ledger, dropped); err != nil {
+					return fmt.Errorf("replaying removed field's dropped index: %w", err)
+				}
+			}
 		}
 	case *commonpb.LedgerLogPayload_FillGap:
 		// The log carries only the original v2 id; the skipped transaction
 		// ids live on the MirrorFillGap order, which the restore rebuild
 		// folds in from AuditItem.serialized_order (applyAuditOrderEffects).
 	case *commonpb.LedgerLogPayload_CreateIndex:
-		// Index operations — no state to track
+		if l := p.CreateIndex; l != nil && l.GetId() != nil {
+			if err := w.CreateIndex(ledger, l.GetId(), date); err != nil {
+				return fmt.Errorf("replaying created index: %w", err)
+			}
+		}
 	case *commonpb.LedgerLogPayload_DropIndex:
-		// Index operations — no state to track
+		if l := p.DropIndex; l != nil && l.GetId() != nil {
+			if err := w.DropIndex(ledger, l.GetId()); err != nil {
+				return fmt.Errorf("replaying dropped index: %w", err)
+			}
+		}
 	case *commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode:
 		if p.UpdatedDefaultEnforcementMode == nil {
 			return nil
