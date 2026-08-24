@@ -26,6 +26,9 @@
     "internal/infra/bloom/**",
     "internal/infra/health/**",
     "internal/infra/monitoring/diskusage/**",
+    "internal/infra/monitoring/flightrecorder/**",
+    "internal/infra/monitoring/pyroscope/**",
+    "internal/application/ctrl/snapshot_fetcher*.go",
     "internal/application/indexbuilder/**",
     "internal/application/auditindexer/**",
     "internal/application/usagebuilder/**",
@@ -106,13 +109,14 @@
     "Do optional event sinks and disabled-feature implementations obey the same Start, Stop, Close, retry, and flush ownership contract as the default build?"
   ],
   "dynamic_checks_to_consider": [
-    "go test -race ./internal/bootstrap ./internal/adapter/grpc ./internal/infra/node ./internal/infra/transport ./internal/pkg/worker ./internal/pkg/tailworker ./internal/pkg/futures ./internal/pkg/signal",
+    "go test -race ./internal/bootstrap ./internal/adapter/grpc ./internal/application/ctrl ./internal/infra/node ./internal/infra/transport ./internal/pkg/worker ./internal/pkg/tailworker ./internal/pkg/futures ./internal/pkg/signal",
     "go test -race ./internal/application/events ./internal/application/mirror ./internal/application/backup ./internal/infra/backup ./internal/infra/coldstorage",
     "go test -race ./internal/application/indexbuilder ./internal/application/auditindexer ./internal/application/usagebuilder ./internal/storage/readstore ./internal/storage/usagestore",
-    "go test -race ./internal/infra/state ./internal/storage/dal ./internal/infra/health ./internal/infra/monitoring/diskusage",
+    "go test -race ./internal/infra/state ./internal/storage/dal ./internal/infra/health ./internal/infra/monitoring/diskusage ./internal/infra/monitoring/flightrecorder",
     "repeated Start/Stop and leadership-flap tests for events.Manager, mirror.Manager, backup.Orchestrator, Node/Applier, Archiver, Sealer, Indexbuilder, Auditindexer, Usagebuilder, and shared worker primitives",
     "SIGTERM and startup-fault injection through internal/bootstrap while writes, commit drain, snapshot, restore, or streaming sessions are active",
     "synctest or deterministic channel barriers in the named lifecycle tests that currently rely on timing to establish an interleaving",
-    "optional-feature event sink lifecycle tests under the kafka, nats, clickhouse, and databricks build tags with their required test infrastructure"
+    "optional-feature event sink lifecycle tests under the kafka, nats, clickhouse, and databricks build tags with their required test infrastructure",
+    "go test -race -tags pyroscope ./internal/infra/monitoring/pyroscope/... for the optional profiler's Fx Start/Stop hooks"
   ]
 }
