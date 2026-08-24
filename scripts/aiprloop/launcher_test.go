@@ -107,6 +107,42 @@ func TestLauncherReconcilesKnownFindingsBoundToTheVerifiedTarget(t *testing.T) {
 	require.Equal(t, fixture.headSHA, ledger.Head)
 }
 
+func TestLauncherAcceptsStructuredReviewBodyFindings(t *testing.T) {
+	t.Parallel()
+
+	fixture := newLauncherFixture(t)
+	capture := filepath.Join(fixture.root, "review-args")
+	// A review body split into blocker-level findings must reach reconciliation
+	// exactly like inline comments do.
+	structured := `[{"id":"github-review-7-finding-1","kind":"review-body-finding","source_review_id":7,` +
+		`"source_id":7,"url":"https://github.com/owner/repo/pull/123#pullrequestreview-7","author":"reviewer",` +
+		`"path":"","line":null,"body":"[P1][blocking] Structured blocking section"}]`
+	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"},
+		"TEST_KNOWN_FINDINGS_JSON="+structured)
+	require.NoError(t, err, output)
+	require.Contains(t, output, "1 known blocking GitHub finding(s)")
+
+	ledgerPath := strings.TrimSpace(readCapturedFile(t, capture+".known"))
+	require.NotEmpty(t, ledgerPath, "the reviewer must receive AI_REVIEW_KNOWN_FINDINGS")
+	require.Contains(t, readCapturedFile(t, ledgerPath), "github-review-7-finding-1")
+}
+
+func TestLauncherRefusesStructuredFindingWithoutBlockerMarker(t *testing.T) {
+	t.Parallel()
+
+	fixture := newLauncherFixture(t)
+	capture := filepath.Join(fixture.root, "review-args")
+	// The structured kind is only meaningful for bodies that actually start at a
+	// blocker marker, so its identity and body must stay verifiable.
+	structured := `[{"id":"github-review-7-finding-1","kind":"review-body-finding","source_review_id":7,` +
+		`"source_id":7,"url":"","author":"reviewer","path":"","line":null,"body":"unstructured prose"}]`
+	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"},
+		"TEST_KNOWN_FINDINGS_JSON="+structured)
+	require.Error(t, err, output)
+	require.NoFileExists(t, capture, "technical review must not run")
+	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (known findings target mismatch)")
+}
+
 func TestLauncherRefusesMalformedKnownFindingsLedger(t *testing.T) {
 	t.Parallel()
 
