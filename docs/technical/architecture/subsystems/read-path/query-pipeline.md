@@ -2,9 +2,9 @@
 
 ## Overview
 
-Every read goes through four stages: a **Raft `ReadIndex`** barrier for linearizability, an optional **`min_log_sequence`** wait for read-side freshness, coordinated **Pebble snapshots** for the main and read stores, and a **composable iterator pipeline** over the read store. The result is streamed back through gRPC with cursor-based pagination. The snapshots are aligned but distinct; their per-target consistency exceptions are described below.
+Indexed entity-list reads go through four stages: a **Raft `ReadIndex`** barrier for linearizability, an optional **`min_log_sequence`** wait for read-side freshness, coordinated **Pebble snapshots** for the main and read stores, and a **composable iterator pipeline** over the read store. The result is streamed back through gRPC with cursor-based pagination. Point reads and main-store-only queries use their own single main-store handle and do not enter this indexed-list pipeline. The indexed-list snapshots are aligned but distinct; their per-target consistency exceptions are described below.
 
-The pipeline is deliberately uniform across endpoints: `ListAccounts`, `ListTransactions`, `ListLogs`, and `GetX` variants all go through the same controller layer and the same iterator algebra. The differences are which read-store prefix is scanned and how iterators are composed.
+The indexed-list pipeline is deliberately uniform across `ListAccounts`, `ListTransactions`, and `ListLogs`. Point reads such as `GetAccount` and `GetTransaction`, plus main-store-only queries such as `ListLedgers`, use the controller layer but not the read-store iterator algebra. The differences between indexed lists are which read-store prefix is scanned and how iterators are composed.
 
 ```mermaid
 sequenceDiagram
