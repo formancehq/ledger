@@ -261,7 +261,7 @@ if ! jq -e --argjson pr "$pr_number" --arg head "$head_sha" '
   ([.findings[].id] | length == (unique | length)) and
   all(.findings[];
     (.id | type == "string") and
-    (.kind == "inline-review-comment" or .kind == "review-body") and
+    (.kind == "inline-review-comment" or .kind == "review-body" or .kind == "review-body-finding") and
     (.source_review_id | type == "number") and
     (.source_id | type == "number") and
     (.url | type == "string") and
@@ -271,10 +271,15 @@ if ! jq -e --argjson pr "$pr_number" --arg head "$head_sha" '
     (.body | type == "string" and length > 0) and
     (if .kind == "inline-review-comment" then
        .id == ("github-review-comment-" + (.source_id | tostring))
-     else
+     elif .kind == "review-body" then
        .id == ("github-review-" + (.source_id | tostring)) and
        .source_review_id == .source_id and
        .path == "" and .line == null
+     else
+       (.id as $id | .source_id as $source_id | $id | test("^github-review-" + ($source_id | tostring) + "-finding-[1-9][0-9]*$")) and
+       .source_review_id == .source_id and
+       .path == "" and .line == null and
+       (.body | test("^\\[P[0-3]\\]\\[blocking\\]"))
      end)
   )
 ' "$known_findings" >/dev/null; then
