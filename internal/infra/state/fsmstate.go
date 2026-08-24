@@ -72,9 +72,9 @@ type FSMState struct {
 // initial values; the map is allocated empty.
 func NewFSMState(clusterID string) *FSMState {
 	return &FSMState{
-		NextSequenceID:        1,
-		NextAuditSequenceID:   1,
-		NextLedgerID:          1,
+		NextSequenceID:         1,
+		NextAuditSequenceID:    1,
+		NextLedgerID:           1,
 		PendingLedgerCleanups:  map[string]uint64{},
 		HashGenerator:          processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID),
 		ClusterID:              clusterID,

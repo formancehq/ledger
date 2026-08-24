@@ -1900,10 +1900,8 @@ func (b *WriteSet) LiveQueryCheckpointCount() uint64 {
 // for this proposal's staged creates/deletes (staged wins over the recovered
 // set). Used by the delete handler to reject a non-live id.
 func (b *WriteSet) QueryCheckpointExists(id uint64) bool {
-	for _, d := range b.pendingQueryCheckpointDeletes {
-		if d == id {
-			return false
-		}
+	if slices.Contains(b.pendingQueryCheckpointDeletes, id) {
+		return false
 	}
 
 	for _, cp := range b.pendingQueryCheckpointSaves {
