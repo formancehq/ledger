@@ -268,6 +268,13 @@ Raft logs grow indefinitely. Snapshots allow:
 
 Snapshots are created automatically by a periodic background maintenance timer (`--maintenance-interval`, default 30s). On each tick, if `lastPersistedIndex` has advanced since the last snapshot, a new snapshot is created, followed by WAL compaction and Pebble checkpoint creation.
 
+#### Missing directories
+
+`<wal-dir>/snap` is created at startup, so a write that finds it gone means it was removed underneath a running node. Two outcomes:
+
+- **Only `snap/` is gone**: it is recreated (an error log plus an Antithesis assertion), because the etcd WAL is intact and a follower still needs the snapshot to catch up.
+- **`<wal-dir>` itself is gone**: the node stops. That directory holds the etcd WAL segments, `WAL_CREATION_COMPLETED` and `INSTANCE_ID`, so etcd is fsyncing unlinked inodes and every acknowledgement since the removal is unrecoverable — the next restart would find no creation marker, rebuild an empty WAL and rejoin as a new member.
+
 ### Snapshot Contents
 
 A snapshot contains:
