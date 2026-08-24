@@ -2,6 +2,7 @@ package preload
 
 import (
 	"sync"
+	"time"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -16,6 +17,7 @@ type loadedEntry[T any] struct {
 	boundary   uint64
 	cacheEpoch uint64
 	value      T
+	storedAt   time.Time
 }
 
 func (e *loadedEntry[T]) validFor(boundary, cacheEpoch uint64) bool {
@@ -45,6 +47,26 @@ type AttributeLoader[T any] struct {
 type LoadResult[T any] struct {
 	Value    T
 	FromLoad bool // true if we actually loaded from store, false if from loader cache
+
+	// EntryBoundary, EntryEpoch and EntryAge describe the loader-cache
+	// entry that produced Value: the boundary and cache epoch it was
+	// stamped with when its load completed, and how long ago that was.
+	// On FromLoad results they describe the entry this load just stored.
+	EntryBoundary uint64
+	EntryEpoch    uint64
+	EntryAge      time.Duration
+}
+
+// servedFrom builds the LoadResult for a cache-served hit, carrying the
+// entry's stamps so callers can tell how stale the served answer is.
+func servedFrom[T any](e *loadedEntry[T]) *LoadResult[T] {
+	return &LoadResult[T]{
+		Value:         e.value,
+		FromLoad:      false,
+		EntryBoundary: e.boundary,
+		EntryEpoch:    e.cacheEpoch,
+		EntryAge:      time.Since(e.storedAt),
+	}
 }
 
 // NewAttributeLoader creates a new AttributeLoader for the given type.
@@ -76,7 +98,7 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary, cacheEpo
 	if cached, ok := s.loaded[key]; ok && cached.validFor(boundary, cacheEpoch) {
 		s.mu.RUnlock()
 
-		return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
+		return servedFrom(cached), nil
 	}
 	// Check if someone is already loading this key
 	waitCh, isLoading := s.loading[key]
@@ -91,7 +113,7 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary, cacheEpo
 		if cached, ok := s.loaded[key]; ok && cached.validFor(boundary, cacheEpoch) {
 			s.mu.RUnlock()
 
-			return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
+			return servedFrom(cached), nil
 		}
 
 		s.mu.RUnlock()
@@ -106,7 +128,7 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary, cacheEpo
 	if cached, ok := s.loaded[key]; ok && cached.validFor(boundary, cacheEpoch) {
 		s.mu.Unlock()
 
-		return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
+		return servedFrom(cached), nil
 	}
 
 	// Check again if someone started loading while we were waiting for the lock
@@ -131,7 +153,7 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary, cacheEpo
 	delete(s.loading, key)
 
 	if err == nil {
-		s.loaded[key] = &loadedEntry[T]{boundary: boundary, cacheEpoch: cacheEpoch, value: value}
+		s.loaded[key] = &loadedEntry[T]{boundary: boundary, cacheEpoch: cacheEpoch, value: value, storedAt: time.Now()}
 	}
 
 	close(waitCh)
@@ -143,7 +165,7 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary, cacheEpo
 		return &LoadResult[T]{Value: zero, FromLoad: false}, err
 	}
 
-	return &LoadResult[T]{Value: value, FromLoad: true}, nil
+	return &LoadResult[T]{Value: value, FromLoad: true, EntryBoundary: boundary, EntryEpoch: cacheEpoch}, nil
 }
 
 // Release removes the loaded entry for the given key.

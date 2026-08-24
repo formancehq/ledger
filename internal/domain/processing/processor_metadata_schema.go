@@ -93,6 +93,16 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 			"canonical":  indexes.Canonical(id),
 			"fwdVersion": updated.GetForwardEncodingVersion(),
 		})
+	} else {
+		details := map[string]any{
+			"ledger":    ledger,
+			"canonical": indexes.Canonical(id),
+		}
+		if ctx.IndexProbe != nil {
+			details["probe"] = ctx.IndexProbe(indexes.KeyFor(ledger, id))
+		}
+
+		assert.Reachable("field type change found no index", details)
 	}
 
 	return &commonpb.LedgerLogPayload{
@@ -168,12 +178,16 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 		// entry is legitimate on its own. hadDeclaration separates "no such
 		// field" from "declared field whose registry entry is missing", which
 		// is what the indexbuilder cross-checks against its own config.
-		assert.Reachable("field removal found no index", map[string]any{
+		details := map[string]any{
 			"ledger":         ledger,
 			"canonical":      indexes.Canonical(id),
 			"hadDeclaration": hadDeclaration,
-		})
+		}
+		if ctx.IndexProbe != nil {
+			details["probe"] = ctx.IndexProbe(indexes.KeyFor(ledger, id))
+		}
 
+		assert.Reachable("field removal found no index", details)
 	}
 
 	return &commonpb.LedgerLogPayload{

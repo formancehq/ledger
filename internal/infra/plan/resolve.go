@@ -282,6 +282,26 @@ func resolveCoverage[T interface {
 				var zero T
 				hasValue := any(result.Value) != any(zero)
 
+				// Index registry resolutions are rare and central to the
+				// dropped-index hunt: log every one with the loader-entry
+				// stamps so the admission-side story for a key can be read
+				// off this node's log alone.
+				if attrCode == dal.SubAttrIndex {
+					logger.WithFields(map[string]any{
+						"key":           fmt.Sprintf("%q", canonicalKey),
+						"keyHex":        hex.EncodeToString(canonicalKey),
+						"hasValue":      hasValue,
+						"fromLoad":      result.FromLoad,
+						"entryBoundary": result.EntryBoundary,
+						"entryEpoch":    result.EntryEpoch,
+						"entryAgeMs":    result.EntryAge.Milliseconds(),
+						"boundary":      boundary,
+						"cacheEpoch":    cacheEpoch,
+						"nextIndex":     nextIndex,
+						"bloomAbsent":   bloomAbsent,
+					}).Infof("Index registry preload resolved")
+				}
+
 				if hasValue && bloomAbsent {
 					logger.WithFields(map[string]any{
 						"type": typeName,
@@ -321,14 +341,18 @@ func resolveCoverage[T interface {
 				// answer against a fresh read before trusting it.
 				if !hasValue && attrCode == dal.SubAttrIndex {
 					if fresh, freshErr := getValue(store, canonicalKey); freshErr == nil && any(fresh) != any(zero) {
-						logger.WithFields(map[string]any{
-							"type": typeName,
-							"key":  hex.EncodeToString(canonicalKey),
-						}).Errorf("Index preload served absence for a row Pebble holds")
-						assert.Unreachable("index preload served stale absence", map[string]any{
-							"type": typeName,
-							"key":  hex.EncodeToString(canonicalKey),
-						})
+						staleDetails := map[string]any{
+							"type":          typeName,
+							"key":           hex.EncodeToString(canonicalKey),
+							"fromLoad":      result.FromLoad,
+							"entryBoundary": result.EntryBoundary,
+							"entryEpoch":    result.EntryEpoch,
+							"entryAgeMs":    result.EntryAge.Milliseconds(),
+							"boundary":      boundary,
+							"cacheEpoch":    cacheEpoch,
+						}
+						logger.WithFields(staleDetails).Errorf("Index preload served absence for a row Pebble holds")
+						assert.Unreachable("index preload served stale absence", staleDetails)
 
 						if attrValue, mErr := buildPreloadPayload(attrCode, fresh); mErr == nil {
 							plans = append(plans, slab.appendSeed(id, tag, attrCode, attrValue))

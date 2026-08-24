@@ -20,6 +20,13 @@ type RequestProcessor struct {
 	hashBuf            []byte // reusable buffer for idempotency hash serialization
 	compiledTypesCache map[string][]accounttype.CompiledType
 	assetCache         map[string]cachedAssetPrecision // per-batch cache for ParseAssetPrecision
+	indexProbe         func(key domain.IndexKey) map[string]any
+}
+
+// SetIndexProbe installs the per-proposal index registry probe copied
+// into each ProcessOrders Context (see Context.IndexProbe).
+func (p *RequestProcessor) SetIndexProbe(probe func(key domain.IndexKey) map[string]any) {
+	p.indexProbe = probe
 }
 
 // Context bundles per-batch shared state (caches, ledger metadata) and
@@ -65,6 +72,14 @@ type Context struct {
 	// immediately instead of scheduling a historical backfill. Transient,
 	// per-ProcessOrders-call bookkeeping — never persisted.
 	BornEmptyLedgers map[string]struct{}
+
+	// IndexProbe, when installed by the FSM, captures the raw
+	// dual-generation cache, batch overlay and execution-plan state for
+	// one index registry key. Handlers call it when a registry lookup
+	// answers absent so the emitted assert carries the exact residency
+	// that produced the answer. Nil outside the FSM apply path (tests,
+	// recovery).
+	IndexProbe func(key domain.IndexKey) map[string]any
 }
 
 // markBornEmpty records a freshly-created ledger as having no indexable data
@@ -218,6 +233,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		NumscriptCache: p.numscriptCache,
 		CompiledTypes:  p.compiledTypesCache,
 		AssetCache:     p.assetCache,
+		IndexProbe:     p.indexProbe,
 	}
 
 	result := &OrdersResult{
@@ -484,6 +500,7 @@ func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commo
 		NumscriptCache: p.numscriptCache,
 		CompiledTypes:  p.compiledTypesCache,
 		AssetCache:     p.assetCache,
+		IndexProbe:     p.indexProbe,
 	}
 
 	return p.processOrder(order, s, ctx)

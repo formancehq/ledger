@@ -253,6 +253,16 @@ func (s *DerivedKeyStore[K, T]) Delete(canonical K) {
 	s.deletions[canonical] = struct{}{}
 }
 
+// DebugOverlay reports the batch-local overlay state for canonical:
+// whether a buffered write exists and whether the key is locally
+// deleted. Diagnostic use only — it bypasses the parent fallback.
+func (s *DerivedKeyStore[K, T]) DebugOverlay(canonical K) (hasValue, deleted bool) {
+	_, deleted = s.deletions[canonical]
+	_, hasValue = s.values[canonical]
+
+	return hasValue, deleted
+}
+
 func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 	// Reuse scratch for serializing canonical keys during Put/Delete,
 	// but allocate independent copies for each Update.CanonicalKey.

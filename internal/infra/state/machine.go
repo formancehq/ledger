@@ -1211,6 +1211,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// proposal coverage — since the validation is cross-order by nature.
 	scopeFactory := NewScopeFactory(buffer, proposal.GetExecutionPlan(), fsm.logger, fsm.preloadMissCounter, raftIndex)
 
+	fsm.processor.SetIndexProbe(fsm.indexProbe(proposal.GetExecutionPlan(), buffer))
+
 	if err := fsm.applyTechnicalUpdates(scopeFactory, batch, raftIndex, proposal); err != nil {
 		if invariant := planInvariantDescribable(err); invariant != nil {
 			// Coverage miss or malformed execution plan in a TU handler
