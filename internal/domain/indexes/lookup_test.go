@@ -24,14 +24,14 @@ func TestFind_ReturnsValueOnHit(t *testing.T) {
 	reader := NewMockLookup(ctrl)
 
 	key := indexes.KeyFor("main", ref())
-	expected := (&commonpb.Index{Id: ref(), BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING}).AsReader()
+	expected := (&commonpb.Index{Id: ref(), ForwardEncodingVersion: 3}).AsReader()
 
 	reader.EXPECT().Get(key).Return(expected, nil)
 
 	got, err := indexes.Find(reader, "main", ref())
 	require.NoError(t, err)
 	require.NotNil(t, got)
-	assert.Equal(t, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING, got.GetBuildStatus())
+	assert.Equal(t, uint32(3), got.GetForwardEncodingVersion())
 }
 
 func TestFind_ErrNotFoundCollapsesToNilNoError(t *testing.T) {
@@ -81,49 +81,13 @@ func TestFind_NilIDIsNoOp(t *testing.T) {
 	assert.Nil(t, got)
 }
 
-func TestIsReady_TrueOnlyForReadyStatus(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	reader := NewMockLookup(ctrl)
-
-	key := indexes.KeyFor("main", ref())
-
-	gomock.InOrder(
-		reader.EXPECT().Get(key).Return((&commonpb.Index{Id: ref(), BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING}).AsReader(), nil),
-		reader.EXPECT().Get(key).Return((&commonpb.Index{Id: ref(), BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY}).AsReader(), nil),
-		reader.EXPECT().Get(key).Return(nil, domain.ErrNotFound),
-	)
-
-	assert.False(t, indexes.IsReady(reader, "main", ref()))
-	assert.True(t, indexes.IsReady(reader, "main", ref()))
-	assert.False(t, indexes.IsReady(reader, "main", ref()))
-}
-
-func TestStatus_ReportsStoredOrUnspecified(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	reader := NewMockLookup(ctrl)
-
-	key := indexes.KeyFor("main", ref())
-
-	gomock.InOrder(
-		reader.EXPECT().Get(key).Return((&commonpb.Index{Id: ref(), BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY}).AsReader(), nil),
-		reader.EXPECT().Get(key).Return(nil, domain.ErrNotFound),
-	)
-
-	assert.Equal(t, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY, indexes.Status(reader, "main", ref()))
-	assert.Equal(t, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_UNSPECIFIED, indexes.Status(reader, "main", ref()))
-}
-
 func TestPut_DispatchesPutIndex(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	writer := NewMockIndexWriter(ctrl)
 
-	idx := &commonpb.Index{Id: ref(), Ledger: "main", BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING}
+	idx := &commonpb.Index{Id: ref(), Ledger: "main"}
 	writer.EXPECT().Put(indexes.KeyFor("main", ref()), idx)
 
 	indexes.Put(writer, "main", idx)

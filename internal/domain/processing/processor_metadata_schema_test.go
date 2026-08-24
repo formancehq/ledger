@@ -417,9 +417,8 @@ func TestProcessSetMetadataFieldType_AcceptedDuringRebuild(t *testing.T) {
 		},
 	}
 	existingIndex := &commonpb.Index{
-		Ledger:      "test-ledger",
-		Id:          id,
-		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
+		Ledger: "test-ledger",
+		Id:     id,
 	}
 
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)

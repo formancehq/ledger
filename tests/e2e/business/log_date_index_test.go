@@ -61,8 +61,7 @@ var _ = Describe("Log date index", Ordered, func() {
 
 	It("Should show log date index as ready locally via GetIndexStatus", func() {
 		// Per-replica readiness lives in IndexEntry.current_version
-		// on GetIndexStatus since EN-1323 (BuildStatus is informational
-		// only). The registry entry itself is exercised by ListIndexes
+		// on GetIndexStatus (EN-1323). The registry entry itself is exercised by ListIndexes
 		// elsewhere; this test only pins the local-replica readiness
 		// signal.
 		Expect(actions.WaitForLogBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)).

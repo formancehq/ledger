@@ -1092,10 +1092,9 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		}}
 	}
 
-	// Per-replica readiness: BuildStatus on the FSM Index entry is
-	// informational only since EN-1323; the local replica's
-	// IndexVersionState.CurrentVersion is what decides whether queries
-	// can be served. We take the snapshot FIRST and read the version
+	// Per-replica readiness: the local replica's
+	// IndexVersionState.CurrentVersion decides whether queries can be
+	// served (EN-1323). We take the snapshot FIRST and read the version
 	// state through it so the gate and the subsequent Inspect scan
 	// observe the same point-in-time view — without this the atomic
 	// version switch could promote CurrentVersion between the gate

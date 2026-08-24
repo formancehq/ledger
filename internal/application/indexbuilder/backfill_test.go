@@ -837,8 +837,7 @@ func TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding(t *testin
 	cfg := newLedgerIndexConfig()
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
 	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{
-		Id:          id,
-		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
+		Id: id,
 	}
 
 	// Incremental write age=40. previous_values is no longer in the log;

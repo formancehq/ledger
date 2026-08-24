@@ -8037,8 +8037,8 @@ func (x *GetIndexEntryStatusRequest) GetId() *commonpb.IndexID {
 	return nil
 }
 
-// IndexEntry joins a ledger's index definition (status + audit metadata) with
-// its backfill cursor position. Replaces the former IndexBackfillProgress.
+// IndexEntry joins a ledger's index definition (identifier + audit metadata)
+// with its backfill cursor position. Replaces the former IndexBackfillProgress.
 //
 // current_version + pending_version surface the per-replica forward-
 // encoding version state (EN-1323). current_version == 0 means the
@@ -8047,13 +8047,11 @@ func (x *GetIndexEntryStatusRequest) GetId() *commonpb.IndexID {
 // and queries served from this replica are reading it. pending_version
 // is the in-flight rewrite target on this replica (0 when no rewrite
 // is running). Clients that need to wait for the local replica to
-// finish building an index poll current_version > 0 — the
-// cluster-wide IndexReady BuildStatus flip is gone, BuildStatus is
-// kept on the Index message only as informational.
+// finish building an index poll current_version > 0.
 type IndexEntry struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Ledger         string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	Index          *commonpb.Index        `protobuf:"bytes,2,opt,name=index,proto3" json:"index,omitempty"`                                          // status + created_at + last_built_at + last_error
+	Index          *commonpb.Index        `protobuf:"bytes,2,opt,name=index,proto3" json:"index,omitempty"`                                          // identifier + created_at + forward_encoding_version
 	Cursor         uint64                 `protobuf:"fixed64,3,opt,name=cursor,proto3" json:"cursor,omitempty"`                                      // backfill cursor (0 when not in backfill or done)
 	CurrentVersion uint32                 `protobuf:"varint,4,opt,name=current_version,json=currentVersion,proto3" json:"current_version,omitempty"` // per-replica live keyspace; 0 until first switch
 	PendingVersion uint32                 `protobuf:"varint,5,opt,name=pending_version,json=pendingVersion,proto3" json:"pending_version,omitempty"` // per-replica in-flight rewrite target; 0 when idle

@@ -230,19 +230,13 @@ func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 		canonical := indexes.Canonical(idx.GetId())
 		cfg.byCanonical[canonical] = idx
 
-		if idx.GetBuildStatus() != commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-			continue
-		}
-
 		// Every index kind (builtin tx/account/log and metadata) records a
 		// per-replica IndexVersionState: handleCreatedIndexLog seeds
 		// {current:0, pending:1} and completeBackfill promotes it to
 		// {current:1, pending:0}. A non-zero current_version therefore means
-		// this replica already finished the backfill; the lingering BUILDING
-		// flag only reflects the cluster-wide READY flip (a non-audited
-		// TechnicalUpdate) not having landed yet, or — for metadata — a retype
-		// owned by scheduleResumedRewrites. Re-scheduling here would re-run a
-		// completed backfill and trip the pending==0 invariant in
+		// this replica already finished the backfill; a metadata retype in
+		// flight is owned by scheduleResumedRewrites. Re-scheduling here
+		// would re-run a completed backfill and trip the pending==0 invariant in
 		// completeBackfill, stranding the task in a BUILDING logging loop. A
 		// backfill is only needed while current_version == 0 (never built
 		// locally); a drop+recreate tombstones the version state (current
@@ -416,16 +410,14 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 
 	cfg := b.getOrCreateLedgerConfig(ledgerName)
 
-	// Post-EN-1323 the per-replica readiness signal is
-	// IndexVersionState.CurrentVersion, not the (now purely informational)
-	// registry BuildStatus — nothing ever flips BuildStatus back to READY, so a
-	// BuildStatus-based short-circuit here is dead. If this replica has already
-	// promoted the index to live (current != 0), a repeated CreatedIndexLog —
-	// a duplicate CreateIndex re-emitted by the processor, or an apply replay —
-	// must be a no-op: re-seeding {current:0, pending:1} and rescheduling a
-	// backfill would flip an already-live index back to ErrIndexBuilding. This
-	// mirrors the loadIndexRegistry boot guard and covers both the EN-1564
-	// initial fast path and the normal post-backfill live state.
+	// The per-replica readiness signal is IndexVersionState.CurrentVersion
+	// (EN-1323). If this replica has already promoted the index to live
+	// (current != 0), a repeated CreatedIndexLog — a duplicate CreateIndex
+	// re-emitted by the processor, or an apply replay — must be a no-op:
+	// re-seeding {current:0, pending:1} and rescheduling a backfill would
+	// flip an already-live index back to ErrIndexBuilding. This mirrors the
+	// loadIndexRegistry boot guard and covers both the EN-1564 initial fast
+	// path and the normal post-backfill live state.
 	if current, pending := b.versionFor(ledgerName, indexes.Canonical(id)); current != 0 {
 		return
 	} else if pending != 0 {
@@ -439,7 +431,6 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 
 	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{
 		Id:                     id,
-		BuildStatus:            commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 		ForwardEncodingVersion: 1,
 	}
 

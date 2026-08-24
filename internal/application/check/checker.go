@@ -357,10 +357,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// DeleteLedger logs. The checker compares this against the stored
 		// projection in compareIndexes. Because the pre-archive state comes
 		// from the baseline rather than from a blanket skip, compareIndexes
-		// needs no archive-orphan tolerance and a stale registry row can no
-		// longer legitimise orphaned reverse-map rows. BuildStatus is
-		// intentionally excluded — the BUILDING → READY flip rides on a
-		// non-audited IndexReady TechnicalUpdate, so presence + identity
+		// needs no archive-orphan tolerance and a stale registry row cannot
+		// legitimise orphaned reverse-map rows. Presence + identity
 		// (Ledger, Id) are the fields we can re-derive.
 		expectedIndexes = make(map[domain.IndexKey]*commonpb.Index)
 		// Ledgers that had a DeleteLedger log replayed in the verified
@@ -990,9 +988,7 @@ type compareIndexesScope struct {
 //   - identity drift: stored Ledger or Id field disagrees with the audit
 //     payload that produced the entry → "diverges from audit-derived"
 //
-// BuildStatus is intentionally not compared: the BUILDING → READY transition
-// rides on the IndexReady TechnicalUpdate, which is not part of the hash-
-// chained audit. Bucket-scoped entries (LedgerName == "") are also skipped
+// Bucket-scoped entries (LedgerName == "") are skipped
 // because no audit-chain producer exists for them today (#436 reserved).
 // Drift on those is invisible to this pass until the bucket-scoped producer
 // lands and threads an audit-bound order through the same machinery.
