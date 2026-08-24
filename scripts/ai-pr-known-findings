@@ -36,12 +36,21 @@ fi
 
 reviews=$(mktemp)
 comments=$(mktemp)
-trap 'rm -f "$reviews" "$comments"' EXIT
+result=""
+cleanup() {
+    rm -f -- "$reviews" "$comments"
+    if [[ -n "$result" ]]; then
+        rm -f -- "$result"
+    fi
+}
+trap cleanup EXIT
 
 gh api --paginate "repos/$repo/pulls/$pr/reviews?per_page=100" --slurp > "$reviews"
 gh api --paginate "repos/$repo/pulls/$pr/comments?per_page=100" --slurp > "$comments"
 
-mkdir -p "$(dirname "$output")"
+output_dir=$(dirname -- "$output")
+mkdir -p "$output_dir"
+result=$(mktemp "$output_dir/.ai-pr-known-findings.XXXXXX")
 
 jq -n \
     --argjson pr "$pr" \
@@ -87,13 +96,40 @@ jq -n \
       })))
       | sort_by(.id)
   }
-' > "$output"
+' > "$result"
 
 jq -e --arg head "$head" --argjson pr "$pr" '
   .version == 1 and .pr_number == $pr and .head == $head and
   (.findings | type == "array") and
-  ([.findings[].id] | length == (unique | length))
-' "$output" >/dev/null
+  ([.findings[].id] | length == (unique | length)) and
+  all(.findings[];
+    (.id | type == "string") and
+    (.kind == "inline-review-comment" or .kind == "review-body") and
+    (.source_review_id | type == "number") and
+    (.source_id | type == "number") and
+    (.url | type == "string") and
+    (.author | type == "string") and
+    (.path | type == "string") and
+    ((.line | type) == "null" or (.line | type) == "number") and
+    (.body | type == "string" and length > 0) and
+    (if .kind == "inline-review-comment" then
+       .id == ("github-review-comment-" + (.source_id | tostring))
+     else
+       .id == ("github-review-" + (.source_id | tostring)) and
+       .source_review_id == .source_id and
+       .path == "" and .line == null
+     end)
+  )
+' "$result" >/dev/null
+
+actual_head=$(gh pr view "$pr" --repo "$repo" --json headRefOid --jq .headRefOid)
+if [[ "$actual_head" != "$head" ]]; then
+    echo "ai-pr-known-findings: PR head moved during snapshot: expected $head got $actual_head" >&2
+    exit 2
+fi
+
+mv -- "$result" "$output"
+result=""
 
 printf 'AI_PR_KNOWN_FINDINGS_COUNT: %s\n' "$(jq '.findings | length' "$output")"
 printf 'AI_PR_KNOWN_FINDINGS_RESULT: %s\n' "$output"
