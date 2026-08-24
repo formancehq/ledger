@@ -17,37 +17,78 @@ const (
 	testMovedHead = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 )
 
+type ledger struct {
+	PRNumber int `json:"pr_number"`
+	Head     string
+	Findings []struct {
+		ID   string
+		Kind string
+		Body string
+	}
+}
+
 func TestCollectorPublishesStableFindingsForExactHead(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFixture(t)
-	output, err := fixture.run(t, false)
+	output, err := fixture.run(t, false, "inline")
 	require.NoError(t, err, output)
 	require.Contains(t, output, "AI_PR_KNOWN_FINDINGS_COUNT: 1")
 
-	var ledger struct {
-		PRNumber int `json:"pr_number"`
-		Head     string
-		Findings []struct {
-			ID   string
-			Kind string
-			Body string
-		}
+	var result ledger
+	require.NoError(t, json.Unmarshal([]byte(readFile(t, fixture.output)), &result))
+	require.Equal(t, 123, result.PRNumber)
+	require.Equal(t, testHead, result.Head)
+	require.Len(t, result.Findings, 1)
+	require.Equal(t, "github-review-comment-202", result.Findings[0].ID)
+	require.Equal(t, "inline-review-comment", result.Findings[0].Kind)
+	require.Equal(t, "Untrusted review evidence", result.Findings[0].Body)
+}
+
+func TestCollectorSplitsStructuredReviewBodyIntoIndependentFindings(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFixture(t)
+	output, err := fixture.run(t, false, "structured")
+	require.NoError(t, err, output)
+	require.Contains(t, output, "AI_PR_KNOWN_FINDINGS_COUNT: 3")
+
+	var result ledger
+	require.NoError(t, json.Unmarshal([]byte(readFile(t, fixture.output)), &result))
+	require.Len(t, result.Findings, 3)
+	for index := range result.Findings {
+		require.Equal(t, "review-body-finding", result.Findings[index].Kind)
+		require.Equal(t, "github-review-101-finding-"+string(rune('1'+index)), result.Findings[index].ID)
+		require.Contains(t, result.Findings[index].Body, "[P")
+		require.Contains(t, result.Findings[index].Body, "[blocking]")
 	}
-	require.NoError(t, json.Unmarshal([]byte(readFile(t, fixture.output)), &ledger))
-	require.Equal(t, 123, ledger.PRNumber)
-	require.Equal(t, testHead, ledger.Head)
-	require.Len(t, ledger.Findings, 1)
-	require.Equal(t, "github-review-comment-202", ledger.Findings[0].ID)
-	require.Equal(t, "inline-review-comment", ledger.Findings[0].Kind)
-	require.Equal(t, "Untrusted review evidence", ledger.Findings[0].Body)
+	require.Contains(t, result.Findings[0].Body, "First blocker")
+	require.Contains(t, result.Findings[1].Body, "Second blocker")
+	require.Contains(t, result.Findings[2].Body, "Third blocker")
+	require.NotContains(t, result.Findings[0].Body, "Second blocker")
+}
+
+func TestCollectorFallsBackToWholeReviewWhenBodyIsUnstructured(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFixture(t)
+	output, err := fixture.run(t, false, "fallback")
+	require.NoError(t, err, output)
+	require.Contains(t, output, "AI_PR_KNOWN_FINDINGS_COUNT: 1")
+
+	var result ledger
+	require.NoError(t, json.Unmarshal([]byte(readFile(t, fixture.output)), &result))
+	require.Len(t, result.Findings, 1)
+	require.Equal(t, "github-review-101", result.Findings[0].ID)
+	require.Equal(t, "review-body", result.Findings[0].Kind)
+	require.Contains(t, result.Findings[0].Body, "Unstructured blocker")
 }
 
 func TestCollectorRefusesResultWhenHeadMovesDuringSnapshot(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFixture(t)
-	output, err := fixture.run(t, true)
+	output, err := fixture.run(t, true, "inline")
 	require.Error(t, err, output)
 	require.Contains(t, output, "PR head moved during snapshot")
 	require.NoFileExists(t, fixture.output)
@@ -88,10 +129,24 @@ case "$1 $2" in
   "api --paginate")
     case "$3" in
       *'/reviews?'*)
-        printf '[{"id":101,"state":"CHANGES_REQUESTED","body":"Blocking review","html_url":"https://example/review","user":{"login":"reviewer"}}]\n'
+        case "$TEST_MODE" in
+          structured)
+            printf '%s\n' '[{"id":101,"state":"COMMENTED","body":"DECISION: REQUEST CHANGES\n\nBlocking findings:\n\n[P1][blocking] First blocker\nLocation: first.go:1\nEvidence: first evidence\nImpact: first impact\nResolution: first resolution\n\n[P2][blocking] Second blocker\nLocation: second.go:2\nEvidence: second evidence\nImpact: second impact\nResolution: second resolution\n\n[P1][blocking] Third blocker\nLocation: third.go:3\nEvidence: third evidence\nImpact: third impact\nResolution: third resolution","html_url":"https://example/review","user":{"login":"reviewer"}}]'
+            ;;
+          fallback)
+            printf '%s\n' '[{"id":101,"state":"CHANGES_REQUESTED","body":"Unstructured blocker that still must be reconciled","html_url":"https://example/review","user":{"login":"reviewer"}}]'
+            ;;
+          *)
+            printf '%s\n' '[{"id":101,"state":"CHANGES_REQUESTED","body":"Blocking review","html_url":"https://example/review","user":{"login":"reviewer"}}]'
+            ;;
+        esac
         ;;
       *'/comments?'*)
-        printf '[{"id":202,"pull_request_review_id":101,"html_url":"https://example/comment","user":{"login":"reviewer"},"path":"scripts/example","line":7,"body":"Untrusted review evidence"}]\n'
+        if [[ "$TEST_MODE" == "inline" ]]; then
+          printf '[{"id":202,"pull_request_review_id":101,"html_url":"https://example/comment","user":{"login":"reviewer"},"path":"scripts/example","line":7,"body":"Untrusted review evidence"}]\n'
+        else
+          printf '[]\n'
+        fi
         ;;
       *) exit 97 ;;
     esac
@@ -109,7 +164,7 @@ esac
 	}
 }
 
-func (fixture fixture) run(t *testing.T, moveHead bool) (string, error) {
+func (fixture fixture) run(t *testing.T, moveHead bool, mode string) (string, error) {
 	t.Helper()
 
 	command := exec.Command("bash", fixture.runner, "123", "--head", testHead, "--output", fixture.output)
@@ -120,6 +175,7 @@ func (fixture fixture) run(t *testing.T, moveHead bool) (string, error) {
 		"TEST_MOVED_HEAD="+testMovedHead,
 		"TEST_HEAD_READS="+fixture.headReads,
 		"TEST_MOVE_HEAD="+map[bool]string{true: "true", false: "false"}[moveHead],
+		"TEST_MODE="+mode,
 	)
 	output, err := command.CombinedOutput()
 

@@ -58,6 +58,19 @@ jq -n \
     --slurpfile review_pages "$reviews" \
     --slurpfile comment_pages "$comments" '
   def flatpages($x): $x | flatten;
+  def structured_review_parts:
+    . as $body |
+    [ $body | match("(?m)^\\[P[0-3]\\]\\[blocking\\]"; "g") ] as $markers |
+    if ($markers | length) == 0 then []
+    else [ range(0; ($markers | length)) as $index |
+      ($markers[$index].offset) as $start |
+      (if ($index + 1) < ($markers | length)
+       then $markers[$index + 1].offset
+       else ($body | length)
+       end) as $end |
+      $body[$start:$end]
+    ]
+    end;
   (flatpages($review_pages)) as $reviews |
   (flatpages($comment_pages)) as $comments |
   ($reviews | map(select(
@@ -67,6 +80,35 @@ jq -n \
   ($blocking_reviews | map(.id)) as $review_ids |
   ($comments | map(select(.pull_request_review_id as $rid | $review_ids | index($rid)))) as $inline |
   ($blocking_reviews | map(select(.id as $rid | ($inline | map(.pull_request_review_id) | index($rid)) == null) | select((.body // "") | length > 0))) as $fallback_reviews |
+  ($fallback_reviews | map(
+    . as $review |
+    (($review.body // "") | structured_review_parts) as $parts |
+    if ($parts | length) > 0 then
+      ($parts | to_entries | map({
+        id: ("github-review-" + ($review.id|tostring) + "-finding-" + ((.key + 1)|tostring)),
+        kind: "review-body-finding",
+        source_review_id: $review.id,
+        source_id: $review.id,
+        url: ($review.html_url // ""),
+        author: ($review.user.login // ""),
+        path: "",
+        line: null,
+        body: .value
+      }))
+    else
+      [{
+        id: ("github-review-" + ($review.id|tostring)),
+        kind: "review-body",
+        source_review_id: $review.id,
+        source_id: $review.id,
+        url: ($review.html_url // ""),
+        author: ($review.user.login // ""),
+        path: "",
+        line: null,
+        body: ($review.body // "")
+      }]
+    end
+  ) | add // []) as $review_body_findings |
   {
     version: 1,
     pr_number: $pr,
@@ -82,18 +124,7 @@ jq -n \
         path: (.path // ""),
         line: (.line // .original_line // null),
         body: (.body // "")
-      })) +
-      ($fallback_reviews | map({
-        id: ("github-review-" + (.id|tostring)),
-        kind: "review-body",
-        source_review_id: .id,
-        source_id: .id,
-        url: (.html_url // ""),
-        author: (.user.login // ""),
-        path: "",
-        line: null,
-        body: (.body // "")
-      })))
+      })) + $review_body_findings)
       | sort_by(.id)
   }
 ' > "$result"
@@ -104,7 +135,7 @@ jq -e --arg head "$head" --argjson pr "$pr" '
   ([.findings[].id] | length == (unique | length)) and
   all(.findings[];
     (.id | type == "string") and
-    (.kind == "inline-review-comment" or .kind == "review-body") and
+    (.kind == "inline-review-comment" or .kind == "review-body" or .kind == "review-body-finding") and
     (.source_review_id | type == "number") and
     (.source_id | type == "number") and
     (.url | type == "string") and
@@ -114,13 +145,18 @@ jq -e --arg head "$head" --argjson pr "$pr" '
     (.body | type == "string" and length > 0) and
     (if .kind == "inline-review-comment" then
        .id == ("github-review-comment-" + (.source_id | tostring))
-     else
+     elif .kind == "review-body" then
        .id == ("github-review-" + (.source_id | tostring)) and
        .source_review_id == .source_id and
        .path == "" and .line == null
+     else
+       (.id as $id | .source_id as $source_id | $id | test("^github-review-" + ($source_id | tostring) + "-finding-[1-9][0-9]*$")) and
+       .source_review_id == .source_id and
+       .path == "" and .line == null and
+       (.body | test("^\\[P[0-3]\\]\\[blocking\\]"))
      end)
   )
-' "$result" >/dev/null
+ ' "$result" >/dev/null
 
 actual_head=$(gh pr view "$pr" --repo "$repo" --json headRefOid --jq .headRefOid)
 if [[ "$actual_head" != "$head" ]]; then

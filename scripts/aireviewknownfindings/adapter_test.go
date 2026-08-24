@@ -50,6 +50,38 @@ func TestStillValidKnownBlockerEscalatesApproval(t *testing.T) {
 	requireJSONEqual(t, final, readFile(t, fixture.result))
 }
 
+func TestStructuredKnownBlockerReachesReconciliation(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAdapterFixture(t)
+	known := newStructuredKnownFinding(112, 2)
+	base := newReview("APPROVE", "LOW")
+	final := cloneObject(t, base)
+	final["decision"] = "REQUEST_CHANGES"
+	final["residual_risk"] = "MEDIUM"
+	final["findings"] = []any{knownReviewFinding(known["id"].(string))}
+	fixture.writeInputs(t, base, newLedger(known), combined(final, classification(known, "STILL_VALID")))
+
+	output, err := fixture.run(t, nil)
+	require.NoError(t, err, output)
+	requireJSONEqual(t, final, readFile(t, fixture.result))
+	require.Contains(t, readFile(t, fixture.prompt), fixture.ledger)
+}
+
+func TestRejectsStructuredFindingWithoutBlockerMarker(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAdapterFixture(t)
+	known := newStructuredKnownFinding(113, 1)
+	known["body"] = "unstructured prose"
+	base := newReview("APPROVE", "LOW")
+	fixture.writeInputs(t, base, newLedger(known), nil)
+
+	output, err := fixture.run(t, nil)
+	require.Error(t, err, output)
+	require.Contains(t, output, "invalid or mismatched ledger")
+}
+
 func TestFixedKnownFindingLeavesBaseResultUnchanged(t *testing.T) {
 	t.Parallel()
 
@@ -373,6 +405,17 @@ func newKnownFinding(id int) map[string]any {
 		"line":             nil,
 		"body":             "Blocking review evidence",
 	}
+}
+
+// newStructuredKnownFinding is a blocker-level known finding extracted from a
+// structured review body rather than a whole review.
+func newStructuredKnownFinding(reviewID, position int) map[string]any {
+	finding := newKnownFinding(reviewID)
+	finding["id"] = "github-review-" + jsonNumber(reviewID) + "-finding-" + jsonNumber(position)
+	finding["kind"] = "review-body-finding"
+	finding["body"] = "[P1][blocking] Structured blocking review evidence"
+
+	return finding
 }
 
 func newLedger(findings ...map[string]any) map[string]any {
