@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: bash scripts/ai-pr-known-findings <pr-number> --head <sha> --output <path>
+
+Snapshots qualifying blocking review findings from GitHub for one exact PR head.
+EOF
+}
+
+[[ $# -gt 0 ]] || { usage >&2; exit 1; }
+case "${1:-}" in -h|--help) usage; exit 0 ;; esac
+pr=$1
+shift
+head=""
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --head) [[ $# -ge 2 ]] || { usage >&2; exit 1; }; head=$2; shift 2 ;;
+        --output) [[ $# -ge 2 ]] || { usage >&2; exit 1; }; output=$2; shift 2 ;;
+        *) echo "ai-pr-known-findings: unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
+[[ "$pr" =~ ^[1-9][0-9]*$ ]] || { echo "ai-pr-known-findings: invalid PR number" >&2; exit 1; }
+[[ "$head" =~ ^[0-9a-f]{40,64}$ ]] || { echo "ai-pr-known-findings: --head must be a full SHA" >&2; exit 1; }
+[[ -n "$output" ]] || { echo "ai-pr-known-findings: --output is required" >&2; exit 1; }
+for cmd in gh jq; do command -v "$cmd" >/dev/null 2>&1 || { echo "ai-pr-known-findings: missing $cmd" >&2; exit 1; }; done
+
+repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+actual_head=$(gh pr view "$pr" --repo "$repo" --json headRefOid --jq .headRefOid)
+if [[ "$actual_head" != "$head" ]]; then
+    echo "ai-pr-known-findings: PR head moved: expected $head got $actual_head" >&2
+    exit 2
+fi
+
+reviews=$(mktemp)
+comments=$(mktemp)
+result=""
+cleanup() {
+    rm -f -- "$reviews" "$comments"
+    if [[ -n "$result" ]]; then
+        rm -f -- "$result"
+    fi
+}
+trap cleanup EXIT
+
+gh api --paginate "repos/$repo/pulls/$pr/reviews?per_page=100" --slurp > "$reviews"
+gh api --paginate "repos/$repo/pulls/$pr/comments?per_page=100" --slurp > "$comments"
+
+output_dir=$(dirname -- "$output")
+mkdir -p "$output_dir"
+result=$(mktemp "$output_dir/.ai-pr-known-findings.XXXXXX")
+
+jq -n \
+    --argjson pr "$pr" \
+    --arg head "$head" \
+    --slurpfile review_pages "$reviews" \
+    --slurpfile comment_pages "$comments" '
+  def flatpages($x): $x | flatten;
+  (flatpages($review_pages)) as $reviews |
+  (flatpages($comment_pages)) as $comments |
+  ($reviews | map(select(
+      .state == "CHANGES_REQUESTED" or
+      ((.body // "") | test("DECISION:[[:space:]]*REQUEST CHANGES"; "i"))
+  ))) as $blocking_reviews |
+  ($blocking_reviews | map(.id)) as $review_ids |
+  ($comments | map(select(.pull_request_review_id as $rid | $review_ids | index($rid)))) as $inline |
+  ($blocking_reviews | map(select(.id as $rid | ($inline | map(.pull_request_review_id) | index($rid)) == null) | select((.body // "") | length > 0))) as $fallback_reviews |
+  {
+    version: 1,
+    pr_number: $pr,
+    head: $head,
+    findings:
+      (($inline | map({
+        id: ("github-review-comment-" + (.id|tostring)),
+        kind: "inline-review-comment",
+        source_review_id: .pull_request_review_id,
+        source_id: .id,
+        url: (.html_url // ""),
+        author: (.user.login // ""),
+        path: (.path // ""),
+        line: (.line // .original_line // null),
+        body: (.body // "")
+      })) +
+      ($fallback_reviews | map({
+        id: ("github-review-" + (.id|tostring)),
+        kind: "review-body",
+        source_review_id: .id,
+        source_id: .id,
+        url: (.html_url // ""),
+        author: (.user.login // ""),
+        path: "",
+        line: null,
+        body: (.body // "")
+      })))
+      | sort_by(.id)
+  }
+' > "$result"
+
+jq -e --arg head "$head" --argjson pr "$pr" '
+  .version == 1 and .pr_number == $pr and .head == $head and
+  (.findings | type == "array") and
+  ([.findings[].id] | length == (unique | length)) and
+  all(.findings[];
+    (.id | type == "string") and
+    (.kind == "inline-review-comment" or .kind == "review-body") and
+    (.source_review_id | type == "number") and
+    (.source_id | type == "number") and
+    (.url | type == "string") and
+    (.author | type == "string") and
+    (.path | type == "string") and
+    ((.line | type) == "null" or (.line | type) == "number") and
+    (.body | type == "string" and length > 0) and
+    (if .kind == "inline-review-comment" then
+       .id == ("github-review-comment-" + (.source_id | tostring))
+     else
+       .id == ("github-review-" + (.source_id | tostring)) and
+       .source_review_id == .source_id and
+       .path == "" and .line == null
+     end)
+  )
+' "$result" >/dev/null
+
+actual_head=$(gh pr view "$pr" --repo "$repo" --json headRefOid --jq .headRefOid)
+if [[ "$actual_head" != "$head" ]]; then
+    echo "ai-pr-known-findings: PR head moved during snapshot: expected $head got $actual_head" >&2
+    exit 2
+fi
+
+mv -- "$result" "$output"
+result=""
+
+printf 'AI_PR_KNOWN_FINDINGS_COUNT: %s\n' "$(jq '.findings | length' "$output")"
+printf 'AI_PR_KNOWN_FINDINGS_RESULT: %s\n' "$output"
