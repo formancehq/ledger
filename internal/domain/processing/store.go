@@ -124,6 +124,10 @@ type Scope interface {
 	IncrementNextQueryCheckpointID() uint64
 	SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState)
 	DeleteQueryCheckpoint(checkpointID uint64)
+	// LiveQueryCheckpointCount / QueryCheckpointExists back the FSM cap and
+	// existence checks (recovered live-ID set + this proposal's staged changes).
+	LiveQueryCheckpointCount() uint64
+	QueryCheckpointExists(id uint64) bool
 
 	// CheckCoverage exposes the gate for paths that read state directly
 	// (bypassing the engine overlay) and still want the coverage

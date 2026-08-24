@@ -316,7 +316,7 @@ func SavePreparedQuery(b *dal.WriteSession, ledger string, pq *commonpb.Prepared
 }
 
 // SaveQueryCheckpoint stores a query checkpoint state in the batch (Raft-replicated).
-func saveQueryCheckpoint(b *dal.WriteSession, cp *raftcmdpb.QueryCheckpointState) error {
+func SaveQueryCheckpoint(b *dal.WriteSession, cp *raftcmdpb.QueryCheckpointState) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobQueryCheckpoint).
 		PutUint64(cp.GetCheckpointId())
 
@@ -329,7 +329,7 @@ func saveQueryCheckpoint(b *dal.WriteSession, cp *raftcmdpb.QueryCheckpointState
 }
 
 // DeleteQueryCheckpointFromBatch removes a query checkpoint from the batch (Raft-replicated).
-func deleteQueryCheckpointFromBatch(b *dal.WriteSession, checkpointID uint64) error {
+func DeleteQueryCheckpointFromBatch(b *dal.WriteSession, checkpointID uint64) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobQueryCheckpoint).
 		PutUint64(checkpointID)
 
@@ -342,7 +342,7 @@ func deleteQueryCheckpointFromBatch(b *dal.WriteSession, checkpointID uint64) er
 }
 
 // StoreNextQueryCheckpointID writes the next query checkpoint ID as 8-byte big-endian uint64.
-func storeNextQueryCheckpointID(b *dal.WriteSession, id uint64) error {
+func StoreNextQueryCheckpointID(b *dal.WriteSession, id uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, id)
 

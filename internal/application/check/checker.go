@@ -401,6 +401,15 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// SubAttrNumscriptVersion (latest pointer = greatest stored semver).
 		expectedNumscriptContent = make(map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo)
 		expectedNumscriptLatest  = make(map[domain.NumscriptVersionKey]string)
+
+		// derivedLiveCheckpoints is the audit-derived set of live query checkpoints
+		// (cluster-global), keyed by id with the CreatedQueryCheckpoint log as the
+		// value so max_sequence / created_at can be verified. A create sets the
+		// entry, a later delete removes it. Seeded from the baseline under archiving
+		// (the create logs are purged with the chapter), then advanced by the
+		// replayed create/delete logs. compareQueryCheckpoints diffs it against the
+		// stored rows both ways, contents included.
+		derivedLiveCheckpoints = make(map[uint64]*commonpb.CreatedQueryCheckpointLog)
 	)
 
 	// excluded is built incrementally as SimulateEphemeralPurge decides to
@@ -490,6 +499,13 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// Pre-populate the reversion tracking from the baseline's transaction
 		// states so reversion invariant checks cover pre-archive transactions.
 		if err := c.seedTxTrackingFromBaseline(baselineDB, ledgerKnownTxIDs, ledgerRevertedTxIDs); err != nil {
+			return err
+		}
+
+		// Seed the live query-checkpoint set from the baseline: pre-archive
+		// CreatedQueryCheckpoint logs are purged with the archived chapter, so
+		// replay alone would under-derive the set and false-flag live rows.
+		if err := c.foldBaselineQueryCheckpoints(baselineDB, derivedLiveCheckpoints); err != nil {
 			return err
 		}
 	}
@@ -645,6 +661,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					if cur, ok := expectedNumscriptLatest[vk]; !ok || numscriptVersionGreater(info.GetVersion(), cur) {
 						expectedNumscriptLatest[vk] = info.GetVersion()
 					}
+				}
+			case *commonpb.LogPayload_CreatedQueryCheckpoint:
+				if cp := payload.CreatedQueryCheckpoint; cp != nil {
+					derivedLiveCheckpoints[cp.GetCheckpointId()] = cp
+				}
+			case *commonpb.LogPayload_DeletedQueryCheckpoint:
+				if cp := payload.DeletedQueryCheckpoint; cp != nil {
+					delete(derivedLiveCheckpoints, cp.GetCheckpointId())
 				}
 			case *commonpb.LogPayload_Apply:
 				if payload.Apply != nil {
@@ -895,6 +919,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	c.compareNumscripts(snap, expectedNumscriptContent, expectedNumscriptLatest, deletedInReplay, pendingCleanupLedgers, callback)
+
+	if err := c.compareQueryCheckpoints(snap, derivedLiveCheckpoints, callback); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -1292,6 +1320,98 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 				0, name, "", ""))
 		}
 	}
+}
+
+// compareQueryCheckpoints verifies the live query-checkpoint rows stored in the
+// primary store (ZoneGlobal/SubGlobQueryCheckpoint) against `derived`, the live
+// set re-derived from the CreatedQueryCheckpoint / DeletedQueryCheckpoint logs
+// (baseline-seeded under archiving). It emits
+// CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH on:
+//   - a stored row absent from the audit set (never created, or later deleted) —
+//     a phantom or stale row;
+//   - an audit-live checkpoint with no stored row — a lost or dropped projection;
+//   - a row whose key id, max_sequence, or created_at diverges from the
+//     audit-derived value — content corruption.
+//
+// The audit-rebuild path recreates the rows (and their max_sequence / created_at)
+// from the logs, so a missing row is corruption, never a legitimate restore
+// artifact. Stored rows are keyed by the Pebble key id, not the payload.
+func (c *Checker) compareQueryCheckpoints(reader dal.PebbleReader, derived map[uint64]*commonpb.CreatedQueryCheckpointLog, callback func(*servicepb.CheckStoreEvent)) error {
+	stored, err := query.ReadQueryCheckpointRows(reader)
+	if err != nil {
+		return fmt.Errorf("reading stored query checkpoints: %w", err)
+	}
+
+	all := make(map[uint64]struct{}, len(stored)+len(derived))
+	for id := range stored {
+		all[id] = struct{}{}
+	}
+
+	for id := range derived {
+		all[id] = struct{}{}
+	}
+
+	ids := make([]uint64, 0, len(all))
+	for id := range all {
+		ids = append(ids, id)
+	}
+
+	slices.Sort(ids)
+
+	emit := func(msg string) {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH, msg, 0, "", "", ""))
+	}
+
+	for _, id := range ids {
+		row, inStored := stored[id]
+		want, inDerived := derived[id]
+
+		switch {
+		case inStored && !inDerived:
+			emit(fmt.Sprintf("stored query checkpoint %d is not justified by the audit chain (no CreatedQueryCheckpoint, or a later DeletedQueryCheckpoint)", id))
+		case inDerived && !inStored:
+			emit(fmt.Sprintf("audit chain has live query checkpoint %d but no stored row (lost or dropped projection)", id))
+		default:
+			if pid := row.GetCheckpointId(); pid != id {
+				emit(fmt.Sprintf("stored query checkpoint keyed %d carries a mismatched payload checkpoint_id %d (corrupted row)", id, pid))
+			}
+
+			if row.GetMaxSequence() != want.GetMaxSequence() {
+				emit(fmt.Sprintf("query checkpoint %d max_sequence %d does not match the audit chain %d", id, row.GetMaxSequence(), want.GetMaxSequence()))
+			}
+
+			if row.GetCreatedAt().GetData() != want.GetCreatedAt().GetData() {
+				emit(fmt.Sprintf("query checkpoint %d created_at %d does not match the audit chain %d", id, row.GetCreatedAt().GetData(), want.GetCreatedAt().GetData()))
+			}
+		}
+	}
+
+	return nil
+}
+
+// foldBaselineQueryCheckpoints seeds the audit-derived live-checkpoint set from
+// the boundary-time baseline, whose SubGlobQueryCheckpoint rows (with their
+// max_sequence / created_at) stand in for the pre-archive CreatedQueryCheckpoint
+// logs purged with the archived chapter.
+func (c *Checker) foldBaselineQueryCheckpoints(baselineDB *pebble.DB, into map[uint64]*commonpb.CreatedQueryCheckpointLog) error {
+	if baselineDB == nil {
+		return nil
+	}
+
+	rows, err := query.ReadQueryCheckpointRows(baselineDB)
+	if err != nil {
+		return fmt.Errorf("folding baseline query checkpoints: %w", err)
+	}
+
+	for id, cp := range rows {
+		into[id] = &commonpb.CreatedQueryCheckpointLog{
+			CheckpointId: id,
+			MaxSequence:  cp.GetMaxSequence(),
+			CreatedAt:    cp.GetCreatedAt(),
+		}
+	}
+
+	return nil
 }
 
 // numscriptVersionGreater reports whether a is a strictly greater full semver

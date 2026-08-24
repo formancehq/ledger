@@ -271,6 +271,14 @@ func (s *skipSafeScope) DeleteQueryCheckpoint(checkpointID uint64) {
 	trapUnbuffered("DeleteQueryCheckpoint", map[string]any{"checkpointID": checkpointID})
 }
 
+func (s *skipSafeScope) LiveQueryCheckpointCount() uint64 {
+	return s.inner.LiveQueryCheckpointCount()
+}
+
+func (s *skipSafeScope) QueryCheckpointExists(id uint64) bool {
+	return s.inner.QueryCheckpointExists(id)
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // CheckCoverage — pure gate; pass through so declared-set enforcement
 // still fires under a skip-tolerant order.

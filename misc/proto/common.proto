@@ -552,6 +552,7 @@ message DeletedQueryCheckpointScheduleLog {}
 message CreatedQueryCheckpointLog {
   fixed64 checkpoint_id = 1;
   fixed64 max_sequence = 2;
+  Timestamp created_at = 3;
 }
 
 // DeletedQueryCheckpointLog records a query checkpoint being deleted.
@@ -1311,6 +1312,14 @@ enum ErrorReason {
   // structurally invalid payload (missing policy, or query_checkpoint_limit
   // below 1). See EN-1827.
   ERROR_REASON_CLUSTER_POLICY_INVALID = 75;
+  // ERROR_REASON_CHECKPOINT_LIMIT_REACHED: a CreateQueryCheckpoint was rejected
+  // because the live query-checkpoint count is at the replicated policy limit.
+  // Creation never evicts; an existing checkpoint must be deleted first. See
+  // EN-1501.
+  ERROR_REASON_CHECKPOINT_LIMIT_REACHED = 76;
+  // ERROR_REASON_CHECKPOINT_NOT_FOUND: a DeleteQueryCheckpoint targeted an id
+  // that is not live (never created, or already deleted). See EN-1501.
+  ERROR_REASON_CHECKPOINT_NOT_FOUND = 77;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

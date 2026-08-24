@@ -6,8 +6,24 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
+// processCreateQueryCheckpoint applies a create after the idempotency gate,
+// enforcing the replicated query-checkpoint cap inside the FSM. The cap is read
+// from the committed ClusterPolicy and the live count from deterministic FSM
+// state, so a committed create resolves identically on every node; a keyed retry
+// replays the frozen outcome before reaching here, so an accepted create that
+// filled the cap still returns its original success on retry.
 func processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
+
+	// A committed policy always carries a limit >= 1; limit 0 is the unset
+	// default before any policy is committed and means "no cap" (write readiness
+	// gates business writes until a policy is committed, so a real create sees a
+	// configured limit).
+	limit := s.GetClusterPolicy().GetQueryCheckpointLimit()
+	if limit != 0 && s.LiveQueryCheckpointCount() >= limit {
+		return nil, &domain.ErrCheckpointLimitReached{Limit: limit}
+	}
+
 	checkpointID := s.IncrementNextQueryCheckpointID()
 
 	cp := &raftcmdpb.QueryCheckpointState{
@@ -25,24 +41,33 @@ func processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, c
 			CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
 				CheckpointId: checkpointID,
 				MaxSequence:  cp.GetMaxSequence(),
+				CreatedAt:    cp.GetCreatedAt(),
 			},
 		},
 	}, nil
 }
 
+// processDeleteQueryCheckpoint applies a delete after the idempotency gate,
+// rejecting a non-live id inside the FSM so the outcome is deterministic and a
+// keyed retry of a successful delete replays that success.
 func processDeleteQueryCheckpoint(order *raftcmdpb.DeleteQueryCheckpointOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
-	if order.GetCheckpointId() == 0 {
+	id := order.GetCheckpointId()
+	if id == 0 {
 		return nil, domain.ErrCheckpointIDRequired
 	}
 
-	ctx.Scope.DeleteQueryCheckpoint(order.GetCheckpointId())
+	if !ctx.Scope.QueryCheckpointExists(id) {
+		return nil, &domain.ErrCheckpointNotFound{CheckpointID: id}
+	}
+
+	ctx.Scope.DeleteQueryCheckpoint(id)
 	// QueryCheckpointDeleted is derived from DeletedQueryCheckpointLog by
 	// deriveSignals.
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletedQueryCheckpoint{
 			DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{
-				CheckpointId: order.GetCheckpointId(),
+				CheckpointId: id,
 			},
 		},
 	}, nil
