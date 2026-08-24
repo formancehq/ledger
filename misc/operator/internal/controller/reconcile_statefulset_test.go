@@ -100,6 +100,21 @@ func TestWithKubectlRestartedAt(t *testing.T) {
 		assert.False(t, present)
 	})
 
+	t.Run("a CR-provided value wins over the live stamp", func(t *testing.T) {
+		t.Parallel()
+
+		existing := newTemplate(map[string]string{annotationKubectlRestartedAt: "2026-08-24T10:00:00Z"})
+		desired := newTemplate(map[string]string{
+			annotationKubectlRestartedAt: "2026-08-25T09:00:00Z",
+			annotationSpecHash:           "new-hash",
+		})
+
+		got := withKubectlRestartedAt(existing, desired)
+
+		assert.Equal(t, "2026-08-25T09:00:00Z", got.Annotations[annotationKubectlRestartedAt],
+			"a restartedAt explicitly managed through spec.podAnnotations must not be masked by the live stamp")
+	})
+
 	t.Run("does not mutate the desired template's annotations map", func(t *testing.T) {
 		t.Parallel()
 

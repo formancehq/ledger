@@ -505,11 +505,18 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 // reconcile, so dropping the stamp would revert kubectl's patch and cancel the
 // rolling restart after the first (highest-ordinal) pod (EN-1850).
 //
+// A value the CR explicitly provides through spec.podAnnotations wins over the
+// live stamp: the CR is the source of truth, and only a key it does not manage
+// is treated as user-owned StatefulSet state.
+//
 // The annotations map is copied before mutation: the desired template built by
 // buildStatefulSetSpec may be shared across retries of a mutate function.
 func withKubectlRestartedAt(existing, desired corev1.PodTemplateSpec) corev1.PodTemplateSpec {
 	restartedAt, ok := existing.Annotations[annotationKubectlRestartedAt]
 	if !ok {
+		return desired
+	}
+	if _, crManaged := desired.Annotations[annotationKubectlRestartedAt]; crManaged {
 		return desired
 	}
 
