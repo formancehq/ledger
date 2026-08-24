@@ -13,6 +13,10 @@ By default the launcher never commits or pushes. With --push, fixes are
 committed locally, that exact clean commit is reviewed once more, and it
 is pushed only if the remote PR branch still equals the SHA observed at
 startup. The launcher never comments, resolves threads, closes, or merges.
+
+If the target branch has advanced beyond the PR's GitHub-reported base SHA,
+the launcher stops before triage with AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED
+(exit 3). Synchronize the PR with its target branch, then rerun the loop.
 EOF
 }
 
@@ -96,19 +100,57 @@ if ! git remote get-url "$remote" >/dev/null 2>&1; then
     exit 1
 fi
 
-# Fetch exactly the GitHub-resolved base/head refs before creating worktrees.
+# Fetch the current target/head refs. GitHub's baseRefOid describes the PR
+# snapshot and may legitimately lag behind the current target branch.
 git fetch --no-tags "$remote" \
     "+refs/heads/$base_ref:refs/remotes/$remote/$base_ref" \
     "+refs/heads/$head_ref:refs/remotes/$remote/$head_ref"
 
-fetched_base=$(git rev-parse "refs/remotes/$remote/$base_ref")
+current_base=$(git rev-parse "refs/remotes/$remote/$base_ref")
 fetched_head=$(git rev-parse "refs/remotes/$remote/$head_ref")
-if [[ "$fetched_base" != "$base_sha" ]]; then
-    echo "ai-pr-loop: fetched base SHA does not match GitHub: got $fetched_base expected $base_sha" >&2
-    exit 1
-fi
 if [[ "$fetched_head" != "$head_sha" ]]; then
     echo "ai-pr-loop: fetched head SHA does not match GitHub: got $fetched_head expected $head_sha" >&2
+    exit 1
+fi
+
+# Keep the review target synchronized with the branch that will eventually
+# receive the PR. Reviewing against a historical base can miss semantic
+# conflicts introduced since the PR was opened. Fail closed, but report this as
+# an actionable synchronization state rather than a generic orchestration error.
+if [[ "$current_base" != "$base_sha" ]]; then
+    if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+        git fetch --no-tags "$remote" "$base_sha" >/dev/null 2>&1 || true
+    fi
+    if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+        echo "ai-pr-loop: GitHub-reported PR base commit is unavailable locally: $base_sha" >&2
+        exit 1
+    fi
+    base_is_ancestor=false
+    if git merge-base --is-ancestor "$base_sha" "$current_base"; then
+        base_is_ancestor=true
+    elif [[ "$(git rev-parse --is-shallow-repository)" == "true" ]]; then
+        # A shallow repository can contain both commits without their connecting
+        # history. Restore ancestry for the exact fetched target before treating
+        # a negative merge-base result as evidence of a rewrite or divergence.
+        if ! git fetch --no-tags --unshallow "$remote" "$current_base" >/dev/null 2>&1; then
+            echo "ai-pr-loop: could not deepen shallow history for target base classification" >&2
+            exit 1
+        fi
+        if git merge-base --is-ancestor "$base_sha" "$current_base"; then
+            base_is_ancestor=true
+        fi
+    fi
+    if [[ "$base_is_ancestor" == "true" ]]; then
+        printf 'ai-pr-loop: target branch %s advanced since this PR snapshot\n' "$base_ref" >&2
+        printf 'ai-pr-loop: PR base:      %s\n' "$base_sha" >&2
+        printf 'ai-pr-loop: current base: %s\n' "$current_base" >&2
+        echo "AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED"
+        exit 3
+    fi
+    echo "ai-pr-loop: target branch no longer descends from the GitHub-reported PR base" >&2
+    printf 'ai-pr-loop: PR base:      %s\n' "$base_sha" >&2
+    printf 'ai-pr-loop: current base: %s\n' "$current_base" >&2
+    echo "AI_PR_LOOP_RESULT: ERROR (target base rewritten or diverged)"
     exit 1
 fi
 
