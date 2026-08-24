@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: bash scripts/ai-pr-adopt-candidate <pr-number-or-url> <candidate-sha> [--push]
+
+Adopts an already-created local candidate commit for an open same-repository PR.
+The command never runs a fixer. It verifies the exact PR/base/head state, reviews
+and validates the exact candidate from base-pinned trusted tooling, and only with
+--push updates the PR branch using force-with-lease as an atomic compare-and-swap.
+EOF
+}
+
+case "${1:-}" in -h|--help) usage; exit 0 ;; esac
+[[ $# -ge 2 ]] || { usage >&2; exit 1; }
+pr=$1
+candidate_sha=$2
+shift 2
+push_changes=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --push) push_changes=true ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "ai-pr-adopt-candidate: unknown argument: $1" >&2; usage >&2; exit 1 ;;
+    esac
+    shift
+done
+
+for command in git gh jq nix; do
+    command -v "$command" >/dev/null 2>&1 || { echo "ai-pr-adopt-candidate: required command not found in PATH: $command" >&2; exit 1; }
+done
+[[ "$candidate_sha" =~ ^[0-9a-f]{40,64}$ ]] || { echo "ai-pr-adopt-candidate: candidate must be a full commit SHA" >&2; exit 1; }
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
+pr_number=$(jq -r .number <<<"$pr_json")
+state=$(jq -r .state <<<"$pr_json")
+base_ref=$(jq -r .baseRefName <<<"$pr_json")
+base_sha=$(jq -r .baseRefOid <<<"$pr_json")
+head_ref=$(jq -r .headRefName <<<"$pr_json")
+head_sha=$(jq -r .headRefOid <<<"$pr_json")
+head_owner=$(jq -r '.headRepositoryOwner.login // empty' <<<"$pr_json")
+head_repo=$(jq -r '.headRepository.name // empty' <<<"$pr_json")
+[[ "$state" == "OPEN" ]] || { echo "ai-pr-adopt-candidate: PR #$pr_number is not open" >&2; exit 1; }
+[[ "$head_owner/$head_repo" == "$repo" ]] || { echo "ai-pr-adopt-candidate: fork/cross-repository PRs are not supported" >&2; exit 1; }
+
+remote=origin
+git remote get-url "$remote" >/dev/null 2>&1 || { echo "ai-pr-adopt-candidate: required git remote origin is missing" >&2; exit 1; }
+git fetch --no-tags "$remote" "+refs/heads/$base_ref:refs/remotes/$remote/$base_ref" "+refs/heads/$head_ref:refs/remotes/$remote/$head_ref"
+current_base=$(git rev-parse "refs/remotes/$remote/$base_ref")
+current_head=$(git rev-parse "refs/remotes/$remote/$head_ref")
+[[ "$current_head" == "$head_sha" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (remote PR head differs from GitHub snapshot)"; exit 2; }
+if [[ "$current_base" != "$base_sha" ]]; then
+    echo "AI_PR_ADOPT_RESULT: BASE_UPDATE_REQUIRED"
+    exit 3
+fi
+
+git cat-file -e "${candidate_sha}^{commit}" 2>/dev/null || { echo "ai-pr-adopt-candidate: candidate commit is not available locally: $candidate_sha" >&2; exit 1; }
+git merge-base --is-ancestor "$head_sha" "$candidate_sha" || { echo "AI_PR_ADOPT_RESULT: REFUSED (candidate is not a descendant of PR head)"; exit 2; }
+[[ "$candidate_sha" != "$head_sha" ]] || { echo "AI_PR_ADOPT_RESULT: NO_CHANGES"; exit 0; }
+
+repo_parent=$(dirname "$repo_root")
+repo_name=$(basename "$repo_root")
+worktree_parent="$repo_parent/.${repo_name}-ai-worktrees"
+mkdir -p "$worktree_parent"
+run_dir=$(mktemp -d "$worktree_parent/adopt-$pr_number.XXXXXX")
+candidate_worktree="$run_dir/candidate"
+trusted_worktree="$run_dir/trusted-tools"
+review_loop_binary="$run_dir/review-loop"
+cleanup() {
+    status=$?
+    trap - EXIT
+    for wt in "$candidate_worktree" "$trusted_worktree"; do
+        if [[ -d "$wt" ]] && git -C "$wt" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            git worktree remove --force "$wt" >/dev/null 2>&1 || true
+        fi
+    done
+    rm -rf -- "$run_dir"
+    exit "$status"
+}
+trap cleanup EXIT
+
+git worktree add --detach "$candidate_worktree" "$candidate_sha"
+git worktree add --detach "$trusted_worktree" "$base_sha"
+for trusted_tool in ai-review-codex agent-check-pr; do
+    [[ -x "$trusted_worktree/scripts/$trusted_tool" ]] || { echo "ai-pr-adopt-candidate: trusted base lacks executable scripts/$trusted_tool" >&2; exit 1; }
+done
+nix develop "path:$trusted_worktree" --command env -u GOROOT go -C "$trusted_worktree" build -o "$review_loop_binary" ./scripts/reviewloop
+printf -v review_cmd 'bash %q' "$trusted_worktree/scripts/ai-review-codex"
+printf -v validation_cmd 'env -u GOROOT nix develop %q --command env LEDGER_AGENT_CHECK_IN_NIX=1 bash %q' "path:$trusted_worktree" "$trusted_worktree/scripts/agent-check-pr"
+
+cd "$candidate_worktree"
+[[ -z "$(git status --porcelain)" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (candidate worktree is dirty before review)"; exit 1; }
+
+set +e
+"$review_loop_binary" --base "$base_sha" --review-cmd "$review_cmd" --validation-cmd "$validation_cmd"
+review_status=$?
+set -e
+if [[ $review_status -ne 0 ]]; then
+    echo "AI_PR_ADOPT_RESULT: REFUSED (candidate was not approved)"
+    exit "$review_status"
+fi
+[[ -z "$(git status --porcelain)" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (review/validation changed candidate worktree)"; exit 1; }
+[[ "$(git rev-parse HEAD)" == "$candidate_sha" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (candidate HEAD changed)"; exit 1; }
+
+remote_head=""
+read -r remote_head _ < <(git ls-remote --exit-code "$remote" "refs/heads/$head_ref") || true
+[[ -n "$remote_head" ]] || { echo "ai-pr-adopt-candidate: could not resolve remote PR head" >&2; exit 1; }
+[[ "$remote_head" == "$head_sha" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (remote PR head moved)"; exit 2; }
+
+git merge-base --is-ancestor "$head_sha" "$candidate_sha" || { echo "AI_PR_ADOPT_RESULT: REFUSED (candidate ancestry changed)"; exit 1; }
+
+if [[ "$push_changes" == "false" ]]; then
+    echo "AI_PR_ADOPT_RESULT: APPROVED_NOT_PUSHED $candidate_sha"
+    exit 0
+fi
+
+if ! git push --force-with-lease="refs/heads/$head_ref:$head_sha" "$remote" "$candidate_sha:refs/heads/$head_ref"; then
+    echo "AI_PR_ADOPT_RESULT: REFUSED (remote changed during push or push failed)"
+    exit 2
+fi
+
+echo "AI_PR_ADOPT_RESULT: PUSHED $candidate_sha"
