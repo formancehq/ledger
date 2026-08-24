@@ -189,6 +189,12 @@ func TestReconcilerUsesBasePinnedInstructions(t *testing.T) {
 	require.Contains(t, prompt, filepath.Join(fixture.trustedRoot, "docs", "technical", "contributing", "ai-pr-known-findings.md"))
 	require.NotContains(t, prompt, filepath.Join(fixture.repository, "AGENTS.md"))
 	require.NotContains(t, prompt, filepath.Join(fixture.repository, "docs", "technical", "contributing", "ai-pr-known-findings.md"))
+	trustedRoot, err := filepath.EvalSymlinks(fixture.trustedRoot)
+	require.NoError(t, err)
+	actualCWD, err := filepath.EvalSymlinks(strings.TrimSpace(readFile(t, fixture.cwdCapture)))
+	require.NoError(t, err)
+	require.Equal(t, trustedRoot, actualCWD)
+	require.Contains(t, prompt, fixture.repository)
 }
 
 func assertResolvedKnownFindingLeavesBaseUnchanged(t *testing.T, status string) {
@@ -216,6 +222,7 @@ type adapterFixture struct {
 	ledger      string
 	target      string
 	prompt      string
+	cwdCapture  string
 }
 
 func newAdapterFixture(t *testing.T) adapterFixture {
@@ -257,6 +264,7 @@ while [[ $# -gt 0 ]]; do
         *) shift ;;
     esac
 done
+pwd > "$TEST_CWD_CAPTURE"
 cat > "$TEST_PROMPT_CAPTURE"
 [[ -n "$output" ]]
 cp "$TEST_COMBINED_RESULT" "$output"
@@ -281,6 +289,7 @@ cp "$TEST_COMBINED_RESULT" "$output"
 		ledger:      filepath.Join(root, "ledger.json"),
 		target:      target,
 		prompt:      filepath.Join(root, "prompt.txt"),
+		cwdCapture:  filepath.Join(root, "codex-cwd.txt"),
 	}
 }
 
@@ -313,6 +322,7 @@ func (fixture adapterFixture) run(t *testing.T, extra map[string]string) (string
 		"TEST_BASE_RESULT":               fixture.baseResult,
 		"TEST_COMBINED_RESULT":           fixture.combined,
 		"TEST_PROMPT_CAPTURE":            fixture.prompt,
+		"TEST_CWD_CAPTURE":               fixture.cwdCapture,
 	}
 	maps.Copy(environment, extra)
 
