@@ -2,8 +2,8 @@
   "id": "read-consistency-projections",
   "title": "Read consistency, indexes, and projections",
   "purpose": "Find stale, inconsistent, incomplete, or misleading read results caused by consistency modes, projection lag, indexing, pagination, rebuild, or cache boundaries.",
-  "paths": ["internal/application/ctrl/**", "internal/query/**", "internal/storage/readstore/**", "internal/application/indexbuilder/**", "internal/storage/usagestore/**", "internal/infra/cache/**", "internal/infra/state/**", "internal/adapter/http/**", "internal/adapter/grpc/**", "tests/**"],
-  "related_docs": ["AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/read-path/", "docs/technical/architecture/subsystems/indexer/", "docs/technical/architecture/audit-vs-technical-state.md", "docs/technical/contributing/ai-audit.md"],
+  "paths": ["internal/application/ctrl/**", "internal/query/**", "internal/storage/readstore/**", "internal/storage/dal/reader.go", "internal/application/indexbuilder/**", "internal/application/auditindexer/**", "internal/application/usagebuilder/**", "internal/storage/usagestore/**", "internal/infra/state/**", "internal/infra/node/read_index.go", "internal/bootstrap/controller_routed.go", "internal/adapter/http/**", "internal/adapter/grpc/**", "misc/proto/common.proto", "misc/proto/bucket.proto", "cmd/ledgerctl/cmdutil/**", "tests/**"],
+  "related_docs": ["AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/read-path/", "docs/technical/architecture/subsystems/indexer/", "docs/technical/architecture/subsystems/usage/", "docs/technical/architecture/subsystems/consensus/", "docs/technical/architecture/audit-vs-technical-state.md", "docs/technical/contributing/ai-audit.md"],
   "invariants": [
     "Strong/consistent reads must not return state older than the consistency barrier they claim to enforce.",
     "Stale reads may lag only within their documented semantics and must never be mislabeled as strong.",
@@ -11,7 +11,7 @@
     "Projection rebuild or index catch-up must not expose silently incomplete results as complete.",
     "Pagination must not duplicate, omit, or reorder records beyond documented cursor semantics when writes occur concurrently.",
     "Filters and aggregates must produce results consistent with the same snapshot/consistency boundary as the surrounding query.",
-    "Cache hits must obey the same consistency contract as uncached reads.",
+    "The read surfaces a request pins — the main-store read handle (dal.Store.NewReadHandle), the read-store snapshot (readstore.NewSnapshot / query.AlignedIndexSnapshot), and request-local query state — must obey the same consistency contract as an unpinned read at the same barrier.",
     "Read-path failover or leader changes must not weaken the requested consistency mode."
   ],
   "adversarial_questions": [
@@ -20,9 +20,9 @@
     "Can an index watermark advance before all represented rows are queryable?",
     "Can rebuild expose an empty or partial index while reporting readiness?",
     "Can cursor pagination cross snapshots and duplicate/omit concurrent records?",
-    "Can cache/preload return data older than a strong-read barrier?",
+    "Can a pinned main-store read handle, read-store snapshot, or request-local query state return data older than the request's ReadIndex / min_log_sequence barrier?",
     "Do aggregates and list/detail endpoints disagree immediately after writes?",
     "Can follower routing serve a strong read without sufficient leadership/quorum evidence?"
   ],
-  "dynamic_checks_to_consider": ["write-then-read consistency matrix", "leader change during strong read", "projection lag/catch-up injection", "pagination under concurrent writes", "index rebuild during queries", "cache-vs-uncached differential tests"]
+  "dynamic_checks_to_consider": ["write-then-read consistency matrix", "leader change during strong read", "projection lag/catch-up injection", "pagination under concurrent writes", "index rebuild during queries", "pinned-snapshot-vs-live read differential tests"]
 }
