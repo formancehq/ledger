@@ -17,6 +17,11 @@ import (
 
 // handleExecutePreparedQuery handles POST /{ledgerName}/prepared-queries/{name}/execute.
 func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Request) {
+	// See handleListTransactions: the profile clock starts before decode — here
+	// that also covers JSON body decoding and parameter conversion.
+	ctx, profile := query.WithProfile(r.Context(), wantsHTTPProfile(r))
+	r = r.WithContext(ctx)
+
 	ledgerName, ok := requireLedgerName(w, r)
 	if !ok {
 		return
@@ -89,17 +94,14 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		Mode:           mode,
 	}
 
-	ctx, profile := query.WithProfile(r.Context())
-
+	profile.EnterExecute()
 	resp, err := s.backend.ExecutePreparedQuery(ctx, req)
+	profile.LeaveExecute()
+
 	if err != nil {
 		handleError(w, r, err)
 
 		return
-	}
-
-	if wantsHTTPProfile(r) {
-		writeProfileHeader(w, profile)
 	}
 
 	// Serialize into a clean, discriminated camelCase envelope instead of the
@@ -123,6 +125,7 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 		envelope.Cursor = result.Cursor
 	}
 
+	finishProfile(w, r, profile)
 	writeJSONResponse(w, http.StatusOK, envelope)
 }
 

@@ -526,12 +526,21 @@ func (impl *BucketServiceServerImpl) readController(ctx context.Context, checkpo
 
 // waitMinLogSequence blocks until the Pebble read index has processed at
 // least the requested minimum log sequence, or the context is cancelled.
+//
+// The wait is charged to the profile's barrier phase rather than to server
+// work: the caller asked for read-your-writes freshness, so counting the wait
+// as server latency would blame the server for the caller's consistency
+// requirement.
 func (impl *BucketServiceServerImpl) waitMinLogSequence(ctx context.Context, minLogSequence uint64) error {
 	if minLogSequence == 0 {
 		return nil
 	}
 
-	return impl.readStore.WaitForSequence(ctx, minLogSequence)
+	start := time.Now()
+	err := impl.readStore.WaitForSequence(ctx, minLogSequence)
+	query.ProfileFromContext(ctx).AddBarrierWait(time.Since(start))
+
+	return err
 }
 
 // waitFilteredAuditConsistency gives a live, filtered ListAuditEntries read a
@@ -588,6 +597,10 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		trace.WithAttributes(attribute.String("ledger", req.GetLedger())))
 	defer span.End()
 
+	// Start the profile clock before authentication and request decode so those
+	// phases land inside PrepareDuration instead of being invisible.
+	ctx, profile := query.WithProfile(ctx, wantsProfile(ctx))
+
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
 		return err
 	}
@@ -613,8 +626,6 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 			req.GetLedger(), pageSize, afterTxID, opts.GetFilter() != nil, opts.GetReverse())
 	}
 
-	profileCtx, profile := query.WithProfile(ctx)
-
 	var c cursor.Cursor[*commonpb.Transaction]
 
 	if cpID := opts.GetRead().GetCheckpointId(); cpID > 0 {
@@ -628,13 +639,17 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 			_ = mainStore.Close()
 		}()
 
-		c, err = impl.localCtrl.ListTransactionsFrom(profileCtx, mainStore, readIdx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), opts.GetReverse())
+		profile.EnterExecute()
+		c, err = impl.localCtrl.ListTransactionsFrom(ctx, mainStore, readIdx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), opts.GetReverse())
+		profile.LeaveExecute()
 	} else {
 		if waitErr := impl.waitMinLogSequence(ctx, opts.GetRead().GetMinLogSequence()); waitErr != nil {
 			return waitErr
 		}
 
-		c, err = impl.ctrl.ListTransactions(profileCtx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), opts.GetReverse())
+		profile.EnterExecute()
+		c, err = impl.ctrl.ListTransactions(ctx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), opts.GetReverse())
+		profile.LeaveExecute()
 	}
 
 	if err != nil {
@@ -772,6 +787,9 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 		trace.WithAttributes(attribute.String("ledger", req.GetLedger())))
 	defer span.End()
 
+	// See ListTransactions: the clock must start before auth/decode.
+	ctx, profile := query.WithProfile(ctx, wantsProfile(ctx))
+
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
 		return err
 	}
@@ -802,9 +820,10 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 			req.GetLedger(), pageSize, opts.GetCursor(), opts.GetFilter() != nil, opts.GetReverse())
 	}
 
-	profileCtx, profile := query.WithProfile(ctx)
+	profile.EnterExecute()
+	cur, err := c.ListAccounts(ctx, req.GetLedger(), pageSizePlusOne(pageSize), opts.GetCursor(), opts.GetFilter(), opts.GetReverse())
+	profile.LeaveExecute()
 
-	cur, err := c.ListAccounts(profileCtx, req.GetLedger(), pageSizePlusOne(pageSize), opts.GetCursor(), opts.GetFilter(), opts.GetReverse())
 	if err != nil {
 		return fmt.Errorf("listing accounts: %w", err)
 	}
@@ -1353,13 +1372,18 @@ func (impl *BucketServiceServerImpl) ListPreparedQueries(ctx context.Context, re
 }
 
 func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+	ctx, profile := query.WithProfile(ctx, wantsProfile(ctx))
+
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
 		return nil, err
 	}
 
-	profileCtx, profile := query.WithProfile(ctx)
+	profile.EnterExecute()
+	resp, err := impl.ctrl.ExecutePreparedQuery(ctx, req)
+	profile.LeaveExecute()
 
-	resp, err := impl.ctrl.ExecutePreparedQuery(profileCtx, req)
+	// Unary response: the reply is marshalled by the gRPC codec after the
+	// handler returns, so there is no measurable delivery phase here.
 	impl.emitProfile(ctx, profile)
 
 	return resp, err
@@ -1384,6 +1408,8 @@ func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *se
 }
 
 func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *servicepb.AggregateVolumesRequest) (*commonpb.AggregateResult, error) {
+	ctx, profile := query.WithProfile(ctx, wantsProfile(ctx))
+
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
 		return nil, err
 	}
@@ -1405,13 +1431,13 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 		}
 	}
 
-	profileCtx, profile := query.WithProfile(ctx)
-
-	result, err := c.AggregateVolumes(profileCtx, req.GetLedger(), req.GetFilter(), query.AggregateOptions{
+	profile.EnterExecute()
+	result, err := c.AggregateVolumes(ctx, req.GetLedger(), req.GetFilter(), query.AggregateOptions{
 		UseMaxPrecision: req.GetUseMaxPrecision(),
 		GroupByPrefixes: req.GetGroupByPrefixes(),
 		CollapseColors:  req.GetCollapseColors(),
 	})
+	profile.LeaveExecute()
 	impl.emitProfile(ctx, profile)
 
 	return result, err
@@ -1596,12 +1622,22 @@ func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.D
 	return resp, nil
 }
 
+// emitProfile closes the request clock and publishes the profile: to the
+// slow-query log / OTel span when the request exceeded the configured
+// threshold, and to the gRPC trailer when the caller asked for it.
+//
+// The threshold is compared against ServerDuration, not the execution total.
+// EN-1859 measured a 56 ms client round-trip whose execution accounted for
+// 2.3 ms: thresholding on execution meant the slow requests this log exists to
+// surface were precisely the ones it could not see.
 func (impl *BucketServiceServerImpl) emitProfile(ctx context.Context, profile *query.QueryProfile) {
 	if profile == nil {
 		return
 	}
 
-	if profile.TotalDuration() >= impl.queryProfileThreshold {
+	profile.Finish()
+
+	if profile.ServerDuration >= impl.queryProfileThreshold {
 		profile.LogTo(impl.logger)
 		profile.EmitToSpan(trace.SpanFromContext(ctx))
 	}

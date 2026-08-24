@@ -1272,6 +1272,59 @@ message QueryProfile {
   int32 materialized_ranges = 5;
   int32 materialized_items = 6;
   IteratorProfile root_iterator = 7;
+
+  // ---- Server-side request timing ----
+  //
+  // The fields above only cover query EXECUTION. The ones below account for
+  // the whole server-side handling of the request, so a caller can tell a slow
+  // network from a slow server.
+
+  // Consumer-independent server cost: handler entry (before request decode) to
+  // the response being ready for delivery, MINUS barrier_duration_us and MINUS
+  // deliver_duration_us. This is the headline number and the only one with an
+  // identical definition on gRPC and HTTP, so the two surfaces are comparable
+  // and it is the right basis for a server-side latency SLO.
+  //
+  // prepare_duration_us + execute_duration_us <= server_duration_us; the
+  // difference is server work outside both phases (response assembly,
+  // pagination trailer, profile emission).
+  int64 server_duration_us = 8;
+
+  // Portion of server_duration_us spent before the query executor was invoked:
+  // authentication, request decode/validation, filter parsing/compilation and
+  // checkpoint-store opening.
+  int64 prepare_duration_us = 9;
+
+  // Portion of server_duration_us spent inside the query executor. Contains
+  // index_duration_us and enrichment_duration_us as sub-phases, plus snapshot
+  // setup, ledger/schema resolution and — when rows are produced lazily
+  // (a follower routing to the leader) — the time spent pulling rows out of
+  // the cursor.
+  int64 execute_duration_us = 10;
+
+  // Time blocked on a read-consistency barrier the CALLER asked for: the Raft
+  // ReadIndex quorum round-trip and the ReadOptions.min_log_sequence read-index
+  // catch-up wait. Deliberately EXCLUDED from server_duration_us — it is a wait
+  // the request opted into, not server cost.
+  int64 barrier_duration_us = 11;
+
+  // Time spent serialising result rows and handing them to the transport.
+  // EXCLUDED from server_duration_us because on a server stream it also
+  // contains consumer back-pressure, which is client cost, not server cost.
+  //
+  // On a gRPC server stream this is the sum of the stream.Send() calls
+  // (marshal + transport write + flow-control wait). Always 0 on HTTP, where
+  // the profile travels in a response header that must be flushed before the
+  // body, putting response serialisation out of reach. Since row serialisation
+  // is excluded from server_duration_us on both surfaces, that asymmetry does
+  // not affect the comparability of the headline number.
+  int64 deliver_duration_us = 12;
+
+  // Handler entry to the first row accepted by the transport. Server streams
+  // only (0 for unary responses). Compare against server_duration_us and
+  // deliver_duration_us to separate "the server was slow to produce anything"
+  // from "the consumer was slow to drain the stream".
+  int64 first_row_duration_us = 13;
 }
 
 // IteratorProfile describes a single iterator node in the query execution tree.

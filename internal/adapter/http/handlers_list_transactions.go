@@ -36,6 +36,13 @@ import (
 // keeps EN-1472 scoped to "expose the reads over HTTP", not "full read-options
 // parity". Same applies to the bucket reads (chapters, signing keys) below.
 func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) {
+	// Start the profile clock before any decode/validation so query-parameter
+	// parsing and filter compilation land in PrepareDuration (EN-1859). The
+	// request is re-bound to the profiled context so drainCursor and the
+	// controller see the same profile.
+	ctx, profile := query.WithProfile(r.Context(), wantsHTTPProfile(r))
+	r = r.WithContext(ctx)
+
 	ledgerName, ok := requireLedgerName(w, r)
 	if !ok {
 		return
@@ -110,9 +117,10 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 
 	filter := combineFilters(filters...)
 
-	ctx, profile := query.WithProfile(r.Context())
-
+	profile.EnterExecute()
 	cursor, err := s.backend.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
+	profile.LeaveExecute()
+
 	if err != nil {
 		handleError(w, r, err)
 
@@ -124,9 +132,6 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if wantsHTTPProfile(r) {
-		writeProfileHeader(w, profile)
-	}
-
+	finishProfile(w, r, profile)
 	writeOKChecked(w, r, transactions)
 }

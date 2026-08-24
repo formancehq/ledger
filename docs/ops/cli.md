@@ -1781,7 +1781,7 @@ ledgerctl accounts aggregate-volumes [flags]
 | `--filter` | | Filter expression (same DSL as account list) |
 | `--min-log-sequence` | `0` | Minimum log sequence before reading |
 | `--checkpoint-id` | `0` | Query checkpoint ID (0 = live data) |
-| `--analyze` | `false` | Display query execution profile |
+| `--analyze` | `false` | Display the query profile: server-side phase timing (prepare/execute/barrier/deliver) plus iterator stats |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
@@ -3669,7 +3669,7 @@ ledgerctl queries execute <name> --ledger <ledger-name> [flags]
 | `--page-size` | `10` | Number of results per page |
 | `--mode` | `list` | Query mode: `list` or `aggregate` |
 | `--min-log-sequence` | `0` | Minimum log sequence before reading |
-| `--analyze` | `false` | Display query execution profile |
+| `--analyze` | `false` | Display the query profile: server-side phase timing (prepare/execute/barrier/deliver) plus iterator stats |
 | `--timeout` | `10s` | Request timeout |
 
 **Examples:**
@@ -4213,7 +4213,7 @@ ledger run --grpc-slow-threshold 500ms [other flags...]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--query-profile-threshold` | duration | `10ms` | Log and emit OTel attributes for queries exceeding this duration (0 to disable) |
+| `--query-profile-threshold` | duration | `10ms` | Log and emit OTel attributes for queries whose **server duration** exceeds this value (0 to disable) |
 
 ```bash
 # Log queries slower than 50ms
@@ -4222,6 +4222,15 @@ ledger run --query-profile-threshold 50ms [other flags...]
 # Disable query profiling
 ledger run --query-profile-threshold 0 [other flags...]
 ```
+
+The threshold is compared against `server_duration_us` — the whole server-side
+handling of the request (decode, filter compilation, execution, response
+assembly), excluding the caller-requested read barrier and the response delivery.
+It is not the query execution time alone, so a request that spends its time in
+request decoding or filter compilation is caught as well.
+
+See [query-profile.md](../technical/architecture/subsystems/read-path/query-profile.md)
+for the full phase model and what each duration includes.
 
 ---
 

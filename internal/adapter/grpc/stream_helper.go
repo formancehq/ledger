@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -12,6 +13,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // NextCursorTrailerKey is the gRPC trailer key under which streaming list
@@ -41,6 +43,26 @@ const NextCursorTrailerKey = "x-next-cursor"
 // Callers must size the source cursor for pageSize+1 items so the peek can
 // fire. Pass pageSize == 0 (and cursorOf == nil) to drain unbounded without
 // emitting a trailer.
+//
+// # Phase attribution (EN-1859)
+//
+// The loop below is where a streaming read spends everything the QueryProfile
+// execution counters cannot see: row serialisation, the transport write, and
+// any time blocked on a slow consumer. It therefore splits its own wall time
+// between two profile phases with opposite meanings:
+//
+//   - cur.Next() is row PRODUCTION and is charged to the execution phase. It is
+//     near-free for an eagerly materialised local cursor, but on a follower that
+//     routed the read to the leader each Next() is an upstream stream receive,
+//     which is genuine server-side query cost.
+//   - stream.Send() is DELIVERY. It contains flow-control back-pressure, so it
+//     is deliberately kept out of ServerDuration — a total that grew because the
+//     client stopped reading would mislead rather than inform.
+//
+// The per-row split costs two time.Now() per row, so it is only performed when
+// the caller actually requested the profile. Otherwise the loop is bracketed
+// once and charged wholly to delivery: conservative for the slow-query log
+// (ServerDuration can only be under-reported, never inflated by the consumer).
 func sendPagedToStream[Res any](
 	ctx context.Context,
 	cur cursor.Cursor[*Res],
@@ -54,6 +76,17 @@ func sendPagedToStream[Res any](
 	}()
 
 	span := trace.SpanFromContext(ctx)
+
+	profile := query.ProfileFromContext(ctx)
+	perRow := profile.Detailed()
+
+	if profile != nil && !perRow {
+		loopStart := time.Now()
+
+		defer func() {
+			profile.AddDelivery(time.Since(loopStart))
+		}()
+	}
 
 	var (
 		count    uint32
@@ -71,7 +104,13 @@ func sendPagedToStream[Res any](
 	}
 
 	for {
+		produceStart := nowIf(perRow)
 		item, err := cur.Next()
+
+		if perRow {
+			profile.AddProduction(time.Since(produceStart))
+		}
+
 		if err != nil {
 			span.SetAttributes(attribute.Int64("stream.items_sent", int64(count)))
 
@@ -106,13 +145,33 @@ func sendPagedToStream[Res any](
 			return nil
 		}
 
-		if err := stream.Send(item); err != nil {
+		deliverStart := nowIf(perRow)
+		sendErr := stream.Send(item)
+
+		if perRow {
+			profile.AddDelivery(time.Since(deliverStart))
+		}
+
+		if sendErr != nil {
 			span.SetAttributes(attribute.Int64("stream.items_sent", int64(count)))
 
-			return fmt.Errorf("sending %s: %w", itemName, err)
+			return fmt.Errorf("sending %s: %w", itemName, sendErr)
 		}
+
+		profile.MarkFirstRow()
 
 		lastSent = item
 		count++
 	}
+}
+
+// nowIf returns the current instant only when the caller intends to use it,
+// keeping the per-row clock reads out of a request that did not ask for the
+// detailed profile.
+func nowIf(enabled bool) time.Time {
+	if !enabled {
+		return time.Time{}
+	}
+
+	return time.Now()
 }

@@ -725,9 +725,13 @@ paths:
             Filter transactions with timestamp < endDate (exclusive, RFC3339 format).
             Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
         - $ref: '#/components/parameters/ListFilter'
+        - $ref: '#/components/parameters/QueryProfile'
       responses:
         '200':
           description: Transactions retrieved successfully.
+          headers:
+            X-Query-Profile-Result:
+              $ref: '#/components/headers/QueryProfileResult'
           content:
             application/json:
               schema:
@@ -815,9 +819,13 @@ paths:
           schema:
             type: string
         - $ref: '#/components/parameters/ListFilter'
+        - $ref: '#/components/parameters/QueryProfile'
       responses:
         '200':
           description: List of accounts
+          headers:
+            X-Query-Profile-Result:
+              $ref: '#/components/headers/QueryProfileResult'
           content:
             application/json:
               schema:
@@ -924,9 +932,13 @@ paths:
           schema:
             type: boolean
             default: false
+        - $ref: '#/components/parameters/QueryProfile'
       responses:
         '200':
           description: Aggregated volumes retrieved successfully
+          headers:
+            X-Query-Profile-Result:
+              $ref: '#/components/headers/QueryProfileResult'
           content:
             application/json:
               schema:
@@ -2017,6 +2029,7 @@ paths:
           description: Cursor for pagination (overrides body value)
           schema:
             type: string
+        - $ref: '#/components/parameters/QueryProfile'
       requestBody:
         required: false
         content:
@@ -2026,6 +2039,9 @@ paths:
       responses:
         '200':
           description: Query executed successfully
+          headers:
+            X-Query-Profile-Result:
+              $ref: '#/components/headers/QueryProfileResult'
           content:
             application/json:
               schema:
@@ -2925,6 +2941,29 @@ components:
         maxLength: 256
       description: Idempotency key for the request
 
+    QueryProfile:
+      name: X-Query-Profile
+      in: header
+      required: false
+      schema:
+        type: string
+      description: |
+        Set to any non-empty value to receive the query profile in the
+        `X-Query-Profile-Result` response header.
+
+        The profile reports server-side request timing (how long the server spent
+        handling the request, broken down into prepare / execute / read-barrier /
+        deliver phases) plus the query execution plan. Use it to tell a slow
+        network from a slow server: `serverDurationUs` is the
+        consumer-independent server cost, and it excludes both the
+        caller-requested read barrier and response delivery.
+
+        Supported on the transactions list, accounts list, aggregated volumes and
+        prepared-query execution endpoints. The equivalent gRPC opt-in is the
+        `x-query-profile` request metadata, answered in the
+        `x-query-profile-result-bin` trailer; `serverDurationUs` has the same
+        definition on both surfaces, so the two are directly comparable.
+
     ListFilter:
       name: filter
       in: query
@@ -2963,6 +3002,36 @@ components:
         Note: bare audit fields (`outcome`, `ledger`, `seq`, `proposal_id`,
         `timestamp`, `log_seq`, `caller_subject`, `order_type`) have no
         structured JSON form and must be passed in the textual representation.
+
+  headers:
+    QueryProfileResult:
+      description: |
+        Query profile for this request, returned only when the request carried the
+        `X-Query-Profile` header. The value is the base64 (standard alphabet)
+        encoding of a serialized `QueryProfile` protobuf message
+        (`misc/proto/bucket.proto`).
+
+        Key durations, all in microseconds:
+
+          - `serverDurationUs` — consumer-independent server cost: request entry
+            to response-ready, excluding the read barrier and response delivery.
+            This is the number to build a latency SLO on, and it has the same
+            definition over gRPC.
+          - `prepareDurationUs` — request decode, validation and filter
+            compilation.
+          - `executeDurationUs` — query execution (contains
+            `indexDurationUs` + `enrichmentDurationUs`).
+          - `barrierDurationUs` — time blocked on the caller-requested read
+            consistency barrier. Excluded from `serverDurationUs`.
+          - `deliverDurationUs` — response serialization and transport hand-off.
+            Excluded from `serverDurationUs`. Always 0 over HTTP: this header
+            must be flushed before the response body, so the body write is out
+            of reach. It is populated for gRPC server streams.
+          - `firstRowDurationUs` — always 0 over HTTP (the response is
+            buffered); populated for gRPC server streams.
+      schema:
+        type: string
+        format: byte
 
   responses:
     ServiceUnavailable:

@@ -23,7 +23,7 @@ const (
 
 // AddAnalyzeFlag registers --analyze (with --analyse alias) on the command.
 func AddAnalyzeFlag(cmd *cobra.Command) {
-	cmd.Flags().Bool("analyze", false, "Display query execution profile (iterator stats, timing)")
+	cmd.Flags().Bool("analyze", false, "Display query profile (server-side phase timing, iterator stats)")
 
 	prev := cmd.Flags().GetNormalizeFunc()
 	cmd.Flags().SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {
@@ -74,8 +74,24 @@ func RenderProfile(profile *servicepb.QueryProfile) {
 	pterm.Println()
 	pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgDarkGray)).Println("Query Profile")
 
+	// Server timing first: it is the number that answers "is the server or the
+	// network slow?", and the execution breakdown below is a subset of it.
+	serverTiming := pterm.TableData{
+		{"Server Phase", "Value"},
+		{"Server Duration (total)", formatDurationUs(profile.GetServerDurationUs())},
+		{"  Prepare (decode/validate/compile)", formatDurationUs(profile.GetPrepareDurationUs())},
+		{"  Execute (index+enrich+snapshot)", formatDurationUs(profile.GetExecuteDurationUs())},
+		{"  Other server work", formatDurationUs(residualDurationUs(profile))},
+		{"Read Barrier (caller-requested wait)", formatDurationUs(profile.GetBarrierDurationUs())},
+		{"Deliver (serialise + stream write)", formatDurationUs(profile.GetDeliverDurationUs())},
+		{"Time To First Row", formatDurationUs(profile.GetFirstRowDurationUs())},
+	}
+	_ = pterm.DefaultTable.WithHasHeader().WithData(serverTiming).Render()
+
+	pterm.Println()
+
 	tableData := pterm.TableData{
-		{"Metric", "Value"},
+		{"Execution Metric", "Value"},
 		{"Index Duration", formatDurationUs(profile.GetIndexDurationUs())},
 		{"Enrichment Duration", formatDurationUs(profile.GetEnrichmentDurationUs())},
 		{"Total Duration", formatDurationUs(profile.GetIndexDurationUs() + profile.GetEnrichmentDurationUs())},
@@ -91,6 +107,19 @@ func RenderProfile(profile *servicepb.QueryProfile) {
 		pterm.DefaultSection.Println("Iterator Tree")
 		renderIteratorTree(profile.GetRootIterator(), 0)
 	}
+}
+
+// residualDurationUs is the part of server_duration_us the server did not
+// attribute to the prepare or execute phase (response assembly, pagination
+// trailer, profile emission). Surfacing it keeps the breakdown honest: a large
+// residual means the phase boundaries need refining, not that the time vanished.
+func residualDurationUs(profile *servicepb.QueryProfile) int64 {
+	residual := profile.GetServerDurationUs() - profile.GetPrepareDurationUs() - profile.GetExecuteDurationUs()
+	if residual < 0 {
+		return 0
+	}
+
+	return residual
 }
 
 func formatDurationUs(us int64) string {

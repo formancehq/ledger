@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -76,7 +77,14 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 		return c, nil, err
 	}
 
+	// The ReadIndex quorum round-trip plus the local WaitForApplied catch-up is
+	// consensus latency incurred to honour the caller's linearizable-read
+	// request, not query work. Charge it to the profile's barrier phase so it is
+	// visible but excluded from the server-cost total (EN-1859).
+	barrierStart := time.Now()
 	barrier, err := b.ReadIndexAndWait(ctx)
+	query.ProfileFromContext(ctx).AddBarrierWait(time.Since(barrierStart))
+
 	if err == nil {
 		span.SetAttributes(attribute.String("route", "local_linearizable"))
 

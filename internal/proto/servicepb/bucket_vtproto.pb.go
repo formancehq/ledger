@@ -2967,6 +2967,12 @@ func (m *QueryProfile) CloneVT() *QueryProfile {
 	r.MaterializedRanges = m.MaterializedRanges
 	r.MaterializedItems = m.MaterializedItems
 	r.RootIterator = m.RootIterator.CloneVT()
+	r.ServerDurationUs = m.ServerDurationUs
+	r.PrepareDurationUs = m.PrepareDurationUs
+	r.ExecuteDurationUs = m.ExecuteDurationUs
+	r.BarrierDurationUs = m.BarrierDurationUs
+	r.DeliverDurationUs = m.DeliverDurationUs
+	r.FirstRowDurationUs = m.FirstRowDurationUs
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -7844,6 +7850,24 @@ func (this *QueryProfile) EqualVT(that *QueryProfile) bool {
 		return false
 	}
 	if !this.RootIterator.EqualVT(that.RootIterator) {
+		return false
+	}
+	if this.ServerDurationUs != that.ServerDurationUs {
+		return false
+	}
+	if this.PrepareDurationUs != that.PrepareDurationUs {
+		return false
+	}
+	if this.ExecuteDurationUs != that.ExecuteDurationUs {
+		return false
+	}
+	if this.BarrierDurationUs != that.BarrierDurationUs {
+		return false
+	}
+	if this.DeliverDurationUs != that.DeliverDurationUs {
+		return false
+	}
+	if this.FirstRowDurationUs != that.FirstRowDurationUs {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -15705,6 +15729,36 @@ func (m *QueryProfile) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.FirstRowDurationUs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FirstRowDurationUs))
+		i--
+		dAtA[i] = 0x68
+	}
+	if m.DeliverDurationUs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DeliverDurationUs))
+		i--
+		dAtA[i] = 0x60
+	}
+	if m.BarrierDurationUs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BarrierDurationUs))
+		i--
+		dAtA[i] = 0x58
+	}
+	if m.ExecuteDurationUs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ExecuteDurationUs))
+		i--
+		dAtA[i] = 0x50
+	}
+	if m.PrepareDurationUs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PrepareDurationUs))
+		i--
+		dAtA[i] = 0x48
+	}
+	if m.ServerDurationUs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ServerDurationUs))
+		i--
+		dAtA[i] = 0x40
+	}
 	if m.RootIterator != nil {
 		size, err := m.RootIterator.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
@@ -19421,6 +19475,24 @@ func (m *QueryProfile) SizeVT() (n int) {
 	if m.RootIterator != nil {
 		l = m.RootIterator.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.ServerDurationUs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ServerDurationUs))
+	}
+	if m.PrepareDurationUs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.PrepareDurationUs))
+	}
+	if m.ExecuteDurationUs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ExecuteDurationUs))
+	}
+	if m.BarrierDurationUs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.BarrierDurationUs))
+	}
+	if m.DeliverDurationUs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.DeliverDurationUs))
+	}
+	if m.FirstRowDurationUs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.FirstRowDurationUs))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -36819,6 +36891,120 @@ func (m *QueryProfile) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ServerDurationUs", wireType)
+			}
+			m.ServerDurationUs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ServerDurationUs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PrepareDurationUs", wireType)
+			}
+			m.PrepareDurationUs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PrepareDurationUs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ExecuteDurationUs", wireType)
+			}
+			m.ExecuteDurationUs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ExecuteDurationUs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 11:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BarrierDurationUs", wireType)
+			}
+			m.BarrierDurationUs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.BarrierDurationUs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 12:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeliverDurationUs", wireType)
+			}
+			m.DeliverDurationUs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DeliverDurationUs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 13:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FirstRowDurationUs", wireType)
+			}
+			m.FirstRowDurationUs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.FirstRowDurationUs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

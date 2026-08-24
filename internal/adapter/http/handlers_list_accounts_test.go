@@ -187,6 +187,19 @@ func TestHandleListAccounts_WithProfileHeader(t *testing.T) {
 	require.NoError(t, proto.Unmarshal(data, &pb))
 	assert.Equal(t, int64(2000), pb.GetIndexDurationUs())
 	assert.Equal(t, int32(1), pb.GetItemsCollected())
+
+	// Server-side request timing (EN-1859): the whole handler is measured, not
+	// just execution, so the total must be at least as large as the execution
+	// time the fake controller reported.
+	assert.GreaterOrEqual(t, pb.GetServerDurationUs(), pb.GetExecuteDurationUs(),
+		"execution is a phase of the server total, not a peer of it")
+	assert.GreaterOrEqual(t, pb.GetServerDurationUs(),
+		pb.GetPrepareDurationUs()+pb.GetExecuteDurationUs(),
+		"prepare + execute must fit inside the server total")
+	assert.Zero(t, pb.GetFirstRowDurationUs(),
+		"HTTP buffers the whole response: there is no per-row stream hand-off to timestamp")
+	assert.Zero(t, pb.GetDeliverDurationUs(),
+		"the profile header must precede the body, so HTTP cannot measure response delivery")
 }
 
 func TestHandleListAccounts_WithoutProfileHeader(t *testing.T) {
