@@ -1875,25 +1875,26 @@ func (b *WriteSet) DeleteQueryCheckpoint(checkpointID uint64) {
 }
 
 // LiveQueryCheckpointCount returns how many query checkpoints would be live if
-// this proposal committed now: the recovered set plus creates staged so far,
-// minus committed IDs a staged delete removes. Used by the create handler to
-// enforce the replicated policy cap.
+// this proposal committed now: the recovered set with this proposal's staged
+// creates added and staged deletes removed. A staged delete of a checkpoint
+// created earlier in the same proposal nets to zero, so the effective set is
+// computed directly rather than counting saves and deletes independently. Used
+// by the create handler to enforce the replicated policy cap.
 func (b *WriteSet) LiveQueryCheckpointCount() uint64 {
-	n := len(b.fsm.State.LiveQueryCheckpointIDs)
+	live := make(map[uint64]struct{}, len(b.fsm.State.LiveQueryCheckpointIDs)+len(b.pendingQueryCheckpointSaves))
+	for id := range b.fsm.State.LiveQueryCheckpointIDs {
+		live[id] = struct{}{}
+	}
 
 	for _, cp := range b.pendingQueryCheckpointSaves {
-		if _, ok := b.fsm.State.LiveQueryCheckpointIDs[cp.GetCheckpointId()]; !ok {
-			n++
-		}
+		live[cp.GetCheckpointId()] = struct{}{}
 	}
 
 	for _, id := range b.pendingQueryCheckpointDeletes {
-		if _, ok := b.fsm.State.LiveQueryCheckpointIDs[id]; ok {
-			n--
-		}
+		delete(live, id)
 	}
 
-	return uint64(n)
+	return uint64(len(live))
 }
 
 // QueryCheckpointExists reports whether the checkpoint id is live, accounting
