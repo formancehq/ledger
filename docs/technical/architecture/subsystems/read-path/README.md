@@ -1,6 +1,6 @@
 # Read Path
 
-The CQRS read side (`internal/application/ctrl` reads, `internal/query`, `internal/storage/readstore`). Every read goes through a `ReadIndex` quorum check (linearizability barrier), then iterates over the inverted index in the read store, enriching candidate entity IDs with volumes and metadata from the main store.
+The CQRS read side (`internal/application/ctrl` reads, `internal/query`, `internal/storage/readstore`). Default live reads go through a `ReadIndex` quorum check (linearizability barrier). Indexed entity-list reads then iterate over the inverted index in the read store, enriching candidate entity IDs with volumes and metadata from the main store. Point reads and main-store-only queries use the same barrier but their own main-store read path; they do not iterate the inverted index. Explicit stale and checkpoint reads have the exceptions documented in the pipeline pages.
 
 ## Documents
 
@@ -17,5 +17,5 @@ The CQRS read side (`internal/application/ctrl` reads, `internal/query`, `intern
 ## Related
 
 - [Indexer](../indexer/) — populates the read store the query path consumes.
-- [Consensus](../consensus/) — `ReadIndex` quorum that gates every read.
+- [Consensus](../consensus/) — `ReadIndex` quorum that gates default live reads (with stale/checkpoint exceptions).
 - [FSM](../fsm/) — what the read path waits to catch up to via `min_log_sequence`.
