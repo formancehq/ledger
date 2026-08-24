@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -18,8 +19,21 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
+
+// withQueryCheckpointLimit sets the desired cluster-policy query-checkpoint
+// limit for a node, so the FSM caps live checkpoints at n once the reconciler
+// commits the policy.
+func withQueryCheckpointLimit(n uint64) testservice.InstrumentationFunc {
+	return func(_ context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--query-checkpoint-limit", strconv.FormatUint(n, 10))
+
+		return nil
+	}
+}
 
 var _ = Describe("Query Checkpoints", func() {
 
@@ -553,3 +567,74 @@ func aggregateAssets(result *commonpb.AggregateResult) []string {
 
 	return assets
 }
+
+// FSM-enforced live-checkpoint cap (EN-1501): the limit comes from the
+// Raft-replicated cluster policy, and CreateQueryCheckpoint / DeleteQueryCheckpoint
+// are enforced in the FSM apply path. This node starts with a low limit so the
+// cap is reached quickly.
+var _ = Describe("Query Checkpoints live cap", Ordered, func() {
+	var (
+		ctx           context.Context
+		client        servicepb.BucketServiceClient
+		clusterClient clusterpb.ClusterServiceClient
+	)
+
+	const (
+		limit      = 2
+		ledgerName = "qcp-cap"
+	)
+
+	BeforeAll(func() {
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode(withQueryCheckpointLimit(limit))
+		client = node.Client
+		clusterClient = node.ClusterClient
+
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		Expect(err).To(Succeed())
+	})
+
+	It("allows creating up to the cap", func() {
+		for i := 0; i < limit; i++ {
+			_, err := clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+			Expect(err).To(Succeed(), "creation %d of %d must succeed", i+1, limit)
+		}
+
+		resp, err := clusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+		Expect(err).To(Succeed())
+		Expect(resp.GetCheckpoints()).To(HaveLen(limit))
+	})
+
+	It("rejects creation past the cap with CHECKPOINT_LIMIT_REACHED (FailedPrecondition)", func() {
+		_, err := clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))
+
+		info := actions.ExtractGRPCErrorInfo(err)
+		Expect(info).NotTo(BeNil())
+		Expect(info.Reason).To(Equal(domain.ErrReasonCheckpointLimitReached))
+	})
+
+	It("frees a slot on delete so creation succeeds again", func() {
+		list, err := clusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+		Expect(err).To(Succeed())
+		Expect(list.GetCheckpoints()).NotTo(BeEmpty())
+
+		victim := list.GetCheckpoints()[0].GetCheckpointId()
+		_, err = clusterClient.DeleteQueryCheckpoint(ctx, &clusterpb.DeleteQueryCheckpointRequest{CheckpointId: victim})
+		Expect(err).To(Succeed())
+
+		_, err = clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+		Expect(err).To(Succeed(), "a slot was freed, so creation must succeed again")
+	})
+
+	It("returns CHECKPOINT_NOT_FOUND when deleting a non-live checkpoint", func() {
+		_, err := clusterClient.DeleteQueryCheckpoint(ctx, &clusterpb.DeleteQueryCheckpointRequest{CheckpointId: 999999})
+		Expect(err).To(HaveOccurred())
+		Expect(status.Code(err)).To(Equal(codes.NotFound))
+
+		info := actions.ExtractGRPCErrorInfo(err)
+		Expect(info).NotTo(BeNil())
+		Expect(info.Reason).To(Equal(domain.ErrReasonCheckpointNotFound))
+	})
+})
