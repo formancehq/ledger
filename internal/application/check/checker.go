@@ -643,7 +643,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
-						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), replayWriter, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), payload.Apply.GetLog().GetDate(), replayWriter, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 
