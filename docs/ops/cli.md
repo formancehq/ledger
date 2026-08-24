@@ -538,8 +538,9 @@ ledgerctl ledgers set-metadata-type [flags]
 - Always O(1): stored metadata values and log payloads are immutable. The
   declared type only affects the forward-index encoding. Type changes —
   including back-to-back retypes — apply immediately. Range-query indexes
-  are rebuilt asynchronously; query the index's `BuildStatus` to know when
-  the new encoding is fully indexed.
+  are rebuilt asynchronously; query the index's `currentVersion` on
+  `ledgerctl ledgers list-indexes` (>0 once the replica's rewrite has
+  switched live) to know when the new encoding is fully indexed.
 
 **Example:**
 

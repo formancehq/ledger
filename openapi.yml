@@ -2715,10 +2715,9 @@ paths:
     get:
       summary: Get a single index registry entry
       description: |
-        Returns the `Index` registry entry (id, buildStatus, ledger,
-        createdAt, forwardEncodingVersion) for a single
-        index, serialized in protobuf-JSON camelCase. Requires
-        `ledger:LedgerRead` scope.
+        Returns the `Index` registry entry (id, ledger, createdAt,
+        forwardEncodingVersion) for a single index, serialized in
+        protobuf-JSON camelCase. Requires `ledger:LedgerRead` scope.
       operationId: getIndex
       tags:
         - Indexes
