@@ -64,7 +64,9 @@ git merge-base --is-ancestor "$head_sha" "$candidate_sha" || { echo "AI_PR_ADOPT
 
 repo_parent=$(dirname "$repo_root")
 repo_name=$(basename "$repo_root")
-run_dir=$(mktemp -d "$repo_parent/.${repo_name}-ai-worktrees/adopt-$pr_number.XXXXXX")
+worktree_parent="$repo_parent/.${repo_name}-ai-worktrees"
+mkdir -p "$worktree_parent"
+run_dir=$(mktemp -d "$worktree_parent/adopt-$pr_number.XXXXXX")
 candidate_worktree="$run_dir/candidate"
 trusted_worktree="$run_dir/trusted-tools"
 review_loop_binary="$run_dir/review-loop"
