@@ -87,7 +87,9 @@ Checkpoint reads (see below) ignore `min_log_sequence` — a frozen checkpoint i
 
 ## Pebble snapshot
 
-`store.NewReadHandle()` returns a Pebble snapshot. Every read in the controller layer uses the **same** snapshot for both the read store iterators (inverted index) and the main store reads (enrichment with volumes, metadata, transaction bodies). This is what makes a paginated `ListAccounts` consistent: page 2 sees the same world page 1 saw, even if the FSM committed new writes in between.
+`store.NewReadHandle()` returns a Pebble snapshot. Within one controller request, the read-store iterators (inverted index) and main-store enrichment (volumes, metadata, transaction bodies) use the **same** snapshot. The handle is owned by the returned cursor and is closed when that cursor is closed. A paginated API call is streamed from that one cursor; when a client requests a subsequent page using the `x-next-cursor`, the server creates a new controller request and therefore a new snapshot.
+
+The cursor carries only the exclusive resume position (for example, an account address or transaction ID); it does not identify or retain the Pebble snapshot. Consequently, point-in-time consistency is guaranteed within each request/page, but there is no general snapshot-consistency guarantee across separate pages. Inserts, deletes, or updates committed between requests may therefore affect later pages according to the documented cursor ordering and filtering semantics. Duplications or omissions across pages under concurrent writes are not, by themselves, evidence of a product defect unless an API contract explicitly promises a cross-page snapshot.
 
 Multiple concurrent readers share snapshots cheaply (Pebble's snapshot is a versioned reference, not a copy).
 
