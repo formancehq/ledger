@@ -47,6 +47,80 @@ func TestSnapshotter_SaveAndLoad(t *testing.T) {
 	require.Equal(t, []uint64{1, 2, 3}, loaded.GetMetadata().GetConfState().GetVoters())
 }
 
+func TestSnapshotter_SaveRecreatesMissingDir(t *testing.T) {
+	t.Parallel()
+
+	s := newTestSnapshotter(t)
+	require.NoError(t, os.RemoveAll(s.dir))
+
+	require.NoError(t, s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(9000), Term: proto.Uint64(7)},
+	}))
+
+	loaded, err := s.Load()
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	require.Equal(t, uint64(9000), loaded.GetMetadata().GetIndex())
+	require.Equal(t, uint64(7), loaded.GetMetadata().GetTerm())
+}
+
+func TestSnapshotter_SaveRecreatesMissingAncestors(t *testing.T) {
+	t.Parallel()
+
+	walDir := filepath.Join(t.TempDir(), "waldir")
+	s, err := NewSnapshotter(filepath.Join(walDir, snapDir), logging.Testing())
+	require.NoError(t, err)
+
+	// The whole WAL directory, not just the snapshot directory: Save has to
+	// recreate every level it needs.
+	require.NoError(t, os.RemoveAll(walDir))
+
+	require.NoError(t, s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(11), Term: proto.Uint64(2)},
+	}))
+
+	loaded, err := s.Load()
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	require.Equal(t, uint64(11), loaded.GetMetadata().GetIndex())
+
+	info, err := os.Stat(walDir)
+	require.NoError(t, err)
+	require.True(t, info.IsDir())
+}
+
+func TestSnapshotter_SaveFailsWhenTheDirCannotBeChecked(t *testing.T) {
+	t.Parallel()
+
+	blocker := filepath.Join(t.TempDir(), "not-a-directory")
+	require.NoError(t, os.WriteFile(blocker, nil, 0600))
+
+	s := &Snapshotter{dir: filepath.Join(blocker, snapDir), logger: logging.Testing()}
+
+	err := s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(1), Term: proto.Uint64(1)},
+	})
+	require.ErrorContains(t, err, "checking snapshot directory")
+}
+
+func TestSnapshotter_SaveFailsWhenTheDirCannotBeRecreated(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	// A dangling symlink reads as missing but cannot be replaced by a directory,
+	// so the recreation fails on the level below it.
+	dangling := filepath.Join(root, "dangling")
+	require.NoError(t, os.Symlink(filepath.Join(root, "nowhere"), dangling))
+
+	s := &Snapshotter{dir: filepath.Join(dangling, snapDir), logger: logging.Testing()}
+
+	err := s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(1), Term: proto.Uint64(1)},
+	})
+	require.ErrorContains(t, err, "recreating snapshot directory")
+}
+
 func TestSnapshotter_LoadEmpty(t *testing.T) {
 	t.Parallel()
 
