@@ -1781,7 +1781,7 @@ ledgerctl accounts aggregate-volumes [flags]
 | `--filter` | | Filter expression (same DSL as account list) |
 | `--min-log-sequence` | `0` | Minimum log sequence before reading |
 | `--checkpoint-id` | `0` | Query checkpoint ID (0 = live data) |
-| `--analyze` | `false` | Display query execution profile |
+| `--analyze` | `false` | Display the query profile: server-side phase timing (prepare/execute/barrier/deliver) plus iterator stats |
 | `--json` | `false` | Output as JSON |
 | `--timeout` | `10s` | Request timeout |
 
@@ -3669,7 +3669,7 @@ ledgerctl queries execute <name> --ledger <ledger-name> [flags]
 | `--page-size` | `10` | Number of results per page |
 | `--mode` | `list` | Query mode: `list` or `aggregate` |
 | `--min-log-sequence` | `0` | Minimum log sequence before reading |
-| `--analyze` | `false` | Display query execution profile |
+| `--analyze` | `false` | Display the query profile: server-side phase timing (prepare/execute/barrier/deliver) plus iterator stats |
 | `--timeout` | `10s` | Request timeout |
 
 **Examples:**
@@ -4213,15 +4213,42 @@ ledger run --grpc-slow-threshold 500ms [other flags...]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--query-profile-threshold` | duration | `10ms` | Log and emit OTel attributes for queries exceeding this duration (0 to disable) |
+| `--query-profile-threshold` | duration | `10ms` | Log and emit OTel attributes for reads whose total server-side handling exceeds this value (`0` disables) |
 
 ```bash
-# Log queries slower than 50ms
+# Log reads slower than 50ms
 ledger run --query-profile-threshold 50ms [other flags...]
 
-# Disable query profiling
+# Disable the slow-read log entirely
 ledger run --query-profile-threshold 0 [other flags...]
 ```
+
+The threshold is compared against `server_duration_us + deliver_duration_us`: the
+whole server-side handling of the read — authentication, filter compilation,
+execution, response assembly, row serialisation and stream writes — excluding only
+the caller-requested read barrier. It is not the query execution time alone, so a
+read that spends its time authenticating, compiling a filter or serialising rows
+is caught as well. (gRPC protobuf decode happens before the handler and is in
+neither total.)
+
+`0` disables the log. It does not mean "log everything": every duration is `>= 0`,
+so a `0` threshold would otherwise match every single read.
+
+Three things to know before tuning it:
+
+- **It fires on more reads than it did before EN-1859**, which compared query
+  execution time only. The new total is structurally larger.
+- **Span attribute volume grows with it.** Each qualifying read attaches ~14
+  timing attributes plus a rendered iterator-tree string to its OTel span, and
+  that is gated only on the span being recorded, not on a log level. On a
+  read-heavy deployment, raise the threshold (or set `0`) if span payload size
+  matters more than the diagnostics.
+- **A slow client can trip it**, because stream writes are included. The logged
+  breakdown (`serverDurationUs` vs `deliverDurationUs` vs `firstRowDurationUs`)
+  identifies which side was actually slow.
+
+See [query-profile.md](../technical/architecture/subsystems/read-path/query-profile.md)
+for the full phase model and what each duration includes.
 
 ---
 

@@ -203,6 +203,37 @@ func wantsHTTPProfile(r *http.Request) bool {
 	return r.Header.Get(httpHeaderQueryProfile) != ""
 }
 
+// finishProfile stops the request clock and, when the caller asked for it,
+// publishes the profile in the X-Query-Profile-Result response header.
+//
+// Call it once the response value is fully assembled and BEFORE handing it to a
+// response writer, because headers must be flushed ahead of the body.
+//
+// Success paths only, unlike the gRPC handlers which emit on every return. The
+// asymmetry is deliberate: on gRPC the profile also feeds the slow-query log, so
+// a slow *failure* is worth capturing, whereas HTTP has no such consumer — the
+// only reader is a caller who explicitly asked, and every HTTP error already
+// returns a structured ErrorResponse through the shared handleError writer.
+// Threading a profile through that writer for all HTTP handlers, profiled or not,
+// buys a diagnostic header on responses that already explain themselves.
+//
+// That ordering is also why HTTP reports no delivery phase: the body write
+// happens strictly after this header is committed and cannot be measured. Only
+// the marshal step could be, and only by buffering the body — but the profiled
+// routes use three different writers (writeOK, writeOKChecked,
+// writeJSONResponse) whose encoders differ in HTML escaping and map-key
+// ordering, so routing them through one buffered marshaller would silently
+// change their JSON output. Measuring a partial number is not worth an
+// unrelated wire change; server_duration_us excludes row serialisation on gRPC
+// too, so the cross-surface definition stays identical either way.
+func finishProfile(w http.ResponseWriter, r *http.Request, profile *query.QueryProfile) {
+	profile.Finish()
+
+	if wantsHTTPProfile(r) {
+		writeProfileHeader(w, profile)
+	}
+}
+
 // writeProfileHeader serializes the query profile as base64-encoded protobuf
 // and sets it as the X-Query-Profile-Result response header.
 func writeProfileHeader(w http.ResponseWriter, profile *query.QueryProfile) {

@@ -65,6 +65,20 @@ var _ = Describe("QueryProfile", Ordered, func() {
 
 				// Profile should have meaningful data
 				g.Expect(profile.ItemsCollected).To(BeNumerically(">", 0), "should have collected items")
+
+				// Server-side request timing (EN-1859). The whole handler is
+				// measured, so the total is always populated and is never
+				// smaller than the phases it decomposes into.
+				g.Expect(profile.ServerDurationUs).To(BeNumerically(">", 0),
+					"server duration must be reported for every profiled read")
+				g.Expect(profile.ServerDurationUs).To(BeNumerically(">=",
+					profile.PrepareDurationUs+profile.ExecuteDurationUs),
+					"prepare + execute must fit inside the server total")
+				g.Expect(profile.ExecuteDurationUs).To(BeNumerically(">=",
+					profile.IndexDurationUs+profile.EnrichmentDurationUs),
+					"index + enrichment are sub-phases of execution")
+				g.Expect(profile.FirstRowDurationUs).To(BeNumerically(">", 0),
+					"a stream that emitted rows must report time-to-first-row")
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -130,6 +144,17 @@ var _ = Describe("QueryProfile", Ordered, func() {
 				var profile servicepb.QueryProfile
 				g.Expect(proto.Unmarshal([]byte(profileData[0]), &profile)).To(Succeed())
 				g.Expect(profile.ItemsCollected).To(BeNumerically(">", 0), "should have collected items")
+
+				// ListTransactions is server-streaming, so the profile must
+				// separate "the server was slow" from "the consumer was slow":
+				// time-to-first-row and the delivery total are reported apart
+				// from the consumer-independent server total (EN-1859).
+				g.Expect(profile.ServerDurationUs).To(BeNumerically(">", 0))
+				g.Expect(profile.FirstRowDurationUs).To(BeNumerically(">", 0))
+				g.Expect(profile.ExecuteDurationUs).To(BeNumerically(">", 0),
+					"a real read spends measurable time in the executor")
+				g.Expect(profile.ServerDurationUs).To(BeNumerically(">=", profile.ExecuteDurationUs),
+					"execution is a phase of the server total, not a peer of it")
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 const (
@@ -157,10 +159,26 @@ func parseMetadataBody(w http.ResponseWriter, r *http.Request) (map[string]*comm
 // nil), so list handlers that pass it to writeOK serialize `{"data":[]}` rather
 // than `{"data":null}` — the empty-list shape the OpenAPI schemas promise, which
 // generated clients iterate safely.
+//
+// The drain is charged to the profile's execution phase (row production): an
+// HTTP read has no streaming hand-off, so everything the loop does is query
+// work — including, on a follower that routed the read, pulling each row from
+// the leader's stream (EN-1859). Bracketing the whole loop is enough here
+// because the response is buffered; there is no per-row delivery to separate.
 func drainCursor[T any](w http.ResponseWriter, r *http.Request, cursor cursor.Cursor[T]) ([]T, bool) {
 	defer func() {
 		_ = cursor.Close()
 	}()
+
+	// Most HTTP list routes are unprofiled and share this helper, so the clock
+	// reads are skipped entirely rather than fed to a nil profile.
+	if profile := query.ProfileFromContext(r.Context()); profile != nil {
+		drainStart := time.Now()
+
+		defer func() {
+			profile.AddProduction(time.Since(drainStart))
+		}()
+	}
 
 	items := []T{}
 

@@ -13,6 +13,7 @@ The CQRS read side (`internal/application/ctrl` reads, `internal/query`, `intern
 | [query-checkpoints.md](query-checkpoints.md) | Point-in-time snapshots of main store and read index for historical queries. |
 | [typed-metadata.md](typed-metadata.md) | Typed metadata values, per-ledger schema, and hybrid conversion strategy. |
 | [query-filter.md](query-filter.md) | Canonical HTTP QueryFilter surface: dual-format filter, parameter classification, textual/structured asymmetries, date coercion, AND-combination, audit text-only. |
+| [query-profile.md](query-profile.md) | Per-request read diagnostics: server-side phase breakdown (prepare/execute/barrier/deliver), why barrier and delivery are excluded from the server total, gRPC/HTTP parity, iterator tree. |
 
 ## Related
 

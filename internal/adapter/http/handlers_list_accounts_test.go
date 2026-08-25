@@ -171,7 +171,10 @@ func TestHandleListAccounts_WithProfileHeader(t *testing.T) {
 	})
 	r.Header.Set("X-Query-Profile", "true")
 
-	srv.handleListAccounts(w, r)
+	// Through the routing layer's contribution, not the bare handler: the profile
+	// is installed by withQueryProfile and backdated to startRequestClock's stamp,
+	// so a handler called directly reports nothing (EN-1859).
+	startRequestClock(withQueryProfile(http.HandlerFunc(srv.handleListAccounts))).ServeHTTP(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
 
@@ -187,6 +190,21 @@ func TestHandleListAccounts_WithProfileHeader(t *testing.T) {
 	require.NoError(t, proto.Unmarshal(data, &pb))
 	assert.Equal(t, int64(2000), pb.GetIndexDurationUs())
 	assert.Equal(t, int32(1), pb.GetItemsCollected())
+
+	// Server-side request timing (EN-1859). Assert the total is actually
+	// populated first: the ordering checks below are all satisfied by 0 >= 0, so
+	// on their own they would keep passing if the feature were removed.
+	assert.Positive(t, pb.GetServerDurationUs(),
+		"the request clock must have advanced and been reported")
+	assert.GreaterOrEqual(t, pb.GetServerDurationUs(), pb.GetExecuteDurationUs(),
+		"execution is a phase of the server total, not a peer of it")
+	assert.GreaterOrEqual(t, pb.GetServerDurationUs(),
+		pb.GetPrepareDurationUs()+pb.GetExecuteDurationUs(),
+		"prepare + execute must fit inside the server total")
+	assert.Zero(t, pb.GetFirstRowDurationUs(),
+		"HTTP buffers the whole response: there is no per-row stream hand-off to timestamp")
+	assert.Zero(t, pb.GetDeliverDurationUs(),
+		"the profile header must precede the body, so HTTP cannot measure response delivery")
 }
 
 func TestHandleListAccounts_WithoutProfileHeader(t *testing.T) {

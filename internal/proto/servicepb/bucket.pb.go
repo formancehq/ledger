@@ -8353,8 +8353,107 @@ type QueryProfile struct {
 	MaterializedRanges   int32                  `protobuf:"varint,5,opt,name=materialized_ranges,json=materializedRanges,proto3" json:"materialized_ranges,omitempty"`
 	MaterializedItems    int32                  `protobuf:"varint,6,opt,name=materialized_items,json=materializedItems,proto3" json:"materialized_items,omitempty"`
 	RootIterator         *IteratorProfile       `protobuf:"bytes,7,opt,name=root_iterator,json=rootIterator,proto3" json:"root_iterator,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Consumer-independent server cost: server entry to the response being ready
+	// for delivery, MINUS barrier_duration_us and MINUS deliver_duration_us. It
+	// cannot be moved by a slow client.
+	//
+	// "Server entry" is the earliest instrumentable point on each transport, and
+	// that is not quite the same point: on gRPC it is the handler's first
+	// statement, because grpc-go receives and unmarshals the request message
+	// before dispatching, putting protobuf decode out of reach; on HTTP it is the
+	// router chain just before authentication, so query/body decode inside the
+	// handler is included. Both start before authentication, and both end at the
+	// same place, which is what keeps the field comparable — with the caveat that
+	// gRPC message decode is never counted on either side of the comparison.
+	//
+	// It does NOT include row serialisation. On a gRPC server stream, marshalling
+	// and the transport write happen inside one inseparable stream.Send() call, so
+	// serialisation is accounted in deliver_duration_us together with consumer
+	// back-pressure. Choose accordingly:
+	//
+	//   - consumer-independent, excludes serialisation:  server_duration_us
+	//   - complete server-side cost, includes serialisation but also absorbs
+	//     back-pressure on a stream:  server_duration_us + deliver_duration_us
+	//
+	// Neither is a clean latency-SLO basis on a streaming read: the first omits a
+	// real cost that grows with page size, the second admits client behaviour into
+	// the signal. Pick the one whose bias is acceptable for the specific SLO and
+	// say which. The server's own slow-query threshold uses the sum, so that
+	// serialisation and forwarded-read cost cannot hide from it.
+	//
+	// prepare_duration_us + execute_duration_us <= server_duration_us; the
+	// difference is server work outside both phases (response assembly,
+	// pagination trailer, profile emission).
+	ServerDurationUs int64 `protobuf:"varint,8,opt,name=server_duration_us,json=serverDurationUs,proto3" json:"server_duration_us,omitempty"`
+	// Portion of server_duration_us spent before the query executor was invoked:
+	// authentication, request validation, filter parsing/compilation and
+	// checkpoint-store opening — plus, on HTTP, query-parameter and body decoding.
+	// gRPC protobuf decode is NOT here: grpc-go unmarshals the request before the
+	// handler runs (see server_duration_us).
+	PrepareDurationUs int64 `protobuf:"varint,9,opt,name=prepare_duration_us,json=prepareDurationUs,proto3" json:"prepare_duration_us,omitempty"`
+	// Portion of server_duration_us spent inside the query executor. Contains
+	// index_duration_us and enrichment_duration_us as sub-phases, plus snapshot
+	// setup, ledger/schema resolution and — when rows are produced lazily
+	// (a follower routing to the leader) — the time spent pulling rows out of
+	// the cursor.
+	ExecuteDurationUs int64 `protobuf:"varint,10,opt,name=execute_duration_us,json=executeDurationUs,proto3" json:"execute_duration_us,omitempty"`
+	// Time blocked on a read-consistency barrier the CALLER asked for: the Raft
+	// ReadIndex quorum round-trip and the ReadOptions.min_log_sequence read-index
+	// catch-up wait. Deliberately EXCLUDED from server_duration_us — it is a wait
+	// the request opted into, not server cost.
+	//
+	// Only LOCAL waits are measured, and every local wait is measured: a
+	// min_log_sequence catch-up and a ReadIndex attempt are both counted, whether
+	// or not the attempt succeeds and whether or not the read is then forwarded.
+	// Always read this field together with `forwarded`:
+	//
+	//   - forwarded=false: the whole barrier this read paid.
+	//   - forwarded=true, 0: no local wait happened. The remote node's barrier is
+	//     folded into its execution and arrives inside execute_duration_us — 0
+	//     does NOT mean "no barrier was needed".
+	//   - forwarded=true, non-zero: a local wait happened before the read left
+	//     this node, and the remote node's barrier is on top of it inside
+	//     execute_duration_us. The value does NOT identify which wait: a
+	//     min_log_sequence catch-up does not prevent forwarding, and a failed
+	//     ReadIndex attempt (syncing follower, leadership lost mid-quorum) is
+	//     what triggers the fallback. Do not read cluster health off it.
+	//
+	// A failed or superseded wait is still excluded from server_duration_us: the
+	// caller waited for it, and an abandoned quorum round-trip is no more server
+	// work than a completed one.
+	BarrierDurationUs int64 `protobuf:"varint,11,opt,name=barrier_duration_us,json=barrierDurationUs,proto3" json:"barrier_duration_us,omitempty"`
+	// Time spent serialising result rows and handing them to the transport.
+	// EXCLUDED from server_duration_us because on a server stream it also
+	// contains consumer back-pressure, which is client cost, not server cost.
+	//
+	// On a gRPC server stream this is the sum of the stream.Send() calls
+	// (marshal + transport write + flow-control wait). Always 0 on HTTP, where
+	// the profile travels in a response header that must be flushed before the
+	// body, putting response serialisation out of reach. Since row serialisation
+	// is excluded from server_duration_us on both surfaces, that asymmetry does
+	// not affect the comparability of the headline number.
+	DeliverDurationUs int64 `protobuf:"varint,12,opt,name=deliver_duration_us,json=deliverDurationUs,proto3" json:"deliver_duration_us,omitempty"`
+	// Handler entry to the first row accepted by the transport. Compare against
+	// server_duration_us and deliver_duration_us to separate "the server was slow
+	// to produce anything" from "the consumer was slow to drain the stream".
+	//
+	// 0 means no row was ever handed to the transport, which covers three distinct
+	// cases: a streaming read that matched nothing, a unary response (HTTP, and
+	// the AggregateVolumes / ExecutePreparedQuery RPCs — these never hand rows to
+	// a stream), and a streaming read that failed before its first send. Use
+	// items_collected and the RPC's own status to tell them apart.
+	FirstRowDurationUs int64 `protobuf:"varint,13,opt,name=first_row_duration_us,json=firstRowDurationUs,proto3" json:"first_row_duration_us,omitempty"`
+	// True when this node did not serve the read itself but forwarded it to
+	// another node — an explicit leader-consistency read, or the fallback taken
+	// when the local replica is still catching up. The remote node's prepare,
+	// barrier and execution all arrive inside execute_duration_us, so the phase
+	// breakdown describes the local hop only. Its purpose is to stop a zero
+	// barrier_duration_us from being misread as "no barrier was needed"; see that
+	// field for the three cases the pair distinguishes — a forwarded read can
+	// report a non-zero local wait.
+	Forwarded     bool `protobuf:"varint,14,opt,name=forwarded,proto3" json:"forwarded,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *QueryProfile) Reset() {
@@ -8434,6 +8533,55 @@ func (x *QueryProfile) GetRootIterator() *IteratorProfile {
 		return x.RootIterator
 	}
 	return nil
+}
+
+func (x *QueryProfile) GetServerDurationUs() int64 {
+	if x != nil {
+		return x.ServerDurationUs
+	}
+	return 0
+}
+
+func (x *QueryProfile) GetPrepareDurationUs() int64 {
+	if x != nil {
+		return x.PrepareDurationUs
+	}
+	return 0
+}
+
+func (x *QueryProfile) GetExecuteDurationUs() int64 {
+	if x != nil {
+		return x.ExecuteDurationUs
+	}
+	return 0
+}
+
+func (x *QueryProfile) GetBarrierDurationUs() int64 {
+	if x != nil {
+		return x.BarrierDurationUs
+	}
+	return 0
+}
+
+func (x *QueryProfile) GetDeliverDurationUs() int64 {
+	if x != nil {
+		return x.DeliverDurationUs
+	}
+	return 0
+}
+
+func (x *QueryProfile) GetFirstRowDurationUs() int64 {
+	if x != nil {
+		return x.FirstRowDurationUs
+	}
+	return 0
+}
+
+func (x *QueryProfile) GetForwarded() bool {
+	if x != nil {
+		return x.Forwarded
+	}
+	return false
 }
 
 // IteratorProfile describes a single iterator node in the query execution tree.
@@ -9666,7 +9814,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x11use_max_precision\x18\x04 \x01(\bR\x0fuseMaxPrecision\x12*\n" +
 	"\x11group_by_prefixes\x18\x05 \x03(\tR\x0fgroupByPrefixes\x12#\n" +
 	"\rcheckpoint_id\x18\x06 \x01(\x06R\fcheckpointId\x12'\n" +
-	"\x0fcollapse_colors\x18\a \x01(\bR\x0ecollapseColors\"\xde\x02\n" +
+	"\x0fcollapse_colors\x18\a \x01(\bR\x0ecollapseColors\"\x9d\x05\n" +
 	"\fQueryProfile\x12*\n" +
 	"\x11index_duration_us\x18\x01 \x01(\x03R\x0findexDurationUs\x124\n" +
 	"\x16enrichment_duration_us\x18\x02 \x01(\x03R\x14enrichmentDurationUs\x12'\n" +
@@ -9674,7 +9822,15 @@ const file_bucket_proto_rawDesc = "" +
 	"\x0eenriched_count\x18\x04 \x01(\x05R\renrichedCount\x12/\n" +
 	"\x13materialized_ranges\x18\x05 \x01(\x05R\x12materializedRanges\x12-\n" +
 	"\x12materialized_items\x18\x06 \x01(\x05R\x11materializedItems\x12<\n" +
-	"\rroot_iterator\x18\a \x01(\v2\x17.ledger.IteratorProfileR\frootIterator\"\x91\x03\n" +
+	"\rroot_iterator\x18\a \x01(\v2\x17.ledger.IteratorProfileR\frootIterator\x12,\n" +
+	"\x12server_duration_us\x18\b \x01(\x03R\x10serverDurationUs\x12.\n" +
+	"\x13prepare_duration_us\x18\t \x01(\x03R\x11prepareDurationUs\x12.\n" +
+	"\x13execute_duration_us\x18\n" +
+	" \x01(\x03R\x11executeDurationUs\x12.\n" +
+	"\x13barrier_duration_us\x18\v \x01(\x03R\x11barrierDurationUs\x12.\n" +
+	"\x13deliver_duration_us\x18\f \x01(\x03R\x11deliverDurationUs\x121\n" +
+	"\x15first_row_duration_us\x18\r \x01(\x03R\x12firstRowDurationUs\x12\x1c\n" +
+	"\tforwarded\x18\x0e \x01(\bR\tforwarded\"\x91\x03\n" +
 	"\x0fIteratorProfile\x12\x14\n" +
 	"\x05label\x18\x01 \x01(\tR\x05label\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x16\n" +
