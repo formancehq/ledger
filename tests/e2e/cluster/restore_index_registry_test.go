@@ -32,18 +32,29 @@ import (
 // (singleton_driver_model: remove-field-type dropped-index mismatch): after a
 // backup/restore cycle, a removeFieldType on an indexed field reports nothing
 // dropped even though the CreateIndex committed before the backup. The live
-// FSM persists index registry rows in the main store, but the restore rebuild
-// (backup.RebuildDelta → replay.ReplayLedgerLog) discards CreateIndex and
-// DropIndex logs (internal/domain/replay/replay.go, "no state to track"), so
-// a restored store keeps the metadata schema while losing every index
-// registry row. The removal's cascade then finds no entry, dropped_index
-// stays empty, and the index outlives its declaration on the read side.
+// FSM persists index registry rows in the main store, and the restore rebuild
+// (backup.RebuildDelta → replay.ReplayLedgerLog) must fold CreateIndex /
+// DropIndex / the removal cascade / the retype version bump back into them.
+//
+// Per the incremental-restore contract, the registry lifecycle spans the
+// checkpoint boundary: rows seeded BEFORE the full checkpoint are then
+// retyped (version fold over checkpoint state) and cascade-deleted by the
+// delta, one row is created inside the delta, and the restored store must
+// hold the complete logical rows the source held — verified field by field
+// and by a clean CheckStore pass.
 var _ = Describe("Restore index registry", Ordered, func() {
 	const (
 		ledgerName = "idxreg-ledger"
 		s3Bucket   = "restore-index-registry"
 		clusterID  = "idxreg-cluster"
-		fieldKey   = "k0"
+
+		// retypedKey's index is seeded before the checkpoint and version-bumped
+		// by the delta; removedKey's index is seeded before the checkpoint and
+		// cascade-deleted by the delta; deltaKey's index only ever exists in
+		// the delta.
+		retypedKey = "k0"
+		removedKey = "k1"
+		deltaKey   = "k2"
 	)
 
 	// One logical node stops and returns across the three phases, so every
@@ -56,33 +67,37 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		restoreWalDir  string
 		restoreDataDir string
 		minioEndpoint  string
+
+		// sourceRows carries the source node's complete registry rows (keyed
+		// by metadata field key) from Phase 1 into the Phase 3 comparison.
+		sourceRows map[string]*commonpb.Index
 	)
 
-	indexID := &commonpb.IndexID{
-		Kind: &commonpb.IndexID_Metadata{
-			Metadata: &commonpb.MetadataIndexID{
-				Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-				Key:    fieldKey,
+	metaIndexID := func(key string) *commonpb.IndexID {
+		return &commonpb.IndexID{
+			Kind: &commonpb.IndexID_Metadata{
+				Metadata: &commonpb.MetadataIndexID{
+					Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:    key,
+				},
 			},
-		},
+		}
 	}
 
-	// expectRegisteredIndex asserts the (ACCOUNT, k0) metadata index is present
-	// in the ledger's registry. Used both as the live-side premise guard and as
-	// the post-restore check.
-	expectRegisteredIndex := func(client servicepb.BucketServiceClient, phase string) {
+	// registryRow returns the (ACCOUNT, key) metadata index row from the
+	// ledger's registry, or nil when absent.
+	registryRow := func(client servicepb.BucketServiceClient, key string) *commonpb.Index {
 		st, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledgerName})
-		Expect(err).To(Succeed(), "%s: GetIndexStatus", phase)
+		Expect(err).To(Succeed(), "GetIndexStatus")
 
-		found := false
 		for _, e := range st.GetIndexes() {
 			meta := e.GetIndex().GetId().GetMetadata()
-			if meta.GetTarget() == commonpb.TargetType_TARGET_TYPE_ACCOUNT && meta.GetKey() == fieldKey {
-				found = true
+			if meta.GetTarget() == commonpb.TargetType_TARGET_TYPE_ACCOUNT && meta.GetKey() == key {
+				return e.GetIndex()
 			}
 		}
 
-		Expect(found).To(BeTrue(), "%s: metadata index (ACCOUNT, %s) missing from registry: %v", phase, fieldKey, st.GetIndexes())
+		return nil
 	}
 
 	storage := func() *commonpb.BackupStorage {
@@ -137,7 +152,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		Expect(err).To(Succeed())
 	})
 
-	Describe("Phase 1: index registration in the exported delta", Ordered, func() {
+	Describe("Phase 1: registry lifecycle across the checkpoint boundary", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
 			client        servicepb.BucketServiceClient
@@ -169,14 +184,6 @@ var _ = Describe("Restore index registry", Ordered, func() {
 				g.Expect(err).To(Succeed())
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
-
-			// Full checkpoint on the EMPTY store: everything after it lands in
-			// the incremental delta, so the restore reconstructs the registry
-			// purely by replaying the exported log instead of copying
-			// checkpoint files.
-			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
-			Expect(err).To(Succeed())
-			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 
 		AfterAll(func() {
@@ -186,29 +193,84 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			Expect(sourceServer.Stop(stopCtx)).To(Succeed())
 		})
 
-		It("declares the field and creates its index", func() {
+		It("seeds registry rows and checkpoints them", func() {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
 				actions.CreateLedgerAction(ledgerName, nil),
-				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, fieldKey, commonpb.MetadataType_METADATA_TYPE_INT64),
+				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, retypedKey, commonpb.MetadataType_METADATA_TYPE_INT64),
+				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, removedKey, commonpb.MetadataType_METADATA_TYPE_INT64),
 				&servicepb.Request{
 					Type: &servicepb.Request_CreateIndex{
-						CreateIndex: &servicepb.CreateIndexRequest{Ledger: ledgerName, Id: indexID},
+						CreateIndex: &servicepb.CreateIndexRequest{Ledger: ledgerName, Id: metaIndexID(retypedKey)},
+					},
+				},
+				&servicepb.Request{
+					Type: &servicepb.Request_CreateIndex{
+						CreateIndex: &servicepb.CreateIndexRequest{Ledger: ledgerName, Id: metaIndexID(removedKey)},
 					},
 				},
 			))
 			Expect(err).To(Succeed())
+
+			// The full checkpoint carries both rows; everything after this
+			// backup reaches the restored store only through the delta fold.
+			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
+			Expect(err).To(Succeed())
+			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 
-		It("serves the index back on the live node", func() {
-			// Premise guard: the live path must register the index; without it
-			// the restore assertions would be vacuous.
-			expectRegisteredIndex(client, "live")
+		It("mutates the registry in the delta", func() {
+			// Retype: the delta must fold a version bump onto a checkpoint row.
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, retypedKey, commonpb.MetadataType_METADATA_TYPE_UINT64),
+			))
+			Expect(err).To(Succeed())
+
+			// Delta-created row.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, deltaKey, commonpb.MetadataType_METADATA_TYPE_INT64),
+				&servicepb.Request{
+					Type: &servicepb.Request_CreateIndex{
+						CreateIndex: &servicepb.CreateIndexRequest{Ledger: ledgerName, Id: metaIndexID(deltaKey)},
+					},
+				},
+			))
+			Expect(err).To(Succeed())
+
+			// Cascade-delete a checkpoint row; the live side must report the
+			// drop (the model finding's premise).
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.RemoveMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, removedKey),
+			))
+			Expect(err).To(Succeed())
+
+			var removed *commonpb.RemovedMetadataFieldTypeLog
+			for _, lg := range resp.GetLogs() {
+				if rm := lg.GetPayload().GetApply().GetLog().GetData().GetRemovedMetadataFieldType(); rm != nil {
+					removed = rm
+				}
+			}
+			Expect(removed).ToNot(BeNil())
+			Expect(removed.GetDroppedIndex()).ToNot(BeNil(), "live premise: the removal must drop the checkpoint-seeded index")
 		})
 
-		It("exports the delta", func() {
+		It("exports the delta and captures the source registry", func() {
 			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+
+			sourceRows = map[string]*commonpb.Index{
+				retypedKey: registryRow(client, retypedKey),
+				removedKey: registryRow(client, removedKey),
+				deltaKey:   registryRow(client, deltaKey),
+			}
+
+			// Source premises: the comparison below is only meaningful if the
+			// live node holds the expected end state.
+			Expect(sourceRows[retypedKey]).ToNot(BeNil())
+			Expect(sourceRows[retypedKey].GetForwardEncodingVersion()).To(Equal(uint32(2)), "the retype must have bumped the checkpoint row")
+			Expect(sourceRows[removedKey]).To(BeNil(), "the cascade must have deleted the checkpoint row")
+			Expect(sourceRows[deltaKey]).ToNot(BeNil())
+			Expect(sourceRows[deltaKey].GetForwardEncodingVersion()).To(Equal(uint32(1)))
 		})
 	})
 
@@ -306,13 +368,37 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			_ = os.RemoveAll(restoreDataDir)
 		})
 
-		It("preserves the index registry entry across the rebuild", func() {
-			expectRegisteredIndex(client, "restored")
+		It("restores the complete registry rows", func() {
+			// expectSameRow compares the full logical row, not just presence:
+			// identity, scope, forward-encoding version, build status and
+			// creation date must all survive the checkpoint+delta composition.
+			expectSameRow := func(key string) {
+				source := sourceRows[key]
+				restored := registryRow(client, key)
+				Expect(restored).ToNot(BeNil(), "row for %q missing after restore", key)
+				Expect(restored.GetId().GetMetadata().GetKey()).To(Equal(source.GetId().GetMetadata().GetKey()))
+				Expect(restored.GetId().GetMetadata().GetTarget()).To(Equal(source.GetId().GetMetadata().GetTarget()))
+				Expect(restored.GetLedger()).To(Equal(source.GetLedger()), "%q: ledger", key)
+				Expect(restored.GetForwardEncodingVersion()).To(Equal(source.GetForwardEncodingVersion()), "%q: forward_encoding_version", key)
+				Expect(restored.GetBuildStatus()).To(Equal(source.GetBuildStatus()), "%q: build_status", key)
+				Expect(restored.GetCreatedAt().GetData()).To(Equal(source.GetCreatedAt().GetData()), "%q: created_at", key)
+			}
+
+			expectSameRow(retypedKey)
+			expectSameRow(deltaKey)
+
+			Expect(registryRow(client, removedKey)).To(BeNil(), "the cascade-deleted checkpoint row must not resurrect")
 		})
 
-		It("drops the index when its field is removed", func() {
+		It("passes CheckStore on the restored store", func() {
+			result, err := actions.CollectCheckStoreEvents(ctx, client)
+			Expect(err).To(Succeed())
+			Expect(result.Errors).To(BeEmpty(), "CheckStore errors on the restored store: %v", result.Errors)
+		})
+
+		It("drops the retyped index when its field is removed", func() {
 			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.RemoveMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, fieldKey),
+				actions.RemoveMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, retypedKey),
 			))
 			Expect(err).To(Succeed())
 
