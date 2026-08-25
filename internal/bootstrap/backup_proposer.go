@@ -22,8 +22,7 @@ import (
 //
 // Lives in bootstrap (not application/backup) because plan depends on
 // state for ApplyResult, which would create an import cycle if the
-// application layer imported plan directly. Mirrors the existing
-// indexReadyProposerAdapter and metadataBatchProposer adapters.
+// application layer imported plan directly.
 type backupProposer struct {
 	builder  *plan.Builder
 	proposer plan.Proposer

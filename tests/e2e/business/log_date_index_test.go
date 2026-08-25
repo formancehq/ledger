@@ -81,7 +81,6 @@ var _ = Describe("Log date index", Ordered, func() {
 
 			logs := collectLogs(stream)
 			// Expected logs: 1 create_ledger + 2 create_index + 3 transactions = 6.
-			// IndexReady updates are no longer orders and produce no log entries.
 			// The log ledger index is populated incrementally: processLogs indexes
 			// logs arriving after the index is created, and the backfill task
 			// indexes historical logs. At minimum 4 logs are immediately visible

@@ -669,9 +669,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 						// Index registry derivation: every CreateIndex /
 						// DropIndex / RemovedMetadataFieldType log entry
-						// shifts the expected SubAttrIndex projection. The
-						// build status (BUILDING ↔ READY) rides on a non-
-						// audited IndexReady TU and is not tracked here —
+						// shifts the expected SubAttrIndex projection.
+						// Per-replica build progress lives in
+						// IndexVersionState and is not tracked here —
 						// compareIndexes verifies presence + identity only.
 						//
 						// Account builtin indexes (e.g. ACCT_BUILTIN_INDEX_ASSET)

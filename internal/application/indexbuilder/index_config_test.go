@@ -203,7 +203,7 @@ func TestStripBuildingIndexes(t *testing.T) {
 
 	b.indexConfig["ledger1"] = cfg
 
-	// Mark BUILDING for all but tsID.
+	// Schedule backfills for all but tsID.
 	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	b.addBackfillTaskForTxMetadata("ledger1", "category")
 	b.addBackfillTaskForAcctMetadata("ledger1", "role")
@@ -359,7 +359,7 @@ func TestLoadIndexRegistry_StreamsAndDispatches(t *testing.T) {
 // restart, while an entry that was never built locally
 // ({current:0, pending:1}) still IS. Without the guard the completed
 // account-builtin backfill re-runs and trips the pending==0 invariant in
-// completeBackfill, stranding the task in a BUILDING logging loop.
+// completeBackfill, stranding the task in an endless retry-logging loop.
 func TestLoadIndexRegistry_SkipsCompletedBuiltinBackfill(t *testing.T) {
 	t.Parallel()
 
@@ -626,8 +626,8 @@ func TestRemoveSchemaRewriteTask(t *testing.T) {
 // TestAddSchemaRewriteTask_ResetsInFlightBackfill pins the race window
 // where SetMetadataFieldType arrives while an initial backfill is still
 // running for the same metadata index. Scheduling a separate
-// schemaRewriteTask would scan only the partial rmap and could propose
-// IndexReady before the backfill replays the historical rows. The
+// schemaRewriteTask would scan only the partial rmap and could switch
+// the index live before the backfill replays the historical rows. The
 // expected fix: reset the existing backfill's cursor to 0 (so it replays
 // under the new declared_type), and do NOT enqueue a separate schema
 // rewrite task.
@@ -710,7 +710,7 @@ func TestAddSchemaRewriteTask_ResetsInFlightBackfill(t *testing.T) {
 // must still reset the backfill (regardless of cfg.isMetadataIndexed) so
 // the replay restarts from 0 and emits forward entries under the new
 // declared_type — otherwise the resumed backfill produces a mix of
-// old/new typed entries and the index is marked READY incoherent.
+// old/new typed entries and the index switches live incoherent.
 func TestAddSchemaRewriteTask_ResetsBackfillEvenWhenIndexStripped(t *testing.T) {
 	t.Parallel()
 
@@ -823,8 +823,8 @@ func TestAddSchemaRewriteTask_DoesNotResetOtherLedgersBackfill(t *testing.T) {
 // TestRemoveSchemaRewriteTaskByField pins that the helper cancels the right
 // (ledger, target, key) task and leaves siblings intact. handleRemovedMetadataFieldType
 // relies on this to avoid leaking a rewrite task once its underlying index
-// is dropped — otherwise the builder would retry IndexReady proposals
-// forever against a now-missing index.
+// is dropped — otherwise the builder would keep driving a rewrite for a
+// now-missing index.
 func TestRemoveSchemaRewriteTaskByField(t *testing.T) {
 	t.Parallel()
 
@@ -1063,7 +1063,7 @@ func TestInitIndexConfig_PropagatesReadError(t *testing.T) {
 // TestInitIndexConfig_IdempotentAcrossRetries pins EN-1441: initIndexConfig
 // may run more than once (the loop retries it on a transient boot error), so
 // a second call must not double-schedule the backfillTasks / schemaRewriteTasks
-// slices. A BUILDING index with no persisted version state (current == 0)
+// slices. An index with no persisted version state (current == 0)
 // schedules exactly one backfill task per call.
 func TestInitIndexConfig_IdempotentAcrossRetries(t *testing.T) {
 	t.Parallel()
@@ -1077,7 +1077,7 @@ func TestInitIndexConfig_IdempotentAcrossRetries(t *testing.T) {
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
 
 	// Persist a LedgerInfo (so seedLedgerIndexConfig -> ReadLedgers returns
-	// it and the index is not dropped as an orphan) and a BUILDING Index
+	// it and the index is not dropped as an orphan) and an Index
 	// registry entry with no version state, so loadIndexRegistry schedules
 	// a backfill (versionFor defaults current == 0).
 	fsmBatch := b.pebbleStore.OpenWriteSession()
@@ -1101,7 +1101,7 @@ func TestInitIndexConfig_IdempotentAcrossRetries(t *testing.T) {
 	require.NoError(t, b.initIndexConfig(context.Background()))
 	firstBackfills := len(b.backfillTasks)
 	firstRewrites := len(b.schemaRewriteTasks)
-	require.Equal(t, 1, firstBackfills, "one BUILDING index must schedule one backfill")
+	require.Equal(t, 1, firstBackfills, "one unbuilt index must schedule one backfill")
 
 	require.NoError(t, b.initIndexConfig(context.Background()))
 	assert.Equal(t, firstBackfills, len(b.backfillTasks), "retry must not double-schedule backfills")

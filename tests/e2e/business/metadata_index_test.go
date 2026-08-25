@@ -524,11 +524,11 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 	})
 
 	// ========================================================================
-	// Schema change of an indexed metadata field — exercises both the R-028
-	// reverse-map decoder fix (#188) and the IndexReady-after-rewrite fix
-	// (#275), since the typed query past the schema change requires the
-	// reverse-map entries to have been re-encoded AND the index status to
-	// have flipped back from BUILDING to READY.
+	// Schema change of an indexed metadata field — exercises the R-028
+	// reverse-map re-encode (#188) and the per-replica rewrite switch: the
+	// typed query past the schema change requires the reverse-map entries
+	// to have been re-encoded AND the replica to have atomic-switched the
+	// rewritten keyspace live.
 	// ========================================================================
 	Context("Schema change rewrites the indexed reverse-map", Ordered, func() {
 		const ledgerName = "idx-acct-meta-schemachg"
