@@ -28,6 +28,7 @@
     "internal/adapter/grpc/client_bucket*.go",
     "internal/adapter/grpc/consistency*.go",
     "internal/adapter/grpc/errors*.go",
+    "internal/adapter/grpc/file_streaming*.go",
     "internal/adapter/grpc/forward*.go",
     "internal/adapter/grpc/raft_auth*.go",
     "internal/adapter/grpc/server.go",
