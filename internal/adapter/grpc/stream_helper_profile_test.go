@@ -45,10 +45,17 @@ const spinPerItem = 2 * time.Millisecond
 func TestSendPagedToStream_ProfilePhaseAttribution(t *testing.T) {
 	t.Parallel()
 
-	t.Run("detailed → row production is charged to execution, not delivery", func(t *testing.T) {
+	t.Run("lazy row production is charged to execution and stays in the server total", func(t *testing.T) {
 		t.Parallel()
 
-		ctx, profile := query.WithProfile(context.Background(), true)
+		// This is the regression that matters. Nothing sends x-query-profile in
+		// normal operation, so the slow-query log is the profile's only consumer;
+		// an earlier revision gated the per-row split on the caller having asked
+		// for the profile and charged the whole loop to delivery otherwise. Since
+		// Finish() subtracts delivery, a forwarded read that spent seconds inside
+		// cur.Next() reported a sub-millisecond ServerDuration — the log was blind
+		// in the exact configuration that uses it.
+		ctx, profile := query.WithProfile(context.Background())
 		profile.EnterExecute()
 		profile.LeaveExecute()
 
@@ -60,46 +67,44 @@ func TestSendPagedToStream_ProfilePhaseAttribution(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, stream.sent, 3)
 
-		// 3 items + the EOF probe all spin, so at least 3 spins land in the
-		// execution phase.
+		// 3 items + the EOF probe all spin, so at least 3 spins are attributed.
 		require.GreaterOrEqual(t, profile.ExecuteDuration, 3*spinPerItem,
 			"cur.Next() time must be attributed to the execution phase")
 
 		profile.Finish()
-		require.Positive(t, profile.FirstRowDuration, "the first Send must be timestamped")
-		require.LessOrEqual(t, profile.FirstRowDuration, profile.ServerDuration+profile.DeliverDuration+
-			profile.BarrierDuration, "time-to-first-row cannot exceed the whole request")
+
+		require.GreaterOrEqual(t, profile.ServerDuration, 3*spinPerItem,
+			"row production must survive into ServerDuration; if it does not, the "+
+				"slow-query threshold cannot see a slow forwarded read")
+		require.GreaterOrEqual(t, profile.WallDuration(), profile.ServerDuration,
+			"the wall total includes delivery on top of the server total")
 	})
 
-	t.Run("not detailed → the whole loop is charged to delivery", func(t *testing.T) {
+	t.Run("stream sends are charged to delivery, outside the server total", func(t *testing.T) {
 		t.Parallel()
 
-		ctx, profile := query.WithProfile(context.Background(), false)
+		ctx, profile := query.WithProfile(context.Background())
 		profile.EnterExecute()
 		profile.LeaveExecute()
 
-		executeAfterQuery := profile.ExecuteDuration
-
 		stream := newFakeServerStream[stringItem](t)
+		stream.sendDelay = spinPerItem
 
 		err := sendPagedToStream(
-			ctx, &spinCursor{remaining: 3, per: spinPerItem}, stream, "item", 0, nil,
+			ctx, &spinCursor{remaining: 3, per: 0}, stream, "item", 0, nil,
 		)
 		require.NoError(t, err)
 
-		// A request that did not ask for the profile pays no per-row clock
-		// reads, so the loop cannot be split: it is charged wholly to delivery.
-		// That is the conservative direction — delivery is excluded from
-		// ServerDuration, so the server total can only be under-reported, never
-		// inflated by a slow consumer.
-		require.Equal(t, executeAfterQuery, profile.ExecuteDuration,
-			"no per-row production attribution without an explicit profile request")
 		require.GreaterOrEqual(t, profile.DeliverDuration, 3*spinPerItem,
-			"the whole send loop must still be accounted for somewhere")
+			"stream.Send() time must be attributed to the delivery phase")
 
 		profile.Finish()
-		require.Positive(t, profile.FirstRowDuration,
-			"time-to-first-row is O(1) and always collected")
+
+		require.Less(t, profile.ServerDuration, 3*spinPerItem,
+			"consumer back-pressure must not inflate the consumer-independent total")
+		require.GreaterOrEqual(t, profile.WallDuration(), 3*spinPerItem,
+			"but the slow-query threshold must still see it")
+		require.Positive(t, profile.FirstRowDuration, "the first Send must be timestamped")
 	})
 
 	t.Run("no profile in context → helper still streams", func(t *testing.T) {

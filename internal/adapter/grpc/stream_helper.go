@@ -59,10 +59,15 @@ const NextCursorTrailerKey = "x-next-cursor"
 //     is deliberately kept out of ServerDuration — a total that grew because the
 //     client stopped reading would mislead rather than inform.
 //
-// The per-row split costs two time.Now() per row, so it is only performed when
-// the caller actually requested the profile. Otherwise the loop is bracketed
-// once and charged wholly to delivery: conservative for the slow-query log
-// (ServerDuration can only be under-reported, never inflated by the consumer).
+// The split is performed whenever a profile is present, never gated on whether
+// the caller asked to SEE the profile. An earlier revision gated it and charged
+// the whole loop to delivery otherwise, which made ServerDuration blind in the
+// only configuration that consumes it: nothing sends x-query-profile in normal
+// operation, so the slow-query log was reading a total from which the entire
+// send loop had been subtracted — a forwarded read taking seconds inside
+// cur.Next() reported sub-millisecond. Two time.Now() per row (tens of
+// microseconds across a 1000-row page, the server-side maximum) is not worth one
+// measurement regime per caller behaviour.
 func sendPagedToStream[Res any](
 	ctx context.Context,
 	cur cursor.Cursor[*Res],
@@ -77,16 +82,10 @@ func sendPagedToStream[Res any](
 
 	span := trace.SpanFromContext(ctx)
 
+	// Most streaming list handlers are unprofiled and share this helper, so the
+	// per-row clock reads are skipped entirely when there is no profile to feed.
 	profile := query.ProfileFromContext(ctx)
-	perRow := profile.Detailed()
-
-	if profile != nil && !perRow {
-		loopStart := time.Now()
-
-		defer func() {
-			profile.AddDelivery(time.Since(loopStart))
-		}()
-	}
+	timed := profile != nil
 
 	var (
 		count    uint32
@@ -104,10 +103,10 @@ func sendPagedToStream[Res any](
 	}
 
 	for {
-		produceStart := nowIf(perRow)
+		produceStart := nowIf(timed)
 		item, err := cur.Next()
 
-		if perRow {
+		if timed {
 			profile.AddProduction(time.Since(produceStart))
 		}
 
@@ -145,10 +144,10 @@ func sendPagedToStream[Res any](
 			return nil
 		}
 
-		deliverStart := nowIf(perRow)
+		deliverStart := nowIf(timed)
 		sendErr := stream.Send(item)
 
-		if perRow {
+		if timed {
 			profile.AddDelivery(time.Since(deliverStart))
 		}
 
@@ -166,8 +165,7 @@ func sendPagedToStream[Res any](
 }
 
 // nowIf returns the current instant only when the caller intends to use it,
-// keeping the per-row clock reads out of a request that did not ask for the
-// detailed profile.
+// keeping the per-row clock reads out of a stream that has no profile to feed.
 func nowIf(enabled bool) time.Time {
 	if !enabled {
 		return time.Time{}

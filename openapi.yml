@@ -3015,20 +3015,31 @@ components:
 
           - `serverDurationUs` — consumer-independent server cost: request entry
             to response-ready, excluding the read barrier and response delivery.
-            This is the number to build a latency SLO on, and it has the same
-            definition over gRPC.
+            Cannot be moved by a slow client, and has the same definition over
+            gRPC. It does NOT include row serialization.
           - `prepareDurationUs` — request decode, validation and filter
             compilation.
           - `executeDurationUs` — query execution (contains
             `indexDurationUs` + `enrichmentDurationUs`).
           - `barrierDurationUs` — time blocked on the caller-requested read
-            consistency barrier. Excluded from `serverDurationUs`.
+            consistency barrier. Excluded from `serverDurationUs`. Measures LOCAL
+            barriers only: see `forwarded`.
           - `deliverDurationUs` — response serialization and transport hand-off.
             Excluded from `serverDurationUs`. Always 0 over HTTP: this header
             must be flushed before the response body, so the body write is out
             of reach. It is populated for gRPC server streams.
           - `firstRowDurationUs` — always 0 over HTTP (the response is
             buffered); populated for gRPC server streams.
+          - `forwarded` — true when another node served the read. Its barrier and
+            execution are then folded into `executeDurationUs` and
+            `barrierDurationUs` reads 0 for lack of a local barrier, so the
+            breakdown describes the local hop only.
+
+        For a latency objective, pick a total and state which: `serverDurationUs`
+        is client-independent but omits serialization, while
+        `serverDurationUs + deliverDurationUs` is the complete server-side cost
+        but absorbs consumer back-pressure on a gRPC stream. Neither is unbiased
+        on a streaming read.
       schema:
         type: string
         format: byte

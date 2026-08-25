@@ -209,6 +209,14 @@ func wantsHTTPProfile(r *http.Request) bool {
 // Call it once the response value is fully assembled and BEFORE handing it to a
 // response writer, because headers must be flushed ahead of the body.
 //
+// Success paths only, unlike the gRPC handlers which emit on every return. The
+// asymmetry is deliberate: on gRPC the profile also feeds the slow-query log, so
+// a slow *failure* is worth capturing, whereas HTTP has no such consumer — the
+// only reader is a caller who explicitly asked, and every HTTP error already
+// returns a structured ErrorResponse through the shared handleError writer.
+// Threading a profile through that writer for all HTTP handlers, profiled or not,
+// buys a diagnostic header on responses that already explain themselves.
+//
 // That ordering is also why HTTP reports no delivery phase: the body write
 // happens strictly after this header is committed and cannot be measured. Only
 // the marshal step could be, and only by buffering the body — but the profiled

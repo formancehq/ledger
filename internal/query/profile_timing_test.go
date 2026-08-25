@@ -21,7 +21,7 @@ import (
 func TestQueryProfile_PhaseDecomposition(t *testing.T) {
 	t.Parallel()
 
-	_, p := query.WithProfile(context.Background(), true)
+	_, p := query.WithProfile(context.Background())
 
 	p.EnterExecute()
 	p.LeaveExecute()
@@ -35,7 +35,7 @@ func TestQueryProfile_PhaseDecomposition(t *testing.T) {
 func TestQueryProfile_BarrierExcludedFromServerDuration(t *testing.T) {
 	t.Parallel()
 
-	_, p := query.WithProfile(context.Background(), true)
+	_, p := query.WithProfile(context.Background())
 
 	p.EnterExecute()
 	p.LeaveExecute()
@@ -46,12 +46,14 @@ func TestQueryProfile_BarrierExcludedFromServerDuration(t *testing.T) {
 
 	assert.Equal(t, time.Hour, p.BarrierDuration, "the wait must still be reported")
 	assert.Zero(t, p.ServerDuration, "but never charged to the server total")
+	assert.Zero(t, p.WallDuration(), "nor to the wall total the slow-query threshold uses")
+	assert.NotEmpty(t, p.Anomaly, "a phase driven negative must be reported, not silently clamped")
 }
 
 func TestQueryProfile_DeliveryExcludedFromServerDuration(t *testing.T) {
 	t.Parallel()
 
-	_, p := query.WithProfile(context.Background(), true)
+	_, p := query.WithProfile(context.Background())
 
 	p.EnterExecute()
 	p.LeaveExecute()
@@ -62,12 +64,45 @@ func TestQueryProfile_DeliveryExcludedFromServerDuration(t *testing.T) {
 
 	assert.Equal(t, time.Hour, p.DeliverDuration)
 	assert.Zero(t, p.ServerDuration)
+
+	// But the slow-query threshold must still see it, otherwise serialisation
+	// cost and forwarded-read cost could hide from the log.
+	assert.GreaterOrEqual(t, p.WallDuration(), time.Hour)
+}
+
+func TestQueryProfile_WallDurationIncludesDelivery(t *testing.T) {
+	t.Parallel()
+
+	p := &query.QueryProfile{
+		ServerDuration:  10 * time.Millisecond,
+		DeliverDuration: 4 * time.Millisecond,
+	}
+
+	assert.Equal(t, 14*time.Millisecond, p.WallDuration())
+}
+
+func TestQueryProfile_WallDuration_NilSafe(t *testing.T) {
+	t.Parallel()
+
+	var p *query.QueryProfile
+	assert.Zero(t, p.WallDuration())
+}
+
+func TestQueryProfile_MarkForwarded(t *testing.T) {
+	t.Parallel()
+
+	_, p := query.WithProfile(context.Background())
+	assert.False(t, p.Forwarded)
+
+	p.MarkForwarded()
+	assert.True(t, p.Forwarded,
+		"a forwarded read must be flagged so its zero BarrierDuration is not read as 'no barrier needed'")
 }
 
 func TestQueryProfile_BarrierInsideExecuteNotChargedToExecute(t *testing.T) {
 	t.Parallel()
 
-	_, p := query.WithProfile(context.Background(), true)
+	_, p := query.WithProfile(context.Background())
 
 	p.EnterExecute()
 	// A ReadIndex quorum round-trip observed from inside the executor call.
@@ -81,7 +116,7 @@ func TestQueryProfile_BarrierInsideExecuteNotChargedToExecute(t *testing.T) {
 func TestQueryProfile_BarrierBeforeExecuteNotChargedToPrepare(t *testing.T) {
 	t.Parallel()
 
-	_, p := query.WithProfile(context.Background(), true)
+	_, p := query.WithProfile(context.Background())
 
 	p.AddBarrierWait(time.Hour)
 	p.EnterExecute()
@@ -92,7 +127,7 @@ func TestQueryProfile_BarrierBeforeExecuteNotChargedToPrepare(t *testing.T) {
 func TestQueryProfile_AddProductionChargedToExecute(t *testing.T) {
 	t.Parallel()
 
-	_, p := query.WithProfile(context.Background(), true)
+	_, p := query.WithProfile(context.Background())
 
 	p.EnterExecute()
 	p.LeaveExecute()
@@ -107,7 +142,7 @@ func TestQueryProfile_AddProductionChargedToExecute(t *testing.T) {
 func TestQueryProfile_AbortedBeforeExecuteIsAllPrepare(t *testing.T) {
 	t.Parallel()
 
-	_, p := query.WithProfile(context.Background(), true)
+	_, p := query.WithProfile(context.Background())
 
 	// Request rejected during validation: it never reached the executor.
 	p.Finish()
@@ -119,7 +154,7 @@ func TestQueryProfile_AbortedBeforeExecuteIsAllPrepare(t *testing.T) {
 func TestQueryProfile_FinishClosesOpenExecuteWindow(t *testing.T) {
 	t.Parallel()
 
-	_, p := query.WithProfile(context.Background(), true)
+	_, p := query.WithProfile(context.Background())
 
 	p.EnterExecute()
 	// No LeaveExecute: an early return inside the handler.
@@ -132,7 +167,7 @@ func TestQueryProfile_FinishClosesOpenExecuteWindow(t *testing.T) {
 func TestQueryProfile_FinishIsIdempotent(t *testing.T) {
 	t.Parallel()
 
-	_, p := query.WithProfile(context.Background(), true)
+	_, p := query.WithProfile(context.Background())
 
 	p.EnterExecute()
 	p.LeaveExecute()
@@ -147,7 +182,7 @@ func TestQueryProfile_FinishIsIdempotent(t *testing.T) {
 func TestQueryProfile_MarkFirstRowRecordsOnlyTheFirst(t *testing.T) {
 	t.Parallel()
 
-	_, p := query.WithProfile(context.Background(), true)
+	_, p := query.WithProfile(context.Background())
 
 	p.MarkFirstRow()
 	first := p.FirstRowDuration

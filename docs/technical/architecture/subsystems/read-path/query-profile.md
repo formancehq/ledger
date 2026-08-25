@@ -37,10 +37,42 @@ The request clock starts when the profile is created and stops at `Finish()`.
 |---|---|---|
 | `prepare_duration_us` | handler entry → executor invocation: auth, request decode/validation, filter parsing/compilation, checkpoint-store opening | yes |
 | `execute_duration_us` | the executor call: snapshot setup, ledger/schema resolution, index scan, enrichment, plus lazy row pulls | yes |
-| `barrier_duration_us` | Raft `ReadIndex` quorum round-trip and `ReadOptions.min_log_sequence` read-index catch-up | **no** |
+| `barrier_duration_us` | **local** Raft `ReadIndex` quorum round-trip and `ReadOptions.min_log_sequence` read-index catch-up | **no** |
 | `deliver_duration_us` | row serialisation + transport hand-off | **no** |
-| `first_row_duration_us` | handler entry → first row accepted by the transport (streams only) | n/a |
+| `first_row_duration_us` | handler entry → first row accepted by the transport | n/a |
 | `server_duration_us` | wall clock − barrier − deliver | — |
+| `forwarded` | the read was served by another node | n/a |
+
+## Two totals, and what each one is blind to
+
+Neither total is a clean latency-SLO basis on a streaming read. Say which one an
+SLO uses and accept its bias:
+
+| | `server_duration_us` | `server_duration_us + deliver_duration_us` |
+|---|---|---|
+| moved by a slow client? | no | **yes**, on a stream |
+| includes row serialisation? | **no** | yes |
+| same definition on gRPC and HTTP? | yes | no (HTTP delivery is 0) |
+
+Row serialisation is excluded from `server_duration_us` because a gRPC
+`stream.Send()` marshals and writes in one inseparable call — there is no seam to
+measure between them without re-implementing the send path over
+`grpc.PreparedMsg`, which would move the hot streaming path onto a
+less-exercised codec/compression route for a measurement refinement. Not worth
+the risk; the cost is reported in `deliver_duration_us` instead.
+
+The **slow-query threshold uses the sum**, deliberately. `server_duration_us`
+alone is blind to two real costs — serialisation, which grows with page size, and
+the entire remote cost of a forwarded read, which arrives through the
+row-production side of the send loop. A threshold blind to both would fail to
+fire on exactly the requests it exists for. The price is that a slow consumer can
+trip it; the logged breakdown then says which side was slow, which is strictly
+more than a threshold that never fires says.
+
+`first_row_duration_us` is 0 in three distinct cases: an empty streaming result,
+a unary response (all HTTP routes, plus `AggregateVolumes` and
+`ExecutePreparedQuery`), and a streaming read that failed before its first send.
+Disambiguate with `items_collected` and the RPC status.
 
 `index_duration_us` and `enrichment_duration_us` are sub-phases of
 `execute_duration_us`, not peers of the total.
@@ -57,6 +89,13 @@ read additionally waits for the read index to reach `min_log_sequence`. Both are
 latency the *caller opted into*. Folding them into the server total would blame
 the server for the caller's consistency requirement, and would make the number
 move with cluster RTT rather than with server cost.
+
+Only **local** barriers are measured. On a forwarded read the leader runs its own
+`ReadIndexAndWait` (`x-consistency` is not propagated, so it defaults to
+linearizable there), and that wait is invisible here: it arrives as row-production
+time inside `execute_duration_us`, while `barrier_duration_us` reads 0. The
+`forwarded` flag exists so that 0 cannot be misread as "no barrier was needed" —
+always read the two together.
 
 ### Why `deliver` is excluded, and how streaming ambiguity is resolved
 
@@ -122,39 +161,72 @@ tables (`cmd/ledgerctl/cmdutil/profile.go`).
 
 ## Cost when the profile is not requested
 
-The profile is collected on **every** profiled read, not only when asked: the
-slow-query log and the OTel span consume the same record, and a threshold that
-could only see execution time would miss precisely the requests EN-1859 is
-about. All per-request measurements are O(1) — a handful of `time.Now()` calls.
+The profile is collected in full on **every** profiled read, not only when asked,
+and there is exactly **one** measurement regime. The gate is the presence of a
+profile in the context, never whether the caller asked to see it.
 
-The one instrumentation whose cost scales with the result size — the per-row
-`execute`/`deliver` split in the streaming loop — is gated on whether the caller
-actually asked for the profile (`QueryProfile.Detailed()`). An unprofiled request
-brackets the whole loop once and charges it to `deliver`. That direction is
-deliberate: `deliver` is excluded from the total, so `server_duration_us` can
-only be *under*-reported for an unprofiled request, never inflated by a slow
-consumer.
+That is a correctness requirement, not a convenience. Nothing sends
+`x-query-profile` in normal operation, so the slow-query log is the profile's only
+production consumer. An earlier revision of this work gated the per-row
+`execute`/`deliver` split on the caller having asked, and charged the whole send
+loop to `deliver` otherwise — and since `deliver` is subtracted from the total,
+`server_duration_us` was left blind to the entire loop in exactly the
+configuration that reads it. A forwarded read spending seconds inside `cur.Next()`
+reported sub-millisecond. Two conditional regimes also made gRPC and HTTP
+incomparable when unprofiled, which contradicts the whole point of a shared
+definition.
+
+The cost of getting it right is two `time.Now()` per row — tens of microseconds
+across a 1000-row page (`MaxPageSize`, the server-side ceiling), against a proto
+marshal and a transport write per row. Unprofiled *handlers* (every read RPC other
+than the four listed above) still pay nothing: `profile == nil` skips the clock
+reads entirely.
 
 ## Slow-query threshold
 
 `--query-profile-threshold` (default 10 ms) gates the trace-level profile log and
-the span attributes. It is compared against `ServerDuration`, not the execution
-total: thresholding on execution meant the slow requests the log exists to
-surface were the ones it could not see. See `emitProfile` in
+the span attributes. **0 disables it**; every duration is `>= 0`, so comparing
+against 0 would otherwise log every single read.
+
+It compares `WallDuration` — `server_duration_us + deliver_duration_us` — for the
+reasons in "Two totals" above: `ServerDuration` alone cannot see row serialisation
+or a forwarded read's remote cost. See `emitProfile` in
 `internal/adapter/grpc/server_bucket.go`.
 
-`LogTo` also emits `profileDetailed`. When false, `deliverDurationUs` holds the
-whole streaming loop rather than just the sends — do not read the two as
-equivalent across log lines.
+Two operational consequences:
+
+- **The threshold now fires on strictly more reads than before EN-1859**, since
+  `WallDuration >= ServerDuration >= TotalDuration` structurally. `EmitToSpan` is
+  not behind a log level (only `span.IsRecording()`), so each qualifying read
+  attaches ~14 attributes plus the rendered `query.iterator_tree` string to its
+  span. On a read-heavy deployment that is a real increase in span payload
+  volume — raise the threshold or set it to 0 if that matters more than the
+  diagnostics.
+- A slow *consumer* can trip it. That is intended; the logged
+  `deliverDurationUs` / `firstRowDurationUs` / `serverDurationUs` breakdown
+  identifies which side was slow.
+
+`LogTo` also emits `forwarded`. When true, `barrierDurationUs` is 0 for lack of a
+local barrier and the remote node's whole cost sits inside `executeDurationUs` —
+do not compare such a line's breakdown against a locally-served one.
 
 ## Known gaps
 
-- **Leader-forwarded reads.** When a follower forwards a read to the leader
-  (`ConsistencyLeader`, or the syncing-node fallback in
+- **Leader-forwarded reads report only the local hop.** When a follower forwards
+  a read (`ConsistencyLeader`, or the syncing-node fallback in
   `RoutedController.readCtrl`), the upstream RPC is charged to the local
-  `execute` phase. The remote server's own breakdown is not nested into the
-  local profile, so `execute` there conflates network hops, leader-side prepare
-  and leader-side execution.
+  `execute` phase, so `execute` there conflates network hops, leader-side
+  prepare, leader-side barrier and leader-side execution — and
+  `barrier_duration_us` reads 0.
+
+  The `forwarded` flag makes this **detectable** rather than silent, which is the
+  part that mattered: a consumer can tell "no barrier" from "barrier not measured
+  here". It does not make it *attributable*. Nesting the remote breakdown is
+  deliberately deferred: the leader's `x-query-profile-result-bin` trailer is
+  reachable from `BucketGrpcClient`, but consuming it means opting every routed
+  read into upstream profiling, plumbing a trailer that only materialises at EOF
+  out through the `cursor.Cursor` abstraction, and deciding how two phase
+  breakdowns compose into one. That is a design question, not a fix.
 - **HTTP body write** is not measurable (see above).
 - **Unary gRPC responses** (`AggregateVolumes`, `ExecutePreparedQuery`) have no
   delivery phase: the reply is marshalled by the gRPC codec after the handler

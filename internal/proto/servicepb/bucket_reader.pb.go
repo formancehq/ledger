@@ -9610,6 +9610,7 @@ type QueryProfileReader interface {
 	GetBarrierDurationUs() int64
 	GetDeliverDurationUs() int64
 	GetFirstRowDurationUs() int64
+	GetForwarded() bool
 	Mutate() *QueryProfile
 }
 
@@ -9669,6 +9670,10 @@ func (r *queryProfileReadonly) GetDeliverDurationUs() int64 {
 
 func (r *queryProfileReadonly) GetFirstRowDurationUs() int64 {
 	return (*QueryProfile)(r).GetFirstRowDurationUs()
+}
+
+func (r *queryProfileReadonly) GetForwarded() bool {
+	return (*QueryProfile)(r).GetForwarded()
 }
 
 func (r *queryProfileReadonly) Mutate() *QueryProfile {

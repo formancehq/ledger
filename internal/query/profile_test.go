@@ -14,26 +14,11 @@ import (
 func TestWithProfile_ContextPropagation(t *testing.T) {
 	t.Parallel()
 
-	ctx, profile := query.WithProfile(context.Background(), true)
+	ctx, profile := query.WithProfile(context.Background())
 	require.NotNil(t, profile)
-	require.True(t, profile.Detailed())
 
 	extracted := query.ProfileFromContext(ctx)
 	require.Same(t, profile, extracted)
-}
-
-func TestWithProfile_NotDetailed(t *testing.T) {
-	t.Parallel()
-
-	_, profile := query.WithProfile(context.Background(), false)
-	require.False(t, profile.Detailed())
-}
-
-func TestQueryProfile_Detailed_NilSafe(t *testing.T) {
-	t.Parallel()
-
-	var p *query.QueryProfile
-	require.False(t, p.Detailed())
 }
 
 func TestProfileFromContext_NilWhenNotSet(t *testing.T) {

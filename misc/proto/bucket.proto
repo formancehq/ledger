@@ -1281,9 +1281,23 @@ message QueryProfile {
 
   // Consumer-independent server cost: handler entry (before request decode) to
   // the response being ready for delivery, MINUS barrier_duration_us and MINUS
-  // deliver_duration_us. This is the headline number and the only one with an
-  // identical definition on gRPC and HTTP, so the two surfaces are comparable
-  // and it is the right basis for a server-side latency SLO.
+  // deliver_duration_us. It cannot be moved by a slow client, and it is the one
+  // field defined identically on gRPC and HTTP, so the two surfaces compare.
+  //
+  // It does NOT include row serialisation. On a gRPC server stream, marshalling
+  // and the transport write happen inside one inseparable stream.Send() call, so
+  // serialisation is accounted in deliver_duration_us together with consumer
+  // back-pressure. Choose accordingly:
+  //
+  //   - consumer-independent, excludes serialisation:  server_duration_us
+  //   - complete server-side cost, includes serialisation but also absorbs
+  //     back-pressure on a stream:  server_duration_us + deliver_duration_us
+  //
+  // Neither is a clean latency-SLO basis on a streaming read: the first omits a
+  // real cost that grows with page size, the second admits client behaviour into
+  // the signal. Pick the one whose bias is acceptable for the specific SLO and
+  // say which. The server's own slow-query threshold uses the sum, so that
+  // serialisation and forwarded-read cost cannot hide from it.
   //
   // prepare_duration_us + execute_duration_us <= server_duration_us; the
   // difference is server work outside both phases (response assembly,
@@ -1306,6 +1320,11 @@ message QueryProfile {
   // ReadIndex quorum round-trip and the ReadOptions.min_log_sequence read-index
   // catch-up wait. Deliberately EXCLUDED from server_duration_us — it is a wait
   // the request opted into, not server cost.
+  //
+  // Only LOCAL barriers are measured. When `forwarded` is true this reads 0
+  // because no barrier ran on this node, NOT because none ran: the remote node's
+  // barrier is folded into its execution, which arrives here inside
+  // execute_duration_us. Always read this field together with `forwarded`.
   int64 barrier_duration_us = 11;
 
   // Time spent serialising result rows and handing them to the transport.
@@ -1320,11 +1339,25 @@ message QueryProfile {
   // not affect the comparability of the headline number.
   int64 deliver_duration_us = 12;
 
-  // Handler entry to the first row accepted by the transport. Server streams
-  // only (0 for unary responses). Compare against server_duration_us and
-  // deliver_duration_us to separate "the server was slow to produce anything"
-  // from "the consumer was slow to drain the stream".
+  // Handler entry to the first row accepted by the transport. Compare against
+  // server_duration_us and deliver_duration_us to separate "the server was slow
+  // to produce anything" from "the consumer was slow to drain the stream".
+  //
+  // 0 means no row was ever handed to the transport, which covers three distinct
+  // cases: a streaming read that matched nothing, a unary response (HTTP, and
+  // the AggregateVolumes / ExecutePreparedQuery RPCs — these never hand rows to
+  // a stream), and a streaming read that failed before its first send. Use
+  // items_collected and the RPC's own status to tell them apart.
   int64 first_row_duration_us = 13;
+
+  // True when this node did not serve the read itself but forwarded it to
+  // another node — an explicit leader-consistency read, or the fallback taken
+  // when the local replica is still catching up. The remote node's prepare,
+  // barrier and execution all arrive inside execute_duration_us, and
+  // barrier_duration_us reads 0 for lack of a local barrier, so the phase
+  // breakdown describes the local hop only. Its purpose is to stop a zero
+  // barrier from being misread as "no barrier was needed".
+  bool forwarded = 14;
 }
 
 // IteratorProfile describes a single iterator node in the query execution tree.

@@ -151,8 +151,10 @@ var _ = Describe("QueryProfile", Ordered, func() {
 				// from the consumer-independent server total (EN-1859).
 				g.Expect(profile.ServerDurationUs).To(BeNumerically(">", 0))
 				g.Expect(profile.FirstRowDurationUs).To(BeNumerically(">", 0))
-				g.Expect(profile.DeliverDurationUs).To(BeNumerically(">=", 0),
-					"stream sends are accounted separately and excluded from the server total")
+				g.Expect(profile.ExecuteDurationUs).To(BeNumerically(">", 0),
+					"a real read spends measurable time in the executor")
+				g.Expect(profile.ServerDurationUs).To(BeNumerically(">=", profile.ExecuteDurationUs),
+					"execution is a phase of the server total, not a peer of it")
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})

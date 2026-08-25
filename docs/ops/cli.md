@@ -4213,21 +4213,38 @@ ledger run --grpc-slow-threshold 500ms [other flags...]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--query-profile-threshold` | duration | `10ms` | Log and emit OTel attributes for queries whose **server duration** exceeds this value (0 to disable) |
+| `--query-profile-threshold` | duration | `10ms` | Log and emit OTel attributes for reads whose total server-side handling exceeds this value (`0` disables) |
 
 ```bash
-# Log queries slower than 50ms
+# Log reads slower than 50ms
 ledger run --query-profile-threshold 50ms [other flags...]
 
-# Disable query profiling
+# Disable the slow-read log entirely
 ledger run --query-profile-threshold 0 [other flags...]
 ```
 
-The threshold is compared against `server_duration_us` — the whole server-side
-handling of the request (decode, filter compilation, execution, response
-assembly), excluding the caller-requested read barrier and the response delivery.
-It is not the query execution time alone, so a request that spends its time in
-request decoding or filter compilation is caught as well.
+The threshold is compared against `server_duration_us + deliver_duration_us`: the
+whole server-side handling of the read — request decode, filter compilation,
+execution, response assembly, row serialisation and stream writes — excluding only
+the caller-requested read barrier. It is not the query execution time alone, so a
+read that spends its time in request decoding, filter compilation or serialisation
+is caught as well.
+
+`0` disables the log. It does not mean "log everything": every duration is `>= 0`,
+so a `0` threshold would otherwise match every single read.
+
+Two things to know before tuning it:
+
+- **It fires on more reads than the pre-3.0 behaviour**, which compared query
+  execution time only. The new total is structurally larger.
+- **Span attribute volume grows with it.** Each qualifying read attaches ~14
+  timing attributes plus a rendered iterator-tree string to its OTel span, and
+  that is gated only on the span being recorded, not on a log level. On a
+  read-heavy deployment, raise the threshold (or set `0`) if span payload size
+  matters more than the diagnostics.
+- **A slow client can trip it**, because stream writes are included. The logged
+  breakdown (`serverDurationUs` vs `deliverDurationUs` vs `firstRowDurationUs`)
+  identifies which side was actually slow.
 
 See [query-profile.md](../technical/architecture/subsystems/read-path/query-profile.md)
 for the full phase model and what each duration includes.

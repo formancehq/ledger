@@ -76,17 +76,39 @@ func RenderProfile(profile *servicepb.QueryProfile) {
 
 	// Server timing first: it is the number that answers "is the server or the
 	// network slow?", and the execution breakdown below is a subset of it.
+	residual, residualOK := residualDurationUs(profile)
+
+	barrier := formatDurationUs(profile.GetBarrierDurationUs())
+	if profile.GetForwarded() {
+		// A forwarded read runs its barrier on the remote node, so this 0 means
+		// "not measured here", not "no wait happened".
+		barrier += " (local only — read was forwarded)"
+	}
+
 	serverTiming := pterm.TableData{
 		{"Server Phase", "Value"},
-		{"Server Duration (total)", formatDurationUs(profile.GetServerDurationUs())},
+		{"Server Duration (consumer-independent)", formatDurationUs(profile.GetServerDurationUs())},
 		{"  Prepare (decode/validate/compile)", formatDurationUs(profile.GetPrepareDurationUs())},
 		{"  Execute (index+enrich+snapshot)", formatDurationUs(profile.GetExecuteDurationUs())},
-		{"  Other server work", formatDurationUs(residualDurationUs(profile))},
-		{"Read Barrier (caller-requested wait)", formatDurationUs(profile.GetBarrierDurationUs())},
+		{"  Other server work", formatDurationUs(residual)},
 		{"Deliver (serialise + stream write)", formatDurationUs(profile.GetDeliverDurationUs())},
+		{"Wall (server + deliver)", formatDurationUs(profile.GetServerDurationUs() + profile.GetDeliverDurationUs())},
+		{"Read Barrier (caller-requested wait)", barrier},
 		{"Time To First Row", formatDurationUs(profile.GetFirstRowDurationUs())},
 	}
 	_ = pterm.DefaultTable.WithHasHeader().WithData(serverTiming).Render()
+
+	if !residualOK {
+		// The phases cannot exceed the total they decompose; if they do, the
+		// server's phase bookkeeping is inconsistent. Say so rather than hiding
+		// it behind a clamped 0.
+		pterm.Warning.Printfln(
+			"Server phase breakdown is inconsistent: prepare (%s) + execute (%s) exceeds the server total (%s). Treat the breakdown as unreliable.",
+			formatDurationUs(profile.GetPrepareDurationUs()),
+			formatDurationUs(profile.GetExecuteDurationUs()),
+			formatDurationUs(profile.GetServerDurationUs()),
+		)
+	}
 
 	pterm.Println()
 
@@ -113,13 +135,18 @@ func RenderProfile(profile *servicepb.QueryProfile) {
 // attribute to the prepare or execute phase (response assembly, pagination
 // trailer, profile emission). Surfacing it keeps the breakdown honest: a large
 // residual means the phase boundaries need refining, not that the time vanished.
-func residualDurationUs(profile *servicepb.QueryProfile) int64 {
+//
+// The second return is false when the residual came out negative. That is
+// impossible if the server's bookkeeping is sound — the phases are windows inside
+// the total — so the caller must report it rather than render a clamped 0 that
+// looks like a normal reading.
+func residualDurationUs(profile *servicepb.QueryProfile) (int64, bool) {
 	residual := profile.GetServerDurationUs() - profile.GetPrepareDurationUs() - profile.GetExecuteDurationUs()
 	if residual < 0 {
-		return 0
+		return 0, false
 	}
 
-	return residual
+	return residual, true
 }
 
 func formatDurationUs(us int64) string {

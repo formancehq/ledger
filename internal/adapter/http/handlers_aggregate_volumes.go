@@ -74,7 +74,7 @@ func toAggregateVolumesJSON(result *commonpb.AggregateResult) *aggregateVolumesR
 // handleAggregateVolumes handles GET /{ledgerName}/volumes.
 func (s *Server) handleAggregateVolumes(w http.ResponseWriter, r *http.Request) {
 	// See handleListTransactions: the profile clock starts before decode.
-	ctx, profile := query.WithProfile(r.Context(), wantsHTTPProfile(r))
+	ctx, profile := query.WithProfile(r.Context())
 	r = r.WithContext(ctx)
 
 	ledgerName, ok := requireLedgerName(w, r)

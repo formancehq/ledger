@@ -40,7 +40,7 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	// parsing and filter compilation land in PrepareDuration (EN-1859). The
 	// request is re-bound to the profiled context so drainCursor and the
 	// controller see the same profile.
-	ctx, profile := query.WithProfile(r.Context(), wantsHTTPProfile(r))
+	ctx, profile := query.WithProfile(r.Context())
 	r = r.WithContext(ctx)
 
 	ledgerName, ok := requireLedgerName(w, r)

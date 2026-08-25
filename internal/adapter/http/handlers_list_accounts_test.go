@@ -188,9 +188,11 @@ func TestHandleListAccounts_WithProfileHeader(t *testing.T) {
 	assert.Equal(t, int64(2000), pb.GetIndexDurationUs())
 	assert.Equal(t, int32(1), pb.GetItemsCollected())
 
-	// Server-side request timing (EN-1859): the whole handler is measured, not
-	// just execution, so the total must be at least as large as the execution
-	// time the fake controller reported.
+	// Server-side request timing (EN-1859). Assert the total is actually
+	// populated first: the ordering checks below are all satisfied by 0 >= 0, so
+	// on their own they would keep passing if the feature were removed.
+	assert.Positive(t, pb.GetServerDurationUs(),
+		"the request clock must have advanced and been reported")
 	assert.GreaterOrEqual(t, pb.GetServerDurationUs(), pb.GetExecuteDurationUs(),
 		"execution is a phase of the server total, not a peer of it")
 	assert.GreaterOrEqual(t, pb.GetServerDurationUs(),

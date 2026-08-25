@@ -72,6 +72,14 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 	case grpcadp.ConsistencyLeader:
 		span.SetAttributes(attribute.String("route", "leader"))
 
+		// Forwarded: the leader runs its own ReadIndex barrier (x-consistency is
+		// not propagated, so it defaults to linearizable there) and its own
+		// execution. Neither is visible to this profile — the whole remote cost
+		// arrives as row-production time inside the local execute phase, and this
+		// node's barrier_duration_us stays 0. Flag it so a reader does not take
+		// that 0 to mean "no barrier was needed" (EN-1859).
+		query.ProfileFromContext(ctx).MarkForwarded()
+
 		c, err := b.getLeaderCtrl()
 
 		return c, nil, err
@@ -97,6 +105,10 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 		// after election), we must NOT serve a stale local read without a barrier.
 		if !b.IsLeader() {
 			span.SetAttributes(attribute.String("route", "leader_fallback"))
+
+			// Same as the explicit-leader branch: the read leaves this node, so
+			// the phase breakdown below describes the local hop only.
+			query.ProfileFromContext(ctx).MarkForwarded()
 
 			c, leaderErr := b.getLeaderCtrl()
 

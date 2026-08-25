@@ -19,7 +19,7 @@ import (
 func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Request) {
 	// See handleListTransactions: the profile clock starts before decode — here
 	// that also covers JSON body decoding and parameter conversion.
-	ctx, profile := query.WithProfile(r.Context(), wantsHTTPProfile(r))
+	ctx, profile := query.WithProfile(r.Context())
 	r = r.WithContext(ctx)
 
 	ledgerName, ok := requireLedgerName(w, r)

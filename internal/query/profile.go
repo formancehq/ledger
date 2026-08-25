@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -39,16 +40,26 @@ import (
 //	     caller-requested wait               consumer-dependent
 //	     (excluded from ServerDuration)  (excluded from ServerDuration)
 //
-// ServerDuration is the headline consumer-independent server cost:
-// wall clock - BarrierDuration - DeliverDuration. It is defined identically on
-// gRPC and HTTP, which is what makes the two surfaces comparable, and it is the
-// only field a server-side latency SLO should be written against.
+// There are two totals, and which one to use depends on the question:
 //
-// BarrierDuration is excluded because it is a wait the caller opted into (Raft
-// ReadIndex quorum, ReadOptions.min_log_sequence catch-up), not work.
-// DeliverDuration is excluded because on a server stream it contains consumer
-// back-pressure: folding it in would make the total move with client behaviour
-// and mislead exactly the reader trying to decide whether the server is slow.
+//   - ServerDuration = wall clock - BarrierDuration - DeliverDuration. The
+//     consumer-independent number: it cannot be moved by a slow client. Defined
+//     identically on gRPC and HTTP, so the two surfaces are comparable. It does
+//     NOT include row serialisation, which on a gRPC server stream is
+//     inseparable from the transport write (see WallDuration).
+//   - WallDuration = ServerDuration + DeliverDuration. Everything the server
+//     spent on the request except the caller-requested barrier, including row
+//     serialisation — but on a stream it also absorbs consumer back-pressure.
+//
+// BarrierDuration is excluded from both because it is a wait the caller opted
+// into (Raft ReadIndex quorum, ReadOptions.min_log_sequence catch-up), not work.
+//
+// DeliverDuration is excluded from ServerDuration because on a server stream it
+// contains consumer back-pressure: folding it in would make the headline total
+// move with client behaviour and mislead the reader trying to decide whether the
+// server is slow. It is NOT excluded from the slow-query threshold, which uses
+// WallDuration precisely so that serialisation cost and forwarded-read cost
+// cannot hide from it.
 type QueryProfile struct {
 	IndexDuration      time.Duration
 	EnrichmentDuration time.Duration
@@ -79,19 +90,24 @@ type QueryProfile struct {
 	// response header that must be flushed before the body.
 	DeliverDuration time.Duration
 	// FirstRowDuration is handler entry to the first row accepted by the
-	// transport. Server streams only; zero for unary responses.
+	// transport. Zero means "no row was ever handed to the transport": an empty
+	// result, a unary response, or a failure before the first send. Read it
+	// together with ItemsCollected to tell those apart.
 	FirstRowDuration time.Duration
 	// ServerDuration is the consumer-independent server cost. Computed by
 	// Finish; zero until then.
 	ServerDuration time.Duration
-
-	// detailed is true when the caller explicitly asked for the profile
-	// (gRPC x-query-profile metadata / HTTP X-Query-Profile header). It gates
-	// the only instrumentation whose cost scales with the result size: the
-	// per-row split between production (execute) and delivery in a streaming
-	// send loop. A request that did not ask pays two extra time.Now() calls for
-	// the whole loop instead of two per row.
-	detailed bool
+	// Forwarded is true when the read was routed to another node (an explicit
+	// leader read, or the syncing-follower fallback). On a forwarded read the
+	// remote node runs its own barrier and execution, and that cost lands in
+	// this profile's ExecuteDuration; BarrierDuration therefore reads 0 because
+	// no barrier ran LOCALLY, not because no barrier ran. Without this flag a
+	// zero barrier is ambiguous.
+	Forwarded bool
+	// Anomaly is non-empty when the phase bookkeeping detected a state that is
+	// impossible by contract (see clampPhase). It is surfaced in the log and on
+	// the span so the violation cannot pass unnoticed, per invariant #7.
+	Anomaly string
 
 	// requestStart is the instant the handler began. Zero for a profile built
 	// by hand (tests), which turns Finish and the phase marks into no-ops so a
@@ -145,23 +161,26 @@ type profileKey struct{}
 // request decode, validation and filter compilation — otherwise those phases
 // stay outside the measured window and PrepareDuration is meaningless.
 //
-// detailed must be the transport's "did the caller ask for the profile" answer
-// (gRPC x-query-profile metadata, HTTP X-Query-Profile header). It only enables
-// per-row phase attribution in streaming send loops; every other measurement is
-// O(1) per request and is always collected, because the slow-query log and the
-// OTel span consume the same profile and would otherwise lose the phases that
-// matter most.
-func WithProfile(ctx context.Context, detailed bool) (context.Context, *QueryProfile) {
-	p := &QueryProfile{detailed: detailed, requestStart: time.Now()}
+// The profile is collected in full for every profiled read, whether or not the
+// caller asked to see it: the slow-query log and the OTel span consume the same
+// record, and a measurement regime that depended on the caller having asked
+// would make the two regimes incomparable — the exact defect this timing work
+// exists to remove. The presence of a profile in the context, not the caller's
+// request for one, is what enables instrumentation.
+func WithProfile(ctx context.Context) (context.Context, *QueryProfile) {
+	p := &QueryProfile{requestStart: time.Now()}
 
 	return context.WithValue(ctx, profileKey{}, p), p
 }
 
-// Detailed reports whether the caller explicitly requested the profile, which
-// authorises instrumentation whose cost scales with the number of result rows.
-// Nil-safe.
-func (p *QueryProfile) Detailed() bool {
-	return p != nil && p.detailed
+// MarkForwarded records that the read was served by another node, so a zero
+// BarrierDuration is not misread as "no barrier was needed". Nil-safe.
+func (p *QueryProfile) MarkForwarded() {
+	if p == nil {
+		return
+	}
+
+	p.Forwarded = true
 }
 
 // EnterExecute closes the prepare phase and opens an execution window. Call it
@@ -176,7 +195,7 @@ func (p *QueryProfile) EnterExecute() {
 		p.executeEntered = true
 		// Barrier waits before the executor (min_log_sequence, ReadIndex) are
 		// caller-requested waiting, not preparation work.
-		p.PrepareDuration = nonNegative(time.Since(p.requestStart) - p.BarrierDuration)
+		p.PrepareDuration = p.clampPhase("prepare", time.Since(p.requestStart)-p.BarrierDuration)
 	}
 
 	p.executeStart = time.Now()
@@ -191,7 +210,7 @@ func (p *QueryProfile) LeaveExecute() {
 		return
 	}
 
-	p.ExecuteDuration += nonNegative(time.Since(p.executeStart) - (p.BarrierDuration - p.barrierAtExecuteStart))
+	p.ExecuteDuration += p.clampPhase("execute", time.Since(p.executeStart)-(p.BarrierDuration-p.barrierAtExecuteStart))
 	p.executeStart = time.Time{}
 }
 
@@ -252,7 +271,7 @@ func (p *QueryProfile) Finish() {
 
 	p.LeaveExecute()
 
-	p.ServerDuration = nonNegative(time.Since(p.requestStart) - p.BarrierDuration - p.DeliverDuration)
+	p.ServerDuration = p.clampPhase("server", time.Since(p.requestStart)-p.BarrierDuration-p.DeliverDuration)
 
 	if !p.executeEntered {
 		// The request never reached the executor (validation rejection, missing
@@ -261,16 +280,35 @@ func (p *QueryProfile) Finish() {
 	}
 }
 
-// nonNegative clamps a phase duration at zero. A negative value can only come
-// from an accumulator being credited more than the enclosing window actually
-// lasted (a double-counted barrier wait, say), and publishing a negative
-// duration would be worse than publishing a floor.
-func nonNegative(d time.Duration) time.Duration {
-	if d < 0 {
-		return 0
+// clampPhase floors a computed phase duration at zero.
+//
+// A negative result is impossible by contract: every accumulator is credited
+// from inside the window it is later subtracted from, so it can only exceed that
+// window if a hook double-counted. Per invariant #7 that must not pass silently,
+// but a read request is the wrong place to fail hard over a diagnostic — so the
+// clamp keeps the wire value sane while the violation is made loud: recorded on
+// the profile (and therefore in the slow-query log and the span, where the
+// profile is consumed) and asserted for the fuzzing harness.
+func (p *QueryProfile) clampPhase(phase string, d time.Duration) time.Duration {
+	if d >= 0 {
+		return d
 	}
 
-	return d
+	assert.Unreachable("query profile: phase duration went negative — an accumulator was double-counted", map[string]any{
+		"phase":             phase,
+		"duration_ns":       int64(d),
+		"barrier_ns":        int64(p.BarrierDuration),
+		"deliver_ns":        int64(p.DeliverDuration),
+		"execute_ns":        int64(p.ExecuteDuration),
+		"executeEntered":    p.executeEntered,
+		"executeWindowOpen": !p.executeStart.IsZero(),
+	})
+
+	// assert.Unreachable is a no-op in production builds, so leave a trace the
+	// operator can actually see.
+	p.Anomaly = "negative " + phase + " duration (accumulator double-counted)"
+
+	return 0
 }
 
 // ProfileFromContext extracts the QueryProfile from the context.
@@ -283,9 +321,33 @@ func ProfileFromContext(ctx context.Context) *QueryProfile {
 
 // TotalDuration returns the sum of index and enrichment durations, i.e. the
 // query EXECUTION total. It is a subset of ServerDuration and must not be used
-// as "how long the server took" — use ServerDuration for that.
+// as "how long the server took" — use ServerDuration or WallDuration for that.
 func (p *QueryProfile) TotalDuration() time.Duration {
 	return p.IndexDuration + p.EnrichmentDuration
+}
+
+// WallDuration returns everything the server spent on the request except the
+// caller-requested read barrier: ServerDuration plus the delivery phase.
+//
+// This is the total the slow-query threshold compares against. ServerDuration
+// alone would be blind to two real costs: row serialisation, which grows with
+// page size and is charged to delivery because a gRPC stream.Send() marshals and
+// writes in one inseparable call; and, on a forwarded read, the remote node's
+// entire cost, which arrives through the row-production side of the send loop.
+// A threshold that cannot see either would fail to surface exactly the slow
+// requests it exists for.
+//
+// The price is that on a server stream this total also absorbs consumer
+// back-pressure, so a slow client can trip the threshold. That is accepted
+// deliberately: the logged breakdown (DeliverDuration vs FirstRowDuration vs
+// ServerDuration) tells the reader which side was slow, whereas a threshold that
+// never fires tells them nothing at all.
+func (p *QueryProfile) WallDuration() time.Duration {
+	if p == nil {
+		return 0
+	}
+
+	return p.ServerDuration + p.DeliverDuration
 }
 
 // ToProto converts the profile to its protobuf representation.
@@ -307,6 +369,7 @@ func (p *QueryProfile) ToProto() *servicepb.QueryProfile {
 		BarrierDurationUs:    p.BarrierDuration.Microseconds(),
 		DeliverDurationUs:    p.DeliverDuration.Microseconds(),
 		FirstRowDurationUs:   p.FirstRowDuration.Microseconds(),
+		Forwarded:            p.Forwarded,
 	}
 	if p.Root != nil {
 		pb.RootIterator = p.Root.ToProto()
@@ -360,8 +423,13 @@ func (p *QueryProfile) EmitToSpan(span trace.Span) {
 		attribute.Int64("query.barrier_duration_us", p.BarrierDuration.Microseconds()),
 		attribute.Int64("query.deliver_duration_us", p.DeliverDuration.Microseconds()),
 		attribute.Int64("query.first_row_duration_us", p.FirstRowDuration.Microseconds()),
-		attribute.Bool("query.profile_detailed", p.detailed),
+		attribute.Int64("query.wall_duration_us", p.WallDuration().Microseconds()),
+		attribute.Bool("query.forwarded", p.Forwarded),
 	)
+
+	if p.Anomaly != "" {
+		span.SetAttributes(attribute.String("query.profile_anomaly", p.Anomaly))
+	}
 
 	if p.Root != nil {
 		span.SetAttributes(attribute.String("query.iterator_tree", p.Root.String()))
@@ -388,16 +456,22 @@ func (p *QueryProfile) LogTo(logger logging.Logger) {
 			"barrierDurationUs":    p.BarrierDuration.Microseconds(),
 			"deliverDurationUs":    p.DeliverDuration.Microseconds(),
 			"firstRowDurationUs":   p.FirstRowDuration.Microseconds(),
-			// False means the caller did not ask for the profile, so the
-			// execute/deliver split was not attributed per row: the whole
-			// streaming loop was charged to deliverDurationUs.
-			"profileDetailed": p.detailed,
+			"wallDurationUs":       p.WallDuration().Microseconds(),
+			// True means the read was served by another node, so barrierDurationUs
+			// reads 0 for lack of a LOCAL barrier and the remote node's whole cost
+			// sits inside executeDurationUs.
+			"forwarded": p.Forwarded,
 		}
 		if p.Root != nil {
 			fields["iteratorTree"] = p.Root.String()
 		}
 
-		logger.WithFields(fields).Tracef("Query profile (server=%s, execution=%s)", p.ServerDuration, p.TotalDuration())
+		if p.Anomaly != "" {
+			fields["profileAnomaly"] = p.Anomaly
+		}
+
+		logger.WithFields(fields).Tracef("Query profile (wall=%s, server=%s, execution=%s)",
+			p.WallDuration(), p.ServerDuration, p.TotalDuration())
 	}
 }
 

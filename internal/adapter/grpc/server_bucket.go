@@ -599,7 +599,8 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 
 	// Start the profile clock before authentication and request decode so those
 	// phases land inside PrepareDuration instead of being invisible.
-	ctx, profile := query.WithProfile(ctx, wantsProfile(ctx))
+	ctx, profile := query.WithProfile(ctx)
+	defer impl.emitProfile(ctx, profile)
 
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
 		return err
@@ -656,10 +657,7 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		return fmt.Errorf("listing transactions: %w", err)
 	}
 
-	err = sendPagedToStream(ctx, c, stream, "transaction", pageSize, txCursorOf)
-	impl.emitProfile(ctx, profile)
-
-	return err
+	return sendPagedToStream(ctx, c, stream, "transaction", pageSize, txCursorOf)
 }
 
 // txCursorOf returns the opaque next-page cursor for a transaction (its id
@@ -788,7 +786,8 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 	defer span.End()
 
 	// See ListTransactions: the clock must start before auth/decode.
-	ctx, profile := query.WithProfile(ctx, wantsProfile(ctx))
+	ctx, profile := query.WithProfile(ctx)
+	defer impl.emitProfile(ctx, profile)
 
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
 		return err
@@ -828,10 +827,7 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 		return fmt.Errorf("listing accounts: %w", err)
 	}
 
-	err = sendPagedToStream(ctx, cur, stream, "account", pageSize, accountCursorOf)
-	impl.emitProfile(ctx, profile)
-
-	return err
+	return sendPagedToStream(ctx, cur, stream, "account", pageSize, accountCursorOf)
 }
 
 // accountCursorOf returns the opaque next-page cursor for an account (its
@@ -1372,7 +1368,8 @@ func (impl *BucketServiceServerImpl) ListPreparedQueries(ctx context.Context, re
 }
 
 func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
-	ctx, profile := query.WithProfile(ctx, wantsProfile(ctx))
+	ctx, profile := query.WithProfile(ctx)
+	defer impl.emitProfile(ctx, profile)
 
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
 		return nil, err
@@ -1380,11 +1377,9 @@ func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, r
 
 	profile.EnterExecute()
 	resp, err := impl.ctrl.ExecutePreparedQuery(ctx, req)
+	// No delivery phase on a unary reply: the gRPC codec marshals it after the
+	// handler returns, past the point where the trailer is set.
 	profile.LeaveExecute()
-
-	// Unary response: the reply is marshalled by the gRPC codec after the
-	// handler returns, so there is no measurable delivery phase here.
-	impl.emitProfile(ctx, profile)
 
 	return resp, err
 }
@@ -1408,7 +1403,8 @@ func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *se
 }
 
 func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *servicepb.AggregateVolumesRequest) (*commonpb.AggregateResult, error) {
-	ctx, profile := query.WithProfile(ctx, wantsProfile(ctx))
+	ctx, profile := query.WithProfile(ctx)
+	defer impl.emitProfile(ctx, profile)
 
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
 		return nil, err
@@ -1438,7 +1434,6 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 		CollapseColors:  req.GetCollapseColors(),
 	})
 	profile.LeaveExecute()
-	impl.emitProfile(ctx, profile)
 
 	return result, err
 }
@@ -1626,10 +1621,26 @@ func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.D
 // slow-query log / OTel span when the request exceeded the configured
 // threshold, and to the gRPC trailer when the caller asked for it.
 //
-// The threshold is compared against ServerDuration, not the execution total.
-// EN-1859 measured a 56 ms client round-trip whose execution accounted for
-// 2.3 ms: thresholding on execution meant the slow requests this log exists to
-// surface were precisely the ones it could not see.
+// Deferred at the top of every profiled handler, so a read that fails partway is
+// still logged — a slow failure is at least as interesting as a slow success, and
+// the previous placement after the happy path meant an error return produced no
+// profile at all.
+//
+// The threshold compares WallDuration, not the execution total and not
+// ServerDuration:
+//
+//   - the execution total was the pre-EN-1859 behaviour and could not see request
+//     decode or filter compilation, which is the gap this work exists to close;
+//   - ServerDuration excludes the delivery phase, which on a stream holds row
+//     serialisation AND, for a forwarded read, the entire remote cost. A
+//     threshold blind to both would still miss the slow requests it exists for.
+//
+// WallDuration therefore trades in consumer back-pressure: a slow client can trip
+// the threshold. The logged breakdown says which side was slow, and a threshold
+// that fires with an explanation beats one that never fires.
+//
+// A threshold of 0 disables the log entirely — every duration is >= 0, so
+// comparing against 0 would otherwise log every single read.
 func (impl *BucketServiceServerImpl) emitProfile(ctx context.Context, profile *query.QueryProfile) {
 	if profile == nil {
 		return
@@ -1637,7 +1648,7 @@ func (impl *BucketServiceServerImpl) emitProfile(ctx context.Context, profile *q
 
 	profile.Finish()
 
-	if profile.ServerDuration >= impl.queryProfileThreshold {
+	if impl.queryProfileThreshold > 0 && profile.WallDuration() >= impl.queryProfileThreshold {
 		profile.LogTo(impl.logger)
 		profile.EmitToSpan(trace.SpanFromContext(ctx))
 	}
