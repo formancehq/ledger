@@ -1,7 +1,9 @@
 package backup
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +14,37 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func validateExportKey(seg ExportSegment, key []byte) error {
+	var expected []byte
+	switch seg.Type {
+	case "log":
+		expected = []byte{dal.ZoneCold, dal.SubColdLog}
+	case "audit":
+		expected = []byte{dal.ZoneCold, dal.SubColdAudit}
+	case "auditItem":
+		expected = []byte{dal.ZoneCold, dal.SubColdAuditItem}
+	case "appliedProposal":
+		expected = []byte{dal.ZoneCold, dal.SubColdAppliedProposal}
+	default:
+		return fmt.Errorf("unsupported export segment type %q", seg.Type)
+	}
+
+	minLen := len(expected) + 8
+	if seg.Type == "auditItem" {
+		minLen += 4
+	}
+	if len(key) < minLen || len(key) < len(expected) || !bytes.Equal(key[:len(expected)], expected) {
+		return fmt.Errorf("key %x is not valid for export segment type %q", key, seg.Type)
+	}
+
+	seq := binary.BigEndian.Uint64(key[len(expected) : len(expected)+8])
+	if seq < seg.StartSeq || seq > seg.EndSeq {
+		return fmt.Errorf("key %x sequence %d outside export range [%d,%d]", key, seq, seg.StartSeq, seg.EndSeq)
+	}
+
+	return nil
+}
 
 // ApplyExports downloads export segments from storage and writes their raw KV
 // pairs into the given Pebble store. The segment types are log (0x01), audit
@@ -64,6 +97,13 @@ func ApplyExports(
 				_ = batch.Cancel()
 
 				return fmt.Errorf("reading entry from segment %s: %w", seg.Key, err)
+			}
+
+			if err := validateExportKey(seg, key); err != nil {
+				_ = reader.Close()
+				_ = batch.Cancel()
+
+				return fmt.Errorf("invalid key in segment %s: %w", seg.Key, err)
 			}
 
 			if err := batch.Set(key, value, pebble.NoSync); err != nil {
