@@ -70,7 +70,7 @@ repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
-pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
+pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,isDraft,title,body,labels,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
 
 pr_number=$(jq -r '.number' <<<"$pr_json")
 pr_url=$(jq -r '.url' <<<"$pr_json")
@@ -82,6 +82,18 @@ head_ref=$(jq -r '.headRefName' <<<"$pr_json")
 head_sha=$(jq -r '.headRefOid' <<<"$pr_json")
 head_owner=$(jq -r '.headRepositoryOwner.login // empty' <<<"$pr_json")
 head_repo=$(jq -r '.headRepository.name // empty' <<<"$pr_json")
+pr_title=$(jq -r '.title // ""' <<<"$pr_json")
+pr_body=$(jq -r '.body // ""' <<<"$pr_json")
+
+# Bugfix intent is explicit metadata when available, with a conservative
+# fallback for the repository's established Jira/fix PR convention. Other
+# changes (docs, manifests, refactors, features) do not require reproduction.
+bugfix_intent=non-bugfix
+if jq -e '.labels[]?.name | ascii_downcase == "bugfix" or ascii_downcase == "bug-fix"' >/dev/null <<<"$pr_json" || \
+   [[ "$pr_title" == fix:* || "$pr_title" == Fix:* ]] || \
+   grep -Eiq '(^|[[:space:]])(fixes|fix|resolves)[[:space:]]+EN-[0-9]+' <<<"$pr_body"; then
+    bugfix_intent=bugfix
+fi
 
 if [[ "$state" != "OPEN" ]]; then
     echo "ai-pr-loop: PR #$pr_number is not open (state=$state)" >&2
@@ -322,7 +334,7 @@ fix_cmd='bash scripts/ai-fix-claude'
 validation_cmd='bash scripts/agent-check-pr'
 if [[ "$push_changes" == "true" ]]; then
     # Publication additionally base-pins the mutating fixer and validator.
-    for trusted_tool in ai-fix-claude agent-check-pr; do
+    for trusted_tool in ai-fix-claude agent-check-pr agent-just; do
         trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
         if [[ ! -x "$trusted_tool_path" ]]; then
             echo "ai-pr-loop: trusted base does not provide executable scripts/$trusted_tool" >&2
@@ -334,6 +346,41 @@ if [[ "$push_changes" == "true" ]]; then
         'env -u GOROOT nix develop %q --command env LEDGER_AGENT_CHECK_IN_NIX=1 bash %q' \
         "path:$trusted_tool_worktree" \
         "$trusted_tool_worktree/scripts/agent-check-pr"
+fi
+
+if [[ "$bugfix_intent" == bugfix ]]; then
+    evidence_file=$(mktemp)
+    printf '%s\n' "$pr_body" >"$evidence_file"
+    if [[ "$push_changes" == true && -x "$trusted_tool_worktree/scripts/ai-bugfix-gate" ]]; then
+        bash "$trusted_tool_worktree/scripts/ai-bugfix-gate" evidence "$evidence_file" bugfix
+    elif [[ "$push_changes" == true ]]; then
+        # Bootstrap for bases predating ai-bugfix-gate: keep the fail-closed
+        # evidence contract inline until the trusted executable exists. This
+        # validates data only; no candidate-controlled command is executed.
+        grep -Eq '^DISCOVERY:[[:space:]]+(DIRECT_FIX|PARTIAL_FIX|RELATED_BUT_DIFFERENT|STALE_OR_INVALID|ALREADY_FIXED|NO_EXISTING_WORK)\b' "$evidence_file" || {
+            rm -f -- "$evidence_file"
+            echo "ai-pr-loop: BUGFIX_EVIDENCE=FAIL (discovery classification missing)" >&2
+            exit 1
+        }
+        grep -Eq '^BEFORE_FIX:[[:space:]]+(BUG_REPRODUCED|REPRODUCTION_BLOCKED|ALREADY_FIXED)\b' "$evidence_file" || {
+            rm -f -- "$evidence_file"
+            echo "ai-pr-loop: BUGFIX_EVIDENCE=FAIL (BEFORE_FIX missing)" >&2
+            exit 1
+        }
+        grep -Eq '^AFTER_FIX:[[:space:]]+PASS\b' "$evidence_file" || {
+            rm -f -- "$evidence_file"
+            echo "ai-pr-loop: BUGFIX_EVIDENCE=FAIL (AFTER_FIX missing)" >&2
+            exit 1
+        }
+        echo 'BUGFIX_EVIDENCE=PASS (bootstrap inline gate)'
+    elif [[ "$push_changes" == false && -x "$repo_root/scripts/ai-bugfix-gate" ]]; then
+        bash "$repo_root/scripts/ai-bugfix-gate" evidence "$evidence_file" bugfix
+    else
+        rm -f -- "$evidence_file"
+        echo "ai-pr-loop: bugfix evidence gate is unavailable; refusing readiness" >&2
+        exit 1
+    fi
+    rm -f -- "$evidence_file"
 fi
 
 printf '==> ai-pr-loop: PR #%s\n' "$pr_number"
@@ -473,6 +520,17 @@ fi
 
 if [[ -n "$(git status --porcelain)" ]]; then
     echo "ai-pr-loop: candidate review left the worktree dirty; refusing push" >&2
+    echo "Candidate worktree preserved for inspection: $worktree"
+    keep_worktree=true
+    exit 1
+fi
+
+    # Last-mile publication gate: use only the base-pinned recipe wrapper. The
+    # candidate worktree is merely its working directory; generated output is
+    # never reset or hidden.
+bash "$trusted_tool_worktree/scripts/agent-just" pre-commit
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "ai-pr-loop: pre-commit left the candidate worktree dirty; refusing push" >&2
     echo "Candidate worktree preserved for inspection: $worktree"
     keep_worktree=true
     exit 1

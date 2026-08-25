@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage:
+  scripts/ai-bugfix-gate environment [go.mod]
+  scripts/ai-bugfix-gate evidence <metadata-file> [bugfix|non-bugfix]
+  scripts/ai-bugfix-gate pre-push
+EOF
+}
+
+die() { echo "ai-bugfix-gate: $*" >&2; exit 1; }
+
+environment_gate() {
+    local mod_file=${1:-go.mod}
+    [[ -f "$mod_file" ]] || die "missing module file: $mod_file"
+
+    # nix develop inherits the caller's PATH on some hosts. Remove host Go
+    # entries before observing the effective toolchain; do not hardcode a
+    # /nix/store path.
+    PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '^/opt/homebrew' | paste -sd: -)
+    export PATH
+    unset GOROOT || true
+
+    local go_bin go_version expected actual actual_root
+    go_bin=$(command -v go) || die "ENVIRONMENT_GATE=FAIL (go not found)"
+    go_version=$(go version) || die "ENVIRONMENT_GATE=FAIL (go unusable)"
+    expected=$(awk '$1 == "go" {print $2; exit}' "$mod_file")
+    expected=$(sed -E 's/^([0-9]+\.[0-9]+).*/\1/' <<<"$expected")
+    [[ -n "$expected" ]] || die "ENVIRONMENT_GATE=FAIL (go directive missing)"
+    actual=$(sed -E 's/.*go([0-9]+\.[0-9]+).*/\1/' <<<"$go_version")
+    actual_root=$(go env GOROOT)
+
+    printf 'ENVIRONMENT_GATE=PASS\nEXPECTED_GO=%s\nACTUAL_GO=%s\nGO_BINARY=%s\nGOROOT=%s\nGOTOOLCHAIN=%s\n' \
+        "$expected" "$actual" "$go_bin" "$actual_root" "$(go env GOTOOLCHAIN)"
+    [[ "$actual" == "$expected"* ]] || die "ENVIRONMENT_GATE=FAIL (expected Go $expected, got $go_version)"
+    [[ "$go_bin" == /nix/store/* && "$actual_root" == /nix/store/* ]] || \
+        die "ENVIRONMENT_GATE=FAIL (Go is not from the Nix store)"
+}
+
+evidence_gate() {
+    local file=$1 intent=${2:-bugfix}
+    [[ -f "$file" ]] || die "evidence file not found: $file"
+    [[ "$intent" == bugfix || "$intent" == non-bugfix ]] || die "invalid intent: $intent"
+    [[ "$intent" == non-bugfix ]] && { echo 'BUGFIX_EVIDENCE=NOT_REQUIRED'; return; }
+
+    grep -Eq '^DISCOVERY:[[:space:]]+(DIRECT_FIX|PARTIAL_FIX|RELATED_BUT_DIFFERENT|STALE_OR_INVALID|ALREADY_FIXED|NO_EXISTING_WORK)\b' "$file" ||
+        die "BUGFIX_EVIDENCE=FAIL (discovery classification missing)"
+    grep -Eq '^BEFORE_FIX:[[:space:]]+(BUG_REPRODUCED|REPRODUCTION_BLOCKED|ALREADY_FIXED)\b' "$file" ||
+        die "BUGFIX_EVIDENCE=FAIL (BEFORE_FIX missing)"
+    grep -Eq '^AFTER_FIX:[[:space:]]+PASS\b' "$file" ||
+        die "BUGFIX_EVIDENCE=FAIL (AFTER_FIX missing)"
+    if [[ "${VALIDATION_FAILURE:-0}" == 1 ]]; then
+        grep -Eq '^BASELINE_CLASSIFICATION:[[:space:]]+(BASELINE_FAILURE|CANDIDATE_CAUSED|ENVIRONMENTAL|UNKNOWN)\b' "$file" ||
+            die "BUGFIX_EVIDENCE=FAIL (baseline classification missing)"
+    fi
+    echo 'BUGFIX_EVIDENCE=PASS'
+}
+
+pre_push_gate() {
+    just pre-commit
+    [[ -z "$(git status --porcelain)" ]] || die "PRE_COMMIT=PASS but WORKTREE_CLEAN=NO"
+    echo 'PRE_COMMIT=PASS'
+    echo 'WORKTREE_CLEAN=YES'
+}
+
+case "${1:-}" in
+    environment) environment_gate "${2:-go.mod}" ;;
+    evidence) [[ $# -ge 2 ]] || { usage >&2; exit 2; }; evidence_gate "$2" "${3:-bugfix}" ;;
+    pre-push) pre_push_gate ;;
+    -h|--help) usage ;;
+    *) usage >&2; exit 2 ;;
+esac

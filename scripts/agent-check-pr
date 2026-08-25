@@ -136,6 +136,9 @@ fi
 
 unset GOROOT || true
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '^/opt/homebrew' | paste -sd: -)
+export PATH
+bash "$SCRIPT_DIR/ai-bugfix-gate" environment "$(git rev-parse --show-toplevel)/go.mod"
 
 echo "==> agent-check-pr: selected local gates: ${gates[*]}"
 bash "$SCRIPT_DIR/agent-check-full"
