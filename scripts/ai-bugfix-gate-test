@@ -28,4 +28,20 @@ if "$gate" evidence "$tmp/missing-before" bugfix >/dev/null 2>&1; then
     exit 1
 fi
 
+mkdir -p "$tmp/fake-bin"
+cat >"$tmp/fake-bin/go" <<'EOF'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "version") echo 'go version go1.26.5 darwin/arm64' ;;
+  "env GOROOT") echo '/tmp/fake-go-root' ;;
+  "env GOTOOLCHAIN") echo 'auto' ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$tmp/fake-bin/go"
+if PATH="$tmp/fake-bin:$PATH" "$gate" environment "$root/go.mod" >/dev/null 2>&1; then
+    echo 'expected non-Nix matching Go to fail' >&2
+    exit 1
+fi
+
 echo 'ai-bugfix-gate tests: PASS'

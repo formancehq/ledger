@@ -35,8 +35,8 @@ environment_gate() {
     printf 'ENVIRONMENT_GATE=PASS\nEXPECTED_GO=%s\nACTUAL_GO=%s\nGO_BINARY=%s\nGOROOT=%s\nGOTOOLCHAIN=%s\n' \
         "$expected" "$actual" "$go_bin" "$actual_root" "$(go env GOTOOLCHAIN)"
     [[ "$actual" == "$expected"* ]] || die "ENVIRONMENT_GATE=FAIL (expected Go $expected, got $go_version)"
-    [[ "$go_bin" != /opt/homebrew/* && "$actual_root" != /opt/homebrew/* ]] || \
-        die "ENVIRONMENT_GATE=FAIL (Homebrew Go selected)"
+    [[ "$go_bin" == /nix/store/* && "$actual_root" == /nix/store/* ]] || \
+        die "ENVIRONMENT_GATE=FAIL (Go is not from the Nix store)"
 }
 
 evidence_gate() {
