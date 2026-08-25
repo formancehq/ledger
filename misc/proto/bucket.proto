@@ -779,9 +779,9 @@ enum CheckStoreErrorType {
   // DropIndex / RemovedMetadataFieldType / DeleteLedger log payloads. The
   // registry is a projection of those audit-bound orders; an entry that has
   // no matching CreateIndex (or that survives an audit-bound DropIndex /
-  // ledger deletion) is tampering. Note: BuildStatus transitions to READY
-  // ride on a non-audited TechnicalUpdate (IndexReady) so the verifier
-  // covers presence + identity (Ledger, Id), not the READY/BUILDING flag.
+  // ledger deletion) is tampering. The verifier covers presence + identity
+  // (Ledger, Id); per-replica build progress lives in IndexVersionState,
+  // which legitimately differs across nodes and is not compared.
   CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH = 10;
   // Emitted when a LedgerLogPayload.OrderSkipped projection records a reason
   // that the audit-bound Order.skippable_reasons whitelist does not allow, or
@@ -841,8 +841,7 @@ enum CheckStoreErrorType {
   // archiving), and VolumeCount / MetadataCount / ReferenceCount against a
   // recount of the stored attribute rows those counters summarize — the rows
   // themselves are verified entry-by-entry by their own passes.
-  // EphemeralEvictedCount / TransientUsedCount are informational and excluded
-  // (cf. Index BuildStatus).
+  // EphemeralEvictedCount / TransientUsedCount are informational and excluded.
   CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH = 18;
   // Emitted when the numscript library projections (SubAttrNumscriptContent
   // immutable version entries and SubAttrNumscriptVersion latest pointers)
