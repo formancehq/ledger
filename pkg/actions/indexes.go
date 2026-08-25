@@ -58,37 +58,71 @@ func CreateLogBuiltinIndexAction(ledger string, index commonpb.LogBuiltinIndex) 
 }
 
 // indexReadyOnReplica returns nil when the (ledger, IndexID) entry in
-// the GetIndexStatus response has its per-replica current_version caught
-// up to the registry row's forward_encoding_version on the replica the
-// client is talking to.
+// the GetIndexStatus response has a live keyspace and no rewrite in
+// flight on the replica the client is talking to: current_version > 0
+// and pending_version == 0.
 //
-// The registry version is the cluster-wide target: CreateIndex declares
-// version 1 and every retype bumps it. current_version is the keyspace
-// this replica actually serves, so equality is the causal readiness
-// signal — an initial build waits for the switch to version 1, and a
-// retype waits for the switch PAST the still-live pre-retype version
-// (current_version stays non-zero at the old version while
-// pending_version builds, so a bare non-zero check would return before
-// the switch).
+// Per-replica version numbers are allocated from the replica's local
+// high-water mark (a drop+recreate resumes past the dropped
+// incarnation's numbers), so they are NOT comparable to the registry
+// row's forward_encoding_version. Callers that need to observe a
+// RETYPE completing must capture the pre-retype current_version and
+// use indexRewriteDoneOnReplica — the pre-retype keyspace stays live
+// (current_version > 0, and pending_version is 0 until the replica's
+// builder picks the retype up), so this check alone can pass before
+// the rewrite starts.
 //
 // Each replica advances its IndexVersionState independently as soon as
 // its local backfill / rewrite finishes (EN-1323) — readiness is always
 // a per-replica question.
 func indexReadyOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*commonpb.IndexID) bool, label string) error {
-	for _, entry := range resp.GetIndexes() {
-		if entry.GetLedger() != ledger || !matches(entry.GetIndex().GetId()) {
-			continue
-		}
-
-		current, want := entry.GetCurrentVersion(), entry.GetIndex().GetForwardEncodingVersion()
-		if current != want {
-			return fmt.Errorf("index %s on %s serves version %d, registry declares %d (local backfill / rewrite not switched)", label, ledger, current, want)
-		}
-
-		return nil
+	entry := findIndexEntry(resp, ledger, matches)
+	if entry == nil {
+		return fmt.Errorf("index %s on %s not found in GetIndexStatus", label, ledger)
 	}
 
-	return fmt.Errorf("index %s on %s not found in GetIndexStatus", label, ledger)
+	if entry.GetCurrentVersion() == 0 {
+		return fmt.Errorf("index %s on %s has current_version=0 (local backfill not switched)", label, ledger)
+	}
+
+	if p := entry.GetPendingVersion(); p != 0 {
+		return fmt.Errorf("index %s on %s has rewrite to version %d in flight", label, ledger, p)
+	}
+
+	return nil
+}
+
+// indexRewriteDoneOnReplica returns nil when the replica has switched
+// PAST preVersion with no rewrite in flight — the causal completion
+// signal for a retype: the pre-retype keyspace stays live throughout
+// the rewrite, so only advancement beyond the captured pre-retype
+// current_version proves the switch.
+func indexRewriteDoneOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*commonpb.IndexID) bool, preVersion uint32, label string) error {
+	entry := findIndexEntry(resp, ledger, matches)
+	if entry == nil {
+		return fmt.Errorf("index %s on %s not found in GetIndexStatus", label, ledger)
+	}
+
+	current := entry.GetCurrentVersion()
+	if current == preVersion || current == 0 {
+		return fmt.Errorf("index %s on %s still serves pre-retype version %d", label, ledger, current)
+	}
+
+	if p := entry.GetPendingVersion(); p != 0 {
+		return fmt.Errorf("index %s on %s has rewrite to version %d in flight", label, ledger, p)
+	}
+
+	return nil
+}
+
+func findIndexEntry(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*commonpb.IndexID) bool) *servicepb.IndexEntry {
+	for _, entry := range resp.GetIndexes() {
+		if entry.GetLedger() == ledger && matches(entry.GetIndex().GetId()) {
+			return entry
+		}
+	}
+
+	return nil
 }
 
 // WaitForMetadataIndexReady polls until the metadata index has been
@@ -105,6 +139,46 @@ func WaitForMetadataIndexReady(ctx context.Context, client servicepb.BucketServi
 
 			return ok && m.Metadata.GetTarget() == target && m.Metadata.GetKey() == key
 		}, fmt.Sprintf("metadata[%s] on %s", key, target.String()))
+	})
+}
+
+// MetadataIndexCurrentVersion returns the per-replica current_version of the
+// (target, key) metadata index on the replica the client is talking to.
+// Capture it BEFORE issuing a retype so WaitForMetadataIndexRewrite can
+// observe the advancement past it.
+func MetadataIndexCurrentVersion(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string) (uint32, error) {
+	resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
+	if err != nil {
+		return 0, err
+	}
+
+	entry := findIndexEntry(resp, ledger, func(id *commonpb.IndexID) bool {
+		m, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+
+		return ok && m.Metadata.GetTarget() == target && m.Metadata.GetKey() == key
+	})
+	if entry == nil {
+		return 0, fmt.Errorf("metadata index [%s] on %s not found in GetIndexStatus", key, ledger)
+	}
+
+	return entry.GetCurrentVersion(), nil
+}
+
+// WaitForMetadataIndexRewrite polls until the replica has atomically switched
+// the (target, key) metadata index past preVersion (captured before the
+// retype) with no rewrite in flight.
+func WaitForMetadataIndexRewrite(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string, preVersion uint32) error {
+	return poll(ctx, 10*time.Second, 200*time.Millisecond, func() error {
+		resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
+		if err != nil {
+			return err
+		}
+
+		return indexRewriteDoneOnReplica(resp, ledger, func(id *commonpb.IndexID) bool {
+			m, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+
+			return ok && m.Metadata.GetTarget() == target && m.Metadata.GetKey() == key
+		}, preVersion, fmt.Sprintf("metadata[%s] on %s", key, target.String()))
 	})
 }
 
