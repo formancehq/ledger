@@ -220,8 +220,38 @@ func runWorker(
 		ticket := c.registerInflight(bulk)
 		c.mu.Unlock()
 
+		// Application-level retry to a definitive outcome. The gRPC-layer
+		// retries live inside one call's context, so a cancellation that
+		// kills the call — a dying node propagates codes.Canceled from its
+		// handler, a connection teardown cancels every in-flight RPC — ends
+		// the whole chain with the bulk possibly committed. The request is
+		// rendered ONCE (the idempotency key must pin the first attempt's
+		// identity) and re-submitted until the server gives a commit — served
+		// from its idempotency cache when the lost attempt landed — or a
+		// business rejection. Only this driver's own context ending abandons
+		// a bulk, which the processor's shutdown skip already models.
 		req := applyRequest(bulk)
-		resp, err := client.Apply(ctx, req)
+
+		var (
+			resp *servicepb.ApplyResponse
+			err  error
+		)
+
+		for {
+			resp, err = client.Apply(ctx, req)
+			if err == nil || ctx.Err() != nil {
+				break
+			}
+
+			if !internal.IsTransient(err) && !internal.IsCanceled(err) {
+				break
+			}
+
+			select {
+			case <-ctx.Done():
+			case <-time.After(200 * time.Millisecond):
+			}
+		}
 
 		dumpBatch(ticket, req, resp, err)
 
