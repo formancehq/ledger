@@ -274,7 +274,7 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 
 // validateOrderCreateIndex rejects a CreateIndex order for an IndexID the
 // builder has no backfill path for — which would otherwise be persisted as a
-// permanently-BUILDING registry entry that never completes. ParseCanonical
+// registry entry whose backfill never runs or completes. ParseCanonical
 // decodes any well-formed IndexID reachable from an HTTP/gRPC create body,
 // including unsupported enum values (e.g. metadata:TARGET_TYPE_LEDGER:<key>,
 // account_builtin:ACCT_BUILTIN_INDEX_UNSPECIFIED, log_builtin:...UNSPECIFIED),

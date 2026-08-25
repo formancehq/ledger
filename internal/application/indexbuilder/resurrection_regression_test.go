@@ -204,7 +204,7 @@ func TestDropRecreate_DeletedValueStaysDead(t *testing.T) {
 
 	v2, pending := b.versionFor(ledger, canonical)
 	require.Zero(t, pending)
-	require.NotZero(t, v2, "re-created index must be READY")
+	require.NotZero(t, v2, "re-created index must have switched live")
 	require.Greater(t, v2, v1, "a version is never reused: the fresh pass gets a keyspace no earlier incarnation wrote")
 
 	// The one assertion the recorded phantom violated: bob's k3 was deleted at

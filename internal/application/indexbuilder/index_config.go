@@ -13,9 +13,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-// ledgerIndexConfig caches which indexes are enabled and ready for a ledger.
+// ledgerIndexConfig caches which indexes are enabled for a ledger.
 // Keyed by IndexID canonical form (indexes.Canonical) for O(1) lookup; the
-// stored value is the Index entry itself (status + audit metadata).
+// stored value is the Index entry itself (identity + audit metadata).
 type ledgerIndexConfig struct {
 	byCanonical map[string]*commonpb.Index
 }
@@ -31,18 +31,17 @@ func newLedgerIndexConfig() *ledgerIndexConfig {
 // bucket-scoped Index registry. Three steps:
 //
 //  1. ReadAllIndexVersionStates seeds the per-replica version cache so
-//     loadIndexRegistry's BUILDING-scheduling decision can consult
-//     CurrentVersion for metadata indexes (a non-zero CurrentVersion
-//     means the local replica already built v_current; the BUILDING
-//     flag reflects a retype handled by scheduleResumedRewrites
-//     instead of a from-scratch backfill).
+//     loadIndexRegistry's backfill-scheduling decision can consult
+//     CurrentVersion (a non-zero CurrentVersion means the local replica
+//     already built v_current; any in-flight retype is owned by
+//     scheduleResumedRewrites instead of a from-scratch backfill).
 //  2. ReadLedgers seeds an empty ledgerIndexConfig per active ledger so
 //     handle{Created,Dropped}IndexLog can target the right cache
 //     without racing the registry scan.
 //  3. A streaming scan of SubAttrIndex enumerates Index entries; each
-//     is routed by Index.Ledger into the matching ledgerIndexConfig.
-//     BUILDING entries spawn backfill tasks unless step 1 indicated
-//     the local replica already finished a prior build (rewrite path).
+//     is routed by Index.Ledger into the matching ledgerIndexConfig
+//     and spawns a backfill task unless step 1 indicated the local
+//     replica already finished a prior build (rewrite path).
 //
 // Bucket-scoped entries (Index.Ledger == "") land in b.bucketIndexConfig
 // and are reserved for audit-style indexes (see #436); they aren't tied
@@ -166,21 +165,20 @@ func (b *Builder) seedLedgerIndexConfig(ctx context.Context, handle *dal.ReadHan
 
 // loadIndexRegistry streams the SubAttrIndex zone and dispatches each entry
 // to the matching ledgerIndexConfig (by Index.Ledger), then schedules a
-// backfill for every BUILDING entry. Bucket-scoped entries (LedgerID == 0,
-// Index.Ledger empty) are kept aside in bucketIndexConfig.
+// backfill for every per-ledger entry that needs one. Bucket-scoped entries
+// (LedgerID == 0, Index.Ledger empty) are kept aside in bucketIndexConfig.
 //
-// Backfill scheduling for BUILDING entries cross-checks the local
-// IndexVersionState cache, which every index kind (builtin tx/account/log and
-// metadata) maintains identically — CreateIndex seeds {current:0, pending:1}
-// and completeBackfill promotes to {current:1, pending:0}:
+// Backfill scheduling cross-checks the local IndexVersionState cache, which
+// every index kind (builtin tx/account/log and metadata) maintains
+// identically — CreateIndex seeds {current:0, pending:1} and completeBackfill
+// promotes to {current:1, pending:0}:
 //   - CurrentVersion == 0: this replica has never built the index; a backfill
 //     IS needed to populate v_pending (v=1 by default).
-//   - CurrentVersion != 0: this replica already finished the backfill. The
-//     BUILDING flag only lingers because the cluster-wide READY flip (a
-//     non-audited TechnicalUpdate) hasn't landed yet, or — for metadata — a
-//     *new* retype owned by scheduleResumedRewrites (a rewrite task, NOT a
-//     backfill from cursor 0). Re-scheduling would re-run a completed backfill
-//     and trip the pending==0 invariant in completeBackfill, so it is skipped.
+//   - CurrentVersion != 0: this replica already finished the backfill; any
+//     in-flight retype is owned by scheduleResumedRewrites (a rewrite task,
+//     NOT a backfill from cursor 0). Re-scheduling would re-run a completed
+//     backfill and trip the pending==0 invariant in completeBackfill, so it
+//     is skipped.
 func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 	iter, err := b.attrs.Index.NewStreamingIter(handle, nil)
 	if err != nil {
@@ -501,8 +499,8 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 // handleDroppedIndexLog updates the index config cache when a DropIndex log
 // is processed, purges the dropped metadata index's rows, and removes any
 // active backfill / schema-rewrite task tied to the index — without that, a
-// rewrite finishing post-drop would wait forever for an IndexReady that
-// applyIndexReady silently ignores once the index has been removed.
+// rewrite finishing post-drop would atomic-switch a keyspace live for an
+// index that no longer exists.
 func (b *Builder) handleDroppedIndexLog(kb *dal.KeyBuilder, ledger string, log *commonpb.DroppedIndexLog) error {
 	id := log.GetId()
 	if id == nil {

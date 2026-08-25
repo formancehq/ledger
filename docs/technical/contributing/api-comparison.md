@@ -677,8 +677,8 @@ per-replica versioning and reaches "ready" via a single
 synchronously-applied schema migration.
 
 **Status:** ⚠️ Different model — readiness is per-replica version
-state (`IndexEntry.current_version` vs `forward_encoding_version`),
-with no cluster-wide ready flag on the wire.
+state (`IndexEntry.current_version` / `pending_version`), with no
+cluster-wide ready flag on the wire.
 
 ---
 

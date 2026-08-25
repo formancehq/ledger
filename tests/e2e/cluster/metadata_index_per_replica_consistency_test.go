@@ -32,9 +32,9 @@ import (
 // every replica eventually serves the same entity under the new
 // encoding. Strict mid-rewrite ordering needs a stronger primitive
 // than min_log_sequence (which only gates on log application, not on
-// rewrite completion); the existing helper polls
-// `current_version > 0` and is correct only for the initial backfill
-// case — left as a follow-up.
+// rewrite completion); actions.WaitForMetadataIndexRewrite provides it
+// client-side by capturing the pre-retype version and waiting for the
+// advancement past it.
 var _ = Describe("MetadataIndexPerReplicaConsistency", Ordered, func() {
 	const (
 		countInstances = 3
