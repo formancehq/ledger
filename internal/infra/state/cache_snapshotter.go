@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"sync"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -287,6 +288,8 @@ func newProtoSnapshotSlot[V interface {
 // the reader as a parameter and are only called from non-hot-path contexts
 // (Recovery, bootstrap).
 type CacheSnapshotter struct {
+	bloomMu      sync.Mutex
+	bloomStopped bool
 	logger       logging.Logger
 	registry     *StateRegistry
 	bloomFilters *bloom.FilterSet
@@ -774,6 +777,11 @@ func (s *CacheSnapshotter) restoreBloomFilters(store dal.RecoveryReader) error {
 // Used on first boot and after bloom config changes. The reader is captured
 // by the goroutine; the snapshotter itself does not retain it.
 func (s *CacheSnapshotter) StartAsyncBloomPopulate(store dal.RecoveryReader, reason string) {
+	s.bloomMu.Lock()
+	defer s.bloomMu.Unlock()
+	if s.bloomStopped {
+		return
+	}
 	s.runBloomTask(store, reason, s.bloomFilters.PopulateFromStore)
 }
 
@@ -936,5 +944,8 @@ func (s *CacheSnapshotter) replayBloomFromCache(ctx context.Context) error {
 
 // Stop interrupts any running bloom task and waits for it to finish.
 func (s *CacheSnapshotter) Stop() {
+	s.bloomMu.Lock()
+	s.bloomStopped = true
 	s.bloomExecutor.Interrupt()
+	s.bloomMu.Unlock()
 }
