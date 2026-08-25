@@ -11,6 +11,7 @@
     "internal/infra/node/**",
     "internal/infra/transport/**",
     "internal/infra/membership/**",
+    "internal/infra/backup/**",
     "internal/infra/state/**",
     "internal/infra/plan/**",
     "internal/bootstrap/**",
