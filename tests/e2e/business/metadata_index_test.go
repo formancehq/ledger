@@ -621,4 +621,3 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		})
 	})
 })
-
