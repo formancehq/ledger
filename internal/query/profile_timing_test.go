@@ -99,6 +99,32 @@ func TestQueryProfile_MarkForwarded(t *testing.T) {
 		"a forwarded read must be flagged so its zero BarrierDuration is not read as 'no barrier needed'")
 }
 
+// Forwarded does NOT imply a zero barrier. RoutedController.readCtrl attempts a
+// local ReadIndex barrier first and only forwards when it fails, so the failed
+// attempt is already recorded when MarkForwarded runs. That combination is the
+// documented contract, not a bookkeeping error: the caller really waited, and a
+// failed quorum wait is no more server work than a successful one. Zeroing it
+// would push consensus latency into PrepareDuration and into the server total.
+func TestQueryProfile_ForwardedKeepsFailedLocalBarrier(t *testing.T) {
+	t.Parallel()
+
+	_, p := query.WithProfile(context.Background())
+
+	// The syncing-follower fallback, in order: barrier attempted, barrier fails,
+	// read forwarded, remote cost arrives as row production.
+	p.AddBarrierWait(time.Hour)
+	p.MarkForwarded()
+	p.EnterExecute()
+	p.LeaveExecute()
+	p.Finish()
+
+	assert.True(t, p.Forwarded)
+	assert.Equal(t, time.Hour, p.BarrierDuration,
+		"the failed local attempt must survive MarkForwarded — dropping it hides real caller-visible latency")
+	assert.Zero(t, p.ServerDuration, "and stay excluded from the server total, exactly like a successful barrier")
+	assert.Zero(t, p.PrepareDuration, "in particular it must not leak into prepare, which means request setup work")
+}
+
 func TestQueryProfile_BarrierInsideExecuteNotChargedToExecute(t *testing.T) {
 	t.Parallel()
 

@@ -93,9 +93,28 @@ move with cluster RTT rather than with server cost.
 Only **local** barriers are measured. On a forwarded read the leader runs its own
 `ReadIndexAndWait` (`x-consistency` is not propagated, so it defaults to
 linearizable there), and that wait is invisible here: it arrives as row-production
-time inside `execute_duration_us`, while `barrier_duration_us` reads 0. The
-`forwarded` flag exists so that 0 cannot be misread as "no barrier was needed" —
-always read the two together.
+time inside `execute_duration_us`. Always read `barrier_duration_us` together with
+`forwarded`:
+
+| `forwarded` | `barrier_duration_us` | meaning |
+|---|---|---|
+| false | any | the whole barrier this read paid |
+| true | `0` | no barrier ran **here** — an explicit leader read (`x-consistency: leader`) never attempts one. Not "no barrier was needed": the leader's is inside `execute_duration_us`. |
+| true | non-zero | this node **attempted** a local barrier, it failed, and the read fell back to the leader (see below) |
+
+The last row is the syncing-follower fallback in `RoutedController.readCtrl`. The
+attempt is charged even though it failed, because the caller really did wait for
+it, and it stays excluded from `server_duration_us` for the same reason a
+successful barrier is: a quorum wait is not server work. The leader's own barrier
+is then paid *on top*, inside `execute_duration_us`. Zeroing the failed attempt
+instead would push consensus latency into `prepare_duration_us` and into the
+server total — mislabelling a quorum wait as request preparation, which is the
+distortion the phase split exists to remove.
+
+In practice the magnitude differs sharply by cause: `ErrNodeSyncing` is returned
+before any wait, so the attempt costs nanoseconds, whereas leadership lost
+mid-`ReadIndex` resolves a pending future and can account for the whole quorum
+attempt.
 
 ### Why `deliver` is excluded, and how streaming ambiguity is resolved
 
@@ -206,9 +225,10 @@ Two operational consequences:
   `deliverDurationUs` / `firstRowDurationUs` / `serverDurationUs` breakdown
   identifies which side was slow.
 
-`LogTo` also emits `forwarded`. When true, `barrierDurationUs` is 0 for lack of a
-local barrier and the remote node's whole cost sits inside `executeDurationUs` —
-do not compare such a line's breakdown against a locally-served one.
+`LogTo` also emits `forwarded`. When true, the remote node's whole cost sits
+inside `executeDurationUs` and `barrierDurationUs` covers the local attempt only
+(see the table above) — do not compare such a line's breakdown against a
+locally-served one.
 
 ## Known gaps
 
@@ -216,8 +236,8 @@ do not compare such a line's breakdown against a locally-served one.
   a read (`ConsistencyLeader`, or the syncing-node fallback in
   `RoutedController.readCtrl`), the upstream RPC is charged to the local
   `execute` phase, so `execute` there conflates network hops, leader-side
-  prepare, leader-side barrier and leader-side execution — and
-  `barrier_duration_us` reads 0.
+  prepare, leader-side barrier and leader-side execution. `barrier_duration_us`
+  covers only what this node attempted locally.
 
   The `forwarded` flag makes this **detectable** rather than silent, which is the
   part that mattered: a consumer can tell "no barrier" from "barrier not measured

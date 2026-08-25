@@ -8392,10 +8392,20 @@ type QueryProfile struct {
 	// catch-up wait. Deliberately EXCLUDED from server_duration_us — it is a wait
 	// the request opted into, not server cost.
 	//
-	// Only LOCAL barriers are measured. When `forwarded` is true this reads 0
-	// because no barrier ran on this node, NOT because none ran: the remote node's
-	// barrier is folded into its execution, which arrives here inside
-	// execute_duration_us. Always read this field together with `forwarded`.
+	// Only LOCAL barriers are measured, and only the local one. Always read this
+	// field together with `forwarded`:
+	//
+	//   - forwarded=false: the whole barrier this read paid.
+	//   - forwarded=true, 0: no barrier ran HERE (an explicit leader read never
+	//     attempts one). The remote node's barrier is folded into its execution
+	//     and arrives inside execute_duration_us — 0 does NOT mean "no barrier
+	//     was needed".
+	//   - forwarded=true, non-zero: this node ATTEMPTED a local barrier, it
+	//     failed (syncing follower, leadership lost mid-ReadIndex), and the read
+	//     then fell back to the leader. The value is real consensus latency the
+	//     caller paid and is still excluded from server_duration_us — a failed
+	//     quorum wait is not server work — but the leader's own barrier is on top
+	//     of it, inside execute_duration_us.
 	BarrierDurationUs int64 `protobuf:"varint,11,opt,name=barrier_duration_us,json=barrierDurationUs,proto3" json:"barrier_duration_us,omitempty"`
 	// Time spent serialising result rows and handing them to the transport.
 	// EXCLUDED from server_duration_us because on a server stream it also

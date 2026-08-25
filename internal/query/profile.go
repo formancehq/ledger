@@ -81,7 +81,9 @@ type QueryProfile struct {
 	// are subtracted out.
 	ExecuteDuration time.Duration
 	// BarrierDuration is time blocked on a caller-requested read-consistency
-	// barrier. Excluded from ServerDuration.
+	// barrier, LOCAL to this node. Excluded from ServerDuration. A failed
+	// barrier attempt counts: a syncing follower that burns a quorum wait before
+	// falling back to the leader reports that wait here, with Forwarded true.
 	BarrierDuration time.Duration
 	// DeliverDuration is time spent serialising result rows and handing them to
 	// the transport. Excluded from ServerDuration. On a gRPC server stream it is
@@ -98,11 +100,14 @@ type QueryProfile struct {
 	// Finish; zero until then.
 	ServerDuration time.Duration
 	// Forwarded is true when the read was routed to another node (an explicit
-	// leader read, or the syncing-follower fallback). On a forwarded read the
-	// remote node runs its own barrier and execution, and that cost lands in
-	// this profile's ExecuteDuration; BarrierDuration therefore reads 0 because
-	// no barrier ran LOCALLY, not because no barrier ran. Without this flag a
-	// zero barrier is ambiguous.
+	// leader read, or the syncing-follower fallback). The remote node runs its
+	// own barrier and execution, and that whole cost lands in this profile's
+	// ExecuteDuration.
+	//
+	// Forwarded does NOT imply BarrierDuration == 0. An explicit leader read
+	// never attempts a local barrier, so it reports 0 — and this flag exists so
+	// that 0 is not misread as "no barrier was needed". The syncing-follower
+	// fallback does attempt one first, and reports the failed attempt.
 	Forwarded bool
 	// Anomaly is non-empty when the phase bookkeeping detected a state that is
 	// impossible by contract (see clampPhase). It is surfaced in the log and on
@@ -457,9 +462,10 @@ func (p *QueryProfile) LogTo(logger logging.Logger) {
 			"deliverDurationUs":    p.DeliverDuration.Microseconds(),
 			"firstRowDurationUs":   p.FirstRowDuration.Microseconds(),
 			"wallDurationUs":       p.WallDuration().Microseconds(),
-			// True means the read was served by another node, so barrierDurationUs
-			// reads 0 for lack of a LOCAL barrier and the remote node's whole cost
-			// sits inside executeDurationUs.
+			// True means the read was served by another node, so the remote node's
+			// whole cost sits inside executeDurationUs. barrierDurationUs then
+			// covers the local attempt only: 0 for an explicit leader read, non-zero
+			// when a local barrier failed before the fallback.
 			"forwarded": p.Forwarded,
 		}
 		if p.Root != nil {

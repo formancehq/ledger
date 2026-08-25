@@ -88,7 +88,9 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 	// The ReadIndex quorum round-trip plus the local WaitForApplied catch-up is
 	// consensus latency incurred to honour the caller's linearizable-read
 	// request, not query work. Charge it to the profile's barrier phase so it is
-	// visible but excluded from the server-cost total (EN-1859).
+	// visible but excluded from the server-cost total (EN-1859). Charged whether
+	// or not the barrier succeeds — a failed attempt is still time the caller
+	// waited (see the fallback branch below).
 	barrierStart := time.Now()
 	barrier, err := b.ReadIndexAndWait(ctx)
 	query.ProfileFromContext(ctx).AddBarrierWait(time.Since(barrierStart))
@@ -107,7 +109,12 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 			span.SetAttributes(attribute.String("route", "leader_fallback"))
 
 			// Same as the explicit-leader branch: the read leaves this node, so
-			// the phase breakdown below describes the local hop only.
+			// the phase breakdown describes the local hop only. Unlike that
+			// branch, the barrier already recorded above is KEPT: the caller
+			// really did wait for a quorum attempt that then failed, and that
+			// wait belongs in the barrier phase (excluded from the server total)
+			// rather than in prepare. Hence forwarded=true with a non-zero
+			// barrier_duration_us is a valid, documented combination.
 			query.ProfileFromContext(ctx).MarkForwarded()
 
 			c, leaderErr := b.getLeaderCtrl()

@@ -3031,9 +3031,12 @@ components:
           - `firstRowDurationUs` — always 0 over HTTP (the response is
             buffered); populated for gRPC server streams.
           - `forwarded` — true when another node served the read. Its barrier and
-            execution are then folded into `executeDurationUs` and
-            `barrierDurationUs` reads 0 for lack of a local barrier, so the
-            breakdown describes the local hop only.
+            execution are then folded into `executeDurationUs`, so the breakdown
+            describes the local hop only. `barrierDurationUs` then covers the
+            local attempt only: 0 for an explicit leader read (which never
+            attempts one — so 0 does not mean "no barrier was needed"), non-zero
+            when a local barrier was attempted, failed, and the read fell back to
+            the leader.
 
         For a latency objective, pick a total and state which: `serverDurationUs`
         is client-independent but omits serialization, while
