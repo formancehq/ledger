@@ -45,7 +45,7 @@ type Store interface {
 	UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata, at time.Time) error
 	// UpsertAccount returns a boolean indicating if the account was upserted
 	UpsertAccounts(ctx context.Context, accounts ...ledger.AccountWithDefaultMetadata) error
-	DeleteAccountMetadata(ctx context.Context, address, key string) error
+	DeleteAccountMetadata(ctx context.Context, address, key string, at time.Time) error
 	InsertSchema(ctx context.Context, data *ledger.Schema) error
 	FindSchema(ctx context.Context, version string) (*ledger.Schema, error)
 	FindSchemas(ctx context.Context, query common.PaginatedQuery[any]) (*paginate.Cursor[ledger.Schema], error)
