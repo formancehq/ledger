@@ -512,8 +512,11 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 
 			// After the retype's version bump, this replica rewrites its
 			// reverse map and atomic-switches the new version live;
-			// WaitForMetadataIndexReady polls the per-replica
-			// current_version until the switch fires. A rewrite that never
+			// WaitForMetadataIndexReady polls until the per-replica
+			// current_version has caught up to the registry's bumped
+			// forward_encoding_version — the pre-retype version stays
+			// live (and non-zero) throughout the rewrite, so only the
+			// version comparison proves the switch. A rewrite that never
 			// completes would keep every typed query rejected by the
 			// "index is still building" guard.
 			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName,

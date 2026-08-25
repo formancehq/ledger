@@ -18,14 +18,13 @@ Each index is described by a `common.Index` proto, persisted in the `SubAttrInde
 | Field | Role |
 |-------|------|
 | `id` (`IndexID`) | Tagged identifier — built-in (txn/log/account) or `Metadata(target, key)`. |
-| `build_status` | **Informational only**, set by the FSM at `CreateIndex` / `SetMetadataFieldType`. NOT consulted by the query path. |
 | `created_at` | Bookkeeping. |
 | `ledger` | Empty for bucket-scoped indexes (e.g. address ranges); set for ledger-scoped indexes. |
 | `forward_encoding_version` | **Cluster-wide** version bumped on every audit event that requires the indexer to rewrite the forward index (`CreateIndex`, `SetMetadataFieldType`). |
 
 Source: `internal/proto/commonpb/common.pb.go:2527-2550`.
 
-The comment on `build_status` is the load-bearing one: queries do not look at `BuildStatus == READY`. They consult the per-replica `IndexVersionState.CurrentVersion` instead. `BuildStatus` is a UI/operator signal, not a correctness gate.
+Build progress is deliberately absent from the registry row: it is a per-replica concern. Queries consult the per-replica `IndexVersionState.CurrentVersion`, and the status API derives its display from that state next to the row's cluster-wide `forward_encoding_version`.
 
 ## Per-Replica Version State
 
@@ -66,7 +65,7 @@ The atomic switch is a single Pebble batch commit that flips `Pending → Curren
 
 A rewrite is driven by `indexbuilder.Builder` (`internal/application/indexbuilder/`). The relevant entry points:
 
-- `handleCreatedIndexLog` — initialises `BuildStatus=BUILDING`, `PendingVersion=1`, `CurrentVersion=0`, persists the version-state row, then registers a `backfillTask` (`internal/application/indexbuilder/index_config.go`).
+- `handleCreatedIndexLog` — initialises `PendingVersion=1`, `CurrentVersion=0`, persists the version-state row, then registers a `backfillTask` (`internal/application/indexbuilder/index_config.go`).
 - `backfillTask` — opaque cursor that replays historical logs into `v_pending`, persisting progress in Pebble so a node restart resumes mid-rewrite (`internal/application/indexbuilder/backfill.go:21-32`).
 - `completeBackfill` — when the cursor reaches the global indexer cursor, the **atomic switch** runs: `CurrentVersion ← PendingVersion`, `PendingVersion ← 0`, `RewriteProgress ← nil`, all in one Pebble batch (`backfill.go:1197+`).
 - `handleDroppedIndexLog` — removes the index from the in-memory config, cancels any in-flight backfill / schema-rewrite task, and deletes the `IndexVersionState` row (`index_config.go:421-436`). **It does NOT purge the read-store keyspaces** (`0x01` / `0x02` / `0x03`) — those rows are reclaimed only on `RemovedMetadataFieldType` (`process_metadata_field_removal.go`) or `DeleteLedger`. Rows stranded this way survive indefinitely on an otherwise healthy cluster; the leak is tracked as `EN-1621`. It is **not** reported by the checker's reverse-map pass, which deliberately excludes `DropIndex` residue — see [Checker Coverage](#checker-coverage) below.

@@ -58,11 +58,18 @@ func CreateLogBuiltinIndexAction(ledger string, index commonpb.LogBuiltinIndex) 
 }
 
 // indexReadyOnReplica returns nil when the (ledger, IndexID) entry in
-// the GetIndexStatus response carries a non-zero current_version on
-// the replica the client is talking to. current_version == 0 (or a
-// missing entry) means the local backfill / rewrite has not yet
-// performed the atomic switch into a live keyspace, so queries that
-// require this index would short-read.
+// the GetIndexStatus response has its per-replica current_version caught
+// up to the registry row's forward_encoding_version on the replica the
+// client is talking to.
+//
+// The registry version is the cluster-wide target: CreateIndex declares
+// version 1 and every retype bumps it. current_version is the keyspace
+// this replica actually serves, so equality is the causal readiness
+// signal — an initial build waits for the switch to version 1, and a
+// retype waits for the switch PAST the still-live pre-retype version
+// (current_version stays non-zero at the old version while
+// pending_version builds, so a bare non-zero check would return before
+// the switch).
 //
 // Each replica advances its IndexVersionState independently as soon as
 // its local backfill / rewrite finishes (EN-1323) — readiness is always
@@ -73,8 +80,9 @@ func indexReadyOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, 
 			continue
 		}
 
-		if entry.GetCurrentVersion() == 0 {
-			return fmt.Errorf("index %s on %s has current_version=0 (local backfill / rewrite not finished)", label, ledger)
+		current, want := entry.GetCurrentVersion(), entry.GetIndex().GetForwardEncodingVersion()
+		if current != want {
+			return fmt.Errorf("index %s on %s serves version %d, registry declares %d (local backfill / rewrite not switched)", label, ledger, current, want)
 		}
 
 		return nil
