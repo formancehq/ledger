@@ -95,7 +95,7 @@ var _ = Describe("MetadataIndexPerReplicaConsistency", Ordered, func() {
 				g.Expect(listErr).To(Succeed())
 				g.Expect(accounts).To(HaveLen(1))
 				g.Expect(accounts[0].Address).To(Equal("alice"))
-			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed(),
+			}).Within(5*time.Second).ProbeEvery(200*time.Millisecond).Should(Succeed(),
 				fmt.Sprintf("node %d must surface alice under the STRING encoding", i))
 		}
 
@@ -117,7 +117,7 @@ var _ = Describe("MetadataIndexPerReplicaConsistency", Ordered, func() {
 				g.Expect(listErr).To(Succeed())
 				g.Expect(accounts).To(HaveLen(1))
 				g.Expect(accounts[0].Address).To(Equal("alice"))
-			}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed(),
+			}).Within(15*time.Second).ProbeEvery(200*time.Millisecond).Should(Succeed(),
 				fmt.Sprintf("node %d must eventually surface alice under the UINT64 encoding after the local rewrite", i))
 		}
 	})
