@@ -145,7 +145,10 @@ func WaitForMetadataIndexReady(ctx context.Context, client servicepb.BucketServi
 // MetadataIndexCurrentVersion returns the per-replica current_version of the
 // (target, key) metadata index on the replica the client is talking to.
 // Capture it BEFORE issuing a retype so WaitForMetadataIndexRewrite can
-// observe the advancement past it.
+// observe the advancement past it. A replica whose initial backfill has not
+// switched yet (current_version == 0) is an error: zero is not a live
+// pre-retype keyspace, and waiting for advancement past it would be
+// satisfied by the initial switch rather than the requested retype.
 //
 // The capture and the wait MUST observe the same replica: versions are
 // replica-local, so a client whose connection load-balances across nodes
@@ -165,6 +168,10 @@ func MetadataIndexCurrentVersion(ctx context.Context, client servicepb.BucketSer
 	})
 	if entry == nil {
 		return 0, fmt.Errorf("metadata index [%s] on %s not found in GetIndexStatus", key, ledger)
+	}
+
+	if entry.GetCurrentVersion() == 0 {
+		return 0, fmt.Errorf("metadata index [%s] on %s has no live keyspace yet (current_version=0) — wait for the initial build before capturing a retype token", key, ledger)
 	}
 
 	return entry.GetCurrentVersion(), nil
