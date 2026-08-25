@@ -18,6 +18,9 @@
     "internal/application/ctrl/file_receiver*.go",
     "internal/application/ctrl/snapshot_fetcher*.go",
     "internal/application/ctrl/snapshot_mocks_test.go",
+    "internal/application/events/manager*.go",
+    "internal/application/mirror/manager*.go",
+    "internal/application/backup/orchestrator*.go",
     "internal/bootstrap/config*.go",
     "internal/bootstrap/controller_routed*.go",
     "internal/bootstrap/grpc_server_hook*.go",
@@ -63,7 +66,7 @@
   "invariants": [
     "A Raft log entry becomes committed only under the quorum rules of the active configuration; a successful write response must be emitted only after that entry's FSM effects and required durable state have completed locally.",
     "Leadership changes must not lose or reorder committed entries, and replay after a crash must not duplicate their durable ledger effects.",
-    "Every replica must deterministically apply committed entries. Leader-only restrictions apply to admission, proposal, response ownership, membership orchestration, and leadership-notification delivery, not to ordinary follower FSM apply. Ownership and shutdown inside downstream event, mirror, and backup workers belong to the concurrency-lifecycle-shutdown audit.",
+    "Every replica must deterministically apply committed entries. Leader-only restrictions apply to admission, proposal, response ownership, membership orchestration, leadership-notification delivery, and the immediate observer state transition, not to ordinary follower FSM apply. Deep ownership and shutdown inside downstream event, mirror, and backup workers belong to the concurrency-lifecycle-shutdown audit.",
     "Consensus membership changes must obey Raft configuration and quorum rules. Force removal is an explicitly unsafe lifecycle operation and must preserve its documented WAL/Pebble ordering and operator-owned preconditions without being treated as quorum-authorized.",
     "A node joining, leaving, restarting, or receiving a snapshot must converge to the committed cluster state before serving behavior that requires that state.",
     "Each documented read-consistency mode must preserve its own contract across leader changes and partitions; stale reads are permitted only when the caller selected the stale mode.",
@@ -80,7 +83,7 @@
     "What state can be served while a snapshot is being installed, the spool is replaying, or a follower is catching up, and do the readiness and ReadIndex gates cover every entry and exit path?",
     "Can transport disconnect/reconnect retry or duplicate a Raft message or acknowledgement, and is that correctly distinguished from a client resubmitting a mutation with no idempotency key?",
     "Can leadership acquisition race ahead of draining committed apply work, leaving the new leader's admission, membership, or read barriers behind its commit index?",
-    "Can a consensus, membership, transport, snapshot, routing, or leadership-notification-delivery lock/channel path deadlock during a leadership or membership transition? Downstream worker ownership after notification delivery belongs to the concurrency-lifecycle-shutdown audit."
+    "Can a consensus, membership, transport, snapshot, routing, leadership-notification-delivery, or immediate event/mirror/backup observer transition lock/channel path deadlock during a leadership or membership transition? Deep downstream worker ownership after that observer transition belongs to the concurrency-lifecycle-shutdown audit."
   ],
   "dynamic_checks_to_consider": [
     "just test-model-cluster 300",
