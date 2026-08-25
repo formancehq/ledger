@@ -512,6 +512,7 @@ func RebuildDelta(
 			writer.batch = batch
 			clear(writer.pendingVolumes)
 			clear(writer.pendingTx)
+			clear(writer.pendingIndexes)
 
 			logger.WithFields(map[string]any{
 				"logsProcessed": count,
@@ -905,10 +906,12 @@ type attributeReplayWriter struct {
 	pendingVolumes map[string]*raftcmdpb.VolumePair
 	pendingTx      map[string]*commonpb.TransactionState
 
-	// Index registry rows touched by the replay, keyed by the canonical
-	// IndexKey bytes. w.batch is non-indexed, so same-window reads (the
-	// retype version bump) resolve here first; a nil value marks a row the
-	// replay deleted, shadowing a committed checkpoint row.
+	// Index registry rows touched by the replay window, keyed by the
+	// canonical IndexKey bytes. w.batch is non-indexed, so same-window reads
+	// (the retype version bump) resolve here first; a nil value marks a row
+	// the replay deleted, shadowing a committed checkpoint row. Cleared at
+	// every batch commit alongside pendingVolumes/pendingTx — the committed
+	// rows are then visible through the direct store read.
 	pendingIndexes map[string]*commonpb.Index
 
 	// LedgerInfo per ledger, carrying the evolving metadata schema and account
