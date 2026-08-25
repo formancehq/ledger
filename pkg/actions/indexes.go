@@ -146,6 +146,12 @@ func WaitForMetadataIndexReady(ctx context.Context, client servicepb.BucketServi
 // (target, key) metadata index on the replica the client is talking to.
 // Capture it BEFORE issuing a retype so WaitForMetadataIndexRewrite can
 // observe the advancement past it.
+//
+// The capture and the wait MUST observe the same replica: versions are
+// replica-local, so a client whose connection load-balances across nodes
+// can capture one replica's version and poll another whose different
+// number satisfies the inequality without any rewrite having run. Use a
+// per-node connection (as every caller in this repo does).
 func MetadataIndexCurrentVersion(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string) (uint32, error) {
 	resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
 	if err != nil {
@@ -166,7 +172,9 @@ func MetadataIndexCurrentVersion(ctx context.Context, client servicepb.BucketSer
 
 // WaitForMetadataIndexRewrite polls until the replica has atomically switched
 // the (target, key) metadata index past preVersion (captured before the
-// retype) with no rewrite in flight.
+// retype) with no rewrite in flight. preVersion must come from
+// MetadataIndexCurrentVersion over the SAME per-node connection — see the
+// replica-affinity requirement there.
 func WaitForMetadataIndexRewrite(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string, preVersion uint32) error {
 	return poll(ctx, 10*time.Second, 200*time.Millisecond, func() error {
 		resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
