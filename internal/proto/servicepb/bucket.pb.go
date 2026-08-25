@@ -8047,7 +8047,10 @@ func (x *GetIndexEntryStatusRequest) GetId() *commonpb.IndexID {
 // and queries served from this replica are reading it. pending_version
 // is the in-flight rewrite target on this replica (0 when no rewrite
 // is running). Clients that need to wait for the local replica to
-// finish building an index poll current_version > 0.
+// finish building an index poll until current_version equals the
+// registry row's forward_encoding_version — during a retype the
+// pre-retype version stays live (and non-zero), so a bare > 0 check
+// reports readiness before the switch.
 type IndexEntry struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Ledger         string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
