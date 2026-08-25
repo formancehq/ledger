@@ -445,7 +445,7 @@ Content-Type: application/json
 }
 ```
 
-Returns `201 Created` once the FSM has queued the backfill. The index enters `BUILDING` on the registry; poll `GET /v3/{ledgerName}/indexes/{canonicalId}/status` and wait for `currentVersion > 0` before running queries that need it.
+Returns `201 Created` once the FSM has queued the backfill. Poll `GET /v3/{ledgerName}/indexes/{canonicalId}/status` and wait until `currentVersion` equals the entry's `forwardEncodingVersion` before running queries that need it (after a retype the pre-retype version stays live, so a bare `> 0` check reports readiness before the switch).
 
 #### List indexes on a ledger
 
