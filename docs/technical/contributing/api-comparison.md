@@ -623,16 +623,16 @@ See [Idempotency](../architecture/subsystems/admission/idempotency.md) for detai
 local `IndexVersionState` (`current_version`, `pending_version`), not
 by a cluster-wide flag.
 
-- `CreateIndex` registers the index with `BuildStatus = BUILDING` and
-  each replica starts a local backfill. When the backfill catches up
-  to the global indexer cursor, the replica performs a local atomic
+- `CreateIndex` registers the index at `forward_encoding_version = 1`
+  and each replica starts a local backfill. When the backfill catches
+  up to the global indexer cursor, the replica performs a local atomic
   switch (`current_version` 0 → 1) in a single Pebble batch. There is
   no cluster-wide `IndexReady` proposal — different replicas can be
   in different states at the same wall-clock moment.
-- `BuildStatus` on the API is **informational only**. It is set to
-  `BUILDING` at CreateIndex and never flipped to `READY` by the FSM.
-  Clients that need to gate on "this replica is ready to query" must
-  use `GetIndexStatus` and check `IndexEntry.current_version > 0`,
+- Clients that need to gate on "this replica is ready to query" use
+  `GetIndexStatus` and wait until `IndexEntry.current_version` equals
+  the registry row's `forward_encoding_version` (a bare `> 0` check is
+  satisfied by the pre-retype version while a rewrite is in flight),
   or use `min_log_sequence` (below) to enforce ordering.
 - `SetMetadataFieldType` (retype) bumps the cluster-wide
   `Index.forward_encoding_version`. Each replica then runs a local
@@ -672,8 +672,9 @@ that switch lands.
 per-replica versioning and reaches "ready" via a single
 synchronously-applied schema migration.
 
-**Status:** ⚠️ Different model — wire shape compatible (BuildStatus
-still on the proto, populated, just ignored by query gating).
+**Status:** ⚠️ Different model — readiness is per-replica version
+state (`IndexEntry.current_version` vs `forward_encoding_version`),
+with no cluster-wide ready flag on the wire.
 
 ---
 
