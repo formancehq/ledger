@@ -14,6 +14,8 @@
     "internal/application/membership/**",
     "internal/application/admission/**",
     "internal/application/ctrl/controller_default*.go",
+    "internal/application/ctrl/file_fetcher*.go",
+    "internal/application/ctrl/file_receiver*.go",
     "internal/application/ctrl/snapshot_fetcher*.go",
     "internal/application/ctrl/snapshot_mocks_test.go",
     "internal/bootstrap/config*.go",
