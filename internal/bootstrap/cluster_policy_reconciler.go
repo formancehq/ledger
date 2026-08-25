@@ -10,7 +10,7 @@ import (
 // clusterPolicyReconcileInterval is how often the leader re-checks the applied
 // cluster policy against the desired one. Short so a fresh leader commits the
 // policy — and thereby opens write readiness — promptly.
-const clusterPolicyReconcileInterval = 5 * time.Second
+const clusterPolicyReconcileInterval = 1 * time.Second
 
 // ClusterPolicyReconciler periodically drives the replicated cluster policy
 // toward the desired revision while this node is leader. It is periodic rather

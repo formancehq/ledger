@@ -68,6 +68,12 @@ type Admission struct {
 	authEnabled        bool
 	waitLeaderReady    func(context.Context) error
 
+	// clusterPolicyCommitted latches once the replicated cluster policy is
+	// observed committed (revision > 0). The steady-state write path then skips
+	// the store read; the poll in waitClusterPolicyReady runs only during the
+	// startup window before a fresh leader's reconciler commits the policy.
+	clusterPolicyCommitted atomic.Bool
+
 	// Metrics (noop when metricsEnabled is false)
 	metricsEnabled                 bool
 	commandDurationHistogram       metric.Int64Histogram
@@ -554,6 +560,19 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 	// Check maintenance mode: block all requests except SetMaintenanceMode.
 	if a.sharedState.MaintenanceMode() && !allRequestsAreMaintenanceMode(batch.requests) {
 		return nil, ErrMaintenanceMode
+	}
+
+	// Hold business writes until the replicated cluster policy is committed. The
+	// policy is the cluster-wide configuration a business write applies against —
+	// it carries the query-checkpoint limit and idempotency TTL — so a write
+	// admitted before the first revision would apply against an empty policy. A
+	// fresh leader's reconciler commits the policy within a reconcile interval, so
+	// this blocks only during the startup window. SetClusterPolicy is exempt so
+	// the reconciler's own proposal establishes the policy.
+	if !allRequestsAreClusterPolicy(batch.requests) {
+		if err := a.waitClusterPolicyReady(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	// Convert requests to orders. Idempotency and signature are batch-level now
@@ -1115,6 +1134,58 @@ func allRequestsAreMaintenanceMode(reqs []*servicepb.Request) bool {
 	}
 
 	return true
+}
+
+// allRequestsAreClusterPolicy reports whether every request in the batch is a
+// SetClusterPolicy request. Such a batch is exempt from the cluster-policy
+// write-readiness gate so the reconciler can establish the policy that opens
+// the gate for everything else.
+func allRequestsAreClusterPolicy(reqs []*servicepb.Request) bool {
+	for _, req := range reqs {
+		if _, ok := req.GetType().(*servicepb.Request_SetClusterPolicy); !ok {
+			return false
+		}
+	}
+
+	return true
+}
+
+// clusterPolicyReadyPollInterval bounds how long a business write lags the
+// commit of the replicated cluster policy during the startup window.
+const clusterPolicyReadyPollInterval = 25 * time.Millisecond
+
+// waitClusterPolicyReady blocks until the replicated cluster policy is committed
+// (revision > 0), the cluster-wide precondition for business writes. It latches
+// on first success, so the steady-state path is a single atomic load; the poll
+// runs only during the startup window before a fresh leader's reconciler commits
+// the policy. A restarted node that already carries a committed policy latches on
+// the first read and never blocks.
+func (a *Admission) waitClusterPolicyReady(ctx context.Context) error {
+	if a.clusterPolicyCommitted.Load() {
+		return nil
+	}
+
+	ticker := time.NewTicker(clusterPolicyReadyPollInterval)
+	defer ticker.Stop()
+
+	for {
+		policy, err := query.ReadClusterPolicy(a.store)
+		if err != nil {
+			return fmt.Errorf("reading cluster policy for write readiness: %w", err)
+		}
+
+		if policy.GetRevision() > 0 {
+			a.clusterPolicyCommitted.Store(true)
+
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("waiting for cluster policy readiness: %w", ctx.Err())
+		case <-ticker.C:
+		}
+	}
 }
 
 // wrapLedgerScoped sets order.Type to a LedgerScopedOrder wrapper carrying the

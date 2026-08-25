@@ -30,8 +30,36 @@ import (
 
 const testLedgerName = "test-ledger"
 
-// createTestStore creates a test store with a registered ledger.
+// createTestStore builds a store representing a write-ready cluster: a
+// registered ledger plus a committed cluster policy. Tests that drive a full
+// Admit need the policy so the write-readiness gate lets business writes
+// through; tests that exercise the gate's not-ready path use
+// createTestStoreWithoutPolicy.
 func createTestStore(t *testing.T) *dal.Store {
+	t.Helper()
+
+	s := createTestStoreWithoutPolicy(t)
+	commitClusterPolicy(t, s, 1)
+
+	return s
+}
+
+// commitClusterPolicy writes a committed cluster policy (revision > 0) directly
+// to the store, standing in for the reconciler's replicated proposal.
+func commitClusterPolicy(t *testing.T, store *dal.Store, revision uint64) {
+	t.Helper()
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
+		Revision:             revision,
+		QueryCheckpointLimit: 10,
+	}))
+	require.NoError(t, batch.Commit())
+}
+
+// createTestStoreWithoutPolicy creates a test store with a registered ledger and
+// no committed cluster policy.
+func createTestStoreWithoutPolicy(t *testing.T) *dal.Store {
 	t.Helper()
 	tmpDir := t.TempDir()
 	ctx := logging.TestingContext()
