@@ -445,7 +445,7 @@ Content-Type: application/json
 }
 ```
 
-Returns `201 Created` once the FSM has queued the backfill. Poll `GET /v3/{ledgerName}/indexes/{canonicalId}/status` and wait until `currentVersion` equals the entry's `forwardEncodingVersion` before running queries that need it (after a retype the pre-retype version stays live, so a bare `> 0` check reports readiness before the switch).
+Returns `201 Created` once the FSM has queued the backfill. Poll `GET /v3/{ledgerName}/indexes/{canonicalId}/status` and wait for `currentVersion > 0` with `pendingVersion == 0` before running queries that need it. After a *retype*, the pre-retype keyspace stays live, so capture `currentVersion` before issuing the change and wait until it has advanced past that value with `pendingVersion == 0` (per-replica version numbers are local and not comparable to `forwardEncodingVersion`).
 
 #### List indexes on a ledger
 

@@ -497,7 +497,12 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 		})
 
 		It("Should report the index ready locally after the reverse-map rewrite", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
+			preVersion, err := actions.MetadataIndexCurrentVersion(sharedCtx, sharedClient, ledgerName,
+				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+			Expect(err).To(Succeed())
+			Expect(preVersion).To(BeNumerically(">", uint32(0)), "premise: the index must be live before the retype")
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
 				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score",
 				commonpb.MetadataType_METADATA_TYPE_INT64)))
 			Expect(err).To(Succeed())
@@ -511,16 +516,15 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// After the retype's version bump, this replica rewrites its
-			// reverse map and atomic-switches the new version live;
-			// WaitForMetadataIndexReady polls until the per-replica
-			// current_version has caught up to the registry's bumped
-			// forward_encoding_version — the pre-retype version stays
-			// live (and non-zero) throughout the rewrite, so only the
-			// version comparison proves the switch. A rewrite that never
+			// reverse map and atomic-switches the new version live. The
+			// pre-retype keyspace stays live (and non-zero) throughout the
+			// rewrite, so completion is only proven by the per-replica
+			// current_version ADVANCING past the value captured before the
+			// retype, with no pending rewrite left. A rewrite that never
 			// completes would keep every typed query rejected by the
 			// "index is still building" guard.
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName,
-				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")).To(Succeed())
+			Expect(actions.WaitForMetadataIndexRewrite(sharedCtx, sharedClient, ledgerName,
+				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score", preVersion)).To(Succeed())
 
 			// Sanity: the API surfaces the raw value the client wrote
 			// (declared_type is an index hint, not an API contract).

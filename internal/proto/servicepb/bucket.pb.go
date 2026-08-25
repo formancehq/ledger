@@ -8045,11 +8045,15 @@ func (x *GetIndexEntryStatusRequest) GetId() *commonpb.IndexID {
 // last completed backfill / rewrite atomic-switched into this version
 // and queries served from this replica are reading it. pending_version
 // is the in-flight rewrite target on this replica (0 when no rewrite
-// is running). Clients that need to wait for the local replica to
-// finish building an index poll until current_version equals the
-// registry row's forward_encoding_version — during a retype the
-// pre-retype version stays live (and non-zero), so a bare > 0 check
-// reports readiness before the switch.
+// is running). Per-replica version numbers are allocated from the
+// replica's local high-water mark (a drop+recreate resumes past the
+// dropped incarnation's numbers), so they are not comparable to the
+// registry row's forward_encoding_version. Clients waiting for an
+// initial build poll current_version > 0 && pending_version == 0;
+// clients waiting for a RETYPE capture current_version before issuing
+// it and poll until it has advanced past that value with
+// pending_version == 0 — the pre-retype keyspace stays live during
+// the rewrite.
 type IndexEntry struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Ledger         string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`

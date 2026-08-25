@@ -630,10 +630,12 @@ by a cluster-wide flag.
   no cluster-wide `IndexReady` proposal — different replicas can be
   in different states at the same wall-clock moment.
 - Clients that need to gate on "this replica is ready to query" use
-  `GetIndexStatus` and wait until `IndexEntry.current_version` equals
-  the registry row's `forward_encoding_version` (a bare `> 0` check is
-  satisfied by the pre-retype version while a rewrite is in flight),
-  or use `min_log_sequence` (below) to enforce ordering.
+  `GetIndexStatus` and wait for `current_version > 0` with
+  `pending_version == 0`; a RETYPE is complete once `current_version`
+  has advanced past its pre-retype value (per-replica numbers are
+  allocated from a local high-water mark and are not comparable to
+  `forward_encoding_version`). `min_log_sequence` (below) enforces
+  log-application ordering.
 - `SetMetadataFieldType` (retype) bumps the cluster-wide
   `Index.forward_encoding_version`. Each replica then runs a local
   rewrite into the new versioned keyspace (`pending_version`), with
