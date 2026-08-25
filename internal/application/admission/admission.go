@@ -543,7 +543,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 
 	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
 	resolveBatchStart := time.Now()
-	batch, err := a.resolveBatch(req)
+	batch, err := a.resolveBatch(ctx, req)
 	a.resolveBatchDurationHistogram.Record(ctx, time.Since(resolveBatchStart).Microseconds())
 
 	sigSpan.End()
@@ -941,7 +941,7 @@ type verifiedBatch struct {
 // signature is verified against the payload bytes and the trusted batch is
 // unmarshaled from them — the server never re-serializes. An unsigned batch is
 // admitted only when signatures are not required (or for signing bootstrap).
-func (a *Admission) resolveBatch(req *servicepb.ApplyRequest) (verifiedBatch, error) {
+func (a *Admission) resolveBatch(ctx context.Context, req *servicepb.ApplyRequest) (verifiedBatch, error) {
 	switch v := req.GetVariant().(type) {
 	case *servicepb.ApplyRequest_Signed:
 		sb := v.Signed
@@ -971,7 +971,7 @@ func (a *Admission) resolveBatch(req *servicepb.ApplyRequest) (verifiedBatch, er
 			return verifiedBatch{}, fmt.Errorf("%w: empty unsigned batch", signing.ErrMissingSignature)
 		}
 
-		if err := a.authorizeUnsignedBatch(batch.GetRequests()); err != nil {
+		if err := a.authorizeUnsignedBatch(ctx, batch.GetRequests()); err != nil {
 			return verifiedBatch{}, err
 		}
 
@@ -990,7 +990,16 @@ func (a *Admission) resolveBatch(req *servicepb.ApplyRequest) (verifiedBatch, er
 //   - RegisterSigningKey is allowed unsigned when no keys exist yet (bootstrap)
 //   - all other signing-management requests require a signature once keys exist
 //   - regular requests check the requireSignatures flag
-func (a *Admission) authorizeUnsignedBatch(reqs []*servicepb.Request) error {
+func (a *Admission) authorizeUnsignedBatch(ctx context.Context, reqs []*servicepb.Request) error {
+	// Leader-internal proposals (chapter archiver, sealer, schedulers, the
+	// query-checkpoint scheduler) travel through admission unsigned under a system
+	// actor set only by server-internal code. RequireSignatures authenticates
+	// client writes; the leader's own audited proposals are inside the trust
+	// boundary and would otherwise be permanently rejected on a signed cluster.
+	if auth.IsSystemActor(ctx) {
+		return nil
+	}
+
 	for _, req := range reqs {
 		if isSigningManagementRequest(req) {
 			// HasUndecodableRows closes the bootstrap window on a store whose signing

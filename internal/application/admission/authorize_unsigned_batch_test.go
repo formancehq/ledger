@@ -1,13 +1,17 @@
 package admission
 
 import (
+	"context"
 	"crypto/ed25519"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
+	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -48,7 +52,7 @@ func TestAuthorizeUnsignedBatch_BootstrapExceptionClosesOnUndecodableRows(t *tes
 	t.Run("fresh cluster may bootstrap unsigned", func(t *testing.T) {
 		t.Parallel()
 
-		require.NoError(t, newAdmission(nil).authorizeUnsignedBatch(registerRequest),
+		require.NoError(t, newAdmission(nil).authorizeUnsignedBatch(context.Background(), registerRequest),
 			"an empty key store with no corrupt rows is a genuinely fresh cluster")
 	})
 
@@ -59,7 +63,7 @@ func TestAuthorizeUnsignedBatch_BootstrapExceptionClosesOnUndecodableRows(t *tes
 			ks.MarkUndecodableRows(1)
 		})
 
-		require.Error(t, a.authorizeUnsignedBatch(registerRequest),
+		require.Error(t, a.authorizeUnsignedBatch(context.Background(), registerRequest),
 			"a store whose signing rows exist but do not decode is not a fresh cluster")
 	})
 
@@ -70,7 +74,7 @@ func TestAuthorizeUnsignedBatch_BootstrapExceptionClosesOnUndecodableRows(t *tes
 			ks.AddPublicKey("root", make([]byte, ed25519.PublicKeySize), "")
 		})
 
-		require.Error(t, a.authorizeUnsignedBatch(registerRequest),
+		require.Error(t, a.authorizeUnsignedBatch(context.Background(), registerRequest),
 			"the pre-existing guard must keep rejecting once a usable key is loaded")
 	})
 
@@ -82,7 +86,7 @@ func TestAuthorizeUnsignedBatch_BootstrapExceptionClosesOnUndecodableRows(t *tes
 			ks.MarkUndecodableRows(1)
 		})
 
-		require.Error(t, a.authorizeUnsignedBatch(registerRequest))
+		require.Error(t, a.authorizeUnsignedBatch(context.Background(), registerRequest))
 	})
 }
 
@@ -105,4 +109,28 @@ func TestKeyStoreUndecodableRowsResetWithKeys(t *testing.T) {
 
 	ks.MarkUndecodableRows(0)
 	require.False(t, ks.HasUndecodableRows(), "a clean load must not set the marker")
+}
+
+// TestAuthorizeUnsignedBatch_ExemptsSystemActor pins that a leader-internal
+// proposal (system actor) is admitted unsigned even under RequireSignatures,
+// while the same unsigned batch from a client is rejected. Without the exemption
+// the chapter workers and schedulers can never propose on a signed cluster.
+func TestAuthorizeUnsignedBatch_ExemptsSystemActor(t *testing.T) {
+	t.Parallel()
+
+	businessReq := []*servicepb.Request{{
+		Type: &servicepb.Request_CreateLedger{
+			CreateLedger: &servicepb.CreateLedgerRequest{Name: "l"},
+		},
+	}}
+
+	a := &Admission{keyStore: keystore.NewKeyStore(), sharedState: state.NewSharedState()}
+	a.sharedState.SetRequireSignatures(true)
+
+	require.ErrorIs(t, a.authorizeUnsignedBatch(context.Background(), businessReq), signing.ErrMissingSignature,
+		"a client's unsigned business write is rejected under RequireSignatures")
+
+	sysCtx := internalauth.WithSystemActor(context.Background(), commands.ComponentChapterArchiver)
+	require.NoError(t, a.authorizeUnsignedBatch(sysCtx, businessReq),
+		"a leader-internal system proposal is admitted unsigned")
 }
