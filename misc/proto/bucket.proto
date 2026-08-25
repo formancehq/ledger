@@ -347,6 +347,12 @@ message ArchiveChapterRequest {
 
 message ConfirmArchiveChapterRequest {
   fixed64 chapter_id = 1;
+  // sealing_hash commits the confirm to one chapter incarnation. The FSM
+  // compares it against the chapter's own sealing hash immediately before the
+  // purge, so a confirm carrying a stale identity — an archiver holding a
+  // request from a timeline a restore replaced — cannot delete hot history whose
+  // archive belongs to a different incarnation.
+  bytes sealing_hash = 2;
 }
 
 message ListChaptersRequest {

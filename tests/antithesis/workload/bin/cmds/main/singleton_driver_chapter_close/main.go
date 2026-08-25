@@ -96,11 +96,14 @@ func archiveClosedChapters(ctx context.Context, client servicepb.BucketServiceCl
 			continue
 		}
 
-		// Confirm the archive (purges hot data).
+		// Confirm the archive (purges hot data). The confirm names the chapter
+		// incarnation the archive belongs to: the handler compares the sealing hash
+		// against the chapter it holds, so a confirm without it is refused.
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_ConfirmArchiveChapter{
 				ConfirmArchiveChapter: &servicepb.ConfirmArchiveChapterRequest{
-					ChapterId: chapterID,
+					ChapterId:   chapterID,
+					SealingHash: p.GetSealingHash(),
 				},
 			},
 		}))

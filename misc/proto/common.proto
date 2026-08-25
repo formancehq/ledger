@@ -1258,6 +1258,12 @@ enum ErrorReason {
   // there within the alignment grace. Retryable (Kind=Unavailable): the fold
   // is behind, not broken. See EN-1748.
   ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP = 69;
+  // ERROR_REASON_CHAPTER_ARCHIVE_IDENTITY_MISMATCH: the confirm names a chapter
+  // incarnation that is not the one now in history. The sealing hash commits a
+  // chapter to its content, so a mismatch means the archive the confirm would
+  // trade hot history for belongs to a timeline this store no longer has — see
+  // docs/technical/architecture/subsystems/chapters/backup.md.
+  ERROR_REASON_CHAPTER_ARCHIVE_IDENTITY_MISMATCH = 70;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

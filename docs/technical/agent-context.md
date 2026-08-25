@@ -57,6 +57,18 @@ Start with:
 
 Do not load every architecture document up front.
 
+### Significant technical decisions
+
+Before choosing or materially changing an API semantic, persistence/cache/consistency strategy, retry/idempotency mechanism, dependency, distributed-system mechanism, compatibility strategy, major abstraction, subsystem boundary, or other meaningful complexity, read:
+
+- `docs/technical/contributing/product-technical-traceability.md`;
+- the owning subsystem documentation;
+- the authoritative product/operational evidence referenced by the task, when available.
+
+Establish the chain from product/operational need to observable requirement before selecting the implementation mechanism. Do not infer undocumented product intent from the implementation you would prefer. If the need or requirement cannot be established from accessible evidence, surface the missing decision instead of inventing it.
+
+Mechanical maintenance, generated refreshes, narrow test-helper changes, and behavior-preserving renames do not require artificial product rationale.
+
 ### Persistence or integrity changes
 
 Always determine which class the state belongs to before implementation:
@@ -105,6 +117,8 @@ Decide explicitly whether the value only gates proposal admission or changes the
 ### AI code review and re-review
 
 Read `docs/technical/contributing/ai-review.md` before reviewing a pull request or reviewing fixes to previous findings.
+
+For a significant technical decision, also read `docs/technical/contributing/product-technical-traceability.md` and use the documented need/requirement as review intent. If that chain is missing or conflicting, do not infer it from implementation details; surface a human-decision question.
 
 Load the subsystem documentation for the behavior changed by the PR, but do not preload unrelated documentation. Findings must follow the review contract: concrete evidence, explicit severity and blocking status, no style-only noise, and a compressed final decision. On re-review, start from the current HEAD and classify previous findings as fixed, still valid, or outdated before reporting new issues.
 

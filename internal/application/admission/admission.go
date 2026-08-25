@@ -2115,7 +2115,8 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_ConfirmArchiveChapter{
 				ConfirmArchiveChapter: &raftcmdpb.ConfirmArchiveChapterOrder{
-					ChapterId: reqType.ConfirmArchiveChapter.GetChapterId(),
+					ChapterId:   reqType.ConfirmArchiveChapter.GetChapterId(),
+					SealingHash: reqType.ConfirmArchiveChapter.GetSealingHash(),
 				},
 			},
 		})

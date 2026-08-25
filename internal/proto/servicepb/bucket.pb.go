@@ -2458,8 +2458,14 @@ func (x *ArchiveChapterRequest) GetChapterId() uint64 {
 }
 
 type ConfirmArchiveChapterRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ChapterId     uint64                 `protobuf:"fixed64,1,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ChapterId uint64                 `protobuf:"fixed64,1,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"`
+	// sealing_hash commits the confirm to one chapter incarnation. The FSM
+	// compares it against the chapter's own sealing hash immediately before the
+	// purge, so a confirm carrying a stale identity — an archiver holding a
+	// request from a timeline a restore replaced — cannot delete hot history whose
+	// archive belongs to a different incarnation.
+	SealingHash   []byte `protobuf:"bytes,2,opt,name=sealing_hash,json=sealingHash,proto3" json:"sealing_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2499,6 +2505,13 @@ func (x *ConfirmArchiveChapterRequest) GetChapterId() uint64 {
 		return x.ChapterId
 	}
 	return 0
+}
+
+func (x *ConfirmArchiveChapterRequest) GetSealingHash() []byte {
+	if x != nil {
+		return x.SealingHash
+	}
+	return nil
 }
 
 type ListChaptersRequest struct {
@@ -9220,10 +9233,11 @@ const file_bucket_proto_rawDesc = "" +
 	"state_hash\x18\x03 \x01(\fR\tstateHash\"6\n" +
 	"\x15ArchiveChapterRequest\x12\x1d\n" +
 	"\n" +
-	"chapter_id\x18\x01 \x01(\x06R\tchapterId\"=\n" +
+	"chapter_id\x18\x01 \x01(\x06R\tchapterId\"`\n" +
 	"\x1cConfirmArchiveChapterRequest\x12\x1d\n" +
 	"\n" +
-	"chapter_id\x18\x01 \x01(\x06R\tchapterId\"D\n" +
+	"chapter_id\x18\x01 \x01(\x06R\tchapterId\x12!\n" +
+	"\fsealing_hash\x18\x02 \x01(\fR\vsealingHash\"D\n" +
 	"\x13ListChaptersRequest\x12-\n" +
 	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\"5\n" +
 	"\x19SetMaintenanceModeRequest\x12\x18\n" +
