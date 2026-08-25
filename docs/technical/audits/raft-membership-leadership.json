@@ -4,6 +4,7 @@
   "purpose": "Find latent distributed-correctness failures around leadership changes, quorum, membership mutation, transport, snapshot installation, and follower/leader routing.",
   "paths": [
     "internal/infra/node/**",
+    "internal/infra/health/**",
     "internal/infra/transport/**",
     "internal/infra/membership/**",
     "internal/infra/state/**",
