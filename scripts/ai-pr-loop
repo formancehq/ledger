@@ -353,6 +353,26 @@ if [[ "$bugfix_intent" == bugfix ]]; then
     printf '%s\n' "$pr_body" >"$evidence_file"
     if [[ "$push_changes" == true && -x "$trusted_tool_worktree/scripts/ai-bugfix-gate" ]]; then
         bash "$trusted_tool_worktree/scripts/ai-bugfix-gate" evidence "$evidence_file" bugfix
+    elif [[ "$push_changes" == true ]]; then
+        # Bootstrap for bases predating ai-bugfix-gate: keep the fail-closed
+        # evidence contract inline until the trusted executable exists. This
+        # validates data only; no candidate-controlled command is executed.
+        grep -Eq '^DISCOVERY:[[:space:]]+(DIRECT_FIX|PARTIAL_FIX|RELATED_BUT_DIFFERENT|STALE_OR_INVALID|ALREADY_FIXED|NO_EXISTING_WORK)\b' "$evidence_file" || {
+            rm -f -- "$evidence_file"
+            echo "ai-pr-loop: BUGFIX_EVIDENCE=FAIL (discovery classification missing)" >&2
+            exit 1
+        }
+        grep -Eq '^BEFORE_FIX:[[:space:]]+(BUG_REPRODUCED|REPRODUCTION_BLOCKED|ALREADY_FIXED)\b' "$evidence_file" || {
+            rm -f -- "$evidence_file"
+            echo "ai-pr-loop: BUGFIX_EVIDENCE=FAIL (BEFORE_FIX missing)" >&2
+            exit 1
+        }
+        grep -Eq '^AFTER_FIX:[[:space:]]+PASS\b' "$evidence_file" || {
+            rm -f -- "$evidence_file"
+            echo "ai-pr-loop: BUGFIX_EVIDENCE=FAIL (AFTER_FIX missing)" >&2
+            exit 1
+        }
+        echo 'BUGFIX_EVIDENCE=PASS (bootstrap inline gate)'
     elif [[ "$push_changes" == false && -x "$repo_root/scripts/ai-bugfix-gate" ]]; then
         bash "$repo_root/scripts/ai-bugfix-gate" evidence "$evidence_file" bugfix
     else
