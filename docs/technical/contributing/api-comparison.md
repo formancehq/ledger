@@ -664,11 +664,13 @@ the FSM seq the rewrite observed. Queries against the replica
 continue serving from `current_version` (the pre-retype encoding)
 until that switch fires — see the previous bullet's "consistent
 throughout" guarantee. Clients that need *post-switch* consistency
-must poll `GetIndexStatus.IndexEntry.current_version` and wait for
-it to reflect the bumped forward-encoding version, OR rely on the
-eventual-consistency window (typically seconds) inherent to
-background rewrites. No client primitive currently blocks until
-that switch lands.
+capture `GetIndexStatus.IndexEntry.current_version` before the
+retype and poll until it has advanced past that value with
+`pending_version == 0` (per-replica numbers are local high-water
+allocations, never comparable to `forward_encoding_version`), OR
+rely on the eventual-consistency window (typically seconds)
+inherent to background rewrites. `pkg/actions` ships this as
+`MetadataIndexCurrentVersion` + `WaitForMetadataIndexRewrite`.
 
 **Original:** No equivalent — the original ledger has no
 per-replica versioning and reaches "ready" via a single
