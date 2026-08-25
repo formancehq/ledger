@@ -113,6 +113,7 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 		validator, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "agent-check-pr"))
 		require.NoError(t, err)
 		require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "agent-check-pr"), validator, 0o755))
+		writeExecutable(t, filepath.Join(seed, "scripts", "agent-just"), "#!/usr/bin/env bash\nexit 0\n")
 	}
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 0\n")
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-known-findings"), "#!/usr/bin/env bash\nexit 0\n")

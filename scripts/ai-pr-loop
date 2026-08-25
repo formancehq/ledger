@@ -108,13 +108,6 @@ if [[ "$head_owner/$head_repo" != "$repo" ]]; then
     exit 1
 fi
 
-evidence_file=$(mktemp)
-trap 'rm -f -- "$evidence_file"' RETURN
-printf '%s\n' "$pr_body" >"$evidence_file"
-bash scripts/ai-bugfix-gate evidence "$evidence_file" "$bugfix_intent"
-rm -f -- "$evidence_file"
-trap - RETURN
-
 remote=origin
 if ! git remote get-url "$remote" >/dev/null 2>&1; then
     echo "ai-pr-loop: required git remote '$remote' is missing" >&2
@@ -341,7 +334,7 @@ fix_cmd='bash scripts/ai-fix-claude'
 validation_cmd='bash scripts/agent-check-pr'
 if [[ "$push_changes" == "true" ]]; then
     # Publication additionally base-pins the mutating fixer and validator.
-    for trusted_tool in ai-fix-claude agent-check-pr; do
+    for trusted_tool in ai-fix-claude agent-check-pr agent-just; do
         trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
         if [[ ! -x "$trusted_tool_path" ]]; then
             echo "ai-pr-loop: trusted base does not provide executable scripts/$trusted_tool" >&2
@@ -353,6 +346,21 @@ if [[ "$push_changes" == "true" ]]; then
         'env -u GOROOT nix develop %q --command env LEDGER_AGENT_CHECK_IN_NIX=1 bash %q' \
         "path:$trusted_tool_worktree" \
         "$trusted_tool_worktree/scripts/agent-check-pr"
+fi
+
+if [[ "$bugfix_intent" == bugfix ]]; then
+    evidence_file=$(mktemp)
+    printf '%s\n' "$pr_body" >"$evidence_file"
+    if [[ "$push_changes" == true && -x "$trusted_tool_worktree/scripts/ai-bugfix-gate" ]]; then
+        bash "$trusted_tool_worktree/scripts/ai-bugfix-gate" evidence "$evidence_file" bugfix
+    elif [[ "$push_changes" == false && -x "$repo_root/scripts/ai-bugfix-gate" ]]; then
+        bash "$repo_root/scripts/ai-bugfix-gate" evidence "$evidence_file" bugfix
+    else
+        rm -f -- "$evidence_file"
+        echo "ai-pr-loop: bugfix evidence gate is unavailable; refusing readiness" >&2
+        exit 1
+    fi
+    rm -f -- "$evidence_file"
 fi
 
 printf '==> ai-pr-loop: PR #%s\n' "$pr_number"
@@ -497,9 +505,16 @@ if [[ -n "$(git status --porcelain)" ]]; then
     exit 1
 fi
 
-# Last-mile publication gate: pre-commit is authoritative and any generated
-# output must be incorporated and re-reviewed, never reset or hidden.
-bash scripts/ai-bugfix-gate pre-push
+    # Last-mile publication gate: use only the base-pinned recipe wrapper. The
+    # candidate worktree is merely its working directory; generated output is
+    # never reset or hidden.
+bash "$trusted_tool_worktree/scripts/agent-just" pre-commit
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "ai-pr-loop: pre-commit left the candidate worktree dirty; refusing push" >&2
+    echo "Candidate worktree preserved for inspection: $worktree"
+    keep_worktree=true
+    exit 1
+fi
 
 current_head=$(git rev-parse HEAD)
 if [[ "$current_head" != "$candidate_sha" ]]; then
