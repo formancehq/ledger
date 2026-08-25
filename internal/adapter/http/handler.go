@@ -64,6 +64,10 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 		}),
 		jsonRecoverer,
 		maxBodySizeMiddleware(defaultMaxBodySize),
+		// Before authentication: HTTPAuthMiddleware validates the JWT (a remote
+		// JWKS fetch on a cache miss), which is preparation work the profiled
+		// reads must account for and gRPC already does. See startRequestClock.
+		startRequestClock,
 		internalauth.HTTPAuthMiddleware(authCfg),
 	)
 
@@ -100,6 +104,33 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	// Business API routes: mounted under APIVersionPrefix.
 	registerAPIRoutes := func(r chi.Router) {
 		r.With(contentTypeMiddleware, utf8PathParamValidator).Group(func(r chi.Router) {
+			// Profiled reads (EN-1859). Declared here, outside the scope groups
+			// below, because chi applies group middleware BEFORE route
+			// middleware: inside `r.With(requireXRead).Group(…)` the scope guard
+			// would run first and authentication would fall outside the profile
+			// window. The gRPC handlers start their profile before
+			// internalauth.Authenticate, so HTTP must too — otherwise
+			// prepare_duration_us, and through it server_duration_us, measures a
+			// different span on each transport and the two stop being comparable.
+			// The scope groups are therefore nested INSIDE the profile here, which
+			// is also the only shape chi.Walk can see — the ordering test in
+			// middleware_query_profile_test.go pins it, and a route-level
+			// `r.With(guard).Get(…)` would be invisible to it.
+			r.With(withQueryProfile).Group(func(r chi.Router) {
+				r.With(requireTransactionsRead).Group(func(r chi.Router) {
+					r.Get("/{ledgerName}/transactions", server.handleListTransactions)
+				})
+
+				r.With(requireAccountsRead).Group(func(r chi.Router) {
+					r.Get("/{ledgerName}/accounts", server.handleListAccounts)
+					r.Get("/{ledgerName}/volumes", server.handleAggregateVolumes)
+				})
+
+				r.With(requireQueriesRead).Group(func(r chi.Router) {
+					r.Post("/{ledgerName}/prepared-queries/{queryName}/execute", server.handleExecutePreparedQuery)
+				})
+			})
+
 			// Ledgers read scope
 			r.With(requireLedgersRead).Group(func(r chi.Router) {
 				r.Get("/", server.handleListAllLedgers)
@@ -118,7 +149,6 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 
 			// Transactions read scope
 			r.With(requireTransactionsRead).Group(func(r chi.Router) {
-				r.Get("/{ledgerName}/transactions", server.handleListTransactions)
 				r.Get("/{ledgerName}/transactions/{transactionId}", server.handleGetTransaction)
 			})
 
@@ -158,9 +188,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 
 			// Accounts read scope
 			r.With(requireAccountsRead).Group(func(r chi.Router) {
-				r.Get("/{ledgerName}/accounts", server.handleListAccounts)
 				r.Get("/{ledgerName}/accounts/{address}", server.handleGetAccount)
-				r.Get("/{ledgerName}/volumes", server.handleAggregateVolumes)
 				r.Get("/{ledgerName}/metadata-schema", server.handleGetMetadataSchema)
 				r.Get("/{ledgerName}/analyze-accounts", server.handleAnalyzeAccounts)
 				r.Get("/{ledgerName}/analyze-transactions", server.handleAnalyzeTransactions)
@@ -205,7 +233,6 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			// Prepared queries (read)
 			r.With(requireQueriesRead).Group(func(r chi.Router) {
 				r.Get("/{ledgerName}/prepared-queries", server.handleListPreparedQueries)
-				r.Post("/{ledgerName}/prepared-queries/{queryName}/execute", server.handleExecutePreparedQuery)
 			})
 
 			// Prepared queries (write)

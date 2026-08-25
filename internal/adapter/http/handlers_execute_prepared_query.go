@@ -12,15 +12,15 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // handleExecutePreparedQuery handles POST /{ledgerName}/prepared-queries/{name}/execute.
 func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Request) {
-	// See handleListTransactions: the profile clock starts before decode — here
-	// that also covers JSON body decoding and parameter conversion.
-	ctx, profile := query.WithProfile(r.Context())
-	r = r.WithContext(ctx)
+	// See handleListTransactions: the profile clock started in the routing layer
+	// — here the measured preparation also covers JSON body decoding and
+	// parameter conversion.
+	ctx := r.Context()
+	profile := profileFromRequest(r)
 
 	ledgerName, ok := requireLedgerName(w, r)
 	if !ok {

@@ -4,14 +4,13 @@ import (
 	"net/http"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // handleListAccounts handles GET /{ledgerName}/accounts to list accounts.
 func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
-	// See handleListTransactions: the profile clock starts before decode.
-	ctx, profile := query.WithProfile(r.Context())
-	r = r.WithContext(ctx)
+	// See handleListTransactions: the profile clock started in the routing layer.
+	ctx := r.Context()
+	profile := profileFromRequest(r)
 
 	ledgerName, ok := requireLedgerName(w, r)
 	if !ok {

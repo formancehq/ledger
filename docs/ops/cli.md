@@ -4224,18 +4224,19 @@ ledger run --query-profile-threshold 0 [other flags...]
 ```
 
 The threshold is compared against `server_duration_us + deliver_duration_us`: the
-whole server-side handling of the read — request decode, filter compilation,
+whole server-side handling of the read — authentication, filter compilation,
 execution, response assembly, row serialisation and stream writes — excluding only
 the caller-requested read barrier. It is not the query execution time alone, so a
-read that spends its time in request decoding, filter compilation or serialisation
-is caught as well.
+read that spends its time authenticating, compiling a filter or serialising rows
+is caught as well. (gRPC protobuf decode happens before the handler and is in
+neither total.)
 
 `0` disables the log. It does not mean "log everything": every duration is `>= 0`,
 so a `0` threshold would otherwise match every single read.
 
-Two things to know before tuning it:
+Three things to know before tuning it:
 
-- **It fires on more reads than the pre-3.0 behaviour**, which compared query
+- **It fires on more reads than it did before EN-1859**, which compared query
   execution time only. The new total is structurally larger.
 - **Span attribute volume grows with it.** Each qualifying read attaches ~14
   timing attributes plus a rendered iterator-tree string to its OTel span, and

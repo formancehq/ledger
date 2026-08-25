@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // handleListTransactions handles GET /{ledgerName}/transactions to list a
@@ -36,12 +35,12 @@ import (
 // keeps EN-1472 scoped to "expose the reads over HTTP", not "full read-options
 // parity". Same applies to the bucket reads (chapters, signing keys) below.
 func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) {
-	// Start the profile clock before any decode/validation so query-parameter
-	// parsing and filter compilation land in PrepareDuration (EN-1859). The
-	// request is re-bound to the profiled context so drainCursor and the
-	// controller see the same profile.
-	ctx, profile := query.WithProfile(r.Context())
-	r = r.WithContext(ctx)
+	// The profile clock started in withQueryProfile, outside the scope guard, so
+	// authentication as well as query-parameter parsing and filter compilation
+	// land in PrepareDuration (EN-1859). drainCursor and the controller read the
+	// same profile off this context.
+	ctx := r.Context()
+	profile := profileFromRequest(r)
 
 	ledgerName, ok := requireLedgerName(w, r)
 	if !ok {

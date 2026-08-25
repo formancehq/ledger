@@ -80,8 +80,11 @@ func RenderProfile(profile *servicepb.QueryProfile) {
 
 	barrier := formatDurationUs(profile.GetBarrierDurationUs())
 	if profile.GetForwarded() {
-		// A forwarded read runs its barrier on the remote node, so this 0 means
-		// "not measured here", not "no wait happened".
+		// A forwarded read runs a barrier on the remote node that is folded into
+		// its execution, so this value covers the local waits only — 0 means "not
+		// measured here", not "no wait happened", and a non-zero value is a local
+		// min_log_sequence catch-up or a failed ReadIndex attempt, not evidence
+		// about the remote node.
 		barrier += " (local only — read was forwarded)"
 	}
 

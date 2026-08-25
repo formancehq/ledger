@@ -17,7 +17,7 @@ Source: `internal/query/profile.go`, wire type `servicepb.QueryProfile`
 Before EN-1859 the profile only reported execution: `index_duration_us +
 enrichment_duration_us`. Measured against an 87.7M-transaction ledger over an
 established gRPC connection, a client saw 56 ms end-to-end while the profile
-accounted for 2.3 ms. The remaining ~54 ms — request decode, filter compilation,
+accounted for 2.3 ms. The remaining ~54 ms — authentication, filter compilation,
 row serialisation, stream writes — was invisible, so a caller could not tell a
 slow network from a slow server, read-performance work had nothing to target,
 and no server-side latency SLO could be defined.
@@ -35,11 +35,11 @@ The request clock starts when the profile is created and stops at `Finish()`.
 
 | Field | Window | In `server_duration_us`? |
 |---|---|---|
-| `prepare_duration_us` | handler entry → executor invocation: auth, request decode/validation, filter parsing/compilation, checkpoint-store opening | yes |
+| `prepare_duration_us` | request entry → executor invocation: auth, validation, filter parsing/compilation, checkpoint-store opening, and HTTP query/body decode | yes |
 | `execute_duration_us` | the executor call: snapshot setup, ledger/schema resolution, index scan, enrichment, plus lazy row pulls | yes |
-| `barrier_duration_us` | **local** Raft `ReadIndex` quorum round-trip and `ReadOptions.min_log_sequence` read-index catch-up | **no** |
+| `barrier_duration_us` | **local** Raft `ReadIndex` quorum round-trip and `ReadOptions.min_log_sequence` read-index catch-up, successful or not | **no** |
 | `deliver_duration_us` | row serialisation + transport hand-off | **no** |
-| `first_row_duration_us` | handler entry → first row accepted by the transport | n/a |
+| `first_row_duration_us` | request entry → first row accepted by the transport | n/a |
 | `server_duration_us` | wall clock − barrier − deliver | — |
 | `forwarded` | the read was served by another node | n/a |
 
@@ -99,22 +99,33 @@ time inside `execute_duration_us`. Always read `barrier_duration_us` together wi
 | `forwarded` | `barrier_duration_us` | meaning |
 |---|---|---|
 | false | any | the whole barrier this read paid |
-| true | `0` | no barrier ran **here** — an explicit leader read (`x-consistency: leader`) never attempts one. Not "no barrier was needed": the leader's is inside `execute_duration_us`. |
-| true | non-zero | this node **attempted** a local barrier, it failed, and the read fell back to the leader (see below) |
+| true | `0` | no local wait happened. Not "no barrier was needed": the remote node's is inside `execute_duration_us`. |
+| true | non-zero | a local wait happened before the read left this node; the remote barrier is on top of it (see below) |
 
-The last row is the syncing-follower fallback in `RoutedController.readCtrl`. The
-attempt is charged even though it failed, because the caller really did wait for
-it, and it stays excluded from `server_duration_us` for the same reason a
-successful barrier is: a quorum wait is not server work. The leader's own barrier
-is then paid *on top*, inside `execute_duration_us`. Zeroing the failed attempt
-instead would push consensus latency into `prepare_duration_us` and into the
-server total — mislabelling a quorum wait as request preparation, which is the
-distortion the phase split exists to remove.
+Two independent things produce the last row, and the value does **not** say
+which:
 
-In practice the magnitude differs sharply by cause: `ErrNodeSyncing` is returned
-before any wait, so the attempt costs nanoseconds, whereas leadership lost
-mid-`ReadIndex` resolves a pending future and can account for the whole quorum
-attempt.
+- **`min_log_sequence` catch-up.** `waitMinLogSequence` charges the
+  `WaitForSequence` wait regardless of consistency level, and it runs before
+  routing — so `--consistency leader --min-log-sequence N` yields a non-zero
+  barrier on a perfectly healthy cluster, with no failed attempt anywhere.
+- **A failed `ReadIndex` attempt.** The syncing-follower fallback in
+  `RoutedController.readCtrl` records the attempt and *then* forwards. Magnitude
+  differs sharply by cause: `ErrNodeSyncing` returns before any wait, so it costs
+  nanoseconds, whereas leadership lost mid-`ReadIndex` resolves a pending future
+  and can account for the whole quorum attempt.
+
+So do not read cluster health off a non-zero forwarded barrier — the common cause
+is a caller asking for read-your-writes.
+
+Either way the wait is charged and stays excluded from `server_duration_us`, for
+the same reason a successful barrier is: the caller waited for it, and an
+abandoned quorum round-trip is no more server work than a completed one. Not
+charging the failed attempt would leave it inside `execute_duration_us` — the
+`readCtrl` call sits inside the `EnterExecute`/`LeaveExecute` bracket, so the
+subtraction that removes barrier time from execution would find nothing to
+subtract — and from there inside the server total, which is the distortion the
+phase split exists to remove.
 
 ### Why `deliver` is excluded, and how streaming ambiguity is resolved
 

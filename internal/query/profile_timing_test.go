@@ -99,30 +99,69 @@ func TestQueryProfile_MarkForwarded(t *testing.T) {
 		"a forwarded read must be flagged so its zero BarrierDuration is not read as 'no barrier needed'")
 }
 
-// Forwarded does NOT imply a zero barrier. RoutedController.readCtrl attempts a
-// local ReadIndex barrier first and only forwards when it fails, so the failed
-// attempt is already recorded when MarkForwarded runs. That combination is the
-// documented contract, not a bookkeeping error: the caller really waited, and a
-// failed quorum wait is no more server work than a successful one. Zeroing it
-// would push consensus latency into PrepareDuration and into the server total.
-func TestQueryProfile_ForwardedKeepsFailedLocalBarrier(t *testing.T) {
+// Elapsed/barrier magnitudes for the quantitative tests below. A backdated start
+// is what makes them quantitative: with a live clock the request's wall time is
+// microseconds, so any injected barrier exceeds it, every subtraction floors at
+// zero and the assertions pass on the clamp rather than on the arithmetic.
+const (
+	testElapsed = 2 * time.Hour
+	testBarrier = 30 * time.Minute
+	// Generous next to two hours, and still thousands of times larger than the
+	// microseconds a parallel test actually spends between the two calls.
+	testTolerance = time.Minute
+)
+
+// The exclusion asserted with real numbers rather than a floor: a barrier
+// recorded before the executor — waitMinLogSequence, which runs there on most
+// read paths — must be subtracted from both prepare and the server total, and
+// from nothing else.
+func TestQueryProfile_BarrierBeforeExecuteExcludedFromPrepareAndServer(t *testing.T) {
 	t.Parallel()
 
-	_, p := query.WithProfile(context.Background())
+	_, p := query.WithProfileStartingAt(context.Background(), time.Now().Add(-testElapsed))
 
-	// The syncing-follower fallback, in order: barrier attempted, barrier fails,
-	// read forwarded, remote cost arrives as row production.
-	p.AddBarrierWait(time.Hour)
-	p.MarkForwarded()
+	p.AddBarrierWait(testBarrier)
 	p.EnterExecute()
 	p.LeaveExecute()
 	p.Finish()
 
+	assert.Empty(t, p.Anomaly, "no phase should have been clamped — that would make the numbers below meaningless")
+	assert.InDelta(t, (testElapsed - testBarrier).Seconds(), p.PrepareDuration.Seconds(), testTolerance.Seconds(),
+		"preparation is the elapsed time minus the caller-requested wait")
+	assert.InDelta(t, (testElapsed - testBarrier).Seconds(), p.ServerDuration.Seconds(), testTolerance.Seconds(),
+		"and so is the server total, which subtracts the same wait once")
+}
+
+// Forwarded does NOT imply a zero barrier, and MarkForwarded must not erase one
+// already recorded. RoutedController.readCtrl attempts a local ReadIndex barrier
+// and only forwards when it fails, so on the fallback path the attempt is on the
+// profile before the flag is set. Dropping it would not delete the time: readCtrl
+// runs inside the caller's execute window, so an uncharged wait stays in
+// ExecuteDuration and from there in the server total.
+func TestQueryProfile_ForwardedKeepsFailedLocalBarrier(t *testing.T) {
+	t.Parallel()
+
+	_, p := query.WithProfileStartingAt(context.Background(), time.Now().Add(-testElapsed))
+
+	// The syncing-follower fallback, in the order readCtrl produces it.
+	p.EnterExecute()
+	p.AddBarrierWait(testBarrier)
+	p.MarkForwarded()
+	p.LeaveExecute()
+	p.Finish()
+
 	assert.True(t, p.Forwarded)
-	assert.Equal(t, time.Hour, p.BarrierDuration,
+	assert.Equal(t, testBarrier, p.BarrierDuration,
 		"the failed local attempt must survive MarkForwarded — dropping it hides real caller-visible latency")
-	assert.Zero(t, p.ServerDuration, "and stay excluded from the server total, exactly like a successful barrier")
-	assert.Zero(t, p.PrepareDuration, "in particular it must not leak into prepare, which means request setup work")
+	assert.InDelta(t, (testElapsed - testBarrier).Seconds(), p.ServerDuration.Seconds(), testTolerance.Seconds(),
+		"and stay excluded from the server total, exactly like a successful barrier")
+
+	// The execute window here is the microseconds between EnterExecute and
+	// LeaveExecute, and the barrier subtracted from it is half an hour, so the
+	// floor engages. Asserted rather than left implicit: a clamp that nobody
+	// checks is how a test comes to pass for a reason it does not state.
+	assert.Zero(t, p.ExecuteDuration)
+	assert.NotEmpty(t, p.Anomaly, "flooring a phase must be reported")
 }
 
 func TestQueryProfile_BarrierInsideExecuteNotChargedToExecute(t *testing.T) {
@@ -139,6 +178,9 @@ func TestQueryProfile_BarrierInsideExecuteNotChargedToExecute(t *testing.T) {
 	assert.Equal(t, time.Hour, p.BarrierDuration)
 }
 
+// The floor-based counterpart of
+// TestQueryProfile_BarrierBeforeExecuteExcludedFromPrepareAndServer: a wait
+// larger than the request's own lifetime cannot leave preparation positive.
 func TestQueryProfile_BarrierBeforeExecuteNotChargedToPrepare(t *testing.T) {
 	t.Parallel()
 
@@ -148,6 +190,7 @@ func TestQueryProfile_BarrierBeforeExecuteNotChargedToPrepare(t *testing.T) {
 	p.EnterExecute()
 
 	assert.Zero(t, p.PrepareDuration, "min_log_sequence wait is not preparation work")
+	assert.NotEmpty(t, p.Anomaly, "and driving a phase negative must be reported, not silently floored")
 }
 
 func TestQueryProfile_AddProductionChargedToExecute(t *testing.T) {

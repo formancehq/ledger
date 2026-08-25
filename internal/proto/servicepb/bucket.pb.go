@@ -8353,10 +8353,18 @@ type QueryProfile struct {
 	MaterializedRanges   int32                  `protobuf:"varint,5,opt,name=materialized_ranges,json=materializedRanges,proto3" json:"materialized_ranges,omitempty"`
 	MaterializedItems    int32                  `protobuf:"varint,6,opt,name=materialized_items,json=materializedItems,proto3" json:"materialized_items,omitempty"`
 	RootIterator         *IteratorProfile       `protobuf:"bytes,7,opt,name=root_iterator,json=rootIterator,proto3" json:"root_iterator,omitempty"`
-	// Consumer-independent server cost: handler entry (before request decode) to
-	// the response being ready for delivery, MINUS barrier_duration_us and MINUS
-	// deliver_duration_us. It cannot be moved by a slow client, and it is the one
-	// field defined identically on gRPC and HTTP, so the two surfaces compare.
+	// Consumer-independent server cost: server entry to the response being ready
+	// for delivery, MINUS barrier_duration_us and MINUS deliver_duration_us. It
+	// cannot be moved by a slow client.
+	//
+	// "Server entry" is the earliest instrumentable point on each transport, and
+	// that is not quite the same point: on gRPC it is the handler's first
+	// statement, because grpc-go receives and unmarshals the request message
+	// before dispatching, putting protobuf decode out of reach; on HTTP it is the
+	// router chain just before authentication, so query/body decode inside the
+	// handler is included. Both start before authentication, and both end at the
+	// same place, which is what keeps the field comparable — with the caveat that
+	// gRPC message decode is never counted on either side of the comparison.
 	//
 	// It does NOT include row serialisation. On a gRPC server stream, marshalling
 	// and the transport write happen inside one inseparable stream.Send() call, so
@@ -8378,8 +8386,10 @@ type QueryProfile struct {
 	// pagination trailer, profile emission).
 	ServerDurationUs int64 `protobuf:"varint,8,opt,name=server_duration_us,json=serverDurationUs,proto3" json:"server_duration_us,omitempty"`
 	// Portion of server_duration_us spent before the query executor was invoked:
-	// authentication, request decode/validation, filter parsing/compilation and
-	// checkpoint-store opening.
+	// authentication, request validation, filter parsing/compilation and
+	// checkpoint-store opening — plus, on HTTP, query-parameter and body decoding.
+	// gRPC protobuf decode is NOT here: grpc-go unmarshals the request before the
+	// handler runs (see server_duration_us).
 	PrepareDurationUs int64 `protobuf:"varint,9,opt,name=prepare_duration_us,json=prepareDurationUs,proto3" json:"prepare_duration_us,omitempty"`
 	// Portion of server_duration_us spent inside the query executor. Contains
 	// index_duration_us and enrichment_duration_us as sub-phases, plus snapshot
@@ -8392,20 +8402,25 @@ type QueryProfile struct {
 	// catch-up wait. Deliberately EXCLUDED from server_duration_us — it is a wait
 	// the request opted into, not server cost.
 	//
-	// Only LOCAL barriers are measured, and only the local one. Always read this
-	// field together with `forwarded`:
+	// Only LOCAL waits are measured, and every local wait is measured: a
+	// min_log_sequence catch-up and a ReadIndex attempt are both counted, whether
+	// or not the attempt succeeds and whether or not the read is then forwarded.
+	// Always read this field together with `forwarded`:
 	//
 	//   - forwarded=false: the whole barrier this read paid.
-	//   - forwarded=true, 0: no barrier ran HERE (an explicit leader read never
-	//     attempts one). The remote node's barrier is folded into its execution
-	//     and arrives inside execute_duration_us — 0 does NOT mean "no barrier
-	//     was needed".
-	//   - forwarded=true, non-zero: this node ATTEMPTED a local barrier, it
-	//     failed (syncing follower, leadership lost mid-ReadIndex), and the read
-	//     then fell back to the leader. The value is real consensus latency the
-	//     caller paid and is still excluded from server_duration_us — a failed
-	//     quorum wait is not server work — but the leader's own barrier is on top
-	//     of it, inside execute_duration_us.
+	//   - forwarded=true, 0: no local wait happened. The remote node's barrier is
+	//     folded into its execution and arrives inside execute_duration_us — 0
+	//     does NOT mean "no barrier was needed".
+	//   - forwarded=true, non-zero: a local wait happened before the read left
+	//     this node, and the remote node's barrier is on top of it inside
+	//     execute_duration_us. The value does NOT identify which wait: a
+	//     min_log_sequence catch-up does not prevent forwarding, and a failed
+	//     ReadIndex attempt (syncing follower, leadership lost mid-quorum) is
+	//     what triggers the fallback. Do not read cluster health off it.
+	//
+	// A failed or superseded wait is still excluded from server_duration_us: the
+	// caller waited for it, and an abandoned quorum round-trip is no more server
+	// work than a completed one.
 	BarrierDurationUs int64 `protobuf:"varint,11,opt,name=barrier_duration_us,json=barrierDurationUs,proto3" json:"barrier_duration_us,omitempty"`
 	// Time spent serialising result rows and handing them to the transport.
 	// EXCLUDED from server_duration_us because on a server stream it also
@@ -8431,10 +8446,11 @@ type QueryProfile struct {
 	// True when this node did not serve the read itself but forwarded it to
 	// another node — an explicit leader-consistency read, or the fallback taken
 	// when the local replica is still catching up. The remote node's prepare,
-	// barrier and execution all arrive inside execute_duration_us, and
-	// barrier_duration_us reads 0 for lack of a local barrier, so the phase
+	// barrier and execution all arrive inside execute_duration_us, so the phase
 	// breakdown describes the local hop only. Its purpose is to stop a zero
-	// barrier from being misread as "no barrier was needed".
+	// barrier_duration_us from being misread as "no barrier was needed"; see that
+	// field for the three cases the pair distinguishes — a forwarded read can
+	// report a non-zero local wait.
 	Forwarded     bool `protobuf:"varint,14,opt,name=forwarded,proto3" json:"forwarded,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

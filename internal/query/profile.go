@@ -30,8 +30,9 @@ import (
 // # Phase model
 //
 // The request clock starts when the profile is created — call [WithProfile] as
-// the FIRST statement of a read handler, before any decode or validation — and
-// stops at [QueryProfile.Finish].
+// the FIRST statement of a read handler, before any validation, or
+// [WithProfileStartingAt] from a transport that can stamp an earlier instant —
+// and stops at [QueryProfile.Finish].
 //
 //	|<---------------------- wall clock ---------------------->|
 //	[ prepare ][ barrier ][ execute ][ residual ][   deliver   ]
@@ -69,10 +70,12 @@ type QueryProfile struct {
 	MaterializedItems  int
 	Root               *IteratorStats
 
-	// PrepareDuration covers handler entry to executor invocation:
-	// authentication, request decode/validation, filter parsing/compilation and
-	// checkpoint-store opening. Barrier waits observed in this window are
-	// subtracted out.
+	// PrepareDuration covers request entry to executor invocation:
+	// authentication, request validation, filter parsing/compilation and
+	// checkpoint-store opening, plus query/body decoding on HTTP. gRPC protobuf
+	// decode is outside it — grpc-go unmarshals the request before dispatching to
+	// the handler, so no in-handler clock can reach it. Barrier waits observed in
+	// this window are subtracted out.
 	PrepareDuration time.Duration
 	// ExecuteDuration covers the executor call(s): snapshot setup, ledger and
 	// schema resolution, the index scan (IndexDuration), enrichment
@@ -80,10 +83,11 @@ type QueryProfile struct {
 	// reported through AddProduction. Barrier waits observed inside the window
 	// are subtracted out.
 	ExecuteDuration time.Duration
-	// BarrierDuration is time blocked on a caller-requested read-consistency
-	// barrier, LOCAL to this node. Excluded from ServerDuration. A failed
-	// barrier attempt counts: a syncing follower that burns a quorum wait before
-	// falling back to the leader reports that wait here, with Forwarded true.
+	// BarrierDuration is time blocked on caller-requested read-consistency waits,
+	// LOCAL to this node: the min_log_sequence catch-up and the Raft ReadIndex
+	// quorum. Excluded from ServerDuration. Every local wait counts, including
+	// one that fails or is superseded — a syncing follower burns a quorum wait
+	// before falling back to the leader and reports it here, with Forwarded true.
 	BarrierDuration time.Duration
 	// DeliverDuration is time spent serialising result rows and handing them to
 	// the transport. Excluded from ServerDuration. On a gRPC server stream it is
@@ -104,10 +108,13 @@ type QueryProfile struct {
 	// own barrier and execution, and that whole cost lands in this profile's
 	// ExecuteDuration.
 	//
-	// Forwarded does NOT imply BarrierDuration == 0. An explicit leader read
-	// never attempts a local barrier, so it reports 0 — and this flag exists so
-	// that 0 is not misread as "no barrier was needed". The syncing-follower
-	// fallback does attempt one first, and reports the failed attempt.
+	// Forwarded does NOT imply BarrierDuration == 0, and a non-zero value does
+	// not identify which wait occurred. Two paths produce one: the
+	// syncing-follower fallback attempts a ReadIndex barrier before forwarding,
+	// and waitMinLogSequence charges its catch-up regardless of consistency
+	// level, so an explicit leader read with min_log_sequence set reports a wait
+	// on a healthy cluster. The flag's job is narrower: stop a zero from being
+	// misread as "no barrier was needed".
 	Forwarded bool
 	// Anomaly is non-empty when the phase bookkeeping detected a state that is
 	// impossible by contract (see clampPhase). It is surfaced in the log and on
@@ -163,8 +170,10 @@ type profileKey struct{}
 // returns a context carrying it.
 //
 // Call it as the first statement of a read handler — before authentication,
-// request decode, validation and filter compilation — otherwise those phases
-// stay outside the measured window and PrepareDuration is meaningless.
+// validation and filter compilation — otherwise those phases stay outside the
+// measured window and PrepareDuration is meaningless. Where authentication runs
+// above the handler, as it does in the HTTP router, use
+// [WithProfileStartingAt] with an instant stamped before it instead.
 //
 // The profile is collected in full for every profiled read, whether or not the
 // caller asked to see it: the slow-query log and the OTel span consume the same
@@ -173,7 +182,20 @@ type profileKey struct{}
 // exists to remove. The presence of a profile in the context, not the caller's
 // request for one, is what enables instrumentation.
 func WithProfile(ctx context.Context) (context.Context, *QueryProfile) {
-	p := &QueryProfile{requestStart: time.Now()}
+	return WithProfileStartingAt(ctx, time.Now())
+}
+
+// WithProfileStartingAt is [WithProfile] with an externally captured start
+// instant, for transports where the first instrumentable point sits above the
+// handler.
+//
+// HTTP needs it: authentication runs in a router-wide middleware, so a profile
+// created in the handler would exclude it, while the gRPC handlers call
+// WithProfile before internalauth.Authenticate and include it. Same field name,
+// different span — so the HTTP router stamps the instant just before
+// authenticating and hands it here.
+func WithProfileStartingAt(ctx context.Context, start time.Time) (context.Context, *QueryProfile) {
+	p := &QueryProfile{requestStart: start}
 
 	return context.WithValue(ctx, profileKey{}, p), p
 }
@@ -291,9 +313,14 @@ func (p *QueryProfile) Finish() {
 // from inside the window it is later subtracted from, so it can only exceed that
 // window if a hook double-counted. Per invariant #7 that must not pass silently,
 // but a read request is the wrong place to fail hard over a diagnostic — so the
-// clamp keeps the wire value sane while the violation is made loud: recorded on
-// the profile (and therefore in the slow-query log and the span, where the
-// profile is consumed) and asserted for the fuzzing harness.
+// clamp keeps the wire value sane while the violation is recorded on the profile
+// and asserted for the fuzzing harness.
+//
+// Reaching an operator is best-effort, not guaranteed: the profile is logged only
+// above the slow-query threshold, and clamping ServerDuration to zero is exactly
+// what can pull the compared total below it. The fuzzing assertion is the
+// reliable detector; the recorded string is what makes it legible if a real
+// deployment ever does log one.
 func (p *QueryProfile) clampPhase(phase string, d time.Duration) time.Duration {
 	if d >= 0 {
 		return d

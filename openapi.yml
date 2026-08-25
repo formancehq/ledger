@@ -3015,15 +3015,18 @@ components:
 
           - `serverDurationUs` — consumer-independent server cost: request entry
             to response-ready, excluding the read barrier and response delivery.
-            Cannot be moved by a slow client, and has the same definition over
-            gRPC. It does NOT include row serialization.
-          - `prepareDurationUs` — request decode, validation and filter
-            compilation.
+            Cannot be moved by a slow client. Over HTTP, request entry is the
+            router chain just before authentication; over gRPC it is the
+            handler's first statement, because grpc-go unmarshals the request
+            before dispatching. It does NOT include row serialization.
+          - `prepareDurationUs` — authentication, query/body decoding, validation
+            and filter compilation.
           - `executeDurationUs` — query execution (contains
             `indexDurationUs` + `enrichmentDurationUs`).
-          - `barrierDurationUs` — time blocked on the caller-requested read
-            consistency barrier. Excluded from `serverDurationUs`. Measures LOCAL
-            barriers only: see `forwarded`.
+          - `barrierDurationUs` — time blocked on caller-requested read
+            consistency waits. Excluded from `serverDurationUs`. Measures LOCAL
+            waits only, and counts one that fails or is superseded: see
+            `forwarded`.
           - `deliverDurationUs` — response serialization and transport hand-off.
             Excluded from `serverDurationUs`. Always 0 over HTTP: this header
             must be flushed before the response body, so the body write is out
@@ -3033,10 +3036,10 @@ components:
           - `forwarded` — true when another node served the read. Its barrier and
             execution are then folded into `executeDurationUs`, so the breakdown
             describes the local hop only. `barrierDurationUs` then covers the
-            local attempt only: 0 for an explicit leader read (which never
-            attempts one — so 0 does not mean "no barrier was needed"), non-zero
-            when a local barrier was attempted, failed, and the read fell back to
-            the leader.
+            local waits only: 0 means none happened (not "no barrier was
+            needed"), non-zero means one did — a `minLogSequence` catch-up, or a
+            `ReadIndex` attempt that failed and caused the forward. The value
+            does not say which, so do not read cluster health off it.
 
         For a latency objective, pick a total and state which: `serverDurationUs`
         is client-independent but omits serialization, while

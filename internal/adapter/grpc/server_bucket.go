@@ -597,8 +597,10 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		trace.WithAttributes(attribute.String("ledger", req.GetLedger())))
 	defer span.End()
 
-	// Start the profile clock before authentication and request decode so those
-	// phases land inside PrepareDuration instead of being invisible.
+	// Start the profile clock before authentication and validation so those
+	// phases land inside PrepareDuration instead of being invisible. Protobuf
+	// decode is already done: grpc-go unmarshals the request before dispatching,
+	// so no in-handler clock can reach it.
 	ctx, profile := query.WithProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
@@ -785,7 +787,7 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 		trace.WithAttributes(attribute.String("ledger", req.GetLedger())))
 	defer span.End()
 
-	// See ListTransactions: the clock must start before auth/decode.
+	// See ListTransactions: the clock must start before auth/validation.
 	ctx, profile := query.WithProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 

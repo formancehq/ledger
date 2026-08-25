@@ -171,7 +171,10 @@ func TestHandleListAccounts_WithProfileHeader(t *testing.T) {
 	})
 	r.Header.Set("X-Query-Profile", "true")
 
-	srv.handleListAccounts(w, r)
+	// Through the routing layer's contribution, not the bare handler: the profile
+	// is installed by withQueryProfile and backdated to startRequestClock's stamp,
+	// so a handler called directly reports nothing (EN-1859).
+	startRequestClock(withQueryProfile(http.HandlerFunc(srv.handleListAccounts))).ServeHTTP(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
 

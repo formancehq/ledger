@@ -111,10 +111,12 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 			// Same as the explicit-leader branch: the read leaves this node, so
 			// the phase breakdown describes the local hop only. Unlike that
 			// branch, the barrier already recorded above is KEPT: the caller
-			// really did wait for a quorum attempt that then failed, and that
-			// wait belongs in the barrier phase (excluded from the server total)
-			// rather than in prepare. Hence forwarded=true with a non-zero
-			// barrier_duration_us is a valid, documented combination.
+			// really did wait for a quorum attempt that then failed. Dropping it
+			// would not delete the time — readCtrl runs inside the caller's
+			// EnterExecute/LeaveExecute bracket, so an uncharged wait stays in
+			// execute_duration_us and from there in the server total. Hence
+			// forwarded=true with a non-zero barrier_duration_us is a valid,
+			// documented combination.
 			query.ProfileFromContext(ctx).MarkForwarded()
 
 			c, leaderErr := b.getLeaderCtrl()
