@@ -70,7 +70,7 @@ repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
-pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
+pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,isDraft,title,body,labels,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
 
 pr_number=$(jq -r '.number' <<<"$pr_json")
 pr_url=$(jq -r '.url' <<<"$pr_json")
@@ -82,6 +82,18 @@ head_ref=$(jq -r '.headRefName' <<<"$pr_json")
 head_sha=$(jq -r '.headRefOid' <<<"$pr_json")
 head_owner=$(jq -r '.headRepositoryOwner.login // empty' <<<"$pr_json")
 head_repo=$(jq -r '.headRepository.name // empty' <<<"$pr_json")
+pr_title=$(jq -r '.title // ""' <<<"$pr_json")
+pr_body=$(jq -r '.body // ""' <<<"$pr_json")
+
+# Bugfix intent is explicit metadata when available, with a conservative
+# fallback for the repository's established Jira/fix PR convention. Other
+# changes (docs, manifests, refactors, features) do not require reproduction.
+bugfix_intent=non-bugfix
+if jq -e '.labels[]?.name | ascii_downcase == "bugfix" or ascii_downcase == "bug-fix"' >/dev/null <<<"$pr_json" || \
+   [[ "$pr_title" == fix:* || "$pr_title" == Fix:* ]] || \
+   grep -Eiq '(^|[[:space:]])(fixes|fix|resolves)[[:space:]]+EN-[0-9]+' <<<"$pr_body"; then
+    bugfix_intent=bugfix
+fi
 
 if [[ "$state" != "OPEN" ]]; then
     echo "ai-pr-loop: PR #$pr_number is not open (state=$state)" >&2
@@ -95,6 +107,13 @@ if [[ "$head_owner/$head_repo" != "$repo" ]]; then
     echo "ai-pr-loop: fork/cross-repository PRs are not supported yet: $head_owner/$head_repo" >&2
     exit 1
 fi
+
+evidence_file=$(mktemp)
+trap 'rm -f -- "$evidence_file"' RETURN
+printf '%s\n' "$pr_body" >"$evidence_file"
+bash scripts/ai-bugfix-gate evidence "$evidence_file" "$bugfix_intent"
+rm -f -- "$evidence_file"
+trap - RETURN
 
 remote=origin
 if ! git remote get-url "$remote" >/dev/null 2>&1; then
@@ -477,6 +496,10 @@ if [[ -n "$(git status --porcelain)" ]]; then
     keep_worktree=true
     exit 1
 fi
+
+# Last-mile publication gate: pre-commit is authoritative and any generated
+# output must be incorporated and re-reviewed, never reset or hidden.
+bash scripts/ai-bugfix-gate pre-push
 
 current_head=$(git rev-parse HEAD)
 if [[ "$current_head" != "$candidate_sha" ]]; then

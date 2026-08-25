@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+gate="$root/scripts/ai-bugfix-gate"
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+cat >"$tmp/bugfix.ok" <<'EOF'
+DISCOVERY: NO_EXISTING_WORK
+BEFORE_FIX: BUG_REPRODUCED
+AFTER_FIX: PASS
+EOF
+"$gate" evidence "$tmp/bugfix.ok" bugfix
+if "$gate" evidence "$tmp/bugfix.ok" bugfix >/dev/null 2>&1; then :; else exit 1; fi
+
+if "$gate" evidence "$tmp/bugfix.ok" bugfix </dev/null >/dev/null 2>&1; then :; else exit 1; fi
+
+: >"$tmp/non-bugfix"
+"$gate" evidence "$tmp/non-bugfix" non-bugfix
+
+cat >"$tmp/missing-before" <<'EOF'
+DISCOVERY: NO_EXISTING_WORK
+AFTER_FIX: PASS
+EOF
+if "$gate" evidence "$tmp/missing-before" bugfix >/dev/null 2>&1; then
+    echo 'expected missing BEFORE_FIX to fail' >&2
+    exit 1
+fi
+
+echo 'ai-bugfix-gate tests: PASS'
