@@ -32,6 +32,10 @@ func run(crdDir, outDir string) error {
 		return fmt.Errorf("creating output directory %q: %w", outDir, err)
 	}
 
+	if err := clearJSONFiles(outDir); err != nil {
+		return fmt.Errorf("clearing output directory %q: %w", outDir, err)
+	}
+
 	written := 0
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
@@ -48,6 +52,24 @@ func run(crdDir, outDir string) error {
 
 	if written == 0 {
 		return fmt.Errorf("no JSON schemas written from %q", crdDir)
+	}
+
+	return nil
+}
+
+func clearJSONFiles(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -104,7 +126,7 @@ func crdOpenAPISchema(crd *apiextv1.CustomResourceDefinition) (*apiextv1.JSONSch
 		}
 	}
 	if chosen == nil {
-		chosen = &crd.Spec.Versions[0]
+		return nil, "", fmt.Errorf("CRD %q has no version marked as storage version", crd.Name)
 	}
 
 	if chosen.Schema == nil || chosen.Schema.OpenAPIV3Schema == nil {
