@@ -331,9 +331,7 @@ nix develop "path:$trusted_tool_worktree" --command \
 review_loop=("$review_loop_binary")
 printf -v review_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-review-known-findings"
 fix_cmd='bash scripts/ai-fix-claude'
-    validation_env_script="$worktree/scripts/agent-validation-env"
-    [[ -x "$trusted_tool_worktree/scripts/agent-validation-env" ]] && validation_env_script="$trusted_tool_worktree/scripts/agent-validation-env"
-    validation_cmd="bash $validation_env_script $worktree_run_dir bash $trusted_tool_worktree/scripts/agent-check-pr"
+    validation_cmd="mkdir -p $worktree_run_dir/home $worktree_run_dir/go-cache $worktree_run_dir/go-mod-cache $worktree_run_dir/go-path $worktree_run_dir/tmp $worktree_run_dir/cache/golangci-lint && env HOME=$worktree_run_dir/home GOCACHE=$worktree_run_dir/go-cache GOMODCACHE=$worktree_run_dir/go-mod-cache GOPATH=$worktree_run_dir/go-path TMPDIR=$worktree_run_dir/tmp XDG_CACHE_HOME=$worktree_run_dir/cache GOLANGCI_LINT_CACHE=$worktree_run_dir/cache/golangci-lint VALIDATION_RUN_ID=$(basename $worktree_run_dir) VALIDATION_RUN_DIR=$worktree_run_dir bash $trusted_tool_worktree/scripts/agent-check-pr"
 if [[ "$push_changes" == "true" ]]; then
     # Publication additionally base-pins the mutating fixer and validator.
     for trusted_tool in ai-fix-claude agent-check-pr agent-just; do
@@ -344,14 +342,10 @@ if [[ "$push_changes" == "true" ]]; then
         fi
     done
     printf -v fix_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-fix-claude"
-    validation_env_script="$worktree/scripts/agent-validation-env"
-    [[ -x "$trusted_tool_worktree/scripts/agent-validation-env" ]] && validation_env_script="$trusted_tool_worktree/scripts/agent-validation-env"
     printf -v validation_cmd \
-        'env -u GOROOT nix develop %q --command env LEDGER_AGENT_CHECK_IN_NIX=1 bash %q %q bash %q' \
+        'env -u GOROOT nix develop %q --command bash -c %q' \
         "path:$trusted_tool_worktree" \
-        "$validation_env_script" \
-        "$worktree_run_dir" \
-        "$trusted_tool_worktree/scripts/agent-check-pr"
+        "mkdir -p '$worktree_run_dir'/home '$worktree_run_dir'/go-cache '$worktree_run_dir'/go-mod-cache '$worktree_run_dir'/go-path '$worktree_run_dir'/tmp '$worktree_run_dir'/cache/golangci-lint && env LEDGER_AGENT_CHECK_IN_NIX=1 HOME='$worktree_run_dir/home' GOCACHE='$worktree_run_dir/go-cache' GOMODCACHE='$worktree_run_dir/go-mod-cache' GOPATH='$worktree_run_dir/go-path' TMPDIR='$worktree_run_dir/tmp' XDG_CACHE_HOME='$worktree_run_dir/cache' GOLANGCI_LINT_CACHE='$worktree_run_dir/cache/golangci-lint' VALIDATION_RUN_ID='$(basename "$worktree_run_dir")' VALIDATION_RUN_DIR='$worktree_run_dir' bash '$trusted_tool_worktree/scripts/agent-check-pr'"
 fi
 
 if [[ "$bugfix_intent" == bugfix ]]; then
