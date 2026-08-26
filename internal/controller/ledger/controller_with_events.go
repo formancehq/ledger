@@ -188,11 +188,14 @@ func (c *ControllerWithEvents) LockLedger(ctx context.Context) (Controller, bun.
 		return nil, nil, nil, err
 	}
 
+	// Locking swaps the underlying controller but does not end its transaction.
+	// Keep buffering events until the transaction commits.
 	return &ControllerWithEvents{
 		ledger:     c.ledger,
 		Controller: ctrl,
 		listener:   c.listener,
 		parent:     c,
+		hasTx:      c.hasTx,
 	}, db, release, nil
 }
 

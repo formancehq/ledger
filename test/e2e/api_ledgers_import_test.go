@@ -76,18 +76,29 @@ var _ = Context("Ledger engine tests", func() {
 							components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
 								Data: &components.V2PostTransaction{
 									Postings: []components.V2Posting{{
-										Source:      "payments:1234",
+										Source:      "world",
 										Destination: "bank",
 										Asset:       "EUR/2",
-										Amount:      big.NewInt(1),
+										Amount:      big.NewInt(100),
+									}},
+								},
+							}),
+							components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
+								Data: &components.V2PostTransaction{
+									Postings: []components.V2Posting{{
+										Source:      "bank",
+										Destination: "merchant",
+										Asset:       "EUR/2",
+										Amount:      big.NewInt(200),
 									}},
 								},
 							}),
 						},
 					})
 					Expect(err).To(Succeed())
-					Expect(bulkResponse.V2BulkResponse.Data).To(HaveLen(1))
-					Expect(bulkResponse.V2BulkResponse.Data[0].V2BulkElementResultError.ErrorCode).To(Equal(string(components.V2ErrorsEnumInsufficientFund)))
+					Expect(bulkResponse.V2BulkResponse.Data).To(HaveLen(2))
+					Expect(bulkResponse.V2BulkResponse.Data[0].Type).To(Equal(components.V2BulkElementResultTypeCreateTransaction))
+					Expect(bulkResponse.V2BulkResponse.Data[1].V2BulkElementResultError.ErrorCode).To(Equal(string(components.V2ErrorsEnumInsufficientFund)))
 				})
 
 				secondBatch := `{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"merchants:777","destination":"payouts:987","amount":8500,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:08:24.955784Z","id":2,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:08:24.985834Z","idempotencyKey":"","id":2,"hash":"WgOIXsh8x0pGSi//jHjQ78RF9YnFRslsbp2aOHiG43U="}
