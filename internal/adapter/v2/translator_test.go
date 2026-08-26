@@ -204,6 +204,15 @@ func TestTranslateBatch_InvalidLogDate(t *testing.T) {
 	require.Contains(t, err.Error(), "parsing v2 log date")
 }
 
+func TestTranslateV2LogDate_BeforeUnixEpochRejected(t *testing.T) {
+	t.Parallel()
+
+	date, err := translateV2LogDate("1969-12-31T23:59:59.999999Z")
+	require.Error(t, err)
+	require.Nil(t, date)
+	require.Contains(t, err.Error(), "before the Unix epoch")
+}
+
 func TestTranslateBatch_DeleteMetadata(t *testing.T) {
 	t.Parallel()
 
