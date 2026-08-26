@@ -287,11 +287,34 @@ nix develop --impure
 ```bash
 just build          # Build operator binary
 just test           # Run tests
-just generate       # Regenerate CRDs, RBAC, and Helm chart
+just generate       # Regenerate CRDs, JSON Schema, RBAC, and Helm chart
 just pre-commit     # Run all checks (generate + tidy + build)
 just build-plugin   # Build kubectl plugin
 just install-plugin # Install kubectl plugin to $GOPATH/bin
 ```
+
+### JSON Schema
+
+`just generate` also writes standalone JSON Schema files under `config/crd/schemas/`:
+
+| File pattern | Contents |
+|--------------|----------|
+| `v1alpha1_<kind>.json` | Full CRD resource schema (`openAPIV3Schema`) |
+| `v1alpha1_<kind>.spec.json` | `spec` only — useful for manifest validation |
+
+Example for VS Code / Red Hat YAML:
+
+```yaml
+# yaml-language-server: $schema=../config/crd/schemas/v1alpha1_cluster.spec.json
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: my-ledger
+spec:
+  replicas: 3
+```
+
+Regenerate after changing CRD types in `api/v1alpha1/`.
 
 ### Project Structure
 
@@ -304,6 +327,7 @@ internal/controller/ # Reconciliation logic
 chart/               # Helm chart
 config/
   crd/bases/         # Generated CRD manifests
+  crd/schemas/       # Generated JSON Schema (full resource + spec-only)
   rbac/              # Generated RBAC rules
   samples/           # Example custom resources
 ```

@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "description": "BackupSpec defines the desired state of a Backup.",
+  "properties": {
+    "clusterRef": {
+      "description": "ClusterRef is the name of the Cluster in the same namespace.",
+      "type": "string"
+    },
+    "destination": {
+      "description": "Destination defines where backups are stored.",
+      "properties": {
+        "bucketId": {
+          "description": "BucketID is the namespace prefix for backup files.\nDefaults to the cluster-id if not set.",
+          "type": "string"
+        },
+        "driver": {
+          "default": "s3",
+          "description": "Driver is the backup storage driver: \"s3\".",
+          "enum": [
+            "s3"
+          ],
+          "type": "string"
+        },
+        "s3": {
+          "description": "S3 configuration (required when driver is \"s3\").",
+          "properties": {
+            "bucket": {
+              "description": "Bucket is the S3 bucket name.",
+              "type": "string"
+            },
+            "endpoint": {
+              "description": "Endpoint is a custom S3 endpoint (for MinIO).",
+              "type": "string"
+            },
+            "region": {
+              "description": "Region is the AWS region.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "s3AccessKeyId": {
+          "description": "S3AccessKeyID is a static AWS access key ID for S3 authentication.\nIf not set, the default AWS credential chain is used (env vars, IRSA, etc.).",
+          "type": "string"
+        },
+        "s3SecretAccessKey": {
+          "description": "S3SecretAccessKey is a static AWS secret access key for S3 authentication.\nIf not set, the default AWS credential chain is used.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "driver"
+      ],
+      "type": "object"
+    },
+    "failedRunsHistoryLimit": {
+      "default": 1,
+      "description": "FailedRunsHistoryLimit is the maximum number of failed BackupRun\nresources to keep per type (full/incremental). Older runs are garbage-collected.\nDefaults to 1.",
+      "format": "int32",
+      "type": "integer"
+    },
+    "schedule": {
+      "description": "Schedule defines cron schedules for full and incremental backups.\nBoth entries are optional; a Backup without any schedule is valid\nand acts as a backup configuration template for manual BackupRun resources.",
+      "properties": {
+        "full": {
+          "description": "Full is the cron expression for full backups (e.g. \"0 2 * * 0\" for weekly Sunday 2am).",
+          "type": "string"
+        },
+        "incremental": {
+          "description": "Incremental is the cron expression for incremental backups (e.g. \"0 * * * *\" for hourly).",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "successfulRunsHistoryLimit": {
+      "default": 3,
+      "description": "SuccessfulRunsHistoryLimit is the maximum number of successful BackupRun\nresources to keep per type (full/incremental). Older runs are garbage-collected.\nDefaults to 3.",
+      "format": "int32",
+      "type": "integer"
+    },
+    "timeout": {
+      "default": "1h",
+      "description": "Timeout caps how long the `ledgerctl store backup` /\n`ledgerctl store incremental-backup` RPC may run before the client\naborts. The operator forwards it as `--timeout` to the Job's\nledgerctl invocation; tune it for the size of the ledger and the\nthroughput of the destination bucket. Defaults to 1h, which is\nenough for tens of GB on S3 while still bounding stuck runs.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "clusterRef",
+    "destination"
+  ],
+  "type": "object"
+}
