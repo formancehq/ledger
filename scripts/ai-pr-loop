@@ -187,12 +187,25 @@ cleanup() {
         rm -f -- "$review_loop_binary"
     fi
     if [[ "$keep_worktree" == false ]]; then
+        # The loop runs from inside the worktree that is about to be removed;
+        # leave it first so removal never operates on the current directory.
+        cd "$repo_root" || true
         if [[ -d "$worktree" ]] && git -C "$worktree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
             if [[ -z "$(git -C "$worktree" status --porcelain 2>/dev/null || true)" ]]; then
                 git worktree remove "$worktree" >/dev/null 2>&1 || true
             fi
         fi
-        rmdir "$worktree_run_dir" >/dev/null 2>&1 || true
+        # Validation isolates HOME, the Go caches, and TMPDIR inside the run
+        # directory, so a clean run cannot be reclaimed by an empty-directory
+        # rmdir. Remove the launcher-created tree recursively, but only once both
+        # owned worktrees are gone, so a preserved worktree — dirty fixes or a
+        # failed removal — is never destroyed with it.
+        if [[ ! -e "$worktree" && ! -e "$trusted_tool_worktree" ]] &&
+            [[ "$worktree_run_dir" == "$worktree_parent/pr-$pr_number."?????? ]]; then
+            rm -rf -- "$worktree_run_dir"
+        else
+            rmdir "$worktree_run_dir" >/dev/null 2>&1 || true
+        fi
     fi
     exit "$exit_status"
 }
