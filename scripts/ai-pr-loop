@@ -556,11 +556,15 @@ while [[ "$normalization_pass" -le 3 ]]; do
     candidate_sha=$(git rev-parse HEAD)
     normalization_pass=$((normalization_pass + 1))
 done
-if [[ "$normalization_pass" -gt 3 && -n "$(git status --porcelain)" ]]; then
+# Always perform a final read of the trusted recipe after the last allowed
+# normalization commit. This proves the reviewed SHA is actually converged.
+bash "$trusted_tool_worktree/scripts/agent-just" pre-commit
+if [[ -n "$(git status --porcelain)" ]]; then
     echo "PRECOMMIT_NON_DETERMINISTIC: refusing candidate publication" >&2
     keep_worktree=true
     exit 1
 fi
+echo "PRECOMMIT_FIXPOINT: PASS"
 
 set +e
 run_commit_review
