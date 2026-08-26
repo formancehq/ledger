@@ -316,7 +316,7 @@ spec:
 
 Use the `.spec.json` variant only when validating a bare spec fragment (its root has no `spec` property, so pointing it at a full manifest validates nothing useful).
 
-Regenerate after changing CRD types in `api/v1alpha1/`.
+Regenerate after changing CRD types in `api/v1alpha1/`. These files are also attached to each tagged [GitHub release](https://github.com/formancehq/ledger/releases) alongside `openapi.yml`.
 
 ### Project Structure
 
