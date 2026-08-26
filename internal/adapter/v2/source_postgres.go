@@ -76,10 +76,7 @@ func (s *PostgresSource) FetchLogs(ctx context.Context, afterID uint64, pageSize
 	// Fetch pageSize+1 rows to determine if there are more.
 	// COALESCE on hash: v2 ledgers with LEDGER_FEATURE_HASH_LOGS disabled leave
 	// logs.hash NULL, which would fail the scan into V2Log.Hash (string).
-	query := fmt.Sprintf(
-		`SELECT id, type, date::text, data, COALESCE(encode(hash, 'hex'), '') FROM %q.logs WHERE ledger = $1 AND id > $2 ORDER BY id ASC LIMIT $3`,
-		s.bucket,
-	)
+	query := postgresFetchLogsQuery(s.bucket)
 
 	rows, err := s.pool.Query(ctx, query, s.ledgerName, afterID, pageSize+1)
 	if err != nil {
@@ -91,15 +88,20 @@ func (s *PostgresSource) FetchLogs(ctx context.Context, afterID uint64, pageSize
 
 	for rows.Next() {
 		var (
-			l    V2Log
-			data []byte
+			l       V2Log
+			logDate time.Time
+			data    []byte
 		)
 
-		err := rows.Scan(&l.ID, &l.Type, &l.Date, &data, &l.Hash)
+		err := rows.Scan(&l.ID, &l.Type, &logDate, &data, &l.Hash)
 		if err != nil {
 			return nil, false, fmt.Errorf("scanning log row: %w", err)
 		}
 
+		// Keep PostgreSQL DateStyle out of the mirror protocol: pgx decodes the
+		// typed timestamp, then the adapter emits the same RFC3339 shape as the
+		// HTTP v2 API.
+		l.Date = formatPostgresLogDate(logDate)
 		l.Data = json.RawMessage(data)
 		logs = append(logs, l)
 	}
@@ -114,6 +116,17 @@ func (s *PostgresSource) FetchLogs(ctx context.Context, afterID uint64, pageSize
 	}
 
 	return logs, hasMore, nil
+}
+
+func postgresFetchLogsQuery(bucket string) string {
+	return fmt.Sprintf(
+		`SELECT id, type, date, data, COALESCE(encode(hash, 'hex'), '') FROM %q.logs WHERE ledger = $1 AND id > $2 ORDER BY id ASC LIMIT $3`,
+		bucket,
+	)
+}
+
+func formatPostgresLogDate(date time.Time) string {
+	return date.UTC().Format(time.RFC3339Nano)
 }
 
 // GetLatestLogID returns the highest log ID from the v2 PostgreSQL log table.

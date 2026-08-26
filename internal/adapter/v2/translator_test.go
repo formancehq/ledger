@@ -204,14 +204,6 @@ func TestTranslateBatch_InvalidLogDate(t *testing.T) {
 	require.Contains(t, err.Error(), "parsing v2 log date")
 }
 
-func TestTranslateV2LogDate_PostgresTextFormat(t *testing.T) {
-	t.Parallel()
-
-	date, err := translateV2LogDate("2023-11-14 23:13:20.123456+01")
-	require.NoError(t, err)
-	require.Equal(t, uint64(1700000000123456), date.GetData())
-}
-
 func TestTranslateBatch_DeleteMetadata(t *testing.T) {
 	t.Parallel()
 

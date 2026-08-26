@@ -89,25 +89,10 @@ func translateV2LogDate(value string) (*commonpb.Timestamp, error) {
 		return nil, nil
 	}
 
-	// HTTP sources expose RFC3339 while the direct PostgreSQL source selects
-	// date::text, whose timestamptz representation uses a space separator and
-	// may emit either an hour-only or hour/minute UTC offset.
-	formats := [...]string{
-		time.RFC3339Nano,
-		"2006-01-02 15:04:05.999999999Z07:00",
-		"2006-01-02 15:04:05.999999999Z07",
-	}
-
-	var (
-		date time.Time
-		err  error
-	)
-	for _, format := range formats {
-		date, err = time.Parse(format, value)
-		if err == nil {
-			break
-		}
-	}
+	// HTTP sources expose RFC3339 directly. The PostgreSQL adapter scans the
+	// typed timestamp and normalizes it to the same form, independent of the
+	// server's DateStyle setting.
+	date, err := time.Parse(time.RFC3339Nano, value)
 	if err != nil {
 		return nil, fmt.Errorf("parsing v2 log date %q: %w", value, err)
 	}
