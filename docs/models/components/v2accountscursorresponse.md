@@ -1,0 +1,9 @@
+# V2AccountsCursorResponse
+
+
+## Fields
+
+| Field                                                                                                  | Type                                                                                                   | Required                                                                                               | Description                                                                                            |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `Resource`                                                                                             | [*components.Resource](../../models/components/resource.md)                                            | :heavy_minus_sign:                                                                                     | N/A                                                                                                    |
+| `Cursor`                                                                                               | [components.V2AccountsCursorResponseCursor](../../models/components/v2accountscursorresponsecursor.md) | :heavy_check_mark:                                                                                     | N/A                                                                                                    |

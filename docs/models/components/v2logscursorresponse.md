@@ -1,0 +1,9 @@
+# V2LogsCursorResponse
+
+
+## Fields
+
+| Field                                                                                               | Type                                                                                                | Required                                                                                            | Description                                                                                         |
+| --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `Resource`                                                                                          | [*components.V2LogsCursorResponseResource](../../models/components/v2logscursorresponseresource.md) | :heavy_minus_sign:                                                                                  | N/A                                                                                                 |
+| `Cursor`                                                                                            | [components.V2LogsCursorResponseCursor](../../models/components/v2logscursorresponsecursor.md)      | :heavy_check_mark:                                                                                  | N/A                                                                                                 |

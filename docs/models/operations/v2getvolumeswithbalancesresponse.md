@@ -1,0 +1,9 @@
+# V2GetVolumesWithBalancesResponse
+
+
+## Fields
+
+| Field                                                                                                           | Type                                                                                                            | Required                                                                                                        | Description                                                                                                     |
+| --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `HTTPMeta`                                                                                                      | [components.HTTPMetadata](../../models/components/httpmetadata.md)                                              | :heavy_check_mark:                                                                                              | N/A                                                                                                             |
+| `V2VolumesWithBalanceCursorResponse`                                                                            | [*components.V2VolumesWithBalanceCursorResponse](../../models/components/v2volumeswithbalancecursorresponse.md) | :heavy_minus_sign:                                                                                              | OK                                                                                                              |

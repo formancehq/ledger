@@ -1,0 +1,10 @@
+# V2RevertTransactionResponse
+
+
+## Fields
+
+| Field                                                                                             | Type                                                                                              | Required                                                                                          | Description                                                                                       |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `HTTPMeta`                                                                                        | [components.HTTPMetadata](../../models/components/httpmetadata.md)                                | :heavy_check_mark:                                                                                | N/A                                                                                               |
+| `V2RevertTransactionResponse`                                                                     | [*components.V2RevertTransactionResponse](../../models/components/v2reverttransactionresponse.md) | :heavy_minus_sign:                                                                                | OK                                                                                                |
+| `Headers`                                                                                         | map[string][]`string`                                                                             | :heavy_check_mark:                                                                                | N/A                                                                                               |

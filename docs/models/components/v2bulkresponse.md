@@ -1,0 +1,10 @@
+# V2BulkResponse
+
+
+## Fields
+
+| Field                                                                              | Type                                                                               | Required                                                                           | Description                                                                        | Example                                                                            |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `Data`                                                                             | [][components.V2BulkElementResult](../../models/components/v2bulkelementresult.md) | :heavy_minus_sign:                                                                 | N/A                                                                                |                                                                                    |
+| `ErrorCode`                                                                        | [*components.V2ErrorsEnum](../../models/components/v2errorsenum.md)                | :heavy_minus_sign:                                                                 | N/A                                                                                | VALIDATION                                                                         |
+| `ErrorMessage`                                                                     | `*string`                                                                          | :heavy_minus_sign:                                                                 | N/A                                                                                | [VALIDATION] invalid 'cursor' query param                                          |
