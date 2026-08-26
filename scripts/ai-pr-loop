@@ -331,7 +331,20 @@ nix develop "path:$trusted_tool_worktree" --command \
 review_loop=("$review_loop_binary")
 printf -v review_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-review-known-findings"
 fix_cmd='bash scripts/ai-fix-claude'
-    validation_cmd="mkdir -p $worktree_run_dir/home $worktree_run_dir/go-cache $worktree_run_dir/go-mod-cache $worktree_run_dir/go-path $worktree_run_dir/tmp $worktree_run_dir/cache/golangci-lint && env HOME=$worktree_run_dir/home GOCACHE=$worktree_run_dir/go-cache GOMODCACHE=$worktree_run_dir/go-mod-cache GOPATH=$worktree_run_dir/go-path TMPDIR=$worktree_run_dir/tmp XDG_CACHE_HOME=$worktree_run_dir/cache GOLANGCI_LINT_CACHE=$worktree_run_dir/cache/golangci-lint VALIDATION_RUN_ID=$(basename $worktree_run_dir) VALIDATION_RUN_DIR=$worktree_run_dir bash $trusted_tool_worktree/scripts/agent-check-pr"
+# review-loop executes the validation command through `bash -lc`, and the run
+# directory derives from the repository location, which may contain whitespace.
+# Quote every interpolated path so the recipe reaches the validator intact.
+printf -v quoted_run_dir %q "$worktree_run_dir"
+printf -v quoted_run_id %q "$(basename "$worktree_run_dir")"
+printf -v quoted_home %q "$worktree_run_dir/home"
+printf -v quoted_go_cache %q "$worktree_run_dir/go-cache"
+printf -v quoted_go_mod_cache %q "$worktree_run_dir/go-mod-cache"
+printf -v quoted_go_path %q "$worktree_run_dir/go-path"
+printf -v quoted_tmp_dir %q "$worktree_run_dir/tmp"
+printf -v quoted_cache_home %q "$worktree_run_dir/cache"
+printf -v quoted_golangci_cache %q "$worktree_run_dir/cache/golangci-lint"
+printf -v quoted_validation_tool %q "$trusted_tool_worktree/scripts/agent-check-pr"
+validation_cmd="mkdir -p $quoted_home $quoted_go_cache $quoted_go_mod_cache $quoted_go_path $quoted_tmp_dir $quoted_golangci_cache && env HOME=$quoted_home GOCACHE=$quoted_go_cache GOMODCACHE=$quoted_go_mod_cache GOPATH=$quoted_go_path TMPDIR=$quoted_tmp_dir XDG_CACHE_HOME=$quoted_cache_home GOLANGCI_LINT_CACHE=$quoted_golangci_cache VALIDATION_RUN_ID=$quoted_run_id VALIDATION_RUN_DIR=$quoted_run_dir bash $quoted_validation_tool"
 if [[ "$push_changes" == "true" ]]; then
     # Publication additionally base-pins the mutating fixer and validator.
     for trusted_tool in ai-fix-claude agent-check-pr agent-just; do
