@@ -123,6 +123,11 @@ printf -v validation_cmd 'env -u GOROOT nix develop %q --command bash -c %q' \
 
 cd "$candidate_worktree"
 [[ -z "$(git status --porcelain)" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (candidate worktree is dirty before review)"; exit 1; }
+git diff --check "$base_sha" "$candidate_sha" || {
+    echo "CANDIDATE_NEEDS_NORMALIZATION"
+    echo "AI_PR_ADOPT_RESULT: REFUSED (candidate contains whitespace errors)"
+    exit 1
+}
 
 # An adopted SHA must already be normalized; never mutate it silently.
 bash -c "$normalization_cmd"

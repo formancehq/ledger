@@ -291,7 +291,7 @@ case "$1 $2" in
         ;;
 esac
 `)
-writeExecutable(t, filepath.Join(fakeBin, "nix"), `#!/usr/bin/env bash
+	writeExecutable(t, filepath.Join(fakeBin, "nix"), `#!/usr/bin/env bash
 set -euo pipefail
 source_root=""
 output=""
