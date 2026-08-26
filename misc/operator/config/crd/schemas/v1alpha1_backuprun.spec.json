@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "description": "BackupRunSpec defines the desired state of a BackupRun.",
+  "properties": {
+    "backupRef": {
+      "description": "BackupRef is the name of the parent Backup in the same namespace.\nDestination and clusterRef are inherited from the parent.",
+      "type": "string"
+    },
+    "type": {
+      "default": "Full",
+      "description": "Type is the backup type. Defaults to Full.",
+      "enum": [
+        "Full",
+        "Incremental"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "backupRef"
+  ],
+  "type": "object"
+}
