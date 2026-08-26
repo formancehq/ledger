@@ -522,6 +522,15 @@ if [[ -z "$(git status --porcelain)" ]]; then
     exit 0
 fi
 
+# Normalize deterministic changes before creating the candidate SHA.
+echo "==> ai-pr-loop: pre-commit normalization"
+bash "$trusted_tool_worktree/scripts/agent-just" pre-commit
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "PRECOMMIT_NORMALIZATION: CHANGES"
+else
+    echo "PRECOMMIT_NORMALIZATION: NO_CHANGES"
+fi
+
 git add -A
 if git diff --cached --quiet; then
     echo "ai-pr-loop: worktree reported changes but nothing is staged" >&2

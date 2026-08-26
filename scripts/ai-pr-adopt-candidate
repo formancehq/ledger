@@ -116,6 +116,14 @@ printf -v validation_cmd 'env -u GOROOT nix develop %q --command bash -c %q' \
 cd "$candidate_worktree"
 [[ -z "$(git status --porcelain)" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (candidate worktree is dirty before review)"; exit 1; }
 
+# An adopted SHA must already be normalized; never mutate it silently.
+bash "$trusted_worktree/scripts/agent-just" pre-commit
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "CANDIDATE_NEEDS_NORMALIZATION"
+    echo "AI_PR_ADOPT_RESULT: REFUSED (candidate is not normalized)"
+    exit 1
+fi
+
 set +e
 "$review_loop_binary" --base "$base_sha" --review-cmd "$review_cmd" --validation-cmd "$validation_cmd"
 review_status=$?
