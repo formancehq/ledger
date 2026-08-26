@@ -10,13 +10,16 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -75,6 +78,77 @@ func setupMinIO(t *testing.T) (*s3.Client, string) {
 
 	return client, endpoint
 }
+
+// recordingS3Client wraps a real *s3.Client and records which multipart
+// operations were invoked, plus the checksum algorithm CreateMultipartUpload
+// was called with. It lets multipart tests assert the actual API call
+// sequence instead of only the round-tripped content, so a future default
+// (part size, multipart threshold) change that silently routes a "large
+// enough" payload through single-shot PutObject gets caught.
+type recordingS3Client struct {
+	*s3.Client
+
+	mu                sync.Mutex
+	operations        []string
+	checksumAlgorithm types.ChecksumAlgorithm
+}
+
+func (r *recordingS3Client) record(op string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.operations = append(r.operations, op)
+}
+
+func (r *recordingS3Client) count(op string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	n := 0
+
+	for _, o := range r.operations {
+		if o == op {
+			n++
+		}
+	}
+
+	return n
+}
+
+func (r *recordingS3Client) CreateMultipartUpload(ctx context.Context, in *s3.CreateMultipartUploadInput, optFns ...func(*s3.Options)) (*s3.CreateMultipartUploadOutput, error) {
+	r.record("CreateMultipartUpload")
+
+	r.mu.Lock()
+	r.checksumAlgorithm = in.ChecksumAlgorithm
+	r.mu.Unlock()
+
+	return r.Client.CreateMultipartUpload(ctx, in, optFns...)
+}
+
+func (r *recordingS3Client) UploadPart(ctx context.Context, in *s3.UploadPartInput, optFns ...func(*s3.Options)) (*s3.UploadPartOutput, error) {
+	r.record("UploadPart")
+
+	return r.Client.UploadPart(ctx, in, optFns...)
+}
+
+func (r *recordingS3Client) CompleteMultipartUpload(ctx context.Context, in *s3.CompleteMultipartUploadInput, optFns ...func(*s3.Options)) (*s3.CompleteMultipartUploadOutput, error) {
+	r.record("CompleteMultipartUpload")
+
+	return r.Client.CompleteMultipartUpload(ctx, in, optFns...)
+}
+
+func (r *recordingS3Client) PutObject(ctx context.Context, in *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	r.record("PutObject")
+
+	return r.Client.PutObject(ctx, in, optFns...)
+}
+
+// transfermanager's default multipart threshold (16 MiB) is larger than the
+// old feature/s3/manager default (5 MiB); payloads here must exceed it so
+// these tests keep exercising CreateMultipartUpload/UploadPart/
+// CompleteMultipartUpload instead of silently falling back to a single
+// PutObject.
+const multipartTestObjectSize = 20 << 20
 
 func TestS3Storage_ArchiveAndExists(t *testing.T) {
 	t.Parallel()
@@ -316,11 +390,11 @@ func TestS3Storage_ArchiveMultipartLargeObject(t *testing.T) {
 	t.Parallel()
 
 	client, _ := setupMinIO(t)
-	storage := NewS3Storage(client, minioBucket)
+	recorder := &recordingS3Client{Client: client}
+	storage := &S3Storage{client: client, uploader: transfermanager.New(recorder), bucket: minioBucket}
 	ctx := context.Background()
 
-	// 12 MiB > the 5 MiB default part size → at least 3 parts.
-	const size = 12 << 20
+	const size = multipartTestObjectSize
 
 	payload := make([]byte, size)
 	for i := range payload {
@@ -329,6 +403,13 @@ func TestS3Storage_ArchiveMultipartLargeObject(t *testing.T) {
 
 	sum := ComputeSHA256OrPanic(payload)
 	require.NoError(t, storage.Archive(ctx, "big-bucket", 99, bytes.NewReader(payload), sum))
+
+	require.Positive(t, recorder.count("CreateMultipartUpload"), "expected a multipart upload for a payload above the multipart threshold")
+	require.GreaterOrEqual(t, recorder.count("UploadPart"), 2, "expected at least two parts uploaded")
+	require.Positive(t, recorder.count("CompleteMultipartUpload"))
+	require.Zero(t, recorder.count("PutObject"), "a payload above the multipart threshold must not fall back to single-shot PutObject")
+	require.Equal(t, types.ChecksumAlgorithmCrc32, recorder.checksumAlgorithm,
+		"CreateMultipartUpload must declare the checksum algorithm up front so it agrees with UploadPart's auto-attached checksum")
 
 	exists, err := storage.Exists(ctx, "big-bucket", 99)
 	require.NoError(t, err)
