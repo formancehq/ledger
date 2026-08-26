@@ -90,7 +90,10 @@ for trusted_tool in ai-review-codex agent-check-pr; do
 done
 nix develop "path:$trusted_worktree" --command env -u GOROOT go -C "$trusted_worktree" build -o "$review_loop_binary" ./scripts/reviewloop
 printf -v review_cmd 'bash %q' "$trusted_worktree/scripts/ai-review-codex"
-printf -v validation_cmd 'env -u GOROOT nix develop %q --command env LEDGER_AGENT_CHECK_IN_NIX=1 bash %q' "path:$trusted_worktree" "$trusted_worktree/scripts/agent-check-pr"
+validation_env_script="$candidate_worktree/scripts/agent-validation-env"
+[[ -x "$trusted_worktree/scripts/agent-validation-env" ]] && validation_env_script="$trusted_worktree/scripts/agent-validation-env"
+printf -v validation_cmd 'env -u GOROOT nix develop %q --command env LEDGER_AGENT_CHECK_IN_NIX=1 bash %q %q bash %q' \
+    "path:$trusted_worktree" "$validation_env_script" "$run_dir" "$trusted_worktree/scripts/agent-check-pr"
 
 cd "$candidate_worktree"
 [[ -z "$(git status --porcelain)" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (candidate worktree is dirty before review)"; exit 1; }

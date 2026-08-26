@@ -287,3 +287,12 @@ Because one launcher exit code can cover several outcomes, automation must key o
 ## Safety boundary
 
 `review-loop` itself never posts comments, resolves threads, pushes commits, or merges pull requests. The higher-level `ai-pr-loop` also remains read-only with respect to GitHub by default. Its explicit `--push` mode may create a local candidate commit and update only the existing same-repository PR head branch under the verified lease described above; it still never comments, resolves threads, changes PR metadata, or merges.
+### Hermetic validation environments
+
+Git worktree isolation alone is insufficient for candidate validation. Each
+run must use a unique temporary validation directory and isolate `HOME`,
+`GOCACHE`, `GOMODCACHE`, `GOPATH`, `TMPDIR`, `XDG_CACHE_HOME`, and the
+`golangci-lint` cache. The canonical `agent-validation-env` wrapper creates
+these directories and records `VALIDATION_RUN_ID`; `ai-pr-loop` and
+`ai-pr-adopt-candidate` invoke validation through it. This keeps generated
+files and absolute paths from one concurrent run out of another run's caches.
