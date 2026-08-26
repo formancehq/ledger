@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -58,4 +59,73 @@ func TestBuildVolumeClaimTemplates_DeletionProtectionLabel(t *testing.T) {
 		_, present := tmpl.Labels[labelDeletionProtection]
 		assert.False(t, present, "VCT %q must not carry the deletion-protection label when protection is off", tmpl.Name)
 	}
+}
+
+func TestWithKubectlRestartedAt(t *testing.T) {
+	t.Parallel()
+
+	newTemplate := func(annotations map[string]string) corev1.PodTemplateSpec {
+		return corev1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{Annotations: annotations},
+		}
+	}
+
+	t.Run("carries the stamp from the existing template", func(t *testing.T) {
+		t.Parallel()
+
+		existing := newTemplate(map[string]string{
+			annotationKubectlRestartedAt: "2026-08-24T10:00:00Z",
+			annotationSpecHash:           "old-hash",
+		})
+		desired := newTemplate(map[string]string{annotationSpecHash: "new-hash"})
+
+		got := withKubectlRestartedAt(existing, desired)
+
+		assert.Equal(t, "2026-08-24T10:00:00Z", got.Annotations[annotationKubectlRestartedAt],
+			"kubectl rollout restart stamp must survive the reconcile (EN-1850)")
+		assert.Equal(t, "new-hash", got.Annotations[annotationSpecHash],
+			"operator-owned annotations must still come from the desired template")
+	})
+
+	t.Run("returns the desired template unchanged when no stamp exists", func(t *testing.T) {
+		t.Parallel()
+
+		existing := newTemplate(map[string]string{annotationSpecHash: "old-hash"})
+		desired := newTemplate(map[string]string{annotationSpecHash: "new-hash"})
+
+		got := withKubectlRestartedAt(existing, desired)
+
+		assert.Equal(t, desired.Annotations, got.Annotations)
+		_, present := got.Annotations[annotationKubectlRestartedAt]
+		assert.False(t, present)
+	})
+
+	t.Run("a CR-provided value wins over the live stamp", func(t *testing.T) {
+		t.Parallel()
+
+		existing := newTemplate(map[string]string{annotationKubectlRestartedAt: "2026-08-24T10:00:00Z"})
+		desired := newTemplate(map[string]string{
+			annotationKubectlRestartedAt: "2026-08-25T09:00:00Z",
+			annotationSpecHash:           "new-hash",
+		})
+
+		got := withKubectlRestartedAt(existing, desired)
+
+		assert.Equal(t, "2026-08-25T09:00:00Z", got.Annotations[annotationKubectlRestartedAt],
+			"a restartedAt explicitly managed through spec.podAnnotations must not be masked by the live stamp")
+	})
+
+	t.Run("does not mutate the desired template's annotations map", func(t *testing.T) {
+		t.Parallel()
+
+		existing := newTemplate(map[string]string{annotationKubectlRestartedAt: "2026-08-24T10:00:00Z"})
+		sharedAnnotations := map[string]string{annotationSpecHash: "new-hash"}
+		desired := newTemplate(sharedAnnotations)
+
+		got := withKubectlRestartedAt(existing, desired)
+
+		assert.Equal(t, "2026-08-24T10:00:00Z", got.Annotations[annotationKubectlRestartedAt])
+		_, present := sharedAnnotations[annotationKubectlRestartedAt]
+		assert.False(t, present, "the shared desired annotations map must not be mutated")
+	})
 }
