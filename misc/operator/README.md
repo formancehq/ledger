@@ -299,13 +299,13 @@ just install-plugin # Install kubectl plugin to $GOPATH/bin
 
 | File pattern | Contents |
 |--------------|----------|
-| `v1alpha1_<kind>.json` | Full CRD resource schema (`openAPIV3Schema`) |
-| `v1alpha1_<kind>.spec.json` | `spec` only — useful for manifest validation |
+| `v1alpha1_<kind>.json` | Full CRD resource schema (`openAPIV3Schema`) — top-level `apiVersion`/`kind`/`metadata`/`spec`/`status` |
+| `v1alpha1_<kind>.spec.json` | `spec` fields only, at the schema root — for validating a spec fragment on its own (e.g. Helm `values.yaml` shaped like a CR's `spec`) |
 
-Example for VS Code / Red Hat YAML:
+Example for a full manifest, with VS Code / Red Hat YAML:
 
 ```yaml
-# yaml-language-server: $schema=../config/crd/schemas/v1alpha1_cluster.spec.json
+# yaml-language-server: $schema=../config/crd/schemas/v1alpha1_cluster.json
 apiVersion: ledger.formance.com/v1alpha1
 kind: Cluster
 metadata:
@@ -313,6 +313,8 @@ metadata:
 spec:
   replicas: 3
 ```
+
+Use the `.spec.json` variant only when validating a bare spec fragment (its root has no `spec` property, so pointing it at a full manifest validates nothing useful).
 
 Regenerate after changing CRD types in `api/v1alpha1/`.
 

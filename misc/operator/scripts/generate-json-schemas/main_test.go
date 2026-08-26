@@ -43,3 +43,51 @@ func TestRunGeneratesSchemasFromCRDs(t *testing.T) {
 		require.NotEmpty(t, doc["type"])
 	}
 }
+
+func TestRunFailsWhenNoStorageVersion(t *testing.T) {
+	t.Parallel()
+
+	crdDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(crdDir, "no-storage.yaml"), []byte(noStorageVersionCRD), 0o644))
+
+	err := run(crdDir, t.TempDir())
+	require.ErrorContains(t, err, "no version marked as storage version")
+}
+
+func TestRunPrunesStaleSchemaFiles(t *testing.T) {
+	t.Parallel()
+
+	crdDir := filepath.Join("..", "..", "config", "crd", "bases")
+	outDir := t.TempDir()
+
+	stalePath := filepath.Join(outDir, "v1alpha1_doesnotexist.json")
+	require.NoError(t, os.WriteFile(stalePath, []byte("{}"), 0o644))
+
+	require.NoError(t, run(crdDir, outDir))
+
+	require.NoFileExists(t, stalePath)
+	require.FileExists(t, filepath.Join(outDir, "v1alpha1_cluster.json"))
+}
+
+const noStorageVersionCRD = `
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: widgets.example.com
+spec:
+  group: example.com
+  names:
+    kind: Widget
+    plural: widgets
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: false
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+`
