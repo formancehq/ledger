@@ -33,7 +33,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stoewer/go-strcase v1.3.1
-	github.com/stretchr/testify v1.12.0
+	github.com/stretchr/testify v1.12.1
 	github.com/uptrace/bun v1.2.18
 	github.com/uptrace/bun/dialect/pgdialect v1.2.18
 	github.com/uptrace/bun/extra/bundebug v1.2.15
@@ -124,7 +124,7 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/host v0.66.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.66.0 // indirect
 	go.opentelemetry.io/contrib/propagators/b3 v1.41.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/mod v0.37.0 // indirect
 )
 
