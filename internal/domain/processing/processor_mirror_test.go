@@ -88,6 +88,7 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	require.NoError(t, err)
 
 	now := &commonpb.Timestamp{Data: 1234567890}
+	sourceDate := &commonpb.Timestamp{Data: 1699990000}
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 	ledgerInfo := &commonpb.LedgerInfo{
 		Name: "mirror-ledger",
@@ -137,6 +138,7 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
 					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
 						V2LogId: 1,
+						Date:    sourceDate,
 						Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
 							CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
 								TransactionId: 42,
@@ -163,6 +165,8 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	require.NotNil(t, createdTx)
 	require.Equal(t, uint64(42), createdTx.GetTransaction().GetId())
 	require.Equal(t, "tx-ref-v2", createdTx.GetTransaction().GetReference())
+	require.Equal(t, sourceDate, createdTx.GetTransaction().GetInsertedAt())
+	require.Equal(t, sourceDate, createdTx.GetTransaction().GetUpdatedAt())
 
 	// Post-commit volumes are part of every transaction, mirrored ones
 	// included: the snapshot must carry a row for each touched account.
@@ -187,6 +191,7 @@ func mirrorCreatedTxOrder(ledger string, v2LogID, txID uint64) *raftcmdpb.Order 
 				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
 					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
 						V2LogId: v2LogID,
+						Date:    &commonpb.Timestamp{Data: 1},
 						Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
 							CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
 								TransactionId: txID,
@@ -429,6 +434,42 @@ func TestMirrorIngest_ZeroV2LogIdRejected(t *testing.T) {
 	// same way — the reject is a pure function of the order, mutating nothing.
 	assertRejected()
 	assertRejected()
+}
+
+func TestMirrorIngest_TransactionWithoutSourceDateRejected(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
+
+	ledgers := setupLedgersStub(mockStore)
+	ledgers.onPut(func(_ domain.LedgerKey, _ *commonpb.LedgerInfo) {
+		t.Errorf("Ledgers().Put must not be called when the source date is missing")
+	})
+	boundariesStub.onPut(func(_ domain.LedgerKey, _ *raftcmdpb.LedgerBoundaries) {
+		t.Errorf("Boundaries().Put must not be called when the source date is missing")
+	})
+
+	order := mirrorCreatedTxOrder("mirror-ledger", 1, 42)
+	order.GetLedgerScoped().GetMirrorIngest().GetEntry().Date = nil
+
+	result, err := processor.ProcessOrder(order, mockStore)
+	require.Error(t, err)
+	require.Nil(t, result)
+
+	var invalid *domain.ErrInvalidExecutionPlan
+	require.ErrorAs(t, err, &invalid)
 }
 
 func TestMirrorIngest_NotMirrorMode(t *testing.T) {
@@ -690,6 +731,7 @@ func TestMirrorIngest_CreatedTransaction_AbsentVolumes(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
 					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
 						V2LogId: 1,
+						Date:    now,
 						Data: &raftcmdpb.MirrorLogEntry_CreatedTransaction{
 							CreatedTransaction: &raftcmdpb.MirrorCreatedTransaction{
 								TransactionId: 42,
@@ -761,6 +803,7 @@ func TestMirrorIngest_RevertedTransaction_AbsentVolumes(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
 					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
 						V2LogId: 2,
+						Date:    now,
 						Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{
 							RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{
 								RevertedTransactionId: 5,
@@ -804,6 +847,7 @@ func TestMirrorIngest_RevertedTransaction_LinksOriginal(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
 
 	revertTimestamp := &commonpb.Timestamp{Data: 1234567890}
+	sourceDate := &commonpb.Timestamp{Data: 1200000000}
 
 	origKey := domain.TransactionKey{LedgerName: "mirror-ledger", ID: 5}
 
@@ -837,6 +881,7 @@ func TestMirrorIngest_RevertedTransaction_LinksOriginal(t *testing.T) {
 				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
 					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
 						V2LogId: 2,
+						Date:    sourceDate,
 						Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{
 							RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{
 								RevertedTransactionId: 5,
@@ -857,6 +902,8 @@ func TestMirrorIngest_RevertedTransaction_LinksOriginal(t *testing.T) {
 	revertedTx := result.GetApply().GetLog().GetData().GetRevertedTransaction()
 	require.Equal(t, uint64(5), revertedTx.GetRevertedTransactionId())
 	require.Equal(t, uint64(5), revertedTx.GetRevertTransaction().GetRevertsTransaction())
+	require.Equal(t, sourceDate, revertedTx.GetRevertTransaction().GetInsertedAt())
+	require.Equal(t, sourceDate, revertedTx.GetRevertTransaction().GetUpdatedAt())
 
 	// The compensating mirror transaction carries its own post-revert snapshot.
 	pcv := revertedTx.GetRevertTransaction().GetPostCommitVolumes()

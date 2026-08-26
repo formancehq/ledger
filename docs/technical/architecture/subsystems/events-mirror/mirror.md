@@ -48,7 +48,7 @@ Both adapters return v2 log entries in their native shape; translation to v3 ord
 
 ## The translation layer
 
-`internal/application/mirror/translator.go` (`TranslateBatch`) walks the fetched v2 logs, fills gaps if the source jumped log IDs (e.g. due to deletions or filtered logs on the v2 side), and produces a sequence of v3 `MirrorLogEntry` payloads. Each entry carries the v2 log ID plus a oneof:
+`internal/adapter/v2/translator.go` (`TranslateBatch`) walks the fetched v2 logs, fills gaps if the source jumped log IDs (e.g. due to deletions or filtered logs on the v2 side), and produces a sequence of v3 `MirrorLogEntry` payloads. Each entry carries the v2 log ID plus a oneof:
 
 ```
 oneof payload {
@@ -59,6 +59,20 @@ oneof payload {
     FillGap            // synthesised when a v2 log ID is missing
 }
 ```
+
+When `V2Log.Date` is present, the translated entry carries that parsed source
+log `date`. Created and reverted transactions require it: the FSM uses the
+chain-bound value for the resulting transaction's `insertedAt` and `updatedAt`
+and does not substitute the v3 apply time. This preserves the source insertion
+chronology during a long-running migration while keeping the transaction's
+business `timestamp` as a distinct field. A created or reverted transaction
+without a source date is rejected before mutation. Synthetic `FillGap` entries
+created for missing source log IDs carry no date because no source row exists.
+
+The resulting transaction, including these dates, is embedded in the persisted
+ledger log. Incremental backup exports that log row and `RebuildDelta` replays
+it into the restored transaction projection, so a post-checkpoint mirror ingest
+keeps the same `insertedAt` and `updatedAt` across a cross-cluster restore.
 
 `FillGap` is the explicit "we know there's a v2 log here but we have no payload for it" marker — it lets the v3 ledger advance its own logical sequence even when the source skipped one.
 

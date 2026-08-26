@@ -4,11 +4,30 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+func TestPostgresFetchLogs_DateIsDateStyleIndependent(t *testing.T) {
+	t.Parallel()
+
+	query := postgresFetchLogsQuery("bucket")
+	require.Contains(t, query, "SELECT id, type, date, data")
+	require.NotContains(t, query, "date::text")
+
+	// pgx decodes the typed timestamp before formatting, so the output is
+	// independent of SQL/DMY, Postgres/MDY, or any other textual DateStyle.
+	logDate := time.Date(2023, 11, 14, 23, 13, 20, 123456000, time.FixedZone("UTC+1", 3600))
+	formatted := formatPostgresLogDate(logDate)
+	require.Equal(t, "2023-11-14T22:13:20.123456Z", formatted)
+
+	translated, err := translateV2LogDate(formatted)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1700000000123456), translated.GetData())
+}
 
 func TestBuildPgxPoolConfig_NoIAMLeavesBeforeConnectNil(t *testing.T) {
 	t.Parallel()

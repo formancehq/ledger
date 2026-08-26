@@ -89,6 +89,16 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 		return nil, &domain.ErrMirrorV2LogIDGap{Name: ledger, Got: v2LogID, Expected: last + 1}
 	}
 
+	// Created and reverted transactions must carry the source v2 log date.
+	// The mirror translator owns this declaration; accepting a missing date
+	// would silently fall back to the v3 apply time and corrupt insertedAt / updatedAt.
+	switch entry.GetData().(type) {
+	case *raftcmdpb.MirrorLogEntry_CreatedTransaction, *raftcmdpb.MirrorLogEntry_RevertedTransaction:
+		if entry.GetDate() == nil {
+			return nil, &domain.ErrInvalidExecutionPlan{Reason_: "mirror transaction is missing its source v2 log date"}
+		}
+	}
+
 	// Re-touch ledger info so it enters the Merge buffer and gets propagated
 	// back to Gen0 on commit. Without this, ledger info is evicted after two
 	// cache rotations because mirror proposals bypass the admission preloader.
@@ -107,7 +117,7 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 	case *raftcmdpb.MirrorLogEntry_CreatedTransaction:
 		var err domain.Describable
 
-		logPayload, err = processMirrorCreatedTransaction(ledger, data.CreatedTransaction, ctx)
+		logPayload, err = processMirrorCreatedTransaction(ledger, data.CreatedTransaction, entry.GetDate(), ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -131,7 +141,7 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 	case *raftcmdpb.MirrorLogEntry_RevertedTransaction:
 		var err domain.Describable
 
-		logPayload, err = processMirrorRevertedTransaction(ledger, data.RevertedTransaction, ctx)
+		logPayload, err = processMirrorRevertedTransaction(ledger, data.RevertedTransaction, entry.GetDate(), ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -196,8 +206,9 @@ func processMirrorFillGap(gap *raftcmdpb.MirrorFillGap, v2LogID uint64, ctx *Con
 
 // processMirrorCreatedTransaction creates a transaction from mirror data.
 // It applies postings with force=true (no balance checks) and assigns the exact transaction ID from v2.
+// insertedAt and updatedAt preserve the source v2 log date rather than the v3 apply time.
 // Missing volumes are auto-initialized to zero so postings are never silently skipped.
-func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedTransaction, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedTransaction, sourceDate *commonpb.Timestamp, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 
@@ -280,8 +291,8 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 					Timestamp:         timestamp,
 					Reference:         ct.GetReference(),
 					Id:                txID,
-					InsertedAt:        s.GetDate().Mutate(),
-					UpdatedAt:         s.GetDate().Mutate(),
+					InsertedAt:        sourceDate.CloneVT(),
+					UpdatedAt:         sourceDate.CloneVT(),
 					PostCommitVolumes: postCommitVolumes,
 				},
 				AccountMetadata: accountMetadata,
@@ -388,8 +399,9 @@ func processMirrorDeletedMetadata(ledger string, dm *raftcmdpb.MirrorDeletedMeta
 }
 
 // processMirrorRevertedTransaction processes a v2 REVERTED_TRANSACTION log.
+// insertedAt and updatedAt preserve the source v2 log date rather than the v3 apply time.
 // Missing volumes are auto-initialized to zero so reverse postings are never silently skipped.
-func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorRevertedTransaction, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorRevertedTransaction, sourceDate *commonpb.Timestamp, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 
@@ -461,8 +473,8 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 					Metadata:           rt.GetMetadata(),
 					Timestamp:          timestamp,
 					Id:                 revertTxID,
-					InsertedAt:         s.GetDate().Mutate(),
-					UpdatedAt:          s.GetDate().Mutate(),
+					InsertedAt:         sourceDate.CloneVT(),
+					UpdatedAt:          sourceDate.CloneVT(),
 					RevertsTransaction: rt.GetRevertedTransactionId(),
 					PostCommitVolumes:  postCommitVolumes,
 				},
