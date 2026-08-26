@@ -301,3 +301,13 @@ Those caches live inside the run directory, so `ai-pr-loop` reclaims the whole
 run directory recursively when the run ends without `--keep-worktree`. It does
 so only after both owned worktrees are gone: a preserved worktree — inspectable
 fixes or a failed removal — keeps its run directory and its caches.
+
+### Candidate normalization
+
+Candidate publication normalizes the candidate before assigning its final SHA.
+The trusted base-pinned `just pre-commit` recipe runs in the isolated validation
+environment; any resulting tree changes are logged, checked with `git diff
+--check`, committed as normalization, and rechecked. This repeats to a bounded
+fixpoint (three passes by default). Only the converged SHA is reviewed and
+published. A candidate supplied to `ai-pr-adopt-candidate` is immutable: if it
+needs normalization, adoption refuses rather than silently changing the SHA.

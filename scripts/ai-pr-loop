@@ -542,6 +542,26 @@ git commit -m "fix: address AI review findings"
 candidate_sha=$(git rev-parse HEAD)
 printf '==> ai-pr-loop: candidate commit %s\n' "$candidate_sha"
 
+normalization_pass=1
+while [[ "$normalization_pass" -le 3 ]]; do
+    bash "$trusted_tool_worktree/scripts/agent-just" pre-commit
+    if [[ -z "$(git status --porcelain)" ]]; then
+        echo "PRECOMMIT_FIXPOINT: PASS"
+        break
+    fi
+    echo "PRECOMMIT_NORMALIZATION: CHANGES_COMMITTED (pass $normalization_pass)"
+    git add -A
+    git diff --cached --check
+    git commit -m "chore: normalize candidate"
+    candidate_sha=$(git rev-parse HEAD)
+    normalization_pass=$((normalization_pass + 1))
+done
+if [[ "$normalization_pass" -gt 3 && -n "$(git status --porcelain)" ]]; then
+    echo "PRECOMMIT_NON_DETERMINISTIC: refusing candidate publication" >&2
+    keep_worktree=true
+    exit 1
+fi
+
 set +e
 run_commit_review
 commit_review_status=$?
