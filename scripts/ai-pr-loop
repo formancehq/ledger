@@ -537,6 +537,8 @@ if [[ -n "$(git status --porcelain)" ]]; then
     echo "PRECOMMIT_NORMALIZATION: CHANGES"
 else
     echo "PRECOMMIT_NORMALIZATION: NO_CHANGES"
+    echo "AI_PR_LOOP_PUSH_RESULT: NO_CHANGES"
+    exit 0
 fi
 
 git add -A
