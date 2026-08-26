@@ -37,7 +37,7 @@ A full PR URL is accepted as well. The launcher:
   Actions status participates in the decision;
 - never checks out or edits the primary checkout;
 - preserves the isolated worktree automatically when fixes remain so the resulting diff can be inspected manually;
-- removes a clean temporary worktree after the loop unless `--keep-worktree` is supplied.
+- removes a clean temporary worktree after the loop unless `--keep-worktree` is supplied, together with the run directory that holds its triage result, known-findings ledger, and isolated validation caches.
 
 Each invocation owns a unique worktree and never reuses or removes another invocation's directory. Without `--push`, the launcher performs no commit or push and only reports `READY_FOR_HUMAN_REVIEW`, `HUMAN_DECISION_REQUIRED`, `LEGITIMACY_REJECTED`, `BASE_UPDATE_REQUIRED`, or an orchestration error.
 
@@ -287,3 +287,17 @@ Because one launcher exit code can cover several outcomes, automation must key o
 ## Safety boundary
 
 `review-loop` itself never posts comments, resolves threads, pushes commits, or merges pull requests. The higher-level `ai-pr-loop` also remains read-only with respect to GitHub by default. Its explicit `--push` mode may create a local candidate commit and update only the existing same-repository PR head branch under the verified lease described above; it still never comments, resolves threads, changes PR metadata, or merges.
+### Hermetic validation environments
+
+Git worktree isolation alone is insufficient for candidate validation. Each
+run must use a unique temporary validation directory and isolate `HOME`,
+`GOCACHE`, `GOMODCACHE`, `GOPATH`, `TMPDIR`, `XDG_CACHE_HOME`, and the
+`golangci-lint` cache. The canonical `agent-validation-env` wrapper creates
+these directories and records `VALIDATION_RUN_ID`; `ai-pr-loop` and
+`ai-pr-adopt-candidate` invoke validation through it. This keeps generated
+files and absolute paths from one concurrent run out of another run's caches.
+
+Those caches live inside the run directory, so `ai-pr-loop` reclaims the whole
+run directory recursively when the run ends without `--keep-worktree`. It does
+so only after both owned worktrees are gone: a preserved worktree — inspectable
+fixes or a failed removal — keeps its run directory and its caches.

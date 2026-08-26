@@ -170,6 +170,26 @@ func TestLauncherRefusesKnownFindingsForAnotherTarget(t *testing.T) {
 	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (known findings target mismatch)")
 }
 
+func TestLauncherRemovesTheRunDirectoryOfACleanRun(t *testing.T) {
+	t.Parallel()
+
+	fixture := newLauncherFixture(t)
+	capture := filepath.Join(fixture.root, "review-args")
+	// Validation isolates HOME and the Go caches inside the run directory, so a
+	// completed run without --keep-worktree must reclaim that whole directory.
+	output, err := runLauncherWithFlags(t, fixture, capture, triageResult{decision: "KEEP"}, nil,
+		[]string{"TEST_RUN_VALIDATION_CMD=1"})
+	require.NoError(t, err, output)
+	require.Contains(t, output, "Worktree is clean.")
+
+	isolatedCaches := readCapturedFile(t, capture+".rundir")
+	for _, cache := range []string{"home", "go-cache", "go-mod-cache", "go-path", "tmp", "cache"} {
+		require.Contains(t, strings.Split(isolatedCaches, "\n"), cache,
+			"validation must have populated the run directory")
+	}
+	require.NoDirExists(t, filepath.Dir(worktreeFromOutput(t, output)))
+}
+
 func TestLauncherTreatsTriageFailureAsOrchestrationError(t *testing.T) {
 	fixture := newLauncherFixture(t)
 	capture := filepath.Join(fixture.root, "review-args")
@@ -212,6 +232,20 @@ set -euo pipefail
 printf '%s\n' "$@" > "$TEST_CAPTURE_FILE"
 printf '%s\n' "${AI_REVIEW_KNOWN_FINDINGS:-}" > "$TEST_CAPTURE_FILE.known"
 printf '%s|%s\n' "${AI_REVIEW_KNOWN_FINDINGS_PR:-}" "${AI_REVIEW_KNOWN_FINDINGS_HEAD:-}" > "$TEST_CAPTURE_FILE.binding"
+if [[ -n "${TEST_RUN_VALIDATION_CMD:-}" ]]; then
+    validation_cmd=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --validation-cmd) validation_cmd=$2; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    # review-loop runs the validation recipe through bash -lc from the worktree.
+    # The recipe first creates the isolated caches in the parent run directory,
+    # then invokes the trusted validator, which this fixture does not provide.
+    bash -lc "$validation_cmd" >/dev/null 2>&1 || true
+    ls -1 "$(dirname "$PWD")" > "$TEST_CAPTURE_FILE.rundir"
+fi
 `)
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 0\n")
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-known-findings"), "#!/usr/bin/env bash\nexit 0\n")
@@ -326,13 +360,27 @@ type triageResult struct {
 
 func runLauncher(t *testing.T, fixture launcherFixture, capturePath string, triage triageResult, extraEnv ...string) (string, error) {
 	t.Helper()
+
+	return runLauncherWithFlags(t, fixture, capturePath, triage, []string{"--keep-worktree"}, extraEnv)
+}
+
+func runLauncherWithFlags(
+	t *testing.T,
+	fixture launcherFixture,
+	capturePath string,
+	triage triageResult,
+	flags []string,
+	extraEnv []string,
+) (string, error) {
+	t.Helper()
 	if triage.baseSHA == "" {
 		triage.baseSHA = fixture.baseSHA
 	}
 	if triage.headSHA == "" {
 		triage.headSHA = fixture.headSHA
 	}
-	command := exec.Command("bash", filepath.Join(fixture.checkout, "scripts", "ai-pr-loop"), "123", "--keep-worktree")
+	arguments := append([]string{filepath.Join(fixture.checkout, "scripts", "ai-pr-loop"), "123"}, flags...)
+	command := exec.Command("bash", arguments...)
 	command.Dir = fixture.checkout
 	command.Env = append(os.Environ(),
 		"PATH="+fixture.fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
