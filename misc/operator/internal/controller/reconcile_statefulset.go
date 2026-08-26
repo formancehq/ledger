@@ -507,7 +507,10 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 //
 // A value the CR explicitly provides through spec.podAnnotations wins over the
 // live stamp: the CR is the source of truth, and only a key it does not manage
-// is treated as user-owned StatefulSet state.
+// is treated as user-owned StatefulSet state. Consequently, when the CR manages
+// this key a direct `kubectl rollout restart` is reverted on the next reconcile;
+// that configuration must restart through the CR (documented in the operator
+// README).
 //
 // The annotations map is copied before mutation: the desired template built by
 // buildStatefulSetSpec may be shared across retries of a mutate function.

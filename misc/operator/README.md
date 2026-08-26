@@ -274,6 +274,12 @@ the pod template instead of reverting it on the next reconcile. Prefer
 `kubectl ledger restart`, which records the restart on the Cluster CR itself
 (`spec.podAnnotations`) and therefore survives StatefulSet recreation.
 
+**Exception:** if the Cluster CR itself sets `kubectl.kubernetes.io/restartedAt`
+in `spec.podAnnotations`, the CR value is authoritative and the operator reverts
+a direct `kubectl rollout restart` stamp on the next reconcile — the rollout
+stops after the first pod. In that configuration, restart through the CR only
+(`kubectl ledger restart`, or bump the annotation value in the CR).
+
 ## Development
 
 ### Setup
