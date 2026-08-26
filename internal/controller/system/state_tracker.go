@@ -37,6 +37,12 @@ func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func
 		return fn(c.Controller)
 	}
 
+	// A dry run must not participate in the initializing-to-in-use transition,
+	// including when the caller already opened a surrounding transaction.
+	if dryRun {
+		return fn(c.Controller)
+	}
+
 	if c.tx != nil {
 		return c.handleStateInTransaction(ctx, l, fn)
 	}
