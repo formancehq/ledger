@@ -142,7 +142,7 @@ Mirror mode introduces several protobuf types across multiple files:
 
 **`raft_cmd.proto`:**
 - `MirrorIngestOrder` — Raft command to ingest a translated v2 log entry
-- `MirrorLogEntry` — Wrapper for a single v2 log entry (oneof: `CreatedTransaction`, `SavedMetadata`, `DeletedMetadata`, `RevertedTransaction`, `FillGap`)
+- `MirrorLogEntry` — Wrapper for a single v2 log entry, including its source date (oneof: `CreatedTransaction`, `SavedMetadata`, `DeletedMetadata`, `RevertedTransaction`, `FillGap`)
 - `PromoteLedgerOrder` — Raft command to promote a mirror ledger to normal mode
 - `MirrorSyncUpdate` — Streaming update from the mirror worker (progress reporting)
 

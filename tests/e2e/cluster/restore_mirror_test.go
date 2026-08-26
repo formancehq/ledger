@@ -93,6 +93,10 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		// Recorded rather than hard-coded so the comparison pins "unchanged by
 		// the restore" instead of a particular amount encoding.
 		preBackupInput string
+		// The transaction projection is rebuilt from the exported ledger-log
+		// delta. Keep an independent source-date oracle so the restore cannot
+		// silently replace that field with its own apply time.
+		sourceDateMicrosByTxID map[uint64]uint64
 
 		// Read on the restored node as early as the gRPC surface answers.
 		restoredCursor uint64
@@ -128,6 +132,12 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		txs, err := listAllTransactions(ctx, client, ledgerName, 100, 0)
 		g.Expect(err).To(Succeed())
 		g.Expect(txs).To(HaveLen(preBackupTxCount), "%s: mirrored transaction count", phase)
+		for _, tx := range txs {
+			sourceDate, ok := sourceDateMicrosByTxID[tx.GetId()]
+			g.Expect(ok).To(BeTrue(), "%s: missing source-date oracle for transaction %d", phase, tx.GetId())
+			g.Expect(tx.GetInsertedAt().GetData()).To(Equal(sourceDate), "%s: transaction %d insertedAt", phase, tx.GetId())
+			g.Expect(tx.GetUpdatedAt().GetData()).To(Equal(sourceDate), "%s: transaction %d updatedAt", phase, tx.GetId())
+		}
 
 		acct, err := actions.GetAccount(ctx, client, ledgerName, account)
 		g.Expect(err).To(Succeed())
@@ -142,11 +152,17 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 
 		mockV2 = newMockV2Server()
 		DeferCleanup(mockV2.Close)
+		sourceDateMicrosByTxID = make(map[uint64]uint64, sourceLogCount)
 
 		for i := 1; i <= sourceLogCount; i++ {
 			// Source log ids are 1-based; the transactions they carry are
 			// 0-based, matching a real v2 ledger.
-			mockV2.addLog(newV2TransactionLog(uint64(i), uint64(i-1), "world", account, perTxAmount, asset))
+			txID := uint64(i - 1)
+			sourceDate := time.Date(2023, 11, 14, 22, 13+i, 0, i*1000, time.UTC)
+			log := newV2TransactionLog(uint64(i), txID, "world", account, perTxAmount, asset)
+			log.Date = sourceDate.Format(time.RFC3339Nano)
+			mockV2.addLog(log)
+			sourceDateMicrosByTxID[txID] = uint64(sourceDate.UnixMicro())
 		}
 
 		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
@@ -476,6 +492,13 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			Consistently(func(g Gomega) {
 				expectSingleIngestion(g, client, "restored")
 			}, 12*time.Second, 1*time.Second).Should(Succeed())
+		})
+
+		It("passes the integrity checker after restoring the non-empty mirror delta", func() {
+			result, err := actions.CollectCheckStoreEvents(ctx, client)
+			Expect(err).To(Succeed())
+			Expect(result.Errors).To(BeEmpty())
+			Expect(result.Progress).ToNot(BeEmpty())
 		})
 
 		It("ingests new source logs and keeps transaction ids aligned", func() {

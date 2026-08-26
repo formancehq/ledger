@@ -565,6 +565,13 @@ func (m *MirrorLogEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Date != nil {
+		size, _ := m.Date.MarshalToSizedBufferVT(dAtA[:i])
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
 	if m.V2LogId != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.V2LogId))
@@ -578,7 +585,7 @@ func (m *MirrorLogEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x12
+			dAtA[i] = 0x1a
 		}
 	case *MirrorLogEntry_SavedMetadata:
 		if v.SavedMetadata != nil {
@@ -586,7 +593,7 @@ func (m *MirrorLogEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1a
+			dAtA[i] = 0x22
 		}
 	case *MirrorLogEntry_RevertedTransaction:
 		if v.RevertedTransaction != nil {
@@ -594,7 +601,7 @@ func (m *MirrorLogEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x22
+			dAtA[i] = 0x2a
 		}
 	case *MirrorLogEntry_DeletedMetadata:
 		if v.DeletedMetadata != nil {
@@ -602,7 +609,7 @@ func (m *MirrorLogEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x2a
+			dAtA[i] = 0x32
 		}
 	case *MirrorLogEntry_FillGap:
 		if v.FillGap != nil {
@@ -610,7 +617,7 @@ func (m *MirrorLogEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, 
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x32
+			dAtA[i] = 0x3a
 		}
 	}
 	return len(dAtA) - i, nil

@@ -231,12 +231,13 @@ message MirrorIngestOrder {
 
 message MirrorLogEntry {
   fixed64 v2_log_id = 1;
+  common.Timestamp date = 2;
   oneof data {
-    MirrorCreatedTransaction created_transaction = 2;
-    MirrorSavedMetadata saved_metadata = 3;
-    MirrorRevertedTransaction reverted_transaction = 4;
-    MirrorDeletedMetadata deleted_metadata = 5;
-    MirrorFillGap fill_gap = 6;
+    MirrorCreatedTransaction created_transaction = 3;
+    MirrorSavedMetadata saved_metadata = 4;
+    MirrorRevertedTransaction reverted_transaction = 5;
+    MirrorDeletedMetadata deleted_metadata = 6;
+    MirrorFillGap fill_gap = 7;
   }
 }
 
@@ -805,4 +806,3 @@ message AttributeID {
   bytes id = 1;           // 16-byte U128 identifier
   fixed64 tag = 2;
 }
-

@@ -60,6 +60,12 @@ func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNe
 		expectedNextTxID = newNextTxID
 
 		if entry != nil {
+			date, err := translateV2LogDate(v2Log.Date)
+			if err != nil {
+				return nil, 0, 0, fmt.Errorf("translating v2 log %d (type=%s): %w", v2Log.ID, v2Log.Type, err)
+			}
+			entry.Date = date
+
 			// Apply the mirror's CEL rewrite rules to the translated entry. This
 			// runs on the leader and its output is baked into the proposed order,
 			// so followers apply identical bytes. A rule may drop the entry, in
@@ -76,6 +82,42 @@ func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNe
 	}
 
 	return orders, expectedNextLogID, expectedNextTxID, nil
+}
+
+func translateV2LogDate(value string) (*commonpb.Timestamp, error) {
+	if value == "" {
+		return nil, nil
+	}
+
+	// HTTP sources expose RFC3339 while the direct PostgreSQL source selects
+	// date::text, whose timestamptz representation uses a space separator and
+	// may emit either an hour-only or hour/minute UTC offset.
+	formats := [...]string{
+		time.RFC3339Nano,
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05.999999999Z07",
+	}
+
+	var (
+		date time.Time
+		err  error
+	)
+	for _, format := range formats {
+		date, err = time.Parse(format, value)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("parsing v2 log date %q: %w", value, err)
+	}
+
+	microseconds := date.UnixMicro()
+	if microseconds < 0 {
+		return nil, fmt.Errorf("parsing v2 log date %q: date is before the Unix epoch", value)
+	}
+
+	return &commonpb.Timestamp{Data: uint64(microseconds)}, nil
 }
 
 func makeMirrorOrder(ledger string, entry *raftcmdpb.MirrorLogEntry) *raftcmdpb.Order {

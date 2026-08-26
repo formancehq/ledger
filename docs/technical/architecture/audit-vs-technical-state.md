@@ -66,6 +66,13 @@ projections were exactly that kind of gap and no longer are: `signingVerifier`
 Maintenance mode has the identical shape and is deliberately deferred, so it is
 the governance gap that remains.
 
+The transaction pass has a narrower, field-level gap: it re-derives
+`TransactionState`, but that projection does not contain the `inserted_at` and
+`updated_at` fields stored in ledger-log `Transaction` payloads. Mirror orders
+hash-bind their source date as of EN-1854, yet no checker pass currently compares
+those two derived log fields against it. This is an existing primary-store
+projection gap, not an exemption created by the mirror-date change.
+
 ### Technical execution metadata is excluded from the audit business-intent hash (EN-1558)
 
 `AuditItem.serialized_order` stores the *business-intent* bytes of the order — the
