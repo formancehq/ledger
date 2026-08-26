@@ -39,6 +39,26 @@ func TestCacheSnapshotter_StopPreventsBloomRestart(t *testing.T) {
 	snapshotter.StartAsyncBloomPopulate(nil, "late dispatcher signal")
 }
 
+func TestCacheSnapshotter_PauseResumeAllowsCheckpointRepopulation(t *testing.T) {
+	t.Parallel()
+
+	meter := noop.NewMeterProvider().Meter("test")
+	bloomFilters := bloom.NewFilterSet(&commonpb.ClusterConfig{
+		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	}, meter)
+	snapshotter, dataStore, _ := newTestCacheSnapshotter(t, bloomFilters)
+
+	bloomFilters.SetReady(false)
+	snapshotter.Pause()
+	snapshotter.StartAsyncBloomPopulate(dataStore, "suppressed during checkpoint replacement")
+	require.False(t, bloomFilters.IsReady())
+
+	snapshotter.Resume()
+	snapshotter.StartAsyncBloomPopulate(dataStore, "repopulate after checkpoint replacement")
+	snapshotter.Stop()
+	require.True(t, bloomFilters.IsReady())
+}
+
 func newVolumeKey(ak domain.AccountKey, asset string) domain.VolumeKey {
 	base, prec := domain.ParseAssetPrecision(asset)
 
