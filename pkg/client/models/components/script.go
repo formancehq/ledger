@@ -6,8 +6,12 @@ type Script struct {
 	Plain string         `json:"plain"`
 	Vars  map[string]any `json:"vars,omitempty"`
 	// Reference to attach to the generated transaction
-	Reference *string        `json:"reference,omitempty"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
+	Reference *string `json:"reference,omitempty"`
+	// Metadata accepted by transaction and account write commands. A metadata object
+	// is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per
+	// value, and 64 KiB total across keys and values.
+	//
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 func (s *Script) GetPlain() string {

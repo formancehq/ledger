@@ -7,9 +7,11 @@ import (
 )
 
 type V2BulkElementCreateTransaction struct {
-	Action string             `json:"action"`
-	Ik     *string            `json:"ik,omitempty"`
-	Data   *V2PostTransaction `json:"data,omitempty"`
+	Action string  `json:"action"`
+	Ik     *string `json:"ik,omitempty"`
+	// Transaction and account metadata are limited to 256 KiB in total for one command.
+	//
+	Data *V2PostTransaction `json:"data,omitempty"`
 }
 
 func (v V2BulkElementCreateTransaction) MarshalJSON() ([]byte, error) {

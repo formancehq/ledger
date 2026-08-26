@@ -9,23 +9,26 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/storage/postgres"
 	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 
+	ledger "github.com/formancehq/ledger/internal"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	storagecommon "github.com/formancehq/ledger/internal/storage/common"
-	"github.com/formancehq/ledger/internal/storage/ledger"
+	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 )
 
 const (
-	ErrConflict            = "CONFLICT"
-	ErrInsufficientFund    = "INSUFFICIENT_FUND"
-	ErrValidation          = "VALIDATION"
-	ErrAlreadyRevert       = "ALREADY_REVERT"
-	ErrNoPostings          = "NO_POSTINGS"
-	ErrCompilationFailed   = "COMPILATION_FAILED"
-	ErrMetadataOverride    = "METADATA_OVERRIDE"
-	ErrBulkSizeExceeded    = "BULK_SIZE_EXCEEDED"
-	ErrLedgerAlreadyExists = "LEDGER_ALREADY_EXISTS"
-	ErrSchemaAlreadyExists = "SCHEMA_ALREADY_EXISTS"
-	ErrSchemaNotSpecified  = "SCHEMA_NOT_SPECIFIED"
+	ErrConflict              = "CONFLICT"
+	ErrInsufficientFund      = "INSUFFICIENT_FUND"
+	ErrValidation            = "VALIDATION"
+	ErrAlreadyRevert         = "ALREADY_REVERT"
+	ErrNoPostings            = "NO_POSTINGS"
+	ErrCompilationFailed     = "COMPILATION_FAILED"
+	ErrMetadataOverride      = "METADATA_OVERRIDE"
+	ErrBulkSizeExceeded      = "BULK_SIZE_EXCEEDED"
+	ErrMetadataLimitExceeded = "METADATA_LIMIT_EXCEEDED"
+	ErrRequestBodyTooLarge   = "REQUEST_BODY_TOO_LARGE"
+	ErrLedgerAlreadyExists   = "LEDGER_ALREADY_EXISTS"
+	ErrSchemaAlreadyExists   = "SCHEMA_ALREADY_EXISTS"
+	ErrSchemaNotSpecified    = "SCHEMA_NOT_SPECIFIED"
 
 	ErrInterpreterParse   = "INTERPRETER_PARSE"
 	ErrInterpreterRuntime = "INTERPRETER_RUNTIME"
@@ -58,6 +61,8 @@ func HandleCommonWriteErrors(w http.ResponseWriter, r *http.Request, err error) 
 		api.NotFound(w, err)
 	case errors.Is(err, ledgercontroller.ErrSchemaValidationError{}):
 		api.BadRequest(w, ErrValidation, err)
+	case errors.Is(err, ledger.ErrMetadataLimitExceeded{}):
+		api.BadRequest(w, ErrMetadataLimitExceeded, err)
 	case errors.Is(err, ledgercontroller.ErrSchemaNotSpecified{}):
 		api.BadRequest(w, ErrSchemaNotSpecified, err)
 	case errors.Is(err, ledgercontroller.ErrSchemaNotFound{}):
@@ -69,8 +74,10 @@ func HandleCommonWriteErrors(w http.ResponseWriter, r *http.Request, err error) 
 
 func HandleCommonPaginationErrors(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
+	case errors.Is(err, ErrBodyTooLarge):
+		api.WriteErrorResponse(w, http.StatusRequestEntityTooLarge, ErrRequestBodyTooLarge, err)
 	case errors.Is(err, storagecommon.ErrInvalidQuery{}) ||
-		errors.Is(err, ledger.ErrMissingFeature{}) ||
+		errors.Is(err, ledgerstore.ErrMissingFeature{}) ||
 		errors.Is(err, storagecommon.ErrNotPaginatedField{}) ||
 		errors.Is(err, ledgercontroller.ErrSchemaValidationError{}):
 		api.BadRequest(w, ErrValidation, err)

@@ -16,6 +16,8 @@ import "github.com/formancehq/ledger/internal"
 - [func RevertMetadata\(txID uint64\) metadata.Metadata](<#RevertMetadata>)
 - [func RevertMetadataSpecKey\(\) string](<#RevertMetadataSpecKey>)
 - [func SpecMetadata\(name string\) string](<#SpecMetadata>)
+- [func ValidateCommandMetadata\(transactionMetadata metadata.Metadata, accountMetadata AccountMetadata\) error](<#ValidateCommandMetadata>)
+- [func ValidateMetadata\(m metadata.Metadata\) error](<#ValidateMetadata>)
 - [func ValidateSegment\(addr string\) bool](<#ValidateSegment>)
 - [type Account](<#Account>)
   - [func \(a Account\) GetAddress\(\) string](<#Account.GetAddress>)
@@ -71,6 +73,9 @@ import "github.com/formancehq/ledger/internal"
   - [func NewErrInvalidSchema\(err error\) ErrInvalidSchema](<#NewErrInvalidSchema>)
   - [func \(e ErrInvalidSchema\) Error\(\) string](<#ErrInvalidSchema.Error>)
   - [func \(e ErrInvalidSchema\) Is\(err error\) bool](<#ErrInvalidSchema.Is>)
+- [type ErrMetadataLimitExceeded](<#ErrMetadataLimitExceeded>)
+  - [func \(e ErrMetadataLimitExceeded\) Error\(\) string](<#ErrMetadataLimitExceeded.Error>)
+  - [func \(e ErrMetadataLimitExceeded\) Is\(err error\) bool](<#ErrMetadataLimitExceeded.Is>)
 - [type ErrPipelineAlreadyExists](<#ErrPipelineAlreadyExists>)
   - [func NewErrPipelineAlreadyExists\(pipelineConfiguration PipelineConfiguration\) ErrPipelineAlreadyExists](<#NewErrPipelineAlreadyExists>)
   - [func \(e ErrPipelineAlreadyExists\) Error\(\) string](<#ErrPipelineAlreadyExists.Error>)
@@ -220,6 +225,18 @@ const (
 )
 ```
 
+<a name="MaxMetadataEntries"></a>
+
+```go
+const (
+    MaxMetadataEntries     = 128
+    MaxMetadataKeySize     = 256
+    MaxMetadataValueSize   = 16 << 10
+    MaxMetadataSize        = 64 << 10
+    MaxCommandMetadataSize = 256 << 10
+)
+```
+
 <a name="DefaultBucket"></a>
 
 ```go
@@ -333,6 +350,24 @@ func SpecMetadata(name string) string
 ```
 
 
+
+<a name="ValidateCommandMetadata"></a>
+## func [ValidateCommandMetadata](<https://github.com/formancehq/ledger/blob/main/internal/metadata_limits.go#L98>)
+
+```go
+func ValidateCommandMetadata(transactionMetadata metadata.Metadata, accountMetadata AccountMetadata) error
+```
+
+ValidateCommandMetadata validates every metadata object produced by a transaction command, then bounds their combined size. Sorting account names keeps the selected validation error stable when several accounts are invalid.
+
+<a name="ValidateMetadata"></a>
+## func [ValidateMetadata](<https://github.com/formancehq/ledger/blob/main/internal/metadata_limits.go#L50>)
+
+```go
+func ValidateMetadata(m metadata.Metadata) error
+```
+
+ValidateMetadata enforces the limits for one transaction or account metadata object. It intentionally does not validate key syntax, which would be a backwards\-incompatible change for Ledger v2.
 
 <a name="ValidateSegment"></a>
 ## func [ValidateSegment](<https://github.com/formancehq/ledger/blob/main/internal/chart.go#L46>)
@@ -880,6 +915,37 @@ func (e ErrInvalidSchema) Error() string
 
 ```go
 func (e ErrInvalidSchema) Is(err error) bool
+```
+
+
+
+<a name="ErrMetadataLimitExceeded"></a>
+## type [ErrMetadataLimitExceeded](<https://github.com/formancehq/ledger/blob/main/internal/metadata_limits.go#L20-L24>)
+
+ErrMetadataLimitExceeded reports which metadata constraint rejected a write. Sizes are measured in UTF\-8 bytes, not runes.
+
+```go
+type ErrMetadataLimitExceeded struct {
+    Constraint string
+    Maximum    int
+    Actual     int
+}
+```
+
+<a name="ErrMetadataLimitExceeded.Error"></a>
+### func \(ErrMetadataLimitExceeded\) [Error](<https://github.com/formancehq/ledger/blob/main/internal/metadata_limits.go#L26>)
+
+```go
+func (e ErrMetadataLimitExceeded) Error() string
+```
+
+
+
+<a name="ErrMetadataLimitExceeded.Is"></a>
+### func \(ErrMetadataLimitExceeded\) [Is](<https://github.com/formancehq/ledger/blob/main/internal/metadata_limits.go#L34>)
+
+```go
+func (e ErrMetadataLimitExceeded) Is(err error) bool
 ```
 
 

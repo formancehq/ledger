@@ -1,9 +1,7 @@
 package v2
 
 import (
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -18,17 +16,8 @@ import (
 func createLedger(systemController systemcontroller.Controller) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		configuration := ledger.Configuration{}
-		data, err := io.ReadAll(r.Body)
-		if err != nil && !errors.Is(err, io.EOF) {
-			common.InternalServerError(w, r, err)
+		if r.ContentLength != 0 && !common.DecodeBody(w, r, &configuration) {
 			return
-		}
-
-		if len(data) > 0 {
-			if err := json.Unmarshal(data, &configuration); err != nil {
-				api.BadRequest(w, common.ErrValidation, err)
-				return
-			}
 		}
 
 		if err := systemController.CreateLedger(r.Context(), chi.URLParam(r, "ledger"), configuration); err != nil {

@@ -1,6 +1,10 @@
 openapi: 3.0.3
 info:
   title: Ledger API
+  description: |
+    Non-streaming JSON request bodies are limited to 4 MiB. Streaming log import and
+    streaming bulk media types are excluded so historical ledgers and large streams
+    can be processed incrementally.
   contact: {}
   version: v2
 paths:
@@ -340,7 +344,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Metadata'
+              $ref: '#/components/schemas/WriteMetadata'
         required: true
       responses:
         '204':
@@ -921,7 +925,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Metadata'
+              $ref: '#/components/schemas/WriteMetadata'
       responses:
         '204':
           description: No Content
@@ -2002,7 +2006,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/V2Metadata"
+              $ref: "#/components/schemas/V2WriteMetadata"
         required: true
       responses:
         "204":
@@ -2415,7 +2419,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/V2Metadata"
+              $ref: "#/components/schemas/V2WriteMetadata"
       responses:
         "204":
           description: No Content
@@ -3483,6 +3487,15 @@ components:
       type: object
       nullable: true
       additionalProperties: {}
+    WriteMetadata:
+      type: object
+      nullable: true
+      description: |
+        Metadata accepted by transaction and account write commands. A metadata object
+        is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per
+        value, and 64 KiB total across keys and values.
+      maxProperties: 128
+      additionalProperties: {}
     ConfigInfo:
       type: object
       properties:
@@ -3639,7 +3652,7 @@ components:
           example: order_1234
           description: Reference to attach to the generated transaction
         metadata:
-          $ref: '#/components/schemas/Metadata'
+          $ref: '#/components/schemas/WriteMetadata'
       required:
         - plain
     Transaction:
@@ -3682,7 +3695,7 @@ components:
           type: string
           example: ref:001
         metadata:
-          $ref: '#/components/schemas/Metadata'
+          $ref: '#/components/schemas/WriteMetadata'
         timestamp:
           type: string
           format: date-time
@@ -3722,7 +3735,7 @@ components:
           type: string
           example: ref:001
         metadata:
-          $ref: '#/components/schemas/Metadata'
+          $ref: '#/components/schemas/WriteMetadata'
     Stats:
       type: object
       properties:
@@ -4155,6 +4168,18 @@ components:
         type: string
       example:
         admin: "true"
+    V2WriteMetadata:
+      type: object
+      description: |
+        Metadata accepted by transaction and account write commands. A metadata object
+        is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per
+        value, and 64 KiB total across keys and values.
+      maxProperties: 128
+      additionalProperties:
+        type: string
+        maxLength: 16384
+      example:
+        admin: "true"
     V2ConfigInfo:
       type: object
       properties:
@@ -4280,6 +4305,8 @@ components:
         - reverted
     V2PostTransaction:
       type: object
+      description: |
+        Transaction and account metadata are limited to 256 KiB in total for one command.
       required:
         - metadata
       properties:
@@ -4312,11 +4339,11 @@ components:
           type: string
           example: ref:001
         metadata:
-          $ref: "#/components/schemas/V2Metadata"
+          $ref: "#/components/schemas/V2WriteMetadata"
         accountMetadata:
           type: object
           additionalProperties:
-            $ref: "#/components/schemas/V2Metadata"
+            $ref: "#/components/schemas/V2WriteMetadata"
         force:
           type: boolean
     V2Stats:
@@ -4771,9 +4798,7 @@ components:
                 targetType:
                   $ref: "#/components/schemas/V2TargetType"
                 metadata:
-                  type: object
-                  additionalProperties:
-                    type: string
+                  $ref: "#/components/schemas/V2WriteMetadata"
               required:
                 - targetId
                 - targetType
@@ -4795,7 +4820,7 @@ components:
                 atEffectiveDate:
                   type: boolean
                 metadata:
-                  $ref: "#/components/schemas/V2Metadata"
+                  $ref: "#/components/schemas/V2WriteMetadata"
               required:
                 - id
     V2BulkElementDeleteMetadata:
@@ -5209,9 +5234,7 @@ components:
       type: object
       properties:
         metadata:
-          type: object
-          additionalProperties:
-            type: string
+          $ref: "#/components/schemas/V2WriteMetadata"
     V2CreatePipelineRequest:
       type: object
       properties:

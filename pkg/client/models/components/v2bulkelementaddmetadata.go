@@ -7,9 +7,13 @@ import (
 )
 
 type Data struct {
-	TargetID   V2TargetID        `json:"targetId"`
-	TargetType V2TargetType      `json:"targetType"`
-	Metadata   map[string]string `json:"metadata"`
+	TargetID   V2TargetID   `json:"targetId"`
+	TargetType V2TargetType `json:"targetType"`
+	// Metadata accepted by transaction and account write commands. A metadata object
+	// is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per
+	// value, and 64 KiB total across keys and values.
+	//
+	Metadata map[string]string `json:"metadata"`
 }
 
 func (d Data) MarshalJSON() ([]byte, error) {

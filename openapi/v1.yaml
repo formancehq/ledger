@@ -1,6 +1,7 @@
 openapi: 3.0.3
 info:
   title: Ledger API
+  description: Non-streaming JSON request bodies are limited to 4 MiB.
   contact: {}
   version: v1
 paths:
@@ -345,7 +346,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Metadata'
+              $ref: '#/components/schemas/WriteMetadata'
         required: true
       responses:
         '204':
@@ -938,7 +939,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Metadata'
+              $ref: '#/components/schemas/WriteMetadata'
       responses:
         '204':
           description: No Content
@@ -1484,6 +1485,15 @@ components:
       type: object
       nullable: true
       additionalProperties: {}
+    WriteMetadata:
+      type: object
+      nullable: true
+      description: |
+        Metadata accepted by transaction and account write commands. A metadata object
+        is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per
+        value, and 64 KiB total across keys and values.
+      maxProperties: 128
+      additionalProperties: {}
     ConfigInfo:
       type: object
       properties:
@@ -1640,7 +1650,7 @@ components:
           example: order_1234
           description: Reference to attach to the generated transaction
         metadata:
-          $ref: '#/components/schemas/Metadata'
+          $ref: '#/components/schemas/WriteMetadata'
       required:
         - plain
     Transaction:
@@ -1683,7 +1693,7 @@ components:
           type: string
           example: ref:001
         metadata:
-          $ref: '#/components/schemas/Metadata'
+          $ref: '#/components/schemas/WriteMetadata'
         timestamp:
           type: string
           format: date-time
@@ -1723,7 +1733,7 @@ components:
           type: string
           example: ref:001
         metadata:
-          $ref: '#/components/schemas/Metadata'
+          $ref: '#/components/schemas/WriteMetadata'
     Stats:
       type: object
       properties:

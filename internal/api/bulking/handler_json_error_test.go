@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 	"github.com/formancehq/numscript"
 
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
@@ -35,6 +36,7 @@ func TestMapBulkElementError(t *testing.T) {
 		{"parsing", ledgercontroller.ErrParsing{}, common.ErrInterpreterParse},
 		{"runtime", ledgercontroller.ErrRuntime{}, common.ErrInterpreterRuntime},
 		{"already reverted", ledgercontroller.ErrAlreadyReverted{}, common.ErrAlreadyRevert},
+		{"metadata limit exceeded", ledger.ErrMetadataLimitExceeded{}, common.ErrMetadataLimitExceeded},
 		{"invalid idempotency input", ledgercontroller.ErrInvalidIdempotencyInput{}, common.ErrValidation},
 		{"schema validation", ledgercontroller.ErrSchemaValidationError{}, common.ErrValidation},
 		{"schema not specified", ledgercontroller.ErrSchemaNotSpecified{}, common.ErrSchemaNotSpecified},

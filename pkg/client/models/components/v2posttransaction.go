@@ -48,13 +48,18 @@ func (v *V2PostTransactionScript) GetVars() map[string]string {
 // #region class-body-v2posttransactionscript
 // #endregion class-body-v2posttransactionscript
 
+// V2PostTransaction - Transaction and account metadata are limited to 256 KiB in total for one command.
 type V2PostTransaction struct {
 	Timestamp *time.Time               `json:"timestamp,omitempty"`
 	Postings  []V2Posting              `json:"postings,omitempty"`
 	Script    *V2PostTransactionScript `json:"script,omitempty"`
 	// The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.
-	Runtime         *Runtime                     `json:"runtime,omitempty"`
-	Reference       *string                      `json:"reference,omitempty"`
+	Runtime   *Runtime `json:"runtime,omitempty"`
+	Reference *string  `json:"reference,omitempty"`
+	// Metadata accepted by transaction and account write commands. A metadata object
+	// is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per
+	// value, and 64 KiB total across keys and values.
+	//
 	Metadata        map[string]string            `json:"metadata"`
 	AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
 	Force           *bool                        `json:"force,omitempty"`

@@ -307,7 +307,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 				if err := store.CommitTransaction(ctx, &payload.Transaction); err != nil {
 					return nil, fmt.Errorf("failed to commit transaction: %w", err)
 				}
-				if err := ctrl.upsertTransactionAccounts(ctx, store, schema, &payload.Transaction, payload.AccountMetadata); err != nil {
+				if _, err := ctrl.upsertTransactionAccounts(ctx, store, schema, &payload.Transaction, payload.AccountMetadata); err != nil {
 					return nil, fmt.Errorf("failed to upsert transaction accounts: %w", err)
 				}
 				logging.FromContext(ctx).Debugf("Imported transaction %d", *payload.Transaction.ID)
@@ -379,7 +379,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 // effective date, so on any other handle it would autocommit independently of the
 // transaction — visible before the transaction, and durable even when the
 // transaction never commits.
-func (ctrl *DefaultController) upsertTransactionAccounts(ctx context.Context, store Store, schema *ledger.Schema, tx *ledger.Transaction, accountMetadata ledger.AccountMetadata) error {
+func (ctrl *DefaultController) upsertTransactionAccounts(ctx context.Context, store Store, schema *ledger.Schema, tx *ledger.Transaction, accountMetadata ledger.AccountMetadata) ([]ledger.AccountWithDefaultMetadata, error) {
 	accountsToUpsert := tx.AccountsWithDefaultMetadata(schema, accountMetadata)
 
 	err := store.UpsertAccounts(
@@ -387,9 +387,9 @@ func (ctrl *DefaultController) upsertTransactionAccounts(ctx context.Context, st
 		accountsToUpsert...,
 	)
 	if err != nil {
-		return fmt.Errorf("upserting accounts: %w", err)
+		return nil, fmt.Errorf("upserting accounts: %w", err)
 	}
-	return nil
+	return accountsToUpsert, nil
 }
 
 func (ctrl *DefaultController) Export(ctx context.Context, w ExportWriter) error {
@@ -495,6 +495,9 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 			}
 		}
 	}
+	if err := ledger.ValidateCommandMetadata(finalMetadata, accountMetadata); err != nil {
+		return nil, err
+	}
 
 	transaction := ledger.NewTransaction().
 		WithPostings(result.Postings...).
@@ -506,9 +509,14 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 	if err != nil {
 		return nil, err
 	}
-	err = ctrl.upsertTransactionAccounts(ctx, store, schema, &transaction, accountMetadata)
+	accounts, err := ctrl.upsertTransactionAccounts(ctx, store, schema, &transaction, accountMetadata)
 	if err != nil {
 		return nil, err
+	}
+	for _, account := range accounts {
+		if err := ledger.ValidateMetadata(account.Metadata); err != nil {
+			return nil, err
+		}
 	}
 
 	return &ledger.CreatedTransaction{
@@ -548,6 +556,9 @@ func (ctrl *DefaultController) revertTransaction(ctx context.Context, store Stor
 		reversedTx = reversedTx.WithTimestamp(*originalTransaction.RevertedAt)
 	}
 	reversedTx.Metadata = ledger.MarkReverts(parameters.Input.Metadata, *originalTransaction.ID)
+	if err := ledger.ValidateMetadata(reversedTx.Metadata); err != nil {
+		return nil, err
+	}
 
 	// Check balances after the revert, all balances must be greater than 0
 	if !parameters.Input.Force {
@@ -592,7 +603,11 @@ func (ctrl *DefaultController) RevertTransaction(ctx context.Context, parameters
 }
 
 func (ctrl *DefaultController) saveTransactionMetadata(ctx context.Context, store Store, _schema *ledger.Schema, parameters Parameters[SaveTransactionMetadata]) (*ledger.SavedMetadata, error) {
-	if _, _, err := store.UpdateTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Metadata, time.Time{}); err != nil {
+	tx, _, err := store.UpdateTransactionMetadata(ctx, parameters.Input.TransactionID, parameters.Input.Metadata, time.Time{})
+	if err != nil {
+		return nil, err
+	}
+	if err := ledger.ValidateMetadata(tx.Metadata); err != nil {
 		return nil, err
 	}
 
@@ -616,13 +631,17 @@ func (ctrl *DefaultController) saveAccountMetadata(ctx context.Context, store St
 			defaultMetadata = accountSchema.DefaultMetadata()
 		}
 	}
+	account := &ledger.Account{
+		Address:  parameters.Input.Address,
+		Metadata: parameters.Input.Metadata,
+	}
 	if err := store.UpsertAccounts(ctx, ledger.AccountWithDefaultMetadata{
-		Account: &ledger.Account{
-			Address:  parameters.Input.Address,
-			Metadata: parameters.Input.Metadata,
-		},
+		Account:         account,
 		DefaultMetadata: defaultMetadata,
 	}); err != nil {
+		return nil, err
+	}
+	if err := ledger.ValidateMetadata(account.Metadata); err != nil {
 		return nil, err
 	}
 

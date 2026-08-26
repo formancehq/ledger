@@ -31,7 +31,11 @@ type PostTransaction struct {
 	Postings  []Posting              `json:"postings,omitempty"`
 	Script    *PostTransactionScript `json:"script,omitempty"`
 	Reference *string                `json:"reference,omitempty"`
-	Metadata  map[string]any         `json:"metadata,omitempty"`
+	// Metadata accepted by transaction and account write commands. A metadata object
+	// is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per
+	// value, and 64 KiB total across keys and values.
+	//
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 func (p PostTransaction) MarshalJSON() ([]byte, error) {
