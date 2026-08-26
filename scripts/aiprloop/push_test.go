@@ -73,11 +73,26 @@ func TestPushRefusesBaseWithoutTrustedValidator(t *testing.T) {
 	require.Equal(t, fixture.headSHA, remoteHead)
 }
 
+func TestPushQuotesValidationPathsContainingAnApostrophe(t *testing.T) {
+	t.Parallel()
+
+	// The run directory inherits the repository parent path, so the guarded
+	// validation recipe must survive a checkout such as `/tmp/user's repo`.
+	fixture := newPushFixture(t, pushFixtureOptions{quotedRepositoryParent: true})
+	output, exitCode := fixture.run(t)
+	require.Equal(t, 0, exitCode, output)
+	require.Contains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
+}
+
 type pushFixtureOptions struct {
 	moveRemote            bool
 	moveLocalHead         bool
 	tamperTargetToolchain bool
 	omitTrustedValidator  bool
+
+	// quotedRepositoryParent nests the repository under a parent directory whose
+	// name contains an apostrophe, which the run directory inherits.
+	quotedRepositoryParent bool
 }
 
 type pushFixture struct {
@@ -95,6 +110,10 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 	t.Helper()
 
 	root := t.TempDir()
+	if options.quotedRepositoryParent {
+		root = filepath.Join(root, "ai loop's fixtures")
+		require.NoError(t, os.MkdirAll(root, 0o755))
+	}
 	remote := filepath.Join(root, "remote.git")
 	seed := filepath.Join(root, "seed")
 	checkout := filepath.Join(root, "checkout")
@@ -188,7 +207,7 @@ case "$review_cmd" in
     *trusted-tools/scripts/ai-review-known-findings) ;;
     *) exit 95 ;;
 esac
-review_script=${review_cmd#bash }
+eval "review_script=${review_cmd#bash }"
 trusted_root=$(git -C "$(dirname "$review_script")" rev-parse --show-toplevel)
 grep -qx 'trusted known-findings contract' "$trusted_root/docs/technical/contributing/ai-pr-known-findings.md" || exit 91
 [[ -n "${AI_REVIEW_KNOWN_FINDINGS:-}" && -f "$AI_REVIEW_KNOWN_FINDINGS" ]] || exit 92
@@ -198,7 +217,13 @@ if [[ -n "$fix_cmd" ]]; then
         *) exit 94 ;;
     esac
 fi
-case "$validation_cmd" in
+# The guarded validation recipe nests a program inside bash -c, so that
+# program must itself be valid shell input for any repository path.
+validation_words=()
+eval "validation_words=($validation_cmd)"
+validation_program=${validation_words[$((${#validation_words[@]} - 1))]}
+bash -n -c "$validation_program" || exit 90
+case "$validation_program" in
     *trusted-tools/scripts/agent-check-pr) ;;
     *) exit 93 ;;
 esac

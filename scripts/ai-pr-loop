@@ -332,8 +332,9 @@ review_loop=("$review_loop_binary")
 printf -v review_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-review-known-findings"
 fix_cmd='bash scripts/ai-fix-claude'
 # review-loop executes the validation command through `bash -lc`, and the run
-# directory derives from the repository location, which may contain whitespace.
-# Quote every interpolated path so the recipe reaches the validator intact.
+# directory derives from the repository location, which may contain whitespace or
+# quoting characters such as an apostrophe. Quote every interpolated path so the
+# recipe reaches the validator intact.
 printf -v quoted_run_dir %q "$worktree_run_dir"
 printf -v quoted_run_id %q "$(basename "$worktree_run_dir")"
 printf -v quoted_home %q "$worktree_run_dir/home"
@@ -355,10 +356,17 @@ if [[ "$push_changes" == "true" ]]; then
         fi
     done
     printf -v fix_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-fix-claude"
+    # The nested `bash -c` program is shell input too, so it must be assembled
+    # from the same shell-safe values rather than from literal single quotes.
+    printf -v nix_validation_program \
+        'mkdir -p %s %s %s %s %s %s && env LEDGER_AGENT_CHECK_IN_NIX=1 HOME=%s GOCACHE=%s GOMODCACHE=%s GOPATH=%s TMPDIR=%s XDG_CACHE_HOME=%s GOLANGCI_LINT_CACHE=%s VALIDATION_RUN_ID=%s VALIDATION_RUN_DIR=%s bash %s' \
+        "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_golangci_cache" \
+        "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_cache_home" \
+        "$quoted_golangci_cache" "$quoted_run_id" "$quoted_run_dir" "$quoted_validation_tool"
     printf -v validation_cmd \
         'env -u GOROOT nix develop %q --command bash -c %q' \
         "path:$trusted_tool_worktree" \
-        "mkdir -p '$worktree_run_dir'/home '$worktree_run_dir'/go-cache '$worktree_run_dir'/go-mod-cache '$worktree_run_dir'/go-path '$worktree_run_dir'/tmp '$worktree_run_dir'/cache/golangci-lint && env LEDGER_AGENT_CHECK_IN_NIX=1 HOME='$worktree_run_dir/home' GOCACHE='$worktree_run_dir/go-cache' GOMODCACHE='$worktree_run_dir/go-mod-cache' GOPATH='$worktree_run_dir/go-path' TMPDIR='$worktree_run_dir/tmp' XDG_CACHE_HOME='$worktree_run_dir/cache' GOLANGCI_LINT_CACHE='$worktree_run_dir/cache/golangci-lint' VALIDATION_RUN_ID='$(basename "$worktree_run_dir")' VALIDATION_RUN_DIR='$worktree_run_dir' bash '$trusted_tool_worktree/scripts/agent-check-pr'"
+        "$nix_validation_program"
 fi
 
 if [[ "$bugfix_intent" == bugfix ]]; then

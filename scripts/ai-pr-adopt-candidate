@@ -90,9 +90,28 @@ for trusted_tool in ai-review-codex agent-check-pr; do
 done
 nix develop "path:$trusted_worktree" --command env -u GOROOT go -C "$trusted_worktree" build -o "$review_loop_binary" ./scripts/reviewloop
 printf -v review_cmd 'bash %q' "$trusted_worktree/scripts/ai-review-codex"
+# The run directory derives from the repository location, which may contain
+# whitespace or quoting characters such as an apostrophe, and the nested
+# `bash -c` program is shell input too. Quote every interpolated path so the
+# recipe reaches the validator intact.
+printf -v quoted_run_dir %q "$run_dir"
+printf -v quoted_run_id %q "$(basename "$run_dir")"
+printf -v quoted_home %q "$run_dir/home"
+printf -v quoted_go_cache %q "$run_dir/go-cache"
+printf -v quoted_go_mod_cache %q "$run_dir/go-mod-cache"
+printf -v quoted_go_path %q "$run_dir/go-path"
+printf -v quoted_tmp_dir %q "$run_dir/tmp"
+printf -v quoted_cache_home %q "$run_dir/cache"
+printf -v quoted_golangci_cache %q "$run_dir/cache/golangci-lint"
+printf -v quoted_validation_tool %q "$trusted_worktree/scripts/agent-check-pr"
+printf -v nix_validation_program \
+    'mkdir -p %s %s %s %s %s %s && env LEDGER_AGENT_CHECK_IN_NIX=1 HOME=%s GOCACHE=%s GOMODCACHE=%s GOPATH=%s TMPDIR=%s XDG_CACHE_HOME=%s GOLANGCI_LINT_CACHE=%s VALIDATION_RUN_ID=%s VALIDATION_RUN_DIR=%s bash %s' \
+    "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_golangci_cache" \
+    "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_cache_home" \
+    "$quoted_golangci_cache" "$quoted_run_id" "$quoted_run_dir" "$quoted_validation_tool"
 printf -v validation_cmd 'env -u GOROOT nix develop %q --command bash -c %q' \
     "path:$trusted_worktree" \
-    "mkdir -p '$run_dir'/home '$run_dir'/go-cache '$run_dir'/go-mod-cache '$run_dir'/go-path '$run_dir'/tmp '$run_dir'/cache/golangci-lint && env LEDGER_AGENT_CHECK_IN_NIX=1 HOME='$run_dir/home' GOCACHE='$run_dir/go-cache' GOMODCACHE='$run_dir/go-mod-cache' GOPATH='$run_dir/go-path' TMPDIR='$run_dir/tmp' XDG_CACHE_HOME='$run_dir/cache' GOLANGCI_LINT_CACHE='$run_dir/cache/golangci-lint' VALIDATION_RUN_ID='$(basename "$run_dir")' VALIDATION_RUN_DIR='$run_dir' bash '$trusted_worktree/scripts/agent-check-pr'"
+    "$nix_validation_program"
 
 cd "$candidate_worktree"
 [[ -z "$(git status --porcelain)" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (candidate worktree is dirty before review)"; exit 1; }
