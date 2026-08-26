@@ -19,7 +19,7 @@ import (
 // S3Storage implements Storage using Amazon S3 (or S3-compatible stores like MinIO).
 type S3Storage struct {
 	client   *s3.Client
-	uploader *manager.Uploader
+	uploader *manager.Uploader //nolint:staticcheck // manager.Uploader still needed; transfermanager migration is a separate follow-up (aws/aws-sdk-go-v2#3306)
 	bucket   string
 }
 
@@ -27,7 +27,7 @@ type S3Storage struct {
 func NewS3Storage(client *s3.Client, bucket string) *S3Storage {
 	return &S3Storage{
 		client:   client,
-		uploader: manager.NewUploader(client),
+		uploader: manager.NewUploader(client), //nolint:staticcheck // see uploader field
 		bucket:   bucket,
 	}
 }
@@ -37,7 +37,7 @@ func NewS3Storage(client *s3.Client, bucket string) *S3Storage {
 // lifts the 5 GB single-PutObject limit to the 5 TB multipart ceiling, so
 // callers can stream an object of unknown length (e.g. an io.Pipe).
 func (s *S3Storage) PutFile(ctx context.Context, key string, data io.Reader, _ int64) error {
-	_, err := s.uploader.Upload(ctx, &s3.PutObjectInput{
+	_, err := s.uploader.Upload(ctx, &s3.PutObjectInput{ //nolint:staticcheck // see uploader field
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(key),
 		Body:        data,
