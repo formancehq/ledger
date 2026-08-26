@@ -68,6 +68,28 @@ var _ = Context("Ledger engine tests", func() {
 				})
 				Expect(err).To(BeNil())
 
+				By("keeping the ledger initializing when an atomic bulk rolls back", func() {
+					bulkResponse, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateBulk(ctx, operations.V2CreateBulkRequest{
+						Atomic: pointer.For(true),
+						Ledger: createLedgerRequest.Ledger,
+						RequestBody: []components.V2BulkElement{
+							components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
+								Data: &components.V2PostTransaction{
+									Postings: []components.V2Posting{{
+										Source:      "payments:1234",
+										Destination: "bank",
+										Asset:       "EUR/2",
+										Amount:      big.NewInt(1),
+									}},
+								},
+							}),
+						},
+					})
+					Expect(err).To(Succeed())
+					Expect(bulkResponse.V2BulkResponse.Data).To(HaveLen(1))
+					Expect(bulkResponse.V2BulkResponse.Data[0].V2BulkElementResultError.ErrorCode).To(Equal(string(components.V2ErrorsEnumInsufficientFund)))
+				})
+
 				secondBatch := `{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"merchants:777","destination":"payouts:987","amount":8500,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:08:24.955784Z","id":2,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:08:24.985834Z","idempotencyKey":"","id":2,"hash":"WgOIXsh8x0pGSi//jHjQ78RF9YnFRslsbp2aOHiG43U="}
 {"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"platform","destination":"refunds:4567","amount":5000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:08:39.301709Z","id":3,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:08:39.330919Z","idempotencyKey":"","id":3,"hash":"JblhzL91s+DTcd53YTV2laC4QBRe5oDDoz9CzsX5Pro="}
 {"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"refunds:4567","destination":"world","amount":5000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:11:02.413499Z","id":4,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:11:02.434078Z","idempotencyKey":"","id":4,"hash":"Y8TBz5GhxTWW9D/wRXHPcIlrYFPQjroiIBWX1q6SJJo="}`
@@ -83,6 +105,28 @@ var _ = Context("Ledger engine tests", func() {
 				})
 				Expect(err).To(Succeed())
 				Expect(logsFromOriginalLedger.V2LogsCursorResponse.Cursor.Data).To(HaveLen(5))
+
+				By("creating an atomic bulk after the import", func() {
+					bulkResponse, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateBulk(ctx, operations.V2CreateBulkRequest{
+						Atomic: pointer.For(true),
+						Ledger: createLedgerRequest.Ledger,
+						RequestBody: []components.V2BulkElement{
+							components.CreateV2BulkElementCreateTransaction(components.V2BulkElementCreateTransaction{
+								Data: &components.V2PostTransaction{
+									Postings: []components.V2Posting{{
+										Source:      "world",
+										Destination: "bank",
+										Asset:       "USD",
+										Amount:      big.NewInt(100),
+									}},
+								},
+							}),
+						},
+					})
+					Expect(err).To(Succeed())
+					Expect(bulkResponse.V2BulkResponse.Data).To(HaveLen(1))
+					Expect(bulkResponse.V2BulkResponse.Data[0].V2BulkElementResultCreateTransaction.Data.ID).To(Equal(big.NewInt(5)))
+				})
 			})
 		})
 		When("importing data from 2.1", func() {

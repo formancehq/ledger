@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"sync"
@@ -17,20 +18,30 @@ import (
 
 type controllerFacade struct {
 	ledgercontroller.Controller
+	state             *ledgerState
+	tx                *bun.Tx
+	stateTransitioned bool
+}
+
+type ledgerState struct {
 	mu     sync.RWMutex
 	ledger ledger.Ledger
 }
 
 func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func(ctrl ledgercontroller.Controller) error) error {
-	c.mu.RLock()
-	l := c.ledger
-	c.mu.RUnlock()
+	c.state.mu.RLock()
+	l := c.state.ledger
+	c.state.mu.RUnlock()
 
 	if l.State == ledger.StateInUse {
 		return fn(c.Controller)
 	}
 
-	ctrl, tx, err := c.BeginTX(ctx, nil)
+	if c.tx != nil {
+		return c.handleStateInTransaction(ctx, l, fn)
+	}
+
+	ctrl, _, err := c.beginTX(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -38,10 +49,32 @@ func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func
 		_ = ctrl.Rollback(ctx)
 	}()
 
-	if err := withLock(ctx, ctrl, func(ctrl ledgercontroller.Controller, conn bun.IDB) error {
+	if err := ctrl.handleStateInTransaction(ctx, l, fn); err != nil {
+		return err
+	}
+
+	if !dryRun {
+		if err := ctrl.Commit(ctx); err != nil {
+			return fmt.Errorf("failed to commit transaction: %w", err)
+		}
+	} else {
+		if err := ctrl.Rollback(ctx); err != nil {
+			return fmt.Errorf("failed to rollback transaction: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (c *controllerFacade) handleStateInTransaction(ctx context.Context, l ledger.Ledger, fn func(ctrl ledgercontroller.Controller) error) error {
+	if c.stateTransitioned {
+		return fn(c.Controller)
+	}
+
+	return withLock(ctx, c.Controller, func(ctrl ledgercontroller.Controller, conn bun.IDB) error {
 
 		// todo: remove that in a later version
-		ret, err := tx.NewUpdate().
+		ret, err := c.tx.NewUpdate().
 			Model(&l).
 			Set("state = ?", ledger.StateInUse).
 			Where("id = ? and state = ?", l.ID, ledger.StateInitializing).
@@ -56,7 +89,7 @@ func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func
 		}
 
 		if rowsAffected > 0 {
-			_, err := tx.NewRaw(
+			_, err := c.tx.NewRaw(
 				fmt.Sprintf(`
 					select setval(
 						'"%s"."transaction_id_%d"', 
@@ -70,7 +103,7 @@ func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func
 				return fmt.Errorf("failed to update transactions sequence value: %w", err)
 			}
 
-			_, err = tx.NewRaw(
+			_, err = c.tx.NewRaw(
 				fmt.Sprintf(`
 					select setval(
 						'"%s"."log_id_%d"', 
@@ -89,26 +122,46 @@ func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func
 			return err
 		}
 
+		c.stateTransitioned = true
 		return nil
-	}); err != nil {
+	})
+}
+
+func (c *controllerFacade) beginTX(ctx context.Context, options *sql.TxOptions) (*controllerFacade, *bun.Tx, error) {
+	ctrl, tx, err := c.Controller.BeginTX(ctx, options)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return &controllerFacade{
+		Controller: ctrl,
+		state:      c.state,
+		tx:         tx,
+	}, tx, nil
+}
+
+func (c *controllerFacade) BeginTX(ctx context.Context, options *sql.TxOptions) (ledgercontroller.Controller, *bun.Tx, error) {
+	// Keep the state tracker around the transactional controller so atomic bulks
+	// cannot bypass the initializing-to-in-use transition and sequence reset.
+	return c.beginTX(ctx, options)
+}
+
+func (c *controllerFacade) Commit(ctx context.Context) error {
+	if err := c.Controller.Commit(ctx); err != nil {
 		return err
 	}
 
-	if !dryRun {
-		if err := ctrl.Commit(ctx); err != nil {
-			return fmt.Errorf("failed to commit transaction: %w", err)
-		}
-
-		c.mu.Lock()
-		c.ledger.State = ledger.StateInUse
-		c.mu.Unlock()
-	} else {
-		if err := ctrl.Rollback(ctx); err != nil {
-			return fmt.Errorf("failed to rollback transaction: %w", err)
-		}
+	if c.stateTransitioned {
+		c.state.mu.Lock()
+		c.state.ledger.State = ledger.StateInUse
+		c.state.mu.Unlock()
 	}
 
 	return nil
+}
+
+func (c *controllerFacade) Rollback(ctx context.Context) error {
+	return c.Controller.Rollback(ctx)
 }
 
 func (c *controllerFacade) CreateTransaction(ctx context.Context, parameters ledgercontroller.Parameters[ledgercontroller.CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, bool, error) {
@@ -211,15 +264,19 @@ func (c *controllerFacade) InsertSchema(ctx context.Context, parameters ledgerco
 }
 
 func (c *controllerFacade) Import(ctx context.Context, stream chan ledger.Log) error {
+	c.state.mu.RLock()
+	l := c.state.ledger
+	c.state.mu.RUnlock()
+
 	return withLock(ctx, c.Controller, func(ctrl ledgercontroller.Controller, conn bun.IDB) error {
 		// todo: remove that in a later version
-		if err := conn.NewSelect().Model(&c.ledger).
-			Where("id = ?", c.ledger.ID).
+		if err := conn.NewSelect().Model(&l).
+			Where("id = ?", l.ID).
 			Scan(ctx); err != nil {
 			return err
 		}
 
-		if c.ledger.State != ledger.StateInitializing {
+		if l.State != ledger.StateInitializing {
 			return ledgercontroller.NewErrImport(errors.New("ledger is not in initializing state"))
 		}
 
@@ -232,7 +289,9 @@ var _ ledgercontroller.Controller = (*controllerFacade)(nil)
 func newLedgerStateTracker(ctrl ledgercontroller.Controller, ledger ledger.Ledger) ledgercontroller.Controller {
 	return &controllerFacade{
 		Controller: ctrl,
-		ledger:     ledger,
+		state: &ledgerState{
+			ledger: ledger,
+		},
 	}
 }
 

@@ -29,6 +29,28 @@ func TestLogsInsert(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
+	t.Run("generated id collision returns an error", func(t *testing.T) {
+		t.Parallel()
+
+		store := newLedgerStore(t)
+		imported := ledger.NewLog(ledger.CreatedTransaction{
+			Transaction:     ledger.NewTransaction().WithID(1),
+			AccountMetadata: ledger.AccountMetadata{},
+		}).WithID(1)
+		require.NoError(t, store.InsertLog(ctx, &imported))
+
+		generated := ledger.NewLog(ledger.CreatedTransaction{
+			Transaction:     ledger.NewTransaction().WithID(2),
+			AccountMetadata: ledger.AccountMetadata{},
+		})
+		var err error
+		require.NotPanics(t, func() {
+			err = store.InsertLog(ctx, &generated)
+		})
+		require.Error(t, err)
+		require.Nil(t, generated.ID)
+	})
+
 	t.Run("check hash against core", func(t *testing.T) {
 		// Insert a first tx (we don't have any previous hash to use at this moment)
 		store := newLedgerStore(t)
