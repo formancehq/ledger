@@ -104,6 +104,14 @@ printf -v quoted_tmp_dir %q "$run_dir/tmp"
 printf -v quoted_cache_home %q "$run_dir/cache"
 printf -v quoted_golangci_cache %q "$run_dir/cache/golangci-lint"
 printf -v quoted_validation_tool %q "$trusted_worktree/scripts/agent-check-pr"
+printf -v quoted_agent_just %q "$trusted_worktree/scripts/agent-just"
+printf -v normalization_program \
+    'mkdir -p %s %s %s %s %s %s && env HOME=%s GOCACHE=%s GOMODCACHE=%s GOPATH=%s TMPDIR=%s XDG_CACHE_HOME=%s GOLANGCI_LINT_CACHE=%s VALIDATION_RUN_ID=%s VALIDATION_RUN_DIR=%s bash %s pre-commit' \
+    "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_golangci_cache" \
+    "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_cache_home" \
+    "$quoted_golangci_cache" "$quoted_run_id" "$quoted_run_dir" "$quoted_agent_just"
+printf -v normalization_cmd 'env -u GOROOT nix develop %q --command bash -c %q' \
+    "path:$trusted_worktree" "$normalization_program"
 printf -v nix_validation_program \
     'mkdir -p %s %s %s %s %s %s && env LEDGER_AGENT_CHECK_IN_NIX=1 HOME=%s GOCACHE=%s GOMODCACHE=%s GOPATH=%s TMPDIR=%s XDG_CACHE_HOME=%s GOLANGCI_LINT_CACHE=%s VALIDATION_RUN_ID=%s VALIDATION_RUN_DIR=%s bash %s' \
     "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_golangci_cache" \
@@ -117,7 +125,7 @@ cd "$candidate_worktree"
 [[ -z "$(git status --porcelain)" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (candidate worktree is dirty before review)"; exit 1; }
 
 # An adopted SHA must already be normalized; never mutate it silently.
-bash "$trusted_worktree/scripts/agent-just" pre-commit
+bash -c "$normalization_cmd"
 if [[ -n "$(git status --porcelain)" ]]; then
     echo "CANDIDATE_NEEDS_NORMALIZATION"
     echo "AI_PR_ADOPT_RESULT: REFUSED (candidate is not normalized)"
