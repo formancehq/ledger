@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -1649,6 +1650,8 @@ func indexIDFromBackfillEntry(e readstore.BackfillEntry) *commonpb.IndexID {
 // by the indexbuilder, so every read uses the Compile framework — boolean
 // filters and date ranges are honored on the single code path.
 func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+	userFiltered := filter != nil
+
 	handle, releaseHold, err := query.OpenQueryHandle(ctrl.readStore, ctrl.store, filter, commonpb.QueryTarget_QUERY_TARGET_LOGS)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -1731,6 +1734,10 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		return nil, fmt.Errorf("paginating log filter: %w", paginateErr)
 	}
 
+	if len(logIDs) == 0 && !userFiltered {
+		ctrl.reportEmptyLogPageAnomaly(handle, snap, kb, ledgerInfo, filter, afterSequence, mainSeq)
+	}
+
 	c, err := query.ReadLedgerLogsCompiled(ctx, handle, ctrl.coldReader, snap, ledgerInfo.GetName(), logIDs)
 	if err != nil {
 		releaseHold()
@@ -1740,6 +1747,102 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 	}
 
 	return cursor.NewClosingCursor(c, releasingCloser{handle: handle, release: releaseHold}), nil
+}
+
+// reportEmptyLogPageAnomaly fires when an unfiltered ListLogs page comes back
+// empty even though the ledger's boundary row — read through the same
+// mainstore handle — says logs beyond the cursor exist. It re-scans the same
+// mainstore-handle/readstore-snapshot pair to attribute the loss: raw_rows
+// counts index entries before the main-horizon filter, kept_rows after it.
+// raw_rows==0 means the snapshot pair lacks the rows; raw_rows>0 with
+// kept_rows==0 means the horizon filter rejected them; kept_rows>0 means the
+// same pair serves rows on a second pass and iteration is unstable.
+//
+// compiledFilter is the cursor-translated filter (LogId > afterSequence), so
+// both re-scans see exactly what the empty page saw. An empty page with a
+// user filter is explainable by the filter and is out of scope here.
+func (ctrl *DefaultController) reportEmptyLogPageAnomaly(
+	handle *dal.ReadHandle,
+	snap dal.PebbleReader,
+	kb *dal.KeyBuilder,
+	ledgerInfo *commonpb.LedgerInfo,
+	compiledFilter *commonpb.QueryFilter,
+	afterSequence, mainSeq uint64,
+) {
+	boundaries, err := ctrl.attrs.Boundary.Get(handle, domain.LedgerKey{Name: ledgerInfo.GetName()}.Bytes())
+	if err != nil || boundaries == nil {
+		return
+	}
+
+	nextLogID := boundaries.GetNextLogId()
+	if nextLogID == 0 || afterSequence+1 >= nextLogID {
+		return
+	}
+
+	details := map[string]any{
+		"ledger":         ledgerInfo.GetName(),
+		"after_sequence": afterSequence,
+		"next_log_id":    nextLogID,
+		"main_seq":       mainSeq,
+	}
+
+	if readSeq, err := ctrl.readStore.LastIndexedSequenceFrom(snap); err == nil {
+		details["read_store_seq"] = readSeq
+	} else {
+		details["read_store_seq_err"] = err.Error()
+	}
+
+	details["raw_rows"], details["raw_first"] = ctrl.countLogScan(handle, snap, kb, ledgerInfo, compiledFilter, mainSeq, nil)
+
+	keep := query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_LOGS, handle, snap, ledgerInfo.GetName(), mainSeq)
+	details["kept_rows"], details["kept_first"] = ctrl.countLogScan(handle, snap, kb, ledgerInfo, compiledFilter, mainSeq, keep)
+
+	assert.Unreachable("log query served empty page despite newer logs", details)
+	ctrl.logger.Errorf("log query served empty page despite newer logs: %v", details)
+}
+
+// countLogScan compiles the log filter against the given store pair and
+// returns how many entity ids a bounded scan yields (capped at 5) plus the
+// first id in hex. A compile or iteration error returns -1 and the error text.
+// keep, when non-nil, wraps the scan in a FilterIterator (the main-horizon
+// filter); nil counts the raw index entries.
+func (ctrl *DefaultController) countLogScan(
+	handle *dal.ReadHandle,
+	snap dal.PebbleReader,
+	kb *dal.KeyBuilder,
+	ledgerInfo *commonpb.LedgerInfo,
+	filter *commonpb.QueryFilter,
+	mainSeq uint64,
+	keep func([]byte) (bool, error),
+) (int, string) {
+	compiled, err := query.Compile(
+		snap, kb, filter,
+		commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		ledgerInfo.GetName(), nil, nil,
+		ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), nil, handle, mainSeq,
+	)
+	if err != nil {
+		return -1, err.Error()
+	}
+
+	var iter readstore.EntityIterator = compiled
+	if keep != nil {
+		iter = readstore.NewFilterIterator(compiled, keep)
+	}
+
+	defer iter.Close()
+
+	ids, _, err := readstore.PaginateForward(iter, 5, nil)
+	if err != nil {
+		return -1, err.Error()
+	}
+
+	first := ""
+	if len(ids) > 0 {
+		first = fmt.Sprintf("%x", ids[0])
+	}
+
+	return len(ids), first
 }
 
 // ListAuditEntries returns a cursor over audit entries against the live store,
