@@ -3,10 +3,12 @@
 package test_suite
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"slices"
 	"sync"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -34,6 +36,16 @@ var _ = Context("Ledger application multiple instance tests", func() {
 	When("starting multiple instances of the service", func() {
 		var allServers []*testservice.Service
 		BeforeEach(func() {
+			allServers = make([]*testservice.Service, 0, nbServer)
+			DeferCleanup(func() {
+				for _, server := range allServers {
+					stopContext, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					err := server.Stop(stopContext)
+					cancel()
+					Expect(err).To(Succeed())
+				}
+			})
+
 			servers := make(chan *testservice.Service, nbServer)
 			wg := sync.WaitGroup{}
 			wg.Add(nbServer)

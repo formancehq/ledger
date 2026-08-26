@@ -12,11 +12,12 @@ import (
 
 type ControllerWithEvents struct {
 	Controller
-	ledger   ledger.Ledger
-	listener Listener
-	atCommit []func()
-	parent   *ControllerWithEvents
-	hasTx    bool
+	ledger    ledger.Ledger
+	listener  Listener
+	atCommit  []func()
+	parent    *ControllerWithEvents
+	eventSink *ControllerWithEvents
+	hasTx     bool
 }
 
 func NewControllerWithEvents(ledger ledger.Ledger, underlying Controller, listener Listener) *ControllerWithEvents {
@@ -32,8 +33,13 @@ func (c *ControllerWithEvents) handleEvent(ctx context.Context, fn func()) {
 		fn()
 		return
 	}
-	if c.parent != nil && c.parent.hasTx {
-		c.parent.handleEvent(ctx, fn)
+
+	c.queueEvent(fn)
+}
+
+func (c *ControllerWithEvents) queueEvent(fn func()) {
+	if c.eventSink != nil {
+		c.eventSink.queueEvent(fn)
 		return
 	}
 
@@ -195,6 +201,7 @@ func (c *ControllerWithEvents) LockLedger(ctx context.Context) (Controller, bun.
 		Controller: ctrl,
 		listener:   c.listener,
 		parent:     c,
+		eventSink:  c,
 		hasTx:      c.hasTx,
 	}, db, release, nil
 }
@@ -205,9 +212,16 @@ func (c *ControllerWithEvents) Commit(ctx context.Context) error {
 		return err
 	}
 
-	for _, f := range c.atCommit {
-		f()
+	if c.parent != nil && c.parent.hasTx {
+		for _, f := range c.atCommit {
+			c.parent.queueEvent(f)
+		}
+	} else {
+		for _, f := range c.atCommit {
+			f()
+		}
 	}
+	c.atCommit = nil
 
 	return nil
 }

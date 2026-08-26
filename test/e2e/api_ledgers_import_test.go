@@ -68,6 +68,23 @@ var _ = Context("Ledger engine tests", func() {
 				})
 				Expect(err).To(BeNil())
 
+				By("dry running a transaction after the partial import", func() {
+					transaction, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+						Ledger: createLedgerRequest.Ledger,
+						DryRun: pointer.For(true),
+						V2PostTransaction: components.V2PostTransaction{
+							Postings: []components.V2Posting{{
+								Source:      "world",
+								Destination: "dry-run",
+								Asset:       "USD",
+								Amount:      big.NewInt(1),
+							}},
+						},
+					})
+					Expect(err).To(Succeed())
+					Expect(transaction.V2CreateTransactionResponse.Data.ID).To(Equal(big.NewInt(2)))
+				})
+
 				By("keeping the ledger initializing when an atomic bulk rolls back", func() {
 					bulkResponse, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateBulk(ctx, operations.V2CreateBulkRequest{
 						Atomic: pointer.For(true),
@@ -138,6 +155,31 @@ var _ = Context("Ledger engine tests", func() {
 					Expect(bulkResponse.V2BulkResponse.Data).To(HaveLen(1))
 					Expect(bulkResponse.V2BulkResponse.Data[0].V2BulkElementResultCreateTransaction.Data.ID).To(Equal(big.NewInt(5)))
 				})
+			})
+		})
+		When("importing only an id zero log", func() {
+			It("starts generated ids at one", func(specContext SpecContext) {
+				importedLog := `{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[{"source":"world","destination":"payments:1234","amount":10000,"asset":"EUR/2"}],"metadata":{},"timestamp":"2025-02-17T12:07:41.522336Z","id":0,"reverted":false},"accountMetadata":{}},"date":"2025-02-17T12:07:41.534898Z","idempotencyKey":"","id":0,"hash":"g489GFReBqquboEjkB95X3OU6mheMzgiu63PdSTfMuM="}`
+
+				_, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.ImportLogs(ctx, operations.V2ImportLogsRequest{
+					Ledger:              createLedgerRequest.Ledger,
+					V2ImportLogsRequest: []byte(importedLog),
+				})
+				Expect(err).To(Succeed())
+
+				transaction, err := Wait(specContext, DeferClient(testServer)).Ledger.V2.CreateTransaction(ctx, operations.V2CreateTransactionRequest{
+					Ledger: createLedgerRequest.Ledger,
+					V2PostTransaction: components.V2PostTransaction{
+						Postings: []components.V2Posting{{
+							Source:      "world",
+							Destination: "bank",
+							Asset:       "USD",
+							Amount:      big.NewInt(1),
+						}},
+					},
+				})
+				Expect(err).To(Succeed())
+				Expect(transaction.V2CreateTransactionResponse.Data.ID).To(Equal(big.NewInt(1)))
 			})
 		})
 		When("importing data from 2.1", func() {

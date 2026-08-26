@@ -20,6 +20,7 @@ type controllerFacade struct {
 	ledgercontroller.Controller
 	state             *ledgerState
 	tx                *bun.Tx
+	parent            *controllerFacade
 	stateTransitioned bool
 }
 
@@ -37,16 +38,13 @@ func (c *controllerFacade) handleState(ctx context.Context, dryRun bool, fn func
 		return fn(c.Controller)
 	}
 
-	// A dry run must not participate in the initializing-to-in-use transition,
-	// including when the caller already opened a surrounding transaction.
-	if dryRun {
-		return fn(c.Controller)
-	}
-
-	if c.tx != nil {
+	if c.tx != nil && !dryRun {
 		return c.handleStateInTransaction(ctx, l, fn)
 	}
 
+	// Dry runs still need the post-import sequence reset. Use a dedicated
+	// transaction (or a nested savepoint) so the state transition is rolled back
+	// while PostgreSQL keeps the non-transactional sequence update.
 	ctrl, _, err := c.beginTX(ctx, nil)
 	if err != nil {
 		return err
@@ -98,10 +96,11 @@ func (c *controllerFacade) handleStateInTransaction(ctx context.Context, l ledge
 			_, err := c.tx.NewRaw(
 				fmt.Sprintf(`
 					select setval(
-						'"%s"."transaction_id_%d"', 
-						(
-							select max(id) from "%s".transactions where ledger = '%s'
-						)::bigint
+						'"%s"."transaction_id_%d"',
+						coalesce((
+							select max(id) + 1 from "%s".transactions where ledger = '%s'
+						), 1)::bigint,
+						false
 					)
 				`, l.Bucket, l.ID, l.Bucket, l.Name),
 			).Exec(ctx)
@@ -112,10 +111,11 @@ func (c *controllerFacade) handleStateInTransaction(ctx context.Context, l ledge
 			_, err = c.tx.NewRaw(
 				fmt.Sprintf(`
 					select setval(
-						'"%s"."log_id_%d"', 
-						(
-							select max(id) from "%s".logs where ledger = '%s'
-						)::bigint
+						'"%s"."log_id_%d"',
+						coalesce((
+							select max(id) + 1 from "%s".logs where ledger = '%s'
+						), 1)::bigint,
+						false
 					)
 				`, l.Bucket, l.ID, l.Bucket, l.Name),
 			).Exec(ctx)
@@ -140,9 +140,11 @@ func (c *controllerFacade) beginTX(ctx context.Context, options *sql.TxOptions) 
 	}
 
 	return &controllerFacade{
-		Controller: ctrl,
-		state:      c.state,
-		tx:         tx,
+		Controller:        ctrl,
+		state:             c.state,
+		tx:                tx,
+		parent:            c,
+		stateTransitioned: c.stateTransitioned,
 	}, tx, nil
 }
 
@@ -158,9 +160,15 @@ func (c *controllerFacade) Commit(ctx context.Context) error {
 	}
 
 	if c.stateTransitioned {
-		c.state.mu.Lock()
-		c.state.ledger.State = ledger.StateInUse
-		c.state.mu.Unlock()
+		if c.parent != nil && c.parent.tx != nil {
+			// Committing a nested transaction only releases its savepoint. Defer
+			// publishing the state transition until the root transaction commits.
+			c.parent.stateTransitioned = true
+		} else {
+			c.state.mu.Lock()
+			c.state.ledger.State = ledger.StateInUse
+			c.state.mu.Unlock()
+		}
 	}
 
 	return nil
