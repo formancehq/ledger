@@ -295,6 +295,10 @@ esac
 set -euo pipefail
 source_root=""
 output=""
+if [[ " $* " == *" --command bash -c "* ]]; then
+    eval "${@: -1}"
+    exit $?
+fi
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -C)
