@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -14,10 +15,14 @@ func TestWaitForRemovalAppliedKeepsAdmissionBarrierAfterCallerStopsWaiting(t *te
 	t.Parallel()
 
 	setup := newTestApplierSetup(t)
+	runDone := make(chan struct{})
+	t.Cleanup(func() { close(runDone) })
+
 	n := &Node{
 		fsm:        setup.fsm,
 		membership: newTestMembership(t),
 		logger:     logging.Testing(),
+		runDone:    runDone,
 	}
 
 	instanceID := []byte("0123456789abcdef")
@@ -42,6 +47,38 @@ func TestWaitForRemovalAppliedKeepsAdmissionBarrierAfterCallerStopsWaiting(t *te
 	require.False(t, n.isRemovalPending(3, otherInstance),
 		"a fresh pod identity at the reused ordinal is not covered by the old removal barrier")
 	require.False(t, errors.Is(err, ErrNodeNotInCluster))
+}
+
+func TestWaitForRemovalAppliedClearsCanceledBarrierAfterDurableApply(t *testing.T) {
+	t.Parallel()
+
+	setup := newTestApplierSetup(t)
+	runDone := make(chan struct{})
+	t.Cleanup(func() { close(runDone) })
+
+	n := &Node{
+		fsm:        setup.fsm,
+		membership: newTestMembership(t),
+		logger:     logging.Testing(),
+		runDone:    runDone,
+	}
+
+	instanceID := []byte("0123456789abcdef")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	require.Error(t, n.waitForRemovalApplied(ctx, 3, instanceID, 1))
+	require.True(t, n.isRemovalPending(3, instanceID))
+
+	entry, _ := makeCreateLedgerEntry(t, 1, "removal-barrier-cleanup")
+	setup.applyEntry(t, context.Background(), entry)
+
+	require.Eventually(t, func() bool {
+		_, pending := n.pendingRemovals.Load(3)
+
+		return !pending
+	}, time.Second, 10*time.Millisecond,
+		"the node-local barrier must be cleared after the committed index is durable")
 }
 
 func TestWaitForRemovalAppliedWithoutInstanceIDStillWaitsForFSM(t *testing.T) {

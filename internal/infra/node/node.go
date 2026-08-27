@@ -224,7 +224,7 @@ type Node struct {
 	// re-admitted while its durable tombstone is still queued in the async FSM
 	// applier. Entries are admission-only node-local guards; committed apply is
 	// still deterministic and the replicated tombstone remains authoritative.
-	pendingRemovals SyncMap[uint64, pendingRemoval]
+	pendingRemovals SyncMap[uint64, *pendingRemoval]
 
 	// confChangeMu serializes external ConfChange operations (AddLearner,
 	// RemoveNode, PromoteLearner) so that only one proposal is in-flight at a
@@ -2620,11 +2620,14 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 // admission barrier or tombstone verification.
 func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, instanceID []byte, committedIndex uint64) error {
 	verifyTombstone := len(instanceID) == 16
+	var pending *pendingRemoval
+
 	if verifyTombstone {
-		node.pendingRemovals.Store(nodeID, pendingRemoval{
+		pending = &pendingRemoval{
 			instanceID:   bytes.Clone(instanceID),
 			appliedIndex: committedIndex,
-		})
+		}
+		node.pendingRemovals.Store(nodeID, pending)
 	}
 
 	node.logger.WithFields(map[string]any{
@@ -2633,6 +2636,10 @@ func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, inst
 	}).Infof("RemoveNode committed; waiting for durable FSM application")
 
 	if err := node.fsm.WaitForApplied(ctx, committedIndex); err != nil {
+		if pending != nil {
+			node.schedulePendingRemovalCleanup(nodeID, pending)
+		}
+
 		node.logger.WithFields(map[string]any{
 			"error":         err,
 			"removedNodeID": nodeID,
@@ -2683,7 +2690,7 @@ func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, inst
 		}
 	}
 
-	node.pendingRemovals.Delete(nodeID)
+	node.pendingRemovals.CompareAndDelete(nodeID, pending)
 	node.logger.WithFields(map[string]any{
 		"removedNodeID": nodeID,
 		"raftIndex":     committedIndex,
@@ -2692,11 +2699,52 @@ func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, inst
 	return nil
 }
 
+// schedulePendingRemovalCleanup keeps the admission barrier independent from
+// the RPC lifecycle. Once the committed removal is durable, the replicated
+// tombstone becomes authoritative and the node-local guard must be cleared so
+// a later forget-removed can re-admit the same identity. CompareAndDelete
+// prevents an older cleanup from deleting a newer removal barrier for a reused
+// node ID.
+func (node *Node) schedulePendingRemovalCleanup(nodeID uint64, pending *pendingRemoval) {
+	cleanupCtx, cancel := context.WithCancel(context.Background())
+
+	if node.runDone != nil {
+		go func() {
+			select {
+			case <-node.runDone:
+				cancel()
+			case <-cleanupCtx.Done():
+			}
+		}()
+	}
+
+	go func() {
+		defer cancel()
+
+		if err := node.fsm.WaitForApplied(cleanupCtx, pending.appliedIndex); err != nil {
+			node.logger.WithFields(map[string]any{
+				"error":         err,
+				"removedNodeID": nodeID,
+				"raftIndex":     pending.appliedIndex,
+			}).Infof("Stopped waiting to clear pending removal barrier")
+
+			return
+		}
+
+		if node.pendingRemovals.CompareAndDelete(nodeID, pending) {
+			node.logger.WithFields(map[string]any{
+				"removedNodeID": nodeID,
+				"raftIndex":     pending.appliedIndex,
+			}).Infof("Durable removal applied; cleared pending admission barrier")
+		}
+	}()
+}
+
 // isRemovalPending reports whether the same member identity has a committed
-// removal whose tombstone has not yet been verified. The entry is deliberately
-// retained after a cancelled RPC: failing closed is required because an apply
-// delay must never let the removed live pod rejoin. A successful waiter deletes
-// it only after reading the durable tombstone.
+// removal whose tombstone has not yet become durable. After a cancelled RPC,
+// the entry remains until the background waiter observes the committed index:
+// failing closed is required because an apply delay must never let the removed
+// live pod rejoin. The replicated tombstone is authoritative after that point.
 func (node *Node) isRemovalPending(nodeID uint64, instanceID []byte) bool {
 	pending, ok := node.pendingRemovals.Load(nodeID)
 
