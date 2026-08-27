@@ -232,6 +232,7 @@ func NewFetchFileRequestListReader(s []*FetchFileRequest) FetchFileRequestListRe
 type FetchFileResponseReader interface {
 	GetData() []byte
 	GetEof() bool
+	GetSha256() string
 	Mutate() *FetchFileResponse
 }
 
@@ -243,6 +244,10 @@ func (r *fetchFileResponseReadonly) GetData() []byte {
 
 func (r *fetchFileResponseReadonly) GetEof() bool {
 	return (*FetchFileResponse)(r).GetEof()
+}
+
+func (r *fetchFileResponseReadonly) GetSha256() string {
+	return (*FetchFileResponse)(r).GetSha256()
 }
 
 func (r *fetchFileResponseReadonly) Mutate() *FetchFileResponse {
@@ -500,7 +505,6 @@ func NewSnapshotManifestListReader(s []*SnapshotManifest) SnapshotManifestListRe
 type FileEntryReader interface {
 	GetPath() string
 	GetSize() uint64
-	GetSha256() string
 	Mutate() *FileEntry
 }
 
@@ -512,10 +516,6 @@ func (r *fileEntryReadonly) GetPath() string {
 
 func (r *fileEntryReadonly) GetSize() uint64 {
 	return (*FileEntry)(r).GetSize()
-}
-
-func (r *fileEntryReadonly) GetSha256() string {
-	return (*FileEntry)(r).GetSha256()
 }
 
 func (r *fileEntryReadonly) Mutate() *FileEntry {

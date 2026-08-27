@@ -31,6 +31,7 @@ When current code and authoritative documentation disagree, stop treating the do
 | `internal/storage/usagestore/**` | relevant usage-builder/subsystem docs plus `docs/technical/architecture/audit-vs-technical-state.md` when integrity/rebuild semantics change |
 | `internal/application/ctrl/**`, `internal/query/**` | `docs/technical/architecture/subsystems/read-path/` |
 | `internal/adapter/grpc/**` | `docs/technical/architecture/subsystems/api/`, `docs/technical/contributing/api-comparison.md` |
+| Snapshot transfer (`internal/adapter/grpc/file_streaming.go`, `internal/adapter/grpc/server_snapshot.go`, `internal/application/ctrl/file_fetcher.go`, `internal/application/ctrl/file_receiver.go`, `internal/application/ctrl/snapshot_fetcher.go`) | `docs/technical/architecture/subsystems/storage/follower-sync.md`, `docs/technical/contributing/testing.md`; also read `docs/technical/architecture/subsystems/api/auth.md` when changing the RPC trust boundary |
 | `internal/adapter/http/**`, `openapi.yml` | `docs/technical/architecture/subsystems/api/`, `docs/technical/contributing/api-comparison.md` |
 | `internal/infra/node/**`, `internal/infra/transport/**`, `internal/infra/membership/**` | `docs/technical/architecture/subsystems/consensus/` |
 | `internal/infra/coldstorage/**`, `internal/infra/receipt/**`, `internal/application/backup/**` | `docs/technical/architecture/subsystems/chapters/`, relevant `docs/ops/` backup/restore docs |
