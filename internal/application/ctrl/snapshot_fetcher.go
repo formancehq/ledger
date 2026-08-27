@@ -36,6 +36,7 @@ const (
 // grpcSnapshotFetcher implements state.SnapshotFetcher using the session-based gRPC protocol.
 type grpcSnapshotFetcher struct {
 	client         snapshotpb.SnapshotServiceClient
+	logger         logging.Logger
 	parallelism    int
 	retryCount     int
 	fileRetryCount int
@@ -75,7 +76,7 @@ func isSessionExpired(err error) bool {
 }
 
 func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir string, progress *state.SyncProgress, minAppliedIndex uint64) (uint64, error) {
-	logger := logging.FromContext(ctx)
+	logger := f.logger.WithContext(ctx)
 
 	for attempt := range f.retryCount {
 		if attempt > 0 {
@@ -128,7 +129,7 @@ func (f *grpcSnapshotFetcher) FetchSnapshot(ctx context.Context, targetDir strin
 // briefly outlive the call while it drains gRPC internals; that is a
 // bounded leak, and the caller is unblocked to retry a fresh session.
 func (f *grpcSnapshotFetcher) prepareSnapshotWithHeartbeat(ctx context.Context, minAppliedIndex uint64) (*snapshotpb.PrepareSnapshotResponse, error) {
-	logger := logging.FromContext(ctx)
+	logger := f.logger.WithContext(ctx)
 
 	callCtx, cancel := context.WithTimeout(ctx, prepareSnapshotTimeout)
 	defer cancel()
@@ -168,7 +169,7 @@ func (f *grpcSnapshotFetcher) prepareSnapshotWithHeartbeat(ctx context.Context, 
 }
 
 func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir string, progress *state.SyncProgress, minAppliedIndex uint64) (uint64, error) {
-	logger := logging.FromContext(ctx)
+	logger := f.logger.WithContext(ctx)
 
 	logger.WithFields(map[string]any{
 		"minAppliedIndex": minAppliedIndex,
@@ -284,6 +285,7 @@ func sessionBackoffWait(ctx context.Context, attempt int) error {
 // grpcSnapshotFetcherProvider provides snapshot fetchers for peers.
 type grpcSnapshotFetcherProvider struct {
 	transport      *node.DefaultTransport
+	logger         logging.Logger
 	parallelism    int
 	retryCount     int
 	fileRetryCount int
@@ -297,6 +299,7 @@ func (p *grpcSnapshotFetcherProvider) GetForPeer(id uint64) (state.SnapshotFetch
 
 	return &grpcSnapshotFetcher{
 		client:         snapshotpb.NewSnapshotServiceClient(conn),
+		logger:         p.logger,
 		parallelism:    p.parallelism,
 		retryCount:     p.retryCount,
 		fileRetryCount: p.fileRetryCount,
@@ -304,9 +307,16 @@ func (p *grpcSnapshotFetcherProvider) GetForPeer(id uint64) (state.SnapshotFetch
 }
 
 // GRPCSnapshotFetcherProvider creates a new snapshot fetcher provider using gRPC.
-func GRPCSnapshotFetcherProvider(transport *node.DefaultTransport, parallelism, retryCount, fileRetryCount int) state.SnapshotFetcherProvider {
+//
+// The logger is injected explicitly rather than resolved through
+// logging.FromContext: the sync context originates in the applier and never
+// carries a logger, so FromContext would degrade to go-libs' bare logrus
+// stderr fallback and emit lines in a different format than the rest of the
+// process.
+func GRPCSnapshotFetcherProvider(transport *node.DefaultTransport, logger logging.Logger, parallelism, retryCount, fileRetryCount int) state.SnapshotFetcherProvider {
 	return &grpcSnapshotFetcherProvider{
 		transport:      transport,
+		logger:         logger.WithFields(map[string]any{"cmp": "snapshot-fetcher"}),
 		parallelism:    parallelism,
 		retryCount:     retryCount,
 		fileRetryCount: fileRetryCount,
