@@ -175,6 +175,87 @@ func TestApplyPosting_NotPreloaded(t *testing.T) {
 	require.Contains(t, err.Error(), "balance not preloaded")
 }
 
+func TestApplyPosting_PartialVolumeNotPreloaded(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		partialSource bool
+		input         *commonpb.Uint256
+		output        *commonpb.Uint256
+		account       string
+	}{
+		{
+			name:          "source input missing",
+			partialSource: true,
+			output:        commonpb.NewUint256FromUint64(0),
+			account:       "world",
+		},
+		{
+			name:          "source output missing",
+			partialSource: true,
+			input:         commonpb.NewUint256FromUint64(0),
+			account:       "world",
+		},
+		{
+			name:    "destination input missing",
+			output:  commonpb.NewUint256FromUint64(0),
+			account: "users:001",
+		},
+		{
+			name:    "destination output missing",
+			input:   commonpb.NewUint256FromUint64(0),
+			account: "users:001",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStore := NewMockScope(ctrl)
+			volumes := setupVolumesStub(mockStore)
+
+			sourceKey := domain.NewVolumeKey("test", "world", "USD", "")
+			destKey := domain.NewVolumeKey("test", "users:001", "USD", "")
+			completeVolume := &raftcmdpb.VolumePair{
+				Input:  commonpb.NewUint256FromUint64(0),
+				Output: commonpb.NewUint256FromUint64(0),
+			}
+			partialVolume := &raftcmdpb.VolumePair{
+				Input:  tt.input,
+				Output: tt.output,
+			}
+
+			if tt.partialSource {
+				volumes.expectGet(sourceKey, partialVolume.AsReader(), nil)
+			} else {
+				volumes.expectGet(sourceKey, completeVolume.AsReader(), nil)
+				volumes.expectGet(destKey, partialVolume.AsReader(), nil)
+			}
+
+			posting := &commonpb.Posting{
+				Source:      "world",
+				Destination: "users:001",
+				Amount:      commonpb.NewUint256FromUint64(1),
+				Asset:       "USD",
+			}
+
+			var err error
+			require.NotPanics(t, func() {
+				err = applyPosting(mockStore, "test", posting, false, nil)
+			})
+			var notPreloaded *domain.ErrBalanceNotPreloaded
+			require.ErrorAs(t, err, &notPreloaded)
+			require.Equal(t, tt.account, notPreloaded.Account)
+			require.Equal(t, "USD", notPreloaded.Asset)
+		})
+	}
+}
+
 // TestApplyPosting_AbsentVolumes_TreatedAsZero pins the EN-1378 contract:
 // a declared-but-absent volume key (Scope.GetVolume → domain.ErrNotFound)
 // is treated as a zero balance, not as an admission failure. The
