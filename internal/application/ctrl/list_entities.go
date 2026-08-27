@@ -3,6 +3,7 @@ package ctrl
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/pkg/readdiag"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -98,7 +100,14 @@ func listEntities[T interface{ ~string | ~uint64 }](
 		// from params.pebbleReader itself.
 		params.indexVersionFor = readstore.SnapshotVersionResolver(snap, params.ledgerName)
 
-		return listWithoutIndex(snap, params)
+		readdiag.Set(ctx, "aligned", false)
+
+		result, err := listWithoutIndex(snap, params)
+		if err == nil && len(result.entityIDs) == 0 {
+			reportEmptyPage(ctx, readStore, snap, params, 0)
+		}
+
+		return result, err
 	}
 
 	// The snapshot's fold cursor covers everything params.pebbleReader sees,
@@ -116,6 +125,13 @@ func listEntities[T interface{ ~string | ~uint64 }](
 	params.horizonKeep = query.MainHorizonKeep(params.target, params.pebbleReader, snap, params.ledgerName, mainSeq)
 	params.pin = mainSeq
 
+	readdiag.Set(ctx, "aligned", true)
+	readdiag.Set(ctx, "pin", mainSeq)
+
+	if readSeq, seqErr := readStore.LastIndexedSequenceFrom(snap); seqErr == nil {
+		readdiag.Set(ctx, "read_seq", readSeq)
+	}
+
 	if params.reverse {
 		if params.filter != nil {
 			err = listDescFiltered(snap, params, &result.entityIDs)
@@ -126,13 +142,73 @@ func listEntities[T interface{ ~string | ~uint64 }](
 		err = listAscending(snap, params, &result.entityIDs)
 	}
 
-	var zero T
-	if err == nil && len(result.entityIDs) == 0 && !params.reverse && params.after == zero &&
-		params.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		reportEmptyIndexedAccountsPage(params.logger, readStore, snap, params.indexRegistry, params.ledgerName, params.filter, mainSeq)
+	if err == nil && len(result.entityIDs) == 0 {
+		reportEmptyPage(ctx, readStore, snap, params, mainSeq)
 	}
 
 	return result, err
+}
+
+// reportEmptyPage annotates an empty page that is not trivially expected —
+// one with a cursor, reverse order, or an asset-index leaf. An empty ledger
+// legally serves an empty first page, so the bare unfiltered forward shape
+// stays silent. It records the shape and a bounded probe of the same store
+// (does the entity zone hold ANY rows) into the request's readdiag — the
+// workload's finding details then carry it — and logs the same fields.
+func reportEmptyPage[T interface{ ~string | ~uint64 }](ctx context.Context, readStore *readstore.Store, snap dal.PebbleReader, params entityListParams[T], pin uint64) {
+	var zero T
+	hasAsset := len(collectHasAssetLeaves(params.filter, nil)) > 0
+
+	if params.after == zero && !params.reverse && !hasAsset {
+		return
+	}
+
+	details := map[string]any{
+		"ledger":   params.ledgerName,
+		"target":   params.target.String(),
+		"reverse":  params.reverse,
+		"filtered": params.filter != nil,
+		"pin":      pin,
+	}
+
+	if params.after != zero {
+		details["cursor"] = fmt.Sprintf("%x", params.afterToBytes(params.after))
+	}
+
+	// Bounded probe: does the same store hold any rows for this entity zone
+	// at all? Distinguishes "store lacked the rows" from "iteration missed
+	// them". Reverse account/tx iterators read params.pebbleReader — the
+	// mainstore handle — so the probe sees exactly what the page saw.
+	if params.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS || params.target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+		if probe, _, _, _, probeErr := newReverseIterator(snap, params); probeErr == nil {
+			rows := 0
+			first := ""
+
+			for ok := probe.Next(); ok && rows < 3; ok = probe.Next() {
+				if rows == 0 {
+					first = hex.EncodeToString(probe.Current())
+				}
+				rows++
+			}
+
+			probe.Close()
+			details["probe_rows"] = rows
+			details["probe_first"] = first
+		} else {
+			details["probe_err"] = probeErr.Error()
+		}
+	}
+
+	readdiag.Set(ctx, "empty_page", fmt.Sprintf("target=%s cursor=%v reverse=%v filtered=%v probe_rows=%v",
+		params.target.String(), details["cursor"], params.reverse, params.filter != nil, details["probe_rows"]))
+
+	if params.logger != nil {
+		params.logger.WithFields(details).Errorf("EMPTYPAGE list served empty page")
+	}
+
+	if hasAsset && params.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+		reportEmptyIndexedAccountsPage(params.logger, readStore, snap, params.indexRegistry, params.ledgerName, params.filter, pin)
+	}
 }
 
 // collectHasAssetLeaves gathers every AccountHasAsset leaf in a filter tree.

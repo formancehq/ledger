@@ -800,12 +800,14 @@ func NewServiceServer(host string, port int, logger logging.Logger, debug bool, 
 	unaryInterceptors := []ggrpc.UnaryServerInterceptor{
 		recoveryInterceptor(logger),
 		consistencyInterceptor(),
+		diagInterceptor(),
 		loggingInterceptor(logger, slowThreshold),
 		errorConversionInterceptor(logger),
 	}
 	streamInterceptors := []ggrpc.StreamServerInterceptor{
 		recoveryStreamInterceptor(logger),
 		consistencyStreamInterceptor(),
+		diagStreamInterceptor(),
 		loggingStreamInterceptor(logger, slowThreshold),
 		errorConversionStreamInterceptor(logger),
 	}

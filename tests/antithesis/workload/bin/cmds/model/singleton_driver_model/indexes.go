@@ -226,7 +226,7 @@ func genAccountAssetFilter() *commonpb.QueryFilter {
 // Any other error code is a finding. So is a result set no base can produce
 // (spurious rows without the index) and a rejection when every base has the index
 // active (ready everywhere, yet rejected).
-func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, err error) {
+func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, err error, diag ...string) {
 	if err != nil && status.Code(err) != codes.FailedPrecondition {
 		assert.Unreachable("singleton_driver_model: asset-index account query returned unexpected error", internal.Details{
 			"ledger": ledger,
@@ -315,10 +315,10 @@ func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, fil
 	}
 
 	details["foldDiag"] = c.foldDiag(maxTicket)
+	details["serverDiag"] = firstDiag(diag)
 
 	assert.Unreachable("singleton_driver_model: asset-index account query outside model", details)
 }
-
 
 // describeAccountContentDiff renders the first content divergence between a
 // base's view of addr and the server's enriched row — the diagnostic for a
@@ -415,7 +415,6 @@ func (c *Checker) assetContentDiags(maxTicket uint64, ledger, assetBase string, 
 
 	return strings.Join(diags, " ; ")
 }
-
 
 // foldDiag walks the enumeration's raw material — the ordered pending prefix
 // from modelState, then each in-flight bulk on the fully-folded state — and
@@ -730,7 +729,7 @@ func reconcileIndexes(ctx context.Context, c *Checker, conns internal.PerNodeCon
 //
 // Any other error code is a finding, as are rows without every needed index and
 // a rejection when every needed index is active on every base.
-func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction, err error) {
+func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction, err error, diag ...string) {
 	errKind, ok := classifyIndexedQueryError(err)
 	if !ok {
 		assert.Unreachable("singleton_driver_model: indexed transaction query returned unexpected error", internal.Details{
@@ -812,6 +811,8 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 
 		details["surplusModelMeta"] = strings.Join(surplus, " ; ")
 	}
+
+	details["serverDiag"] = firstDiag(diag)
 
 	assert.Unreachable("singleton_driver_model: indexed transaction query outside model", details)
 }
@@ -1075,7 +1076,7 @@ func classifyIndexedQueryError(err error) (indexedErrKind, bool) {
 // validateIndexedAccountQuery is the accounts twin of
 // validateIndexedTransactionQuery: same needed-set lifecycle gating, with the
 // ordered account window (accountWindow + accountMatches) as the result check.
-func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, err error) {
+func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, err error, diag ...string) {
 	errKind, ok := classifyIndexedQueryError(err)
 	if !ok {
 		assert.Unreachable("singleton_driver_model: indexed account query returned unexpected error", internal.Details{
@@ -1162,6 +1163,8 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 
 		details["surplusModelMeta"] = strings.Join(surplus, " ; ")
 	}
+
+	details["serverDiag"] = firstDiag(diag)
 
 	assert.Unreachable("singleton_driver_model: indexed account query outside model", details)
 }

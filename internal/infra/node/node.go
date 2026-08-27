@@ -1911,6 +1911,12 @@ func (node *Node) IsLeader() bool {
 	return lastSoftState.RaftState == raft.StateLeader
 }
 
+// IsSyncing reports whether the applier is installing a remote snapshot;
+// linearizable reads bounce to the leader while it is set.
+func (node *Node) IsSyncing() bool {
+	return node.applier.IsSyncing()
+}
+
 func (node *Node) GetLeader() uint64 {
 	lastSoftState := node.lastSoftState.Load()
 	if lastSoftState == nil {

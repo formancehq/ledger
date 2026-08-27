@@ -6,6 +6,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
+	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -53,10 +54,13 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 	// property it cares about if the server-side default ever changes.
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
+	var tmd metadata.MD
+
 	acct, err := client.GetAccount(readCtx, &servicepb.GetAccountRequest{
 		Ledger:  ledger,
 		Address: addr,
-	})
+	}, ggrpc.Trailer(&tmd))
+	diag := trailerDiag(tmd)
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned. Captured before validation so later
 	// dispatches aren't folded into this read's candidate states.
@@ -67,20 +71,21 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 		}
 		// NotFound = no entries server-side; validate as no volumes / no metadata.
 		if status.Code(err) == codes.NotFound {
-			c.validateAccountRead(maxTicket, ledger, addr, asset, nil, true, nil)
+			c.validateAccountRead(maxTicket, ledger, addr, asset, nil, true, nil, diag)
 			return
 		}
 		assert.Unreachable("singleton_driver_model: GetAccount returned unexpected error", internal.Details{
-			"ledger":  ledger,
-			"address": addr,
-			"asset":   asset,
-			"error":   err.Error(),
+			"ledger":     ledger,
+			"address":    addr,
+			"asset":      asset,
+			"error":      err.Error(),
+			"serverDiag": diag,
 		})
 		return
 	}
 
 	gotVols, wellFormed := accountVolumeSet(acct)
-	c.validateAccountRead(maxTicket, ledger, addr, asset, gotVols, wellFormed, acct.GetMetadata())
+	c.validateAccountRead(maxTicket, ledger, addr, asset, gotVols, wellFormed, acct.GetMetadata(), diag)
 }
 
 // isShutdownError reports whether err is a context cancellation/deadline — what
@@ -276,7 +281,10 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	defer c.finishRead(readID)
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
-	info, err := client.GetLedger(readCtx, &servicepb.GetLedgerRequest{Ledger: ledger})
+	var tmd metadata.MD
+
+	info, err := client.GetLedger(readCtx, &servicepb.GetLedgerRequest{Ledger: ledger}, ggrpc.Trailer(&tmd))
+	diag := trailerDiag(tmd)
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
 	maxTicket := c.ticketSeq.Load()
@@ -293,9 +301,10 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 		// error on it — NotFound, Internal — is a real finding; so is any
 		// non-NotFound definitive error on an absent ledger.
 		assert.Unreachable("singleton_driver_model: GetLedger returned unexpected error", internal.Details{
-			"ledger": ledger,
-			"absent": absent,
-			"error":  err.Error(),
+			"ledger":     ledger,
+			"absent":     absent,
+			"error":      err.Error(),
+			"serverDiag": diag,
 		})
 		return
 	}
@@ -307,7 +316,7 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 		return
 	}
 
-	c.validateLedgerRead(maxTicket, ledger, info.GetAccountTypes(), info.GetMetadata())
+	c.validateLedgerRead(maxTicket, ledger, info.GetAccountTypes(), info.GetMetadata(), diag)
 }
 
 // pickTransactionID picks a ledger and a transaction id to read back. Usually a
@@ -357,7 +366,10 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 	}
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
-	resp, err := client.GetTransaction(readCtx, &servicepb.GetTransactionRequest{Ledger: ledger, TransactionId: id})
+	var tmd metadata.MD
+
+	resp, err := client.GetTransaction(readCtx, &servicepb.GetTransactionRequest{Ledger: ledger, TransactionId: id}, ggrpc.Trailer(&tmd))
+	diag := trailerDiag(tmd)
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
 	maxTicket := c.ticketSeq.Load()
@@ -368,18 +380,19 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 		// NotFound is a legal outcome for an id not committed in the actual
 		// serialization — validate it like a returned transaction, not a finding.
 		if status.Code(err) == codes.NotFound {
-			c.validateTransactionRead(maxTicket, ledger, id, nil, false)
+			c.validateTransactionRead(maxTicket, ledger, id, nil, false, diag)
 			return
 		}
 		assert.Unreachable("singleton_driver_model: GetTransaction returned unexpected error", internal.Details{
-			"ledger": ledger,
-			"id":     id,
-			"error":  err.Error(),
+			"ledger":     ledger,
+			"id":         id,
+			"error":      err.Error(),
+			"serverDiag": diag,
 		})
 		return
 	}
 
-	c.validateTransactionRead(maxTicket, ledger, id, resp.GetTransaction(), true)
+	c.validateTransactionRead(maxTicket, ledger, id, resp.GetTransaction(), true, diag)
 }
 
 // runSchemaRead issues a GetMetadataSchemaStatus and checks the declared metadata
@@ -395,7 +408,10 @@ func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	defer c.finishRead(readID)
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
-	resp, err := client.GetMetadataSchemaStatus(readCtx, &servicepb.GetMetadataSchemaStatusRequest{Ledger: ledger})
+	var tmd metadata.MD
+
+	resp, err := client.GetMetadataSchemaStatus(readCtx, &servicepb.GetMetadataSchemaStatusRequest{Ledger: ledger}, ggrpc.Trailer(&tmd))
+	diag := trailerDiag(tmd)
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
 	maxTicket := c.ticketSeq.Load()
@@ -412,9 +428,10 @@ func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 		// error on it is a real finding; so is any non-NotFound definitive error on
 		// an absent ledger.
 		assert.Unreachable("singleton_driver_model: GetMetadataSchemaStatus returned unexpected error", internal.Details{
-			"ledger": ledger,
-			"absent": absent,
-			"error":  err.Error(),
+			"ledger":     ledger,
+			"absent":     absent,
+			"error":      err.Error(),
+			"serverDiag": diag,
 		})
 		return
 	}
@@ -426,5 +443,5 @@ func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 		return
 	}
 
-	c.validateSchemaRead(maxTicket, ledger, resp.GetAccountFields(), resp.GetTransactionFields(), resp.GetLedgerFields())
+	c.validateSchemaRead(maxTicket, ledger, resp.GetAccountFields(), resp.GetTransactionFields(), resp.GetLedgerFields(), diag)
 }

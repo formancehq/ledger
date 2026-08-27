@@ -97,6 +97,8 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 		accounts, err = drainStream(stream)
 	}
 
+	diag := streamDiag(stream)
+
 	// High-water at the read's completion: only bulks dispatched by now could be
 	// reflected in the page. Captured before validation so later dispatches
 	// aren't folded into this read's candidate states.
@@ -112,18 +114,19 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 		if bareAsset {
 			// The account-by-asset index governs this filter's outcome; a not-ready
 			// error is legal while the index is absent or ambiguous.
-			c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, nil, err)
+			c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, nil, err, diag)
 			return
 		}
 		if len(needed) > 0 {
-			c.validateIndexedAccountQuery(maxTicket, ledger, filter, needed, cursor, pageSize, reverse, nil, err)
+			c.validateIndexedAccountQuery(maxTicket, ledger, filter, needed, cursor, pageSize, reverse, nil, err, diag)
 			return
 		}
 
 		assert.Unreachable("singleton_driver_model: ListAccounts returned unexpected error", internal.Details{
-			"ledger": ledger,
-			"filter": describeFilter(filter),
-			"error":  err.Error(),
+			"ledger":     ledger,
+			"filter":     describeFilter(filter),
+			"error":      err.Error(),
+			"serverDiag": diag,
 		})
 
 		return
@@ -142,16 +145,16 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	}
 
 	if bareAsset {
-		c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, accounts, nil)
+		c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, accounts, nil, diag)
 		return
 	}
 
 	if len(needed) > 0 {
-		c.validateIndexedAccountQuery(maxTicket, ledger, filter, needed, cursor, pageSize, reverse, accounts, nil)
+		c.validateIndexedAccountQuery(maxTicket, ledger, filter, needed, cursor, pageSize, reverse, accounts, nil, diag)
 		return
 	}
 
-	c.validateAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, accounts)
+	c.validateAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, accounts, diag)
 }
 
 // sampleAccountFieldSeeds snapshots the ledger's declared account fields plus
@@ -211,6 +214,8 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		txs, err = drainStream(stream)
 	}
 
+	diag := streamDiag(stream)
+
 	maxTicket := c.ticketSeq.Load()
 
 	if err != nil {
@@ -221,14 +226,15 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 			return
 		}
 		if len(needed) > 0 {
-			c.validateIndexedTransactionQuery(maxTicket, ledger, filter, needed, afterID, pageSize, reverse, nil, err)
+			c.validateIndexedTransactionQuery(maxTicket, ledger, filter, needed, afterID, pageSize, reverse, nil, err, diag)
 			return
 		}
 
 		assert.Unreachable("singleton_driver_model: ListTransactions returned unexpected error", internal.Details{
-			"ledger": ledger,
-			"filter": describeFilter(filter),
-			"error":  err.Error(),
+			"ledger":     ledger,
+			"filter":     describeFilter(filter),
+			"error":      err.Error(),
+			"serverDiag": diag,
 		})
 
 		return
@@ -245,11 +251,11 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 	}
 
 	if len(needed) > 0 {
-		c.validateIndexedTransactionQuery(maxTicket, ledger, filter, needed, afterID, pageSize, reverse, txs, nil)
+		c.validateIndexedTransactionQuery(maxTicket, ledger, filter, needed, afterID, pageSize, reverse, txs, nil, diag)
 		return
 	}
 
-	c.validateTransactionQuery(maxTicket, ledger, filter, afterID, pageSize, reverse, txs)
+	c.validateTransactionQuery(maxTicket, ledger, filter, afterID, pageSize, reverse, txs, diag)
 }
 
 // handleInvalidTargetError validates the error of a filter carrying a condition
@@ -301,7 +307,7 @@ func drainStream[T any](stream grpc.ServerStreamingClient[T]) ([]*T, error) {
 // some candidate base's ordered window — filtered, sorted, cursor-skipped,
 // page-capped — equals the streamed accounts position-for-position, each row's
 // address AND its whole volumes/metadata snapshot matching on that same base.
-func (c *Checker) validateAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account) {
+func (c *Checker) validateAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, diag ...string) {
 	if c.matchesModel(maxTicket, "AQUERY", func(base oracle.GlobalState) bool {
 		ls := base.Ledger(ledger)
 		want := accountWindow(ls, filter, cursor, pageSize, reverse)
@@ -326,6 +332,7 @@ func (c *Checker) validateAccountQuery(maxTicket uint64, ledger string, filter *
 	}
 
 	assert.Unreachable("singleton_driver_model: account query outside model", internal.Details{
+		"serverDiag":  firstDiag(diag),
 		"ledger":      ledger,
 		"filter":      describeFilter(filter),
 		"cursor":      cursor,
@@ -350,7 +357,7 @@ func (c *Checker) modelAccountWindow(ledger string, filter *commonpb.QueryFilter
 // legal iff some candidate base's ordered window equals the streamed
 // transactions position-for-position, each row matching the model record at its
 // id (see txRecordMatches) on that same base.
-func (c *Checker) validateTransactionQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction) {
+func (c *Checker) validateTransactionQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction, diag ...string) {
 	if c.matchesModel(maxTicket, "TXQUERY", func(base oracle.GlobalState) bool {
 		return txWindowMatches(base.Ledger(ledger), filter, afterID, pageSize, reverse, serverTxs)
 	}) {
@@ -363,14 +370,15 @@ func (c *Checker) validateTransactionQuery(maxTicket uint64, ledger string, filt
 	}
 
 	assert.Unreachable("singleton_driver_model: transaction query outside model", internal.Details{
-		"ledger":    ledger,
-		"filter":    describeFilter(filter),
-		"afterId":   afterID,
-		"pageSize":  pageSize,
-		"reverse":   reverse,
-		"rows":      len(serverTxs),
-		"serverIds": joinUint64(serverIds),
-		"modelIds":  joinUint64(c.modelTransactionWindow(ledger, filter, afterID, pageSize, reverse)),
+		"serverDiag": firstDiag(diag),
+		"ledger":     ledger,
+		"filter":     describeFilter(filter),
+		"afterId":    afterID,
+		"pageSize":   pageSize,
+		"reverse":    reverse,
+		"rows":       len(serverTxs),
+		"serverIds":  joinUint64(serverIds),
+		"modelIds":   joinUint64(c.modelTransactionWindow(ledger, filter, afterID, pageSize, reverse)),
 	})
 }
 

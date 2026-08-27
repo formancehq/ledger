@@ -25,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/infra/receipt"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/readdiag"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -1708,6 +1709,12 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 
 	defer releaseLease()
 	defer func() { _ = snap.Close() }()
+
+	readdiag.Set(ctx, "pin", mainSeq)
+
+	if readSeq, seqErr := ctrl.readStore.LastIndexedSequenceFrom(snap); seqErr == nil {
+		readdiag.Set(ctx, "read_seq", readSeq)
+	}
 
 	kb := dal.NewKeyBuilder()
 

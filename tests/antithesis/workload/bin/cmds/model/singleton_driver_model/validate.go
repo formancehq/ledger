@@ -544,7 +544,7 @@ func (c *Checker) matchesModel(maxTicket uint64, label string, matcher func(orac
 // is legal iff some candidate base holds both the picked (gotIn, gotOut, found)
 // volume cell and exactly the server's metadata for the address. Both must hold
 // on the SAME base — the read is one atomic snapshot.
-func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[string]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue) {
+func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[string]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue, diag ...string) {
 	if wellFormed && c.matchesModel(maxTicket, "READ", func(base oracle.GlobalState) bool {
 		ls := base.Ledger(ledger)
 		return accountVolumesMatch(ls, addr, serverVols) && metadataMatches(ls, addr, serverMeta)
@@ -553,6 +553,7 @@ func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset stri
 	}
 
 	assert.Unreachable("singleton_driver_model: account read outside model", internal.Details{
+		"serverDiag": firstDiag(diag),
 		"ledger":     ledger,
 		"address":    addr,
 		"asset":      asset,
@@ -610,7 +611,7 @@ func metadataMatches(ls oracle.LedgerState, addr string, serverMeta map[string]*
 // some candidate base holds both the server's chart (account types) and exactly
 // the server's ledger metadata. Both must hold on the SAME base — the read is one
 // atomic snapshot.
-func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverTypes map[string]*commonpb.AccountType, serverMeta map[string]*commonpb.MetadataValue) {
+func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverTypes map[string]*commonpb.AccountType, serverMeta map[string]*commonpb.MetadataValue, diag ...string) {
 	if c.matchesModel(maxTicket, "LEDGER", func(base oracle.GlobalState) bool {
 		ls := base.Ledger(ledger)
 		return chartMatches(ls, serverTypes) && ledgerMetaMatches(ls, serverMeta)
@@ -619,6 +620,7 @@ func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverType
 	}
 
 	assert.Unreachable("singleton_driver_model: ledger read outside model", internal.Details{
+		"serverDiag":  firstDiag(diag),
 		"ledger":      ledger,
 		"serverTypes": len(serverTypes),
 		"serverMeta":  renderMetaMap(serverMeta),
@@ -674,7 +676,7 @@ func ledgerMetaMatches(ls oracle.LedgerState, serverMeta map[string]*commonpb.Me
 // transaction metadata back (create/add/overwrite/delete/revert), so a divergent
 // stored projection with correct per-write echoes — the ledger-metadata
 // cross-routing bug class — is caught here for transactions.
-func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id uint64, serverTx *commonpb.Transaction, found bool) {
+func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id uint64, serverTx *commonpb.Transaction, found bool, diag ...string) {
 	if c.matchesModel(maxTicket, "TXREAD", func(base oracle.GlobalState) bool {
 		txs := base.Ledger(ledger).Txs()
 		if id == 0 || id > uint64(txs.Len()) {
@@ -690,6 +692,7 @@ func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id ui
 	}
 
 	assert.Unreachable("singleton_driver_model: transaction read outside model", internal.Details{
+		"serverDiag":    firstDiag(diag),
 		"ledger":        ledger,
 		"id":            id,
 		"found":         found,
@@ -708,7 +711,7 @@ func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id ui
 // SetMetadataFieldType and by initial_schema at ledger creation, both tracked by
 // the model, so this is the read-back that verifies the declared-schema
 // projection rather than just the per-op response echo.
-func (c *Checker) validateSchemaRead(maxTicket uint64, ledger string, acct, txn, ldg map[string]*servicepb.MetadataFieldStatus) {
+func (c *Checker) validateSchemaRead(maxTicket uint64, ledger string, acct, txn, ldg map[string]*servicepb.MetadataFieldStatus, diag ...string) {
 	if c.matchesModel(maxTicket, "SCHEMA", func(base oracle.GlobalState) bool {
 		ls := base.Ledger(ledger)
 
@@ -720,6 +723,7 @@ func (c *Checker) validateSchemaRead(maxTicket uint64, ledger string, acct, txn,
 	}
 
 	assert.Unreachable("singleton_driver_model: metadata schema read outside model", internal.Details{
+		"serverDiag":   firstDiag(diag),
 		"ledger":       ledger,
 		"serverAcct":   len(acct),
 		"serverTxn":    len(txn),

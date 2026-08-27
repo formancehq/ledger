@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/readdiag"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -63,13 +64,21 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 		trace.WithAttributes(attribute.String("consistency", consistency)))
 	defer span.End()
 
+	readdiag.Set(ctx, "node", b.GetNodeID())
+	readdiag.Set(ctx, "leader", b.GetLeader())
+	readdiag.Set(ctx, "syncing", b.Node.IsSyncing())
+	readdiag.Set(ctx, "consistency", consistency)
+	readdiag.Set(ctx, "persisted_at_route", b.Node.LastPersistedIndex())
+
 	switch consistency {
 	case grpcadp.ConsistencyStale:
 		span.SetAttributes(attribute.String("route", "local_stale"))
+		readdiag.Set(ctx, "route", "local_stale")
 
 		return b.localController, nil, nil
 	case grpcadp.ConsistencyLeader:
 		span.SetAttributes(attribute.String("route", "leader"))
+		readdiag.Set(ctx, "route", "leader")
 
 		c, err := b.getLeaderCtrl()
 
@@ -79,9 +88,14 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 	barrier, err := b.ReadIndexAndWait(ctx)
 	if err == nil {
 		span.SetAttributes(attribute.String("route", "local_linearizable"))
+		readdiag.Set(ctx, "route", "local_linearizable")
+		readdiag.Set(ctx, "barrier_commit", barrier.CommitIndex)
+		readdiag.Set(ctx, "barrier_persisted", barrier.PersistedAfter)
 
 		return b.localController, barrier, nil
 	}
+
+	readdiag.Set(ctx, "barrier_err", err.Error())
 
 	if errors.Is(err, node.ErrNodeSyncing) || errors.Is(err, node.ErrNotLeader) {
 		// Only fallback to the leader if we are NOT the leader ourselves.
@@ -89,6 +103,7 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 		// after election), we must NOT serve a stale local read without a barrier.
 		if !b.IsLeader() {
 			span.SetAttributes(attribute.String("route", "leader_fallback"))
+			readdiag.Set(ctx, "route", "leader_fallback")
 
 			c, leaderErr := b.getLeaderCtrl()
 
@@ -96,6 +111,7 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 		}
 
 		span.SetAttributes(attribute.String("route", "leader_readindex_failed"))
+		readdiag.Set(ctx, "route", "leader_readindex_failed")
 	}
 
 	return nil, nil, err

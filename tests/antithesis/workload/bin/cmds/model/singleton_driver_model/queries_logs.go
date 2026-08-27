@@ -253,6 +253,8 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		logs, err = drainStream(stream)
 	}
 
+	diag := streamDiag(stream)
+
 	maxTicket := c.ticketSeq.Load()
 
 	if err != nil {
@@ -268,15 +270,16 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		}
 
 		assert.Unreachable("singleton_driver_model: ListLogs returned unexpected error", internal.Details{
-			"ledger": ledger,
-			"filter": describeFilter(filter),
-			"error":  err.Error(),
+			"ledger":     ledger,
+			"filter":     describeFilter(filter),
+			"error":      err.Error(),
+			"serverDiag": diag,
 		})
 
 		return
 	}
 
-	c.validateLogQuery(ctx, client, maxTicket, ledger, filter, afterSeq, pageSize, logs)
+	c.validateLogQuery(ctx, client, maxTicket, ledger, filter, afterSeq, pageSize, logs, diag)
 }
 
 // serverLogIDs pulls the ledger-local ids out of a page.
@@ -289,7 +292,7 @@ func serverLogIDs(logs []*commonpb.Log) []uint64 {
 	return out
 }
 
-func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketServiceClient, maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, serverLogs []*commonpb.Log) {
+func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketServiceClient, maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, serverLogs []*commonpb.Log, diag ...string) {
 	ids := serverLogIDs(serverLogs)
 
 	// A page must always be ascending, within the cursor, and no longer than
@@ -315,6 +318,7 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 	}
 
 	assert.Unreachable("singleton_driver_model: log query outside model", internal.Details{
+		"serverDiag":  firstDiag(diag),
 		"ledger":      ledger,
 		"filter":      describeFilter(filter),
 		"afterSeq":    afterSeq,
