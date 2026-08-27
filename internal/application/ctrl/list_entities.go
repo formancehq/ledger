@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -121,7 +123,84 @@ func listEntities[T interface{ ~string | ~uint64 }](
 		err = listAscending(snap, params, &result.entityIDs)
 	}
 
+	var zero T
+	if err == nil && len(result.entityIDs) == 0 && !params.reverse && params.after == zero &&
+		params.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+		reportEmptyIndexedAccountsPage(readStore, snap, params.indexRegistry, params.ledgerName, params.filter, mainSeq)
+	}
+
 	return result, err
+}
+
+// collectHasAssetLeaves gathers every AccountHasAsset leaf in a filter tree.
+func collectHasAssetLeaves(f *commonpb.QueryFilter, out []*commonpb.AccountHasAssetCondition) []*commonpb.AccountHasAssetCondition {
+	switch v := f.GetFilter().(type) {
+	case *commonpb.QueryFilter_AccountHasAsset:
+		out = append(out, v.AccountHasAsset)
+	case *commonpb.QueryFilter_And:
+		for _, sub := range v.And.GetFilters() {
+			out = collectHasAssetLeaves(sub, out)
+		}
+	case *commonpb.QueryFilter_Or:
+		for _, sub := range v.Or.GetFilters() {
+			out = collectHasAssetLeaves(sub, out)
+		}
+	case *commonpb.QueryFilter_Not:
+		out = collectHasAssetLeaves(v.Not.GetFilter(), out)
+	}
+
+	return out
+}
+
+// reportEmptyIndexedAccountsPage fires when an uncursored forward ACCOUNTS
+// page with a has-asset leaf comes back empty. Every such leaf passed
+// requireIndexReady to get here, so the registry row (read through the
+// mainstore handle) and the per-replica version record (read through the
+// iteration snapshot) both claimed a live index; an empty page then means
+// the promoted keyspace holds no members. That is legal only for an asset
+// no account ever touched, so the details re-read both halves raw — the
+// registry row's created_at identifies which incarnation the gate saw —
+// plus both fold points, making a stale-row serve distinguishable from a
+// genuinely memberless asset.
+func reportEmptyIndexedAccountsPage(readStore *readstore.Store, snap dal.PebbleReader, reg indexes.Lookup, ledgerName string, filter *commonpb.QueryFilter, pin uint64) {
+	leaves := collectHasAssetLeaves(filter, nil)
+	if len(leaves) == 0 {
+		return
+	}
+
+	details := map[string]any{"ledger": ledgerName, "pin": pin}
+
+	if readSeq, err := readStore.LastIndexedSequenceFrom(snap); err == nil {
+		details["read_store_seq"] = readSeq
+	} else {
+		details["read_store_seq_err"] = err.Error()
+	}
+
+	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	canonical := indexes.Canonical(id)
+
+	for i, leaf := range leaves {
+		key := fmt.Sprintf("leaf%d_%s_%d", i, leaf.GetAssetBase(), leaf.GetPrecision())
+
+		if idx, err := indexes.Find(reg, ledgerName, id); err != nil {
+			details[key+"_registry_err"] = err.Error()
+		} else if idx == nil {
+			details[key+"_registry"] = "absent"
+		} else {
+			details[key+"_registry"] = fmt.Sprintf("present created_at=%d fev=%d",
+				idx.GetCreatedAt().GetData(), idx.GetForwardEncodingVersion())
+		}
+
+		if state, present, err := readstore.ReadIndexVersionStateFrom(snap, ledgerName, canonical); err != nil {
+			details[key+"_version_err"] = err.Error()
+		} else {
+			details[key+"_version"] = fmt.Sprintf("present=%v cur=%d pend=%d act=%d hw=%d tomb=%v",
+				present, state.CurrentVersion, state.PendingVersion, state.ActivationSequence,
+				state.HighWater, state.Tombstoned())
+		}
+	}
+
+	assert.Unreachable("asset-index account query served empty page", details)
 }
 
 // listWithoutIndex serves the main-store-only shapes: an unfiltered ACCOUNTS or
