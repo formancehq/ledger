@@ -37,6 +37,11 @@ type Option func(*DefaultWAL)
 
 // DefaultWAL implements raft.Storage interface for etcd/raft using etcd/wal.
 type DefaultWAL struct {
+	// snapshotPersistenceMu serializes each full snapshot-file + WAL-record
+	// persistence sequence. It must be acquired before mu so the persisted
+	// order matches the order in which snapshot state is captured.
+	snapshotPersistenceMu sync.Mutex
+
 	// mu protects all mutable state (entries, snapshot, hardState)
 	mu sync.RWMutex
 
@@ -716,6 +721,9 @@ func hardStateEqual(a, b *raftpb.HardState) bool {
 
 // CreateSnapshot creates a snapshot at the given index.
 func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []byte) error {
+	s.snapshotPersistenceMu.Lock()
+	defer s.snapshotPersistenceMu.Unlock()
+
 	s.mu.Lock()
 
 	s.logger.WithFields(map[string]any{"index": index}).Infof("Creating snapshot")
@@ -799,6 +807,9 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 // changes (e.g. a learner is added) so that etcd/raft sends snapshots with
 // the correct ConfState to newly added nodes.
 func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
+	s.snapshotPersistenceMu.Lock()
+	defer s.snapshotPersistenceMu.Unlock()
+
 	s.mu.Lock()
 
 	// Nothing to update if there is no snapshot yet.
@@ -883,6 +894,9 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 
 // ApplySnapshot applies a snapshot to the storage.
 func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
+	s.snapshotPersistenceMu.Lock()
+	defer s.snapshotPersistenceMu.Unlock()
+
 	s.mu.Lock()
 
 	s.logger.WithFields(map[string]any{

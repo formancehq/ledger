@@ -94,6 +94,13 @@ snapshot files, it drops the in-memory WAL mutex and releases etcd WAL segment
 locks through the installed index. A durable-write failure is returned but does
 not roll back the earlier in-memory replacement and cache clear.
 
+Every runtime path that creates, updates, or installs a snapshot serializes the
+complete snapshot-file and WAL-record persistence sequence. The persistence
+lock is acquired before the in-memory WAL lock so snapshots are captured and
+made durable in the same order. This prevents concurrent membership updates
+from racing on the deterministic `.snap.tmp` name and keeps the final snapshot
+file aligned with the latest WAL snapshot record.
+
 Normal maintenance remains an independent reclamation trigger: it creates a
 snapshot and calls `Compact`, which releases locks through the compaction index.
 Regression coverage must retain both the steady-state `Compact` trigger and the

@@ -844,6 +844,44 @@ func TestSnapshot_AfterCreateSnapshot(t *testing.T) {
 	require.Equal(t, cs.GetVoters(), snap.GetMetadata().GetConfState().GetVoters())
 }
 
+func TestUpdateSnapshotConfStateSerializesSnapshotPersistence(t *testing.T) {
+	t.Parallel()
+
+	w := newTestWAL(t)
+	require.NoError(t, w.Append(hs(1, 1, 1), []*raftpb.Entry{
+		ent(1, 1, []byte("entry")),
+	}))
+	require.NoError(t, w.CreateSnapshot(
+		1,
+		&raftpb.ConfState{Voters: []uint64{1}},
+		make([]byte, 4<<20),
+	))
+
+	const writers = 16
+	ready := sync.WaitGroup{}
+	ready.Add(writers)
+	start := make(chan struct{})
+	errs := make(chan error, writers)
+
+	for i := range writers {
+		go func() {
+			ready.Done()
+			<-start
+			errs <- w.UpdateSnapshotConfState(&raftpb.ConfState{
+				Voters:   []uint64{1},
+				Learners: []uint64{uint64(i + 2)},
+			})
+		}()
+	}
+
+	ready.Wait()
+	close(start)
+
+	for range writers {
+		require.NoError(t, <-errs)
+	}
+}
+
 // --- ApplySnapshot tests ---
 
 func TestApplySnapshot(t *testing.T) {
