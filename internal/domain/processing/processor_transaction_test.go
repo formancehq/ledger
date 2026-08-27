@@ -727,7 +727,11 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil, func(_ domain.TransactionKey, state *commonpb.TransactionState) {
+		metadata := commonpb.MetadataToGoMap(state.GetMetadata())
+		require.Equal(t, "payment", metadata["type"])
+		require.Equal(t, "purchase", metadata["category"])
+	})
 
 	// Test set_tx_meta
 	request := &servicepb.Request{
