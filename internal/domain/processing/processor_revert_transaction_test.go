@@ -75,7 +75,9 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 5}, nil, func(_ domain.TransactionKey, st *commonpb.TransactionState) {
 		require.Equal(t, uint64(3), st.GetRevertsTransaction())
 	})
-	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, persisted *raftcmdpb.LedgerBoundaries) {
+		require.Equal(t, uint64(6), persisted.GetNextTransactionId())
+	})
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
