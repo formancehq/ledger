@@ -11,16 +11,16 @@ import "fmt"
 // Callers should verify the membership postcondition instead of treating this
 // as evidence that the configuration change failed.
 type RemoveNodeCommittedError struct {
-	NodeID       uint64
-	AppliedIndex uint64
-	Cause        error
+	NodeID         uint64
+	CommittedIndex uint64
+	Cause          error
 }
 
 func (e *RemoveNodeCommittedError) Error() string {
 	return fmt.Sprintf(
 		"node %d removal committed at raft index %d; durable FSM application is still pending",
 		e.NodeID,
-		e.AppliedIndex,
+		e.CommittedIndex,
 	)
 }
 

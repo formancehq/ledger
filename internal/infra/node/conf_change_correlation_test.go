@@ -114,3 +114,21 @@ func TestTakePendingConfChangeRejectsCorrelatedBatch(t *testing.T) {
 	require.Nil(t, resolved)
 	require.ErrorContains(t, err, "must contain exactly one")
 }
+
+func TestTakePendingConfChangeIgnoresUncorrelatedChange(t *testing.T) {
+	t.Parallel()
+
+	resolved, err := (&Node{}).takePendingConfChange(&raftpb.ConfChangeV2{}, 42)
+	require.NoError(t, err)
+	require.Nil(t, resolved)
+}
+
+func TestTakePendingConfChangeRejectsMalformedContext(t *testing.T) {
+	t.Parallel()
+
+	resolved, err := (&Node{}).takePendingConfChange(&raftpb.ConfChangeV2{
+		Context: []byte("not-json"),
+	}, 42)
+	require.Nil(t, resolved)
+	require.ErrorContains(t, err, "decoding ConfChange proposal ID")
+}

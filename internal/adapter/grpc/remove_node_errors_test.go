@@ -35,9 +35,9 @@ func TestConvertToGRPCError_NodeRemovalCommittedButApplyPending(t *testing.T) {
 	t.Parallel()
 
 	err := fmt.Errorf("removing node: %w", &node.RemoveNodeCommittedError{
-		NodeID:       3,
-		AppliedIndex: 42,
-		Cause:        context.DeadlineExceeded,
+		NodeID:         3,
+		CommittedIndex: 42,
+		Cause:          context.DeadlineExceeded,
 	})
 
 	grpcErr := convertToGRPCError(err, testLogger())
@@ -50,5 +50,5 @@ func TestConvertToGRPCError_NodeRemovalCommittedButApplyPending(t *testing.T) {
 	info := extractErrorInfo(t, st)
 	require.Equal(t, "RAFT_NODE_REMOVAL_COMMITTED", info.GetReason())
 	require.Equal(t, "3", info.GetMetadata()["nodeId"])
-	require.Equal(t, "42", info.GetMetadata()["appliedIndex"])
+	require.Equal(t, "42", info.GetMetadata()["committedIndex"])
 }

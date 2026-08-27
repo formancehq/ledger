@@ -541,8 +541,8 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 			Reason: "RAFT_NODE_REMOVAL_COMMITTED",
 			Domain: errorDomain,
 			Metadata: map[string]string{
-				"nodeId":       strconv.FormatUint(removalCommitted.NodeID, 10),
-				"appliedIndex": strconv.FormatUint(removalCommitted.AppliedIndex, 10),
+				"nodeId":         strconv.FormatUint(removalCommitted.NodeID, 10),
+				"committedIndex": strconv.FormatUint(removalCommitted.CommittedIndex, 10),
 			},
 		})
 		if detailErr == nil {

@@ -175,8 +175,8 @@ type committedConfChange struct {
 }
 
 type pendingRemoval struct {
-	instanceID   []byte
-	appliedIndex uint64
+	instanceID     []byte
+	committedIndex uint64
 }
 
 type pendingConfChange struct {
@@ -2751,9 +2751,9 @@ func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, inst
 		pending, err = node.trackCommittedRemoval(nodeID, instanceID, committedIndex)
 		if err != nil {
 			return &RemoveNodeCommittedError{
-				NodeID:       nodeID,
-				AppliedIndex: committedIndex,
-				Cause:        err,
+				NodeID:         nodeID,
+				CommittedIndex: committedIndex,
+				Cause:          err,
 			}
 		}
 	}
@@ -2771,9 +2771,9 @@ func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, inst
 		}).Errorf("RemoveNode committed but durable FSM application is still pending")
 
 		return &RemoveNodeCommittedError{
-			NodeID:       nodeID,
-			AppliedIndex: committedIndex,
-			Cause:        err,
+			NodeID:         nodeID,
+			CommittedIndex: committedIndex,
+			Cause:          err,
 		}
 	}
 
@@ -2794,9 +2794,9 @@ func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, inst
 		}).Errorf("RemoveNode committed and applied but tombstone verification failed")
 
 		return &RemoveNodeCommittedError{
-			NodeID:       nodeID,
-			AppliedIndex: committedIndex,
-			Cause:        err,
+			NodeID:         nodeID,
+			CommittedIndex: committedIndex,
+			Cause:          err,
 		}
 	}
 
@@ -2813,18 +2813,18 @@ func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, inst
 // protection independent of whether the originating RPC is still waiting.
 func (node *Node) trackCommittedRemoval(nodeID uint64, instanceID []byte, committedIndex uint64) (*pendingRemoval, error) {
 	pending := &pendingRemoval{
-		instanceID:   bytes.Clone(instanceID),
-		appliedIndex: committedIndex,
+		instanceID:     bytes.Clone(instanceID),
+		committedIndex: committedIndex,
 	}
 
 	actual, loaded := node.pendingRemovals.LoadOrStore(nodeID, pending)
 	if loaded {
-		if actual.appliedIndex != committedIndex || !bytes.Equal(actual.instanceID, instanceID) {
+		if actual.committedIndex != committedIndex || !bytes.Equal(actual.instanceID, instanceID) {
 			return nil, fmt.Errorf(
 				"invariant: committed removal for node %d at index %d conflicts with pending removal at index %d",
 				nodeID,
 				committedIndex,
-				actual.appliedIndex,
+				actual.committedIndex,
 			)
 		}
 
@@ -2881,11 +2881,11 @@ func (node *Node) schedulePendingRemovalCleanup(nodeID uint64, pending *pendingR
 	go func() {
 		defer cancel()
 
-		if err := node.fsm.WaitForApplied(cleanupCtx, pending.appliedIndex); err != nil {
+		if err := node.fsm.WaitForApplied(cleanupCtx, pending.committedIndex); err != nil {
 			node.logger.WithFields(map[string]any{
 				"error":         err,
 				"removedNodeID": nodeID,
-				"raftIndex":     pending.appliedIndex,
+				"raftIndex":     pending.committedIndex,
 			}).Infof("Stopped waiting to clear pending removal barrier")
 
 			return
@@ -2896,7 +2896,7 @@ func (node *Node) schedulePendingRemovalCleanup(nodeID uint64, pending *pendingR
 			node.logger.WithFields(map[string]any{
 				"error":         err,
 				"removedNodeID": nodeID,
-				"raftIndex":     pending.appliedIndex,
+				"raftIndex":     pending.committedIndex,
 			}).Errorf("Durable removal applied but background tombstone verification failed")
 
 			return
@@ -2905,7 +2905,7 @@ func (node *Node) schedulePendingRemovalCleanup(nodeID uint64, pending *pendingR
 		if cleared {
 			node.logger.WithFields(map[string]any{
 				"removedNodeID": nodeID,
-				"raftIndex":     pending.appliedIndex,
+				"raftIndex":     pending.committedIndex,
 			}).Infof("Durable removal applied; cleared pending admission barrier")
 		}
 	}()

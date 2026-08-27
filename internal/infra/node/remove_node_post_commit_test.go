@@ -34,12 +34,17 @@ func TestWaitForRemovalAppliedKeepsAdmissionBarrierAfterCallerStopsWaiting(t *te
 	require.ErrorAs(t, err, &committedErr)
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, uint64(3), committedErr.NodeID)
-	require.Equal(t, uint64(42), committedErr.AppliedIndex)
+	require.Equal(t, uint64(42), committedErr.CommittedIndex)
+	require.Equal(
+		t,
+		"node 3 removal committed at raft index 42; durable FSM application is still pending",
+		committedErr.Error(),
+	)
 
 	pending, ok := n.pendingRemovals.Load(3)
 	require.True(t, ok)
 	require.Equal(t, instanceID, pending.instanceID)
-	require.Equal(t, uint64(42), pending.appliedIndex)
+	require.Equal(t, uint64(42), pending.committedIndex)
 	require.True(t, n.isRemovalPending(3, instanceID),
 		"the removed live pod must remain blocked until the tombstone's FSM index is durable")
 
@@ -88,8 +93,8 @@ func TestVerifyAndClearPendingRemovalRetainsBarrierWithoutTombstone(t *testing.T
 		membership: newTestMembership(t),
 	}
 	pending := &pendingRemoval{
-		instanceID:   []byte("0123456789abcdef"),
-		appliedIndex: 1,
+		instanceID:     []byte("0123456789abcdef"),
+		committedIndex: 1,
 	}
 	n.pendingRemovals.Store(3, pending)
 
@@ -118,7 +123,7 @@ func TestWaitForRemovalAppliedWithoutInstanceIDStillWaitsForFSM(t *testing.T) {
 	require.ErrorAs(t, err, &committedErr)
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, uint64(3), committedErr.NodeID)
-	require.Equal(t, uint64(42), committedErr.AppliedIndex)
+	require.Equal(t, uint64(42), committedErr.CommittedIndex)
 
 	_, pending := n.pendingRemovals.Load(3)
 	require.False(t, pending, "a member without an instance ID needs no admission barrier")
@@ -142,4 +147,66 @@ func TestWaitForRemovalAppliedVerifiesTombstoneAfterDurableApply(t *testing.T) {
 
 	_, pending := n.pendingRemovals.Load(3)
 	require.False(t, pending, "the admission barrier is cleared after durable tombstone verification")
+}
+
+func TestWaitForRemovalAppliedRejectsMissingTombstoneAfterDurableApply(t *testing.T) {
+	t.Parallel()
+
+	setup := newTestApplierSetup(t)
+	n := &Node{
+		fsm:        setup.fsm,
+		membership: newTestMembership(t),
+		logger:     logging.Testing(),
+	}
+
+	err := n.waitForRemovalApplied(
+		context.Background(),
+		3,
+		[]byte("0123456789abcdef"),
+		0,
+	)
+	var committedErr *RemoveNodeCommittedError
+	require.ErrorAs(t, err, &committedErr)
+	require.Equal(t, uint64(0), committedErr.CommittedIndex)
+	require.ErrorContains(t, committedErr.Cause, "missing its removed-member tombstone")
+	require.True(t, n.isRemovalPending(3, []byte("0123456789abcdef")),
+		"an invariant failure must retain the admission barrier")
+}
+
+func TestTrackCommittedRemovalReusesExactBarrierAndRejectsConflicts(t *testing.T) {
+	t.Parallel()
+
+	instanceID := []byte("0123456789abcdef")
+	pending := &pendingRemoval{
+		instanceID:     instanceID,
+		committedIndex: 42,
+	}
+	n := &Node{}
+	n.pendingRemovals.Store(3, pending)
+
+	actual, err := n.trackCommittedRemoval(3, instanceID, 42)
+	require.NoError(t, err)
+	require.Same(t, pending, actual)
+
+	for name, conflict := range map[string]struct {
+		instanceID     []byte
+		committedIndex uint64
+	}{
+		"instance identity": {
+			instanceID:     []byte("fedcba9876543210"),
+			committedIndex: 42,
+		},
+		"committed index": {
+			instanceID:     instanceID,
+			committedIndex: 43,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			actual, err := n.trackCommittedRemoval(3, conflict.instanceID, conflict.committedIndex)
+			require.Nil(t, actual)
+			require.ErrorContains(t, err, "conflicts with pending removal at index 42")
+		})
+	}
 }
