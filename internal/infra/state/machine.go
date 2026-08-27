@@ -1780,6 +1780,16 @@ func (fsm *Machine) StopBackgroundTasks() {
 	fsm.cacheSnapshotter.Stop()
 }
 
+// PauseBackgroundTasks quiesces restartable background tasks while a
+// checkpoint replaces Pebble, without closing the Machine's ownership.
+func (fsm *Machine) PauseBackgroundTasks() {
+	fsm.cacheSnapshotter.Pause()
+}
+
+func (fsm *Machine) ResumeBackgroundTasks() {
+	fsm.cacheSnapshotter.Resume()
+}
+
 // DrainBackgroundChannels empties every background-request channel without
 // blocking. Called by Synchronizer.SynchronizeWithLeader before the leader's
 // checkpoint is installed: messages enqueued by the FSM hot path pre-sync
