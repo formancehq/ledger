@@ -432,14 +432,19 @@ ledgerctl cluster status
 3. The leader proposes a `ConfChangeRemoveNode` through Raft consensus
 4. Once committed, all remaining nodes:
    - Apply the configuration change (node is removed from the Raft group)
+   - Persist the removed-member tombstone atomically with the peer-row deletion
    - Close the transport connection to the removed peer
    - Remove the peer from the service connection pool
-5. The removed node is **not** automatically shut down; the operator must stop it manually
+5. The serving leader waits for the committed Raft index to become durable in the FSM; there is no fixed tombstone polling timeout
+6. The removed node is **not** automatically shut down; the operator must stop it manually
 
 ### Important Notes
 
 - After removal, the removed node will no longer receive Raft messages or log entries
 - The removed node should be stopped by the operator after the removal is confirmed
+- Retrying an already-committed removal returns gRPC `NotFound` with reason `RAFT_NODE_NOT_IN_CLUSTER`; verify `cluster status` and treat absence as the successful postcondition
+- If the caller stops waiting after the ConfChange commits but before the tombstone is durable, the RPC returns `Unavailable` with reason `RAFT_NODE_REMOVAL_COMMITTED` and the committed Raft index. The same removed member identity remains blocked from rejoining while apply catches up.
+- During Kubernetes scale-down, the operator checks structured `cluster status --json` before removal and again after any removal error. It continues when the node is absent and never relies on CLI error-message substrings.
 - Removing a voter reduces the cluster quorum size; ensure the remaining cluster can still form a majority
 - For a 3-node cluster, removing one voter leaves a 2-node cluster where both nodes must be available for writes
 

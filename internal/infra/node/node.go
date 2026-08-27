@@ -156,8 +156,9 @@ type readyResult struct {
 	// must call rawNode.ReportSnapshot.
 	snapshotApplied bool
 	// confChanges are committed ConfChangeV2 entries extracted from rd.CommittedEntries;
-	// orchestrate must call rawNode.ApplyConfChange for each.
-	confChanges []*raftpb.ConfChangeV2
+	// orchestrate must call rawNode.ApplyConfChange for each. The entry index is
+	// retained so callers can wait for the matching FSM batch to become durable.
+	confChanges []committedConfChange
 	// applyResponses are MsgStorageApplyResp messages collected from
 	// LocalApplyThread messages in rd.Messages. They are handed to
 	// applier.Submit in finishReady and Step()-ed back into rawNode by the
@@ -165,6 +166,16 @@ type readyResult struct {
 	// raft.Applied in lockstep with FSM-applied. Used only when
 	// AsyncStorageWrites is enabled.
 	applyResponses []*raftpb.Message
+}
+
+type committedConfChange struct {
+	index  uint64
+	change *raftpb.ConfChangeV2
+}
+
+type pendingRemoval struct {
+	instanceID   []byte
+	appliedIndex uint64
 }
 
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft.
@@ -206,7 +217,14 @@ type Node struct {
 	// cache) and the OnSnapshotInstalled / WriteConfChange callbacks
 	// wired into Applier and Machine. EN-1413.
 	membership         *membership.Membership
-	pendingConfChanges SyncMap[uint64, *futures.Future[struct{}]]
+	pendingConfChanges SyncMap[uint64, *futures.Future[uint64]]
+
+	// pendingRemovals closes the post-commit/pre-apply admission window. Once
+	// Raft has removed a member, the same (nodeID, instanceID) must not be
+	// re-admitted while its durable tombstone is still queued in the async FSM
+	// applier. Entries are admission-only node-local guards; committed apply is
+	// still deterministic and the replicated tombstone remains authoritative.
+	pendingRemovals SyncMap[uint64, pendingRemoval]
 
 	// confChangeMu serializes external ConfChange operations (AddLearner,
 	// RemoveNode, PromoteLearner) so that only one proposal is in-flight at a
@@ -1282,7 +1300,10 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		}
 
 		if ok {
-			result.confChanges = append(result.confChanges, cc)
+			result.confChanges = append(result.confChanges, committedConfChange{
+				index:  entry.GetIndex(),
+				change: cc,
+			})
 		}
 	}
 
@@ -1310,9 +1331,15 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	// Collect pending futures to resolve AFTER the WAL ConfState update, so
 	// callers waiting on ConfChange commit (AddLearner, PromoteLearner, etc.)
 	// don't resume before the WAL is consistent.
-	var pendingFutures []*futures.Future[struct{}]
+	type pendingConfChangeFuture struct {
+		future *futures.Future[uint64]
+		index  uint64
+	}
 
-	for _, cc := range result.confChanges {
+	var pendingFutures []pendingConfChangeFuture
+
+	for _, committed := range result.confChanges {
+		cc := committed.change
 		node.logger.
 			WithFields(map[string]any{"transition": cc.GetTransition().String()}).
 			Infof("Applying configuration change")
@@ -1351,7 +1378,10 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		// of transition type.
 		for _, change := range cc.GetChanges() {
 			if f, ok := node.pendingConfChanges.LoadAndDelete(change.GetNodeId()); ok {
-				pendingFutures = append(pendingFutures, f)
+				pendingFutures = append(pendingFutures, pendingConfChangeFuture{
+					future: f,
+					index:  committed.index,
+				})
 			}
 
 			lifecycle.SendEvent("conf_change_committed", map[string]any{
@@ -1377,8 +1407,8 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	}
 
 	// Resolve pending ConfChange futures now that WAL is consistent.
-	for _, f := range pendingFutures {
-		f.Resolve(struct{}{}, nil)
+	for _, pending := range pendingFutures {
+		pending.future.Resolve(pending.index, nil)
 	}
 
 	// Update the IndexTracker to reflect the latest committed index.
@@ -2230,34 +2260,35 @@ func (node *Node) SetObserver(obs *Observer) {
 }
 
 // proposeConfChangeAndWait proposes a ConfChange via the orchestrate loop and
-// waits for it to be committed. Returns (true, nil) on commit, (false, nil) if
-// the proposal was likely dropped (timeout), or (false, err) on error.
+// waits for it to be committed. Returns (index, true, nil) on commit,
+// (0, false, nil) if the proposal was likely dropped (timeout), or
+// (0, false, err) on error.
 // The proposeFn is dispatched via execClusterCommand (rawNode is not thread-safe).
-func (node *Node) proposeConfChangeAndWait(ctx context.Context, nodeID uint64, proposeFn func() error, timeout time.Duration) (bool, error) {
-	future := futures.New[struct{}]()
+func (node *Node) proposeConfChangeAndWait(ctx context.Context, nodeID uint64, proposeFn func() error, timeout time.Duration) (uint64, bool, error) {
+	future := futures.New[uint64]()
 
 	node.pendingConfChanges.Store(nodeID, future)
 	defer node.pendingConfChanges.Delete(nodeID)
 
 	err := node.execClusterCommand(ctx, proposeFn)
 	if err != nil {
-		return false, err
+		return 0, false, err
 	}
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	_, err = future.Wait(timeoutCtx)
+	committedIndex, err := future.Wait(timeoutCtx)
 	if err != nil {
 		// Timeout (deadline exceeded) means the proposal was likely dropped — not an error.
 		if timeoutCtx.Err() != nil && ctx.Err() == nil {
-			return false, nil
+			return 0, false, nil
 		}
 
-		return false, err
+		return 0, false, err
 	}
 
-	return true, nil
+	return committedIndex, true, nil
 }
 
 // retryConfChange acquires confChangeMu and retries a ConfChange proposal until
@@ -2272,14 +2303,14 @@ func (node *Node) proposeConfChangeAndWait(ctx context.Context, nodeID uint64, p
 // confChangeMu may otherwise not observe the FSM write. Currently used by
 // RemoveNode to guarantee the RemovedMemberEntry tombstone is visible
 // before a racing JoinAsLearner's blacklist re-check runs (EN-1045).
-func (node *Node) retryConfChange(ctx context.Context, nodeID uint64, name string, proposeFn func() error, postApplyFn func(ctx context.Context) error) error {
+func (node *Node) retryConfChange(ctx context.Context, nodeID uint64, name string, proposeFn func() error, postApplyFn func(ctx context.Context, committedIndex uint64) error) error {
 	node.confChangeMu.Lock()
 	defer node.confChangeMu.Unlock()
 
 	retryInterval := max(node.config.TickInterval*time.Duration(node.config.HeartbeatTick)*3, 500*time.Millisecond)
 
 	for {
-		committed, err := node.proposeConfChangeAndWait(ctx, nodeID, proposeFn, retryInterval)
+		committedIndex, committed, err := node.proposeConfChangeAndWait(ctx, nodeID, proposeFn, retryInterval)
 		if err != nil {
 			return err
 		}
@@ -2289,7 +2320,7 @@ func (node *Node) retryConfChange(ctx context.Context, nodeID uint64, name strin
 				return nil
 			}
 
-			return postApplyFn(ctx)
+			return postApplyFn(ctx, committedIndex)
 		}
 
 		node.logger.WithFields(map[string]any{
@@ -2406,10 +2437,16 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 		// (Pebble IsRemoved check) and RemoveNode commit: re-check the
 		// blacklist here, inside the confChangeMu-serialized path. Any
 		// prior RemoveNode has fully applied by now (retryConfChange
-		// waits for commit), so a tombstone written in the interval is
-		// visible. Empty instance_id (admin AddLearner without a booted
-		// pod) can't be blacklisted, so we skip the check.
+		// waits for commit and records an admission barrier until apply),
+		// so a removal committed in the interval cannot be missed even if
+		// its tombstone is still queued behind the async applier. Empty
+		// instance_id (admin AddLearner without a booted pod) can't be
+		// blacklisted, so we skip the check.
 		if len(instanceID) == 16 {
+			if node.isRemovalPending(nodeID, instanceID) {
+				return ErrNodeRemoved
+			}
+
 			removed, checkErr := node.membership.IsRemoved(nodeID, instanceID)
 			if checkErr != nil {
 				return fmt.Errorf("checking removed-member registry for %d: %w", nodeID, checkErr)
@@ -2556,48 +2593,98 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 	// TOCTOU race where a concurrent JoinAsLearner acquiring the mutex
 	// next would otherwise re-check the blacklist and miss the tombstone
 	// still queued behind the applier's async submit.
-	postApplyFn := func(ctx context.Context) error {
+	postApplyFn := func(ctx context.Context, committedIndex uint64) error {
 		if !capturedBlacklistableID {
 			return nil
 		}
 
-		return node.waitForBlacklistApplied(ctx, nodeID, capturedInstanceID)
+		return node.waitForRemovalApplied(ctx, nodeID, capturedInstanceID, committedIndex)
 	}
 
 	return node.retryConfChange(ctx, nodeID, "RemoveNode", proposeFn, postApplyFn)
 }
 
-// waitForBlacklistApplied polls the removed-member registry on the local
-// Pebble store until (nodeID, instanceID) is visible or the context is
-// cancelled. Used by RemoveNode to bridge the gap between raft commit
-// (future resolved in finishReady) and FSM apply (RemovedMemberEntry
-// written by the async applier). Runs while confChangeMu is held.
-func (node *Node) waitForBlacklistApplied(ctx context.Context, nodeID uint64, instanceID []byte) error {
-	ticker := time.NewTicker(5 * time.Millisecond)
-	defer ticker.Stop()
+// waitForRemovalApplied bridges the gap between Raft commit and durable FSM
+// apply. The committed entry index is the explicit durability barrier: once
+// WaitForApplied returns, the Pebble batch containing both the peer deletion
+// and RemovedMemberEntry is visible. This avoids a wall-clock timeout whose
+// expiry could incorrectly imply that the already-committed Raft mutation
+// failed.
+//
+// pendingRemovals remains set if the RPC context is cancelled before apply.
+// AddLearner and auto-promotion consult it, so the removed live pod cannot
+// silently rejoin during the post-commit/pre-apply window.
+func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, instanceID []byte, committedIndex uint64) error {
+	node.pendingRemovals.Store(nodeID, pendingRemoval{
+		instanceID:   bytes.Clone(instanceID),
+		appliedIndex: committedIndex,
+	})
 
-	deadline := time.Now().Add(5 * time.Second)
+	node.logger.WithFields(map[string]any{
+		"removedNodeID": nodeID,
+		"raftIndex":     committedIndex,
+	}).Infof("RemoveNode committed; waiting for removed-member tombstone application")
 
-	for {
-		removed, err := node.membership.IsRemoved(nodeID, instanceID)
-		if err != nil {
-			return fmt.Errorf("polling removed-member visibility for %d: %w", nodeID, err)
-		}
+	if err := node.fsm.WaitForApplied(ctx, committedIndex); err != nil {
+		node.logger.WithFields(map[string]any{
+			"error":         err,
+			"removedNodeID": nodeID,
+			"raftIndex":     committedIndex,
+		}).Errorf("RemoveNode committed but removed-member tombstone application is still pending")
 
-		if removed {
-			return nil
-		}
-
-		if time.Now().After(deadline) {
-			return fmt.Errorf("timeout waiting for RemovedMemberEntry(%d) to be applied", nodeID)
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
+		return &RemoveNodeCommittedError{
+			NodeID:       nodeID,
+			AppliedIndex: committedIndex,
+			Cause:        err,
 		}
 	}
+
+	removed, err := node.membership.IsRemoved(nodeID, instanceID)
+	if err != nil {
+		node.logger.WithFields(map[string]any{
+			"error":         err,
+			"removedNodeID": nodeID,
+			"raftIndex":     committedIndex,
+		}).Errorf("RemoveNode committed and applied but tombstone verification failed")
+
+		return &RemoveNodeCommittedError{
+			NodeID:       nodeID,
+			AppliedIndex: committedIndex,
+			Cause:        fmt.Errorf("verifying removed-member tombstone: %w", err),
+		}
+	}
+
+	if !removed {
+		node.logger.WithFields(map[string]any{
+			"removedNodeID": nodeID,
+			"raftIndex":     committedIndex,
+		}).Errorf("Invariant violation: applied RemoveNode is missing its removed-member tombstone")
+
+		return &RemoveNodeCommittedError{
+			NodeID:       nodeID,
+			AppliedIndex: committedIndex,
+			Cause:        errors.New("invariant: applied removal is missing its removed-member tombstone"),
+		}
+	}
+
+	node.pendingRemovals.Delete(nodeID)
+	node.logger.WithFields(map[string]any{
+		"removedNodeID": nodeID,
+		"raftIndex":     committedIndex,
+	}).Infof("RemoveNode tombstone applied")
+
+	return nil
+}
+
+// isRemovalPending reports whether the same member identity has a committed
+// removal whose tombstone has not yet been verified. The entry is deliberately
+// retained after a cancelled RPC: failing closed is required because an apply
+// delay must never let the removed live pod rejoin. A successful waiter deletes
+// it only after reading the durable tombstone.
+func (node *Node) isRemovalPending(nodeID uint64, instanceID []byte) bool {
+	pending, ok := node.pendingRemovals.Load(nodeID)
+
+	return ok && bytes.Equal(pending.instanceID, instanceID)
 }
 
 // ForceRemoveNode removes a node from the Raft cluster by directly applying a
@@ -2752,6 +2839,15 @@ func (node *Node) checkAndPromoteLearners() {
 				node.logger.WithFields(map[string]any{
 					"node_id": id,
 				}).Infof("Auto-promote: learner has no instance_id yet; deferring promotion")
+
+				continue
+			}
+
+			if node.isRemovalPending(id, instanceID) {
+				node.logger.WithFields(map[string]any{
+					"node_id":    id,
+					"instanceID": hex.EncodeToString(instanceID),
+				}).Infof("Auto-promote: refusing learner with committed removal pending FSM apply")
 
 				continue
 			}

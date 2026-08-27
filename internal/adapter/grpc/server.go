@@ -529,6 +529,47 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 		return status.Error(codes.PermissionDenied, err.Error())
 	}
 
+	// A RemoveNode response can outlive the Raft mutation it initiated: the
+	// ConfChange is committed before the async FSM batch makes the durable
+	// removed-member tombstone visible. Preserve that distinction on the wire
+	// so clients know membership already changed and can verify the postcondition.
+	var removalCommitted *node.RemoveNodeCommittedError
+	if errors.As(err, &removalCommitted) {
+		st := status.New(codes.Unavailable, removalCommitted.Error())
+
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: "RAFT_NODE_REMOVAL_COMMITTED",
+			Domain: errorDomain,
+			Metadata: map[string]string{
+				"nodeId":       strconv.FormatUint(removalCommitted.NodeID, 10),
+				"appliedIndex": strconv.FormatUint(removalCommitted.AppliedIndex, 10),
+			},
+		})
+		if detailErr == nil {
+			return detailed.Err()
+		}
+
+		return st.Err()
+	}
+
+	// Removing an already-absent node is a stable membership postcondition,
+	// not an internal server failure. Operators can treat NotFound as
+	// idempotent success, while callers that need certainty can confirm via
+	// GetClusterState.
+	if errors.Is(err, node.ErrNodeNotInCluster) {
+		st := status.New(codes.NotFound, err.Error())
+
+		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
+			Reason: "RAFT_NODE_NOT_IN_CLUSTER",
+			Domain: errorDomain,
+		})
+		if detailErr == nil {
+			return detailed.Err()
+		}
+
+		return st.Err()
+	}
+
 	// Convert context deadline/cancellation from internal timeouts (e.g. proposeTimeout)
 	// to Unavailable so the client retry policy handles them.
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
