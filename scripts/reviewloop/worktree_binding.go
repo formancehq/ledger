@@ -40,7 +40,6 @@ type boundCommandRunner struct {
 	bindingFile         string
 	bindingFileContent  []byte
 	gitGuardBin         string
-	realGitPath         string
 	rootSnapshot        rootCheckoutSnapshot
 }
 
@@ -102,10 +101,6 @@ func newBoundCommandRunner(
 		return nil, fmt.Errorf("reading worktree binding file: %w", err)
 	}
 
-	realGitPath, err := exec.LookPath("git")
-	if err != nil {
-		return nil, fmt.Errorf("finding real git executable: %w", err)
-	}
 	guardSource, err := resolveExistingFile(gitGuardSource)
 	if err != nil {
 		return nil, fmt.Errorf("resolving Git mutation guard: %w", err)
@@ -131,7 +126,6 @@ func newBoundCommandRunner(
 		bindingFile:         resolvedBindingFile,
 		bindingFileContent:  bindingContent,
 		gitGuardBin:         guardBin,
-		realGitPath:         realGitPath,
 	}
 	if err := runner.verifyWorktreeBinding(); err != nil {
 		return nil, err
@@ -204,13 +198,14 @@ func (runner *boundCommandRunner) environment(extra map[string]string) []string 
 		"TRUSTED_ROOT_CHECKOUT":     runner.trustedRootCheckout,
 		"CANDIDATE_WORKTREE":        runner.candidateWorktree,
 		"VALIDATION_RUN_DIR":        runner.validationRunDir,
-		"AI_GIT_REAL_PATH":          runner.realGitPath,
-		"AI_GIT_ORIGINAL_PATH":      os.Getenv("PATH"),
 		"PATH":                      runner.gitGuardBin + string(os.PathListSeparator) + os.Getenv("PATH"),
 	}
 	maps.Copy(values, extra)
 
-	return replaceEnvironment(os.Environ(), values)
+	return replaceEnvironment(
+		removeEnvironment(os.Environ(), "AI_GIT_REAL_PATH", "AI_GIT_ORIGINAL_PATH"),
+		values,
+	)
 }
 
 func (runner *boundCommandRunner) verifyWorktreeBinding() error {
@@ -476,6 +471,23 @@ func replaceEnvironment(current []string, replacements map[string]string) []stri
 	}
 	for key, value := range replacements {
 		result = append(result, key+"="+value)
+	}
+
+	return result
+}
+
+func removeEnvironment(current []string, removedKeys ...string) []string {
+	removed := make(map[string]struct{}, len(removedKeys))
+	for _, key := range removedKeys {
+		removed[key] = struct{}{}
+	}
+	result := make([]string, 0, len(current))
+	for _, item := range current {
+		key, _, found := strings.Cut(item, "=")
+		if _, remove := removed[key]; found && remove {
+			continue
+		}
+		result = append(result, item)
 	}
 
 	return result

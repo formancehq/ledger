@@ -1,9 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-real_git=${AI_GIT_REAL_PATH:?AI_GIT_REAL_PATH must name the real Git executable}
-original_path=${AI_GIT_ORIGINAL_PATH:?AI_GIT_ORIGINAL_PATH must preserve the pre-guard PATH}
 trusted_root=${TRUSTED_ROOT_CHECKOUT:?TRUSTED_ROOT_CHECKOUT must be set}
+
+guard_dir=$(cd "$(dirname "$0")" && pwd -P)
+original_path=""
+IFS=: read -r -a path_entries <<< "$PATH"
+for entry in "${path_entries[@]}"; do
+    resolved_entry=$(cd "${entry:-.}" 2>/dev/null && pwd -P) || resolved_entry=$entry
+    if [[ "$resolved_entry" == "$guard_dir" ]]; then
+        continue
+    fi
+    if [[ -n "$original_path" ]]; then
+        original_path+=:
+    fi
+    original_path+=$entry
+done
+real_git=$(PATH="$original_path" command -v git)
+[[ -n "$real_git" ]] || {
+    echo "AI git guard: real Git executable not found behind guard" >&2
+    exit 98
+}
 
 run_real_git() {
     PATH="$original_path" "$real_git" "$@"
@@ -119,16 +136,33 @@ for argument in "${subcommand_args[@]-}"; do
     esac
 done
 
-if [[ "$worktree_mutation" == true ]]; then
-    printf 'UNREGISTERED_CHILD_WORKTREE_FORBIDDEN command=git worktree %s\n' "$worktree_action" >&2
-    exit 97
-fi
-
 selected_root=""
 if selected_root=$(run_real_git "${global_args[@]}" rev-parse --show-toplevel 2>/dev/null); then
     selected_root=$(cd "$selected_root" && pwd -P)
 fi
 trusted_root=$(cd "$trusted_root" && pwd -P)
+
+if [[ "$worktree_mutation" == true ]]; then
+    selected_common=""
+    trusted_common=""
+    if [[ -n "$selected_root" ]]; then
+        selected_common=$(run_real_git "${global_args[@]}" rev-parse --git-common-dir 2>/dev/null) || selected_common=""
+        if [[ -n "$selected_common" && "$selected_common" != /* ]]; then
+            selected_common=$selected_root/$selected_common
+        fi
+        selected_common=$(cd "$selected_common" 2>/dev/null && pwd -P) || selected_common=""
+    fi
+    trusted_common=$(run_real_git -C "$trusted_root" rev-parse --git-common-dir 2>/dev/null) || trusted_common=""
+    if [[ -n "$trusted_common" && "$trusted_common" != /* ]]; then
+        trusted_common=$trusted_root/$trusted_common
+    fi
+    trusted_common=$(cd "$trusted_common" 2>/dev/null && pwd -P) || trusted_common=""
+    if [[ -z "$selected_common" || -z "$trusted_common" || "$selected_common" == "$trusted_common" ]]; then
+        printf 'UNREGISTERED_CHILD_WORKTREE_FORBIDDEN command=git worktree %s\n' "$worktree_action" >&2
+        exit 97
+    fi
+fi
+
 if [[ "$selected_root" == "$trusted_root" && ( "$root_read_only" != true || "$unsafe_root_global_option" == true || "$unsafe_root_subcommand_option" == true ) ]]; then
     printf 'ROOT_CHECKOUT_GIT_MUTATION_FORBIDDEN command=git %s\n' "$subcommand" >&2
     exit 96

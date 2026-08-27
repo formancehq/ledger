@@ -164,6 +164,26 @@ func TestGitMutationGuardRefusesUnregisteredChildWorktree(t *testing.T) {
 	require.NoDirExists(t, filepath.Join(filepath.Dir(fixture.candidate), "agent-child"))
 }
 
+func TestGitMutationGuardAllowsFixtureWorktreesInIndependentRepository(t *testing.T) {
+	fixture := newWorktreeBindingFixture(t)
+
+	output, err := fixture.run(t, 123, fixture.candidate, fixture.bindingFile, map[string]string{
+		"TEST_ROOT_MUTATION": "fixture-worktree",
+	})
+	require.NoError(t, err, output)
+	require.Contains(t, output, "ROOT_UNCHANGED=PASS")
+}
+
+func TestGuardDoesNotExposeUnguardedGitEnvironment(t *testing.T) {
+	fixture := newWorktreeBindingFixture(t)
+
+	output, err := fixture.run(t, 123, fixture.candidate, fixture.bindingFile, map[string]string{
+		"TEST_ROOT_MUTATION": "guard-environment",
+	})
+	require.NoError(t, err, output)
+	require.Contains(t, output, "ROOT_UNCHANGED=PASS")
+}
+
 func TestGitMutationGuardAllowsReadOnlyRootInspection(t *testing.T) {
 	fixture := newWorktreeBindingFixture(t)
 
@@ -258,6 +278,22 @@ case "${TEST_ROOT_MUTATION:-}" in
     guard-am) git -C "$TRUSTED_ROOT_CHECKOUT" am ;;
     guard-output) git -C "$TRUSTED_ROOT_CHECKOUT" diff --output=base.txt ;;
     child-worktree) git worktree add --detach "$(dirname "$EXPECTED_WORKTREE")/agent-child" "$EXPECTED_HEAD" ;;
+    fixture-worktree)
+        fixture_repo="$VALIDATION_RUN_DIR/fixture-repo"
+        fixture_child="$VALIDATION_RUN_DIR/fixture-child"
+        mkdir -p "$fixture_repo"
+        git -C "$fixture_repo" init -q
+        git -C "$fixture_repo" config user.name test
+        git -C "$fixture_repo" config user.email test@example.com
+        printf 'fixture\n' > "$fixture_repo/file.txt"
+        git -C "$fixture_repo" add file.txt
+        git -C "$fixture_repo" commit -qm fixture
+        git -C "$fixture_repo" worktree add -q --detach "$fixture_child" HEAD
+        ;;
+    guard-environment)
+        [[ ${AI_GIT_REAL_PATH+x} != x ]]
+        [[ ${AI_GIT_ORIGINAL_PATH+x} != x ]]
+        ;;
     guard-read) git -C "$TRUSTED_ROOT_CHECKOUT" status --short >/dev/null ;;
 esac
 printf '{"decision":"APPROVE","head":"%s","worktree_fingerprint":"%s","previous_findings":[],"findings":[],"residual_risk":"LOW","human_decision_context":""}\n' \
