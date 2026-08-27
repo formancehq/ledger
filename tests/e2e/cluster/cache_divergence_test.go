@@ -50,10 +50,6 @@ var _ = Describe("Cache divergence under chaos", func() {
 		BeforeAll(func() {
 			ctx, servers, _, _ = testutil.SetupMultiNodeCluster(
 				countInstances,
-				testutil.TestRaftBasePort,
-				testutil.TestServiceBasePort,
-				testutil.TestHTTPBasePort,
-				testutil.TestGatewayBasePort,
 				testutil.WithCacheRotationThreshold(3),
 				testutil.WithSentinelMode(),
 			)

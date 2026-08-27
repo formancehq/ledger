@@ -66,6 +66,10 @@ type Builder struct {
 	// Max time budget per tick for backfill processing (default 50ms).
 	backfillBudget time.Duration
 
+	// Per-zone resume cursors for the incremental event GC (see
+	// runEventGC); nil resumes from the zone start.
+	eventGCResume map[byte][]byte
+
 	// Round-robin index for fair scheduling across backfill tasks.
 	nextBackfillIdx int
 
@@ -152,32 +156,66 @@ func (b *Builder) putVersionState(ledgerName, canonicalID string, state readstor
 	inner[canonicalID] = state
 }
 
-// dropVersionState removes a per-index version state from the cache —
-// used when an index is dropped via RemoveMetadataFieldType / DropIndex.
-func (b *Builder) dropVersionState(ledgerName, canonicalID string) {
-	if b.indexVersions == nil {
-		return
+// tombstoneVersionState replaces an index's version state with the dropped
+// marker {cur:0, pend:0, HighWater} — in the cache and, when a fold batch is
+// active, in the store. The high-water mark is what the next incarnation's
+// CreateIndex builds on: versions are single-use per (ledger, canonical), so
+// a fresh builder pass never writes into a keyspace an earlier incarnation's
+// permanent events already occupy (the same-sequence retraction such reuse
+// forces can never win — see IndexVersionState.HighWater).
+func (b *Builder) tombstoneVersionState(ledgerName, canonicalID string) error {
+	prior, _ := b.versionStateFor(ledgerName, canonicalID)
+
+	tomb := readstore.IndexVersionState{
+		HighWater: max(prior.HighWater, prior.CurrentVersion, prior.PendingVersion),
 	}
 
+	batch := b.wb.Batch()
+	if batch == nil {
+		return fmt.Errorf(
+			"invariant: no readstore write batch bound while tombstoning %s/%s",
+			ledgerName, canonicalID)
+	}
+
+	if err := b.readStore.WriteIndexVersionState(batch, ledgerName, canonicalID, tomb); err != nil {
+		return fmt.Errorf("persisting version tombstone: %w", err)
+	}
+
+	b.putVersionState(ledgerName, canonicalID, tomb)
+
+	return nil
+}
+
+// versionStateFor returns the full cached per-replica version state for an
+// index, false when this replica has never written one.
+func (b *Builder) versionStateFor(ledgerName, canonicalID string) (readstore.IndexVersionState, bool) {
 	inner, ok := b.indexVersions[ledgerName]
 	if !ok {
-		return
+		return readstore.IndexVersionState{}, false
 	}
 
-	delete(inner, canonicalID)
+	state, ok := inner[canonicalID]
+
+	return state, ok
 }
 
 // effectiveCurrentVersion returns the forward-encoding version live
-// writes and queries should currently target on this replica. The
-// indexer hot path calls this for every metadata index touched.
+// writes should currently target on this replica. The indexer hot
+// path calls this for every metadata index touched.
 //
-// Promotion of 0 → 1: a never-seen index defaults to v1, matching the
-// FSM-side initialisation in processCreateIndex (and the version=1
-// embedded by the non-V key helpers). The actual switch to higher
-// versions happens in the rewrite-completion path (atomicSwitch).
+// current == 0 with a build in flight targets the PENDING version: during a
+// creation backfill the pending keyspace is the only one this incarnation
+// owns, and versions are single-use (IndexVersionState.HighWater), so
+// defaulting to v1 would write into whatever a dropped predecessor left
+// there. A never-tracked index (no state at all) keeps the v1 default,
+// matching the FSM-side initialisation in processCreateIndex.
 func (b *Builder) effectiveCurrentVersion(ledgerName, canonicalID string) uint32 {
-	current, _ := b.versionFor(ledgerName, canonicalID)
+	current, pending := b.versionFor(ledgerName, canonicalID)
 	if current == 0 {
+		if pending != 0 {
+			return pending
+		}
+
 		return 1
 	}
 
@@ -570,6 +608,7 @@ func (b *Builder) loop(ctx context.Context) {
 		}
 
 		b.processBackgroundTasks(ctx, stop, cursor)
+		b.runEventGC(cursor)
 
 		// Always wake WaitForSequence waiters so they can re-check progress.
 		// Without this, a waiter that enters Wait() between the last

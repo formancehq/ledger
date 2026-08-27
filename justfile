@@ -180,13 +180,17 @@ test-coverage:
     GOTOOLCHAIN=$(go env GOVERSION) go test -race -coverprofile={{coverage_dir}}/unit.out -coverpkg={{coverage_pkgs}} ./... -timeout 20m
     echo "Coverage profile: {{coverage_dir}}/unit.out"
 
-# Run E2E tests with coverage
+# Run E2E tests with coverage. This is the CI gate, so it runs the full tag
+# set: the feature-gated suites (s3, azure, clickhouse, nats, ...) are only
+# compiled when their tag is present, and running them here is what stops
+# them rotting unnoticed. Suites needing external credentials, such as
+# databricks, skip themselves when the environment is not configured.
 test-e2e-coverage:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     echo "==> E2E tests with coverage..."
-    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags e2e -p 1 -coverprofile={{coverage_dir}}/e2e.out -coverpkg={{coverage_pkgs}} ./tests/e2e/business/... ./tests/e2e/cluster/... -timeout 20m
+    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags "e2e,{{all_tags}}" -p 1 -coverprofile={{coverage_dir}}/e2e.out -coverpkg={{coverage_pkgs}} ./tests/e2e/business/... ./tests/e2e/cluster/... -timeout 20m
     echo "Coverage profile: {{coverage_dir}}/e2e.out"
 
 # Run scenario tests with coverage
@@ -331,7 +335,7 @@ generate-proto:
 # --- Operator (Kubernetes) ---
 
 # controller-gen binary for CRD/RBAC generation
-controller-gen := "go run sigs.k8s.io/controller-tools/cmd/controller-gen@latest"
+controller-gen := "go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.21.0"
 
 # Generate operator CRDs, RBAC, and sync Helm chart
 operator-generate:

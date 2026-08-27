@@ -21,16 +21,12 @@ var _ = Describe("Cluster server version", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		ctx, servers, _, _ = testutil.SetupMultiNodeCluster(
-			countInstances,
-			testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-		)
+		ctx, servers, _, _ = testutil.SetupMultiNodeCluster(countInstances)
 	})
 
 	// SetupMultiNodeCluster does not stop the node servers on its own, so the
-	// nodes must be stopped explicitly to release the shared base ports — every
-	// other cluster spec does this. Omitting it leaves ports 15000-15300 bound
-	// and the next cluster container panics with "bind: address already in use".
+	// nodes must be stopped explicitly to release their allocated ports — every
+	// other cluster spec does this.
 	AfterAll(func() {
 		testutil.StopServers(ctx, servers)
 	})

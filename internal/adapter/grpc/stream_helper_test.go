@@ -3,7 +3,9 @@ package grpc
 import (
 	"context"
 	"errors"
+	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -26,6 +28,10 @@ type fakeServerStream[Res any] struct {
 	trailer  metadata.MD
 	sendErr  error
 	sendStop int // when >0, return sendErr on the Nth Send (1-indexed)
+	// sendDelay burns wall-clock inside each Send, standing in for a consumer
+	// that is slow to drain the stream. Used by the profile phase-attribution
+	// tests to prove back-pressure lands in the delivery phase.
+	sendDelay time.Duration
 }
 
 func newFakeServerStream[Res any](t *testing.T) *fakeServerStream[Res] {
@@ -39,6 +45,10 @@ func newFakeServerStream[Res any](t *testing.T) *fakeServerStream[Res] {
 	f.MockServerStreamingServer.EXPECT().Context().Return(context.Background()).AnyTimes()
 
 	f.MockServerStreamingServer.EXPECT().Send(gomock.Any()).DoAndReturn(func(item *Res) error {
+		for deadline := time.Now().Add(f.sendDelay); time.Now().Before(deadline); {
+			runtime.Gosched()
+		}
+
 		f.sent = append(f.sent, item)
 
 		if f.sendStop > 0 && len(f.sent) == f.sendStop {

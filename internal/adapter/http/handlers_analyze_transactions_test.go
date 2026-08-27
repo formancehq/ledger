@@ -210,6 +210,47 @@ func TestHandleAnalyzeTransactions_EmptyResponse(t *testing.T) {
 	require.Empty(t, wrapper.Data.FlowPatterns)
 }
 
+// TestHandleAnalyzeTransactions_NoNullCollections pins the fix for a real
+// conformance failure: the OpenAPI schema types metadataKeys as a
+// non-nullable array, but FlowPattern.GetMetadataKeys() returns nil for an
+// absent repeated field, which serialized as JSON null. Left unset here to
+// reproduce that case, mirroring TestTransaction_MarshalJSON_NoNullCollections.
+func TestHandleAnalyzeTransactions_NoNullCollections(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
+			return &servicepb.AnalyzeTransactionsResponse{
+				TotalTransactions: 1,
+				FlowPatterns: []*servicepb.FlowPattern{
+					{
+						Signature:        "world->alice[USD/2]",
+						Structure:        servicepb.PostingStructure_POSTING_STRUCTURE_SIMPLE,
+						TransactionCount: 1,
+						Postings: []*servicepb.NormalizedPosting{
+							{SourcePattern: "world", DestinationPattern: "alice", Asset: "USD/2"},
+						},
+					},
+				},
+			}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/my-ledger/analyze-transactions", nil, map[string]string{
+		"ledgerName": "my-ledger",
+	})
+
+	srv.handleAnalyzeTransactions(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	body := w.Body.String()
+	require.Contains(t, body, `"metadataKeys":[]`)
+	require.NotContains(t, body, `"metadataKeys":null`)
+}
+
 func TestHandleAnalyzeTransactions_NoLeaderError(t *testing.T) {
 	t.Parallel()
 

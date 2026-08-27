@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -39,22 +40,20 @@ type reverseMapFieldKey struct {
 	metaKey   string
 }
 
-// removedSchemaFieldKey identifies a metadata field the replay observed a
-// RemovedMetadataFieldType log for. Keyed by target type rather than by
-// reverse-map namespace because that is what the log carries; the pass maps its
-// namespace to a target before looking up.
-type removedSchemaFieldKey struct {
-	ledger  string
-	target  commonpb.TargetType
-	metaKey string
-}
-
 // reverseMapAggregate accumulates a row count plus one representative sample
 // for a single bucket. Only the first sample is retained: dropping a metadata
 // field on a large ledger can strand millions of rows, so the pass must stay
 // O(distinct buckets) in memory and O(distinct buckets) in emitted events —
 // never O(rows). Pebble iterates in key order, so "first sample" is
 // deterministic for a given store.
+// reverseMapVerdict caches one field's resolved verdict: whether its rows are
+// orphans, and — when they are — which purge path must have missed them, for
+// the finding's diagnostics.
+type reverseMapVerdict struct {
+	orphan   bool
+	missedBy string
+}
+
 type reverseMapAggregate struct {
 	rows   uint64
 	sample string
@@ -100,7 +99,6 @@ type reverseMapOrphanScope struct {
 	liveLedgers           map[string]struct{}
 	pendingCleanupLedgers map[string]struct{}
 	replayedSchemas       map[string]*commonpb.MetadataSchema
-	removedFields         map[removedSchemaFieldKey]struct{}
 }
 
 // compareReverseMapOrphans reports reverse-map (rmap, prefix 0x03) rows in the
@@ -120,61 +118,43 @@ type reverseMapOrphanScope struct {
 // projection compare: the primary store is the oracle here, and the read index
 // is the data being judged.
 //
-// A row is an orphan when its field is no longer indexed and no longer declared:
-// either the replay observed a RemovedMetadataFieldType for it, or it is present
-// in neither the index registry nor the replayed schema. The first term is
-// exactly EN-1458's bug — RemovedMetadataFieldType is the single log that both
-// removes the schema field type and runs purgeReverseMapForKey, so "the audit
-// says this field was removed + rows are still live" means "the point-delete scan
-// missed rows". The second catches removals whose log has been archived away, and
-// rows for fields that were never audited at all. Both are evaluated only on an
-// exactly aligned peer view; the malformed-key class needs no oracle at all and
-// always runs. See ALIGNMENT below.
+// A row is an orphan when no index is currently registered for its (ledger,
+// target, metadata key). The registry decides alone. Both ends of the index
+// lifecycle purge the reverse map — RemovedMetadataFieldType always ran
+// purgeReverseMapForKey, and handleDroppedIndexLog now runs the same purge on
+// DropIndex — so at an aligned peer view a live row with no registry entry
+// means exactly "a purge missed rows". Evaluated only on an exactly aligned
+// peer view; the malformed-key class needs no oracle at all and always runs.
+// See ALIGNMENT below.
 //
-// Residue from a plain DropIndex is deliberately NOT flagged. DropIndex removes
-// the registry entry but leaves the schema field declared, and
-// indexbuilder.handleDroppedIndexLog reclaims nothing — so the rows survive
-// forever on a healthy cluster. That leak is real but it is a different, broader
-// bug: it strands all three read-index limbs, not just the one that cannot be
-// range-deleted. It is tracked as EN-1621
-// (https://formance-team.atlassian.net/browse/EN-1621). Flagging it here would
-// make Check() permanently fail on any cluster that has ever dropped a metadata
-// index — including the restore and bootstrap validation gates, which have no
-// warning channel — and a check that is permanently red on a legitimate
-// operator action trains operators to ignore red.
+// Schema declaration legitimises NOTHING. The old rule tolerated
+// declared-but-unregistered rows as DropIndex residue (the pre-purge leak,
+// EN-1621), and that tolerance was precisely the blind spot that would have
+// hidden a regression in the drop purge — plus a subtler one it already hid: a
+// removal-scan miss on a field later re-declared read as legitimate through
+// the schema term. The replayed schema survives only as the finding's
+// diagnostic: an orphan of a still-declared field can only have been missed by
+// the DropIndex purge, an undeclared one by the RemovedMetadataFieldType scan.
 //
-// KNOWN COVERAGE LIMIT, revisit when EN-1621 lands: once DropIndex purges rows,
-// a regression in that new purge path would strand rows while the schema field
-// is still declared, and this oracle would NOT catch it. The conjunction does
-// not solve that case and is not intended to — it trades that coverage for not
-// being permanently red today. When EN-1621 makes DropIndex purge, the schema
-// term stops being a safe proxy and the oracle must be reconsidered.
+// The schema used for that label MUST be the audit-derived replayed schema,
+// never the stored LedgerInfo.MetadataSchema — an oracle input must never come
+// from the data it judges. Same reasoning as sourcing liveLedgers from the
+// replay.
 //
-// The schema MUST be the audit-derived replayed schema, never the stored
-// LedgerInfo.MetadataSchema. Reading the stored row would make the pass
-// self-referential: a tampered or injected schema row could legitimise its own
-// orphaned rmap rows. Same reasoning as sourcing liveLedgers from the replay
-// rather than from stored LedgerInfo rows — an oracle must never come from the
-// data it judges.
-//
-// The registry term is, today, redundant: validateIndexTarget requires the
-// metadata field to be declared in the schema (via SetMetadataFieldType or
-// CreateLedger.initial_schema) before an index on it can be created, so
-// schema-declared is a superset of indexed. It is written as an explicit
-// conjunction anyway because it degrades safely — toward FEWER false positives —
-// if that guarantee ever breaks, whereas a bare schema check would start
-// flagging rows of genuinely-indexed fields.
-//
-// That safe degradation is only acceptable because the registry it reads is
-// itself verified. An `indexed == true` term can suppress an orphan verdict, so a
-// stale or tampered SubAttrIndex entry would otherwise be a masking channel:
-// orphaned rmap rows plus a lingering registry row would pass Check() together.
-// compareIndexes closes it — under archiving `expectedIndexes` is seeded from the
-// baseline snapshot (foldBaselineIndexes) instead of tolerating any entry the
-// replay never touched, so the lingering row is reported as INDEX_MISMATCH in its
-// own right. Keep that seeding in place: reinstating an archive-orphan tolerance
+// The registry read here is the STORED SubAttrIndex registry — a primary-store
+// projection, itself verified against the audit replay by compareIndexes. An
+// `indexed == true` entry can suppress an orphan verdict, so a stale or
+// tampered registry row is a masking channel: orphaned rmap rows plus a
+// lingering registry row would pass Check() together. compareIndexes closes it
+// — under archiving `expectedIndexes` is seeded from the baseline snapshot
+// (foldBaselineIndexes) instead of tolerating any entry the replay never
+// touched, so the lingering row is reported as INDEX_MISMATCH in its own
+// right. Keep that seeding in place: reinstating an archive-orphan tolerance
 // in compareIndexes silently re-opens this suppression path, and the orphan
-// verdict here would go quiet with no other pass covering it.
+// verdict here would go quiet with no other pass covering it. Deriving the
+// liveness set from the audit replay directly, rather than through the stored
+// registry, would remove that coupling; it is deliberately left as a separate
+// change so its behavioral diff can be reviewed on its own.
 //
 // Version is deliberately ignored. Current and pending forward-encoding
 // versions legitimately coexist while a per-replica schema rewrite runs, and
@@ -201,15 +181,23 @@ type reverseMapOrphanScope struct {
 //     peer snapshot BEFORE the primary one precisely so that ordering is
 //     inherited by the two pinned values. See the comment on the pins in Check().
 //
-//     It remains reachable one way only: a primary-store rollback beneath the
-//     cursor (RestoreCheckpoint on a follower restore) lowers maxLogSeq while the
-//     read index keeps its progress. Unlike usagebuilder, which detects this and
-//     calls usagestore.Reset(), the index builder has no rollback reset — so the
-//     read index legitimately holds rows for logs the restored primary never had.
-//     That is a real divergence, but it belongs to the missing rollback reset, not
-//     to the purge path this pass audits, and reporting it here would paint
-//     Check() red on a restore that never self-heals. It is logged loudly and
-//     skipped.
+//     Nor is it reachable at runtime by any other route. RestoreCheckpoint —
+//     the only thing that replaces the primary store wholesale — has a single
+//     production caller (dal.incomingRestoreFactory.Run, reached through
+//     state.Synchronizer.SynchronizeWithLeader), and it installs a checkpoint
+//     fetched FROM the leader: a follower only syncs because it is behind, a
+//     leader compacts only up to a snapshot it can serve, and an applied index
+//     can never exceed the leader's log. Every path moves the node forward.
+//
+//     So an ahead cursor means the deployment is already broken — the classic
+//     shape being an offline restore of an older backup into a data directory
+//     whose read-indexes/ survived, leaving rows folded from logs the primary
+//     no longer has. That state never self-heals (the index builder, unlike
+//     usagebuilder, has no rollback reset), and it is exactly the corruption
+//     this pass exists to surface, so it is REPORTED rather than skipped:
+//     silently limiting the check to key decoding would leave the one
+//     read-index limb the checker covers unverified, with an INFO log as the
+//     only trace (invariant #7).
 //
 // This is why the pass needs no cross-store atomicity: an ordering that can only
 // leave the peer behind is sufficient, because behind is already a skip.
@@ -249,13 +237,22 @@ func (c *Checker) compareReverseMapOrphans(
 			"lastSequence":    scope.lastSequence,
 		}).Infof("Reverse-map orphan check limited to key decoding: the read index has not folded the whole verified log range")
 	case indexedSequence > scope.lastSequence:
-		// Unreachable by race (Check() pins the peer snapshot first). Reachable
-		// only through a primary-store rollback beneath the read-index cursor,
-		// which the index builder does not reset — see ALIGNMENT.
-		c.logger.WithFields(map[string]any{
+		// No runtime path produces this — see ALIGNMENT. Getting here means the
+		// primary store was replaced beneath a surviving read index, so the
+		// peer holds rows derived from logs the primary no longer has.
+		assert.Unreachable("check: read index ahead of the verified log range", map[string]any{
 			"indexedSequence": indexedSequence,
 			"lastSequence":    scope.lastSequence,
-		}).Infof("Reverse-map orphan check limited to key decoding: the read index is ahead of the verified log range, which means the primary store was rolled back beneath the read-index cursor")
+		})
+
+		callback(errorEvent(
+			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN,
+			fmt.Sprintf(
+				"read index is ahead of the verified log range (indexed %d > verified %d): the primary store was replaced beneath a surviving read index, so the read index holds rows for logs the primary no longer has",
+				indexedSequence, scope.lastSequence,
+			),
+			0, "", "", "",
+		))
 	}
 
 	// The registry is only consulted when a verdict can be reached at all, so an
@@ -297,7 +294,8 @@ func (c *Checker) compareReverseMapOrphans(
 	// once per row keeps the scan's *work*, not only its memory, proportional
 	// to the number of distinct fields. Bounded by the same set of triples the
 	// aggregates are.
-	verdicts := make(map[reverseMapFieldKey]bool)
+	verdicts := make(map[reverseMapFieldKey]reverseMapVerdict)
+	orphanMissedBy := make(map[reverseMapFieldKey]string)
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
@@ -357,43 +355,44 @@ func (c *Checker) compareReverseMapOrphans(
 			metaKey:   parsed.MetadataKey,
 		}
 
-		orphan, decided := verdicts[field]
+		verdict, decided := verdicts[field]
 		if !decided {
-			_, declared := commonpb.SchemaFieldForTarget(scope.replayedSchemas[parsed.Ledger], target, parsed.MetadataKey)
-			_, removed := scope.removedFields[removedSchemaFieldKey{
-				ledger:  parsed.Ledger,
-				target:  target,
-				metaKey: parsed.MetadataKey,
-			}]
-
-			switch {
-			case declared != nil:
-				// Still declared, so the rows are legitimate — including when an
-				// earlier removal is on record and a later SetMetadataFieldType
-				// re-declared the field. Checking this first is what makes the
-				// removal set safe to keep append-only.
-				orphan = false
-			case aligned:
-				// The replay observed the removal, OR the field is in neither
-				// oracle (a removal whose log was archived away, or a field the
-				// audit never declared at all). The removal term is kept even
-				// though absence subsumes it on a healthy store: it still fires
-				// when a RemovedMetadataFieldType is on record but the registry
-				// entry lingers, which absence alone would miss.
+			if aligned {
+				// The registry decides, alone: every reverse-map row must
+				// belong to a currently registered index. Both lifecycle ends
+				// purge — RemovedMetadataFieldType always did, DropIndex does
+				// now — so at an aligned view a row with no registry entry is
+				// a purge miss, full stop. Schema declaration legitimises
+				// NOTHING: tolerating declared-but-unregistered rows is
+				// exactly the blind spot that hid dropped-index leaks, and it
+				// also hid removal-scan misses on fields that were later
+				// re-declared.
 				_, indexed := indexedFields[indexes.KeyFor(parsed.Ledger, indexes.MetadataID(target, parsed.MetadataKey))]
-				orphan = removed || !indexed
-			default:
-				orphan = false
+				verdict.orphan = !indexed
+
+				if verdict.orphan {
+					// The schema term survives only as the diagnostic: which
+					// purge path missed. A declared field's index can only
+					// have gone away through DropIndex; an undeclared (or
+					// removal-recorded) one through RemovedMetadataFieldType.
+					_, declared := commonpb.SchemaFieldForTarget(scope.replayedSchemas[parsed.Ledger], target, parsed.MetadataKey)
+					if declared != nil {
+						verdict.missedBy = "DropIndex purge"
+					} else {
+						verdict.missedBy = "RemovedMetadataFieldType scan"
+					}
+				}
 			}
 
-			verdicts[field] = orphan
+			verdicts[field] = verdict
 		}
 
-		if !orphan {
+		if !verdict.orphan {
 			continue
 		}
 
 		observeReverseMapRow(orphaned, field, renderReverseMapEntity(parsed))
+		orphanMissedBy[field] = verdict.missedBy
 	}
 
 	if err := iter.Error(); err != nil {
@@ -404,7 +403,7 @@ func (c *Checker) compareReverseMapOrphans(
 		))
 	}
 
-	emitReverseMapFindings(orphaned, unknownLedgers, malformed, callback)
+	emitReverseMapFindings(orphaned, orphanMissedBy, unknownLedgers, malformed, callback)
 }
 
 // collectIndexedFields builds the oracle: every index key present in the
@@ -483,6 +482,7 @@ func (c *Checker) collectIndexedFields(
 // emits them in a deterministic order.
 func emitReverseMapFindings(
 	orphaned map[reverseMapFieldKey]*reverseMapAggregate,
+	orphanMissedBy map[reverseMapFieldKey]string,
 	unknownLedgers map[string]*reverseMapAggregate,
 	malformed map[string]*reverseMapAggregate,
 	callback func(*servicepb.CheckStoreEvent),
@@ -494,8 +494,8 @@ func emitReverseMapFindings(
 			class:  reverseMapClassOrphan,
 			ledger: key.ledger,
 			message: fmt.Sprintf(
-				"reverse-map rows survive for metadata field %q (namespace %q) on ledger %q, which the audit-derived metadata schema no longer declares: rows=%d, sample %s",
-				key.metaKey, key.namespace, key.ledger, agg.rows, agg.sample),
+				"reverse-map rows survive for metadata field %q (namespace %q) on ledger %q with no registered index — missed by the %s: rows=%d, sample %s",
+				key.metaKey, key.namespace, key.ledger, orphanMissedBy[key], agg.rows, agg.sample),
 		})
 	}
 

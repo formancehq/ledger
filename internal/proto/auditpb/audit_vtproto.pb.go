@@ -410,7 +410,7 @@ func (m *AuditEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x72
+		dAtA[i] = 0x6a
 	}
 	if m.Idempotency != nil {
 		size, err := m.Idempotency.MarshalToSizedBufferVT(dAtA[:i])
@@ -420,7 +420,7 @@ func (m *AuditEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x6a
+		dAtA[i] = 0x62
 	}
 	if m.CallerSnapshot != nil {
 		size, err := m.CallerSnapshot.MarshalToSizedBufferVT(dAtA[:i])
@@ -430,7 +430,7 @@ func (m *AuditEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x62
+		dAtA[i] = 0x5a
 	}
 	if m.HashVersion != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HashVersion))
@@ -1176,7 +1176,7 @@ func (m *AuditEntry) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 12:
+		case 11:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CallerSnapshot", wireType)
 			}
@@ -1212,7 +1212,7 @@ func (m *AuditEntry) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 13:
+		case 12:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Idempotency", wireType)
 			}
@@ -1248,7 +1248,7 @@ func (m *AuditEntry) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 14:
+		case 13:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Signature", wireType)
 			}

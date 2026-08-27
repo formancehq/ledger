@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **Nix with Flakes enabled** (required) - provides Go 1.26+, Just, golangci-lint, protoc, and all other tools
+- **Nix with Flakes enabled** (required) - provides Go 1.26+, Just, golangci-lint, protoc, Atlassian CLI (`acli`), and all other repository CLI dependencies
 - **direnv** - [Installation](https://direnv.net/) and [shell hook](https://direnv.net/docs/hook.html)
 
 ## Setup
@@ -19,6 +19,8 @@ direnv allow
 ```
 
 After setup, `direnv` automatically loads the Nix development environment whenever you `cd` into the project directory.
+
+Repository scripts and contributor workflows must not rely on host-installed CLIs. When adding a CLI dependency, add it to `flake.nix` so its version is pinned by `flake.lock`. External service authentication, such as `acli` credentials, remains an explicit operator setup step and is not managed by Nix.
 
 ## Project Structure
 
@@ -146,5 +148,5 @@ The server uses `github.com/formancehq/go-libs/v5/pkg/service` for lifecycle man
 ## Next Steps
 
 - Read [conventions.md](./conventions.md) for coding standards
-- Explore [architecture-overview.md](../architecture-overview.md) for the system design
+- Explore [architecture/overview.md](../architecture/overview.md) for the system design
 - See [testing.md](./testing.md) for testing guidelines

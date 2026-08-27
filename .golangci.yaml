@@ -44,7 +44,7 @@ linters:
   - godot
   - goheader
   - gomoddirectives
-  - gomodguard
+  - gomodguard_v2
   - goprintffuncname
   - gosmopolitan
   - govet
@@ -148,6 +148,16 @@ linters:
           If you are legitimately CONSUMING a storage fault (reading Operation for a
           log line, distinguishing an IO fault from a business outcome), the rule has
           no alternative to offer — add //nolint:forbidigo with a justification.
+      # EN-1781: pterm's SpinnerPrinter.Start always spawns an animation
+      # goroutine, and its Stop cannot terminate it while pterm.RawOutput is
+      # set, so the goroutine outlives the command and races with any later
+      # write to pterm's package-level configuration.
+      - pattern: '\bpterm\.DefaultSpinner\b'
+        msg: |
+          pterm.DefaultSpinner leaks an animation goroutine that cannot be stopped while
+          pterm.RawOutput is set (see EN-1781). Use cmdutil.StartSpinner, which creates no
+          pterm spinner when output is non-interactive. The only allowed direct use is
+          cmd/ledgerctl/cmdutil/spinner.go.
   exclusions:
     rules:
     # I2 exceptions for OpenWriteSession / NewWriteSessionFromDB.
@@ -206,6 +216,28 @@ linters:
     - path: internal/domain/errors\.go
       linters: [forbidigo]
       source: 'e\.(Operation|Cause)'
+    # EN-1781 does not reach the kubectl-ledger plugin. misc/operator is a
+    # separate Go module that cannot import cmd/ledgerctl/cmdutil, it never
+    # writes pterm's package-level configuration (no DisableStyling /
+    # DisableColor / RawOutput / SetDefaultOutput anywhere in the module), and
+    # it is a short-lived plugin process. With no concurrent writer there is no
+    # race, only pterm's inherent pattern. Tracked separately rather than
+    # duplicating the wrapper across the module boundary.
+    #
+    # The pattern is not anchored at the start: golangci-lint reports an issue
+    # path relative to the run directory, and its analysis cache is keyed by
+    # package content, so a cache entry produced in another checkout of the
+    # same module replays with that checkout's path (../<other-worktree>/misc/
+    # operator/...). An anchored pattern misses those and the exemption
+    # silently stops applying.
+    - path: (^|/)misc/operator/
+      linters: [forbidigo]
+    # spinner.go is the sanctioned cmdutil.StartSpinner wrapper for EN-1781 —
+    # the one place allowed to touch pterm.DefaultSpinner. spinner_test.go
+    # drives the raw printer as the reference implementation in the
+    # output-equivalence test.
+    - path: cmd/ledgerctl/cmdutil/spinner(_test)?\.go$
+      linters: [forbidigo]
     # Tests use OpenWriteSession to seed data; the structural guarantee is on
     # production paths.
     - path: _test\.go$

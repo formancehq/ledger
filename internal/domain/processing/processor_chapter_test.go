@@ -327,7 +327,10 @@ func TestProcessConfirmArchiveChapter_Success(t *testing.T) {
 		require.Equal(t, commonpb.ChapterStatus_CHAPTER_ARCHIVED, chapter.GetStatus())
 	})
 
-	payload, err := processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 1}, &Context{Scope: mockStore})
+	payload, err := processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{
+		ChapterId:   1,
+		SealingHash: []byte("seal-hash"),
+	}, &Context{Scope: mockStore})
 	require.NoError(t, err)
 	require.NotNil(t, payload)
 
@@ -335,6 +338,47 @@ func TestProcessConfirmArchiveChapter_Success(t *testing.T) {
 	require.NotNil(t, confirmLog)
 	require.Equal(t, uint64(1), confirmLog.GetChapter().GetId())
 	require.Equal(t, commonpb.ChapterStatus_CHAPTER_ARCHIVED, confirmLog.GetChapter().GetStatus())
+}
+
+// The confirm authorises the purge, so it has to name the incarnation the archive
+// was built for. Ranges cannot tell two incarnations apart — a store restored from
+// an older backup over a surviving cold-storage namespace can reuse a chapter id
+// and reach the same counts over different operations — so the sealing hash is
+// what binds the two together, checked in the same step as the purge.
+func TestProcessConfirmArchiveChapter_RefusesAnotherIncarnation(t *testing.T) {
+	t.Parallel()
+
+	for name, carried := range map[string][]byte{
+		"a different incarnation": []byte("other-hash"),
+		"no incarnation at all":   nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStore := NewMockScope(ctrl)
+
+			archivingChapter := &commonpb.Chapter{
+				Id:            1,
+				Status:        commonpb.ChapterStatus_CHAPTER_ARCHIVING,
+				StartSequence: 1,
+				CloseSequence: 42,
+				SealingHash:   []byte("seal-hash"),
+			}
+
+			mockStore.EXPECT().GetChapterByID(uint64(1)).Return(archivingChapter.AsReader(), true)
+
+			payload, err := processConfirmArchiveChapter(&raftcmdpb.ConfirmArchiveChapterOrder{
+				ChapterId:   1,
+				SealingHash: carried,
+			}, &Context{Scope: mockStore})
+
+			require.Nil(t, payload)
+			require.Equal(t, domain.ErrReasonChapterArchiveIdentityMismatch, err.Reason())
+		})
+	}
 }
 
 func TestProcessConfirmArchiveChapter_NotFound(t *testing.T) {

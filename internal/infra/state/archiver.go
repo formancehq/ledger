@@ -5,13 +5,17 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/bloom"
 	"github.com/cockroachdb/pebble/v2/objstorage"
 	"github.com/cockroachdb/pebble/v2/sstable"
+	"github.com/cockroachdb/pebble/v2/vfs"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -35,10 +39,19 @@ type ArchiveRequest struct {
 	CloseSequence      uint64 // Last log sequence in the chapter (the CloseChapter log)
 	StartAuditSequence uint64 // First audit sequence in the chapter
 	CloseAuditSequence uint64 // Last audit sequence when the chapter was closed
+	// SealingHash commits the chapter to its content (the Sealer derives it from
+	// the chapter id, close sequence, last audit hash and attribute state hash).
+	// The ranges alone do not identify a chapter: restoring an older backup over a
+	// surviving cold-storage namespace can reuse an id and produce the same log and
+	// audit counts over different operations. The hash travels into the archive's
+	// metadata and into the confirm order, so both the archiver and the FSM can
+	// tell the two incarnations apart.
+	SealingHash []byte
 }
 
-// ArchiveProposer is a callback to propose a ConfirmArchiveChapter order back into Raft.
-type ArchiveProposer func(chapterID uint64) error
+// ArchiveProposer is a callback to propose a ConfirmArchiveChapter order back
+// into Raft, carrying the chapter incarnation the archive was built for.
+type ArchiveProposer func(chapterID uint64, sealingHash []byte) error
 
 //go:generate mockgen -typed -write_source_comment=false -write_package_comment=false -source archiver.go -destination archiver_chapter_state_generated_test.go -package state . ArchiverChapterState
 
@@ -183,12 +196,12 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 		// Leader crash-recovery: validate the existing object against its
 		// persisted checksum. A truncated-but-readable SST would still
 		// produce a digest, so we MUST compare against the stored reference.
-		if err := a.verifyExistingArchive(ctx, req.ChapterID); err != nil {
+		if err := a.verifyExistingArchive(ctx, req); err != nil {
 			return err
 		}
 
 		a.logger.WithFields(logFields).Infof("Archive integrity verified, proposing ConfirmArchiveChapter")
-		if err := a.proposeFn(req.ChapterID); err != nil {
+		if err := a.proposeFn(req.ChapterID, req.SealingHash); err != nil {
 			return fmt.Errorf("proposing ConfirmArchiveChapter for chapter %d: %w", req.ChapterID, err)
 		}
 
@@ -239,35 +252,128 @@ func (a *Archiver) archive(stop <-chan struct{}, req ArchiveRequest) error {
 
 	a.logger.WithFields(logFields).Infof("Chapter archival complete, proposing ConfirmArchiveChapter")
 
-	// Propose ConfirmArchiveChapter back into Raft
-	if err := a.proposeFn(req.ChapterID); err != nil {
+	// Propose ConfirmArchiveChapter back into Raft, carrying the incarnation the
+	// archive was built for so the handler can refuse a stale confirm.
+	if err := a.proposeFn(req.ChapterID, req.SealingHash); err != nil {
 		return fmt.Errorf("proposing ConfirmArchiveChapter for chapter %d: %w", req.ChapterID, err)
 	}
 
 	return nil
 }
 
-// verifyExistingArchive reads the expected SHA-256 stored alongside the
-// archive at upload time, recomputes the current SHA-256 of the data, and
-// fails if they do not match. Used by the crash-recovery path before
-// proposing ConfirmArchiveChapter.
-func (a *Archiver) verifyExistingArchive(ctx context.Context, chapterID uint64) error {
-	expected, err := a.coldStorage.ExpectedChecksum(ctx, a.bucketID, chapterID)
+// verifyExistingArchive validates that the archive already in cold storage
+// is intact AND is this chapter's data. The checksum comparison catches
+// corruption of the stored object; it cannot catch the object being a
+// different chapter incarnation entirely — cold storage is keyed by chapter
+// id alone, so a request whose id collides with an existing archive (e.g. a
+// registry rewound by a lossy restore re-allocating an archived id) passes
+// the checksum check against the OLD object. Confirming then purges the
+// request's ranges from hot storage with only the old object's ranges
+// archived: everything outside their intersection exists nowhere (EN-1750).
+// The SST's embedded metadata is deterministic by construction, so it must
+// equal the request exactly; a mismatch fails loudly and never confirms.
+func (a *Archiver) verifyExistingArchive(ctx context.Context, req ArchiveRequest) error {
+	expected, err := a.coldStorage.ExpectedChecksum(ctx, a.bucketID, req.ChapterID)
 	if err != nil {
-		return fmt.Errorf("reading expected checksum for chapter %d: %w", chapterID, err)
+		return fmt.Errorf("reading expected checksum for chapter %d: %w", req.ChapterID, err)
 	}
 
-	actual, err := a.coldStorage.Checksum(ctx, a.bucketID, chapterID)
+	actual, err := a.coldStorage.Checksum(ctx, a.bucketID, req.ChapterID)
 	if err != nil {
-		return fmt.Errorf("reading current checksum for chapter %d: %w", chapterID, err)
+		return fmt.Errorf("reading current checksum for chapter %d: %w", req.ChapterID, err)
 	}
 
 	if !bytes.Equal(expected, actual) {
 		return fmt.Errorf("archive integrity check failed for chapter %d: expected=%s actual=%s",
-			chapterID, hex.EncodeToString(expected), hex.EncodeToString(actual))
+			req.ChapterID, hex.EncodeToString(expected), hex.EncodeToString(actual))
+	}
+
+	meta, err := a.readArchivedMetadata(ctx, req.ChapterID)
+	if err != nil {
+		return fmt.Errorf("reading archived metadata for chapter %d: %w", req.ChapterID, err)
+	}
+
+	if want := chapterMetadata(req); !meta.metadataMatches(want) {
+		return fmt.Errorf(
+			"invariant: cold archive for chapter %d covers logs [%d, %d] and audit [%d, %d] with sealing hash %s, but the archive request covers logs [%d, %d] and audit [%d, %d] with sealing hash %s — the stored archive is a different chapter incarnation; refusing to confirm (the purge would delete ranges that were never archived)",
+			req.ChapterID,
+			meta.StartSequence, meta.CloseSequence, meta.StartAuditSequence, meta.CloseAuditSequence,
+			hex.EncodeToString(meta.SealingHash),
+			want.StartSequence, want.CloseSequence, want.StartAuditSequence, want.CloseAuditSequence,
+			hex.EncodeToString(want.SealingHash))
 	}
 
 	return nil
+}
+
+// readArchivedMetadata downloads the chapter's archive from cold storage and
+// decodes the chapterMetadata row embedded at MetadataKey.
+func (a *Archiver) readArchivedMetadata(ctx context.Context, chapterID uint64) (*chapterMetadata, error) {
+	rc, err := a.coldStorage.Fetch(ctx, a.bucketID, chapterID)
+	if err != nil {
+		return nil, fmt.Errorf("fetching archive: %w", err)
+	}
+
+	defer func() { _ = rc.Close() }()
+
+	tmpFile, err := os.CreateTemp("", "cold-archive-verify-*.sst")
+	if err != nil {
+		return nil, fmt.Errorf("creating temp file: %w", err)
+	}
+
+	tmpPath := tmpFile.Name()
+
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	if _, err := io.Copy(tmpFile, rc); err != nil {
+		_ = tmpFile.Close()
+
+		return nil, fmt.Errorf("downloading archive: %w", err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return nil, fmt.Errorf("flushing archive download: %w", err)
+	}
+
+	// Reopen through pebble's vfs: sstable.ReadableFile wants vfs.FileInfo.
+	sstFile, err := vfs.Default.Open(tmpPath)
+	if err != nil {
+		return nil, fmt.Errorf("opening archive SST file: %w", err)
+	}
+
+	opts := &pebble.Options{}
+	opts.EnsureDefaults()
+
+	// The iterator owns sstFile from here: Close closes its sstable reader,
+	// which closes the file.
+	iter, err := pebble.NewExternalIterWithContext(ctx, opts, nil, [][]sstable.ReadableFile{{sstFile}})
+	if err != nil {
+		_ = sstFile.Close()
+
+		return nil, fmt.Errorf("opening archive SST: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	if !iter.SeekGE(MetadataKey) || !bytes.Equal(iter.Key(), MetadataKey) {
+		if err := iter.Error(); err != nil {
+			return nil, fmt.Errorf("seeking archive metadata: %w", err)
+		}
+
+		return nil, errors.New("archive SST has no metadata row")
+	}
+
+	value, err := iter.ValueAndErr()
+	if err != nil {
+		return nil, fmt.Errorf("reading archive metadata: %w", err)
+	}
+
+	var meta chapterMetadata
+	if err := json.Unmarshal(value, &meta); err != nil {
+		return nil, fmt.Errorf("decoding archive metadata: %w", err)
+	}
+
+	return &meta, nil
 }
 
 // chapterMetadata is the JSON metadata included in the archive. Every field
@@ -282,6 +388,18 @@ type chapterMetadata struct {
 	CloseSequence      uint64 `json:"closeSequence"`
 	StartAuditSequence uint64 `json:"startAuditSequence"`
 	CloseAuditSequence uint64 `json:"closeAuditSequence"`
+	SealingHash        []byte `json:"sealingHash"`
+}
+
+// metadataMatches reports whether the archive's metadata describes the chapter
+// this request is for: the same ranges and the same incarnation.
+func (m chapterMetadata) metadataMatches(want chapterMetadata) bool {
+	return m.ChapterID == want.ChapterID &&
+		m.StartSequence == want.StartSequence &&
+		m.CloseSequence == want.CloseSequence &&
+		m.StartAuditSequence == want.StartAuditSequence &&
+		m.CloseAuditSequence == want.CloseAuditSequence &&
+		bytes.Equal(m.SealingHash, want.SealingHash)
 }
 
 // MetadataKey is the SST key used for chapter metadata.

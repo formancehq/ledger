@@ -75,9 +75,14 @@ func writeCreated(w http.ResponseWriter, data any) {
 // This matters for the audit surface: audit DTOs render chain-bound submessages
 // (callerSnapshot, idempotency, signature) via protojson, whose MarshalJSON can
 // genuinely fail (e.g. invalid UTF-8) and MUST propagate as an error rather than
-// a valid-looking truncated record (invariant #7). The other list/get handlers
-// keep the streaming writeOK: their struct marshaling cannot fail, so buffering
-// would only add an allocation.
+// a valid-looking truncated record (invariant #7).
+//
+// The transactions list, chapters and single-log routes are the second
+// legitimate caller (EN-1622): their payload types carry a hand-written
+// MarshalJSON that marshals a metadata map and can genuinely fail, so the
+// streaming writeOK would append an error object to an already-committed 200.
+// The remaining list/get handlers keep writeOK: their struct marshaling cannot
+// fail, so buffering would only add an allocation.
 func writeOKChecked(w http.ResponseWriter, r *http.Request, data any) {
 	body, err := json.Marshal(BaseResponse[any]{Data: data})
 	if err != nil {
@@ -92,13 +97,18 @@ func writeOKChecked(w http.ResponseWriter, r *http.Request, data any) {
 }
 
 // writeProtoOK writes a 200 OK response whose `data` is a single protobuf
-// message serialized via protojson. Handlers that return a proto message
-// directly (index registry entries, index status, logs, …) MUST use this
-// rather than writeOK: sonic serializes from the Go `json:` struct tags, which
-// protoc-gen emits in snake_case (e.g. last_indexed_sequence), whereas the
-// wire/OpenAPI contract is protobuf-JSON camelCase (lastIndexedSequence).
-// Routing through protojson keeps the HTTP body byte-identical to the gRPC-
-// gateway shape. See handlers_get_events_sinks.go for the original precedent.
+// message serialized via protojson, which renders protobuf-JSON camelCase from
+// the descriptor (e.g. lastIndexedSequence) rather than the snake_case Go
+// `json:` tags protoc-gen emits.
+//
+// Use this ONLY for messages that have no custom MarshalJSON. protojson works
+// off protobuf reflection and ignores json.Marshaler, so for a message that has
+// one it silently discards the intended shape — that was EN-1622, where the
+// transactions list leaked amount:{v0} and timestamp:{data} while the detail
+// route emitted decimals and RFC3339. When the message has a MarshalJSON, that
+// method IS the public contract: use writeOKChecked.
+//
+// encoder_contract_test.go enforces this split.
 func writeProtoOK(w http.ResponseWriter, msg proto.Message) {
 	raw, err := protojson.Marshal(msg)
 	if err != nil {
@@ -111,10 +121,12 @@ func writeProtoOK(w http.ResponseWriter, msg proto.Message) {
 }
 
 // writeProtoListOK writes a 200 OK response whose `data` is a JSON array of
-// protobuf messages, each serialized via protojson (camelCase — see
-// writeProtoOK). protojson has no slice entry point, so each element is
-// marshaled individually and assembled into the array here. A nil/empty slice
-// serializes as `[]`, matching the drained-cursor list handlers.
+// protobuf messages, each serialized via protojson (see writeProtoOK for when
+// that is correct — messages with no custom MarshalJSON only). protojson has no
+// slice entry point, so each element is marshaled individually and assembled
+// into the array here; sonic needs no equivalent, since it walks a slice and
+// calls MarshalJSON per element. A nil/empty slice serializes as `[]`, matching
+// the drained-cursor list handlers.
 func writeProtoListOK[T proto.Message](w http.ResponseWriter, msgs []T) {
 	var buf bytes.Buffer
 
@@ -189,6 +201,37 @@ const (
 // wantsHTTPProfile returns true if the client sent the X-Query-Profile header.
 func wantsHTTPProfile(r *http.Request) bool {
 	return r.Header.Get(httpHeaderQueryProfile) != ""
+}
+
+// finishProfile stops the request clock and, when the caller asked for it,
+// publishes the profile in the X-Query-Profile-Result response header.
+//
+// Call it once the response value is fully assembled and BEFORE handing it to a
+// response writer, because headers must be flushed ahead of the body.
+//
+// Success paths only, unlike the gRPC handlers which emit on every return. The
+// asymmetry is deliberate: on gRPC the profile also feeds the slow-query log, so
+// a slow *failure* is worth capturing, whereas HTTP has no such consumer — the
+// only reader is a caller who explicitly asked, and every HTTP error already
+// returns a structured ErrorResponse through the shared handleError writer.
+// Threading a profile through that writer for all HTTP handlers, profiled or not,
+// buys a diagnostic header on responses that already explain themselves.
+//
+// That ordering is also why HTTP reports no delivery phase: the body write
+// happens strictly after this header is committed and cannot be measured. Only
+// the marshal step could be, and only by buffering the body — but the profiled
+// routes use three different writers (writeOK, writeOKChecked,
+// writeJSONResponse) whose encoders differ in HTML escaping and map-key
+// ordering, so routing them through one buffered marshaller would silently
+// change their JSON output. Measuring a partial number is not worth an
+// unrelated wire change; server_duration_us excludes row serialisation on gRPC
+// too, so the cross-surface definition stays identical either way.
+func finishProfile(w http.ResponseWriter, r *http.Request, profile *query.QueryProfile) {
+	profile.Finish()
+
+	if wantsHTTPProfile(r) {
+		writeProfileHeader(w, profile)
+	}
 }
 
 // writeProfileHeader serializes the query profile as base64-encoded protobuf

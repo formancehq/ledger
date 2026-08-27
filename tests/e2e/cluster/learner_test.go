@@ -11,10 +11,22 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
+
+// phantomPeer returns loopback addresses for a learner that is deliberately
+// never started. The addresses come from the allocator instead of literals: a
+// hand-picked number can be one a live node gets, which would point the leader's
+// Raft transport at a real listener in the same cluster rather than at a dead
+// address (EN-1784). AllocateDeadAddress claims the port for this process and
+// leaves nothing listening on it, which is exactly what a peer that never starts
+// needs.
+func phantomPeer() (raftAddr, serviceAddr string) {
+	return testserver.AllocateDeadAddress(), testserver.AllocateDeadAddress()
+}
 
 // waitForLearner polls the cluster state on the leader until the given node appears as a learner.
 func waitForLearner(clusterClient clusterpb.ClusterServiceClient, leaderID uint64, learnerNodeID uint32) {
@@ -46,14 +58,14 @@ var _ = Describe("Learner node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
+
+			raftAddr, serviceAddr := phantomPeer()
 
 			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         4,
-				RaftAddress:    "127.0.0.1:19000",
-				ServiceAddress: "127.0.0.1:19100",
+				RaftAddress:    raftAddr,
+				ServiceAddress: serviceAddr,
 			})
 			Expect(err).To(Succeed())
 
@@ -158,14 +170,14 @@ var _ = Describe("Learner node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
+
+			raftAddr, serviceAddr := phantomPeer()
 
 			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         4,
-				RaftAddress:    "127.0.0.1:19000",
-				ServiceAddress: "127.0.0.1:19100",
+				RaftAddress:    raftAddr,
+				ServiceAddress: serviceAddr,
 			})
 			Expect(err).To(Succeed())
 
@@ -213,10 +225,12 @@ var _ = Describe("Learner node", func() {
 		It("should forward promote-learner from follower to leader", func() {
 			lid := *leaderID
 
+			raftAddr, serviceAddr := phantomPeer()
+
 			_, err := servers[lid-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         5,
-				RaftAddress:    "127.0.0.1:19001",
-				ServiceAddress: "127.0.0.1:19101",
+				RaftAddress:    raftAddr,
+				ServiceAddress: serviceAddr,
 			})
 			Expect(err).To(Succeed())
 			waitForLearner(servers[lid-1].ClusterClient, lid, 5)
@@ -248,9 +262,7 @@ var _ = Describe("Learner node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, _ = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, _ = testutil.SetupMultiNodeCluster(countInstances)
 		})
 
 		AfterAll(func() {
@@ -289,9 +301,7 @@ var _ = Describe("Learner node", func() {
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-				countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
-			)
+			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 		})
 
 		AfterAll(func() {
@@ -300,10 +310,12 @@ var _ = Describe("Learner node", func() {
 
 		It("should reject duplicate add-learner", func() {
 			lid := *leaderID
+			raftAddr, serviceAddr := phantomPeer()
+
 			_, err := servers[lid-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         4,
-				RaftAddress:    "127.0.0.1:19000",
-				ServiceAddress: "127.0.0.1:19100",
+				RaftAddress:    raftAddr,
+				ServiceAddress: serviceAddr,
 			})
 			Expect(err).To(Succeed())
 
@@ -311,8 +323,8 @@ var _ = Describe("Learner node", func() {
 
 			_, err = servers[lid-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         4,
-				RaftAddress:    "127.0.0.1:19000",
-				ServiceAddress: "127.0.0.1:19100",
+				RaftAddress:    raftAddr,
+				ServiceAddress: serviceAddr,
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -321,10 +333,12 @@ var _ = Describe("Learner node", func() {
 			lid := *leaderID
 			followerID := ((lid + 1) % countInstances) + 1
 
+			raftAddr, serviceAddr := phantomPeer()
+
 			_, err := servers[followerID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         5,
-				RaftAddress:    "127.0.0.1:19001",
-				ServiceAddress: "127.0.0.1:19101",
+				RaftAddress:    raftAddr,
+				ServiceAddress: serviceAddr,
 			})
 			Expect(err).To(Succeed())
 

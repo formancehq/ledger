@@ -91,7 +91,7 @@ This stage is the reason numscript is admission-time work, not FSM work: the FSM
 
 ### 8. Marshal + predicted-index trick
 
-The proposal is serialized with `vtprotobuf.MarshalCopy(cmd)` (`internal/pkg/vtmarshal`) **before** the proposal guard is acquired, so the heavy CPU work happens outside the critical section. Then, once the guard is acquired (next step) and the predicted Raft index is known under the lock, `AppendProposalPredictedIndex(buf, idx)` (`internal/infra/plan/predicted_index.go`) appends the index as raw wire bytes for proto field 7 (a `fixed64`) onto the already-marshalled buffer — no re-marshalling of the whole proposal just to stamp a single field. The trick is what keeps the critical section short while still letting the predicted index live inside the signed proposal payload.
+The proposal is serialized with `vtprotobuf.MarshalCopy(cmd)` (`internal/pkg/vtmarshal`) **before** the proposal guard is acquired, so the heavy CPU work happens outside the critical section. Then, once the guard is acquired (next step) and the predicted Raft index is known under the lock, `AppendProposalPredictedIndex(buf, idx)` (`internal/infra/plan/predicted_index.go`) appends the index as raw wire bytes (a `fixed64`, under the field number read from the `Proposal` descriptor at init rather than a hardcoded literal) onto the already-marshalled buffer — no re-marshalling of the whole proposal just to stamp a single field. The trick is what keeps the critical section short while still letting the predicted index live inside the signed proposal payload.
 
 ### 9. Acquire guard → propose → release
 
@@ -125,6 +125,8 @@ Admission validates **structural correctness** (UX-fast feedback before Raft): a
 The FSM validates **behavioural invariants** (audit-bound): balance sufficiency, account-type constraints, overflow, already-reverted transactions, etc.
 
 Both layers share the same domain sentinels (`domain.BusinessError`, `domain.ErrXxx`) so that an end-state caught at both layers reports the same error. See [validation.md](validation.md) for the per-rule split and the rationale.
+
+Node-local operational policy is a separate category. Flags, environment variables, startup configuration, and version-dependent defaults may reject a request in admission, but must never alter how the FSM applies a committed entry. Differently configured leaders may therefore make different admission decisions during a rolling upgrade without risking replica divergence. See [FSM configuration boundary](../fsm/deterministic-fsm.md#34-node-local-configuration-and-rolling-upgrades), including the distinction between a soft admission limit and a strict reserved limit.
 
 ## Mockability
 

@@ -356,6 +356,15 @@ func AggregateVolumes(
 		}
 	}
 
+	// The account iterator is a compiled filter tree whose leaves report a
+	// failure in band: Next returns false for an error exactly as it does for
+	// exhaustion. Unchecked, a fault partway through the accounts yields a
+	// total summed over the ones scanned before it — an aggregate that is
+	// wrong in a way nothing downstream can detect.
+	if err := accountIter.Err(); err != nil {
+		return nil, fmt.Errorf("scanning accounts: %w", err)
+	}
+
 	return acc.result()
 }
 

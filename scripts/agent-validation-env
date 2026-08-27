@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 2 ]]; then
+    echo "Usage: agent-validation-env RUN_DIR COMMAND [ARGS...]" >&2
+    exit 2
+fi
+
+run_dir=$1
+shift
+run_id=${VALIDATION_RUN_ID:-$(basename "$run_dir")}
+
+for name in home go-cache go-mod-cache go-path tmp cache; do
+    mkdir -p "$run_dir/$name"
+done
+
+export VALIDATION_RUN_ID="$run_id"
+export VALIDATION_RUN_DIR="$run_dir"
+export HOME="$run_dir/home"
+export GOCACHE="$run_dir/go-cache"
+export GOMODCACHE="$run_dir/go-mod-cache"
+export GOPATH="$run_dir/go-path"
+export TMPDIR="$run_dir/tmp"
+export XDG_CACHE_HOME="$run_dir/cache"
+export GOLANGCI_LINT_CACHE="$run_dir/cache/golangci-lint"
+mkdir -p "$GOLANGCI_LINT_CACHE"
+
+case "$PWD/" in
+    "$run_dir"/*) ;;
+    *)
+        echo "agent-validation-env: command must run from the isolated run directory" >&2
+        exit 1
+        ;;
+esac
+
+exec "$@"

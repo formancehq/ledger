@@ -1,17 +1,65 @@
 package node
 
 import (
+	"context"
 	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
+
+func TestTransportRecvQueueMetricsExposePriorityAttributes(t *testing.T) {
+	t.Parallel()
+
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.Background())) })
+
+	transport := NewTransport(
+		logging.Testing(),
+		nil,
+		provider,
+		1,
+		TransportConfig{Reception: []int{1, 1, 1}, Send: []int{1, 1, 1}},
+		"test-cluster",
+		1,
+		"",
+		"",
+	)
+	require.True(t, transport.pushToRecvQueue(0, []*raftpb.Message{{}}))
+
+	var resourceMetrics metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &resourceMetrics))
+
+	found := false
+	for _, scopeMetrics := range resourceMetrics.ScopeMetrics {
+		for _, recordedMetric := range scopeMetrics.Metrics {
+			if recordedMetric.Name != "raft.transport.recv.load" {
+				continue
+			}
+			histogram, ok := recordedMetric.Data.(metricdata.Histogram[int64])
+			require.True(t, ok)
+			for _, point := range histogram.DataPoints {
+				priority, hasPriority := point.Attributes.Value(attribute.Key("priority"))
+				priorityName, hasPriorityName := point.Attributes.Value(attribute.Key("priority_name"))
+				if hasPriority && hasPriorityName && priority.AsInt64() == 0 && priorityName.AsString() == "high" {
+					found = true
+				}
+			}
+		}
+	}
+
+	require.True(t, found, "queue measurements must expose priority labels as metric attributes")
+}
 
 // captureUnreachable wires a channel-backed sink for the pushUnreachable
 // callback on a peerConnection so tests can observe which peer IDs Raft

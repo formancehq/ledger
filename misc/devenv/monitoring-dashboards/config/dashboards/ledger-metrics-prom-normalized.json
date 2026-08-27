@@ -219,8 +219,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate({\"ledger_raft_transport_ping_latency_microseconds_sum\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "Node {{service_node_id}} / Peer {{scope_attributes_peer}}",
+                     "expr": "sum(rate(ledger_raft_transport_ping_latency_microseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, peer) / sum(rate(ledger_raft_transport_ping_latency_microseconds_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, peer)",
+                     "legendFormat": "Node {{service_node_id}} / Peer {{peer}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -318,7 +318,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate({\"http_server_request_duration_seconds_count\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])) by (service_node_id, http_response_status_code)",
+                     "expr": "sum(rate(http_server_request_duration_seconds_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, http_response_status_code)",
                      "legendFormat": "Node {{service_node_id}} : {{http_response_status_code}}",
                      "range": true,
                      "refId": "A"
@@ -543,16 +543,6 @@
                      "legendFormat": "Node {{service_node_id}}: Limit",
                      "range": true,
                      "refId": "B"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "",
-                     "range": true,
-                     "refId": "C"
                   }
                ],
                "title": "Process CPU time",
@@ -959,17 +949,6 @@
                      "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "",
-                     "legendFormat": "__auto",
-                     "range": true,
-                     "refId": "B"
                   }
                ],
                "title": "Leadership status",
@@ -1474,8 +1453,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate(ledger_raft_transport_recv_load_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\", scope_name=\"raft.transport\"}[30s])",
-                     "legendFormat": "Node {{service_node_id}}: p{{scope_attributes_priority}}",
+                     "expr": "sum(rate(ledger_raft_transport_recv_load_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, priority, priority_name)",
+                     "legendFormat": "Node {{service_node_id}}: {{priority_name}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -1488,7 +1467,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Heatmap showing queue depth distribution for high-priority received messages (priority 1).\n\nHigh-priority messages include:\n- AppendEntries responses (AppResp)\n- Vote requests/responses (Vote, VoteResp)\n- Pre-vote requests (PreVote, PreVoteResp)\n\nConsistently high queue depth indicates the node cannot process messages fast enough. This may delay leader election or log replication acknowledgments.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#reception-channel-metrics\n",
+               "description": "Heatmap showing queue depth distribution for high-priority received messages (priority 0).\n\nHigh-priority messages include:\n- AppendEntries responses (AppResp)\n- Vote requests/responses (Vote, VoteResp)\n- Pre-vote requests (PreVote, PreVoteResp)\n\nConsistently high queue depth indicates the node cannot process messages fast enough. This may delay leader election or log replication acknowledgments.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#reception-channel-metrics\n",
                "fieldConfig": {
                   "defaults": {
                      "custom": {
@@ -1554,7 +1533,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(\n  rate(ledger_raft_transport_recv_load_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\", scope_attributes_priority=~\"1\"}[$__rate_interval])\n) by (service_node_id, le)\n",
+                     "expr": "sum(rate(ledger_raft_transport_recv_load_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\", priority=\"0\"}[$__rate_interval])) by (service_node_id, le)",
                      "format": "heatmap",
                      "legendFormat": "__auto",
                      "range": true,
@@ -1635,7 +1614,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(\n  rate(ledger_raft_transport_recv_load_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\", scope_attributes_priority=~\"1\"}[$__rate_interval])\n) by (service_node_id, le)",
+                     "expr": "sum(rate(ledger_raft_transport_recv_load_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\", priority=\"1\"}[$__rate_interval])) by (service_node_id, le)",
                      "format": "heatmap",
                      "legendFormat": "__auto",
                      "range": true,
@@ -1716,7 +1695,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(\n  rate(ledger_raft_transport_recv_load_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\", scope_attributes_priority=~\"2\"}[$__rate_interval])\n) by (service_node_id, le)\n",
+                     "expr": "sum(rate(ledger_raft_transport_recv_load_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\", priority=\"2\"}[$__rate_interval])) by (service_node_id, le)",
                      "format": "heatmap",
                      "legendFormat": "__auto",
                      "range": true,
@@ -1785,8 +1764,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(increase(ledger_raft_transport_recv_full_total{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, scope_attributes_priority_name)",
-                     "legendFormat": "{{scope_attributes_priority_name}}",
+                     "expr": "sum(increase(ledger_raft_transport_recv_full_total{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, priority_name)",
+                     "legendFormat": "{{priority_name}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -1884,7 +1863,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate(ledger_raft_transport_unreachable_load_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\", scope_name=\"raft.transport\"}[$__rate_interval])",
+                     "expr": "sum(rate(ledger_raft_transport_unreachable_load_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
                      "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -2034,7 +2013,7 @@
                      },
                      "editorMode": "code",
                      "expr": "sum(increase(ledger_raft_transport_unreachable_full_total{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
-                     "legendFormat": "{{scope_name}}",
+                     "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2411,8 +2390,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(ledger_raft_transport_peer_sending_load_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, scope_attributes_peer, type)",
-                     "legendFormat": "Node {{service_node_id}}: Peer {{scope_attributes_peer}}",
+                     "expr": "sum(rate(ledger_raft_transport_peer_sending_load_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, peer, priority_name)",
+                     "legendFormat": "Node {{service_node_id}}: Peer {{peer}} / {{priority_name}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2510,8 +2489,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(increase(ledger_raft_transport_peer_sending_full_total{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, scope_attributes_priority_name)",
-                     "legendFormat": "Node {{service_node_id}} : Peer {{peer}}: p{{scope_attributes_priority}}",
+                     "expr": "sum(increase(ledger_raft_transport_peer_sending_full_total{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, peer, priority_name)",
+                     "legendFormat": "Node {{service_node_id}}: Peer {{peer}} / {{priority_name}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -2524,7 +2503,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Heatmap showing per-peer send queue depth for high-priority messages (priority 1).\n\nHigh-priority outbound messages:\n- AppendEntries responses\n- Vote requests/responses\n- Pre-vote requests/responses\n\nThese messages are critical for consensus. High queue depth may delay leader election or acknowledgment of replicated entries.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#per-peer-sending-metrics\n",
+               "description": "Heatmap showing per-peer send queue depth for high-priority messages (priority 0).\n\nHigh-priority outbound messages:\n- AppendEntries responses\n- Vote requests/responses\n- Pre-vote requests/responses\n\nThese messages are critical for consensus. High queue depth may delay leader election or acknowledgment of replicated entries.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#per-peer-sending-metrics\n",
                "fieldConfig": {
                   "defaults": {
                      "custom": {
@@ -2590,7 +2569,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(\n  rate(ledger_raft_transport_peer_sending_load_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\", scope_attributes_priority=~\"1\"}[$__rate_interval])\n) by (service_node_id, scope_attributes_peer, le)\n",
+                     "expr": "sum(rate(ledger_raft_transport_peer_sending_load_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\", priority=\"0\"}[$__rate_interval])) by (service_node_id, peer, le)",
                      "format": "heatmap",
                      "legendFormat": "__auto",
                      "range": true,
@@ -2671,7 +2650,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(\n  rate(ledger_raft_transport_peer_sending_load_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\", scope_attributes_priority=~\"1\"}[$__rate_interval])\n) by (service_node_id, le)",
+                     "expr": "sum(rate(ledger_raft_transport_peer_sending_load_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\", priority=\"1\"}[$__rate_interval])) by (service_node_id, peer, le)",
                      "format": "heatmap",
                      "legendFormat": "__auto",
                      "range": true,
@@ -2752,7 +2731,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(\n  rate(ledger_raft_transport_peer_sending_load_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\", scope_attributes_priority=~\"2\"}[$__rate_interval])\n) by (service_node_id, scope_attributes_peer, le)\n",
+                     "expr": "sum(rate(ledger_raft_transport_peer_sending_load_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\", priority=\"2\"}[$__rate_interval])) by (service_node_id, peer, le)",
                      "format": "heatmap",
                      "legendFormat": "__auto",
                      "range": true,
@@ -2852,7 +2831,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate(ledger_admission_propose_queue_load_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])",
+                     "expr": "sum(rate(ledger_admission_propose_queue_load_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
                      "legendFormat": "Node {{service_node_id}}: Incoming",
                      "range": true,
                      "refId": "A"
@@ -2932,7 +2911,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(\n  rate(ledger_admission_propose_queue_load_bucket[$__rate_interval])\n) by (le)\n",
+                     "expr": "sum(rate(ledger_admission_propose_queue_load_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id, le)",
                      "format": "heatmap",
                      "legendFormat": "__auto",
                      "range": true,
@@ -3131,7 +3110,7 @@
                      },
                      "editorMode": "code",
                      "expr": "{\"ledger_raft_transport_sending_pending_response\", service_cluster=~\"$cluster\", service_node_id=~\"$node\"}",
-                     "legendFormat": "Node {{service_node_id}} / Peer : {{scope_attributes_peer}}",
+                     "legendFormat": "Node {{service_node_id}} / Peer {{peer}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -3243,7 +3222,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate({\"ledger_raft_process_entry_microseconds_sum\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])",
+                     "expr": "sum(rate(ledger_raft_process_entry_microseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
                      "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -3851,105 +3830,6 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Time spent updating the in-memory cache (s.entries) during WAL append operations, in microseconds.\n\nThis measures the time to update the in-memory entry cache before persisting to disk. Should be very fast as it's purely in-memory operations.\n\nHigh values may indicate:\n- Memory pressure\n- Large entry batches\n- GC pauses\n",
-               "fieldConfig": {
-                  "defaults": {
-                     "color": {
-                        "mode": "palette-classic"
-                     },
-                     "custom": {
-                        "axisBorderShow": false,
-                        "axisCenteredZero": false,
-                        "axisColorMode": "text",
-                        "axisLabel": "",
-                        "axisPlacement": "auto",
-                        "barAlignment": 0,
-                        "barWidthFactor": 0.59999999999999998,
-                        "drawStyle": "line",
-                        "fillOpacity": 0,
-                        "gradientMode": "none",
-                        "hideFrom": {
-                           "legend": false,
-                           "tooltip": false,
-                           "viz": false
-                        },
-                        "insertNulls": false,
-                        "lineInterpolation": "linear",
-                        "lineWidth": 1,
-                        "pointSize": 5,
-                        "scaleDistribution": {
-                           "type": "linear"
-                        },
-                        "showPoints": "auto",
-                        "showValues": false,
-                        "spanNulls": false,
-                        "stacking": {
-                           "group": "A",
-                           "mode": "none"
-                        },
-                        "thresholdsStyle": {
-                           "mode": "off"
-                        }
-                     },
-                     "mappings": [ ],
-                     "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                           {
-                              "color": "green",
-                              "value": 0
-                           },
-                           {
-                              "color": "red",
-                              "value": 80
-                           }
-                        ]
-                     },
-                     "unit": "µs"
-                  },
-                  "overrides": [ ]
-               },
-               "gridPos": {
-                  "h": 8,
-                  "w": 12,
-                  "x": 0,
-                  "y": 32
-               },
-               "id": 43,
-               "options": {
-                  "legend": {
-                     "calcs": [ ],
-                     "displayMode": "list",
-                     "placement": "bottom",
-                     "showLegend": true
-                  },
-                  "tooltip": {
-                     "hideZeros": false,
-                     "mode": "single",
-                     "sort": "none"
-                  }
-               },
-               "targets": [
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "rate(ledger_wal_append_cache_duration_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "Node {{service_node_id}}",
-                     "range": true,
-                     "refId": "A"
-                  }
-               ],
-               "title": "WAL cache update time",
-               "type": "timeseries"
-            },
-            {
-               "datasource": {
-                  "type": "prometheus",
-                  "uid": "${datasource}"
-               },
                "description": "Time spent saving entries to the Write-Ahead Log (WAL) on disk, in microseconds.\n\nThis is the actual disk I/O time for persisting entries. High values indicate:\n- Slow disk I/O\n- Disk saturation\n- Need for faster storage (SSD/NVMe)\n\nThis metric directly impacts transaction latency as WAL writes must complete before entries can be committed.\n",
                "fieldConfig": {
                   "defaults": {
@@ -4014,7 +3894,7 @@
                   "x": 12,
                   "y": 16
                },
-               "id": 44,
+               "id": 43,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -4035,7 +3915,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate(ledger_wal_append_save_duration_microseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])",
+                     "expr": "sum(rate(ledger_wal_append_save_duration_microseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
                      "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -4111,9 +3991,9 @@
                   "h": 8,
                   "w": 12,
                   "x": 0,
-                  "y": 40
+                  "y": 32
                },
-               "id": 45,
+               "id": 44,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -4245,7 +4125,7 @@
                   "x": 12,
                   "y": 24
                },
-               "id": 46,
+               "id": 45,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -4375,9 +4255,9 @@
                   "h": 8,
                   "w": 12,
                   "x": 0,
-                  "y": 48
+                  "y": 40
                },
-               "id": 47,
+               "id": 46,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -4475,7 +4355,7 @@
                   "x": 12,
                   "y": 32
                },
-               "id": 48,
+               "id": 47,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -4496,8 +4376,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate({\"ledger_raft_node_ready_wait_duration_microseconds_sum\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "__auto",
+                     "expr": "sum(rate(ledger_raft_node_ready_wait_duration_microseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
+                     "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -4574,7 +4454,7 @@
                   "x": 12,
                   "y": 40
                },
-               "id": 49,
+               "id": 48,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -4680,11 +4560,11 @@
                },
                "gridPos": {
                   "h": 7,
-                  "w": 24,
+                  "w": 12,
                   "x": 0,
-                  "y": 56
+                  "y": 48
                },
-               "id": 50,
+               "id": 49,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -4705,7 +4585,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate(ledger_raft_node_unspool_duration_microseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])",
+                     "expr": "sum(rate(ledger_raft_node_unspool_duration_microseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
                      "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -4781,9 +4661,9 @@
                   "h": 7,
                   "w": 24,
                   "x": 0,
-                  "y": 63
+                  "y": 55
                },
-               "id": 51,
+               "id": 50,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -4892,7 +4772,7 @@
                   "x": 12,
                   "y": 48
                },
-               "id": 52,
+               "id": 51,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5000,9 +4880,9 @@
                   "h": 7,
                   "w": 24,
                   "x": 0,
-                  "y": 70
+                  "y": 62
                },
-               "id": 53,
+               "id": 52,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5023,7 +4903,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate(ledger_raft_node_maintenance_snapshot_creation_duration_microseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])",
+                     "expr": "sum(rate(ledger_raft_node_maintenance_snapshot_creation_duration_microseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
                      "legendFormat": "Node {{service_node_id}}: Snapshot creation",
                      "range": true,
                      "refId": "A"
@@ -5034,7 +4914,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate(ledger_raft_node_maintenance_replay_spool_duration_microseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])",
+                     "expr": "sum(rate(ledger_raft_node_maintenance_replay_spool_duration_microseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
                      "legendFormat": "Node {{service_node_id}}: Replay spool",
                      "range": true,
                      "refId": "B"
@@ -5110,9 +4990,9 @@
                   "h": 7,
                   "w": 16,
                   "x": 0,
-                  "y": 77
+                  "y": 69
                },
-               "id": 54,
+               "id": 53,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5133,7 +5013,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate(ledger_raft_fsm_rotation_duration_microseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])",
+                     "expr": "sum(rate(ledger_raft_fsm_rotation_duration_microseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
                      "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -5209,9 +5089,9 @@
                   "h": 7,
                   "w": 8,
                   "x": 16,
-                  "y": 77
+                  "y": 69
                },
-               "id": 55,
+               "id": 54,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5264,7 +5144,7 @@
             "x": 0,
             "y": 164
          },
-         "id": 56,
+         "id": 55,
          "panels": [
             {
                "datasource": {
@@ -5335,7 +5215,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 57,
+               "id": 56,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5433,7 +5313,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 58,
+               "id": 57,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5565,7 +5445,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 59,
+               "id": 58,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5697,7 +5577,7 @@
                   "x": 12,
                   "y": 16
                },
-               "id": 60,
+               "id": 59,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5718,7 +5598,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate(ledger_raft_apply_entries_duration_microseconds_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])",
+                     "expr": "sum(rate(ledger_raft_apply_entries_duration_microseconds_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
                      "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -5795,7 +5675,7 @@
                   "x": 0,
                   "y": 24
                },
-               "id": 61,
+               "id": 60,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5915,7 +5795,7 @@
                   "x": 0,
                   "y": 32
                },
-               "id": 62,
+               "id": 61,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6036,248 +5916,7 @@
                   "x": 12,
                   "y": 32
                },
-               "id": 63,
-               "options": {
-                  "legend": {
-                     "calcs": [ ],
-                     "displayMode": "list",
-                     "placement": "bottom",
-                     "showLegend": true
-                  },
-                  "tooltip": {
-                     "hideZeros": false,
-                     "mode": "single",
-                     "sort": "none"
-                  }
-               },
-               "targets": [
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum(rate(ledger_raft_applier_commit_wait_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (le))",
-                     "legendFormat": "p50",
-                     "range": true,
-                     "refId": "A"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum(rate(ledger_raft_applier_commit_wait_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (le))",
-                     "legendFormat": "p95",
-                     "range": true,
-                     "refId": "B"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum(rate(ledger_raft_applier_commit_wait_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (le))",
-                     "legendFormat": "p99",
-                     "range": true,
-                     "refId": "C"
-                  }
-               ],
-               "title": "Commit Wait Duration (p50, p95, p99)",
-               "type": "timeseries"
-            },
-            {
-               "datasource": {
-                  "type": "prometheus",
-                  "uid": "${datasource}"
-               },
-               "fieldConfig": {
-                  "defaults": {
-                     "color": {
-                        "mode": "palette-classic"
-                     },
-                     "custom": {
-                        "axisBorderShow": false,
-                        "axisCenteredZero": false,
-                        "axisColorMode": "text",
-                        "axisLabel": "",
-                        "axisPlacement": "auto",
-                        "barAlignment": 0,
-                        "barWidthFactor": 0.59999999999999998,
-                        "drawStyle": "line",
-                        "fillOpacity": 10,
-                        "gradientMode": "none",
-                        "hideFrom": {
-                           "legend": false,
-                           "tooltip": false,
-                           "viz": false
-                        },
-                        "insertNulls": false,
-                        "lineInterpolation": "linear",
-                        "lineWidth": 1,
-                        "pointSize": 5,
-                        "scaleDistribution": {
-                           "type": "linear"
-                        },
-                        "showPoints": "never",
-                        "showValues": false,
-                        "spanNulls": false,
-                        "stacking": {
-                           "group": "A",
-                           "mode": "none"
-                        },
-                        "thresholdsStyle": {
-                           "mode": "off"
-                        }
-                     },
-                     "mappings": [ ],
-                     "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                           {
-                              "color": "green",
-                              "value": 0
-                           },
-                           {
-                              "color": "red",
-                              "value": 80
-                           }
-                        ]
-                     },
-                     "unit": "µs"
-                  },
-                  "overrides": [ ]
-               },
-               "gridPos": {
-                  "h": 8,
-                  "w": 12,
-                  "x": 0,
-                  "y": 40
-               },
-               "id": 64,
-               "options": {
-                  "legend": {
-                     "calcs": [ ],
-                     "displayMode": "list",
-                     "placement": "bottom",
-                     "showLegend": true
-                  },
-                  "tooltip": {
-                     "hideZeros": false,
-                     "mode": "single",
-                     "sort": "none"
-                  }
-               },
-               "targets": [
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum(rate(ledger_raft_fsm_prepare_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (le))",
-                     "legendFormat": "p50",
-                     "range": true,
-                     "refId": "A"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum(rate(ledger_raft_fsm_prepare_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (le))",
-                     "legendFormat": "p95",
-                     "range": true,
-                     "refId": "B"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum(rate(ledger_raft_fsm_prepare_duration_microseconds_bucket{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (le))",
-                     "legendFormat": "p99",
-                     "range": true,
-                     "refId": "C"
-                  }
-               ],
-               "title": "Prepare Duration (p50, p95, p99)",
-               "type": "timeseries"
-            },
-            {
-               "datasource": {
-                  "type": "prometheus",
-                  "uid": "${datasource}"
-               },
-               "description": "Time spent waiting for the previous batch's async commit to finish. Near zero = pipelining effective.",
-               "fieldConfig": {
-                  "defaults": {
-                     "color": {
-                        "mode": "palette-classic"
-                     },
-                     "custom": {
-                        "axisBorderShow": false,
-                        "axisCenteredZero": false,
-                        "axisColorMode": "text",
-                        "axisLabel": "",
-                        "axisPlacement": "auto",
-                        "barAlignment": 0,
-                        "barWidthFactor": 0.59999999999999998,
-                        "drawStyle": "line",
-                        "fillOpacity": 10,
-                        "gradientMode": "none",
-                        "hideFrom": {
-                           "legend": false,
-                           "tooltip": false,
-                           "viz": false
-                        },
-                        "insertNulls": false,
-                        "lineInterpolation": "linear",
-                        "lineWidth": 1,
-                        "pointSize": 5,
-                        "scaleDistribution": {
-                           "type": "linear"
-                        },
-                        "showPoints": "never",
-                        "showValues": false,
-                        "spanNulls": false,
-                        "stacking": {
-                           "group": "A",
-                           "mode": "none"
-                        },
-                        "thresholdsStyle": {
-                           "mode": "off"
-                        }
-                     },
-                     "mappings": [ ],
-                     "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                           {
-                              "color": "green",
-                              "value": 0
-                           },
-                           {
-                              "color": "red",
-                              "value": 80
-                           }
-                        ]
-                     },
-                     "unit": "µs"
-                  },
-                  "overrides": [ ]
-               },
-               "gridPos": {
-                  "h": 8,
-                  "w": 12,
-                  "x": 12,
-                  "y": 40
-               },
-               "id": 65,
+               "id": 62,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6341,7 +5980,7 @@
             "x": 0,
             "y": 165
          },
-         "id": 66,
+         "id": 63,
          "panels": [
             {
                "datasource": {
@@ -6411,7 +6050,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 67,
+               "id": 64,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6432,8 +6071,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (service_node_id, status, reason) (rate({__name__=\"ledger_pebble_flush_total\", \"scope_name\"=\"pebble.runtime_store\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "Node {{service_node_id}} {{db}} {{status}} {{reason}}",
+                     "expr": "sum by (service_node_id, status, reason) (rate({__name__=\"ledger_pebble_flush_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval]))",
+                     "legendFormat": "Node {{service_node_id}} {{status}} {{reason}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -6510,7 +6149,7 @@
                   "x": 8,
                   "y": 0
                },
-               "id": 68,
+               "id": 65,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6531,8 +6170,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum by (le, service_node_id) (rate({__name__=\"ledger_pebble_flush_duration_milliseconds_bucket\", \"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}} p50 {{db}}",
+                     "expr": "histogram_quantile(0.50, sum by (le, service_node_id) (rate({__name__=\"ledger_pebble_flush_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
+                     "legendFormat": "Node {{service_node_id}} p50",
                      "range": true,
                      "refId": "A"
                   },
@@ -6542,8 +6181,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum by (le, service_node_id) (rate({__name__=\"ledger_pebble_flush_duration_milliseconds_bucket\", \"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}} p95 {{db}}",
+                     "expr": "histogram_quantile(0.95, sum by (le, service_node_id) (rate({__name__=\"ledger_pebble_flush_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
+                     "legendFormat": "Node {{service_node_id}} p95",
                      "range": true,
                      "refId": "B"
                   },
@@ -6553,8 +6192,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum by (le, service_node_id) (rate({__name__=\"ledger_pebble_flush_duration_milliseconds_bucket\", \"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}} p99 {{db}}",
+                     "expr": "histogram_quantile(0.99, sum by (le, service_node_id) (rate({__name__=\"ledger_pebble_flush_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
+                     "legendFormat": "Node {{service_node_id}} p99",
                      "range": true,
                      "refId": "C"
                   },
@@ -6564,8 +6203,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(ledger_pebble_flush_duration_milliseconds_sum{\"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval])) by (service_node_id) / sum(rate(ledger_pebble_flush_duration_milliseconds_count{\"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval])) by (service_node_id)",
-                     "legendFormat": "Node {{service_node_id}} mean {{db}}",
+                     "expr": "sum(rate(ledger_pebble_flush_duration_milliseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id) / sum(rate(ledger_pebble_flush_duration_milliseconds_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
+                     "legendFormat": "Node {{service_node_id}} mean",
                      "range": true,
                      "refId": "D"
                   }
@@ -6642,7 +6281,7 @@
                   "x": 16,
                   "y": 0
                },
-               "id": 69,
+               "id": 66,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6663,7 +6302,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (service_node_id) (rate({__name__=\"ledger_pebble_flush_input_bytes_sum\", \"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
+                     "expr": "sum(rate(ledger_pebble_flush_input_bytes_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
                      "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
@@ -6740,7 +6379,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 70,
+               "id": 67,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6761,7 +6400,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (service_node_id, db, status, reason) (rate({__name__=\"ledger_pebble_compaction_total\", \"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
+                     "expr": "sum by (service_node_id, status, reason) (rate({__name__=\"ledger_pebble_compaction_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval]))",
                      "legendFormat": "Node {{service_node_id}}: {{status}} {{reason}}",
                      "range": true,
                      "refId": "A"
@@ -6839,7 +6478,7 @@
                   "x": 8,
                   "y": 8
                },
-               "id": 71,
+               "id": 68,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6860,7 +6499,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum by (service_node_id, le) (rate({__name__=\"ledger_pebble_compaction_duration_milliseconds_bucket\", \"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
+                     "expr": "histogram_quantile(0.50, sum by (service_node_id, le) (rate({__name__=\"ledger_pebble_compaction_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
                      "legendFormat": "Node {{service_node_id}}: p50",
                      "range": true,
                      "refId": "A"
@@ -6871,7 +6510,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum by (service_node_id, le) (rate({__name__=\"ledger_pebble_compaction_duration_milliseconds_bucket\", \"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
+                     "expr": "histogram_quantile(0.95, sum by (service_node_id, le) (rate({__name__=\"ledger_pebble_compaction_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
                      "legendFormat": "Node {{service_node_id}}: p95 ",
                      "range": true,
                      "refId": "B"
@@ -6882,7 +6521,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum by (service_node_id, le) (rate({__name__=\"ledger_pebble_compaction_duration_milliseconds_bucket\", \"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
+                     "expr": "histogram_quantile(0.99, sum by (service_node_id, le) (rate({__name__=\"ledger_pebble_compaction_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
                      "legendFormat": "Node {{service_node_id}}: p99",
                      "range": true,
                      "refId": "C"
@@ -6893,7 +6532,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(ledger_pebble_compaction_duration_milliseconds_sum{\"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval])) by (service_node_id) / sum(rate(ledger_pebble_compaction_duration_milliseconds_count{\"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval])) by (service_node_id)",
+                     "expr": "sum(rate(ledger_pebble_compaction_duration_milliseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id) / sum(rate(ledger_pebble_compaction_duration_milliseconds_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
                      "legendFormat": "Node {{service_node_id}}: mean",
                      "range": true,
                      "refId": "D"
@@ -6970,7 +6609,7 @@
                   "x": 16,
                   "y": 8
                },
-               "id": 72,
+               "id": 69,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6991,7 +6630,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (service_node_id, reason) (rate({__name__=\"ledger_pebble_compaction_total\", status=\"error\", \"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval]))",
+                     "expr": "sum by (service_node_id, reason) (rate({__name__=\"ledger_pebble_compaction_total\", status=\"error\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval]))",
                      "legendFormat": "Node {{service_node_id}}: {{reason}}",
                      "range": true,
                      "refId": "A"
@@ -7068,7 +6707,7 @@
                   "x": 0,
                   "y": 16
                },
-               "id": 73,
+               "id": 70,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7089,7 +6728,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "max by (service_node_id, reason) ({__name__=\"ledger_pebble_write_stall_active\"})",
+                     "expr": "max by (service_node_id, reason) ({__name__=\"ledger_pebble_write_stall_active\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"})",
                      "legendFormat": "{{service_node_id}} / {{reason}}",
                      "range": true,
                      "refId": "A"
@@ -7166,7 +6805,7 @@
                   "x": 8,
                   "y": 16
                },
-               "id": 74,
+               "id": 71,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7187,8 +6826,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (db, reason) (rate({__name__=\"ledger_pebble_write_stall_total\"}[$__rate_interval]))",
-                     "legendFormat": "{{db}} / {{reason}}",
+                     "expr": "sum by (service_node_id, reason) (rate({__name__=\"ledger_pebble_write_stall_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval]))",
+                     "legendFormat": "Node {{service_node_id}} / {{reason}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -7265,7 +6904,7 @@
                   "x": 16,
                   "y": 16
                },
-               "id": 75,
+               "id": 72,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7286,8 +6925,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum by (le, db) (rate({__name__=\"ledger_pebble_write_stall_duration_milliseconds_bucket\"}[$__rate_interval])))",
-                     "legendFormat": "p50 {{db}}",
+                     "expr": "histogram_quantile(0.50, sum by (le, service_node_id) (rate({__name__=\"ledger_pebble_write_stall_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
+                     "legendFormat": "Node {{service_node_id}} p50",
                      "range": true,
                      "refId": "A"
                   },
@@ -7297,8 +6936,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum by (le, db) (rate({__name__=\"ledger_pebble_write_stall_duration_milliseconds_bucket\", \"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
-                     "legendFormat": "p95 {{db}}",
+                     "expr": "histogram_quantile(0.95, sum by (le, service_node_id) (rate({__name__=\"ledger_pebble_write_stall_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
+                     "legendFormat": "Node {{service_node_id}} p95",
                      "range": true,
                      "refId": "B"
                   },
@@ -7308,8 +6947,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum by (le, db) (rate({__name__=\"ledger_pebble_write_stall_duration_milliseconds_bucket\", \"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval])))",
-                     "legendFormat": "p99 {{db}}",
+                     "expr": "histogram_quantile(0.99, sum by (le, service_node_id) (rate({__name__=\"ledger_pebble_write_stall_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
+                     "legendFormat": "Node {{service_node_id}} p99",
                      "range": true,
                      "refId": "C"
                   },
@@ -7319,8 +6958,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(ledger_pebble_write_stall_duration_milliseconds_sum{\"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval])) by (service_node_id) / sum(rate(ledger_pebble_write_stall_duration_milliseconds_count{\"scope_name\"=\"pebble.runtime_store\"}[$__rate_interval])) by (service_node_id)",
-                     "legendFormat": "mean",
+                     "expr": "sum(rate(ledger_pebble_write_stall_duration_milliseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id) / sum(rate(ledger_pebble_write_stall_duration_milliseconds_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
+                     "legendFormat": "Node {{service_node_id}} mean",
                      "range": true,
                      "refId": "D"
                   }
@@ -7397,7 +7036,7 @@
                   "x": 0,
                   "y": 24
                },
-               "id": 76,
+               "id": 73,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7418,7 +7057,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate({__name__=\"ledger_pebble_vfs_read_ops_total\", \"scope_name\"=\"pebble.runtime_store\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])",
+                     "expr": "rate({__name__=\"ledger_pebble_vfs_read_ops_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])",
                      "legendFormat": "Node {{service_node_id}} — reads/s",
                      "range": true,
                      "refId": "A"
@@ -7429,7 +7068,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate({__name__=\"ledger_pebble_vfs_write_ops_total\", \"scope_name\"=\"pebble.runtime_store\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])",
+                     "expr": "rate({__name__=\"ledger_pebble_vfs_write_ops_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])",
                      "legendFormat": "Node {{service_node_id}} — writes/s",
                      "range": true,
                      "refId": "B"
@@ -7507,7 +7146,7 @@
                   "x": 8,
                   "y": 24
                },
-               "id": 77,
+               "id": 74,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7528,7 +7167,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate({__name__=\"ledger_pebble_vfs_sync_ops_total\", \"scope_name\"=\"pebble.runtime_store\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])",
+                     "expr": "rate({__name__=\"ledger_pebble_vfs_sync_ops_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])",
                      "legendFormat": "Node {{service_node_id}} — syncs/s",
                      "range": true,
                      "refId": "A"
@@ -7605,7 +7244,7 @@
                   "x": 16,
                   "y": 24
                },
-               "id": 78,
+               "id": 75,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7626,7 +7265,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "{__name__=\"ledger_pebble_vfs_read_ops_total\", \"scope_name\"=\"pebble.runtime_store\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
+                     "expr": "{__name__=\"ledger_pebble_vfs_read_ops_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
                      "legendFormat": "Node {{service_node_id}} — reads",
                      "range": true,
                      "refId": "A"
@@ -7637,7 +7276,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "{__name__=\"ledger_pebble_vfs_write_ops_total\", \"scope_name\"=\"pebble.runtime_store\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
+                     "expr": "{__name__=\"ledger_pebble_vfs_write_ops_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
                      "legendFormat": "Node {{service_node_id}} — writes",
                      "range": true,
                      "refId": "B"
@@ -7648,7 +7287,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "{__name__=\"ledger_pebble_vfs_sync_ops_total\", \"scope_name\"=\"pebble.runtime_store\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
+                     "expr": "{__name__=\"ledger_pebble_vfs_sync_ops_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
                      "legendFormat": "Node {{service_node_id}} — syncs",
                      "range": true,
                      "refId": "C"
@@ -7725,7 +7364,7 @@
                   "x": 0,
                   "y": 32
                },
-               "id": 79,
+               "id": 76,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7746,8 +7385,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (op) (rate({__name__=\"ledger_pebble_disk_slow_total\", \"scope_name\"=\"pebble.runtime_store\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "{{op}}",
+                     "expr": "sum by (service_node_id, op) (rate({__name__=\"ledger_pebble_disk_slow_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval]))",
+                     "legendFormat": "Node {{service_node_id}} / {{op}}",
                      "range": true,
                      "refId": "A"
                   }
@@ -7824,7 +7463,7 @@
                   "x": 12,
                   "y": 32
                },
-               "id": 80,
+               "id": 77,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7845,8 +7484,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum by (le, op) (rate({__name__=\"ledger_pebble_disk_slow_duration_milliseconds_bucket\", \"scope_name\"=\"pebble.runtime_store\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "p50 {{op}}",
+                     "expr": "histogram_quantile(0.50, sum by (le, service_node_id, op) (rate({__name__=\"ledger_pebble_disk_slow_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
+                     "legendFormat": "Node {{service_node_id}} p50 {{op}}",
                      "range": true,
                      "refId": "A"
                   },
@@ -7856,8 +7495,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum by (le, op) (rate({__name__=\"ledger_pebble_disk_slow_duration_milliseconds_bucket\", \"scope_name\"=\"pebble.runtime_store\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "p95 {{op}}",
+                     "expr": "histogram_quantile(0.95, sum by (le, service_node_id, op) (rate({__name__=\"ledger_pebble_disk_slow_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
+                     "legendFormat": "Node {{service_node_id}} p95 {{op}}",
                      "range": true,
                      "refId": "B"
                   },
@@ -7867,8 +7506,8 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum by (le, op) (rate({__name__=\"ledger_pebble_disk_slow_duration_milliseconds_bucket\", \"scope_name\"=\"pebble.runtime_store\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "p99 {{op}}",
+                     "expr": "histogram_quantile(0.99, sum by (le, service_node_id, op) (rate({__name__=\"ledger_pebble_disk_slow_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
+                     "legendFormat": "Node {{service_node_id}} p99 {{op}}",
                      "range": true,
                      "refId": "C"
                   }
@@ -7888,7 +7527,7 @@
             "x": 0,
             "y": 166
          },
-         "id": 81,
+         "id": 78,
          "panels": [
             {
                "datasource": {
@@ -7959,7 +7598,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 82,
+               "id": 79,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8058,7 +7697,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 83,
+               "id": 80,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8157,7 +7796,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 84,
+               "id": 81,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8233,7 +7872,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 85,
+               "id": 82,
                "options": {
                   "colorMode": "value",
                   "graphMode": "area",
@@ -8280,14 +7919,14 @@
             "x": 0,
             "y": 167
          },
-         "id": 86,
+         "id": 83,
          "panels": [
             {
                "datasource": {
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Number of entries in the attribute cache by type.\n\n- volumes: Account volumes (input/output)\n- account_metadata: Account metadata\n- ledger_metadata: Ledger metadata\n- reversions: Transaction reversion status\n- idempotency_keys: Idempotency keys\n- references: Transaction references\n- ledgers: Ledger info\n- boundaries: Ledger boundaries\n",
+               "description": "Number of entries in the attribute cache by type.\n\nThe `type` label is displayed dynamically so newly introduced cache\nregistries appear without requiring a dashboard update.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -8351,7 +7990,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 87,
+               "id": 84,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8372,43 +8011,10 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "ledger_cache_size{service_cluster=~\"$cluster\", service_node_id=~\"$node\", type=\"volumes\"}",
-                     "legendFormat": "Volumes (Node {{service_node_id}})",
+                     "expr": "ledger_cache_size{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}",
+                     "legendFormat": "{{type}} (Node {{service_node_id}})",
                      "range": true,
                      "refId": "A"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "ledger_cache_size{service_cluster=~\"$cluster\", service_node_id=~\"$node\", type=\"account_metadata\"}",
-                     "legendFormat": "Account Metadata (Node {{service_node_id}})",
-                     "range": true,
-                     "refId": "B"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "ledger_cache_size{service_cluster=~\"$cluster\", service_node_id=~\"$node\", type=\"idempotency_keys\"}",
-                     "legendFormat": "Idempotency Keys (Node {{service_node_id}})",
-                     "range": true,
-                     "refId": "C"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "ledger_cache_size{service_cluster=~\"$cluster\", service_node_id=~\"$node\", type=\"boundaries\"}",
-                     "legendFormat": "Boundaries (Node {{service_node_id}})",
-                     "range": true,
-                     "refId": "D"
                   }
                ],
                "title": "Cache Size by Type",
@@ -8483,7 +8089,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 88,
+               "id": 85,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8582,7 +8188,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 89,
+               "id": 86,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8635,7 +8241,7 @@
             "x": 0,
             "y": 168
          },
-         "id": 90,
+         "id": 87,
          "panels": [
             {
                "datasource": {
@@ -8706,7 +8312,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 91,
+               "id": 88,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8805,7 +8411,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 92,
+               "id": 89,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8904,7 +8510,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 93,
+               "id": 90,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9003,7 +8609,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 94,
+               "id": 91,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9102,7 +8708,7 @@
                   "x": 0,
                   "y": 16
                },
-               "id": 95,
+               "id": 92,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9201,7 +8807,7 @@
                   "x": 0,
                   "y": 24
                },
-               "id": 96,
+               "id": 93,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9243,7 +8849,7 @@
             "x": 0,
             "y": 169
          },
-         "id": 97,
+         "id": 94,
          "panels": [
             {
                "datasource": {
@@ -9314,7 +8920,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 98,
+               "id": 95,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9435,7 +9041,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 99,
+               "id": 96,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9534,7 +9140,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 100,
+               "id": 97,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9633,7 +9239,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 101,
+               "id": 98,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9732,7 +9338,7 @@
                   "x": 0,
                   "y": 16
                },
-               "id": 102,
+               "id": 99,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9842,7 +9448,7 @@
                   "x": 12,
                   "y": 16
                },
-               "id": 103,
+               "id": 100,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9963,7 +9569,7 @@
                   "x": 0,
                   "y": 24
                },
-               "id": 104,
+               "id": 101,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10084,7 +9690,7 @@
                   "x": 12,
                   "y": 24
                },
-               "id": 105,
+               "id": 102,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10205,7 +9811,7 @@
                   "x": 0,
                   "y": 32
                },
-               "id": 106,
+               "id": 103,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10302,7 +9908,7 @@
                   "x": 12,
                   "y": 32
                },
-               "id": 107,
+               "id": 104,
                "options": {
                   "bucketOffset": 0,
                   "combine": false,
@@ -10401,7 +10007,7 @@
                   "x": 0,
                   "y": 40
                },
-               "id": 108,
+               "id": 105,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10511,7 +10117,7 @@
                   "x": 12,
                   "y": 40
                },
-               "id": 109,
+               "id": 106,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10632,7 +10238,7 @@
                   "x": 0,
                   "y": 48
                },
-               "id": 110,
+               "id": 107,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10753,7 +10359,7 @@
                   "x": 12,
                   "y": 48
                },
-               "id": 111,
+               "id": 108,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10852,7 +10458,7 @@
                   "x": 0,
                   "y": 56
                },
-               "id": 112,
+               "id": 109,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10973,7 +10579,7 @@
                   "x": 12,
                   "y": 56
                },
-               "id": 113,
+               "id": 110,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11094,7 +10700,7 @@
                   "x": 0,
                   "y": 64
                },
-               "id": 114,
+               "id": 111,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11215,7 +10821,7 @@
                   "x": 0,
                   "y": 72
                },
-               "id": 115,
+               "id": 112,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11279,7 +10885,7 @@
             "x": 0,
             "y": 170
          },
-         "id": 116,
+         "id": 113,
          "panels": [
             {
                "datasource": {
@@ -11350,7 +10956,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 117,
+               "id": 114,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11471,7 +11077,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 118,
+               "id": 115,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11535,7 +11141,7 @@
             "x": 0,
             "y": 171
          },
-         "id": 119,
+         "id": 116,
          "panels": [
             {
                "datasource": {
@@ -11606,7 +11212,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 120,
+               "id": 117,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11705,7 +11311,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 121,
+               "id": 118,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11804,7 +11410,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 122,
+               "id": 119,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11925,7 +11531,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 123,
+               "id": 120,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12068,7 +11674,7 @@
                   "x": 12,
                   "y": 16
                },
-               "id": 124,
+               "id": 121,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12121,7 +11727,7 @@
             "x": 0,
             "y": 172
          },
-         "id": 125,
+         "id": 122,
          "panels": [
             {
                "datasource": {
@@ -12188,11 +11794,11 @@
                },
                "gridPos": {
                   "h": 8,
-                  "w": 12,
+                  "w": 24,
                   "x": 0,
                   "y": 0
                },
-               "id": 126,
+               "id": 123,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12232,116 +11838,6 @@
                ],
                "title": "Disk Usage by Volume",
                "type": "timeseries"
-            },
-            {
-               "datasource": {
-                  "type": "prometheus",
-                  "uid": "${datasource}"
-               },
-               "description": "Disk space used by each storage volume (WAL volume, data volume). Updated every 10 seconds by a background collector.",
-               "fieldConfig": {
-                  "defaults": {
-                     "color": {
-                        "mode": "palette-classic"
-                     },
-                     "custom": {
-                        "axisBorderShow": false,
-                        "axisCenteredZero": false,
-                        "axisColorMode": "text",
-                        "axisLabel": "",
-                        "axisPlacement": "auto",
-                        "barAlignment": 0,
-                        "barWidthFactor": 0.59999999999999998,
-                        "drawStyle": "line",
-                        "fillOpacity": 10,
-                        "gradientMode": "none",
-                        "hideFrom": {
-                           "legend": false,
-                           "tooltip": false,
-                           "viz": false
-                        },
-                        "insertNulls": false,
-                        "lineInterpolation": "linear",
-                        "lineWidth": 1,
-                        "pointSize": 5,
-                        "scaleDistribution": {
-                           "type": "linear"
-                        },
-                        "showPoints": "never",
-                        "showValues": false,
-                        "spanNulls": false,
-                        "stacking": {
-                           "group": "A",
-                           "mode": "none"
-                        },
-                        "thresholdsStyle": {
-                           "mode": "off"
-                        }
-                     },
-                     "mappings": [ ],
-                     "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                           {
-                              "color": "green",
-                              "value": 0
-                           },
-                           {
-                              "color": "red",
-                              "value": 80
-                           }
-                        ]
-                     },
-                     "unit": "bytes"
-                  },
-                  "overrides": [ ]
-               },
-               "gridPos": {
-                  "h": 8,
-                  "w": 12,
-                  "x": 12,
-                  "y": 0
-               },
-               "id": 127,
-               "options": {
-                  "legend": {
-                     "calcs": [ ],
-                     "displayMode": "list",
-                     "placement": "bottom",
-                     "showLegend": true
-                  },
-                  "tooltip": {
-                     "hideZeros": false,
-                     "mode": "single",
-                     "sort": "none"
-                  }
-               },
-               "targets": [
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "ledger_storage_disk_volume_bytes{service_cluster=~\"$cluster\", service_node_id=~\"$node\", volume=\"wal\"}",
-                     "legendFormat": "WAL (Node {{service_node_id}})",
-                     "range": true,
-                     "refId": "A"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "ledger_storage_disk_volume_bytes{service_cluster=~\"$cluster\", service_node_id=~\"$node\", volume=\"data\"}",
-                     "legendFormat": "Data (Node {{service_node_id}})",
-                     "range": true,
-                     "refId": "B"
-                  }
-               ],
-               "title": "Disk Usage by Volume",
-               "type": "timeseries"
             }
          ],
          "title": "Storage Disk Usage",
@@ -12355,7 +11851,7 @@
             "x": 0,
             "y": 173
          },
-         "id": 128,
+         "id": 124,
          "panels": [
             {
                "datasource": {
@@ -12392,7 +11888,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 129,
+               "id": 125,
                "options": {
                   "minVizHeight": 75,
                   "minVizWidth": 75,
@@ -12493,7 +11989,7 @@
                   "x": 8,
                   "y": 0
                },
-               "id": 130,
+               "id": 126,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12592,7 +12088,7 @@
                   "x": 16,
                   "y": 0
                },
-               "id": 131,
+               "id": 127,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12645,21 +12141,21 @@
             "x": 0,
             "y": 174
          },
-         "id": 132,
+         "id": 128,
          "panels": [
             {
                "datasource": {
                   "type": "grafana-pyroscope-datasource",
                   "uid": "${pyroscope}"
                },
-               "description": "CPU flame graph from Pyroscope continuous profiling. Shows where CPU time is spent in the application.\n\nUse the version tag to compare profiles between different builds.\n",
+               "description": "CPU flame graph from Pyroscope continuous profiling. Shows where CPU time is spent in the application.\n\n",
                "gridPos": {
                   "h": 20,
                   "w": 24,
                   "x": 0,
                   "y": 0
                },
-               "id": 133,
+               "id": 129,
                "options": { },
                "targets": [
                   {
@@ -12668,7 +12164,7 @@
                         "uid": "${pyroscope}"
                      },
                      "groupBy": [ ],
-                     "labelSelector": "{service_name=\"ledger\", version=\"$version\"}",
+                     "labelSelector": "{service_name=\"ledger\"}",
                      "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
                      "queryType": "profile",
                      "refId": "A"
@@ -12689,7 +12185,7 @@
                   "x": 0,
                   "y": 20
                },
-               "id": 134,
+               "id": 130,
                "options": { },
                "targets": [
                   {
@@ -12698,7 +12194,7 @@
                         "uid": "${pyroscope}"
                      },
                      "groupBy": [ ],
-                     "labelSelector": "{service_name=\"ledger\", version=\"$version\"}",
+                     "labelSelector": "{service_name=\"ledger\"}",
                      "profileTypeId": "memory:alloc_space:bytes:space:bytes",
                      "queryType": "profile",
                      "refId": "A"
@@ -12719,7 +12215,7 @@
                   "x": 0,
                   "y": 40
                },
-               "id": 135,
+               "id": 131,
                "options": { },
                "targets": [
                   {
@@ -12728,7 +12224,7 @@
                         "uid": "${pyroscope}"
                      },
                      "groupBy": [ ],
-                     "labelSelector": "{service_name=\"ledger\", version=\"$version\"}",
+                     "labelSelector": "{service_name=\"ledger\"}",
                      "profileTypeId": "memory:inuse_space:bytes:space:bytes",
                      "queryType": "profile",
                      "refId": "A"
@@ -12749,7 +12245,7 @@
                   "x": 0,
                   "y": 60
                },
-               "id": 136,
+               "id": 132,
                "options": { },
                "targets": [
                   {
@@ -12758,8 +12254,8 @@
                         "uid": "${pyroscope}"
                      },
                      "groupBy": [ ],
-                     "labelSelector": "{service_name=\"ledger\", version=\"$version\"}",
-                     "profileTypeId": "goroutine:goroutine:count:goroutine:count",
+                     "labelSelector": "{service_name=\"ledger\"}",
+                     "profileTypeId": "goroutines:goroutine:count:goroutine:count",
                      "queryType": "profile",
                      "refId": "A"
                   }
@@ -12784,8 +12280,8 @@
          {
             "current": {
                "selected": true,
-               "text": "VictoriaMetrics",
-               "value": "VictoriaMetrics"
+               "text": "Prometheus",
+               "value": "Prometheus"
             },
             "includeAll": false,
             "label": "Datasource",
@@ -12854,28 +12350,6 @@
             },
             "refresh": 1,
             "regex": "/service_node_id=\"([^\"]+)\"/",
-            "sort": 1,
-            "type": "query"
-         },
-         {
-            "allValue": ".*",
-            "datasource": {
-               "type": "grafana-pyroscope-datasource",
-               "uid": "${pyroscope}"
-            },
-            "definition": "",
-            "description": "Select a version to filter Pyroscope profiles (for comparison)",
-            "includeAll": true,
-            "label": "Version",
-            "name": "version",
-            "options": [ ],
-            "query": {
-               "labelSelector": "{service_name=\"ledger\"}",
-               "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
-               "refId": "PyroscopeVariableQueryEditor-VariableQuery"
-            },
-            "refresh": 1,
-            "regex": "/version=\"([^\"]+)\"/",
             "sort": 1,
             "type": "query"
          }

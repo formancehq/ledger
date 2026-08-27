@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decision": {"type":"string","enum":["APPROVE","REQUEST_CHANGES","HUMAN_DECISION_REQUIRED"]},
+        "head": {"type":"string"},
+        "worktree_fingerprint": {"type":"string"},
+        "residual_risk": {"type":"string","enum":["LOW","MEDIUM","HIGH"]},
+        "human_decision_context": {"type":"string"},
+        "previous_findings": {
+          "type":"array",
+          "items":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string"},"status":{"type":"string","enum":["FIXED","STILL_VALID","OUTDATED"]},"reason":{"type":"string"}},"required":["id","status","reason"]}
+        },
+        "findings": {
+          "type":"array",
+          "items":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string"},"severity":{"type":"string","enum":["P0","P1","P2","P3"]},"blocking":{"type":"boolean"},"auto_fixable":{"type":"boolean"},"title":{"type":"string"},"location":{"type":"string"},"evidence":{"type":"string"},"impact":{"type":"string"},"resolution":{"type":"string"}},"required":["id","severity","blocking","auto_fixable","title","location","evidence","impact","resolution"]}
+        }
+      },
+      "required":["decision","head","worktree_fingerprint","previous_findings","findings","residual_risk","human_decision_context"]
+    },
+    "known_findings": {
+      "type":"array",
+      "items":{
+        "type":"object",
+        "additionalProperties":false,
+        "properties":{
+          "id":{"type":"string"},
+          "status":{"type":"string","enum":["FIXED","STILL_VALID","OUTDATED","HUMAN_DECISION_REQUIRED"]},
+          "reason":{"type":"string"}
+        },
+        "required":["id","status","reason"]
+      }
+    }
+  },
+  "required":["review","known_findings"]
+}

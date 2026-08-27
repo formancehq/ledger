@@ -60,7 +60,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Adding account type %s...", name))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Adding account type %s...", name))
 
 	requests := []*servicepb.Request{
 		{

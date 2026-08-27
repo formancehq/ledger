@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Canonical agent validation must run in the repository-pinned Nix environment.
+# Re-exec once under `nix develop` instead of relying on whatever tools happen
+# to be installed or loaded by the caller's shell/direnv session.
+if [[ "${LEDGER_AGENT_CHECK_IN_NIX:-}" != "1" ]]; then
+    exec env -u GOROOT nix develop --command \
+        env LEDGER_AGENT_CHECK_IN_NIX=1 bash "$0" "$@"
+fi
+
+# Never inherit a host GOROOT into pinned Go commands.
+unset GOROOT || true
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "==> agent-check: mechanical repository invariants"
+bash "$SCRIPT_DIR/check-repo-invariants"
+
+echo "==> agent-check: repository pre-commit validation"
+bash "$SCRIPT_DIR/agent-just" pre-commit
+
+echo "==> agent-check: compile all root-module packages"
+go build ./...
+
+echo "==> agent-check: verify tracked/staged diff whitespace"
+git diff --check HEAD --
+
+echo "==> agent-check: verify untracked file whitespace"
+untracked_failed=0
+while IFS= read -r -d '' file; do
+    # `git diff --no-index` returns 1 whenever files differ, even when there are
+    # no whitespace errors. Treat output from --check as the failure signal;
+    # reserve exit statuses >1 for actual command errors.
+    output=""
+    status=0
+    output=$(git diff --no-index --check -- /dev/null "$file" 2>&1) || status=$?
+    if [[ -n "$output" ]]; then
+        printf '%s\n' "$output"
+        untracked_failed=1
+    elif (( status > 1 )); then
+        echo "agent-check: failed to inspect untracked file: $file" >&2
+        exit "$status"
+    fi
+done < <(git ls-files --others --exclude-standard -z)
+
+if (( untracked_failed != 0 )); then
+    echo "agent-check: whitespace errors found in untracked files" >&2
+    exit 1
+fi
+
+echo "==> agent-check: PASS"

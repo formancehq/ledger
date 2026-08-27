@@ -11,6 +11,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// notifyingLocker closes waiting when sync.Cond.Wait releases the underlying
+// mutex. Tests can then publish only after the waiter is definitely blocked,
+// without relying on scheduler timing.
+type notifyingLocker struct {
+	sync.Locker
+
+	waiting chan struct{}
+	once    sync.Once
+}
+
+func (l *notifyingLocker) Unlock() {
+	l.once.Do(func() {
+		close(l.waiting)
+	})
+	l.Locker.Unlock()
+}
+
 // TestWaitForApplied_FastPath: the index has already been published when
 // WaitForApplied is called → no blocking, no goroutine spawn, returns nil.
 func TestWaitForApplied_FastPath(t *testing.T) {
@@ -37,6 +54,11 @@ func TestWaitForApplied_LatePublish(t *testing.T) {
 	t.Parallel()
 
 	fsm, _, _ := newTestMachine(t)
+	waiting := make(chan struct{})
+	fsm.appliedCond = sync.NewCond(&notifyingLocker{
+		Locker:  &fsm.appliedMu,
+		waiting: waiting,
+	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -44,11 +66,12 @@ func TestWaitForApplied_LatePublish(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- fsm.WaitForApplied(ctx, 7) }()
 
-	// Give the waiter time to enter Cond.Wait so we exercise the wake-up
-	// path rather than the fast path. The exact moment doesn't matter for
-	// correctness, only the order: this test is about whether the wake-up
-	// is delivered, not about racing the wake-up against the Load check.
-	time.Sleep(10 * time.Millisecond)
+	select {
+	case <-waiting:
+	case <-time.After(time.Second):
+		t.Fatal("WaitForApplied did not enter Cond.Wait")
+	}
+
 	fsm.publishApplied(7)
 
 	select {

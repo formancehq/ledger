@@ -57,16 +57,21 @@ type compileCtx struct {
 	// read failure. Compile uses it to pick the right v_n keyspace
 	// and to refuse early with ErrIndexBuilding when no live keyspace
 	// exists yet.
-	indexVersionFor func(canonical string) (uint32, error)
-	profile         *QueryProfile
-	depth           int
+	indexVersionFor func(canonical string) (uint32, bool, error)
+	// pin is the main-store handle's applied sequence: metadata / exists
+	// index leaves resolve their event groups at this sequence, so index
+	// selection observes exactly the state the rest of the query reads
+	// (EN-1748). Callers obtain it from AlignedIndexSnapshot, which
+	// guarantees indexReader's fold cursor covers it.
+	pin     uint64
+	profile *QueryProfile
+	depth   int
 }
 
 // metadataCtx holds the per-field context used only by type-specific
 // metadata condition compilers (string, int, uint, bool, exists).
 type metadataCtx struct {
 	prefix    []byte
-	entityLen int
 	namespace string
 	metaKey   string
 	// version is the per-replica forward-encoding version resolved
@@ -97,9 +102,10 @@ func Compile(
 	schema map[string]*commonpb.MetadataFieldSchema,
 	info *commonpb.LedgerInfo,
 	indexRegistry indexes.Lookup,
-	indexVersionFor func(canonical string) (uint32, error),
+	indexVersionFor func(canonical string) (uint32, bool, error),
 	profile *QueryProfile,
 	pebbleReader dal.PebbleReader,
+	pin uint64,
 ) (readstore.EntityIterator, error) {
 	// Reject an unsupported/unknown target at the earliest point. Without this
 	// guard compileUniverse's default arm returns an empty iterator, which the
@@ -115,7 +121,7 @@ func Compile(
 		// A nil resolver means "every index is at v=1" — only safe in
 		// tests that pre-date EN-1323 versioning. Production wiring
 		// always supplies a resolver backed by readstore.
-		indexVersionFor = func(string) (uint32, error) { return 1, nil }
+		indexVersionFor = func(string) (uint32, bool, error) { return 1, true, nil }
 	}
 
 	ctx := &compileCtx{
@@ -128,6 +134,7 @@ func Compile(
 		schema:          schema,
 		info:            info,
 		indexRegistry:   indexRegistry,
+		pin:             pin,
 		indexVersionFor: indexVersionFor,
 		profile:         profile,
 	}
@@ -460,7 +467,7 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 		return nil, domain.NewFilterCompilationError("field condition has no field reference")
 	}
 
-	ns, entityLen := targetNamespaceAndLen(ctx.target)
+	ns := targetNamespace(ctx.target)
 	metaKey := fc.GetField().GetMetadata()
 
 	// Validate index availability and condition type against declared schema type.
@@ -489,7 +496,6 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 
 	mc := &metadataCtx{
 		prefix:    readstore.MetadataIndexPrefixV(ctx.kb, ctx.ledgerName, ns, metaKey, indexVersion),
-		entityLen: entityLen,
 		namespace: ns,
 		metaKey:   metaKey,
 		version:   indexVersion,
@@ -521,14 +527,14 @@ func compileStringCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Str
 
 	fullPrefix := readstore.EncodeString(append([]byte{}, mc.prefix...), value)
 
-	iter, err := readstore.NewPrefixIterator(ctx.indexReader, fullPrefix, len(fullPrefix), mc.entityLen)
+	iter, err := readstore.NewEventResolveIterator(ctx.indexReader, fullPrefix, ctx.pin)
 	if err != nil {
-		return nil, fmt.Errorf("creating string prefix iterator: %w", err)
+		return nil, fmt.Errorf("creating string event iterator: %w", err)
 	}
 
 	return trackIterator(iter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=string)", ctx.ledgerName, mc.namespace, mc.metaKey),
-		Kind:   "Prefix",
+		Label:  fmt.Sprintf("EventResolveIterator(midx:%s:%s:%s=string)", ctx.ledgerName, mc.namespace, mc.metaKey),
+		Kind:   "EventResolve",
 		Prefix: "midx",
 	}), nil
 }
@@ -665,14 +671,14 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 	if bounds.isEquality() {
 		fullPrefix := readstore.EncodeInt64(append([]byte{}, mc.prefix...), bounds.min)
 
-		iter, pErr := readstore.NewPrefixIterator(ctx.indexReader, fullPrefix, len(fullPrefix), mc.entityLen)
+		iter, pErr := readstore.NewEventResolveIterator(ctx.indexReader, fullPrefix, ctx.pin)
 		if pErr != nil {
-			return nil, fmt.Errorf("creating int prefix iterator: %w", pErr)
+			return nil, fmt.Errorf("creating int event iterator: %w", pErr)
 		}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=int)", ctx.ledgerName, mc.namespace, mc.metaKey),
-			Kind:   "Prefix",
+			Label:  fmt.Sprintf("EventResolveIterator(midx:%s:%s:%s=int)", ctx.ledgerName, mc.namespace, mc.metaKey),
+			Kind:   "EventResolve",
 			Prefix: "midx",
 		}), nil
 	}
@@ -695,11 +701,11 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 		upper = append(upper, readstore.TypeTagInt+1)
 	}
 
-	entityOffset := len(mc.prefix) + 1 + 8 // prefix + typeTag(1) + int64(8)
-
-	iter, rErr := readstore.NewRangeIterator(ctx.indexReader, lower, upper, entityOffset, mc.entityLen)
+	// prefix + typeTag(1) + int64(8): fixed-width values keep the entity
+	// extractable from each event group.
+	iter, rErr := readstore.NewEventResolveRangeIterator(ctx.indexReader, lower, upper, len(mc.prefix), 1+8, ctx.pin)
 	if rErr != nil {
-		return nil, fmt.Errorf("creating int range iterator: %w", rErr)
+		return nil, fmt.Errorf("creating int range event iterator: %w", rErr)
 	}
 
 	stats := &IteratorStats{
@@ -707,7 +713,10 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 		Kind:   "Range",
 		Prefix: "midx",
 	}
-	matIter := materializeIterator(iter, ctx.profile, stats)
+	matIter, err := materializeIterator(iter, ctx.profile, stats)
+	if err != nil {
+		return nil, err
+	}
 
 	return trackIterator(matIter, ctx.profile, stats), nil
 }
@@ -834,14 +843,14 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 	if bounds.isEquality() {
 		fullPrefix := readstore.EncodeUint64(append([]byte{}, mc.prefix...), bounds.min)
 
-		iter, pErr := readstore.NewPrefixIterator(ctx.indexReader, fullPrefix, len(fullPrefix), mc.entityLen)
+		iter, pErr := readstore.NewEventResolveIterator(ctx.indexReader, fullPrefix, ctx.pin)
 		if pErr != nil {
-			return nil, fmt.Errorf("creating uint prefix iterator: %w", pErr)
+			return nil, fmt.Errorf("creating uint event iterator: %w", pErr)
 		}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=uint)", ctx.ledgerName, mc.namespace, mc.metaKey),
-			Kind:   "Prefix",
+			Label:  fmt.Sprintf("EventResolveIterator(midx:%s:%s:%s=uint)", ctx.ledgerName, mc.namespace, mc.metaKey),
+			Kind:   "EventResolve",
 			Prefix: "midx",
 		}), nil
 	}
@@ -864,11 +873,9 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 		upper = append(upper, readstore.TypeTagUint+1)
 	}
 
-	entityOffset := len(mc.prefix) + 1 + 8
-
-	iter, rErr := readstore.NewRangeIterator(ctx.indexReader, lower, upper, entityOffset, mc.entityLen)
+	iter, rErr := readstore.NewEventResolveRangeIterator(ctx.indexReader, lower, upper, len(mc.prefix), 1+8, ctx.pin)
 	if rErr != nil {
-		return nil, fmt.Errorf("creating uint range iterator: %w", rErr)
+		return nil, fmt.Errorf("creating uint range event iterator: %w", rErr)
 	}
 
 	stats := &IteratorStats{
@@ -876,7 +883,10 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 		Kind:   "Range",
 		Prefix: "midx",
 	}
-	matIter := materializeIterator(iter, ctx.profile, stats)
+	matIter, err := materializeIterator(iter, ctx.profile, stats)
+	if err != nil {
+		return nil, err
+	}
 
 	return trackIterator(matIter, ctx.profile, stats), nil
 }
@@ -890,14 +900,14 @@ func compileBoolCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.BoolC
 
 	fullPrefix := readstore.EncodeBool(append([]byte{}, mc.prefix...), value)
 
-	iter, pErr := readstore.NewPrefixIterator(ctx.indexReader, fullPrefix, len(fullPrefix), mc.entityLen)
+	iter, pErr := readstore.NewEventResolveIterator(ctx.indexReader, fullPrefix, ctx.pin)
 	if pErr != nil {
-		return nil, fmt.Errorf("creating bool prefix iterator: %w", pErr)
+		return nil, fmt.Errorf("creating bool event iterator: %w", pErr)
 	}
 
 	return trackIterator(iter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PrefixIterator(midx:%s:%s:%s=bool)", ctx.ledgerName, mc.namespace, mc.metaKey),
-		Kind:   "Prefix",
+		Label:  fmt.Sprintf("EventResolveIterator(midx:%s:%s:%s=bool)", ctx.ledgerName, mc.namespace, mc.metaKey),
+		Kind:   "EventResolve",
 		Prefix: "midx",
 	}), nil
 }
@@ -908,14 +918,14 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 	nonNullPrefix := readstore.EntityExistsNonNullPrefixV(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey, mc.version)
 	if !cond.GetIncludeNull() {
 		// Only non-null entries
-		iter, err := readstore.NewPrefixIterator(ctx.indexReader, nonNullPrefix, len(nonNullPrefix), mc.entityLen)
+		iter, err := readstore.NewEventResolveIterator(ctx.indexReader, nonNullPrefix, ctx.pin)
 		if err != nil {
-			return nil, fmt.Errorf("creating exists non-null prefix iterator: %w", err)
+			return nil, fmt.Errorf("creating exists non-null event iterator: %w", err)
 		}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PrefixIterator(eidx:%s:%s:%s non-null)", ctx.ledgerName, mc.namespace, mc.metaKey),
-			Kind:   "Prefix",
+			Label:  fmt.Sprintf("EventResolveIterator(eidx:%s:%s:%s non-null)", ctx.ledgerName, mc.namespace, mc.metaKey),
+			Kind:   "EventResolve",
 			Prefix: "eidx",
 		}), nil
 	}
@@ -923,21 +933,21 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 	// Both non-null and null entries: merge two prefix iterators
 	nullPrefix := readstore.EntityExistsNullPrefixV(ctx.kb, ctx.ledgerName, mc.namespace, mc.metaKey, mc.version)
 
-	nonNullIter, err := readstore.NewPrefixIterator(ctx.indexReader, nonNullPrefix, len(nonNullPrefix), mc.entityLen)
+	nonNullIter, err := readstore.NewEventResolveIterator(ctx.indexReader, nonNullPrefix, ctx.pin)
 	if err != nil {
-		return nil, fmt.Errorf("creating exists non-null prefix iterator: %w", err)
+		return nil, fmt.Errorf("creating exists non-null event iterator: %w", err)
 	}
 
-	nullIter, err := readstore.NewPrefixIterator(ctx.indexReader, nullPrefix, len(nullPrefix), mc.entityLen)
+	nullIter, err := readstore.NewEventResolveIterator(ctx.indexReader, nullPrefix, ctx.pin)
 	if err != nil {
 		nonNullIter.Close()
 
-		return nil, fmt.Errorf("creating exists null prefix iterator: %w", err)
+		return nil, fmt.Errorf("creating exists null event iterator: %w", err)
 	}
 
 	nonNullTracked := trackIterator(nonNullIter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PrefixIterator(eidx:%s:%s:%s non-null)", ctx.ledgerName, mc.namespace, mc.metaKey),
-		Kind:   "Prefix",
+		Label:  fmt.Sprintf("EventResolveIterator(eidx:%s:%s:%s non-null)", ctx.ledgerName, mc.namespace, mc.metaKey),
+		Kind:   "EventResolve",
 		Prefix: "eidx",
 	})
 
@@ -947,8 +957,8 @@ func compileExistsCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.Exi
 	}
 
 	nullTracked := trackIterator(nullIter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PrefixIterator(eidx:%s:%s:%s null)", ctx.ledgerName, mc.namespace, mc.metaKey),
-		Kind:   "Prefix",
+		Label:  fmt.Sprintf("EventResolveIterator(eidx:%s:%s:%s null)", ctx.ledgerName, mc.namespace, mc.metaKey),
+		Kind:   "EventResolve",
 		Prefix: "eidx",
 	})
 
@@ -1156,9 +1166,16 @@ func compileAccountHasAssetCondition(ctx *compileCtx, c *commonpb.AccountHasAsse
 	// Key layout: [0x0C][ledger 64B][assetBase\x00][precision 1B][account].
 	// The account is the variable-length trailing segment after the prefix,
 	// so entityOffset = len(prefix) and entityLen = 0 (extends to end of key).
+	// The scan is stamp-gated at the read's pin: each row's value is the
+	// account's FIRST touch of the cell, and the aligned snapshot may hold
+	// touches folded past the main handle. An unstamped scan would serve
+	// those members while enrichment through the handle cannot see them —
+	// an account rendered address-only that no single state contains. The
+	// gate keeps purged accounts servable (their touch is below any later
+	// pin), which is the case the ACCOUNTS horizon carve-out protects.
 	prefix := readstore.AccountByAssetPrefix(ctx.kb, ctx.ledgerName, c.GetAssetBase(), uint8(c.GetPrecision()))
 
-	iter, pErr := readstore.NewPrefixIterator(ctx.indexReader, prefix, len(prefix), 0)
+	iter, pErr := readstore.NewStampGatedPrefixIterator(ctx.indexReader, prefix, len(prefix), 0, ctx.pin)
 	if pErr != nil {
 		return nil, fmt.Errorf("creating has-asset prefix iterator: %w", pErr)
 	}
@@ -1261,7 +1278,7 @@ func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (r
 	}
 
 	return compileTimestampRangeCondition(ctx, cond,
-		readstore.TransactionTimestampRangePrefix(ctx.kb, ctx.ledgerName), "tstmp")
+		readstore.TransactionTimestampRangePrefix(ctx.kb, ctx.ledgerName), "tstmp", 0)
 }
 
 // compileInsertedAtCondition filters transactions by inserted_at using the transaction inserted_at index.
@@ -1274,7 +1291,7 @@ func compileInsertedAtCondition(ctx *compileCtx, cond *commonpb.UintCondition) (
 	}
 
 	return compileTimestampRangeCondition(ctx, cond,
-		readstore.TransactionInsertedAtRangePrefix(ctx.kb, ctx.ledgerName), "txiat")
+		readstore.TransactionInsertedAtRangePrefix(ctx.kb, ctx.ledgerName), "txiat", 0)
 }
 
 // compileRevertedAtCondition filters transactions by reverted_at using the transaction reverted_at index.
@@ -1286,18 +1303,27 @@ func compileRevertedAtCondition(ctx *compileCtx, cond *commonpb.UintCondition) (
 		return nil, err
 	}
 
+	// reverted_at is the one transaction builtin written AFTER the
+	// transaction's creation (the revert's own fold), so the TRANSACTIONS
+	// horizon trim — which proves only that the transaction existed at the
+	// pin — cannot exclude a revert folded past the main handle. The rows
+	// carry the revert fold's sequence; the scan is gated at the read's pin.
 	return compileTimestampRangeCondition(ctx, cond,
-		readstore.TransactionRevertedAtRangePrefix(ctx.kb, ctx.ledgerName), "rvat")
+		readstore.TransactionRevertedAtRangePrefix(ctx.kb, ctx.ledgerName), "rvat", ctx.pin)
 }
 
 // compileTimestampRangeCondition is the shared logic for timestamp-based range scans.
 // It handles both transaction timestamps and log dates using the same key layout:
 // [prefix_byte][ledger\x00][timestamp_BE(8B)][entityID_BE(8B)].
+// stampPin gates rows by the fold sequence in their value; pass 0 for indexes
+// whose rows are written with their entity's creation, where the per-target
+// horizon trim already excludes members past the main handle.
 func compileTimestampRangeCondition(
 	ctx *compileCtx,
 	cond *commonpb.UintCondition,
 	ledgerPrefix []byte,
 	bucketLabel string,
+	stampPin uint64,
 ) (readstore.EntityIterator, error) {
 	bounds, err := resolveUintBounds(cond, ctx.params)
 	if err != nil {
@@ -1331,7 +1357,7 @@ func compileTimestampRangeCondition(
 		lower = ledgerPrefix
 	}
 
-	iter, rErr := readstore.NewRangeIterator(ctx.indexReader, lower, upper, entityOffset, entityLen)
+	iter, rErr := readstore.NewStampGatedRangeIterator(ctx.indexReader, lower, upper, entityOffset, entityLen, stampPin)
 	if rErr != nil {
 		return nil, fmt.Errorf("creating timestamp range iterator: %w", rErr)
 	}
@@ -1341,7 +1367,10 @@ func compileTimestampRangeCondition(
 		Kind:   "Range",
 		Prefix: bucketLabel,
 	}
-	matIter := materializeIterator(iter, ctx.profile, stats)
+	matIter, err := materializeIterator(iter, ctx.profile, stats)
+	if err != nil {
+		return nil, err
+	}
 
 	return trackIterator(matIter, ctx.profile, stats), nil
 }
@@ -1370,7 +1399,7 @@ func compileLogDateCondition(ctx *compileCtx, cond *commonpb.UintCondition) (rea
 	}
 
 	return compileTimestampRangeCondition(ctx, cond,
-		readstore.LedgerLogDateRangePrefix(ctx.kb, ctx.ledgerName), "lldt")
+		readstore.LedgerLogDateRangePrefix(ctx.kb, ctx.ledgerName), "lldt", 0)
 }
 
 // compileLogIdCondition filters logs by ledger-local log ID using the ledger logs index.
@@ -1448,7 +1477,10 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 		Kind:   "Range",
 		Prefix: "llog",
 	}
-	matIter := materializeIterator(iter, ctx.profile, stats)
+	matIter, err := materializeIterator(iter, ctx.profile, stats)
+	if err != nil {
+		return nil, err
+	}
 
 	return trackIterator(matIter, ctx.profile, stats), nil
 }
@@ -1498,9 +1530,26 @@ func requireIndexReady(ctx *compileCtx, id *commonpb.IndexID, label string) (uin
 		return 0, err
 	}
 
-	v, err := ctx.indexVersionFor(indexes.Canonical(id))
+	v, primed, err := ctx.indexVersionFor(indexes.Canonical(id))
 	if err != nil {
 		return 0, fmt.Errorf("resolving index version for %s: %w", label, err)
+	}
+
+	if !primed {
+		// checkIndexed passed, so the registry lists this index at the read's
+		// pin — its CreateIndex applied at or below that pin. Alignment puts
+		// the fold cursor at or beyond the pin, so the builder has folded that
+		// log and written the per-replica record. Its absence therefore means
+		// the record was written and later deleted: the index was REMOVED
+		// after the pin, not still building. Reporting it as building would
+		// tell the client to wait for something that will never arrive.
+		//
+		// Nothing at runtime lowers the main store beneath the read index and
+		// so inverts this: RestoreCheckpoint's only production caller installs
+		// a checkpoint fetched FROM the leader, which moves the node forward,
+		// and an applied index can never exceed the leader's log to begin
+		// with.
+		return 0, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: label}}
 	}
 
 	if v == 0 {
@@ -1650,15 +1699,15 @@ func targetHumanName(target commonpb.QueryTarget) string {
 	return commonpb.TargetHumanName(target)
 }
 
-// targetNamespaceAndLen returns the namespace and entity length for a query target.
-func targetNamespaceAndLen(target commonpb.QueryTarget) (string, int) {
+// targetNamespace returns the read-index namespace for a query target.
+func targetNamespace(target commonpb.QueryTarget) string {
 	switch target {
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
-		return readstore.NamespaceTransaction, 8
+		return readstore.NamespaceTransaction
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
-		return readstore.NamespaceLog, 8
+		return readstore.NamespaceLog
 	default:
-		return readstore.NamespaceAccount, 0
+		return readstore.NamespaceAccount
 	}
 }
 
@@ -1831,7 +1880,12 @@ func paramTypeName(pv *commonpb.ParameterValue) string {
 // MaterializedItems counters; when stats is non-nil, it also accumulates the
 // same counts on the per-node stats so the iterator-tree dump can attribute
 // materialization cost to a specific branch.
-func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *IteratorStats) *SliceIterator {
+// materializeIterator drains iter into a sorted slice. A drain that ended in
+// an error yields no iterator: the entities collected so far are a prefix of
+// the range, and a SliceIterator cannot carry the failure — its Err is nil by
+// construction, so returning one would present a truncated range as a
+// complete answer that every later check reads as clean.
+func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *IteratorStats) (*SliceIterator, error) {
 	if profile != nil {
 		profile.MaterializedRanges++
 	}
@@ -1851,6 +1905,10 @@ func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile, s
 		entities = append(entities, cp)
 	}
 
+	if err := iter.Err(); err != nil {
+		return nil, fmt.Errorf("materializing range: %w", err)
+	}
+
 	if profile != nil {
 		profile.MaterializedItems += len(entities)
 	}
@@ -1861,7 +1919,7 @@ func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile, s
 
 	sortEntities(entities)
 
-	return &SliceIterator{entities: entities}
+	return &SliceIterator{entities: entities}, nil
 }
 
 func sortEntities(entities [][]byte) {

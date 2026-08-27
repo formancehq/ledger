@@ -1,230 +1,164 @@
-# CLAUDE.md - AI Agent Instructions
+# AI Agent Instructions
 
-This document contains rules and conventions for AI agents working on this codebase. Detailed documentation lives in `docs/` - see [docs/README.md](docs/README.md) for navigation.
+This file is the always-loaded entry point for AI agents working on Ledger v3. Keep it short. Detailed technical knowledge belongs in `docs/`; load only the documentation relevant to the task.
 
-## Release Status — v3 is unreleased
+## Release status — v3 is unreleased
 
-**CRITICAL**: The Raft-based ledger v3 has never been released. No deployment carries data across versions, and all state is wiped on every push to `release/v3.0`. Because nothing persists across versions, there is no backward-compatibility burden — break wire and storage formats freely:
+**CRITICAL:** Ledger v3 has not been released and state is wiped on pushes to `release/v3.0`. There is no backward-compatibility burden between v3 development revisions.
 
-- **No compatibility shims.** Do not add migrations, version guards, or fallback paths to preserve old wire or storage formats. Change the format and move on.
-- **Do not reserve proto fields.** When removing a field, delete it and realign the remaining field numbers sequentially (see [Protocol Buffers](#protocol-buffers)). Pre-existing `reserved` declarations may stay — a dedicated cleanup pass will remove them before release.
+- Do not add migrations, compatibility shims, version guards, or fallback paths for old v3 wire/storage formats.
+- When removing protobuf fields, delete them and realign field numbers sequentially. The EN-1551 cleanup removed every existing `reserved` declaration from `misc/proto/`; do not reintroduce any.
+- Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
 
-## Invariants
+## Configuration safety checks
 
-**CRITICAL**: These rules are non-negotiable and must never be violated.
+Critical persisted configuration such as node/cluster identity and storage schema is validated on boot. Do not weaken or bypass those checks without an explicit task requiring it. Read `docs/ops/deployment.md` and the relevant `internal/bootstrap/**` code before changing persisted/config-validation behavior.
 
-### Architecture
+## How to load context
 
-1. **Cache is the source of authority** — The in-memory cache must NEVER diverge between nodes. Every node must see identical cache state for the same applied index.
-2. **FSM must be deterministic** — The finite state machine (Raft apply path) must produce identical results on every node for the same input. No randomness, no time-dependent logic, no node-local state.
-3. **No Pebble reads in FSM / hot path** — The FSM apply path must never read from Pebble. All data needed for apply must come from the cache or the command itself. Pebble is write-only on the hot path. The hot path receives a `dal.WriteSessionFactory` parameter and opens a `*dal.WriteSession` — this type deliberately has no `Get`/`NewIter`, so the invariant is compiler-enforced for any code that holds a session. The hot-path FSM `Machine` itself holds NO Pebble read capability and NO `*dal.Store`: boot/recovery reads live on `state.Recovery` (which owns the only `dal.RecoveryReader`), follower-sync coordination lives on `state.Synchronizer` (which owns the only `dal.IncomingRestoreFactory`). Post-commit sentinel checks (debug mode) read through `dal.SentinelFactory.Run(fn)` — a scoped callback so the reader never escapes the check.
-4. **Pebble writes only from the hot path or declared lifecycle paths** — `*dal.Store.OpenWriteSession()` is the only producer of `*dal.WriteSession`. Outside the FSM hot path, only declared lifecycle paths may call it: `internal/bootstrap/config_validation.go`, `internal/infra/backup/`, `internal/infra/attributes/prepare.go`. This is enforced by a `forbidigo` rule in `.golangci.yaml`; new call sites must be added to the exclusions block with a justification.
-5. **Never delete cache entries outside of rotations** — Cache entries must only be evicted during generation rotations (Gen0 → Gen1 → discard). Deleting individual entries breaks the cache prediction mechanism (bloom filters, tombstones).
-6. **Every FSM `Registry.X.Get(...)` must have a matching preload, declared by the component that proposes the command** — The FSM apply path reads from the in-memory cache; a cache miss turns the read into a silent no-op. Each component that emits a proposal (admission, the mirror worker, the events emitter, the backup proposer, the cluster-config reconciler, the idempotency-eviction scheduler) is responsible for declaring its own `plan.Coverage` covering every key its apply path will read. There is NO central proposal→`Coverage` registry — coupling the preload package to every proposal type creates a single point that easily falls behind. This is distinct from the central `attrCode`→resolver registry in `internal/infra/plan`, which DOES exist and maps an already-declared key to its typed resolver and loader; what is deliberately absent is the proposal-type→`Coverage` mapping. The component knows what it reads; the component declares it. The shared `proposeTechnical` helper takes a `[]plan.WriteOperation`, each entry carrying the `*plan.Coverage` its caller filled in (pass a nil or empty `Coverage` when the apply path has no cache-keyed reads, e.g. cluster config / idempotency eviction). At propose time `Builder.Build` resolves every declared key against the cache (Pebble fallback on a miss) and carries the result as `ExecutionPlan.AttributeCoverage` entries — it does NOT mutate the cache. Those entries come in two kinds and only one of them seeds anything: a **seed** carries a value, emitted when the key missed the cache and the Pebble load hit; a **coverage-only** entry carries no value, emitted when the cache already holds the key or it is confirmed absent, and merely authorises the gated read. The cache write is `CacheSnapshotter.MirrorPreload`, which runs later on the FSM apply path from `Machine.Preload`, strictly after `checkStaleProposal` passes, so a stale proposal can never seed the cache. `PredictedIndex` and `cache_epoch` are what catch mutations between propose and apply.
+1. Start with this file only.
+2. Identify the code areas the task will touch.
+3. Read the matching documentation from `docs/technical/agent-context.md`.
+4. Read additional docs only when the task, code, or impact analysis shows they are relevant.
+5. Treat `docs/drafts/**` as non-authoritative unless the task explicitly asks to implement a draft/RFC.
+6. Treat `docs/sales/**` as product material, not an engineering specification.
 
-    **Volume preload is load-bearing for the `LedgerLog.new_kept_volumes` / `ephemeral_volumes` split.** Admission MUST preload the current value of every `(account, asset)` volume touched by an order, including postings resolved from numscript execution. The FSM classifies a volume as "newly created" by checking `Old.IsDefined()` (or the zero-placeholder via `isVolumePreloadZero`) at merge time — a silent cache miss on an existing volume produces a false-new classification, mis-routes the tuple between the `new_kept_volumes` / `ephemeral_volumes` / `purged_volumes` per-log lists, and inflates `usagestore.CounterVolume`. Because `usagestore` is a rebuildable peer side-store held **outside** checker scope (invariant #8 verifies primary-Pebble-store projections, plus one narrow readstore exception that does not extend to `usagestore` — see scope refinement (a)), no checker pass would surface the drift; it persists until an explicit usage rebuild. That absence of a backstop makes the preload correctness even more load-bearing, not less. This is not opportunistic (unlike the metadata preload that was removed after the indexbuilder stopped needing it): balance checks, Uint256 arithmetic and numscript resolution all require the current volume value, so the preload is structurally mandatory. If a future refactor considers alleviating volume preload, `VolumeCount` must be re-hosted first (via computed-on-read or a subsystem-side seen-keys table) — see EN-1422 for the design rationale.
-7. **Never silently skip a "should not happen" branch** — A branch that is reachable only if an invariant is violated (nil where the contract says non-nil, a state we believe unreachable, a cache miss after a guaranteed preload, etc.) MUST surface a loud signal: `return fmt.Errorf("invariant: ...")` so it bubbles up, or `assert.Unreachable(...)` for SUT-level invariants exercised under antithesis. A silent `return nil` / `continue` on these branches hides real bugs — particularly catastrophic in the FSM apply path, where a no-op desyncs nodes from each other. Branches that represent genuine runtime conditions (cache miss as an expected outcome, stale proposal, deleted entity) keep their soft `return nil`. The distinction is whether the case is *expected* (soft skip OK) or *impossible by design* (must fail loudly). The comment must say *why* the case is impossible so a reader can decide whether to add a hard fail or relax the rule.
+Do not preload the whole documentation tree. Prefer the smallest authoritative context that covers the change.
 
-8. **The audit log is the only source of truth — every other persisted dataset is a projection and must be verified by the checker** — Only `AuditEntry` (zone `Cold`, sub `Audit`) is cryptographically bound, via the hash chain that `state.BuildHashedHeaderPayload` + `processing.HashGenerator` produce and `checker.verifyAuditHashChain` verifies on every Check() run. Everything else stored in Pebble — `Log`, `AuditItem`, `AppliedProposal`, `LedgerLog.PurgedVolumes`, attribute caches (`Volume`, `Metadata`, `Transaction`, `Reference`, `Boundary`, etc.), reversion bitsets, idempotency keys, mirror source head and status, chapters, bloom filters, signing keys, the read-side index — is a *projection* of orders that already live in the audit chain. Projections are rebuildable from the audit on demand, so we deliberately do NOT extend the hash chain to cover them (refactor over hash binding — see `feedback_audit_is_source_of_truth`). In exchange, **`internal/application/check/checker.go` MUST verify every projection it persists**: re-derive the value the projection should hold by replaying the audit (`ReplayLedgerLog`, `SimulateEphemeralPurge`, `partitionVolumes`, etc.) and compare to what is stored, emitting the matching `CHECK_STORE_ERROR_TYPE_*` event on divergence. A projection that the checker does not verify is a tampering vector — adding a new persisted projection without a matching compare* / collect* pass in the checker is the violation. Two scope refinements: (a) this applies to the **primary FSM store** — the single store `Check()` opens and walks; **peer secondary stores** (the `readstore` inverted index today; the `usagestore` counters forthcoming with EN-1334) are out of *main-store checker* scope as a rule, with **exactly one narrow, deliberate exception**: the readstore **reverse map** (`0x03`), verified by `compareReverseMapOrphans` (EN-1458). `Check()` therefore *does* open the peer readstore — read-only, one snapshot, for that single pass — so the old "*by construction*, `Check()` never opens them" formulation no longer holds and must not be re-asserted. The exception is justified narrowly: `0x03` is the **only** read-index limb that cannot be range-deleted by field (its metadata key sits *after* a fixed-width version block, see `readstore/keys.go`), so field removal must scan and point-delete row by row, and a row that scan misses is a permanent divergence with no other detector — unlike the `0x01`/`0x02` limbs, whose range-delete is atomic and self-healing. Everything else about peer stores stays out: `usagestore` entirely, and readstore index **contents** (tracked under `EN-1514` / `EN-1323`). The pass is skipped — loudly, via an INFO log, never reported as a clean result — when no readstore handle is available (restore / CLI validate a staged main store that has no peer readstore). It is **not** skipped on an empty audit: the read index folds *from* the log stream, so a reverse-map row over a zero-log store is unaudited by definition, and returning clean there would hide exactly the tamper classes this pass reports. Do **not** widen this exception to new peer-store data without the same argument: a projection that no other mechanism can detect a divergence in. That scope carve-out is **not** a claim they are integrity-safe: the readstore serves READY indexes directly to business-visible queries with no scan fallback, and its automated detect/drop/rebuild is **not yet wired** (tracked under `EN-1323`), so a corrupted or tampered index is a **current open integrity gap on the peer-store side** — a per-replica rebuild-health concern of the index builder, not an invariant-#8 main-store concern. Out of the main-store checker's mandate, not out of every integrity concern. (b) A primary-store projection may be exempted from a dedicated pass only when it is either (i) deterministically rebuildable from still-retained verified state through a real, *wired* rebuild path — not rebuildable merely in principle — or (ii) purely informational and intentionally carried across restore (cf. `BuildStatus`). These are distinct bases: of the *Known projection gaps* below, `DefaultEnforcementMode` and `SubAttrLedgerMetadata` qualify under (i) via `RebuildDelta` (`BuildStatus` on the index registry is the canonical (ii) example). The current passes are `compareVolumes`, `compareMetadata`, `compareTransactions` (per-transaction state; baseline-seeded lazily under archiving via `newLazyTxSeedWriter`, so a post-archive metadata/revert delta merges onto the pre-archive base whose create log is purged — the tx merge operator defers ops as a `txOpBatch` on a partial merge and never collapses a metadata delete away), `compareTransactionPostCommitVolumes` (the immutable `Transaction.post_commit_volumes` snapshot vs the replayed volume state — baseline checkpoint + replayed pre-purge delta — at the transaction's log sequence; run inline in the replay loop before the buffered ephemeral purge flushes, so the comparison sees the same state the FSM captured; missing/extra/duplicate/divergent rows emit `CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH`), `compareExclusionProjections` (AppliedProposal.TransientVolumes + LedgerLog.PurgedVolumes), `checkReversionInvariants`, `verifySealingHash`, `compareIdempotencyOutcomes` (frozen idempotency outcomes in SubIdempKeys vs the hash-chained AuditFailure/AuditSuccess that wrote them — the failure kind is re-derived from the chain-bound reason via `domain.KindForReason`, never stored), and `compareIndexes` (SubAttrIndex registry vs CreateIndex/DropIndex/RemovedMetadataFieldType/DeleteLedger logs — covers presence + identity; BuildStatus is intentionally excluded because it is purely informational on the cluster-wide registry entry — queries gate on the per-replica `IndexVersionState.CurrentVersion`, not on BuildStatus. **Baseline-seeded under archiving (`foldBaselineIndexes`) with NO archive-orphan tolerance**: expected = baseline + replay delta, so an unmatched stored entry is a hard mismatch whether or not chapters are archived, and only ledgers the baseline lists as live are seeded (rows of a pre-boundary-deleted ledger await the deferred purge, so expecting them would manufacture a phantom missing-row event). The tolerance this replaced — skip any stored entry the replay never touched when archives exist — accepted a stale or tampered registry row, and a lingering *metadata* entry is exactly what makes `compareReverseMapOrphans`' registry term treat orphaned reverse-map rows as legitimate: the two corrupted projections masked each other and `Check()` returned clean. Do NOT reinstate an archive-orphan tolerance here — it silently re-opens that suppression path, and no other pass covers it), and `compareMirrorV2LogID` (stored `LedgerBoundaries.last_mirror_v2_log_id` **==** `max(audited MirrorIngest.v2_log_id)` per ledger — a full equality check, `CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH` on ANY divergence; the FSM enforces a contiguous applied prefix so at rest the two must be exactly equal, and the baseline floor is seeded from archived `Boundary` rows now included in the compact baseline snapshot; pre-field clusters are unsupported, no backfill leniency), and `compareSchema` (per-ledger `LedgerInfo.MetadataSchema` vs the replayed CreateLedger.initial_schema + SetMetadataFieldType/RemovedMetadataFieldType logs; under archived chapters the boundary schema is seeded from the baseline checkpoint, which carries LedgerInfo for this purpose), and `compareAccountTypes` (per-ledger `LedgerInfo.AccountTypes` vs the replayed AddAccountType/RemoveAccountType logs, baseline-seeded under archiving like the schema), and `compareLedgerPresence` (the live ledger set in the store must match the audit-derived set both ways: every audit-live ledger — CreateLedger with no later DeleteLedger, or a non-deleted baseline ledger under archiving — must have a *live* stored `LedgerInfo` else `MISSING_LEDGER` (covers an entry deleted outright OR tampered to a soft-deleted tombstone, which the compareSchema/compareAccountTypes loops skip), and every live stored `LedgerInfo` must be audit-backed else `UNAUDITED_LEDGER` (an injected empty ledger row carries no schema/types for the projection passes to flag). The audit-derived set is NEVER seeded from the live store — under archiving it comes from the baseline checkpoint, keeping the check independent of the data it verifies), and `compareReferences` (the SubAttrReference reference→txID uniqueness index vs the references replayed from CreatedTransaction/RevertedTransaction logs, baseline-seeded under archiving; verified both ways — missing, unaudited, and retargeted rows are all flagged; rows for deleted or cleanup-pending ledgers are skipped since they legitimately linger until a covering purge runs deleteLedgerData), and `compareBoundaries` (per-ledger `LedgerBoundaries` vs the checker’s re-derivation: only NextTransactionId/NextLogId are verified here — derived from the replayed logs plus the chain-bound AuditItem order effects (mirror fill-gap advances live on the orders, not the ledger-log stream), baseline-seeded under archiving; the mirror high-water `last_mirror_v2_log_id` is verified separately by `compareMirrorV2LogID`. The per-ledger usage counters — `PostingCount`, `RevertCount`, `NumscriptExecutionCount`, `VolumeCount`, `MetadataCount`, `ReferenceCount`, `EphemeralEvictedCount`, `TransientUsedCount` — no longer live on `LedgerBoundaries`: `LedgerBoundaries` now reserves tags 3-10 for them and they moved to the `usagestore` peer secondary store (EN-1334 / EN-1420), out of main-store checker scope **by construction** (per the peer-store carve-out in scope refinement (a) above), their integrity being a peer-store rebuild-health concern — reconverged by the online usagebuilder fold + `usagestore.Reset()` on rollback — rather than an invariant-#8 main-store concern), and `compareReversions` (the per-ledger reversion bitsets — `ZonePerLedger`/`SubPLReversions`, the projection the FSM's already-reverted gate reads — vs the reverted set derived from baseline tx-row markers plus the replayed RevertedTransaction logs; exact equality both ways — a lost bit re-admits a double revert, an unaudited bit blocks a legitimate one; driven purely by audit-derived state — no persisted marker (pending-cleanup included) can exempt a live ledger, stored rows for non-live ledgers are flagged since DeleteLedger deletes them at apply on both the live path and the replay, and undecodable rows are reported), and `compareNumscripts` (SubAttrNumscriptContent immutable version entries + SubAttrNumscriptVersion latest pointers vs SavedNumscript/DeleteLedger logs — a save writes immutable content and advances the latest pointer to the greatest stored semver; catches altered/missing/extra content and a latest pointer that is not the greatest saved semver; baseline-seeded under archiving so surplus/injected rows are flagged, no archive-orphan tolerance), and `signingVerifier.compare` (`internal/application/check/signing.go`: the `SubGlobSigningKey` rows — public-key bytes + `parent_key_id` — and the `SubGlobSigningConfig` require-signatures flag vs the state folded from chain-bound RegisterSigningKey/RevokeSigningKey/SetSigningConfig orders, read from `AuditItem.SerializedOrder` and from **successful entries only**, a rejected order having left no trace to diverge from; register is an **upsert**, matching the FSM's lack of duplicate-ID rejection. Cascade descendants are **re-derived** by walking the expected parent map, NEVER read from the log's `cascadedKeyIds` — re-deriving the cascade is the point of the pass, and trusting the recorded list would let a tampered projection justify itself; traversal ORDER is irrelevant (the comparison is over the final key *set*) but the set of EDGES is not: `state.WriteSet.GetSigningKeyChildren` returns the UNION of the revoked key's **committed** children (minus those the same proposal removed) and the key of EVERY pending addition in that proposal whose parentKeyID matches — superseded ones included, since it walks the whole `pendingSigningKeyUpdates` slice rather than the last entry per key — and it never consults a reassigned parent pointer to exclude a key. So a key re-registered under a new parent *within the same proposal* as a cascade revoke of its OLD parent is still cascaded, and the walk must follow **three** edge sources: the running relation; the pre-proposal one (snapshotted per proposal by `beginProposal`, one call per audit entry, matching the FSM's one `WriteSet.Reset` per proposal); and `proposalEdges`, every edge the current proposal asserted, keyed by child. The third is NOT redundant — an edge asserted and then SUPERSEDED inside one proposal is invisible to the other two, because the replacement overwrote the running pointer and a key first registered in that same proposal has no pre-proposal entry at all, so `register(child→parent)` + `register(child→root)` + `cascade-revoke(parent)` in ONE proposal deletes the child on the live path while a two-source walk kept it and reported a false mismatch. Walking only the running pointer drops that key from the cascade and reports a false mismatch against a store that legitimately deleted it; conversely BOTH the snapshot and `proposalEdges` MUST be per-proposal and refreshed on the revoke path too, or a cascade in a later proposal walks a stale parent link that has since been committed away and deletes a key that should survive. The edge union is only half the model: `GetSigningKeyChildren` also builds its `pendingRemovals` filter over the **whole** `pendingSigningKeyUpdates` slice with no ordering awareness, so once a proposal removes a key that key is excluded from **every** cascade in the same proposal — including one evaluated after a LATER registration in that proposal put it back, and even when that registration pointed it straight at the key being cascade-revoked. Absence from the expected key map cannot reproduce that (absence is a point-in-time fact, the filter is a set over the proposal), so the walk consults a third piece of per-proposal state, `proposalRevoked`: every key each revoke removed, target **and** re-derived cascade descendants, since `processRevokeSigningKey` calls `RemoveSigningKey` on all of them. Two details are load-bearing. It is populated AFTER `descendantsOf` runs, mirroring the FSM walking the child relation *before* removing anything — populate it first and a revoke excludes its own targets from its own cascade. And it skips the candidate ENTIRELY rather than just omitting it from the result, because the FSM filters the key out of what `GetSigningKeyChildren` returns, so its BFS never recurses through it and the excluded key's own subtree survives too. Without it, `revoke(X)` + `register(X under P)` + `cascade-revoke(P)` in ONE proposal — reachable through a single multi-request `ApplyRequest` — has the FSM keep X (`Absorb` replays `[remove X, save X→P, remove P]` in slice order) while the replay cascades X out and reports a false `SIGNING_KEY_MISMATCH` against a healthy store. Unlike the `keystore.AddPublicKey` divergence below, this one is fixed on the CHECKER side: `pendingSigningKeyUpdates` is proposal-local state rebuilt identically on every replica, so the FSM behaviour is deterministic and replica-consistent — there is no integrity defect at the source, and aligning the FSM instead would change the chain-hashed `cascaded_key_ids`. The FSM side of that agreement is `keystore.AddPublicKey` CLEARING the parent edge when `parentKeyID` is empty (`"" = root`): retaining the old edge made the cascade restart-dependent, since recovery reloads from parent-less rows, so an un-restarted and a restarted replica emitted different `cascadedKeyIds` for the same order — invariants #1 and #2, not merely a checker false positive. A visited set is what makes the walk terminate, since nothing validates that the parent graph is acyclic — registration is an upsert that only shape-checks the two key IDs, so `register a under b` + `register b under a` is accepted end to end. **`processing.processRevokeSigningKey` carries the same guard, and there it is not merely a checker concern**: without it a cascade revoke over a cyclic graph spins forever in the Raft apply path, wedging every replica at once and replaying on restart because the order is committed. That set also dedups `RevokedSigningKeyLog.cascaded_key_ids`, since `GetSigningKeyChildren` reports every pending addition whose parent matches. Neither side rejects cycles at registration — that would be a behaviour change, and it could not rescue a store that already holds one. Compared **both ways** because row absence *is* revocation: a stored key with no audited registration and an audited key the store lost are equally failures. Archived history is folded from cold storage **oldest chapter first** (signing state accumulates forward, and has no TTL, so unlike `reDeriveArchivedIdempotency` there is no cutoff — every archived chapter is read on every run) and is **NEVER** seeded from the baseline checkpoint: `attributes.writeBaselineAttributes` copies the attribute zone verbatim from the live store, so seeding would verify old, never-touched keys against a copy of themselves — the same circularity that forbids caching the fold into a projection. Consequently an unavailable or unreadable archived history is REPORTED as `CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE` rather than presented as a clean result — **and the key and config comparisons are SKIPPED for that run**: an incomplete fold is a *prefix* of the real history, unsound in BOTH directions (a revoke in an unread chapter leaves its key expected and reads as missing from the store; a register in an unread chapter leaves its row unexpected and reads as injected), so reporting either would flag a healthy store as tampered. This applies to a partial fold too — chapters 1..n-1 folded and chapter n unreadable is exactly as unsound as none folded, so do NOT "salvage" the accumulated prefix. **The archived range is not the only way the fold ends up a prefix**: `verifyAuditHashChain` returns early at each of its three non-error exits (an entry carrying embedded items, a header that cannot be re-hashed, a hash mismatch) so `Check()` can still report the other projections, and the live signing fold lives inside that loop — so each exit calls `signing.markLiveTruncated()` and `compare` suppresses on `!coldComplete || liveTruncated`. Unlike the maps `verifyAuditHashChain` also returns, which are consulted per log sequence (an absent entry simply yields no expectation), the signing comparison is over whole key SETS in both directions, so a prefix reports every later registration as injected and every later revocation as a lost row — noise on top of the HASH_MISMATCH that is the store's actual problem. Do NOT let a new early exit skip that call. The malformed-row class is deliberately outside the suppression: a row too short to decode is a fact about that row and needs no audit oracle. **Both** folds — live and archived — are bounded by the same fresh-log window `collectExpectedSkippable` uses (`success.Min/MaxLogSequence`), NOT by the archive boundary alone (`foldChapter` therefore walks archived audit *entries* and reads each one's items, rather than scanning the item rows on their own: only the entry carries the window and the success/failure outcome): on stores upgraded from before f9ee1e829 a per-order idempotency replay persisted the REFERENCED log sequence into `AuditItem.LogSequence`, so an entry can carry an item pointing back at a log an earlier entry already folded. Re-applying it replays that order out of order — register(K) at log 5, revoke(K) at log 10, then a reference back to log 5 resurrects K in the expected set and reports a false mismatch against a healthy store. The individual orders are idempotent; the ORDERING is not, which is why the window is required and idempotence is not an argument for dropping it. Duplicate-sequence items inside the window need no dedup (same order, and upsert/delete/assign all converge). Public-key bytes never appear in an event message. Like `compareReverseMapOrphans`, the pass is **not** skipped on an empty audit: the signing projections are cluster-global rather than per-ledger, so a zero-log store can still hold rows, and every successful signing order writes a log (`processOrder` gives each returned payload a global sequence) — so a zero-log store *proves* the audit registered no key, making the expectation legitimately empty and every stored row unaudited. The `lastSequence == 0` fast path therefore runs `foldArchived` + `compare` before returning, and the chapter read is hoisted above that fast path to feed it. `foldArchived` runs there rather than hardcoding complete coverage: archived chapters are unreachable at `lastSequence == 0` today because archiving emits its own logs above the range it purges, but that is a property of the archive flow's log emission and not an invariant of this pass, so folding cold storage keeps a fully-archived store reporting one INCOMPLETE finding instead of a spurious mismatch per legitimate key), and — the single peer-store exception per scope refinement (a) above — `compareReverseMapOrphans` (the readstore reverse map `0x03` vs the stored SubAttrIndex registry **and** the audit-replayed `MetadataSchema`: a row is an orphan when its `(ledger, target, metadata key)` is in *neither* — either because the replay observed a `RemovedMetadataFieldType` for it, or because it is simply absent from both. **Every oracle term is frozen at the verified log sequence, so a verdict is only reached when the peer's fold cursor is exactly aligned with it** (`indexedSequence == lastSequence`); the malformed-key class needs no oracle and always runs. The two unaligned positions are skips and are **not** symmetric. *Behind* is the ordinary state on a live cluster (the registry is written at Raft apply while the rmap folds later), so nothing can be concluded. *Ahead* cannot happen by race: the builder folds FROM the primary log stream and writes its cursor only for logs it has already read out of the primary store, so `progress(t) <= maxLogSeq(t)` at every instant — and **`Check()` pins the peer snapshot strictly BEFORE the primary one so the two pinned values inherit that ordering**. Do not reverse those two pins: taken the other way the gap admits logs applied and folded between them, and the pass then judges rows for ledgers and fields created after the primary pin against oracles that predate them, reporting a healthy cluster as corrupt. The ordering is what removes the need for cross-store atomicity — an ordering that can only leave the peer behind suffices, because behind is already a skip. Ahead remains reachable one way only: a primary-store rollback beneath the read-index cursor (`RestoreCheckpoint` on a follower restore) lowers `maxLogSeq` while the read index keeps its progress. Unlike `usagebuilder`, which detects this and calls `usagestore.Reset()`, **the index builder has no rollback reset**, so the read index legitimately holds rows for logs the restored primary never had; that divergence belongs to the missing reset, not to the purge path this pass audits, so it is logged loudly and skipped rather than reported (reporting would paint `Check()` red on a restore that never self-heals). The unknown-ledger verdict is driven by liveness alone — never by a separate append-only "was deleted in the replay" set consulted first — so a ledger recreated under the same name keeps its rows legitimate by construction rather than by relying on the retained tombstone that makes that lifecycle unreachable. The schema term is what makes the pass precise for its target — `RemovedMetadataFieldType` is the one log that both removes the schema field type and runs `purgeReverseMapForKey`, so "absent from the replayed schema + live rmap rows" means exactly "the point-delete scan missed rows". It also keeps `DropIndex` residue out: `DropIndex` removes the registry entry but leaves the schema field declared and purges no readstore rows at all, and since `Check()` has no warning channel a registry-only oracle would make every cluster that ever dropped a metadata index permanently red — that leak is `EN-1621`, not this pass. The schema is the **replayed** one, never stored `LedgerInfo`, or the pass would be self-referential; likewise the live-ledger set comes from `knownLedgers`. Two further classes share the enum: rows for a ledger the audit does not list as live, and malformed keys — reported, never silently skipped. Findings are aggregated per `(ledger, namespace, metadata key)` with a row count and one sample entity, so a field dropped on a large ledger cannot emit millions of events. The 4-byte encoding version is deliberately **not** validated: current and pending versions legitimately coexist during a per-replica rewrite, and stale versions are reclaimed at boot by `purgeOrphanVersions`. **Known coverage limit**: once `EN-1621` makes `DropIndex` purge rows, a regression in that new purge would strand rows while the schema field is still declared and this oracle would not catch it — the oracle must be revisited then); extend the list as new persisted projections land. **Known projection gaps**: `LedgerInfo.DefaultEnforcementMode` and the ledger-metadata attribute (`SubAttrLedgerMetadata`) have no compare pass yet (both are rebuilt on restore by RebuildDelta), and maintenance mode (`SubGlobMaintenanceMode`) has neither a compare pass nor a rebuild path — it is persisted, read back into shared state on recovery, and gates write acceptance, so it qualifies under neither exemption basis (i) nor (ii) and is a tracked gap, deliberately deferred. Signing keys (`SubGlobSigningKey`) and signing config (`SubGlobSigningConfig`) are no longer gaps: `signingVerifier.compare` covers them as of EN-1515.
+<a id="invariants"></a>
+## Non-negotiable architecture invariants
 
-9. **Never bypass the FSM coverage gate** — Every cache-attribute read on the FSM hot path MUST go through `Scope.GetX(...)` so the per-order `coverage_bits` admit it. Reading the underlying `Registry.X.KeyStore().M` (or any other parent-cache iterator) directly skips the gate and produces non-deterministic FSM behavior: the gate is what binds the order to the admission-declared preload set, and a direct read silently sees keys the proposer never declared. There is NO documented exception — paths that need to iterate (e.g. cascade-on-delete) MUST either declare the relevant `plan.Coverage` upfront, defer the work to a lifecycle path (`batch.deleteLedgerData` + `MarkLedgerForCleanup`), or be rejected at design review. New helpers that scan the parent KeyStore from inside an order/TU handler are the violation, even when wrapped in a method on `WriteSet`. The coverage gate exists precisely so admission's declared key set is the FSM's only legitimate read horizon — under no circumstances should the apply path widen it on the fly.
+These are guardrails, not complete explanations. Before changing the affected subsystem, read the linked documentation.
 
-10. **An accepted `raftcmdpb.Order` is immutable until audit capture** — Once admission has converted a request into an `Order`, neither admission nor FSM processing may mutate its *business* payload before the order is serialized for the audit chain. The chain binds the accepted order's **business-intent bytes**: `AuditItem.SerializedOrder` is the business-intent projection (order with `OrderTechnical` excluded, via `processing.MarshalOrderBusinessIntent`) marshalled AFTER `ProcessOrders` runs, while for a keyed proposal the idempotency hash is frozen from the SAME projection of the SAME order BEFORE processing (`processor.HashProposal`) and re-derived from the audited bytes by the checker (`recomputeProposalHash` → `processing.HashOrders`). Any in-place mutation between those two points makes the audited bytes prove a different order than the one accepted — and, with an idempotency key, a false `CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH`. The rule covers *indirect* mutation through any structure the order still aliases: maps, slices, byte slices, nested messages. The canonical trap is merging Numscript `set_tx_meta` output into `CreateTransactionOrder.Metadata` — build effective transaction metadata in a map independent of `order.Metadata` instead. Only `OrderTechnical` fields (`coverage_bits`, `inputs_resolution_hash`, `preload_unavailable`) are outside this rule: both `hashOrder` AND the audit serialization (`marshalOrdersForAudit`) exclude the technical sub-message through the shared `processing.MarshalOrderBusinessIntent`, so admission may still stamp them without affecting either the idempotency hash or the audit business-intent hash (EN-1558).
+1. **Cache consistency:** the in-memory cache must not diverge between nodes for the same applied index.
+2. **Deterministic FSM:** Raft apply must produce identical results on every node. No randomness, wall-clock-dependent behavior, or node-local state in the FSM apply path. Node-local configuration — including flags, environment variables, startup configuration, and version-dependent defaults — may gate admission, but must never affect how a committed entry is applied. See [the configuration boundary](docs/technical/architecture/subsystems/fsm/deterministic-fsm.md#34-node-local-configuration-and-rolling-upgrades).
+3. **No Pebble reads in the FSM hot path:** apply reads through the cache/command contract; do not introduce storage-read capabilities into the hot path.
+4. **Main-store writes are capability-restricted:** new `OpenWriteSession` call sites require an explicitly justified lifecycle path and must satisfy `.golangci.yaml` enforcement.
+5. **Cache entries are not individually evicted:** eviction happens through generation rotation; do not delete individual cache entries outside that mechanism.
+6. **FSM reads require declared coverage/preload:** every cache-keyed FSM read must be authorized by the proposal's declared `plan.Coverage`; never widen the read horizon inside apply.
+7. **Impossible states fail loudly:** a branch that is unreachable by contract must surface an invariant failure rather than silently `return nil` or `continue`.
+8. **Audit is business truth:** the audit chain is authoritative. New persisted primary-store projections must be checker-verified or have an explicitly documented valid exemption.
+9. **Never bypass the coverage gate:** use the scoped/gated cache APIs in order/TU handlers; never read the parent registry/key store directly from the FSM path.
+10. **Accepted orders are immutable until audit capture:** do not mutate business payloads, including indirectly through aliased maps/slices/messages. Only the explicitly technical order fields are outside business-intent hashing.
+11. **Incremental restore parity:** every committed effect intended to survive a cross-cluster restore must be preserved by the checkpoint or reconstructed from the exported delta. Changes to persisted state, audited orders, or deletion cascades must classify their restore behavior and prove it with a non-empty post-checkpoint delta. See [the incremental restore contract](docs/technical/architecture/subsystems/chapters/incremental-restore-contract.md).
 
-### Code style
+Required reading for FSM/cache/preload work:
+- `docs/technical/architecture/subsystems/fsm/`
+- `docs/technical/architecture/subsystems/attributes/`
 
-7. **Prefer parameters over separate methods** — When adding a boolean mode (dry run, force, preview), add it as a parameter to the existing method rather than creating a new method.
-8. **Numscript syntax** — Literal account names require `@` prefix (e.g., `@funding:pool`). Multiple `send` blocks per script are supported. Variables don't use `@`.
+Required reading for persisted projections/checker work:
+- `docs/technical/architecture/subsystems/checker/`
+- `docs/technical/architecture/audit-vs-technical-state.md`
+- `docs/technical/architecture/subsystems/chapters/incremental-restore-contract.md` when the projection changes during audited apply or another lifecycle path covered by incremental backup
 
-## Reference Implementation
+The pre-refactor, fully expanded instruction set is retained temporarily at `docs/technical/agent-reference-legacy.md` for migration safety. It is **reference material, not automatically loaded context**. If a rule in this file or current subsystem documentation conflicts with that legacy snapshot, the current file/subsystem documentation wins.
 
-**The reference implementation is `github.com/formancehq/ledger`.** Follow its patterns for application structure, dependency injection (fx), lifecycle management, HTTP/gRPC servers, OpenTelemetry, and error handling.
+## Engineering conventions
 
-## Documentation Maintenance
+Use `docs/technical/contributing/` as the canonical source for development conventions.
 
-**CRITICAL**: Always maintain documentation when making changes.
+Key rules that apply broadly:
 
-- **Document new technical mechanisms** — when introducing a new technical mechanism, subsystem, or non-obvious invariant, add a dedicated page under `docs/technical/architecture/` and link it from the corresponding `README.md`
-- **Update `docs/technical/contributing/api-comparison.md`** when adding, modifying, or removing API endpoints
-- **Update `docs/ops/cli.md`** when modifying CLI commands, flags, or behavior
-- **Update `openapi.yml`** if HTTP endpoints change
-- **Update code comments** if interfaces or behavior change
-- **Keep documentation in English**
-- **Regenerate demo GIFs** after CLI changes: `just generate-demo`
+- Keep one file per command and one file per HTTP handler.
+- Do not introduce global variables for flags; use structs.
+- Do not ignore errors. Handle them explicitly, or use `_ = ...` with a justification comment when intentional.
+- Keep a struct's methods colocated with the struct; extract composed sub-types rather than scattering methods across files.
+- Prefer existing repository patterns and DRY solutions over parallel abstractions.
+- Every CLI invoked by repository scripts or documented as a contributor prerequisite must be provided by the Nix development environment and pinned through `flake.lock`; do not add host-only CLI dependencies.
+- Build artifacts belong under `build/`, never the repository root.
+- JSON properties use camelCase.
+- In tests, do not use `time.Sleep`; prefer `require.Eventually` or deterministic synchronization.
+- Unit tests should use `t.Parallel()` where supported by existing test conventions.
+- Do not hand-roll mocks for mockgen-managed interfaces; regenerate generated mocks after interface changes.
 
-## Pre-commit Checks
+Before changing Protocol Buffers, tests, Numscript, or contributor workflow, read the matching document listed in `docs/technical/agent-context.md`.
 
-**CRITICAL**: Before completing any task, run pre-commit checks.
+## Documentation maintenance
 
-```bash
-# Preferred: uses nix develop for reproducible toolchain
-nix develop --command bash -c "just pre-commit"
+Documentation is part of the change when behavior, architecture, interfaces, CLI, or APIs change.
 
-# Alternative: direnv-based
-direnv allow && eval "$(direnv export bash)" && GOROOT= just pre-commit
-```
+- New technical mechanism/subsystem/non-obvious invariant: update the matching `docs/technical/architecture/` subsystem documentation and its README.
+- API endpoint change: update `docs/technical/contributing/api-comparison.md`; update `openapi.yml` for HTTP changes.
+- CLI behavior/flag/command change: update `docs/ops/cli.md`; regenerate demo GIFs when applicable.
+- Interface/behavior change: update relevant code comments.
+- Documentation is written in English.
 
-This runs `go generate ./...`, `go mod tidy`, and `golangci-lint run --fix`.
+Do not use `docs/drafts/**` as evidence of current behavior unless the task explicitly references that design.
 
-Always verify compilation with `GOROOT= go build ./...` before submitting. The `GOROOT=` prefix is required to avoid Go toolchain version mismatch errors when nix is not active.
+## Definition of done
 
-## Mock Generation
+A task is not complete when the code merely looks correct. Before handing work to another agent or a human reviewer:
 
-**CRITICAL**: After any change to interfaces annotated with `//go:generate mockgen`, regenerate mocks immediately with `go generate ./...`.
+1. finish the requested implementation and documentation;
+2. run the canonical baseline validation with `bash scripts/agent-check`;
+3. run tests appropriate to the touched subsystem and risk level;
+4. inspect the final diff for unrelated or generated changes;
+5. perform a self-review against the task, loaded subsystem docs, and the invariants above;
+6. report unresolved concerns instead of silently weakening or skipping a check.
 
-Interfaces with mockgen: `Transport` (`internal/infra/node/transport.go`), `Controller` (`internal/application/ctrl/controller.go`), `Admission` (`internal/application/ctrl/controller_default.go`), `Spool` (`internal/storage/spool/spool.go`), `WAL` (`internal/storage/wal/wal.go`), `InMemoryStore` (`internal/domain/processing/store.go`), `Checker` (`internal/infra/health/healthcheck.go`), `Proposer` (`internal/application/admission/admission.go` and `internal/application/events/emitter.go`).
+For broad or high-risk changes where the root-module unit suite is appropriate, run `bash scripts/agent-check-full`. Do not run the full suite mechanically for every local documentation or narrowly scoped change when targeted validation is sufficient.
 
-## JSON Property Naming
-
-**CRITICAL**: All JSON properties must use **camelCase** (OpenAPI spec and Go struct tags).
-
-## Protocol Buffers
-
-**CRITICAL**: After modifying any `.proto` file, **immediately** run `just generate-proto`. Realign field numbers sequentially when adding/removing fields. Do not add `reserved` declarations for removed fields — see [Release Status](#release-status--v3-is-unreleased).
-
-See [docs/technical/contributing/protobuf.md](docs/technical/contributing/protobuf.md) for full details (file locations, vtprotobuf, Uint256 wire format, adding new command models).
-
-## Conventions
-
-For full conventions with examples, see [docs/technical/contributing/conventions.md](docs/technical/contributing/conventions.md).
-
-Key rules:
-1. **One file per command** and **one file per HTTP handler**
-2. **No global variables** for flags - use structs
-3. **Group variable declarations** in `var (...)` blocks
-4. **No type aliases** - use original types directly
-5. **Never ignore errors** - handle explicitly or `_ = ...` with comment
-6. **Struct methods colocation** - all methods in same file as struct. If a file grows large, extract sub-types (composition) rather than splitting methods across files
-7. **Build into `build/`** directory - never leave binaries in repo root
-
-## File Structure
-
-- **Server**: `cmd/server/` - main server binary entry point
-- **CLI**: `cmd/ledgerctl/` - one file per sub-command. See [docs/ops/cli.md](docs/ops/cli.md).
-- **Domain**: `internal/domain/` - value objects, **business errors emitted by the FSM**, domain services (`processing/`, `accounttype/`, `analysis/`, `replay/`), and cryptographic primitives (`crypto/signing/`, `crypto/keystore/`). Errors in this package are FSM-generated business outcomes (e.g. `ErrInsufficientFund`, `ErrEmptyTransaction`, `ErrLedgerNameRequired`). Admission / integration / config validators live in `internal/application/<layer>/errors.go` and use `domain.NewValidationSentinel` to build their own sentinels — do NOT pile non-FSM errors into `internal/domain`.
-- **Bootstrap**: `internal/bootstrap/` - composition root (fx wiring, config, TLS, persisted config)
-- **Application**: `internal/application/` - use cases (`admission/`, `ctrl/`, `events/`, `check/`, `indexbuilder/`, `mirror/`)
-- **Infrastructure**: `internal/infra/` - consensus (`node/`, `state/`), caching (`cache/`, `attributes/`), transport, health, monitoring, `backup/`, `bloom/`, `coldstorage/`, `preload/`, `receipt/`
-- **Utilities**: `internal/pkg/` - zero/low-dependency utilities (`kv/`, `signal/`, `futures/`, `commands/`, `bitset/`, `bytesize/`, `filterexpr/`, `semver/`, `tarutil/`, `vtmarshal/`, `worker/`)
-- **Storage**: `internal/storage/` - Pebble DAL, WAL, spool, `readstore/`, `pebblecfg/`
-- **Query**: `internal/query/` - CQRS read-side queries
-- **Adapters**: `internal/adapter/` - transport layer (`grpc/` primary API, `http/` REST compat, `json/` serialization, `auth/` JWT/Ed25519 authentication, `v2/` v2 compatibility layer)
-- **Proto definitions**: `misc/proto/` -> generated code in `internal/proto/`
-- **Demos**: `misc/demo/` - VHS tape files for CLI demos
-- **Numscript examples**: `misc/numscript/examples/`
-- **Public packages**: `pkg/` - public API (`actions/`, `scenario/`, `testserver/`)
-- **Tests**: `tests/` - test suites (`e2e/`, `scenarios/`, `antithesis/`, `perf/`, `schemathesis/`)
-- **Operator**: `misc/operator/` - Kubernetes operator (separate Go module). CRD types (`api/v1alpha1/`), controllers (`internal/controller/`), Helm charts (`helm/`), kubectl plugin (`cmd/kubectl-ledger/`), web UI (`ui/`), e2e tests (`e2e/`)
-
-## Build Tags (Optional Features)
-
-The default build (`go build .`) produces a **light binary** (~60 MB) without heavy optional dependencies. To include optional features, use positive build tags:
-
-| Tag | Feature | Heavy dependencies |
-|-----|---------|-------------------|
-| `kafka` | Kafka event sink | `IBM/sarama` |
-| `nats` | NATS JetStream event sink | `nats-io/nats.go`, `nats-io/nats-server` |
-| `clickhouse` | ClickHouse event sink | `ClickHouse/clickhouse-go` |
-| `databricks` | Databricks event sink | `databricks/databricks-sql-go` |
-| `s3` | S3 cold storage & backup | `aws-sdk-go-v2` |
-| `azure` | Azure Blob Storage backup | `azure-sdk-for-go/sdk/storage/azblob`, `azure-sdk-for-go/sdk/azidentity` |
-| `pyroscope` | Pyroscope continuous profiling | `grafana/pyroscope-go` |
-
-Build with all features: `just build-full` or `go build -tags "kafka,nats,clickhouse,databricks,s3,azure,pyroscope" .`
-
-Scenario tests use a separate build tag: `go test -tags scenario ./tests/scenarios/... -timeout 20m`
-
-Tests with event-sink feature tags (`kafka`, `clickhouse`) start Testcontainers from `TestMain`, so Docker access is required even for compile-only checks such as `-run '^$'`.
-
-## Testing Conventions
-
-See [docs/technical/contributing/testing.md](docs/technical/contributing/testing.md) for full testing guidelines.
-
-Key rules:
-- **Never use `time.Sleep`** in tests - use `require.Eventually`
-- **Always use `t.Parallel()`** in unit tests
-- **Use gRPC client** (`servicepb.BucketServiceClient`) in integration tests
-- **Use helper functions** from `tests/e2e/testutil/` (helpers and server setup)
-- **E2E tests** use the `e2e` build tag and Ginkgo/Gomega framework: `go test -tags e2e ./tests/e2e/... -timeout=600s`
-- **Never hand-roll mocks** — if a test needs to fake an interface, add a `//go:generate mockgen` directive on the interface (see [Mock Generation](#mock-generation) above for the standard flag set), run `go generate ./...`, and use the generated `MockXxx` in the test. Hand-rolled fakes drift from the interface, lose call recording for free, and duplicate effort.
-
-### Running all tests (with all optional features)
+### Canonical validation commands
 
 ```bash
-# Unit tests with all features
-just test-full
-# or: go test -tags "kafka,nats,clickhouse,databricks,s3,pyroscope" ./... -timeout 20m
+# Required baseline for code changes
+bash scripts/agent-check
 
-# E2E tests with all features
-just test-e2e-full
-# or: go test -tags "e2e,kafka,nats,clickhouse,databricks,s3,pyroscope" ./tests/e2e/... -timeout 20m
-
-# E2E tests for a specific feature (e.g., ClickHouse sink)
-go test -tags "e2e,clickhouse" ./tests/e2e/... -timeout 20m
+# Baseline + full root-module unit test suite
+bash scripts/agent-check-full
 ```
 
-## Configuration Safety Checks
+`scripts/agent-check` runs the existing `just pre-commit` pipeline, compiles all root-module packages with `GOROOT= go build ./...`, and runs `git diff --check`. It deliberately does not choose task-specific tests for you.
 
-The server persists critical config (`node-id`, `cluster-id`, `idempotency-ttl`, `storage-schema-version`) in Pebble under the Global zone on first boot and validates on subsequent boots. Mismatch on `node-id`/`cluster-id` is fatal. Use `--unsafe-skip-config-validation` to bypass (dangerous). Schema version mismatches are never bypassable, even with `--unsafe-skip-config-validation`. See [docs/ops/deployment.md](docs/ops/deployment.md) and [docs/ops/cli.md](docs/ops/cli.md) for details.
+After modifying `.proto` files, run `just generate-proto` immediately.
+After changing a `//go:generate mockgen` interface, run `go generate ./...`.
+Run tests appropriate to the touched subsystem; see `docs/technical/contributing/testing.md` for tagged/full suites and Docker requirements.
 
-Key files: `internal/bootstrap/persisted_config.go`, `internal/bootstrap/config_validation.go`, `internal/bootstrap/module.go`.
+## Impact and code intelligence
 
-## Request Signing
+Use GitNexus when available to understand unfamiliar code and assess cross-component impact. The detailed GitNexus workflow and skill routing remain in `.claude/skills/gitnexus/`.
 
-Ed25519 request signing for authenticity and integrity. See [docs/ops/signing.md](docs/ops/signing.md) for operations and [docs/ops/maintenance-mode.md](docs/ops/maintenance-mode.md) for maintenance mode.
+Use impact analysis before high-blast-radius changes such as:
+- public/shared interfaces and domain types;
+- FSM handlers and persistence formats;
+- cross-subsystem contracts;
+- renames/refactors of shared symbols;
+- symbols known to have high fan-in.
 
-## Architecture
+For a local implementation change inside an already understood component, do not multiply context/tool calls solely to analyze every helper independently. Re-run change-impact analysis before committing when the affected scope is unclear or broader than planned.
 
-See [docs/technical/architecture/](docs/technical/architecture/) for detailed architecture documentation. Key design principles:
+## Human escalation
 
-- **Single Raft group** manages all ledgers
-- **FSMs must be fast** - they run in the critical path of Raft consensus
-- **Uber fx** for dependency injection - see [docs/technical/contributing/getting-started.md](docs/technical/contributing/getting-started.md)
-- **Formance go-libs** for service lifecycle, OTLP, HTTP server
+Do not ask for human input when the choice is local, reversible, covered by an existing pattern, or determined by tests/documentation.
 
-- I would like you to respect the concepts of DRY (Don't Repeat Yourself).
+Escalate when:
+- product behavior or acceptance criteria are genuinely ambiguous;
+- a non-negotiable invariant would need to change;
+- authoritative sources conflict;
+- a new external dependency or subsystem is required;
+- persisted/audited semantics or security boundaries would materially change;
+- completing the task would require weakening a validation/check.
 
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
+When escalating, compress the decision:
 
-This project is indexed by GitNexus as **ledger** (41000 symbols, 142383 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+```text
+DECISION REQUIRED
+Context: <why the repository cannot decide this>
+Options: <A / B>
+Recommendation: <preferred option and why>
+Risk if wrong: <short consequence>
+```
 
-> Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
+## Completion summary
 
-## Always Do
+Return a concise result rather than a transcript of the work:
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review, compare against the default branch: `detect_changes({scope: "compare", base_ref: "main"})`.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `query({search_query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
-- For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
-
-## Never Do
-
-- NEVER edit a function, class, or method without first running `impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
-- NEVER commit changes without running `detect_changes()` to check affected scope.
-
-## Resources
-
-| Resource | Use for |
-|----------|---------|
-| `gitnexus://repo/ledger/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/ledger/clusters` | All functional areas |
-| `gitnexus://repo/ledger/processes` | All execution flows |
-| `gitnexus://repo/ledger/process/{name}` | Step-by-step execution trace |
-
-## CLI
-
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-
-<!-- gitnexus:end -->
+```text
+RESULT: PASS | PASS WITH CONCERNS | BLOCKED
+Risk: LOW | MEDIUM | HIGH
+Validation: <checks/tests run>
+Blocking findings: <count + summary>
+Non-blocking findings: <count + summary>
+Human decision required: YES | NO
+Docs updated: <paths or N/A>
+```

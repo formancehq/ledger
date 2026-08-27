@@ -2,6 +2,7 @@
 // Edit freely: panel constructors live in ../lib/panels.libsonnet.
 
 local panels = import '../lib/panels.libsonnet';
+local queries = import '../lib/queries.libsonnet';
 
 panels.row('Admission', 169, [
   panels.timeseries(
@@ -179,7 +180,7 @@ panels.row('Admission', 169, [
     'Proposal Guard Rebuild Rate & Ratio',
     { h: 8, w: 12, x: 0, y: 116 },
     [
-      { expr: 'sum(rate(admission.proposal_guard.rebuild{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id) / sum(rate(admission.proposal_guard.duration_count{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Rebuild ratio - Node {{service.node_id}}' },
+      { expr: 'sum(rate(admission.proposal_guard.rebuild{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id) / ' + queries.histogramCountRate('admission.proposal_guard.duration', by=['service.node_id']), legendFormat: 'Rebuild ratio - Node {{service.node_id}}' },
       { expr: 'sum(rate(admission.proposal_guard.rebuild{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (service.node_id)', legendFormat: 'Rebuilds/s - Node {{service.node_id}}' },
     ], unit='percentunit',
     description=|||

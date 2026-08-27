@@ -393,7 +393,11 @@ paths:
                     type: array
                     items:
                       type: object
-                      description: System log entry (protobuf JSON representation)
+                      description: |
+                        System log entry, serialized by Log.MarshalJSON (camelCase,
+                        RFC3339 timestamps, synthetic `type` discriminator on each
+                        ledger log). A dedicated schema is tracked separately — the
+                        payload is a deeply recursive protobuf oneof.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -721,9 +725,13 @@ paths:
             Filter transactions with timestamp < endDate (exclusive, RFC3339 format).
             Requires the builtin `TX_BUILTIN_INDEX_TIMESTAMP` index to be enabled on the ledger.
         - $ref: '#/components/parameters/ListFilter'
+        - $ref: '#/components/parameters/QueryProfile'
       responses:
         '200':
           description: Transactions retrieved successfully.
+          headers:
+            X-Query-Profile-Result:
+              $ref: '#/components/headers/QueryProfileResult'
           content:
             application/json:
               schema:
@@ -734,8 +742,7 @@ paths:
                   data:
                     type: array
                     items:
-                      type: object
-                      description: Transaction (protobuf JSON representation)
+                      $ref: '#/components/schemas/TransactionResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -812,9 +819,13 @@ paths:
           schema:
             type: string
         - $ref: '#/components/parameters/ListFilter'
+        - $ref: '#/components/parameters/QueryProfile'
       responses:
         '200':
           description: List of accounts
+          headers:
+            X-Query-Profile-Result:
+              $ref: '#/components/headers/QueryProfileResult'
           content:
             application/json:
               schema:
@@ -921,9 +932,13 @@ paths:
           schema:
             type: boolean
             default: false
+        - $ref: '#/components/parameters/QueryProfile'
       responses:
         '200':
           description: Aggregated volumes retrieved successfully
+          headers:
+            X-Query-Profile-Result:
+              $ref: '#/components/headers/QueryProfileResult'
           content:
             application/json:
               schema:
@@ -2014,6 +2029,7 @@ paths:
           description: Cursor for pagination (overrides body value)
           schema:
             type: string
+        - $ref: '#/components/parameters/QueryProfile'
       requestBody:
         required: false
         content:
@@ -2023,6 +2039,9 @@ paths:
       responses:
         '200':
           description: Query executed successfully
+          headers:
+            X-Query-Profile-Result:
+              $ref: '#/components/headers/QueryProfileResult'
           content:
             application/json:
               schema:
@@ -2254,7 +2273,11 @@ paths:
                 properties:
                   data:
                     type: object
-                    description: System log entry (protobuf JSON representation)
+                    description: |
+                      System log entry, serialized by Log.MarshalJSON (camelCase,
+                      RFC3339 timestamps, synthetic `type` discriminator on each
+                      ledger log). A dedicated schema is tracked separately — the
+                      payload is a deeply recursive protobuf oneof.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2296,8 +2319,7 @@ paths:
                   data:
                     type: array
                     items:
-                      type: object
-                      description: Chapter (protobuf JSON representation)
+                      $ref: '#/components/schemas/Chapter'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2710,7 +2732,7 @@ paths:
       summary: Get a single index registry entry
       description: |
         Returns the `Index` registry entry (id, buildStatus, ledger,
-        createdAt, lastBuiltAt, forwardEncodingVersion) for a single
+        createdAt, forwardEncodingVersion) for a single
         index, serialized in protobuf-JSON camelCase. Requires
         `ledger:LedgerRead` scope.
       operationId: getIndex
@@ -2919,6 +2941,29 @@ components:
         maxLength: 256
       description: Idempotency key for the request
 
+    QueryProfile:
+      name: X-Query-Profile
+      in: header
+      required: false
+      schema:
+        type: string
+      description: |
+        Set to any non-empty value to receive the query profile in the
+        `X-Query-Profile-Result` response header.
+
+        The profile reports server-side request timing (how long the server spent
+        handling the request, broken down into prepare / execute / read-barrier /
+        deliver phases) plus the query execution plan. Use it to tell a slow
+        network from a slow server: `serverDurationUs` is the
+        consumer-independent server cost, and it excludes both the
+        caller-requested read barrier and response delivery.
+
+        Supported on the transactions list, accounts list, aggregated volumes and
+        prepared-query execution endpoints. The equivalent gRPC opt-in is the
+        `x-query-profile` request metadata, answered in the
+        `x-query-profile-result-bin` trailer; `serverDurationUs` has the same
+        definition on both surfaces, so the two are directly comparable.
+
     ListFilter:
       name: filter
       in: query
@@ -2957,6 +3002,53 @@ components:
         Note: bare audit fields (`outcome`, `ledger`, `seq`, `proposal_id`,
         `timestamp`, `log_seq`, `caller_subject`, `order_type`) have no
         structured JSON form and must be passed in the textual representation.
+
+  headers:
+    QueryProfileResult:
+      description: |
+        Query profile for this request, returned only when the request carried the
+        `X-Query-Profile` header. The value is the base64 (standard alphabet)
+        encoding of a serialized `QueryProfile` protobuf message
+        (`misc/proto/bucket.proto`).
+
+        Key durations, all in microseconds:
+
+          - `serverDurationUs` — consumer-independent server cost: request entry
+            to response-ready, excluding the read barrier and response delivery.
+            Cannot be moved by a slow client. Over HTTP, request entry is the
+            router chain just before authentication; over gRPC it is the
+            handler's first statement, because grpc-go unmarshals the request
+            before dispatching. It does NOT include row serialization.
+          - `prepareDurationUs` — authentication, query/body decoding, validation
+            and filter compilation.
+          - `executeDurationUs` — query execution (contains
+            `indexDurationUs` + `enrichmentDurationUs`).
+          - `barrierDurationUs` — time blocked on caller-requested read
+            consistency waits. Excluded from `serverDurationUs`. Measures LOCAL
+            waits only, and counts one that fails or is superseded: see
+            `forwarded`.
+          - `deliverDurationUs` — response serialization and transport hand-off.
+            Excluded from `serverDurationUs`. Always 0 over HTTP: this header
+            must be flushed before the response body, so the body write is out
+            of reach. It is populated for gRPC server streams.
+          - `firstRowDurationUs` — always 0 over HTTP (the response is
+            buffered); populated for gRPC server streams.
+          - `forwarded` — true when another node served the read. Its barrier and
+            execution are then folded into `executeDurationUs`, so the breakdown
+            describes the local hop only. `barrierDurationUs` then covers the
+            local waits only: 0 means none happened (not "no barrier was
+            needed"), non-zero means one did — a `minLogSequence` catch-up, or a
+            `ReadIndex` attempt that failed and caused the forward. The value
+            does not say which, so do not read cluster health off it.
+
+        For a latency objective, pick a total and state which: `serverDurationUs`
+        is client-independent but omits serialization, while
+        `serverDurationUs + deliverDurationUs` is the complete server-side cost
+        but absorbs consumer back-pressure on a gRPC stream. Neither is unbiased
+        on a streaming read.
+      schema:
+        type: string
+        format: byte
 
   responses:
     ServiceUnavailable:
@@ -3857,8 +3949,15 @@ components:
 
     TransactionResponse:
       type: object
+      # required <=> always emitted. postings and metadata are emitted
+      # unconditionally as [] / {} (see Transaction.MarshalJSON), reverted is a
+      # non-pointer bool, and id is emitted even when 0. Anything not listed
+      # here carries omitempty and is legitimately absent.
       required:
         - id
+        - postings
+        - metadata
+        - reverted
       properties:
         postings:
           type: array
@@ -3962,6 +4061,52 @@ components:
             uncolored bucket. Always present on responses (never omitted); two
             postings on the same (account, asset) but different colors operate
             on strictly isolated balances.
+
+    Chapter:
+      type: object
+      description: |
+        A bucket chapter. Serialized by Chapter.MarshalJSON: the hash fields are
+        hex-encoded (not base64) and status is the protobuf enum name.
+      required:
+        - id
+        - status
+      properties:
+        id:
+          type: integer
+          format: int64
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [CHAPTER_OPEN, CHAPTER_CLOSING, CHAPTER_CLOSED, CHAPTER_ARCHIVED, CHAPTER_ARCHIVING]
+        closeSequence:
+          type: integer
+          format: int64
+        startSequence:
+          type: integer
+          format: int64
+        startAuditSequence:
+          type: integer
+          format: int64
+        closeAuditSequence:
+          type: integer
+          format: int64
+        sealingHash:
+          type: string
+          pattern: '^[0-9a-f]*$'
+          description: Hex-encoded sealing hash.
+        lastAuditHash:
+          type: string
+          pattern: '^[0-9a-f]*$'
+          description: Hex-encoded audit-chain hash at chapter close.
+        stateHash:
+          type: string
+          pattern: '^[0-9a-f]*$'
+          description: Hex-encoded BLAKE3 hash of computed attributes at seal time.
 
     LedgerClusterStateResponse:
       type: object
@@ -5262,7 +5407,11 @@ components:
               type: array
               items:
                 type: object
-                description: System log entry (protobuf JSON representation)
+                description: |
+                  System log entry, serialized by Log.MarshalJSON (camelCase,
+                  RFC3339 timestamps, synthetic `type` discriminator on each
+                  ledger log). A dedicated schema is tracked separately — the
+                  payload is a deeply recursive protobuf oneof.
         aggregateResult:
           $ref: '#/components/schemas/AggregateVolumesData'
 

@@ -27,7 +27,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 
 	BeforeAll(func() {
 		ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
-			countInstances, testutil.TestRaftBasePort, testutil.TestServiceBasePort, testutil.TestHTTPBasePort, testutil.TestGatewayBasePort,
+			countInstances,
 			testutil.WithGateway(),
 			testutil.WithTickInterval(50*time.Millisecond),
 		)

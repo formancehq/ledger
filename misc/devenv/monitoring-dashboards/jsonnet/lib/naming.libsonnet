@@ -193,12 +193,10 @@ local metadata = import 'metric_metadata.libsonnet';
   //
   // In `native` mode the `_bucket` suffix is dropped because a
   // native histogram exposes the buckets through the bare metric
-  // (e.g. `histogram_quantile(0.95, rate(metric[5m]))`). The
-  // `_sum` and `_count` suffixes are deliberately preserved — they
-  // don't exist as separate series in native histograms, so the
-  // panels that depend on `_sum / _count` ratios surface a "No
-  // data" rather than a silent ratio of 1; the operator can then
-  // rewrite those panels to `histogram_avg`.
+  // (e.g. `histogram_quantile(0.95, rate(metric[5m]))`). Section
+  // files must use the representation-aware query helpers for
+  // histogram sums and counts; raw `_sum`/`_count` references are
+  // invalid in native mode.
   transformMetric(name, mode):: (
     local cfg = $.modeConfig(mode);
     if cfg.otel then name

@@ -46,21 +46,21 @@ func (m *AuditEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x72
+		dAtA[i] = 0x6a
 	}
 	if m.Idempotency != nil {
 		size, _ := m.Idempotency.MarshalToSizedBufferVT(dAtA[:i])
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x6a
+		dAtA[i] = 0x62
 	}
 	if m.CallerSnapshot != nil {
 		size, _ := m.CallerSnapshot.MarshalToSizedBufferVT(dAtA[:i])
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x62
+		dAtA[i] = 0x5a
 	}
 	if m.HashVersion != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.HashVersion))

@@ -10,8 +10,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/tests/scenarios/scenariotest"
@@ -29,7 +29,7 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 		numUnderFunded = 5
 	)
 
-	sc := scenariotest.SetupSingleNode(t, scenariotest.HTTPPort+2, scenariotest.GRPCPort+2)
+	sc := scenariotest.SetupSingleNode(t)
 	ctx, client := sc.Ctx(), sc.Client
 
 	// Subscriber tiers

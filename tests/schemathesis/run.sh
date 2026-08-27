@@ -6,7 +6,7 @@
 #
 # Usage: bash tests/schemathesis/run.sh
 # Env vars: HTTP_PORT, GRPC_PORT, RAFT_PORT, MAX_EXAMPLES, SCHEMATHESIS_WORKERS,
-#   SCHEMATHESIS_SHRINK
+#   SCHEMATHESIS_SHRINK, REPO_ROOT, SCHEMATHESIS_OPENAPI_PATH
 #   SCHEMATHESIS_WORKERS=N runs the endpoint suite across N concurrent workers
 #   (default 1). Keep at 1 for the reproducible gate: >1 breaks the
 #   `derandomize` determinism (see test_api.py). The suite is fast at 1 worker.
@@ -15,7 +15,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+SCHEMATHESIS_OPENAPI_PATH="${SCHEMATHESIS_OPENAPI_PATH:-$REPO_ROOT/openapi.yml}"
 
 HTTP_PORT=${HTTP_PORT:-9099}
 GRPC_PORT=${GRPC_PORT:-8899}
@@ -62,6 +63,53 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
+# Seed deterministic rows. Without this the list/detail operations return empty
+# arrays, and `response_schema_conformance` validates nothing: an empty [] can
+# satisfy ANY items schema, so the whole gate is vacuous on those routes. The
+# ledger name matches the coercion in test_api.py, which rewrites any invalid
+# ledgerName path parameter to "test-ledger".
+echo "==> Seeding fixture data..."
+API="http://localhost:$HTTP_PORT/v3"
+
+seed() {
+    local desc="$1"
+    shift
+    local code
+    code=$(curl -s -o /dev/null -w '%{http_code}' "$@")
+    case "$code" in
+        2*) echo "    $desc -> $code" ;;
+        *)
+            echo "ERROR: seed step '$desc' returned $code" >&2
+            echo "Server log:" >&2
+            cat "$TMPDIR/server.log" >&2
+            exit 1
+            ;;
+    esac
+}
+
+seed "create ledger" -X POST "$API/test-ledger"
+
+# Sacrificial ledger for DELETE /v3/{ledgerName}. That operation is itself
+# fuzzed, and test_api.py's before_call hook routes it here instead of the
+# fixture ledger above — see the hook for why. It needs no data; existence is
+# enough for the fuzzer's first delete attempt to get a 2xx.
+seed "create delete-sacrifice ledger" -X POST "$API/delete-me-ledger"
+
+seed "transaction 1" -X POST "$API/test-ledger/transactions" \
+    -H 'Content-Type: application/json' \
+    -d '{"postings":[{"source":"world","destination":"alice","amount":12345,"asset":"USD/2"}],"metadata":{"kind":"seed"},"reference":"seed-ref-1"}'
+
+seed "transaction 2" -X POST "$API/test-ledger/transactions" \
+    -H 'Content-Type: application/json' \
+    -d '{"postings":[{"source":"world","destination":"bob","amount":500,"asset":"USD/2"}],"reference":"seed-ref-2"}'
+
+# Populates reverted / revertedAt / revertedByTransactionId / revertsTransactionId,
+# so the reversion half of TransactionResponse is exercised too. Sourced from
+# "world" rather than "alice" for transaction 2 above: alice's balance must
+# still hold the full posted amount for the revert (which reverses it exactly)
+# to succeed, and a prior alice->bob spend leaves her short.
+seed "revert transaction 1" -X POST "$API/test-ledger/transactions/1/revert"
+
 # Set up Python venv and install deps if needed
 VENV_DIR="$SCRIPT_DIR/.venv"
 if [ ! -d "$VENV_DIR" ]; then
@@ -86,7 +134,7 @@ fi
 # Tee the full run (stdout+stderr) to an uploadable report. `set -o pipefail`
 # (see `set` above) makes the pipeline inherit test_api.py's non-zero exit, so a
 # conformity failure still fails the job. Filename matches the CI artifact glob.
-python3 "$SCRIPT_DIR/test_api.py" \
+SCHEMATHESIS_OPENAPI_PATH="$SCHEMATHESIS_OPENAPI_PATH" python3 "$SCRIPT_DIR/test_api.py" \
     --base-url "http://localhost:$HTTP_PORT" \
     --max-examples "$MAX_EXAMPLES" \
     --workers "$SCHEMATHESIS_WORKERS" \

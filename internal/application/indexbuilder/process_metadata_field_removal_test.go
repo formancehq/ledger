@@ -118,6 +118,7 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap(t *testing.T) {
 
 		// Batch 1: write role on acct-1 and commit.
 		b.wb.Init(b.readStore.NewBatch())
+		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(acct1, removedKey, 1)))
 		require.NoError(t, b.wb.Flush())
 		require.Equal(t, 1, countReverseMapRows(t, b, ledger, ns, removedKey))
@@ -139,6 +140,7 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap(t *testing.T) {
 
 		// One batch: uncommitted role PUT, then removal, then flush.
 		b.wb.Init(b.readStore.NewBatch())
+		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(acct1, removedKey, 1)))
 		removeRole(t, b, cfg)
 		require.NoError(t, b.wb.Flush())
@@ -155,11 +157,13 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap(t *testing.T) {
 
 		// Batch 1: committed role PUT on acct-1.
 		b.wb.Init(b.readStore.NewBatch())
+		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(acct1, removedKey, 1)))
 		require.NoError(t, b.wb.Flush())
 
 		// Batch 2: uncommitted role PUT on acct-2, then removal, then flush.
 		b.wb.Init(b.readStore.NewBatch())
+		b.wb.SetEventSequence(2)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(acct2, removedKey, 2)))
 		removeRole(t, b, cfg)
 		require.NoError(t, b.wb.Flush())
@@ -176,7 +180,9 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap(t *testing.T) {
 
 		// One batch: role and team PUTs (uncommitted), then remove only role.
 		b.wb.Init(b.readStore.NewBatch())
+		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(acct1, removedKey, 1)))
+		b.wb.SetEventSequence(2)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(acct1, keepKey, 2)))
 		removeRole(t, b, cfg)
 		require.NoError(t, b.wb.Flush())
@@ -196,7 +202,9 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap(t *testing.T) {
 		// then remove the field. Exercises the overlay's already-deleted
 		// (value == nil) skip branch in purgeReverseMapForKey.
 		b.wb.Init(b.readStore.NewBatch())
+		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(acct1, removedKey, 1)))
+		b.wb.SetEventSequence(2)
 		require.NoError(t, b.indexDeletedMetadata(b.kb, cfg, ledger, deletedAccountMetadata(acct1, removedKey)))
 		removeRole(t, b, cfg)
 		require.NoError(t, b.wb.Flush())
@@ -213,6 +221,7 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap(t *testing.T) {
 
 		// Batch 1: commit role on acct-1.
 		b.wb.Init(b.readStore.NewBatch())
+		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(acct1, removedKey, 1)))
 		require.NoError(t, b.wb.Flush())
 		require.Equal(t, 1, countReverseMapRows(t, b, ledger, ns, removedKey))
@@ -222,6 +231,7 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap(t *testing.T) {
 		// committed scan nils the overlay entry before the overlay pass, so the
 		// row is purged exactly once.
 		b.wb.Init(b.readStore.NewBatch())
+		b.wb.SetEventSequence(2)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(acct1, removedKey, 2)))
 		removeRole(t, b, cfg)
 		require.NoError(t, b.wb.Flush())
@@ -270,6 +280,7 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap_Transaction(t *testing.
 		cfg := newActiveCfg()
 
 		b.wb.Init(b.readStore.NewBatch())
+		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedTransactionMetadata(tx1, removedKey, 1)))
 		require.NoError(t, b.wb.Flush())
 		require.Equal(t, 1, countReverseMapRows(t, b, ledger, ns, removedKey))
@@ -292,6 +303,7 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap_Transaction(t *testing.
 		// committed-only snapshot cannot see the in-flight PUT — the overlay
 		// pass is what purges it. Fails before EN-1443 (orphan row survives).
 		b.wb.Init(b.readStore.NewBatch())
+		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedTransactionMetadata(tx1, removedKey, 1)))
 		removeRole(t, b, cfg)
 		require.NoError(t, b.wb.Flush())
@@ -307,10 +319,12 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap_Transaction(t *testing.
 		cfg := newActiveCfg()
 
 		b.wb.Init(b.readStore.NewBatch())
+		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedTransactionMetadata(tx1, removedKey, 1)))
 		require.NoError(t, b.wb.Flush())
 
 		b.wb.Init(b.readStore.NewBatch())
+		b.wb.SetEventSequence(2)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedTransactionMetadata(tx2, removedKey, 2)))
 		removeRole(t, b, cfg)
 		require.NoError(t, b.wb.Flush())

@@ -61,7 +61,7 @@ The event carries the full `Log` entry, which contains the typed payload (transa
 
 ### JSON Format
 
-When `format=json` in the events config, the event is serialized as JSON using `protojson`. Property names follow protobuf JSON mapping conventions (camelCase):
+When `format=json` in the events config, the event is serialized as JSON via `internal/adapter/json` (sonic), which honors each proto type's hand-written `MarshalJSON` rather than protobuf reflection — see [Response serialization](../api/http-api.md#response-serialization) for the encoder rule. Property names follow protobuf JSON mapping conventions (camelCase):
 
 ```json
 {

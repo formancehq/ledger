@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import copy
+import os
 import re
 import sys
 from datetime import timedelta
@@ -31,9 +32,22 @@ from schemathesis.runner import from_schema
 from schemathesis.runner.events import AfterExecution, Finished
 from schemathesis.stateful import Stateful
 
-OPENAPI_PATH = Path(__file__).resolve().parents[2] / "openapi.yml"
+OPENAPI_PATH = Path(
+    os.environ.get(
+        "SCHEMATHESIS_OPENAPI_PATH",
+        Path(__file__).resolve().parents[2] / "openapi.yml",
+    )
+)
 
 VALID_LEDGER_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{2,20}$")
+
+# Fixture ledger name every coerced/invalid ledgerName path parameter resolves
+# to. Seeded by run.sh with two transactions and a revert so
+# response_schema_conformance validates real rows instead of an empty [].
+FIXTURE_LEDGER_NAME = "test-ledger"
+# Sacrificial ledger name for DELETE /v3/{ledgerName} specifically — see the
+# before_call hook below for why it needs its own name.
+DELETE_LEDGER_SACRIFICE_NAME = "delete-me-ledger"
 
 SAMPLE_NUMSCRIPTS = [
     'send [USD/2 100] (\n  source = @world\n  destination = @user:001\n)',
@@ -66,11 +80,23 @@ def before_call(context, case):
                 file=sys.stderr,
             )
 
+    # DELETE /v3/{ledgerName} is itself a fuzzed operation, and the coercion
+    # below would point it at the seeded fixture ledger. With workers=1 the
+    # operations run in openapi.yml declaration order, and this one is
+    # declared before the transaction endpoints — so the fuzzer deleted the
+    # fixture within seconds of the run starting, and every later request
+    # returned "ledger has been deleted", validating against an error schema
+    # instead of TransactionResponse. That made response_schema_conformance
+    # vacuous for every seeded route. Send ledger-level deletes to a
+    # sacrificial ledger so the fixture survives the whole run.
+    if case.path == "/v3/{ledgerName}" and case.method == "DELETE":
+        if case.path_parameters:
+            case.path_parameters["ledgerName"] = DELETE_LEDGER_SACRIFICE_NAME
     # Ledger names: lowercase alphanumeric with hyphens
-    if case.path_parameters and "ledgerName" in case.path_parameters:
+    elif case.path_parameters and "ledgerName" in case.path_parameters:
         name = case.path_parameters["ledgerName"]
         if not isinstance(name, str) or not VALID_LEDGER_NAME_RE.match(name):
-            case.path_parameters["ledgerName"] = "test-ledger"
+            case.path_parameters["ledgerName"] = FIXTURE_LEDGER_NAME
 
     if case.body and isinstance(case.body, dict):
         # Transaction: postings/script mutual exclusion

@@ -102,19 +102,27 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 		require.Empty(t, *b.queryCheckpointScheduleUpdate)
 	})
 
-	t.Run("DeleteLedger → deletedLedgers cleanup signal only", func(t *testing.T) {
+	t.Run("DeleteLedger → deletedLedgers + mirrorConfigChanged", func(t *testing.T) {
 		t.Parallel()
 		b, _, _ := newTestBuffer(t)
 		b.Boundaries().Put(domain.LedgerKey{Name: "L"}, &raftcmdpb.LedgerBoundaries{NextTransactionId: 1})
 		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_DeleteLedger{DeleteLedger: &commonpb.DeletedLedgerLog{Name: "L"}},
 		}})
-		// Absorb records only the cleanup signal now (EN-1522): the Boundary
-		// deletion moved to processDeleteLedger's gated Scope, so Absorb must
-		// NOT touch the overlay.
+		// Absorb records signals only, never the overlay write: the Boundary
+		// deletion moved to processDeleteLedger's gated Scope (EN-1522), so
+		// Absorb must NOT touch the overlay.
 		require.Equal(t, []string{"L"}, b.deletedLedgers)
 		_, err := b.Boundaries().Get(domain.LedgerKey{Name: "L"})
 		require.NoError(t, err, "Absorb must not delete the boundary — that is the gated handler's job")
+
+		// Deleting a ledger drops it from ReadMirrorLedgers (which filters
+		// DeletedAt == nil), so the mirror worker set must be reconciled.
+		// Without this signal no ConfigChanged notification fires and a deleted
+		// mirror ledger's worker keeps polling its v2 source. Set for every
+		// deletion, not just mirrors: the mode is not reachable here without an
+		// ungated overlay read, and a spurious reconcile is idempotent.
+		require.True(t, b.MirrorConfigChanged())
 	})
 
 	t.Run("CloseChapter → chapterClosing", func(t *testing.T) {

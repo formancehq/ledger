@@ -110,18 +110,13 @@ func (b *Builder) handleRemovedMetadataFieldType(
 	// and deletes its persisted progress.
 	b.removeBackfillTask(ledgerName, dropped)
 
-	// Drop the per-replica IndexVersionState for the removed field
-	// so the boot orphan sweep doesn't try to GC versions of a field
-	// that no longer exists in the schema.
+	// Tombstone the per-replica IndexVersionState: the rows are purged above,
+	// but the high-water version must survive so a re-declared field's fresh
+	// index cannot reuse a version number — if this purge ever misses a row,
+	// the miss stays isolated in a keyspace no future pass writes into.
 	canonical := indexes.Canonical(dropped)
-	b.dropVersionState(ledgerName, canonical)
-
-	if err := b.readStore.DeleteIndexVersionState(ledgerName, canonical); err != nil {
-		b.logger.WithFields(map[string]any{
-			"ledger":    ledgerName,
-			"canonical": canonical,
-			"error":     err,
-		}).Errorf("Deleting IndexVersionState on field removal")
+	if err := b.tombstoneVersionState(ledgerName, canonical); err != nil {
+		return err
 	}
 
 	return nil

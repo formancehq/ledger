@@ -51,7 +51,7 @@ func runGetSchema(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching schema for %s...", ledgerName))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching schema for %s...", ledgerName))
 
 	resp, err := client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{
 		Ledger: ledgerName,

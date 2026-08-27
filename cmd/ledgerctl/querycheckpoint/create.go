@@ -3,7 +3,6 @@ package querycheckpoint
 import (
 	"fmt"
 
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
@@ -39,9 +38,9 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	structuredOutput := cmdutil.IsStructuredOutput(cmd)
 
-	var spinner *pterm.SpinnerPrinter
+	var spinner *cmdutil.Spinner
 	if !structuredOutput {
-		spinner, _ = pterm.DefaultSpinner.Start("Creating query checkpoint...")
+		spinner = cmdutil.StartSpinner("Creating query checkpoint...")
 	}
 
 	resp, err := client.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})

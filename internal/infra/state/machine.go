@@ -780,6 +780,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 					CloseSequence:      p.GetCloseSequence(),
 					StartAuditSequence: p.GetStartAuditSequence(),
 					CloseAuditSequence: p.GetCloseAuditSequence(),
+					SealingHash:        p.GetSealingHash(),
 				})
 			}
 		}
@@ -1739,12 +1740,14 @@ func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string
 		return nil
 	}
 
+	reason, message := describeFailure(d)
+
 	value := &commonpb.IdempotencyKeyValue{
 		Hash:      proposalHash,
 		CreatedAt: createdAt,
 		Failure: &commonpb.IdempotencyFailure{
-			Reason:   domain.ReasonCode(d.Reason()),
-			Message:  d.Error(),
+			Reason:   reason,
+			Message:  message,
 			Metadata: d.Metadata(),
 		},
 	}
@@ -1837,6 +1840,7 @@ func (fsm *Machine) DispatchArchiveRequests(stop <-chan struct{}) {
 				CloseSequence:      p.GetCloseSequence(),
 				StartAuditSequence: p.GetStartAuditSequence(),
 				CloseAuditSequence: p.GetCloseAuditSequence(),
+				SealingHash:        p.GetSealingHash(),
 			}
 
 			if stop != nil {

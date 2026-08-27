@@ -403,6 +403,7 @@ func TestIndexPostingAddressMappingsWritesAccountByAsset(t *testing.T) {
 
 	batch := store.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 
 	cfg := acctAssetConfig()
 
@@ -436,6 +437,7 @@ func TestIndexPostingAddressMappingsAccountByAssetDedup(t *testing.T) {
 
 	batch := store.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 
 	cfg := acctAssetConfig()
 
@@ -487,6 +489,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		// Batch 1: commit account-by-asset rows for the original ledger.
 		batch1 := store.NewBatch()
 		b.initBatch(batch1)
+		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexPostingAddressMappings(
 			b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
 			false, false, false, nil,
@@ -499,6 +502,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		// Get, so the dedup must not let them suppress the new Put.
 		batch2 := store.NewBatch()
 		b.initBatch(batch2)
+		b.wb.SetEventSequence(2)
 		require.NoError(t, readstore.DeleteLedgerIndexes(b.wb.Batch(), "test"))
 		b.markLedgerDeletedInBatch("test")
 		require.NoError(t, b.indexPostingAddressMappings(
@@ -534,6 +538,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 
 		batch := store.NewBatch()
 		b.initBatch(batch)
+		b.wb.SetEventSequence(1)
 
 		// Old generation writes (queued, uncommitted) populate seenAcctAsset ...
 		require.NoError(t, b.indexPostingAddressMappings(
@@ -576,6 +581,7 @@ func TestIndexPostingAddressMappingsAccountByAssetExcludesTransient(t *testing.T
 
 	batch := store.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 
 	cfg := acctAssetConfig()
 
@@ -611,6 +617,7 @@ func TestIndexPostingAddressMappingsAccountByAssetDisabled(t *testing.T) {
 
 	batch := store.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 
 	// Index NOT registered.
 	cfg := newLedgerIndexConfig()
@@ -820,12 +827,11 @@ func TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding(t *testin
 	// the raw string encoding.
 	rawEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("30"))
 	reverseKey := cloneBytes(readstore.AccountReverseMapKey(kb, ledger, account, key))
-	rawForwardKey := cloneBytes(readstore.MetadataIndexKey(kb, ledger, readstore.NamespaceAccount, key, rawEncoded, entityID))
 
 	seed := b.readStore.NewBatch()
 	require.NoError(t, seed.SetBytes(reverseKey, rawEncoded))
-	require.NoError(t, seed.SetBytes(rawForwardKey, nil))
 	require.NoError(t, seed.Commit())
+	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, rawEncoded, entityID, 1, readstore.MetadataEventAdd)
 
 	// The "age" account index is BUILDING; incremental writes still flow to it.
 	cfg := newLedgerIndexConfig()
@@ -848,19 +854,19 @@ func TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding(t *testin
 
 	batch := b.readStore.NewBatch()
 	b.wb.Init(batch)
+	b.wb.SetEventSequence(2)
 	require.NoError(t, b.indexSavedMetadata(kb, cfg, ledger, sm))
 	require.NoError(t, b.wb.Flush())
 
 	// New entry exists and the reverse map points at it.
-	newForwardKey := readstore.MetadataIndexKey(kb, ledger, readstore.NamespaceAccount, key,
-		readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(40)), entityID)
-	assertReadStoreValue(t, b, newForwardKey, nil)
-	assertReadStoreValue(t, b, reverseKey, readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(40)))
+	newEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(40))
+	requireMetadataLive(t, b, ledger, readstore.NamespaceAccount, key, 1, newEncoded, entityID)
+	assertReadStoreValue(t, b, reverseKey, newEncoded)
 
 	// The pre-conversion entry is gone: the delete was located via the reverse
 	// map (raw String "30"), not the log's coerced Int64(30), so a query for the
 	// old value no longer returns acct-001.
-	assertReadStoreMissing(t, b, rawForwardKey)
+	requireMetadataDead(t, b, ledger, readstore.NamespaceAccount, key, 1, rawEncoded, entityID)
 }
 
 // TestIndexSavedMetadata_DualWritesDuringRewrite pins the EN-1323 step 4b
@@ -905,19 +911,18 @@ func TestIndexSavedMetadata_DualWritesDuringRewrite(t *testing.T) {
 
 	batch := b.readStore.NewBatch()
 	b.wb.Init(batch)
+	b.wb.SetEventSequence(1)
 	require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, sm))
 	require.NoError(t, b.wb.Flush())
 
 	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(42))
 
 	// Both versions must hold the entry.
-	v1Forward := cloneBytes(readstore.MetadataIndexKeyV(b.kb, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID))
-	v2Forward := cloneBytes(readstore.MetadataIndexKeyV(b.kb, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID))
 	v1Rmap := cloneBytes(readstore.AccountReverseMapKeyV(b.kb, ledger, account, key, 1))
 	v2Rmap := cloneBytes(readstore.AccountReverseMapKeyV(b.kb, ledger, account, key, 2))
 
-	assertReadStoreValue(t, b, v1Forward, nil)
-	assertReadStoreValue(t, b, v2Forward, nil)
+	requireMetadataLive(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID)
+	requireMetadataLive(t, b, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID)
 	assertReadStoreValue(t, b, v1Rmap, encoded)
 	assertReadStoreValue(t, b, v2Rmap, encoded)
 }
@@ -954,15 +959,13 @@ func TestIndexDeletedMetadata_DualDeleteDuringRewrite(t *testing.T) {
 	// Pre-seed both versions to mimic post-dual-write state.
 	v1Rmap := cloneBytes(readstore.AccountReverseMapKeyV(b.kb, ledger, account, key, 1))
 	v2Rmap := cloneBytes(readstore.AccountReverseMapKeyV(b.kb, ledger, account, key, 2))
-	v1Forward := cloneBytes(readstore.MetadataIndexKeyV(b.kb, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID))
-	v2Forward := cloneBytes(readstore.MetadataIndexKeyV(b.kb, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID))
 
 	seed := b.readStore.NewBatch()
 	require.NoError(t, seed.SetBytes(v1Rmap, encoded))
 	require.NoError(t, seed.SetBytes(v2Rmap, encoded))
-	require.NoError(t, seed.SetBytes(v1Forward, nil))
-	require.NoError(t, seed.SetBytes(v2Forward, nil))
 	require.NoError(t, seed.Commit())
+	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID, 1, readstore.MetadataEventAdd)
+	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID, 1, readstore.MetadataEventAdd)
 
 	dm := &commonpb.DeletedMetadata{
 		Target: &commonpb.Target{
@@ -975,11 +978,12 @@ func TestIndexDeletedMetadata_DualDeleteDuringRewrite(t *testing.T) {
 
 	batch := b.readStore.NewBatch()
 	b.wb.Init(batch)
+	b.wb.SetEventSequence(2)
 	require.NoError(t, b.indexDeletedMetadata(b.kb, cfg, ledger, dm))
 	require.NoError(t, b.wb.Flush())
 
-	assertReadStoreMissing(t, b, v1Forward)
-	assertReadStoreMissing(t, b, v2Forward)
+	requireMetadataDead(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID)
+	requireMetadataDead(t, b, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID)
 	assertReadStoreMissing(t, b, v1Rmap)
 	assertReadStoreMissing(t, b, v2Rmap)
 }
@@ -1022,15 +1026,14 @@ func TestIndexSavedMetadata_SingleWriteWhenNoRewrite(t *testing.T) {
 
 	batch := b.readStore.NewBatch()
 	b.wb.Init(batch)
+	b.wb.SetEventSequence(1)
 	require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, sm))
 	require.NoError(t, b.wb.Flush())
 
 	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(7))
-	v1Forward := cloneBytes(readstore.MetadataIndexKeyV(b.kb, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID))
-	v2Forward := cloneBytes(readstore.MetadataIndexKeyV(b.kb, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID))
 
-	assertReadStoreValue(t, b, v1Forward, nil)
-	assertReadStoreMissing(t, b, v2Forward)
+	requireMetadataLive(t, b, ledger, readstore.NamespaceAccount, key, 1, encoded, entityID)
+	requireMetadataDead(t, b, ledger, readstore.NamespaceAccount, key, 2, encoded, entityID)
 }
 
 // TestIndexCreatedThenOverwrittenTxMetadataSameBatch guards the overlay against
@@ -1062,17 +1065,16 @@ func TestIndexCreatedThenOverwrittenTxMetadataSameBatch(t *testing.T) {
 
 	v1 := commonpb.NewStringValue("v1")
 	v2 := commonpb.NewStringValue("v2")
+	v1Encoded := readstore.EncodeMetadataValue(nil, v1)
+	v2Encoded := readstore.EncodeMetadataValue(nil, v2)
 	// Clone: KeyBuilder returns buffer-backed slices that later index calls reuse.
-	v1Key := cloneBytes(readstore.MetadataIndexKey(kb, ledger, readstore.NamespaceTransaction, key,
-		readstore.EncodeMetadataValue(nil, v1), txIDBytes))
-	v2Key := cloneBytes(readstore.MetadataIndexKey(kb, ledger, readstore.NamespaceTransaction, key,
-		readstore.EncodeMetadataValue(nil, v2), txIDBytes))
 	reverseKey := cloneBytes(readstore.TransactionReverseMapKey(kb, ledger, txID, key))
 
 	batch := b.readStore.NewBatch()
 	b.wb.Init(batch)
 
 	// 1. CreateTransaction sets indexed tx metadata key=v1 (first write).
+	b.wb.SetEventSequence(1)
 	ct := &commonpb.CreatedTransaction{
 		Transaction: &commonpb.Transaction{
 			Id:       txID,
@@ -1082,6 +1084,7 @@ func TestIndexCreatedThenOverwrittenTxMetadataSameBatch(t *testing.T) {
 	require.NoError(t, b.indexCreatedTransaction(kb, cfg, ledger, ct, nil))
 
 	// 2. Same batch: overwrite the same key to v2 before the batch commits.
+	b.wb.SetEventSequence(2)
 	sm := &commonpb.SavedMetadata{
 		Target: &commonpb.Target{
 			Target: &commonpb.Target_TransactionId{TransactionId: txID},
@@ -1093,9 +1096,9 @@ func TestIndexCreatedThenOverwrittenTxMetadataSameBatch(t *testing.T) {
 	require.NoError(t, b.wb.Flush())
 
 	// v2 is indexed and the stale v1 entry from the create is gone.
-	assertReadStoreValue(t, b, v2Key, nil)
-	assertReadStoreValue(t, b, reverseKey, readstore.EncodeMetadataValue(nil, v2))
-	assertReadStoreMissing(t, b, v1Key)
+	requireMetadataLive(t, b, ledger, readstore.NamespaceTransaction, key, 1, v2Encoded, txIDBytes)
+	assertReadStoreValue(t, b, reverseKey, v2Encoded)
+	requireMetadataDead(t, b, ledger, readstore.NamespaceTransaction, key, 1, v1Encoded, txIDBytes)
 }
 
 // TestIndexCreatedTransaction_ReplayDeletesStaleForwardEntry pins the
@@ -1129,13 +1132,12 @@ func TestIndexCreatedTransaction_ReplayDeletesStaleForwardEntry(t *testing.T) {
 	// `score` had already indexed this transaction with value "030".
 	oldValue := commonpb.NewStringValue("030")
 	oldEncoded := readstore.EncodeMetadataValue(nil, oldValue)
-	oldFwdKey := cloneBytes(readstore.MetadataIndexKey(kb, ledger, readstore.NamespaceTransaction, key, oldEncoded, txIDBytes))
 	reverseKey := cloneBytes(readstore.TransactionReverseMapKey(kb, ledger, txID, key))
 
 	seed := b.readStore.NewBatch()
-	require.NoError(t, seed.SetBytes(oldFwdKey, nil))
 	require.NoError(t, seed.SetBytes(reverseKey, oldEncoded))
 	require.NoError(t, seed.Commit())
+	seedMetadataEvent(t, b, ledger, readstore.NamespaceTransaction, key, 1, oldEncoded, txIDBytes, 1, readstore.MetadataEventAdd)
 
 	// Now replay the CreatedTransaction log after the field has been
 	// retyped to UINT64. The handler coerces "030" → uint64(30), so the
@@ -1154,6 +1156,7 @@ func TestIndexCreatedTransaction_ReplayDeletesStaleForwardEntry(t *testing.T) {
 
 	batch := b.readStore.NewBatch()
 	b.wb.Init(batch)
+	b.wb.SetEventSequence(2)
 
 	ct := &commonpb.CreatedTransaction{
 		Transaction: &commonpb.Transaction{
@@ -1165,11 +1168,10 @@ func TestIndexCreatedTransaction_ReplayDeletesStaleForwardEntry(t *testing.T) {
 	require.NoError(t, b.wb.Flush())
 
 	newEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewUintValue(30))
-	newFwdKey := cloneBytes(readstore.MetadataIndexKey(kb, ledger, readstore.NamespaceTransaction, key, newEncoded, txIDBytes))
 
-	assertReadStoreValue(t, b, newFwdKey, nil)
+	requireMetadataLive(t, b, ledger, readstore.NamespaceTransaction, key, 1, newEncoded, txIDBytes)
 	assertReadStoreValue(t, b, reverseKey, newEncoded)
-	assertReadStoreMissing(t, b, oldFwdKey)
+	requireMetadataDead(t, b, ledger, readstore.NamespaceTransaction, key, 1, oldEncoded, txIDBytes)
 }
 
 func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *testing.T) {
@@ -1197,11 +1199,6 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	newEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(42))
 	entityID := []byte("acct-003")
 
-	// v=1 forward entry (the pre-retype state). The rewrite no longer
-	// touches v=1 (in-place mutation is gone); v=1 stays until GC.
-	oldForwardKeyV1 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, entityID))
-	// v=2 forward entry (target of the rewrite).
-	newForwardKeyV2 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledgerName, readstore.NamespaceAccount, "status", 2, newEncoded, entityID))
 	// v=2 rmap entry (target of the rewrite).
 	newRmapKeyV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, "acct-003", "status", 2))
 
@@ -1209,8 +1206,15 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	require.NoError(t, batch.SetBytes(firstSkippedKey, skippedEncoded))
 	require.NoError(t, batch.SetBytes(secondSkippedKey, skippedEncoded))
 	require.NoError(t, batch.SetBytes(matchingKey, oldEncoded))
-	require.NoError(t, batch.SetBytes(oldForwardKeyV1, nil))
 	require.NoError(t, batch.Commit())
+
+	// v=1 forward entry (the pre-retype state). The rewrite no longer
+	// touches v=1 (in-place mutation is gone); v=1 stays until GC.
+	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, entityID, 1, readstore.MetadataEventAdd)
+
+	// The rewrite stamps its events with the FSM log sequence it samples and
+	// gates the atomic switch on the read store having indexed up to it.
+	seedRewriteSequence(t, b, 2)
 
 	// Seed the FSM-side canonical stored value for acct-003.status. The schema
 	// rewrite reads from here, not from the rmap, so re-encoding is a pure
@@ -1241,7 +1245,7 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	cursor, ok := b.readStore.ReadBackfillCursor(task.bbKey)
 	require.True(t, ok)
 	assert.Equal(t, append([]byte{byte(task.toType)}, secondSkippedKey...), cursor)
-	assertReadStoreValue(t, b, oldForwardKeyV1, nil)
+	requireMetadataLive(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, entityID)
 	assertReadStoreValue(t, b, matchingKey, oldEncoded)
 
 	done, err = b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
@@ -1253,8 +1257,8 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	// Atomic switch GCs v_old in the same batch: the v=1 forward
 	// entry and the v=1 rmap row are gone; v=2 forward and rmap are
 	// populated by the rewrite.
-	assertReadStoreMissing(t, b, oldForwardKeyV1)
-	assertReadStoreValue(t, b, newForwardKeyV2, nil)
+	requireMetadataDead(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, entityID)
+	requireMetadataLive(t, b, ledgerName, readstore.NamespaceAccount, "status", 2, newEncoded, entityID)
 	assertReadStoreMissing(t, b, matchingKey)
 	assertReadStoreValue(t, b, newRmapKeyV2, newEncoded)
 
@@ -1601,12 +1605,15 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 	stringEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("030"))
 	entityID := []byte(account)
 	reverseKeyV1 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, account, key, 1))
-	stringForwardKeyV1 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID))
 
 	seed := b.readStore.NewBatch()
 	require.NoError(t, seed.SetBytes(reverseKeyV1, stringEncoded))
-	require.NoError(t, seed.SetBytes(stringForwardKeyV1, nil))
 	require.NoError(t, seed.Commit())
+	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID, 1, readstore.MetadataEventAdd)
+
+	// The rewrite stamps its events with the FSM log sequence it samples and
+	// gates the atomic switch on the read store having indexed up to it.
+	seedRewriteSequence(t, b, 2)
 
 	// First rewrite: STRING (v=1) → UINT64 (v=2).
 	b.putVersionState(ledgerName, canonical, readstore.IndexVersionState{
@@ -1626,14 +1633,13 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 	require.True(t, done)
 
 	uint64Encoded := readstore.EncodeMetadataValue(nil, commonpb.NewUintValue(30))
-	uint64ForwardKeyV2 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledgerName, readstore.NamespaceAccount, key, 2, uint64Encoded, entityID))
 	reverseKeyV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, account, key, 2))
 
-	assertReadStoreValue(t, b, uint64ForwardKeyV2, nil)
+	requireMetadataLive(t, b, ledgerName, readstore.NamespaceAccount, key, 2, uint64Encoded, entityID)
 	assertReadStoreValue(t, b, reverseKeyV2, uint64Encoded)
 	// Atomic switch GC purges v=1 in the same batch as the version
 	// promotion — the pre-retype forward entry is gone.
-	assertReadStoreMissing(t, b, stringForwardKeyV1)
+	requireMetadataDead(t, b, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID)
 
 	current, pending := b.versionFor(ledgerName, canonical)
 	require.Equal(t, uint32(2), current)
@@ -1658,14 +1664,13 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, done)
 
-	roundTripForwardKeyV3 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledgerName, readstore.NamespaceAccount, key, 3, stringEncoded, entityID))
 	reverseKeyV3 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, account, key, 3))
 
-	assertReadStoreValue(t, b, roundTripForwardKeyV3, nil)
+	requireMetadataLive(t, b, ledgerName, readstore.NamespaceAccount, key, 3, stringEncoded, entityID)
 	assertReadStoreValue(t, b, reverseKeyV3, stringEncoded)
 	// v=2 forward + rmap (the previous "current") are GC'd by the
 	// second switch.
-	assertReadStoreMissing(t, b, uint64ForwardKeyV2)
+	requireMetadataDead(t, b, ledgerName, readstore.NamespaceAccount, key, 2, uint64Encoded, entityID)
 	assertReadStoreMissing(t, b, reverseKeyV2)
 
 	current, pending = b.versionFor(ledgerName, canonical)
@@ -1704,12 +1709,15 @@ func TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel(t *testing.T) {
 	stringEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("abc"))
 	entityID := []byte(account)
 	reverseKeyV1 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, account, key, 1))
-	stringForwardKeyV1 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID))
 
 	seed := b.readStore.NewBatch()
 	require.NoError(t, seed.SetBytes(reverseKeyV1, stringEncoded))
-	require.NoError(t, seed.SetBytes(stringForwardKeyV1, nil))
 	require.NoError(t, seed.Commit())
+	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID, 1, readstore.MetadataEventAdd)
+
+	// The rewrite stamps its events with the FSM log sequence it samples and
+	// gates the atomic switch on the read store having indexed up to it.
+	seedRewriteSequence(t, b, 2)
 
 	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 	b.putVersionState(ledgerName, canonical, readstore.IndexVersionState{
@@ -1732,11 +1740,10 @@ func TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel(t *testing.T) {
 	// switch GC purges v=1 in the same batch as the version
 	// promotion, so the pre-retype forward entry is gone.
 	nullEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewNullValue("abc"))
-	nullForwardKeyV2 := cloneBytes(readstore.MetadataIndexKeyV(kb, ledgerName, readstore.NamespaceAccount, key, 2, nullEncoded, entityID))
 	reverseKeyV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, account, key, 2))
 
-	assertReadStoreMissing(t, b, stringForwardKeyV1)
-	assertReadStoreValue(t, b, nullForwardKeyV2, nil)
+	requireMetadataDead(t, b, ledgerName, readstore.NamespaceAccount, key, 1, stringEncoded, entityID)
+	requireMetadataLive(t, b, ledgerName, readstore.NamespaceAccount, key, 2, nullEncoded, entityID)
 	assertReadStoreValue(t, b, reverseKeyV2, nullEncoded)
 
 	current, pending := b.versionFor(ledgerName, canonical)
@@ -1942,6 +1949,7 @@ func TestAccountAssetBackfillLifecycle(t *testing.T) {
 	// persistence inside handleCreatedIndexLog has a batch to write into.
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
 		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 	})
@@ -2026,6 +2034,7 @@ func TestAccountAssetBackfillWipesDeletedLedgerGeneration(t *testing.T) {
 	// CreateIndex schedules the backfill (current=0, pending=1).
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
 		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 	})
@@ -2165,6 +2174,7 @@ func runAccountAssetBackfill(t *testing.T, b *Builder, ledger string, globalCurs
 
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
 		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
 	})
@@ -2279,6 +2289,7 @@ func TestMetadataBackfillSkipsForeignLedgerLogs(t *testing.T) {
 	// CreateIndex on (ACCOUNT, metaKey) in taskLedger only.
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
+	b.wb.SetEventSequence(1)
 	b.handleCreatedIndexLog(taskLedger, &commonpb.CreatedIndexLog{
 		Id: indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey),
 	})

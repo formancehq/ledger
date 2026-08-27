@@ -27,9 +27,16 @@ import (
 
 // mockV2Server simulates a v2 ledger API for mirror integration tests.
 type mockV2Server struct {
-	mu   sync.Mutex
-	logs []v2.V2Log
-	srv  *httptest.Server
+	mu       sync.Mutex
+	logs     []v2.V2Log
+	srv      *httptest.Server
+	requests int
+
+	// gate is a pass-through barrier held by the test, not by the handler: the
+	// handler acquires and immediately releases it before doing anything, so
+	// pause() parks every in-flight request at the door. Deliberately separate
+	// from mu so requestCount() stays answerable while requests are parked.
+	gate sync.Mutex
 }
 
 func newMockV2Server() *mockV2Server {
@@ -53,15 +60,69 @@ func (m *mockV2Server) addLog(log v2.V2Log) {
 	m.logs = append(m.logs, log)
 }
 
-func (m *mockV2Server) handler(w http.ResponseWriter, r *http.Request) {
+// requestCount reports how many fetches the mirror worker has made. A worker
+// that has been stopped makes no further requests, so a count that stops rising
+// is the observable for teardown.
+func (m *mockV2Server) requestCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	return m.requests
+}
+
+// pause blocks every subsequent request at the handler entry, before the
+// request counter moves, until resume is called. It makes "no source fetch has
+// happened yet" a fact rather than a race: a spec that needs to observe state
+// the mirror worker would overwrite can pause, take its sample, then resume.
+func (m *mockV2Server) pause() {
+	m.gate.Lock()
+}
+
+// resume releases requests parked by pause.
+func (m *mockV2Server) resume() {
+	m.gate.Unlock()
+}
+
+// handler serves the two shapes the mirror worker issues against /logs, which
+// disagree about ordering and are distinguishable only by pageSize:
+//
+//   - HTTPSource.GetLatestLogID sends pageSize=1 with no "after" and reads
+//     Data[0] as the NEWEST log. PostgresSource implements the same interface
+//     method as SELECT MAX(id), so "newest" is the contract, and serving this
+//     shape ascending would report the OLDEST log as the source head — making
+//     MirrorSyncProgress.SourceLogCount unassertable and FOLLOWING satisfiable
+//     by any non-zero head.
+//   - HTTPSource.FetchLogs pages forward with "after" and needs ASCENDING
+//     logs; TranslateBatch enforces source-log-id contiguity. It also omits
+//     "after" when resuming from 0, which is why pageSize is the discriminator
+//     here rather than the presence of "after".
+//
+// That the two production call sites make opposite ordering assumptions about
+// the same request shape is a real question about the v2 API contract, not a
+// fixture concern. It is out of scope for this suite.
+func (m *mockV2Server) handler(w http.ResponseWriter, r *http.Request) {
+	// Park before the counter moves, so a paused mock leaves requestCount
+	// untouched. See pause.
+	m.gate.Lock()
+	m.gate.Unlock() //nolint:staticcheck // intentional pass-through barrier, not a critical section
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.requests++
 
 	// Parse "after" query param
 	afterStr := r.URL.Query().Get("after")
 	var afterID uint64
 	if afterStr != "" {
 		_, _ = fmt.Sscanf(afterStr, "%d", &afterID)
+	}
+
+	// Respect pageSize
+	pageSizeStr := r.URL.Query().Get("pageSize")
+	pageSize := 100
+	if pageSizeStr != "" {
+		_, _ = fmt.Sscanf(pageSizeStr, "%d", &pageSize)
 	}
 
 	// Filter logs after the given ID (ascending order)
@@ -72,15 +133,15 @@ func (m *mockV2Server) handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Respect pageSize
-	pageSizeStr := r.URL.Query().Get("pageSize")
-	pageSize := 100
-	if pageSizeStr != "" {
-		_, _ = fmt.Sscanf(pageSizeStr, "%d", &pageSize)
-	}
-
 	hasMore := false
-	if len(result) > pageSize {
+
+	if pageSize == 1 && afterStr == "" {
+		// Head probe: answer newest-first, as the contract requires.
+		if len(result) > 0 {
+			result = []v2.V2Log{result[len(result)-1]}
+			hasMore = len(m.logs) > 1
+		}
+	} else if len(result) > pageSize {
 		result = result[:pageSize]
 		hasMore = true
 	}
@@ -159,13 +220,10 @@ var _ = Describe("Mirror", Ordered, func() {
 		client servicepb.BucketServiceClient
 	)
 
-	const (
-		httpPort = testutil.TestSingleHTTPPort
-		grpcPort = testutil.TestSingleGRPCPort
-	)
-
 	BeforeAll(func() {
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort)
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode()
+		client = node.Client
 	})
 
 	Context("When creating a mirror ledger", func() {
@@ -303,8 +361,12 @@ var _ = Describe("Mirror", Ordered, func() {
 			DeferCleanup(mockV2.Close)
 
 			// Seed v2 logs before creating the mirror
-			mockV2.addLog(newV2TransactionLog(1, 0, "world", "users:001", "100", "USD/2"))
-			mockV2.addLog(newV2TransactionLog(2, 1, "world", "users:002", "200", "EUR/2"))
+			first := newV2TransactionLog(1, 0, "world", "users:001", "100", "USD/2")
+			first.Date = "2023-11-14T22:13:20.123456Z"
+			mockV2.addLog(first)
+			second := newV2TransactionLog(2, 1, "world", "users:002", "200", "EUR/2")
+			second.Date = "2023-11-14T22:14:00Z"
+			mockV2.addLog(second)
 			mockV2.addLog(newV2SetMetadataLog(3, "ACCOUNT", "users:001", map[string]string{"role": "admin"}))
 
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
@@ -332,9 +394,50 @@ var _ = Describe("Mirror", Ordered, func() {
 				txs, err := listAllTransactions(ctx, client, "mirror-sync", 10, 0)
 				g.Expect(err).To(Succeed())
 
-				// We expect at least 2 transactions from the v2 logs
+				// We expect at least 2 transactions from the v2 logs, with their
+				// original v2 insertion chronology preserved end-to-end.
 				g.Expect(len(txs)).To(BeNumerically(">=", 2))
+
+				insertedAtByID := make(map[uint64]uint64, len(txs))
+				for _, tx := range txs {
+					insertedAtByID[tx.GetId()] = tx.GetInsertedAt().GetData()
+				}
+				g.Expect(insertedAtByID).To(HaveKeyWithValue(uint64(0), uint64(1700000000123456)))
+				g.Expect(insertedAtByID).To(HaveKeyWithValue(uint64(1), uint64(1700000040000000)))
 			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should query the source insertion chronology through the inserted_at index", func() {
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(
+				"mirror-sync",
+				commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+			)))
+			Expect(err).To(Succeed())
+			Expect(actions.WaitForBuiltinIndexReady(
+				ctx,
+				client,
+				"mirror-sync",
+				commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+			)).To(Succeed())
+
+			_, err = client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: "mirror-sync",
+				Query: &commonpb.PreparedQuery{
+					Name:   "first-source-ingestion-window",
+					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+					Filter: actions.InsertedAtRangeFilter(1700000000000000, 1700000000500000),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			result, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+				Ledger:    "mirror-sync",
+				QueryName: "first-source-ingestion-window",
+				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+			})
+			Expect(err).To(Succeed())
+			Expect(result.GetCursor().GetTransactionData()).To(HaveLen(1))
+			Expect(result.GetCursor().GetTransactionData()[0].GetId()).To(Equal(uint64(0)))
 		})
 
 		It("Should sync account metadata from v2", func() {
@@ -397,7 +500,7 @@ var _ = Describe("Mirror", Ordered, func() {
 											Key:    "mirrored",
 											Source: &commonpb.SetMetadataAction_Value{Value: "true"},
 										},
-										},
+									},
 									}},
 								}}},
 								// Never mirror transactions flagged skip=yes.
@@ -553,6 +656,109 @@ var _ = Describe("Mirror", Ordered, func() {
 				actions.NewPosting("world", "users:002", big.NewInt(200), "USD/2"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
+		})
+	})
+
+	// Deleting a mirror ledger must tear its worker down. The teardown itself
+	// lives in Manager.reconcile (unit-tested), but reconcile only runs on a
+	// leadership change or a ConfigChanged notification — and that notification
+	// is raised solely for sink/mirror config changes. DeleteLedger therefore
+	// has to mark the mirror config as changed, or the worker survives the
+	// deletion and keeps polling the v2 source, proposing ingests the FSM
+	// rejects. The request counter is what pins that: it must stop rising.
+	Context("When deleting a mirror ledger", Ordered, func() {
+		var mockV2 *mockV2Server
+
+		BeforeAll(func() {
+			mockV2 = newMockV2Server()
+			DeferCleanup(mockV2.Close)
+
+			mockV2.addLog(newV2TransactionLog(1, 0, "world", "users:001", "50", "USD/2"))
+
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreateLedger{
+					CreateLedger: &servicepb.CreateLedgerRequest{
+						Name: "mirror-delete",
+						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+						MirrorSource: &commonpb.MirrorSourceConfig{
+							LedgerName: "default",
+							Type: &commonpb.MirrorSourceConfig_Http{
+								Http: &commonpb.HttpMirrorSourceConfig{
+									BaseUrl: mockV2.URL(),
+								},
+							},
+						},
+					},
+				},
+			}))
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				txs, err := listAllTransactions(ctx, client, "mirror-delete", 10, 0)
+				g.Expect(err).To(Succeed())
+				g.Expect(len(txs)).To(BeNumerically(">=", 1))
+			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should stop the mirror worker once the ledger is deleted", func() {
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.DeleteLedgerAction("mirror-delete")))
+			Expect(err).To(Succeed())
+
+			// The worker may be mid-poll when the delete applies, so wait for the
+			// count to stop rising. The probe interval must exceed the worker's
+			// poll interval (defaultPollInterval, 5s — a package-private const
+			// with no test override), or two consecutive probes can straddle a
+			// gap between ticks and read the same value off a live worker. At 6s
+			// apart, two equal counts mean a tick was due and did not happen.
+			previous := -1
+			Eventually(func(g Gomega) {
+				current := mockV2.requestCount()
+				defer func() { previous = current }()
+				g.Expect(current).To(Equal(previous))
+			}, 30*time.Second, 6*time.Second).Should(Succeed(),
+				"mirror worker is still polling the source after its ledger was deleted")
+
+			// And it stays stopped rather than merely pausing between polls: held
+			// over more than two poll intervals so a worker that is merely slow
+			// cannot pass.
+			Consistently(mockV2.requestCount, 12*time.Second, 500*time.Millisecond).
+				Should(Equal(previous))
+		})
+
+		// EN-1773 asked for a "recreate under the same name restarts from source
+		// log 1" case. That lifecycle is not reachable: DeleteLedger soft-deletes
+		// and the tombstone is retained, so CreateLedger for the same name is
+		// rejected with ErrLedgerDeleted rather than starting a fresh mirror.
+		// The nil-boundary resume path the ticket wanted to cover is already
+		// pinned by TestWorker_FreshLedgerFetchesFromSourceIDOne; what belongs
+		// here is the guard that makes the recreate path unreachable in the
+		// first place.
+		It("Should reject recreating a deleted mirror ledger under the same name", func() {
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreateLedger{
+					CreateLedger: &servicepb.CreateLedgerRequest{
+						Name: "mirror-delete",
+						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+						MirrorSource: &commonpb.MirrorSourceConfig{
+							LedgerName: "default",
+							Type: &commonpb.MirrorSourceConfig_Http{
+								Http: &commonpb.HttpMirrorSourceConfig{
+									BaseUrl: mockV2.URL(),
+								},
+							},
+						},
+					},
+				},
+			}))
+			Expect(err).To(HaveOccurred())
+
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			Expect(st.Code()).To(Equal(codes.FailedPrecondition))
+
+			info := actions.ExtractGRPCErrorInfo(err)
+			Expect(info).NotTo(BeNil())
+			Expect(info.Reason).To(Equal(domain.ErrReasonLedgerDeleted))
 		})
 	})
 

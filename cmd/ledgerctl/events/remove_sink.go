@@ -52,7 +52,7 @@ func runRemoveSink(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Removing event sink %s...", name))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Removing event sink %s...", name))
 
 	requests := []*servicepb.Request{
 		{

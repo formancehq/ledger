@@ -22,21 +22,6 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 )
 
-// Common port constants shared by all e2e tests.
-// All tests run sequentially, so they can safely reuse the same ports.
-// Using high ports (15xxx) to avoid conflicts with host services.
-const (
-	// Multi-node test ports (up to 4 nodes: base+0, base+1, base+2, base+3).
-	TestRaftBasePort    = 15000
-	TestServiceBasePort = 15100
-	TestHTTPBasePort    = 15200
-	TestGatewayBasePort = 15300
-
-	// Single-node test ports (raft port is derived as TestSingleGRPCPort - 1000).
-	TestSingleHTTPPort = 15200
-	TestSingleGRPCPort = 15100
-)
-
 var (
 	Debug = os.Getenv("DEBUG") == "true"
 )
@@ -49,8 +34,12 @@ type ServiceWithClient struct {
 	GRPCConn      *grpc.ClientConn
 	WalDir        string
 	DataDir       string
+	HTTPPort      int
 	GRPCPort      int
 	NodeID        uint32
+	// lease owns the node's ports. RestartNode needs it to rebind the same
+	// addresses: the node's peers still hold its old Raft address.
+	lease *testserver.NodeLease
 }
 
 // NewGRPCClient creates a new gRPC client connection for a given port with automatic retry on Unavailable errors.
@@ -59,7 +48,7 @@ func NewGRPCClient(grpcPort int) (servicepb.BucketServiceClient, clusterpb.Clust
 }
 
 // NewGRPCClientWithRetry creates a new gRPC client with optional retry policy.
-func NewGRPCClientWithRetry(grpcPort int, withRetry bool) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
+func NewGRPCClientWithRetry(grpcPort int, withRetry bool, extraDialOptions ...grpc.DialOption) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	}
@@ -67,6 +56,8 @@ func NewGRPCClientWithRetry(grpcPort int, withRetry bool) (servicepb.BucketServi
 	if withRetry {
 		opts = append(opts, grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy))
 	}
+
+	opts = append(opts, extraDialOptions...)
 
 	conn, err := grpc.NewClient(
 		fmt.Sprintf("localhost:%d", grpcPort),
@@ -134,7 +125,6 @@ func WithNodeInstruments(nodeIndex int, instruments ...testservice.Instrumentati
 // Cleanup is handled automatically via DeferCleanup.
 func SetupMultiNodeCluster(
 	countInstances int,
-	raftBasePort, serviceBasePort, httpBasePort, gatewayBasePort int,
 	opts ...MultiNodeOption,
 ) (context.Context, []*ServiceWithClient, *testserver.Gateway, *uint64) {
 	options := MultiNodeOptions{
@@ -146,17 +136,27 @@ func SetupMultiNodeCluster(
 
 	ctx := logging.TestingContext()
 
+	// Lease every node's ports BEFORE any node starts: the gateway's peer list
+	// and the joiners' --join address are built from these numbers while the
+	// servers are still down, and the lease holds the sockets open for that
+	// whole interval.
+	leases := make([]*testserver.NodeLease, countInstances)
+	nodePorts := make([]testserver.NodePorts, countInstances)
+
+	for i := range countInstances {
+		leases[i] = testserver.AllocateNodeLease()
+		nodePorts[i] = leases[i].Ports()
+	}
+
 	var gw *testserver.Gateway
 	if options.WithGateway {
-		gatewayPorts := make([]int, countInstances)
 		nodeRaftAddresses := make([]string, countInstances)
 		for i := range countInstances {
-			gatewayPorts[i] = gatewayBasePort + i
-			nodeRaftAddresses[i] = fmt.Sprintf("127.0.0.1:%d", raftBasePort+i)
+			nodeRaftAddresses[i] = fmt.Sprintf("127.0.0.1:%d", nodePorts[i].Raft())
 		}
 
 		var err error
-		gw, err = testserver.NewGateway(logging.FromContext(ctx), gatewayPorts, nodeRaftAddresses)
+		gw, err = testserver.NewGateway(logging.FromContext(ctx), nodeRaftAddresses)
 		Expect(err).To(Succeed())
 
 		Expect(gw.Start(ctx)).To(Succeed())
@@ -172,9 +172,7 @@ func SetupMultiNodeCluster(
 		instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 			NodeID:       i + 1,
 			ClusterID:    "test-cluster",
-			HTTPPort:     httpBasePort + i,
-			RaftPort:     raftBasePort + i,
-			GRPCPort:     serviceBasePort + i,
+			Ports:        nodePorts[i],
 			WalDir:       walDir,
 			DataDir:      dataDir,
 			Debug:        Debug,
@@ -213,12 +211,12 @@ func SetupMultiNodeCluster(
 		instruments = append(instruments, options.PerNodeInstruments[i]...)
 		instruments = append(instruments, extraInstruments...)
 
-		server := testservice.New(cmdserver.NewRunCommand,
+		server := leases[i].NewService(cmdserver.NewRunCommandWithBindings,
 			testservice.WithInstruments(instruments...),
 		)
 		Expect(server.Start(ctx)).To(Succeed())
 
-		grpcClient, clusterClient, grpcConn, err := NewGRPCClient(serviceBasePort + i)
+		grpcClient, clusterClient, grpcConn, err := NewGRPCClient(nodePorts[i].GRPC())
 		Expect(err).To(Succeed())
 		DeferCleanup(func() {
 			_ = grpcConn.Close()
@@ -231,8 +229,10 @@ func SetupMultiNodeCluster(
 			GRPCConn:      grpcConn,
 			WalDir:        walTmpDir,
 			DataDir:       dataTmpDir,
-			GRPCPort:      serviceBasePort + i,
+			HTTPPort:      nodePorts[i].HTTP(),
+			GRPCPort:      nodePorts[i].GRPC(),
 			NodeID:        uint32(i + 1),
+			lease:         leases[i],
 		})
 	}
 
@@ -252,7 +252,7 @@ func SetupMultiNodeCluster(
 	// ClusterBootstrapService is exposed there (see
 	// internal/adapter/grpc/server_bootstrap.go), so --join targets the
 	// raft port, not the external service gRPC port.
-	bootstrapRaftAddr := fmt.Sprintf("127.0.0.1:%d", raftBasePort)
+	bootstrapRaftAddr := fmt.Sprintf("127.0.0.1:%d", nodePorts[0].Raft())
 	for i := 1; i < countInstances; i++ {
 		startNode(i, testserver.WithJoin(bootstrapRaftAddr))
 	}
@@ -287,7 +287,7 @@ func StopNode(ctx context.Context, srv *ServiceWithClient) {
 // instance's internal state (errorChan, cobra command) is not fully reset
 // after Stop, causing the next shutdown cycle to hang.
 func RestartNode(ctx context.Context, srv *ServiceWithClient) {
-	srv.Service = testservice.New(cmdserver.NewRunCommand,
+	srv.Service = srv.lease.NewService(cmdserver.NewRunCommandWithBindings,
 		testservice.WithInstruments(srv.Service.Instruments...),
 	)
 	Expect(srv.Service.Start(ctx)).To(Succeed())
@@ -331,9 +331,9 @@ func StopServers(ctx context.Context, servers []*ServiceWithClient) {
 }
 
 // SetupSingleNode creates a single-node cluster for tests that don't need Raft consensus.
-// Returns the context, client, and cluster client.
+// Ports are leased, never passed in: see testserver.AllocateNodeLease.
 // Cleanup is handled automatically via DeferCleanup.
-func SetupSingleNode(httpPort, grpcPort int, extraInstruments ...testservice.Instrumentation) (context.Context, servicepb.BucketServiceClient, clusterpb.ClusterServiceClient) {
+func SetupSingleNode(extra ...testservice.Instrumentation) (context.Context, *ServiceWithClient) {
 	ctx := logging.TestingContext()
 
 	walTmpDir := GinkgoT().TempDir()
@@ -343,24 +343,22 @@ func SetupSingleNode(httpPort, grpcPort int, extraInstruments ...testservice.Ins
 		Expect(os.RemoveAll(dataTmpDir)).To(Succeed())
 	})
 
-	// Derive Raft port from gRPC port (e.g., 8100 -> 7100)
-	raftPort := grpcPort - 1000
+	lease := testserver.AllocateNodeLease()
+	ports := lease.Ports()
 
 	instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 		NodeID:    1,
 		ClusterID: "test-cluster",
-		HTTPPort:  httpPort,
-		RaftPort:  raftPort,
-		GRPCPort:  grpcPort,
+		Ports:     ports,
 		WalDir:    walTmpDir,
 		DataDir:   dataTmpDir,
 		Debug:     Debug,
 		Output:    GinkgoWriter,
 	})
 	instruments = append(instruments, testserver.WithBootstrap())
-	instruments = append(instruments, extraInstruments...)
+	instruments = append(instruments, extra...)
 
-	server := testservice.New(cmdserver.NewRunCommand,
+	server := lease.NewService(cmdserver.NewRunCommandWithBindings,
 		testservice.WithInstruments(instruments...),
 	)
 	Expect(server.Start(ctx)).To(Succeed())
@@ -373,7 +371,7 @@ func SetupSingleNode(httpPort, grpcPort int, extraInstruments ...testservice.Ins
 	})
 
 	// Create gRPC client
-	grpcClient, clusterClient, grpcConn, err := NewGRPCClient(grpcPort)
+	grpcClient, clusterClient, grpcConn, err := NewGRPCClient(ports.GRPC())
 	Expect(err).To(Succeed())
 	DeferCleanup(func() {
 		_ = grpcConn.Close()
@@ -387,5 +385,16 @@ func SetupSingleNode(httpPort, grpcPort int, extraInstruments ...testservice.Ins
 		return state.GetLeader() != 0
 	}).Within(5 * time.Second).To(BeTrue())
 
-	return ctx, grpcClient, clusterClient
+	return ctx, &ServiceWithClient{
+		Service:       server,
+		Client:        grpcClient,
+		ClusterClient: clusterClient,
+		GRPCConn:      grpcConn,
+		WalDir:        walTmpDir,
+		DataDir:       dataTmpDir,
+		HTTPPort:      ports.HTTP(),
+		GRPCPort:      ports.GRPC(),
+		NodeID:        1,
+		lease:         lease,
+	}
 }

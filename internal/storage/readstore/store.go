@@ -54,7 +54,24 @@ type Store struct {
 	// NotifyProgress after each WriteProgress to wake up waiters.
 	progressMu   sync.Mutex
 	progressCond *sync.Cond
+
+	// readOnly marks a store opened via OpenReadOnly — a frozen view (query
+	// checkpoint) whose fold cursor will never advance, so freshness waits
+	// are meaningless against it.
+	readOnly bool
+
+	// leases tracks the pinned sequences of live reads so the event GC never
+	// reclaims history a pinned reader could still resolve (see read_lease.go
+	// and event_gc.go). Nil on frozen stores — no GC runs against them.
+	leases *LeaseRegistry
 }
+
+// Leases returns the read-lease registry gating the event GC.
+func (s *Store) Leases() *LeaseRegistry { return s.leases }
+
+// Frozen reports whether this store is an immutable read-only view (a query
+// checkpoint) rather than the live, builder-fed read index.
+func (s *Store) Frozen() bool { return s.readOnly }
 
 // New opens or creates a Pebble database at the given directory for the read index.
 func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
@@ -129,6 +146,7 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 		db:     db,
 		logger: logger.WithFields(map[string]any{"cmp": "read-store"}),
 		dir:    dir,
+		leases: NewLeaseRegistry(),
 	}
 	s.progressCond = sync.NewCond(&s.progressMu)
 
@@ -148,9 +166,11 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 	}
 
 	s := &Store{
-		db:     db,
-		logger: logger.WithFields(map[string]any{"cmp": "read-store-readonly"}),
-		dir:    dirPath,
+		db:       db,
+		logger:   logger.WithFields(map[string]any{"cmp": "read-store-readonly"}),
+		dir:      dirPath,
+		readOnly: true,
+		leases:   NewLeaseRegistry(),
 	}
 	s.progressCond = sync.NewCond(&s.progressMu)
 
@@ -333,10 +353,37 @@ type IndexVersionState struct {
 	// PendingVersion is the target version of an in-flight local
 	// rewrite. Zero when no rewrite is running.
 	PendingVersion uint32
+	// ActivationSequence is the log sequence CurrentVersion's keyspace
+	// became complete at. A rewrite stamps every event it writes with the
+	// FSM sequence it read from, so a reader pinned below that sequence
+	// resolves the promoted keyspace as empty; queries compare their pin
+	// against this and refuse rather than serve nothing. Zero for a version
+	// built by an initial backfill, whose events carry the sequences of the
+	// logs they were folded from and are therefore resolvable at any pin.
+	ActivationSequence uint64
 	// RewriteProgress is the cursor of the in-flight rewrite (e.g. the
 	// last reverse-map key processed). Empty when no rewrite is
 	// running. Variable-length, opaque to the readstore.
 	RewriteProgress []byte
+
+	// HighWater is the highest forward-encoding version this index has ever
+	// allocated on this replica. It is what makes version numbers single-use:
+	// dropping the index tombstones the record ({0, 0, HighWater}) instead of
+	// deleting it, and a re-created index starts at HighWater+1 — so a fresh
+	// builder pass can never write into a keyspace an earlier incarnation
+	// already wrote. Events are permanent and stamped with the sequence of
+	// the log that caused them; a keyspace shared by two passes can hold two
+	// events for one log at one sequence under different encodings, and the
+	// retraction such a pass emits loses the same-sequence tie to the
+	// standing ADD — an immortal row. Reuse is the only way into that state.
+	HighWater uint32
+}
+
+// Tombstoned reports whether the record marks a dropped index: no servable
+// version, no build in flight, only the high-water mark held so the next
+// incarnation cannot reuse a version number.
+func (s IndexVersionState) Tombstoned() bool {
+	return s.CurrentVersion == 0 && s.PendingVersion == 0
 }
 
 // IndexVersionStateEntry is the decoded form returned by
@@ -349,31 +396,37 @@ type IndexVersionStateEntry struct {
 }
 
 // encodeIndexVersionState packs the state to a single byte slice.
-// Layout: [current(4B BE)][pending(4B BE)][rewrite_progress…].
+// Layout: [current(4B BE)][pending(4B BE)][activation(8B BE)][high_water(4B BE)][rewrite_progress…].
 func encodeIndexVersionState(s IndexVersionState) []byte {
-	out := make([]byte, 8+len(s.RewriteProgress))
+	out := make([]byte, indexVersionStateHeaderLen+len(s.RewriteProgress))
 	binary.BigEndian.PutUint32(out[0:4], s.CurrentVersion)
 	binary.BigEndian.PutUint32(out[4:8], s.PendingVersion)
-	copy(out[8:], s.RewriteProgress)
+	binary.BigEndian.PutUint64(out[8:16], s.ActivationSequence)
+	binary.BigEndian.PutUint32(out[16:20], s.HighWater)
+	copy(out[indexVersionStateHeaderLen:], s.RewriteProgress)
 
 	return out
 }
+
+const indexVersionStateHeaderLen = 20
 
 // decodeIndexVersionState parses a stored value back to IndexVersionState.
 // Returns (zero, false) on any malformed input — caller treats it as
 // "absent" and re-initializes.
 func decodeIndexVersionState(v []byte) (IndexVersionState, bool) {
-	if len(v) < 8 {
+	if len(v) < indexVersionStateHeaderLen {
 		return IndexVersionState{}, false
 	}
 
-	progress := make([]byte, len(v)-8)
-	copy(progress, v[8:])
+	progress := make([]byte, len(v)-indexVersionStateHeaderLen)
+	copy(progress, v[indexVersionStateHeaderLen:])
 
 	return IndexVersionState{
-		CurrentVersion:  binary.BigEndian.Uint32(v[0:4]),
-		PendingVersion:  binary.BigEndian.Uint32(v[4:8]),
-		RewriteProgress: progress,
+		CurrentVersion:     binary.BigEndian.Uint32(v[0:4]),
+		PendingVersion:     binary.BigEndian.Uint32(v[4:8]),
+		ActivationSequence: binary.BigEndian.Uint64(v[8:16]),
+		HighWater:          binary.BigEndian.Uint32(v[16:20]),
+		RewriteProgress:    progress,
 	}, true
 }
 
@@ -435,14 +488,46 @@ func (s *Store) ReadIndexVersionState(ledgerName, canonicalID string) (IndexVers
 // Returns (0, error) on a real Pebble I/O failure; (0, nil) when no
 // version state has been written yet (caller should translate to
 // ErrIndexBuilding at query boundaries).
-func SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) func(canonical string) (uint32, error) {
-	return func(canonical string) (uint32, error) {
-		state, _, err := ReadIndexVersionStateFrom(reader, ledgerName, canonical)
+func SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) func(canonical string) (uint32, bool, error) {
+	return PinnedVersionResolver(reader, ledgerName, 0)
+}
+
+// PinnedVersionResolver is the pin-aware variant: a version promoted by a
+// schema rewrite is only servable at pins at or above its activation
+// sequence, because the rewrite stamps every event it writes with the one
+// FSM sequence it read from. Below that, the promoted keyspace resolves
+// empty at the pin — indistinguishable from "no rows match" — so the
+// resolver reports the index as not yet live (version 0) and the caller
+// surfaces ErrIndexBuilding instead of an empty page.
+//
+// A pin of 0 means "no pin" (introspection paths that do not resolve rows
+// at a sequence) and skips the check.
+func PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint64) func(canonical string) (uint32, bool, error) {
+	return func(canonical string) (uint32, bool, error) {
+		state, present, err := ReadIndexVersionStateFrom(reader, ledgerName, canonical)
 		if err != nil {
-			return 0, err
+			return 0, false, err
 		}
 
-		return state.CurrentVersion, nil
+		if !present {
+			// No record at all. Callers use this to tell a removed index
+			// apart from one still being built — see requireIndexReady.
+			return 0, false, nil
+		}
+
+		if state.Tombstoned() {
+			// A dropped index. The record survives only to hold the
+			// high-water version for the next incarnation; to queries it
+			// must read exactly like the removed index it is, never as one
+			// still building.
+			return 0, false, nil
+		}
+
+		if pin > 0 && state.ActivationSequence > pin {
+			return 0, true, nil
+		}
+
+		return state.CurrentVersion, true, nil
 	}
 }
 
@@ -730,15 +815,22 @@ func (s *Store) WaitForSequence(ctx context.Context, minSeq uint64) error {
 		return nil
 	}
 
-	// Spawn a goroutine that broadcasts when the context is cancelled so
-	// the Wait() below is unblocked.
+	// Broadcast on cancellation while holding progressMu, exactly as
+	// WaitForCheckpoint does. Taking the lock is what closes the missed-wakeup
+	// window: the loop below checks ctx.Err() and calls Wait() under the same
+	// lock, and Wait releases it only once parked. Broadcasting without the
+	// lock can land between that check and Wait, stranding the waiter until an
+	// unrelated NotifyProgress arrives — so an alignment wait would outlive
+	// its caller's cancellation instead of ending with it.
 	done := make(chan struct{})
 	defer close(done)
 
 	go func() {
 		select {
 		case <-ctx.Done():
+			s.progressMu.Lock()
 			s.progressCond.Broadcast()
+			s.progressMu.Unlock()
 		case <-done:
 		}
 	}()

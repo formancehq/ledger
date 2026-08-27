@@ -19,7 +19,7 @@ Each index is described by a `common.Index` proto, persisted in the `SubAttrInde
 |-------|------|
 | `id` (`IndexID`) | Tagged identifier — built-in (txn/log/account) or `Metadata(target, key)`. |
 | `build_status` | **Informational only**, set by the FSM at `CreateIndex` / `SetMetadataFieldType`. NOT consulted by the query path. |
-| `created_at`, `last_built_at`, `last_error` | Bookkeeping. |
+| `created_at` | Bookkeeping. |
 | `ledger` | Empty for bucket-scoped indexes (e.g. address ranges); set for ledger-scoped indexes. |
 | `forward_encoding_version` | **Cluster-wide** version bumped on every audit event that requires the indexer to rewrite the forward index (`CreateIndex`, `SetMetadataFieldType`). |
 
@@ -186,10 +186,10 @@ The pass skips — logged at INFO, never reported as a clean result — when the
 |---|---|
 | `indexedSequence == lastSequence` | judges rows: reports a field the replay observed a `RemovedMetadataFieldType` for, or one absent from both the registry and the replayed schema |
 | `indexedSequence < lastSequence` | decodes keys only — no verdict |
-| `indexedSequence > lastSequence` | decodes keys only — no verdict |
+| `indexedSequence > lastSequence` | reports the position itself as `REVERSE_MAP_ORPHAN`; still no per-row verdict |
 | any position | a key that does not decode is always reported; it needs no oracle |
 
-The two unaligned positions are skips, but they are not symmetric.
+The two unaligned positions are not symmetric.
 
 *Behind* is the ordinary state on a live cluster: the registry is written at Raft apply while the reverse map folds later, so between apply and fold a legitimately-removed field has no registry entry but still has live rows.
 
@@ -201,7 +201,9 @@ indexedSequence = progress(t_peer) <= maxLogSeq(t_peer) <= maxLogSeq(t_primary) 
 
 Taken in the reverse order, the gap between the two pins admits logs applied and folded in between, and the pass then judges rows for ledgers and fields created after the primary pin against oracles that predate them — reporting a healthy cluster as corrupt. The ordering is what makes cross-store snapshot atomicity unnecessary: an ordering that can only leave the peer *behind* is enough, because behind is already a skip.
 
-Ahead remains reachable one way only: a primary-store rollback beneath the cursor (`RestoreCheckpoint` on a follower restore) lowers `maxLogSeq` while the read index keeps its progress. Unlike `usagebuilder`, which detects this and calls `usagestore.Reset()`, the index builder has **no** rollback reset, so the read index legitimately holds rows for logs the restored primary never had. That is a real divergence, but it belongs to the missing reset rather than to the purge path this pass audits, and reporting it here would paint `Check()` red on a restore that never self-heals — so it is logged loudly and skipped.
+Ahead is not reachable at runtime at all. `RestoreCheckpoint` — the only thing that replaces the primary store wholesale — has a single production caller (`dal.incomingRestoreFactory.Run`, via `state.Synchronizer.SynchronizeWithLeader`), and it installs a checkpoint fetched **from** the leader, which only moves a node forward; an applied index can never exceed the leader's log to begin with.
+
+So an ahead cursor means the deployment is already broken — an offline restore of an older backup into a data directory whose `read-indexes/` survived is the classic shape — and the read index then holds rows folded from logs the primary no longer has. That state never self-heals (the index builder, unlike `usagebuilder`, has **no** rollback reset), and it is the corruption this pass exists to surface, so it is **reported**: limiting the pass to key decoding would leave the one read-index limb the checker covers unverified behind an INFO log (invariant #7). The rows themselves stay unjudged — every oracle term is frozen at the verified sequence — so the finding carries the two cursor positions and no per-row orphan.
 
 **Ledger liveness is the only oracle for the unknown-ledger class.** `DeleteLedger` removes the name from the audit-derived live set (and range-deletes the whole `[0x03][ledger]` span at apply); a later `CreateLedger` of the same name puts it back. Deriving the verdict from liveness alone — rather than from a separate append-only "was deleted in the replay" set consulted first — is what keeps a recreated ledger's rows legitimate by construction, instead of resting on the retained tombstone that makes that lifecycle unreachable today.
 

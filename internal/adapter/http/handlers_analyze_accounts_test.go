@@ -197,6 +197,51 @@ func TestHandleAnalyzeAccounts_EmptyResponse(t *testing.T) {
 	require.Empty(t, wrapper.Data.Patterns)
 }
 
+// TestHandleAnalyzeAccounts_NoNullCollections pins the fix for a real
+// conformance failure: the OpenAPI schema types assets/metadataKeys/examples
+// as non-nullable arrays, but AccountPattern.GetAssets() /
+// GetMetadataKeys() and PatternSegment.GetExamples() return nil for an
+// absent repeated field, which serialized as JSON null. Left unset here to
+// reproduce that case, mirroring TestTransaction_MarshalJSON_NoNullCollections.
+func TestHandleAnalyzeAccounts_NoNullCollections(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ uint32, _ func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
+			return &servicepb.AnalyzeAccountsResponse{
+				TotalAccounts: 1,
+				Patterns: []*servicepb.AccountPattern{
+					{
+						Pattern:      "world",
+						AccountCount: 1,
+						Segments: []*servicepb.PatternSegment{
+							{Position: 0, Type: servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_FIXED, FixedValue: "world"},
+						},
+					},
+				},
+			}, nil
+		}).AnyTimes()
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/my-ledger/analyze-accounts", nil, map[string]string{
+		"ledgerName": "my-ledger",
+	})
+
+	srv.handleAnalyzeAccounts(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	body := w.Body.String()
+	require.Contains(t, body, `"assets":[]`)
+	require.Contains(t, body, `"metadataKeys":[]`)
+	require.Contains(t, body, `"examples":[]`)
+	require.NotContains(t, body, `"assets":null`)
+	require.NotContains(t, body, `"metadataKeys":null`)
+	require.NotContains(t, body, `"examples":null`)
+}
+
 func TestHandleAnalyzeAccounts_NoLeaderError(t *testing.T) {
 	t.Parallel()
 

@@ -54,7 +54,7 @@ func runRevokeKey(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Revoking signing key %s...", keyID))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Revoking signing key %s...", keyID))
 
 	requests := []*servicepb.Request{
 		{

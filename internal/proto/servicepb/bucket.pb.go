@@ -1216,6 +1216,9 @@ func (x *ApplyResponse) GetLogs() []*commonpb.Log {
 
 type Request struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
+	// Idempotency is keyed per atomic batch (ApplyBatch.idempotency_key),
+	// matching the atomic/signed unit — never per individual request.
+	//
 	// Types that are valid to be assigned to Type:
 	//
 	//	*Request_Apply
@@ -1595,135 +1598,135 @@ type isRequest_Type interface {
 }
 
 type Request_Apply struct {
-	Apply *LedgerApplyRequest `protobuf:"bytes,2,opt,name=apply,proto3,oneof"`
+	Apply *LedgerApplyRequest `protobuf:"bytes,1,opt,name=apply,proto3,oneof"`
 }
 
 type Request_CreateLedger struct {
-	CreateLedger *CreateLedgerRequest `protobuf:"bytes,3,opt,name=create_ledger,json=createLedger,proto3,oneof"`
+	CreateLedger *CreateLedgerRequest `protobuf:"bytes,2,opt,name=create_ledger,json=createLedger,proto3,oneof"`
 }
 
 type Request_DeleteLedger struct {
-	DeleteLedger *DeleteLedgerRequest `protobuf:"bytes,4,opt,name=delete_ledger,json=deleteLedger,proto3,oneof"`
+	DeleteLedger *DeleteLedgerRequest `protobuf:"bytes,3,opt,name=delete_ledger,json=deleteLedger,proto3,oneof"`
 }
 
 type Request_RegisterSigningKey struct {
-	RegisterSigningKey *RegisterSigningKeyRequest `protobuf:"bytes,6,opt,name=register_signing_key,json=registerSigningKey,proto3,oneof"`
+	RegisterSigningKey *RegisterSigningKeyRequest `protobuf:"bytes,4,opt,name=register_signing_key,json=registerSigningKey,proto3,oneof"`
 }
 
 type Request_RevokeSigningKey struct {
-	RevokeSigningKey *RevokeSigningKeyRequest `protobuf:"bytes,7,opt,name=revoke_signing_key,json=revokeSigningKey,proto3,oneof"`
+	RevokeSigningKey *RevokeSigningKeyRequest `protobuf:"bytes,5,opt,name=revoke_signing_key,json=revokeSigningKey,proto3,oneof"`
 }
 
 type Request_SetSigningConfig struct {
-	SetSigningConfig *SetSigningConfigRequest `protobuf:"bytes,8,opt,name=set_signing_config,json=setSigningConfig,proto3,oneof"`
+	SetSigningConfig *SetSigningConfigRequest `protobuf:"bytes,6,opt,name=set_signing_config,json=setSigningConfig,proto3,oneof"`
 }
 
 type Request_AddEventsSink struct {
-	AddEventsSink *AddEventsSinkRequest `protobuf:"bytes,9,opt,name=add_events_sink,json=addEventsSink,proto3,oneof"`
+	AddEventsSink *AddEventsSinkRequest `protobuf:"bytes,7,opt,name=add_events_sink,json=addEventsSink,proto3,oneof"`
 }
 
 type Request_RemoveEventsSink struct {
-	RemoveEventsSink *RemoveEventsSinkRequest `protobuf:"bytes,10,opt,name=remove_events_sink,json=removeEventsSink,proto3,oneof"`
+	RemoveEventsSink *RemoveEventsSinkRequest `protobuf:"bytes,8,opt,name=remove_events_sink,json=removeEventsSink,proto3,oneof"`
 }
 
 type Request_CloseChapter struct {
-	CloseChapter *CloseChapterRequest `protobuf:"bytes,11,opt,name=close_chapter,json=closeChapter,proto3,oneof"`
+	CloseChapter *CloseChapterRequest `protobuf:"bytes,9,opt,name=close_chapter,json=closeChapter,proto3,oneof"`
 }
 
 type Request_SealChapter struct {
-	SealChapter *SealChapterRequest `protobuf:"bytes,12,opt,name=seal_chapter,json=sealChapter,proto3,oneof"`
+	SealChapter *SealChapterRequest `protobuf:"bytes,10,opt,name=seal_chapter,json=sealChapter,proto3,oneof"`
 }
 
 type Request_ArchiveChapter struct {
-	ArchiveChapter *ArchiveChapterRequest `protobuf:"bytes,13,opt,name=archive_chapter,json=archiveChapter,proto3,oneof"`
+	ArchiveChapter *ArchiveChapterRequest `protobuf:"bytes,11,opt,name=archive_chapter,json=archiveChapter,proto3,oneof"`
 }
 
 type Request_ConfirmArchiveChapter struct {
-	ConfirmArchiveChapter *ConfirmArchiveChapterRequest `protobuf:"bytes,14,opt,name=confirm_archive_chapter,json=confirmArchiveChapter,proto3,oneof"`
+	ConfirmArchiveChapter *ConfirmArchiveChapterRequest `protobuf:"bytes,12,opt,name=confirm_archive_chapter,json=confirmArchiveChapter,proto3,oneof"`
 }
 
 type Request_SetMaintenanceMode struct {
-	SetMaintenanceMode *SetMaintenanceModeRequest `protobuf:"bytes,15,opt,name=set_maintenance_mode,json=setMaintenanceMode,proto3,oneof"`
+	SetMaintenanceMode *SetMaintenanceModeRequest `protobuf:"bytes,13,opt,name=set_maintenance_mode,json=setMaintenanceMode,proto3,oneof"`
 }
 
 type Request_SetChapterSchedule struct {
-	SetChapterSchedule *SetChapterScheduleRequest `protobuf:"bytes,16,opt,name=set_chapter_schedule,json=setChapterSchedule,proto3,oneof"`
+	SetChapterSchedule *SetChapterScheduleRequest `protobuf:"bytes,14,opt,name=set_chapter_schedule,json=setChapterSchedule,proto3,oneof"`
 }
 
 type Request_DeleteChapterSchedule struct {
-	DeleteChapterSchedule *DeleteChapterScheduleRequest `protobuf:"bytes,17,opt,name=delete_chapter_schedule,json=deleteChapterSchedule,proto3,oneof"`
+	DeleteChapterSchedule *DeleteChapterScheduleRequest `protobuf:"bytes,15,opt,name=delete_chapter_schedule,json=deleteChapterSchedule,proto3,oneof"`
 }
 
 type Request_SetMetadataFieldType struct {
-	SetMetadataFieldType *SetMetadataFieldTypeRequest `protobuf:"bytes,18,opt,name=set_metadata_field_type,json=setMetadataFieldType,proto3,oneof"`
+	SetMetadataFieldType *SetMetadataFieldTypeRequest `protobuf:"bytes,16,opt,name=set_metadata_field_type,json=setMetadataFieldType,proto3,oneof"`
 }
 
 type Request_RemoveMetadataFieldType struct {
-	RemoveMetadataFieldType *RemoveMetadataFieldTypeRequest `protobuf:"bytes,19,opt,name=remove_metadata_field_type,json=removeMetadataFieldType,proto3,oneof"`
+	RemoveMetadataFieldType *RemoveMetadataFieldTypeRequest `protobuf:"bytes,17,opt,name=remove_metadata_field_type,json=removeMetadataFieldType,proto3,oneof"`
 }
 
 type Request_PromoteLedger struct {
-	PromoteLedger *PromoteLedgerRequest `protobuf:"bytes,21,opt,name=promote_ledger,json=promoteLedger,proto3,oneof"`
+	PromoteLedger *PromoteLedgerRequest `protobuf:"bytes,18,opt,name=promote_ledger,json=promoteLedger,proto3,oneof"`
 }
 
 type Request_CreatePreparedQuery struct {
-	CreatePreparedQuery *CreatePreparedQueryRequest `protobuf:"bytes,22,opt,name=create_prepared_query,json=createPreparedQuery,proto3,oneof"`
+	CreatePreparedQuery *CreatePreparedQueryRequest `protobuf:"bytes,19,opt,name=create_prepared_query,json=createPreparedQuery,proto3,oneof"`
 }
 
 type Request_UpdatePreparedQuery struct {
-	UpdatePreparedQuery *UpdatePreparedQueryRequest `protobuf:"bytes,23,opt,name=update_prepared_query,json=updatePreparedQuery,proto3,oneof"`
+	UpdatePreparedQuery *UpdatePreparedQueryRequest `protobuf:"bytes,20,opt,name=update_prepared_query,json=updatePreparedQuery,proto3,oneof"`
 }
 
 type Request_DeletePreparedQuery struct {
-	DeletePreparedQuery *DeletePreparedQueryRequest `protobuf:"bytes,24,opt,name=delete_prepared_query,json=deletePreparedQuery,proto3,oneof"`
+	DeletePreparedQuery *DeletePreparedQueryRequest `protobuf:"bytes,21,opt,name=delete_prepared_query,json=deletePreparedQuery,proto3,oneof"`
 }
 
 type Request_CreateIndex struct {
-	CreateIndex *CreateIndexRequest `protobuf:"bytes,25,opt,name=create_index,json=createIndex,proto3,oneof"`
+	CreateIndex *CreateIndexRequest `protobuf:"bytes,22,opt,name=create_index,json=createIndex,proto3,oneof"`
 }
 
 type Request_DropIndex struct {
-	DropIndex *DropIndexRequest `protobuf:"bytes,26,opt,name=drop_index,json=dropIndex,proto3,oneof"`
+	DropIndex *DropIndexRequest `protobuf:"bytes,23,opt,name=drop_index,json=dropIndex,proto3,oneof"`
 }
 
 type Request_SaveNumscript struct {
-	SaveNumscript *SaveNumscriptRequest `protobuf:"bytes,27,opt,name=save_numscript,json=saveNumscript,proto3,oneof"`
+	SaveNumscript *SaveNumscriptRequest `protobuf:"bytes,24,opt,name=save_numscript,json=saveNumscript,proto3,oneof"`
 }
 
 type Request_AddAccountType struct {
-	AddAccountType *AddAccountTypeLedgerRequest `protobuf:"bytes,29,opt,name=add_account_type,json=addAccountType,proto3,oneof"`
+	AddAccountType *AddAccountTypeLedgerRequest `protobuf:"bytes,25,opt,name=add_account_type,json=addAccountType,proto3,oneof"`
 }
 
 type Request_RemoveAccountType struct {
-	RemoveAccountType *RemoveAccountTypeLedgerRequest `protobuf:"bytes,30,opt,name=remove_account_type,json=removeAccountType,proto3,oneof"`
+	RemoveAccountType *RemoveAccountTypeLedgerRequest `protobuf:"bytes,26,opt,name=remove_account_type,json=removeAccountType,proto3,oneof"`
 }
 
 type Request_SetDefaultEnforcementMode struct {
-	SetDefaultEnforcementMode *SetDefaultEnforcementModeLedgerRequest `protobuf:"bytes,31,opt,name=set_default_enforcement_mode,json=setDefaultEnforcementMode,proto3,oneof"`
+	SetDefaultEnforcementMode *SetDefaultEnforcementModeLedgerRequest `protobuf:"bytes,27,opt,name=set_default_enforcement_mode,json=setDefaultEnforcementMode,proto3,oneof"`
 }
 
 type Request_CreateQueryCheckpoint struct {
-	CreateQueryCheckpoint *CreateQueryCheckpointRequest `protobuf:"bytes,32,opt,name=create_query_checkpoint,json=createQueryCheckpoint,proto3,oneof"`
+	CreateQueryCheckpoint *CreateQueryCheckpointRequest `protobuf:"bytes,28,opt,name=create_query_checkpoint,json=createQueryCheckpoint,proto3,oneof"`
 }
 
 type Request_DeleteQueryCheckpoint struct {
-	DeleteQueryCheckpoint *DeleteQueryCheckpointRequest `protobuf:"bytes,33,opt,name=delete_query_checkpoint,json=deleteQueryCheckpoint,proto3,oneof"`
+	DeleteQueryCheckpoint *DeleteQueryCheckpointRequest `protobuf:"bytes,29,opt,name=delete_query_checkpoint,json=deleteQueryCheckpoint,proto3,oneof"`
 }
 
 type Request_SetQueryCheckpointSchedule struct {
-	SetQueryCheckpointSchedule *SetQueryCheckpointScheduleRequest `protobuf:"bytes,34,opt,name=set_query_checkpoint_schedule,json=setQueryCheckpointSchedule,proto3,oneof"`
+	SetQueryCheckpointSchedule *SetQueryCheckpointScheduleRequest `protobuf:"bytes,30,opt,name=set_query_checkpoint_schedule,json=setQueryCheckpointSchedule,proto3,oneof"`
 }
 
 type Request_DeleteQueryCheckpointSchedule struct {
-	DeleteQueryCheckpointSchedule *DeleteQueryCheckpointScheduleRequest `protobuf:"bytes,35,opt,name=delete_query_checkpoint_schedule,json=deleteQueryCheckpointSchedule,proto3,oneof"`
+	DeleteQueryCheckpointSchedule *DeleteQueryCheckpointScheduleRequest `protobuf:"bytes,31,opt,name=delete_query_checkpoint_schedule,json=deleteQueryCheckpointSchedule,proto3,oneof"`
 }
 
 type Request_SaveLedgerMetadata struct {
-	SaveLedgerMetadata *SaveLedgerMetadataRequest `protobuf:"bytes,36,opt,name=save_ledger_metadata,json=saveLedgerMetadata,proto3,oneof"`
+	SaveLedgerMetadata *SaveLedgerMetadataRequest `protobuf:"bytes,32,opt,name=save_ledger_metadata,json=saveLedgerMetadata,proto3,oneof"`
 }
 
 type Request_DeleteLedgerMetadata struct {
-	DeleteLedgerMetadata *DeleteLedgerMetadataRequest `protobuf:"bytes,37,opt,name=delete_ledger_metadata,json=deleteLedgerMetadata,proto3,oneof"`
+	DeleteLedgerMetadata *DeleteLedgerMetadataRequest `protobuf:"bytes,33,opt,name=delete_ledger_metadata,json=deleteLedgerMetadata,proto3,oneof"`
 }
 
 func (*Request_Apply) isRequest_Type() {}
@@ -2455,8 +2458,14 @@ func (x *ArchiveChapterRequest) GetChapterId() uint64 {
 }
 
 type ConfirmArchiveChapterRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ChapterId     uint64                 `protobuf:"fixed64,1,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ChapterId uint64                 `protobuf:"fixed64,1,opt,name=chapter_id,json=chapterId,proto3" json:"chapter_id,omitempty"`
+	// sealing_hash commits the confirm to one chapter incarnation. The FSM
+	// compares it against the chapter's own sealing hash immediately before the
+	// purge, so a confirm carrying a stale identity — an archiver holding a
+	// request from a timeline a restore replaced — cannot delete hot history whose
+	// archive belongs to a different incarnation.
+	SealingHash   []byte `protobuf:"bytes,2,opt,name=sealing_hash,json=sealingHash,proto3" json:"sealing_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2496,6 +2505,13 @@ func (x *ConfirmArchiveChapterRequest) GetChapterId() uint64 {
 		return x.ChapterId
 	}
 	return 0
+}
+
+func (x *ConfirmArchiveChapterRequest) GetSealingHash() []byte {
+	if x != nil {
+		return x.SealingHash
+	}
+	return nil
 }
 
 type ListChaptersRequest struct {
@@ -2806,7 +2822,7 @@ func (x *RemoveMetadataFieldTypeRequest) GetKey() string {
 type CreateIndexRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	Id            *commonpb.IndexID      `protobuf:"bytes,5,opt,name=id,proto3" json:"id,omitempty"`
+	Id            *commonpb.IndexID      `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2859,7 +2875,7 @@ func (x *CreateIndexRequest) GetId() *commonpb.IndexID {
 type DropIndexRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	Id            *commonpb.IndexID      `protobuf:"bytes,5,opt,name=id,proto3" json:"id,omitempty"`
+	Id            *commonpb.IndexID      `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7841,7 +7857,7 @@ type GetIndexStatusResponse struct {
 	LastLogSequence     uint64                 `protobuf:"fixed64,2,opt,name=last_log_sequence,json=lastLogSequence,proto3" json:"last_log_sequence,omitempty"`
 	Lag                 uint64                 `protobuf:"fixed64,3,opt,name=lag,proto3" json:"lag,omitempty"`
 	IndexFileSize       uint64                 `protobuf:"fixed64,4,opt,name=index_file_size,json=indexFileSize,proto3" json:"index_file_size,omitempty"`
-	Indexes             []*IndexEntry          `protobuf:"bytes,6,rep,name=indexes,proto3" json:"indexes,omitempty"`
+	Indexes             []*IndexEntry          `protobuf:"bytes,5,rep,name=indexes,proto3" json:"indexes,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -8337,8 +8353,107 @@ type QueryProfile struct {
 	MaterializedRanges   int32                  `protobuf:"varint,5,opt,name=materialized_ranges,json=materializedRanges,proto3" json:"materialized_ranges,omitempty"`
 	MaterializedItems    int32                  `protobuf:"varint,6,opt,name=materialized_items,json=materializedItems,proto3" json:"materialized_items,omitempty"`
 	RootIterator         *IteratorProfile       `protobuf:"bytes,7,opt,name=root_iterator,json=rootIterator,proto3" json:"root_iterator,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Consumer-independent server cost: server entry to the response being ready
+	// for delivery, MINUS barrier_duration_us and MINUS deliver_duration_us. It
+	// cannot be moved by a slow client.
+	//
+	// "Server entry" is the earliest instrumentable point on each transport, and
+	// that is not quite the same point: on gRPC it is the handler's first
+	// statement, because grpc-go receives and unmarshals the request message
+	// before dispatching, putting protobuf decode out of reach; on HTTP it is the
+	// router chain just before authentication, so query/body decode inside the
+	// handler is included. Both start before authentication, and both end at the
+	// same place, which is what keeps the field comparable — with the caveat that
+	// gRPC message decode is never counted on either side of the comparison.
+	//
+	// It does NOT include row serialisation. On a gRPC server stream, marshalling
+	// and the transport write happen inside one inseparable stream.Send() call, so
+	// serialisation is accounted in deliver_duration_us together with consumer
+	// back-pressure. Choose accordingly:
+	//
+	//   - consumer-independent, excludes serialisation:  server_duration_us
+	//   - complete server-side cost, includes serialisation but also absorbs
+	//     back-pressure on a stream:  server_duration_us + deliver_duration_us
+	//
+	// Neither is a clean latency-SLO basis on a streaming read: the first omits a
+	// real cost that grows with page size, the second admits client behaviour into
+	// the signal. Pick the one whose bias is acceptable for the specific SLO and
+	// say which. The server's own slow-query threshold uses the sum, so that
+	// serialisation and forwarded-read cost cannot hide from it.
+	//
+	// prepare_duration_us + execute_duration_us <= server_duration_us; the
+	// difference is server work outside both phases (response assembly,
+	// pagination trailer, profile emission).
+	ServerDurationUs int64 `protobuf:"varint,8,opt,name=server_duration_us,json=serverDurationUs,proto3" json:"server_duration_us,omitempty"`
+	// Portion of server_duration_us spent before the query executor was invoked:
+	// authentication, request validation, filter parsing/compilation and
+	// checkpoint-store opening — plus, on HTTP, query-parameter and body decoding.
+	// gRPC protobuf decode is NOT here: grpc-go unmarshals the request before the
+	// handler runs (see server_duration_us).
+	PrepareDurationUs int64 `protobuf:"varint,9,opt,name=prepare_duration_us,json=prepareDurationUs,proto3" json:"prepare_duration_us,omitempty"`
+	// Portion of server_duration_us spent inside the query executor. Contains
+	// index_duration_us and enrichment_duration_us as sub-phases, plus snapshot
+	// setup, ledger/schema resolution and — when rows are produced lazily
+	// (a follower routing to the leader) — the time spent pulling rows out of
+	// the cursor.
+	ExecuteDurationUs int64 `protobuf:"varint,10,opt,name=execute_duration_us,json=executeDurationUs,proto3" json:"execute_duration_us,omitempty"`
+	// Time blocked on a read-consistency barrier the CALLER asked for: the Raft
+	// ReadIndex quorum round-trip and the ReadOptions.min_log_sequence read-index
+	// catch-up wait. Deliberately EXCLUDED from server_duration_us — it is a wait
+	// the request opted into, not server cost.
+	//
+	// Only LOCAL waits are measured, and every local wait is measured: a
+	// min_log_sequence catch-up and a ReadIndex attempt are both counted, whether
+	// or not the attempt succeeds and whether or not the read is then forwarded.
+	// Always read this field together with `forwarded`:
+	//
+	//   - forwarded=false: the whole barrier this read paid.
+	//   - forwarded=true, 0: no local wait happened. The remote node's barrier is
+	//     folded into its execution and arrives inside execute_duration_us — 0
+	//     does NOT mean "no barrier was needed".
+	//   - forwarded=true, non-zero: a local wait happened before the read left
+	//     this node, and the remote node's barrier is on top of it inside
+	//     execute_duration_us. The value does NOT identify which wait: a
+	//     min_log_sequence catch-up does not prevent forwarding, and a failed
+	//     ReadIndex attempt (syncing follower, leadership lost mid-quorum) is
+	//     what triggers the fallback. Do not read cluster health off it.
+	//
+	// A failed or superseded wait is still excluded from server_duration_us: the
+	// caller waited for it, and an abandoned quorum round-trip is no more server
+	// work than a completed one.
+	BarrierDurationUs int64 `protobuf:"varint,11,opt,name=barrier_duration_us,json=barrierDurationUs,proto3" json:"barrier_duration_us,omitempty"`
+	// Time spent serialising result rows and handing them to the transport.
+	// EXCLUDED from server_duration_us because on a server stream it also
+	// contains consumer back-pressure, which is client cost, not server cost.
+	//
+	// On a gRPC server stream this is the sum of the stream.Send() calls
+	// (marshal + transport write + flow-control wait). Always 0 on HTTP, where
+	// the profile travels in a response header that must be flushed before the
+	// body, putting response serialisation out of reach. Since row serialisation
+	// is excluded from server_duration_us on both surfaces, that asymmetry does
+	// not affect the comparability of the headline number.
+	DeliverDurationUs int64 `protobuf:"varint,12,opt,name=deliver_duration_us,json=deliverDurationUs,proto3" json:"deliver_duration_us,omitempty"`
+	// Handler entry to the first row accepted by the transport. Compare against
+	// server_duration_us and deliver_duration_us to separate "the server was slow
+	// to produce anything" from "the consumer was slow to drain the stream".
+	//
+	// 0 means no row was ever handed to the transport, which covers three distinct
+	// cases: a streaming read that matched nothing, a unary response (HTTP, and
+	// the AggregateVolumes / ExecutePreparedQuery RPCs — these never hand rows to
+	// a stream), and a streaming read that failed before its first send. Use
+	// items_collected and the RPC's own status to tell them apart.
+	FirstRowDurationUs int64 `protobuf:"varint,13,opt,name=first_row_duration_us,json=firstRowDurationUs,proto3" json:"first_row_duration_us,omitempty"`
+	// True when this node did not serve the read itself but forwarded it to
+	// another node — an explicit leader-consistency read, or the fallback taken
+	// when the local replica is still catching up. The remote node's prepare,
+	// barrier and execution all arrive inside execute_duration_us, so the phase
+	// breakdown describes the local hop only. Its purpose is to stop a zero
+	// barrier_duration_us from being misread as "no barrier was needed"; see that
+	// field for the three cases the pair distinguishes — a forwarded read can
+	// report a non-zero local wait.
+	Forwarded     bool `protobuf:"varint,14,opt,name=forwarded,proto3" json:"forwarded,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *QueryProfile) Reset() {
@@ -8418,6 +8533,55 @@ func (x *QueryProfile) GetRootIterator() *IteratorProfile {
 		return x.RootIterator
 	}
 	return nil
+}
+
+func (x *QueryProfile) GetServerDurationUs() int64 {
+	if x != nil {
+		return x.ServerDurationUs
+	}
+	return 0
+}
+
+func (x *QueryProfile) GetPrepareDurationUs() int64 {
+	if x != nil {
+		return x.PrepareDurationUs
+	}
+	return 0
+}
+
+func (x *QueryProfile) GetExecuteDurationUs() int64 {
+	if x != nil {
+		return x.ExecuteDurationUs
+	}
+	return 0
+}
+
+func (x *QueryProfile) GetBarrierDurationUs() int64 {
+	if x != nil {
+		return x.BarrierDurationUs
+	}
+	return 0
+}
+
+func (x *QueryProfile) GetDeliverDurationUs() int64 {
+	if x != nil {
+		return x.DeliverDurationUs
+	}
+	return 0
+}
+
+func (x *QueryProfile) GetFirstRowDurationUs() int64 {
+	if x != nil {
+		return x.FirstRowDurationUs
+	}
+	return 0
+}
+
+func (x *QueryProfile) GetForwarded() bool {
+	if x != nil {
+		return x.Forwarded
+	}
+	return false
 }
 
 // IteratorProfile describes a single iterator node in the query execution tree.
@@ -9105,13 +9269,13 @@ const file_bucket_proto_rawDesc = "" +
 	"\rcheckpoint_id\x18\x03 \x01(\x06R\fcheckpointId\"i\n" +
 	"\x16GetTransactionResponse\x125\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\x12\x18\n" +
-	"\areceipt\x18\x02 \x01(\tR\areceipt\"\xb0\x01\n" +
+	"\areceipt\x18\x02 \x01(\tR\areceipt\"`\n" +
 	"\x17ListTransactionsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12-\n" +
-	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptionsJ\x04\b\x03\x10\bR\tpage_sizeR\vafter_tx_idR\x06filterR\areverseR\x10min_log_sequenceR\rcheckpoint_id\"\xae\x01\n" +
+	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptions\"\\\n" +
 	"\x13ListAccountsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12-\n" +
-	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptionsJ\x04\b\x03\x10\bR\tpage_sizeR\rafter_addressR\x06filterR\areverseR\x10min_log_sequenceR\rcheckpoint_id\"\xe0\x03\n" +
+	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptions\"\xe0\x03\n" +
 	"\x13CreateLedgerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12J\n" +
 	"\x0einitial_schema\x18\x02 \x03(\v2#.common.SetMetadataFieldTypeCommandR\rinitialSchema\x12&\n" +
@@ -9124,12 +9288,12 @@ const file_bucket_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x13.common.AccountTypeR\x05value:\x028\x01\")\n" +
 	"\x13DeleteLedgerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x16\n" +
-	"\x14DeleteLedgerResponse\"c\n" +
+	"\x14DeleteLedgerResponse\"C\n" +
 	"\x12ListLedgersRequest\x12-\n" +
-	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptionsJ\x04\b\x02\x10\x03R\tpage_sizeR\rcheckpoint_id\"b\n" +
+	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\"S\n" +
 	"\x10GetLedgerRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12'\n" +
-	"\x04read\x18\x02 \x01(\v2\x13.common.ReadOptionsR\x04readR\rcheckpoint_id\"\xfb\x01\n" +
+	"\x04read\x18\x02 \x01(\v2\x13.common.ReadOptionsR\x04read\"\xfb\x01\n" +
 	"\fApplyRequest\x120\n" +
 	"\bunsigned\x18\x01 \x01(\v2\x12.ledger.ApplyBatchH\x00R\bunsigned\x125\n" +
 	"\x06signed\x18\x02 \x01(\v2\x1b.signature.SignedApplyBatchH\x00R\x06signed\x12R\n" +
@@ -9141,44 +9305,44 @@ const file_bucket_proto_rawDesc = "" +
 	"\brequests\x18\x01 \x03(\v2\x0f.ledger.RequestR\brequests\x12'\n" +
 	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\"0\n" +
 	"\rApplyResponse\x12\x1f\n" +
-	"\x04logs\x18\x01 \x03(\v2\v.common.LogR\x04logs\"\x9c\x16\n" +
+	"\x04logs\x18\x01 \x03(\v2\v.common.LogR\x04logs\"\xf4\x15\n" +
 	"\aRequest\x122\n" +
-	"\x05apply\x18\x02 \x01(\v2\x1a.ledger.LedgerApplyRequestH\x00R\x05apply\x12B\n" +
-	"\rcreate_ledger\x18\x03 \x01(\v2\x1b.ledger.CreateLedgerRequestH\x00R\fcreateLedger\x12B\n" +
-	"\rdelete_ledger\x18\x04 \x01(\v2\x1b.ledger.DeleteLedgerRequestH\x00R\fdeleteLedger\x12U\n" +
-	"\x14register_signing_key\x18\x06 \x01(\v2!.ledger.RegisterSigningKeyRequestH\x00R\x12registerSigningKey\x12O\n" +
-	"\x12revoke_signing_key\x18\a \x01(\v2\x1f.ledger.RevokeSigningKeyRequestH\x00R\x10revokeSigningKey\x12O\n" +
-	"\x12set_signing_config\x18\b \x01(\v2\x1f.ledger.SetSigningConfigRequestH\x00R\x10setSigningConfig\x12F\n" +
-	"\x0fadd_events_sink\x18\t \x01(\v2\x1c.ledger.AddEventsSinkRequestH\x00R\raddEventsSink\x12O\n" +
-	"\x12remove_events_sink\x18\n" +
-	" \x01(\v2\x1f.ledger.RemoveEventsSinkRequestH\x00R\x10removeEventsSink\x12B\n" +
-	"\rclose_chapter\x18\v \x01(\v2\x1b.ledger.CloseChapterRequestH\x00R\fcloseChapter\x12?\n" +
-	"\fseal_chapter\x18\f \x01(\v2\x1a.ledger.SealChapterRequestH\x00R\vsealChapter\x12H\n" +
-	"\x0farchive_chapter\x18\r \x01(\v2\x1d.ledger.ArchiveChapterRequestH\x00R\x0earchiveChapter\x12^\n" +
-	"\x17confirm_archive_chapter\x18\x0e \x01(\v2$.ledger.ConfirmArchiveChapterRequestH\x00R\x15confirmArchiveChapter\x12U\n" +
-	"\x14set_maintenance_mode\x18\x0f \x01(\v2!.ledger.SetMaintenanceModeRequestH\x00R\x12setMaintenanceMode\x12U\n" +
-	"\x14set_chapter_schedule\x18\x10 \x01(\v2!.ledger.SetChapterScheduleRequestH\x00R\x12setChapterSchedule\x12^\n" +
-	"\x17delete_chapter_schedule\x18\x11 \x01(\v2$.ledger.DeleteChapterScheduleRequestH\x00R\x15deleteChapterSchedule\x12\\\n" +
-	"\x17set_metadata_field_type\x18\x12 \x01(\v2#.ledger.SetMetadataFieldTypeRequestH\x00R\x14setMetadataFieldType\x12e\n" +
-	"\x1aremove_metadata_field_type\x18\x13 \x01(\v2&.ledger.RemoveMetadataFieldTypeRequestH\x00R\x17removeMetadataFieldType\x12E\n" +
-	"\x0epromote_ledger\x18\x15 \x01(\v2\x1c.ledger.PromoteLedgerRequestH\x00R\rpromoteLedger\x12X\n" +
-	"\x15create_prepared_query\x18\x16 \x01(\v2\".ledger.CreatePreparedQueryRequestH\x00R\x13createPreparedQuery\x12X\n" +
-	"\x15update_prepared_query\x18\x17 \x01(\v2\".ledger.UpdatePreparedQueryRequestH\x00R\x13updatePreparedQuery\x12X\n" +
-	"\x15delete_prepared_query\x18\x18 \x01(\v2\".ledger.DeletePreparedQueryRequestH\x00R\x13deletePreparedQuery\x12?\n" +
-	"\fcreate_index\x18\x19 \x01(\v2\x1a.ledger.CreateIndexRequestH\x00R\vcreateIndex\x129\n" +
+	"\x05apply\x18\x01 \x01(\v2\x1a.ledger.LedgerApplyRequestH\x00R\x05apply\x12B\n" +
+	"\rcreate_ledger\x18\x02 \x01(\v2\x1b.ledger.CreateLedgerRequestH\x00R\fcreateLedger\x12B\n" +
+	"\rdelete_ledger\x18\x03 \x01(\v2\x1b.ledger.DeleteLedgerRequestH\x00R\fdeleteLedger\x12U\n" +
+	"\x14register_signing_key\x18\x04 \x01(\v2!.ledger.RegisterSigningKeyRequestH\x00R\x12registerSigningKey\x12O\n" +
+	"\x12revoke_signing_key\x18\x05 \x01(\v2\x1f.ledger.RevokeSigningKeyRequestH\x00R\x10revokeSigningKey\x12O\n" +
+	"\x12set_signing_config\x18\x06 \x01(\v2\x1f.ledger.SetSigningConfigRequestH\x00R\x10setSigningConfig\x12F\n" +
+	"\x0fadd_events_sink\x18\a \x01(\v2\x1c.ledger.AddEventsSinkRequestH\x00R\raddEventsSink\x12O\n" +
+	"\x12remove_events_sink\x18\b \x01(\v2\x1f.ledger.RemoveEventsSinkRequestH\x00R\x10removeEventsSink\x12B\n" +
+	"\rclose_chapter\x18\t \x01(\v2\x1b.ledger.CloseChapterRequestH\x00R\fcloseChapter\x12?\n" +
+	"\fseal_chapter\x18\n" +
+	" \x01(\v2\x1a.ledger.SealChapterRequestH\x00R\vsealChapter\x12H\n" +
+	"\x0farchive_chapter\x18\v \x01(\v2\x1d.ledger.ArchiveChapterRequestH\x00R\x0earchiveChapter\x12^\n" +
+	"\x17confirm_archive_chapter\x18\f \x01(\v2$.ledger.ConfirmArchiveChapterRequestH\x00R\x15confirmArchiveChapter\x12U\n" +
+	"\x14set_maintenance_mode\x18\r \x01(\v2!.ledger.SetMaintenanceModeRequestH\x00R\x12setMaintenanceMode\x12U\n" +
+	"\x14set_chapter_schedule\x18\x0e \x01(\v2!.ledger.SetChapterScheduleRequestH\x00R\x12setChapterSchedule\x12^\n" +
+	"\x17delete_chapter_schedule\x18\x0f \x01(\v2$.ledger.DeleteChapterScheduleRequestH\x00R\x15deleteChapterSchedule\x12\\\n" +
+	"\x17set_metadata_field_type\x18\x10 \x01(\v2#.ledger.SetMetadataFieldTypeRequestH\x00R\x14setMetadataFieldType\x12e\n" +
+	"\x1aremove_metadata_field_type\x18\x11 \x01(\v2&.ledger.RemoveMetadataFieldTypeRequestH\x00R\x17removeMetadataFieldType\x12E\n" +
+	"\x0epromote_ledger\x18\x12 \x01(\v2\x1c.ledger.PromoteLedgerRequestH\x00R\rpromoteLedger\x12X\n" +
+	"\x15create_prepared_query\x18\x13 \x01(\v2\".ledger.CreatePreparedQueryRequestH\x00R\x13createPreparedQuery\x12X\n" +
+	"\x15update_prepared_query\x18\x14 \x01(\v2\".ledger.UpdatePreparedQueryRequestH\x00R\x13updatePreparedQuery\x12X\n" +
+	"\x15delete_prepared_query\x18\x15 \x01(\v2\".ledger.DeletePreparedQueryRequestH\x00R\x13deletePreparedQuery\x12?\n" +
+	"\fcreate_index\x18\x16 \x01(\v2\x1a.ledger.CreateIndexRequestH\x00R\vcreateIndex\x129\n" +
 	"\n" +
-	"drop_index\x18\x1a \x01(\v2\x18.ledger.DropIndexRequestH\x00R\tdropIndex\x12E\n" +
-	"\x0esave_numscript\x18\x1b \x01(\v2\x1c.ledger.SaveNumscriptRequestH\x00R\rsaveNumscript\x12O\n" +
-	"\x10add_account_type\x18\x1d \x01(\v2#.ledger.AddAccountTypeLedgerRequestH\x00R\x0eaddAccountType\x12X\n" +
-	"\x13remove_account_type\x18\x1e \x01(\v2&.ledger.RemoveAccountTypeLedgerRequestH\x00R\x11removeAccountType\x12q\n" +
-	"\x1cset_default_enforcement_mode\x18\x1f \x01(\v2..ledger.SetDefaultEnforcementModeLedgerRequestH\x00R\x19setDefaultEnforcementMode\x12^\n" +
-	"\x17create_query_checkpoint\x18  \x01(\v2$.ledger.CreateQueryCheckpointRequestH\x00R\x15createQueryCheckpoint\x12^\n" +
-	"\x17delete_query_checkpoint\x18! \x01(\v2$.ledger.DeleteQueryCheckpointRequestH\x00R\x15deleteQueryCheckpoint\x12n\n" +
-	"\x1dset_query_checkpoint_schedule\x18\" \x01(\v2).ledger.SetQueryCheckpointScheduleRequestH\x00R\x1asetQueryCheckpointSchedule\x12w\n" +
-	" delete_query_checkpoint_schedule\x18# \x01(\v2,.ledger.DeleteQueryCheckpointScheduleRequestH\x00R\x1ddeleteQueryCheckpointSchedule\x12U\n" +
-	"\x14save_ledger_metadata\x18$ \x01(\v2!.ledger.SaveLedgerMetadataRequestH\x00R\x12saveLedgerMetadata\x12[\n" +
-	"\x16delete_ledger_metadata\x18% \x01(\v2#.ledger.DeleteLedgerMetadataRequestH\x00R\x14deleteLedgerMetadataB\x06\n" +
-	"\x04typeJ\x04\b\x01\x10\x02J\x04\b\x05\x10\x06R\x0fidempotency_keyR\tsignature\"\x1e\n" +
+	"drop_index\x18\x17 \x01(\v2\x18.ledger.DropIndexRequestH\x00R\tdropIndex\x12E\n" +
+	"\x0esave_numscript\x18\x18 \x01(\v2\x1c.ledger.SaveNumscriptRequestH\x00R\rsaveNumscript\x12O\n" +
+	"\x10add_account_type\x18\x19 \x01(\v2#.ledger.AddAccountTypeLedgerRequestH\x00R\x0eaddAccountType\x12X\n" +
+	"\x13remove_account_type\x18\x1a \x01(\v2&.ledger.RemoveAccountTypeLedgerRequestH\x00R\x11removeAccountType\x12q\n" +
+	"\x1cset_default_enforcement_mode\x18\x1b \x01(\v2..ledger.SetDefaultEnforcementModeLedgerRequestH\x00R\x19setDefaultEnforcementMode\x12^\n" +
+	"\x17create_query_checkpoint\x18\x1c \x01(\v2$.ledger.CreateQueryCheckpointRequestH\x00R\x15createQueryCheckpoint\x12^\n" +
+	"\x17delete_query_checkpoint\x18\x1d \x01(\v2$.ledger.DeleteQueryCheckpointRequestH\x00R\x15deleteQueryCheckpoint\x12n\n" +
+	"\x1dset_query_checkpoint_schedule\x18\x1e \x01(\v2).ledger.SetQueryCheckpointScheduleRequestH\x00R\x1asetQueryCheckpointSchedule\x12w\n" +
+	" delete_query_checkpoint_schedule\x18\x1f \x01(\v2,.ledger.DeleteQueryCheckpointScheduleRequestH\x00R\x1ddeleteQueryCheckpointSchedule\x12U\n" +
+	"\x14save_ledger_metadata\x18  \x01(\v2!.ledger.SaveLedgerMetadataRequestH\x00R\x12saveLedgerMetadata\x12[\n" +
+	"\x16delete_ledger_metadata\x18! \x01(\v2#.ledger.DeleteLedgerMetadataRequestH\x00R\x14deleteLedgerMetadataB\x06\n" +
+	"\x04type\"\x1e\n" +
 	"\x1cCreateQueryCheckpointRequest\"C\n" +
 	"\x1cDeleteQueryCheckpointRequest\x12#\n" +
 	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\".\n" +
@@ -9217,10 +9381,11 @@ const file_bucket_proto_rawDesc = "" +
 	"state_hash\x18\x03 \x01(\fR\tstateHash\"6\n" +
 	"\x15ArchiveChapterRequest\x12\x1d\n" +
 	"\n" +
-	"chapter_id\x18\x01 \x01(\x06R\tchapterId\"=\n" +
+	"chapter_id\x18\x01 \x01(\x06R\tchapterId\"`\n" +
 	"\x1cConfirmArchiveChapterRequest\x12\x1d\n" +
 	"\n" +
-	"chapter_id\x18\x01 \x01(\x06R\tchapterId\"D\n" +
+	"chapter_id\x18\x01 \x01(\x06R\tchapterId\x12!\n" +
+	"\fsealing_hash\x18\x02 \x01(\fR\vsealingHash\"D\n" +
 	"\x13ListChaptersRequest\x12-\n" +
 	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\"5\n" +
 	"\x19SetMaintenanceModeRequest\x12\x18\n" +
@@ -9238,23 +9403,23 @@ const file_bucket_proto_rawDesc = "" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x123\n" +
 	"\vtarget_type\x18\x02 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
-	"\x03key\x18\x03 \x01(\tR\x03key\"\x82\x01\n" +
+	"\x03key\x18\x03 \x01(\tR\x03key\"M\n" +
 	"\x12CreateIndexRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1f\n" +
-	"\x02id\x18\x05 \x01(\v2\x0f.common.IndexIDR\x02idJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05R\vlog_builtinR\vtransactionR\aaccount\"\x80\x01\n" +
+	"\x02id\x18\x02 \x01(\v2\x0f.common.IndexIDR\x02id\"K\n" +
 	"\x10DropIndexRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1f\n" +
-	"\x02id\x18\x05 \x01(\v2\x0f.common.IndexIDR\x02idJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05R\vlog_builtinR\vtransactionR\aaccount\"v\n" +
+	"\x02id\x18\x02 \x01(\v2\x0f.common.IndexIDR\x02id\"v\n" +
 	"\x14SaveNumscriptRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x12\x16\n" +
-	"\x06ledger\x18\x04 \x01(\tR\x06ledger\"\x93\x01\n" +
+	"\x06ledger\x18\x04 \x01(\tR\x06ledger\"\x84\x01\n" +
 	"\x13GetNumscriptRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x16\n" +
 	"\x06ledger\x18\x03 \x01(\tR\x06ledger\x12'\n" +
-	"\x04read\x18\x04 \x01(\v2\x13.common.ReadOptionsR\x04readR\rcheckpoint_id\"^\n" +
+	"\x04read\x18\x04 \x01(\v2\x13.common.ReadOptionsR\x04read\"^\n" +
 	"\x15ListNumscriptsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12-\n" +
 	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptions\"s\n" +
@@ -9312,7 +9477,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xda\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xbd\x02\n" +
 	"\x18RevertTransactionPayload\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\x12*\n" +
@@ -9321,7 +9486,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\areceipt\x18\x05 \x01(\tR\areceipt\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01J\x04\b\a\x10\bR\x15transaction_reference\"\xf7\x04\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\xf7\x04\n" +
 	"\fLedgerAction\x12X\n" +
 	"\x12create_transaction\x18\x01 \x01(\v2 .ledger.CreateTransactionPayloadB\x05\xca\xd5\"\x01\x05H\x00R\x11createTransaction\x12@\n" +
 	"\fadd_metadata\x18\x02 \x01(\v2\x1b.common.SaveMetadataCommandH\x00R\vaddMetadata\x12X\n" +
@@ -9475,10 +9640,10 @@ const file_bucket_proto_rawDesc = "" +
 	"\x17ListAuditEntriesRequest\x12-\n" +
 	"\aoptions\x18\x01 \x01(\v2\x13.common.ListOptionsR\aoptions\"2\n" +
 	"\x14GetAuditEntryRequest\x12\x1a\n" +
-	"\bsequence\x18\x01 \x01(\x06R\bsequence\"\xa2\x01\n" +
+	"\bsequence\x18\x01 \x01(\x06R\bsequence\"X\n" +
 	"\x0fListLogsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12-\n" +
-	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptionsJ\x04\b\x03\x10\aR\x0eafter_sequenceR\tpage_sizeR\x10min_log_sequenceR\x06filterR\rcheckpoint_id\"P\n" +
+	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptions\"P\n" +
 	"\rGetLogRequest\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12#\n" +
 	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"\x17\n" +
@@ -9500,10 +9665,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x1b.ledger.MetadataFieldStatusR\x05value:\x028\x01\x1a\\\n" +
 	"\x11LedgerFieldsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x121\n" +
-	"\x05value\x18\x02 \x01(\v2\x1b.ledger.MetadataFieldStatusR\x05value:\x028\x01\"x\n" +
+	"\x05value\x18\x02 \x01(\v2\x1b.ledger.MetadataFieldStatusR\x05value:\x028\x01\"P\n" +
 	"\x13MetadataFieldStatus\x129\n" +
-	"\rdeclared_type\x18\x01 \x01(\x0e2\x14.common.MetadataTypeR\fdeclaredTypeJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05R\n" +
-	"total_keysR\x0econverted_keys\"_\n" +
+	"\rdeclared_type\x18\x01 \x01(\x0e2\x14.common.MetadataTypeR\fdeclaredType\"_\n" +
 	"\x16AnalyzeAccountsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12-\n" +
 	"\x12variable_threshold\x18\x02 \x01(\rR\x11variableThreshold\"t\n" +
@@ -9613,13 +9777,13 @@ const file_bucket_proto_rawDesc = "" +
 	"\taggregate\x18\x02 \x01(\v2\x17.common.AggregateResultH\x00R\taggregateB\b\n" +
 	"\x06result\"/\n" +
 	"\x15GetIndexStatusRequest\x12\x16\n" +
-	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"\xf9\x01\n" +
+	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"\xe0\x01\n" +
 	"\x16GetIndexStatusResponse\x122\n" +
 	"\x15last_indexed_sequence\x18\x01 \x01(\x06R\x13lastIndexedSequence\x12*\n" +
 	"\x11last_log_sequence\x18\x02 \x01(\x06R\x0flastLogSequence\x12\x10\n" +
 	"\x03lag\x18\x03 \x01(\x06R\x03lag\x12&\n" +
 	"\x0findex_file_size\x18\x04 \x01(\x06R\rindexFileSize\x12,\n" +
-	"\aindexes\x18\x06 \x03(\v2\x12.ledger.IndexEntryR\aindexesJ\x04\b\x05\x10\x06R\x11backfill_progress\"J\n" +
+	"\aindexes\x18\x05 \x03(\v2\x12.ledger.IndexEntryR\aindexes\"J\n" +
 	"\x0fGetIndexRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1f\n" +
 	"\x02id\x18\x02 \x01(\v2\x0f.common.IndexIDR\x02id\"U\n" +
@@ -9650,7 +9814,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x11use_max_precision\x18\x04 \x01(\bR\x0fuseMaxPrecision\x12*\n" +
 	"\x11group_by_prefixes\x18\x05 \x03(\tR\x0fgroupByPrefixes\x12#\n" +
 	"\rcheckpoint_id\x18\x06 \x01(\x06R\fcheckpointId\x12'\n" +
-	"\x0fcollapse_colors\x18\a \x01(\bR\x0ecollapseColors\"\xde\x02\n" +
+	"\x0fcollapse_colors\x18\a \x01(\bR\x0ecollapseColors\"\x9d\x05\n" +
 	"\fQueryProfile\x12*\n" +
 	"\x11index_duration_us\x18\x01 \x01(\x03R\x0findexDurationUs\x124\n" +
 	"\x16enrichment_duration_us\x18\x02 \x01(\x03R\x14enrichmentDurationUs\x12'\n" +
@@ -9658,7 +9822,15 @@ const file_bucket_proto_rawDesc = "" +
 	"\x0eenriched_count\x18\x04 \x01(\x05R\renrichedCount\x12/\n" +
 	"\x13materialized_ranges\x18\x05 \x01(\x05R\x12materializedRanges\x12-\n" +
 	"\x12materialized_items\x18\x06 \x01(\x05R\x11materializedItems\x12<\n" +
-	"\rroot_iterator\x18\a \x01(\v2\x17.ledger.IteratorProfileR\frootIterator\"\x91\x03\n" +
+	"\rroot_iterator\x18\a \x01(\v2\x17.ledger.IteratorProfileR\frootIterator\x12,\n" +
+	"\x12server_duration_us\x18\b \x01(\x03R\x10serverDurationUs\x12.\n" +
+	"\x13prepare_duration_us\x18\t \x01(\x03R\x11prepareDurationUs\x12.\n" +
+	"\x13execute_duration_us\x18\n" +
+	" \x01(\x03R\x11executeDurationUs\x12.\n" +
+	"\x13barrier_duration_us\x18\v \x01(\x03R\x11barrierDurationUs\x12.\n" +
+	"\x13deliver_duration_us\x18\f \x01(\x03R\x11deliverDurationUs\x121\n" +
+	"\x15first_row_duration_us\x18\r \x01(\x03R\x12firstRowDurationUs\x12\x1c\n" +
+	"\tforwarded\x18\x0e \x01(\bR\tforwarded\"\x91\x03\n" +
 	"\x0fIteratorProfile\x12\x14\n" +
 	"\x05label\x18\x01 \x01(\tR\x05label\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x16\n" +

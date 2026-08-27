@@ -39,13 +39,18 @@ func TestHandleListTransactions_Success(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 
-	// Transactions must serialize in protobuf-JSON camelCase (revertedByTransaction)
-	// inside the {data:[...]} envelope — not the snake_case Go struct tags
-	// (reverted_by_transaction) a plain sonic marshal would emit. Parity with
-	// the sibling proto-returning handlers (see writeProtoListOK).
+	// A list item must be byte-identical in shape to what the detail route
+	// emits, i.e. Transaction.MarshalJSON's output — camelCase, unquoted
+	// numeric ids, RFC3339 timestamps. protojson would instead emit
+	// "revertedByTransaction":"7" (different key, quoted) and drop `color`,
+	// because it works off protobuf reflection and ignores json.Marshaler.
+	// See encoder_contract_test.go and http-api.md for the rule.
 	body := w.Body.String()
-	require.Contains(t, body, `"revertedByTransaction":"7"`)
+	require.Contains(t, body, `"revertedByTransactionId":7`)
+	require.NotContains(t, body, `"revertedByTransaction":`)
 	require.NotContains(t, body, "reverted_by_transaction")
+	require.Contains(t, body, `"postings":[]`)
+	require.Contains(t, body, `"metadata":{}`)
 }
 
 func TestHandleListTransactions_WithPaginationAndReverse(t *testing.T) {

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
@@ -45,9 +44,9 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	structuredOutput := cmdutil.IsStructuredOutput(cmd)
 
-	var spinner *pterm.SpinnerPrinter
+	var spinner *cmdutil.Spinner
 	if !structuredOutput {
-		spinner, _ = pterm.DefaultSpinner.Start("Deleting query checkpoint...")
+		spinner = cmdutil.StartSpinner("Deleting query checkpoint...")
 	}
 
 	_, err = client.DeleteQueryCheckpoint(ctx, &clusterpb.DeleteQueryCheckpointRequest{

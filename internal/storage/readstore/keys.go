@@ -143,16 +143,6 @@ func ParseBackfillKey(key []byte) (ledgerName string, kind byte, details []byte,
 	return name, key[dal.LedgerNameFixedSize], key[dal.LedgerNameFixedSize+1:], nil
 }
 
-// MetadataIndexPrefix returns the prefix for scanning all entries of a
-// specific metadata key within a namespace. Used for ExistsCondition
-// and schema change handling. Equivalent to MetadataIndexPrefixV with
-// version 1 — kept for callers not yet aware of versioning.
-//
-//	[0x01][ledgerName padded 64B][ns:][metadataKey\x00][version:4B BE = 1]
-func MetadataIndexPrefix(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey string) []byte {
-	return MetadataIndexPrefixV(kb, ledgerName, ns, metadataKey, 1)
-}
-
 // MetadataIndexPrefixV is the version-aware variant of MetadataIndexPrefix.
 //
 //	[0x01][ledgerName padded 64B][ns:][metadataKey\x00][version:4B BE]
@@ -164,31 +154,6 @@ func MetadataIndexPrefixV(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey
 		PutStringNull(metadataKey).
 		PutUint32(version).
 		Snapshot()
-}
-
-// MetadataIndexKey builds a full metadata inverted index key under
-// version 1. Equivalent to MetadataIndexKeyV(..., 1, ...) — kept for
-// callers not yet aware of versioning.
-func MetadataIndexKey(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey string, encodedValue []byte, entityID []byte) []byte {
-	return MetadataIndexKeyV(kb, ledgerName, ns, metadataKey, 1, encodedValue, entityID)
-}
-
-// MetadataIndexKeyV builds a full metadata inverted index key. Forward-
-// encoding version sits between the metadata key separator and the
-// encoded value so that each version has its own contiguous scan range
-// (see MetadataIndexPrefixV).
-//
-//	[0x01][ledgerName padded 64B][ns:][metadataKey\x00][version:4B BE][typeTag+sortableValue][entityID]
-func MetadataIndexKeyV(kb *dal.KeyBuilder, ledgerName string, ns, metadataKey string, version uint32, encodedValue []byte, entityID []byte) []byte {
-	return kb.Reset().
-		PutByte(PrefixMetadataIndex).
-		PutLedgerNameFixed(ledgerName).
-		PutNamespace(ns).
-		PutStringNull(metadataKey).
-		PutUint32(version).
-		PutBytes(encodedValue).
-		PutBytes(entityID).
-		Consume()
 }
 
 // AccountReverseMapKey builds a reverse map key for account metadata
@@ -383,9 +348,10 @@ func AccountTxPrefix(kb *dal.KeyBuilder, prefix byte, ledgerName string, account
 		Snapshot()
 }
 
-// AccountByAssetKey builds an account-by-asset inverted-index key. Presence-only
-// (nil value). Order-preserving so a prefix scan on (assetBase, precision)
-// yields every account that has touched that exact asset cell.
+// AccountByAssetKey builds an account-by-asset inverted-index key. The value
+// holds the first touch's fold sequence (see WriteAccountByAssetIndex).
+// Order-preserving so a prefix scan on (assetBase, precision) yields every
+// account that has touched that exact asset cell.
 //
 //	[0x0C][ledgerName padded 64B][assetBase\x00][precision(1B)][account]
 func AccountByAssetKey(kb *dal.KeyBuilder, ledgerName, assetBase string, precision uint8, account string) []byte {
@@ -411,40 +377,6 @@ func AccountByAssetPrefix(kb *dal.KeyBuilder, ledgerName, assetBase string, prec
 		Snapshot()
 }
 
-// EntityExistsKey builds a full entity-ordered existence index key
-// under version 1. Equivalent to EntityExistsKeyV(..., 1, ...).
-func EntityExistsKey(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string, isNull bool, entityID []byte) []byte {
-	return EntityExistsKeyV(kb, ledgerName, ns, metaKey, 1, isNull, entityID)
-}
-
-// EntityExistsKeyV builds a full entity-ordered existence index key.
-// Forward-encoding version sits between the metadata key separator
-// and the null flag (see MetadataIndexKeyV).
-//
-//	[0x02][ledgerName padded 64B][ns:][metadataKey\x00][version:4B BE][nullFlag][entityID]
-func EntityExistsKeyV(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string, version uint32, isNull bool, entityID []byte) []byte {
-	nullFlag := EntityExistsNonNull
-	if isNull {
-		nullFlag = EntityExistsNull
-	}
-
-	return kb.Reset().
-		PutByte(PrefixEntityExists).
-		PutLedgerNameFixed(ledgerName).
-		PutNamespace(ns).
-		PutStringNull(metaKey).
-		PutUint32(version).
-		PutByte(nullFlag).
-		PutBytes(entityID).
-		Consume()
-}
-
-// EntityExistsKeyPrefix returns the prefix covering both null and
-// non-null entries for a given metadata key under version 1.
-func EntityExistsKeyPrefix(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string) []byte {
-	return EntityExistsKeyPrefixV(kb, ledgerName, ns, metaKey, 1)
-}
-
 // EntityExistsKeyPrefixV — version-aware variant.
 //
 //	[0x02][ledgerName padded 64B][ns:][metadataKey\x00][version:4B BE]
@@ -456,13 +388,6 @@ func EntityExistsKeyPrefixV(kb *dal.KeyBuilder, ledgerName string, ns, metaKey s
 		PutStringNull(metaKey).
 		PutUint32(version).
 		Snapshot()
-}
-
-// EntityExistsNonNullPrefix returns the v=1 prefix for scanning non-null
-// entities. Kept as a v=1 wrapper for callers not yet aware of versioning;
-// version-aware sites must use EntityExistsNonNullPrefixV.
-func EntityExistsNonNullPrefix(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string) []byte {
-	return EntityExistsNonNullPrefixV(kb, ledgerName, ns, metaKey, 1)
 }
 
 // EntityExistsNonNullPrefixV returns the per-version prefix for scanning
@@ -480,13 +405,6 @@ func EntityExistsNonNullPrefixV(kb *dal.KeyBuilder, ledgerName string, ns, metaK
 		PutUint32(version).
 		PutByte(EntityExistsNonNull).
 		Snapshot()
-}
-
-// EntityExistsNullPrefix returns the v=1 prefix for scanning null-valued
-// entities. Kept as a v=1 wrapper; version-aware sites must use
-// EntityExistsNullPrefixV.
-func EntityExistsNullPrefix(kb *dal.KeyBuilder, ledgerName string, ns, metaKey string) []byte {
-	return EntityExistsNullPrefixV(kb, ledgerName, ns, metaKey, 1)
 }
 
 // EntityExistsNullPrefixV — version-aware variant of EntityExistsNullPrefix.

@@ -1,474 +1,206 @@
 # Problems Solved from Ledger v2
 
-This document summarizes the key problems and limitations encountered in Ledger v2 (`github.com/formancehq/ledger`) that have been addressed in this v3 POC.
+This document summarizes the main architectural and operational differences between Ledger v2 and Ledger v3. It is intentionally high level. For implementation details, follow the linked technical documentation rather than treating this page as an engineering source of truth.
 
 ## Summary
 
-| Category | v2 Problem | v3 Solution |
-|----------|-----------|-------------|
-| **Database** | PostgreSQL dependency | Embedded storage (Pebble) |
-| **Replication** | PostgreSQL replication complexity | Raft consensus protocol |
-| **Deployment** | External database management | Self-contained binary |
-| **Build** | External database dependency | Self-contained with pure Go options |
-| **Performance** | Network latency to external DB | Local disk writes |
-| **Recovery** | Complex database recovery | Unified snapshot + WAL recovery |
-| **Observability** | Limited metrics | Full OpenTelemetry + Pyroscope |
-| **Contention** | Row-level locks on hot accounts | Append-only balance diffs |
+| Category | v2 | v3 |
+|---|---|---|
+| Database | PostgreSQL dependency | Embedded Pebble storage |
+| Replication | PostgreSQL-centered consistency and failover | Native Raft consensus |
+| Deployment | Application plus external database | Self-contained ledger nodes |
+| Ordering | Per-ledger API model | One global Raft ordering domain |
+| Recovery | Database-oriented recovery | Application-level snapshots, WAL, checkpoints, and synchronization |
+| Observability | Application and database telemetry split across systems | Integrated OpenTelemetry metrics/tracing and optional profiling |
+| Balance state | SQL rows updated under database concurrency control | Deterministic FSM-maintained volume projections in Pebble |
+
+For the current architecture, start with the [canonical architecture overview](../technical/architecture/overview.md).
 
 ---
 
-## 1. PostgreSQL Dependency Eliminated
+## 1. Embedded storage instead of PostgreSQL
 
-### v2 Problem
+### v2
 
-Ledger v2 required an external PostgreSQL database:
+Ledger v2 depended on PostgreSQL for persistent state. Operating Ledger therefore also meant provisioning, upgrading, monitoring, backing up, and scaling a database service.
 
-- **Operational complexity**: Needed to provision, configure, and maintain PostgreSQL
-- **Network latency**: Every write required a network roundtrip to the database
-- **Scaling challenges**: PostgreSQL scaling (read replicas, connection pooling) added complexity
-- **Cost**: Managed PostgreSQL services (RDS, Cloud SQL) have significant costs
-- **Backup complexity**: Required PostgreSQL-specific backup strategies (pg_dump, WAL archiving)
+### v3
 
-### v3 Solution
+Ledger v3 embeds Pebble and manages its own persistent state locally. Raft WAL data, FSM state, projections, checkpoints, and related lifecycle data are owned by the ledger process rather than an external SQL database.
 
-Ledger v3 uses **embedded storage** with no external dependencies. Where v2 required a PostgreSQL connection string, v3 simply points to a local data directory and manages its own storage. See [Architecture Overview](../technical/architecture-overview.md) for implementation details.
+This reduces external infrastructure and keeps persistence behavior under the same operational boundary as the ledger itself.
 
-**Benefits**:
-- Zero external dependencies
-- Single binary deployment
-- Data stored locally with the application
-- Simplified backup (just copy the data directory)
+See [Storage and Persistence](../technical/architecture/subsystems/storage/) for the current storage model.
 
 ---
 
-## 2. Distributed Consensus with Raft
+## 2. Native distributed consensus with Raft
 
-### v2 Problem
+### v2
 
-v2 relied on PostgreSQL for data consistency:
+Consistency, replication, and failover depended primarily on the PostgreSQL deployment and its surrounding operational setup.
 
-- **Single point of failure**: PostgreSQL was the only source of truth
-- **Replication complexity**: Setting up PostgreSQL streaming replication or logical replication was complex
-- **Failover challenges**: Automatic failover required additional tools (Patroni, pgpool)
-- **Split-brain risk**: Without proper configuration, split-brain scenarios were possible
+### v3
 
-### v3 Solution
+Ledger v3 uses a single Raft group. Accepted mutations are ordered by consensus and applied through the deterministic FSM on every node.
 
-v3 implements the **Raft consensus protocol** for distributed consistency:
+This gives the ledger explicit ownership of:
 
-```mermaid
-graph TB
-    subgraph "v3 Raft Cluster"
-        N1[Node 1 Leader]
-        N2[Node 2 Follower]
-        N3[Node 3 Follower]
-        N1 -.Raft.-> N2
-        N2 -.Raft.-> N3
-        N3 -.Raft.-> N1
-    end
-```
+- leader election;
+- replication order;
+- quorum behavior;
+- snapshot and WAL coordination;
+- membership changes;
+- follower catch-up.
 
-**Benefits**:
-- **Strong consistency**: All nodes see the same data in the same order
-- **Automatic leader election**: No manual failover required
-- **Partition tolerance**: Cluster continues with majority of nodes
-- **Built-in replication**: No external replication tools needed
+See [Consensus](../technical/architecture/subsystems/consensus/) for the detailed design.
 
 ---
 
-## 3. Single Raft Group Architecture
+## 3. One global ordering domain
 
-### v2 Problem
+Ledger v3 uses one Raft group for all ledgers managed by the cluster. This gives mutations a single replicated ordering domain and enables commands to contain actions for more than one ledger when the API surface supports it.
 
-Managing multiple ledgers in v2 could lead to:
+This is particularly relevant to the gRPC `Apply` API, which can submit multiple actions targeting different ledgers as one atomic command.
 
-- **Inconsistent operations**: No atomic operations across ledgers
-- **Complex sharding**: If sharding was needed, it added significant complexity
-- **Multiple replication streams**: Each shard might have its own replication
-
-### v3 Solution
-
-v3 uses a **single Raft group** for all ledgers. The FSM state holds every ledger in one unified structure, so all operations are ordered by a single consensus group. See [Architecture Overview](../technical/architecture-overview.md) for implementation details.
-
-**Benefits**:
-- **Simplified operations**: One Raft group to manage
-- **Unified snapshots**: Single snapshot contains all ledger states
-- **Consistent ordering**: All operations ordered by Raft
-- **Reduced overhead**: No coordination between multiple leaders
+See [Global Log Architecture](../technical/architecture/subsystems/consensus/global-log.md).
 
 ---
 
-## 4. Pure Go Build Options
+## 4. Self-contained builds and deployments
 
-### v2 Limitation
+Pebble is embedded in the Go process and does not require a separate PostgreSQL server. This simplifies local development, container deployment, and infrastructure topology.
 
-v2 with PostgreSQL required an external database server, but the Go binary itself could be built without CGO. However, the overall system still depended on PostgreSQL infrastructure.
-
-### v3 Solution
-
-v3 uses **Pebble** as its embedded storage engine, a high-performance LSM-tree based key-value store from CockroachDB that requires no CGO. The binary can be built with `CGO_ENABLED=0` and runs from a minimal scratch or distroless Docker image.
-
-**Benefits**:
-- Easy cross-compilation (Linux, macOS, Windows, ARM)
-- Minimal Docker images (scratch/distroless)
-- Simplified CI/CD pipelines
-- No C compiler dependencies
+Operationally, this does **not** mean persistence is trivial: WAL placement, checkpoints, backups, storage capacity, and restore procedures remain important. Those concerns are documented under [Operations](../ops/) and the [storage subsystem](../technical/architecture/subsystems/storage/).
 
 ---
 
-## 5. Improved Write Performance
+## 5. Write path and deterministic state updates
 
-### v2 Problem
+Ledger v3 separates admission from deterministic application:
 
-Every write in v2 required:
+1. the leader validates and prepares a proposal;
+2. required state is resolved before proposal where needed;
+3. Raft orders and replicates the command;
+4. the FSM applies the accepted command deterministically;
+5. persisted projections are updated as part of the controlled apply path.
 
-1. Network roundtrip to PostgreSQL
-2. PostgreSQL transaction processing
-3. WAL write on PostgreSQL server
-4. Network roundtrip for response
+A follower receiving a write request forwards it to the current leader before admission.
 
-**Typical latency**: 1-10ms per write (depending on network)
-
-### v3 Solution
-
-v3 writes directly to local storage:
-
-```
-Client → Raft Leader → Local WAL (NVMe/SSD) → Response
-```
-
-**Benefits**:
-- **Sub-millisecond writes**: Direct disk I/O, no network latency
-- **Predictable performance**: No shared database contention
-- **Better throughput**: Local storage can handle higher IOPS
-
-> **Recommendation**: Place the WAL directory on fast storage (NVMe/SSD) for optimal performance.
+See [Admission](../technical/architecture/subsystems/admission/) and [FSM](../technical/architecture/subsystems/fsm/).
 
 ---
 
-## 6. Simplified Recovery and Synchronization
+## 6. Recovery and synchronization
 
-### v2 Problem
+Ledger v3 owns recovery at the application level. The system combines Raft WAL/snapshot state, Pebble checkpoints, synchronization with peers, and spool/replay mechanisms to restore and catch up a node.
 
-Recovery in v2 involved:
+The exact lifecycle is intentionally documented outside this sales comparison because it evolves with the storage and chapter-management implementation.
 
-- **PostgreSQL point-in-time recovery**: Complex WAL archiving setup
-- **Replica synchronization**: Waiting for replicas to catch up
-- **Backup restoration**: pg_restore with large databases was slow
-- **No application-level visibility**: Recovery was handled entirely by PostgreSQL
+See:
 
-### v3 Solution
-
-v3 has **unified application-level recovery**:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Recovery Process                              │
-├─────────────────────────────────────────────────────────────────┤
-│  1. Load snapshot (FSM state)                                    │
-│  2. Replay WAL entries after snapshot                            │
-│  3. If behind: sync business logs from leader via gRPC           │
-│  4. Replay spooled commands                                      │
-│  5. Resume normal operation                                      │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Key mechanisms**:
-- **Spool**: Buffers commands during synchronization (no data loss)
-- **gRPC streaming**: Efficient log transfer from leader
-- **Two-level sync**: Raft snapshots + business log streaming
-
-**Benefits**:
-- Fast recovery (snapshot + incremental replay)
-- No external tooling required
-- Application-level visibility into recovery progress
-- Automatic follower catch-up
+- [Storage and Persistence](../technical/architecture/subsystems/storage/)
+- [Chapters](../technical/architecture/subsystems/chapters/)
+- [Consensus](../technical/architecture/subsystems/consensus/)
 
 ---
 
-## 7. Enhanced Observability
+## 7. Integrated observability
 
-### v2 Problem
+Ledger v3 exposes OpenTelemetry-compatible metrics and tracing, with optional continuous profiling support. Ledger-specific instrumentation covers areas such as admission, Raft, storage, queues, HTTP handling, and background processing.
 
-v2 had limited observability:
-
-- **Separate database metrics**: PostgreSQL metrics were separate from application metrics
-- **No unified tracing**: Difficult to trace requests through the database
-- **Limited profiling**: No continuous profiling built-in
-
-### v3 Solution
-
-v3 has **comprehensive observability**. OpenTelemetry is built in for traces, metrics, and logs -- configure the standard OTLP environment variables to send telemetry to your backend of choice. Optional Pyroscope continuous profiling is available via build tag for CPU, allocation, and goroutine profiling. Pebble storage metrics (compaction, write stalls, cache hit rates, level statistics) are exposed alongside application metrics. See [Architecture Overview](../technical/architecture-overview.md) for implementation details.
-
-**Benefits**:
-- End-to-end request tracing
-- Unified metrics (application + storage)
-- Continuous profiling for performance analysis
-- Better debugging and troubleshooting
+For metric names, dashboards, naming modes, profiling, and operational guidance, use [Monitoring](../ops/monitoring.md).
 
 ---
 
-## 8. Optimized Storage Backend
+## 8. Current balance storage
 
-### v2 Problem
+One important difference from earlier v3 prototypes is the current balance representation.
 
-v2 was tied to PostgreSQL:
+Ledger v3 does **not** model the current balance as an application-level append-only chain of per-transaction balance diffs that must be summed on every read.
 
-- **No choice**: PostgreSQL was the only option
-- **Workload mismatch**: PostgreSQL is general-purpose, not optimized for ledger workloads
-- **Overhead**: Full SQL engine for what is essentially key-value storage
+Instead, the FSM maintains current input/output volumes as a persisted projection. For a given ledger/account/asset key, the current `VolumePair` is updated deterministically as transactions are applied. Later updates replace the previous logical value for that key; historical business events remain represented by the audit/log history rather than by exposing every old balance value as a current-balance row.
 
-### v3 Solution
+Consequences include:
 
-v3 uses **Pebble**, an LSM-tree storage engine optimized for high-throughput workloads:
+- current balance reads do not require an O(n) scan over all historical transaction diffs;
+- state updates are serialized by Raft/FSM ordering instead of PostgreSQL row locks;
+- the current balance projection remains bounded per account/asset key;
+- audit history and current balance state remain separate concerns.
 
-**Benefits**:
-- High-throughput write performance (LSM-tree optimized for writes)
-- No CGO required (pure Go)
-- Efficient range scans for balance reconstruction
-- Built-in compression and compaction
+See [Storage and Persistence](../technical/architecture/subsystems/storage/storage.md#what-the-store-persists) and [FSM](../technical/architecture/subsystems/fsm/).
 
 ---
 
-## 9. Simplified API (Pre-Commit / Effective Volumes Removed)
+## 9. Transaction volume snapshots
 
-### v2 Problem
+Ledger v3 keeps `postCommitVolumes` on transactions as the historical post-commit snapshot associated with that transaction. Pre-commit/effective volume variants from the older API model are not all embedded in every transaction response.
 
-v2 transaction responses included pre- and post-commit volume calculations (regular and effective) for every affected account, adding four extra nested objects to every response.
+This keeps historical transaction responses stable without requiring those values to be recomputed from later account state.
 
-**Issues**:
-- **Performance overhead**: Recomputed volumes from current balances on read
-- **Complexity**: Four volume variants complicated the response structure
-
-### v3 Solution
-
-v3 keeps a single `postCommitVolumes` field and **removes** `preCommitVolumes`, `postCommitEffectiveVolumes`, and `preCommitEffectiveVolumes`. Post-commit volumes are computed once, deterministically, inside the FSM at apply time and stored on the transaction as an immutable historical snapshot — so every read (create, revert, get, list, prepared-query) returns the same value without recomputation.
-
-**Benefits**:
-- One volume variant instead of four — cleaner API
-- Snapshot is captured once and never recomputed from current balances
-- Deterministic apply-time computation is Raft-safe
-- Pre-commit and effective volumes remain available via dedicated read endpoints if needed
+For API behavior, use the generated API documentation and the relevant [API subsystem documentation](../technical/architecture/subsystems/api/).
 
 ---
 
-## 10. Better Handling of UUID-based Account Addresses
+## 10. HTTP bulk versus gRPC cross-ledger apply
 
-### v2 Problem
+The API surfaces do not have identical scope.
 
-When using UUID v4 as account addresses with PostgreSQL:
+### gRPC
 
-- **B-tree fragmentation**: Random UUIDs cause poor B-tree performance
-- **Index bloat**: Indexes grow larger than necessary
-- **Slow inserts**: Each insert goes to a random position
+The gRPC `Apply` call can carry multiple actions targeting different ledgers in one command. When accepted as one command, those actions share the same atomic FSM application.
 
-### v3 Solution
+### HTTP
 
-v3 offers **Pebble as an alternative**:
+The HTTP bulk route is ledger-scoped. The `ledgerName` comes from the request path and is applied to every bulk element by the handler.
 
-```
-LSM-tree (Pebble):
-┌─────────────────────────────────────────┐
-│ Memtable (RAM) ← All writes go here    │
-│      ↓ (background flush)               │
-│ SST Files (sorted, compacted)           │
-└─────────────────────────────────────────┘
-```
+`atomic=true` therefore means **atomic within that HTTP route's ledger**. It does not make an HTTP bulk request cross-ledger.
 
-**Benefits**:
-- Pebble's LSM-tree handles random inserts efficiently
-- Writes always go to in-memory memtable (fast)
-- Background compaction sorts data
-- No B-tree page splits during writes
+For cross-ledger atomic batches, use the gRPC `Apply` surface.
 
-Pebble's LSM-tree architecture handles UUID v4 account addresses efficiently.
+See [HTTP API](../technical/architecture/subsystems/api/http-api.md), [gRPC API](../technical/architecture/subsystems/api/grpc-api.md), and [Global Log Architecture](../technical/architecture/subsystems/consensus/global-log.md).
 
 ---
 
-## 11. Source Account Contention Eliminated
+## 11. Read consistency is explicit
 
-### v2 Problem
+Ledger v3 supports different read-consistency modes. Consistent reads establish the required Raft barrier and wait for local application to catch up. Requests using `x-consistency: stale` may serve local state without that barrier and can therefore lag the leader.
 
-In v2 with PostgreSQL, updating an account balance required a **read-modify-write** cycle: begin a transaction, select the current balance with a row lock, compute the new balance, update the row, and commit. Every concurrent transaction targeting the same account had to wait for the lock.
-
-**Contention issues**:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                     v2: Row-Level Lock Contention                            │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  Transaction A ──┬── SELECT ... FOR UPDATE (lock acquired) ─── UPDATE ───┐  │
-│                  │                                                        │  │
-│  Transaction B ──┴── SELECT ... FOR UPDATE (BLOCKED) ────────────────────┘  │
-│                                            ↑                                 │
-│                                       Waiting for                            │
-│                                       lock release                           │
-│                                                                              │
-│  Transaction C ────────────────────── (BLOCKED) ─────────────────────────   │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-**Problems**:
-- **Lock contention**: Multiple transactions debiting the same account wait in queue
-- **Throughput bottleneck**: Hot accounts (e.g., `bank`, `fees`, `treasury`) become bottlenecks
-- **Increased latency**: Transactions wait for locks instead of processing
-- **Deadlock risk**: Complex transaction patterns could cause deadlocks
-- **Connection pool exhaustion**: Waiting transactions hold database connections
-
-This was particularly problematic for:
-- **High-volume accounts**: Central bank accounts receiving many payments
-- **Fee collection**: Fee accounts debited on every transaction
-- **Treasury operations**: Accounts involved in many concurrent operations
-
-### v3 Solution
-
-v3 with Pebble uses **balance diffs** instead of absolute balances, eliminating read-modify-write:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    v3: Append-Only Balance Diffs                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  Transaction A ──── Append diff: bank/USD/log_1 = -100 ─────────────────┐   │
-│                                                                          │   │
-│  Transaction B ──── Append diff: bank/USD/log_2 = -50 ──────────────────┤   │
-│                                                                          │   │
-│  Transaction C ──── Append diff: bank/USD/log_3 = -75 ──────────────────┘   │
-│                                                                              │
-│                     ↓ All writes happen in parallel ↓                        │
-│                                                                              │
-│  No locks! Each transaction appends its own diff entry.                      │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-#### How It Works
-
-On the **write path**, each transaction appends a new balance diff entry keyed by ledger, account, asset, and log ID. Multiple transactions debiting the same account write in parallel with no locking -- each simply appends its own diff.
-
-On the **read path**, the current balance is reconstructed by iterating over all diffs for a given account/asset and summing them. Pebble's efficient range scans make this fast even with many entries.
-
-See [Architecture Overview](../technical/architecture-overview.md) for implementation details on the storage key format and balance reconstruction.
-
-#### Performance Comparison
-
-| Metric | v2 (PostgreSQL) | v3 (Pebble diffs) |
-|--------|-----------------|-------------------|
-| **Write contention** | High (row locks) | None (append-only) |
-| **Concurrent writes to same account** | Sequential | Parallel |
-| **Write complexity** | O(1) with lock wait | O(1) no wait |
-| **Read complexity** | O(1) | O(n) where n = number of diffs |
-| **Hot account throughput** | Limited by lock | Unlimited |
-
-#### Trade-offs
-
-**Advantages**:
-- **No write contention**: All writes are appends
-- **Parallel processing**: Multiple transactions can update the same account simultaneously
-- **No deadlocks**: No locks means no deadlock possibility
-- **Higher throughput**: Hot accounts don't become bottlenecks
-
-**Considerations**:
-- **Read cost**: Balance reads require summing all diffs (mitigated by Pebble's efficient range scans)
-- **Storage growth**: Each transaction creates new diff entries (mitigated by compaction)
+See [Read Path](../technical/architecture/subsystems/read-path/).
 
 ---
 
-## Migration Considerations
+## 12. Rebuildable read-side projections
 
-When migrating from v2 to v3, consider:
+Some query-oriented state is maintained asynchronously as rebuildable projections rather than being treated as the authoritative business source of truth.
 
-1. **Data Migration**: Export logs from v2 and import to v3 (import/export feature planned)
-2. **API Changes**: Update clients to handle removed `preCommitVolumes` and effective-volume fields (`postCommitVolumes` is retained on every transaction)
-3. **Infrastructure**: Remove PostgreSQL from your infrastructure
-4. **Cluster Setup**: Configure Raft cluster (odd number of nodes for quorum)
-5. **Storage Selection**: Choose appropriate storage backend for your workload
+This includes indexing and usage-oriented stores. The audit chain and the primary replicated state remain the reference for business integrity.
 
----
+See:
 
-## 12. System-Level Atomic Bulk Operations
-
-### v2 Problem
-
-In v2, the bulk API was limited to a single ledger per request:
-
-- **Per-ledger scope**: Bulk operations could only affect one ledger at a time
-- **No cross-ledger atomicity in API**: Operations on multiple ledgers required separate requests with no atomicity guarantee
-- **Partial failures**: In a multi-ledger scenario, some operations could succeed while others failed
-
-> **Note**: While PostgreSQL supports cross-schema atomic transactions, the v2 API did not expose this capability. The bulk endpoint (`POST /{ledger}/_bulk`) was designed to operate on a single ledger only.
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                     v2: Per-Ledger Bulk Operations                           │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  Request 1: POST /ledger-a/_bulk ──── [Op1, Op2] ──► Ledger A               │
-│                                                                              │
-│  Request 2: POST /ledger-b/_bulk ──── [Op3, Op4] ──► Ledger B               │
-│                                                                              │
-│  ⚠️  No atomicity guarantee between Request 1 and Request 2                 │
-│  ⚠️  Request 1 could succeed, Request 2 could fail                          │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### v3 Solution
-
-v3 introduces **system-level atomic bulk operations** thanks to the global log architecture:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    v3: System-Level Atomic Bulk                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  Single Raft Command:                                                       │
-│  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │ [Op1: Ledger A] [Op2: Ledger B] [Op3: Ledger A] [Op4: Ledger C]    │    │
-│  └─────────────────────────────────────────────────────────────────────┘    │
-│                         ↓                                                    │
-│                  Single Raft Entry                                           │
-│                         ↓                                                    │
-│                  All-or-Nothing                                              │
-│                                                                              │
-│  ✅  Either ALL operations succeed, or NONE are applied                     │
-│  ✅  Cross-ledger atomicity guaranteed                                      │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-#### How It Works
-
-1. **Single Raft Group**: All ledgers are managed by a single Raft group
-2. **Global Log**: All operations are ordered in a global sequence
-3. **Multi-Action Commands**: A single Raft command can contain actions on multiple ledgers
-4. **Atomic FSM Application**: The FSM applies all actions atomically
-
-#### Usage
-
-Via **gRPC**, the `Apply` call accepts multiple actions targeting different ledgers in a single request -- all actions succeed or all fail together. Via **HTTP**, the bulk endpoint supports an `atomic=true` query parameter that wraps all operations in the request into a single Raft command, even when individual operations target different ledgers. See [Architecture Overview](../technical/architecture-overview.md) for implementation details.
-
-**Benefits**:
-- **Cross-ledger transfers**: Atomic transfers between accounts in different ledgers
-- **Consistent state**: System is always in a consistent state
-- **Simplified error handling**: No need to handle partial failures across ledgers
-- **Audit trail**: Single global sequence for all operations
-
-See [Global Log Architecture](../technical/architecture/subsystems/consensus/global-log.md) for detailed documentation on the two-level log architecture that enables this feature.
+- [Indexer](../technical/architecture/subsystems/indexer/)
+- [Usage](../technical/architecture/subsystems/usage/)
+- [Audit vs Technical State](../technical/architecture/audit-vs-technical-state.md)
 
 ---
+
+## Migration considerations
+
+Moving from v2 to v3 is not only a database substitution. Review at least:
+
+1. API differences and client behavior;
+2. data migration/import strategy;
+3. cluster and quorum topology;
+4. persistent volume and WAL placement;
+5. backup and restore procedures;
+6. monitoring and alerting;
+7. consistency expectations for reads;
+8. whether callers require cross-ledger atomic operations and therefore need the gRPC API.
+
+The authoritative operational and technical details live under [`docs/technical/`](../technical/) and [`docs/ops/`](../ops/).
 
 ## Conclusion
 
-Ledger v3 addresses the fundamental architectural challenges of v2 by:
+Ledger v3 moves responsibility for ordering, persistence, recovery, and much of the operational lifecycle from an external SQL database into the ledger system itself. The result is a substantially different architecture: embedded storage, native Raft consensus, deterministic FSM application, explicit read consistency, and rebuildable read-side projections.
 
-1. **Eliminating external dependencies** (PostgreSQL → embedded storage)
-2. **Implementing native distributed consensus** (PostgreSQL replication → Raft)
-3. **Providing deployment flexibility** (pure Go builds, Pebble storage)
-4. **Improving performance** (local writes, optimized storage engines)
-5. **Enhancing observability** (OpenTelemetry, Pyroscope)
-6. **Eliminating write contention** (row locks → append-only balance diffs)
-
-The result is a simpler, more performant, and more operationally friendly ledger system that scales better under high concurrency.
+This document should remain a product-level comparison. When implementation details matter, follow the subsystem links above rather than extending this page into a second architecture specification.

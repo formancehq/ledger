@@ -47,15 +47,8 @@ service RestoreService {
 // ============================================================================
 
 message StartDownloadBackupRequest {
-  // Fields 1, 2, 3, 5, 6 were the flat s3_* configuration. They are reserved
-  // so the new BackupStorage oneof cannot silently parse a legacy payload as
-  // a sub-message. bucket_id keeps its original field number (4) for
-  // forward-compatible payloads.
-  reserved 1, 2, 3, 5, 6;
-  reserved "s3_bucket", "s3_region", "s3_endpoint", "s3_access_key_id", "s3_secret_access_key";
-
-  string bucket_id = 4;             // Namespace prefix for backup files (default: cluster-id from server config)
-  common.BackupStorage storage = 7; // Backup storage backend (s3 or azure)
+  string bucket_id = 1;             // Namespace prefix for backup files (default: cluster-id from server config)
+  common.BackupStorage storage = 2; // Backup storage backend (s3 or azure)
 }
 
 message StartDownloadBackupResponse {

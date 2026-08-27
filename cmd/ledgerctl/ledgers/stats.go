@@ -48,7 +48,7 @@ func runStats(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Fetching stats for ledger %s...", ledgerName))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching stats for ledger %s...", ledgerName))
 
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 

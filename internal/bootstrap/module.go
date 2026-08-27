@@ -61,6 +61,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
+	"github.com/formancehq/ledger/v3/internal/pkg/network"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
@@ -168,11 +169,12 @@ func ColdStorageModule(coldStorageDriver string, restore bool) fx.Option {
 					store,
 					cold,
 					machine.ArchiveRequestCh(),
-					func(chapterID uint64) error {
+					func(chapterID uint64, sealingHash []byte) error {
 						_, err := admissionHandler.Admit(internalauth.WithSystemActor(context.Background(), commands.ComponentChapterArchiver), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 							Type: &servicepb.Request_ConfirmArchiveChapter{
 								ConfirmArchiveChapter: &servicepb.ConfirmArchiveChapterRequest{
-									ChapterId: chapterID,
+									ChapterId:   chapterID,
+									SealingHash: sealingHash,
 								},
 							},
 						}))
@@ -544,7 +546,7 @@ func Module() fx.Option {
 				}, nil
 			},
 			// RaftServer for internal inter-node communication (Raft transport + Snapshot)
-			func(cfg Config, lc fx.Lifecycle, logger logging.Logger) (*grpcadp.RaftServer, error) {
+			func(cfg Config, lc fx.Lifecycle, logger logging.Logger, bindings network.Bindings) (*grpcadp.RaftServer, error) {
 				_, raftPort, err := net.SplitHostPort(cfg.RaftConfig.BindAddr)
 				if err != nil {
 					return nil, fmt.Errorf("invalid bind address format: %w", err)
@@ -562,10 +564,11 @@ func Module() fx.Option {
 
 				RegisterCertReloaderLifecycle(lc, reloader, logger)
 
-				return grpcadp.NewRaftServer(port, logger, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(), cfg.ClusterSecret)
+				return grpcadp.NewRaftServer(port, logger, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(), cfg.ClusterSecret,
+					listenerOptions(bindings.Raft)...)
 			},
 			// ServiceServer for external client-facing API
-			func(cfg Config, lc fx.Lifecycle, logger logging.Logger) (*grpcadp.ServiceServer, error) {
+			func(cfg Config, lc fx.Lifecycle, logger logging.Logger, bindings network.Bindings) (*grpcadp.ServiceServer, error) {
 				tlsCfg, reloader, err := ServerTLSConfig(cfg.TLSConfig)
 				if err != nil {
 					return nil, fmt.Errorf("loading TLS config for service server: %w", err)
@@ -573,7 +576,8 @@ func Module() fx.Option {
 
 				RegisterCertReloaderLifecycle(lc, reloader, logger)
 
-				return grpcadp.NewServiceServer("", cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext())
+				return grpcadp.NewServiceServer("", cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(),
+					listenerOptions(bindings.Service)...)
 			},
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
 			fx.Annotate(buildAuthConfig, fx.ParamTags(``, ``, `optional:"true"`)),
@@ -874,6 +878,13 @@ func Module() fx.Option {
 			return mux
 		}),
 		fx.Invoke(
+			// Registered first so it runs last on stop: every injected listener
+			// is released once the servers that adopted them have stopped. Every
+			// binding is consumed in normal mode, so this is a safety net here
+			// and the actual release in restore mode.
+			func(lc fx.Lifecycle, bindings network.Bindings) {
+				lc.Append(releaseBindingsHook(bindings))
+			},
 			func(
 				lc fx.Lifecycle,
 				runtime *dal.Store,
@@ -1057,43 +1068,15 @@ func Module() fx.Option {
 				raftServer *grpcadp.RaftServer,
 				logger logging.Logger,
 				membership *raftmembership.Membership,
+				shutdowner fx.Shutdowner,
 			) {
-				var waitRaft func()
-
-				lc.Append(fx.Hook{
-					OnStart: func(ctx context.Context) error {
-						logger.Infof("Starting Raft gRPC server")
-
-						listening := make(chan struct{})
-
-						waitRaft = otlplogs.GoWait(func() {
-							err := raftServer.Start(listening)
-							if err != nil {
-								panic(err)
-							}
-						}, logger)
-
-						select {
-						case <-ctx.Done():
-							return ctx.Err()
-						case <-listening:
-						}
-
-						logger.Infof("Raft gRPC server started successfully")
-
-						membership.Start()
-
-						return nil
-					},
-					OnStop: func(ctx context.Context) error {
-						logger.Infof("Stopping Raft gRPC server")
-
-						err := raftServer.Stop()
-						waitRaft()
-
-						return err
-					},
-				})
+				lc.Append(grpcServerHook(grpcServerHookConfig{
+					Server:          raftServer,
+					Name:            "Raft gRPC server",
+					Logger:          logger,
+					AfterListen:     membership.Start,
+					RequestShutdown: shutdownRequester(shutdowner),
+				}))
 			},
 			// Wire Observer: handle LeadershipChange and LeaderReady events.
 			// ConfChange events are no longer dispatched here — Membership
@@ -1230,49 +1213,22 @@ func Module() fx.Option {
 				lc fx.Lifecycle,
 				serviceServer *grpcadp.ServiceServer,
 				logger logging.Logger,
+				shutdowner fx.Shutdowner,
 			) {
-				var waitService func()
-
-				lc.Append(fx.Hook{
-					OnStart: func(ctx context.Context) error {
-						logger.Infof("Starting Service gRPC server")
-
-						listening := make(chan struct{})
-
-						waitService = otlplogs.GoWait(func() {
-							err := serviceServer.Start(listening)
-							if err != nil {
-								panic(err)
-							}
-						}, logger)
-
-						select {
-						case <-ctx.Done():
-							return ctx.Err()
-						case <-listening:
-						}
-
-						logger.Infof("Service gRPC server started successfully")
-
-						return nil
-					},
-					OnStop: func(ctx context.Context) error {
-						logger.Infof("Stopping Service gRPC server")
-
-						err := serviceServer.Stop()
-						waitService()
-
-						return err
-					},
-				})
+				lc.Append(grpcServerHook(grpcServerHookConfig{
+					Server:          serviceServer,
+					Name:            "Service gRPC server",
+					Logger:          logger,
+					RequestShutdown: shutdownRequester(shutdowner),
+				}))
 			},
 			// Join mode preflight is registered EARLIER (before the Raft
 			// transport/server/node startup hooks) so it runs before any inbound
 			// Raft traffic can be stepped — see the joinPreflightHook closure
 			// above and its doc comment for the EN-1436 ordering rationale.
-			func(lc fx.Lifecycle, cfg Config, handler http.Handler) {
+			func(lc fx.Lifecycle, cfg Config, handler http.Handler, bindings network.Bindings) {
 				lc.Append(transportfx.FXHook(httpserver.NewHook(handler,
-					httpserver.WithAddress(fmt.Sprintf(":%d", cfg.HTTPPort)),
+					httpListenerOption(bindings.HTTP, fmt.Sprintf(":%d", cfg.HTTPPort)),
 				)))
 			},
 			func(lc fx.Lifecycle, collector *diskusage.Collector) {

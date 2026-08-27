@@ -415,12 +415,66 @@ func RebuildDelta(
 				}
 			}
 
+		// A chapter lifecycle log always carries its full snapshots (the
+		// processors build them unconditionally), so a nil payload or chapter
+		// is a corrupt/truncated log stream. Skipping it would report a
+		// successful restore with an incomplete registry — the exact
+		// identity-collision seed this replay exists to prevent — so the
+		// rebuild fails loudly instead.
+		case *commonpb.LogPayload_CloseChapter:
+			if p.CloseChapter.GetClosedChapter() == nil || p.CloseChapter.GetNewChapter() == nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("invariant: CloseChapter log %d carries no chapter snapshots — corrupt log stream", seq)
+			}
+
+			if err := writer.replayClosedChapter(ctx, p.CloseChapter); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("replaying closed chapter at log %d: %w", seq, err)
+			}
+
+		case *commonpb.LogPayload_SealChapter:
+			if p.SealChapter.GetChapter() == nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("invariant: SealChapter log %d carries no chapter snapshot — corrupt log stream", seq)
+			}
+
+			if err := writer.storeChapterRow(p.SealChapter.GetChapter()); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("replaying sealed chapter at log %d: %w", seq, err)
+			}
+
+		case *commonpb.LogPayload_ArchiveChapter:
+			if p.ArchiveChapter.GetChapter() == nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("invariant: ArchiveChapter log %d carries no chapter snapshot — corrupt log stream", seq)
+			}
+
+			if err := writer.storeChapterRow(p.ArchiveChapter.GetChapter()); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("replaying archiving chapter at log %d: %w", seq, err)
+			}
+
+		case *commonpb.LogPayload_ConfirmArchiveChapter:
+			if p.ConfirmArchiveChapter.GetChapter() == nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("invariant: ConfirmArchiveChapter log %d carries no chapter snapshot — corrupt log stream", seq)
+			}
+
+			if err := writer.storeChapterRow(p.ConfirmArchiveChapter.GetChapter()); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("replaying archived chapter at log %d: %w", seq, err)
+			}
+
 		// Log types with no persistent state to rebuild:
 		case *commonpb.LogPayload_RemovedEventsSink:
-		case *commonpb.LogPayload_CloseChapter:
-		case *commonpb.LogPayload_SealChapter:
-		case *commonpb.LogPayload_ArchiveChapter:
-		case *commonpb.LogPayload_ConfirmArchiveChapter:
 		case *commonpb.LogPayload_DeleteChapterSchedule:
 		case *commonpb.LogPayload_DeletedPreparedQuery:
 		case *commonpb.LogPayload_CreatedQueryCheckpoint:
@@ -468,6 +522,17 @@ func RebuildDelta(
 			_ = batch.Cancel()
 
 			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)
+		}
+	}
+
+	// Chapter logs were replayed: persist the advanced next-chapter id so the
+	// restored FSM allocates fresh ids — a reused id aims the archiver at an
+	// existing cold object it will confirm without uploading (EN-1750).
+	if writer.nextChapterID != 0 {
+		if err := state.StoreNextChapterID(batch, writer.nextChapterID); err != nil {
+			_ = batch.Cancel()
+
+			return fmt.Errorf("storing rebuilt next chapter id: %w", err)
 		}
 	}
 
@@ -786,13 +851,97 @@ type attributeReplayWriter struct {
 	// boundaries.
 	reversions      map[string]*bitset.Bitset
 	dirtyReversions map[string]struct{}
+
+	// Next chapter id (SubGlobNextChapterID), seeded from the checkpoint on
+	// the first replayed chapter log and advanced past every chapter a close
+	// opens. 0 until a chapter log is replayed; the row is only rewritten
+	// when non-zero (ReadNextChapterID never returns 0), matching the live
+	// path's persist-only-if-touched.
+	nextChapterID uint64
+}
+
+// storeChapterRow upserts a chapter registry row (ZoneGlobal/SubGlobChapters)
+// from a lifecycle log's snapshot. Every chapter log carries the full
+// post-transition Chapter, so replaying them in sequence order converges each
+// row to its final state — the registry FSM recovery reads at boot. Without
+// these rows the restored registry is frozen at checkpoint time: the boot
+// genesis path re-creates "chapter 1" over already-archived history, and the
+// next archival confirms against the stale cold object without uploading,
+// purging data that exists nowhere (EN-1750).
+func (w *attributeReplayWriter) storeChapterRow(chapter *commonpb.Chapter) error {
+	if err := w.ensureNextChapterID(); err != nil {
+		return err
+	}
+
+	return state.StoreChapter(w.batch, chapter)
+}
+
+// replayClosedChapter upserts both chapters a close produced and advances the
+// next-chapter id past the newly opened one. The caller validates that both
+// snapshots are present.
+func (w *attributeReplayWriter) replayClosedChapter(ctx context.Context, p *commonpb.ClosedChapterLog) error {
+	closed := p.GetClosedChapter()
+
+	// The log's snapshot is cloned before the live apply stamps
+	// LastAuditHash onto the tracker's chapter (machine.applyProposal), so
+	// it is empty here. That hash — the chain hash of the audit entry at
+	// CloseAuditSequence — seeds the checker's chain verification across
+	// the chapter's eventual purge, and the later lifecycle logs carry it
+	// only when the seal predates the backup. Recover it from the stored
+	// audit entry so a chapter sealed after the restore carries it too.
+	if len(closed.GetLastAuditHash()) == 0 && closed.GetCloseAuditSequence() > 0 {
+		// The entry cannot be missing: it is at or above the incremental
+		// window's floor (every archival confirm audits above the range it
+		// purges, so no purge reaches CloseAuditSequence of a delta close),
+		// and below-floor entries ride the checkpoint SSTs.
+		entry, err := query.ReadAuditEntry(ctx, w.readHandle, closed.GetCloseAuditSequence())
+		if err != nil {
+			return fmt.Errorf("reading audit entry %d to recover closed chapter %d's last audit hash: %w",
+				closed.GetCloseAuditSequence(), closed.GetId(), err)
+		}
+
+		closed.LastAuditHash = entry.GetHash()
+	}
+
+	if err := w.storeChapterRow(closed); err != nil {
+		return err
+	}
+
+	opened := p.GetNewChapter()
+	if err := w.storeChapterRow(opened); err != nil {
+		return err
+	}
+
+	if next := opened.GetId() + 1; next > w.nextChapterID {
+		w.nextChapterID = next
+	}
+
+	return nil
+}
+
+// ensureNextChapterID seeds the running next-chapter id from the checkpoint
+// once, so delta closes advance it rather than clobber it.
+func (w *attributeReplayWriter) ensureNextChapterID() error {
+	if w.nextChapterID != 0 {
+		return nil
+	}
+
+	next, err := query.ReadNextChapterID(w.readHandle)
+	if err != nil {
+		return fmt.Errorf("reading next chapter id: %w", err)
+	}
+
+	w.nextChapterID = next
+
+	return nil
 }
 
 // applyAuditOrderEffects folds order-level boundary effects that the ledger-log
 // stream does not carry: MirrorFillGap's skipped transaction ids (FilledGapLog
-// keeps only the original v2 id). These live on the order itself, which
-// AuditItem.serialized_order preserves — bound into the audit hash chain and
-// shipped by the incremental export's auditItem segments.
+// keeps only the original v2 id) and every MirrorIngest's source v2 log id
+// (only FilledGapLog echoes it back into the log stream). These live on the
+// order itself, which AuditItem.serialized_order preserves — bound into the
+// audit hash chain and shipped by the incremental export's auditItem segments.
 //
 // Items with log_sequence == 0 (failed proposals, idempotent replays) and items
 // at or below fromLogSeq (already folded into the checkpoint) contribute
@@ -856,6 +1005,24 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 			if next := id + 1; next > b.GetNextTransactionId() {
 				b.NextTransactionId = next
 			}
+		}
+
+		// Mirror high-water mark. Only the FSM writes LastMirrorV2LogId on the
+		// live path, and the ledger-log stream does not carry the source id
+		// except for fill-gaps, so without this fold a restored mirror keeps
+		// the checkpoint's value while the delta's ingests are replayed. Worker
+		// and FSM both read that one row, so they agree on a stale position and
+		// the re-fetched logs arrive as v2LogID == last+1 — the APPLY branch,
+		// not the idempotent skip (EN-1776).
+		//
+		// Max, not assignment: it matches the checker's own fold in
+		// recordMirrorIngestMutations, so the rebuild and the checker's
+		// oracle agree by construction. compareMirrorV2LogID is a strict
+		// equality check against that fold, so a divergence here would
+		// surface as CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH on a
+		// healthy store. Pinned by TestRebuildDelta_FoldsHighestMirrorV2LogID.
+		if effects.MirrorV2LogID > b.GetLastMirrorV2LogId() {
+			b.LastMirrorV2LogId = effects.MirrorV2LogID
 		}
 	}
 

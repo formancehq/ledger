@@ -97,6 +97,7 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_CHAPTER_NOT_CLOSING,
 		commonpb.ErrorReason_ERROR_REASON_CHAPTER_NOT_CLOSED,
 		commonpb.ErrorReason_ERROR_REASON_CHAPTER_NOT_ARCHIVING,
+		commonpb.ErrorReason_ERROR_REASON_CHAPTER_ARCHIVE_IDENTITY_MISMATCH,
 		commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE,
 		commonpb.ErrorReason_ERROR_REASON_INDEX_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA,
@@ -111,6 +112,7 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE,
 		commonpb.ErrorReason_ERROR_REASON_INDEX_BUILDING,
 		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_READY,
+		commonpb.ErrorReason_ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP,
 		commonpb.ErrorReason_ERROR_REASON_CLUSTER_UNHEALTHY,
 		commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW:
 		return KindUnavailable

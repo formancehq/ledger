@@ -56,6 +56,29 @@ type Worker struct {
 	builder        *plan.Builder
 	logger         logging.Logger
 	sourceLogCount uint64
+	// sourceHeadObserved records that GetLatestLogID has answered at least
+	// once, making sourceLogCount == 0 an observed empty source rather than
+	// "never asked". Without it publishIdleStatus cannot tell the two apart,
+	// and an empty source would never get its status published (EN-1773).
+	sourceHeadObserved bool
+	// lastPublishedSourceHead is the source head most recently persisted via a
+	// MirrorSyncUpdate (either bundled with an ingest batch or published on its
+	// own by an idle, caught-up worker). It gates publishIdleStatus so an idle
+	// mirror does not re-propose the same value every poll tick (EN-1773).
+	lastPublishedSourceHead uint64
+	// statusClearConfirmed records that a MirrorSyncUpdate carrying
+	// ClearError was confirmed applied since the last error report, tracking
+	// "the persisted status needs clearing" independently from "the head
+	// needs publishing". Both are required: a source that recovers without
+	// producing a new log leaves the head unchanged, so a head-only gate
+	// would suppress the clear and the API would keep serving the stale
+	// error (EN-1773).
+	//
+	// The zero value is deliberately false: a worker that has just started
+	// cannot know whether an error is persisted, so it publishes once rather
+	// than assuming the status is clean. One idle proposal per worker start,
+	// and it is idempotent.
+	statusClearConfirmed bool
 
 	notify  signal.Signal
 	w       worker.Worker
@@ -202,6 +225,7 @@ func (w *Worker) refreshSourceHead(ctx context.Context) {
 	}
 
 	w.sourceLogCount = count
+	w.sourceHeadObserved = true
 }
 
 func (w *Worker) processLogs(ctx context.Context) {
@@ -321,6 +345,15 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	w.fetchDuration.Record(ctx, fetchDur.Microseconds(), attrs)
 
 	if len(v2Logs) == 0 {
+		// Fully caught up: the ingest path (which normally bundles the source
+		// head and the error clear into its data proposal) never runs, so
+		// publish them on their own. Without this a correctly restored, idle
+		// mirror reports SYNCING forever because RebuildDelta reconstructs
+		// last_mirror_v2_log_id but not SubPLMirrorSourceHead, and a source
+		// that recovers without producing a new log never gets its persisted
+		// error cleared (EN-1773).
+		w.publishIdleStatus(ctx)
+
 		return false, nil
 	}
 
@@ -497,6 +530,12 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	w.lastAppliedV2LogID = lastV2LogID
 	w.prefetchCh = nextPrefetchCh
 
+	// The applied proposal carried this source head AND ClearError in its
+	// MirrorSyncUpdate, so record both as published to keep a later idle tick
+	// from re-proposing them.
+	w.lastPublishedSourceHead = w.sourceLogCount
+	w.statusClearConfirmed = true
+
 	return hasMore, nil
 }
 
@@ -508,28 +547,95 @@ func (w *Worker) drainPrefetch(ch chan prefetchResult) {
 	}
 }
 
+// publishIdleStatus proposes a standalone MirrorSyncUpdate for an idle, fully
+// caught-up mirror, carrying the observed source head and clearing any
+// persisted error. The ingest path bundles both into its data proposal, but a
+// caught-up worker fetches no logs and would otherwise propose nothing —
+// leaving SubPLMirrorSourceHead at 0 after a restore, so ReadMirrorSyncProgress
+// reports SYNCING indefinitely until a new source log arrives, and leaving a
+// recorded error in place even after the source recovers (EN-1773).
+//
+// The two conditions are tracked separately because they move independently: a
+// source that recovers without producing a new log leaves the head unchanged,
+// so gating on the head alone would suppress the error clear forever. A head
+// that was never observed carries no information and is skipped — but an
+// observed head of 0 (an empty source) is a legitimate value that must still
+// be able to clear an error, which is why sourceHeadObserved exists rather
+// than a sourceLogCount == 0 test.
+func (w *Worker) publishIdleStatus(ctx context.Context) {
+	if !w.sourceHeadObserved {
+		return
+	}
+
+	if w.statusClearConfirmed && w.sourceLogCount == w.lastPublishedSourceHead {
+		return
+	}
+
+	// A zero SourceLogCount is "no write" for that field (write_set.go), so an
+	// empty source still gets its error cleared without inventing a head.
+	update := &raftcmdpb.MirrorSyncUpdate{
+		LedgerName:     w.ledgerName,
+		ClearError:     true,
+		SourceLogCount: w.sourceLogCount,
+	}
+
+	if !w.proposeMirrorSync(ctx, update, "mirror idle status publish") {
+		return
+	}
+
+	w.lastPublishedSourceHead = w.sourceLogCount
+	w.statusClearConfirmed = true
+}
+
 func (w *Worker) reportError(ctx context.Context, message string) {
+	update := &raftcmdpb.MirrorSyncUpdate{
+		LedgerName: w.ledgerName,
+		Error: &commonpb.MirrorSyncError{
+			Message:    message,
+			OccurredAt: &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
+		},
+	}
+
+	// Marked dirty BEFORE the propose, reading the bit as "an error may now be
+	// persisted". proposeMirrorSync reports confirmation, not application: both
+	// its waits abandon on context cancellation (futures.Future.Wait returns
+	// ctx.Err() on an unresolved future) and abandoning a wait does not
+	// un-commit a Raft entry, so a committed error report can return false.
+	// Deferring the write to a confirmed apply would leave the bit true with an
+	// error in the store, and publishIdleStatus would then suppress the clear
+	// for as long as the source head does not move. Being wrong this way costs
+	// one idempotent idle publish; being wrong the other way costs a permanent
+	// error on a healthy mirror — the same asymmetry the field's zero value
+	// already resolves in this direction (EN-1773).
+	w.statusClearConfirmed = false
+
+	w.proposeMirrorSync(ctx, update, "mirror error report")
+}
+
+// proposeMirrorSync proposes a technical-only MirrorSyncUpdate and reports
+// whether it was confirmed applied. It is the shared spine of the two
+// standalone mirror-status proposals — the idle publish and the error report —
+// which differ only in their payload.
+//
+// label names the operation in the failure logs. The bool return is what makes
+// publishIdleStatus's bookkeeping safe: only a confirmed application may
+// advance the published state, or a rejected proposal would suppress the retry
+// on the next tick. reportError ignores it on purpose — it marks the status
+// dirty up front, because for that direction an unconfirmed-but-applied
+// proposal is the dangerous case.
+func (w *Worker) proposeMirrorSync(ctx context.Context, update *raftcmdpb.MirrorSyncUpdate, label string) bool {
 	cmd := &raftcmdpb.Proposal{
 		Date:           &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
 		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentMirror),
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{
-			Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{
-				MirrorSync: &raftcmdpb.MirrorSyncUpdate{
-					LedgerName: w.ledgerName,
-					Error: &commonpb.MirrorSyncError{
-						Message:    message,
-						OccurredAt: &commonpb.Timestamp{Data: uint64(libtime.Now().UnixMicro())},
-					},
-				},
-			},
+			Kind: &raftcmdpb.TechnicalUpdate_MirrorSync{MirrorSync: update},
 		}},
 	}
 
-	// applyMirrorSyncUpdate reads Registry.Ledgers through the FSM-side
-	// Plan. Without a declared Ledgers key the gate rejects the
-	// read and the mirror status update silently skips — the FSM would
-	// emit no audit entry and the error would never reach the store.
-	// One WriteOperation for the error TU with its ledger needs declared.
+	// applyMirrorSyncUpdate reads Registry.Ledgers through the FSM-side Plan,
+	// so the TU must declare the ledger key or the gate rejects the read and
+	// the update silently skips — the FSM would emit no audit entry and the
+	// status would never reach the store. Same coverage as the ingest path.
 	needs := plan.NewCoverage()
 	needs.Add(dal.SubAttrLedger, domain.LedgerKey{Name: w.ledgerName}.Bytes())
 
@@ -538,46 +644,56 @@ func (w *Worker) reportError(ctx context.Context, message string) {
 		Target:   &cmd.GetTechnicalUpdates()[0].CoverageBits,
 	}}
 
+	logFailure := func(reason string, err error) {
+		w.logger.WithFields(map[string]any{
+			"error":     err.Error(),
+			"operation": label,
+		}).Errorf("Mirror sync update %s", reason)
+	}
+
 	build, err := w.builder.Build(needs, operations)
 	if err != nil {
 		if build != nil {
 			build.ReleaseLoaders()
 		}
 
-		w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Failed to build preloads for mirror error report")
+		logFailure("preload build failed", err)
 
-		return
+		return false
 	}
 
 	runResult, err := w.builder.Run(ctx, cmd, build, marshalMirrorCommand, w.proposer)
 	if err != nil {
-		w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Failed to report mirror error")
+		logFailure("could not be proposed", err)
 
-		return
+		return false
 	}
 
 	runResult.Guard.ReleaseLoaders()
 
-	// Wait for Raft acceptance THEN FSM apply. Without the FSM wait, the
-	// FSM could reject the proposal (ErrStaleProposal on tracker drift,
-	// for example) and reportError would return as if it succeeded — the
-	// mirror error status would never reach the store.
+	// Wait for Raft acceptance THEN FSM apply. Without the FSM wait the FSM
+	// could reject the proposal (ErrStaleProposal on tracker drift, for
+	// example) and this would return as if it had succeeded.
 	if _, err := runResult.Proposal.Wait(ctx); err != nil {
-		w.logger.WithFields(map[string]any{"error": err.Error()}).Errorf("Mirror error report rejected by Raft")
+		logFailure("rejected by Raft", err)
 
-		return
+		return false
 	}
 
 	result, fsmErr := runResult.FSMFuture.Wait(ctx)
 	if fsmErr != nil {
-		w.logger.WithFields(map[string]any{"error": fsmErr.Error()}).Errorf("Mirror error report rejected by FSM")
+		logFailure("rejected by FSM", fsmErr)
 
-		return
+		return false
 	}
 
 	if result.Error != nil {
-		w.logger.WithFields(map[string]any{"error": result.Error.Error()}).Errorf("Mirror error report apply returned business error")
+		logFailure("apply returned a business error", result.Error)
+
+		return false
 	}
+
+	return true
 }
 
 // marshalMirrorCommand marshals a proposal command into a newly allocated byte

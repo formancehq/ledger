@@ -42,8 +42,6 @@ const numscriptTransfer = `
 // all correctly preload the ledger, so they are not affected.
 var _ = Describe("Prepared query and numscript work after ledger cache eviction", Ordered, func() {
 	const (
-		httpPort          = 9260
-		grpcPort          = 8260
 		rotationThreshold = uint64(10)
 		// Enough no-op proposals to push the LedgerInfo past gen1 of the
 		// cache (needs > 2 * rotationThreshold beyond the CreateLedger
@@ -60,9 +58,11 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 	)
 
 	BeforeAll(func() {
-		ctx, client, _ = testutil.SetupSingleNode(httpPort, grpcPort,
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode(
 			testserver.WithCacheRotationThreshold(rotationThreshold),
 		)
+		client = node.Client
 
 		// 1. Create the ledger — populates LedgerInfo in Pebble (Global +
 		//    attributes) and in the FSM's in-memory cache (current gen0).

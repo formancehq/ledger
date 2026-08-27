@@ -227,16 +227,9 @@ message RemoveNodeResponse {}
 // ============================================================================
 
 message BackupRequest {
-  // Fields 1, 4–8 were the flat driver/s3_* configuration. They are reserved
-  // so the new BackupStorage oneof on field 9 cannot silently parse a legacy
-  // payload as a sub-message (proto3 reuses wire types when scalar field
-  // numbers are reassigned to length-delimited messages).
-  reserved 1, 4, 5, 6, 7, 8;
-  reserved "driver", "s3_bucket", "s3_region", "s3_endpoint", "s3_access_key_id", "s3_secret_access_key";
-
-  string base_path = 2;             // Reserved for future use
-  string bucket_id = 3;             // Namespace prefix for backup files (default: cluster-id)
-  common.BackupStorage storage = 9; // Backup storage backend (s3 or azure)
+  string base_path = 1;             // Reserved for future use
+  string bucket_id = 2;             // Namespace prefix for backup files (default: cluster-id)
+  common.BackupStorage storage = 3; // Backup storage backend (s3 or azure)
 }
 
 message BackupResponse {
@@ -255,14 +248,9 @@ message BackupResponse {
 // ============================================================================
 
 message IncrementalBackupRequest {
-  // See BackupRequest: fields 1, 4–8 are reserved for the previous flat
-  // driver/s3_* configuration to prevent silent payload reinterpretation.
-  reserved 1, 4, 5, 6, 7, 8;
-  reserved "driver", "s3_bucket", "s3_region", "s3_endpoint", "s3_access_key_id", "s3_secret_access_key";
-
-  string base_path = 2;             // Reserved for future use
-  string bucket_id = 3;             // Namespace prefix for backup files (default: cluster-id)
-  common.BackupStorage storage = 9; // Backup storage backend (s3 or azure)
+  string base_path = 1;             // Reserved for future use
+  string bucket_id = 2;             // Namespace prefix for backup files (default: cluster-id)
+  common.BackupStorage storage = 3; // Backup storage backend (s3 or azure)
 }
 
 message IncrementalBackupResponse {

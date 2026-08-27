@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: bash scripts/ai-audit-jira <challenge-result.json> [--publish] [--project <key>] [--component <name>]
+
+Previews Jira bugs for CONFIRMED audit findings. Jira writes require --publish.
+Default project: EN. Default component: Ledger.
+EOF
+}
+
+[[ $# -gt 0 ]] || { usage >&2; exit 1; }
+case "${1:-}" in -h|--help) usage; exit 0 ;; esac
+input=$1
+shift
+publish=false
+project=EN
+component=Ledger
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --publish) publish=true; shift ;;
+        --project) [[ $# -ge 2 && "$2" =~ ^[A-Z][A-Z0-9_]*$ ]] || { echo "ai-audit-jira: invalid --project" >&2; exit 1; }; project=$2; shift 2 ;;
+        --component) [[ $# -ge 2 && -n "$2" ]] || { echo "ai-audit-jira: invalid --component" >&2; exit 1; }; component=$2; shift 2 ;;
+        *) echo "ai-audit-jira: unknown argument: $1" >&2; usage >&2; exit 1 ;;
+    esac
+done
+
+for command in jq; do command -v "$command" >/dev/null 2>&1 || { echo "ai-audit-jira: required command not found: $command" >&2; exit 1; }; done
+[[ -f "$input" ]] || { echo "ai-audit-jira: challenge result not found: $input" >&2; exit 1; }
+
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/ledger-audit-jira.XXXXXX")
+trap 'rm -rf -- "$tmp"' EXIT
+
+# The challenge result is caller-owned and may be edited or replaced while Jira
+# writes are in flight. Snapshot it once before validation and bind every later
+# read to that private copy, so publication cannot switch to unvalidated input.
+snapshot="$tmp/challenge-result.json"
+cp -- "$input" "$snapshot"
+chmod 400 "$snapshot"
+
+# The audit_id and every finding id are untrusted report content that ends up in
+# the deduplication marker and therefore in the JQL search below. Enforce the
+# canonical `<audit-id>/<short-kebab-case-name>` finding-id format required by
+# scripts/ai-audit here too: this command runs standalone and cannot assume the
+# result was produced by a validated audit/challenge pass.
+if ! jq -e '
+    type == "object" and
+    (.audit_id | type == "string" and test("^[a-z0-9][a-z0-9-]*$")) and
+    (.head | type == "string" and test("^[0-9a-f]{40,64}$")) and
+    (.results | type == "array") and
+    ((.audit_id + "/") as $prefix | all(.results[];
+      (.id | type == "string" and startswith($prefix) and (ltrimstr($prefix) | test("^[a-z0-9]+(-[a-z0-9]+)*$"))) and
+      (.severity == "P0" or .severity == "P1" or .severity == "P2" or .severity == "P3") and
+      (.status == "CONFIRMED" or .status == "LIKELY" or .status == "QUESTION" or .status == "REJECTED") and
+      (.title | type == "string" and length > 0) and
+      (.challenge_summary | type == "string" and length > 0) and
+      (.evidence_for | type == "array") and
+      (.evidence_against | type == "array") and
+      (.invariant_assessment | type == "string" and length > 0) and
+      (.reachability_assessment | type == "string" and length > 0) and
+      (.existing_tests | type == "array") and
+      (.reproduction_plan | type == "string" and length > 0) and
+      (.recommended_next_action | type == "string" and length > 0))) and
+    ([.results[].id] | length == (unique | length))
+' "$snapshot" >/dev/null; then
+    echo "ai-audit-jira: invalid challenge result" >&2
+    exit 1
+fi
+
+confirmed_count=$(jq '[.results[] | select(.status == "CONFIRMED")] | length' "$snapshot")
+printf 'AI_AUDIT_JIRA_CANDIDATES: %s\n' "$confirmed_count"
+[[ "$confirmed_count" -gt 0 ]] || exit 0
+
+if [[ "$publish" == true ]]; then
+    command -v acli >/dev/null 2>&1 || { echo "ai-audit-jira: acli is required for --publish" >&2; exit 1; }
+fi
+
+audit_id=$(jq -r .audit_id "$snapshot")
+head_sha=$(jq -r .head "$snapshot")
+
+while IFS= read -r finding; do
+    id=$(jq -r .id <<<"$finding")
+    severity=$(jq -r .severity <<<"$finding")
+    title=$(jq -r .title <<<"$finding")
+    marker="AI-AUDIT:$id"
+    summary="[$severity] $title"
+    description_file="$tmp/description.txt"
+    create_request_file="$tmp/create-request.json"
+
+    {
+        printf 'Confirmed Ledger deep-audit finding.\n\n'
+        printf 'Audit domain: %s\n' "$audit_id"
+        printf 'Finding ID: %s\n' "$id"
+        printf 'Audited HEAD: %s\n' "$head_sha"
+        printf 'Audit severity: %s\n' "$severity"
+        printf 'Qualification: CONFIRMED\n\n'
+        printf 'Challenge summary\n%s\n\n' "$(jq -r .challenge_summary <<<"$finding")"
+        printf 'Invariant assessment\n%s\n\n' "$(jq -r .invariant_assessment <<<"$finding")"
+        printf 'Reachability assessment\n%s\n\n' "$(jq -r .reachability_assessment <<<"$finding")"
+        printf 'Evidence for\n'
+        jq -r '.evidence_for[]? | "- " + .' <<<"$finding"
+        printf '\nEvidence against / caveats\n'
+        jq -r '.evidence_against[]? | "- " + .' <<<"$finding"
+        printf '\nExisting relevant tests\n'
+        jq -r '.existing_tests[]? | "- " + .' <<<"$finding"
+        printf '\nReproduction plan\n%s\n\n' "$(jq -r .reproduction_plan <<<"$finding")"
+        printf 'Recommended next action\n%s\n\n' "$(jq -r .recommended_next_action <<<"$finding")"
+        printf '%s\n' "$marker"
+    } > "$description_file"
+
+    printf '\n==> Jira candidate: %s\n' "$id"
+    printf 'Project: %s\nType: Bug\nSummary: %s\nMarker: %s\n' "$project" "$summary" "$marker"
+
+    if [[ "$publish" != true ]]; then
+        printf 'Action: DRY_RUN\n'
+        continue
+    fi
+
+    # Exact marker is quoted as a JQL phrase; the validation above restricts
+    # finding ids to lowercase kebab-case segments, so they cannot carry quotes
+    # or JQL operators into the search.
+    #
+    # Jira text search is word-based, so the JQL is only a prefilter: it can
+    # return issues that do not carry this marker at all, and a longer marker
+    # sharing this one's prefix must not count either. The description is
+    # therefore requested as well and an issue is accepted as an existing
+    # duplicate only when one of its own description lines is exactly the
+    # marker, which is how the description above writes it. Matching is confined
+    # to the description field on purpose: a summary that happens to be the
+    # marker must not suppress creation. Every string reachable under the
+    # description is inspected so both the plain-text and the structured
+    # document representation Jira may return are covered.
+    search_json=$(acli jira workitem search \
+        --jql "project = $project AND text ~ '\"$marker\"'" \
+        --fields key,summary,description \
+        --paginate \
+        --json)
+    existing_key=$(jq -r --arg marker "$marker" '
+        [.. | objects
+         | select((.key? | type) == "string")
+         | select(any((.fields | objects | .description) | .. | strings
+                      | split("\n")[] | gsub("^\\s+|\\s+$"; ""); . == $marker))
+         | .key] | unique | first // empty
+    ' <<<"$search_json")
+    if [[ -n "$existing_key" ]]; then
+        printf 'Action: EXISTS\nJira: %s\n' "$existing_key"
+        continue
+    fi
+
+    # ACLI's simple create flags do not expose Jira Components. Build its
+    # structured request instead so the project-required component is supplied
+    # together with an Atlassian Document Format description. jq keeps every
+    # report-derived value data: none of it can alter the request structure.
+    jq -n \
+        --arg project "$project" \
+        --arg summary "$summary" \
+        --arg component "$component" \
+        --rawfile description "$description_file" '
+        {
+          projectKey: $project,
+          type: "Bug",
+          summary: $summary,
+          description: {
+            version: 1,
+            type: "doc",
+            content: ($description | rtrimstr("\n") | split("\n") | map(
+              if length == 0 then
+                {type: "paragraph", content: []}
+              else
+                {type: "paragraph", content: [{type: "text", text: .}]}
+              end
+            ))
+          },
+          labels: ["ai-audit"],
+          additionalAttributes: {
+            components: [{name: $component}]
+          }
+        }
+    ' > "$create_request_file"
+    create_json=$(acli jira workitem create \
+        --from-json "$create_request_file" \
+        --json)
+    created_key=$(jq -r '.. | objects | .key? // empty' <<<"$create_json" | head -n1)
+    [[ -n "$created_key" ]] || { echo "ai-audit-jira: Jira creation succeeded but no issue key was returned" >&2; exit 1; }
+    printf 'Action: CREATED\nJira: %s\n' "$created_key"
+done < <(jq -c '.results[] | select(.status == "CONFIRMED")' "$snapshot")

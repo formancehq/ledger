@@ -373,17 +373,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// RemovedMetadataFieldType logs. Compared against the stored
 		// LedgerInfo.MetadataSchema in compareSchema.
 		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
-		// Metadata fields the replay observed a RemovedMetadataFieldType log
-		// for. Unlike expectedSchemas this is append-only — a field removed
-		// and later re-declared stays recorded, and
-		// compareReverseMapOrphans resolves that case by checking
-		// expectedSchemas first. It is the positive-evidence oracle for the
-		// reverse-map orphan class: a verdict resting on a log the replay saw
-		// holds regardless of where the peer read-index cursor sits, whereas
-		// inferring removal from absence in a view pinned at lastSequence
-		// misreads a field created after that point. See ALIGNMENT in
-		// reverse_map_orphans.go.
-		removedSchemaFields = make(map[removedSchemaFieldKey]struct{})
 		// Expected LedgerBoundaries per ledger: id fields and replay-derivable
 		// counters, seeded from the baseline under archiving, advanced per
 		// replayed log, then topped up with the chain-bound audit-order
@@ -712,17 +701,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 							if l := d.RemovedMetadataFieldType; l != nil {
 								removeExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey())
-
-								// This is also the one log that runs
-								// purgeReverseMapForKey, so recording it gives
-								// compareReverseMapOrphans an oracle that does
-								// not depend on the peer read-index cursor
-								// sitting exactly at lastSequence.
-								removedSchemaFields[removedSchemaFieldKey{
-									ledger:  ledgerName,
-									target:  l.GetTargetType(),
-									metaKey: l.GetKey(),
-								}] = struct{}{}
 							}
 
 							// processRemoveMetadataFieldType cascades into a
@@ -856,7 +834,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		liveLedgers:           knownLedgers,
 		pendingCleanupLedgers: pendingCleanupLedgers,
 		replayedSchemas:       expectedSchemas,
-		removedFields:         removedSchemaFields,
 	}, callback)
 
 	c.compareMirrorV2LogID(snap, chainBound, deletedInReplay, callback)
@@ -6095,8 +6072,10 @@ func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, 
 
 // collectAuditOrderBoundaryEffects iterates the post-archive AuditItem rows
 // and folds the order-level boundary effects (mirror fill-gap advances) into
-// the expected boundaries — the same fold backup.RebuildDelta performs on
-// restore. Items with log_sequence 0 (failed proposals, idempotent replays) or
+// the expected boundaries. backup.RebuildDelta folds the same order effects on
+// restore, but not the same SET: the mirror high-water mark it also derives
+// here comes from recordMirrorIngestMutations instead, so the two are not
+// interchangeable. Items with log_sequence 0 (failed proposals, idempotent replays) or
 // at/below the archive boundary contribute nothing; effects for ledgers
 // without an expectation (deleted, or flagged UNKNOWN_LEDGER during replay)
 // are skipped.

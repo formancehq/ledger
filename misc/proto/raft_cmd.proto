@@ -15,34 +15,25 @@ import "signature.proto";
 // or global state). This split is the structural invariant that the audit
 // log relies on to attribute entries to a ledger — extracting the targeted
 // ledger is a single accessor on the wrapper instead of a per-payload switch.
+//
+// Neither idempotency nor signing lives here: both are keyed per atomic
+// proposal (Proposal.idempotency, Proposal.signature), the unit that is
+// atomic + signed, so composition and ordering are authenticated too.
+// The skippable-reasons opt-in lives on LedgerApplyOrder because it only
+// makes sense for ledger-apply variants — non-Apply orders (CreateLedger,
+// SystemScoped signing key operations, etc.) have no business error that maps
+// to an idempotent skip semantic.
 message Order {
-  // Field 1 previously held a per-order `common.Idempotency idempotency`.
-  // Idempotency is now keyed per atomic proposal (Proposal.idempotency), the
-  // unit that is atomic + signed. Reserved so it cannot be reintroduced.
-  reserved 1;
-  reserved "idempotency";
   oneof type {
-    LedgerScopedOrder ledger_scoped = 2;
-    SystemScopedOrder system_scoped = 3;
+    LedgerScopedOrder ledger_scoped = 1;
+    SystemScopedOrder system_scoped = 2;
   }
-  // Field 4 previously held a per-order `signature.SignedRequest signature`.
-  // The signature now covers the whole atomic batch (Proposal.signature), so
-  // composition and ordering are authenticated. Reserved.
-  reserved 4;
-  reserved "signature";
   // technical carries admission-derived fields (the coverage gate and the
   // Numscript inputs-resolution hash) that must ride in the Raft entry for the
   // FSM apply path but are NOT part of the request's logical identity. hashOrder
   // excludes this whole sub-message from the idempotency hash in one shot, so
   // adding a new technical field can never silently break idempotency/replay.
-  OrderTechnical technical = 5;
-  // Field 6 previously held `repeated common.ErrorReason skippable_reasons`.
-  // The opt-in moved into LedgerApplyOrder because it only makes sense for
-  // ledger-apply variants — non-Apply orders (CreateLedger, SystemScoped
-  // signing key operations, etc.) have no business error that maps to an
-  // idempotent skip semantic. See LedgerApplyOrder.skippable_reasons below.
-  reserved 6;
-  reserved "skippable_reasons";
+  OrderTechnical technical = 3;
 }
 
 // OrderTechnical holds admission-derived fields that ride in the Raft entry for
@@ -96,9 +87,9 @@ message LedgerScopedOrder {
     SaveLedgerMetadataOrder save_ledger_metadata = 7;
     DeleteLedgerMetadataOrder delete_ledger_metadata = 8;
     SaveNumscriptOrder save_numscript = 9;
-    CreatePreparedQueryOrder create_prepared_query = 11;
-    UpdatePreparedQueryOrder update_prepared_query = 12;
-    DeletePreparedQueryOrder delete_prepared_query = 13;
+    CreatePreparedQueryOrder create_prepared_query = 10;
+    UpdatePreparedQueryOrder update_prepared_query = 11;
+    DeletePreparedQueryOrder delete_prepared_query = 12;
   }
 }
 
@@ -177,6 +168,9 @@ message ArchiveChapterOrder {
 
 message ConfirmArchiveChapterOrder {
   fixed64 chapter_id = 1;
+  // sealing_hash is the chapter incarnation the archive belongs to; the handler
+  // refuses the confirm unless it matches the chapter's own.
+  bytes sealing_hash = 2;
 }
 
 message SetMaintenanceModeOrder {
@@ -237,12 +231,13 @@ message MirrorIngestOrder {
 
 message MirrorLogEntry {
   fixed64 v2_log_id = 1;
+  common.Timestamp date = 2;
   oneof data {
-    MirrorCreatedTransaction created_transaction = 2;
-    MirrorSavedMetadata saved_metadata = 3;
-    MirrorRevertedTransaction reverted_transaction = 4;
-    MirrorDeletedMetadata deleted_metadata = 5;
-    MirrorFillGap fill_gap = 6;
+    MirrorCreatedTransaction created_transaction = 3;
+    MirrorSavedMetadata saved_metadata = 4;
+    MirrorRevertedTransaction reverted_transaction = 5;
+    MirrorDeletedMetadata deleted_metadata = 6;
+    MirrorFillGap fill_gap = 7;
   }
 }
 
@@ -324,16 +319,12 @@ message LedgerApplyOrder {
 
 // CreateIndexOrder requests the creation of a new index.
 message CreateIndexOrder {
-  reserved 1, 2, 3;
-  reserved "log_builtin", "transaction", "account";
-  common.IndexID id = 4;
+  common.IndexID id = 1;
 }
 
 // DropIndexOrder requests the removal of an index.
 message DropIndexOrder {
-  reserved 1, 2, 3;
-  reserved "log_builtin", "transaction", "account";
-  common.IndexID id = 4;
+  common.IndexID id = 1;
 }
 
 // AddAccountTypeOrder adds a new account type to the ledger.
@@ -351,12 +342,7 @@ message UpdateDefaultEnforcementModeOrder {
   common.ChartEnforcementMode enforcement_mode = 1;
 }
 
-// MetadataConversionBatch, ConvertMetadataEntry, and
-// MetadataConversionCompletion were the FSM-applied vehicles for the
-// removed background value converter. Stored metadata values are now
-// immutable; the FSM never rewrites them. Reserved here to prevent
-// accidental reuse of the message names by future schema work.
-
+// Stored metadata values are immutable; the FSM never rewrites them.
 message SetMetadataFieldTypeOrder {
   common.TargetType target_type = 1;
   string key = 2;
@@ -437,41 +423,22 @@ message Proposal {
   // executionPlan is invalid. The entry is rejected without audit and the caller
   // receives Unavailable so it can retry with fresh preloads.
   // A value of 0 means no prediction (e.g. barrier, mirror sync).
-  fixed64 predicted_index = 7;
-  // Field 13 previously held `common.CallerIdentity caller` (subject + scopes + god + source).
-  // The type was split into `CallerIdentity` (identification only) and
-  // `CallerSnapshot` (admission-time identity + scopes + god). Reusing the
-  // same field number with a different shape would silently mis-decode
-  // every persisted Proposal that carried the old caller — wire types are
-  // identical (length-delimited) but the inner field layout differs.
-  // Keep 13 reserved forever and write the new snapshot at 14.
-  reserved 13;
-  reserved "caller";
-  common.CallerSnapshot caller_snapshot = 14;  // Admission-time auth snapshot (nil for system proposals); persisted into AuditEntry by the FSM.
+  fixed64 predicted_index = 5;
+  common.CallerSnapshot caller_snapshot = 6;  // Admission-time auth snapshot (nil for system proposals); persisted into AuditEntry by the FSM.
   // idempotency is the batch's single idempotency identity (from
   // ApplyBatch.idempotency_key). The whole proposal dedups/freezes under it —
   // matching the atomic unit. Empty for system/technical proposals.
-  common.Idempotency idempotency = 16;
+  common.Idempotency idempotency = 7;
   // signature is the client's signature over the whole ApplyBatch (composition
   // + ordering). The FSM propagates it onto every Log this proposal commits, so
   // each log records the batch-level authenticity/non-repudiation proof.
-  signature.SignedApplyBatch signature = 17;
+  signature.SignedApplyBatch signature = 8;
   // technical_updates carries every FSM-level update that bypasses the
   // Order/Log channel. Each entry wraps a single payload (sink update,
   // mirror sync, metadata conversion, backup lifecycle, …) with its own
   // coverage_bits so the FSM applies per-update isolation, exactly like
   // Order.coverage_bits.
-  repeated TechnicalUpdate technical_updates = 15;
-  // Fields 5, 6, 8, 9, 10, 11, 12 previously held the seven dedicated
-  // technical-update channels (events_sink_updates, mirror_sync_updates,
-  // idempotency_eviction, cluster_config, metadata_conversion_batches,
-  // metadata_conversions_complete, index_ready_updates). They were folded
-  // into the TechnicalUpdate wrapper at field 15. Keep reserved so old
-  // wire payloads don't silently mis-decode.
-  reserved 5, 6, 8, 9, 10, 11, 12;
-  reserved "events_sink_updates", "mirror_sync_updates", "idempotency_eviction",
-           "cluster_config", "metadata_conversion_batches",
-           "metadata_conversions_complete", "index_ready_updates";
+  repeated TechnicalUpdate technical_updates = 9;
 }
 
 // TechnicalUpdate is the per-update envelope that carries the coverage
@@ -482,16 +449,14 @@ message Proposal {
 // IdempotencyEviction, ClusterConfig, BackupOrder, IncrementalBackupOrder)
 // ship with empty bits.
 message TechnicalUpdate {
-  reserved 8;                  // was: IndexReadyUpdate index_ready
-  reserved "index_ready";
   bytes coverage_bits = 1;
   oneof kind {
     MirrorSyncUpdate mirror_sync = 2;
     EventsSinkUpdate events_sink = 3;
     IdempotencyEviction idempotency_eviction = 4;
     common.ClusterConfig cluster_config = 5;
-    BackupOrder backup_order = 9;                          // Full-backup lifecycle
-    IncrementalBackupOrder incremental_backup_order = 10;  // Incremental-backup lifecycle
+    BackupOrder backup_order = 6;                          // Full-backup lifecycle
+    IncrementalBackupOrder incremental_backup_order = 7;  // Incremental-backup lifecycle
   }
 }
 
@@ -616,26 +581,19 @@ message BackupJob {
   uint64 last_audit_sequence = 13;
   uint64 last_applied_index = 14;
 
-  // Field 8 previously held last_progress_applied_index. Backup progress
-  // is no longer tracked through Raft proposals (see cleanup.go); the
-  // staleness signal is in-memory leader-local. The slot is renumbered
-  // because nothing on the wire carried it during the unmerged PR.
+  // Backup progress is not tracked through Raft proposals (see cleanup.go);
+  // the staleness signal is in-memory leader-local.
 }
 
 // BackupOrder is the carrier for one apply-time mutation of a full
 // backup. Exactly one of the oneof branches is set per proposal.
 message BackupOrder {
-  // Field 2 previously held BackupOrderProgress. Progress proposals were
-  // removed: the cleanup loop tracks liveness from the leader-local
-  // executor registry, not from FSM-side progress staleness. The slot
-  // is reserved.
-  reserved 2;
-  reserved "progress";
-
+  // The cleanup loop tracks liveness from the leader-local executor registry,
+  // not from FSM-side progress staleness.
   oneof op {
     BackupOrderStart start = 1;
-    BackupOrderComplete complete = 3;
-    BackupOrderFail fail = 4;
+    BackupOrderComplete complete = 2;
+    BackupOrderFail fail = 3;
   }
 }
 
@@ -644,13 +602,11 @@ message BackupOrder {
 // makes the two-pipeline split explicit in the proto and lets the apply
 // path branch on the order type instead of on a field inside it.
 message IncrementalBackupOrder {
-  reserved 2;
-  reserved "progress";
 
   oneof op {
     BackupOrderStart start = 1;
-    BackupOrderComplete complete = 3;
-    BackupOrderFail fail = 4;
+    BackupOrderComplete complete = 2;
+    BackupOrderFail fail = 3;
   }
 }
 
@@ -732,22 +688,14 @@ message LedgerBoundaries {
   fixed64 next_transaction_id = 1;
   fixed64 next_log_id = 2;
 
-  // Fields 3-10 held per-ledger counters (volume_count, metadata_count,
-  // reference_count, posting_count, ephemeral_evicted_count,
-  // transient_used_count, revert_count, numscript_execution_count) that
-  // migrated to the usagestore projection (EN-1420 / EN-1422). They are
-  // reserved — never reuse these tags: the vtprotobuf unmarshaller retains
-  // unknown-field bytes and re-emits them on MarshalVT, so an old persisted
-  // Pebble record carrying e.g. volume_count at tag 3 would be mis-decoded
-  // as whatever new field claimed tag 3.
-  reserved 3, 4, 5, 6, 7, 8, 9, 10;
-  reserved "volume_count", "metadata_count", "reference_count",
-           "posting_count", "ephemeral_evicted_count", "transient_used_count",
-           "revert_count", "numscript_execution_count";
+  // Per-ledger usage counters (volume_count, metadata_count, reference_count,
+  // posting_count, ephemeral_evicted_count, transient_used_count, revert_count,
+  // numscript_execution_count) live in the usagestore projection, not here
+  // (EN-1420 / EN-1422).
   // Highest source (v2) log ID already applied to this mirror ledger. Gates
   // idempotent replay: a MirrorIngest whose v2LogId is <= this value is a
   // deterministic no-op on the FSM apply path (see processMirrorIngest).
-  fixed64 last_mirror_v2_log_id = 11;
+  fixed64 last_mirror_v2_log_id = 3;
 }
 
 message VolumePair {
@@ -765,14 +713,14 @@ message VolumePair {
 message ExecutionPlan {
   fixed64 lastPersistedIndex = 1;
   // Cache epoch at admission time; FSM rejects on mismatch (cache was reset)
-  fixed64 cache_epoch = 4;
+  fixed64 cache_epoch = 2;
   // Coverage entries produced by admission. Each entry declares that the
   // FSM apply path may access the key; entries with a `value` field set
   // additionally seed the FSM cache with the Pebble-loaded value at
   // admission time. Every entry feeds the FSM-side state.Plan coverage
   // set, so the admission layer is the single source of truth for what
   // the FSM may read (and delete) during apply.
-  repeated AttributeCoverage attributes = 6;
+  repeated AttributeCoverage attributes = 3;
 
   // Idempotency keys preloaded for this proposal. They live outside the
   // AttributeCoverage list because they are NOT a cache attribute: the
@@ -780,10 +728,8 @@ message ExecutionPlan {
   // does not track their coverage. Kept as a top-level field instead of
   // an AttributeCoverage variant to make that distinction visible at the
   // wire level.
-  repeated ReloadIdempotencyKey idempotency_keys = 7;
+  repeated ReloadIdempotencyKey idempotency_keys = 4;
 
-  reserved 2, 3, 5, 8;
-  reserved "preloads", "touches", "declared", "productions";
 }
 
 // AttributeCoverage declares the FSM apply path may access `id` under
@@ -857,64 +803,7 @@ message RemovedMemberEntry {
   string reason      = 4;   // "consensus" | "force"
 }
 
-message GenerationSnapshot {
-  fixed64 base_index = 1;
-  repeated VolumeAttributeSnapshotEntry volumes = 2;
-  repeated MetadataAttributeEntry metadata = 3;  // Account metadata
-  repeated MetadataAttributeEntry ledger_metadata = 4;  // Ledger metadata
-  repeated LedgerAttributeEntry ledgers = 5;
-  repeated BoundaryAttributeEntry boundaries = 6;
-  repeated TransactionReferenceAttributeEntry references = 7;
-  repeated TransactionStateAttributeEntry transactions = 8;
-  reserved 9; // was: idempotency_keys (moved to dedicated prefix 0x03)
-}
-
-// VolumeAttributeSnapshotEntry stores a merged Input+Output volume pair in cache snapshots.
-message VolumeAttributeSnapshotEntry {
-  AttributeID id = 1;
-  common.Uint256 input = 2;
-  common.Uint256 output = 3;
-}
-
-// MetadataKeyStoreEntry stores a single entry from KeyStore[*MetadataValue]
-message MetadataAttributeEntry {
-  AttributeID id = 1;
-  common.MetadataValue value = 2;
-}
-
-// LedgerAttributeEntry stores a single entry from KeyStore[*LedgerInfo]
-message LedgerAttributeEntry {
-  AttributeID id = 1;
-  common.LedgerInfo info = 2;
-}
-
-// BoundaryAttributeEntry stores a single entry from KeyStore[*LedgerBoundaries]
-message BoundaryAttributeEntry {
-  AttributeID id = 1;
-  LedgerBoundaries boundaries = 2;
-}
-
-// TransactionReferenceAttributeEntry stores a single entry from KeyStore[*TransactionReferenceValue]
-message TransactionReferenceAttributeEntry {
-  AttributeID id = 1;
-  common.TransactionReferenceValue value = 2;
-}
-
-// TransactionStateAttributeEntry stores a single entry from KeyStore[*TransactionState]
-message TransactionStateAttributeEntry {
-  AttributeID id = 1;
-  common.TransactionState state = 2;
-}
-
-// Deprecated: IdempotencyKeyAttributeEntry is no longer used in snapshots.
-// Kept for wire compatibility with older nodes that may still send this message.
-message IdempotencyKeyAttributeEntry {
-  AttributeID id = 1;
-  common.IdempotencyKeyValue value = 2;
-}
-
 message AttributeID {
   bytes id = 1;           // 16-byte U128 identifier
   fixed64 tag = 2;
 }
-

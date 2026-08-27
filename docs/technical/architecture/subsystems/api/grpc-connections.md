@@ -557,12 +557,13 @@ The transport exposes several metrics for monitoring:
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `raft.transport.recv.queued` | Gauge | `priority`, `priority_name` | Message batches queued for reception per priority |
-| `raft.transport.recv.merged.queued` | Gauge | - | Individual messages queued in merged output |
-| `raft.transport.peer.sending.queued` | Gauge | `peer`, `priority`, `priority_name` | Message batches queued for sending per peer/priority |
+| `raft.transport.recv.load` | Histogram | `priority`, `priority_name` | Reception queue depth observations per priority |
+| `raft.transport.recv.full` | Counter | `priority`, `priority_name` | Reception queue overflow count per priority |
+| `raft.transport.peer.sending.load` | Histogram | `peer`, `priority`, `priority_name` | Per-peer send queue depth observations |
+| `raft.transport.peer.sending.full` | Counter | `peer`, `priority`, `priority_name` | Per-peer send queue overflow count |
 | `raft.transport.ping.latency` | Histogram | `peer` | Ping round-trip time in microseconds |
 | `raft.transport.sending.pending_response` | UpDownCounter | `peer` | Messages awaiting response |
-| `raft.transport.unreachable.queued` | Gauge | - | Unreachable reports in queue |
+| `raft.transport.unreachable.load` | Histogram | - | Unreachable-report queue depth observations |
 
 **Priority Labels**:
 - `priority=0, priority_name=high`: Heartbeat messages

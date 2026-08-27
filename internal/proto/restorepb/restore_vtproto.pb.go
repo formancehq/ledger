@@ -694,14 +694,14 @@ func (m *StartDownloadBackupRequest) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x3a
+		dAtA[i] = 0x12
 	}
 	if len(m.BucketId) > 0 {
 		i -= len(m.BucketId)
 		copy(dAtA[i:], m.BucketId)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.BucketId)))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -1593,7 +1593,7 @@ func (m *StartDownloadBackupRequest) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: StartDownloadBackupRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 4:
+		case 1:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BucketId", wireType)
 			}
@@ -1625,7 +1625,7 @@ func (m *StartDownloadBackupRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.BucketId = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 7:
+		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Storage", wireType)
 			}

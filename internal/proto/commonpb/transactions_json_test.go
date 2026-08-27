@@ -152,3 +152,35 @@ func TestTransaction_MarshalJSON_RevertRelationship(t *testing.T) {
 		require.NotContains(t, out, "revertedAt")
 	})
 }
+
+// TestTransaction_MarshalJSON_NoNullCollections pins the presence policy:
+// collections are always emitted and never null, so the OpenAPI schema can
+// declare `postings`/`metadata` as non-nullable and list them in `required`.
+// `id` is required by TransactionResponse, so it is emitted unconditionally
+// rather than relying on ids never being 0. Mirrors Account.MarshalJSON.
+func TestTransaction_MarshalJSON_NoNullCollections(t *testing.T) {
+	t.Parallel()
+
+	data, err := (&Transaction{Id: 7}).MarshalJSON()
+	require.NoError(t, err)
+
+	out := string(data)
+
+	require.NotContains(t, out, `"postings":null`)
+	require.NotContains(t, out, `"metadata":null`)
+	require.Contains(t, out, `"postings":[]`)
+	require.Contains(t, out, `"metadata":{}`)
+	require.Contains(t, out, `"id":7`)
+}
+
+// TestTransaction_MarshalJSON_ZeroIDStillEmitted guards the `required: [id]`
+// claim in openapi.yml: a schema-required field must never be absent, even for
+// the zero value that NextTransactionId should make unreachable.
+func TestTransaction_MarshalJSON_ZeroIDStillEmitted(t *testing.T) {
+	t.Parallel()
+
+	data, err := (&Transaction{}).MarshalJSON()
+	require.NoError(t, err)
+
+	require.Contains(t, string(data), `"id":0`)
+}

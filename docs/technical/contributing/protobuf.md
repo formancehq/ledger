@@ -61,9 +61,36 @@ go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.1-0.
 
 1. Edit the `.proto` file in `misc/proto/`
 2. **Realign field numbers sequentially** when adding/removing fields (no gaps, remove obsolete `reserved` entries)
-3. Run `just generate-proto` **immediately**
-4. Update Go code that uses the generated types
-5. Rebuild: `go build ./...`
+3. **Audit the hand-rolled wire sites** before renumbering — see below
+4. Run `just generate-proto` **immediately**
+5. Update Go code that uses the generated types
+6. Rebuild: `go build ./...`
+
+### Renumbering: audit the hand-rolled wire sites first
+
+Most code goes through the generated marshallers and follows a renumbering automatically. A few
+hot paths bypass them and encode or decode protobuf by hand, and those break **silently** — the
+compiler sees nothing, and a wrong field number is not a decode error, just a field that never
+matches. Grep **both** directions before you renumber:
+
+```bash
+# write side
+grep -rn "protowireutil\|AppendTag\|AppendFixed64" --include="*.go" internal/
+# read side — easy to miss, a write-side grep will not surface it
+grep -rn "protowire.Consume" --include="*.go" internal/
+```
+
+The two known sites behave differently, and only one of them is self-healing:
+
+| Site | Direction | Field numbers | Renumbering impact |
+|------|-----------|---------------|--------------------|
+| `internal/infra/plan/predicted_index.go` | write | read from the descriptor at init | Number self-heals. The **wire type** does not — it is baked into the `AppendFixed64` call, so changing the field's type silently corrupts the encoding. Pinned by `predicted_index_test.go`, which compares the append against canonical marshalling. |
+| `internal/application/indexbuilder/protowire_postings.go` | read | **hardcoded literals** (`case num == 1`, …) | Breaks silently. The parser skips the unrecognised field via `ConsumeFieldValue` and yields empty postings — no error, no failing build. |
+
+`protowire_postings.go` decodes `Log`, `LogPayload`, `ApplyLedgerLog`, `LedgerLog`,
+`CreatedTransaction`, `RevertedTransaction`, `Transaction`, `TouchedVolume` and `Posting`. If you
+renumber any field of those messages, update the corresponding `case num == N` arm in the same
+commit.
 
 ## vtprotobuf (Fast Serialization)
 
@@ -115,7 +142,7 @@ Mirror mode introduces several protobuf types across multiple files:
 
 **`raft_cmd.proto`:**
 - `MirrorIngestOrder` — Raft command to ingest a translated v2 log entry
-- `MirrorLogEntry` — Wrapper for a single v2 log entry (oneof: `CreatedTransaction`, `SavedMetadata`, `DeletedMetadata`, `RevertedTransaction`, `FillGap`)
+- `MirrorLogEntry` — Wrapper for a single v2 log entry, including its source date (oneof: `CreatedTransaction`, `SavedMetadata`, `DeletedMetadata`, `RevertedTransaction`, `FillGap`)
 - `PromoteLedgerOrder` — Raft command to promote a mirror ledger to normal mode
 - `MirrorSyncUpdate` — Streaming update from the mirror worker (progress reporting)
 

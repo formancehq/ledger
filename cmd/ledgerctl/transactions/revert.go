@@ -140,7 +140,7 @@ func runRevert(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Reverting transaction #%d...", txID))
+	spinner := cmdutil.StartSpinner(fmt.Sprintf("Reverting transaction #%d...", txID))
 
 	// Build revert request
 	requests := []*servicepb.Request{

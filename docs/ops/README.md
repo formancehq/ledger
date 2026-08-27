@@ -6,7 +6,7 @@ Everything you need to deploy, monitor, and operate a Ledger v3 cluster.
 
 | Goal | Document |
 |------|----------|
-| Deploy a cluster | [deployment.md](./deployment.md) |
+| Deploy and size a cluster | [deployment-profiles.md](./deployment-profiles.md) |
 | Use the CLI (`ledgerctl`) | [cli.md](./cli.md) |
 | Monitor my cluster | [monitoring.md](./monitoring.md) |
 | Back up and restore data | [backup-restore.md](./backup-restore.md) |

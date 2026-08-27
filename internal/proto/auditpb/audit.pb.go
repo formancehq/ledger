@@ -72,15 +72,15 @@ type AuditEntry struct {
 	// Admission-time auth snapshot: caller identification + the
 	// authorization granted at admission. Nil when auth is disabled or
 	// for system-initiated proposals.
-	CallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,12,opt,name=caller_snapshot,json=callerSnapshot,proto3" json:"caller_snapshot,omitempty"`
+	CallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,11,opt,name=caller_snapshot,json=callerSnapshot,proto3" json:"caller_snapshot,omitempty"`
 	// Batch identity, bound into the hash chain (header_payload) so it is
 	// tamper-evident. idempotency is the batch dedup key; signature is the
 	// client's proof over the whole ApplyBatch (nil for unsigned batches).
 	// This is the authoritative, chain-verified home for batch non-repudiation;
 	// the AppliedProposal projection carries a copy of the idempotency key for
 	// event consumers, which the checker verifies against this entry.
-	Idempotency   *commonpb.Idempotency         `protobuf:"bytes,13,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
-	Signature     *signaturepb.SignedApplyBatch `protobuf:"bytes,14,opt,name=signature,proto3" json:"signature,omitempty"`
+	Idempotency   *commonpb.Idempotency         `protobuf:"bytes,12,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
+	Signature     *signaturepb.SignedApplyBatch `protobuf:"bytes,13,opt,name=signature,proto3" json:"signature,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -247,11 +247,7 @@ type AuditItem struct {
 	// The audit hash chain on AuditEntry.hash is computed over the concatenation of
 	// these bytes (in order_index order) so verification never re-marshals an Order
 	// proto. This decouples the hash chain from the Order schema and the vtprotobuf
-	// marshaller version. Field 2 previously held `raft.Order order`; the wire
-	// format is identical (length-delimited, bytes-equal) so the swap is on-wire
-	// compatible with entries persisted before the change. Entries persisted before
-	// EN-1558 embed OrderTechnical in these bytes and still verify verbatim (the
-	// verifier hashes the stored bytes as-is; no migration).
+	// marshaller version.
 	SerializedOrder []byte `protobuf:"bytes,2,opt,name=serialized_order,json=serializedOrder,proto3" json:"serialized_order,omitempty"`
 	// Sequence of the log produced by this order. Zero if the order was
 	// an idempotent replay or if the proposal failed.
@@ -438,7 +434,7 @@ var File_audit_proto protoreflect.FileDescriptor
 
 const file_audit_proto_rawDesc = "" +
 	"\n" +
-	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xc2\x04\n" +
+	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xb4\x04\n" +
 	"\n" +
 	"AuditEntry\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12/\n" +
@@ -454,15 +450,15 @@ const file_audit_proto_rawDesc = "" +
 	"\x04hash\x18\t \x01(\fR\x04hash\x12!\n" +
 	"\fhash_version\x18\n" +
 	" \x01(\rR\vhashVersion\x12?\n" +
-	"\x0fcaller_snapshot\x18\f \x01(\v2\x16.common.CallerSnapshotR\x0ecallerSnapshot\x125\n" +
-	"\vidempotency\x18\r \x01(\v2\x13.common.IdempotencyR\vidempotency\x129\n" +
-	"\tsignature\x18\x0e \x01(\v2\x1b.signature.SignedApplyBatchR\tsignatureB\t\n" +
-	"\aoutcomeJ\x04\b\v\x10\fR\x06caller\"\x81\x01\n" +
+	"\x0fcaller_snapshot\x18\v \x01(\v2\x16.common.CallerSnapshotR\x0ecallerSnapshot\x125\n" +
+	"\vidempotency\x18\f \x01(\v2\x13.common.IdempotencyR\vidempotency\x129\n" +
+	"\tsignature\x18\r \x01(\v2\x1b.signature.SignedApplyBatchR\tsignatureB\t\n" +
+	"\aoutcome\"z\n" +
 	"\tAuditItem\x12\x1f\n" +
 	"\vorder_index\x18\x01 \x01(\rR\n" +
 	"orderIndex\x12)\n" +
 	"\x10serialized_order\x18\x02 \x01(\fR\x0fserializedOrder\x12!\n" +
-	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequenceR\x05order\"b\n" +
+	"\flog_sequence\x18\x03 \x01(\x06R\vlogSequence\"b\n" +
 	"\fAuditSuccess\x12(\n" +
 	"\x10min_log_sequence\x18\x01 \x01(\x06R\x0eminLogSequence\x12(\n" +
 	"\x10max_log_sequence\x18\x02 \x01(\x06R\x0emaxLogSequence\"\xcd\x01\n" +

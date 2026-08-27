@@ -49,14 +49,19 @@ import (
 //     restored cache (a mismatched threshold hides the bug by clearing it).
 var _ = Describe("Restore stale cache", Ordered, func() {
 	const (
-		httpPort          = testutil.TestSingleHTTPPort
-		grpcPort          = testutil.TestSingleGRPCPort
-		raftPort          = grpcPort - 1000
 		ledgerName        = "stale-ledger"
 		staleS3Bucket     = "restore-stale-cache"
 		staleClusterID    = "stale-cluster"
 		rotationThreshold = 1_000_000
 	)
+
+	// The source node is stopped and comes back in restore mode on fresh
+	// directories, then once more as a normal node. That is one logical node
+	// returning, so every phase reuses the same allocated ports: ports are
+	// never released, and a restart on a fresh set would surface as a Raft
+	// failure rather than a port mistake.
+	lease := testserver.AllocateNodeLease()
+	ports := lease.Ports()
 
 	var (
 		ctx            context.Context
@@ -68,7 +73,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 	BeforeAll(func() {
 		ctx = logging.TestingContext()
 
-		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
+		container, err := testcontainers.Run(context.Background(), testutil.MinIOImage,
 			testcontainers.WithEnv(map[string]string{
 				"MINIO_ROOT_USER":     restoreMinioAccessKey,
 				"MINIO_ROOT_PASSWORD": restoreMinioSecretKey,
@@ -125,9 +130,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
 				ClusterID: staleClusterID,
-				HTTPPort:  httpPort,
-				RaftPort:  raftPort,
-				GRPCPort:  grpcPort,
+				Ports:     ports,
 				WalDir:    GinkgoT().TempDir(),
 				DataDir:   GinkgoT().TempDir(),
 				Debug:     testutil.Debug,
@@ -136,13 +139,13 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			instruments = append(instruments, testserver.WithBootstrap())
 			instruments = append(instruments, testserver.WithCacheRotationThreshold(rotationThreshold))
 
-			sourceServer = testservice.New(cmdserver.NewRunCommand,
+			sourceServer = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(instruments...),
 			)
 			Expect(sourceServer.Start(ctx)).To(Succeed())
 
 			var err error
-			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
+			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {
@@ -212,24 +215,24 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 		)
 
 		BeforeAll(func() {
-			server = testservice.New(cmdserver.NewRunCommand,
+			server = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(
 					testservice.DebugInstrumentation(testutil.Debug),
 					testservice.OutputInstrumentation(GinkgoWriter),
 					testserver.WithNodeID(1),
 					testserver.WithClusterID(staleClusterID),
-					testserver.WithHTTPPort(httpPort),
+					testserver.WithHTTPPort(ports.HTTP()),
 					testserver.WithWalDir(restoreWalDir),
 					testserver.WithDataDir(restoreDataDir),
-					testserver.WithRaftPort(raftPort),
-					testserver.WithGRPCPort(grpcPort),
+					testserver.WithRaftPort(ports.Raft()),
+					testserver.WithGRPCPort(ports.GRPC()),
 					testserver.WithRestore(),
 				),
 			)
 			Expect(server.Start(ctx)).To(Succeed())
 
 			var err error
-			restoreClient, grpcConn, err = newRestoreGRPCClient(grpcPort)
+			restoreClient, grpcConn, err = newRestoreGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 		})
 
@@ -277,9 +280,7 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			instruments := testserver.DefaultTestInstruments(testserver.TestNodeConfig{
 				NodeID:    1,
 				ClusterID: staleClusterID,
-				HTTPPort:  httpPort,
-				RaftPort:  raftPort,
-				GRPCPort:  grpcPort,
+				Ports:     ports,
 				WalDir:    restoreWalDir,
 				DataDir:   restoreDataDir,
 				Debug:     testutil.Debug,
@@ -292,13 +293,13 @@ var _ = Describe("Restore stale cache", Ordered, func() {
 			// clear the restored cache, masking the staleness).
 			instruments = append(instruments, testserver.WithCacheRotationThreshold(rotationThreshold))
 
-			server = testservice.New(cmdserver.NewRunCommand,
+			server = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(instruments...),
 			)
 			Expect(server.Start(ctx)).To(Succeed())
 
 			var err error
-			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(grpcPort)
+			client, clusterClient, grpcConn, err = testutil.NewGRPCClient(ports.GRPC())
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) bool {

@@ -33,8 +33,6 @@ const (
 	backupMinioSecretKey = "minioadmin"
 	backupS3Bucket       = "backup-e2e"
 	backupS3Region       = "us-east-1"
-	s3BackupHTTPPort2    = 15900
-	s3BackupGRPCPort2    = 16000
 	backupManifestKey    = "test-cluster/backups/manifest.json"
 	backupS3DataPrefix   = "test-cluster/backups/data/"
 )
@@ -85,7 +83,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 
 	BeforeAll(func() {
 		// Start MinIO container
-		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
+		container, err := testcontainers.Run(context.Background(), testutil.MinIOImage,
 			testcontainers.WithEnv(map[string]string{
 				"MINIO_ROOT_USER":     backupMinioAccessKey,
 				"MINIO_ROOT_PASSWORD": backupMinioSecretKey,
@@ -127,7 +125,10 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		GinkgoT().Setenv("AWS_SECRET_ACCESS_KEY", backupMinioSecretKey)
 
 		// Start single-node ledger server (no backup config needed on server)
-		ctx, client, clusterClient = testutil.SetupSingleNode(s3BackupHTTPPort2, s3BackupGRPCPort2)
+		var node *testutil.ServiceWithClient
+		ctx, node = testutil.SetupSingleNode()
+		client = node.Client
+		clusterClient = node.ClusterClient
 	})
 
 	s3Storage := func() *commonpb.BackupStorage {
@@ -256,7 +257,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 			Prefix: aws.String("no-prior/"),
 		})
 		Expect(listErr).To(Succeed())
-		Expect(listOut.KeyCount).To(BeEquivalentTo(0),
+		Expect(listOut.Contents).To(BeEmpty(),
 			"no object of any kind must be published under the no-prior/ prefix")
 	})
 

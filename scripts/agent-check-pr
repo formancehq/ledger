@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: AI_REVIEW_BASE_SHA=<commit> bash scripts/agent-check-pr [--list]
+
+Runs the local validation gates required by the changes since the immutable
+review base. --list prints the selected gates without executing them.
+EOF
+}
+
+list_only=false
+case "${1:-}" in
+    "") ;;
+    --list) list_only=true ;;
+    -h|--help)
+        usage
+        exit 0
+        ;;
+    *)
+        echo "agent-check-pr: unknown argument: $1" >&2
+        usage >&2
+        exit 1
+        ;;
+esac
+
+base_sha=${AI_REVIEW_BASE_SHA:-}
+if [[ -z "$base_sha" ]]; then
+    echo "agent-check-pr: AI_REVIEW_BASE_SHA is required" >&2
+    exit 1
+fi
+
+# AI validations must never reuse the user's golangci-lint cache.  The
+# launcher supplies VALIDATION_RUN_DIR and the per-run cache path; fail closed
+# when either is missing or escapes the run directory.  Direct developer runs
+# remain supported when no validation run is declared.
+if [[ -n "${VALIDATION_RUN_DIR:-}" ]]; then
+    [[ "$VALIDATION_RUN_DIR" = /* ]] || { echo "LINT_ISOLATION_GATE=FAIL (run dir is not absolute)" >&2; exit 1; }
+    run_root=$(cd "$VALIDATION_RUN_DIR" 2>/dev/null && pwd -P) || {
+        echo "LINT_ISOLATION_GATE=FAIL (invalid VALIDATION_RUN_DIR)" >&2
+        exit 1
+    }
+    lint_root=$(cd "${GOLANGCI_LINT_CACHE:-}" 2>/dev/null && pwd -P) || {
+        echo "LINT_ISOLATION_GATE=FAIL (GOLANGCI_LINT_CACHE is not configured)" >&2
+        exit 1
+    }
+    case "$lint_root/" in
+        "$run_root/"*) ;;
+        *) echo "LINT_ISOLATION_GATE=FAIL (cache escapes validation run)" >&2; exit 1 ;;
+    esac
+    for var in HOME GOCACHE GOMODCACHE GOPATH TMPDIR XDG_CACHE_HOME; do
+        value=${!var:-}
+        [[ -n "$value" && "$value" = /* ]] || { echo "LINT_ISOLATION_GATE=FAIL ($var is not isolated)" >&2; exit 1; }
+        resolved=$(cd "$value" 2>/dev/null && pwd -P) || { echo "LINT_ISOLATION_GATE=FAIL ($var is invalid)" >&2; exit 1; }
+        case "$resolved/" in
+            "$run_root/"*) ;;
+            *) echo "LINT_ISOLATION_GATE=FAIL ($var escapes validation run)" >&2; exit 1 ;;
+        esac
+    done
+    echo "LINT_ISOLATION_GATE=PASS ($lint_root)" >&2
+fi
+if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+    echo "agent-check-pr: invalid review base commit: $base_sha" >&2
+    exit 1
+fi
+
+needs_e2e=false
+needs_scenarios=false
+needs_schemathesis=false
+needs_operator=false
+needs_model_cluster=false
+
+classify_path() {
+    local path=$1
+
+    case "$path" in
+        main.go|cmd/server/*|internal/*|misc/proto/*|pkg/*|tests/e2e/*)
+            needs_e2e=true
+            ;;
+    esac
+    case "$path" in
+        tests/scenarios/*|misc/numscript/*)
+            needs_scenarios=true
+            ;;
+    esac
+    case "$path" in
+        openapi.yml|internal/adapter/http/*|internal/adapter/json/*|internal/adapter/v2/*|tests/schemathesis/*)
+            needs_schemathesis=true
+            ;;
+    esac
+    case "$path" in
+        misc/operator/*)
+            needs_operator=true
+            ;;
+    esac
+    case "$path" in
+        cmd/server/*|\
+        internal/application/admission/*|\
+        internal/application/backup/*|\
+        internal/application/membership/*|\
+        internal/bootstrap/*|\
+        internal/domain/processing/*|\
+        internal/domain/replay/*|\
+        internal/infra/attributes/*|\
+        internal/infra/backup/*|\
+        internal/infra/cache/*|\
+        internal/infra/membership/*|\
+        internal/infra/node/*|\
+        internal/infra/preload/*|\
+        internal/infra/state/*|\
+        internal/infra/transport/*|\
+        internal/storage/dal/*|\
+        internal/storage/pebblecfg/*|\
+        internal/storage/spool/*|\
+        internal/storage/wal/*|\
+        misc/proto/cluster.proto|\
+        misc/proto/cluster_bootstrap.proto|\
+        misc/proto/proposal.proto|\
+        misc/proto/raft_cmd.proto|\
+        misc/proto/raft_transport.proto|\
+        misc/proto/restore.proto|\
+        misc/proto/snapshot.proto|\
+        tests/antithesis/*|\
+        tests/oracle/*)
+            needs_model_cluster=true
+            ;;
+    esac
+}
+
+while IFS= read -r -d '' path; do
+    classify_path "$path"
+done < <(git diff --no-renames --name-only --diff-filter=ACDMRTUXB -z "$base_sha" --)
+while IFS= read -r -d '' path; do
+    classify_path "$path"
+done < <(git ls-files --others --exclude-standard -z)
+
+gates=(agent-check-full)
+if [[ "$needs_e2e" == true ]]; then
+    gates+=(test-e2e)
+fi
+if [[ "$needs_scenarios" == true ]]; then
+    gates+=(test-scenarios)
+fi
+if [[ "$needs_schemathesis" == true ]]; then
+    gates+=(test-schemathesis)
+fi
+if [[ "$needs_operator" == true ]]; then
+    gates+=(test-operator)
+fi
+if [[ "$needs_model_cluster" == true ]]; then
+    gates+=(test-model-cluster)
+fi
+
+if [[ "$list_only" == true ]]; then
+    printf '%s\n' "${gates[@]}"
+    exit 0
+fi
+
+# Run every selected gate in the repository-pinned toolchain. Publish mode may
+# set the marker itself after entering the immutable base toolchain.
+if [[ "${LEDGER_AGENT_CHECK_IN_NIX:-}" != "1" ]]; then
+    exec env -u GOROOT nix develop --command \
+        env LEDGER_AGENT_CHECK_IN_NIX=1 AI_REVIEW_BASE_SHA="$base_sha" bash "$0" "$@"
+fi
+
+unset GOROOT || true
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '^/opt/homebrew' | paste -sd: -)
+export PATH
+bash "$SCRIPT_DIR/ai-bugfix-gate" environment "$(git rev-parse --show-toplevel)/go.mod"
+
+echo "==> agent-check-pr: selected local gates: ${gates[*]}"
+bash "$SCRIPT_DIR/agent-check-full"
+if [[ "$needs_e2e" == true ]]; then
+    bash "$SCRIPT_DIR/agent-just" test-e2e
+fi
+if [[ "$needs_scenarios" == true ]]; then
+    bash "$SCRIPT_DIR/agent-just" test-scenarios
+fi
+if [[ "$needs_schemathesis" == true ]]; then
+    bash "$SCRIPT_DIR/agent-just" test-schemathesis
+fi
+if [[ "$needs_operator" == true ]]; then
+    go -C misc/operator test ./... -timeout 20m
+fi
+if [[ "$needs_model_cluster" == true ]]; then
+    bash "$SCRIPT_DIR/agent-just" test-model-cluster 180
+fi
+
+echo "==> agent-check-pr: PASS"

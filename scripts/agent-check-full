@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Keep the baseline and the full test suite in the same pinned toolchain.
+if [[ "${LEDGER_AGENT_CHECK_IN_NIX:-}" != "1" ]]; then
+    exec env -u GOROOT nix develop --command \
+        env LEDGER_AGENT_CHECK_IN_NIX=1 bash "$0" "$@"
+fi
+
+unset GOROOT || true
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "==> agent-check-full: baseline validation"
+bash "$SCRIPT_DIR/agent-check"
+
+echo "==> agent-check-full: root-module unit tests"
+bash "$SCRIPT_DIR/agent-just" test
+
+echo "==> agent-check-full: PASS"

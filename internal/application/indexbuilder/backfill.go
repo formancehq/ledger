@@ -260,16 +260,22 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 	// cfg during initial catch-up: relying solely on cfg.isMetadataIndexed
 	// would let a stale backfill resume after a crash-recovered retype.
 	//
-	// NB: no pending_version bump here. The in-flight backfill targets
-	// pending_version already; resetting its cursor restarts it under
-	// the new declared_type (via the per-batch schemaResolver) into the
-	// same v_pending keyspace. Bumping would orphan whatever the
-	// backfill already wrote at the current pending and add a second
-	// version with no benefit.
+	// The pending version is BUMPED, orphaning whatever the backfill wrote
+	// so far, and the restart fills a fresh keyspace. Refolding the same
+	// keyspace under the new type re-encodes each value at its original log
+	// sequence, and the retraction of the old encoding lands at that same
+	// sequence — where it loses the op-ordering tie to the standing ADD,
+	// permanently. A value whose two encodings differ (an out-of-range int,
+	// a null that now parses) then stays a member of the abandoned encoding
+	// forever. The orphaned half-keyspace is reaped by purgeOrphanVersions.
 	indexID := indexes.MetadataID(smft.GetTargetType(), smft.GetKey())
 	for _, bt := range b.backfillTasks {
 		if bt.ledger != ledgerName || !indexes.Equal(bt.index, indexID) {
 			continue
+		}
+
+		if err := b.bumpPendingVersion(ledgerName, indexID); err != nil {
+			return fmt.Errorf("bumping pending_version on retype during backfill: %w", err)
 		}
 
 		bt.cursor = 0
@@ -355,11 +361,13 @@ func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexI
 	canonical := indexes.Canonical(indexID)
 	current, pending := b.versionFor(ledgerName, canonical)
 
-	base := max(pending, current)
+	prior, _ := b.versionStateFor(ledgerName, canonical)
+	base := max(pending, current, prior.HighWater)
 
 	newState := readstore.IndexVersionState{
 		CurrentVersion: current,
 		PendingVersion: base + 1,
+		HighWater:      base + 1,
 	}
 
 	batch := b.wb.Batch()
@@ -635,9 +643,12 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	// Sampled per batch and accumulated as a max so the gate tracks
 	// the freshest FSM state any of this task's batches could have
 	// observed.
-	if fsmSeq, sampleErr := query.ReadLastSequence(fsmHandle); sampleErr != nil {
+	fsmSeq, sampleErr := query.ReadLastSequence(fsmHandle)
+	if sampleErr != nil {
 		return false, fmt.Errorf("sampling FSM log sequence for schema-rewrite gate: %w", sampleErr)
-	} else if fsmSeq > task.requiredIndexedSeq {
+	}
+
+	if fsmSeq > task.requiredIndexedSeq {
 		task.requiredIndexedSeq = fsmSeq
 	}
 
@@ -687,6 +698,11 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	committed := false
+
+	// The rewrite stamps events with the FSM state it reads from; the
+	// atomic switch is gated on the read-store cursor reaching that same
+	// sequence, so every queryable pin at v_pending sees these events.
+	b.wb.SetEventSequence(fsmSeq)
 
 	defer func() {
 		if !committed {
@@ -859,8 +875,10 @@ scan:
 			done = false
 		} else {
 			newState = readstore.IndexVersionState{
-				CurrentVersion: pendingVersion,
-				PendingVersion: 0,
+				CurrentVersion:     pendingVersion,
+				PendingVersion:     0,
+				ActivationSequence: task.requiredIndexedSeq,
+				HighWater:          pendingVersion,
 			}
 
 			if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
@@ -935,8 +953,10 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 	}()
 
 	newState := readstore.IndexVersionState{
-		CurrentVersion: pendingVersion,
-		PendingVersion: 0,
+		CurrentVersion:     pendingVersion,
+		PendingVersion:     0,
+		ActivationSequence: task.requiredIndexedSeq,
+		HighWater:          pendingVersion,
 	}
 
 	if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
@@ -1222,6 +1242,7 @@ func (b *Builder) completeBackfill(task *backfillTask) error {
 	newState := readstore.IndexVersionState{
 		CurrentVersion: pending,
 		PendingVersion: 0,
+		HighWater:      pending,
 	}
 
 	batch := b.readStore.NewBatch()

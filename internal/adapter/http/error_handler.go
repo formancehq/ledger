@@ -96,7 +96,17 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	// Catches BusinessError too (it implements Describable transparently).
 	var d domain.Describable
 	if errors.As(err, &d) {
-		writeErrorResponse(w, kindToHTTPStatus(domain.Kind(d)), d.Reason(), err)
+		httpStatus := kindToHTTPStatus(domain.Kind(d))
+
+		// An Unavailable kind is by definition a retry-now condition (a fold
+		// behind, an index still building, no leader yet); the two dedicated
+		// branches above already promise clients a Retry-After, so give the
+		// whole class the same contract instead of only those two.
+		if httpStatus == http.StatusServiceUnavailable {
+			w.Header().Set("Retry-After", "1")
+		}
+
+		writeErrorResponse(w, httpStatus, d.Reason(), err)
 
 		return
 	}

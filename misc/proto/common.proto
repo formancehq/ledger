@@ -24,7 +24,7 @@ message NullValue {
 
 message MetadataValue {
   oneof type {
-    string string_value = 1;  // wire-compatible with existing field 1
+    string string_value = 1;
     int64 int_value = 2;
     bool bool_value = 3;
     NullValue null_value = 4;
@@ -211,8 +211,6 @@ enum IndexBuildStatus {
 }
 
 message MetadataFieldSchema {
-  reserved 3, 4, 5, 6;
-  reserved "total_keys", "converted_keys", "indexed", "index_build_status";
   MetadataType type = 1;
 }
 
@@ -250,7 +248,6 @@ enum AccountBuiltinIndex {
 // The per-ledger log index (Pebble "llog") is always built by the indexbuilder
 // and is not exposed here — only opt-in fields appear below.
 enum LogBuiltinIndex {
-  reserved "LOG_BUILTIN_INDEX_LEDGER";
   LOG_BUILTIN_INDEX_UNSPECIFIED = 0;
   LOG_BUILTIN_INDEX_DATE = 1;       // per-ledger log date index (Pebble "lldt")
 }
@@ -288,9 +285,7 @@ message Index {
   // query path — see forward_encoding_version below.
   IndexBuildStatus build_status = 2;
   Timestamp created_at = 3;
-  Timestamp last_built_at = 4;
-  string last_error = 5;
-  string ledger = 6;  // empty for bucket-scoped indexes
+  string ledger = 4;  // empty for bucket-scoped indexes
   // Cluster-wide forward-encoding version. Bumped at every event that
   // requires the indexer to rewrite its forward index (CreateIndex,
   // SetMetadataFieldType). The per-replica local view of this value
@@ -301,7 +296,7 @@ message Index {
   // is client-driven via min_log_sequence on the read API — but note
   // that min_log_sequence pins log application on this replica, NOT
   // local rewrite completion; see api-comparison.md for the contract.
-  uint32 forward_encoding_version = 7;
+  uint32 forward_encoding_version = 5;
 }
 
 // ============================================================================
@@ -310,12 +305,6 @@ message Index {
 
 message Idempotency {
   string key = 1;
-}
-
-// IdempotencyEntry represents an idempotency key entry stored in Pebble
-message IdempotencyEntry {
-  bytes hash = 1;                          // Idempotency hash
-  fixed64 log_id = 2;                        // Log ID
 }
 
 // ============================================================================
@@ -327,10 +316,8 @@ message Log {
   LogPayload payload = 2;
   // Batch identity (idempotency key + signature) lives on AppliedProposal
   // (proposal.proto), not on the log.
-  reserved 4; // was: bytes hash (moved to AuditEntry)
-  string receipt = 6;
-  signature.SignedLog response_signature = 7;
-  reserved 8; // was: uint32 hash_version (moved to AuditEntry)
+  string receipt = 3;
+  signature.SignedLog response_signature = 4;
 }
 
 message LogPayload {
@@ -350,17 +337,17 @@ message LogPayload {
     SetMaintenanceModeLog set_maintenance_mode = 13;
     SetChapterScheduleLog set_chapter_schedule = 14;
     DeletedChapterScheduleLog delete_chapter_schedule = 15;
-    PromotedLedgerLog promote_ledger = 17;
-    CreatedPreparedQueryLog created_prepared_query = 18;
-    UpdatedPreparedQueryLog updated_prepared_query = 19;
-    DeletedPreparedQueryLog deleted_prepared_query = 20;
-    SavedNumscriptLog saved_numscript = 21;
-    CreatedQueryCheckpointLog created_query_checkpoint = 23;
-    DeletedQueryCheckpointLog deleted_query_checkpoint = 24;
-    SetQueryCheckpointScheduleLog set_query_checkpoint_schedule = 25;
-    DeletedQueryCheckpointScheduleLog delete_query_checkpoint_schedule = 26;
-    SavedLedgerMetadataLog saved_ledger_metadata = 27;
-    DeletedLedgerMetadataLog deleted_ledger_metadata = 28;
+    PromotedLedgerLog promote_ledger = 16;
+    CreatedPreparedQueryLog created_prepared_query = 17;
+    UpdatedPreparedQueryLog updated_prepared_query = 18;
+    DeletedPreparedQueryLog deleted_prepared_query = 19;
+    SavedNumscriptLog saved_numscript = 20;
+    CreatedQueryCheckpointLog created_query_checkpoint = 21;
+    DeletedQueryCheckpointLog deleted_query_checkpoint = 22;
+    SetQueryCheckpointScheduleLog set_query_checkpoint_schedule = 23;
+    DeletedQueryCheckpointScheduleLog delete_query_checkpoint_schedule = 24;
+    SavedLedgerMetadataLog saved_ledger_metadata = 25;
+    DeletedLedgerMetadataLog deleted_ledger_metadata = 26;
   }
 }
 
@@ -569,15 +556,15 @@ message SinkConfig {
   string name = 1;  // Stable identifier for per-sink cursor and status keys
   oneof type {
     NatsSinkConfig nats = 2;
-    ClickHouseSinkConfig clickhouse = 6;
-    KafkaSinkConfig kafka = 7;
-    HttpSinkConfig http = 8;
-    DatabricksSinkConfig databricks = 10;
+    ClickHouseSinkConfig clickhouse = 3;
+    KafkaSinkConfig kafka = 4;
+    HttpSinkConfig http = 5;
+    DatabricksSinkConfig databricks = 6;
   }
-  string format = 3;          // "json" or "protobuf" (default: "json")
-  int32 batch_size = 4;       // Max events per batch (default: 64)
-  int64 batch_delay_ms = 5;   // Max delay before flush in ms (default: 10)
-  repeated EventType event_types = 9;  // Empty = all events (default)
+  string format = 7;          // "json" or "protobuf" (default: "json")
+  int32 batch_size = 8;       // Max events per batch (default: 64)
+  int64 batch_delay_ms = 9;   // Max delay before flush in ms (default: 10)
+  repeated EventType event_types = 10;  // Empty = all events (default)
 }
 
 // SinkStatus tracks per-sink operational state (replicated via Raft).
@@ -626,12 +613,12 @@ message HttpSinkConfig {
 message DatabricksSinkConfig {
   string server_hostname = 1;  // e.g. "adb-123456.azuredatabricks.net"
   string http_path = 2;        // SQL Warehouse HTTP path (e.g. "/sql/1.0/warehouses/abc123")
-  string catalog = 4;          // Unity Catalog name (e.g. "main")
-  string schema = 5;           // Schema name (e.g. "default")
-  string table = 6;            // Table name (default: "ledger_events")
-  int32 port = 7;              // Port number (default: 443)
+  string catalog = 3;          // Unity Catalog name (e.g. "main")
+  string schema = 4;           // Schema name (e.g. "default")
+  string table = 5;            // Table name (default: "ledger_events")
+  int32 port = 6;              // Port number (default: 443)
   oneof auth {
-    string token = 3;                  // Personal Access Token (PAT) — field number 3 preserved for wire compatibility
+    string token = 7;                  // Personal Access Token (PAT)
     DatabricksOAuthM2M oauth_m2m = 8;  // OAuth M2M / service principal
   }
 }
@@ -716,13 +703,13 @@ message LedgerLogPayload {
     DeletedMetadata deleted_metadata = 4;
     SetMetadataFieldTypeLog set_metadata_field_type = 5;
     RemovedMetadataFieldTypeLog removed_metadata_field_type = 6;
-    FilledGapLog fill_gap = 9;
-    CreatedIndexLog create_index = 10;
-    DroppedIndexLog drop_index = 11;
-    AddedAccountTypeLog added_account_type = 13;
-    RemovedAccountTypeLog removed_account_type = 14;
-    UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 15;
-    OrderSkippedLog order_skipped = 16;
+    FilledGapLog fill_gap = 7;
+    CreatedIndexLog create_index = 8;
+    DroppedIndexLog drop_index = 9;
+    AddedAccountTypeLog added_account_type = 10;
+    RemovedAccountTypeLog removed_account_type = 11;
+    UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 12;
+    OrderSkippedLog order_skipped = 13;
   }
 }
 
@@ -747,21 +734,17 @@ message OrderSkippedLog {
 
 // CreatedIndexLog records the creation of an index.
 message CreatedIndexLog {
-  reserved 1, 2, 3;
-  reserved "log_builtin", "transaction", "account";
-  IndexID id = 4;
+  IndexID id = 1;
   // initial marks an index declared on a ledger that had no local history yet
   // (same atomic apply batch as CreateLedger, before any indexable data log).
   // The read-side indexbuilder promotes such indexes straight to live with no
   // historical backfill; later indexes (initial=false) keep backfilling. EN-1564.
-  bool initial = 5;
+  bool initial = 2;
 }
 
 // DroppedIndexLog records the removal of an index.
 message DroppedIndexLog {
-  reserved 1, 2, 3;
-  reserved "log_builtin", "transaction", "account";
-  IndexID id = 4;
+  IndexID id = 1;
 }
 
 message FilledGapLog {
@@ -1119,10 +1102,10 @@ message LedgerInfo {
   LedgerMode mode = 5;                      // Normal or mirror mode
   MirrorSourceConfig mirror_source = 6;     // Mirror source config (set when mode=MIRROR)
   MirrorSyncProgress mirror_sync_progress = 7;  // Populated at read time for MIRROR ledgers
-  map<string, AccountType> account_types = 10; // Per-type account address validation
-  ChartEnforcementMode default_enforcement_mode = 11; // Default enforcement for unmatched accounts
-  map<string, MetadataValue> metadata = 12; // Populated at read time from separate attribute store
-  uint32 id = 13;                           // Unique numeric ledger ID (assigned by FSM, used as Pebble key prefix)
+  map<string, AccountType> account_types = 8; // Per-type account address validation
+  ChartEnforcementMode default_enforcement_mode = 9; // Default enforcement for unmatched accounts
+  map<string, MetadataValue> metadata = 10; // Populated at read time from separate attribute store
+  uint32 id = 11;                           // Unique numeric ledger ID (assigned by FSM, used as Pebble key prefix)
 }
 
 // ============================================================================
@@ -1248,18 +1231,18 @@ enum ErrorReason {
   ERROR_REASON_CHECKPOINT_ID_REQUIRED = 56;
   ERROR_REASON_NUMSCRIPT_RUNTIME = 57;
   ERROR_REASON_VOLUME_NOT_MATERIALIZED = 58;
-  ERROR_REASON_CLUSTER_UNHEALTHY = 60;
-  ERROR_REASON_WRITES_BLOCKED_DISK_FULL = 61;
-  ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW = 62;
-  ERROR_REASON_CHECKPOINT_NOT_READY = 63;
-  ERROR_REASON_MIRROR_V2_LOG_ID_GAP = 64;
-  ERROR_REASON_MIRROR_V2_LOG_ID_INVALID = 65;
+  ERROR_REASON_CLUSTER_UNHEALTHY = 59;
+  ERROR_REASON_WRITES_BLOCKED_DISK_FULL = 60;
+  ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW = 61;
+  ERROR_REASON_CHECKPOINT_NOT_READY = 62;
+  ERROR_REASON_MIRROR_V2_LOG_ID_GAP = 63;
+  ERROR_REASON_MIRROR_V2_LOG_ID_INVALID = 64;
   // ERROR_REASON_STALE_INPUTS_RESOLUTION: the balance/metadata values that
   // Numscript dependency resolution read at admission time changed before the
   // FSM applied the transaction, so the preloaded key set may be wrong.
   // Retryable (Kind=Unavailable) — a second admission re-resolves against the
   // new values. See EN-1406.
-  ERROR_REASON_STALE_INPUTS_RESOLUTION = 66;
+  ERROR_REASON_STALE_INPUTS_RESOLUTION = 65;
   // ERROR_REASON_PRELOAD_UNAVAILABLE: admission could not build the preload set
   // for an order (e.g. Numscript dependency discovery failed against current
   // state). When the batch carries an idempotency key, admission forwards the
@@ -1267,9 +1250,20 @@ enum ErrorReason {
   // failing fast, so the FSM can replay a frozen outcome. If no frozen outcome
   // exists the FSM emits THIS reason: retryable (Kind=Unavailable), NOT frozen —
   // a preparation gap, never an authoritative business verdict. See EN-1406.
-  ERROR_REASON_PRELOAD_UNAVAILABLE = 67;
-  ERROR_REASON_AGGREGATE_OVERFLOW = 68;
-  ERROR_REASON_BALANCE_NOT_FOUND = 69;
+  ERROR_REASON_PRELOAD_UNAVAILABLE = 66;
+  ERROR_REASON_AGGREGATE_OVERFLOW = 67;
+  ERROR_REASON_BALANCE_NOT_FOUND = 68;
+  // ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP: an indexed read needs the read
+  // index folded up to the main store's applied sequence and it did not get
+  // there within the alignment grace. Retryable (Kind=Unavailable): the fold
+  // is behind, not broken. See EN-1748.
+  ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP = 69;
+  // ERROR_REASON_CHAPTER_ARCHIVE_IDENTITY_MISMATCH: the confirm names a chapter
+  // incarnation that is not the one now in history. The sealing hash commits a
+  // chapter to its content, so a mismatch means the archive the confirm would
+  // trade hot history for belongs to a timeline this store no longer has — see
+  // docs/technical/architecture/subsystems/chapters/backup.md.
+  ERROR_REASON_CHAPTER_ARCHIVE_IDENTITY_MISMATCH = 70;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key
@@ -1705,13 +1699,13 @@ message PreparedQueryCursor {
 message LedgerStats {
   fixed64 transaction_count = 1;
   fixed64 volume_count = 2;
-  fixed64 reference_count = 4;
-  fixed64 posting_count = 5;
-  fixed64 ephemeral_evicted_count = 6;
-  fixed64 transient_used_count = 7;
-  fixed64 revert_count = 8;
-  fixed64 numscript_execution_count = 9;
-  fixed64 log_count = 10;
+  fixed64 reference_count = 3;
+  fixed64 posting_count = 4;
+  fixed64 ephemeral_evicted_count = 5;
+  fixed64 transient_used_count = 6;
+  fixed64 revert_count = 7;
+  fixed64 numscript_execution_count = 8;
+  fixed64 log_count = 9;
 }
 
 // PersistedConfig stores critical configuration parameters that must not change
@@ -1738,17 +1732,12 @@ message PersistedConfig {
 // subject with no known origin.
 message CallerIdentity {
   string subject = 1;
-  // Fields 2 and 3 historically held `repeated string scopes` and
-  // `bool god`. They moved to CallerSnapshot when CallerIdentity was
-  // split into identification + audit snapshot. Keep them reserved so
-  // a future field can't accidentally re-use the numbers and silently
-  // collide with old persisted data.
-  reserved 2, 3;
-  reserved "scopes", "god";
+  // scopes and god live on CallerSnapshot, not here: CallerIdentity is
+  // identification only and carries no authorization decision.
   oneof source {
-    string issuer = 4;             // OIDC token issuer URL
-    string key_id = 5;             // Ed25519 signing key ID
-    string system_component = 6;   // system/internal actor (no user); names the subsystem
+    string issuer = 2;             // OIDC token issuer URL
+    string key_id = 3;             // Ed25519 signing key ID
+    string system_component = 4;   // system/internal actor (no user); names the subsystem
   }
 }
 

@@ -168,6 +168,12 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 			kb := b.kb
 			excludedVolumes := proposals.excludedForLog(parsed.Sequence, parsed.Ledger, &parsed)
 
+			// Stamp the account-by-asset rows with the source log's own
+			// sequence — the same value the live fold writes for this log,
+			// so a backfilled row and a live-written row are identical and
+			// pinned reads resolve them the same way on every replica.
+			b.wb.SetEventSequence(parsed.Sequence)
+
 			for i := range parsed.Postings {
 				p := &parsed.Postings[i]
 				if err := b.indexPostingAddressMappings(

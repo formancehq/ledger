@@ -69,6 +69,7 @@ type DefaultTransport struct {
 	// Metrics for recv queues (indexed by priority: 0=high, 1=medium, 2=low)
 	recvQueueLoadHistogram [3]metric.Int64Histogram
 	recvQueueFullCounter   [3]metric.Float64Counter
+	recvQueueAttributes    [3]attribute.Set
 	recvQueueInflight      [3]atomic.Int32
 
 	// Metrics for unreachable queue
@@ -172,6 +173,10 @@ func NewTransport(
 	// Initialize recv queue metrics for each priority level
 	priorityNames := []string{"high", "medium", "low"}
 	for priority, name := range priorityNames {
+		t.recvQueueAttributes[priority] = attribute.NewSet(
+			attribute.Int("priority", priority),
+			attribute.String("priority_name", name),
+		)
 		m := meterProvider.Meter("raft.transport", metric.WithInstrumentationAttributes(
 			attribute.Int("priority", priority),
 			attribute.String("priority_name", name),
@@ -253,7 +258,11 @@ func (t *DefaultTransport) pushToRecvQueue(priority int, msgs []*raftpb.Message)
 
 	select {
 	case queue <- msgs:
-		t.recvQueueLoadHistogram[priority].Record(context.Background(), int64(t.recvQueueInflight[priority].Add(1)))
+		t.recvQueueLoadHistogram[priority].Record(
+			context.Background(),
+			int64(t.recvQueueInflight[priority].Add(1)),
+			metric.WithAttributeSet(t.recvQueueAttributes[priority]),
+		)
 
 		return true
 	default:
@@ -261,7 +270,11 @@ func (t *DefaultTransport) pushToRecvQueue(priority int, msgs []*raftpb.Message)
 			"channel":  "raft.transport.recv",
 			"priority": priority,
 		}).Errorf("Channel full")
-		t.recvQueueFullCounter[priority].Add(context.Background(), 1)
+		t.recvQueueFullCounter[priority].Add(
+			context.Background(),
+			1,
+			metric.WithAttributeSet(t.recvQueueAttributes[priority]),
+		)
 
 		return false
 	}
@@ -341,7 +354,7 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 
 	meter := t.meterProvider.Meter("raft.transport",
 		metric.WithInstrumentationAttributes(
-			attribute.Int("peer", int(id)),
+			attribute.String("peer", strconv.FormatUint(id, 10)),
 		),
 	)
 	logger := t.logger.WithFields(map[string]any{"peer": strconv.FormatUint(id, 16)})
@@ -378,14 +391,20 @@ func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 		reconnected:            make(chan struct{}),
 		advertiseAddr:          t.advertiseAddr,
 		serviceAdvertiseAddr:   t.serviceAdvertiseAddr,
+		peerAttributes:         attribute.NewSet(attribute.String("peer", strconv.FormatUint(id, 10))),
 	}
 
 	// Initialize send queue metrics for each priority level
 	priorityNames := []string{"high", "medium", "low"}
 	for priority, name := range priorityNames {
+		conn.sendQueueAttributes[priority] = attribute.NewSet(
+			attribute.String("peer", strconv.FormatUint(id, 10)),
+			attribute.Int("priority", priority),
+			attribute.String("priority_name", name),
+		)
 		m := t.meterProvider.Meter("raft.transport",
 			metric.WithInstrumentationAttributes(
-				attribute.Int("peer", int(id)),
+				attribute.String("peer", strconv.FormatUint(id, 10)),
 				attribute.Int("priority", priority),
 				attribute.String("priority_name", name),
 			),
@@ -742,7 +761,9 @@ type peerConnection struct {
 	// Metrics for sending queues (indexed by priority: 0=high, 1=medium, 2=low)
 	sendQueueLoadHistogram [3]metric.Int64Histogram
 	sendQueueFullCounter   [3]metric.Float64Counter
+	sendQueueAttributes    [3]attribute.Set
 	sendQueueInflight      [3]atomic.Int32
+	peerAttributes         attribute.Set
 
 	// pubMu guards stopped vs. send-into-queue. Publishers (pushMessages)
 	// hold pubMu.RLock for the duration of the send so stop() — which takes
@@ -795,7 +816,11 @@ func (conn *peerConnection) pushMessages(priority int, msgs []*raftpb.Message) b
 
 	select {
 	case queue <- msgs:
-		conn.sendQueueLoadHistogram[priority].Record(context.Background(), int64(conn.sendQueueInflight[priority].Add(1)))
+		conn.sendQueueLoadHistogram[priority].Record(
+			context.Background(),
+			int64(conn.sendQueueInflight[priority].Add(1)),
+			metric.WithAttributeSet(conn.sendQueueAttributes[priority]),
+		)
 
 		return true
 	default:
@@ -803,7 +828,11 @@ func (conn *peerConnection) pushMessages(priority int, msgs []*raftpb.Message) b
 			"channel":  "raft.transport.peer.sending",
 			"priority": priority,
 		}).Errorf("Channel full")
-		conn.sendQueueFullCounter[priority].Add(context.Background(), 1)
+		conn.sendQueueFullCounter[priority].Add(
+			context.Background(),
+			1,
+			metric.WithAttributeSet(conn.sendQueueAttributes[priority]),
+		)
 
 		// Signal Unreachable to Raft so it throttles this peer's Progress
 		// to StateProbe instead of continuing optimistic replication.
@@ -991,7 +1020,11 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 		mu.Unlock()
 
 		if orphaned > 0 {
-			conn.pendingResponseCounter.Add(context.Background(), -float64(orphaned))
+			conn.pendingResponseCounter.Add(
+				context.Background(),
+				-float64(orphaned),
+				metric.WithAttributeSet(conn.peerAttributes),
+			)
 			conn.logger.WithFields(map[string]any{
 				"orphanedMessages": orphaned,
 			}).Infof("Cleaned up orphaned pending responses on connection close")
@@ -1053,7 +1086,11 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 						continue
 					}
 
-					conn.pingLatency.Record(context.Background(), time.Since(lp.at).Microseconds())
+					conn.pingLatency.Record(
+						context.Background(),
+						time.Since(lp.at).Microseconds(),
+						metric.WithAttributeSet(conn.peerAttributes),
+					)
 
 				case *rafttransportpb.SendMessageResponse_Raft:
 					mu.Lock()
@@ -1061,7 +1098,11 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 						nodeID, ok := pending[raftResp.GetRequestId()]
 						if ok {
 							delete(pending, raftResp.GetRequestId())
-							conn.pendingResponseCounter.Add(context.Background(), -1)
+							conn.pendingResponseCounter.Add(
+								context.Background(),
+								-1,
+								metric.WithAttributeSet(conn.peerAttributes),
+							)
 						} else {
 							conn.logger.
 								WithFields(map[string]any{
@@ -1130,7 +1171,11 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 			return nil
 		}
 
-		conn.pendingResponseCounter.Add(context.Background(), float64(len(raftMessages)))
+		conn.pendingResponseCounter.Add(
+			context.Background(),
+			float64(len(raftMessages)),
+			metric.WithAttributeSet(conn.peerAttributes),
+		)
 
 		err := stream.Send(&rafttransportpb.SendMessageRequest{
 			Message: &rafttransportpb.SendMessageRequest_Raft{
@@ -1151,7 +1196,11 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 				delete(pending, msgID)
 			}
 			mu.Unlock()
-			conn.pendingResponseCounter.Add(context.Background(), -float64(len(raftMessages)))
+			conn.pendingResponseCounter.Add(
+				context.Background(),
+				-float64(len(raftMessages)),
+				metric.WithAttributeSet(conn.peerAttributes),
+			)
 			// Report peer as unreachable
 			if !conn.pushUnreachable(conn.peerID) {
 				conn.logger.Errorf("Unreachable channel full, dropping unreachable")

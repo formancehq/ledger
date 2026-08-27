@@ -51,7 +51,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 	pgn := cmdutil.GetPaginationFlags(cmd)
 	cns := cmdutil.GetConsistencyFlags(cmd)
 
-	spinner, _ := pterm.DefaultSpinner.Start("Fetching ledgers...")
+	spinner := cmdutil.StartSpinner("Fetching ledgers...")
 
 	all, nextCursor, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*commonpb.LedgerInfo, metadata.MD, error) {
 		page := pgn

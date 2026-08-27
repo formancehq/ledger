@@ -154,7 +154,9 @@ type ClusterSpec struct {
 	// +optional
 	GrpcCompression *bool `json:"grpcCompression,omitempty"`
 
-	// QueryProfileThreshold logs and emits OTel attributes for queries exceeding this duration (0 to disable).
+	// QueryProfileThreshold logs and emits OTel attributes for reads whose total
+	// server-side handling (excluding the caller-requested read barrier) exceeds
+	// this duration. 0 disables the slow-read log.
 	// +optional
 	QueryProfileThreshold string `json:"queryProfileThreshold,omitempty"`
 

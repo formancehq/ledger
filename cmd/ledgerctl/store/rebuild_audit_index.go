@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/metric/noop"
 
@@ -54,7 +53,7 @@ func runRebuildAuditIndex(cmd *cobra.Command, _ []string) error {
 
 	logger := logging.NopZap()
 
-	spinner, _ := pterm.DefaultSpinner.Start("Opening Pebble store (read-only)...")
+	spinner := cmdutil.StartSpinner("Opening Pebble store (read-only)...")
 
 	// The server keeps the live Pebble DB under <data-dir>/live (see dal.NewStore),
 	// while the read index lives at <data-dir>/read-indexes. Open the live subdir,
@@ -70,7 +69,7 @@ func runRebuildAuditIndex(cmd *cobra.Command, _ []string) error {
 
 	spinner.Success("Pebble store opened")
 
-	spinner, _ = pterm.DefaultSpinner.Start("Opening read index store...")
+	spinner = cmdutil.StartSpinner("Opening read index store...")
 
 	rs, err := readstore.New(readIndexDir, logger, readstore.DefaultConfig())
 	if err != nil {
@@ -83,7 +82,7 @@ func runRebuildAuditIndex(cmd *cobra.Command, _ []string) error {
 
 	spinner.Success("Read index store opened at " + rs.Path())
 
-	spinner, _ = pterm.DefaultSpinner.Start("Rebuilding audit index...")
+	spinner = cmdutil.StartSpinner("Rebuilding audit index...")
 
 	idx := auditindexer.New(auditindexer.Config{BatchSize: batchSize}, pebbleStore, rs, logger, noop.Meter{})
 	if err := idx.Rebuild(context.Background()); err != nil {
