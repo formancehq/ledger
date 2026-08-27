@@ -88,6 +88,18 @@ type nodeProvideResult struct {
 	FreshStart walFreshStart
 }
 
+// provideNodeConfig establishes the peer identity before exposing the Raft
+// configuration to any dependent provider. In particular, provideWAL depends
+// on node.NodeConfig (rather than the broader Config) so Fx cannot create WAL
+// artifacts before INSTANCE_ID has been read or persisted.
+func provideNodeConfig(cfg Config) (node.NodeConfig, error) {
+	return buildNodeConfig(cfg)
+}
+
+func provideWAL(cfg node.NodeConfig, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
+	return wal.New(cfg.WalDir, logger, meterProvider.Meter("wal"))
+}
+
 func Module() fx.Option {
 	return fx.Options(
 		transport.Module(),
@@ -161,9 +173,7 @@ func Module() fx.Option {
 
 				return store, nil
 			},
-			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
-				return wal.New(cfg.RaftConfig.WalDir, logger, meterProvider.Meter("wal"))
-			},
+			provideWAL,
 			func(cfg Config, logger logging.Logger) (*spool.Default, error) {
 				return spool.NewDefault(spool.DefaultSpoolConfig{
 					Dir:             filepath.Join(cfg.DataDir, "spool"),
@@ -377,7 +387,7 @@ func Module() fx.Option {
 				return nodeProvideResult{Node: n, FreshStart: freshStart}, nil
 			},
 			buildResponseSigner,
-			buildNodeConfig,
+			provideNodeConfig,
 			func(cfg Config) node.TransportConfig {
 				return cfg.TransportConfig
 			},

@@ -20,6 +20,14 @@ A Raft node can be in one of the following states:
 
 Nodes join the cluster as **learners** and are automatically promoted to **voters** (followers) once they catch up. See [Cluster Lifecycle](../../../../ops/cluster-operations.md) for the complete bootstrap/join/promotion flow.
 
+Every configured member carries a mandatory 16-byte `instanceID`, including
+the bootstrap seed and peers learned through discovery. Membership admission,
+ConfChange apply, persisted-row loading, removal, and promotion all validate
+this identity and fail loudly on an impossible identity-less member. Caller
+intent remains explicit: administrative `AddLearner` and fresh-WAL
+`JoinAsLearner` are separate paths even though both carry the same identity
+payload. See [Removed-Member Registry](removed-member-registry.md).
+
 ```mermaid
 stateDiagram-v2
     [*] --> Follower
