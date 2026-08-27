@@ -4,7 +4,8 @@ import "fmt"
 
 // RemoveNodeCommittedError reports that a ConfChangeRemoveNode is already
 // committed in Raft, but the caller stopped waiting before the corresponding
-// FSM batch (including the removed-member tombstone) became durable.
+// FSM batch (including the removed-member tombstone when the target has an
+// instance ID) became durable.
 //
 // Retrying the same removal is safe: the target is already absent from Raft.
 // Callers should verify the membership postcondition instead of treating this
@@ -17,7 +18,7 @@ type RemoveNodeCommittedError struct {
 
 func (e *RemoveNodeCommittedError) Error() string {
 	return fmt.Sprintf(
-		"node %d removal committed at raft index %d; removed-member tombstone application is still pending",
+		"node %d removal committed at raft index %d; durable FSM application is still pending",
 		e.NodeID,
 		e.AppliedIndex,
 	)

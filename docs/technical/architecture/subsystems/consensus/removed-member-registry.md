@@ -96,7 +96,7 @@ Both mutations belong to the same Pebble transaction, so they are atomic. Cross-
 
 No crash window on this path.
 
-On the leader serving `RemoveNode`, the committed ConfChange future carries its Raft entry index. The RPC then waits on `Machine.WaitForApplied(index)` rather than polling Pebble against a fixed wall-clock deadline. If the caller stops waiting after commit but before durable apply, Ledger returns `UNAVAILABLE` with `ErrorInfo.reason=RAFT_NODE_REMOVAL_COMMITTED` and the `nodeId` / `appliedIndex` metadata. A node-local admission barrier for the removed `(nodeID, instanceID)` is deleted only after the waiter verifies the durable tombstone; if the caller cancels first, the barrier is conservatively retained. Releasing the RPC context therefore cannot let the still-live removed pod rejoin before its replicated tombstone is visible.
+On the leader serving `RemoveNode`, the committed ConfChange future carries its Raft entry index. Every removal waits on `Machine.WaitForApplied(index)` rather than polling Pebble against a fixed wall-clock deadline, including phantom/bootstrap members that have no instance ID and therefore no tombstone. If the caller stops waiting after commit but before durable apply, Ledger returns `UNAVAILABLE` with `ErrorInfo.reason=RAFT_NODE_REMOVAL_COMMITTED` and the `nodeId` / `appliedIndex` metadata. When the removed member has an identity, a node-local admission barrier for `(nodeID, instanceID)` is deleted only after the waiter verifies the durable tombstone; if the caller cancels first, the barrier is conservatively retained. Releasing the RPC context therefore cannot let the still-live removed pod rejoin before its replicated tombstone is visible.
 
 #### Force path (`ForceRemoveNode`)
 

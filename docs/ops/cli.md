@@ -2701,7 +2701,7 @@ ledgerctl cluster remove-node <node-id> [flags]
 - The request is forwarded to the current leader if sent to a follower
 - The leader proposes a ConfChange to remove the node from the cluster
 - Once committed, all nodes remove the peer from their transport and service pool
-- The leader waits for the committed Raft index to be durable in the FSM, including the removed-member tombstone; this uses the caller's `--timeout` rather than a separate fixed five-second wait
+- The leader waits for the committed Raft index to be durable in the FSM, including the peer-row deletion and, when an instance ID exists, the removed-member tombstone; this uses the caller's `--timeout` rather than a separate fixed five-second wait
 - If the caller timeout expires after the Raft removal committed, the server returns `Unavailable` with reason `RAFT_NODE_REMOVAL_COMMITTED`; confirm the node is absent with `cluster status`
 - Removing an already-absent node returns `NotFound` with reason `RAFT_NODE_NOT_IN_CLUSTER`
 - Cannot remove the leader node; use `cluster transfer-leader` first

@@ -2588,17 +2588,19 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 	}
 
 	// EN-1045: after the ConfChange commits (raft-level), also wait for
-	// the async applier to have persisted the RemovedMemberEntry
-	// tombstone to Pebble before releasing confChangeMu. This closes a
-	// TOCTOU race where a concurrent JoinAsLearner acquiring the mutex
-	// next would otherwise re-check the blacklist and miss the tombstone
-	// still queued behind the applier's async submit.
+	// the async applier to persist the matching FSM batch before releasing
+	// confChangeMu. Every removal waits for the peer-row deletion; when
+	// the target has a blacklistable identity, the same batch also contains
+	// its RemovedMemberEntry tombstone. Waiting closes a TOCTOU race where a
+	// concurrent JoinAsLearner acquiring the mutex next would otherwise
+	// re-check the blacklist before that tombstone is durable.
 	postApplyFn := func(ctx context.Context, committedIndex uint64) error {
-		if !capturedBlacklistableID {
-			return nil
+		var instanceID []byte
+		if capturedBlacklistableID {
+			instanceID = capturedInstanceID
 		}
 
-		return node.waitForRemovalApplied(ctx, nodeID, capturedInstanceID, committedIndex)
+		return node.waitForRemovalApplied(ctx, nodeID, instanceID, committedIndex)
 	}
 
 	return node.retryConfChange(ctx, nodeID, "RemoveNode", proposeFn, postApplyFn)
@@ -2606,37 +2608,51 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 
 // waitForRemovalApplied bridges the gap between Raft commit and durable FSM
 // apply. The committed entry index is the explicit durability barrier: once
-// WaitForApplied returns, the Pebble batch containing both the peer deletion
-// and RemovedMemberEntry is visible. This avoids a wall-clock timeout whose
-// expiry could incorrectly imply that the already-committed Raft mutation
-// failed.
+// WaitForApplied returns, the Pebble batch containing the peer deletion is
+// visible. When instanceID is present, that batch also contains the matching
+// RemovedMemberEntry. This avoids a wall-clock timeout whose expiry could
+// incorrectly imply that the already-committed Raft mutation failed.
 //
-// pendingRemovals remains set if the RPC context is cancelled before apply.
-// AddLearner and auto-promotion consult it, so the removed live pod cannot
-// silently rejoin during the post-commit/pre-apply window.
+// For a blacklistable member, pendingRemovals remains set if the RPC context
+// is cancelled before apply. AddLearner and auto-promotion consult it, so the
+// removed live pod cannot silently rejoin during the post-commit/pre-apply
+// window. Members without an identity still wait for apply but need no
+// admission barrier or tombstone verification.
 func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, instanceID []byte, committedIndex uint64) error {
-	node.pendingRemovals.Store(nodeID, pendingRemoval{
-		instanceID:   bytes.Clone(instanceID),
-		appliedIndex: committedIndex,
-	})
+	verifyTombstone := len(instanceID) == 16
+	if verifyTombstone {
+		node.pendingRemovals.Store(nodeID, pendingRemoval{
+			instanceID:   bytes.Clone(instanceID),
+			appliedIndex: committedIndex,
+		})
+	}
 
 	node.logger.WithFields(map[string]any{
 		"removedNodeID": nodeID,
 		"raftIndex":     committedIndex,
-	}).Infof("RemoveNode committed; waiting for removed-member tombstone application")
+	}).Infof("RemoveNode committed; waiting for durable FSM application")
 
 	if err := node.fsm.WaitForApplied(ctx, committedIndex); err != nil {
 		node.logger.WithFields(map[string]any{
 			"error":         err,
 			"removedNodeID": nodeID,
 			"raftIndex":     committedIndex,
-		}).Errorf("RemoveNode committed but removed-member tombstone application is still pending")
+		}).Errorf("RemoveNode committed but durable FSM application is still pending")
 
 		return &RemoveNodeCommittedError{
 			NodeID:       nodeID,
 			AppliedIndex: committedIndex,
 			Cause:        err,
 		}
+	}
+
+	if !verifyTombstone {
+		node.logger.WithFields(map[string]any{
+			"removedNodeID": nodeID,
+			"raftIndex":     committedIndex,
+		}).Infof("RemoveNode applied without a removed-member tombstone")
+
+		return nil
 	}
 
 	removed, err := node.membership.IsRemoved(nodeID, instanceID)
