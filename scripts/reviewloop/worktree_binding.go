@@ -350,7 +350,7 @@ func captureRootCheckoutSnapshot(root string) (rootCheckoutSnapshot, error) {
 	if err != nil {
 		return rootCheckoutSnapshot{}, fmt.Errorf("capturing ROOT_STATUS: %w", err)
 	}
-	workspace, err := captureWorkspaceState(root)
+	workspaceFingerprint, err := captureRootWorkspaceFingerprint(root)
 	if err != nil {
 		return rootCheckoutSnapshot{}, fmt.Errorf("capturing ROOT_STATUS content fingerprint: %w", err)
 	}
@@ -359,8 +359,55 @@ func captureRootCheckoutSnapshot(root string) (rootCheckoutSnapshot, error) {
 		Head:                 strings.TrimSpace(string(head)),
 		Branch:               strings.TrimSpace(string(branch)),
 		Status:               status,
-		WorkspaceFingerprint: workspace.Fingerprint,
+		WorkspaceFingerprint: workspaceFingerprint,
 	}, nil
+}
+
+func captureRootWorkspaceFingerprint(root string) (string, error) {
+	workspace, err := captureWorkspaceState(root)
+	if err != nil {
+		return "", err
+	}
+	ignoredOutput, err := gitOutput(root, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
+	if err != nil {
+		return "", fmt.Errorf("listing ignored workspace files: %w", err)
+	}
+
+	hasher := sha256.New()
+	writeHashField(hasher, []byte(workspace.Fingerprint))
+	for rawPath := range bytes.SplitSeq(ignoredOutput, []byte{0}) {
+		if len(rawPath) == 0 {
+			continue
+		}
+		path := string(rawPath)
+		absolutePath := filepath.Join(root, filepath.FromSlash(path))
+		info, err := os.Lstat(absolutePath)
+		if err != nil {
+			return "", fmt.Errorf("reading ignored file metadata %s: %w", path, err)
+		}
+		writeHashField(hasher, rawPath)
+		writeHashField(hasher, []byte(info.Mode().String()))
+
+		var content []byte
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
+			target, err := os.Readlink(absolutePath)
+			if err != nil {
+				return "", fmt.Errorf("reading ignored symlink %s: %w", path, err)
+			}
+			content = []byte(target)
+		case info.Mode().IsRegular():
+			content, err = os.ReadFile(absolutePath)
+			if err != nil {
+				return "", fmt.Errorf("reading ignored file %s: %w", path, err)
+			}
+		default:
+			return "", fmt.Errorf("unsupported ignored file type %s", path)
+		}
+		writeHashField(hasher, content)
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 func gitCommonDirectory(worktree string) (string, error) {

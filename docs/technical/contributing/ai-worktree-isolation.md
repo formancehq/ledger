@@ -78,9 +78,10 @@ agent's `pwd` self-check is defense in depth, not the authorization mechanism.
 
 Before the first subprocess, `review-loop` captures `ROOT_HEAD`, `ROOT_BRANCH`,
 the complete `ROOT_STATUS`, and a workspace-content fingerprint covering
-tracked, staged, and untracked state. It compares the same values immediately
-before and after every reviewer, fixer, and validator. The fingerprint catches
-content overwrites even when the porcelain status text is unchanged. Any
+tracked, staged, untracked, and ignored files. It compares the same values
+immediately before and after every reviewer, fixer, and validator. The
+fingerprint catches content overwrites even when the porcelain status text is
+unchanged. Any
 difference emits `ROOT_MUTATION_DETECTED` and stops without reset, clean,
 checkout, or other automatic recovery. An already-dirty root is supported
 because equality, not cleanliness, is the invariant.

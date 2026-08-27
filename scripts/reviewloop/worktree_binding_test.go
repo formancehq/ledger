@@ -97,6 +97,22 @@ func TestDirtyRootContentMutationIsDetectedWhenPorcelainIsUnchanged(t *testing.T
 	require.Equal(t, "different dirty content\n", readTestFile(t, filepath.Join(fixture.root, "base.txt")))
 }
 
+func TestIgnoredRootContentMutationIsDetected(t *testing.T) {
+	fixture := newWorktreeBindingFixture(t)
+	require.NoError(t, os.WriteFile(filepath.Join(fixture.root, ".git", "info", "exclude"), []byte("ignored-secret.txt\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(fixture.root, "ignored-secret.txt"), []byte("secret before agent\n"), 0o600))
+	require.Empty(t, runGitOutput(t, fixture.root, "status", "--porcelain=v1", "--untracked-files=all"))
+
+	output, err := fixture.run(t, 123, fixture.candidate, fixture.bindingFile, map[string]string{
+		"TEST_ROOT_MUTATION": "ignored-content",
+	})
+	require.Error(t, err, output)
+	require.Contains(t, output, "ROOT_MUTATION_DETECTED")
+	require.Contains(t, output, "root workspace content changed")
+	require.Empty(t, runGitOutput(t, fixture.root, "status", "--porcelain=v1", "--untracked-files=all"))
+	require.Equal(t, "different ignored content\n", readTestFile(t, filepath.Join(fixture.root, "ignored-secret.txt")))
+}
+
 func TestGitMutationGuardRefusesRootCheckout(t *testing.T) {
 	fixture := newWorktreeBindingFixture(t)
 	branchBefore := strings.TrimSpace(runGitOutput(t, fixture.root, "rev-parse", "--abbrev-ref", "HEAD"))
@@ -234,6 +250,7 @@ case "${TEST_ROOT_MUTATION:-}" in
         ;;
     untracked) printf 'mutation\n' > "$TRUSTED_ROOT_CHECKOUT/agent-root-mutation.txt" ;;
     dirty-content) printf 'different dirty content\n' > "$TRUSTED_ROOT_CHECKOUT/base.txt" ;;
+    ignored-content) printf 'different ignored content\n' > "$TRUSTED_ROOT_CHECKOUT/ignored-secret.txt" ;;
     guarded-branch) git -C "$TRUSTED_ROOT_CHECKOUT" switch -c guard-must-refuse ;;
     guard-stash) git -C "$TRUSTED_ROOT_CHECKOUT" stash ;;
     guard-apply) git -C "$TRUSTED_ROOT_CHECKOUT" apply ;;
