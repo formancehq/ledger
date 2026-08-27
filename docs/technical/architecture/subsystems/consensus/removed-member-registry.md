@@ -10,12 +10,12 @@ The bug this addresses is tracked as [EN-1045](https://formance-team.atlassian.n
 
 ## Design Goals
 
-- A member that **joined via `JoinAsLearner`** and was later removed via `ConfChangeRemoveNode` (consensus or force) never rejoins under the same identity. This is the scale-down case the bug report addresses. Bootstrap-seed voters (pod-0 under `--bootstrap`) are outside this guarantee — see "Bootstrap Seed and the Guarantee Boundary" below.
+- Every configured member — bootstrap seed, discovered voter, administratively added learner, or joining learner — has a durable `instanceID`. A member removed via `ConfChangeRemoveNode` (consensus or force) never rejoins under the same identity.
 - A **new** pod at the same ordinal (e.g. after scale-down then scale-up) rejoins normally without operator intervention.
 - The guarantee is authoritative on the leader side — it does not rely on the removed peer behaving correctly (which is precisely the trust we are revoking).
 - The check is deterministic across leader changes (any elected leader enforces the same registry).
 - No new coupling from the ledger to Kubernetes — the operator does not need to inform the leader of intent beyond the existing `remove-node` call.
-- `instance_id` is a **mandatory** field on every `JoinAsLearner` RPC. Mixed-version joins (old-binary peer talking to a new-binary leader) are rejected by design — this is not a compat concern for `release/v3.0` since a peer's `INSTANCE_ID` marker is written before its first RPC and survives restarts alongside the WAL.
+- `instance_id` is **mandatory** on every membership-creation and discovery path: `JoinAsLearner`, administrative `AddLearner`, `PeerInfo`, the ConfChange registration payload, and the persisted peer row. Mixed-format state is rejected by design — v3 is unreleased and has no compatibility burden.
 
 ## Non-Goals
 
@@ -84,9 +84,7 @@ type ConfChangeContext struct {
 }
 ```
 
-The leader reads the peer's `instanceID` from its Membership state before proposing (leader-only path, not FSM hot path — no preload constraint). The proposal is then replicated normally.
-
-When the target peer's row exists but has no `instanceID` — a *phantom learner*, added via the admin `cluster.AddLearner` RPC before the pod ever booted — the leader proposes the removal with a correlation-only Context. The FSM apply ignores `ProposalID`, deletes the peer row, and writes no blacklist entry: there is nothing to blacklist, since no instance ever ran under that (nodeID, ?) tuple.
+The leader reads the peer's `instanceID` from its Membership state before proposing (leader-only path, not FSM hot path — no preload constraint). A missing or malformed identity is an invariant failure and the proposal is rejected before Raft is mutated. The proposal is then replicated normally.
 
 Every node applies the same log entry through the FSM apply path. The apply batch performs two mutations inside a single `dal.WriteSession`:
 
@@ -97,18 +95,18 @@ Both mutations belong to the same Pebble transaction, so they are atomic. Cross-
 
 No crash window on this path.
 
-On the leader serving `RemoveNode`, `ProposalID` — together with the expected node ID and ConfChange type — selects the exact pending future, which then carries the committed Raft entry index. A canceled proposal that commits late cannot resolve a newer operation for the same node. Every removal waits on `Machine.WaitForApplied(index)` rather than polling Pebble against a fixed wall-clock deadline, including phantom/bootstrap members that have no instance ID and therefore no tombstone. If the caller stops waiting after commit but before durable apply, Ledger returns `UNAVAILABLE` with `ErrorInfo.reason=RAFT_NODE_REMOVAL_COMMITTED` and the `nodeId` / `committedIndex` metadata. When the removed member has an identity, observing the committed ConfChange installs a node-local admission barrier for `(nodeID, instanceID)` before the caller's future can be resolved or discarded. A node-lifecycle-bound background waiter starts from that commit observation, waits for apply, verifies the same durable tombstone invariant as the foreground path, and only then clears that exact barrier; the replicated tombstone remains authoritative and can later be removed deliberately through `forget-removed`. Protection therefore does not depend on the RPC winning its cancellation race, while cancellation cannot leave a permanent node-local block after a valid tombstone apply.
+On the leader serving `RemoveNode`, `ProposalID` — together with the expected node ID and ConfChange type — selects the exact pending future, which then carries the committed Raft entry index. A canceled proposal that commits late cannot resolve a newer operation for the same node. Every removal waits on `Machine.WaitForApplied(index)` rather than polling Pebble against a fixed wall-clock deadline. If the caller stops waiting after commit but before durable apply, Ledger returns `UNAVAILABLE` with `ErrorInfo.reason=RAFT_NODE_REMOVAL_COMMITTED` and the `nodeId` / `committedIndex` metadata. Observing the committed ConfChange installs a node-local admission barrier for `(nodeID, instanceID)` before the caller's future can be resolved or discarded. A node-lifecycle-bound background waiter starts from that commit observation, waits for apply, verifies the same durable tombstone invariant as the foreground path, and only then clears that exact barrier; the replicated tombstone remains authoritative and can later be removed deliberately through `forget-removed`. Protection therefore does not depend on the RPC winning its cancellation race, while cancellation cannot leave a permanent node-local block after a valid tombstone apply.
 
 #### Force path (`ForceRemoveNode`)
 
 This path is intentionally leader-local: `rawNode.ApplyConfChange` mutates only the leader's raft state; followers (if any survive) will learn about it via the next snapshot they receive to catch up. The design extends the existing two-write sequence to atomically embed the blacklist write in the second one:
 
 1. `wal.UpdateSnapshotConfState(cs)` — WAL write, ordered first per EN-1413 (unchanged).
-2. **Extended** `membership.Unregister(nodeID)` — Pebble batch, atomic between:
+2. `membership.UnregisterAndBlacklist(nodeID, instanceID)` — Pebble batch, atomic between:
    - Delete of the peer row.
    - Put of `RemovedMembers[nodeID, instanceID]`.
 
-The `instanceID` is read from the peer's Membership row just before the delete, so no explicit parameter needs to travel on the ledgerctl RPC. `membership.Unregister` reads from its own in-memory cache (populated at boot from Pebble), which is outside the FSM hot path and therefore not subject to invariants #3/#6/#9.
+The `instanceID` is read and validated from the peer's Membership row before `rawNode.ApplyConfChange`, so an invalid identity cannot leave RawNode mutated without its tombstone. No explicit parameter needs to travel on the remove RPC. The membership read uses the in-memory cache populated at boot from Pebble and is outside the FSM hot path, so invariants #3/#6/#9 do not apply.
 
 `internal/infra/node/` and `internal/infra/membership/` are added to the `forbidigo` exception list of [invariant #4](../../../../../CLAUDE.md#invariants), justified as *"cluster-topology lifecycle path: force-remove writes ConfState (WAL) + peer tombstone (Pebble) outside the FSM hot path by necessity — see docs/technical/architecture/subsystems/consensus/removed-member-registry.md"*. The node/membership exception already exists de facto for the WAL/peer-row writes; the new Pebble mutation reuses the same exception scope.
 
@@ -142,31 +140,27 @@ The peer stores its `instanceID` next to the WAL, in a small file `INSTANCE_ID` 
 
 - **First boot** (no WAL, no marker): `bootstrap/module.go` generates a random UUID and writes `INSTANCE_ID` **before** calling `JoinAsLearner`. The join RPC carries the freshly written value.
 - **Subsequent boot** (WAL present, `INSTANCE_ID` present): value is read from disk and used for any RPC that identifies the peer (currently just `JoinAsLearner`; extended for the followup rejoin path from EN-1436).
-- **Subsequent boot** (WAL present, `INSTANCE_ID` missing): impossible under normal operation — the marker is written before `JoinAsLearner`; if it disappears (manual delete, disk corruption) the peer boots without an identifier and the leader rejects it at admission. Fixing the marker is a manual operator action.
+- **Subsequent boot** (WAL present, `INSTANCE_ID` missing): impossible under normal operation and fatal. `EnsureInstanceID` detects `CLUSTER_JOINED`, the WAL creation marker, or an existing WAL/snapshot directory and refuses to generate a replacement identity. Rotating the identity while retaining local consensus state would split this peer's identity from the value already replicated in other members' rows; recovery requires restoring the original marker or reprovisioning the WAL/PVC as a genuinely fresh instance.
 
 Persistence uses the same directory as the existing `CLUSTER_JOINED` marker (`cfg.RaftConfig.WalDir`), colocated because the two markers share the same lifetime property: they identify a specific `(pod, PVC)` incarnation. Reprovisioning the PVC drops both markers together, which is the correct behavior — a wiped PVC is a genuinely new instance.
 
-Note on directionality: the `instanceID` is generated once on the peer and communicated to the leader via `JoinAsLearner`. The leader persists it in the peer's Membership row, which is part of the FSM state and therefore Raft-replicated to all nodes — every future leader knows the `instanceID` of every current member. The peer is never sent an `instanceID` back; it holds the authoritative copy on its own disk.
+Note on directionality: the authoritative `instanceID` is generated once on each peer. It reaches the leader through `JoinAsLearner` or the administrative `AddLearner` request, is persisted in the replicated Membership row, and is returned by `GetPeers` so a joining node can persist complete rows for bootstrap-seed voters. Discovery copies do not replace the peer's own `INSTANCE_ID`; they describe other configured members.
 
-### Bootstrap Seed and the Guarantee Boundary
+### Universal Identity Propagation
 
-Voters that become cluster members via the initial bootstrap `ConfState` (typically pod-0 under `--bootstrap`) never carry an `instanceID` on the other nodes' peer rows: the `PeerInfo` discovery message has no `instance_id` field and pod-0 never goes through an `AddLearner` ConfChange, so `registerInitialPeers` on the *other* nodes writes pod-0's row with an empty `InstanceID`. On the bootstrap node itself, the row is populated from `cfg.InstanceID` at boot.
+The bootstrap seed persists its own `cfg.InstanceID` before constructing the initial ConfState. `ClusterBootstrapService.GetPeers` returns that identity in every `PeerInfo`, and `discoverPeersFromCluster` carries it into `node.Peer`. `registerInitialPeers` therefore persists complete `(addresses, instanceID)` rows for all discovered voters before the joining node writes its initial WAL snapshot.
 
-Practical consequence: `RemoveNode` on a bootstrap-seed voter (from another node's leader vantage) proposes with a correlation-only Context and no `RemovedMemberEntry` is written. The blacklist guarantee therefore applies only to nodes that joined via `JoinAsLearner`.
+Administrative `ClusterService.AddLearner` likewise requires the target's 16-byte persisted identity. Caller intent is explicit in the application/node APIs: `AddLearner` is an administrative retry, while `JoinAsLearner` means a fresh-WAL boot. Presence or absence of `instanceID` is never used as an intent sentinel.
 
-This is acceptable in practice for the EN-1045 scale-down scenario:
+The invariant is enforced at every boundary:
 
-- Operator scale-down removes the highest-ordinal pod first (never pod-0).
-- `Node.RemoveNode` refuses self-removal (`ErrCannotRemoveSelf`), so pod-0 cannot remove itself.
-- A future scale-down that actually reaches the seed voter would already require operator intervention on pod-0 first.
+- `PeerStore.Put`, `Membership.Set`, `Membership.Register`, and `NewMembership` reject identities whose length is not 16 bytes.
+- `PeerStore.LoadAll` fails startup on a malformed persisted row; the same typed validation failure is fatal after a checkpoint install rather than leaving the process running with an invalid restored membership.
+- `WriteConfChange` rejects AddLearner, UpdateNode, or RemoveNode entries without a valid identity; impossible committed shapes fail loudly on every replica.
+- `Membership.Set` removes and re-adds transport connections when an `UpdateNode` changes either advertised address, so Raft and forwarded RPCs cannot remain pinned to the previous endpoint.
+- `RemoveNode`, `ForceRemoveNode`, discovery, and auto-promotion validate before acting.
 
-If a stricter guarantee is later needed, the fix is to add `instance_id` to `PeerInfo` so the seed's identity propagates on discovery and the "never rejoins" guarantee becomes universal. Deferred as follow-up.
-
-### Known Limitations
-
-Two secondary gaps in the "never rejoins" guarantee, kept out of this PR's scope but documented so the failure modes are visible:
-
-**Pre-EN-1045 rows on an upgraded cluster** — for a cluster that ran a pre-EN-1045 build and is upgraded in place, existing peer rows have `instance_id = nil`. Each pod writes its `INSTANCE_ID` marker locally at first boot on the new binary, but because `CLUSTER_JOINED` is already present, `tryAddLearner` short-circuits and never re-registers with the leader — so the leader's peer store keeps the `nil` identity. A subsequent `RemoveNode` on such a member takes the empty-identity path and writes no tombstone. In practice this is not a concern for `release/v3.0` — the branch is not yet on any long-lived production cluster, and the design position is "instance_id mandatory, no compat" (see PR description). A follow-up would add a lightweight "instance_id refresh" RPC or a per-boot check that proposes `ConfChangeUpdateNode` when the leader's row is empty.
+### Known Limitation
 
 **Async tombstone visibility across a leadership change** — the committed-index wait and pending-removal admission barrier protect the leader that handled the `RemoveNode` RPC. Followers apply the same log entry via their own async applier; if leadership transfers to a follower between raft commit and its FSM apply of the tombstone, the new leader can miss the leader-local barrier and blacklist on its next `JoinAsLearner` check. The window is bounded by follower applier catch-up (single-digit ms in normal operation), and requires an unusual sequence: leadership loss + immediate rejoin attempt against the new leader. A proper fix — block admission on any leader until its FSM has caught up to the current commit index — is orthogonal to EN-1045 and out of scope.
 
@@ -192,7 +186,7 @@ The `RemovedMembers` KeyStore participates in:
 
   A cross-node consistency check (dump `RemovedMembers` from each replica via an admin RPC and compare) is a possible future enhancement, out of scope here.
 
-- **Peer identity on the leader side**: the `Membership` row (per-peer, persisted in Pebble via EN-1413) is extended with an `instance_id` field. It is written once, when the leader admits the peer via `JoinAsLearner`, and read later by both consensus `RemoveNode` (to pack into `ConfChangeContext`) and `ForceRemoveNode` (to build the `RemovedMembers` entry). Storing it there — rather than re-carrying it on every removal RPC — keeps `ledgerctl cluster remove-node <id>` a single-argument command.
+- **Peer identity on the leader side**: every `Membership` row (per-peer, persisted in Pebble via EN-1413) carries `instance_id`. Rows originate from self registration, peer discovery, administrative `AddLearner`, or `JoinAsLearner`, and are read later by both consensus `RemoveNode` (to pack into `ConfChangeContext`) and `ForceRemoveNode` (to build the `RemovedMembers` entry). Storing it there — rather than re-carrying it on every removal RPC — keeps `ledgerctl cluster remove-node <id>` a single-argument command.
 
 ### Proto Additions
 
@@ -207,7 +201,7 @@ message RemovedMemberEntry {
 }
 ```
 
-`PeerAddress` (raft_cmd.proto) and `JoinAsLearnerRequest` (cluster_bootstrap.proto) both gain a `bytes instance_id` field. The proto layer is per `docs/technical/contributing/protobuf.md` — vtprotobuf regenerates, field numbers are sequential.
+`PeerAddress` (raft_cmd.proto), `JoinAsLearnerRequest` and `PeerInfo` (cluster_bootstrap.proto), and `AddLearnerRequest` (cluster.proto) carry a required `bytes instance_id` field. The proto layer is per `docs/technical/contributing/protobuf.md` — vtprotobuf regenerates, field numbers are sequential.
 
 The consensus-path `ConfChangeV2.Context` payload is the pre-existing `membership.ConfChangeContext` JSON struct (see "Consensus path" above) — no new proto message for that. Reusing the AddLearner JSON keeps the on-the-wire ConfChange context format consistent across add / remove types.
 

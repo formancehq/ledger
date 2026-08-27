@@ -54,7 +54,7 @@ func TestWriteConfChange_RemoveNodeBlacklistsPeer(t *testing.T) {
 
 	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:8888", instanceID))
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
 	require.NoError(t, err)
 
 	ccCtx, err := MarshalConfChangeContext(ConfChangeContext{InstanceID: instanceID})
@@ -85,21 +85,15 @@ func TestWriteConfChange_RemoveNodeBlacklistsPeer(t *testing.T) {
 	require.True(t, hit, "consensus RemoveNode must land a blacklist entry atomically with the peer row delete")
 }
 
-// TestWriteConfChange_RemoveNodeWithoutIdentitySkipsBlacklist covers the
-// phantom-learner path: a peer added via the admin cluster.AddLearner RPC
-// without the target ever booting has an empty instance_id in its
-// Membership row. RemoveNode on such a peer proposes with a correlation-only
-// Context; FSM apply must delete the peer row and skip the blacklist entry
-// (there is nothing to blacklist).
-func TestWriteConfChange_RemoveNodeWithoutIdentitySkipsBlacklist(t *testing.T) {
+// TestWriteConfChange_RemoveNodeWithoutIdentityFailsLoudly pins the universal
+// member-identity invariant at deterministic FSM apply. A committed removal
+// without instance_id is impossible and must not silently skip its tombstone.
+func TestWriteConfChange_RemoveNodeWithoutIdentityFailsLoudly(t *testing.T) {
 	t.Parallel()
 
 	ps, store := storesForBlacklistTest(t)
 
-	// Phantom learner: row exists, no instance_id.
-	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:8888", nil))
-
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
 	require.NoError(t, err)
 	ccCtx, err := MarshalConfChangeContext(ConfChangeContext{ProposalID: "remove-3"})
 	require.NoError(t, err)
@@ -117,16 +111,42 @@ func TestWriteConfChange_RemoveNodeWithoutIdentitySkipsBlacklist(t *testing.T) {
 	entry := &raftpb.Entry{Type: new(raftpb.EntryConfChangeV2), Data: data}
 
 	session := store.OpenWriteSession()
-	require.NoError(t, m.WriteConfChange(entry, session))
-	require.NoError(t, session.Commit())
+	t.Cleanup(func() { _ = session.Cancel() })
+	require.ErrorContains(t, m.WriteConfChange(entry, session), "instance_id must be 16 bytes")
 
 	peers, err := ps.LoadAll()
 	require.NoError(t, err)
-	require.NotContains(t, peers, uint64(3))
+	require.Empty(t, peers)
 
 	dumped, err := ps.LoadAllRemoved()
 	require.NoError(t, err)
-	require.Empty(t, dumped, "phantom-learner removal must not create a blacklist entry")
+	require.Empty(t, dumped, "invalid removal must not create a blacklist entry")
+}
+
+func TestWriteConfChange_AddLearnerWithoutIdentityFailsLoudly(t *testing.T) {
+	t.Parallel()
+
+	ps, store := storesForBlacklistTest(t)
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
+	require.NoError(t, err)
+
+	cc := &raftpb.ConfChangeV2{
+		Changes: []*raftpb.ConfChangeSingle{{
+			Type:   new(raftpb.ConfChangeAddLearnerNode),
+			NodeId: proto.Uint64(3),
+		}},
+	}
+	data, err := proto.Marshal(cc)
+	require.NoError(t, err)
+
+	session := store.OpenWriteSession()
+	t.Cleanup(func() { _ = session.Cancel() })
+	err = m.WriteConfChange(&raftpb.Entry{Type: new(raftpb.EntryConfChangeV2), Data: data}, session)
+	require.ErrorContains(t, err, "has no payload")
+
+	peers, err := ps.LoadAll()
+	require.NoError(t, err)
+	require.Empty(t, peers)
 }
 
 // TestUnregisterAndBlacklist_AtomicBatch pins the force-remove semantics:
@@ -139,7 +159,7 @@ func TestUnregisterAndBlacklist_AtomicBatch(t *testing.T) {
 
 	require.NoError(t, ps.Put(7, "pod-6:7777", "pod-6:8888", instanceID))
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
 	require.NoError(t, err)
 
 	require.NoError(t, m.UnregisterAndBlacklist(7, instanceID, 42))
@@ -160,7 +180,7 @@ func TestUnregisterAndBlacklist_RejectsWrongInstanceIDLen(t *testing.T) {
 
 	ps, _ := storesForBlacklistTest(t)
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
 	require.NoError(t, err)
 
 	require.Error(t, m.UnregisterAndBlacklist(7, []byte("short"), 0))
@@ -175,7 +195,7 @@ func TestIsRemoved_MatchesOnExactTuple(t *testing.T) {
 	ps, _ := storesForBlacklistTest(t)
 	blacklisted := fixedInstanceID(0xCC)
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
 	require.NoError(t, err)
 
 	require.NoError(t, m.UnregisterAndBlacklist(9, blacklisted, 100))

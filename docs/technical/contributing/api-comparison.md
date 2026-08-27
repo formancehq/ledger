@@ -771,6 +771,16 @@ See [Global Log Architecture](../architecture/subsystems/consensus/global-log.md
 
 The POC provides a gRPC API for internal service communication (Raft node forwarding to leader) and can be used by clients.
 
+### Cluster membership wire contract
+
+Ledger v3 requires a concrete 16-byte member identity on every membership
+creation and discovery message. `ClusterService.AddLearnerRequest.instance_id`
+is required and contains the raw bytes from the target's persisted
+`INSTANCE_ID` marker. The inter-node `JoinAsLearnerRequest.instance_id` has the
+same contract, and `ClusterBootstrapService.GetPeers` returns each member's ID
+in `PeerInfo.instance_id`. Missing or incorrectly sized values are rejected;
+there is no identity-less compatibility path because v3 is unreleased.
+
 ### BucketService Methods
 
 | Method | Description | Status |

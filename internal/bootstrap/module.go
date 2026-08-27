@@ -203,6 +203,31 @@ func ColdStorageModule(coldStorageDriver string, restore bool) fx.Option {
 	)
 }
 
+// provideNodeConfig establishes the peer identity before exposing the Raft
+// configuration to any dependent provider. In particular, provideWAL depends
+// on node.NodeConfig (rather than the broader Config) so Fx cannot create WAL
+// artifacts before INSTANCE_ID has been read or persisted.
+func provideNodeConfig(cfg Config) (node.NodeConfig, error) {
+	cfg.RaftConfig.DataDir = cfg.DataDir
+	cfg.RaftConfig.ServiceAdvertiseAddr = cfg.ServiceAdvertiseAddr()
+	cfg.RaftConfig.SetDefaults()
+
+	instanceID, err := wal.EnsureInstanceID(cfg.RaftConfig.WalDir)
+	if err != nil {
+		return node.NodeConfig{}, fmt.Errorf("ensuring instance id: %w", err)
+	}
+
+	cfg.RaftConfig.InstanceID = instanceID
+
+	return cfg.RaftConfig, nil
+}
+
+func provideWAL(cfg node.NodeConfig, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
+	return wal.New(cfg.WalDir, logger.WithFields(map[string]any{
+		"cmp": "wal",
+	}), meterProvider.Meter("wal"))
+}
+
 func Module() fx.Option {
 	return fx.Options(
 		transport.Module(),
@@ -279,11 +304,7 @@ func Module() fx.Option {
 			func(store *dal.Store, logger logging.Logger, machine *state.Machine) *dal.SmartCompactor {
 				return dal.NewSmartCompactor(store, logger, machine.ColdCompactionCh())
 			},
-			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
-				return wal.New(cfg.RaftConfig.WalDir, logger.WithFields(map[string]any{
-					"cmp": "wal",
-				}), meterProvider.Meter("wal"))
-			},
+			provideWAL,
 			func(cfg Config, logger logging.Logger) (*spool.Default, error) {
 				return spool.NewDefault(spool.DefaultSpoolConfig{
 					Dir:             filepath.Join(cfg.DataDir, "spool"),
@@ -503,24 +524,7 @@ func Module() fx.Option {
 				return receipt.NewSigner([]byte(cfg.ReceiptSigningKey))
 			},
 			buildResponseSigner,
-			func(cfg Config) (node.NodeConfig, error) {
-				cfg.RaftConfig.DataDir = cfg.DataDir
-				cfg.RaftConfig.ServiceAdvertiseAddr = cfg.ServiceAdvertiseAddr()
-				cfg.RaftConfig.SetDefaults()
-
-				// EN-1045: establish this peer's identity UUID before any
-				// membership plumbing runs. First boot generates and
-				// persists it in INSTANCE_ID under WalDir; later boots
-				// return the same value.
-				instanceID, err := wal.EnsureInstanceID(cfg.RaftConfig.WalDir)
-				if err != nil {
-					return node.NodeConfig{}, fmt.Errorf("ensuring instance id: %w", err)
-				}
-
-				cfg.RaftConfig.InstanceID = instanceID
-
-				return cfg.RaftConfig, nil
-			},
+			provideNodeConfig,
 			func(cfg Config) node.TransportConfig {
 				return cfg.TransportConfig
 			},

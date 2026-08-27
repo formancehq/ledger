@@ -40,6 +40,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 )
 
+// InstanceIDLen is re-exported for transport adapters so every membership
+// surface enforces the same wire identity length.
+const InstanceIDLen = membership.InstanceIDLen
+
 // Peer is the minimal view of a cluster member as returned by ListPeers.
 // It is intentionally proto-free so the application layer does not leak
 // gRPC types up the dependency graph; adapters convert to their own
@@ -48,6 +52,7 @@ type Peer struct {
 	ID             uint64
 	RaftAddress    string
 	ServiceAddress string
+	InstanceID     []byte
 }
 
 // Service is the single owner of cluster membership operations.
@@ -87,16 +92,26 @@ func (s *Service) IsRemoved(nodeID uint64, instanceID []byte) (bool, error) {
 	return s.infraMembership.IsRemoved(nodeID, instanceID)
 }
 
-// AddLearner wires the new peer into the local transport pools and
-// proposes the AddLearner ConfChange on the leader. The caller must
-// have already routed the request to the leader. instanceID is the
-// joining peer's 16-byte identity UUID (EN-1045); may be empty for
-// legacy clients that predate the field.
+// AddLearner wires an administratively registered peer into the local
+// transport pools and proposes the AddLearner ConfChange on the leader.
+// instanceID must be the target's persisted WAL/PVC identity.
 //
 // Returns node.ErrNodeAlreadyInCluster on idempotent retries; adapters
 // map that to their transport-specific "already-exists" status.
 func (s *Service) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	if err := validatePeer(nodeID, raftAddr, serviceAddr); err != nil {
+	return s.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, false)
+}
+
+// JoinAsLearner registers a node that is booting with an empty WAL and no
+// CLUSTER_JOINED marker. Keeping this entry point distinct from the admin
+// AddLearner operation preserves EN-1436's stale-progress fail-fast without
+// inferring caller intent from a missing instanceID sentinel.
+func (s *Service) JoinAsLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
+	return s.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, true)
+}
+
+func (s *Service) addLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, bootJoin bool) error {
+	if err := validatePeer(nodeID, raftAddr, serviceAddr, instanceID); err != nil {
 		return err
 	}
 
@@ -115,7 +130,13 @@ func (s *Service) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 		s.logger.WithFields(map[string]any{"error": err}).Errorf("AddLearner: failed to add learner to service pool")
 	}
 
-	if err := s.node.AddLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID); err != nil {
+	var err error
+	if bootJoin {
+		err = s.node.JoinAsLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID)
+	} else {
+		err = s.node.AddLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID)
+	}
+	if err != nil {
 		return fmt.Errorf("adding learner: %w", err)
 	}
 
@@ -185,6 +206,14 @@ func (s *Service) ListPeers(ctx context.Context) ([]Peer, error) {
 			serviceAddr = s.servicePool.GetPeerAddress(nodeID)
 		}
 
+		instanceID, ok := s.infraMembership.GetInstanceID(nodeID)
+		if !ok {
+			return nil, fmt.Errorf("invariant: cluster member %d has no membership row", nodeID)
+		}
+		if err := membership.ValidateInstanceID(instanceID); err != nil {
+			return nil, fmt.Errorf("invariant: cluster member %d has invalid identity: %w", nodeID, err)
+		}
+
 		if raftAddr == "" || serviceAddr == "" {
 			continue
 		}
@@ -193,13 +222,14 @@ func (s *Service) ListPeers(ctx context.Context) ([]Peer, error) {
 			ID:             nodeID,
 			RaftAddress:    raftAddr,
 			ServiceAddress: serviceAddr,
+			InstanceID:     instanceID,
 		})
 	}
 
 	return peers, nil
 }
 
-func validatePeer(nodeID uint64, raftAddr, serviceAddr string) error {
+func validatePeer(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
 	if nodeID == 0 {
 		return errors.New("node_id must be non-zero")
 	}
@@ -210,6 +240,10 @@ func validatePeer(nodeID uint64, raftAddr, serviceAddr string) error {
 
 	if serviceAddr == "" {
 		return errors.New("service_address is required")
+	}
+
+	if err := membership.ValidateInstanceID(instanceID); err != nil {
+		return err
 	}
 
 	return nil
