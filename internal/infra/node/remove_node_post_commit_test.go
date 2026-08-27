@@ -49,7 +49,7 @@ func TestWaitForRemovalAppliedKeepsAdmissionBarrierAfterCallerStopsWaiting(t *te
 	require.False(t, errors.Is(err, ErrNodeNotInCluster))
 }
 
-func TestWaitForRemovalAppliedClearsCanceledBarrierAfterDurableApply(t *testing.T) {
+func TestTrackCommittedRemovalClearsBarrierAfterDurableApplyWithoutCaller(t *testing.T) {
 	t.Parallel()
 
 	setup := newTestApplierSetup(t)
@@ -66,10 +66,8 @@ func TestWaitForRemovalAppliedClearsCanceledBarrierAfterDurableApply(t *testing.
 		runDone:    runDone,
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	require.Error(t, n.waitForRemovalApplied(ctx, 3, instanceID, 1))
+	_, err := n.trackCommittedRemoval(3, instanceID, 1)
+	require.NoError(t, err)
 	require.True(t, n.isRemovalPending(3, instanceID))
 
 	entry, _ := makeCreateLedgerEntry(t, 1, "removal-barrier-cleanup")

@@ -1379,6 +1379,16 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 					node.membership.Set(nodeID, ctx.RaftAddress, ctx.ServiceAddress, ctx.InstanceID)
 				}
 			case raftpb.ConfChangeRemoveNode:
+				// Install admission protection as part of observing the commit,
+				// before resolving (or discarding) the caller's future. The RPC
+				// context may be canceled concurrently with future resolution;
+				// protection must not depend on that caller reaching post-apply.
+				if ctx != nil && len(ctx.InstanceID) == 16 {
+					if _, err := node.trackCommittedRemoval(nodeID, ctx.InstanceID, committed.index); err != nil {
+						return err
+					}
+				}
+
 				node.membership.Remove(nodeID)
 			}
 
@@ -2737,11 +2747,15 @@ func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, inst
 	var pending *pendingRemoval
 
 	if verifyTombstone {
-		pending = &pendingRemoval{
-			instanceID:   bytes.Clone(instanceID),
-			appliedIndex: committedIndex,
+		var err error
+		pending, err = node.trackCommittedRemoval(nodeID, instanceID, committedIndex)
+		if err != nil {
+			return &RemoveNodeCommittedError{
+				NodeID:       nodeID,
+				AppliedIndex: committedIndex,
+				Cause:        err,
+			}
 		}
-		node.pendingRemovals.Store(nodeID, pending)
 	}
 
 	node.logger.WithFields(map[string]any{
@@ -2750,10 +2764,6 @@ func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, inst
 	}).Infof("RemoveNode committed; waiting for durable FSM application")
 
 	if err := node.fsm.WaitForApplied(ctx, committedIndex); err != nil {
-		if pending != nil {
-			node.schedulePendingRemovalCleanup(nodeID, pending)
-		}
-
 		node.logger.WithFields(map[string]any{
 			"error":         err,
 			"removedNodeID": nodeID,
@@ -2796,6 +2806,34 @@ func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, inst
 	}).Infof("RemoveNode tombstone applied")
 
 	return nil
+}
+
+// trackCommittedRemoval installs the node-local admission barrier at commit
+// observation time and starts lifecycle-bound cleanup immediately. This makes
+// protection independent of whether the originating RPC is still waiting.
+func (node *Node) trackCommittedRemoval(nodeID uint64, instanceID []byte, committedIndex uint64) (*pendingRemoval, error) {
+	pending := &pendingRemoval{
+		instanceID:   bytes.Clone(instanceID),
+		appliedIndex: committedIndex,
+	}
+
+	actual, loaded := node.pendingRemovals.LoadOrStore(nodeID, pending)
+	if loaded {
+		if actual.appliedIndex != committedIndex || !bytes.Equal(actual.instanceID, instanceID) {
+			return nil, fmt.Errorf(
+				"invariant: committed removal for node %d at index %d conflicts with pending removal at index %d",
+				nodeID,
+				committedIndex,
+				actual.appliedIndex,
+			)
+		}
+
+		return actual, nil
+	}
+
+	node.schedulePendingRemovalCleanup(nodeID, pending)
+
+	return pending, nil
 }
 
 func (node *Node) verifyRemovalTombstone(nodeID uint64, instanceID []byte) error {
