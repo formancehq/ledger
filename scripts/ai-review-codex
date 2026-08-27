@@ -80,11 +80,12 @@ fi
 
 original_home=${HOME:?HOME must be set}
 original_codex_home=${CODEX_HOME:-"$original_home/.codex"}
-isolation_root=$(mktemp -d "${TMPDIR:-/tmp}/ledger-codex-review.XXXXXX")
+isolation_tmpdir=${TMPDIR:-/tmp}
+isolation_root=$(mktemp -d "$isolation_tmpdir/ledger-codex-review.XXXXXX")
 
 cleanup() {
     case "${isolation_root:-}" in
-        "${TMPDIR:-/tmp}"/ledger-codex-review.*)
+        "$isolation_tmpdir"/ledger-codex-review.*)
             rm -rf -- "$isolation_root"
             ;;
     esac
