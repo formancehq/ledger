@@ -34,6 +34,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/bootstrap"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
 	ledgermetrics "github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/pyroscope"
@@ -829,11 +830,15 @@ func discoverPeersFromCluster(raftAddr string, tlsCfg bootstrap.TLSConfig, clust
 		if p.GetRaftAddress() == "" || p.GetServiceAddress() == "" {
 			continue
 		}
+		if err := membership.ValidateInstanceID(p.GetInstanceId()); err != nil {
+			return nil, fmt.Errorf("peer %d returned by %s has invalid identity: %w", p.GetId(), raftAddr, err)
+		}
 
 		peers = append(peers, node.Peer{
 			ID:             p.GetId(),
 			Address:        p.GetRaftAddress(),
 			ServiceAddress: p.GetServiceAddress(),
+			InstanceID:     p.GetInstanceId(),
 		})
 	}
 

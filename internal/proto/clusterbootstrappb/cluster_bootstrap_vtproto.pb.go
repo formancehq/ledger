@@ -66,6 +66,11 @@ func (m *PeerInfo) CloneVT() *PeerInfo {
 	r.Id = m.Id
 	r.RaftAddress = m.RaftAddress
 	r.ServiceAddress = m.ServiceAddress
+	if rhs := m.InstanceId; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.InstanceId = tmpBytes
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -179,6 +184,9 @@ func (this *PeerInfo) EqualVT(that *PeerInfo) bool {
 		return false
 	}
 	if this.ServiceAddress != that.ServiceAddress {
+		return false
+	}
+	if string(this.InstanceId) != string(that.InstanceId) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -343,6 +351,13 @@ func (m *PeerInfo) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.InstanceId) > 0 {
+		i -= len(m.InstanceId)
+		copy(dAtA[i:], m.InstanceId)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.InstanceId)))
+		i--
+		dAtA[i] = 0x22
+	}
 	if len(m.ServiceAddress) > 0 {
 		i -= len(m.ServiceAddress)
 		copy(dAtA[i:], m.ServiceAddress)
@@ -497,6 +512,10 @@ func (m *PeerInfo) SizeVT() (n int) {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	l = len(m.ServiceAddress)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.InstanceId)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
@@ -786,6 +805,40 @@ func (m *PeerInfo) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.ServiceAddress = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field InstanceId", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.InstanceId = append(m.InstanceId[:0], dAtA[iNdEx:postIndex]...)
+			if m.InstanceId == nil {
+				m.InstanceId = []byte{}
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

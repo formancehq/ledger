@@ -37,6 +37,7 @@ message PeerInfo {
   uint64 id = 1;
   string raft_address = 2;
   string service_address = 3;
+  bytes instance_id = 4;  // 16-byte UUID identifying this peer's WAL/PVC incarnation; required
 }
 
 message JoinAsLearnerRequest {
