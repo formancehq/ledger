@@ -232,6 +232,7 @@ printf '{"decision":"APPROVE","head":"%s","worktree_fingerprint":"%s","previous_
 
 func runAdapter(t *testing.T, fixture adapterFixture, extraEnvironment map[string]string) (string, error) {
 	t.Helper()
+	expectedHead := strings.TrimSpace(runCommand(t, fixture.repositoryRoot, "git", "rev-parse", "HEAD"))
 
 	environment := map[string]string{
 		"HOME":                           fixture.userHome,
@@ -244,6 +245,12 @@ func runAdapter(t *testing.T, fixture adapterFixture, extraEnvironment map[strin
 		"AI_REVIEW_WORKTREE_FINGERPRINT": testFingerprint,
 		"AI_REVIEW_CHANGE_TARGET":        fixture.targetPath,
 		"AI_REVIEW_PASS":                 "2",
+		"EXPECTED_PR_NUMBER":             "123",
+		"EXPECTED_WORKTREE":              fixture.repositoryRoot,
+		"EXPECTED_HEAD":                  expectedHead,
+		"AI_WORKTREE_PR":                 "123",
+		"AI_WORKTREE_PATH":               fixture.repositoryRoot,
+		"AI_WORKTREE_EXPECTED_HEAD":      expectedHead,
 		"FAKE_PROMPT_CAPTURE":            fixture.promptCapture,
 		"FAKE_ARGUMENTS_CAPTURE":         fixture.argumentsCapture,
 		"FAKE_ENVIRONMENT_CAPTURE":       fixture.environmentCapture,

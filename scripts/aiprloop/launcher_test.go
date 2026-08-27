@@ -41,9 +41,33 @@ func TestLauncherUsesUniqueWorktreesImmutableBaseAndKeepTriage(t *testing.T) {
 	require.NotEqual(t, firstWorktree, secondWorktree)
 	require.DirExists(t, firstWorktree)
 	require.DirExists(t, secondWorktree)
+	require.Equal(t, firstWorktree, strings.TrimSpace(readCapturedFile(t, firstCapture+".cwd")))
+	require.Equal(t, firstWorktree, capturedArgument(t, firstCapture, "--worktree"))
+	require.Equal(t, "123", capturedArgument(t, firstCapture, "--pr"))
+	require.Equal(t, fixture.headSHA, capturedArgument(t, firstCapture, "--expected-head"))
+	require.NotEqual(t, firstWorktree, capturedArgument(t, firstCapture, "--trusted-root"))
+	require.NotEqual(t, firstWorktree, capturedArgument(t, firstCapture, "--validation-run-dir"))
 	require.Equal(t, fixture.baseSHA, baseArgument(t, firstCapture))
 	require.Equal(t, fixture.baseSHA, baseArgument(t, secondCapture))
 	require.Contains(t, firstOutput, "legitimacy triage KEEP")
+}
+
+func TestLauncherCreatesCandidateWithoutMutatingDirtyRoot(t *testing.T) {
+	t.Parallel()
+
+	fixture := newLauncherFixture(t)
+	dirtyPath := filepath.Join(fixture.checkout, "unrelated-user-file.txt")
+	require.NoError(t, os.WriteFile(dirtyPath, []byte("keep me\n"), 0o644))
+	statusBefore := runGitOutput(t, fixture.checkout, "status", "--porcelain=v1", "--untracked-files=all")
+	capture := filepath.Join(fixture.root, "dirty-root-args")
+	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"})
+	require.NoError(t, err, output)
+
+	worktree := worktreeFromOutput(t, output)
+	require.NotEqual(t, fixture.checkout, worktree)
+	require.Equal(t, worktree, strings.TrimSpace(readCapturedFile(t, capture+".cwd")))
+	require.Equal(t, statusBefore, runGitOutput(t, fixture.checkout, "status", "--porcelain=v1", "--untracked-files=all"))
+	require.Equal(t, "keep me\n", readCapturedFile(t, dirtyPath))
 }
 
 func TestLauncherStopsBeforeReviewForQuestionAndReject(t *testing.T) {
@@ -227,16 +251,22 @@ func newLauncherFixture(t *testing.T) launcherFixture {
 	launcher, err := os.ReadFile(launcherPath(t))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-loop"), launcher, 0o755))
+	guard, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-git-guard"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-git-guard"), guard, 0o755))
 	writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" > "$TEST_CAPTURE_FILE"
+pwd > "$TEST_CAPTURE_FILE.cwd"
 printf '%s\n' "${AI_REVIEW_KNOWN_FINDINGS:-}" > "$TEST_CAPTURE_FILE.known"
 printf '%s|%s\n' "${AI_REVIEW_KNOWN_FINDINGS_PR:-}" "${AI_REVIEW_KNOWN_FINDINGS_HEAD:-}" > "$TEST_CAPTURE_FILE.binding"
 if [[ -n "${TEST_RUN_VALIDATION_CMD:-}" ]]; then
     validation_cmd=""
+    validation_run_dir=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --validation-cmd) validation_cmd=$2; shift 2 ;;
+            --validation-run-dir) validation_run_dir=$2; shift 2 ;;
             *) shift ;;
         esac
     done
@@ -244,7 +274,7 @@ if [[ -n "${TEST_RUN_VALIDATION_CMD:-}" ]]; then
     # The recipe first creates the isolated caches in the parent run directory,
     # then invokes the trusted validator, which this fixture does not provide.
     bash -lc "$validation_cmd" >/dev/null 2>&1 || true
-    ls -1 "$(dirname "$PWD")" > "$TEST_CAPTURE_FILE.rundir"
+    ls -1 "$validation_run_dir" > "$TEST_CAPTURE_FILE.rundir"
 fi
 `)
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 0\n")

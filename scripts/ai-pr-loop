@@ -66,8 +66,11 @@ for command in git gh jq; do
     fi
 done
 
-repo_root=$(git rev-parse --show-toplevel)
-cd "$repo_root"
+invocation_checkout=$(git rev-parse --show-toplevel)
+trusted_root_checkout=$(git -C "$invocation_checkout" worktree list --porcelain | sed -n 's/^worktree //p;q')
+trusted_root_checkout=$(cd "$trusted_root_checkout" && pwd -P)
+repo_root=$trusted_root_checkout
+cd "$trusted_root_checkout"
 
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,isDraft,title,body,labels,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
@@ -175,6 +178,8 @@ mkdir -p "$worktree_parent"
 worktree_run_dir=$(mktemp -d "$worktree_parent/pr-$pr_number.XXXXXX")
 worktree="$worktree_run_dir/worktree"
 trusted_tool_worktree="$worktree_run_dir/trusted-tools"
+validation_run_dir="$worktree_run_dir/validation"
+binding_file="$worktree_run_dir/candidate-binding.json"
 review_loop_binary=""
 
 cleanup() {
@@ -221,6 +226,20 @@ trap cleanup EXIT
 git worktree add --detach "$worktree" "$head_sha"
 # Legitimacy policy must not come from the PR that it is judging.
 git worktree add --detach "$trusted_tool_worktree" "$base_sha"
+mkdir -p "$validation_run_dir"
+
+write_candidate_binding() {
+    local expected_head=$1
+    jq -n \
+        --argjson pr "$pr_number" \
+        --arg worktree "$worktree" \
+        --arg head "$expected_head" \
+        --arg root "$trusted_root_checkout" \
+        '{version: 1, expectedPrNumber: $pr, candidateWorktree: $worktree, expectedHead: $head, trustedRootCheckout: $root}' \
+        >"$binding_file"
+}
+expected_worktree_head=$head_sha
+write_candidate_binding "$expected_worktree_head"
 triage_tool="$trusted_tool_worktree/scripts/ai-pr-triage"
 if [[ ! -f "$triage_tool" ]]; then
     echo "ai-pr-loop: trusted base does not provide scripts/ai-pr-triage" >&2
@@ -338,7 +357,7 @@ fi
 # Build its orchestrator from the verified base and use the base-pinned reviewer
 # so a PR cannot bypass reconciliation by replacing either entry point.
 review_loop_binary="$worktree_run_dir/review-loop"
-for trusted_tool in ai-review-codex ai-review-known-findings; do
+for trusted_tool in ai-review-codex ai-review-known-findings ai-git-guard; do
     trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
     if [[ ! -x "$trusted_tool_path" ]]; then
         echo "ai-pr-loop: trusted base does not provide executable scripts/$trusted_tool" >&2
@@ -355,15 +374,15 @@ fix_cmd='bash scripts/ai-fix-claude'
 # directory derives from the repository location, which may contain whitespace or
 # quoting characters such as an apostrophe. Quote every interpolated path so the
 # recipe reaches the validator intact.
-printf -v quoted_run_dir %q "$worktree_run_dir"
+printf -v quoted_run_dir %q "$validation_run_dir"
 printf -v quoted_run_id %q "$(basename "$worktree_run_dir")"
-printf -v quoted_home %q "$worktree_run_dir/home"
-printf -v quoted_go_cache %q "$worktree_run_dir/go-cache"
-printf -v quoted_go_mod_cache %q "$worktree_run_dir/go-mod-cache"
-printf -v quoted_go_path %q "$worktree_run_dir/go-path"
-printf -v quoted_tmp_dir %q "$worktree_run_dir/tmp"
-printf -v quoted_cache_home %q "$worktree_run_dir/cache"
-printf -v quoted_golangci_cache %q "$worktree_run_dir/cache/golangci-lint"
+printf -v quoted_home %q "$validation_run_dir/home"
+printf -v quoted_go_cache %q "$validation_run_dir/go-cache"
+printf -v quoted_go_mod_cache %q "$validation_run_dir/go-mod-cache"
+printf -v quoted_go_path %q "$validation_run_dir/go-path"
+printf -v quoted_tmp_dir %q "$validation_run_dir/tmp"
+printf -v quoted_cache_home %q "$validation_run_dir/cache"
+printf -v quoted_golangci_cache %q "$validation_run_dir/cache/golangci-lint"
 printf -v quoted_validation_tool %q "$trusted_tool_worktree/scripts/agent-check-pr"
 printf -v quoted_agent_just %q "$trusted_tool_worktree/scripts/agent-just"
 printf -v normalization_program \
@@ -444,19 +463,31 @@ if [[ "$push_changes" == "true" ]]; then
     echo "    publish: guarded commit + push enabled"
 fi
 
-cd "$worktree"
-
 run_full_loop() {
-    "${review_loop[@]}" \
+    env -C "$worktree" "${review_loop[@]}" \
         --base "$base_sha" \
+        --pr "$pr_number" \
+        --worktree "$worktree" \
+        --expected-head "$expected_worktree_head" \
+        --trusted-root "$trusted_root_checkout" \
+        --binding-file "$binding_file" \
+        --validation-run-dir "$validation_run_dir" \
+        --git-guard "$trusted_tool_worktree/scripts/ai-git-guard" \
         --review-cmd "$review_cmd" \
         --fix-cmd "$fix_cmd" \
         --validation-cmd "$validation_cmd"
 }
 
 run_commit_review() {
-    "${review_loop[@]}" \
+    env -C "$worktree" "${review_loop[@]}" \
         --base "$base_sha" \
+        --pr "$pr_number" \
+        --worktree "$worktree" \
+        --expected-head "$expected_worktree_head" \
+        --trusted-root "$trusted_root_checkout" \
+        --binding-file "$binding_file" \
+        --validation-run-dir "$validation_run_dir" \
+        --git-guard "$trusted_tool_worktree/scripts/ai-git-guard" \
         --review-cmd "$review_cmd" \
         --validation-cmd "$validation_cmd"
 }
@@ -494,6 +525,8 @@ set +e
 run_full_loop
 loop_status=$?
 set -e
+
+cd "$worktree"
 
 if ! verify_known_findings_ledger; then
     echo "AI_PR_LOOP_RESULT: ERROR (known findings ledger modified)"
@@ -558,6 +591,8 @@ git diff --cached --check
 
 git commit -m "fix: address AI review findings"
 candidate_sha=$(git rev-parse HEAD)
+expected_worktree_head=$candidate_sha
+write_candidate_binding "$expected_worktree_head"
 printf '==> ai-pr-loop: candidate commit %s\n' "$candidate_sha"
 
 normalization_pass=1
@@ -572,6 +607,8 @@ while [[ "$normalization_pass" -le 3 ]]; do
     git diff --cached --check
     git commit -m "chore: normalize candidate"
     candidate_sha=$(git rev-parse HEAD)
+    expected_worktree_head=$candidate_sha
+    write_candidate_binding "$expected_worktree_head"
     normalization_pass=$((normalization_pass + 1))
 done
 # Always perform a final read of the trusted recipe after the last allowed

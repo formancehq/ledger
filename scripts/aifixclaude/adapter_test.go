@@ -122,14 +122,21 @@ if [[ -n "${FAKE_CLAUDE_EXIT:-}" ]]; then exit "$FAKE_CLAUDE_EXIT"; fi
 
 func runAdapter(t *testing.T, fixture adapterFixture, extraEnvironment map[string]string) (string, error) {
 	t.Helper()
+	expectedHead := strings.TrimSpace(runCommand(t, "git", "-C", fixture.repositoryRoot, "rev-parse", "HEAD"))
 
 	replacements := map[string]string{
-		"PATH":                   fixture.path,
-		"AI_REVIEW_FINDINGS":     fixture.findingsPath,
-		"AI_REVIEW_RESULT":       fixture.resultPath,
-		"AI_REVIEW_PASS":         "2",
-		"FAKE_PROMPT_CAPTURE":    fixture.promptCapture,
-		"FAKE_ARGUMENTS_CAPTURE": fixture.argsCapture,
+		"PATH":                      fixture.path,
+		"AI_REVIEW_FINDINGS":        fixture.findingsPath,
+		"AI_REVIEW_RESULT":          fixture.resultPath,
+		"AI_REVIEW_PASS":            "2",
+		"EXPECTED_PR_NUMBER":        "123",
+		"EXPECTED_WORKTREE":         fixture.repositoryRoot,
+		"EXPECTED_HEAD":             expectedHead,
+		"AI_WORKTREE_PR":            "123",
+		"AI_WORKTREE_PATH":          fixture.repositoryRoot,
+		"AI_WORKTREE_EXPECTED_HEAD": expectedHead,
+		"FAKE_PROMPT_CAPTURE":       fixture.promptCapture,
+		"FAKE_ARGUMENTS_CAPTURE":    fixture.argsCapture,
 	}
 	maps.Copy(replacements, extraEnvironment)
 

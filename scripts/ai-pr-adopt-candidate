@@ -32,8 +32,11 @@ for command in git gh jq nix; do
 done
 [[ "$candidate_sha" =~ ^[0-9a-f]{40,64}$ ]] || { echo "ai-pr-adopt-candidate: candidate must be a full commit SHA" >&2; exit 1; }
 
-repo_root=$(git rev-parse --show-toplevel)
-cd "$repo_root"
+invocation_checkout=$(git rev-parse --show-toplevel)
+trusted_root_checkout=$(git -C "$invocation_checkout" worktree list --porcelain | sed -n 's/^worktree //p;q')
+trusted_root_checkout=$(cd "$trusted_root_checkout" && pwd -P)
+repo_root=$trusted_root_checkout
+cd "$trusted_root_checkout"
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
 pr_number=$(jq -r .number <<<"$pr_json")
@@ -69,6 +72,8 @@ mkdir -p "$worktree_parent"
 run_dir=$(mktemp -d "$worktree_parent/adopt-$pr_number.XXXXXX")
 candidate_worktree="$run_dir/candidate"
 trusted_worktree="$run_dir/trusted-tools"
+validation_run_dir="$run_dir/validation"
+binding_file="$run_dir/candidate-binding.json"
 review_loop_binary="$run_dir/review-loop"
 cleanup() {
     status=$?
@@ -94,7 +99,15 @@ trap cleanup EXIT
 
 git worktree add --detach "$candidate_worktree" "$candidate_sha"
 git worktree add --detach "$trusted_worktree" "$base_sha"
-for trusted_tool in ai-review-codex agent-check-pr; do
+mkdir -p "$validation_run_dir"
+jq -n \
+    --argjson pr "$pr_number" \
+    --arg worktree "$candidate_worktree" \
+    --arg head "$candidate_sha" \
+    --arg root "$trusted_root_checkout" \
+    '{version: 1, expectedPrNumber: $pr, candidateWorktree: $worktree, expectedHead: $head, trustedRootCheckout: $root}' \
+    >"$binding_file"
+for trusted_tool in ai-review-codex agent-check-pr ai-git-guard; do
     [[ -x "$trusted_worktree/scripts/$trusted_tool" ]] || { echo "ai-pr-adopt-candidate: trusted base lacks executable scripts/$trusted_tool" >&2; exit 1; }
 done
 nix develop "path:$trusted_worktree" --command env -u GOROOT go -C "$trusted_worktree" build -o "$review_loop_binary" ./scripts/reviewloop
@@ -103,15 +116,15 @@ printf -v review_cmd 'bash %q' "$trusted_worktree/scripts/ai-review-codex"
 # whitespace or quoting characters such as an apostrophe, and the nested
 # `bash -c` program is shell input too. Quote every interpolated path so the
 # recipe reaches the validator intact.
-printf -v quoted_run_dir %q "$run_dir"
+printf -v quoted_run_dir %q "$validation_run_dir"
 printf -v quoted_run_id %q "$(basename "$run_dir")"
-printf -v quoted_home %q "$run_dir/home"
-printf -v quoted_go_cache %q "$run_dir/go-cache"
-printf -v quoted_go_mod_cache %q "$run_dir/go-mod-cache"
-printf -v quoted_go_path %q "$run_dir/go-path"
-printf -v quoted_tmp_dir %q "$run_dir/tmp"
-printf -v quoted_cache_home %q "$run_dir/cache"
-printf -v quoted_golangci_cache %q "$run_dir/cache/golangci-lint"
+printf -v quoted_home %q "$validation_run_dir/home"
+printf -v quoted_go_cache %q "$validation_run_dir/go-cache"
+printf -v quoted_go_mod_cache %q "$validation_run_dir/go-mod-cache"
+printf -v quoted_go_path %q "$validation_run_dir/go-path"
+printf -v quoted_tmp_dir %q "$validation_run_dir/tmp"
+printf -v quoted_cache_home %q "$validation_run_dir/cache"
+printf -v quoted_golangci_cache %q "$validation_run_dir/cache/golangci-lint"
 printf -v quoted_validation_tool %q "$trusted_worktree/scripts/agent-check-pr"
 printf -v quoted_agent_just %q "$trusted_worktree/scripts/agent-just"
 printf -v normalization_program \
@@ -147,7 +160,17 @@ if [[ -n "$(git status --porcelain)" ]]; then
 fi
 
 set +e
-"$review_loop_binary" --base "$base_sha" --review-cmd "$review_cmd" --validation-cmd "$validation_cmd"
+env -C "$candidate_worktree" "$review_loop_binary" \
+    --base "$base_sha" \
+    --pr "$pr_number" \
+    --worktree "$candidate_worktree" \
+    --expected-head "$candidate_sha" \
+    --trusted-root "$trusted_root_checkout" \
+    --binding-file "$binding_file" \
+    --validation-run-dir "$validation_run_dir" \
+    --git-guard "$trusted_worktree/scripts/ai-git-guard" \
+    --review-cmd "$review_cmd" \
+    --validation-cmd "$validation_cmd"
 review_status=$?
 set -e
 if [[ $review_status -ne 0 ]]; then

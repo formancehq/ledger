@@ -31,6 +31,44 @@ if [[ -z "$base_sha" ]]; then
     exit 1
 fi
 
+# PR automation supplies a complete mechanical binding. Direct developer runs
+# without that contract remain supported, but a partial contract fails closed.
+binding_names=(EXPECTED_PR_NUMBER EXPECTED_WORKTREE EXPECTED_HEAD AI_WORKTREE_PR AI_WORKTREE_PATH AI_WORKTREE_EXPECTED_HEAD TRUSTED_ROOT_CHECKOUT)
+binding_declared=false
+for name in "${binding_names[@]}"; do
+    if [[ -n "${!name:-}" ]]; then
+        binding_declared=true
+        break
+    fi
+done
+if [[ "$binding_declared" == true ]]; then
+    for name in "${binding_names[@]}"; do
+        [[ -n "${!name:-}" ]] || { echo "WORKTREE_BINDING_GATE=FAIL (missing $name)" >&2; exit 1; }
+    done
+    candidate_root=$(cd "$EXPECTED_WORKTREE" 2>/dev/null && pwd -P) || {
+        echo "WORKTREE_BINDING_GATE=FAIL (invalid EXPECTED_WORKTREE)" >&2
+        exit 1
+    }
+    current_root=$(git rev-parse --show-toplevel)
+    current_root=$(cd "$current_root" && pwd -P)
+    trusted_root=$(cd "$TRUSTED_ROOT_CHECKOUT" 2>/dev/null && pwd -P) || {
+        echo "WORKTREE_BINDING_GATE=FAIL (invalid TRUSTED_ROOT_CHECKOUT)" >&2
+        exit 1
+    }
+    [[ "$candidate_root" != "$trusted_root" ]] || { echo "ROOT_CHECKOUT_AS_CANDIDATE_FORBIDDEN" >&2; exit 1; }
+    [[ "$current_root" == "$candidate_root" && "$AI_WORKTREE_PATH" == "$candidate_root" ]] || {
+        echo "WORKTREE_BINDING_GATE=FAIL (validator cwd/worktree mismatch)" >&2
+        exit 1
+    }
+    [[ "$EXPECTED_PR_NUMBER" == "$AI_WORKTREE_PR" ]] || { echo "CROSS_PR_WORKTREE_CONTAMINATION" >&2; exit 1; }
+    current_head=$(git rev-parse HEAD)
+    [[ "$current_head" == "$EXPECTED_HEAD" && "$current_head" == "$AI_WORKTREE_EXPECTED_HEAD" ]] || {
+        echo "WORKTREE_BINDING_GATE=FAIL (validator HEAD mismatch)" >&2
+        exit 1
+    }
+    echo "WORKTREE_BINDING_GATE=PASS role=validation pr=$EXPECTED_PR_NUMBER path=$candidate_root head=$current_head" >&2
+fi
+
 # AI validations must never reuse the user's golangci-lint cache.  The
 # launcher supplies VALIDATION_RUN_DIR and the per-run cache path; fail closed
 # when either is missing or escapes the run directory.  Direct developer runs

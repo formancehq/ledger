@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+trusted_root=${TRUSTED_ROOT_CHECKOUT:?TRUSTED_ROOT_CHECKOUT must be set}
+
+guard_dir=$(cd "$(dirname "$0")" && pwd -P)
+original_path=""
+remaining_path=$PATH
+while true; do
+    case "$remaining_path" in
+        *:*)
+            entry=${remaining_path%%:*}
+            remaining_path=${remaining_path#*:}
+            last_entry=false
+            ;;
+        *)
+            entry=$remaining_path
+            last_entry=true
+            ;;
+    esac
+    resolved_entry=$(cd "${entry:-.}" 2>/dev/null && pwd -P) || resolved_entry=$entry
+    if [[ "$resolved_entry" != "$guard_dir" ]]; then
+        if [[ -n "$original_path" ]]; then
+            original_path+=:
+        fi
+        original_path+=$entry
+    fi
+    if [[ "$last_entry" == true ]]; then
+        break
+    fi
+done
+real_git=$(PATH="$original_path" command -v git)
+[[ -n "$real_git" ]] || {
+    echo "AI git guard: real Git executable not found behind guard" >&2
+    exit 98
+}
+
+run_real_git() {
+    PATH="$original_path" "$real_git" "$@"
+}
+
+global_args=(--no-optional-locks)
+unsafe_root_global_option=false
+arguments=("$@")
+index=0
+while [[ $index -lt ${#arguments[@]} ]]; do
+    argument=${arguments[$index]}
+    case "$argument" in
+        -C)
+            [[ $((index + 1)) -lt ${#arguments[@]} ]] || exec env PATH="$original_path" "$real_git" "$@"
+            global_args+=("$argument" "${arguments[$((index + 1))]}")
+            index=$((index + 2))
+            ;;
+        -c|--git-dir|--work-tree|--namespace|--config-env)
+            [[ $((index + 1)) -lt ${#arguments[@]} ]] || exec env PATH="$original_path" "$real_git" "$@"
+            unsafe_root_global_option=true
+            global_args+=("$argument" "${arguments[$((index + 1))]}")
+            index=$((index + 2))
+            ;;
+        --git-dir=*|--work-tree=*|--namespace=*|--config-env=*)
+            unsafe_root_global_option=true
+            global_args+=("$argument")
+            index=$((index + 1))
+            ;;
+        --literal-pathspecs|--no-literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--bare)
+            global_args+=("$argument")
+            index=$((index + 1))
+            ;;
+        --)
+            index=$((index + 1))
+            break
+            ;;
+        -*)
+            unsafe_root_global_option=true
+            global_args+=("$argument")
+            index=$((index + 1))
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+if [[ $index -ge ${#arguments[@]} ]]; then
+    exec env PATH="$original_path" "$real_git" "$@"
+fi
+subcommand=${arguments[$index]}
+subcommand_args=("${arguments[@]:$((index + 1))}")
+
+worktree_mutation=false
+root_read_only=false
+case "$subcommand" in
+    blame|cat-file|check-attr|check-ignore|check-mailmap|check-ref-format|cherry|count-objects|describe|diff|diff-files|diff-index|diff-tree|for-each-ref|grep|log|ls-files|ls-remote|ls-tree|merge-base|name-rev|rev-list|rev-parse|show|show-branch|status)
+        root_read_only=true
+        ;;
+    worktree)
+        worktree_action=${subcommand_args[0]:-list}
+        case "$worktree_action" in
+            add|remove|move|prune|repair|lock|unlock)
+                worktree_mutation=true
+                ;;
+            list) root_read_only=true ;;
+        esac
+        ;;
+    branch)
+        branch_read_only=true
+        branch_query=false
+        branch_query_value=false
+        for argument in ${subcommand_args[@]+"${subcommand_args[@]}"}; do
+            if [[ "$branch_query_value" == true ]]; then
+                branch_query_value=false
+                continue
+            fi
+            case "$argument" in
+                -d|-D|-m|-M|-c|-C|--delete|--move|--copy|--edit-description|--set-upstream-to|--set-upstream-to=*|--unset-upstream)
+                    branch_read_only=false
+                    ;;
+                --list|-l|--show-current|-a|--all|-r|--remotes)
+                    branch_query=true
+                    ;;
+                --contains|--no-contains|--merged|--no-merged|--points-at|--format|--sort)
+                    branch_query=true
+                    branch_query_value=true
+                    ;;
+                --contains=*|--no-contains=*|--merged=*|--no-merged=*|--points-at=*|--format=*|--sort=*)
+                    branch_query=true
+                    ;;
+                -v|-vv|--verbose|--color|--color=*|--no-color|--column|--column=*|--no-column|--ignore-case|-i)
+                    ;;
+                --) ;;
+                -*) branch_read_only=false ;;
+                *)
+                    if [[ "$branch_query" == false ]]; then
+                        branch_read_only=false
+                    fi
+                    ;;
+            esac
+        done
+        root_read_only=$branch_read_only
+        ;;
+esac
+
+unsafe_root_subcommand_option=false
+for argument in ${subcommand_args[@]+"${subcommand_args[@]}"}; do
+    case "$argument" in
+        --output|-o|--output=*|-o?*|--ext-diff|--textconv|--filters|--open-files-in-pager|--open-files-in-pager=*|-O|--upload-pack|--upload-pack=*|--exec|--exec=*)
+            unsafe_root_subcommand_option=true
+            ;;
+    esac
+done
+
+selected_root=""
+if selected_root=$(run_real_git "${global_args[@]}" rev-parse --show-toplevel 2>/dev/null); then
+    selected_root=$(cd "$selected_root" && pwd -P)
+fi
+trusted_root=$(cd "$trusted_root" && pwd -P)
+
+if [[ "$worktree_mutation" == true ]]; then
+    selected_common=""
+    trusted_common=""
+    if [[ -n "$selected_root" ]]; then
+        selected_common=$(run_real_git "${global_args[@]}" rev-parse --git-common-dir 2>/dev/null) || selected_common=""
+        if [[ -n "$selected_common" && "$selected_common" != /* ]]; then
+            selected_common=$selected_root/$selected_common
+        fi
+        selected_common=$(cd "$selected_common" 2>/dev/null && pwd -P) || selected_common=""
+    fi
+    trusted_common=$(run_real_git -C "$trusted_root" rev-parse --git-common-dir 2>/dev/null) || trusted_common=""
+    if [[ -n "$trusted_common" && "$trusted_common" != /* ]]; then
+        trusted_common=$trusted_root/$trusted_common
+    fi
+    trusted_common=$(cd "$trusted_common" 2>/dev/null && pwd -P) || trusted_common=""
+    if [[ -z "$selected_common" || -z "$trusted_common" || "$selected_common" == "$trusted_common" ]]; then
+        printf 'UNREGISTERED_CHILD_WORKTREE_FORBIDDEN command=git worktree %s\n' "$worktree_action" >&2
+        exit 97
+    fi
+fi
+
+if [[ "$selected_root" == "$trusted_root" && ( "$root_read_only" != true || "$unsafe_root_global_option" == true || "$unsafe_root_subcommand_option" == true ) ]]; then
+    printf 'ROOT_CHECKOUT_GIT_MUTATION_FORBIDDEN command=git %s\n' "$subcommand" >&2
+    exit 96
+fi
+
+exec env PATH="$original_path" "$real_git" "$@"
