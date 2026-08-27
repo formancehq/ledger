@@ -25,17 +25,20 @@ func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 		nodeID      uint64
 		raftAddr    string
 		serviceAddr string
+		instanceID  []byte
 		wantSubstr  string
 	}{
-		{"missing node_id", 0, "r:1", "s:1", "node_id"},
-		{"missing raft_address", 1, "", "s:1", "raft_address"},
-		{"missing service_address", 1, "r:1", "", "service_address"},
+		{"missing node_id", 0, "r:1", "s:1", []byte("0123456789abcdef"), "node_id"},
+		{"missing raft_address", 1, "", "s:1", []byte("0123456789abcdef"), "raft_address"},
+		{"missing service_address", 1, "r:1", "", []byte("0123456789abcdef"), "service_address"},
+		{"missing instance_id", 1, "r:1", "s:1", nil, "instance_id"},
+		{"short instance_id", 1, "r:1", "s:1", []byte("short"), "instance_id"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := s.AddLearner(context.Background(), tc.nodeID, tc.raftAddr, tc.serviceAddr, nil)
+			err := s.AddLearner(context.Background(), tc.nodeID, tc.raftAddr, tc.serviceAddr, tc.instanceID)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantSubstr)
 		})
@@ -67,6 +70,13 @@ func TestService_AddLearner_RejectionPreservesServiceRouting(t *testing.T) {
 	err := s.AddLearner(context.Background(), nodeID, "member-2:7070", uncommittedAddr, nil)
 	require.ErrorIs(t, err, node.ErrNodeAlreadyInCluster)
 	require.Equal(t, committedAddr, servicePool.GetPeerAddress(nodeID))
+}
+
+func TestService_JoinAsLearner_RejectsMissingInstanceID(t *testing.T) {
+	t.Parallel()
+
+	err := (&Service{}).JoinAsLearner(context.Background(), 1, "r:1", "s:1", nil)
+	require.ErrorContains(t, err, "instance_id")
 }
 
 func TestService_PromoteLearner_RejectsZeroNodeID(t *testing.T) {
