@@ -45,11 +45,50 @@ func newTestMembership(t *testing.T) *membership.Membership {
 		membership.NewPeerStore(store),
 		noopMemTransport{}, noopMemPool{},
 		42, "self:7777", "self:8888",
-		nil,
+		[]byte("self-instance-id"),
 		logging.Testing(),
 	)
 	require.NoError(t, err)
 	m.Start()
 
 	return m
+}
+
+func TestRegisterInitialPeersPersistsInstanceIDs(t *testing.T) {
+	t.Parallel()
+
+	m := newTestMembership(t)
+	instanceID := []byte("peer-instance-id")
+	selfInstanceID := []byte("self-instance-id")
+	err := registerInitialPeers(m, NodeConfig{
+		NodeID:               42,
+		AdvertiseAddr:        "self:7777",
+		ServiceAdvertiseAddr: "self:8888",
+		InstanceID:           selfInstanceID,
+		Peers: []Peer{{
+			ID:             1,
+			Address:        "peer:7777",
+			ServiceAddress: "peer:8888",
+			InstanceID:     instanceID,
+		}},
+	}, true)
+	require.NoError(t, err)
+
+	stored, ok := m.GetInstanceID(1)
+	require.True(t, ok)
+	require.Equal(t, instanceID, stored)
+	storedSelf, ok := m.GetInstanceID(42)
+	require.True(t, ok)
+	require.Equal(t, selfInstanceID, storedSelf)
+}
+
+func TestRegisterInitialPeersRejectsMissingInstanceID(t *testing.T) {
+	t.Parallel()
+
+	err := registerInitialPeers(newTestMembership(t), NodeConfig{Peers: []Peer{{
+		ID:             1,
+		Address:        "peer:7777",
+		ServiceAddress: "peer:8888",
+	}}}, false)
+	require.ErrorContains(t, err, "instance_id must be 16 bytes")
 }
