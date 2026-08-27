@@ -111,6 +111,59 @@ func TestEnsureInstanceID_CreatesMissingDirectory(t *testing.T) {
 	require.Equal(t, id, got)
 }
 
+func TestEnsureInstanceID_RejectsMissingMarkerForExistingWAL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		create func(t *testing.T, dir string)
+	}{
+		{
+			name: "cluster joined marker",
+			create: func(t *testing.T, dir string) {
+				t.Helper()
+				require.NoError(t, MarkClusterJoined(dir))
+			},
+		},
+		{
+			name: "WAL creation marker",
+			create: func(t *testing.T, dir string) {
+				t.Helper()
+				require.NoError(t, os.WriteFile(filepath.Join(dir, walCreationCompletedFile), nil, 0o600))
+			},
+		},
+		{
+			name: "etcd WAL directory",
+			create: func(t *testing.T, dir string) {
+				t.Helper()
+				require.NoError(t, os.Mkdir(filepath.Join(dir, etcdWalDir), 0o700))
+			},
+		},
+		{
+			name: "snapshot directory",
+			create: func(t *testing.T, dir string) {
+				t.Helper()
+				require.NoError(t, os.Mkdir(filepath.Join(dir, snapDir), 0o700))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			tt.create(t, dir)
+
+			_, err := EnsureInstanceID(dir)
+			require.ErrorContains(t, err, "refusing to generate a new identity")
+
+			_, statErr := os.Stat(filepath.Join(dir, InstanceIDMarkerFile))
+			require.ErrorIs(t, statErr, os.ErrNotExist, "failure must not leave a replacement identity marker")
+		})
+	}
+}
+
 func TestWriteInstanceID_RejectsWrongLength(t *testing.T) {
 	t.Parallel()
 

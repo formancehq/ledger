@@ -105,7 +105,7 @@ func TestVerifyAndClearPendingRemovalRetainsBarrierWithoutTombstone(t *testing.T
 		"a missing tombstone must retain the admission barrier")
 }
 
-func TestWaitForRemovalAppliedWithoutInstanceIDStillWaitsForFSM(t *testing.T) {
+func TestWaitForRemovalAppliedWithoutInstanceIDFailsLoudly(t *testing.T) {
 	t.Parallel()
 
 	setup := newTestApplierSetup(t)
@@ -115,18 +115,15 @@ func TestWaitForRemovalAppliedWithoutInstanceIDStillWaitsForFSM(t *testing.T) {
 		logger:     logging.Testing(),
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	err := n.waitForRemovalApplied(ctx, 3, nil, 42)
+	err := n.waitForRemovalApplied(context.Background(), 3, nil, 42)
 	var committedErr *RemoveNodeCommittedError
 	require.ErrorAs(t, err, &committedErr)
-	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, uint64(3), committedErr.NodeID)
 	require.Equal(t, uint64(42), committedErr.CommittedIndex)
+	require.ErrorContains(t, committedErr.Cause, "instance_id must be 16 bytes")
 
 	_, pending := n.pendingRemovals.Load(3)
-	require.False(t, pending, "a member without an instance ID needs no admission barrier")
+	require.False(t, pending, "an invalid committed removal must not install an unusable barrier")
 }
 
 func TestWaitForRemovalAppliedVerifiesTombstoneAfterDurableApply(t *testing.T) {

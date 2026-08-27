@@ -24,6 +24,30 @@ type unauthClusterBootstrapServer struct {
 	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
 }
 
+type staticClusterBootstrapServer struct {
+	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
+
+	peers []*clusterbootstrappb.PeerInfo
+}
+
+func (s staticClusterBootstrapServer) GetPeers(context.Context, *clusterbootstrappb.GetPeersRequest) (*clusterbootstrappb.GetPeersResponse, error) {
+	return &clusterbootstrappb.GetPeersResponse{Peers: s.peers}, nil
+}
+
+func startBootstrapTestServer(t *testing.T, service clusterbootstrappb.ClusterBootstrapServiceServer) string {
+	t.Helper()
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	srv := grpc.NewServer()
+	clusterbootstrappb.RegisterClusterBootstrapServiceServer(srv, service)
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+
+	return lis.Addr().String()
+}
+
 func (unauthClusterBootstrapServer) GetPeers(context.Context, *clusterbootstrappb.GetPeersRequest) (*clusterbootstrappb.GetPeersResponse, error) {
 	return nil, status.Error(codes.Unauthenticated, "missing authorization metadata on Raft RPC")
 }
@@ -83,4 +107,34 @@ func TestDiscoverPeers_FailsFastOnUnauthenticated(t *testing.T) {
 	// Must fail fast, not retry until the deadline.
 	require.Less(t, elapsed, 5*time.Second,
 		"discovery must abort immediately on Unauthenticated, not retry until the deadline")
+}
+
+func TestDiscoverPeersPropagatesInstanceID(t *testing.T) {
+	t.Parallel()
+
+	instanceID := []byte("0123456789abcdef")
+	address := startBootstrapTestServer(t, staticClusterBootstrapServer{peers: []*clusterbootstrappb.PeerInfo{{
+		Id:             1,
+		RaftAddress:    "node-1:7777",
+		ServiceAddress: "node-1:8888",
+		InstanceId:     instanceID,
+	}}})
+
+	peers, err := discoverPeersFromCluster(address, bootstrap.TLSConfig{Mode: bootstrap.TLSModeDisabled}, "", "")
+	require.NoError(t, err)
+	require.Len(t, peers, 1)
+	require.Equal(t, instanceID, peers[0].InstanceID)
+}
+
+func TestDiscoverPeersRejectsMissingInstanceID(t *testing.T) {
+	t.Parallel()
+
+	address := startBootstrapTestServer(t, staticClusterBootstrapServer{peers: []*clusterbootstrappb.PeerInfo{{
+		Id:             1,
+		RaftAddress:    "node-1:7777",
+		ServiceAddress: "node-1:8888",
+	}}})
+
+	_, err := discoverPeersFromCluster(address, bootstrap.TLSConfig{Mode: bootstrap.TLSModeDisabled}, "", "")
+	require.ErrorContains(t, err, "has invalid identity")
 }

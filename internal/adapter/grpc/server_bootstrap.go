@@ -114,6 +114,7 @@ func (impl *ClusterBootstrapServiceServerImpl) GetPeers(ctx context.Context, req
 			Id:             p.ID,
 			RaftAddress:    p.RaftAddress,
 			ServiceAddress: p.ServiceAddress,
+			InstanceId:     p.InstanceID,
 		})
 	}
 
@@ -168,7 +169,7 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 
 	// EN-1045: every peer must present its 16-byte instance_id — clients
 	// acquire one at first boot via wal.EnsureInstanceID.
-	if len(req.GetInstanceId()) != 16 {
+	if len(req.GetInstanceId()) != membership.InstanceIDLen {
 		return nil, status.Errorf(codes.InvalidArgument, "instance_id must be 16 bytes, got %d", len(req.GetInstanceId()))
 	}
 
@@ -198,7 +199,7 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 			req.GetNodeId(), req.GetInstanceId())
 	}
 
-	if err := impl.membership.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), req.GetInstanceId()); err != nil {
+	if err := impl.membership.JoinAsLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), req.GetInstanceId()); err != nil {
 		// EN-1436: a JoinAsLearner call reaches the leader only when the caller
 		// has no CLUSTER_JOINED marker on its WAL (see bootstrap/module.go
 		// tryAddLearner). If the leader's Progress already carries this
