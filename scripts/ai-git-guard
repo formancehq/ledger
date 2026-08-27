@@ -5,16 +5,29 @@ trusted_root=${TRUSTED_ROOT_CHECKOUT:?TRUSTED_ROOT_CHECKOUT must be set}
 
 guard_dir=$(cd "$(dirname "$0")" && pwd -P)
 original_path=""
-IFS=: read -r -a path_entries <<< "$PATH"
-for entry in "${path_entries[@]}"; do
+remaining_path=$PATH
+while true; do
+    case "$remaining_path" in
+        *:*)
+            entry=${remaining_path%%:*}
+            remaining_path=${remaining_path#*:}
+            last_entry=false
+            ;;
+        *)
+            entry=$remaining_path
+            last_entry=true
+            ;;
+    esac
     resolved_entry=$(cd "${entry:-.}" 2>/dev/null && pwd -P) || resolved_entry=$entry
-    if [[ "$resolved_entry" == "$guard_dir" ]]; then
-        continue
+    if [[ "$resolved_entry" != "$guard_dir" ]]; then
+        if [[ -n "$original_path" ]]; then
+            original_path+=:
+        fi
+        original_path+=$entry
     fi
-    if [[ -n "$original_path" ]]; then
-        original_path+=:
+    if [[ "$last_entry" == true ]]; then
+        break
     fi
-    original_path+=$entry
 done
 real_git=$(PATH="$original_path" command -v git)
 [[ -n "$real_git" ]] || {
@@ -26,7 +39,7 @@ run_real_git() {
     PATH="$original_path" "$real_git" "$@"
 }
 
-global_args=()
+global_args=(--no-optional-locks)
 unsafe_root_global_option=false
 arguments=("$@")
 index=0
@@ -93,7 +106,7 @@ case "$subcommand" in
         branch_read_only=true
         branch_query=false
         branch_query_value=false
-        for argument in "${subcommand_args[@]}"; do
+        for argument in ${subcommand_args[@]+"${subcommand_args[@]}"}; do
             if [[ "$branch_query_value" == true ]]; then
                 branch_query_value=false
                 continue
@@ -128,7 +141,7 @@ case "$subcommand" in
 esac
 
 unsafe_root_subcommand_option=false
-for argument in "${subcommand_args[@]-}"; do
+for argument in ${subcommand_args[@]+"${subcommand_args[@]}"}; do
     case "$argument" in
         --output|-o|--output=*|-o?*|--ext-diff|--textconv|--filters|--open-files-in-pager|--open-files-in-pager=*|-O|--upload-pack|--upload-pack=*|--exec|--exec=*)
             unsafe_root_subcommand_option=true

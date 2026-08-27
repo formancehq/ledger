@@ -228,6 +228,28 @@ func TestGitMutationGuardAllowsReadOnlyRootInspection(t *testing.T) {
 	require.Contains(t, output, "ROOT_UNCHANGED=PASS")
 }
 
+func TestGitMutationGuardRunsWithoutTempfilesUnderSystemBash(t *testing.T) {
+	fixture := newWorktreeBindingFixture(t)
+	guardCopy := filepath.Join(fixture.validationDir, "system-bash-guard")
+	guardContent, err := os.ReadFile(fixture.guard)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(guardCopy, guardContent, 0o700))
+	realGit, err := exec.LookPath("git")
+	require.NoError(t, err)
+	readOnlyTemp := filepath.Join(fixture.validationDir, "read-only-tmp")
+	require.NoError(t, os.Mkdir(readOnlyTemp, 0o500))
+
+	command := exec.Command("/bin/bash", guardCopy, "status", "--short")
+	command.Dir = fixture.candidate
+	command.Env = replaceEnvironment(os.Environ(), map[string]string{
+		"PATH":                  filepath.Dir(guardCopy) + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"TMPDIR":                readOnlyTemp,
+		"TRUSTED_ROOT_CHECKOUT": fixture.root,
+	})
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, string(output), realGit)
+}
+
 func TestConcurrentPRRunsUseDistinctWorktreesAndValidationDirs(t *testing.T) {
 	fixture := newWorktreeBindingFixture(t)
 	parent := filepath.Dir(fixture.candidate)
