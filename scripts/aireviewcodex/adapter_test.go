@@ -33,6 +33,7 @@ type adapterFixture struct {
 	environmentCapture string
 	authCapture        string
 	homeCapture        string
+	validationRunDir   string
 	substitutionMarker string
 	path               string
 }
@@ -96,6 +97,8 @@ func TestAdapterFramesTargetsAndPreviousReviewWithoutPersonalState(t *testing.T)
 	require.Equal(t, "auth-canary\n", readFile(t, fixture.authCapture))
 	isolatedHome := strings.TrimSpace(readFile(t, fixture.homeCapture))
 	require.NotEqual(t, fixture.userHome, isolatedHome)
+	require.NoFileExists(t, filepath.Join(isolatedHome, ".agents", "skills", "personal-canary", "SKILL.md"))
+	require.NoFileExists(t, filepath.Join(isolatedHome, ".codex", "config.toml"))
 	require.NoDirExists(t, isolatedHome)
 	require.FileExists(t, fixture.resultPath)
 }
@@ -150,6 +153,8 @@ func newAdapterFixture(t *testing.T) adapterFixture {
 	repositoryRoot := strings.TrimSpace(runCommand(t, "", "git", "rev-parse", "--show-toplevel"))
 	temporaryDirectory := filepath.Join(t.TempDir(), "fixture with spaces")
 	require.NoError(t, os.MkdirAll(temporaryDirectory, 0o755))
+	validationRunDir := filepath.Join(temporaryDirectory, "validation-run")
+	require.NoError(t, os.MkdirAll(validationRunDir, 0o755))
 	userHome := filepath.Join(temporaryDirectory, "user-home")
 	userCodexHome := filepath.Join(userHome, ".codex")
 	for _, directory := range []string{
@@ -183,6 +188,7 @@ func newAdapterFixture(t *testing.T) adapterFixture {
 		environmentCapture: filepath.Join(temporaryDirectory, "environment.txt"),
 		authCapture:        filepath.Join(temporaryDirectory, "auth.txt"),
 		homeCapture:        filepath.Join(temporaryDirectory, "isolated-home.txt"),
+		validationRunDir:   validationRunDir,
 		substitutionMarker: filepath.Join(temporaryDirectory, "substitution-marker"),
 		path:               filepath.Join(temporaryDirectory, "bin") + string(os.PathListSeparator) + os.Getenv("PATH"),
 	}
@@ -232,6 +238,7 @@ func runAdapter(t *testing.T, fixture adapterFixture, extraEnvironment map[strin
 		"CODEX_HOME":                     fixture.userCodexHome,
 		"PATH":                           fixture.path,
 		"TMPDIR":                         filepath.Join(fixture.temporaryDirectory, "tmp"),
+		"VALIDATION_RUN_DIR":             fixture.validationRunDir,
 		"AI_REVIEW_RESULT":               fixture.resultPath,
 		"AI_REVIEW_HEAD":                 testHead,
 		"AI_REVIEW_WORKTREE_FINGERPRINT": testFingerprint,
