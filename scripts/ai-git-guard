@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+real_git=${AI_GIT_REAL_PATH:?AI_GIT_REAL_PATH must name the real Git executable}
+original_path=${AI_GIT_ORIGINAL_PATH:?AI_GIT_ORIGINAL_PATH must preserve the pre-guard PATH}
+trusted_root=${TRUSTED_ROOT_CHECKOUT:?TRUSTED_ROOT_CHECKOUT must be set}
+
+run_real_git() {
+    PATH="$original_path" "$real_git" "$@"
+}
+
+global_args=()
+arguments=("$@")
+index=0
+while [[ $index -lt ${#arguments[@]} ]]; do
+    argument=${arguments[$index]}
+    case "$argument" in
+        -C|-c|--git-dir|--work-tree|--namespace|--config-env)
+            [[ $((index + 1)) -lt ${#arguments[@]} ]] || exec env PATH="$original_path" "$real_git" "$@"
+            global_args+=("$argument" "${arguments[$((index + 1))]}")
+            index=$((index + 2))
+            ;;
+        --git-dir=*|--work-tree=*|--namespace=*|--config-env=*)
+            global_args+=("$argument")
+            index=$((index + 1))
+            ;;
+        --literal-pathspecs|--no-literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--bare)
+            global_args+=("$argument")
+            index=$((index + 1))
+            ;;
+        --)
+            index=$((index + 1))
+            break
+            ;;
+        -*)
+            # Unknown global options are delegated. They cannot make a known
+            # mutating subcommand appear read-only because that subcommand is
+            # still classified below.
+            global_args+=("$argument")
+            index=$((index + 1))
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+if [[ $index -ge ${#arguments[@]} ]]; then
+    exec env PATH="$original_path" "$real_git" "$@"
+fi
+subcommand=${arguments[$index]}
+subcommand_args=("${arguments[@]:$((index + 1))}")
+
+mutating=false
+worktree_mutation=false
+case "$subcommand" in
+    switch|checkout|add|commit|merge|rebase|cherry-pick|reset|clean|restore)
+        mutating=true
+        ;;
+    worktree)
+        worktree_action=${subcommand_args[0]:-list}
+        case "$worktree_action" in
+            add|remove|move|prune|repair|lock|unlock)
+                mutating=true
+                worktree_mutation=true
+                ;;
+        esac
+        ;;
+    branch)
+        branch_read_only=true
+        branch_query=false
+        branch_query_value=false
+        for argument in "${subcommand_args[@]}"; do
+            if [[ "$branch_query_value" == true ]]; then
+                branch_query_value=false
+                continue
+            fi
+            case "$argument" in
+                -d|-D|-m|-M|-c|-C|--delete|--move|--copy|--edit-description|--set-upstream-to|--set-upstream-to=*|--unset-upstream)
+                    branch_read_only=false
+                    ;;
+                --list|-l|--show-current|-a|--all|-r|--remotes)
+                    branch_query=true
+                    ;;
+                --contains|--no-contains|--merged|--no-merged|--points-at|--format|--sort)
+                    branch_query=true
+                    branch_query_value=true
+                    ;;
+                --contains=*|--no-contains=*|--merged=*|--no-merged=*|--points-at=*|--format=*|--sort=*)
+                    branch_query=true
+                    ;;
+                -v|-vv|--verbose|--color|--color=*|--no-color|--column|--column=*|--no-column|--ignore-case|-i)
+                    ;;
+                --) ;;
+                -*) branch_read_only=false ;;
+                *)
+                    if [[ "$branch_query" == false ]]; then
+                        branch_read_only=false
+                    fi
+                    ;;
+            esac
+        done
+        if [[ "$branch_read_only" == false ]]; then
+            mutating=true
+        fi
+        ;;
+esac
+
+if [[ "$worktree_mutation" == true ]]; then
+    printf 'UNREGISTERED_CHILD_WORKTREE_FORBIDDEN command=git worktree %s\n' "$worktree_action" >&2
+    exit 97
+fi
+
+if [[ "$mutating" == true ]]; then
+    selected_root=""
+    if selected_root=$(run_real_git "${global_args[@]}" rev-parse --show-toplevel 2>/dev/null); then
+        selected_root=$(cd "$selected_root" && pwd -P)
+    fi
+    trusted_root=$(cd "$trusted_root" && pwd -P)
+    if [[ "$selected_root" == "$trusted_root" ]]; then
+        printf 'ROOT_CHECKOUT_GIT_MUTATION_FORBIDDEN command=git %s\n' "$subcommand" >&2
+        exit 96
+    fi
+fi
+
+exec env PATH="$original_path" "$real_git" "$@"

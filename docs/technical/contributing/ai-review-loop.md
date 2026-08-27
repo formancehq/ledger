@@ -2,16 +2,17 @@
 
 The review loop automates only the mechanical handoff between an implementation agent and a reviewer. It does **not** grant an agent permission to broaden scope, change product behavior, weaken repository invariants, or resolve genuine design choices without a human.
 
-Run it through the repository-pinned environment:
+Use the PR launcher, which creates and mechanically binds the required
+candidate worktree:
 
 ```bash
-bash scripts/review-loop \
-  --base origin/release/v3.0 \
-  --review-cmd '<review command>' \
-  --fix-cmd '<fix command>'
+bash scripts/ai-pr-loop 1732
 ```
 
-The commands are intentionally provider-agnostic. They may wrap Codex, Claude, another local agent, or a test double.
+The underlying commands remain provider-agnostic. Direct `review-loop`
+invocation is a low-level launcher API and must supply every binding flag
+documented in [AI PR worktree isolation](ai-worktree-isolation.md); it never
+falls back to the caller's cwd.
 
 Each invocation creates a persistent, unique directory below `build/ai-review-loop/`. Review and fix payloads from concurrent or subsequent runs therefore never share file names. The selected directory is printed when the loop starts.
 
@@ -29,13 +30,18 @@ A full PR URL is accepted as well. The launcher:
 - requires an open same-repository PR and currently rejects fork/cross-repository heads;
 - fetches the current target-branch tip and the PR head ref, requires the fetched head to equal the GitHub-reported head SHA, and requires the fetched target tip to still equal the GitHub-reported base SHA before running agents;
 - creates a detached linked worktree outside the primary checkout, under a unique sibling `.<repo>-ai-worktrees/pr-<number>.<run>/worktree` directory;
+- writes an immutable PR/worktree binding outside that candidate, starts the
+  orchestrator with `env -C` in the candidate, and requires the mechanical
+  binding gate before every reviewer, fixer, and validator;
 - runs the [legitimacy triage](ai-pr-triage-loop.md) before any technical review, using the `scripts/ai-pr-triage` adapter from a detached worktree pinned at the verified base SHA, so the PR under review cannot supply the policy that authorizes its own review;
 - accepts a triage result only when its `base_sha` and `head` equal the SHAs the launcher fetched and verified, and continues into technical review only on a `KEEP` decision;
 - passes the verified base commit SHA to `review-loop`, so a later update of the shared remote-tracking ref cannot change the reviewed delta;
 - runs the standard Codex review + Claude fix composition against the PR base;
 - runs repository validation locally before accepting any approval; no GitHub
   Actions status participates in the decision;
-- never checks out or edits the primary checkout;
+- never checks out or edits the primary checkout, and fails with
+  `ROOT_MUTATION_DETECTED` if its HEAD, branch, or status changes while a
+  subprocess runs;
 - preserves the isolated worktree automatically when fixes remain so the resulting diff can be inspected manually;
 - removes a clean temporary worktree after the loop unless `--keep-worktree` is supplied, together with the run directory that holds its triage result, known-findings ledger, and isolated validation caches.
 
@@ -162,10 +168,19 @@ The orchestrator rejects unknown JSON fields, missing required fields (including
 
 `scripts/ai-review-codex` is the first provider-specific reviewer adapter. It keeps provider invocation separate from the `review-loop` policy/state machine.
 
-Use it with an authenticated Codex CLI available in `PATH`:
+`ai-pr-loop` composes this adapter automatically. A low-level composition must
+also satisfy the worktree-binding contract; the following fragment is not a
+standalone unbound invocation:
 
 ```bash
 bash scripts/review-loop \
+  --pr "$EXPECTED_PR_NUMBER" \
+  --worktree "$EXPECTED_WORKTREE" \
+  --expected-head "$EXPECTED_HEAD" \
+  --trusted-root "$TRUSTED_ROOT_CHECKOUT" \
+  --binding-file "$AI_WORKTREE_BINDING_FILE" \
+  --validation-run-dir "$VALIDATION_RUN_DIR" \
+  --git-guard /trusted/base/scripts/ai-git-guard \
   --base origin/release/v3.0 \
   --review-cmd 'bash scripts/ai-review-codex'
 ```
@@ -240,6 +255,13 @@ Use it together with the Codex reviewer:
 
 ```bash
 bash scripts/review-loop \
+  --pr "$EXPECTED_PR_NUMBER" \
+  --worktree "$EXPECTED_WORKTREE" \
+  --expected-head "$EXPECTED_HEAD" \
+  --trusted-root "$TRUSTED_ROOT_CHECKOUT" \
+  --binding-file "$AI_WORKTREE_BINDING_FILE" \
+  --validation-run-dir "$VALIDATION_RUN_DIR" \
+  --git-guard /trusted/base/scripts/ai-git-guard \
   --base origin/release/v3.0 \
   --review-cmd 'bash scripts/ai-review-codex' \
   --fix-cmd 'bash scripts/ai-fix-claude'
@@ -297,7 +319,8 @@ these directories and records `VALIDATION_RUN_ID`; `ai-pr-loop` and
 `ai-pr-adopt-candidate` invoke validation through it. This keeps generated
 files and absolute paths from one concurrent run out of another run's caches.
 
-Those caches live inside the run directory, so `ai-pr-loop` reclaims the whole
+Those caches live inside the run's dedicated `validation/` directory, disjoint
+from both Git worktrees, so `ai-pr-loop` reclaims the whole
 run directory recursively when the run ends without `--keep-worktree`. It does
 so only after both owned worktrees are gone: a preserved worktree — inspectable
 fixes or a failed removal — keeps its run directory and its caches.

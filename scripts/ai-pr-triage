@@ -114,6 +114,10 @@ Evaluate problem existence, current limitation, existing mechanisms/alternatives
 REJECT is advisory and requires positive repository evidence that the change is unnecessary, duplicative, obsolete, or materially disproportionate. When context is merely missing, use QUESTION.
 
 Copy base_sha and head exactly. Output only JSON matching the schema.
+
+At the start, verify `pwd` and `git rev-parse --show-toplevel`. Both must equal
+the expected trusted worktree supplied below. `EXPECTED_PR_NUMBER` and
+`EXPECTED_HEAD` bind this read-only triage to the exact PR state.
 EOF
 {
   printf '\nTRUSTED POLICY FILES\n- AGENTS: `%s`\n- agent context: `%s`\n- triage contract: `%s`\n- traceability contract: `%s`\n' \
@@ -124,13 +128,43 @@ EOF
     "$head_worktree" "$merge_base" "$head_sha"
 } >> "$prompt"
 
-(
-  cd "$trusted_worktree"
-  HOME="$isolation_root/home" CODEX_HOME="$isolation_root/home/.codex" codex exec \
+trusted_worktree=$(cd "$trusted_worktree" && pwd -P)
+repo_root=$(cd "$repo_root" && pwd -P)
+[[ "$trusted_worktree" != "$repo_root" ]] || { echo "ROOT_CHECKOUT_AS_CANDIDATE_FORBIDDEN" >&2; exit 1; }
+[[ "$(git -C "$trusted_worktree" rev-parse --show-toplevel)" == "$trusted_worktree" ]] || {
+    echo "WORKTREE_BINDING_GATE=FAIL (triage top-level mismatch)" >&2
+    exit 1
+}
+[[ "$(git -C "$trusted_worktree" rev-parse HEAD)" == "$base_sha" ]] || {
+    echo "WORKTREE_BINDING_GATE=FAIL (triage HEAD mismatch)" >&2
+    exit 1
+}
+root_head=$(git -C "$repo_root" rev-parse HEAD)
+root_branch=$(git -C "$repo_root" rev-parse --abbrev-ref HEAD)
+root_status=$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)
+echo "WORKTREE_BINDING_GATE=PASS role=trusted-triage pr=$pr_number path=$trusted_worktree head=$base_sha"
+set +e
+EXPECTED_PR_NUMBER="$pr_number" \
+EXPECTED_WORKTREE="$trusted_worktree" \
+EXPECTED_HEAD="$base_sha" \
+AI_WORKTREE_PR="$pr_number" \
+AI_WORKTREE_PATH="$trusted_worktree" \
+AI_WORKTREE_EXPECTED_HEAD="$base_sha" \
+  env -C "$trusted_worktree" HOME="$isolation_root/home" CODEX_HOME="$isolation_root/home/.codex" codex exec \
     --ephemeral --ignore-user-config --ignore-rules \
     --disable hooks --disable plugins --disable apps --disable memories --disable multi_agent --disable skill_search \
     --sandbox read-only --output-schema "$schema" -o "$result" - < "$prompt"
-)
+codex_status=$?
+set -e
+current_root_head=$(git -C "$repo_root" rev-parse HEAD)
+current_root_branch=$(git -C "$repo_root" rev-parse --abbrev-ref HEAD)
+current_root_status=$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)
+if [[ "$current_root_head" != "$root_head" || "$current_root_branch" != "$root_branch" || "$current_root_status" != "$root_status" ]]; then
+    echo "ROOT_MUTATION_DETECTED" >&2
+    exit 1
+fi
+echo "ROOT_UNCHANGED=PASS"
+[[ $codex_status -eq 0 ]] || exit "$codex_status"
 [[ -s "$result" ]] || { echo "ai-pr-triage: provider produced no result" >&2; exit 1; }
 jq -e --arg base "$base_sha" --arg head "$head_sha" '.base_sha == $base and .head == $head' "$result" >/dev/null || { echo "ai-pr-triage: result target mismatch" >&2; exit 1; }
 cp "$result" "$output"

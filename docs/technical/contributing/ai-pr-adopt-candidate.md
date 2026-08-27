@@ -20,6 +20,12 @@ The candidate must not provide the policy, reviewer, validator, or review-loop b
 
 The candidate is reviewed in a detached clean worktree. The review pass has no fixer. Local validation runs only after approval, through the base-pinned `agent-check-pr` path.
 
+Adoption uses the same immutable PR/worktree manifest, explicit `env -C`
+process cwd, root snapshot, cross-PR guard, Git mutation guard, and disjoint
+validation directory described in
+[AI PR worktree isolation](ai-worktree-isolation.md). It has no legacy path that
+reviews the candidate from the checkout that launched adoption.
+
 ## Publication
 
 Without `--push`, a successful run ends with `APPROVED_NOT_PUSHED`.

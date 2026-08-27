@@ -102,18 +102,24 @@ For every STILL_VALID known finding, add exactly one blocking current finding us
 Decision is monotone: APPROVE < REQUEST_CHANGES < HUMAN_DECISION_REQUIRED. Residual risk is monotone: LOW < MEDIUM < HIGH. Never return a decision or residual risk below the base review. A STILL_VALID known finding requires at least REQUEST_CHANGES. A HUMAN_DECISION_REQUIRED classification requires HUMAN_DECISION_REQUIRED with non-empty context. Keep human_decision_context exactly as the base review left it unless a known finding requires HUMAN_DECISION_REQUIRED; in that case preserve the existing context and add the new decision context.
 
 Copy head and worktree_fingerprint exactly. Output only JSON matching the schema.
+
+At the start, verify `pwd` and `git rev-parse --show-toplevel` against the
+base-pinned trusted worktree supplied below. Stop if either differs.
 EOF
 printf '\nUNTRUSTED INPUT FILES\n- base_review: `%s`\n- known_findings: `%s`\n- candidate_worktree: `%s`\n' \
   "$base_result" "$AI_REVIEW_KNOWN_FINDINGS" "$repo_root" >> "$prompt"
-printf '\nTRUSTED TARGET\n- head: %s\n- worktree_fingerprint: %s\n' "$AI_REVIEW_HEAD" "$AI_REVIEW_WORKTREE_FINGERPRINT" >> "$prompt"
+printf '\nTRUSTED TARGET\n- head: %s\n- worktree_fingerprint: %s\n- trusted_worktree: `%s`\n' \
+  "$AI_REVIEW_HEAD" "$AI_REVIEW_WORKTREE_FINGERPRINT" "$trusted_root" >> "$prompt"
 
-(
-  cd "$trusted_root"
-  HOME="$isolation_root/home" CODEX_HOME="$isolation_root/home/.codex" codex exec \
+trusted_head=$(jq -r '.base_sha' "$AI_REVIEW_CHANGE_TARGET")
+EXPECTED_WORKTREE="$trusted_root" \
+EXPECTED_HEAD="$trusted_head" \
+AI_WORKTREE_PATH="$trusted_root" \
+AI_WORKTREE_EXPECTED_HEAD="$trusted_head" \
+  env -C "$trusted_root" HOME="$isolation_root/home" CODEX_HOME="$isolation_root/home/.codex" codex exec \
     --ephemeral --ignore-user-config --ignore-rules \
     --disable hooks --disable plugins --disable apps --disable memories --disable multi_agent --disable skill_search \
     --sandbox read-only --output-schema "$schema" -o "$combined" - < "$prompt"
-)
 [[ -s "$combined" ]] || { echo "ai-review-known-findings: reconciler produced no result" >&2; exit 1; }
 
 # Target identity must remain exact.
