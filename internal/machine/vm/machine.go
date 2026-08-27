@@ -399,7 +399,8 @@ func (m *Machine) tick() (bool, error) {
 		}
 
 	case program.OP_REPAY:
-		m.repay(pop[machine.Funding](m))
+		f := pop[machine.Funding](m)
+		m.repay(f)
 
 	case program.OP_SEND:
 		dest := pop[machine.AccountAddress](m)
