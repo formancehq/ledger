@@ -49,6 +49,16 @@ func TestRunnerRejectsDifferentRepositoryWithSameOwner(t *testing.T) {
 	require.NoFileExists(t, fixture.codexHeadCapture)
 }
 
+func TestRunnerDetectsDirtyRootContentMutationWithUnchangedStatus(t *testing.T) {
+	fixture := newFixture(t, "repo")
+	fixture.rootMutation = "dirty-content"
+
+	output, err := fixture.run(t)
+	require.Error(t, err, output)
+	require.Contains(t, output, "ROOT_MUTATION_DETECTED")
+	require.Equal(t, "different caller content\n", readFile(t, filepath.Join(fixture.checkout, "caller-only.txt")))
+}
+
 type fixture struct {
 	checkout                   string
 	fakeBin                    string
@@ -63,6 +73,7 @@ type fixture struct {
 	callerMarkerCapture        string
 	promptCapture              string
 	trustedInstructionsCapture string
+	rootMutation               string
 }
 
 func newFixture(t *testing.T, headRepository string) fixture {
@@ -159,6 +170,9 @@ else
   printf 'untrusted\n' >"$TEST_TRUSTED_INSTRUCTIONS_CAPTURE"
 fi
 if [[ -e caller-only.txt ]]; then printf 'true\n'; else printf 'false\n'; fi >"$TEST_CALLER_MARKER_CAPTURE"
+if [[ "${TEST_ROOT_MUTATION:-}" == dirty-content ]]; then
+  printf 'different caller content\n' >"$TEST_CALLER_CHECKOUT/caller-only.txt"
+fi
 printf '{"decision":"KEEP","base_sha":"%s","head":"%s","problem_statement":"test","documented_needs":[],"technical_decisions":[],"existing_alternatives":[],"cost_assessment":"test","consequence_of_doing_nothing":"test","questions_for_author":[],"summary":"test"}\n' "$TEST_BASE_SHA" "$TEST_HEAD_SHA" >"$output"
 `)
 
@@ -196,6 +210,8 @@ func (f fixture) run(t *testing.T) (string, error) {
 		"TEST_CALLER_MARKER_CAPTURE="+f.callerMarkerCapture,
 		"TEST_PROMPT_CAPTURE="+f.promptCapture,
 		"TEST_TRUSTED_INSTRUCTIONS_CAPTURE="+f.trustedInstructionsCapture,
+		"TEST_CALLER_CHECKOUT="+f.checkout,
+		"TEST_ROOT_MUTATION="+f.rootMutation,
 	)
 
 	output, err := command.CombinedOutput()

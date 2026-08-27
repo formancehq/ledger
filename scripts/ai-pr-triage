@@ -139,9 +139,43 @@ repo_root=$(cd "$repo_root" && pwd -P)
     echo "WORKTREE_BINDING_GATE=FAIL (triage HEAD mismatch)" >&2
     exit 1
 }
+
+root_workspace_fingerprint() (
+  cd "$1"
+  {
+    printf 'head\0'
+    git rev-parse HEAD
+    printf 'staged\0'
+    git diff --cached --binary --full-index HEAD --
+    printf 'unstaged\0'
+    git diff --binary --full-index --
+    for ignored in false true; do
+      printf 'untracked-ignored=%s\0' "$ignored"
+      list_args=(ls-files --others --exclude-standard -z)
+      if [[ "$ignored" == true ]]; then
+        list_args=(ls-files --others --ignored --exclude-standard -z)
+      fi
+      git "${list_args[@]}" | while IFS= read -r -d '' path; do
+        printf 'path\0%s\0' "$path"
+        if [[ -d "$path" && ! -L "$path" ]]; then
+          printf 'directory\0'
+        elif [[ -L "$path" ]]; then
+          printf 'symlink\0%s\0' "$(readlink "$path")"
+        elif [[ -f "$path" ]]; then
+          printf 'file\0'
+          git hash-object --no-filters -- "$path"
+        else
+          printf 'special\0'
+        fi
+      done
+    done
+  } | git hash-object --stdin
+)
+
 root_head=$(git -C "$repo_root" rev-parse HEAD)
 root_branch=$(git -C "$repo_root" rev-parse --abbrev-ref HEAD)
 root_status=$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)
+root_fingerprint=$(root_workspace_fingerprint "$repo_root")
 echo "WORKTREE_BINDING_GATE=PASS role=trusted-triage pr=$pr_number path=$trusted_worktree head=$base_sha"
 set +e
 EXPECTED_PR_NUMBER="$pr_number" \
@@ -159,7 +193,8 @@ set -e
 current_root_head=$(git -C "$repo_root" rev-parse HEAD)
 current_root_branch=$(git -C "$repo_root" rev-parse --abbrev-ref HEAD)
 current_root_status=$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)
-if [[ "$current_root_head" != "$root_head" || "$current_root_branch" != "$root_branch" || "$current_root_status" != "$root_status" ]]; then
+current_root_fingerprint=$(root_workspace_fingerprint "$repo_root")
+if [[ "$current_root_head" != "$root_head" || "$current_root_branch" != "$root_branch" || "$current_root_status" != "$root_status" || "$current_root_fingerprint" != "$root_fingerprint" ]]; then
     echo "ROOT_MUTATION_DETECTED" >&2
     exit 1
 fi

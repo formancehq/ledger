@@ -115,7 +115,8 @@ Detached worktrees for baseline comparison, read-only experiments, and
 `BEFORE_FIX` reproduction remain valid when the workflow creates them. The
 triage adapter is the model: it creates and owns separate trusted-policy and
 untrusted-head worktrees, explicitly binds the read-only Codex cwd to the
-trusted one, and removes both on exit. An agent cannot silently replace its
+trusted one, applies the same content-aware root snapshot, and removes both on
+exit. An agent cannot silently replace its
 primary candidate worktree with another worktree.
 
 ## Launcher inventory
