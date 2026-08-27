@@ -58,9 +58,7 @@ if [[ -n "${VALIDATION_RUN_DIR:-}" ]]; then
             *) echo "LINT_ISOLATION_GATE=FAIL ($var escapes validation run)" >&2; exit 1 ;;
         esac
     done
-    if [[ "$list_only" != true ]]; then
-        echo "LINT_ISOLATION_GATE=PASS ($lint_root)"
-    fi
+    echo "LINT_ISOLATION_GATE=PASS ($lint_root)" >&2
 fi
 if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
     echo "agent-check-pr: invalid review base commit: $base_sha" >&2
