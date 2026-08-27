@@ -1,0 +1,48 @@
+{
+  "id": "idempotency-retries-partial-failures",
+  "title": "Idempotency, retries, timeouts, and partial failures",
+  "purpose": "Find operations that can be lost, duplicated, partially executed, or ambiguously acknowledged when clients, nodes, storage, or transports retry or fail.",
+  "paths": [
+    "cmd/server/**",
+    "internal/application/**",
+    "internal/adapter/http/**",
+    "internal/adapter/grpc/**",
+    "internal/domain/**",
+    "internal/infra/node/**",
+    "internal/infra/transport/**",
+    "internal/infra/membership/**",
+    "internal/infra/backup/**",
+    "internal/infra/state/**",
+    "internal/infra/plan/**",
+    "internal/bootstrap/**",
+    "internal/storage/**",
+    "internal/query/**",
+    "internal/pkg/worker/**",
+    "misc/proto/**",
+    "pkg/actions/**",
+    "tests/**"
+  ],
+  "related_docs": ["AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/admission/", "docs/technical/architecture/subsystems/api/", "docs/technical/architecture/subsystems/chapters/incremental-restore-contract.md", "docs/technical/architecture/subsystems/consensus/", "docs/technical/architecture/subsystems/fsm/", "docs/technical/contributing/ai-audit.md", "docs/ops/cli.md", "docs/ops/deployment.md"],
+  "invariants": [
+    "Retrying one logical mutation must not create duplicate committed business effects when the API promises or relies on idempotence.",
+    "A timeout or cancelled response must not be interpreted internally as proof that the mutation did not commit.",
+    "Bulk or compound operations must satisfy their documented atomicity boundary under failures.",
+    "Failure after durable commit but before response must have a recoverable and consistent retry outcome for a retry that carries the same batch idempotency key while the recorded key is still within its retention contract (the configured idempotency TTL). A retry with no idempotency key, or one whose key has been evicted, is at-least-once by construction: treat any stronger guarantee for those requests as a product decision to surface, not as a Ledger defect.",
+    "Within the configured idempotency TTL, reusing the same batch idempotency key with the same accepted business content must replay the original frozen success or definitive failure without re-executing business effects; reusing that key with different business content must return the documented idempotency-key conflict and must neither replay the prior outcome nor execute the replacement content. After the key expires or is evicted, a later request is a new operation rather than a replay.",
+    "Failure before commit must not leak partial authoritative state.",
+    "Retry state, idempotency keys, or deduplication state required for correctness must survive the lifecycle boundaries promised by the system.",
+    "Distinguish three identities: (a) the client/API logical-operation identity, which exists only as the idempotency key scoped to one atomic apply batch; (b) the Raft proposal identity of a single accepted proposal; (c) transport continuity of one in-flight call across follower-to-leader forwarding, leader changes, and gRPC retries. Leader changes and transport retries must not commit one accepted proposal twice (b), and must preserve logical-operation identity (a) only where the retried request supplies the same idempotency key; two unkeyed attempts remain distinct logical operations even when they originate from one client call across a leader transition.",
+    "Background retries must be bounded/cancellable and must not resurrect obsolete work after shutdown or superseding state."
+  ],
+  "adversarial_questions": [
+    "Where can a request commit and then lose its response?",
+    "What does a client retry after timeout, cancellation, connection reset, or leader change do?",
+    "Which operations have no stable logical identity across retries?",
+    "Can bulk handlers commit a prefix before a later element fails?",
+    "Can storage retry repeat a non-idempotent side effect?",
+    "Can duplicate transport delivery reach apply twice through different paths?",
+    "Can retry metadata disappear on restart while the original effect remains?",
+    "Can shutdown race with a retry worker and execute work after ownership has ended?"
+  ],
+  "dynamic_checks_to_consider": ["fault injection after commit before response", "same-key same-content frozen success/failure replay and same-key different-content conflict property tests across TTL and eviction races", "leader change during retry", "connection reset during bulk", "storage transient-error injection", "restart between effect and dedupe persistence"]
+}

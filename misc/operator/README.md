@@ -31,7 +31,8 @@ The Ledger Operator manages `Cluster` custom resources to automate the lifecycle
 ### Install the Operator
 
 ```bash
-helm install ledger-operator ./chart \
+helm dependency build misc/operator/helm/operator
+helm install ledger-operator misc/operator/helm/operator \
   --namespace ledger-system \
   --create-namespace
 ```
@@ -48,11 +49,14 @@ spec:
   image:
     repository: ghcr.io/formancehq/ledger
     tag: latest
-  config:
-    clusterID: default
-    pebble:
-      memTableSize: 268435456
-      cacheSize: 1073741824
+  clusterID: default
+  podAntiAffinity:
+    enabled: true
+    type: hard
+    topologyKey: kubernetes.io/hostname
+  pebble:
+    memTableSize: 256Mi
+    cacheSize: 1Gi
   # Cache and bloom parameters are part of the Raft-replicated ClusterConfig.
   # Editing them triggers a rolling restart of the StatefulSet; convergence
   # is deterministic via applyClusterConfig (cache reset + bloom rebuild) and
@@ -76,11 +80,14 @@ spec:
       size: 10Gi
   resources:
     requests:
-      cpu: "4000m"
-      memory: "2048Mi"
+      cpu: "2000m"
+      memory: 4Gi
     limits:
       cpu: "4000m"
-      memory: "2048Mi"
+      memory: 4Gi
+  # The operator derives GOMEMLIMIT from this memory limit. The default ratio
+  # is 90; set it explicitly here so the resource policy is visible.
+  goMemLimitRatio: 90
 ```
 
 ## Helm Values
@@ -238,17 +245,21 @@ kubectl ledger list -A
 kubectl ledger get my-ledger
 
 # Explore CRD schema for Raft configuration
-kubectl ledger explain spec.config.raft
+kubectl ledger explain spec.raft
 
-# Create with flags (non-interactive)
+# Create with schema-driven field overrides
 kubectl ledger create my-ledger \
-  --replicas 5 \
-  --image ghcr.io/formancehq/ledger \
-  --tag v2.0.0 \
-  --cpu 4000m \
-  --memory 2048Mi \
-  --wal-size 10Gi \
-  --data-size 50Gi
+  --set replicas=5 \
+  --set image.repository=ghcr.io/formancehq/ledger \
+  --set image.tag=latest \
+  --set podAntiAffinity.enabled=true \
+  --set podAntiAffinity.type=hard \
+  --set resources.requests.cpu=2000m \
+  --set resources.requests.memory=4Gi \
+  --set resources.limits.cpu=4000m \
+  --set resources.limits.memory=4Gi \
+  --set persistence.wal.size=10Gi \
+  --set persistence.data.size=50Gi
 
 # Scale up
 kubectl ledger scale my-ledger --replicas 7
@@ -256,6 +267,18 @@ kubectl ledger scale my-ledger --replicas 7
 # Rolling restart
 kubectl ledger restart my-ledger -y
 ```
+
+Plain `kubectl rollout restart statefulset/<name>` also works: the operator
+preserves the `kubectl.kubernetes.io/restartedAt` annotation kubectl stamps on
+the pod template instead of reverting it on the next reconcile. Prefer
+`kubectl ledger restart`, which records the restart on the Cluster CR itself
+(`spec.podAnnotations`) and therefore survives StatefulSet recreation.
+
+**Exception:** if the Cluster CR itself sets `kubectl.kubernetes.io/restartedAt`
+in `spec.podAnnotations`, the CR value is authoritative and the operator reverts
+a direct `kubectl rollout restart` stamp on the next reconcile — the rollout
+stops after the first pod. In that configuration, restart through the CR only
+(`kubectl ledger restart`, or bump the annotation value in the CR).
 
 ## Development
 

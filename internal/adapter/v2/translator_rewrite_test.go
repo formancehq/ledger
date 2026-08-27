@@ -55,6 +55,7 @@ func TestTranslateBatch_Rewrite_CreatedTransaction(t *testing.T) {
 	v2Logs := []V2Log{{
 		ID:   1,
 		Type: "NEW_TRANSACTION",
+		Date: "2023-11-14T22:13:20.123456Z",
 		Data: mustMarshal(t, V2NewTransactionData{
 			Transaction: V2Transaction{
 				ID: 0,
@@ -75,7 +76,10 @@ func TestTranslateBatch_Rewrite_CreatedTransaction(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 
-	ct := orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetCreatedTransaction()
+	entry := orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry()
+	require.Equal(t, uint64(1700000000123456), entry.GetDate().GetData())
+
+	ct := entry.GetCreatedTransaction()
 	require.NotNil(t, ct)
 	require.Equal(t, "world", ct.GetPostings()[0].GetSource())
 	require.Equal(t, "payments:acme:main", ct.GetPostings()[0].GetDestination())

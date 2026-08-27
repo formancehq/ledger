@@ -2083,6 +2083,7 @@ func NewArchiveChapterRequestListReader(s []*ArchiveChapterRequest) ArchiveChapt
 // Call Mutate() to obtain a mutable clone.
 type ConfirmArchiveChapterRequestReader interface {
 	GetChapterId() uint64
+	GetSealingHash() []byte
 	Mutate() *ConfirmArchiveChapterRequest
 }
 
@@ -2090,6 +2091,10 @@ type confirmArchiveChapterRequestReadonly ConfirmArchiveChapterRequest
 
 func (r *confirmArchiveChapterRequestReadonly) GetChapterId() uint64 {
 	return (*ConfirmArchiveChapterRequest)(r).GetChapterId()
+}
+
+func (r *confirmArchiveChapterRequestReadonly) GetSealingHash() []byte {
+	return bytes.Clone((*ConfirmArchiveChapterRequest)(r).GetSealingHash())
 }
 
 func (r *confirmArchiveChapterRequestReadonly) Mutate() *ConfirmArchiveChapterRequest {
@@ -9599,6 +9604,13 @@ type QueryProfileReader interface {
 	GetMaterializedRanges() int32
 	GetMaterializedItems() int32
 	GetRootIterator() IteratorProfileReader
+	GetServerDurationUs() int64
+	GetPrepareDurationUs() int64
+	GetExecuteDurationUs() int64
+	GetBarrierDurationUs() int64
+	GetDeliverDurationUs() int64
+	GetFirstRowDurationUs() int64
+	GetForwarded() bool
 	Mutate() *QueryProfile
 }
 
@@ -9634,6 +9646,34 @@ func (r *queryProfileReadonly) GetRootIterator() IteratorProfileReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *queryProfileReadonly) GetServerDurationUs() int64 {
+	return (*QueryProfile)(r).GetServerDurationUs()
+}
+
+func (r *queryProfileReadonly) GetPrepareDurationUs() int64 {
+	return (*QueryProfile)(r).GetPrepareDurationUs()
+}
+
+func (r *queryProfileReadonly) GetExecuteDurationUs() int64 {
+	return (*QueryProfile)(r).GetExecuteDurationUs()
+}
+
+func (r *queryProfileReadonly) GetBarrierDurationUs() int64 {
+	return (*QueryProfile)(r).GetBarrierDurationUs()
+}
+
+func (r *queryProfileReadonly) GetDeliverDurationUs() int64 {
+	return (*QueryProfile)(r).GetDeliverDurationUs()
+}
+
+func (r *queryProfileReadonly) GetFirstRowDurationUs() int64 {
+	return (*QueryProfile)(r).GetFirstRowDurationUs()
+}
+
+func (r *queryProfileReadonly) GetForwarded() bool {
+	return (*QueryProfile)(r).GetForwarded()
 }
 
 func (r *queryProfileReadonly) Mutate() *QueryProfile {

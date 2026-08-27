@@ -6,13 +6,19 @@ usage() {
 Usage: bash scripts/ai-pr-loop <pr-number-or-url> [--keep-worktree] [--push]
 
 Creates an isolated git worktree for the PR head, runs the base-pinned
-legitimacy triage, then (for KEEP) runs the bounded Codex review -> Claude
-fix -> validation -> re-review loop against the PR base branch.
+legitimacy triage, then (for KEEP) snapshots the blocking findings already
+recorded on the PR head and runs the bounded Codex review -> Claude fix ->
+validation -> re-review loop against the PR base branch. Every review pass
+must reconcile that known-finding ledger.
 
 By default the launcher never commits or pushes. With --push, fixes are
 committed locally, that exact clean commit is reviewed once more, and it
 is pushed only if the remote PR branch still equals the SHA observed at
 startup. The launcher never comments, resolves threads, closes, or merges.
+
+If the target branch has advanced beyond the PR's GitHub-reported base SHA,
+the launcher stops before triage with AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED
+(exit 3). Synchronize the PR with its target branch, then rerun the loop.
 EOF
 }
 
@@ -64,7 +70,7 @@ repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
-pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
+pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,isDraft,title,body,labels,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
 
 pr_number=$(jq -r '.number' <<<"$pr_json")
 pr_url=$(jq -r '.url' <<<"$pr_json")
@@ -76,6 +82,18 @@ head_ref=$(jq -r '.headRefName' <<<"$pr_json")
 head_sha=$(jq -r '.headRefOid' <<<"$pr_json")
 head_owner=$(jq -r '.headRepositoryOwner.login // empty' <<<"$pr_json")
 head_repo=$(jq -r '.headRepository.name // empty' <<<"$pr_json")
+pr_title=$(jq -r '.title // ""' <<<"$pr_json")
+pr_body=$(jq -r '.body // ""' <<<"$pr_json")
+
+# Bugfix intent is explicit metadata when available, with a conservative
+# fallback for the repository's established Jira/fix PR convention. Other
+# changes (docs, manifests, refactors, features) do not require reproduction.
+bugfix_intent=non-bugfix
+if jq -e '.labels[]?.name | ascii_downcase == "bugfix" or ascii_downcase == "bug-fix"' >/dev/null <<<"$pr_json" || \
+   [[ "$pr_title" == fix:* || "$pr_title" == Fix:* ]] || \
+   grep -Eiq '(^|[[:space:]])(fixes|fix|resolves)[[:space:]]+EN-[0-9]+' <<<"$pr_body"; then
+    bugfix_intent=bugfix
+fi
 
 if [[ "$state" != "OPEN" ]]; then
     echo "ai-pr-loop: PR #$pr_number is not open (state=$state)" >&2
@@ -96,19 +114,57 @@ if ! git remote get-url "$remote" >/dev/null 2>&1; then
     exit 1
 fi
 
-# Fetch exactly the GitHub-resolved base/head refs before creating worktrees.
+# Fetch the current target/head refs. GitHub's baseRefOid describes the PR
+# snapshot and may legitimately lag behind the current target branch.
 git fetch --no-tags "$remote" \
     "+refs/heads/$base_ref:refs/remotes/$remote/$base_ref" \
     "+refs/heads/$head_ref:refs/remotes/$remote/$head_ref"
 
-fetched_base=$(git rev-parse "refs/remotes/$remote/$base_ref")
+current_base=$(git rev-parse "refs/remotes/$remote/$base_ref")
 fetched_head=$(git rev-parse "refs/remotes/$remote/$head_ref")
-if [[ "$fetched_base" != "$base_sha" ]]; then
-    echo "ai-pr-loop: fetched base SHA does not match GitHub: got $fetched_base expected $base_sha" >&2
-    exit 1
-fi
 if [[ "$fetched_head" != "$head_sha" ]]; then
     echo "ai-pr-loop: fetched head SHA does not match GitHub: got $fetched_head expected $head_sha" >&2
+    exit 1
+fi
+
+# Keep the review target synchronized with the branch that will eventually
+# receive the PR. Reviewing against a historical base can miss semantic
+# conflicts introduced since the PR was opened. Fail closed, but report this as
+# an actionable synchronization state rather than a generic orchestration error.
+if [[ "$current_base" != "$base_sha" ]]; then
+    if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+        git fetch --no-tags "$remote" "$base_sha" >/dev/null 2>&1 || true
+    fi
+    if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+        echo "ai-pr-loop: GitHub-reported PR base commit is unavailable locally: $base_sha" >&2
+        exit 1
+    fi
+    base_is_ancestor=false
+    if git merge-base --is-ancestor "$base_sha" "$current_base"; then
+        base_is_ancestor=true
+    elif [[ "$(git rev-parse --is-shallow-repository)" == "true" ]]; then
+        # A shallow repository can contain both commits without their connecting
+        # history. Restore ancestry for the exact fetched target before treating
+        # a negative merge-base result as evidence of a rewrite or divergence.
+        if ! git fetch --no-tags --unshallow "$remote" "$current_base" >/dev/null 2>&1; then
+            echo "ai-pr-loop: could not deepen shallow history for target base classification" >&2
+            exit 1
+        fi
+        if git merge-base --is-ancestor "$base_sha" "$current_base"; then
+            base_is_ancestor=true
+        fi
+    fi
+    if [[ "$base_is_ancestor" == "true" ]]; then
+        printf 'ai-pr-loop: target branch %s advanced since this PR snapshot\n' "$base_ref" >&2
+        printf 'ai-pr-loop: PR base:      %s\n' "$base_sha" >&2
+        printf 'ai-pr-loop: current base: %s\n' "$current_base" >&2
+        echo "AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED"
+        exit 3
+    fi
+    echo "ai-pr-loop: target branch no longer descends from the GitHub-reported PR base" >&2
+    printf 'ai-pr-loop: PR base:      %s\n' "$base_sha" >&2
+    printf 'ai-pr-loop: current base: %s\n' "$current_base" >&2
+    echo "AI_PR_LOOP_RESULT: ERROR (target base rewritten or diverged)"
     exit 1
 fi
 
@@ -131,12 +187,25 @@ cleanup() {
         rm -f -- "$review_loop_binary"
     fi
     if [[ "$keep_worktree" == false ]]; then
+        # The loop runs from inside the worktree that is about to be removed;
+        # leave it first so removal never operates on the current directory.
+        cd "$repo_root" || true
         if [[ -d "$worktree" ]] && git -C "$worktree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
             if [[ -z "$(git -C "$worktree" status --porcelain 2>/dev/null || true)" ]]; then
                 git worktree remove "$worktree" >/dev/null 2>&1 || true
             fi
         fi
-        rmdir "$worktree_run_dir" >/dev/null 2>&1 || true
+        # Validation isolates HOME, the Go caches, and TMPDIR inside the run
+        # directory, so a clean run cannot be reclaimed by an empty-directory
+        # rmdir. Remove the launcher-created tree recursively, but only once both
+        # owned worktrees are gone, so a preserved worktree — dirty fixes or a
+        # failed removal — is never destroyed with it.
+        if [[ ! -e "$worktree" && ! -e "$trusted_tool_worktree" ]] &&
+            [[ "$worktree_run_dir" == "$worktree_parent/pr-$pr_number."?????? ]]; then
+            rm -rf -- "$worktree_run_dir"
+        else
+            rmdir "$worktree_run_dir" >/dev/null 2>&1 || true
+        fi
     fi
     exit "$exit_status"
 }
@@ -191,37 +260,169 @@ case "$triage_decision" in
         ;;
 esac
 
-review_loop=(bash scripts/review-loop)
-review_cmd='bash scripts/ai-review-codex'
-fix_cmd='bash scripts/ai-fix-claude'
-validation_cmd='bash scripts/agent-check-pr'
-if [[ "$push_changes" == "true" ]]; then
-    if ! command -v nix >/dev/null 2>&1; then
-        echo "ai-pr-loop: required command not found in PATH: nix" >&2
+# A blocking finding already recorded on the PR must not be resolved by a
+# reviewer merely failing to rediscover it. Snapshot the ledger once, for the
+# exact verified head, with the base-pinned tool: the PR must not supply the
+# policy that decides which of its own recorded blockers still exist.
+known_findings_tool="$trusted_tool_worktree/scripts/ai-pr-known-findings"
+if [[ ! -f "$known_findings_tool" ]]; then
+    echo "ai-pr-loop: trusted base does not provide scripts/ai-pr-known-findings" >&2
+    exit 1
+fi
+known_findings="$worktree_run_dir/known-findings.json"
+set +e
+bash "$known_findings_tool" "$pr_number" --head "$head_sha" --output "$known_findings"
+known_findings_status=$?
+set -e
+if [[ $known_findings_status -ne 0 ]]; then
+    echo "AI_PR_LOOP_RESULT: ERROR (known findings exit $known_findings_status)"
+    exit 1
+fi
+if ! jq -e --argjson pr "$pr_number" --arg head "$head_sha" '
+  .version == 1 and
+  .pr_number == $pr and
+  .head == $head and
+  (.findings | type == "array") and
+  ([.findings[].id] | length == (unique | length)) and
+  all(.findings[];
+    (.id | type == "string") and
+    (.kind == "inline-review-comment" or .kind == "review-body" or .kind == "review-body-finding") and
+    (.source_review_id | type == "number") and
+    (.source_id | type == "number") and
+    (.url | type == "string") and
+    (.author | type == "string") and
+    (.path | type == "string") and
+    ((.line | type) == "null" or (.line | type) == "number") and
+    (.body | type == "string" and length > 0) and
+    (if .kind == "inline-review-comment" then
+       .id == ("github-review-comment-" + (.source_id | tostring))
+     elif .kind == "review-body" then
+       .id == ("github-review-" + (.source_id | tostring)) and
+       .source_review_id == .source_id and
+       .path == "" and .line == null
+     else
+       (.id as $id | .source_id as $source_id | $id | test("^github-review-" + ($source_id | tostring) + "-finding-[1-9][0-9]*$")) and
+       .source_review_id == .source_id and
+       .path == "" and .line == null and
+       (.body | test("^\\[P[0-3]\\]\\[blocking\\]"))
+     end)
+  )
+' "$known_findings" >/dev/null; then
+    echo "ai-pr-loop: known-findings ledger does not describe the verified PR target" >&2
+    printf 'ai-pr-loop: expected pr %s head %s\n' "$pr_number" "$head_sha" >&2
+    echo "AI_PR_LOOP_RESULT: ERROR (known findings target mismatch)"
+    exit 1
+fi
+printf '==> ai-pr-loop: %s known blocking GitHub finding(s)\n' "$(jq '.findings | length' "$known_findings")"
+printf '    known findings: %s\n' "$known_findings"
+# The same immutable snapshot is bound to every review pass, including the
+# guarded candidate-commit review, so no pass can silently drop a known blocker.
+export AI_REVIEW_KNOWN_FINDINGS="$known_findings"
+export AI_REVIEW_KNOWN_FINDINGS_PR="$pr_number"
+export AI_REVIEW_KNOWN_FINDINGS_HEAD="$head_sha"
+known_findings_digest=$(git hash-object -- "$known_findings")
+
+if ! command -v nix >/dev/null 2>&1; then
+    echo "ai-pr-loop: required command not found in PATH: nix" >&2
+    exit 1
+fi
+
+# READY_FOR_HUMAN_REVIEW is itself a policy decision, even without publication.
+# Build its orchestrator from the verified base and use the base-pinned reviewer
+# so a PR cannot bypass reconciliation by replacing either entry point.
+review_loop_binary="$worktree_run_dir/review-loop"
+for trusted_tool in ai-review-codex ai-review-known-findings; do
+    trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
+    if [[ ! -x "$trusted_tool_path" ]]; then
+        echo "ai-pr-loop: trusted base does not provide executable scripts/$trusted_tool" >&2
         exit 1
     fi
-
-    # A PR must not supply the policy engine, provider adapters, or validator
-    # that authorize its own publication. Build the orchestrator from the exact
-    # verified base commit and invoke its tools from that immutable worktree.
-    review_loop_binary="$worktree_run_dir/review-loop"
-    for trusted_tool in ai-review-codex ai-fix-claude agent-check-pr; do
+done
+nix develop "path:$trusted_tool_worktree" --command \
+    env -u GOROOT go -C "$trusted_tool_worktree" build \
+    -o "$review_loop_binary" ./scripts/reviewloop
+review_loop=("$review_loop_binary")
+printf -v review_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-review-known-findings"
+fix_cmd='bash scripts/ai-fix-claude'
+# review-loop executes the validation command through `bash -lc`, and the run
+# directory derives from the repository location, which may contain whitespace or
+# quoting characters such as an apostrophe. Quote every interpolated path so the
+# recipe reaches the validator intact.
+printf -v quoted_run_dir %q "$worktree_run_dir"
+printf -v quoted_run_id %q "$(basename "$worktree_run_dir")"
+printf -v quoted_home %q "$worktree_run_dir/home"
+printf -v quoted_go_cache %q "$worktree_run_dir/go-cache"
+printf -v quoted_go_mod_cache %q "$worktree_run_dir/go-mod-cache"
+printf -v quoted_go_path %q "$worktree_run_dir/go-path"
+printf -v quoted_tmp_dir %q "$worktree_run_dir/tmp"
+printf -v quoted_cache_home %q "$worktree_run_dir/cache"
+printf -v quoted_golangci_cache %q "$worktree_run_dir/cache/golangci-lint"
+printf -v quoted_validation_tool %q "$trusted_tool_worktree/scripts/agent-check-pr"
+printf -v quoted_agent_just %q "$trusted_tool_worktree/scripts/agent-just"
+printf -v normalization_program \
+    'mkdir -p %s %s %s %s %s %s && env HOME=%s GOCACHE=%s GOMODCACHE=%s GOPATH=%s TMPDIR=%s XDG_CACHE_HOME=%s GOLANGCI_LINT_CACHE=%s VALIDATION_RUN_ID=%s VALIDATION_RUN_DIR=%s bash %s pre-commit' \
+    "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_golangci_cache" \
+    "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_cache_home" \
+    "$quoted_golangci_cache" "$quoted_run_id" "$quoted_run_dir" "$quoted_agent_just"
+printf -v normalization_cmd 'env -u GOROOT nix develop %q --command bash -c %q' \
+    "path:$trusted_tool_worktree" "$normalization_program"
+validation_cmd="mkdir -p $quoted_home $quoted_go_cache $quoted_go_mod_cache $quoted_go_path $quoted_tmp_dir $quoted_golangci_cache && env HOME=$quoted_home GOCACHE=$quoted_go_cache GOMODCACHE=$quoted_go_mod_cache GOPATH=$quoted_go_path TMPDIR=$quoted_tmp_dir XDG_CACHE_HOME=$quoted_cache_home GOLANGCI_LINT_CACHE=$quoted_golangci_cache VALIDATION_RUN_ID=$quoted_run_id VALIDATION_RUN_DIR=$quoted_run_dir bash $quoted_validation_tool"
+if [[ "$push_changes" == "true" ]]; then
+    # Publication additionally base-pins the mutating fixer and validator.
+    for trusted_tool in ai-fix-claude agent-check-pr agent-just; do
         trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
         if [[ ! -x "$trusted_tool_path" ]]; then
             echo "ai-pr-loop: trusted base does not provide executable scripts/$trusted_tool" >&2
             exit 1
         fi
     done
-    nix develop "path:$trusted_tool_worktree" --command \
-        env -u GOROOT go -C "$trusted_tool_worktree" build \
-        -o "$review_loop_binary" ./scripts/reviewloop
-    review_loop=("$review_loop_binary")
-    printf -v review_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-review-codex"
     printf -v fix_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-fix-claude"
+    # The nested `bash -c` program is shell input too, so it must be assembled
+    # from the same shell-safe values rather than from literal single quotes.
+    printf -v nix_validation_program \
+        'mkdir -p %s %s %s %s %s %s && env LEDGER_AGENT_CHECK_IN_NIX=1 HOME=%s GOCACHE=%s GOMODCACHE=%s GOPATH=%s TMPDIR=%s XDG_CACHE_HOME=%s GOLANGCI_LINT_CACHE=%s VALIDATION_RUN_ID=%s VALIDATION_RUN_DIR=%s bash %s' \
+        "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_golangci_cache" \
+        "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_cache_home" \
+        "$quoted_golangci_cache" "$quoted_run_id" "$quoted_run_dir" "$quoted_validation_tool"
     printf -v validation_cmd \
-        'env -u GOROOT nix develop %q --command env LEDGER_AGENT_CHECK_IN_NIX=1 bash %q' \
+        'env -u GOROOT nix develop %q --command bash -c %q' \
         "path:$trusted_tool_worktree" \
-        "$trusted_tool_worktree/scripts/agent-check-pr"
+        "$nix_validation_program"
+fi
+
+if [[ "$bugfix_intent" == bugfix ]]; then
+    evidence_file=$(mktemp)
+    printf '%s\n' "$pr_body" >"$evidence_file"
+    if [[ "$push_changes" == true && -x "$trusted_tool_worktree/scripts/ai-bugfix-gate" ]]; then
+        bash "$trusted_tool_worktree/scripts/ai-bugfix-gate" evidence "$evidence_file" bugfix
+    elif [[ "$push_changes" == true ]]; then
+        # Bootstrap for bases predating ai-bugfix-gate: keep the fail-closed
+        # evidence contract inline until the trusted executable exists. This
+        # validates data only; no candidate-controlled command is executed.
+        grep -Eq '^DISCOVERY:[[:space:]]+(DIRECT_FIX|PARTIAL_FIX|RELATED_BUT_DIFFERENT|STALE_OR_INVALID|ALREADY_FIXED|NO_EXISTING_WORK)\b' "$evidence_file" || {
+            rm -f -- "$evidence_file"
+            echo "ai-pr-loop: BUGFIX_EVIDENCE=FAIL (discovery classification missing)" >&2
+            exit 1
+        }
+        grep -Eq '^BEFORE_FIX:[[:space:]]+(BUG_REPRODUCED|REPRODUCTION_BLOCKED|ALREADY_FIXED)\b' "$evidence_file" || {
+            rm -f -- "$evidence_file"
+            echo "ai-pr-loop: BUGFIX_EVIDENCE=FAIL (BEFORE_FIX missing)" >&2
+            exit 1
+        }
+        grep -Eq '^AFTER_FIX:[[:space:]]+PASS\b' "$evidence_file" || {
+            rm -f -- "$evidence_file"
+            echo "ai-pr-loop: BUGFIX_EVIDENCE=FAIL (AFTER_FIX missing)" >&2
+            exit 1
+        }
+        echo 'BUGFIX_EVIDENCE=PASS (bootstrap inline gate)'
+    elif [[ "$push_changes" == false && -x "$repo_root/scripts/ai-bugfix-gate" ]]; then
+        bash "$repo_root/scripts/ai-bugfix-gate" evidence "$evidence_file" bugfix
+    else
+        rm -f -- "$evidence_file"
+        echo "ai-pr-loop: bugfix evidence gate is unavailable; refusing readiness" >&2
+        exit 1
+    fi
+    rm -f -- "$evidence_file"
 fi
 
 printf '==> ai-pr-loop: PR #%s\n' "$pr_number"
@@ -253,10 +454,50 @@ run_commit_review() {
         --validation-cmd "$validation_cmd"
 }
 
+# Reviewer and fixer agents run with the ledger bound to every pass. Neither may
+# rewrite it, so a run whose ledger moved cannot be reported as reviewed.
+verify_known_findings_ledger() {
+    local current_digest
+    current_digest=$(git hash-object -- "$known_findings")
+    if [[ "$current_digest" != "$known_findings_digest" ]]; then
+        echo "ai-pr-loop: known-findings ledger changed while agents were running" >&2
+
+        return 1
+    fi
+}
+
+verify_remote_pr_head() {
+    local current_pr_json
+    local current_pr_head
+    if ! current_pr_json=$(gh pr view "$pr_number" --repo "$repo" --json headRefOid); then
+        echo "ai-pr-loop: could not re-read the PR head after review" >&2
+        return 1
+    fi
+    if ! current_pr_head=$(jq -er '.headRefOid | select(type == "string" and length > 0)' <<<"$current_pr_json"); then
+        echo "ai-pr-loop: re-read PR metadata does not contain a valid head" >&2
+        return 1
+    fi
+    if [[ "$current_pr_head" != "$head_sha" ]]; then
+        printf 'ai-pr-loop: PR head moved during review: expected %s got %s\n' "$head_sha" "$current_pr_head" >&2
+        return 1
+    fi
+}
+
 set +e
 run_full_loop
 loop_status=$?
 set -e
+
+if ! verify_known_findings_ledger; then
+    echo "AI_PR_LOOP_RESULT: ERROR (known findings ledger modified)"
+    keep_worktree=true
+    exit 1
+fi
+if ! verify_remote_pr_head; then
+    echo "AI_PR_LOOP_RESULT: ERROR (PR head moved during review)"
+    keep_worktree=true
+    exit 1
+fi
 
 echo
 case "$loop_status" in
@@ -289,21 +530,64 @@ if [[ -z "$(git status --porcelain)" ]]; then
     exit 0
 fi
 
+# Normalize deterministic changes before creating the candidate SHA.
+echo "==> ai-pr-loop: pre-commit normalization"
+bash -c "$normalization_cmd"
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "PRECOMMIT_NORMALIZATION: CHANGES"
+else
+    echo "PRECOMMIT_NORMALIZATION: NO_CHANGES"
+    echo "AI_PR_LOOP_PUSH_RESULT: NO_CHANGES"
+    exit 0
+fi
+
 git add -A
 if git diff --cached --quiet; then
     echo "ai-pr-loop: worktree reported changes but nothing is staged" >&2
     keep_worktree=true
     exit 1
 fi
+git diff --cached --check
 
 git commit -m "fix: address AI review findings"
 candidate_sha=$(git rev-parse HEAD)
 printf '==> ai-pr-loop: candidate commit %s\n' "$candidate_sha"
 
+normalization_pass=1
+while [[ "$normalization_pass" -le 3 ]]; do
+    bash -c "$normalization_cmd"
+    if [[ -z "$(git status --porcelain)" ]]; then
+        echo "PRECOMMIT_FIXPOINT: PASS"
+        break
+    fi
+    echo "PRECOMMIT_NORMALIZATION: CHANGES_COMMITTED (pass $normalization_pass)"
+    git add -A
+    git diff --cached --check
+    git commit -m "chore: normalize candidate"
+    candidate_sha=$(git rev-parse HEAD)
+    normalization_pass=$((normalization_pass + 1))
+done
+# Always perform a final read of the trusted recipe after the last allowed
+# normalization commit. This proves the reviewed SHA is actually converged.
+bash -c "$normalization_cmd"
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "PRECOMMIT_NON_DETERMINISTIC: refusing candidate publication" >&2
+    keep_worktree=true
+    exit 1
+fi
+echo "PRECOMMIT_FIXPOINT: PASS"
+
 set +e
 run_commit_review
 commit_review_status=$?
 set -e
+
+if ! verify_known_findings_ledger; then
+    echo "AI_PR_LOOP_PUSH_RESULT: REFUSED (known findings ledger modified)"
+    echo "Candidate worktree preserved for inspection: $worktree"
+    keep_worktree=true
+    exit 1
+fi
 
 if [[ "$commit_review_status" -ne 0 ]]; then
     echo "AI_PR_LOOP_PUSH_RESULT: REFUSED (candidate commit was not approved)"
@@ -314,6 +598,17 @@ fi
 
 if [[ -n "$(git status --porcelain)" ]]; then
     echo "ai-pr-loop: candidate review left the worktree dirty; refusing push" >&2
+    echo "Candidate worktree preserved for inspection: $worktree"
+    keep_worktree=true
+    exit 1
+fi
+
+    # Last-mile publication gate: use only the base-pinned recipe wrapper. The
+    # candidate worktree is merely its working directory; generated output is
+    # never reset or hidden.
+bash "$trusted_tool_worktree/scripts/agent-just" pre-commit
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "ai-pr-loop: pre-commit left the candidate worktree dirty; refusing push" >&2
     echo "Candidate worktree preserved for inspection: $worktree"
     keep_worktree=true
     exit 1

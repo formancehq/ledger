@@ -584,6 +584,11 @@ func (m *ConfirmArchiveChapterOrder) CloneVT() *ConfirmArchiveChapterOrder {
 	}
 	r := new(ConfirmArchiveChapterOrder)
 	r.ChapterId = m.ChapterId
+	if rhs := m.SealingHash; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.SealingHash = tmpBytes
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -805,6 +810,7 @@ func (m *MirrorLogEntry) CloneVT() *MirrorLogEntry {
 	}
 	r := new(MirrorLogEntry)
 	r.V2LogId = m.V2LogId
+	r.Date = m.Date.CloneVT()
 	if m.Data != nil {
 		r.Data = m.Data.(interface{ CloneVT() isMirrorLogEntry_Data }).CloneVT()
 	}
@@ -3247,6 +3253,9 @@ func (this *ConfirmArchiveChapterOrder) EqualVT(that *ConfirmArchiveChapterOrder
 	if this.ChapterId != that.ChapterId {
 		return false
 	}
+	if string(this.SealingHash) != string(that.SealingHash) {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -3531,6 +3540,9 @@ func (this *MirrorLogEntry) EqualVT(that *MirrorLogEntry) bool {
 		}
 	}
 	if this.V2LogId != that.V2LogId {
+		return false
+	}
+	if !this.Date.EqualVT(that.Date) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -7109,6 +7121,13 @@ func (m *ConfirmArchiveChapterOrder) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.SealingHash) > 0 {
+		i -= len(m.SealingHash)
+		copy(dAtA[i:], m.SealingHash)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SealingHash)))
+		i--
+		dAtA[i] = 0x12
+	}
 	if m.ChapterId != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ChapterId))
@@ -7657,6 +7676,16 @@ func (m *MirrorLogEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
+	if m.Date != nil {
+		size, err := m.Date.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
 	if m.V2LogId != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.V2LogId))
@@ -7681,7 +7710,7 @@ func (m *MirrorLogEntry_CreatedTransaction) MarshalToSizedBufferVT(dAtA []byte) 
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x1a
 	}
 	return len(dAtA) - i, nil
 }
@@ -7700,7 +7729,7 @@ func (m *MirrorLogEntry_SavedMetadata) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x22
 	}
 	return len(dAtA) - i, nil
 }
@@ -7719,7 +7748,7 @@ func (m *MirrorLogEntry_RevertedTransaction) MarshalToSizedBufferVT(dAtA []byte)
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x2a
 	}
 	return len(dAtA) - i, nil
 }
@@ -7738,7 +7767,7 @@ func (m *MirrorLogEntry_DeletedMetadata) MarshalToSizedBufferVT(dAtA []byte) (in
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2a
+		dAtA[i] = 0x32
 	}
 	return len(dAtA) - i, nil
 }
@@ -7757,7 +7786,7 @@ func (m *MirrorLogEntry_FillGap) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x32
+		dAtA[i] = 0x3a
 	}
 	return len(dAtA) - i, nil
 }
@@ -11805,6 +11834,10 @@ func (m *ConfirmArchiveChapterOrder) SizeVT() (n int) {
 	if m.ChapterId != 0 {
 		n += 9
 	}
+	l = len(m.SealingHash)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -11996,6 +12029,10 @@ func (m *MirrorLogEntry) SizeVT() (n int) {
 	_ = l
 	if m.V2LogId != 0 {
 		n += 9
+	}
+	if m.Date != nil {
+		l = m.Date.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if vtmsg, ok := m.Data.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
@@ -16063,6 +16100,40 @@ func (m *ConfirmArchiveChapterOrder) UnmarshalVT(dAtA []byte) error {
 			}
 			m.ChapterId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SealingHash", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SealingHash = append(m.SealingHash[:0], dAtA[iNdEx:postIndex]...)
+			if m.SealingHash == nil {
+				m.SealingHash = []byte{}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -17206,6 +17277,42 @@ func (m *MirrorLogEntry) UnmarshalVT(dAtA []byte) error {
 			iNdEx += 8
 		case 2:
 			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Date", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Date == nil {
+				m.Date = &commonpb.Timestamp{}
+			}
+			if err := m.Date.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreatedTransaction", wireType)
 			}
 			var msglen int
@@ -17245,7 +17352,7 @@ func (m *MirrorLogEntry) UnmarshalVT(dAtA []byte) error {
 				m.Data = &MirrorLogEntry_CreatedTransaction{CreatedTransaction: v}
 			}
 			iNdEx = postIndex
-		case 3:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SavedMetadata", wireType)
 			}
@@ -17286,7 +17393,7 @@ func (m *MirrorLogEntry) UnmarshalVT(dAtA []byte) error {
 				m.Data = &MirrorLogEntry_SavedMetadata{SavedMetadata: v}
 			}
 			iNdEx = postIndex
-		case 4:
+		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RevertedTransaction", wireType)
 			}
@@ -17327,7 +17434,7 @@ func (m *MirrorLogEntry) UnmarshalVT(dAtA []byte) error {
 				m.Data = &MirrorLogEntry_RevertedTransaction{RevertedTransaction: v}
 			}
 			iNdEx = postIndex
-		case 5:
+		case 6:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DeletedMetadata", wireType)
 			}
@@ -17368,7 +17475,7 @@ func (m *MirrorLogEntry) UnmarshalVT(dAtA []byte) error {
 				m.Data = &MirrorLogEntry_DeletedMetadata{DeletedMetadata: v}
 			}
 			iNdEx = postIndex
-		case 6:
+		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field FillGap", wireType)
 			}

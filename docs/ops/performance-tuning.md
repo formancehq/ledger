@@ -267,17 +267,19 @@ Each attribute type has its own filter with independent `expected-keys` and `fp-
 | Numscript versions | 0 | — | No |
 | Numscript contents | 0 | — | No |
 | Ledger metadata | 0 | — | No |
+| Prepared queries | 0 | — | No |
+| Index registry | 0 | — | No |
 
 Bloom filters are disabled by default. Enable only the attribute types that are expected to avoid enough missing-key Pebble reads to justify the memory cost.
 
 **Tuning guidelines:**
 
-- Set `expected-keys` to the number of unique keys you expect for that attribute type. Over-estimating wastes memory; under-estimating increases false positives.
+- Set `expected-keys` from the live keys loaded during a rebuild plus distinct keys expected before the next rebuild, or define a monitored resize/rebuild policy. Deleted keys leave their bits set until a rebuild, so churn also consumes the filter's effective capacity. Over-estimating wastes memory; under-estimating increases false positives.
 - A lower `fp-rate` reduces false positives but increases memory usage. The default 1% is a good starting point.
 - Monitor `bloom.negatives` (Pebble Gets avoided) and `bloom.lookups` (total checks). A high negatives/lookups ratio means the filter is effective.
-- Changing any bloom configuration triggers a full repopulation from Pebble on next startup.
+- Changing Bloom configuration purges the old blocks and triggers a full asynchronous repopulation from Pebble. While `bloom.ready` is `0`, preloads safely bypass the optimization. Persisted blocks make an unchanged restart cheaper than a full scan.
 
-See [CLI Reference](./cli.md#server-bloom-filter-flags) for all flags.
+See [Deployment Profiles and Sizing](./deployment-profiles.md#enable-application-bloom-filters-only-with-a-cardinality-plan) for the per-workload decision matrix and memory examples, and [CLI Reference](./cli.md#server-bloom-filter-flags) for all flags.
 
 ### 5.5 Hash Algorithm
 

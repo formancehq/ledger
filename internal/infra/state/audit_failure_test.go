@@ -420,6 +420,12 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"chapterId": "6"},
 		},
 		{
+			name:        "ChapterArchiveIdentityMismatch",
+			err:         &domain.ErrChapterArchiveIdentityMismatch{ChapterID: 7, Expected: []byte{0xde, 0xad}, Got: []byte{0xbe, 0xef}},
+			wantReason:  domain.ErrReasonChapterArchiveIdentityMismatch,
+			wantContext: map[string]string{"chapterId": "7", "expectedSealingHash": "dead", "gotSealingHash": "beef"},
+		},
+		{
 			name:        "MirrorV2LogIDGap",
 			err:         &domain.ErrMirrorV2LogIDGap{Name: "mirror-ledger", Got: 12, Expected: 9},
 			wantReason:  domain.ErrReasonMirrorV2LogIDGap,

@@ -252,7 +252,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd.Flags().Bool("disable-audit-index", false, "Disable the audit secondary index worker")
 
 	// Query profiling
-	runCmd.Flags().Duration("query-profile-threshold", 10*time.Millisecond, "Log and emit OTel attributes for queries exceeding this duration (0 to disable)")
+	runCmd.Flags().Duration("query-profile-threshold", 10*time.Millisecond, "Log and emit OTel attributes for reads whose total server-side handling (excluding the caller-requested read barrier) exceeds this duration; 0 disables")
 
 	// gRPC slow threshold
 	runCmd.Flags().Duration("grpc-slow-threshold", time.Second, "Duration above which a gRPC call is logged as slow")

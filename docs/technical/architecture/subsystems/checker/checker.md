@@ -212,6 +212,13 @@ Adding a new persisted projection requires adding a new pass *and* a new error t
 
 A short list, because it matters for the threat model:
 
+- **Transaction `inserted_at` / `updated_at` in ledger-log payloads**: the
+  transaction pass verifies `TransactionState`, which deliberately does not
+  contain these read-model fields. For mirror ingests the source date is
+  hash-bound in `MirrorLogEntry`, but no checker pass currently re-derives the
+  two persisted `Transaction` fields from that order and compares them with the
+  ledger log. This is an existing primary-store projection gap; EN-1854 changes
+  the authoritative source value without claiming to close that checker gap.
 - **`IndexVersionState`** (per-replica): legitimately diverges during a rewrite — see [indexer / indexes.md](../indexer/indexes.md).
 - **`Index.BuildStatus`**: informational and per-replica.
 - **Bloom filters**: a probabilistic cache; correctness is a function of the underlying attribute store, which the checker *does* verify.

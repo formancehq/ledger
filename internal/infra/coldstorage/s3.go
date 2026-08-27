@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
@@ -57,13 +57,13 @@ func NewS3Client(region, endpoint, accessKeyID, secretAccessKey string) (*s3.Cli
 // S3Storage implements ColdStorage using Amazon S3 (or S3-compatible stores like MinIO).
 type S3Storage struct {
 	client   *s3.Client
-	uploader *manager.Uploader
+	uploader *transfermanager.Client
 	bucket   string
 }
 
 // NewS3Storage creates a new S3Storage backed by the given S3 client and bucket.
 func NewS3Storage(client *s3.Client, bucket string) *S3Storage {
-	return &S3Storage{client: client, uploader: manager.NewUploader(client), bucket: bucket}
+	return &S3Storage{client: client, uploader: transfermanager.New(client), bucket: bucket}
 }
 
 func (s *S3Storage) archiveKey(bucketID string, chapterID uint64) string {
@@ -79,7 +79,7 @@ func (s *S3Storage) Archive(ctx context.Context, bucketID string, chapterID uint
 
 	// Multipart upload: streams the archive in bounded parts, lifting the 5 GB
 	// single-PutObject limit so multi-GB chapter SSTs upload without buffering.
-	_, err := s.uploader.Upload(ctx, &s3.PutObjectInput{
+	_, err := s.uploader.UploadObject(ctx, &transfermanager.UploadObjectInput{
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(key),
 		Body:        data,

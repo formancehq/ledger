@@ -1078,6 +1078,7 @@ func NewArchiveChapterOrderListReader(s []*ArchiveChapterOrder) ArchiveChapterOr
 // Call Mutate() to obtain a mutable clone.
 type ConfirmArchiveChapterOrderReader interface {
 	GetChapterId() uint64
+	GetSealingHash() []byte
 	Mutate() *ConfirmArchiveChapterOrder
 }
 
@@ -1085,6 +1086,10 @@ type confirmArchiveChapterOrderReadonly ConfirmArchiveChapterOrder
 
 func (r *confirmArchiveChapterOrderReadonly) GetChapterId() uint64 {
 	return (*ConfirmArchiveChapterOrder)(r).GetChapterId()
+}
+
+func (r *confirmArchiveChapterOrderReadonly) GetSealingHash() []byte {
+	return bytes.Clone((*ConfirmArchiveChapterOrder)(r).GetSealingHash())
 }
 
 func (r *confirmArchiveChapterOrderReadonly) Mutate() *ConfirmArchiveChapterOrder {
@@ -1950,6 +1955,7 @@ func NewMirrorIngestOrderListReader(s []*MirrorIngestOrder) MirrorIngestOrderLis
 // Call Mutate() to obtain a mutable clone.
 type MirrorLogEntryReader interface {
 	GetV2LogId() uint64
+	GetDate() commonpb.TimestampReader
 	GetData() isMirrorLogEntry_Data
 	Mutate() *MirrorLogEntry
 }
@@ -1958,6 +1964,14 @@ type mirrorLogEntryReadonly MirrorLogEntry
 
 func (r *mirrorLogEntryReadonly) GetV2LogId() uint64 {
 	return (*MirrorLogEntry)(r).GetV2LogId()
+}
+
+func (r *mirrorLogEntryReadonly) GetDate() commonpb.TimestampReader {
+	v := (*MirrorLogEntry)(r).GetDate()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *mirrorLogEntryReadonly) GetData() isMirrorLogEntry_Data {

@@ -886,6 +886,11 @@ func (m *ConfirmArchiveChapterRequest) CloneVT() *ConfirmArchiveChapterRequest {
 	}
 	r := new(ConfirmArchiveChapterRequest)
 	r.ChapterId = m.ChapterId
+	if rhs := m.SealingHash; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.SealingHash = tmpBytes
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2962,6 +2967,13 @@ func (m *QueryProfile) CloneVT() *QueryProfile {
 	r.MaterializedRanges = m.MaterializedRanges
 	r.MaterializedItems = m.MaterializedItems
 	r.RootIterator = m.RootIterator.CloneVT()
+	r.ServerDurationUs = m.ServerDurationUs
+	r.PrepareDurationUs = m.PrepareDurationUs
+	r.ExecuteDurationUs = m.ExecuteDurationUs
+	r.BarrierDurationUs = m.BarrierDurationUs
+	r.DeliverDurationUs = m.DeliverDurationUs
+	r.FirstRowDurationUs = m.FirstRowDurationUs
+	r.Forwarded = m.Forwarded
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4765,6 +4777,9 @@ func (this *ConfirmArchiveChapterRequest) EqualVT(that *ConfirmArchiveChapterReq
 		return false
 	}
 	if this.ChapterId != that.ChapterId {
+		return false
+	}
+	if string(this.SealingHash) != string(that.SealingHash) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -7838,6 +7853,27 @@ func (this *QueryProfile) EqualVT(that *QueryProfile) bool {
 	if !this.RootIterator.EqualVT(that.RootIterator) {
 		return false
 	}
+	if this.ServerDurationUs != that.ServerDurationUs {
+		return false
+	}
+	if this.PrepareDurationUs != that.PrepareDurationUs {
+		return false
+	}
+	if this.ExecuteDurationUs != that.ExecuteDurationUs {
+		return false
+	}
+	if this.BarrierDurationUs != that.BarrierDurationUs {
+		return false
+	}
+	if this.DeliverDurationUs != that.DeliverDurationUs {
+		return false
+	}
+	if this.FirstRowDurationUs != that.FirstRowDurationUs {
+		return false
+	}
+	if this.Forwarded != that.Forwarded {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -10285,6 +10321,13 @@ func (m *ConfirmArchiveChapterRequest) MarshalToSizedBufferVT(dAtA []byte) (int,
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.SealingHash) > 0 {
+		i -= len(m.SealingHash)
+		copy(dAtA[i:], m.SealingHash)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SealingHash)))
+		i--
+		dAtA[i] = 0x12
 	}
 	if m.ChapterId != 0 {
 		i -= 8
@@ -15690,6 +15733,46 @@ func (m *QueryProfile) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Forwarded {
+		i--
+		if m.Forwarded {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x70
+	}
+	if m.FirstRowDurationUs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FirstRowDurationUs))
+		i--
+		dAtA[i] = 0x68
+	}
+	if m.DeliverDurationUs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DeliverDurationUs))
+		i--
+		dAtA[i] = 0x60
+	}
+	if m.BarrierDurationUs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BarrierDurationUs))
+		i--
+		dAtA[i] = 0x58
+	}
+	if m.ExecuteDurationUs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ExecuteDurationUs))
+		i--
+		dAtA[i] = 0x50
+	}
+	if m.PrepareDurationUs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.PrepareDurationUs))
+		i--
+		dAtA[i] = 0x48
+	}
+	if m.ServerDurationUs != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ServerDurationUs))
+		i--
+		dAtA[i] = 0x40
+	}
 	if m.RootIterator != nil {
 		size, err := m.RootIterator.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
@@ -17234,6 +17317,10 @@ func (m *ConfirmArchiveChapterRequest) SizeVT() (n int) {
 	_ = l
 	if m.ChapterId != 0 {
 		n += 9
+	}
+	l = len(m.SealingHash)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -19402,6 +19489,27 @@ func (m *QueryProfile) SizeVT() (n int) {
 	if m.RootIterator != nil {
 		l = m.RootIterator.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.ServerDurationUs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ServerDurationUs))
+	}
+	if m.PrepareDurationUs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.PrepareDurationUs))
+	}
+	if m.ExecuteDurationUs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ExecuteDurationUs))
+	}
+	if m.BarrierDurationUs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.BarrierDurationUs))
+	}
+	if m.DeliverDurationUs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.DeliverDurationUs))
+	}
+	if m.FirstRowDurationUs != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.FirstRowDurationUs))
+	}
+	if m.Forwarded {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -24062,6 +24170,40 @@ func (m *ConfirmArchiveChapterRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.ChapterId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SealingHash", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SealingHash = append(m.SealingHash[:0], dAtA[iNdEx:postIndex]...)
+			if m.SealingHash == nil {
+				m.SealingHash = []byte{}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -36766,6 +36908,140 @@ func (m *QueryProfile) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ServerDurationUs", wireType)
+			}
+			m.ServerDurationUs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ServerDurationUs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PrepareDurationUs", wireType)
+			}
+			m.PrepareDurationUs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PrepareDurationUs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 10:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ExecuteDurationUs", wireType)
+			}
+			m.ExecuteDurationUs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ExecuteDurationUs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 11:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BarrierDurationUs", wireType)
+			}
+			m.BarrierDurationUs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.BarrierDurationUs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 12:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DeliverDurationUs", wireType)
+			}
+			m.DeliverDurationUs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DeliverDurationUs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 13:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FirstRowDurationUs", wireType)
+			}
+			m.FirstRowDurationUs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.FirstRowDurationUs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 14:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Forwarded", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Forwarded = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

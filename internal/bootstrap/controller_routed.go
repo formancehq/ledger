@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -71,12 +72,29 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 	case grpcadp.ConsistencyLeader:
 		span.SetAttributes(attribute.String("route", "leader"))
 
+		// Forwarded: the leader runs its own ReadIndex barrier (x-consistency is
+		// not propagated, so it defaults to linearizable there) and its own
+		// execution. Neither is visible to this profile — the whole remote cost
+		// arrives as row-production time inside the local execute phase, and this
+		// node's barrier_duration_us stays 0. Flag it so a reader does not take
+		// that 0 to mean "no barrier was needed" (EN-1859).
+		query.ProfileFromContext(ctx).MarkForwarded()
+
 		c, err := b.getLeaderCtrl()
 
 		return c, nil, err
 	}
 
+	// The ReadIndex quorum round-trip plus the local WaitForApplied catch-up is
+	// consensus latency incurred to honour the caller's linearizable-read
+	// request, not query work. Charge it to the profile's barrier phase so it is
+	// visible but excluded from the server-cost total (EN-1859). Charged whether
+	// or not the barrier succeeds — a failed attempt is still time the caller
+	// waited (see the fallback branch below).
+	barrierStart := time.Now()
 	barrier, err := b.ReadIndexAndWait(ctx)
+	query.ProfileFromContext(ctx).AddBarrierWait(time.Since(barrierStart))
+
 	if err == nil {
 		span.SetAttributes(attribute.String("route", "local_linearizable"))
 
@@ -89,6 +107,17 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 		// after election), we must NOT serve a stale local read without a barrier.
 		if !b.IsLeader() {
 			span.SetAttributes(attribute.String("route", "leader_fallback"))
+
+			// Same as the explicit-leader branch: the read leaves this node, so
+			// the phase breakdown describes the local hop only. Unlike that
+			// branch, the barrier already recorded above is KEPT: the caller
+			// really did wait for a quorum attempt that then failed. Dropping it
+			// would not delete the time — readCtrl runs inside the caller's
+			// EnterExecute/LeaveExecute bracket, so an uncharged wait stays in
+			// execute_duration_us and from there in the server total. Hence
+			// forwarded=true with a non-zero barrier_duration_us is a valid,
+			// documented combination.
+			query.ProfileFromContext(ctx).MarkForwarded()
 
 			c, leaderErr := b.getLeaderCtrl()
 

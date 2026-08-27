@@ -1,6 +1,6 @@
 # Read Path
 
-The CQRS read side (`internal/application/ctrl` reads, `internal/query`, `internal/storage/readstore`). Every read goes through a `ReadIndex` quorum check (linearizability barrier), then iterates over the inverted index in the read store, enriching candidate entity IDs with volumes and metadata from the main store.
+The CQRS read side (`internal/application/ctrl` reads, `internal/query`, `internal/storage/readstore`). Default live reads go through a `ReadIndex` quorum check (linearizability barrier). Indexed entity-list reads then iterate over the inverted index in the read store, enriching candidate entity IDs with volumes and metadata from the main store. Point reads and main-store-only queries use the same barrier but their own main-store read path; they do not iterate the inverted index. Explicit stale and checkpoint reads have the exceptions documented in the pipeline pages.
 
 ## Documents
 
@@ -13,9 +13,10 @@ The CQRS read side (`internal/application/ctrl` reads, `internal/query`, `intern
 | [query-checkpoints.md](query-checkpoints.md) | Point-in-time snapshots of main store and read index for historical queries. |
 | [typed-metadata.md](typed-metadata.md) | Typed metadata values, per-ledger schema, and hybrid conversion strategy. |
 | [query-filter.md](query-filter.md) | Canonical HTTP QueryFilter surface: dual-format filter, parameter classification, textual/structured asymmetries, date coercion, AND-combination, audit text-only. |
+| [query-profile.md](query-profile.md) | Per-request read diagnostics: server-side phase breakdown (prepare/execute/barrier/deliver), why barrier and delivery are excluded from the server total, gRPC/HTTP parity, iterator tree. |
 
 ## Related
 
 - [Indexer](../indexer/) — populates the read store the query path consumes.
-- [Consensus](../consensus/) — `ReadIndex` quorum that gates every read.
+- [Consensus](../consensus/) — `ReadIndex` quorum that gates default live reads (with stale/checkpoint exceptions).
 - [FSM](../fsm/) — what the read path waits to catch up to via `min_log_sequence`.
