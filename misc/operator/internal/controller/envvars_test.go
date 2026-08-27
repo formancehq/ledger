@@ -1416,6 +1416,26 @@ func TestBuildEnvVars_LedgerctlConnection(t *testing.T) {
 			require.Equal(t, clusterSecretKey, authToken.ValueFrom.SecretKeyRef.Key)
 		})
 	}
+
+	t.Run("TLS cluster without configured CA", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalCluster()
+		ls.Spec.TLS = &ledgerv1alpha1.TLSConfig{}
+
+		envs := buildEnvVars(ls, tlsModeRequired, nil)
+
+		assertEnv(t, envs, "LEDGERCTL_SERVER",
+			"$(POD_NAME).ledger-test-headless.$(POD_NAMESPACE).svc.cluster.local:8888")
+		assertNoEnv(t, envs, "LEDGERCTL_INSECURE")
+		assertNoEnv(t, envs, "LEDGERCTL_TLS_CA_CERT")
+
+		authToken := findEnv(envs, "LEDGERCTL_AUTH_TOKEN")
+		require.NotNil(t, authToken)
+		require.NotNil(t, authToken.ValueFrom)
+		require.NotNil(t, authToken.ValueFrom.SecretKeyRef)
+		require.Equal(t, clusterSecretName(ls.Name), authToken.ValueFrom.SecretKeyRef.Name)
+		require.Equal(t, clusterSecretKey, authToken.ValueFrom.SecretKeyRef.Key)
+	})
 }
 
 func TestRaftPortFromBindAddr(t *testing.T) {
