@@ -50,7 +50,7 @@ jobs:
       SOURCE_REF: ${{ inputs.source_ref }}
     steps:
       - name: Checkout source ref
-        uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
+        uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9
         with:
           fetch-depth: 0
           dissociate: true
