@@ -113,6 +113,19 @@ func TestIgnoredRootContentMutationIsDetected(t *testing.T) {
 	require.Equal(t, "different ignored content\n", readTestFile(t, filepath.Join(fixture.root, "ignored-secret.txt")))
 }
 
+func TestIgnoredNestedRepositoryDirectoryIsSupported(t *testing.T) {
+	fixture := newWorktreeBindingFixture(t)
+	require.NoError(t, os.WriteFile(filepath.Join(fixture.root, ".git", "info", "exclude"), []byte("ignored-dir/\n"), 0o644))
+	nestedRepository := filepath.Join(fixture.root, "ignored-dir")
+	require.NoError(t, os.MkdirAll(nestedRepository, 0o755))
+	runGit(t, nestedRepository, "init")
+	require.Empty(t, runGitOutput(t, fixture.root, "status", "--porcelain=v1", "--untracked-files=all"))
+
+	output, err := fixture.run(t, 123, fixture.candidate, fixture.bindingFile, nil)
+	require.NoError(t, err, output)
+	require.Contains(t, output, "ROOT_UNCHANGED=PASS")
+}
+
 func TestGitMutationGuardRefusesRootCheckout(t *testing.T) {
 	fixture := newWorktreeBindingFixture(t)
 	branchBefore := strings.TrimSpace(runGitOutput(t, fixture.root, "rev-parse", "--abbrev-ref", "HEAD"))

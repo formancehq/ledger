@@ -378,7 +378,7 @@ func captureRootWorkspaceFingerprint(root string) (string, error) {
 		absolutePath := filepath.Join(root, filepath.FromSlash(path))
 		info, err := os.Lstat(absolutePath)
 		if err != nil {
-			return "", fmt.Errorf("reading ignored file metadata %s: %w", path, err)
+			return "", fmt.Errorf("reading ignored path metadata %s: %w", path, err)
 		}
 		writeHashField(hasher, rawPath)
 		writeHashField(hasher, []byte(info.Mode().String()))
@@ -396,8 +396,6 @@ func captureRootWorkspaceFingerprint(root string) (string, error) {
 			if err != nil {
 				return "", fmt.Errorf("reading ignored file %s: %w", path, err)
 			}
-		default:
-			return "", fmt.Errorf("unsupported ignored file type %s", path)
 		}
 		writeHashField(hasher, content)
 	}

@@ -78,7 +78,9 @@ agent's `pwd` self-check is defense in depth, not the authorization mechanism.
 
 Before the first subprocess, `review-loop` captures `ROOT_HEAD`, `ROOT_BRANCH`,
 the complete `ROOT_STATUS`, and a workspace-content fingerprint covering
-tracked, staged, untracked, and ignored files. It compares the same values
+tracked, staged, untracked, and ignored files reported by Git. Ignored nested
+repositories/worktrees are treated as separate roots rather than recursively
+hashed. It compares the same values
 immediately before and after every reviewer, fixer, and validator. The
 fingerprint catches content overwrites even when the porcelain status text is
 unchanged. Any
