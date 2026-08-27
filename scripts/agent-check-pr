@@ -30,6 +30,36 @@ if [[ -z "$base_sha" ]]; then
     echo "agent-check-pr: AI_REVIEW_BASE_SHA is required" >&2
     exit 1
 fi
+
+# AI validations must never reuse the user's golangci-lint cache.  The
+# launcher supplies VALIDATION_RUN_DIR and the per-run cache path; fail closed
+# when either is missing or escapes the run directory.  Direct developer runs
+# remain supported when no validation run is declared.
+if [[ -n "${VALIDATION_RUN_DIR:-}" ]]; then
+    [[ "$VALIDATION_RUN_DIR" = /* ]] || { echo "LINT_ISOLATION_GATE=FAIL (run dir is not absolute)" >&2; exit 1; }
+    run_root=$(cd "$VALIDATION_RUN_DIR" 2>/dev/null && pwd -P) || {
+        echo "LINT_ISOLATION_GATE=FAIL (invalid VALIDATION_RUN_DIR)" >&2
+        exit 1
+    }
+    lint_root=$(cd "${GOLANGCI_LINT_CACHE:-}" 2>/dev/null && pwd -P) || {
+        echo "LINT_ISOLATION_GATE=FAIL (GOLANGCI_LINT_CACHE is not configured)" >&2
+        exit 1
+    }
+    case "$lint_root/" in
+        "$run_root/"*) ;;
+        *) echo "LINT_ISOLATION_GATE=FAIL (cache escapes validation run)" >&2; exit 1 ;;
+    esac
+    for var in HOME GOCACHE GOMODCACHE GOPATH TMPDIR XDG_CACHE_HOME; do
+        value=${!var:-}
+        [[ -n "$value" && "$value" = /* ]] || { echo "LINT_ISOLATION_GATE=FAIL ($var is not isolated)" >&2; exit 1; }
+        resolved=$(cd "$value" 2>/dev/null && pwd -P) || { echo "LINT_ISOLATION_GATE=FAIL ($var is invalid)" >&2; exit 1; }
+        case "$resolved/" in
+            "$run_root/"*) ;;
+            *) echo "LINT_ISOLATION_GATE=FAIL ($var escapes validation run)" >&2; exit 1 ;;
+        esac
+    done
+    echo "LINT_ISOLATION_GATE=PASS ($lint_root)"
+fi
 if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
     echo "agent-check-pr: invalid review base commit: $base_sha" >&2
     exit 1
