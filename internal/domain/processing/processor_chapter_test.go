@@ -327,9 +327,6 @@ func TestProcessArchiveChapter_RejectsOutOfOrder(t *testing.T) {
 		"one chapter ahead of the prefix":   {target: 3, archivedThrough: 1, wantBlockingID: 2},
 		"several chapters ahead":            {target: 7, archivedThrough: 2, wantBlockingID: 3},
 		"nothing archived yet, skips first": {target: 2, archivedThrough: 0, wantBlockingID: 1},
-		// Re-archiving something inside the prefix is equally out of order: its
-		// data is already gone, so a purge here would delete a later chapter's.
-		"already inside the prefix": {target: 1, archivedThrough: 3, wantBlockingID: 4},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -347,7 +344,6 @@ func TestProcessArchiveChapter_RejectsOutOfOrder(t *testing.T) {
 			}
 
 			mockStore.EXPECT().GetArchivedThroughChapterID().Return(tc.archivedThrough)
-			// Ids inside the prefix are rejected before the lookup runs at all.
 			mockStore.EXPECT().GetChapterByID(tc.target).Return(target.AsReader(), true).AnyTimes()
 
 			payload, err := processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: tc.target}, &Context{Scope: mockStore})
@@ -359,6 +355,53 @@ func TestProcessArchiveChapter_RejectsOutOfOrder(t *testing.T) {
 			require.Equal(t, tc.target, outOfOrderErr.ChapterID)
 			require.Equal(t, tc.wantBlockingID, outOfOrderErr.BlockingChapterID,
 				"the rejection must name the chapter that has to be archived first")
+		})
+	}
+}
+
+// TestProcessArchiveChapter_RejectsAlreadyArchived covers the retry path: the
+// order names a chapter inside the archived prefix, so it has already been
+// carried out. The rejection must say so rather than name a blocking chapter —
+// every chapter outside the prefix is newer, and archiving one can never make an
+// older, already-archived chapter archivable again, so a client following the
+// blocker would walk forward forever.
+func TestProcessArchiveChapter_RejectsAlreadyArchived(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		target          uint64
+		archivedThrough uint64
+	}{
+		"oldest chapter in the prefix": {target: 1, archivedThrough: 3},
+		"newest chapter in the prefix": {target: 3, archivedThrough: 3},
+		"the only archived chapter":    {target: 1, archivedThrough: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStore := NewMockScope(ctrl)
+			mockStore.EXPECT().GetArchivedThroughChapterID().Return(tc.archivedThrough)
+			// Ids inside the prefix are rejected before the lookup runs at all: an
+			// archived chapter is purged from the tracker on a running node and
+			// reloaded as ARCHIVED after a restart, so consulting it would answer the
+			// same Raft order with two different reasons.
+			mockStore.EXPECT().GetChapterByID(gomock.Any()).Times(0)
+
+			payload, err := processArchiveChapter(&raftcmdpb.ArchiveChapterOrder{ChapterId: tc.target}, &Context{Scope: mockStore})
+			require.Error(t, err)
+			require.Nil(t, payload, "a rejected archive must emit no log")
+
+			var alreadyArchived *domain.ErrChapterAlreadyArchived
+			require.ErrorAs(t, err, &alreadyArchived)
+			require.Equal(t, tc.target, alreadyArchived.ChapterID)
+			require.Equal(t, tc.archivedThrough, alreadyArchived.ArchivedThroughChapterID,
+				"the rejection must report how far the archived prefix reaches")
+
+			var outOfOrder *domain.ErrChapterArchiveOutOfOrder
+			require.NotErrorAs(t, err, &outOfOrder, "an already-archived chapter is not waiting on another chapter")
 		})
 	}
 }
@@ -593,10 +636,10 @@ func TestProcessChapter_ArchivedChapterRejectedIdenticallyAcrossRepresentations(
 				require.Error(t, err)
 				require.Nil(t, payload, "%s: a rejected order must emit no log", name)
 
-				var outOfOrderErr *domain.ErrChapterArchiveOutOfOrder
-				require.ErrorAs(t, err, &outOfOrderErr,
+				var alreadyArchived *domain.ErrChapterAlreadyArchived
+				require.ErrorAs(t, err, &alreadyArchived,
 					"%s: an archived chapter must be rejected by the prefix gate, not by the residency lookup", name)
-				require.Equal(t, archivedThrough+1, outOfOrderErr.BlockingChapterID)
+				require.Equal(t, archivedThrough, alreadyArchived.ArchivedThroughChapterID)
 
 				reasons[name] = err.Reason()
 			}

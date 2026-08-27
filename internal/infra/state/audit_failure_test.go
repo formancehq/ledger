@@ -432,6 +432,12 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"chapterId": "7", "blockingChapterId": "5"},
 		},
 		{
+			name:        "ChapterAlreadyArchived",
+			err:         &domain.ErrChapterAlreadyArchived{ChapterID: 2, ArchivedThroughChapterID: 5},
+			wantReason:  domain.ErrReasonChapterAlreadyArchived,
+			wantContext: map[string]string{"chapterId": "2", "archivedThroughChapterId": "5"},
+		},
+		{
 			name:        "MirrorV2LogIDGap",
 			err:         &domain.ErrMirrorV2LogIDGap{Name: "mirror-ledger", Got: 12, Expected: 9},
 			wantReason:  domain.ErrReasonMirrorV2LogIDGap,

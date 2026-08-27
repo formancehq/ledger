@@ -328,7 +328,7 @@ Once a chapter is sealed (CLOSED), it can be archived to cold storage. Archival 
 
 ### Archival is strictly ordered
 
-**Archived chapters always form a contiguous prefix of history.** `ArchiveChapter` admits only the chapter immediately after that prefix; anything else is rejected with reason `CHAPTER_ARCHIVE_OUT_OF_ORDER`, whose `blockingChapterId` names the chapter that must be archived first.
+**Archived chapters always form a contiguous prefix of history.** `ArchiveChapter` admits only the chapter immediately after that prefix. A chapter beyond it is rejected with reason `CHAPTER_ARCHIVE_OUT_OF_ORDER`, whose `blockingChapterId` names the chapter that must be archived first. A chapter *inside* it is rejected with `CHAPTER_ALREADY_ARCHIVED`, whose `archivedThroughChapterId` reports how far the prefix reaches: the order has already been carried out, and since every chapter outside the prefix is newer, no archive makes an older one archivable again — a client handed a blocker there would walk forward forever.
 
 The prefix is an explicit marker on the chapter tracker (`archivedThroughID`), advanced by `ConfirmArchiveChapter` and derived at recovery as the longest run of `ARCHIVED` rows from chapter 1. It is deliberately **not** inferred from which chapters are still in the in-memory map: that map holds only chapters whose data is still in hot storage (see [In-Memory Chapter Management](#in-memory-chapter-management)), so absence there means "purged", and reading it as "archived" would conflate a residency fact with a history one — and would answer differently on a restarted node, which reloads archived rows.
 

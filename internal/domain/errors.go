@@ -193,6 +193,7 @@ const (
 	ErrReasonChapterNotArchiving            = "CHAPTER_NOT_ARCHIVING"
 	ErrReasonChapterArchiveOutOfOrder       = "CHAPTER_ARCHIVE_OUT_OF_ORDER"
 	ErrReasonChapterArchiveIdentityMismatch = "CHAPTER_ARCHIVE_IDENTITY_MISMATCH"
+	ErrReasonChapterAlreadyArchived         = "CHAPTER_ALREADY_ARCHIVED"
 	ErrReasonMetadataNotFound               = "METADATA_NOT_FOUND"
 	ErrReasonInvalidReceipt                 = "INVALID_RECEIPT"
 	ErrReasonMaintenanceMode                = "MAINTENANCE_MODE"
@@ -896,6 +897,27 @@ func (e *ErrChapterArchiveOutOfOrder) Metadata() map[string]string {
 	return map[string]string{
 		"chapterId":         strconv.FormatUint(e.ChapterID, 10),
 		"blockingChapterId": strconv.FormatUint(e.BlockingChapterID, 10),
+	}
+}
+
+// ErrChapterAlreadyArchived — attempting to archive a chapter inside the
+// archived prefix. The order has already been carried out: the chapter's logs
+// are purged and its archive is in cold storage, so there is no chapter to
+// archive first and no retry that succeeds.
+type ErrChapterAlreadyArchived struct {
+	ChapterID uint64
+	// ArchivedThroughChapterID is the newest chapter in the archived prefix.
+	ArchivedThroughChapterID uint64
+}
+
+func (e *ErrChapterAlreadyArchived) Error() string {
+	return fmt.Sprintf("chapter %d is already archived (archived through chapter %d)", e.ChapterID, e.ArchivedThroughChapterID)
+}
+func (*ErrChapterAlreadyArchived) Reason() string { return ErrReasonChapterAlreadyArchived }
+func (e *ErrChapterAlreadyArchived) Metadata() map[string]string {
+	return map[string]string{
+		"chapterId":                strconv.FormatUint(e.ChapterID, 10),
+		"archivedThroughChapterId": strconv.FormatUint(e.ArchivedThroughChapterID, 10),
 	}
 }
 

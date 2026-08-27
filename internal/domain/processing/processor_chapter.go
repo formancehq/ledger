@@ -119,9 +119,9 @@ func processArchiveChapter(order *raftcmdpb.ArchiveChapterOrder, ctx *Context) (
 	// failures, which are hash-chained, would diverge across replicas.
 	archivedThrough := s.GetArchivedThroughChapterID()
 	if order.GetChapterId() <= archivedThrough {
-		return nil, &domain.ErrChapterArchiveOutOfOrder{
-			ChapterID:         order.GetChapterId(),
-			BlockingChapterID: archivedThrough + 1,
+		return nil, &domain.ErrChapterAlreadyArchived{
+			ChapterID:                order.GetChapterId(),
+			ArchivedThroughChapterID: archivedThrough,
 		}
 	}
 
@@ -181,6 +181,13 @@ func processConfirmArchiveChapter(order *raftcmdpb.ConfirmArchiveChapterOrder, c
 	// gate, so refusing it surfaces the anomaly (audited failure, and the
 	// archiver retries visibly) instead of silently papering over it.
 	archivedThrough := s.GetArchivedThroughChapterID()
+	if order.GetChapterId() <= archivedThrough {
+		return nil, &domain.ErrChapterAlreadyArchived{
+			ChapterID:                order.GetChapterId(),
+			ArchivedThroughChapterID: archivedThrough,
+		}
+	}
+
 	if order.GetChapterId() != archivedThrough+1 {
 		return nil, &domain.ErrChapterArchiveOutOfOrder{
 			ChapterID:         order.GetChapterId(),
