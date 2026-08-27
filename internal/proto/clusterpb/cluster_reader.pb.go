@@ -4,6 +4,7 @@
 package clusterpb
 
 import (
+	bytes "bytes"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -1180,6 +1181,7 @@ type AddLearnerRequestReader interface {
 	GetNodeId() uint64
 	GetRaftAddress() string
 	GetServiceAddress() string
+	GetInstanceId() []byte
 	Mutate() *AddLearnerRequest
 }
 
@@ -1195,6 +1197,10 @@ func (r *addLearnerRequestReadonly) GetRaftAddress() string {
 
 func (r *addLearnerRequestReadonly) GetServiceAddress() string {
 	return (*AddLearnerRequest)(r).GetServiceAddress()
+}
+
+func (r *addLearnerRequestReadonly) GetInstanceId() []byte {
+	return bytes.Clone((*AddLearnerRequest)(r).GetInstanceId())
 }
 
 func (r *addLearnerRequestReadonly) Mutate() *AddLearnerRequest {
