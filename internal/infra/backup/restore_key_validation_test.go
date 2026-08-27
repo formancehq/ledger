@@ -28,6 +28,22 @@ func TestApplyExportsRejectsKeyOutsideSegmentKeyspace(t *testing.T) {
 	require.ErrorContains(t, err, "invalid key")
 }
 
+func TestApplyExportsRejectsUnsupportedEmptySegment(t *testing.T) {
+	t.Parallel()
+
+	var stream bytes.Buffer
+	writer := NewKVStreamWriter(&stream)
+	require.NoError(t, writer.WriteHeader())
+	require.NoError(t, writer.WriteFooter())
+
+	store := newBackupTestStore(t)
+	storage := &recordingStorage{manifestBody: stream.Bytes()}
+	err := ApplyExports(context.Background(), logging.Testing(), storage, store, []ExportSegment{
+		{Type: "unknown", Key: "empty-unsupported"},
+	})
+	require.ErrorContains(t, err, `unsupported export segment type "unknown"`)
+}
+
 // TestValidateExportKeyRequiresExactKeyShape pins the per-type key length: a key
 // carrying trailing bytes still resolves to a valid sequence for prefix scans
 // and seqFromKey, so accepting it would let a tampered segment add a second

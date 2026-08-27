@@ -15,36 +15,34 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+func exportKeyShape(segmentType string) ([]byte, int, error) {
+	switch segmentType {
+	case "log":
+		// [ZoneCold][SubColdLog][log_seq BE 8]
+		return []byte{dal.ZoneCold, dal.SubColdLog}, 10, nil
+	case "audit":
+		// [ZoneCold][SubColdAudit][audit_seq BE 8]
+		return []byte{dal.ZoneCold, dal.SubColdAudit}, 10, nil
+	case "auditItem":
+		// [ZoneCold][SubColdAuditItem][audit_seq BE 8][order_idx BE 4]
+		return []byte{dal.ZoneCold, dal.SubColdAuditItem}, 14, nil
+	case "appliedProposal":
+		// [ZoneCold][SubColdAppliedProposal][applied_proposal_seq BE 8]
+		return []byte{dal.ZoneCold, dal.SubColdAppliedProposal}, 10, nil
+	default:
+		return nil, 0, fmt.Errorf("unsupported export segment type %q", segmentType)
+	}
+}
+
 func validateExportKey(seg ExportSegment, key []byte) error {
 	// Each segment type has a fixed key shape, so the exact length is part of
 	// the schema and not just a lower bound: prefix scans and seqFromKey read
 	// a longer key as a valid record at the same sequence, so tolerating
 	// trailing bytes would let a tampered segment smuggle a duplicate or
 	// invalid entry into ApplyExports/RebuildDelta.
-	var (
-		expected  []byte
-		keyLength int
-	)
-
-	switch seg.Type {
-	case "log":
-		// [ZoneCold][SubColdLog][log_seq BE 8]
-		expected = []byte{dal.ZoneCold, dal.SubColdLog}
-		keyLength = 10
-	case "audit":
-		// [ZoneCold][SubColdAudit][audit_seq BE 8]
-		expected = []byte{dal.ZoneCold, dal.SubColdAudit}
-		keyLength = 10
-	case "auditItem":
-		// [ZoneCold][SubColdAuditItem][audit_seq BE 8][order_idx BE 4]
-		expected = []byte{dal.ZoneCold, dal.SubColdAuditItem}
-		keyLength = 14
-	case "appliedProposal":
-		// [ZoneCold][SubColdAppliedProposal][applied_proposal_seq BE 8]
-		expected = []byte{dal.ZoneCold, dal.SubColdAppliedProposal}
-		keyLength = 10
-	default:
-		return fmt.Errorf("unsupported export segment type %q", seg.Type)
+	expected, keyLength, err := exportKeyShape(seg.Type)
+	if err != nil {
+		return err
 	}
 
 	if len(key) != keyLength || !bytes.Equal(key[:len(expected)], expected) {
@@ -75,6 +73,12 @@ func ApplyExports(
 	}
 
 	for _, seg := range exports {
+		// Validate metadata independently of stream contents so an empty segment
+		// cannot bypass the segment-type contract.
+		if _, _, err := exportKeyShape(seg.Type); err != nil {
+			return fmt.Errorf("invalid export segment %s: %w", seg.Key, err)
+		}
+
 		logger.WithFields(map[string]any{
 			"type":     seg.Type,
 			"startSeq": seg.StartSeq,
