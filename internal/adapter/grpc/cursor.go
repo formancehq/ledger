@@ -21,9 +21,7 @@ type GRPCStreamCursor[Res, To any] struct {
 func (c GRPCStreamCursor[Res, To]) Next() (To, error) {
 	next, err := c.client.Recv()
 	if err != nil {
-		if status.Code(err) == codes.Canceled {
-			err = io.EOF
-		}
+		err = normalizeStreamEnd(c.client, err)
 
 		var zero To
 
@@ -31,6 +29,21 @@ func (c GRPCStreamCursor[Res, To]) Next() (To, error) {
 	}
 
 	return c.mapper(next)
+}
+
+// normalizeStreamEnd maps a Canceled Recv error to io.EOF ONLY when the
+// cancellation is this side's own — the consumer stopped reading and tore
+// the stream down, so the results gathered so far form a complete answer
+// for it. A Canceled status while the local context is still live is a
+// failed transfer (connection churn, remote teardown): surfacing it as EOF
+// would fabricate a clean-looking empty or truncated page that the caller
+// then serves with OK status.
+func normalizeStreamEnd[Res any](client grpc.ServerStreamingClient[Res], err error) error {
+	if status.Code(err) == codes.Canceled && client.Context().Err() != nil {
+		return io.EOF
+	}
+
+	return err
 }
 
 func (c GRPCStreamCursor[Res, To]) Close() error {
@@ -87,9 +100,7 @@ func (c *upstreamPeekCursor[Res]) Next() (*Res, error) {
 		return item, nil
 	}
 
-	if status.Code(err) == codes.Canceled {
-		err = io.EOF
-	}
+	err = normalizeStreamEnd(c.client, err)
 
 	if errors.Is(err, io.EOF) && !c.exhausted {
 		c.exhausted = true
