@@ -73,13 +73,22 @@ review_loop_binary="$run_dir/review-loop"
 cleanup() {
     status=$?
     trap - EXIT
+    primary_status=$status
     for wt in "$candidate_worktree" "$trusted_worktree"; do
         if [[ -d "$wt" ]] && git -C "$wt" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
             git worktree remove --force "$wt" >/dev/null 2>&1 || true
         fi
     done
-    rm -rf -- "$run_dir"
-    exit "$status"
+    if [[ "$run_dir" = /* && "$run_dir" == "$worktree_parent/adopt-$pr_number."?????? ]]; then
+        chmod -R u+w -- "$run_dir" >/dev/null 2>&1 || true
+    else
+        echo "CLEANUP_PATH_GUARD_FAIL path=$run_dir" >&2
+        exit "$primary_status"
+    fi
+    if ! rm -rf -- "$run_dir"; then
+        echo "VALIDATION_CLEANUP=WARNING path=$run_dir" >&2
+    fi
+    exit "$primary_status"
 }
 trap cleanup EXIT
 

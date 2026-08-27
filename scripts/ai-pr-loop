@@ -180,6 +180,7 @@ review_loop_binary=""
 cleanup() {
     exit_status=$?
     trap - EXIT
+    primary_status=$exit_status
     if [[ -d "$trusted_tool_worktree" ]] && git -C "$trusted_tool_worktree" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         git worktree remove "$trusted_tool_worktree" >/dev/null 2>&1 || true
     fi
@@ -202,12 +203,18 @@ cleanup() {
         # failed removal — is never destroyed with it.
         if [[ ! -e "$worktree" && ! -e "$trusted_tool_worktree" ]] &&
             [[ "$worktree_run_dir" == "$worktree_parent/pr-$pr_number."?????? ]]; then
-            rm -rf -- "$worktree_run_dir"
+            # Go may create read-only module-cache entries. Normalize only the
+            # launcher-owned run tree before removal; cleanup warnings must not
+            # overwrite the primary validation result.
+            chmod -R u+w -- "$worktree_run_dir" >/dev/null 2>&1 || true
+            if ! rm -rf -- "$worktree_run_dir"; then
+                echo "VALIDATION_CLEANUP=WARNING path=$worktree_run_dir" >&2
+            fi
         else
             rmdir "$worktree_run_dir" >/dev/null 2>&1 || true
         fi
     fi
-    exit "$exit_status"
+    exit "$primary_status"
 }
 trap cleanup EXIT
 
