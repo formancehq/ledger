@@ -250,9 +250,12 @@ func TestCreateRunStateDirIsolatesRuns(t *testing.T) {
 	t.Parallel()
 
 	parent := t.TempDir()
-	first, err := createRunStateDir(parent, parent)
+	trustedRoot := filepath.Join(t.TempDir(), "trusted-root")
+	require.NoError(t, os.MkdirAll(trustedRoot, 0o755))
+	runGit(t, trustedRoot, "init")
+	first, err := createRunStateDir(parent, trustedRoot, parent)
 	require.NoError(t, err)
-	second, err := createRunStateDir(parent, parent)
+	second, err := createRunStateDir(parent, trustedRoot, parent)
 	require.NoError(t, err)
 
 	require.NotEqual(t, first, second)

@@ -51,7 +51,9 @@ every reviewer, fixer, or validator subprocess, `review-loop` verifies:
 4. candidate and trusted root are different worktrees in the same Git common
    directory;
 5. the validation directory is disjoint from both worktrees;
-6. the binding file is unchanged and outside the candidate worktree.
+6. the binding file is unchanged and outside the candidate worktree;
+7. the review state directory resolves outside the trusted root and its Git
+   common directory before any state path is created.
 
 Only then does it emit `WORKTREE_BINDING_GATE=PASS` and start the subprocess
 with Go's `Cmd.Dir` set to the candidate. A path/root mismatch emits

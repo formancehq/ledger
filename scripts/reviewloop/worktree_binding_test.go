@@ -59,6 +59,44 @@ func TestBindingRejectsWorktreeOwnedByAnotherPR(t *testing.T) {
 	require.NotContains(t, output, "WORKTREE_BINDING_GATE=PASS")
 }
 
+func TestBindingRejectsStateDirectoryInRootBeforeCreatingIt(t *testing.T) {
+	fixture := newWorktreeBindingFixture(t)
+	forbiddenStateDir := filepath.Join(fixture.root, "agent-review-state")
+	command := fixture.command(123, fixture.candidate, fixture.validationDir, fixture.bindingFile, nil)
+	for index, argument := range command.Args {
+		if argument == "--state-dir" {
+			command.Args[index+1] = forbiddenStateDir
+
+			break
+		}
+	}
+
+	output, err := command.CombinedOutput()
+	require.Error(t, err, string(output))
+	require.Contains(t, string(output), "ROOT_CHECKOUT_STATE_DIR_FORBIDDEN")
+	require.NoDirExists(t, forbiddenStateDir)
+}
+
+func TestBindingRejectsStateDirectorySymlinkedIntoRootBeforeCreatingIt(t *testing.T) {
+	fixture := newWorktreeBindingFixture(t)
+	stateLink := filepath.Join(filepath.Dir(fixture.candidate), "root-state-link")
+	require.NoError(t, os.Symlink(fixture.root, stateLink))
+	forbiddenStateDir := filepath.Join(stateLink, "agent-review-state")
+	command := fixture.command(123, fixture.candidate, fixture.validationDir, fixture.bindingFile, nil)
+	for index, argument := range command.Args {
+		if argument == "--state-dir" {
+			command.Args[index+1] = forbiddenStateDir
+
+			break
+		}
+	}
+
+	output, err := command.CombinedOutput()
+	require.Error(t, err, string(output))
+	require.Contains(t, string(output), "ROOT_CHECKOUT_STATE_DIR_FORBIDDEN")
+	require.NoDirExists(t, filepath.Join(fixture.root, "agent-review-state"))
+}
+
 func TestRootBranchMutationIsDetected(t *testing.T) {
 	fixture := newWorktreeBindingFixture(t)
 	branchBefore := strings.TrimSpace(runGitOutput(t, fixture.root, "rev-parse", "--abbrev-ref", "HEAD"))

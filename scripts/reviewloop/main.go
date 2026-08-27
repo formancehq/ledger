@@ -149,7 +149,7 @@ func main() {
 	validationEnv := map[string]string{
 		"AI_REVIEW_BASE_SHA": base.SHA,
 	}
-	runStateDir, err := createRunStateDir(repositoryRoot, stateDir)
+	runStateDir, err := createRunStateDir(repositoryRoot, runner.trustedRootCheckout, stateDir)
 	if err != nil {
 		fatal(err)
 	}
@@ -446,10 +446,28 @@ func oneOf(value string, allowed ...string) bool {
 	return slices.Contains(allowed, value)
 }
 
-func createRunStateDir(repositoryRoot, parent string) (string, error) {
+func createRunStateDir(repositoryRoot, trustedRoot, parent string) (string, error) {
 	absoluteParent := parent
 	if !filepath.IsAbs(absoluteParent) {
 		absoluteParent = filepath.Join(repositoryRoot, absoluteParent)
+	}
+	absoluteParent = filepath.Clean(absoluteParent)
+	resolvedProspectiveParent, err := resolveProspectivePath(absoluteParent)
+	if err != nil {
+		return "", fmt.Errorf("resolving prospective state directory: %w", err)
+	}
+	trustedGitCommonDir, err := gitCommonDirectory(trustedRoot)
+	if err != nil {
+		return "", err
+	}
+	for _, forbiddenRoot := range []string{trustedRoot, trustedGitCommonDir} {
+		within, pathErr := pathWithin(resolvedProspectiveParent, forbiddenRoot)
+		if pathErr != nil {
+			return "", fmt.Errorf("checking state directory isolation: %w", pathErr)
+		}
+		if within {
+			return "", errors.New("ROOT_CHECKOUT_STATE_DIR_FORBIDDEN")
+		}
 	}
 	if err := os.MkdirAll(absoluteParent, 0o755); err != nil {
 		return "", fmt.Errorf("creating state directory: %w", err)
@@ -464,6 +482,35 @@ func createRunStateDir(repositoryRoot, parent string) (string, error) {
 	}
 
 	return runStateDir, nil
+}
+
+func resolveProspectivePath(path string) (string, error) {
+	current := filepath.Clean(path)
+	missing := make([]string, 0)
+	for {
+		_, err := os.Lstat(current)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", fmt.Errorf("no existing ancestor for %s", path)
+		}
+		missing = append(missing, filepath.Base(current))
+		current = parent
+	}
+	resolved, err := filepath.EvalSymlinks(current)
+	if err != nil {
+		return "", err
+	}
+	for _, v := range slices.Backward(missing) {
+		resolved = filepath.Join(resolved, v)
+	}
+
+	return filepath.Clean(resolved), nil
 }
 
 func resolveReviewBase(repositoryRoot, ref string) (reviewBase, error) {
