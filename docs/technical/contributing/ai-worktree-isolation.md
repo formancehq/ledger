@@ -86,9 +86,10 @@ difference emits `ROOT_MUTATION_DETECTED` and stops without reset, clean,
 checkout, or other automatic recovery. An already-dirty root is supported
 because equality, not cleanliness, is the invariant.
 
-The validation directory contains a `git` wrapper at the front of agent
-`PATH`. For `TRUSTED_ROOT_CHECKOUT`, it is deny-by-default: only an enumerated
-set of read-only inspection commands is allowed. Known mutations such as
+The validation directory contains a defense-in-depth `git` wrapper at the
+front of agent `PATH`. Within that wrapper, `TRUSTED_ROOT_CHECKOUT` is
+deny-by-default: only an enumerated set of read-only inspection commands is
+allowed. Known mutations such as
 `switch`, `checkout`, `add`, `commit`, `merge`, `rebase`, `cherry-pick`,
 `reset`, `clean`, `restore`, `stash`, `apply`, `revert`, `am`, branch
 creation/deletion/move/copy, output-writing/external-command options, unsafe
@@ -97,7 +98,14 @@ Workflow worktree mutations bypass that agent `PATH`; agent-issued `git worktree
 add/remove/move/prune/repair/lock/unlock` against the protected repository are
 rejected as unregistered child worktrees. Independent temporary Git repositories
 used by validation fixtures may manage their own worktrees. The subprocess does
-not receive the real Git executable path or an unguarded `PATH` escape hatch.
+not receive dedicated variables exposing the real Git path or original `PATH`.
+
+The wrapper is not an OS filesystem sandbox: a subprocess with host access can
+deliberately locate an absolute Git executable or write a root file without
+using Git. The authoritative enforcement for that threat is the before/after
+root snapshot, which emits `ROOT_MUTATION_DETECTED` and stops the workflow. It
+does not claim to prevent or roll back a hostile same-user process. Tests cover
+both wrapper refusal and detection of a deliberate direct-Git bypass.
 
 Detached worktrees for baseline comparison, read-only experiments, and
 `BEFORE_FIX` reproduction remain valid when the workflow creates them. The

@@ -184,6 +184,27 @@ func TestGuardDoesNotExposeUnguardedGitEnvironment(t *testing.T) {
 	require.Contains(t, output, "ROOT_UNCHANGED=PASS")
 }
 
+func TestDirectGitBypassStillTriggersRootMutationDetection(t *testing.T) {
+	fixture := newWorktreeBindingFixture(t)
+	unguardedGit, err := exec.LookPath("git")
+	require.NoError(t, err)
+	execPathOutput, execPathErr := exec.Command(unguardedGit, "--exec-path").Output()
+	if execPathErr == nil {
+		gitBesideExecPath := filepath.Join(filepath.Dir(filepath.Dir(strings.TrimSpace(string(execPathOutput)))), "bin", "git")
+		if _, statErr := os.Stat(gitBesideExecPath); statErr == nil {
+			unguardedGit = gitBesideExecPath
+		}
+	}
+
+	output, err := fixture.run(t, 123, fixture.candidate, fixture.bindingFile, map[string]string{
+		"TEST_ROOT_MUTATION": "direct-git-bypass",
+		"TEST_UNGUARDED_GIT": unguardedGit,
+	})
+	require.Error(t, err, output)
+	require.Contains(t, output, "ROOT_MUTATION_DETECTED")
+	require.Contains(t, output, "root branch changed")
+}
+
 func TestGitMutationGuardAllowsReadOnlyRootInspection(t *testing.T) {
 	fixture := newWorktreeBindingFixture(t)
 
@@ -293,6 +314,9 @@ case "${TEST_ROOT_MUTATION:-}" in
     guard-environment)
         [[ ${AI_GIT_REAL_PATH+x} != x ]]
         [[ ${AI_GIT_ORIGINAL_PATH+x} != x ]]
+        ;;
+    direct-git-bypass)
+        "$TEST_UNGUARDED_GIT" -C "$TRUSTED_ROOT_CHECKOUT" switch -c direct-bypass-must-be-detected
         ;;
     guard-read) git -C "$TRUSTED_ROOT_CHECKOUT" status --short >/dev/null ;;
 esac
