@@ -16,25 +16,38 @@ import (
 )
 
 func validateExportKey(seg ExportSegment, key []byte) error {
-	var expected []byte
+	// Each segment type has a fixed key shape, so the exact length is part of
+	// the schema and not just a lower bound: prefix scans and seqFromKey read
+	// a longer key as a valid record at the same sequence, so tolerating
+	// trailing bytes would let a tampered segment smuggle a duplicate or
+	// invalid entry into ApplyExports/RebuildDelta.
+	var (
+		expected  []byte
+		keyLength int
+	)
+
 	switch seg.Type {
 	case "log":
+		// [ZoneCold][SubColdLog][log_seq BE 8]
 		expected = []byte{dal.ZoneCold, dal.SubColdLog}
+		keyLength = 10
 	case "audit":
+		// [ZoneCold][SubColdAudit][audit_seq BE 8]
 		expected = []byte{dal.ZoneCold, dal.SubColdAudit}
+		keyLength = 10
 	case "auditItem":
+		// [ZoneCold][SubColdAuditItem][audit_seq BE 8][order_idx BE 4]
 		expected = []byte{dal.ZoneCold, dal.SubColdAuditItem}
+		keyLength = 14
 	case "appliedProposal":
+		// [ZoneCold][SubColdAppliedProposal][applied_proposal_seq BE 8]
 		expected = []byte{dal.ZoneCold, dal.SubColdAppliedProposal}
+		keyLength = 10
 	default:
 		return fmt.Errorf("unsupported export segment type %q", seg.Type)
 	}
 
-	minLen := len(expected) + 8
-	if seg.Type == "auditItem" {
-		minLen += 4
-	}
-	if len(key) < minLen || len(key) < len(expected) || !bytes.Equal(key[:len(expected)], expected) {
+	if len(key) != keyLength || !bytes.Equal(key[:len(expected)], expected) {
 		return fmt.Errorf("key %x is not valid for export segment type %q", key, seg.Type)
 	}
 
