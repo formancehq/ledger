@@ -15,6 +15,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
+	"github.com/google/uuid"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.etcd.io/raft/v3/tracker"
@@ -178,6 +179,25 @@ type pendingRemoval struct {
 	appliedIndex uint64
 }
 
+type pendingConfChange struct {
+	nodeID        uint64
+	expectedTypes []raftpb.ConfChangeType
+	future        *futures.Future[uint64]
+}
+
+func (p *pendingConfChange) accepts(change *raftpb.ConfChangeSingle) bool {
+	if change.GetNodeId() != p.nodeID {
+		return false
+	}
+
+	return slices.Contains(p.expectedTypes, change.GetType())
+}
+
+type committedConfChangeFuture struct {
+	future *futures.Future[uint64]
+	index  uint64
+}
+
 // Node wraps raft.RawNode to provide an Apply() method similar to hashicorp/raft.
 type Node struct {
 	rawNode          *raft.RawNode
@@ -216,8 +236,11 @@ type Node struct {
 	// membership owns the Raft peer-address state (Pebble + in-memory
 	// cache) and the OnSnapshotInstalled / WriteConfChange callbacks
 	// wired into Applier and Machine. EN-1413.
-	membership         *membership.Membership
-	pendingConfChanges SyncMap[uint64, *futures.Future[uint64]]
+	membership *membership.Membership
+	// pendingConfChanges is keyed by the proposal-specific ID committed in
+	// ConfChangeContext, never by node ID. A canceled proposal may commit late;
+	// its entry must not resolve a newer, different operation for the same node.
+	pendingConfChanges SyncMap[string, *pendingConfChange]
 
 	// pendingRemovals closes the post-commit/pre-apply admission window. Once
 	// Raft has removed a member, the same (nodeID, instanceID) must not be
@@ -1331,12 +1354,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	// Collect pending futures to resolve AFTER the WAL ConfState update, so
 	// callers waiting on ConfChange commit (AddLearner, PromoteLearner, etc.)
 	// don't resume before the WAL is consistent.
-	type pendingConfChangeFuture struct {
-		future *futures.Future[uint64]
-		index  uint64
-	}
-
-	var pendingFutures []pendingConfChangeFuture
+	var pendingFutures []committedConfChangeFuture
 
 	for _, committed := range result.confChanges {
 		cc := committed.change
@@ -1357,7 +1375,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		err := membership.WalkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *membership.ConfChangeContext) error {
 			switch t {
 			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode:
-				if ctx != nil {
+				if ctx != nil && ctx.HasPeerRegistration() {
 					node.membership.Set(nodeID, ctx.RaftAddress, ctx.ServiceAddress, ctx.InstanceID)
 				}
 			case raftpb.ConfChangeRemoveNode:
@@ -1370,20 +1388,16 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 			return err
 		}
 
-		// Collect pending ConfChange futures (resolved below after WAL
-		// update) and emit the antithesis lifecycle ping for the
-		// fault-injector. Loops over every change.NodeID — including
-		// PromoteLearner and UpdateNode types that membership.WalkConfChangeContexts
-		// skips — because pending futures are keyed by NodeID regardless
-		// of transition type.
-		for _, change := range cc.GetChanges() {
-			if f, ok := node.pendingConfChanges.LoadAndDelete(change.GetNodeId()); ok {
-				pendingFutures = append(pendingFutures, pendingConfChangeFuture{
-					future: f,
-					index:  committed.index,
-				})
-			}
+		pending, err := node.takePendingConfChange(cc, committed.index)
+		if err != nil {
+			return err
+		}
+		if pending != nil {
+			pendingFutures = append(pendingFutures, *pending)
+		}
 
+		// Emit the antithesis lifecycle ping for each committed change.
+		for _, change := range cc.GetChanges() {
 			lifecycle.SendEvent("conf_change_committed", map[string]any{
 				"nodeID":     node.config.NodeID,
 				"targetNode": change.GetNodeId(),
@@ -1464,6 +1478,55 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 	}
 
 	return nil
+}
+
+// takePendingConfChange correlates a committed entry with the exact local
+// proposal that created it. nodeID alone is insufficient: a canceled proposal
+// can commit after another operation for the same node has installed its
+// waiter. The committed ProposalID plus node/type validation prevents the stale
+// entry from resolving that newer operation.
+func (node *Node) takePendingConfChange(cc *raftpb.ConfChangeV2, index uint64) (*committedConfChangeFuture, error) {
+	proposalID, err := membership.ConfChangeProposalID(cc)
+	if err != nil {
+		return nil, fmt.Errorf("invariant: decoding ConfChange proposal ID: %w", err)
+	}
+	if proposalID == "" {
+		return nil, nil
+	}
+
+	changes := cc.GetChanges()
+	if len(changes) != 1 {
+		return nil, fmt.Errorf(
+			"invariant: correlated ConfChange proposal %q contains %d changes; local proposals must contain exactly one",
+			proposalID,
+			len(changes),
+		)
+	}
+
+	pending, ok := node.pendingConfChanges.Load(proposalID)
+	if !ok {
+		// The caller may have canceled after proposing. Its committed effect is
+		// still applied, but there is no longer a local waiter to resolve.
+		return nil, nil
+	}
+
+	if !pending.accepts(changes[0]) {
+		return nil, fmt.Errorf(
+			"invariant: ConfChange proposal %q committed unexpected change %s for node %d",
+			proposalID,
+			changes[0].GetType(),
+			changes[0].GetNodeId(),
+		)
+	}
+
+	if !node.pendingConfChanges.CompareAndDelete(proposalID, pending) {
+		return nil, nil
+	}
+
+	return &committedConfChangeFuture{
+		future: pending.future,
+		index:  index,
+	}, nil
 }
 
 // splitReadyMessages classifies rd.Messages under AsyncStorageWrites into
@@ -2264,11 +2327,22 @@ func (node *Node) SetObserver(obs *Observer) {
 // (0, false, nil) if the proposal was likely dropped (timeout), or
 // (0, false, err) on error.
 // The proposeFn is dispatched via execClusterCommand (rawNode is not thread-safe).
-func (node *Node) proposeConfChangeAndWait(ctx context.Context, nodeID uint64, proposeFn func() error, timeout time.Duration) (uint64, bool, error) {
-	future := futures.New[uint64]()
+func (node *Node) proposeConfChangeAndWait(
+	ctx context.Context,
+	proposalID string,
+	nodeID uint64,
+	expectedTypes []raftpb.ConfChangeType,
+	proposeFn func() error,
+	timeout time.Duration,
+) (uint64, bool, error) {
+	pending := &pendingConfChange{
+		nodeID:        nodeID,
+		expectedTypes: append([]raftpb.ConfChangeType(nil), expectedTypes...),
+		future:        futures.New[uint64](),
+	}
 
-	node.pendingConfChanges.Store(nodeID, future)
-	defer node.pendingConfChanges.Delete(nodeID)
+	node.pendingConfChanges.Store(proposalID, pending)
+	defer node.pendingConfChanges.CompareAndDelete(proposalID, pending)
 
 	err := node.execClusterCommand(ctx, proposeFn)
 	if err != nil {
@@ -2278,7 +2352,7 @@ func (node *Node) proposeConfChangeAndWait(ctx context.Context, nodeID uint64, p
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	committedIndex, err := future.Wait(timeoutCtx)
+	committedIndex, err := pending.future.Wait(timeoutCtx)
 	if err != nil {
 		// Timeout (deadline exceeded) means the proposal was likely dropped — not an error.
 		if timeoutCtx.Err() != nil && ctx.Err() == nil {
@@ -2303,14 +2377,29 @@ func (node *Node) proposeConfChangeAndWait(ctx context.Context, nodeID uint64, p
 // confChangeMu may otherwise not observe the FSM write. Currently used by
 // RemoveNode to guarantee the RemovedMemberEntry tombstone is visible
 // before a racing JoinAsLearner's blacklist re-check runs (EN-1045).
-func (node *Node) retryConfChange(ctx context.Context, nodeID uint64, name string, proposeFn func() error, postApplyFn func(ctx context.Context, committedIndex uint64) error) error {
+func (node *Node) retryConfChange(
+	ctx context.Context,
+	proposalID string,
+	nodeID uint64,
+	name string,
+	expectedTypes []raftpb.ConfChangeType,
+	proposeFn func() error,
+	postApplyFn func(ctx context.Context, committedIndex uint64) error,
+) error {
 	node.confChangeMu.Lock()
 	defer node.confChangeMu.Unlock()
 
 	retryInterval := max(node.config.TickInterval*time.Duration(node.config.HeartbeatTick)*3, 500*time.Millisecond)
 
 	for {
-		committedIndex, committed, err := node.proposeConfChangeAndWait(ctx, nodeID, proposeFn, retryInterval)
+		committedIndex, committed, err := node.proposeConfChangeAndWait(
+			ctx,
+			proposalID,
+			nodeID,
+			expectedTypes,
+			proposeFn,
+			retryInterval,
+		)
 		if err != nil {
 			return err
 		}
@@ -2418,16 +2507,21 @@ func classifyExistingLearner(match uint64, existingInstanceID []byte, hasRow boo
 //
 // Must be called on the leader.
 func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
+	proposalID := uuid.NewString()
 	ccCtx, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{
 		RaftAddress:    raftAddr,
 		ServiceAddress: serviceAddr,
 		InstanceID:     instanceID,
+		ProposalID:     proposalID,
 	})
 	if err != nil {
 		return fmt.Errorf("marshaling conf change context: %w", err)
 	}
 
-	return node.retryConfChange(ctx, nodeID, "AddLearner", func() error {
+	return node.retryConfChange(ctx, proposalID, nodeID, "AddLearner", []raftpb.ConfChangeType{
+		raftpb.ConfChangeAddLearnerNode,
+		raftpb.ConfChangeUpdateNode,
+	}, func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
@@ -2490,7 +2584,17 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 // The call blocks until the ConfChange is committed through Raft consensus.
 // Must be called on the leader.
 func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
-	return node.retryConfChange(ctx, nodeID, "PromoteLearner", func() error {
+	proposalID := uuid.NewString()
+	ccCtx, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{
+		ProposalID: proposalID,
+	})
+	if err != nil {
+		return fmt.Errorf("marshaling promote-learner context: %w", err)
+	}
+
+	return node.retryConfChange(ctx, proposalID, nodeID, "PromoteLearner", []raftpb.ConfChangeType{
+		raftpb.ConfChangeAddNode,
+	}, func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
@@ -2510,6 +2614,7 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 				Type:   new(raftpb.ConfChangeAddNode),
 				NodeId: new(nodeID),
 			}},
+			Context: ccCtx,
 		})
 	}, nil)
 }
@@ -2524,6 +2629,8 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 // still-alive pod at the same nodeID cannot silently rejoin and be
 // auto-promoted after this ConfChange commits.
 func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
+	proposalID := uuid.NewString()
+
 	// The target's identity is captured INSIDE the propose closure below,
 	// after confChangeMu has been acquired. Reading it outside would race
 	// with a concurrent ConfChangeUpdateNode (reprovisioned learner
@@ -2562,20 +2669,19 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 		// either the row was created via the admin cluster.AddLearner
 		// path without the target ever booting (phantom learner), or
 		// it is a bootstrap initial peer that has not yet joined.
-		// Both cases are legal: propose the removal without a Context,
-		// and WriteConfChange will delete the peer row without writing
-		// a blacklist entry (nothing to blacklist).
-		var ccCtx []byte
-
+		// Both cases are legal: propose the removal with a correlation-only
+		// Context, and WriteConfChange will delete the peer row without
+		// writing a blacklist entry (nothing to blacklist).
+		confChangeCtx := membership.ConfChangeContext{
+			ProposalID: proposalID,
+		}
 		if capturedBlacklistableID {
-			marshaled, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{
-				InstanceID: instanceID,
-			})
-			if err != nil {
-				return fmt.Errorf("marshaling remove-node context for %d: %w", nodeID, err)
-			}
+			confChangeCtx.InstanceID = instanceID
+		}
 
-			ccCtx = marshaled
+		ccCtx, err := membership.MarshalConfChangeContext(confChangeCtx)
+		if err != nil {
+			return fmt.Errorf("marshaling remove-node context for %d: %w", nodeID, err)
 		}
 
 		return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
@@ -2603,7 +2709,15 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 		return node.waitForRemovalApplied(ctx, nodeID, instanceID, committedIndex)
 	}
 
-	return node.retryConfChange(ctx, nodeID, "RemoveNode", proposeFn, postApplyFn)
+	return node.retryConfChange(
+		ctx,
+		proposalID,
+		nodeID,
+		"RemoveNode",
+		[]raftpb.ConfChangeType{raftpb.ConfChangeRemoveNode},
+		proposeFn,
+		postApplyFn,
+	)
 }
 
 // waitForRemovalApplied bridges the gap between Raft commit and durable FSM
@@ -2662,8 +2776,7 @@ func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, inst
 		return nil
 	}
 
-	removed, err := node.membership.IsRemoved(nodeID, instanceID)
-	if err != nil {
+	if _, err := node.verifyAndClearPendingRemoval(nodeID, pending); err != nil {
 		node.logger.WithFields(map[string]any{
 			"error":         err,
 			"removedNodeID": nodeID,
@@ -2673,30 +2786,39 @@ func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, inst
 		return &RemoveNodeCommittedError{
 			NodeID:       nodeID,
 			AppliedIndex: committedIndex,
-			Cause:        fmt.Errorf("verifying removed-member tombstone: %w", err),
+			Cause:        err,
 		}
 	}
 
-	if !removed {
-		node.logger.WithFields(map[string]any{
-			"removedNodeID": nodeID,
-			"raftIndex":     committedIndex,
-		}).Errorf("Invariant violation: applied RemoveNode is missing its removed-member tombstone")
-
-		return &RemoveNodeCommittedError{
-			NodeID:       nodeID,
-			AppliedIndex: committedIndex,
-			Cause:        errors.New("invariant: applied removal is missing its removed-member tombstone"),
-		}
-	}
-
-	node.pendingRemovals.CompareAndDelete(nodeID, pending)
 	node.logger.WithFields(map[string]any{
 		"removedNodeID": nodeID,
 		"raftIndex":     committedIndex,
 	}).Infof("RemoveNode tombstone applied")
 
 	return nil
+}
+
+func (node *Node) verifyRemovalTombstone(nodeID uint64, instanceID []byte) error {
+	removed, err := node.membership.IsRemoved(nodeID, instanceID)
+	if err != nil {
+		return fmt.Errorf("verifying removed-member tombstone: %w", err)
+	}
+	if !removed {
+		return errors.New("invariant: applied removal is missing its removed-member tombstone")
+	}
+
+	return nil
+}
+
+// verifyAndClearPendingRemoval keeps tombstone verification and barrier
+// release in one operation so neither the foreground nor background path can
+// accidentally clear admission protection based only on an applied index.
+func (node *Node) verifyAndClearPendingRemoval(nodeID uint64, pending *pendingRemoval) (bool, error) {
+	if err := node.verifyRemovalTombstone(nodeID, pending.instanceID); err != nil {
+		return false, err
+	}
+
+	return node.pendingRemovals.CompareAndDelete(nodeID, pending), nil
 }
 
 // schedulePendingRemovalCleanup keeps the admission barrier independent from
@@ -2731,7 +2853,18 @@ func (node *Node) schedulePendingRemovalCleanup(nodeID uint64, pending *pendingR
 			return
 		}
 
-		if node.pendingRemovals.CompareAndDelete(nodeID, pending) {
+		cleared, err := node.verifyAndClearPendingRemoval(nodeID, pending)
+		if err != nil {
+			node.logger.WithFields(map[string]any{
+				"error":         err,
+				"removedNodeID": nodeID,
+				"raftIndex":     pending.appliedIndex,
+			}).Errorf("Durable removal applied but background tombstone verification failed")
+
+			return
+		}
+
+		if cleared {
 			node.logger.WithFields(map[string]any{
 				"removedNodeID": nodeID,
 				"raftIndex":     pending.appliedIndex,

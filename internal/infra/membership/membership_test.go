@@ -204,7 +204,8 @@ func TestPeerStore_KeyEncodingIsScoped(t *testing.T) {
 // side effect); the cache update is the responsibility of
 // Node.finishReady once the entry is observed post-commit. This test
 // therefore pins the three relevant transition types (Add / AddLearner
-// / Remove) and the PromoteLearner no-op (empty context) by asserting
+// / Remove) and the PromoteLearner payload no-op (correlation-only
+// context) by asserting
 // the Pebble write via LoadAll after commit, and asserts that the
 // in-memory cache is NOT touched by the handler.
 func TestMembership_WriteConfChange(t *testing.T) {
@@ -270,21 +271,21 @@ func TestMembership_WriteConfChange(t *testing.T) {
 
 	require.Empty(t, m.PeerAddresses(), "FSM handler must not touch the cache; finishReady owns that")
 
-	// PromoteLearner (ConfChangeAddNode without context) — must be a
-	// no-op for the peer payload: it's a role change, not an address
-	// change.
+	// PromoteLearner carries a correlation-only context — it must remain a
+	// no-op for the peer payload: it's a role change, not an address change.
+	promoteCtx, err := MarshalConfChangeContext(ConfChangeContext{ProposalID: "promotion-42"})
+	require.NoError(t, err)
 	apply(t, &raftpb.ConfChangeV2{
 		Changes: []*raftpb.ConfChangeSingle{{Type: new(raftpb.ConfChangeAddNode), NodeId: proto.Uint64(2)}},
-		Context: nil,
+		Context: promoteCtx,
 	}, true)
 
 	got, err = m.store.LoadAll()
 	require.NoError(t, err)
 	require.Equal(t, "pod-2:7777", got[2].RaftAddress, "promote must not overwrite the address")
 
-	// RemoveNode → peer delete + blacklist write (EN-1045). Every
-	// RemoveNode proposal must carry the target's instance_id in
-	// Context — WriteConfChange fails loudly otherwise.
+	// RemoveNode → peer delete + blacklist write (EN-1045) when the target
+	// has an instance identity.
 	removeCtx, err := MarshalConfChangeContext(ConfChangeContext{InstanceID: make([]byte, 16)})
 	require.NoError(t, err)
 	apply(t, &raftpb.ConfChangeV2{

@@ -55,15 +55,17 @@ func TestWaitForRemovalAppliedClearsCanceledBarrierAfterDurableApply(t *testing.
 	setup := newTestApplierSetup(t)
 	runDone := make(chan struct{})
 	t.Cleanup(func() { close(runDone) })
+	m := newTestMembership(t)
+	instanceID := []byte("0123456789abcdef")
+	require.NoError(t, m.UnregisterAndBlacklist(3, instanceID, 1))
 
 	n := &Node{
 		fsm:        setup.fsm,
-		membership: newTestMembership(t),
+		membership: m,
 		logger:     logging.Testing(),
 		runDone:    runDone,
 	}
 
-	instanceID := []byte("0123456789abcdef")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -79,6 +81,25 @@ func TestWaitForRemovalAppliedClearsCanceledBarrierAfterDurableApply(t *testing.
 		return !pending
 	}, time.Second, 10*time.Millisecond,
 		"the node-local barrier must be cleared after the committed index is durable")
+}
+
+func TestVerifyAndClearPendingRemovalRetainsBarrierWithoutTombstone(t *testing.T) {
+	t.Parallel()
+
+	n := &Node{
+		membership: newTestMembership(t),
+	}
+	pending := &pendingRemoval{
+		instanceID:   []byte("0123456789abcdef"),
+		appliedIndex: 1,
+	}
+	n.pendingRemovals.Store(3, pending)
+
+	cleared, err := n.verifyAndClearPendingRemoval(3, pending)
+	require.ErrorContains(t, err, "invariant")
+	require.False(t, cleared)
+	require.True(t, n.isRemovalPending(3, pending.instanceID),
+		"a missing tombstone must retain the admission barrier")
 }
 
 func TestWaitForRemovalAppliedWithoutInstanceIDStillWaitsForFSM(t *testing.T) {
