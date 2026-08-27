@@ -12,6 +12,81 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
+func TestValidatePostings(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		posting *commonpb.Posting
+		wantErr error
+	}{
+		{
+			name: "valid posting",
+			posting: &commonpb.Posting{
+				Source:      "bank",
+				Destination: "users:alice",
+				Asset:       "USD",
+				Color:       "BLUE",
+			},
+		},
+		{
+			name: "invalid source",
+			posting: &commonpb.Posting{
+				Source:      "invalid source",
+				Destination: "users:alice",
+				Asset:       "USD",
+				Color:       "BLUE",
+			},
+			wantErr: domain.ErrAccountAddressInvalidChar,
+		},
+		{
+			name: "invalid destination",
+			posting: &commonpb.Posting{
+				Source:      "bank",
+				Destination: "invalid destination",
+				Asset:       "USD",
+				Color:       "BLUE",
+			},
+			wantErr: domain.ErrAccountAddressInvalidChar,
+		},
+		{
+			name: "invalid asset",
+			posting: &commonpb.Posting{
+				Source:      "bank",
+				Destination: "users:alice",
+				Asset:       "usd",
+				Color:       "BLUE",
+			},
+			wantErr: domain.ErrAssetInvalid,
+		},
+		{
+			name: "invalid color",
+			posting: &commonpb.Posting{
+				Source:      "bank",
+				Destination: "users:alice",
+				Asset:       "USD",
+				Color:       "blue",
+			},
+			wantErr: domain.ErrColorInvalid,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validatePostings([]*commonpb.Posting{tt.posting})
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+}
+
 func TestProcessCreateTransaction(t *testing.T) {
 	t.Parallel()
 
