@@ -51,19 +51,19 @@ fi
 subcommand=${arguments[$index]}
 subcommand_args=("${arguments[@]:$((index + 1))}")
 
-mutating=false
 worktree_mutation=false
+root_read_only=false
 case "$subcommand" in
-    switch|checkout|add|commit|merge|rebase|cherry-pick|reset|clean|restore)
-        mutating=true
+    blame|cat-file|check-attr|check-ignore|check-mailmap|check-ref-format|cherry|count-objects|describe|diff|diff-files|diff-index|diff-tree|for-each-ref|grep|log|ls-files|ls-remote|ls-tree|merge-base|name-rev|rev-list|rev-parse|show|show-branch|status)
+        root_read_only=true
         ;;
     worktree)
         worktree_action=${subcommand_args[0]:-list}
         case "$worktree_action" in
             add|remove|move|prune|repair|lock|unlock)
-                mutating=true
                 worktree_mutation=true
                 ;;
+            list) root_read_only=true ;;
         esac
         ;;
     branch)
@@ -100,9 +100,7 @@ case "$subcommand" in
                     ;;
             esac
         done
-        if [[ "$branch_read_only" == false ]]; then
-            mutating=true
-        fi
+        root_read_only=$branch_read_only
         ;;
 esac
 
@@ -111,16 +109,14 @@ if [[ "$worktree_mutation" == true ]]; then
     exit 97
 fi
 
-if [[ "$mutating" == true ]]; then
-    selected_root=""
-    if selected_root=$(run_real_git "${global_args[@]}" rev-parse --show-toplevel 2>/dev/null); then
-        selected_root=$(cd "$selected_root" && pwd -P)
-    fi
-    trusted_root=$(cd "$trusted_root" && pwd -P)
-    if [[ "$selected_root" == "$trusted_root" ]]; then
-        printf 'ROOT_CHECKOUT_GIT_MUTATION_FORBIDDEN command=git %s\n' "$subcommand" >&2
-        exit 96
-    fi
+selected_root=""
+if selected_root=$(run_real_git "${global_args[@]}" rev-parse --show-toplevel 2>/dev/null); then
+    selected_root=$(cd "$selected_root" && pwd -P)
+fi
+trusted_root=$(cd "$trusted_root" && pwd -P)
+if [[ "$selected_root" == "$trusted_root" && "$root_read_only" != true ]]; then
+    printf 'ROOT_CHECKOUT_GIT_MUTATION_FORBIDDEN command=git %s\n' "$subcommand" >&2
+    exit 96
 fi
 
 exec env PATH="$original_path" "$real_git" "$@"

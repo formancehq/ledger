@@ -82,6 +82,21 @@ func TestRootUntrackedMutationIsDetected(t *testing.T) {
 	require.FileExists(t, filepath.Join(fixture.root, "agent-root-mutation.txt"))
 }
 
+func TestDirtyRootContentMutationIsDetectedWhenPorcelainIsUnchanged(t *testing.T) {
+	fixture := newWorktreeBindingFixture(t)
+	require.NoError(t, os.WriteFile(filepath.Join(fixture.root, "base.txt"), []byte("dirty before agent\n"), 0o644))
+	statusBefore := runGitOutput(t, fixture.root, "status", "--porcelain=v1", "--untracked-files=all")
+
+	output, err := fixture.run(t, 123, fixture.candidate, fixture.bindingFile, map[string]string{
+		"TEST_ROOT_MUTATION": "dirty-content",
+	})
+	require.Error(t, err, output)
+	require.Contains(t, output, "ROOT_MUTATION_DETECTED")
+	require.Contains(t, output, "root workspace content changed")
+	require.Equal(t, statusBefore, runGitOutput(t, fixture.root, "status", "--porcelain=v1", "--untracked-files=all"))
+	require.Equal(t, "different dirty content\n", readTestFile(t, filepath.Join(fixture.root, "base.txt")))
+}
+
 func TestGitMutationGuardRefusesRootCheckout(t *testing.T) {
 	fixture := newWorktreeBindingFixture(t)
 	branchBefore := strings.TrimSpace(runGitOutput(t, fixture.root, "rev-parse", "--abbrev-ref", "HEAD"))
@@ -93,6 +108,20 @@ func TestGitMutationGuardRefusesRootCheckout(t *testing.T) {
 	require.Contains(t, output, "ROOT_CHECKOUT_GIT_MUTATION_FORBIDDEN")
 	require.Contains(t, output, "ROOT_UNCHANGED=PASS")
 	require.Equal(t, branchBefore, strings.TrimSpace(runGitOutput(t, fixture.root, "rev-parse", "--abbrev-ref", "HEAD")))
+}
+
+func TestGitMutationGuardDefaultsToDenyForRootSubcommands(t *testing.T) {
+	for _, subcommand := range []string{"stash", "apply", "revert", "am"} {
+		t.Run(subcommand, func(t *testing.T) {
+			fixture := newWorktreeBindingFixture(t)
+			output, err := fixture.run(t, 123, fixture.candidate, fixture.bindingFile, map[string]string{
+				"TEST_ROOT_MUTATION": "guard-" + subcommand,
+			})
+			require.Error(t, err, output)
+			require.Contains(t, output, "ROOT_CHECKOUT_GIT_MUTATION_FORBIDDEN command=git "+subcommand)
+			require.Contains(t, output, "ROOT_UNCHANGED=PASS")
+		})
+	}
 }
 
 func TestGitMutationGuardRefusesUnregisteredChildWorktree(t *testing.T) {
@@ -191,7 +220,12 @@ case "${TEST_ROOT_MUTATION:-}" in
         printf 'ref: refs/heads/agent-mutated-root\n' > "$TRUSTED_ROOT_CHECKOUT/.git/HEAD"
         ;;
     untracked) printf 'mutation\n' > "$TRUSTED_ROOT_CHECKOUT/agent-root-mutation.txt" ;;
+    dirty-content) printf 'different dirty content\n' > "$TRUSTED_ROOT_CHECKOUT/base.txt" ;;
     guarded-branch) git -C "$TRUSTED_ROOT_CHECKOUT" switch -c guard-must-refuse ;;
+    guard-stash) git -C "$TRUSTED_ROOT_CHECKOUT" stash ;;
+    guard-apply) git -C "$TRUSTED_ROOT_CHECKOUT" apply ;;
+    guard-revert) git -C "$TRUSTED_ROOT_CHECKOUT" revert "$EXPECTED_HEAD" ;;
+    guard-am) git -C "$TRUSTED_ROOT_CHECKOUT" am ;;
     child-worktree) git worktree add --detach "$(dirname "$EXPECTED_WORKTREE")/agent-child" "$EXPECTED_HEAD" ;;
     guard-read) git -C "$TRUSTED_ROOT_CHECKOUT" status --short >/dev/null ;;
 esac

@@ -25,9 +25,10 @@ type worktreeBindingFile struct {
 }
 
 type rootCheckoutSnapshot struct {
-	Head   string
-	Branch string
-	Status []byte
+	Head                 string
+	Branch               string
+	Status               []byte
+	WorkspaceFingerprint string
 }
 
 type boundCommandRunner struct {
@@ -141,10 +142,11 @@ func newBoundCommandRunner(
 	}
 	statusDigest := sha256.Sum256(runner.rootSnapshot.Status)
 	fmt.Printf(
-		"ROOT_PROTECTION_ARMED head=%s branch=%s statusSha256=%s\n",
+		"ROOT_PROTECTION_ARMED head=%s branch=%s statusSha256=%s workspaceFingerprint=%s\n",
 		runner.rootSnapshot.Head,
 		runner.rootSnapshot.Branch,
 		hex.EncodeToString(statusDigest[:]),
+		runner.rootSnapshot.WorkspaceFingerprint,
 	)
 
 	return runner, nil
@@ -328,6 +330,9 @@ func (runner *boundCommandRunner) verifyRootUnchanged() error {
 	if !bytes.Equal(current.Status, runner.rootSnapshot.Status) {
 		return errors.New("root status changed")
 	}
+	if current.WorkspaceFingerprint != runner.rootSnapshot.WorkspaceFingerprint {
+		return errors.New("root workspace content changed")
+	}
 
 	return nil
 }
@@ -345,11 +350,16 @@ func captureRootCheckoutSnapshot(root string) (rootCheckoutSnapshot, error) {
 	if err != nil {
 		return rootCheckoutSnapshot{}, fmt.Errorf("capturing ROOT_STATUS: %w", err)
 	}
+	workspace, err := captureWorkspaceState(root)
+	if err != nil {
+		return rootCheckoutSnapshot{}, fmt.Errorf("capturing ROOT_STATUS content fingerprint: %w", err)
+	}
 
 	return rootCheckoutSnapshot{
-		Head:   strings.TrimSpace(string(head)),
-		Branch: strings.TrimSpace(string(branch)),
-		Status: status,
+		Head:                 strings.TrimSpace(string(head)),
+		Branch:               strings.TrimSpace(string(branch)),
+		Status:               status,
+		WorkspaceFingerprint: workspace.Fingerprint,
 	}, nil
 }
 

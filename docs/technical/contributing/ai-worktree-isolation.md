@@ -11,8 +11,8 @@ The workflow keeps three directory roles separate:
 - `TRUSTED_ROOT_CHECKOUT` is the primary checkout returned first by `git
   worktree list`. It is control-plane state only: PR metadata lookup, fetches,
   and creation/removal of workflow-owned worktrees. Its initial HEAD, branch,
-  and complete porcelain status may already be dirty, but must remain byte-for-
-  byte unchanged while agents run.
+  complete porcelain status, and workspace-content fingerprint may already be
+  dirty, but must remain byte-for-byte unchanged while agents run.
 - `CANDIDATE_WORKTREE` is a unique detached worktree created for one PR and one
   expected HEAD. Reviewers, fixers, and PR validation run there. It must never
   equal `TRUSTED_ROOT_CHECKOUT`.
@@ -77,19 +77,23 @@ agent's `pwd` self-check is defense in depth, not the authorization mechanism.
 ## Root protection and Git guard
 
 Before the first subprocess, `review-loop` captures `ROOT_HEAD`, `ROOT_BRANCH`,
-and the complete `ROOT_STATUS`. It compares the same values immediately before
-and after every reviewer, fixer, and validator. Any difference emits
-`ROOT_MUTATION_DETECTED` and stops without reset, clean, checkout, or other
-automatic recovery. An already-dirty root is supported because equality, not
-cleanliness, is the invariant.
+the complete `ROOT_STATUS`, and a workspace-content fingerprint covering
+tracked, staged, and untracked state. It compares the same values immediately
+before and after every reviewer, fixer, and validator. The fingerprint catches
+content overwrites even when the porcelain status text is unchanged. Any
+difference emits `ROOT_MUTATION_DETECTED` and stops without reset, clean,
+checkout, or other automatic recovery. An already-dirty root is supported
+because equality, not cleanliness, is the invariant.
 
 The validation directory contains a `git` wrapper at the front of agent
-`PATH`. It allows read-only Git commands, but rejects these mutations when they
-target `TRUSTED_ROOT_CHECKOUT`: `switch`, `checkout`, `add`, `commit`, `merge`,
-`rebase`, `cherry-pick`, `reset`, `clean`, `restore`, and branch
-creation/deletion/move/copy. Workflow worktree mutations bypass that agent
-`PATH`; agent-issued `git worktree add/remove/move/prune/repair/lock/unlock` are
-always rejected as unregistered child worktrees.
+`PATH`. For `TRUSTED_ROOT_CHECKOUT`, it is deny-by-default: only an enumerated
+set of read-only inspection commands is allowed. Known mutations such as
+`switch`, `checkout`, `add`, `commit`, `merge`, `rebase`, `cherry-pick`,
+`reset`, `clean`, `restore`, `stash`, `apply`, `revert`, `am`, branch
+creation/deletion/move/copy, and any unknown subcommand are rejected. Workflow
+worktree mutations bypass that agent `PATH`; agent-issued `git worktree
+add/remove/move/prune/repair/lock/unlock` are always rejected as unregistered
+child worktrees.
 
 Detached worktrees for baseline comparison, read-only experiments, and
 `BEFORE_FIX` reproduction remain valid when the workflow creates them. The
@@ -115,7 +119,7 @@ consume the binding rather than create another candidate.
 | `ai-review-known-findings` reconciliation | base-pinned trusted child worktree, read-only | YES, outer PR workflow | YES |
 | `ai-fix-claude` | `EXPECTED_WORKTREE`, re-verified against Git top-level | NO, caller owns it | YES |
 | `agent-check-pr` | candidate via review-loop `Cmd.Dir`, with its own secondary gate | NO, caller owns it | YES |
-| `ai-audit`, `ai-audit-challenge`, `ai-audit-jira` | exact clean audit HEAD or publication directory under their separate contracts | N/A: not PR candidate workflows | YES where a provider is used; read-only |
+| `ai-audit`, `ai-audit-challenge`, `ai-audit-jira` | exact clean audit HEAD or publication directory under their separate, non-PR contracts | N/A: not PR candidate workflows | NO under the PR binding contract; audit adapters remain read-only |
 
 Before this enforcement, the high-level launchers created worktrees but relied
 on shell `cd`; `review-loop` left `Cmd.Dir` unset, so a direct launch from the
