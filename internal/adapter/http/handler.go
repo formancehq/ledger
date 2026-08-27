@@ -56,7 +56,13 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 	// Apply middlewares
 	r.Use(
 		middleware.RequestID,
-		middleware.RealIP,
+		// middleware.RealIP is deprecated (IP spoofing risk — see
+		// GHSA-3fxj-6jh8-hvhx). ledger sits behind exactly one reverse proxy
+		// (the Traefik ingress) in every deployment, so trust its X-Forwarded-For
+		// hop and no further. If that topology ever changes (e.g. an extra
+		// proxy/mesh hop added in front), this trusted-proxy count must be
+		// updated accordingly, or the resolved IP will be wrong.
+		middleware.ClientIPFromXFFTrustedProxies(1),
 		otelhttp.NewMiddleware("ledger-http-server"),
 		loggerMiddleware(logger),
 		middleware.RequestLogger(&chiLogFormatter{
