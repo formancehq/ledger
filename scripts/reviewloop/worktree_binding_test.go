@@ -124,6 +124,19 @@ func TestGitMutationGuardDefaultsToDenyForRootSubcommands(t *testing.T) {
 	}
 }
 
+func TestGitMutationGuardRefusesOutputWritingOptionsInRoot(t *testing.T) {
+	fixture := newWorktreeBindingFixture(t)
+	contentBefore := readTestFile(t, filepath.Join(fixture.root, "base.txt"))
+
+	output, err := fixture.run(t, 123, fixture.candidate, fixture.bindingFile, map[string]string{
+		"TEST_ROOT_MUTATION": "guard-output",
+	})
+	require.Error(t, err, output)
+	require.Contains(t, output, "ROOT_CHECKOUT_GIT_MUTATION_FORBIDDEN command=git diff")
+	require.Contains(t, output, "ROOT_UNCHANGED=PASS")
+	require.Equal(t, contentBefore, readTestFile(t, filepath.Join(fixture.root, "base.txt")))
+}
+
 func TestGitMutationGuardRefusesUnregisteredChildWorktree(t *testing.T) {
 	fixture := newWorktreeBindingFixture(t)
 
@@ -226,6 +239,7 @@ case "${TEST_ROOT_MUTATION:-}" in
     guard-apply) git -C "$TRUSTED_ROOT_CHECKOUT" apply ;;
     guard-revert) git -C "$TRUSTED_ROOT_CHECKOUT" revert "$EXPECTED_HEAD" ;;
     guard-am) git -C "$TRUSTED_ROOT_CHECKOUT" am ;;
+    guard-output) git -C "$TRUSTED_ROOT_CHECKOUT" diff --output=base.txt ;;
     child-worktree) git worktree add --detach "$(dirname "$EXPECTED_WORKTREE")/agent-child" "$EXPECTED_HEAD" ;;
     guard-read) git -C "$TRUSTED_ROOT_CHECKOUT" status --short >/dev/null ;;
 esac

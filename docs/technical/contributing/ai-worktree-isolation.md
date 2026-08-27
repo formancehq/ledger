@@ -90,8 +90,9 @@ The validation directory contains a `git` wrapper at the front of agent
 set of read-only inspection commands is allowed. Known mutations such as
 `switch`, `checkout`, `add`, `commit`, `merge`, `rebase`, `cherry-pick`,
 `reset`, `clean`, `restore`, `stash`, `apply`, `revert`, `am`, branch
-creation/deletion/move/copy, and any unknown subcommand are rejected. Workflow
-worktree mutations bypass that agent `PATH`; agent-issued `git worktree
+creation/deletion/move/copy, output-writing/external-command options, unsafe
+global configuration overrides, and any unknown subcommand are rejected.
+Workflow worktree mutations bypass that agent `PATH`; agent-issued `git worktree
 add/remove/move/prune/repair/lock/unlock` are always rejected as unregistered
 child worktrees.
 
