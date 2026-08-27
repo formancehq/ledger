@@ -335,7 +335,7 @@ generate-proto:
 # --- Operator (Kubernetes) ---
 
 # controller-gen binary for CRD/RBAC generation
-controller-gen := "go run sigs.k8s.io/controller-tools/cmd/controller-gen@latest"
+controller-gen := "go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.21.0"
 
 # Generate operator CRDs, RBAC, and sync Helm chart
 operator-generate:
