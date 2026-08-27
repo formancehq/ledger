@@ -61,9 +61,27 @@ an `os.Root` bound to the staging directory for parent creation, temporary-file
 creation, cleanup, and final rename. A peer therefore cannot use a manifest
 path or a pre-existing staging symlink to write outside the staging directory.
 
+## Manifest path uniqueness
+
+Locality is not sufficient on its own, because downloads run in parallel and
+each one writes through `path + ".tmp"` before renaming that name onto its
+final path. The follower therefore validates the complete manifest up front and
+rejects, on cleaned paths, two classes of collision:
+
+- duplicate entries, which would race on one staging name and one rename;
+- any entry whose path equals another entry's staging path, such as `a` and
+  `a.tmp`. There the `a.tmp` transfer can rename its own bytes onto the staging
+  file the `a` transfer already opened. The `a` transfer then verifies its
+  unlinked descriptor and installs the other transfer's bytes as `a`, so both
+  transfers report success for content that was never verified against the
+  entry it was installed under.
+
+Rejecting the manifest before the first `FetchFile` makes the outcome
+independent of transfer interleaving.
+
 Tests must preserve both sides of this boundary: valid root and nested files,
-parent traversal, absolute paths, and symlink escapes. See
-`docs/technical/contributing/testing.md`.
+parent traversal, absolute paths, symlink escapes, duplicate manifest paths,
+and staging-path collisions. See `docs/technical/contributing/testing.md`.
 
 ## WAL reclamation after restore
 

@@ -250,6 +250,66 @@ func TestGRPCSnapshotFetcher_RejectsNonLocalManifestPath(t *testing.T) {
 	require.NoFileExists(t, outsidePath)
 }
 
+// TestGRPCSnapshotFetcher_RejectsStagingPathCollision covers the parallel
+// transfer hazard: "a.bin" is downloaded through the staging name "a.bin.tmp",
+// so a manifest declaring both entries lets one transfer rename its bytes onto
+// the file the other transfer is still writing. The whole manifest is rejected
+// before any FetchFile call, which makes the outcome independent of how the
+// two downloads interleave.
+func TestGRPCSnapshotFetcher_RejectsStagingPathCollision(t *testing.T) {
+	t.Parallel()
+
+	targetDir := t.TempDir()
+
+	client, clientState := newMockSnapshotClient(t,
+		&snapshotpb.PrepareSnapshotResponse{
+			SessionId: "test-session",
+			Manifest: &snapshotpb.SnapshotManifest{Files: []*snapshotpb.FileEntry{
+				{Path: "a.bin", Size: 3},
+				{Path: "a.bin" + stagingSuffix, Size: 3},
+			}},
+		},
+		nil,
+		nil,
+	)
+
+	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 4, retryCount: 1, fileRetryCount: 1}
+	_, err := fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
+	require.ErrorContains(t, err, "collides with the staging path")
+	require.Zero(t, clientState.fetchFileCalls.Load())
+	require.Equal(t, int32(1), clientState.closeCalled.Load())
+	require.NoFileExists(t, filepath.Join(targetDir, "a.bin"))
+	require.NoFileExists(t, filepath.Join(targetDir, "a.bin"+stagingSuffix))
+}
+
+// TestGRPCSnapshotFetcher_RejectsDuplicateManifestPath covers the other
+// parallel hazard from the same validation pass: two entries naming one file
+// would race on the same staging name and final rename.
+func TestGRPCSnapshotFetcher_RejectsDuplicateManifestPath(t *testing.T) {
+	t.Parallel()
+
+	targetDir := t.TempDir()
+
+	client, clientState := newMockSnapshotClient(t,
+		&snapshotpb.PrepareSnapshotResponse{
+			SessionId: "test-session",
+			Manifest: &snapshotpb.SnapshotManifest{Files: []*snapshotpb.FileEntry{
+				{Path: "a.bin", Size: 3},
+				{Path: "a.bin", Size: 4},
+			}},
+		},
+		nil,
+		nil,
+	)
+
+	fetcher := &grpcSnapshotFetcher{client: client, parallelism: 4, retryCount: 1, fileRetryCount: 1}
+	_, err := fetcher.FetchSnapshot(t.Context(), targetDir, nil, 0)
+	require.ErrorContains(t, err, "duplicate snapshot path")
+	require.Zero(t, clientState.fetchFileCalls.Load())
+	require.Equal(t, int32(1), clientState.closeCalled.Load())
+	require.NoFileExists(t, filepath.Join(targetDir, "a.bin"))
+}
+
 func TestGRPCSnapshotFetcher_RejectsSymlinkEscape(t *testing.T) {
 	t.Parallel()
 

@@ -16,6 +16,9 @@ import (
 const (
 	fileInitialBackoff = 200 * time.Millisecond
 	fileMaxBackoff     = 5 * time.Second
+	// stagingSuffix is appended to a manifest path to build the temporary file
+	// a transfer writes through before renaming it onto the final path.
+	stagingSuffix = ".tmp"
 )
 
 // fileFetcher fetches a single file from a snapshot session via gRPC.
@@ -80,7 +83,7 @@ func (f *fileFetcher) fetchFileOnce(ctx context.Context, entry *snapshotpb.FileE
 		return fmt.Errorf("opening stream for %s: %w", entry.GetPath(), err)
 	}
 
-	tmpPath := entry.GetPath() + ".tmp"
+	tmpPath := entry.GetPath() + stagingSuffix
 	if err := root.MkdirAll(filepath.Dir(tmpPath), 0755); err != nil {
 		return fmt.Errorf("creating parent directory for %s: %w", entry.GetPath(), err)
 	}
