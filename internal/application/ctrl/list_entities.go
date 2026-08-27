@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/antithesishq/antithesis-sdk-go/assert"
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -34,6 +34,9 @@ type entityListParams[T interface{ ~string | ~uint64 }] struct {
 	info         *commonpb.LedgerInfo
 	profile      *query.QueryProfile
 	pebbleReader dal.PebbleReader
+	// logger receives the empty-indexed-page diagnostic; the caller passes
+	// its controller logger.
+	logger logging.Logger
 	// releaseHold drops the reclaim-floor reservation OpenQueryHandle took
 	// before pebbleReader was opened. Alignment hands it back the moment the
 	// read's own pin exists; an unaligned read never needed it.
@@ -126,7 +129,7 @@ func listEntities[T interface{ ~string | ~uint64 }](
 	var zero T
 	if err == nil && len(result.entityIDs) == 0 && !params.reverse && params.after == zero &&
 		params.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		reportEmptyIndexedAccountsPage(readStore, snap, params.indexRegistry, params.ledgerName, params.filter, mainSeq)
+		reportEmptyIndexedAccountsPage(params.logger, readStore, snap, params.indexRegistry, params.ledgerName, params.filter, mainSeq)
 	}
 
 	return result, err
@@ -152,17 +155,18 @@ func collectHasAssetLeaves(f *commonpb.QueryFilter, out []*commonpb.AccountHasAs
 	return out
 }
 
-// reportEmptyIndexedAccountsPage fires when an uncursored forward ACCOUNTS
+// reportEmptyIndexedAccountsPage logs when an uncursored forward ACCOUNTS
 // page with a has-asset leaf comes back empty. Every such leaf passed
 // requireIndexReady to get here, so the registry row (read through the
 // mainstore handle) and the per-replica version record (read through the
 // iteration snapshot) both claimed a live index; an empty page then means
-// the promoted keyspace holds no members. That is legal only for an asset
-// no account ever touched, so the details re-read both halves raw — the
-// registry row's created_at identifies which incarnation the gate saw —
-// plus both fold points, making a stale-row serve distinguishable from a
-// genuinely memberless asset.
-func reportEmptyIndexedAccountsPage(readStore *readstore.Store, snap dal.PebbleReader, reg indexes.Lookup, ledgerName string, filter *commonpb.QueryFilter, pin uint64) {
+// the promoted keyspace holds no members. That is legal for an asset no
+// account ever touched — common enough that this stays a log line, keyed
+// for correlation with a model-checker finding at the same ledger and
+// time. The line re-reads both halves raw — the registry row's created_at
+// identifies which incarnation the gate saw — plus both fold points,
+// making a stale-row serve distinguishable from a memberless asset.
+func reportEmptyIndexedAccountsPage(logger logging.Logger, readStore *readstore.Store, snap dal.PebbleReader, reg indexes.Lookup, ledgerName string, filter *commonpb.QueryFilter, pin uint64) {
 	leaves := collectHasAssetLeaves(filter, nil)
 	if len(leaves) == 0 {
 		return
@@ -200,7 +204,9 @@ func reportEmptyIndexedAccountsPage(readStore *readstore.Store, snap dal.PebbleR
 		}
 	}
 
-	assert.Unreachable("asset-index account query served empty page", details)
+	if logger != nil {
+		logger.WithFields(details).Errorf("EMPTYIDXPAGE asset-index account query served empty page")
+	}
 }
 
 // listWithoutIndex serves the main-store-only shapes: an unfiltered ACCOUNTS or

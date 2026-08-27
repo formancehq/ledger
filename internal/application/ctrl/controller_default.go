@@ -446,6 +446,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 	result, err := listEntities(ctx, rs, entityListParams[uint64]{
 		target:        commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		ledgerName:    ledgerInfo.GetName(),
+		logger:        ctrl.logger,
 		pageSize:      pageSize,
 		after:         afterTxID,
 		filter:        filter,
@@ -540,6 +541,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	result, err := listEntities(ctx, ctrl.readStore, entityListParams[string]{
 		target:        commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		ledgerName:    ledgerInfo.GetName(),
+		logger:        ctrl.logger,
 		pageSize:      pageSize,
 		after:         afterAddress,
 		filter:        filter,
