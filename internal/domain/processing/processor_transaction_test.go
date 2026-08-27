@@ -44,7 +44,9 @@ func TestProcessCreateTransaction(t *testing.T) {
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4) // Called for: ledger log date, timestamp fallback, InsertedAt, UpdatedAt
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
-	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, persisted *raftcmdpb.LedgerBoundaries) {
+		require.Equal(t, uint64(2), persisted.GetNextTransactionId())
+	})
 	expectGetVolume(mockStore, sourceKey, sourceVolume.AsReader(), nil)
 	expectPutVolume(t, mockStore, sourceKey, nil, func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 		// Output should increase by 100
