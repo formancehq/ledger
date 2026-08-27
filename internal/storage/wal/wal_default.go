@@ -937,21 +937,31 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
 		Term:      new(snap.GetMetadata().GetTerm()),
 		ConfState: snap.GetMetadata().GetConfState(),
 	}
-	// Buffer HardState before the snapshot record. A commit-only HardState
-	// update does not make etcd WAL Save sync by itself; SaveSnapshot always
-	// syncs and therefore durably flushes both records in this order. This keeps
-	// ApplySnapshot self-sufficient instead of depending on processReady having
-	// appended the same HardState first.
+	// Persist a guard snapshot record before advancing HardState. Until the
+	// HardState commit reaches this index, etcd ignores the record on restart
+	// and the older snapshot and WAL segments remain available. Once HardState
+	// is durable, this record guarantees that the new snapshot is recognized.
+	if err := s.wal.SaveSnapshot(walSnap); err != nil {
+		s.mu.Unlock()
+
+		return fmt.Errorf("saving guard snapshot to WAL: %w", err)
+	}
+
+	// A commit-only HardState update does not make etcd WAL Save sync by
+	// itself. Buffer it after the durable guard record, then write the same
+	// snapshot record again as the sync barrier. Every durable prefix is safe:
+	// either the old HardState ignores the guard record, or the new HardState
+	// has a matching snapshot record that was already synced before it.
 	if err := s.wal.Save(s.hardState, nil); err != nil {
 		s.mu.Unlock()
 
-		return fmt.Errorf("saving HardState before snapshot to WAL: %w", err)
+		return fmt.Errorf("saving HardState after guard snapshot to WAL: %w", err)
 	}
 
 	if err := s.wal.SaveSnapshot(walSnap); err != nil {
 		s.mu.Unlock()
 
-		return fmt.Errorf("saving snapshot to WAL: %w", err)
+		return fmt.Errorf("syncing snapshot and HardState to WAL: %w", err)
 	}
 
 	// Safe to clean up old snap files now — the WAL record is persisted.

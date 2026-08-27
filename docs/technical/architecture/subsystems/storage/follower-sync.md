@@ -87,12 +87,15 @@ and staging-path collisions. See `docs/technical/contributing/testing.md`.
 
 Installing a received Raft snapshot first replaces the in-memory snapshot
 pointer, discards the entire cached entry slice, and raises the in-memory
-HardState commit when necessary. It then writes the full snapshot file, buffers
-the HardState WAL record, and writes the WAL snapshot record; etcd's
-`SaveSnapshot` sync durably flushes both WAL records. After cleaning old
-snapshot files, it drops the in-memory WAL mutex and releases etcd WAL segment
-locks through the installed index. A durable-write failure is returned but does
-not roll back the earlier in-memory replacement and cache clear.
+HardState commit when necessary. It then writes the full snapshot file and a
+durable guard snapshot record before buffering the HardState WAL record. A
+second identical snapshot record supplies the sync barrier for the HardState.
+This ordering makes every durable prefix recoverable: the old HardState ignores
+an ahead-of-commit guard record, while any durable new HardState already has a
+matching durable snapshot record. After cleaning old snapshot files, the node
+drops the in-memory WAL mutex and releases etcd WAL segment locks through the
+installed index. A durable-write failure is returned but does not roll back the
+earlier in-memory replacement and cache clear.
 
 Every runtime path that creates, updates, or installs a snapshot serializes the
 complete snapshot-file and WAL-record persistence sequence. The persistence
