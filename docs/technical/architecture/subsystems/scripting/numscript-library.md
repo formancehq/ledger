@@ -30,7 +30,7 @@ The read-only APIs (`GetNumscript`) resolve the `version` selector as follows:
 
 Empty and partial (`"1"`, `"1.0"`) selectors are a **read-only** convenience, the partial ones parsed by `semver.ParsePartial()` (`internal/pkg/semver/`). They resolve outside the FSM, where a Pebble scan is allowed, and always return a concrete version. Save rejects them: only a full semver is storable.
 
-An **executable** `ScriptReference` in a transaction is stricter — `version` is required and accepts only the literal `"latest"` or an exact full semver; empty and partial selectors are rejected at admission with `NUMSCRIPT_INVALID_VERSION`. The two forms are rejected for different reasons:
+An **executable** `ScriptReference` in a transaction is stricter — `version` is required and accepts only the literal `"latest"` or an exact full semver; empty and partial selectors are rejected at admission with `NUMSCRIPT_INVALID_VERSION`. The selector is state-independent, so this is a structural gate (`validateOrderContent`) that runs on every accepted order — including one the FSM goes on to skip for a reference conflict, whose script is never resolved. The two forms are rejected for different reasons:
 
 - An **empty** selector is resolvable (it would follow the same latest pointer as `"latest"`), but the selector a caller submits is what the audit chain records, so an executable reference must state the version it intends explicitly rather than leave it implicit.
 - A **partial** selector resolves through a Pebble range scan, which the FSM apply path cannot make (invariant #3). `"latest"` stays legal because the FSM resolves it through the covered latest-pointer attribute instead — see [Resolution Flow](#resolution-flow--admission-plans-the-fsm-resolves).

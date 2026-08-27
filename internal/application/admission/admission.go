@@ -33,7 +33,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -1797,15 +1796,8 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		)
 
 		if ref := createTx.CreateTransaction.GetNumscriptReference(); ref != nil && ref.GetName() != "" {
-			// Executable references require an explicit selector: the literal
-			// "latest" or a full semver. Omitted and partial (1, 1.2) selectors
-			// are read-only in v3.0.
-			if v := ref.GetVersion(); v != "latest" {
-				if _, perr := semver.Parse(v); perr != nil {
-					return &domain.BusinessError{Err: &domain.ErrNumscriptInvalidVersion{Version: v}}
-				}
-			}
-
+			// The selector is already gated structurally (validateOrderContent),
+			// so it is either "latest" or a full semver here.
 			content, rv, err := a.resolveNumscriptReference(overlay, ledgerName, ref.GetName(), ref.GetVersion())
 			if err != nil {
 				return err
