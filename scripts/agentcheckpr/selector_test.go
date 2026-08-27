@@ -1,6 +1,7 @@
 package agentcheckpr
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -90,14 +91,66 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 				runGit(t, repository, "-c", "user.name=Agent Check PR Test", "-c", "user.email=agent-check-pr@example.com", "commit", "-m", "changes")
 			}
 
-			command := exec.Command("bash", selectorPath(t), "--list")
-			command.Dir = repository
-			command.Env = append(os.Environ(), "AI_REVIEW_BASE_SHA="+baseSHA)
-			output, err := command.CombinedOutput()
-			require.NoError(t, err, string(output))
-			require.Equal(t, testCase.expected, strings.Fields(string(output)))
+			stdout, _ := runSelectorList(t, repository, append(os.Environ(), "AI_REVIEW_BASE_SHA="+baseSHA))
+			require.Equal(t, testCase.expected, strings.Fields(stdout))
 		})
 	}
+}
+
+func TestSelectorListKeepsDiagnosticsOutOfStructuredStdout(t *testing.T) {
+	t.Parallel()
+
+	repository := t.TempDir()
+	runGit(t, repository, "init")
+	require.NoError(t, os.WriteFile(filepath.Join(repository, "base.txt"), []byte("base\n"), 0o644))
+	runGit(t, repository, "add", ".")
+	runGit(t, repository, "-c", "user.name=Agent Check PR Test", "-c", "user.email=agent-check-pr@example.com", "commit", "-m", "base")
+	baseSHA := runGitOutput(t, repository, "rev-parse", "HEAD")
+	writeTestFile(t, repository, "misc/operator/internal/example.go")
+	runGit(t, repository, "add", ".")
+	runGit(t, repository, "-c", "user.name=Agent Check PR Test", "-c", "user.email=agent-check-pr@example.com", "commit", "-m", "changes")
+
+	runDirectory := t.TempDir()
+	isolatedDirectories := map[string]string{
+		"HOME":                "home",
+		"GOCACHE":             "go-cache",
+		"GOMODCACHE":          "go-mod-cache",
+		"GOPATH":              "go-path",
+		"TMPDIR":              "tmp",
+		"XDG_CACHE_HOME":      "cache",
+		"GOLANGCI_LINT_CACHE": "cache/golangci-lint",
+	}
+	environment := append(os.Environ(),
+		"AI_REVIEW_BASE_SHA="+baseSHA,
+		"VALIDATION_RUN_DIR="+runDirectory,
+		"VALIDATION_RUN_ID=selector-test",
+	)
+	for name, relativePath := range isolatedDirectories {
+		path := filepath.Join(runDirectory, relativePath)
+		require.NoError(t, os.MkdirAll(path, 0o755))
+		environment = append(environment, name+"="+path)
+	}
+
+	stdout, stderr := runSelectorList(t, repository, environment)
+	require.Equal(t, "agent-check-full\ntest-operator\n", stdout, "stdout must contain structured gates only")
+	require.Contains(t, stderr, "LINT_ISOLATION_GATE=PASS (", "stderr may contain validation diagnostics")
+}
+
+func runSelectorList(t *testing.T, repository string, environment []string) (string, string) {
+	t.Helper()
+
+	command := exec.Command("bash", selectorPath(t), "--list")
+	command.Dir = repository
+	command.Env = environment
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+
+	// --list stdout is a machine-readable protocol; stderr is reserved for
+	// diagnostics. Never combine the streams before parsing stdout.
+	output, err := command.Output()
+	require.NoError(t, err, stderr.String())
+
+	return string(output), stderr.String()
 }
 
 func writeTestFile(t *testing.T, repository, path string) {
@@ -127,8 +180,10 @@ func runGitOutput(t *testing.T, directory string, arguments ...string) string {
 
 	command := exec.Command("git", arguments...)
 	command.Dir = directory
-	output, err := command.CombinedOutput()
-	require.NoError(t, err, fmt.Sprintf("git %s:\n%s", strings.Join(arguments, " "), output))
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	output, err := command.Output()
+	require.NoError(t, err, fmt.Sprintf("git %s:\n%s", strings.Join(arguments, " "), stderr.String()))
 
 	return strings.TrimSpace(string(output))
 }
