@@ -430,11 +430,16 @@ restart. It catches:
   serialization, or a linearizable read returning state outside the candidate
   set.
 
+- **Chapter lifecycle divergence** — an archive the ordering rule should have
+  refused, a rejection reason that depends on whether a chapter's rows are still
+  resident, or a registry that moved in a way no order and no background worker
+  can explain.
+
 It exercises the chart of accounts, transactions and reverts (with post-commit
-volumes), account/transaction/ledger metadata, the typed-metadata schema, and
-the transient/ephemeral persistence classes — and reads them back: account,
-whole-ledger, transaction-by-id, and declared-schema reads are all validated
-against the model.
+volumes), account/transaction/ledger metadata, the typed-metadata schema, the
+transient/ephemeral persistence classes, and the bucket-global chapter lifecycle
+— and reads them back: account, whole-ledger, transaction-by-id, declared-schema,
+and chapter-registry reads are all validated against the model.
 
 #### How it works
 
@@ -449,6 +454,7 @@ the harness around it:
 | File | Role |
 |------|------|
 | `tests/oracle/model.go` | The pure forward model: `GlobalState`/`LedgerState` + `Apply`, which predicts the server's legal outcome for a bulk, atomically across whatever ledgers it touches. |
+| `tests/oracle/chapters.go` | The bucket-global chapter registry in normal form, and the outcome of `CloseChapter`/`ArchiveChapter` against it. |
 | `tests/oracle/bulk.go` / `accessors.go` | The `Bulk` submission shape the model consumes; read-only accessors over model state for validators and tools. |
 | `tests/oracle/oracletest/` | Shared helpers for tests that drive the oracle. |
 | `tests/oracle/cmd/replay` | Offline replayer for `MODEL_DUMP_BATCHES` captures (see below). |
@@ -457,6 +463,7 @@ the harness around it:
 | `search.go` (driver) | `candidateBases` — enumerates the states the server could legitimately be in. |
 | `validate.go` (driver) | The conformance checks for committed bulks, failures, and reads. |
 | `actions.go` / `reads.go` (driver) | Random bulk generation; account, whole-ledger, transaction-by-id, and metadata-schema read execution. |
+| `chapters.go` (driver) | Chapter-order generation, the registry read, and the tolerance for the two transitions the server makes with no request behind them. |
 
 The key primitive is **`candidateBases`**: a committed bulk drains in
 log-sequence order, so the committed model state is its exact predecessor and
@@ -498,6 +505,7 @@ default. Common tunables (full list in the script header):
 | `RESTART_INTERVAL` / `DEAD_TIME` | Cluster restart cadence and how long a killed node stays down. |
 | `COMPACTION_MARGIN` | Raft entries between snapshots; low values force snapshot recovery. |
 | `RESTORE_INTERVAL` | Seconds between backup/restore cycles with `--restore`. |
+| `MODEL_ARCHIVE_INTERVAL` | Chapter-order pacing base in seconds with `--archive`. |
 
 #### Restore cycles (`--restore`, single node)
 
@@ -517,6 +525,39 @@ teardown (CR + PVCs), restore-mode round-trip (`ledgerctl restore download` /
 `finalize`), and the flip back to a full cluster. The
 `singleton_driver_model: restore cycle completed` Sometimes assertion in the
 report is the proof the path actually ran.
+
+#### Archival cycles (`--archive`)
+
+`run_model_test.sh --archive` gives the node filesystem cold storage, which is
+what lets the driver emit chapter orders: `ArchiveChapter` is refused at
+admission when cold storage is unconfigured, on node-local configuration the
+model cannot see. With it enabled, `CloseChapter` and `ArchiveChapter` go into
+the modeled bulk stream like any other order, and the oracle decides which the
+server should accept — the generator only weights *which* chapter is asked for,
+so the accepted archives and the rejections around them are both checked against
+a prediction rather than against the driver's own opinion.
+
+Two transitions carry no request: the Sealer moves a chapter `CLOSING -> CLOSED`
+once it has folded the audit up to the close boundary, and the Archiver proposes
+`ConfirmArchiveChapter` once the chapter's cold upload verifies — which is also
+where the purge happens. Neither is followed by another, so the model is never
+more than one unrequested step behind on any chapter, and a prediction that turns
+on a pending step is checked against the handful of registries those steps could
+have produced. A committed archive then tells the model which of them was real.
+
+The chapter read (`ListChapters`) is the lifecycle assertion: statuses never move
+backwards, an unrequested move must be one of those two, chapters only appear
+behind a close, and the registry's shape must be one the lifecycle can produce —
+which is how a non-contiguous archived prefix would surface. Because a restore
+rebuilds the registry from the backup's logs, it doubles as the check that a
+restored store came back with the chapter history it had.
+
+The report fails the run if `--archive` archived nothing, if the teardown
+`ledgerctl store check` found integrity errors over the archived store, or if no
+out-of-order archive was ever rejected — each of those would leave a green run
+saying nothing about the path it was meant to cover. Combined with `--restore`,
+some restore must also complete *after* an archival, or the rebuild never ran
+against an archival-purged history.
 
 #### Maintaining the model
 

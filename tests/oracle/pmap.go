@@ -206,6 +206,21 @@ func (l List[V]) Set(i int, v V) List[V] {
 	return l
 }
 
+// PopFront returns the list without its first entry. Terms are keyed on the
+// index, so dropping the head shifts every remaining entry and the sum is
+// re-folded rather than adjusted — it stays a pure function of the resulting
+// contents, so a list reached by different routes fingerprints alike.
+func (l List[V]) PopFront() List[V] {
+	l.list = l.list.Slice(1, l.list.Len())
+
+	l.fp = Digest{}
+	for i, v := range l.All() {
+		l.fp = l.fp.add(l.term(i, v))
+	}
+
+	return l
+}
+
 func (l List[V]) Fingerprint() Digest { return l.fp }
 
 // All iterates entries in index order.

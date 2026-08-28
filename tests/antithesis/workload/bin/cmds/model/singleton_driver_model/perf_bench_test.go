@@ -158,7 +158,7 @@ func BenchmarkCandidateBasesFull(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		bases = 0
-		c.candidateBases(maxTicket, func(oracle.GlobalState) bool {
+		c.candidateBases(maxTicket, nil, func(oracle.GlobalState) bool {
 			bases++
 			return false
 		})

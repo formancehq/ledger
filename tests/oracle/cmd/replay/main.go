@@ -157,7 +157,11 @@ func replayCommitted(batches []batch, target string) {
 
 		hitsTarget := false
 		for _, r := range bulk.Requests {
+			// Chapter orders are bucket-scoped and name no ledger.
 			l := oracle.LedgerOf(r)
+			if l == "" {
+				continue
+			}
 			touched[l] = true
 			if l == target {
 				hitsTarget = true
@@ -295,7 +299,9 @@ func renderKinds(b oracle.Bulk) string {
 func renderTypes(gs oracle.GlobalState, b oracle.Bulk) string {
 	ledgers := map[string]bool{}
 	for _, r := range b.Requests {
-		ledgers[oracle.LedgerOf(r)] = true
+		if l := oracle.LedgerOf(r); l != "" {
+			ledgers[l] = true
+		}
 	}
 
 	var out []string

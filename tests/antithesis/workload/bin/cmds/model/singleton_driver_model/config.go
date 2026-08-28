@@ -171,11 +171,21 @@ const defaultRestoreIntervalSecs = 90
 // restore fires, exercising restore-from-archived-baseline.
 const defaultArchiveIntervalSecs = 20
 
-// Bounded wait for the background Sealer to move a closed chapter CLOSING ->
-// CLOSED, and for the background Archiver to move it ARCHIVING -> ARCHIVED
-// (upload + confirm + purge). A cycle that times out is skipped, not a finding.
+// Chapter orders the driver emits per nominal archival interval. Closes and
+// archive requests are paced separately because their costs differ by orders of
+// magnitude: a close hands the Sealer a Pebble checkpoint to fold, while an archive
+// request the ordering gate rejects costs one audited failure. Frequent attempts
+// keep the frontier busy — the archive that should be accepted once the Sealer has
+// sealed the chapter, and the rejections around it — without closing chapters
+// faster than they can be sealed and archived.
 const (
-	archiveSealTimeout    = 30 * time.Second
-	archiveConfirmTimeout = 45 * time.Second
-	archivePoll           = 250 * time.Millisecond
+	chapterClosesPerInterval   = 2
+	chapterArchivesPerInterval = 8
 )
+
+// Ceiling on the chapters the driver's outstanding orders may name at once.
+// candidateBases folds each named chapter's unobserved seal as its own branch, so
+// the search grows as 2^n. The driver enforces the ceiling by withholding archive
+// orders (takeChapterOrderLocked), which is what keeps n small — outstanding orders
+// normally number one or two, but a node that stops responding lets them pile up.
+const maxChaptersInPlay = 4

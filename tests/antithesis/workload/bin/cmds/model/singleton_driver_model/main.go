@@ -50,6 +50,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
 func main() {
@@ -111,6 +112,29 @@ func main() {
 
 	checker := NewChecker(names, schemas)
 
+	// The chapter registry is bucket-global: it outlives the per-run ledger fleet,
+	// so the model starts from the server's rather than from an empty one. The
+	// chapter read validates it in every run; chapter orders are emitted only when
+	// the run configured cold storage.
+	if err := checker.seedChapters(ctx, client); err != nil {
+		if isShutdownError(err) {
+			return
+		}
+
+		assert.Unreachable("singleton_driver_model: chapter registry seed failed", internal.Details{
+			"error": err.Error(),
+		})
+
+		return
+	}
+
+	if interval := selectArchivalInterval(); interval > 0 {
+		closeGap := interval / chapterClosesPerInterval
+		archiveGap := interval / chapterArchivesPerInterval
+		checker.enableChapterOrders(closeGap, archiveGap)
+		log.Printf("chapter orders enabled (a close every ~%s, an archive request every ~%s)", closeGap, archiveGap)
+	}
+
 	// No seed type — workers fill the chart organically; early txs at
 	// untyped prefixes fail ACCOUNT_NOT_MATCHING_TYPE and validate fine.
 
@@ -142,22 +166,10 @@ func main() {
 		log.Printf("restore cycle enabled (interval ~%s)", restoreInterval())
 	}
 
-	var archival sync.WaitGroup
-	if interval := selectArchivalInterval(); interval > 0 {
-		archival.Add(1)
-		go func() {
-			defer archival.Done()
-			runArchivalCycle(ctx, client, checker, interval)
-		}()
-		log.Printf("archival cycle enabled (interval ~%s)", interval)
-	}
-
-	// Workers stop on ctx.Done. Wait for the restore and archival cycles too
-	// before closing the processor's channel, so no cycle touches the checker
-	// during teardown.
+	// Workers stop on ctx.Done. Wait for the restore cycle too before closing the
+	// processor's channel, so it cannot touch the checker during teardown.
 	workers.Wait()
 	restore.Wait()
-	archival.Wait()
 	close(checker.incoming)
 	processors.Wait()
 }
@@ -183,11 +195,12 @@ func runWorker(
 
 		// 1-in-5: a read this iteration, split across the whole-ledger read
 		// (chart + ledger metadata), a single-account read, a transaction read
-		// (id + postings + reverted + metadata), and a metadata-schema read
-		// (declared field types). Reads validate against the in-flight bulk set,
-		// exercising cross-node freshness without needing quiescence.
+		// (id + postings + reverted + metadata), a metadata-schema read (declared
+		// field types), and the chapter registry. Reads validate against the
+		// in-flight bulk set, exercising cross-node freshness without needing
+		// quiescence.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -196,6 +209,8 @@ func runWorker(
 				runSchemaRead(ctx, client, c)
 			case 3:
 				runReplay(ctx, client, c)
+			case 4:
+				runChapterRead(ctx, client, c)
 			default:
 				runRead(ctx, client, c)
 			}
@@ -211,9 +226,16 @@ func runWorker(
 			continue
 		}
 		state := c.modelState
+		chapterOrder := c.takeChapterOrderLocked(time.Now())
 		c.mu.Unlock()
 
-		bulk := generateBulk(state, c.ledgerNames, c.receiptFor)
+		// A chapter order travels in a bulk of its own — see chapters.go.
+		var bulk oracle.Bulk
+		if chapterOrder != chapterOrderNone {
+			bulk = generateChapterBulk(state, chapterOrder)
+		} else {
+			bulk = generateBulk(state, c.ledgerNames, c.receiptFor)
+		}
 		if len(bulk.Requests) == 0 {
 			continue
 		}

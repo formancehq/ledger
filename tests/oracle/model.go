@@ -345,6 +345,9 @@ type GlobalState struct {
 	// Entries are immutable once frozen (infinite TTL — the model never evicts),
 	// so forks share the pointers.
 	idempotency Map[string, *frozenOutcome]
+	// chapters is the bucket-global chapter registry (chapters.go). It sits
+	// outside ledgers because a chapter cuts across every ledger in the bucket.
+	chapters Chapters
 }
 
 // frozenOutcome is a keyed bulk's recorded outcome: the exact requests it
@@ -381,18 +384,19 @@ func NewGlobalState() GlobalState {
 	return GlobalState{
 		ledgers:     map[string]LedgerState{},
 		idempotency: NewMap[string, *frozenOutcome](stringComparer{}, frozenOutcomeTerm),
+		chapters:    NewChapters(),
 	}
 }
 
 // clone returns a copy with its own ledgers table. A LedgerState is a value of
 // persistent collections, so the shallow copy is a full logical fork — forks
-// never share mutable state. The idempotency table is itself persistent and
-// carries over by value.
+// never share mutable state. The idempotency table and the chapter registry are
+// themselves persistent and carry over by value.
 func (g GlobalState) clone() GlobalState {
 	m := make(map[string]LedgerState, len(g.ledgers))
 	maps.Copy(m, g.ledgers)
 
-	return GlobalState{ledgers: m, idempotency: g.idempotency}
+	return GlobalState{ledgers: m, idempotency: g.idempotency, chapters: g.chapters}
 }
 
 // ledger returns the named ledger's state, or an empty one if untouched.
@@ -425,10 +429,10 @@ func (g GlobalState) Fingerprint() Digest {
 		d = d.add(t.sum())
 	}
 
-	// The frozen idempotency table is part of the identity — see
-	// frozenOutcomeTerm. Its terms are domain-tagged, so the plain sum keeps
-	// them disjoint from the ledger terms.
-	return d.add(g.idempotency.Fingerprint())
+	// The frozen idempotency table and the chapter registry are part of the
+	// identity — see frozenOutcomeTerm and Chapters.Fingerprint. Their terms are
+	// domain-tagged, so the plain sum keeps them disjoint from the ledger terms.
+	return d.add(g.idempotency.Fingerprint()).add(g.chapters.Fingerprint())
 }
 
 // OrderResult is the predicted outcome of one request in a bulk. PCV holds the
@@ -507,7 +511,8 @@ type ApplyResult struct {
 	Orders []OrderResult
 }
 
-// LedgerOf returns the ledger a request targets.
+// LedgerOf returns the ledger a request targets, or "" for a bucket-scoped one
+// (the chapter orders). Callers collecting ledger names skip the empty result.
 func LedgerOf(req *servicepb.Request) string {
 	switch r := req.GetType().(type) {
 	case *servicepb.Request_Apply:
@@ -524,8 +529,38 @@ func LedgerOf(req *servicepb.Request) string {
 		return r.SetMetadataFieldType.GetLedger()
 	case *servicepb.Request_RemoveMetadataFieldType:
 		return r.RemoveMetadataFieldType.GetLedger()
+	case *servicepb.Request_CloseChapter, *servicepb.Request_ArchiveChapter:
+		// Bucket-scoped: chapters cut across every ledger, so there is no ledger
+		// to route to. Callers collecting ledger names skip the empty result.
+		return ""
 	default:
 		panic(fmt.Sprintf("LedgerOf: unmodeled request type %T", req.GetType()))
+	}
+}
+
+// applyBucketScoped predicts a request that targets the bucket rather than a
+// ledger: the chapter orders. handled is false for a ledger-scoped request, which
+// Apply routes to its ledger's sub-state instead. A successful order advances the
+// receiver's registry in place — Apply works on a fork, and discards it whole if a
+// later order in the bulk fails.
+func (g *GlobalState) applyBucketScoped(req *servicepb.Request) (result OrderResult, handled bool) {
+	switch r := req.GetType().(type) {
+	case *servicepb.Request_CloseChapter:
+		chapters, oc := g.chapters.applyClose()
+		if oc.OK {
+			g.chapters = chapters
+		}
+
+		return oc, true
+	case *servicepb.Request_ArchiveChapter:
+		chapters, oc := g.chapters.applyArchive(r.ArchiveChapter.GetChapterId())
+		if oc.OK {
+			g.chapters = chapters
+		}
+
+		return oc, true
+	default:
+		return OrderResult{}, false
 	}
 }
 
@@ -569,6 +604,16 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	touched := map[string]map[VolumeKey]bool{}
 
 	for _, req := range bulk.Requests {
+		if oc, handled := next.applyBucketScoped(req); handled {
+			orders = append(orders, oc)
+
+			if !oc.OK {
+				return ApplyResult{OK: false, Reason: oc.Reason, State: g, Orders: orders}
+			}
+
+			continue
+		}
+
 		name := LedgerOf(req)
 
 		ls, ok := next.ledgers[name]
