@@ -3289,11 +3289,11 @@ func (x *GetTemplateUsageRequest) GetName() string {
 	return ""
 }
 
-// ScriptReference references a numscript from the library by name and optional version.
+// ScriptReference references a numscript from the library by name and version.
 type ScriptReference struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"` // "" = latest
+	Version       string                 `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"` // required: "latest" or an exact full semver
 	Vars          map[string]string      `protobuf:"bytes,3,rep,name=vars,proto3" json:"vars,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

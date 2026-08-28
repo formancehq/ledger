@@ -182,7 +182,7 @@ func TestAdmitActionCounters(t *testing.T) {
 					Action: &servicepb.LedgerAction{
 						Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
-								ScriptReference: &servicepb.ScriptReference{Name: "does-not-exist"},
+								ScriptReference: &servicepb.ScriptReference{Name: "does-not-exist", Version: "latest"},
 							},
 						},
 					},

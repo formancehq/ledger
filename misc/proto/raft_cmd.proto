@@ -368,10 +368,11 @@ message CreateTransactionOrder {
 }
 
 // NumscriptReference identifies a numscript from the library to use for a
-// transaction. The version selector — "" / "latest" or an exact full semver
-// (partial selectors are read-only, rejected here) — is carried verbatim into
-// the audited order; admission only plans the reads, and the FSM resolves
-// "latest" to the greatest stored semver at apply.
+// transaction. The version selector is required and accepts the literal
+// "latest" or an exact full semver (omitted and partial selectors are
+// read-only, rejected here); it is carried verbatim into the audited order,
+// admission only plans the reads, and the FSM resolves "latest" to the
+// greatest stored semver at apply.
 message NumscriptReference {
   string name = 1;
   string version = 2;

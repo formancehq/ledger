@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -267,6 +268,19 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 		return domain.ErrPostingsAndScriptConflict
 	case !hasPostings && !hasInlineScript && !refValid:
 		return domain.ErrEmptyTransaction
+	}
+
+	// An executable reference's selector — the literal "latest" or a full semver
+	// (omitted and partial selectors are read-only) — is state-independent, so it
+	// is gated structurally for every accepted order. Script resolution runs far
+	// later, and is short-circuited for an order the fold loop predicts the FSM
+	// will skip, so a selector reaching the audit chain is decided here.
+	if refValid {
+		if v := o.GetNumscriptReference().GetVersion(); v != "latest" {
+			if _, err := semver.Parse(v); err != nil {
+				return &domain.ErrNumscriptInvalidVersion{Version: v}
+			}
+		}
 	}
 
 	return nil

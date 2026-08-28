@@ -383,12 +383,11 @@ Numscripts use **semantic versioning** (semver) with the format `major.minor.pat
 
 When saving a numscript via `PUT /v3/{ledgerName}/numscripts/{name}`, the request body includes:
 - `content` (required): The numscript source code
-- `version` (optional): Controls versioning behavior:
-  - A semver string (e.g. `"2.0.0"`) creates a new version. Fails with 409 if the version already exists.
-  - The special value `"latest"` overwrites the content of the current latest version.
-  - If omitted or empty, defaults to `"latest"`.
+- `version` (required): An explicit full semver (e.g. `"2.0.0"`) creating a new immutable version. Fails with 409 if the version already exists, and with 400 (`NUMSCRIPT_INVALID_VERSION`) for an empty, partial, or `"latest"` value.
 
 When retrieving a numscript via `GET /v3/{ledgerName}/numscripts/{name}`, the `version` query parameter selects which version to return. If omitted or empty, the latest version is returned.
+
+When referencing a numscript from a transaction (`scriptReference` on `POST /v3/{ledgerName}/transactions`), `version` is **required** and accepts only the literal `"latest"` or an exact full semver. The read-only convenience selectors are rejected with 400 (`NUMSCRIPT_INVALID_VERSION`): the submitted selector is what the audit chain records, so an executable reference must name its version explicitly, and a partial selector (`1`, `1.2`) would additionally need a Pebble scan that the FSM apply path cannot make.
 
 **Response schema (NumscriptInfo):**
 - `name` (string): Numscript name

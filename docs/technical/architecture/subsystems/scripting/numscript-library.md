@@ -19,7 +19,7 @@ Because there is no soft-delete state, a stored version has no derived status: i
 
 ### Version Resolution
 
-When reading a numscript (via `GetNumscript` or a `ScriptReference` in a transaction), the `version` selector is resolved as follows:
+The read-only APIs (`GetNumscript`) resolve the `version` selector as follows:
 
 | Input | Strategy | Resolved to |
 |---|---|---|
@@ -28,7 +28,12 @@ When reading a numscript (via `GetNumscript` or a `ScriptReference` in a transac
 | `"1.0"` (major.minor) | Range scan `[1.0.0, 1.1.0)`, take the **highest** | Highest `1.0.x` patch |
 | `"1"` (major only) | Range scan `[1.0.0, 2.0.0)`, take the **highest** | Highest `1.x.y` minor+patch |
 
-Partial selectors (`"1"`, `"1.0"`) are a **read-only** convenience parsed by `semver.ParsePartial()` (`internal/pkg/semver/`). They are valid for `GetNumscript` and transaction references but rejected on save (only full semver is storable).
+Empty and partial (`"1"`, `"1.0"`) selectors are a **read-only** convenience, the partial ones parsed by `semver.ParsePartial()` (`internal/pkg/semver/`). They resolve outside the FSM, where a Pebble scan is allowed, and always return a concrete version. Save rejects them: only a full semver is storable.
+
+An **executable** `ScriptReference` in a transaction is stricter — `version` is required and accepts only the literal `"latest"` or an exact full semver; empty and partial selectors are rejected at admission with `NUMSCRIPT_INVALID_VERSION`. The selector is state-independent, so this is a structural gate (`validateOrderContent`) that runs on every accepted order — including one the FSM goes on to skip for a reference conflict, whose script is never resolved. The two forms are rejected for different reasons:
+
+- An **empty** selector is resolvable (it would follow the same latest pointer as `"latest"`), but the selector a caller submits is what the audit chain records, so an executable reference must state the version it intends explicitly rather than leave it implicit.
+- A **partial** selector resolves through a Pebble range scan, which the FSM apply path cannot make (invariant #3). `"latest"` stays legal because the FSM resolves it through the covered latest-pointer attribute instead — see [Resolution Flow](#resolution-flow--admission-plans-the-fsm-resolves).
 
 ### Syntax Validation
 
@@ -126,14 +131,14 @@ ledgerctl numscripts versions payment-with-fees
 
 ## Script References in Transactions
 
-Instead of inlining a numscript in every `CreateTransaction` request, clients can pass a `ScriptReference` that points to a script stored in the library. The [version resolution](#version-resolution) rules apply to the reference's `version` selector.
+Instead of inlining a numscript in every `CreateTransaction` request, clients can pass a `ScriptReference` that points to a script stored in the library. The reference's `version` is required and accepts only the literal `"latest"` or an exact full semver — the executable subset of the [version resolution](#version-resolution) rules.
 
 ### Protobuf
 
 ```protobuf
 message ScriptReference {
   string name = 1;
-  string version = 2; // "" / "latest" = greatest stored semver
+  string version = 2; // required: "latest" or an exact full semver
   map<string, string> vars = 3;
 }
 
@@ -191,18 +196,19 @@ Given a library with versions `1.0.0`, `1.0.5`, `1.2.0`, `2.0.0`:
 
 | `scriptReference.version` | Resolved version | Behavior |
 |---|---|---|
-| `""` / `"latest"` | `2.0.0` (greatest) | Follows the greatest stored semver |
+| `"latest"` | `2.0.0` (greatest) | Follows the greatest stored semver |
 | `"1.0.0"` | `1.0.0` | Exact pin, never changes |
-| `"1.0"` | `1.0.5` | Highest patch in `1.0.x` — auto-updates when `1.0.6` is saved |
-| `"1"` | `1.2.0` | Highest minor+patch in `1.x.y` — auto-updates within major |
 | `"2.0.0"` | `2.0.0` | Exact pin |
-| `"3"` | `NOT_FOUND` | No version in the `3.x.y` range |
+| `"3.0.0"` | `NOT_FOUND` | No such stored version |
+| `""` | `INVALID_ARGUMENT` | The selector is required |
+| `"1"` / `"1.0"` | `INVALID_ARGUMENT` | Partial selectors are read-only |
 
 ### Error Cases
 
 | Condition | gRPC code | Reason |
 |---|---|---|
 | Both `script` and `scriptReference` set | `INVALID_ARGUMENT` | `SCRIPT_AND_REFERENCE_CONFLICT` |
+| `version` empty, partial, or not a semver | `INVALID_ARGUMENT` | `NUMSCRIPT_INVALID_VERSION` |
 | Script name not found / version not found | `NOT_FOUND` | `NUMSCRIPT_NOT_FOUND` |
 | Latest advanced between admission and apply | `UNAVAILABLE` | `ErrStaleProposal` (client retries) |
 
@@ -233,7 +239,7 @@ The FSM reads both only through the gated `Scope` (`GetNumscriptLatestVersion`, 
 ### Admission Preloading
 
 - **Save.** Admission declares both the latest pointer (`SubAttrNumscriptVersion`) and the target content key (`SubAttrNumscriptContent`) for the `(name, version)` being written, so the FSM can enforce immutability (duplicate → `NUMSCRIPT_VERSION_ALREADY_EXISTS`) and advance the pointer to the greatest semver.
-- **Reference.** For a `"latest"`/empty reference, admission declares the latest pointer plus the content key for the discovered greatest semver (see [Resolution Flow](#resolution-flow--admission-plans-the-fsm-resolves)). For an exact reference, it declares just that content key. Absent keys are declared with a `Declare` plan so a never-recorded script surfaces as `ErrNotFound` (→ `NUMSCRIPT_NOT_FOUND`) rather than a coverage fault.
+- **Reference.** For a `"latest"` reference, admission declares the latest pointer plus the content key for the discovered greatest semver (see [Resolution Flow](#resolution-flow--admission-plans-the-fsm-resolves)). For an exact reference, it declares just that content key. Absent keys are declared with a `Declare` plan so a never-recorded script surfaces as `ErrNotFound` (→ `NUMSCRIPT_NOT_FOUND`) rather than a coverage fault.
 
 ### Intra-Batch Propagation
 

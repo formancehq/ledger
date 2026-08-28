@@ -3447,13 +3447,17 @@ components:
       type: object
       required:
         - name
+        - version
       properties:
         name:
           type: string
           description: Name of the numscript in the ledger's library
         version:
           type: string
-          description: Optional semver constraint. Empty means latest.
+          description: |
+            Version selector: the literal `latest` or an exact full semver
+            (`1.2.3`). Partial selectors such as `1` or `1.2` are read-only and
+            rejected here.
         vars:
           type: object
           additionalProperties:

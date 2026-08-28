@@ -33,7 +33,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -1531,7 +1530,7 @@ func describableCause(cause error) (domain.Describable, bool) {
 // ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to preserve,
 // so we keep the cheap fail-fast (returns a terminal error).
 //
-// refIsLatest is true only for a `latest`/"" numscript reference selector, whose
+// refIsLatest is true only for a `latest` numscript reference selector, whose
 // resolution could differ from a previously-saved version that already produced
 // the frozen outcome; an inline script or an exact immutable version is
 // deterministic. It is a standalone method (not a closure) so the classification
@@ -1797,14 +1796,8 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		)
 
 		if ref := createTx.CreateTransaction.GetNumscriptReference(); ref != nil && ref.GetName() != "" {
-			// Executable references accept only "latest"/"" or a full semver;
-			// partial selectors (1, 1.2) are read-only in v3.0.
-			if v := ref.GetVersion(); v != "" && v != "latest" {
-				if _, perr := semver.Parse(v); perr != nil {
-					return &domain.BusinessError{Err: &domain.ErrNumscriptInvalidVersion{Version: v}}
-				}
-			}
-
+			// The selector is already gated structurally (validateOrderContent),
+			// so it is either "latest" or a full semver here.
 			content, rv, err := a.resolveNumscriptReference(overlay, ledgerName, ref.GetName(), ref.GetVersion())
 			if err != nil {
 				return err
@@ -1814,7 +1807,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			scriptVars = ref.GetVars()
 			resolvedVersion = rv
 			refName = ref.GetName()
-			refIsLatest = ref.GetVersion() == "" || ref.GetVersion() == "latest"
+			refIsLatest = ref.GetVersion() == "latest"
 			isReference = true
 		} else if createTx.CreateTransaction.GetScript() != nil &&
 			createTx.CreateTransaction.GetScript().GetPlain() != "" &&
@@ -2501,7 +2494,7 @@ func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledgerName s
 	}
 	defer func() { _ = nsHandle.Close() }()
 
-	if version == "" || version == "latest" {
+	if version == "latest" {
 		// Greatest = max(in-bulk greatest, persisted greatest).
 		greatest := ""
 		if ov, ok := overlay.numscriptLatest.Get(numscriptNameKey{Ledger: ledgerName, Name: name}); ok {
@@ -2527,8 +2520,9 @@ func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledgerName s
 		}
 
 		version = greatest
-	} else if content, resolvedVersion, found := a.resolveNumscriptFromOverlay(overlay, ledgerName, name, version); found {
-		return content, resolvedVersion, nil
+	} else if content, ok := overlay.numscriptEntries.Get(numscriptEntryKey{Ledger: ledgerName, Name: name, Version: version}); ok {
+		// Exact selector saved earlier in the same bulk, not yet in Pebble.
+		return content, version, nil
 	}
 
 	info, err := query.ReadNumscript(a.attrs.NumscriptVersion, a.attrs.NumscriptContent, nsHandle, ledgerName, name, version)
@@ -2541,62 +2535,6 @@ func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledgerName s
 	}
 
 	return info.GetContent(), info.GetVersion(), nil
-}
-
-// resolveNumscriptFromOverlay resolves an exact or partial semver selector from
-// the intra-bulk overlay. "latest"/"" are handled by resolveNumscriptReference.
-func (a *Admission) resolveNumscriptFromOverlay(overlay *bulkOverlay, ledger, name, version string) (string, string, bool) {
-	// Exact semver lookup
-	if content, ok := overlay.numscriptEntries.Get(numscriptEntryKey{Ledger: ledger, Name: name, Version: version}); ok {
-		return content, version, true
-	}
-
-	// Partial semver: iterate overlay entries and find highest match
-	major, minor, _, depth, err := semver.ParsePartial(version)
-	if err != nil || depth == 3 {
-		return "", "", false
-	}
-
-	var (
-		bestContent string
-		bestVersion semver.Version
-		found       bool
-	)
-
-	overlay.numscriptEntries.Range(func(key numscriptEntryKey, content string) bool {
-		if key.Ledger != ledger || key.Name != name || key.Version == "latest" {
-			return true
-		}
-
-		v, parseErr := semver.Parse(key.Version)
-		if parseErr != nil {
-			return true
-		}
-
-		if v.Major != major {
-			return true
-		}
-
-		if depth >= 2 && v.Minor != minor {
-			return true
-		}
-
-		if !found || v.Major > bestVersion.Major ||
-			(v.Major == bestVersion.Major && v.Minor > bestVersion.Minor) ||
-			(v.Major == bestVersion.Major && v.Minor == bestVersion.Minor && v.Patch > bestVersion.Patch) {
-			bestContent = content
-			bestVersion = v
-			found = true
-		}
-
-		return true
-	})
-
-	if !found {
-		return "", "", false
-	}
-
-	return bestContent, bestVersion.String(), true
 }
 
 func (a *Admission) requestsToOrders(ctx context.Context, reqs []*servicepb.Request, batchSig *signaturepb.SignedApplyBatch) ([]*raftcmdpb.Order, *bulkOverlay, error) {

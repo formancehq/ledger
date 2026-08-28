@@ -119,7 +119,7 @@ var _ = Describe("Numscript Library", Ordered, func() {
 		})
 
 		It("Should run a transaction using a latest reference", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptRefTransactionAction(ledgerName, "pay", "", nil, nil)))
+			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptRefTransactionAction(ledgerName, "pay", "latest", nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs[0].Payload.GetApply()).NotTo(BeNil())
 		})
@@ -130,12 +130,18 @@ var _ = Describe("Numscript Library", Ordered, func() {
 			Expect(resp.Logs[0].Payload.GetApply()).NotTo(BeNil())
 		})
 
-		It("Should reject an executable partial-version reference", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptRefTransactionAction(ledgerName, "pay", "1", nil, nil)))
-			Expect(err).To(HaveOccurred())
-			st, ok := status.FromError(err)
-			Expect(ok).To(BeTrue())
-			Expect(st.Code()).To(Equal(codes.InvalidArgument))
+		It("Should reject an executable reference without an explicit selector", func() {
+			for _, v := range []string{"", "1", "1.2", "bogus"} {
+				_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptRefTransactionAction(ledgerName, "pay", v, nil, nil)))
+				Expect(err).To(HaveOccurred(), "version %q must be rejected", v)
+				st, ok := status.FromError(err)
+				Expect(ok).To(BeTrue())
+				Expect(st.Code()).To(Equal(codes.InvalidArgument))
+
+				info := actions.ExtractGRPCErrorInfo(err)
+				Expect(info).NotTo(BeNil())
+				Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptInvalidVersion))
+			}
 		})
 
 		It("Should resolve a same-bulk save for a later latest reference", func() {
@@ -143,7 +149,7 @@ var _ = Describe("Numscript Library", Ordered, func() {
 			// same bulk must run the just-saved version (read-your-writes).
 			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
 				actions.SaveNumscriptWithVersionAction(ledgerName, "pay", script200, "3.0.0"),
-				actions.CreateScriptRefTransactionAction(ledgerName, "pay", "", nil, nil),
+				actions.CreateScriptRefTransactionAction(ledgerName, "pay", "latest", nil, nil),
 			))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(2))

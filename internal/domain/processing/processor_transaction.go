@@ -47,7 +47,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		name := ref.GetName()
 		version := ref.GetVersion()
 
-		if version == "" || version == "latest" {
+		if version == "latest" {
 			greatest, gErr := s.GetNumscriptLatestVersion(ledger, name)
 			if gErr != nil {
 				return nil, domain.StoreFailure(fmt.Sprintf("resolving latest numscript %q", name), gErr)

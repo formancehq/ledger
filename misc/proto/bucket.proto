@@ -455,10 +455,10 @@ message GetTemplateUsageRequest {
   string name = 2;
 }
 
-// ScriptReference references a numscript from the library by name and optional version.
+// ScriptReference references a numscript from the library by name and version.
 message ScriptReference {
   string name = 1;
-  string version = 2; // "" = latest
+  string version = 2; // required: "latest" or an exact full semver
   map<string, string> vars = 3;
 }
 
