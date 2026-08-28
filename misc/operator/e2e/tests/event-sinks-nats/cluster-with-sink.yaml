@@ -1,0 +1,20 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: sink-cluster
+spec:
+  replicas: 1
+  image:
+    repository: ledger
+    tag: e2e
+    pullPolicy: Never
+  persistence:
+    deletionProtection: false
+  sinks:
+    nats:
+      - name: primary
+        url: nats://nats:4222
+        topic: ledger.events
+        format: json
+        batchSize: 16
+        batchDelayMs: 10

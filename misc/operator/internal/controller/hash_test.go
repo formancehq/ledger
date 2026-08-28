@@ -48,6 +48,14 @@ func TestComputeSpecHash_ExcludesNonPodFields(t *testing.T) {
 	optOut := false
 	withDeletionProtection.Persistence.DeletionProtection = &optOut
 	assert.Equal(t, baseHash, computeSpecHash(withDeletionProtection), "DeletionProtection change should not affect hash")
+
+	// Changing event sinks should NOT change the hash: they are reconciled at
+	// runtime through Raft and must not roll the StatefulSet.
+	withSinks := base.DeepCopy()
+	withSinks.Sinks = &ledgerv1alpha1.EventSinksSpec{NATS: []ledgerv1alpha1.NATSEventSinkSpec{{
+		Name: "primary", URL: "nats://nats:4222", Topic: "ledger.events",
+	}}}
+	assert.Equal(t, baseHash, computeSpecHash(withSinks), "Sinks change should not affect hash")
 }
 
 func TestComputeSpecHash_IncludesPodFields(t *testing.T) {

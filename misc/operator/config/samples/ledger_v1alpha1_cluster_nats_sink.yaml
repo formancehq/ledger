@@ -1,0 +1,26 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: ledger-with-nats
+spec:
+  replicas: 3
+  image:
+    repository: ghcr.io/formancehq/ledger
+    tag: latest
+  clusterID: default
+  sinks:
+    nats:
+      - name: primary
+        url: nats://nats.default.svc.cluster.local:4222
+        topic: ledger.events
+        format: json
+        batchSize: 64
+        batchDelayMs: 10
+        eventTypes:
+          - CREATED_LEDGER
+          - COMMITTED_TRANSACTION
+  persistence:
+    wal:
+      size: 5Gi
+    data:
+      size: 10Gi

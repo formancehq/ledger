@@ -310,7 +310,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, fmt.Errorf("reconciling ClusterSecret after StatefulSet: %w", err)
 	}
 
-	return result, nil
+	return r.handleSinkReconcile(ctx, ledger, result), nil
 }
 
 // deletionProtectionPolicyInstalled reports whether the cluster-scoped volume
@@ -422,6 +422,7 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 	latest.Status.ObservedGeneration = latest.Generation
 	latest.Status.Endpoints = ledger.Status.Endpoints
 	latest.Status.TLSMigrationPhase = ledger.Status.TLSMigrationPhase
+	latest.Status.AppliedSinks = ledger.Status.AppliedSinks
 
 	// Set condition
 	condition := metav1.Condition{

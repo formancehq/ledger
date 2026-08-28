@@ -1,0 +1,206 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: event-sinks-nats
+spec:
+  timeouts:
+    assert: 5m
+  steps:
+    - name: Deploy NATS JetStream and its event stream
+      try:
+        - apply:
+            file: nats.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: nats
+              status:
+                availableReplicas: 1
+        - assert:
+            resource:
+              apiVersion: batch/v1
+              kind: Job
+              metadata:
+                name: nats-stream-setup
+              status:
+                succeeded: 1
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: nats-toolbox
+              status:
+                phase: Running
+
+    - name: Deploy the Ledger cluster without managed sinks
+      try:
+        - apply:
+            file: cluster.yaml
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: StatefulSet
+              metadata:
+                name: ledger-sink-cluster
+              status:
+                readyReplicas: 1
+
+    - name: Record the pod identity before the runtime sink change
+      try:
+        - script:
+            content: |
+              set -eu
+              POD_UID=$(kubectl get pod ledger-sink-cluster-0 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+              SPEC_HASH=$(kubectl get statefulset ledger-sink-cluster -n "$NAMESPACE" \
+                -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
+              test -n "$POD_UID"
+              test -n "$SPEC_HASH"
+              kubectl annotate namespace "$NAMESPACE" \
+                e2e-sink-initial-pod-uid="$POD_UID" \
+                e2e-sink-initial-spec-hash="$SPEC_HASH" \
+                --overwrite
+
+    - name: Configure the NATS sink through the Cluster CRD
+      try:
+        - apply:
+            file: cluster-with-sink.yaml
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: Cluster
+              metadata:
+                name: sink-cluster
+              status:
+                appliedSinks:
+                  - primary
+                (conditions[?type == 'SinksSynced'].status): ['True']
+
+    - name: Prove the sink change did not roll the StatefulSet
+      try:
+        - script:
+            content: |
+              set -eu
+              INITIAL_UID=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.annotations.e2e-sink-initial-pod-uid}')
+              INITIAL_HASH=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.annotations.e2e-sink-initial-spec-hash}')
+              CURRENT_UID=$(kubectl get pod ledger-sink-cluster-0 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+              CURRENT_HASH=$(kubectl get statefulset ledger-sink-cluster -n "$NAMESPACE" \
+                -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
+              test "$CURRENT_UID" = "$INITIAL_UID" || {
+                echo "FAIL: sink-only change replaced the pod ($INITIAL_UID -> $CURRENT_UID)"
+                exit 1
+              }
+              test "$CURRENT_HASH" = "$INITIAL_HASH" || {
+                echo "FAIL: sink-only change altered spec hash ($INITIAL_HASH -> $CURRENT_HASH)"
+                exit 1
+              }
+              echo "PROOF: sink config converged without a pod rollout (uid=$CURRENT_UID hash=$CURRENT_HASH)"
+
+    - name: Start a live NATS observer
+      try:
+        - apply:
+            file: observer.yaml
+        - script:
+            content: |
+              set -eu
+              for i in $(seq 1 60); do
+                PHASE=$(kubectl get pod nats-event-observer -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || true)
+                if [ "$PHASE" = "Running" ]; then
+                  echo "NATS observer is subscribed"
+                  exit 0
+                fi
+                sleep 1
+              done
+              echo "FAIL: NATS observer did not start"
+              exit 1
+
+    - name: Create a ledger and transaction that must emit events
+      try:
+        - script:
+            content: |
+              set -eu
+              kubectl exec ledger-sink-cluster-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl ledgers create \
+                  --name operator-sink-e2e \
+                  --server 127.0.0.1:8888 \
+                  --insecure \
+                  --auth-token "$CLUSTER_SECRET"'
+              kubectl exec ledger-sink-cluster-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl transactions create \
+                  --ledger operator-sink-e2e \
+                  --posting world,bank,1000,USD \
+                  --force \
+                  --server 127.0.0.1:8888 \
+                  --insecure \
+                  --auth-token "$CLUSTER_SECRET"'
+
+    - name: Prove the expected event payloads reached NATS
+      try:
+        - script:
+            timeout: 90s
+            content: |
+              set -eu
+              for i in $(seq 1 60); do
+                PHASE=$(kubectl get pod nats-event-observer -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || true)
+                [ "$PHASE" = "Succeeded" ] && break
+                [ "$PHASE" = "Failed" ] && break
+                sleep 1
+              done
+              EVENTS=$(kubectl logs nats-event-observer -n "$NAMESPACE")
+              echo "$EVENTS"
+              echo "$EVENTS" | grep -q 'CREATED_LEDGER' || {
+                echo "FAIL: CREATED_LEDGER was not received from NATS"
+                exit 1
+              }
+              echo "$EVENTS" | grep -q 'COMMITTED_TRANSACTION' || {
+                echo "FAIL: COMMITTED_TRANSACTION was not received from NATS"
+                exit 1
+              }
+              echo "$EVENTS" | grep -q 'operator-sink-e2e' || {
+                echo "FAIL: received events did not identify operator-sink-e2e"
+                exit 1
+              }
+              echo "PROOF: NATS carried CREATED_LEDGER and COMMITTED_TRANSACTION for operator-sink-e2e"
+
+    - name: Prove Ledger reports a healthy advanced sink cursor
+      try:
+        - script:
+            timeout: 90s
+            content: |
+              set -eu
+              for i in $(seq 1 30); do
+                STATUS=$(kubectl exec ledger-sink-cluster-0 -n "$NAMESPACE" -c ledger -- \
+                  /bin/sh -c './ledgerctl events list \
+                    --json \
+                    --server 127.0.0.1:8888 \
+                    --insecure \
+                    --auth-token "$CLUSTER_SECRET"')
+                echo "$STATUS"
+                CURSOR=$(echo "$STATUS" | jq -r '.sinkStatuses[] | select(.sinkName == "primary") | .cursor')
+                ERROR=$(echo "$STATUS" | jq -r '.sinkStatuses[] | select(.sinkName == "primary") | .error')
+                if [ -n "$CURSOR" ] && [ "$CURSOR" -gt 0 ] && [ "$ERROR" = "null" ]; then
+                  echo "PROOF: Ledger sink primary is healthy at cursor $CURSOR"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAIL: sink cursor did not advance without an error"
+              exit 1
+
+    - name: Prove JetStream persisted the messages
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              set -eu
+              STREAM_INFO=$(kubectl exec nats-toolbox -n "$NAMESPACE" -- \
+                nats --server nats://nats:4222 stream info LEDGER_EVENTS --json)
+              echo "$STREAM_INFO"
+              MESSAGES=$(echo "$STREAM_INFO" | jq -r '.state.messages')
+              test -n "$MESSAGES" && test "$MESSAGES" -ge 2 || {
+                echo "FAIL: JetStream persisted only ${MESSAGES:-0} messages"
+                exit 1
+              }
+              echo "PROOF: JetStream LEDGER_EVENTS persisted $MESSAGES messages"
