@@ -6,7 +6,7 @@ generate-manifests:
 
 # Build the config image containing all k8s manifests.
 build-config: generate-manifests
-    docker build --platform linux/amd64 -f Dockerfile.config -t "$ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3-k8s:{{tag}}" .
+    env -u SOURCE_DATE_EPOCH docker build --platform linux/amd64 -f Dockerfile.config -t "$ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3-k8s:{{tag}}" .
 
 push: build-config
     docker push "$ANTITHESIS_REPOSITORY/antithesis-config-ledger-v3-k8s:{{tag}}"

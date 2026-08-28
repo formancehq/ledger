@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -52,4 +54,26 @@ func TestAccountVolumesMatch(t *testing.T) {
 	// An account the base doesn't hold: only the empty reading matches.
 	require.True(t, accountVolumesMatch(ls, "t-9:9", nil))
 	require.False(t, accountVolumesMatch(ls, "t-9:9", map[string]oracle.VolumePair{"USD/2": {}}))
+}
+
+// A read must pin past observed-but-undrained successes: tryDrain may fold
+// them while the read is in flight, and a committedSeq-only pin would let the
+// server serve a snapshot beneath the folded state — one no candidate base
+// can represent.
+func TestObservedFrontier_CoversPendingSuccesses(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	c.committedSeq = 10
+
+	require.Equal(t, uint64(10), c.observedFrontier(), "no pending: frontier is the drained one")
+
+	c.insertPending(&pendingObservation{minSeq: 11, obs: observation{
+		resp: &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 11}, {Sequence: 13}}},
+	}})
+	c.insertPending(&pendingObservation{minSeq: 14, obs: observation{
+		resp: &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 14}}},
+	}})
+
+	require.Equal(t, uint64(14), c.observedFrontier(), "pending successes extend the frontier")
 }
