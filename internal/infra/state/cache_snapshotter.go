@@ -288,13 +288,15 @@ func newProtoSnapshotSlot[V interface {
 // the reader as a parameter and are only called from non-hot-path contexts
 // (Recovery, bootstrap).
 type CacheSnapshotter struct {
-	bloomMu      sync.Mutex
-	bloomStopped bool
-	bloomPaused  bool
-	logger       logging.Logger
-	registry     *StateRegistry
-	bloomFilters *bloom.FilterSet
-	slots        []cacheSnapshotSlot
+	bloomMu              sync.Mutex
+	bloomStopped         bool
+	bloomPaused          bool
+	bloomPopulatePending bool
+	bloomPopulateReason  string
+	logger               logging.Logger
+	registry             *StateRegistry
+	bloomFilters         *bloom.FilterSet
+	slots                []cacheSnapshotSlot
 	// slotByAttrCode maps attribute code bytes to the corresponding slot,
 	// for the FSM apply path's MirrorPreload dispatch.
 	slotByAttrCode map[byte]cacheSnapshotSlot
@@ -407,6 +409,13 @@ func persistLeanProtoEntries[V interface {
 // rather than gating restoration on the meta sentinel.
 func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 	restoreStart := time.Now()
+	if s.bloomFilters != nil {
+		// Restore may follow a checkpoint replacement whose key set the current
+		// filter never observed. Fail closed before the first fallible restore
+		// step; successful synchronous restore or async population republishes
+		// readiness after completeness is re-established.
+		s.bloomFilters.SetReady(false)
+	}
 
 	s.registry.Cache.Reset()
 	s.registry.Idempotency.Reset()
@@ -780,7 +789,16 @@ func (s *CacheSnapshotter) restoreBloomFilters(store dal.RecoveryReader) error {
 func (s *CacheSnapshotter) StartAsyncBloomPopulate(store dal.RecoveryReader, reason string) {
 	s.bloomMu.Lock()
 	defer s.bloomMu.Unlock()
-	if s.bloomStopped || s.bloomPaused {
+	if s.bloomStopped {
+		return
+	}
+	if s.bloomPaused {
+		// Do not retain store on the snapshotter: Recovery remains the sole
+		// owner of Pebble read capability. One pending full population is enough
+		// regardless of how many rebuild signals arrive while paused.
+		s.bloomPopulatePending = true
+		s.bloomPopulateReason = reason
+
 		return
 	}
 	s.runBloomTask(store, reason, s.bloomFilters.PopulateFromStore)
@@ -948,21 +966,45 @@ func (s *CacheSnapshotter) replayBloomFromCache(ctx context.Context) error {
 func (s *CacheSnapshotter) Pause() {
 	s.bloomMu.Lock()
 	s.bloomPaused = true
+	if s.bloomFilters != nil && !s.bloomFilters.IsReady() {
+		// A not-ready filter may have an active population that Interrupt stops.
+		// Preserve the work request so an early sync failure can resume it against
+		// the still-current store instead of leaving acceleration disabled.
+		s.bloomPopulatePending = true
+		s.bloomPopulateReason = "resume Bloom population interrupted by follower sync"
+	}
 	s.bloomExecutor.Interrupt()
 	s.bloomMu.Unlock()
 }
 
-// Resume reopens a snapshotter paused for checkpoint replacement.
-func (s *CacheSnapshotter) Resume() {
+// Resume reopens a snapshotter paused for checkpoint replacement and starts
+// one full population when RestoreFromStore requested it during the pause.
+// The reader is supplied by Recovery and is captured only by the task.
+func (s *CacheSnapshotter) Resume(store dal.RecoveryReader) {
 	s.bloomMu.Lock()
+	defer s.bloomMu.Unlock()
+
+	if s.bloomStopped {
+		return
+	}
+
 	s.bloomPaused = false
-	s.bloomMu.Unlock()
+	if !s.bloomPopulatePending {
+		return
+	}
+
+	reason := s.bloomPopulateReason
+	s.bloomPopulatePending = false
+	s.bloomPopulateReason = ""
+	s.runBloomTask(store, reason, s.bloomFilters.PopulateFromStore)
 }
 
 // Stop permanently closes the snapshotter's background-work ownership.
 func (s *CacheSnapshotter) Stop() {
 	s.bloomMu.Lock()
 	s.bloomStopped = true
+	s.bloomPopulatePending = false
+	s.bloomPopulateReason = ""
 	s.bloomExecutor.Interrupt()
 	s.bloomMu.Unlock()
 }

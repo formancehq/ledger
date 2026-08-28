@@ -1,8 +1,10 @@
 package state
 
 import (
+	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -39,7 +41,7 @@ func TestCacheSnapshotter_StopPreventsBloomRestart(t *testing.T) {
 	snapshotter.StartAsyncBloomPopulate(nil, "late dispatcher signal")
 }
 
-func TestCacheSnapshotter_PauseResumeAllowsCheckpointRepopulation(t *testing.T) {
+func TestCacheSnapshotter_StopWaitsForAdmittedBloomTask(t *testing.T) {
 	t.Parallel()
 
 	meter := noop.NewMeterProvider().Meter("test")
@@ -47,16 +49,76 @@ func TestCacheSnapshotter_PauseResumeAllowsCheckpointRepopulation(t *testing.T) 
 		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
 	}, meter)
 	snapshotter, dataStore, _ := newTestCacheSnapshotter(t, bloomFilters)
+	taskStarted := make(chan struct{})
+	taskExited := make(chan struct{})
 
-	bloomFilters.SetReady(false)
-	snapshotter.Pause()
-	snapshotter.StartAsyncBloomPopulate(dataStore, "suppressed during checkpoint replacement")
-	require.False(t, bloomFilters.IsReady())
+	// Admit a task before Stop. The task exits only after its context is
+	// cancelled, so Stop returning proves that it cancelled and drained the
+	// already-admitted work rather than merely closing future admission.
+	snapshotter.bloomMu.Lock()
+	snapshotter.runBloomTask(dataStore, "admitted before stop", func(ctx context.Context, _ dal.PebbleReader) error {
+		close(taskStarted)
+		<-ctx.Done()
+		close(taskExited)
 
-	snapshotter.Resume()
-	snapshotter.StartAsyncBloomPopulate(dataStore, "repopulate after checkpoint replacement")
+		return ctx.Err()
+	})
+	snapshotter.bloomMu.Unlock()
+
+	<-taskStarted
 	snapshotter.Stop()
+
+	select {
+	case <-taskExited:
+	default:
+		t.Fatal("Stop returned before the admitted Bloom task exited")
+	}
+
+	// A dispatcher signal delivered after the drain must still be rejected.
+	snapshotter.StartAsyncBloomPopulate(nil, "late dispatcher signal")
+}
+
+func TestCacheSnapshotter_PausedRestoreDefersBloomPopulationUntilResume(t *testing.T) {
+	t.Parallel()
+
+	meter := noop.NewMeterProvider().Meter("test")
+	bloomFilters := bloom.NewFilterSet(&commonpb.ClusterConfig{
+		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	}, meter)
+	snapshotter, dataStore, registry := newTestCacheSnapshotter(t, bloomFilters)
+	t.Cleanup(snapshotter.Stop)
+
+	volumeKey := newVolumeKey(domain.AccountKey{LedgerName: "leader", Account: "destination"}, "USD/2")
+	volumeID := attributes.HashU128(volumeKey.Bytes())
+	pair := &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(100),
+		Output: commonpb.NewUint256FromUint64(0),
+	}
+
+	batch := dataStore.OpenWriteSession()
+	_, err := registry.Attrs.Volume.Set(batch, volumeKey.Bytes(), pair)
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	volumeFilter := bloomFilters.FilterForAttrType(dal.SubAttrVolume)
+	require.NotNil(t, volumeFilter)
+	require.False(t, volumeFilter.MayContain(volumeID))
+	bloomFilters.SetReady(true) // Model the follower's ready pre-sync filter.
+
+	snapshotter.Pause()
 	require.True(t, bloomFilters.IsReady())
+
+	// With no persisted Bloom blocks, RestoreFromStore requests a full scan.
+	// While paused that request must remain pending and readiness must remain
+	// conservative rather than exposing the follower's stale filter.
+	require.NoError(t, snapshotter.RestoreFromStore(dataStore))
+	require.False(t, bloomFilters.IsReady())
+	require.False(t, volumeFilter.MayContain(volumeID))
+
+	snapshotter.Resume(dataStore)
+	require.Eventually(t, func() bool {
+		return bloomFilters.IsReady() && volumeFilter.MayContain(volumeID)
+	}, 5*time.Second, 10*time.Millisecond)
 }
 
 func newVolumeKey(ak domain.AccountKey, asset string) domain.VolumeKey {

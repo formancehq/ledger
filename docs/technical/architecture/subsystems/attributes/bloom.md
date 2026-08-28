@@ -4,7 +4,7 @@
 
 A bloom filter sits in front of each attribute cache. Its job is to **short-circuit "key absent" lookups** during preload: when `MayContain(k) == false`, the loader knows the key is *certainly* missing and can skip the Pebble `Get` entirely. When `MayContain(k) == true`, the key *might* be present and the loader proceeds normally — a false-positive costs one Pebble read.
 
-The bloom filter is not a correctness primitive — it does not gate the FSM apply path and the system is correct without it. It is a **preload-time performance optimisation** that materially reduces the load on Pebble for workloads dominated by writes to fresh accounts (the common case).
+The bloom filter is a **preload-time performance optimisation** that materially reduces the load on Pebble for workloads dominated by writes to fresh accounts (the common case). The system is correct without consulting it, but a filter published as ready must be a superset of the installed attribute store: admission trusts a negative result and skips the Pebble read. Lifecycle transitions therefore keep readiness false whenever completeness is uncertain.
 
 Source: `internal/infra/bloom/bloom.go`.
 
@@ -62,12 +62,24 @@ Dirty blocks are flushed to Pebble at every batch commit:
 
 ### Boot path — populate from the attribute store
 
-`PopulateFromStore()` (`bloom.go:536`) scans the attribute zones at boot and re-adds every key to the relevant filter. This handles two cases:
+`PopulateFromStore()` (`bloom.go:536`) scans the attribute zones at boot and re-adds every key to the relevant filter. This handles three cases:
 
 1. The node has never run before (no persisted bloom rows).
 2. A snapshot was installed — the bloom rows from the donor node may not match this node's view.
+3. Persisted rows exist for a known attribute type disabled by the current configuration, so the enabled filters require a full rescan.
 
-The populate runs **asynchronously** after boot (`StartAsyncBloomPopulate` in `cache_snapshotter.go:602-667`). Until it completes, the bloom is in a "not-ready" state and `MayContain` conservatively returns `true` for every key — meaning preload behaves as if the bloom didn't exist (every lookup hits Pebble). `SetReadyIfEpoch()` (`bloom.go:414`) closes the window via an epoch number, preventing a stale rebuild from publishing over a fresh one.
+The populate runs **asynchronously** after boot (`StartAsyncBloomPopulate` in `cache_snapshotter.go`). Until it completes, the bloom is in a "not-ready" state and the plan builder ignores it — meaning preload behaves as if the bloom didn't exist and every cache miss reaches Pebble. `SetReadyIfEpoch()` (`bloom.go`) closes the window via an epoch number, preventing a stale rebuild from publishing over a fresh one.
+
+### Follower checkpoint synchronization
+
+Follower synchronization pauses Bloom background work before replacing Pebble so no iterator survives the close/reopen boundary. If it interrupts a not-ready population, the request is kept pending so an early sync failure can resume it against the unchanged store. Once replacement succeeds, `RestoreFromStore()` publishes the current filter snapshot as not-ready before its first fallible restore step: the incoming checkpoint may contain keys the follower's previous ready filter never observed. A fetch failure leaves an already-ready filter for the untouched store unchanged.
+
+`RestoreFromStore()` then chooses one of two paths while the snapshotter is paused:
+
+- persisted compatible blocks are restored synchronously and cache generations are replayed before readiness is republished;
+- missing blocks or configuration drift request a full population. The request is recorded without retaining a Pebble reader on `CacheSnapshotter`.
+
+`Synchronizer` always resumes through `Recovery`, including on error paths. On success, `Recovery` supplies its reader and starts any deferred full population. Until that scan completes, readiness stays false and admission falls back to Pebble, preventing a ready-but-stale follower filter from producing false negatives.
 
 ### Cache rotation interaction
 
@@ -96,5 +108,5 @@ A rising `false_positives / lookups` ratio (above ~1%) is the usual operator tri
 ## What the bloom does not do
 
 - **It is not a tombstone source.** `MayContain == false` means "never inserted", which for a monotone bloom is equivalent to "key has never been written". It cannot represent "key was deleted" because the filter doesn't support deletion.
-- **It does not gate the FSM.** The coverage gate (`Scope.GetX`) is the structural guarantee — the bloom only optimises the preload-time loader. A bug in the bloom can never cause divergence between replicas; it can only cause one of them to be slower than the others.
+- **It does not gate the FSM.** The coverage gate (`Scope.GetX`) is the structural apply-time guarantee, while the bloom only optimises the preload-time loader. This does not make Bloom readiness optional: publishing an incomplete filter as ready can suppress a required Pebble preload and produce an incorrect business result. A not-ready filter is always safe because admission ignores it.
 - **It is not consulted on the apply path.** The FSM holds a `*dal.WriteSession` with no read methods — see [invariant #3](../../../../../AGENTS.md). Bloom is preload-only.

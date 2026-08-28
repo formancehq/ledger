@@ -233,6 +233,13 @@ func (r *Recovery) RestoreCacheFromStore() error {
 	return nil
 }
 
+// ResumeBackgroundTasks reopens background work after follower checkpoint
+// replacement. Recovery supplies the reader required by any Bloom population
+// that RestoreCacheFromStore deferred while the snapshotter was paused.
+func (r *Recovery) ResumeBackgroundTasks() {
+	r.apply.cacheSnapshotter.Resume(r.reader)
+}
+
 // OnLeadershipAcquired is called when this node becomes the Raft leader. It
 // re-dispatches archive requests from durable state, allowing the new leader
 // to retry work that may have been in flight when the previous leader
