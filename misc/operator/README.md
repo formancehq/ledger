@@ -11,6 +11,7 @@ The Ledger Operator manages `Cluster` custom resources to automate the lifecycle
 - **Observability** with OpenTelemetry traces, Prometheus metrics, and Pyroscope profiling
 - **Security** with TLS, OIDC authentication, and Ed25519 response signing
 - **Cold storage** archival to S3-compatible backends
+- **Event sinks** reconciled into Ledger's Raft-replicated runtime configuration
 - **Credentials** for application-level access control
 
 During StatefulSet scale-down, the operator queries `ledgerctl cluster status --json` before each Raft removal. An already-absent node satisfies the postcondition and is not removed again. If `remove-node` fails after its Raft change committed—even with an opaque or sanitized CLI error—the operator queries membership again and continues when the target is absent; it does not match human-readable error substrings.
@@ -91,6 +92,52 @@ spec:
   # is 90; set it explicitly here so the resource policy is visible.
   goMemLimitRatio: 90
 ```
+
+### Configure a NATS Event Sink
+
+The operator can maintain NATS JetStream sinks directly from the `Cluster` CR.
+This initial declarative API covers NATS sinks; other Ledger sink transports
+remain configurable through `ledgerctl`.
+The NATS stream must exist before Ledger starts publishing and must capture the
+subjects derived from the configured topic
+(`<topic>.<ledger>.<event-type-lowercase>`):
+
+```yaml
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: my-ledger
+spec:
+  sinks:
+    nats:
+      - name: primary
+        url: nats://nats.default.svc.cluster.local:4222
+        topic: ledger.events
+        format: json
+        batchSize: 64
+        batchDelayMs: 10
+        eventTypes:
+          - CREATED_LEDGER
+          - COMMITTED_TRANSACTION
+```
+
+For this example, create a JetStream stream matching `ledger.events.>`. The
+operator applies sink changes at runtime through Ledger's replicated API; it
+does not restart the StatefulSet. `status.conditions[type=SinksSynced]` reports
+whether the declared configuration has converged. Sink delivery health remains
+available through `ledgerctl events list`.
+
+Omitting `spec.sinks` leaves sinks unmanaged, so sinks created directly through
+the Ledger API are preserved. Setting `spec.sinks: {}` opts into management and
+removes only sinks previously created by this operator. A sink with the same
+name but a different configuration is never overwritten unless it is already
+operator-owned.
+
+The published Ledger image includes NATS sink support. When
+`spec.networkPolicy.enabled` restricts egress, allow TCP access to the NATS
+service with `spec.networkPolicy.additionalEgress`. Do not embed credentials in
+the NATS URL: the CRD rejects URL userinfo because Kubernetes custom resource
+specs are not secret storage.
 
 ## Helm Values
 

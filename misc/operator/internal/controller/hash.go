@@ -29,6 +29,10 @@ func computeSpecHash(spec *ledgerv1alpha1.ClusterSpec) string {
 	cp.NetworkPolicy = nil
 	cp.DNSEndpoints = nil
 
+	// Event sinks are reconciled through Ledger's runtime Raft API. Changing
+	// them must not roll the StatefulSet.
+	cp.Sinks = nil
+
 	// DeletionProtection only drives PVC/PV label patches (reconcileVolumeProtection);
 	// it has no pod-template effect, so toggling it must not roll the StatefulSet.
 	// Persistence is a value field, so zeroing it on the shallow copy is safe.
