@@ -33,7 +33,9 @@ tidy:
     echo "==> go mod tidy (.)"
     go mod tidy
     echo "==> go mod tidy (operator)"
-    cd misc/operator && go mod tidy
+    (cd misc/operator && go mod tidy)
+    echo "==> go mod tidy (model workload)"
+    (cd tests/antithesis/workload && go mod tidy)
 
 # All optional feature build tags
 all_tags := "kafka,nats,clickhouse,databricks,s3,azure,pyroscope"
