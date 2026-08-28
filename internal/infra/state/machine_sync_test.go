@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
@@ -21,6 +22,22 @@ import (
 // the target directory provided by the machine (simulating a real peer fetch).
 type copyDirFetcher struct {
 	srcDir string
+}
+
+type errorSnapshotFetcher struct {
+	err error
+}
+
+func (f *errorSnapshotFetcher) FetchSnapshot(_ context.Context, _ string, _ *SyncProgress, _ uint64) (uint64, error) {
+	return 0, f.err
+}
+
+func requireBloomBackgroundTasksResumed(t *testing.T, machine *Machine) {
+	t.Helper()
+
+	machine.cacheSnapshotter.bloomMu.Lock()
+	defer machine.cacheSnapshotter.bloomMu.Unlock()
+	require.False(t, machine.cacheSnapshotter.bloomPaused)
 }
 
 func (f *copyDirFetcher) FetchSnapshot(_ context.Context, targetDir string, _ *SyncProgress, _ uint64) (uint64, error) {
@@ -87,6 +104,45 @@ func TestSynchronizeWithLeader(t *testing.T) {
 
 	_, err = query.GetLedgerByName(ctx, followerStore, "follower-ledger")
 	require.ErrorIs(t, err, domain.ErrNotFound, "stale follower-ledger must be gone after sync")
+}
+
+func TestSynchronizeWithLeaderResumesBloomAfterFetchError(t *testing.T) {
+	t.Parallel()
+
+	machine, store, _ := newTestMachine(t)
+	recovery := NewRecovery(machine, store)
+	synchronizer := NewSynchronizer(machine, recovery, dal.NewIncomingRestoreFactory(store))
+
+	_, err := synchronizer.SynchronizeWithLeader(t.Context(), &errorSnapshotFetcher{err: errors.New("fetch failed")}, nil)
+	require.ErrorContains(t, err, "fetch failed")
+	requireBloomBackgroundTasksResumed(t, machine)
+}
+
+func TestSynchronizeWithLeaderResumesBloomAfterCacheRestoreError(t *testing.T) {
+	t.Parallel()
+
+	meter := noop.NewMeterProvider().Meter("test")
+	logger := logging.FromContext(logging.TestingContext())
+	leaderStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = leaderStore.Close() })
+
+	batch := leaderStore.OpenWriteSession()
+	require.NoError(t, batch.Set([]byte{dal.ZoneCache, 0x7F}, []byte("invalid cache row"), nil))
+	require.NoError(t, batch.Commit())
+
+	_, err = leaderStore.CreateSnapshot()
+	require.NoError(t, err)
+	leaderCheckpointPath, err := leaderStore.GetCheckpointPath(1)
+	require.NoError(t, err)
+
+	machine, followerStore, _ := newTestMachine(t)
+	recovery := NewRecovery(machine, followerStore)
+	synchronizer := NewSynchronizer(machine, recovery, dal.NewIncomingRestoreFactory(followerStore))
+
+	_, err = synchronizer.SynchronizeWithLeader(t.Context(), &copyDirFetcher{srcDir: leaderCheckpointPath}, nil)
+	require.ErrorContains(t, err, "validating cache namespace")
+	requireBloomBackgroundTasksResumed(t, machine)
 }
 
 // TestSynchronizeWithLeaderDrainsBackgroundChannels asserts that
