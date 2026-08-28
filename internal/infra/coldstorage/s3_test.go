@@ -17,7 +17,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/require"
@@ -390,9 +389,7 @@ func TestS3Storage_ArchiveMultipartLargeObject(t *testing.T) {
 
 	client, _ := setupMinIO(t)
 	recorder := &recordingS3Client{Client: client}
-	storage := &S3Storage{client: client, uploader: transfermanager.New(recorder, func(o *transfermanager.Options) {
-		o.PartSizeBytes = s3UploadPartSize
-	}), bucket: minioBucket}
+	storage := &S3Storage{client: client, uploader: newUploader(recorder), bucket: minioBucket}
 	ctx := context.Background()
 
 	const size = multipartTestObjectSize
@@ -406,7 +403,9 @@ func TestS3Storage_ArchiveMultipartLargeObject(t *testing.T) {
 	require.NoError(t, storage.Archive(ctx, "big-bucket", 99, bytes.NewReader(payload), sum))
 
 	require.Positive(t, recorder.count("CreateMultipartUpload"), "expected a multipart upload for a payload above the multipart threshold")
-	require.GreaterOrEqual(t, recorder.count("UploadPart"), 2, "expected at least two parts uploaded")
+	require.Equal(t, 2, recorder.count("UploadPart"),
+		"a 40 MiB payload at the production 32 MiB part size must upload in exactly two parts (32 MiB + 8 MiB); "+
+			"a wrong part count here would slip past a >= assertion")
 	require.Positive(t, recorder.count("CompleteMultipartUpload"))
 	require.Zero(t, recorder.count("PutObject"), "a payload above the multipart threshold must not fall back to single-shot PutObject")
 	require.Equal(t, types.ChecksumAlgorithmCrc32, recorder.checksumAlgorithm,
