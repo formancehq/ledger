@@ -115,6 +115,25 @@ Before adding a flag, environment variable, startup setting, or version-dependen
 
 Decide explicitly whether the value only gates proposal admission or changes the outcome of a committed entry. Node-local configuration may do the former; it must never do the latter. If concurrent admissions can exceed a local operational limit, document whether that soft-limit behavior is intentional rather than silently presenting it as a strict FSM invariant.
 
+### Deep correctness audits
+
+Use the native deep-audit workflow when the request seeks latent correctness defects across an immutable repository state in a reusable domain, such as persistence/restore/replay, Raft membership/leadership, accounting invariants, idempotency/partial failures, read consistency, or concurrency/lifecycle.
+
+1. Check `docs/technical/audits/` for a matching domain manifest.
+2. If a manifest exists, read `docs/technical/contributing/ai-audit.md` and run `bash scripts/ai-audit <domain>`. Keep the manifest as the campaign scope instead of replacing it with an ad-hoc audit prompt.
+3. Qualify the structured result with `bash scripts/ai-audit-challenge <audit-result>` after reading `docs/technical/contributing/ai-audit-challenge.md`. The challenge pass independently tries to disprove every finding; a first-pass finding is not a confirmed engineering defect.
+4. Treat Jira publication as a separate, later step. `scripts/ai-audit-jira` consumes a qualified report, and publication requires explicit authorization; neither the audit nor challenge pass creates issues.
+
+If no manifest matches, first decide whether the requested correctness scope is durable and reusable. If it is, create and review a manifest before running the native audit. If it is not, keep the work as a task-specific investigation rather than mechanically creating a new audit domain.
+
+Do not use `ai-audit` for:
+
+- pull-request review, which follows the AI code review and re-review workflow below;
+- diagnosis or implementation of one concrete known bug;
+- routine performance analysis, benchmark work, CI timing analysis, or diagnosis of one tooling failure, unless the work is intentionally being promoted into a reusable correctness domain.
+
+`ai-audit` runs a read-only, manifest-scoped provider pass and binds its structured report to an exact clean `HEAD`; `ai-audit-challenge` independently qualifies that report at the same clean `HEAD`. Their contracts prohibit code fixes, commits, pushes, comments, issue creation, and GitHub metadata changes; structured reports are their only intended writes.
+
 ### AI code review and re-review
 
 Read `docs/technical/contributing/ai-review.md` before reviewing a pull request or reviewing fixes to previous findings.

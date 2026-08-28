@@ -1,9 +1,11 @@
 # AI deep-audit contract
 
-This contract defines repository-wide audit campaigns. It is intentionally separate from the PR review loop:
+This contract defines repository-wide audit campaigns for reusable correctness domains. It is intentionally separate from the PR review loop:
 
 - PR review asks whether a bounded change is safe to integrate;
 - deep audit asks which latent defects may already exist in an immutable repository state.
+
+Routine diagnosis of a known failure, a single bug fix, and performance or tooling investigation remain task-specific unless intentionally promoted into a reusable audit domain.
 
 An audit is read-only. It must never fix code, create commits, push branches, create issues, resolve review threads, or change GitHub metadata.
 
@@ -38,9 +40,11 @@ Audit findings are held to a higher evidence standard than ordinary review sugge
 
 Questions are explicit uncertainties that need human/product/architecture input. They are not findings and must not be counted as defects.
 
-## Duplicate and challenge pass
+## Challenge and downstream publication
 
-A future campaign orchestrator may run independent auditors and challenge findings. The first version deliberately does not auto-deduplicate or auto-fix. A finding becomes a confirmed engineering defect only after reproduction, an independent confirming review, or human validation.
+Every finding emitted by the audit is a hypothesis. Qualify the report with `bash scripts/ai-audit-challenge <audit-result>` according to `docs/technical/contributing/ai-audit-challenge.md`. The challenge pass independently tries to disprove every finding, including by searching for unreachable states, duplicates, and existing protections. A finding is not a confirmed engineering defect merely because the first audit emitted it.
+
+A `CONFIRMED` challenge result is eligible to become a backlog/Jira candidate after human or policy approval. Jira handling is an explicit downstream action through `bash scripts/ai-audit-jira <challenge-result>`; the command previews candidates unless separately invoked with `--publish`. Neither the audit nor challenge pass fixes code, creates issues, or publishes findings automatically.
 
 ## Output
 
