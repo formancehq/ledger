@@ -14,10 +14,50 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
+	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+// TestCacheSnapshotter_StopPreventsBloomRestart protects the ownership
+// boundary of the background bloom executor. A dispatcher can deliver a
+// rebuild signal concurrently with shutdown; once Stop returns, that signal
+// must not be able to start a new task.
+func TestCacheSnapshotter_StopPreventsBloomRestart(t *testing.T) {
+	t.Parallel()
+
+	snapshotter := &CacheSnapshotter{
+		bloomExecutor: worker.NewSingleTaskExecutor(logging.Testing()),
+	}
+	snapshotter.Stop()
+
+	// The stopped guard must return before dereferencing the reader/filter. On
+	// the pre-fix path this starts a goroutine and eventually panics because the
+	// test intentionally has no live store or filter: that is the forbidden
+	// post-Stop restart.
+	snapshotter.StartAsyncBloomPopulate(nil, "late dispatcher signal")
+}
+
+func TestCacheSnapshotter_PauseResumeAllowsCheckpointRepopulation(t *testing.T) {
+	t.Parallel()
+
+	meter := noop.NewMeterProvider().Meter("test")
+	bloomFilters := bloom.NewFilterSet(&commonpb.ClusterConfig{
+		BloomVolumes: &commonpb.BloomTypeConfig{ExpectedKeys: 1000, FpRate: 0.01},
+	}, meter)
+	snapshotter, dataStore, _ := newTestCacheSnapshotter(t, bloomFilters)
+
+	bloomFilters.SetReady(false)
+	snapshotter.Pause()
+	snapshotter.StartAsyncBloomPopulate(dataStore, "suppressed during checkpoint replacement")
+	require.False(t, bloomFilters.IsReady())
+
+	snapshotter.Resume()
+	snapshotter.StartAsyncBloomPopulate(dataStore, "repopulate after checkpoint replacement")
+	snapshotter.Stop()
+	require.True(t, bloomFilters.IsReady())
+}
 
 func newVolumeKey(ak domain.AccountKey, asset string) domain.VolumeKey {
 	base, prec := domain.ParseAssetPrecision(asset)

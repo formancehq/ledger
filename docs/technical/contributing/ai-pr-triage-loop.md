@@ -21,3 +21,10 @@ The PR head may not choose or modify the triage policy that authorizes its own r
 `ai-pr-triage` accepts optional launcher-provided expected base/head SHAs. It still resolves current GitHub metadata itself, but refuses to run if those SHAs no longer match. This turns a concurrent PR update into a safe restart instead of triaging one state and reviewing another.
 
 The base-pinned triage adapter may predate that binding, so `ai-pr-loop` does not rely on the tool enforcing it: before accepting any decision, the launcher requires the result's `base_sha` and `head` to equal the SHAs it fetched and verified. A result describing another PR state is a target mismatch and stops the run.
+
+The triage provider itself starts with `env -C` in the workflow-created trusted
+worktree, never in the primary checkout. Immediately before launch, the adapter
+checks the trusted top-level and base HEAD and binds `EXPECTED_PR_NUMBER`,
+`EXPECTED_WORKTREE`, and `EXPECTED_HEAD`. It snapshots primary-checkout HEAD,
+branch, and status around Codex and reports `ROOT_MUTATION_DETECTED` on any
+change. The separate PR-head worktree remains read-only evidence.

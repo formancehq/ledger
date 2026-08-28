@@ -338,6 +338,28 @@ Pod 0 uses the `--bootstrap` flag to create a new single-node cluster. All subse
 
 Once a learner has caught up with the leader's log (within the threshold configured by `--learner-promotion-threshold`, default: 100 entries), it is automatically promoted to a full voting member.
 
+### Using ledgerctl inside a cluster pod
+
+The operator configures the `ledgerctl` binary shipped in every ledger pod with
+the pod's own headless DNS address and the transport credentials matching the
+current TLS mode. After entering a pod, commands therefore work without
+connection flags when the operator-managed headless Service is enabled:
+
+```bash
+ledgerctl cluster status
+ledgerctl ledgers list
+```
+
+The injected `LEDGERCTL_SERVER` uses the pod DNS name covered by the TLS
+certificate rather than `localhost` or `127.0.0.1`. For TLS clusters the
+operator injects `LEDGERCTL_AUTH_TOKEN` and, when `tls.caSecretKey` is
+configured, `LEDGERCTL_TLS_CA_CERT`; for a plaintext cluster it injects
+`LEDGERCTL_INSECURE=true`. These values follow TLS mode transitions through
+StatefulSet rollouts. If `headlessService.enabled` is `false`, `spec.extraEnv`
+must override `LEDGERCTL_SERVER` with a resolvable address. `spec.extraEnv` can
+also override any other injected `LEDGERCTL_*` value when a deployment needs
+custom client behavior.
+
 ### Disk Space Limiting
 
 The cluster monitors disk usage across all nodes and rejects write operations when usage exceeds configurable thresholds. See [Disk Space Limiting](./disk-space.md) for detailed architecture documentation.

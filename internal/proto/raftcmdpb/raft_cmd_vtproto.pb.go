@@ -810,6 +810,7 @@ func (m *MirrorLogEntry) CloneVT() *MirrorLogEntry {
 	}
 	r := new(MirrorLogEntry)
 	r.V2LogId = m.V2LogId
+	r.Date = m.Date.CloneVT()
 	if m.Data != nil {
 		r.Data = m.Data.(interface{ CloneVT() isMirrorLogEntry_Data }).CloneVT()
 	}
@@ -3539,6 +3540,9 @@ func (this *MirrorLogEntry) EqualVT(that *MirrorLogEntry) bool {
 		}
 	}
 	if this.V2LogId != that.V2LogId {
+		return false
+	}
+	if !this.Date.EqualVT(that.Date) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -7672,6 +7676,16 @@ func (m *MirrorLogEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
+	if m.Date != nil {
+		size, err := m.Date.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x12
+	}
 	if m.V2LogId != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.V2LogId))
@@ -7696,7 +7710,7 @@ func (m *MirrorLogEntry_CreatedTransaction) MarshalToSizedBufferVT(dAtA []byte) 
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x1a
 	}
 	return len(dAtA) - i, nil
 }
@@ -7715,7 +7729,7 @@ func (m *MirrorLogEntry_SavedMetadata) MarshalToSizedBufferVT(dAtA []byte) (int,
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1a
+		dAtA[i] = 0x22
 	}
 	return len(dAtA) - i, nil
 }
@@ -7734,7 +7748,7 @@ func (m *MirrorLogEntry_RevertedTransaction) MarshalToSizedBufferVT(dAtA []byte)
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x2a
 	}
 	return len(dAtA) - i, nil
 }
@@ -7753,7 +7767,7 @@ func (m *MirrorLogEntry_DeletedMetadata) MarshalToSizedBufferVT(dAtA []byte) (in
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x2a
+		dAtA[i] = 0x32
 	}
 	return len(dAtA) - i, nil
 }
@@ -7772,7 +7786,7 @@ func (m *MirrorLogEntry_FillGap) MarshalToSizedBufferVT(dAtA []byte) (int, error
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x32
+		dAtA[i] = 0x3a
 	}
 	return len(dAtA) - i, nil
 }
@@ -12015,6 +12029,10 @@ func (m *MirrorLogEntry) SizeVT() (n int) {
 	_ = l
 	if m.V2LogId != 0 {
 		n += 9
+	}
+	if m.Date != nil {
+		l = m.Date.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if vtmsg, ok := m.Data.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
@@ -17259,6 +17277,42 @@ func (m *MirrorLogEntry) UnmarshalVT(dAtA []byte) error {
 			iNdEx += 8
 		case 2:
 			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Date", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Date == nil {
+				m.Date = &commonpb.Timestamp{}
+			}
+			if err := m.Date.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreatedTransaction", wireType)
 			}
 			var msglen int
@@ -17298,7 +17352,7 @@ func (m *MirrorLogEntry) UnmarshalVT(dAtA []byte) error {
 				m.Data = &MirrorLogEntry_CreatedTransaction{CreatedTransaction: v}
 			}
 			iNdEx = postIndex
-		case 3:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SavedMetadata", wireType)
 			}
@@ -17339,7 +17393,7 @@ func (m *MirrorLogEntry) UnmarshalVT(dAtA []byte) error {
 				m.Data = &MirrorLogEntry_SavedMetadata{SavedMetadata: v}
 			}
 			iNdEx = postIndex
-		case 4:
+		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RevertedTransaction", wireType)
 			}
@@ -17380,7 +17434,7 @@ func (m *MirrorLogEntry) UnmarshalVT(dAtA []byte) error {
 				m.Data = &MirrorLogEntry_RevertedTransaction{RevertedTransaction: v}
 			}
 			iNdEx = postIndex
-		case 5:
+		case 6:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DeletedMetadata", wireType)
 			}
@@ -17421,7 +17475,7 @@ func (m *MirrorLogEntry) UnmarshalVT(dAtA []byte) error {
 				m.Data = &MirrorLogEntry_DeletedMetadata{DeletedMetadata: v}
 			}
 			iNdEx = postIndex
-		case 6:
+		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field FillGap", wireType)
 			}

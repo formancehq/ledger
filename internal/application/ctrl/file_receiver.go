@@ -1,50 +1,58 @@
 package ctrl
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"io"
-	"os"
+	"fmt"
 	"path/filepath"
 
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 )
 
-// scanCompletedFiles examines targetDir and returns the relative paths of files
-// that are fully received: present (not .tmp suffixed) and whose SHA256 matches
-// the manifest entry.
-func scanCompletedFiles(targetDir string, manifest *snapshotpb.SnapshotManifest) ([]string, error) {
+// validateSnapshotManifest rejects network-supplied paths that could escape
+// the follower staging root, name the same file twice, or collide with another
+// entry's staging path. The whole manifest is validated before any file is
+// requested or written.
+func validateSnapshotManifest(manifest *snapshotpb.SnapshotManifest) error {
 	if manifest == nil {
-		return nil, nil
+		return nil
 	}
 
-	var completed []string
+	files := manifest.GetFiles()
 
-	for _, entry := range manifest.GetFiles() {
-		fullPath := filepath.Join(targetDir, entry.GetPath())
+	// Both maps are keyed by the cleaned name the staging root resolves, so
+	// that entries such as "a" and "./a" are recognized as the same file. The
+	// staging key is built the way the fetcher builds it, from the raw path
+	// plus the suffix, so it names the file the transfer really opens.
+	finalPaths := make(map[string]int, len(files))
+	stagingPaths := make(map[string]int, len(files))
 
-		info, err := os.Stat(fullPath)
-		if err != nil {
-			continue // file not present or not accessible
+	for i, entry := range files {
+		if !filepath.IsLocal(entry.GetPath()) {
+			return fmt.Errorf("invalid snapshot path at manifest entry %d: %q", i, entry.GetPath())
 		}
 
-		if info.Size() != int64(entry.GetSize()) {
-			continue // size mismatch — incomplete or different file
+		path := filepath.Clean(entry.GetPath())
+		if first, ok := finalPaths[path]; ok {
+			return fmt.Errorf("duplicate snapshot path at manifest entries %d and %d: %q", first, i, entry.GetPath())
 		}
 
-		hash, err := hashFileSHA256(fullPath)
-		if err != nil {
-			continue // can't hash — treat as incomplete
-		}
-
-		if hash != entry.GetSha256() {
-			continue // content mismatch — discard on next cleanup
-		}
-
-		completed = append(completed, entry.GetPath())
+		finalPaths[path] = i
+		stagingPaths[filepath.Clean(entry.GetPath()+stagingSuffix)] = i
 	}
 
-	return completed, nil
+	// Downloads run in parallel and each one writes through path+stagingSuffix
+	// before renaming that name onto its final path. With both "a" and "a.tmp"
+	// in the manifest, the "a.tmp" transfer can rename its own bytes onto the
+	// staging file the "a" transfer already opened; "a" would then be installed
+	// from bytes that were never verified against its entry, and both transfers
+	// would still report success.
+	for i, entry := range files {
+		path := filepath.Clean(entry.GetPath())
+		if other, ok := stagingPaths[path]; ok {
+			return fmt.Errorf("snapshot path at manifest entry %d collides with the staging path of entry %d: %q", i, other, entry.GetPath())
+		}
+	}
+
+	return nil
 }
 
 // manifestTotalSize returns the sum of all file sizes in the manifest.
@@ -55,23 +63,4 @@ func manifestTotalSize(manifest *snapshotpb.SnapshotManifest) uint64 {
 	}
 
 	return total
-}
-
-// hashFileSHA256 computes the SHA256 hex digest of a file.
-func hashFileSHA256(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-
-	defer func() {
-		_ = f.Close()
-	}()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToString(h.Sum(nil)), nil
 }

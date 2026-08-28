@@ -2,16 +2,17 @@
 
 The review loop automates only the mechanical handoff between an implementation agent and a reviewer. It does **not** grant an agent permission to broaden scope, change product behavior, weaken repository invariants, or resolve genuine design choices without a human.
 
-Run it through the repository-pinned environment:
+Use the PR launcher, which creates and mechanically binds the required
+candidate worktree:
 
 ```bash
-bash scripts/review-loop \
-  --base origin/release/v3.0 \
-  --review-cmd '<review command>' \
-  --fix-cmd '<fix command>'
+bash scripts/ai-pr-loop 1732
 ```
 
-The commands are intentionally provider-agnostic. They may wrap Codex, Claude, another local agent, or a test double.
+The underlying commands remain provider-agnostic. Direct `review-loop`
+invocation is a low-level launcher API and must supply every binding flag
+documented in [AI PR worktree isolation](ai-worktree-isolation.md); it never
+falls back to the caller's cwd.
 
 Each invocation creates a persistent, unique directory below `build/ai-review-loop/`. Review and fix payloads from concurrent or subsequent runs therefore never share file names. The selected directory is printed when the loop starts.
 
@@ -27,21 +28,39 @@ A full PR URL is accepted as well. The launcher:
 
 - resolves the current repository and PR metadata through `gh`;
 - requires an open same-repository PR and currently rejects fork/cross-repository heads;
-- fetches the exact GitHub-reported base and head refs and verifies both SHAs before running agents;
+- fetches the current target-branch tip and the PR head ref, requires the fetched head to equal the GitHub-reported head SHA, and requires the fetched target tip to still equal the GitHub-reported base SHA before running agents;
 - creates a detached linked worktree outside the primary checkout, under a unique sibling `.<repo>-ai-worktrees/pr-<number>.<run>/worktree` directory;
+- writes an immutable PR/worktree binding outside that candidate, starts the
+  orchestrator with `env -C` in the candidate, and requires the mechanical
+  binding gate before every reviewer, fixer, and validator;
 - runs the [legitimacy triage](ai-pr-triage-loop.md) before any technical review, using the `scripts/ai-pr-triage` adapter from a detached worktree pinned at the verified base SHA, so the PR under review cannot supply the policy that authorizes its own review;
 - accepts a triage result only when its `base_sha` and `head` equal the SHAs the launcher fetched and verified, and continues into technical review only on a `KEEP` decision;
 - passes the verified base commit SHA to `review-loop`, so a later update of the shared remote-tracking ref cannot change the reviewed delta;
 - runs the standard Codex review + Claude fix composition against the PR base;
 - runs repository validation locally before accepting any approval; no GitHub
   Actions status participates in the decision;
-- never checks out or edits the primary checkout;
+- never checks out or edits the primary checkout, and fails with
+  `ROOT_MUTATION_DETECTED` if its HEAD, branch, or status changes while a
+  subprocess runs;
 - preserves the isolated worktree automatically when fixes remain so the resulting diff can be inspected manually;
-- removes a clean temporary worktree after the loop unless `--keep-worktree` is supplied.
+- removes a clean temporary worktree after the loop unless `--keep-worktree` is supplied, together with the run directory that holds its triage result, known-findings ledger, and isolated validation caches.
 
-Each invocation owns a unique worktree and never reuses or removes another invocation's directory. Without `--push`, the launcher performs no commit or push and only reports `READY_FOR_HUMAN_REVIEW`, `HUMAN_DECISION_REQUIRED`, `LEGITIMACY_REJECTED`, or an orchestration error.
+Each invocation owns a unique worktree and never reuses or removes another invocation's directory. Without `--push`, the launcher performs no commit or push and only reports `READY_FOR_HUMAN_REVIEW`, `HUMAN_DECISION_REQUIRED`, `LEGITIMACY_REJECTED`, `BASE_UPDATE_REQUIRED`, or an orchestration error.
 
 `LEGITIMACY_REJECTED` is emitted when triage returns `REJECT`; a `QUESTION` decision stops the run with `HUMAN_DECISION_REQUIRED`. Both stop before technical review and exit `2`. A triage provider error or target mismatch fails closed as an orchestration error. Every triage outcome is advisory: the launcher never closes, comments on, or otherwise changes the PR.
+
+### Stale PR base
+
+GitHub's reported base SHA describes the PR snapshot and may legitimately lag behind the current target branch. Reviewing against a historical base can miss semantic conflicts introduced since the PR was opened, so the launcher compares the freshly fetched target-branch tip with that reported base SHA before creating any worktree:
+
+When the checkout is shallow and the first ancestry check is negative, the launcher unshallows history for the exact fetched target SHA and retries the check. A shallow boundary therefore cannot by itself turn normal target advancement into a rewrite/divergence result. Failure to restore that history is an orchestration error.
+
+- identical: the reviewed base is current and the run continues into triage;
+- the reported base is still an ancestor of the tip: the target branch advanced since the PR snapshot, so the launcher prints both SHAs, reports `AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED`, and exits `3`. Synchronize the PR with its target branch — merge or rebase, push the PR head — and rerun the launcher;
+- the reported base is not an ancestor of the tip: the target branch was rewritten or diverged, reported as `AI_PR_LOOP_RESULT: ERROR (target base rewritten or diverged)` with exit `1`;
+- the reported base cannot be resolved even after an explicit fetch: an orchestration error with exit `1`.
+
+Only the first case reaches an agent; every other case stops before triage, so no legitimacy triage, technical review, fix, or validation runs.
 
 ### Guarded publish mode
 
@@ -149,10 +168,19 @@ The orchestrator rejects unknown JSON fields, missing required fields (including
 
 `scripts/ai-review-codex` is the first provider-specific reviewer adapter. It keeps provider invocation separate from the `review-loop` policy/state machine.
 
-Use it with an authenticated Codex CLI available in `PATH`:
+`ai-pr-loop` composes this adapter automatically. A low-level composition must
+also satisfy the worktree-binding contract; the following fragment is not a
+standalone unbound invocation:
 
 ```bash
 bash scripts/review-loop \
+  --pr "$EXPECTED_PR_NUMBER" \
+  --worktree "$EXPECTED_WORKTREE" \
+  --expected-head "$EXPECTED_HEAD" \
+  --trusted-root "$TRUSTED_ROOT_CHECKOUT" \
+  --binding-file "$AI_WORKTREE_BINDING_FILE" \
+  --validation-run-dir "$VALIDATION_RUN_DIR" \
+  --git-guard /trusted/base/scripts/ai-git-guard \
   --base origin/release/v3.0 \
   --review-cmd 'bash scripts/ai-review-codex'
 ```
@@ -227,6 +255,13 @@ Use it together with the Codex reviewer:
 
 ```bash
 bash scripts/review-loop \
+  --pr "$EXPECTED_PR_NUMBER" \
+  --worktree "$EXPECTED_WORKTREE" \
+  --expected-head "$EXPECTED_HEAD" \
+  --trusted-root "$TRUSTED_ROOT_CHECKOUT" \
+  --binding-file "$AI_WORKTREE_BINDING_FILE" \
+  --validation-run-dir "$VALIDATION_RUN_DIR" \
+  --git-guard /trusted/base/scripts/ai-git-guard \
   --base origin/release/v3.0 \
   --review-cmd 'bash scripts/ai-review-codex' \
   --fix-cmd 'bash scripts/ai-fix-claude'
@@ -251,6 +286,8 @@ The adapter does not commit, push, comment on GitHub, resolve threads, or decide
 
 ## Exit codes
 
+`review-loop`:
+
 | Code | Meaning |
 |---|---|
 | `0` | `READY_FOR_HUMAN_REVIEW` |
@@ -258,6 +295,42 @@ The adapter does not commit, push, comment on GitHub, resolve threads, or decide
 | `2` | `HUMAN_DECISION_REQUIRED` |
 | `3` | `AUTO_FIX_REQUIRED` but no `--fix-cmd` was supplied |
 
+`ai-pr-loop` has its own exit semantics. It forwards the bounded loop's status, but adds pre-triage outcomes of its own, so its codes must not be read with the `review-loop` meanings above:
+
+| Code | Meaning |
+|---|---|
+| `0` | `READY_FOR_HUMAN_REVIEW`, including the `--push` results `NO_CHANGES` and `PUSHED` |
+| `1` | orchestration error, including a rewritten or diverged target branch |
+| `2` | `HUMAN_DECISION_REQUIRED`, `LEGITIMACY_REJECTED`, or a `--push` refusal caused by a candidate review needing human judgment, a moved remote head, or a rejected push |
+| `3` | `BASE_UPDATE_REQUIRED` — the target branch advanced past the PR base, or, in `--push` mode, the review-only candidate pass returned `AUTO_FIX_REQUIRED` |
+
+Because one launcher exit code can cover several outcomes, automation must key on the emitted `AI_PR_LOOP_RESULT` / `AI_PR_LOOP_PUSH_RESULT` line and use the exit status only as a success/failure signal.
+
 ## Safety boundary
 
 `review-loop` itself never posts comments, resolves threads, pushes commits, or merges pull requests. The higher-level `ai-pr-loop` also remains read-only with respect to GitHub by default. Its explicit `--push` mode may create a local candidate commit and update only the existing same-repository PR head branch under the verified lease described above; it still never comments, resolves threads, changes PR metadata, or merges.
+### Hermetic validation environments
+
+Git worktree isolation alone is insufficient for candidate validation. Each
+run must use a unique temporary validation directory and isolate `HOME`,
+`GOCACHE`, `GOMODCACHE`, `GOPATH`, `TMPDIR`, `XDG_CACHE_HOME`, and the
+`golangci-lint` cache. The canonical `agent-validation-env` wrapper creates
+these directories and records `VALIDATION_RUN_ID`; `ai-pr-loop` and
+`ai-pr-adopt-candidate` invoke validation through it. This keeps generated
+files and absolute paths from one concurrent run out of another run's caches.
+
+Those caches live inside the run's dedicated `validation/` directory, disjoint
+from both Git worktrees, so `ai-pr-loop` reclaims the whole
+run directory recursively when the run ends without `--keep-worktree`. It does
+so only after both owned worktrees are gone: a preserved worktree — inspectable
+fixes or a failed removal — keeps its run directory and its caches.
+
+### Candidate normalization
+
+Candidate publication normalizes the candidate before assigning its final SHA.
+The trusted base-pinned `just pre-commit` recipe runs in the isolated validation
+environment; any resulting tree changes are logged, checked with `git diff
+--check`, committed as normalization, and rechecked. This repeats to a bounded
+fixpoint (three passes by default). Only the converged SHA is reviewed and
+published. A candidate supplied to `ai-pr-adopt-candidate` is immutable: if it
+needs normalization, adoption refuses rather than silently changing the SHA.

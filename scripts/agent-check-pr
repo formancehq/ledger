@@ -30,6 +30,74 @@ if [[ -z "$base_sha" ]]; then
     echo "agent-check-pr: AI_REVIEW_BASE_SHA is required" >&2
     exit 1
 fi
+
+# PR automation supplies a complete mechanical binding. Direct developer runs
+# without that contract remain supported, but a partial contract fails closed.
+binding_names=(EXPECTED_PR_NUMBER EXPECTED_WORKTREE EXPECTED_HEAD AI_WORKTREE_PR AI_WORKTREE_PATH AI_WORKTREE_EXPECTED_HEAD TRUSTED_ROOT_CHECKOUT)
+binding_declared=false
+for name in "${binding_names[@]}"; do
+    if [[ -n "${!name:-}" ]]; then
+        binding_declared=true
+        break
+    fi
+done
+if [[ "$binding_declared" == true ]]; then
+    for name in "${binding_names[@]}"; do
+        [[ -n "${!name:-}" ]] || { echo "WORKTREE_BINDING_GATE=FAIL (missing $name)" >&2; exit 1; }
+    done
+    candidate_root=$(cd "$EXPECTED_WORKTREE" 2>/dev/null && pwd -P) || {
+        echo "WORKTREE_BINDING_GATE=FAIL (invalid EXPECTED_WORKTREE)" >&2
+        exit 1
+    }
+    current_root=$(git rev-parse --show-toplevel)
+    current_root=$(cd "$current_root" && pwd -P)
+    trusted_root=$(cd "$TRUSTED_ROOT_CHECKOUT" 2>/dev/null && pwd -P) || {
+        echo "WORKTREE_BINDING_GATE=FAIL (invalid TRUSTED_ROOT_CHECKOUT)" >&2
+        exit 1
+    }
+    [[ "$candidate_root" != "$trusted_root" ]] || { echo "ROOT_CHECKOUT_AS_CANDIDATE_FORBIDDEN" >&2; exit 1; }
+    [[ "$current_root" == "$candidate_root" && "$AI_WORKTREE_PATH" == "$candidate_root" ]] || {
+        echo "WORKTREE_BINDING_GATE=FAIL (validator cwd/worktree mismatch)" >&2
+        exit 1
+    }
+    [[ "$EXPECTED_PR_NUMBER" == "$AI_WORKTREE_PR" ]] || { echo "CROSS_PR_WORKTREE_CONTAMINATION" >&2; exit 1; }
+    current_head=$(git rev-parse HEAD)
+    [[ "$current_head" == "$EXPECTED_HEAD" && "$current_head" == "$AI_WORKTREE_EXPECTED_HEAD" ]] || {
+        echo "WORKTREE_BINDING_GATE=FAIL (validator HEAD mismatch)" >&2
+        exit 1
+    }
+    echo "WORKTREE_BINDING_GATE=PASS role=validation pr=$EXPECTED_PR_NUMBER path=$candidate_root head=$current_head" >&2
+fi
+
+# AI validations must never reuse the user's golangci-lint cache.  The
+# launcher supplies VALIDATION_RUN_DIR and the per-run cache path; fail closed
+# when either is missing or escapes the run directory.  Direct developer runs
+# remain supported when no validation run is declared.
+if [[ -n "${VALIDATION_RUN_DIR:-}" ]]; then
+    [[ "$VALIDATION_RUN_DIR" = /* ]] || { echo "LINT_ISOLATION_GATE=FAIL (run dir is not absolute)" >&2; exit 1; }
+    run_root=$(cd "$VALIDATION_RUN_DIR" 2>/dev/null && pwd -P) || {
+        echo "LINT_ISOLATION_GATE=FAIL (invalid VALIDATION_RUN_DIR)" >&2
+        exit 1
+    }
+    lint_root=$(cd "${GOLANGCI_LINT_CACHE:-}" 2>/dev/null && pwd -P) || {
+        echo "LINT_ISOLATION_GATE=FAIL (GOLANGCI_LINT_CACHE is not configured)" >&2
+        exit 1
+    }
+    case "$lint_root/" in
+        "$run_root/"*) ;;
+        *) echo "LINT_ISOLATION_GATE=FAIL (cache escapes validation run)" >&2; exit 1 ;;
+    esac
+    for var in HOME GOCACHE GOMODCACHE GOPATH TMPDIR XDG_CACHE_HOME; do
+        value=${!var:-}
+        [[ -n "$value" && "$value" = /* ]] || { echo "LINT_ISOLATION_GATE=FAIL ($var is not isolated)" >&2; exit 1; }
+        resolved=$(cd "$value" 2>/dev/null && pwd -P) || { echo "LINT_ISOLATION_GATE=FAIL ($var is invalid)" >&2; exit 1; }
+        case "$resolved/" in
+            "$run_root/"*) ;;
+            *) echo "LINT_ISOLATION_GATE=FAIL ($var escapes validation run)" >&2; exit 1 ;;
+        esac
+    done
+    echo "LINT_ISOLATION_GATE=PASS ($lint_root)" >&2
+fi
 if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
     echo "agent-check-pr: invalid review base commit: $base_sha" >&2
     exit 1
@@ -136,6 +204,9 @@ fi
 
 unset GOROOT || true
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '^/opt/homebrew' | paste -sd: -)
+export PATH
+bash "$SCRIPT_DIR/ai-bugfix-gate" environment "$(git rev-parse --show-toplevel)/go.mod"
 
 echo "==> agent-check-pr: selected local gates: ${gates[*]}"
 bash "$SCRIPT_DIR/agent-check-full"

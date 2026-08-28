@@ -98,13 +98,21 @@ const (
 
 func main() {
 	var reviewCmd, fixCmd, validationCmd, stateDir, baseRef string
-	var maxPasses int
+	var candidateWorktree, expectedHead, trustedRoot, bindingFile, validationRunDir, gitGuard string
+	var maxPasses, prNumber int
 
 	flag.StringVar(&reviewCmd, "review-cmd", "", "command that writes the review JSON to $AI_REVIEW_RESULT")
 	flag.StringVar(&fixCmd, "fix-cmd", "", "command that fixes findings from $AI_REVIEW_FINDINGS")
 	flag.StringVar(&validationCmd, "validation-cmd", defaultValidationCmd, "local validation command run after fixes and before approval")
 	flag.StringVar(&stateDir, "state-dir", "build/ai-review-loop", "directory for review-loop state")
 	flag.StringVar(&baseRef, "base", "", "explicit git ref for committed changes under review")
+	flag.IntVar(&prNumber, "pr", 0, "expected pull request number")
+	flag.StringVar(&candidateWorktree, "worktree", "", "absolute dedicated candidate worktree path")
+	flag.StringVar(&expectedHead, "expected-head", "", "full candidate HEAD expected before every subprocess")
+	flag.StringVar(&trustedRoot, "trusted-root", "", "absolute primary checkout protected from mutations")
+	flag.StringVar(&bindingFile, "binding-file", "", "immutable PR/worktree binding JSON")
+	flag.StringVar(&validationRunDir, "validation-run-dir", "", "absolute cache/temp directory distinct from both worktrees")
+	flag.StringVar(&gitGuard, "git-guard", "", "absolute trusted ai-git-guard script")
 	flag.IntVar(&maxPasses, "max-passes", defaultMaxPasses, "maximum review passes")
 	flag.Parse()
 
@@ -120,10 +128,20 @@ func main() {
 	if maxPasses < 1 {
 		fatal(errors.New("--max-passes must be at least 1"))
 	}
-	repositoryRoot, err := gitRepositoryRoot()
+	runner, err := newBoundCommandRunner(
+		prNumber,
+		candidateWorktree,
+		expectedHead,
+		trustedRoot,
+		validationRunDir,
+		bindingFile,
+		gitGuard,
+	)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "WORKTREE_BINDING_GATE=FAIL (%v)\n", err)
 		fatal(err)
 	}
+	repositoryRoot := runner.candidateWorktree
 	base, err := resolveReviewBase(repositoryRoot, baseRef)
 	if err != nil {
 		fatal(err)
@@ -131,7 +149,7 @@ func main() {
 	validationEnv := map[string]string{
 		"AI_REVIEW_BASE_SHA": base.SHA,
 	}
-	runStateDir, err := createRunStateDir(stateDir)
+	runStateDir, err := createRunStateDir(repositoryRoot, runner.trustedRootCheckout, stateDir)
 	if err != nil {
 		fatal(err)
 	}
@@ -167,7 +185,7 @@ func main() {
 		}
 
 		fmt.Printf("==> review-loop: review pass %d/%d\n", pass, maxPasses)
-		if err := runCommand(reviewCmd, env); err != nil {
+		if err := runner.run("review", reviewCmd, env); err != nil {
 			fatal(fmt.Errorf("review command failed: %w", err))
 		}
 		if err := verifyFileUnchanged(changeTargetPath, changeTargetContent); err != nil {
@@ -205,7 +223,7 @@ func main() {
 		switch action {
 		case actionReady:
 			fmt.Println("==> review-loop: local validation before readiness")
-			if err := runCommand(validationCmd, validationEnv); err != nil {
+			if err := runner.run("validation", validationCmd, validationEnv); err != nil {
 				fatal(fmt.Errorf("local validation failed before readiness: %w", err))
 			}
 			validatedState, err := captureWorkspaceState(repositoryRoot, runStateDir)
@@ -248,7 +266,7 @@ func main() {
 			}
 
 			fmt.Printf("==> review-loop: auto-fix %d blocking finding(s)\n", len(blockers))
-			if err := runCommand(fixCmd, map[string]string{
+			if err := runner.run("fix", fixCmd, map[string]string{
 				"AI_REVIEW_PASS":     strconv.Itoa(pass),
 				"AI_REVIEW_FINDINGS": findingsPath,
 				"AI_REVIEW_RESULT":   resultPath,
@@ -260,7 +278,7 @@ func main() {
 			}
 
 			fmt.Println("==> review-loop: validation after auto-fix")
-			if err := runCommand(validationCmd, validationEnv); err != nil {
+			if err := runner.run("validation", validationCmd, validationEnv); err != nil {
 				fatal(fmt.Errorf("validation failed after auto-fix: %w", err))
 			}
 			previousResult = resultPath
@@ -428,10 +446,28 @@ func oneOf(value string, allowed ...string) bool {
 	return slices.Contains(allowed, value)
 }
 
-func createRunStateDir(parent string) (string, error) {
-	absoluteParent, err := filepath.Abs(parent)
+func createRunStateDir(repositoryRoot, trustedRoot, parent string) (string, error) {
+	absoluteParent := parent
+	if !filepath.IsAbs(absoluteParent) {
+		absoluteParent = filepath.Join(repositoryRoot, absoluteParent)
+	}
+	absoluteParent = filepath.Clean(absoluteParent)
+	resolvedProspectiveParent, err := resolveProspectivePath(absoluteParent)
 	if err != nil {
-		return "", fmt.Errorf("resolving state directory: %w", err)
+		return "", fmt.Errorf("resolving prospective state directory: %w", err)
+	}
+	trustedGitCommonDir, err := gitCommonDirectory(trustedRoot)
+	if err != nil {
+		return "", err
+	}
+	for _, forbiddenRoot := range []string{trustedRoot, trustedGitCommonDir} {
+		within, pathErr := pathWithin(resolvedProspectiveParent, forbiddenRoot)
+		if pathErr != nil {
+			return "", fmt.Errorf("checking state directory isolation: %w", pathErr)
+		}
+		if within {
+			return "", errors.New("ROOT_CHECKOUT_STATE_DIR_FORBIDDEN")
+		}
 	}
 	if err := os.MkdirAll(absoluteParent, 0o755); err != nil {
 		return "", fmt.Errorf("creating state directory: %w", err)
@@ -448,13 +484,33 @@ func createRunStateDir(parent string) (string, error) {
 	return runStateDir, nil
 }
 
-func gitRepositoryRoot() (string, error) {
-	root, err := gitOutput("", "rev-parse", "--show-toplevel")
+func resolveProspectivePath(path string) (string, error) {
+	current := filepath.Clean(path)
+	missing := make([]string, 0)
+	for {
+		_, err := os.Lstat(current)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", fmt.Errorf("no existing ancestor for %s", path)
+		}
+		missing = append(missing, filepath.Base(current))
+		current = parent
+	}
+	resolved, err := filepath.EvalSymlinks(current)
 	if err != nil {
-		return "", fmt.Errorf("finding git repository root: %w", err)
+		return "", err
+	}
+	for _, v := range slices.Backward(missing) {
+		resolved = filepath.Join(resolved, v)
 	}
 
-	return strings.TrimSpace(string(root)), nil
+	return filepath.Clean(resolved), nil
 }
 
 func resolveReviewBase(repositoryRoot, ref string) (reviewBase, error) {
@@ -707,19 +763,6 @@ func writeFindings(path string, findings []finding) error {
 	}
 
 	return nil
-}
-
-func runCommand(command string, extraEnv map[string]string) error {
-	cmd := exec.Command("bash", "-lc", command)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-	cmd.Env = os.Environ()
-	for key, value := range extraEnv {
-		cmd.Env = append(cmd.Env, key+"="+value)
-	}
-
-	return cmd.Run()
 }
 
 func printOutcome(action loopAction, pass int, result reviewResult, blockers []finding) {

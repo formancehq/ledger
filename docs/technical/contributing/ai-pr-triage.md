@@ -22,6 +22,12 @@ its own legitimacy. Consequently, a newly introduced triage policy becomes
 available only after it reaches the target branch; its bootstrap review uses the
 normal technical review workflow.
 
+Both detached worktrees are workflow-owned child worktrees. The provider
+process uses an explicit process cwd (`env -C`) in the trusted target worktree,
+receives the expected PR/worktree/HEAD values, and is surrounded by the same
+primary-checkout mutation detection described in
+[AI PR worktree isolation](ai-worktree-isolation.md).
+
 ## Decisions
 
 - `KEEP`: repository evidence establishes a concrete need and the change is proportionate enough to justify technical review.

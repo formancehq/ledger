@@ -4,11 +4,14 @@ import (
 	"net/http"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // handleListAccounts handles GET /{ledgerName}/accounts to list accounts.
 func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
+	// See handleListTransactions: the profile clock started in the routing layer.
+	ctx := r.Context()
+	profile := profileFromRequest(r)
+
 	ledgerName, ok := requireLedgerName(w, r)
 	if !ok {
 		return
@@ -33,9 +36,10 @@ func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 
 	reverse := r.URL.Query().Get("reverse") == "true"
 
-	ctx, profile := query.WithProfile(r.Context())
-
+	profile.EnterExecute()
 	cursor, err := s.backend.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
+	profile.LeaveExecute()
+
 	if err != nil {
 		handleError(w, r, err)
 
@@ -47,9 +51,6 @@ func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if wantsHTTPProfile(r) {
-		writeProfileHeader(w, profile)
-	}
-
+	finishProfile(w, r, profile)
 	writeOK(w, accounts)
 }

@@ -12,6 +12,81 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
+func TestValidatePostings(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		posting *commonpb.Posting
+		wantErr error
+	}{
+		{
+			name: "valid posting",
+			posting: &commonpb.Posting{
+				Source:      "bank",
+				Destination: "users:alice",
+				Asset:       "USD",
+				Color:       "BLUE",
+			},
+		},
+		{
+			name: "invalid source",
+			posting: &commonpb.Posting{
+				Source:      "invalid source",
+				Destination: "users:alice",
+				Asset:       "USD",
+				Color:       "BLUE",
+			},
+			wantErr: domain.ErrAccountAddressInvalidChar,
+		},
+		{
+			name: "invalid destination",
+			posting: &commonpb.Posting{
+				Source:      "bank",
+				Destination: "invalid destination",
+				Asset:       "USD",
+				Color:       "BLUE",
+			},
+			wantErr: domain.ErrAccountAddressInvalidChar,
+		},
+		{
+			name: "invalid asset",
+			posting: &commonpb.Posting{
+				Source:      "bank",
+				Destination: "users:alice",
+				Asset:       "usd",
+				Color:       "BLUE",
+			},
+			wantErr: domain.ErrAssetInvalid,
+		},
+		{
+			name: "invalid color",
+			posting: &commonpb.Posting{
+				Source:      "bank",
+				Destination: "users:alice",
+				Asset:       "USD",
+				Color:       "blue",
+			},
+			wantErr: domain.ErrColorInvalid,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validatePostings([]*commonpb.Posting{tt.posting})
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+}
+
 func TestProcessCreateTransaction(t *testing.T) {
 	t.Parallel()
 
@@ -44,7 +119,9 @@ func TestProcessCreateTransaction(t *testing.T) {
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4) // Called for: ledger log date, timestamp fallback, InsertedAt, UpdatedAt
 	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
-	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, persisted *raftcmdpb.LedgerBoundaries) {
+		require.Equal(t, uint64(2), persisted.GetNextTransactionId())
+	})
 	expectGetVolume(mockStore, sourceKey, sourceVolume.AsReader(), nil)
 	expectPutVolume(t, mockStore, sourceKey, nil, func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
 		// Output should increase by 100
@@ -727,7 +804,11 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
-	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil, func(_ domain.TransactionKey, state *commonpb.TransactionState) {
+		metadata := commonpb.MetadataToGoMap(state.GetMetadata())
+		require.Equal(t, "payment", metadata["type"])
+		require.Equal(t, "purchase", metadata["category"])
+	})
 
 	// Test set_tx_meta
 	request := &servicepb.Request{

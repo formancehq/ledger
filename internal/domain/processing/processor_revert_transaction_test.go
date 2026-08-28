@@ -75,7 +75,9 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 5}, nil, func(_ domain.TransactionKey, st *commonpb.TransactionState) {
 		require.Equal(t, uint64(3), st.GetRevertsTransaction())
 	})
-	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, persisted *raftcmdpb.LedgerBoundaries) {
+		require.Equal(t, uint64(6), persisted.GetNextTransactionId())
+	})
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -316,6 +318,48 @@ func TestProcessRevertTransaction_NotFound(t *testing.T) {
 	var txNotFound *domain.ErrTransactionNotFound
 	require.ErrorAs(t, err, &txNotFound)
 	require.Equal(t, uint64(99), txNotFound.TransactionID)
+}
+
+func TestProcessRevertTransaction_NextTransactionIDNotFound(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5, NextLogId: 10}
+
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+	// No reverted-status or transaction-state expectations are registered: any
+	// lookup after the boundary check makes gomock fail the test.
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "test-ledger",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+						RevertTransaction: &raftcmdpb.RevertTransactionOrder{
+							TransactionId: boundaries.GetNextTransactionId(),
+						},
+					},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(order, mockStore)
+	require.Error(t, err)
+	require.Nil(t, result)
+
+	var txNotFound *domain.ErrTransactionNotFound
+	require.ErrorAs(t, err, &txNotFound)
+	require.Equal(t, boundaries.GetNextTransactionId(), txNotFound.TransactionID)
 }
 
 // An allocated tx id (below NextTransactionId, so it passes the boundary

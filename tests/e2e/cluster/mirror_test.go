@@ -361,8 +361,12 @@ var _ = Describe("Mirror", Ordered, func() {
 			DeferCleanup(mockV2.Close)
 
 			// Seed v2 logs before creating the mirror
-			mockV2.addLog(newV2TransactionLog(1, 0, "world", "users:001", "100", "USD/2"))
-			mockV2.addLog(newV2TransactionLog(2, 1, "world", "users:002", "200", "EUR/2"))
+			first := newV2TransactionLog(1, 0, "world", "users:001", "100", "USD/2")
+			first.Date = "2023-11-14T22:13:20.123456Z"
+			mockV2.addLog(first)
+			second := newV2TransactionLog(2, 1, "world", "users:002", "200", "EUR/2")
+			second.Date = "2023-11-14T22:14:00Z"
+			mockV2.addLog(second)
 			mockV2.addLog(newV2SetMetadataLog(3, "ACCOUNT", "users:001", map[string]string{"role": "admin"}))
 
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
@@ -390,9 +394,50 @@ var _ = Describe("Mirror", Ordered, func() {
 				txs, err := listAllTransactions(ctx, client, "mirror-sync", 10, 0)
 				g.Expect(err).To(Succeed())
 
-				// We expect at least 2 transactions from the v2 logs
+				// We expect at least 2 transactions from the v2 logs, with their
+				// original v2 insertion chronology preserved end-to-end.
 				g.Expect(len(txs)).To(BeNumerically(">=", 2))
+
+				insertedAtByID := make(map[uint64]uint64, len(txs))
+				for _, tx := range txs {
+					insertedAtByID[tx.GetId()] = tx.GetInsertedAt().GetData()
+				}
+				g.Expect(insertedAtByID).To(HaveKeyWithValue(uint64(0), uint64(1700000000123456)))
+				g.Expect(insertedAtByID).To(HaveKeyWithValue(uint64(1), uint64(1700000040000000)))
 			}).Within(15 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		})
+
+		It("Should query the source insertion chronology through the inserted_at index", func() {
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(
+				"mirror-sync",
+				commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+			)))
+			Expect(err).To(Succeed())
+			Expect(actions.WaitForBuiltinIndexReady(
+				ctx,
+				client,
+				"mirror-sync",
+				commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
+			)).To(Succeed())
+
+			_, err = client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
+				Ledger: "mirror-sync",
+				Query: &commonpb.PreparedQuery{
+					Name:   "first-source-ingestion-window",
+					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+					Filter: actions.InsertedAtRangeFilter(1700000000000000, 1700000000500000),
+				},
+			})
+			Expect(err).To(Succeed())
+
+			result, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+				Ledger:    "mirror-sync",
+				QueryName: "first-source-ingestion-window",
+				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
+			})
+			Expect(err).To(Succeed())
+			Expect(result.GetCursor().GetTransactionData()).To(HaveLen(1))
+			Expect(result.GetCursor().GetTransactionData()[0].GetId()).To(Equal(uint64(0)))
 		})
 
 		It("Should sync account metadata from v2", func() {
@@ -455,7 +500,7 @@ var _ = Describe("Mirror", Ordered, func() {
 											Key:    "mirrored",
 											Source: &commonpb.SetMetadataAction_Value{Value: "true"},
 										},
-										},
+									},
 									}},
 								}}},
 								// Never mirror transactions flagged skip=yes.

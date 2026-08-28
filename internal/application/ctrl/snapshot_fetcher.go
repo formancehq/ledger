@@ -183,7 +183,15 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir st
 	}
 
 	sessionID := resp.GetSessionId()
+	// The server created a temporary checkpoint with this session. Close it on
+	// every later failure, including a rejected manifest.
+	defer f.closeSession(sessionID)
+
 	manifest := resp.GetManifest()
+	if err := validateSnapshotManifest(manifest); err != nil {
+		return 0, fmt.Errorf("validating snapshot manifest: %w", err)
+	}
+
 	totalSize := manifestTotalSize(manifest)
 
 	logger.WithFields(map[string]any{
@@ -193,35 +201,10 @@ func (f *grpcSnapshotFetcher) fetchWithSession(ctx context.Context, targetDir st
 		"duration":   time.Since(prepareStart).String(),
 	}).Infof("Snapshot session prepared")
 
-	// Always try to close the session on exit.
-	defer f.closeSession(sessionID)
-
-	// 2. Determine which files still need fetching (resume support).
-	scanStart := time.Now()
-	completedFiles, err := scanCompletedFiles(targetDir, manifest)
-	if err != nil {
-		return 0, fmt.Errorf("scanning completed files: %w", err)
-	}
-
-	if len(completedFiles) > 0 {
-		logger.WithFields(map[string]any{
-			"filesResumed": len(completedFiles),
-			"filesTotal":   len(manifest.GetFiles()),
-			"duration":     time.Since(scanStart).String(),
-		}).Infof("Resuming snapshot fetch from partial staging dir")
-	}
-
-	completedSet := make(map[string]struct{}, len(completedFiles))
-	for _, p := range completedFiles {
-		completedSet[p] = struct{}{}
-	}
-
-	var pending []*snapshotpb.FileEntry
-	for _, entry := range manifest.GetFiles() {
-		if _, ok := completedSet[entry.GetPath()]; !ok {
-			pending = append(pending, entry)
-		}
-	}
+	// 2. Fetch every file in this session. The manifest intentionally carries
+	// no content digest, so a file from an earlier session cannot be trusted
+	// based on path and size alone.
+	pending := manifest.GetFiles()
 
 	// 3. Set progress totals.
 	if progress != nil {

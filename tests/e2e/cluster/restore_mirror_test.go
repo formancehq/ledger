@@ -65,8 +65,9 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		// Source logs 1..4 carry transactions 0..3, each crediting `account`
 		// with 100. sourceLogCount is therefore the cursor the mirror must hold
 		// when the delta is exported.
-		sourceLogCount = 4
-		perTxAmount    = "100"
+		sourceLogCount           = 4
+		checkpointSourceLogCount = 1
+		perTxAmount              = "100"
 
 		// Appended after the restore to prove ingestion resumes rather than
 		// merely stopping in a correct-looking state.
@@ -93,6 +94,10 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		// Recorded rather than hard-coded so the comparison pins "unchanged by
 		// the restore" instead of a particular amount encoding.
 		preBackupInput string
+		// The transaction projection is rebuilt from the exported ledger-log
+		// delta. Keep an independent source-date oracle so the restore cannot
+		// silently replace that field with its own apply time.
+		sourceDateMicrosByTxID map[uint64]uint64
 
 		// Read on the restored node as early as the gRPC surface answers.
 		restoredCursor uint64
@@ -120,6 +125,17 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		return info.GetMirrorSyncProgress()
 	}
 
+	addSourceTransaction := func(logID int) {
+		// Source log ids are 1-based; the transactions they carry are 0-based,
+		// matching a real v2 ledger.
+		txID := uint64(logID - 1)
+		sourceDate := time.Date(2023, 11, 14, 22, 13+logID, 0, logID*1000, time.UTC)
+		log := newV2TransactionLog(uint64(logID), txID, "world", account, perTxAmount, asset)
+		log.Date = sourceDate.Format(time.RFC3339Nano)
+		mockV2.addLog(log)
+		sourceDateMicrosByTxID[txID] = uint64(sourceDate.UnixMicro())
+	}
+
 	// expectSingleIngestion asserts the two observables a second ingestion of
 	// the same source logs moves differently: the mirrored transaction count
 	// (unchanged, because a re-apply reuses the source transaction ids) and the
@@ -128,6 +144,12 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		txs, err := listAllTransactions(ctx, client, ledgerName, 100, 0)
 		g.Expect(err).To(Succeed())
 		g.Expect(txs).To(HaveLen(preBackupTxCount), "%s: mirrored transaction count", phase)
+		for _, tx := range txs {
+			sourceDate, ok := sourceDateMicrosByTxID[tx.GetId()]
+			g.Expect(ok).To(BeTrue(), "%s: missing source-date oracle for transaction %d", phase, tx.GetId())
+			g.Expect(tx.GetInsertedAt().GetData()).To(Equal(sourceDate), "%s: transaction %d insertedAt", phase, tx.GetId())
+			g.Expect(tx.GetUpdatedAt().GetData()).To(Equal(sourceDate), "%s: transaction %d updatedAt", phase, tx.GetId())
+		}
 
 		acct, err := actions.GetAccount(ctx, client, ledgerName, account)
 		g.Expect(err).To(Succeed())
@@ -142,12 +164,8 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 
 		mockV2 = newMockV2Server()
 		DeferCleanup(mockV2.Close)
-
-		for i := 1; i <= sourceLogCount; i++ {
-			// Source log ids are 1-based; the transactions they carry are
-			// 0-based, matching a real v2 ledger.
-			mockV2.addLog(newV2TransactionLog(uint64(i), uint64(i-1), "world", account, perTxAmount, asset))
-		}
+		sourceDateMicrosByTxID = make(map[uint64]uint64, sourceLogCount)
+		addSourceTransaction(1)
 
 		container, err := testcontainers.Run(context.Background(), "minio/minio:latest",
 			testcontainers.WithEnv(map[string]string{
@@ -190,7 +208,7 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 		Expect(err).To(Succeed())
 	})
 
-	Describe("Phase 1: a fully synced mirror ledger in the exported delta", Ordered, func() {
+	Describe("Phase 1: a mirror checkpoint prefix followed by an exported delta", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
 			client        servicepb.BucketServiceClient
@@ -222,14 +240,6 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 				g.Expect(err).To(Succeed())
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
-
-			// Full checkpoint on the EMPTY store: the mirror ledger and every
-			// ingest land in the incremental delta, so the restore has to
-			// reconstruct last_mirror_v2_log_id by replaying the exported log
-			// instead of copying a checkpoint that already holds it.
-			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
-			Expect(err).To(Succeed())
-			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 
 		AfterAll(func() {
@@ -259,7 +269,33 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			Expect(err).To(Succeed())
 		})
 
-		It("syncs every source log before the delta is exported", func() {
+		It("syncs a source-dated transaction into the checkpoint prefix", func() {
+			Eventually(func(g Gomega) {
+				progress := syncProgress(g, client)
+				g.Expect(progress.GetError().GetMessage()).To(BeEmpty())
+				g.Expect(progress.GetCursor()).To(Equal(uint64(checkpointSourceLogCount)))
+				g.Expect(progress.GetSourceLogCount()).To(Equal(uint64(checkpointSourceLogCount)))
+				g.Expect(progress.GetState()).To(Equal(commonpb.MirrorSyncState_MIRROR_SYNC_STATE_FOLLOWING))
+
+				txs, err := listAllTransactions(ctx, client, ledgerName, 100, 0)
+				g.Expect(err).To(Succeed())
+				g.Expect(txs).To(HaveLen(checkpointSourceLogCount))
+				g.Expect(txs[0].GetInsertedAt().GetData()).To(Equal(sourceDateMicrosByTxID[0]))
+				g.Expect(txs[0].GetUpdatedAt().GetData()).To(Equal(sourceDateMicrosByTxID[0]))
+			}).Within(60 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+		})
+
+		It("creates a full checkpoint with meaningful mirror state", func() {
+			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
+			Expect(err).To(Succeed())
+			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
+		})
+
+		It("syncs source-dated transactions into the post-checkpoint delta", func() {
+			for logID := checkpointSourceLogCount + 1; logID <= sourceLogCount; logID++ {
+				addSourceTransaction(logID)
+			}
+
 			// FOLLOWING requires cursor >= source head, so it pins both that the
 			// worker consumed the whole source and that the FSM advanced the
 			// high-water mark for each ingest.
@@ -476,6 +512,13 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 			Consistently(func(g Gomega) {
 				expectSingleIngestion(g, client, "restored")
 			}, 12*time.Second, 1*time.Second).Should(Succeed())
+		})
+
+		It("passes the integrity checker after restoring the non-empty mirror delta", func() {
+			result, err := actions.CollectCheckStoreEvents(ctx, client)
+			Expect(err).To(Succeed())
+			Expect(result.Errors).To(BeEmpty())
+			Expect(result.Progress).ToNot(BeEmpty())
 		})
 
 		It("ingests new source logs and keeps transaction ids aligned", func() {

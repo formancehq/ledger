@@ -43,7 +43,7 @@ func NewSynchronizer(apply *Machine, recovery *Recovery, incomingRestore dal.Inc
 func (s *Synchronizer) SynchronizeWithLeader(ctx context.Context, snapshotFetcher SnapshotFetcher, progress *SyncProgress) (uint64, error) {
 	// Stop background tasks (bloom restore, etc.) that may hold Pebble iterators.
 	// RestoreCheckpoint closes and reopens the DB — outstanding references cause a panic.
-	s.apply.StopBackgroundTasks()
+	s.apply.PauseBackgroundTasks()
 
 	// Drop any background-request messages enqueued by the FSM hot path
 	// pre-sync: their payloads reference chapter IDs / sequence ranges /
@@ -59,11 +59,13 @@ func (s *Synchronizer) SynchronizeWithLeader(ctx context.Context, snapshotFetche
 	if err := s.restoreCheckpoint(ctx, snapshotFetcher, progress, s.apply.State.SnapshotIndex); err != nil {
 		return 0, fmt.Errorf("restoring checkpoint from leader: %w", err)
 	}
-
 	// Restore cache from Pebble (the checkpoint contains the leader's cache data)
 	if err := s.recovery.RestoreCacheFromStore(); err != nil {
 		return 0, fmt.Errorf("restoring cache after sync: %w", err)
 	}
+	// Pebble replacement and synchronous cache restoration are complete; only
+	// now may the Bloom dispatcher resume work for the installed checkpoint.
+	s.apply.ResumeBackgroundTasks()
 
 	// Reload all FSM state from Pebble (the checkpoint contains the leader's state).
 	// This also recovers lastAppliedIndex from the restored Pebble — the fresh

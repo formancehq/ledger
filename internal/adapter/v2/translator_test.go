@@ -15,6 +15,7 @@ func TestTranslateBatch_NewTransaction(t *testing.T) {
 	v2Logs := []V2Log{{
 		ID:   1,
 		Type: "NEW_TRANSACTION",
+		Date: "2023-11-14T22:13:20.123456Z",
 		Data: mustMarshal(t, V2NewTransactionData{
 			Transaction: V2Transaction{
 				ID: 0,
@@ -51,6 +52,7 @@ func TestTranslateBatch_NewTransaction(t *testing.T) {
 	require.Equal(t, "world", ct.GetPostings()[0].GetSource())
 	require.Equal(t, "users:001", ct.GetPostings()[0].GetDestination())
 	require.Equal(t, "USD/2", ct.GetPostings()[0].GetAsset())
+	require.Equal(t, uint64(1700000000123456), ingest.GetEntry().GetDate().GetData())
 }
 
 func TestTranslateBatch_SetMetadata_Account(t *testing.T) {
@@ -155,6 +157,7 @@ func TestTranslateBatch_RevertedTransaction(t *testing.T) {
 	v2Logs := []V2Log{{
 		ID:   3,
 		Type: "REVERTED_TRANSACTION",
+		Date: "2023-11-14T22:14:00Z",
 		Data: mustMarshal(t, V2RevertedTransactionData{
 			RevertedTransactionID: 1,
 			RevertTransaction: V2Transaction{
@@ -180,6 +183,34 @@ func TestTranslateBatch_RevertedTransaction(t *testing.T) {
 	require.Equal(t, uint64(1), rt.GetRevertedTransactionId())
 	require.Equal(t, uint64(5), rt.GetNewTransactionId())
 	require.Len(t, rt.GetReversePostings(), 1)
+	require.Equal(t, uint64(1700000040000000), orders[0].GetLedgerScoped().GetMirrorIngest().GetEntry().GetDate().GetData())
+}
+
+func TestTranslateBatch_InvalidLogDate(t *testing.T) {
+	t.Parallel()
+
+	v2Logs := []V2Log{{
+		ID:   1,
+		Type: "NEW_TRANSACTION",
+		Date: "not-a-date",
+		Data: mustMarshal(t, V2NewTransactionData{
+			Transaction: V2Transaction{ID: 1},
+		}),
+	}}
+
+	orders, _, _, err := TranslateBatch("default", v2Logs, 1, 1, nil)
+	require.Error(t, err)
+	require.Nil(t, orders)
+	require.Contains(t, err.Error(), "parsing v2 log date")
+}
+
+func TestTranslateV2LogDate_BeforeUnixEpochRejected(t *testing.T) {
+	t.Parallel()
+
+	date, err := translateV2LogDate("1969-12-31T23:59:59.999999Z")
+	require.Error(t, err)
+	require.Nil(t, date)
+	require.Contains(t, err.Error(), "before the Unix epoch")
 }
 
 func TestTranslateBatch_DeleteMetadata(t *testing.T) {

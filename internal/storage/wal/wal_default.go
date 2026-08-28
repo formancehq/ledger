@@ -37,6 +37,11 @@ type Option func(*DefaultWAL)
 
 // DefaultWAL implements raft.Storage interface for etcd/raft using etcd/wal.
 type DefaultWAL struct {
+	// snapshotPersistenceMu serializes each full snapshot-file + WAL-record
+	// persistence sequence. It must be acquired before mu so the persisted
+	// order matches the order in which snapshot state is captured.
+	snapshotPersistenceMu sync.Mutex
+
 	// mu protects all mutable state (entries, snapshot, hardState)
 	mu sync.RWMutex
 
@@ -716,6 +721,9 @@ func hardStateEqual(a, b *raftpb.HardState) bool {
 
 // CreateSnapshot creates a snapshot at the given index.
 func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []byte) error {
+	s.snapshotPersistenceMu.Lock()
+	defer s.snapshotPersistenceMu.Unlock()
+
 	s.mu.Lock()
 
 	s.logger.WithFields(map[string]any{"index": index}).Infof("Creating snapshot")
@@ -799,6 +807,9 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 // changes (e.g. a learner is added) so that etcd/raft sends snapshots with
 // the correct ConfState to newly added nodes.
 func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
+	s.snapshotPersistenceMu.Lock()
+	defer s.snapshotPersistenceMu.Unlock()
+
 	s.mu.Lock()
 
 	// Nothing to update if there is no snapshot yet.
@@ -883,8 +894,10 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 
 // ApplySnapshot applies a snapshot to the storage.
 func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
+	s.snapshotPersistenceMu.Lock()
+	defer s.snapshotPersistenceMu.Unlock()
+
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	s.logger.WithFields(map[string]any{
 		"snapIndex":      snap.GetMetadata().GetIndex(),
@@ -907,20 +920,15 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
 		}
 	}
 
-	// Write the snapshot record + updated HardState to the etcd WAL first.
-	// This is the source of truth for crash safety: on restart, ReadAll()
-	// returns a HardState with Commit >= snapshot.Index. The etcd WAL fsyncs
-	// both records together in the Save call.
-	//
-	// Order matters: WAL before state file. If we crash between the two,
-	// the state file has the old snapshot (stale Data) but the WAL has the
-	// correct {Index, Term, HardState}. On restart the node will be marked
-	// out-of-sync and re-fetch the checkpoint from the leader.
-	// Save the full snapshot file first, then the WAL record + HardState.
-	// Order follows etcd's pattern: an orphaned snap file is harmless (cleaned
-	// up on the next snapshot), but a WAL snapshot record without a corresponding
-	// snap file would cause issues at restart.
+	// Persist the full snapshot file before its WAL record, following etcd's
+	// crash-safety order: an orphaned snap file is harmless and cleaned up by a
+	// later snapshot, while a WAL snapshot record without its snap file would
+	// make restart fail. The in-memory snapshot and entry cache were already
+	// replaced above; a persistence failure returns an error but does not roll
+	// those in-memory mutations back.
 	if err := s.snapshotter.Save(snap); err != nil {
+		s.mu.Unlock()
+
 		return fmt.Errorf("saving snapshot file: %w", err)
 	}
 
@@ -929,16 +937,41 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
 		Term:      new(snap.GetMetadata().GetTerm()),
 		ConfState: snap.GetMetadata().GetConfState(),
 	}
+	// Persist a guard snapshot record before advancing HardState. Until the
+	// HardState commit reaches this index, etcd ignores the record on restart
+	// and the older snapshot and WAL segments remain available. Once HardState
+	// is durable, this record guarantees that the new snapshot is recognized.
 	if err := s.wal.SaveSnapshot(walSnap); err != nil {
-		return fmt.Errorf("saving snapshot to WAL: %w", err)
+		s.mu.Unlock()
+
+		return fmt.Errorf("saving guard snapshot to WAL: %w", err)
 	}
 
+	// A commit-only HardState update does not make etcd WAL Save sync by
+	// itself. Buffer it after the durable guard record, then write the same
+	// snapshot record again as the sync barrier. Every durable prefix is safe:
+	// either the old HardState ignores the guard record, or the new HardState
+	// has a matching snapshot record that was already synced before it.
 	if err := s.wal.Save(s.hardState, nil); err != nil {
-		return fmt.Errorf("saving HardState after snapshot to WAL: %w", err)
+		s.mu.Unlock()
+
+		return fmt.Errorf("saving HardState after guard snapshot to WAL: %w", err)
+	}
+
+	if err := s.wal.SaveSnapshot(walSnap); err != nil {
+		s.mu.Unlock()
+
+		return fmt.Errorf("syncing snapshot and HardState to WAL: %w", err)
 	}
 
 	// Safe to clean up old snap files now — the WAL record is persisted.
 	s.snapshotter.CleanupOlderThan(snap.GetMetadata().GetIndex())
+	s.mu.Unlock()
+
+	// Applying a received snapshot discards the entire cached entry slice.
+	// Release the matching etcd WAL segment locks immediately; this
+	// node may not apply local entries soon enough for Compact to do it.
+	s.releaseLockTo(snap.GetMetadata().GetIndex())
 
 	return nil
 }
@@ -995,16 +1028,22 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 	// This allows the etcd WAL to release memory associated with old log entries
 	// and potentially remove old WAL segment files.
 	// Without this call, the etcd WAL keeps file handles and memory indefinitely.
-	err := s.wal.ReleaseLockTo(compactIndex)
-	if err != nil {
-		s.logger.WithFields(map[string]any{
-			"compactIndex": compactIndex,
-			"error":        err,
-		}).Errorf("Failed to release WAL lock")
-		// Don't return error - the in-memory compaction succeeded
-	}
+	s.releaseLockTo(compactIndex)
 
 	return nil
+}
+
+// releaseLockTo makes WAL segment reclamation best-effort after the in-memory
+// state has already advanced. Failure must not roll back a persisted snapshot
+// or a completed in-memory compaction.
+func (s *DefaultWAL) releaseLockTo(index uint64) {
+	err := s.wal.ReleaseLockTo(index)
+	if err != nil {
+		s.logger.WithFields(map[string]any{
+			"index": index,
+			"error": err,
+		}).Errorf("Failed to release WAL lock")
+	}
 }
 
 // Close closes the DefaultWAL. Safe to call multiple times.

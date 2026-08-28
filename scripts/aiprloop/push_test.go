@@ -73,11 +73,26 @@ func TestPushRefusesBaseWithoutTrustedValidator(t *testing.T) {
 	require.Equal(t, fixture.headSHA, remoteHead)
 }
 
+func TestPushQuotesValidationPathsContainingAnApostrophe(t *testing.T) {
+	t.Parallel()
+
+	// The run directory inherits the repository parent path, so the guarded
+	// validation recipe must survive a checkout such as `/tmp/user's repo`.
+	fixture := newPushFixture(t, pushFixtureOptions{quotedRepositoryParent: true})
+	output, exitCode := fixture.run(t)
+	require.Equal(t, 0, exitCode, output)
+	require.Contains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
+}
+
 type pushFixtureOptions struct {
 	moveRemote            bool
 	moveLocalHead         bool
 	tamperTargetToolchain bool
 	omitTrustedValidator  bool
+
+	// quotedRepositoryParent nests the repository under a parent directory whose
+	// name contains an apostrophe, which the run directory inherits.
+	quotedRepositoryParent bool
 }
 
 type pushFixture struct {
@@ -95,12 +110,17 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 	t.Helper()
 
 	root := t.TempDir()
+	if options.quotedRepositoryParent {
+		root = filepath.Join(root, "ai loop's fixtures")
+		require.NoError(t, os.MkdirAll(root, 0o755))
+	}
 	remote := filepath.Join(root, "remote.git")
 	seed := filepath.Join(root, "seed")
 	checkout := filepath.Join(root, "checkout")
 
 	runGit(t, root, "init", "--bare", remote)
 	require.NoError(t, os.MkdirAll(filepath.Join(seed, "scripts"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(seed, "docs", "technical", "contributing"), 0o755))
 	runGit(t, seed, "init")
 	runGit(t, seed, "config", "user.name", "AI PR Loop Test")
 	runGit(t, seed, "config", "user.email", "ai-pr-loop@example.com")
@@ -108,13 +128,42 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 	launcher, err := os.ReadFile(launcherPath(t))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-loop"), launcher, 0o755))
+	guard, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-git-guard"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-git-guard"), guard, 0o755))
 	if !options.omitTrustedValidator {
 		validator, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "agent-check-pr"))
 		require.NoError(t, err)
 		require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "agent-check-pr"), validator, 0o755))
+		writeExecutable(t, filepath.Join(seed, "scripts", "agent-just"), "#!/usr/bin/env bash\nexit 0\n")
 	}
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 0\n")
+	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-known-findings"), "#!/usr/bin/env bash\nexit 0\n")
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-fix-claude"), "#!/usr/bin/env bash\nexit 0\n")
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-known-findings"), []byte(`#!/usr/bin/env bash
+set -euo pipefail
+pr=$1
+shift
+head=""
+output=""
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		--head)
+			head=$2
+			shift 2
+			;;
+		--output)
+			output=$2
+			shift 2
+			;;
+		*)
+			shift
+			;;
+	esac
+done
+[[ -n "$head" && -n "$output" ]]
+printf '{"version":1,"pr_number":%s,"head":"%s","findings":[]}\n' "$pr" "$head" > "$output"
+`), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-triage"), []byte(`#!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -158,16 +207,26 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 case "$review_cmd" in
-    *trusted-tools/scripts/ai-review-codex) ;;
+    *trusted-tools/scripts/ai-review-known-findings) ;;
     *) exit 95 ;;
 esac
+eval "review_script=${review_cmd#bash }"
+trusted_root=$(git -C "$(dirname "$review_script")" rev-parse --show-toplevel)
+grep -qx 'trusted known-findings contract' "$trusted_root/docs/technical/contributing/ai-pr-known-findings.md" || exit 91
+[[ -n "${AI_REVIEW_KNOWN_FINDINGS:-}" && -f "$AI_REVIEW_KNOWN_FINDINGS" ]] || exit 92
 if [[ -n "$fix_cmd" ]]; then
     case "$fix_cmd" in
         *trusted-tools/scripts/ai-fix-claude) ;;
         *) exit 94 ;;
     esac
 fi
-case "$validation_cmd" in
+# The guarded validation recipe nests a program inside bash -c, so that
+# program must itself be valid shell input for any repository path.
+validation_words=()
+eval "validation_words=($validation_cmd)"
+validation_program=${validation_words[$((${#validation_words[@]} - 1))]}
+bash -n -c "$validation_program" || exit 90
+case "$validation_program" in
     *trusted-tools/scripts/agent-check-pr) ;;
     *) exit 93 ;;
 esac
@@ -188,6 +247,7 @@ elif [[ "$count" -eq 2 && "${TEST_MOVE_LOCAL_HEAD:-false}" == "true" ]]; then
 fi
 exit 0
 `)
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "docs", "technical", "contributing", "ai-pr-known-findings.md"), []byte("trusted known-findings contract\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "base.txt"), []byte("base\n"), 0o644))
 	runGit(t, seed, "add", ".")
 	runGit(t, seed, "commit", "-m", "base")
@@ -201,12 +261,15 @@ exit 0
 	if options.tamperTargetToolchain {
 		writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), "#!/usr/bin/env bash\nexit 97\n")
 		writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 97\n")
+		writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-known-findings"), "#!/usr/bin/env bash\nexit 97\n")
+		writeExecutable(t, filepath.Join(seed, "scripts", "ai-pr-known-findings"), "#!/usr/bin/env bash\nexit 97\n")
 		writeExecutable(t, filepath.Join(seed, "scripts", "ai-fix-claude"), "#!/usr/bin/env bash\nexit 97\n")
 		writeExecutable(t, filepath.Join(seed, "scripts", "agent-check-pr"), "#!/usr/bin/env bash\nexit 97\n")
+		require.NoError(t, os.WriteFile(filepath.Join(seed, "docs", "technical", "contributing", "ai-pr-known-findings.md"), []byte("target-controlled contract\n"), 0o644))
 	}
 	runGit(t, seed, "add", "feature.txt")
 	if options.tamperTargetToolchain {
-		runGit(t, seed, "add", "scripts/review-loop", "scripts/ai-review-codex", "scripts/ai-fix-claude", "scripts/agent-check-pr")
+		runGit(t, seed, "add", "scripts/review-loop", "scripts/ai-review-codex", "scripts/ai-review-known-findings", "scripts/ai-pr-known-findings", "scripts/ai-fix-claude", "scripts/agent-check-pr", "docs/technical/contributing/ai-pr-known-findings.md")
 	}
 	runGit(t, seed, "commit", "-m", "feature")
 	headSHA := runGitOutput(t, seed, "rev-parse", "HEAD")
@@ -235,6 +298,10 @@ esac
 set -euo pipefail
 source_root=""
 output=""
+if [[ " $* " == *" --command bash -c "* ]]; then
+    eval "${@: -1}"
+    exit $?
+fi
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -C)

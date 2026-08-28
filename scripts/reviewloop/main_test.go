@@ -250,9 +250,12 @@ func TestCreateRunStateDirIsolatesRuns(t *testing.T) {
 	t.Parallel()
 
 	parent := t.TempDir()
-	first, err := createRunStateDir(parent)
+	trustedRoot := filepath.Join(t.TempDir(), "trusted-root")
+	require.NoError(t, os.MkdirAll(trustedRoot, 0o755))
+	runGit(t, trustedRoot, "init")
+	first, err := createRunStateDir(parent, trustedRoot, parent)
 	require.NoError(t, err)
-	second, err := createRunStateDir(parent)
+	second, err := createRunStateDir(parent, trustedRoot, parent)
 	require.NoError(t, err)
 
 	require.NotEqual(t, first, second)
@@ -438,6 +441,13 @@ func TestApprovedReviewFailsWhenLocalValidationFails(t *testing.T) {
 	runGit(t, repository, "add", "base.txt")
 	runGit(t, repository, "-c", "user.name=Review Loop Test", "-c", "user.email=review-loop@example.com", "commit", "-m", "base")
 	baseSHA := strings.TrimSpace(runGitOutput(t, repository, "rev-parse", "HEAD"))
+	candidateParent := t.TempDir()
+	candidate := filepath.Join(candidateParent, "candidate")
+	runGit(t, repository, "worktree", "add", "--detach", candidate, baseSHA)
+	validationRunDir := filepath.Join(candidateParent, "validation")
+	require.NoError(t, os.MkdirAll(validationRunDir, 0o755))
+	bindingFile := filepath.Join(candidateParent, "binding.json")
+	writeBindingFile(t, bindingFile, 123, candidate, baseSHA, repository)
 
 	reviewer := filepath.Join(repository, "reviewer.sh")
 	require.NoError(t, os.WriteFile(reviewer, []byte(`#!/usr/bin/env bash
@@ -462,11 +472,18 @@ exit 42
 
 	command := exec.Command(binary,
 		"--base", baseSHA,
-		"--review-cmd", "bash reviewer.sh",
-		"--validation-cmd", "bash validator.sh",
-		"--state-dir", filepath.Join(repository, ".review-state"),
+		"--pr", "123",
+		"--worktree", candidate,
+		"--expected-head", baseSHA,
+		"--trusted-root", repository,
+		"--binding-file", bindingFile,
+		"--validation-run-dir", validationRunDir,
+		"--git-guard", filepath.Join(repositoryRootForTests(t), "scripts", "ai-git-guard"),
+		"--review-cmd", "bash "+shellQuote(reviewer),
+		"--validation-cmd", "bash "+shellQuote(validator),
+		"--state-dir", filepath.Join(candidate, ".review-state"),
 	)
-	command.Dir = repository
+	command.Dir = candidate
 	command.Env = append(os.Environ(), "TEST_VALIDATION_BASE="+validationBase)
 	output, err = command.CombinedOutput()
 	require.Error(t, err, string(output))
@@ -482,11 +499,18 @@ printf 'changed by validation\n' > base.txt
 `), 0o755))
 	command = exec.Command(binary,
 		"--base", baseSHA,
-		"--review-cmd", "bash reviewer.sh",
-		"--validation-cmd", "bash validator.sh",
-		"--state-dir", filepath.Join(repository, ".review-state"),
+		"--pr", "123",
+		"--worktree", candidate,
+		"--expected-head", baseSHA,
+		"--trusted-root", repository,
+		"--binding-file", bindingFile,
+		"--validation-run-dir", validationRunDir,
+		"--git-guard", filepath.Join(repositoryRootForTests(t), "scripts", "ai-git-guard"),
+		"--review-cmd", "bash "+shellQuote(reviewer),
+		"--validation-cmd", "bash "+shellQuote(validator),
+		"--state-dir", filepath.Join(candidate, ".review-state"),
 	)
-	command.Dir = repository
+	command.Dir = candidate
 	output, err = command.CombinedOutput()
 	require.Error(t, err, string(output))
 	require.Contains(t, string(output), "local validation changed the approved workspace")
@@ -519,4 +543,28 @@ func runGitOutput(t *testing.T, directory string, arguments ...string) string {
 	require.NoError(t, err, string(output))
 
 	return string(output)
+}
+
+func writeBindingFile(t *testing.T, path string, prNumber int, candidate, head, trustedRoot string) {
+	t.Helper()
+
+	content, err := json.Marshal(worktreeBindingFile{
+		Version:             1,
+		ExpectedPRNumber:    prNumber,
+		CandidateWorktree:   candidate,
+		ExpectedHead:        head,
+		TrustedRootCheckout: trustedRoot,
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, append(content, '\n'), 0o600))
+}
+
+func repositoryRootForTests(t *testing.T) string {
+	t.Helper()
+
+	return strings.TrimSpace(runGitOutput(t, ".", "rev-parse", "--show-toplevel"))
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }

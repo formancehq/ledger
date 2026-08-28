@@ -1,10 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+candidate_worktree=""
+arguments=("$@")
+for ((index = 0; index < ${#arguments[@]}; index++)); do
+    if [[ "${arguments[$index]}" == "--worktree" && $((index + 1)) -lt ${#arguments[@]} ]]; then
+        candidate_worktree=${arguments[$((index + 1))]}
+        break
+    fi
+done
+[[ -n "$candidate_worktree" ]] || { echo "review-loop: --worktree is required" >&2; exit 1; }
+[[ "$candidate_worktree" = /* ]] || { echo "review-loop: --worktree must be absolute" >&2; exit 1; }
+candidate_worktree=$(cd "$candidate_worktree" && pwd -P)
+
 if [[ "${LEDGER_REVIEW_LOOP_IN_NIX:-}" != "1" ]]; then
-    exec env -u GOROOT nix develop --command \
+    exec env -C "$candidate_worktree" -u GOROOT nix develop --command \
         env LEDGER_REVIEW_LOOP_IN_NIX=1 bash "$0" "$@"
 fi
 
 unset GOROOT || true
-exec go run ./scripts/reviewloop "$@"
+exec env -C "$candidate_worktree" go run ./scripts/reviewloop "$@"
