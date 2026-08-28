@@ -511,8 +511,8 @@ func (m *Membership) OnSnapshotInstalled() {
 // Node.finishReady once the ConfChange is observed post-commit, via
 // Membership.Set / Membership.Remove.
 //
-// PromoteLearner (ConfChangeAddNode with empty context) carries no
-// address payload — it's a role change — so we skip it.
+// PromoteLearner (ConfChangeAddNode with a correlation-only context) carries
+// no address payload — it's a role change — so we skip it.
 func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSession) error {
 	cc, ok, err := UnmarshalConfChangeV2(entry)
 	if err != nil {
@@ -526,7 +526,7 @@ func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSess
 	return WalkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
 		switch t {
 		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode:
-			if ctx == nil {
+			if ctx == nil || !ctx.HasPeerRegistration() {
 				return nil
 			}
 

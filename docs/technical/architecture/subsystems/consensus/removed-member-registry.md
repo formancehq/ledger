@@ -72,7 +72,7 @@ Cross-store atomicity is impossible. Today's `ForceRemoveNode` already reasons a
 
 #### Consensus path (normal `RemoveNode`)
 
-The `ConfChangeV2` carries an opaque `Context` field. We reuse the existing `membership.ConfChangeContext` JSON struct (the one AddLearner already uses to carry `RaftAddress` / `ServiceAddress`) and populate only its `InstanceID` field for RemoveNode:
+The `ConfChangeV2` carries an opaque `Context` field. We reuse the existing `membership.ConfChangeContext` JSON struct (the one AddLearner already uses to carry `RaftAddress` / `ServiceAddress`) and populate its `InstanceID` field for RemoveNode. Synchronous ConfChange operations also carry a leader-local `ProposalID` used only to correlate the committed entry with its exact waiter:
 
 ```go
 // internal/infra/membership/confchange.go
@@ -80,12 +80,13 @@ type ConfChangeContext struct {
     RaftAddress    string
     ServiceAddress string
     InstanceID     []byte // 16 bytes on RemoveNode; also populated on Add/AddLearner
+    ProposalID     string // UUID correlation only; ignored by deterministic FSM mutations
 }
 ```
 
 The leader reads the peer's `instanceID` from its Membership state before proposing (leader-only path, not FSM hot path — no preload constraint). The proposal is then replicated normally.
 
-When the target peer's row exists but has no `instanceID` — a *phantom learner*, added via the admin `cluster.AddLearner` RPC before the pod ever booted — the leader proposes the removal with an empty Context. The FSM apply then just deletes the peer row without writing a blacklist entry: there is nothing to blacklist, since no instance ever ran under that (nodeID, ?) tuple.
+When the target peer's row exists but has no `instanceID` — a *phantom learner*, added via the admin `cluster.AddLearner` RPC before the pod ever booted — the leader proposes the removal with a correlation-only Context. The FSM apply ignores `ProposalID`, deletes the peer row, and writes no blacklist entry: there is nothing to blacklist, since no instance ever ran under that (nodeID, ?) tuple.
 
 Every node applies the same log entry through the FSM apply path. The apply batch performs two mutations inside a single `dal.WriteSession`:
 
@@ -95,6 +96,8 @@ Every node applies the same log entry through the FSM apply path. The apply batc
 Both mutations belong to the same Pebble transaction, so they are atomic. Cross-node convergence is guaranteed by [invariant #2](../../../../../CLAUDE.md#invariants) (FSM determinism): same input log entry on every node → same `RemovedMembers` on every node.
 
 No crash window on this path.
+
+On the leader serving `RemoveNode`, `ProposalID` — together with the expected node ID and ConfChange type — selects the exact pending future, which then carries the committed Raft entry index. A canceled proposal that commits late cannot resolve a newer operation for the same node. Every removal waits on `Machine.WaitForApplied(index)` rather than polling Pebble against a fixed wall-clock deadline, including phantom/bootstrap members that have no instance ID and therefore no tombstone. If the caller stops waiting after commit but before durable apply, Ledger returns `UNAVAILABLE` with `ErrorInfo.reason=RAFT_NODE_REMOVAL_COMMITTED` and the `nodeId` / `committedIndex` metadata. When the removed member has an identity, observing the committed ConfChange installs a node-local admission barrier for `(nodeID, instanceID)` before the caller's future can be resolved or discarded. A node-lifecycle-bound background waiter starts from that commit observation, waits for apply, verifies the same durable tombstone invariant as the foreground path, and only then clears that exact barrier; the replicated tombstone remains authoritative and can later be removed deliberately through `forget-removed`. Protection therefore does not depend on the RPC winning its cancellation race, while cancellation cannot leave a permanent node-local block after a valid tombstone apply.
 
 #### Force path (`ForceRemoveNode`)
 
@@ -149,7 +152,7 @@ Note on directionality: the `instanceID` is generated once on the peer and commu
 
 Voters that become cluster members via the initial bootstrap `ConfState` (typically pod-0 under `--bootstrap`) never carry an `instanceID` on the other nodes' peer rows: the `PeerInfo` discovery message has no `instance_id` field and pod-0 never goes through an `AddLearner` ConfChange, so `registerInitialPeers` on the *other* nodes writes pod-0's row with an empty `InstanceID`. On the bootstrap node itself, the row is populated from `cfg.InstanceID` at boot.
 
-Practical consequence: `RemoveNode` on a bootstrap-seed voter (from another node's leader vantage) proposes without a Context and no `RemovedMemberEntry` is written. The blacklist guarantee therefore applies only to nodes that joined via `JoinAsLearner`.
+Practical consequence: `RemoveNode` on a bootstrap-seed voter (from another node's leader vantage) proposes with a correlation-only Context and no `RemovedMemberEntry` is written. The blacklist guarantee therefore applies only to nodes that joined via `JoinAsLearner`.
 
 This is acceptable in practice for the EN-1045 scale-down scenario:
 
@@ -165,7 +168,7 @@ Two secondary gaps in the "never rejoins" guarantee, kept out of this PR's scope
 
 **Pre-EN-1045 rows on an upgraded cluster** — for a cluster that ran a pre-EN-1045 build and is upgraded in place, existing peer rows have `instance_id = nil`. Each pod writes its `INSTANCE_ID` marker locally at first boot on the new binary, but because `CLUSTER_JOINED` is already present, `tryAddLearner` short-circuits and never re-registers with the leader — so the leader's peer store keeps the `nil` identity. A subsequent `RemoveNode` on such a member takes the empty-identity path and writes no tombstone. In practice this is not a concern for `release/v3.0` — the branch is not yet on any long-lived production cluster, and the design position is "instance_id mandatory, no compat" (see PR description). A follow-up would add a lightweight "instance_id refresh" RPC or a per-boot check that proposes `ConfChangeUpdateNode` when the leader's row is empty.
 
-**Async tombstone visibility across a leadership change** — the `postApplyFn` barrier in `Node.RemoveNode` only guarantees the tombstone is durable on the leader that handled the `RemoveNode` RPC. Followers apply the same log entry via their own async applier; if leadership transfers to a follower between raft commit and its FSM apply of the tombstone, the new leader can miss the blacklist on its next `JoinAsLearner` check. The window is bounded by follower applier catch-up (single-digit ms in normal operation), and requires an unusual sequence: leadership loss + immediate rejoin attempt against the new leader. A proper fix — block admission on any leader until its FSM has caught up to the current commit index — is orthogonal to EN-1045 and out of scope.
+**Async tombstone visibility across a leadership change** — the committed-index wait and pending-removal admission barrier protect the leader that handled the `RemoveNode` RPC. Followers apply the same log entry via their own async applier; if leadership transfers to a follower between raft commit and its FSM apply of the tombstone, the new leader can miss the leader-local barrier and blacklist on its next `JoinAsLearner` check. The window is bounded by follower applier catch-up (single-digit ms in normal operation), and requires an unusual sequence: leadership loss + immediate rejoin attempt against the new leader. A proper fix — block admission on any leader until its FSM has caught up to the current commit index — is orthogonal to EN-1045 and out of scope.
 
 ## Data Model
 

@@ -14,6 +14,10 @@ func (m *SyncMap[K, V]) Delete(k K) {
 	m.m.Delete(k)
 }
 
+func (m *SyncMap[K, V]) CompareAndDelete(k K, old V) bool {
+	return m.m.CompareAndDelete(k, old)
+}
+
 func (m *SyncMap[K, V]) Load(id K) (V, bool) {
 	v, ok := m.m.Load(id)
 	if !ok {

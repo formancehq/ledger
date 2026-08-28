@@ -85,13 +85,13 @@ func TestWriteConfChange_RemoveNodeBlacklistsPeer(t *testing.T) {
 	require.True(t, hit, "consensus RemoveNode must land a blacklist entry atomically with the peer row delete")
 }
 
-// TestWriteConfChange_RemoveNodeWithoutContextSkipsBlacklist covers the
+// TestWriteConfChange_RemoveNodeWithoutIdentitySkipsBlacklist covers the
 // phantom-learner path: a peer added via the admin cluster.AddLearner RPC
 // without the target ever booting has an empty instance_id in its
-// Membership row. RemoveNode on such a peer proposes without a Context;
-// FSM apply must delete the peer row and skip the blacklist entry (there
-// is nothing to blacklist).
-func TestWriteConfChange_RemoveNodeWithoutContextSkipsBlacklist(t *testing.T) {
+// Membership row. RemoveNode on such a peer proposes with a correlation-only
+// Context; FSM apply must delete the peer row and skip the blacklist entry
+// (there is nothing to blacklist).
+func TestWriteConfChange_RemoveNodeWithoutIdentitySkipsBlacklist(t *testing.T) {
 	t.Parallel()
 
 	ps, store := storesForBlacklistTest(t)
@@ -101,12 +101,15 @@ func TestWriteConfChange_RemoveNodeWithoutContextSkipsBlacklist(t *testing.T) {
 
 	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
 	require.NoError(t, err)
+	ccCtx, err := MarshalConfChangeContext(ConfChangeContext{ProposalID: "remove-3"})
+	require.NoError(t, err)
 
 	cc := &raftpb.ConfChangeV2{
 		Changes: []*raftpb.ConfChangeSingle{{
 			Type:   new(raftpb.ConfChangeRemoveNode),
 			NodeId: proto.Uint64(3),
 		}},
+		Context: ccCtx,
 	}
 	data, err := proto.Marshal(cc)
 	require.NoError(t, err)
