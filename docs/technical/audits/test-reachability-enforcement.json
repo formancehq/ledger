@@ -1,0 +1,72 @@
+{
+  "id": "test-reachability-enforcement",
+  "title": "Test reachability, effective execution, and validation enforcement",
+  "purpose": "Determine whether each test, model, scenario, verifier, or executable invariant the repository relies on for engineering confidence is actually collected and reaches its intended assertions at an appropriate PR, merge, release, scheduled, or external/manual validation layer, and whether that layer is effectively enforced.",
+  "paths": [
+    ".github/actions/**",
+    ".github/workflows/**",
+    "justfile",
+    "go.mod",
+    "**/go.mod",
+    "**/*_test.go",
+    "scripts/agent-check",
+    "scripts/agent-check-full",
+    "scripts/agent-check-pr",
+    "scripts/agent-just",
+    "scripts/check-repo-invariants*",
+    "tests/**",
+    "misc/operator/**",
+    "misc/devenv/monitoring-dashboards/**"
+  ],
+  "related_docs": [
+    "AGENTS.md",
+    "docs/technical/agent-context.md",
+    "docs/technical/contributing/testing.md",
+    "docs/technical/contributing/development.md",
+    "docs/technical/contributing/getting-started.md",
+    "docs/technical/contributing/ai-audit.md",
+    "tests/antithesis/README.md",
+    "misc/operator/README.md"
+  ],
+  "invariants": [
+    "Every test family, model, scenario, verifier, fuzz target, and executable invariant that repository policy or engineering documentation relies on has an intentional validation layer and a runner whose discovery mechanism includes it.",
+    "A finding belongs to this domain only when evidence establishes a break between test existence, collection, execution, core assertion reachability, result propagation, or integration enforcement; assertion strength, runtime correctness, test repair, CI performance, and pull-request review are outside scope unless they are the concrete cause of that break.",
+    "Collection is established from the effective module boundary, build constraints, package or path selectors, framework discovery rules, and runner configuration together; enabling a build tag or instrumenting a package with -coverpkg is not evidence that its tests are selected or executed.",
+    "Each Go module is an independent test-discovery boundary unless a runner explicitly enters or selects it; root-module ./... patterns must not be treated as traversing nested modules.",
+    "A collected test counts as effective protection only when the intended validation environment can reach its core assertion or invariant check; unconditional skips, permanently absent credentials or dependencies, focus or filter mismatches, empty collections, and harness exits before the assertion must remain visible rather than being counted as protection.",
+    "Test and validation failures must propagate through recipes, wrapper scripts, shell pipelines, matrix jobs, conditional steps, and dependent jobs as a failing result; a green wrapper or workflow must not mask an unexecuted, skipped, or failed underlying check.",
+    "Workflow execution and integration enforcement are distinct: a job counts as blocking protection only when its trigger, status context, branch or ruleset policy, and integration event make its failure prevent the event it is claimed to protect; merge_group support alone does not prove that a merge queue or required check is active.",
+    "Unique or critical coverage has an intentional execution layer appropriate to its cost and dependencies, which may be PR, merge, release, scheduled, or external/manual; the audit identifies accidental gaps and policy mismatches without requiring every test to run on every pull request.",
+    "External and manual campaigns, including autonomous or credentialed systems, are identified as such and are not represented as ordinary GitHub PR or merge protection without evidence that connects their execution and result to that integration event.",
+    "Runner manifests, target lists, package selectors, build-tag sets, framework configurations, generated test inventories, and helper or verifier entry points correspond to current repository tests and do not silently omit, rename, or retain nonexistent targets.",
+    "Where repository policy claims exhaustive protection, discovery fails closed as the test topology evolves: adding a nested module, tagged test, fuzz target, framework spec, driver, scenario, or verifier is either collected automatically or requires an explicit runner/configuration update whose omission is detected by validation."
+  ],
+  "adversarial_questions": [
+    "For every go.mod, which runner enters that module, which *_test.go files and packages does it collect under its exact tags and selectors, and what evidence contradicts any assumption that root go test ./... crosses the module boundary?",
+    "For each build-constrained test, does the tag-enabled command also select the containing package, and is apparent coverage coming from executed tests rather than -coverpkg instrumentation alone?",
+    "Can Go, Ginkgo, Schemathesis, Chainsaw, scenario, model, dashboard, operator, or Antithesis sources exist while their effective runner discovers zero tests, specs, drivers, or assertions?",
+    "Which operator unit, integration/envtest, Go e2e, and Chainsaw families are selected by each local or automated layer, and do build tags and required infrastructure make those selections effective?",
+    "Can a collected spec immediately Skip, remain pending or focused out, require credentials unavailable to its claimed layer, or exit its harness before the core assertion while the surrounding job remains green?",
+    "Do shell pipelines, retries, conditional steps, continue-on-error behavior, matrix aggregation, artifact upload, or dependent jobs preserve the underlying validation exit status and distinguish failure from no collection?",
+    "For each GitHub job, which pull_request, push, merge_group, release, or manual event runs it, and does the current ruleset or branch policy require the exact resulting status context for the branch and integration event it is said to protect?",
+    "Are merge_group triggers, successful check runs, or external campaign reports being mistaken for enforced merge-queue or branch protection without direct policy evidence?",
+    "Do fuzz seed-replay and active-fuzzing target inventories match the repository's Fuzz functions, and is seed replay being mistaken for scheduled active fuzzing?",
+    "Do Antithesis image construction, template selection, optional driver filters, assertion registration, and campaign launch paths make every relied-upon driver and coverage assertion reachable, and are platform-only campaigns labelled as external?",
+    "Can a helper, oracle, generated verifier, invariant checker, scenario, or dashboard test be maintained and cited without any runner invoking the entry point that reaches its assertions?",
+    "If a new module, build tag, test package, Ginkgo spec, Chainsaw case, Antithesis driver, fuzz function, or verifier were added following current conventions, would claimed exhaustive validation discover it or visibly require a configuration change?",
+    "When a suspected reachability gap appears, what repository, collection, execution-history, or enforcement evidence supports it, and what independent evidence could reject it as redundant, intentionally manual, or protected at another appropriate layer?",
+    "Is a proposed finding actually about reachability or enforcement, or has the audit drifted into grading assertion strength, diagnosing runtime correctness, repairing flaky tests, optimizing CI duration, or reviewing a pull request?",
+    "Is severity based on the uniqueness and criticality of the lost protection and the integration event that can bypass it, rather than merely on the existence of an unreachable optional, redundant, benchmark, or performance test?"
+  ],
+  "dynamic_checks_to_consider": [
+    "enumerate every go.mod and assign each *_test.go file to its containing module, package, and build-constraint expression",
+    "use go list -test and go test -list under the exact runner tag sets and package selectors to compare intended and effective Go collection without treating -coverpkg as execution",
+    "render Just recipes and trace agent-check wrappers and GitHub workflow commands to map each source family to its effective package selectors, environment, trigger, and exit-status propagation",
+    "perform framework-native dry discovery or result inspection for Ginkgo, Schemathesis, Chainsaw, scenarios, operator envtest/e2e, dashboard tests, and Antithesis image template/driver layouts",
+    "enumerate Fuzz functions and compare them with seed-replay lists, active-fuzz target lists, and any scheduled or external campaign configuration",
+    "inspect Skip, pending, focus, credential, environment, and dependency gates and prove whether the exact claimed runner reaches the core assertion rather than only collecting its container",
+    "query GitHub workflow/check histories together with current rulesets, branch protection, and merge-queue configuration to build a job -> trigger -> status context -> enforced integration-event map",
+    "map each relied-upon test family to source -> collector -> executed assertion -> result propagation -> validation layer -> enforcement, recording evidence both for and against suspected gaps",
+    "evaluate the discovery logic for a convention-following new module, tagged test, fuzz target, framework spec, driver, scenario, or verifier to determine whether claimed exhaustive protection is automatic or fail-closed"
+  ]
+}
