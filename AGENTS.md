@@ -25,6 +25,10 @@ Critical persisted configuration such as node/cluster identity and storage schem
 
 Do not preload the whole documentation tree. Prefer the smallest authoritative context that covers the change.
 
+## Deep correctness audits
+
+Before a repository-wide/deep correctness audit for latent defects in a reusable domain, check `docs/technical/audits/` for an existing manifest. When one matches, read the native audit contracts and use `bash scripts/ai-audit <domain>` followed by `bash scripts/ai-audit-challenge <audit-result>`; do not replace that domain with an ad-hoc prompt or treat first-pass findings as confirmed defects. If no manifest matches, first decide whether the scope deserves a reusable manifest and review it before running the audit. PR reviews use the PR review workflow; one-off diagnostics, single known bug fixes, and performance/tooling investigations may remain task-specific unless intentionally promoted into a reusable audit domain. Audits and challenges are read-only, and Jira publication is a separate, explicitly authorized downstream step.
+
 <a id="invariants"></a>
 ## Non-negotiable architecture invariants
 
