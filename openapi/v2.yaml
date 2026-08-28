@@ -2545,8 +2545,8 @@ components:
           format: date-time
           description: >-
             The transaction time to record, letting you backdate or postdate the transaction. Defaults to
-            current machine time if omitted. See [bi-
-            temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+            current machine time if omitted. See
+            [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         postings:
           type: array
           description: Fund movements to apply. Mutually exclusive with script and template
@@ -2679,8 +2679,8 @@ components:
           type: string
           format: date-time
           description: >-
-            The transaction time: when the transaction is considered to have occurred. See [bi-
-            temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+            The transaction time: when the transaction is considered to have occurred. See
+            [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         reference:
           type: string
           description: Optional caller-supplied identifier, unique within the ledger
@@ -2688,8 +2688,8 @@ components:
           type: string
           format: date-time
           description: >-
-            The request time: when the transaction was actually written to the ledger. See [bi-
-            temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+            The request time: when the transaction was actually written to the ledger. See
+            [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         updatedAt:
           type: string
           format: date-time

@@ -1687,8 +1687,8 @@ components:
           type: string
           format: date-time
           description: >-
-            The transaction time: when the transaction is considered to have occurred. See [bi-
-            temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+            The transaction time: when the transaction is considered to have occurred. See
+            [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         postings:
           type: array
           description: The fund movements making up the transaction
@@ -1733,8 +1733,8 @@ components:
           type: string
           format: date-time
           description: >-
-            The transaction time to record, letting you backdate or postdate the transaction. See [bi-
-            temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+            The transaction time to record, letting you backdate or postdate the transaction. See
+            [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
     Transactions:
       required:
         - transactions
@@ -1752,8 +1752,8 @@ components:
           type: string
           format: date-time
           description: >-
-            The transaction time to record, letting you backdate or postdate the transaction. See [bi-
-            temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+            The transaction time to record, letting you backdate or postdate the transaction. See
+            [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         postings:
           type: array
           description: Fund movements to apply. Mutually exclusive with script

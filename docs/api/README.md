@@ -4440,7 +4440,7 @@ A transaction recorded in the ledger, carrying its postings, metadata and both b
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|timestamp|string(date-time)|false|none|The transaction time to record, letting you backdate or postdate the transaction. Defaults to current machine time if omitted. See [bi- temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)|
+|timestamp|string(date-time)|false|none|The transaction time to record, letting you backdate or postdate the transaction. Defaults to current machine time if omitted. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)|
 |postings|[[V2Posting](#schemav2posting)]|false|none|Fund movements to apply. Mutually exclusive with script and template|
 |script|object|false|none|A Numscript program executed to produce the postings. Mutually exclusive with postings|
 |» template|string|false|none|none|
@@ -4683,9 +4683,9 @@ Transaction structure as it appears in log payloads
 |id|integer(bigint)|true|none|Unique sequential identifier for this transaction within the ledger|
 |postings|[[V2Posting](#schemav2posting)]|true|none|The fund movements making up the transaction|
 |metadata|[V2Metadata](#schemav2metadata)|true|none|Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time|
-|timestamp|string(date-time)|true|none|The transaction time: when the transaction is considered to have occurred. See [bi- temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)|
+|timestamp|string(date-time)|true|none|The transaction time: when the transaction is considered to have occurred. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)|
 |reference|string|false|none|Optional caller-supplied identifier, unique within the ledger|
-|insertedAt|string(date-time)|false|none|The request time: when the transaction was actually written to the ledger. See [bi- temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)|
+|insertedAt|string(date-time)|false|none|The request time: when the transaction was actually written to the ledger. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)|
 |updatedAt|string(date-time)|false|none|When the transaction row was last modified|
 |revertedAt|string(date-time)|false|none|When the transaction was reverted, on the request-time axis|
 |reverted|boolean|true|none|Indicates if the transaction has been reverted|

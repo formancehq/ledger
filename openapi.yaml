@@ -3525,8 +3525,7 @@ components:
         details:
           type: string
           description: >-
-            Optional link carrying additional context about the error, such as a Numscript
-            playground URL reproducing it
+            Optional link carrying additional context about the error, such as a Numscript playground URL reproducing it
           example: >-
             https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
         transaction:
@@ -3538,8 +3537,7 @@ components:
       properties:
         address:
           type: string
-          description: The account address, a colon-separated segmented path such
-            as users:001
+          description: The account address, a colon-separated segmented path such as users:001
           example: users:001
         type:
           type: string
@@ -3562,8 +3560,7 @@ components:
       properties:
         address:
           type: string
-          description: The account address, a colon-separated segmented path such
-            as users:001
+          description: The account address, a colon-separated segmented path such as users:001
           example: users:001
         type:
           type: string
@@ -3640,13 +3637,11 @@ components:
           type: integer
           format: bigint
           minimum: 0
-          description: Amount to move, as an arbitrary-precision integer expressed
-            in the asset's smallest unit
+          description: Amount to move, as an arbitrary-precision integer expressed in the asset's smallest unit
           example: 100
         asset:
           type: string
-          description: The asset being moved, optionally carrying a scale suffix such
-            as USD/2
+          description: The asset being moved, optionally carrying a scale suffix such as USD/2
           example: COIN
         destination:
           type: string
@@ -3670,8 +3665,7 @@ components:
           example: "vars {\naccount $user\n}\nsend [COIN 10] (\n\tsource = @world\n\tdestination = $user\n)\n"
         vars:
           type: object
-          description: Values bound to the script's declared variables, keyed by variable
-            name
+          description: Values bound to the script's declared variables, keyed by variable name
           additionalProperties: true
           example:
             user: users:042
@@ -3685,15 +3679,13 @@ components:
         - plain
     Transaction:
       type: object
-      description: A transaction recorded in the ledger, carrying its postings and
-        metadata
+      description: A transaction recorded in the ledger, carrying its postings and metadata
       properties:
         timestamp:
           type: string
           format: date-time
           description: >-
-            The transaction time: when the transaction is considered to have occurred.
-            See [bi- temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+            The transaction time: when the transaction is considered to have occurred. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         postings:
           type: array
           description: The fund movements making up the transaction
@@ -3701,8 +3693,7 @@ components:
             $ref: '#/components/schemas/Posting'
         reference:
           type: string
-          description: Optional caller-supplied identifier, unique within the ledger,
-            used to deduplicate transactions
+          description: Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
           example: ref:001
         metadata:
           $ref: '#/components/schemas/Metadata'
@@ -3710,8 +3701,7 @@ components:
           type: integer
           format: bigint
           minimum: 0
-          description: Unique sequential identifier for this transaction within the
-            ledger
+          description: Unique sequential identifier for this transaction within the ledger
         preCommitVolumes:
           $ref: '#/components/schemas/AggregatedVolumes'
         postCommitVolumes:
@@ -3732,8 +3722,7 @@ components:
             $ref: '#/components/schemas/Posting'
         reference:
           type: string
-          description: Optional caller-supplied identifier, unique within the ledger,
-            used to deduplicate transactions
+          description: Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
           example: ref:001
         metadata:
           $ref: '#/components/schemas/Metadata'
@@ -3741,8 +3730,7 @@ components:
           type: string
           format: date-time
           description: >-
-            The transaction time to record, letting you backdate or postdate the transaction.
-            See [bi- temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+            The transaction time to record, letting you backdate or postdate the transaction. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
     Transactions:
       required:
         - transactions
@@ -3760,8 +3748,7 @@ components:
           type: string
           format: date-time
           description: >-
-            The transaction time to record, letting you backdate or postdate the transaction.
-            See [bi- temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+            The transaction time to record, letting you backdate or postdate the transaction. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         postings:
           type: array
           description: Fund movements to apply. Mutually exclusive with script
@@ -3769,8 +3756,7 @@ components:
             $ref: '#/components/schemas/Posting'
         script:
           type: object
-          description: A Numscript program executed to produce the postings. Mutually
-            exclusive with postings
+          description: A Numscript program executed to produce the postings. Mutually exclusive with postings
           properties:
             plain:
               type: string
@@ -3784,8 +3770,7 @@ components:
             - plain
         reference:
           type: string
-          description: Optional caller-supplied identifier, unique within the ledger,
-            used to deduplicate transactions
+          description: Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
           example: ref:001
         metadata:
           $ref: '#/components/schemas/Metadata'
@@ -3813,8 +3798,7 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: Unique sequential identifier for this log entry within the
-            ledger
+          description: Unique sequential identifier for this log entry within the ledger
           example: 1234
         type:
           type: string
@@ -3824,13 +3808,11 @@ components:
             - SET_METADATA
         data:
           type: object
-          description: The payload of the log entry, whose shape depends on the log
-            type
+          description: The payload of the log entry, whose shape depends on the log type
           additionalProperties: true
         hash:
           type: string
-          description: SHA256 hash of the log entry, chained from the previous log
-            for integrity verification
+          description: SHA256 hash of the log entry, chained from the previous log for integrity verification
           example: 9ee060170400f556b7e1575cb13f9db004f150a08355c7431c62bc639166431e
         date:
           type: string
@@ -3945,8 +3927,7 @@ components:
         details:
           type: string
           description: >-
-            Optional link carrying additional context about the error, such as a Numscript
-            playground URL reproducing it
+            Optional link carrying additional context about the error, such as a Numscript playground URL reproducing it
           example: >-
             https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
     ErrorsEnum:
@@ -3970,8 +3951,7 @@ components:
           $ref: '#/components/schemas/LedgerInfo'
     LedgerInfo:
       type: object
-      description: Runtime information about a ledger, including the state of its
-        storage migrations
+      description: Runtime information about a ledger, including the state of its storage migrations
       properties:
         name:
           type: string
@@ -4263,8 +4243,7 @@ components:
     V2Metadata:
       type: object
       description: >-
-        Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal,
-        so a point-in-time query returns the metadata as it stood at that time
+        Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
       additionalProperties:
         type: string
       example:
@@ -4289,22 +4268,19 @@ components:
         - version
     V2Account:
       type: object
-      description: An account in the ledger, identified by its address and carrying
-        its metadata and volumes
+      description: An account in the ledger, identified by its address and carrying its metadata and volumes
       required:
         - address
         - metadata
       properties:
         address:
           type: string
-          description: The account address, a colon-separated segmented path such
-            as users:001
+          description: The account address, a colon-separated segmented path such as users:001
           example: users:001
         metadata:
           type: object
           description: >-
-            Arbitrary key/value pairs attached to the account. Metadata is bi-temporal,
-            so a point-in-time query returns the metadata as it stood at that time
+            Arbitrary key/value pairs attached to the account. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
           properties: {}
           additionalProperties:
             type: string
@@ -4313,21 +4289,18 @@ components:
         insertionDate:
           type: string
           format: date-time
-          description: When the account was first written to the ledger, on the request-time
-            axis
+          description: When the account was first written to the ledger, on the request-time axis
           example: "2023-01-01T00:00:00Z"
         updatedAt:
           type: string
           format: date-time
-          description: When the account was last modified, for example by a metadata
-            change
+          description: When the account was last modified, for example by a metadata change
           example: "2023-01-01T00:00:00Z"
         firstUsage:
           type: string
           format: date-time
           description: >-
-            Transaction time of the earliest transaction touching this account. Inserting
-            a backdated transaction can move it earlier
+            Transaction time of the earliest transaction touching this account. Inserting a backdated transaction can move it earlier
           example: "2023-01-01T00:00:00Z"
         volumes:
           $ref: "#/components/schemas/V2Volumes"
@@ -4349,13 +4322,11 @@ components:
           type: integer
           format: bigint
           minimum: 0
-          description: Amount to move, as an arbitrary-precision integer expressed
-            in the asset's smallest unit
+          description: Amount to move, as an arbitrary-precision integer expressed in the asset's smallest unit
           example: 100
         asset:
           type: string
-          description: The asset being moved, optionally carrying a scale suffix such
-            as USD/2
+          description: The asset being moved, optionally carrying a scale suffix such as USD/2
           example: COIN
         destination:
           type: string
@@ -4373,29 +4344,22 @@ components:
     V2Transaction:
       type: object
       description: >-
-        A transaction recorded in the ledger, carrying its postings, metadata and
-        both bi-temporal timestamps
+        A transaction recorded in the ledger, carrying its postings, metadata and both bi-temporal timestamps
       properties:
         insertedAt:
           type: string
           format: date-time
           description: >-
-            The request time: when the transaction was actually written to the ledger.
-            Set by the ledger, not the caller. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+            The request time: when the transaction was actually written to the ledger. Set by the ledger, not the caller. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         updatedAt:
           type: string
           format: date-time
-          description: When the transaction row was last modified, for example by
-            a metadata change or a revert
+          description: When the transaction row was last modified, for example by a metadata change or a revert
         timestamp:
           type: string
           format: date-time
           description: >-
-            The transaction time: when the transaction is considered to have occurred,
-            also called the effective or booking date. This is the axis the ledger
-            uses to compute balances and resolve point-in-time queries. Settable at
-            creation, defaulting to current machine time if omitted, and immutable
-            once written. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+            The transaction time: when the transaction is considered to have occurred, also called the effective or booking date. This is the axis the ledger uses to compute balances and resolve point-in-time queries. Settable at creation, defaulting to current machine time if omitted, and immutable once written. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         postings:
           type: array
           description: The fund movements making up the transaction
@@ -4403,8 +4367,7 @@ components:
             $ref: "#/components/schemas/V2Posting"
         reference:
           type: string
-          description: Optional caller-supplied identifier, unique within the ledger,
-            used to deduplicate transactions
+          description: Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
           example: ref:001
         metadata:
           $ref: "#/components/schemas/V2Metadata"
@@ -4412,8 +4375,7 @@ components:
           type: integer
           format: bigint
           minimum: 0
-          description: Unique sequential identifier for this transaction within the
-            ledger
+          description: Unique sequential identifier for this transaction within the ledger
         reverted:
           type: boolean
           description: Indicates if the transaction has been reverted
@@ -4421,8 +4383,7 @@ components:
           type: string
           format: date-time
           description: >-
-            When the transaction was reverted, on the request-time axis. Absent if
-            the transaction has not been reverted
+            When the transaction was reverted, on the request-time axis. Absent if the transaction has not been reverted
         preCommitVolumes:
           $ref: "#/components/schemas/V2AggregatedVolumes"
         postCommitVolumes:
@@ -4433,8 +4394,7 @@ components:
           $ref: "#/components/schemas/V2AggregatedVolumes"
         template:
           type: string
-          description: Name of the transaction template this transaction was created
-            from, if any
+          description: Name of the transaction template this transaction was created from, if any
       required:
         - postings
         - timestamp
@@ -4450,18 +4410,15 @@ components:
           type: string
           format: date-time
           description: >-
-            The transaction time to record, letting you backdate or postdate the transaction.
-            Defaults to current machine time if omitted. See [bi- temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+            The transaction time to record, letting you backdate or postdate the transaction. Defaults to current machine time if omitted. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         postings:
           type: array
-          description: Fund movements to apply. Mutually exclusive with script and
-            template
+          description: Fund movements to apply. Mutually exclusive with script and template
           items:
             $ref: "#/components/schemas/V2Posting"
         script:
           type: object
-          description: A Numscript program executed to produce the postings. Mutually
-            exclusive with postings
+          description: A Numscript program executed to produce the postings. Mutually exclusive with postings
           properties:
             template:
               type: string
@@ -4480,22 +4437,19 @@ components:
           $ref: "#/components/schemas/Runtime"
         reference:
           type: string
-          description: Optional caller-supplied identifier, unique within the ledger,
-            used to deduplicate transactions
+          description: Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
           example: ref:001
         metadata:
           $ref: "#/components/schemas/V2Metadata"
         accountMetadata:
           type: object
-          description: Metadata to set on the accounts involved in the transaction,
-            keyed by account address
+          description: Metadata to set on the accounts involved in the transaction, keyed by account address
           additionalProperties:
             $ref: "#/components/schemas/V2Metadata"
         force:
           type: boolean
           description: >-
-            When true, lets source accounts overdraft without bound, bypassing the
-            balance check. Applies to the postings form only
+            When true, lets source accounts overdraft without bound, bypassing the balance check. Applies to the postings form only
     V2Stats:
       type: object
       description: Aggregate counts for a ledger
@@ -4576,8 +4530,7 @@ components:
           type: integer
           format: bigint
           minimum: 0
-          description: Unique sequential identifier for this transaction within the
-            ledger
+          description: Unique sequential identifier for this transaction within the ledger
         postings:
           type: array
           description: The fund movements making up the transaction
@@ -4589,8 +4542,7 @@ components:
           type: string
           format: date-time
           description: >-
-            The transaction time: when the transaction is considered to have occurred.
-            See [bi- temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+            The transaction time: when the transaction is considered to have occurred. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         reference:
           type: string
           description: Optional caller-supplied identifier, unique within the ledger
@@ -4598,8 +4550,7 @@ components:
           type: string
           format: date-time
           description: >-
-            The request time: when the transaction was actually written to the ledger.
-            See [bi- temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+            The request time: when the transaction was actually written to the ledger. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
         updatedAt:
           type: string
           format: date-time
@@ -4668,8 +4619,7 @@ components:
             - TRANSACTION
           description: Type of the target entity
         targetId:
-          description: Identifier of the entity the metadata was set on, either an
-            account address or a transaction ID
+          description: Identifier of the entity the metadata was set on, either an account address or a transaction ID
           oneOf:
             - type: string
               description: Account address (when targetType is ACCOUNT)
@@ -4737,8 +4687,7 @@ components:
           description: Type of the target entity
         targetId:
           description: >-
-            Identifier of the entity the metadata was deleted from, either an account
-            address or a transaction ID
+            Identifier of the entity the metadata was deleted from, either an account address or a transaction ID
           oneOf:
             - type: string
               description: Account address (when targetType is ACCOUNT)
@@ -4856,8 +4805,7 @@ components:
         details:
           type: string
           description: >-
-            Optional link carrying additional context about the error, such as a Numscript
-            playground URL reproducing it
+            Optional link carrying additional context about the error, such as a Numscript playground URL reproducing it
           example: >-
             https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
     V2ErrorsEnum:
@@ -4892,8 +4840,7 @@ components:
           $ref: "#/components/schemas/V2LedgerInfo"
     V2LedgerInfo:
       type: object
-      description: Runtime information about a ledger, including the state of its
-        storage migrations
+      description: Runtime information about a ledger, including the state of its storage migrations
       properties:
         name:
           type: string
@@ -4901,8 +4848,7 @@ components:
           example: ledger001
         storage:
           type: object
-          description: Storage backend information, including the migrations applied
-            to the ledger's bucket
+          description: Storage backend information, including the migrations applied to the ledger's bucket
           properties:
             migrations:
               type: array
@@ -4944,8 +4890,7 @@ components:
           description: The bulk action this element performs
         ik:
           type: string
-          description: Idempotency key scoped to this element, making it safe to retry
-            the bulk request
+          description: Idempotency key scoped to this element, making it safe to retry the bulk request
     V2BulkElement:
       type: object
       oneOf:
@@ -5126,16 +5071,14 @@ components:
       properties:
         default:
           type: string
-          description: Value applied to this metadata key when an account matching
-            the segment is created
+          description: Value applied to this metadata key when an account matching the segment is created
     V2ChartSegment:
       type: object
       description: "Segment within a chart of accounts"
       properties:
         .self:
           type: object
-          description: Rules and metadata applied to the segment's own account, as
-            opposed to its children
+          description: Rules and metadata applied to the segment's own account, as opposed to its children
         .pattern:
           type: string
           description: Regular expression every child segment name must match
@@ -5143,8 +5086,7 @@ components:
           $ref: "#/components/schemas/V2ChartAccountRules"
         .metadata:
           type: object
-          description: Metadata applied to accounts matching this segment, keyed by
-            metadata key
+          description: Metadata applied to accounts matching this segment, keyed by metadata key
           additionalProperties:
             $ref: "#/components/schemas/V2ChartAccountMetadata"
       additionalProperties:
@@ -5375,8 +5317,7 @@ components:
       properties:
         bucket:
           type: string
-          description: Name of the storage bucket backing the ledger. Ledgers sharing
-            a bucket share a database schema
+          description: Name of the storage bucket backing the ledger. Ledgers sharing a bucket share a database schema
         metadata:
           $ref: "#/components/schemas/V2Metadata"
         features:
@@ -5472,8 +5413,7 @@ components:
       properties:
         metadata:
           type: object
-          description: Metadata to attach to the compensating transaction created
-            by the revert
+          description: Metadata to attach to the compensating transaction created by the revert
           additionalProperties:
             type: string
     V2CreatePipelineRequest:
