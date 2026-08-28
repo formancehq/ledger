@@ -56,9 +56,6 @@ func TestResolveBounds_DegenerateRangesAreEmpty(t *testing.T) {
 	}
 }
 
-//go:fix inline
-func int64Ptr(v int64) *int64 { return new(v) }
-
 // TestCompile_NotOverDegenerateRange_YieldsUniverse pins the composition that
 // panicked under the invariants build: not(logId[(x,x)]) on LOGS. The
 // degenerate child resolves to the empty match, and its complement is the
@@ -109,4 +106,28 @@ func TestCompile_NotOverDegenerateRange_YieldsUniverse(t *testing.T) {
 
 	require.Equal(t, []uint64{1, 2, 3}, got,
 		"not(empty range) must yield the whole universe")
+}
+
+// TestConsumerGuards_DegenerateRangeShortCircuits pins the empty-bounds guard
+// in each range consumer that feeds Pebble iterator bounds: a degenerate
+// condition must come back as the canonical empty iterator before any
+// existence probe or range construction. The zero compileCtx is part of the
+// pin — reaching past the guard would dereference the absent readers.
+func TestConsumerGuards_DegenerateRangeShortCircuits(t *testing.T) {
+	t.Parallel()
+
+	ctx := &compileCtx{}
+	cond := uintCond(7, 7, true, true)
+
+	it, err := compileTxIDCondition(ctx, cond)
+	require.NoError(t, err)
+	require.False(t, it.Next(), "txID guard must yield the empty iterator")
+
+	it, err = compileTimestampRangeCondition(ctx, cond, []byte("p"), "tstmp", 0)
+	require.NoError(t, err)
+	require.False(t, it.Next(), "timestamp guard must yield the empty iterator")
+
+	it, err = compileLogIdCondition(ctx, cond)
+	require.NoError(t, err)
+	require.False(t, it.Next(), "logId guard must yield the empty iterator")
 }
