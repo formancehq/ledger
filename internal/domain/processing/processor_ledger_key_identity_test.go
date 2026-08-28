@@ -143,18 +143,10 @@ func TestProcessCreateIndex_KeysOffEnvelope(t *testing.T) {
 		(&commonpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
 	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1}).AsReader())
 
-	// Record every key the registry probe asks for, so the assertion proves
-	// the envelope was used rather than merely that the envelope key resolved.
-	var probedKeys []domain.IndexKey
 	var wroteKey domain.IndexKey
 	var wroteIdx *commonpb.Index
 
 	idxStub := setupIndexesStub(mockStore)
-	idxStub.onGet(func(k domain.IndexKey) (commonpb.IndexReader, error) {
-		probedKeys = append(probedKeys, k)
-
-		return nil, domain.ErrNotFound
-	})
 	idxStub.onPut(func(k domain.IndexKey, idx *commonpb.Index) {
 		wroteKey = k
 		wroteIdx = idx
@@ -163,9 +155,6 @@ func TestProcessCreateIndex_KeysOffEnvelope(t *testing.T) {
 	payload, derr := processCreateIndex(envelopeLedger, &raftcmdpb.CreateIndexOrder{Id: indexID}, &Context{Scope: mockStore})
 	require.Nil(t, derr)
 	require.NotNil(t, payload)
-
-	require.Len(t, probedKeys, 1)
-	require.Equal(t, envelopeLedger, probedKeys[0].LedgerName, "the duplicate probe must key off the envelope")
 
 	require.Equal(t, envelopeLedger, wroteKey.LedgerName, "the registry write must key off the envelope")
 	require.Equal(t, indexes.Canonical(indexID), wroteKey.Canonical)
@@ -231,7 +220,6 @@ func TestProcessSetMetadataFieldType_IndexCascadeKeysOffEnvelope(t *testing.T) {
 		return (&commonpb.Index{
 			Id:                     indexID,
 			Ledger:                 envelopeLedger,
-			BuildStatus:            commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY,
 			ForwardEncodingVersion: 1,
 		}).AsReader(), nil
 	})

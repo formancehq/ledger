@@ -61,8 +61,7 @@ var _ = Describe("Log date index", Ordered, func() {
 
 	It("Should show log date index as ready locally via GetIndexStatus", func() {
 		// Per-replica readiness lives in IndexEntry.current_version
-		// on GetIndexStatus since EN-1323 (BuildStatus is informational
-		// only). The registry entry itself is exercised by ListIndexes
+		// on GetIndexStatus (EN-1323). The registry entry itself is exercised by ListIndexes
 		// elsewhere; this test only pins the local-replica readiness
 		// signal.
 		Expect(actions.WaitForLogBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)).
@@ -82,7 +81,6 @@ var _ = Describe("Log date index", Ordered, func() {
 
 			logs := collectLogs(stream)
 			// Expected logs: 1 create_ledger + 2 create_index + 3 transactions = 6.
-			// IndexReady updates are no longer orders and produce no log entries.
 			// The log ledger index is populated incrementally: processLogs indexes
 			// logs arriving after the index is created, and the backfill task
 			// indexes historical logs. At minimum 4 logs are immediately visible

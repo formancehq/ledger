@@ -164,7 +164,6 @@ message Proposal {
   // ... other fields ...
   repeated MetadataConversionBatch metadata_conversion_batches = 10;   // Background metadata conversion (no log entry)
   repeated MetadataConversionCompletion metadata_conversions_complete = 11; // Conversion complete signals (no log entry)
-  repeated IndexReadyUpdate index_ready_updates = 12;                  // Index ready signals (no log entry)
 }
 
 message Order {

@@ -18,33 +18,17 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 		return nil, err
 	}
 
-	// Short-circuit when an index is already present and ready: the registry
-	// entry is left untouched (no Pebble write, no BuildStatus regression)
-	// but processApply still wraps the returned payload into a LogPayload_Apply
-	// — so a CreatedIndexLog IS appended to the ledger log. The indexbuilder's
-	// handleCreatedIndexLog must then guard against re-scheduling a backfill
-	// by consulting the registry (cfg.byCanonical alone can lag behind the
-	// applied READY state).
-	//
 	// The registry is keyed off the command envelope, never the loaded
 	// projection's mutable name field, so a divergent LedgerInfo.name cannot
-	// redirect the lookup or the write to another ledger's index keys. The
-	// Ledger field below carries the same envelope value, keeping key and
-	// payload consistent.
-	existing, findErr := indexes.Find(ctx.Scope.Indexes(), ledger, id)
-	if findErr != nil {
-		return nil, domain.StoreFailure("looking up existing index", findErr)
-	}
-
-	if existing != nil && existing.GetBuildStatus() == commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY {
-		return buildCreatedIndexLogPayload(id, false), nil
-	}
-
+	// redirect the write to another ledger's index keys. The Ledger field
+	// below carries the same envelope value, keeping key and payload
+	// consistent. A duplicate CreateIndex overwrites the row; the
+	// indexbuilder's handleCreatedIndexLog guards against re-scheduling a
+	// backfill by consulting its per-replica IndexVersionState.
 	indexes.Put(ctx.Scope.Indexes(), ledger, &commonpb.Index{
-		Id:          id,
-		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
-		CreatedAt:   ctx.Scope.GetDate().Mutate(),
-		Ledger:      ledger,
+		Id:        id,
+		CreatedAt: ctx.Scope.GetDate().Mutate(),
+		Ledger:    ledger,
 		// First version each replica will build into when the initial
 		// backfill runs (cf. EN-1323 per-replica versioning).
 		ForwardEncodingVersion: 1,

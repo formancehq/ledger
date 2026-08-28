@@ -678,7 +678,6 @@ func (m *Index) CloneVT() *Index {
 	}
 	r := new(Index)
 	r.Id = m.Id.CloneVT()
-	r.BuildStatus = m.BuildStatus
 	r.CreatedAt = m.CreatedAt.CloneVT()
 	r.Ledger = m.Ledger
 	r.ForwardEncodingVersion = m.ForwardEncodingVersion
@@ -5577,9 +5576,6 @@ func (this *Index) EqualVT(that *Index) bool {
 		return false
 	}
 	if !this.Id.EqualVT(that.Id) {
-		return false
-	}
-	if this.BuildStatus != that.BuildStatus {
 		return false
 	}
 	if !this.CreatedAt.EqualVT(that.CreatedAt) {
@@ -13731,14 +13727,14 @@ func (m *Index) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.ForwardEncodingVersion != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ForwardEncodingVersion))
 		i--
-		dAtA[i] = 0x28
+		dAtA[i] = 0x20
 	}
 	if len(m.Ledger) > 0 {
 		i -= len(m.Ledger)
 		copy(dAtA[i:], m.Ledger)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x1a
 	}
 	if m.CreatedAt != nil {
 		size, err := m.CreatedAt.MarshalToSizedBufferVT(dAtA[:i])
@@ -13748,12 +13744,7 @@ func (m *Index) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1a
-	}
-	if m.BuildStatus != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BuildStatus))
-		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x12
 	}
 	if m.Id != nil {
 		size, err := m.Id.MarshalToSizedBufferVT(dAtA[:i])
@@ -23852,9 +23843,6 @@ func (m *Index) SizeVT() (n int) {
 		l = m.Id.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.BuildStatus != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.BuildStatus))
-	}
 	if m.CreatedAt != nil {
 		l = m.CreatedAt.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -31944,25 +31932,6 @@ func (m *Index) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BuildStatus", wireType)
-			}
-			m.BuildStatus = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.BuildStatus |= IndexBuildStatus(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreatedAt", wireType)
 			}
@@ -31998,7 +31967,7 @@ func (m *Index) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 4:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Ledger", wireType)
 			}
@@ -32030,7 +31999,7 @@ func (m *Index) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Ledger = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 5:
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ForwardEncodingVersion", wireType)
 			}

@@ -1367,8 +1367,9 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			}
 
 		case *raftcmdpb.LedgerApplyOrder_CreateIndex:
-			// processCreateIndex consults the registry to short-circuit on
-			// READY duplicates — preload the matching entry.
+			// processCreateIndex overwrites the registry row; keep the key
+			// inside the declared preload set so the cache is seeded
+			// consistently with the drop / retype paths below.
 			p.Add(dal.SubAttrIndex, domain.IndexKey{LedgerName: ledgerName, Canonical: indexes.Canonical(applyData.CreateIndex.GetId())}.Bytes())
 
 		case *raftcmdpb.LedgerApplyOrder_DropIndex:
@@ -1383,9 +1384,9 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			}.Bytes())
 
 		case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType:
-			// Schema changes touch the matching metadata index entry to
-			// flip it back to BUILDING; preload so processSetMetadataFieldType
-			// finds the current state.
+			// Schema changes bump the matching metadata index entry's
+			// forward_encoding_version; preload so
+			// processSetMetadataFieldType finds the current row.
 			p.Add(dal.SubAttrIndex, domain.IndexKey{
 				LedgerName: ledgerName,
 				Canonical:  indexes.Canonical(indexes.MetadataID(applyData.SetMetadataFieldType.GetTargetType(), applyData.SetMetadataFieldType.GetKey())),

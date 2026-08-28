@@ -55,9 +55,9 @@ const (
 	// DropIndex / RemovedMetadataFieldType / DeleteLedger log payloads. The
 	// registry is a projection of those audit-bound orders; an entry that has
 	// no matching CreateIndex (or that survives an audit-bound DropIndex /
-	// ledger deletion) is tampering. Note: BuildStatus transitions to READY
-	// ride on a non-audited TechnicalUpdate (IndexReady) so the verifier
-	// covers presence + identity (Ledger, Id), not the READY/BUILDING flag.
+	// ledger deletion) is tampering. The verifier covers presence + identity
+	// (Ledger, Id); per-replica build progress lives in IndexVersionState,
+	// which legitimately differs across nodes and is not compared.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH CheckStoreErrorType = 10
 	// Emitted when a LedgerLogPayload.OrderSkipped projection records a reason
 	// that the audit-bound Order.skippable_reasons whitelist does not allow, or
@@ -117,8 +117,7 @@ const (
 	// archiving), and VolumeCount / MetadataCount / ReferenceCount against a
 	// recount of the stored attribute rows those counters summarize — the rows
 	// themselves are verified entry-by-entry by their own passes.
-	// EphemeralEvictedCount / TransientUsedCount are informational and excluded
-	// (cf. Index BuildStatus).
+	// EphemeralEvictedCount / TransientUsedCount are informational and excluded.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH CheckStoreErrorType = 18
 	// Emitted when the numscript library projections (SubAttrNumscriptContent
 	// immutable version entries and SubAttrNumscriptVersion latest pointers)
@@ -8037,8 +8036,8 @@ func (x *GetIndexEntryStatusRequest) GetId() *commonpb.IndexID {
 	return nil
 }
 
-// IndexEntry joins a ledger's index definition (status + audit metadata) with
-// its backfill cursor position. Replaces the former IndexBackfillProgress.
+// IndexEntry joins a ledger's index definition (identifier + audit metadata)
+// with its backfill cursor position. Replaces the former IndexBackfillProgress.
 //
 // current_version + pending_version surface the per-replica forward-
 // encoding version state (EN-1323). current_version == 0 means the
@@ -8046,14 +8045,19 @@ func (x *GetIndexEntryStatusRequest) GetId() *commonpb.IndexID {
 // last completed backfill / rewrite atomic-switched into this version
 // and queries served from this replica are reading it. pending_version
 // is the in-flight rewrite target on this replica (0 when no rewrite
-// is running). Clients that need to wait for the local replica to
-// finish building an index poll current_version > 0 — the
-// cluster-wide IndexReady BuildStatus flip is gone, BuildStatus is
-// kept on the Index message only as informational.
+// is running). Per-replica version numbers are allocated from the
+// replica's local high-water mark (a drop+recreate resumes past the
+// dropped incarnation's numbers), so they are not comparable to the
+// registry row's forward_encoding_version. Clients waiting for an
+// initial build poll current_version > 0 && pending_version == 0;
+// clients waiting for a RETYPE capture current_version before issuing
+// it and poll until it has advanced past that value with
+// pending_version == 0 — the pre-retype keyspace stays live during
+// the rewrite.
 type IndexEntry struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Ledger         string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	Index          *commonpb.Index        `protobuf:"bytes,2,opt,name=index,proto3" json:"index,omitempty"`                                          // status + created_at + last_built_at + last_error
+	Index          *commonpb.Index        `protobuf:"bytes,2,opt,name=index,proto3" json:"index,omitempty"`                                          // identifier + created_at + forward_encoding_version
 	Cursor         uint64                 `protobuf:"fixed64,3,opt,name=cursor,proto3" json:"cursor,omitempty"`                                      // backfill cursor (0 when not in backfill or done)
 	CurrentVersion uint32                 `protobuf:"varint,4,opt,name=current_version,json=currentVersion,proto3" json:"current_version,omitempty"` // per-replica live keyspace; 0 until first switch
 	PendingVersion uint32                 `protobuf:"varint,5,opt,name=pending_version,json=pendingVersion,proto3" json:"pending_version,omitempty"` // per-replica in-flight rewrite target; 0 when idle

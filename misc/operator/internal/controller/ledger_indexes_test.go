@@ -144,7 +144,7 @@ func TestParseActualIndexes_AllKinds(t *testing.T) {
 	// Shape mirrors protojson of []*commonpb.Index: oneof member inlined under
 	// its camelCase name, enums as string names, EmitUnpopulated fills scalars.
 	const out = `[
-	  {"id": {"txBuiltin": "TX_BUILTIN_INDEX_REFERENCE"}, "buildStatus": "INDEX_BUILD_STATUS_READY", "ledger": "L", "forwardEncodingVersion": 1},
+	  {"id": {"txBuiltin": "TX_BUILTIN_INDEX_REFERENCE"}, "ledger": "L", "forwardEncodingVersion": 1},
 	  {"id": {"txBuiltin": "TX_BUILTIN_INDEX_SOURCE_ADDRESS"}, "ledger": "L"},
 	  {"id": {"accountBuiltin": "ACCT_BUILTIN_INDEX_ASSET"}, "ledger": "L"},
 	  {"id": {"metadata": {"target": "TARGET_TYPE_ACCOUNT", "key": "category"}}, "ledger": "L"},
