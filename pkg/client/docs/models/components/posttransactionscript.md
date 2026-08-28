@@ -1,5 +1,7 @@
 # PostTransactionScript
 
+A Numscript program executed to produce the postings. Mutually exclusive with postings
+
 
 ## Fields
 

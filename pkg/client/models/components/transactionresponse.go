@@ -3,6 +3,7 @@
 package components
 
 type TransactionResponse struct {
+	// A transaction recorded in the ledger, carrying its postings and metadata
 	Data Transaction `json:"data"`
 }
 

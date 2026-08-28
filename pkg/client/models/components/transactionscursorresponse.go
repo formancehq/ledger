@@ -2,6 +2,7 @@
 
 package components
 
+// TransactionsCursorResponseCursor - Paginated cursor wrapping the list of transactions
 type TransactionsCursorResponseCursor struct {
 	PageSize int64         `json:"pageSize"`
 	HasMore  bool          `json:"hasMore"`
@@ -46,6 +47,7 @@ func (t *TransactionsCursorResponseCursor) GetData() []Transaction {
 }
 
 type TransactionsCursorResponse struct {
+	// Paginated cursor wrapping the list of transactions
 	Cursor TransactionsCursorResponseCursor `json:"cursor"`
 }
 

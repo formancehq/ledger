@@ -44,6 +44,7 @@ const (
 	TargetIDTypeBigint TargetIDType = "bigint"
 )
 
+// TargetID - Identifier of the entity the metadata was set on, either an account address or a transaction ID
 type TargetID struct {
 	Str    *string  `queryParam:"inline" union:"member"`
 	Bigint *big.Int `queryParam:"inline" union:"member"`
@@ -103,9 +104,11 @@ func (u TargetID) MarshalJSON() ([]byte, error) {
 // V2LogDataSetMetadata - Payload for SET_METADATA log entries. Contains the target entity and the metadata that was set.
 type V2LogDataSetMetadata struct {
 	// Type of the target entity
-	TargetType TargetType        `json:"targetType"`
-	TargetID   TargetID          `json:"targetId"`
-	Metadata   map[string]string `json:"metadata"`
+	TargetType TargetType `json:"targetType"`
+	// Identifier of the entity the metadata was set on, either an account address or a transaction ID
+	TargetID TargetID `json:"targetId"`
+	// Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
+	Metadata map[string]string `json:"metadata"`
 }
 
 func (v V2LogDataSetMetadata) MarshalJSON() ([]byte, error) {

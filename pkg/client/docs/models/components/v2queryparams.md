@@ -1,5 +1,7 @@
 # V2QueryParams
 
+Parameters applied when running a query template
+
 
 ## Supported Types
 

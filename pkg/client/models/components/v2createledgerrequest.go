@@ -3,8 +3,11 @@
 package components
 
 type V2CreateLedgerRequest struct {
-	Bucket   *string           `json:"bucket,omitempty"`
+	// Name of the storage bucket backing the ledger. Ledgers sharing a bucket share a database schema
+	Bucket *string `json:"bucket,omitempty"`
+	// Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
 	Metadata map[string]string `json:"metadata,omitempty"`
+	// Feature flags to enable on the ledger, keyed by feature name
 	Features map[string]string `json:"features,omitempty"`
 }
 

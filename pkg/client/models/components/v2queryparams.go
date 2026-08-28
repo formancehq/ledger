@@ -45,9 +45,11 @@ type QueryTemplateVolumeParams struct {
 	// Set to the value of previous for the previous page of results.
 	// No other parameters can be set when this parameter is set.
 	//
-	Cursor *string    `json:"cursor,omitempty"`
-	Expand *string    `json:"expand,omitempty"`
-	Pit    *time.Time `json:"pit,omitempty"`
+	Cursor *string `json:"cursor,omitempty"`
+	// Additional data to include in the response, such as volumes
+	Expand *string `json:"expand,omitempty"`
+	// Point-in-time. Returns the state as it existed at this timestamp
+	Pit *time.Time `json:"pit,omitempty"`
 	// Sort results using a field name and order (ascending or descending).
 	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 	//
@@ -154,9 +156,11 @@ type QueryTemplateLogParams struct {
 	// Set to the value of previous for the previous page of results.
 	// No other parameters can be set when this parameter is set.
 	//
-	Cursor *string    `json:"cursor,omitempty"`
-	Expand *string    `json:"expand,omitempty"`
-	Pit    *time.Time `json:"pit,omitempty"`
+	Cursor *string `json:"cursor,omitempty"`
+	// Additional data to include in the response, such as volumes
+	Expand *string `json:"expand,omitempty"`
+	// Point-in-time. Returns the state as it existed at this timestamp
+	Pit *time.Time `json:"pit,omitempty"`
 	// Sort results using a field name and order (ascending or descending).
 	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 	//
@@ -249,9 +253,11 @@ type QueryTemplateTransactionParams struct {
 	// Set to the value of previous for the previous page of results.
 	// No other parameters can be set when this parameter is set.
 	//
-	Cursor *string    `json:"cursor,omitempty"`
-	Expand *string    `json:"expand,omitempty"`
-	Pit    *time.Time `json:"pit,omitempty"`
+	Cursor *string `json:"cursor,omitempty"`
+	// Additional data to include in the response, such as volumes
+	Expand *string `json:"expand,omitempty"`
+	// Point-in-time. Returns the state as it existed at this timestamp
+	Pit *time.Time `json:"pit,omitempty"`
 	// Sort results using a field name and order (ascending or descending).
 	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 	//
@@ -344,9 +350,11 @@ type QueryTemplateAccountParams struct {
 	// Set to the value of previous for the previous page of results.
 	// No other parameters can be set when this parameter is set.
 	//
-	Cursor *string    `json:"cursor,omitempty"`
-	Expand *string    `json:"expand,omitempty"`
-	Pit    *time.Time `json:"pit,omitempty"`
+	Cursor *string `json:"cursor,omitempty"`
+	// Additional data to include in the response, such as volumes
+	Expand *string `json:"expand,omitempty"`
+	// Point-in-time. Returns the state as it existed at this timestamp
+	Pit *time.Time `json:"pit,omitempty"`
 	// Sort results using a field name and order (ascending or descending).
 	// Format: `<field>:<order>`, where `<field>` is the field name and `<order>` is either `asc` or `desc`.
 	//
@@ -415,6 +423,7 @@ const (
 	V2QueryParamsTypeQueryTemplateVolumeParams      V2QueryParamsType = "QueryTemplateVolumeParams"
 )
 
+// V2QueryParams - Parameters applied when running a query template
 type V2QueryParams struct {
 	QueryTemplateAccountParams     *QueryTemplateAccountParams     `queryParam:"inline" union:"member"`
 	QueryTemplateTransactionParams *QueryTemplateTransactionParams `queryParam:"inline" union:"member"`

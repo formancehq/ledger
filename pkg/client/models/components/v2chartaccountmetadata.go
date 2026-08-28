@@ -7,6 +7,7 @@ import (
 )
 
 type V2ChartAccountMetadata struct {
+	// Value applied to this metadata key when an account matching the segment is created
 	Default *string `json:"default,omitempty"`
 }
 

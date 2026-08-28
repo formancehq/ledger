@@ -2,8 +2,11 @@
 
 package components
 
+// LedgerStorage - Storage backend the ledgers are held in
 type LedgerStorage struct {
-	Driver  string   `json:"driver"`
+	// Name of the storage driver backing the ledgers
+	Driver string `json:"driver"`
+	// Names of the ledgers held in this storage backend
 	Ledgers []string `json:"ledgers"`
 }
 

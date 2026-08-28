@@ -2,6 +2,7 @@
 
 package components
 
+// V2LedgerInfoStorage - Storage backend information, including the migrations applied to the ledger's bucket
 type V2LedgerInfoStorage struct {
 	Migrations []V2MigrationInfo `json:"migrations,omitempty"`
 }
@@ -16,8 +17,11 @@ func (v *V2LedgerInfoStorage) GetMigrations() []V2MigrationInfo {
 // #region class-body-v2ledgerinfostorage
 // #endregion class-body-v2ledgerinfostorage
 
+// V2LedgerInfo - Runtime information about a ledger, including the state of its storage migrations
 type V2LedgerInfo struct {
-	Name    *string              `json:"name,omitempty"`
+	// Name of the ledger
+	Name *string `json:"name,omitempty"`
+	// Storage backend information, including the migrations applied to the ledger's bucket
 	Storage *V2LedgerInfoStorage `json:"storage,omitempty"`
 }
 

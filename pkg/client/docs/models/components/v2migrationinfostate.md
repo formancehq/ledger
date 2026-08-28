@@ -1,5 +1,7 @@
 # V2MigrationInfoState
 
+Current state of the migration
+
 ## Example Usage
 
 ```go

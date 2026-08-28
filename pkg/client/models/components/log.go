@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// Type - The type of operation this log represents
 type Type string
 
 const (
@@ -36,11 +37,16 @@ func (e *Type) UnmarshalJSON(data []byte) error {
 }
 
 type Log struct {
-	ID   int64          `json:"id"`
-	Type Type           `json:"type"`
+	// Unique sequential identifier for this log entry within the ledger
+	ID int64 `json:"id"`
+	// The type of operation this log represents
+	Type Type `json:"type"`
+	// The payload of the log entry, whose shape depends on the log type
 	Data map[string]any `json:"data"`
-	Hash string         `json:"hash"`
-	Date time.Time      `json:"date"`
+	// SHA256 hash of the log entry, chained from the previous log for integrity verification
+	Hash string `json:"hash"`
+	// Timestamp when the operation was recorded
+	Date time.Time `json:"date"`
 }
 
 func (l Log) MarshalJSON() ([]byte, error) {

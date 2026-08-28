@@ -1,5 +1,7 @@
 # State
 
+Current state of the migration
+
 ## Example Usage
 
 ```go

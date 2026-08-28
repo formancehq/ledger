@@ -7,8 +7,10 @@ import (
 )
 
 type V2QueryTemplateVar struct {
-	Type    string `json:"type"`
-	Default any    `json:"default,omitempty"`
+	// Type of the variable
+	Type string `json:"type"`
+	// Value used when the variable is not supplied at query time
+	Default any `json:"default,omitempty"`
 }
 
 func (v V2QueryTemplateVar) MarshalJSON() ([]byte, error) {

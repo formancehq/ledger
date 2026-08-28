@@ -10,22 +10,34 @@ import (
 
 // V2LogTransaction - Transaction structure as it appears in log payloads
 type V2LogTransaction struct {
-	ID         *big.Int          `json:"id"`
-	Postings   []V2Posting       `json:"postings"`
-	Metadata   map[string]string `json:"metadata"`
-	Timestamp  time.Time         `json:"timestamp"`
-	Reference  *string           `json:"reference,omitempty"`
-	InsertedAt *time.Time        `json:"insertedAt,omitempty"`
-	UpdatedAt  *time.Time        `json:"updatedAt,omitempty"`
-	RevertedAt *time.Time        `json:"revertedAt,omitempty"`
+	// Unique sequential identifier for this transaction within the ledger
+	ID *big.Int `json:"id"`
+	// The fund movements making up the transaction
+	Postings []V2Posting `json:"postings"`
+	// Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
+	Metadata map[string]string `json:"metadata"`
+	// The transaction time: when the transaction is considered to have occurred. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+	Timestamp time.Time `json:"timestamp"`
+	// Optional caller-supplied identifier, unique within the ledger
+	Reference *string `json:"reference,omitempty"`
+	// The request time: when the transaction was actually written to the ledger. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+	InsertedAt *time.Time `json:"insertedAt,omitempty"`
+	// When the transaction row was last modified
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+	// When the transaction was reverted, on the request-time axis
+	RevertedAt *time.Time `json:"revertedAt,omitempty"`
 	// Indicates if the transaction has been reverted
 	Reverted bool `json:"reverted"`
 	// Transaction template used
-	Template                   *string                        `json:"template,omitempty"`
-	PostCommitVolumes          map[string]map[string]V2Volume `json:"postCommitVolumes,omitempty"`
+	Template *string `json:"template,omitempty"`
+	// Volumes aggregated per account and per asset
+	PostCommitVolumes map[string]map[string]V2Volume `json:"postCommitVolumes,omitempty"`
+	// Volumes aggregated per account and per asset
 	PostCommitEffectiveVolumes map[string]map[string]V2Volume `json:"postCommitEffectiveVolumes,omitempty"`
-	PreCommitVolumes           map[string]map[string]V2Volume `json:"preCommitVolumes,omitempty"`
-	PreCommitEffectiveVolumes  map[string]map[string]V2Volume `json:"preCommitEffectiveVolumes,omitempty"`
+	// Volumes aggregated per account and per asset
+	PreCommitVolumes map[string]map[string]V2Volume `json:"preCommitVolumes,omitempty"`
+	// Volumes aggregated per account and per asset
+	PreCommitEffectiveVolumes map[string]map[string]V2Volume `json:"preCommitEffectiveVolumes,omitempty"`
 }
 
 func (v V2LogTransaction) MarshalJSON() ([]byte, error) {

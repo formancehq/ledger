@@ -3,9 +3,12 @@
 package components
 
 type V2BulkResponse struct {
-	Data         []V2BulkElementResult `json:"data,omitempty"`
-	ErrorCode    *V2ErrorsEnum         `json:"errorCode,omitempty"`
-	ErrorMessage *string               `json:"errorMessage,omitempty"`
+	// Result of each element of the bulk request, in submission order
+	Data []V2BulkElementResult `json:"data,omitempty"`
+	// Machine-readable error code identifying the failure
+	ErrorCode *V2ErrorsEnum `json:"errorCode,omitempty"`
+	// Human-readable description of the error
+	ErrorMessage *string `json:"errorMessage,omitempty"`
 }
 
 func (v *V2BulkResponse) GetData() []V2BulkElementResult {

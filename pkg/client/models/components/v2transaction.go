@@ -8,21 +8,36 @@ import (
 	"time"
 )
 
+// V2Transaction - A transaction recorded in the ledger, carrying its postings, metadata and both bi-temporal timestamps
 type V2Transaction struct {
-	InsertedAt                 *time.Time                     `json:"insertedAt,omitempty"`
-	UpdatedAt                  *time.Time                     `json:"updatedAt,omitempty"`
-	Timestamp                  time.Time                      `json:"timestamp"`
-	Postings                   []V2Posting                    `json:"postings"`
-	Reference                  *string                        `json:"reference,omitempty"`
-	Metadata                   map[string]string              `json:"metadata"`
-	ID                         *big.Int                       `json:"id"`
-	Reverted                   bool                           `json:"reverted"`
-	RevertedAt                 *time.Time                     `json:"revertedAt,omitempty"`
-	PreCommitVolumes           map[string]map[string]V2Volume `json:"preCommitVolumes,omitempty"`
-	PostCommitVolumes          map[string]map[string]V2Volume `json:"postCommitVolumes,omitempty"`
-	PreCommitEffectiveVolumes  map[string]map[string]V2Volume `json:"preCommitEffectiveVolumes,omitempty"`
+	// The request time: when the transaction was actually written to the ledger. Set by the ledger, not the caller. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+	InsertedAt *time.Time `json:"insertedAt,omitempty"`
+	// When the transaction row was last modified, for example by a metadata change or a revert
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+	// The transaction time: when the transaction is considered to have occurred, also called the effective or booking date. This is the axis the ledger uses to compute balances and resolve point-in-time queries. Settable at creation, defaulting to current machine time if omitted, and immutable once written. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+	Timestamp time.Time `json:"timestamp"`
+	// The fund movements making up the transaction
+	Postings []V2Posting `json:"postings"`
+	// Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
+	Reference *string `json:"reference,omitempty"`
+	// Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
+	Metadata map[string]string `json:"metadata"`
+	// Unique sequential identifier for this transaction within the ledger
+	ID *big.Int `json:"id"`
+	// Indicates if the transaction has been reverted
+	Reverted bool `json:"reverted"`
+	// When the transaction was reverted, on the request-time axis. Absent if the transaction has not been reverted
+	RevertedAt *time.Time `json:"revertedAt,omitempty"`
+	// Volumes aggregated per account and per asset
+	PreCommitVolumes map[string]map[string]V2Volume `json:"preCommitVolumes,omitempty"`
+	// Volumes aggregated per account and per asset
+	PostCommitVolumes map[string]map[string]V2Volume `json:"postCommitVolumes,omitempty"`
+	// Volumes aggregated per account and per asset
+	PreCommitEffectiveVolumes map[string]map[string]V2Volume `json:"preCommitEffectiveVolumes,omitempty"`
+	// Volumes aggregated per account and per asset
 	PostCommitEffectiveVolumes map[string]map[string]V2Volume `json:"postCommitEffectiveVolumes,omitempty"`
-	Template                   *string                        `json:"template,omitempty"`
+	// Name of the transaction template this transaction was created from, if any
+	Template *string `json:"template,omitempty"`
 }
 
 func (v V2Transaction) MarshalJSON() ([]byte, error) {

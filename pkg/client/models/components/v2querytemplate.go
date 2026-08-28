@@ -7,11 +7,16 @@ import (
 )
 
 type V2QueryTemplate struct {
-	Description *string                       `json:"description,omitempty"`
-	Resource    *V2QueryResource              `json:"resource,omitempty"`
-	Params      *V2QueryParams                `json:"params,omitempty"`
-	Vars        map[string]V2QueryTemplateVar `json:"vars,omitempty"`
-	Body        map[string]any                `json:"body,omitempty"`
+	// Human-readable description of what the query returns
+	Description *string `json:"description,omitempty"`
+	// The resource a query template targets
+	Resource *V2QueryResource `json:"resource,omitempty"`
+	// Parameters applied when running a query template
+	Params *V2QueryParams `json:"params,omitempty"`
+	// Variables the query accepts, keyed by variable name
+	Vars map[string]V2QueryTemplateVar `json:"vars,omitempty"`
+	// The filter expression the query evaluates
+	Body map[string]any `json:"body,omitempty"`
 }
 
 func (v V2QueryTemplate) MarshalJSON() ([]byte, error) {

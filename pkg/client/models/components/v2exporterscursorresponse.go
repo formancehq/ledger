@@ -2,6 +2,7 @@
 
 package components
 
+// V2ExportersCursorResponseCursor - Paginated cursor wrapping the list of exporters
 type V2ExportersCursorResponseCursor struct {
 	PageSize int64        `json:"pageSize"`
 	HasMore  bool         `json:"hasMore"`
@@ -50,6 +51,7 @@ func (v *V2ExportersCursorResponseCursor) GetData() []V2Exporter {
 
 // V2ExportersCursorResponse - Exporters list
 type V2ExportersCursorResponse struct {
+	// Paginated cursor wrapping the list of exporters
 	Cursor V2ExportersCursorResponseCursor `json:"cursor"`
 }
 

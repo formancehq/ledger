@@ -3,11 +3,14 @@
 package components
 
 type Script struct {
-	Plain string         `json:"plain"`
-	Vars  map[string]any `json:"vars,omitempty"`
+	// The Numscript program to execute
+	Plain string `json:"plain"`
+	// Values bound to the script's declared variables, keyed by variable name
+	Vars map[string]any `json:"vars,omitempty"`
 	// Reference to attach to the generated transaction
-	Reference *string        `json:"reference,omitempty"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
+	Reference *string `json:"reference,omitempty"`
+	// Arbitrary key/value pairs attached to the resource
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 func (s *Script) GetPlain() string {

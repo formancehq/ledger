@@ -2,8 +2,11 @@
 
 package components
 
+// Stats - Aggregate counts for a ledger
 type Stats struct {
-	Accounts     int64 `json:"accounts"`
+	// Total number of accounts in the ledger
+	Accounts int64 `json:"accounts"`
+	// Total number of transactions in the ledger
 	Transactions int64 `json:"transactions"`
 }
 

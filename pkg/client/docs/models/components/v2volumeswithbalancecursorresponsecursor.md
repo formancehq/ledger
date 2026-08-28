@@ -1,5 +1,7 @@
 # V2VolumesWithBalanceCursorResponseCursor
 
+Paginated cursor wrapping the list of volumes
+
 
 ## Fields
 

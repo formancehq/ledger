@@ -2,6 +2,7 @@
 
 package components
 
+// Cursor - Paginated cursor wrapping the list of accounts
 type Cursor struct {
 	PageSize int64     `json:"pageSize"`
 	HasMore  bool      `json:"hasMore"`
@@ -46,6 +47,7 @@ func (c *Cursor) GetData() []Account {
 }
 
 type AccountsCursorResponse struct {
+	// Paginated cursor wrapping the list of accounts
 	Cursor Cursor `json:"cursor"`
 }
 

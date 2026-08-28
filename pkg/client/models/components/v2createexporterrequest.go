@@ -3,7 +3,9 @@
 package components
 
 type V2CreateExporterRequest struct {
-	Driver string         `json:"driver"`
+	// Name of the exporter driver to use
+	Driver string `json:"driver"`
+	// Driver-specific configuration for the exporter
 	Config map[string]any `json:"config"`
 }
 

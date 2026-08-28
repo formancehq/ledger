@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/pkg/client/internal/utils"
 )
 
+// V2VolumesWithBalanceCursorResponseResource - The resource type carried by this cursor
 type V2VolumesWithBalanceCursorResponseResource string
 
 const (
@@ -31,6 +32,7 @@ func (e *V2VolumesWithBalanceCursorResponseResource) UnmarshalJSON(data []byte) 
 	}
 }
 
+// V2VolumesWithBalanceCursorResponseCursor - Paginated cursor wrapping the list of volumes
 type V2VolumesWithBalanceCursorResponseCursor struct {
 	PageSize int64                  `json:"pageSize"`
 	HasMore  bool                   `json:"hasMore"`
@@ -89,8 +91,10 @@ func (v *V2VolumesWithBalanceCursorResponseCursor) GetData() []V2VolumesWithBala
 // #endregion class-body-v2volumeswithbalancecursorresponsecursor
 
 type V2VolumesWithBalanceCursorResponse struct {
+	// The resource type carried by this cursor
 	Resource *V2VolumesWithBalanceCursorResponseResource `json:"resource,omitempty"`
-	Cursor   V2VolumesWithBalanceCursorResponseCursor    `json:"cursor"`
+	// Paginated cursor wrapping the list of volumes
+	Cursor V2VolumesWithBalanceCursorResponseCursor `json:"cursor"`
 }
 
 func (v V2VolumesWithBalanceCursorResponse) MarshalJSON() ([]byte, error) {

@@ -36,7 +36,8 @@ func (e *V2RunQueryQueryParamOrder) UnmarshalJSON(data []byte) error {
 }
 
 type V2RunQueryRequestBody struct {
-	Cursor *string                   `json:"cursor,omitempty"`
+	Cursor *string `json:"cursor,omitempty"`
+	// Parameters applied when running a query template
 	Params *components.V2QueryParams `json:"params,omitempty"`
 	Vars   map[string]string         `json:"vars,omitempty"`
 }

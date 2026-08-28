@@ -44,6 +44,7 @@ const (
 	V2LogDataDeleteMetadataTargetIDTypeBigint V2LogDataDeleteMetadataTargetIDType = "bigint"
 )
 
+// V2LogDataDeleteMetadataTargetID - Identifier of the entity the metadata was deleted from, either an account address or a transaction ID
 type V2LogDataDeleteMetadataTargetID struct {
 	Str    *string  `queryParam:"inline" union:"member"`
 	Bigint *big.Int `queryParam:"inline" union:"member"`
@@ -104,7 +105,8 @@ func (u V2LogDataDeleteMetadataTargetID) MarshalJSON() ([]byte, error) {
 type V2LogDataDeleteMetadata struct {
 	// Type of the target entity
 	TargetType V2LogDataDeleteMetadataTargetType `json:"targetType"`
-	TargetID   V2LogDataDeleteMetadataTargetID   `json:"targetId"`
+	// Identifier of the entity the metadata was deleted from, either an account address or a transaction ID
+	TargetID V2LogDataDeleteMetadataTargetID `json:"targetId"`
 	// The metadata key that was deleted
 	Key string `json:"key"`
 }

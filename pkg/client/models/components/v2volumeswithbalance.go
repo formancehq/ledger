@@ -8,10 +8,15 @@ import (
 )
 
 type V2VolumesWithBalance struct {
-	Account string   `json:"account"`
-	Asset   string   `json:"asset"`
-	Input   *big.Int `json:"input"`
-	Output  *big.Int `json:"output"`
+	// The account address these volumes belong to
+	Account string `json:"account"`
+	// The asset these volumes are denominated in
+	Asset string `json:"asset"`
+	// Total amount credited to the account for this asset
+	Input *big.Int `json:"input"`
+	// Total amount debited from the account for this asset
+	Output *big.Int `json:"output"`
+	// Net balance for this asset, equal to input minus output
 	Balance *big.Int `json:"balance"`
 }
 

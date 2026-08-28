@@ -1,5 +1,7 @@
 # V2ExportersCursorResponseCursor
 
+Paginated cursor wrapping the list of exporters
+
 
 ## Fields
 

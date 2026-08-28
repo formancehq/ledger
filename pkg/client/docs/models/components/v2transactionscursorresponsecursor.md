@@ -1,5 +1,7 @@
 # V2TransactionsCursorResponseCursor
 
+Paginated cursor wrapping the list of transactions
+
 
 ## Fields
 

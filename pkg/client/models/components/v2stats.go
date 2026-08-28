@@ -7,8 +7,11 @@ import (
 	"math/big"
 )
 
+// V2Stats - Aggregate counts for a ledger
 type V2Stats struct {
-	Accounts     int64    `json:"accounts"`
+	// Total number of accounts in the ledger
+	Accounts int64 `json:"accounts"`
+	// Total number of transactions in the ledger
 	Transactions *big.Int `json:"transactions"`
 }
 

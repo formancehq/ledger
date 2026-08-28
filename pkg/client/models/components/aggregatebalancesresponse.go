@@ -3,6 +3,7 @@
 package components
 
 type AggregateBalancesResponse struct {
+	// Balances keyed by asset
 	Data map[string]int64 `json:"data"`
 }
 
