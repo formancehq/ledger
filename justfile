@@ -180,18 +180,20 @@ test-coverage:
     GOTOOLCHAIN=$(go env GOVERSION) go test -race -coverprofile={{coverage_dir}}/unit.out -coverpkg={{coverage_pkgs}} ./... -timeout 20m
     echo "Coverage profile: {{coverage_dir}}/unit.out"
 
-# Run E2E tests with coverage. This is the CI gate, so it runs the full tag
-# set: the feature-gated suites (s3, azure, clickhouse, nats, ...) are only
-# compiled when their tag is present, and running them here is what stops
-# them rotting unnoticed. Suites needing external credentials, such as
-# databricks, skip themselves when the environment is not configured.
-test-e2e-coverage:
+# Run E2E tests with coverage. The CI gates invoke this recipe once for each
+# isolated Business/Cluster job. Every invocation uses the full tag set: the
+# feature-gated suites (s3, azure, clickhouse, nats, ...) are only compiled
+# when their tag is present, and running them here is what stops them rotting
+# unnoticed. Suites needing external credentials, such as databricks, skip
+# themselves when the environment is not configured. With no arguments the
+# recipe retains the combined, serial local coverage run.
+test-e2e-coverage packages="./tests/e2e/business/... ./tests/e2e/cluster/..." profile="e2e.out":
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     echo "==> E2E tests with coverage..."
-    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags "e2e,{{all_tags}}" -p 1 -coverprofile={{coverage_dir}}/e2e.out -coverpkg={{coverage_pkgs}} ./tests/e2e/business/... ./tests/e2e/cluster/... -timeout 20m
-    echo "Coverage profile: {{coverage_dir}}/e2e.out"
+    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags "e2e,{{all_tags}}" -p 1 -coverprofile={{coverage_dir}}/{{profile}} -coverpkg={{coverage_pkgs}} {{packages}} -timeout 20m
+    echo "Coverage profile: {{coverage_dir}}/{{profile}}"
 
 # Run scenario tests with coverage
 test-scenarios-coverage:
