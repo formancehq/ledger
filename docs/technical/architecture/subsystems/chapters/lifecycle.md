@@ -152,6 +152,11 @@ The seal checkpoint exists on disk but the Sealer never proposed the `SealChapte
 
 The Sealer uses exponential backoff (100ms → 10s max) to retry on transient errors. The checkpoint remains on disk until the hash is successfully computed, ensuring no data is lost.
 
+On shutdown, the Sealer cancels both its request drain and reconciliation loop,
+then joins them before its lifecycle hook returns. This keeps reconciliation
+from accessing the chapter state or Pebble after the owning runtime starts
+closing those resources.
+
 ## Transaction Receipts (JWT)
 
 Every transaction created during a chapter includes a JWT receipt that links the transaction to its chapter. The `chapter_id` is captured from the FSM's current open chapter at transaction creation time and stored in the `CreatedTransaction` log entry.
@@ -408,6 +413,11 @@ Crash recovery is deterministic via the `ARCHIVING` state. On leadership gain, t
 - Leader crash during S3 upload
 - Leadership transfer while archiving is in progress
 - Network partition that causes a leader change
+
+On shutdown, the Archiver cancels and joins both the archive-request drain and
+the periodic durable-state reconciliation loop before its lifecycle hook
+returns. Store and cold-storage teardown therefore cannot overlap owned
+archival reconciliation work.
 
 ### Sequence Diagram
 

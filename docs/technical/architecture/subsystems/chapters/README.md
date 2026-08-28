@@ -2,6 +2,10 @@
 
 Chapters partition a ledger's transaction history into discrete sealed segments. Once sealed, a chapter can be archived to cold storage (S3 or filesystem) — logs and audit entries get exported and purged from Pebble while attributes stay hot. Receipt-based reverts allow undoing archived transactions without rehydrating cold data.
 
+The background Sealer and Archiver own both their request drains and periodic
+reconciliation loops. Shutdown cancels and joins all of that work before the
+chapter runtime releases its stores.
+
 ## Documents
 
 | Document | Description |

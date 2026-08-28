@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -68,16 +69,18 @@ type ArchiverChapterState interface {
 // It follows the same pattern as Sealer: a background goroutine reads from
 // archiveRequestCh, performs I/O off the Raft critical path, then proposes.
 type Archiver struct {
-	logger           logging.Logger
-	dataStore        dal.ColdStorageScanner
-	coldStorage      coldstorage.ColdStorage
-	archiveRequestCh *worker.Channel[ArchiveRequest]
-	proposeFn        ArchiveProposer
-	isLeader         func() bool
-	chapterState     ArchiverChapterState
-	reconcileFn      func(stop <-chan struct{})
-	w                worker.Worker
-	bucketID         string
+	logger            logging.Logger
+	dataStore         dal.ColdStorageScanner
+	coldStorage       coldstorage.ColdStorage
+	archiveRequestCh  *worker.Channel[ArchiveRequest]
+	proposeFn         ArchiveProposer
+	isLeader          func() bool
+	chapterState      ArchiverChapterState
+	reconcileFn       func(stop <-chan struct{})
+	reconcileInterval time.Duration
+	w                 worker.Worker
+	stopOnce          sync.Once
+	bucketID          string
 }
 
 // archiveReconcileInterval is the interval at which the Archiver re-checks
@@ -98,27 +101,32 @@ func NewArchiver(
 	reconcileFn func(stop <-chan struct{}),
 ) *Archiver {
 	return &Archiver{
-		logger:           logger.WithFields(map[string]any{"cmp": "archiver"}),
-		dataStore:        dataStore,
-		coldStorage:      coldStorage,
-		archiveRequestCh: archiveRequestCh,
-		proposeFn:        proposeFn,
-		isLeader:         isLeader,
-		chapterState:     chapterState,
-		reconcileFn:      reconcileFn,
-		w:                worker.New(),
-		bucketID:         bucketID,
+		logger:            logger.WithFields(map[string]any{"cmp": "archiver"}),
+		dataStore:         dataStore,
+		coldStorage:       coldStorage,
+		archiveRequestCh:  archiveRequestCh,
+		proposeFn:         proposeFn,
+		isLeader:          isLeader,
+		chapterState:      chapterState,
+		reconcileFn:       reconcileFn,
+		reconcileInterval: archiveReconcileInterval,
+		w:                 worker.New(),
+		bucketID:          bucketID,
 	}
 }
 
 // Start launches the background archiving goroutine with periodic reconciliation.
 func (a *Archiver) Start() {
 	a.w.Run(func(stop <-chan struct{}) {
+		var reconciliation sync.WaitGroup
+
 		// Periodic reconciliation: re-scan for ARCHIVING chapters.
-		go worker.RunTicker(stop, archiveReconcileInterval, func() {
-			if a.isLeader() {
-				a.reconcileFn(stop)
-			}
+		reconciliation.Go(func() {
+			worker.RunTicker(stop, a.reconcileInterval, func() {
+				if a.isLeader() {
+					a.reconcileFn(stop)
+				}
+			})
 		})
 
 		// Main drain loop.
@@ -127,12 +135,14 @@ func (a *Archiver) Start() {
 				return a.archive(stop, req)
 			})
 		})
+
+		reconciliation.Wait()
 	})
 }
 
 // Stop signals the background goroutine to stop and waits for it to finish.
 func (a *Archiver) Stop() {
-	a.w.Stop()
+	a.stopOnce.Do(a.w.Stop)
 }
 
 // archive exports chapter data to cold storage and proposes ConfirmArchiveChapter.

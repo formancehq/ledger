@@ -3,6 +3,7 @@ package state
 import (
 	"encoding/binary"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -55,6 +56,7 @@ type Sealer struct {
 	chapterState      SealerChapterState
 	reconcileInterval time.Duration
 	w                 worker.Worker
+	stopOnce          sync.Once
 }
 
 // NewSealer creates a new background sealer.
@@ -88,16 +90,18 @@ const sealReconcileInterval = 30 * time.Second
 // seal from a previous crash, and starts periodic reconciliation.
 func (s *Sealer) Start() {
 	s.w.Run(func(stop <-chan struct{}) {
+		var reconciliation sync.WaitGroup
+
 		// Recover on start and periodically in a background goroutine.
 		// Recovery uses blocking sends, so it must run concurrently with
 		// the drain loop to avoid deadlocking when the channel is full.
-		go func() {
+		reconciliation.Go(func() {
 			s.recoverPendingSeal(stop)
 
 			worker.RunTicker(stop, s.reconcileInterval, func() {
 				s.recoverPendingSeal(stop)
 			})
-		}()
+		})
 
 		// Main drain loop.
 		worker.DrainChannel(stop, s.sealRequestCh.Receive(), func(req SealRequest) {
@@ -105,6 +109,8 @@ func (s *Sealer) Start() {
 				return s.seal(req)
 			})
 		})
+
+		reconciliation.Wait()
 	})
 }
 
@@ -135,7 +141,7 @@ func (s *Sealer) recoverPendingSeal(stop <-chan struct{}) {
 
 // Stop signals the background goroutine to stop and waits for it to finish.
 func (s *Sealer) Stop() {
-	s.w.Stop()
+	s.stopOnce.Do(s.w.Stop)
 }
 
 // seal computes the sealing hash for a chapter and proposes a SealChapter order.
