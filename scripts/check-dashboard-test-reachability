@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository_root=$(git rev-parse --show-toplevel)
+dashboard_module=misc/devenv/monitoring-dashboards
+dashboard_recipe=test-dashboards
+default_workflow=.github/workflows/main.yml
+
+fail() {
+    echo "DASHBOARD_TEST_REACHABILITY: $*" >&2
+    exit 1
+}
+
+if [[ ! -f "$repository_root/$dashboard_module/go.mod" ]]; then
+    fail "missing nested module: $dashboard_module/go.mod"
+fi
+
+tracked_module_files=$(git -C "$repository_root" ls-files -- "$dashboard_module")
+if ! grep -Eq '(^|/)[^/]+_test\.go$' <<<"$tracked_module_files"; then
+    fail "nested module has no tracked Go tests: $dashboard_module"
+fi
+
+pre_commit_recipe=$(cd "$repository_root" && just --show pre-commit)
+if ! grep -Eq "^pre-commit:.*[[:space:]]${dashboard_recipe}([[:space:]]|$)" <<<"$pre_commit_recipe"; then
+    fail "pre-commit does not depend on $dashboard_recipe"
+fi
+
+dashboard_test_recipe=$(cd "$repository_root" && just --show "$dashboard_recipe")
+if ! grep -Eq "^${dashboard_recipe}:[[:space:]]+generate-dashboards([[:space:]]|$)" <<<"$dashboard_test_recipe"; then
+    fail "$dashboard_recipe must depend on generate-dashboards"
+fi
+dashboard_test_plan=$(cd "$repository_root" && just --dry-run "$dashboard_recipe" 2>&1)
+if ! grep -Fxq "cd $dashboard_module && go test ./..." <<<"$dashboard_test_plan"; then
+    fail "$dashboard_recipe does not run the nested module tests"
+fi
+
+if ! grep -Eq '^[[:space:]]+nix[[:space:]]+develop[[:space:]]+--command[[:space:]]+just[[:space:]]+pre-commit[[:space:]]*$' \
+    "$repository_root/$default_workflow"; then
+    fail "Default CI does not execute just pre-commit"
+fi
+
+echo "dashboard-test-reachability: PASS"

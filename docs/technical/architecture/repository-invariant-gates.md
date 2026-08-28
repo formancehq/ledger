@@ -22,6 +22,10 @@ The current rules are:
    gate admission but cannot affect how a committed entry is applied.
 3. Protocol definitions under `misc/proto` must not declare `reserved` fields
    while Ledger v3 remains unreleased and field numbers are kept sequential.
+4. The nested monitoring-dashboard Go tests must remain reachable from the
+   Default CI workflow. The dashboard test recipe regenerates the committed
+   dashboards before testing them, and `pre-commit` must continue to invoke
+   that recipe.
 
 The FSM boundary is recursive and consists of:
 
@@ -40,6 +44,11 @@ are parsed independently, so build tags do not remove a file from the check.
 The protobuf check masks comments and quoted strings before detecting the
 `reserved` keyword. Declarations remain detectable when the keyword and its
 field numbers are split across lines.
+
+The dashboard reachability check inspects the tracked nested module, Just
+recipe metadata, and the Default workflow. It fails if the module loses its
+tracked tests, generation no longer precedes the tests, the nested
+`go test ./...` command disappears, or CI stops invoking `pre-commit`.
 
 ## Extending the gate
 

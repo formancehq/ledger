@@ -1,6 +1,6 @@
 set dotenv-load
 
-pre-commit: generate generate-proto operator-generate generate-dashboards tidy lint
+pre-commit: generate generate-proto operator-generate test-dashboards tidy lint
 pc: pre-commit
 
 # Regenerate the Grafana dashboards (otel + prom variants) from Jsonnet
@@ -18,6 +18,10 @@ generate-dashboards:
     echo "==> jsonnet -m config/dashboards jsonnet/main.jsonnet"
     rm -f config/dashboards/ledger-metrics*.json
     jsonnet -m config/dashboards -J jsonnet/vendor jsonnet/main.jsonnet
+
+# Regenerate and validate the committed Grafana dashboard variants.
+test-dashboards: generate-dashboards
+    cd misc/devenv/monitoring-dashboards && go test ./...
 
 lint:
     #!/usr/bin/env bash
