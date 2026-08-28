@@ -540,18 +540,6 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		}
 	}
 
-	// Schema logs are deliberately absent from this switch. The only caller,
-	// processBackfill, gates on isDataLog, which admits exactly
-	// CreatedTransaction / RevertedTransaction / SavedMetadata / DeletedMetadata
-	// / OrderSkipped and switches on the same discriminator used here — so a
-	// SetMetadataFieldType or RemovedMetadataFieldType log can never arrive.
-	// Schema handling belongs to the live path (indexPayload), where
-	// SetMetadataFieldType defers to addSchemaRewriteTask / processSchemaRewrite
-	// and RemovedMetadataFieldType to handleRemovedMetadataFieldType. A retype
-	// that lands mid-backfill is handled by addSchemaRewriteTask resetting the
-	// in-flight cursor, not by replaying the schema log here. Do NOT add a case
-	// for them without also changing isDataLog: an unreachable second
-	// implementation of the schema rewrite is what this replaced.
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes)
@@ -623,17 +611,11 @@ func (b *Builder) indexCreatedTransaction(
 					continue
 				}
 
-				coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, value)
-				if err != nil {
-					return err
-				}
-				newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 				if err := b.dualWriteMetadataIndex(
 					kb,
 					ledger, readstore.NamespaceAccount, key,
 					commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-					newEncoded, []byte(account),
+					value, []byte(account),
 					func(version uint32) []byte {
 						return readstore.AccountReverseMapKeyV(kb, ledger, account, key, version)
 					},
@@ -659,17 +641,11 @@ func (b *Builder) indexCreatedTransaction(
 				continue
 			}
 
-			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
-			if err != nil {
-				return err
-			}
-			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 			if err := b.dualWriteMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceTransaction, key,
 				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-				newEncoded, txIDBytes,
+				value, txIDBytes,
 				func(version uint32) []byte {
 					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
 				},
@@ -753,17 +729,11 @@ func (b *Builder) indexRevertedTransaction(
 				continue
 			}
 
-			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
-			if err != nil {
-				return err
-			}
-			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 			if err := b.dualWriteMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceTransaction, key,
 				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-				newEncoded, txIDBytes,
+				value, txIDBytes,
 				func(version uint32) []byte {
 					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
 				},
@@ -814,6 +784,18 @@ func (b *Builder) indexPostingAddressMappings(
 	wb := b.wb
 	sourceExcluded := isExcluded(excludedVolumes, source, asset, color)
 	destinationExcluded := isExcluded(excludedVolumes, destination, asset, color)
+
+	// Exclusion skips are rare (a purged/transient touch) and each one silently
+	// shapes the posting-derived indexes, so log every decision for diagnosis.
+	if (sourceExcluded || destinationExcluded) && b.logger != nil {
+		b.logger.WithFields(map[string]any{
+			"ledger": ledger,
+			"txID":   txID,
+			"source": source, "sourceExcluded": sourceExcluded,
+			"destination": destination, "destinationExcluded": destinationExcluded,
+			"asset": asset,
+		}).Infof("Posting-index exclusion skip")
+	}
 
 	// Account has-asset index: record every (account, assetBase, precision) a
 	// posting touches, for both source and destination, skipping excluded
@@ -996,17 +978,11 @@ func (b *Builder) indexSavedMetadata(
 				continue
 			}
 
-			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, value)
-			if err != nil {
-				return err
-			}
-			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 			if err := b.dualWriteMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceAccount, key,
 				commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-				newEncoded, []byte(account),
+				value, []byte(account),
 				func(version uint32) []byte {
 					return readstore.AccountReverseMapKeyV(kb, ledger, account, key, version)
 				},
@@ -1024,17 +1000,11 @@ func (b *Builder) indexSavedMetadata(
 				continue
 			}
 
-			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
-			if err != nil {
-				return err
-			}
-			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 			if err := b.dualWriteMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceTransaction, key,
 				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-				newEncoded, txIDBytes,
+				value, txIDBytes,
 				func(version uint32) []byte {
 					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
 				},
@@ -1108,6 +1078,12 @@ func cloneBytes(b []byte) []byte {
 	return c
 }
 
+// extractMetadataKeyFromReverseMap extracts the metadata key name from a
+// reverse map key, given the prefix up to the namespace.
+// For accounts:     [ledger\x00][a:][account\x00][version:4B BE][metadataKey]
+// For transactions: [ledger\x00][t:][txID(8B)][version:4B BE][metadataKey].
+//
+
 // isExcluded returns true if the (account, asset, color) tuple is in the
 // excluded set (transient or purged ephemeral). All three dimensions matter
 // — a multi-bucket account may have one (asset, color) purged while another
@@ -1122,3 +1098,16 @@ func isExcluded(excluded map[domain.AccountAssetKey]struct{}, account, asset, co
 
 	return ok
 }
+
+// parseReverseMapKey parses a full reverse-map key (including the
+// PrefixReverseMap discriminator byte) and returns the (entityID,
+// metaKey, version) tuple it encodes. ok=false when the key shape is
+// incompatible with the namespace (corrupt key, scanning past a fresh
+// version frontier with truncated tails).
+//
+
+// extractVersionFromReverseMap returns the 4-byte big-endian
+// forward-encoding version embedded in a reverse map key suffix.
+// Returns (0, false) when the suffix is too short or malformed —
+// callers treat that as "skip this entry" rather than crash.
+//

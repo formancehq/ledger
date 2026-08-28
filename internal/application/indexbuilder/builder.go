@@ -121,6 +121,19 @@ type Builder struct {
 // (0, 0) to "version 1" via effectiveCurrentVersion below because
 // Index.ForwardEncodingVersion is initialised to 1 at CreateIndex /
 // first SetMetadataFieldType apply.
+// versionStateFor returns the full cached per-replica version state for an
+// index, false when this replica has never written one.
+func (b *Builder) versionStateFor(ledgerName, canonicalID string) (readstore.IndexVersionState, bool) {
+	inner, ok := b.indexVersions[ledgerName]
+	if !ok {
+		return readstore.IndexVersionState{}, false
+	}
+
+	state, ok := inner[canonicalID]
+
+	return state, ok
+}
+
 func (b *Builder) versionFor(ledgerName, canonicalID string) (current uint32, pending uint32) {
 	if b.indexVersions == nil {
 		return 0, 0
@@ -184,19 +197,6 @@ func (b *Builder) tombstoneVersionState(ledgerName, canonicalID string) error {
 	b.putVersionState(ledgerName, canonicalID, tomb)
 
 	return nil
-}
-
-// versionStateFor returns the full cached per-replica version state for an
-// index, false when this replica has never written one.
-func (b *Builder) versionStateFor(ledgerName, canonicalID string) (readstore.IndexVersionState, bool) {
-	inner, ok := b.indexVersions[ledgerName]
-	if !ok {
-		return readstore.IndexVersionState{}, false
-	}
-
-	state, ok := inner[canonicalID]
-
-	return state, ok
 }
 
 // effectiveCurrentVersion returns the forward-encoding version live
@@ -264,22 +264,67 @@ func (b *Builder) dualWriteMetadataIndex(
 	kb *dal.KeyBuilder,
 	ledger, ns, metaKey string,
 	target commonpb.TargetType,
-	newEncoded, entityID []byte,
+	value *commonpb.MetadataValue,
+	entityID []byte,
 	rmapKeyAtVersion reverseKeyForVersion,
 ) error {
 	current, pending := b.metadataIndexVersions(ledger, target, metaKey)
 
-	if err := b.writeMetadataIndexAtVersion(kb, ledger, ns, metaKey, current, newEncoded, entityID, rmapKeyAtVersion(current)); err != nil {
+	if err := b.writeMetadataIndexAtVersion(kb, ledger, ns, metaKey, target, current, value, entityID, rmapKeyAtVersion(current)); err != nil {
 		return err
 	}
 
 	if pending != 0 && pending != current {
-		if err := b.writeMetadataIndexAtVersion(kb, ledger, ns, metaKey, pending, newEncoded, entityID, rmapKeyAtVersion(pending)); err != nil {
+		if err := b.writeMetadataIndexAtVersion(kb, ledger, ns, metaKey, target, pending, value, entityID, rmapKeyAtVersion(pending)); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// coerceForVersion coerces a metadata value under the declared type BOUND to
+// the version being written, not the live schema. During a retype's
+// conversion window the two differ, and the difference is the point: rows at
+// v_current must keep the old type's encoding so queries served from it see
+// the complete old-typed index until the atomic switch, while v_pending rows
+// carry the retype's target (EN-1724). A version bound to no declared type
+// encodes each value verbatim, exactly as writes did before any declaration.
+func (b *Builder) coerceForVersion(ledger string, target commonpb.TargetType, key string, version uint32, v *commonpb.MetadataValue) (*commonpb.MetadataValue, error) {
+	canonical := indexes.Canonical(indexes.MetadataID(target, key))
+
+	state, ok := b.versionStateFor(ledger, canonical)
+	if !ok {
+		// No per-replica record: an index served at the promoted v1 that no
+		// rewrite has ever touched. The live declared type is the bound type.
+		return b.coerceForLedger(ledger, target, key, v)
+	}
+
+	switch {
+	case state.PendingVersion != 0 && version == state.PendingVersion:
+		return coerceToBound(v, state.PendingType, state.PendingTypeDeclared), nil
+	case version == state.CurrentVersion,
+		state.CurrentVersion == 0 && version == 1:
+		// The second arm is effectiveCurrentVersion's 0→1 promotion during a
+		// creation backfill whose pending is already past 1 — same binding.
+		return coerceToBound(v, state.CurrentType, state.CurrentTypeDeclared), nil
+	default:
+		// Versions come from the same state the caller consulted, so a write
+		// targeting one the state does not bind is a wiring bug; encoding it
+		// under a guessed type would plant a row no query interprets right.
+		return nil, fmt.Errorf("invariant: write at version %d of %s/%s, which the version state (current=%d pending=%d) does not bind",
+			version, ledger, canonical, state.CurrentVersion, state.PendingVersion)
+	}
+}
+
+// coerceToBound is CoerceToDeclaredType with the version-bound type standing
+// in for the schema lookup.
+func coerceToBound(v *commonpb.MetadataValue, t commonpb.MetadataType, declared bool) *commonpb.MetadataValue {
+	if !declared || v == nil || commonpb.TypeMatches(v, t) {
+		return v
+	}
+
+	return commonpb.ConvertMetadataValue(v, t)
 }
 
 // writeMetadataIndexAtVersion resolves the version-scoped reverse-map
@@ -290,9 +335,18 @@ func (b *Builder) dualWriteMetadataIndex(
 func (b *Builder) writeMetadataIndexAtVersion(
 	kb *dal.KeyBuilder,
 	ledger, ns, metaKey string,
+	target commonpb.TargetType,
 	version uint32,
-	newEncoded, entityID, reverseKey []byte,
+	value *commonpb.MetadataValue,
+	entityID, reverseKey []byte,
 ) error {
+	coerced, err := b.coerceForVersion(ledger, target, metaKey, version, value)
+	if err != nil {
+		return err
+	}
+
+	newEncoded := readstore.EncodeMetadataValue(nil, coerced)
+
 	oldEncoded, err := b.reverseMapValue(reverseKey)
 	if err != nil {
 		return err

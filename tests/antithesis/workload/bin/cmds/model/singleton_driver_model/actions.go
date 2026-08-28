@@ -132,6 +132,15 @@ func generateBulk(g oracle.GlobalState, ledgers []string, receiptFor func(string
 		}
 	}
 
+	// An index create/drop is its own single-request bulk (single-ledger, since
+	// the index is ledger-scoped). Emitting it alone keeps the model's index
+	// lifecycle a clean sequence of committed CreateIndex/DropIndex orders.
+	if len(picks) == 1 && rollIndexOp() {
+		if req := generateIndexOp(g, picks[0]); req != nil {
+			return oracle.Bulk{Requests: []*servicepb.Request{req}}
+		}
+	}
+
 	size := bulkSize()
 	requests := make([]*servicepb.Request, 0, size)
 
@@ -910,19 +919,28 @@ func generateSchemaOp(ledger string, ls oracle.LedgerState) *servicepb.Request {
 		}
 	}
 
-	return generateSetMetadataFieldType(ledger)
+	return generateSetMetadataFieldType(ledger, ls)
 }
 
 // SetMetadataFieldType for an account- or ledger-target key, with a type from the
 // pool. Declared on the same small key pool as metadata values, so writes and
 // reads of those keys coerce.
-func generateSetMetadataFieldType(ledger string) *servicepb.Request {
+//
+// A retype of a key that currently has a metadata index triggers a background
+// index REWRITE (version bump + re-encode). The model tracks its serving
+// window (oracle.RetypeWindow): until the driver observes every replica's
+// atomic switch, queries on the key are legal under the old type or the new,
+// each as a whole window — so indexed keys are retyped like any other.
+func generateSetMetadataFieldType(ledger string, ls oracle.LedgerState) *servicepb.Request {
+	target := random.RandomChoice(metaTargetPool)
+	key := metaKey()
+
 	return &servicepb.Request{
 		Type: &servicepb.Request_SetMetadataFieldType{
 			SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
 				Ledger:     ledger,
-				TargetType: random.RandomChoice(metaTargetPool),
-				Key:        metaKey(),
+				TargetType: target,
+				Key:        key,
 				Type:       random.RandomChoice(metaTypePool),
 			},
 		},

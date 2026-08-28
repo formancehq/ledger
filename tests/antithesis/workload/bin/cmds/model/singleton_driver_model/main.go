@@ -142,10 +142,28 @@ func main() {
 		log.Printf("restore cycle enabled (interval ~%s)", restoreInterval())
 	}
 
-	// Workers stop on ctx.Done. Wait for the restore cycle too before closing the
-	// processor's channel, so no cycle touches the checker during teardown.
+	// Index readiness poller: reconciles each created index's active flag against
+	// per-replica CurrentVersion, so has-asset queries validate results once the
+	// index is live everywhere. Per-node conns are lazy, so dialing never fails on
+	// a down node; it is skipped only when no addresses resolve.
+	var pollers sync.WaitGroup
+	if conns, err := internal.DialPerNode(ctx); err != nil {
+		log.Printf("index readiness poller disabled: per-node dial failed: %s", err)
+	} else {
+		pollers.Add(1)
+		go func() {
+			defer pollers.Done()
+			defer conns.Close()
+			runIndexReadinessPoller(ctx, checker, conns, indexPollInterval)
+		}()
+	}
+
+	// Workers stop on ctx.Done. Wait for the restore cycle and poller too before
+	// closing the processor's channel, so nothing touches the checker during
+	// teardown.
 	workers.Wait()
 	restore.Wait()
+	pollers.Wait()
 	close(checker.incoming)
 	processors.Wait()
 }
@@ -171,11 +189,13 @@ func runWorker(
 
 		// 1-in-5: a read this iteration, split across the whole-ledger read
 		// (chart + ledger metadata), a single-account read, a transaction read
-		// (id + postings + reverted + metadata), and a metadata-schema read
-		// (declared field types). Reads validate against the in-flight bulk set,
-		// exercising cross-node freshness without needing quiescence.
+		// (id + postings + reverted + metadata), a metadata-schema read (declared
+		// field types), and the two list queries (filtered, paginated, ordered
+		// windows over accounts and transactions). Reads validate against the
+		// in-flight bulk set, exercising cross-node freshness without needing
+		// quiescence.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -183,7 +203,13 @@ func runWorker(
 			case 2:
 				runSchemaRead(ctx, client, c)
 			case 3:
+				runAccountQuery(ctx, client, c)
+			case 4:
+				runTransactionQuery(ctx, client, c)
+			case 5:
 				runReplay(ctx, client, c)
+			case 6:
+				runLogQuery(ctx, client, c)
 			default:
 				runRead(ctx, client, c)
 			}

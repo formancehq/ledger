@@ -7,6 +7,7 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -153,6 +154,13 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		}
 	}
 
+	// droppedInBulk collects the (ledger, canonical) pairs earlier orders of
+	// THIS bulk already removed, so a duplicate remove-field-type correctly
+	// expects no second drop. The ledger is part of the key: one bulk can
+	// remove the same (target, key) on several ledgers, and each ledger's
+	// index is dropped independently.
+	droppedInBulk := map[string]bool{}
+
 	// Check the remaining write ops against their response logs: the assigned
 	// transaction id and echoed reference/postings, and the schema / account-type
 	// mutations. These are all LedgerApplyOrders, so their logs sit under the
@@ -291,12 +299,39 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 				return
 			}
 
-			// The workload never creates indexes, so removing a field type must
-			// never report dropping one.
-			if lg.GetDroppedIndex() != nil {
-				assert.Unreachable("singleton_driver_model: remove-field-type unexpectedly dropped an index", internal.Details{
-					"ledger": oracle.LedgerOf(req),
-					"key":    rq.GetKey(),
+			// A metadata index cannot outlive its field declaration: the server
+			// reports the dropped index on the log exactly when one existed.
+			// Compare against the pre-bulk model state, minus keys an earlier
+			// order of this bulk already removed (the second remove is a no-op).
+			canonical := indexes.Canonical(indexes.MetadataID(rq.GetTargetType(), rq.GetKey()))
+			bulkKey := oracle.LedgerOf(req) + "\x00" + canonical
+			earlierInBulk := droppedInBulk[bulkKey]
+			hadIndex := false
+			if exists, _ := c.modelState.Ledger(oracle.LedgerOf(req)).IndexState(canonical); exists && !earlierInBulk {
+				hadIndex = true
+			}
+			droppedInBulk[bulkKey] = true
+
+			if (lg.GetDroppedIndex() != nil) != hadIndex {
+				assert.Unreachable("singleton_driver_model: remove-field-type dropped-index mismatch", internal.Details{
+					"ledger":        oracle.LedgerOf(req),
+					"key":           rq.GetKey(),
+					"target":        rq.GetTargetType().String(),
+					"canonical":     canonical,
+					"modelHadIdx":   hadIndex,
+					"serverDropped": lg.GetDroppedIndex() != nil,
+					"modelIndexes":  modelIndexDump(c.modelState.Ledger(oracle.LedgerOf(req))),
+					"earlierInBulk": earlierInBulk,
+				})
+
+				return
+			}
+
+			if lg.GetDroppedIndex() != nil && indexes.Canonical(lg.GetDroppedIndex()) != canonical {
+				assert.Unreachable("singleton_driver_model: remove-field-type dropped wrong index", internal.Details{
+					"ledger":   oracle.LedgerOf(req),
+					"key":      rq.GetKey(),
+					"returned": indexes.Canonical(lg.GetDroppedIndex()),
 				})
 
 				return
@@ -330,10 +365,68 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 
 	c.modelState = res.State
 
+	// A committed retype of an indexed key opened (or chained onto) a serving
+	// window in the fold above; arm its closure observation at this bulk's
+	// frontier so the poller can prove the per-replica switch happened after
+	// THIS retype, not a previous one.
+	for _, req := range bulk.Requests {
+		smft := req.GetSetMetadataFieldType()
+		if smft == nil {
+			continue
+		}
+
+		tt := smft.GetTargetType()
+		if tt != commonpb.TargetType_TARGET_TYPE_ACCOUNT && tt != commonpb.TargetType_TARGET_TYPE_TRANSACTION {
+			continue
+		}
+
+		ledger := oracle.LedgerOf(req)
+		canonical := indexes.Canonical(indexes.MetadataID(tt, smft.GetKey()))
+
+		if _, open := c.modelState.Ledger(ledger).RetypeWindow(canonical); open {
+			c.noteRetypeCommit(ledger, canonical, maxLogSequence(resp.GetLogs()))
+		}
+	}
+	learnTxStamps(c.modelState, bulk, logs)
+
 	// A committed keyed bulk is frozen in modelState; remember it (with the
 	// sequences it committed at) so runReplay can re-send it and check the server
 	// replays this same outcome.
 	c.rememberReplayable(bulk, resp.GetLogs())
+}
+
+// learnTxStamps folds the server-stamped transaction dates from a committed
+// bulk's response logs into the just-advanced model state (LearnTxStamps): the
+// created/revert transaction's timestamp and inserted_at, and the reverted
+// original's reverted_at (the compensating transaction's timestamp). Runs in
+// the same critical section that advanced the state — the safety condition
+// LearnTxStamps documents.
+func learnTxStamps(gs oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Log) {
+	for i, req := range bulk.Requests {
+		if i >= len(logs) {
+			break
+		}
+
+		ledger := oracle.LedgerOf(req)
+		entry := logs[i].GetPayload().GetApply().GetLog()
+		data := entry.GetData()
+
+		// The log's date is the one part of the stream the model cannot
+		// derive; its id is derived, so it is checked against the server
+		// rather than copied from it.
+		gs.LearnLogDate(ledger, entry.GetId(), entry.GetDate())
+
+		switch {
+		case data.GetCreatedTransaction() != nil:
+			tx := data.GetCreatedTransaction().GetTransaction()
+			gs.LearnTxStamps(ledger, tx.GetId(), tx.GetTimestamp(), tx.GetInsertedAt(), nil)
+		case data.GetRevertedTransaction() != nil:
+			rt := data.GetRevertedTransaction()
+			revTx := rt.GetRevertTransaction()
+			gs.LearnTxStamps(ledger, revTx.GetId(), revTx.GetTimestamp(), revTx.GetInsertedAt(), nil)
+			gs.LearnTxStamps(ledger, rt.GetRevertedTransactionId(), nil, nil, revTx.GetTimestamp())
+		}
+	}
 }
 
 // validateFailure accepts the observed failure of failedBulk iff some
@@ -530,6 +623,8 @@ func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverType
 		"serverTypes": len(serverTypes),
 		"serverMeta":  renderMetaMap(serverMeta),
 		"modelMeta":   c.modelLedgerMetaDump(ledger),
+		"serverChart": renderChart(serverTypes),
+		"modelChart":  c.modelChartDump(ledger),
 	})
 }
 
@@ -589,33 +684,7 @@ func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id ui
 			return false // base has a tx at this id, but the server returned NotFound
 		}
 
-		rec := txs.Get(int(id - 1))
-		// A user-supplied timestamp is echoed verbatim; when the model has none
-		// (nil) the server stamped its own command date, which is unpredictable,
-		// so the timestamp is not checked for that record.
-		tsOK := rec.Timestamp() == nil || rec.Timestamp().GetData() == serverTx.GetTimestamp().GetData()
-
-		// reverted_at follows the same convention: nil in the model means the
-		// compensating transaction was server-dated (unpredictable) — but only a
-		// reverted record may carry one at all.
-		var raOK bool
-		switch {
-		case rec.RevertedAt() != nil:
-			raOK = serverTx.GetRevertedAt() != nil && rec.RevertedAt().GetData() == serverTx.GetRevertedAt().GetData()
-		case rec.Reverted():
-			raOK = true
-		default:
-			raOK = serverTx.GetRevertedAt() == nil
-		}
-
-		return rec.Id() == serverTx.GetId() &&
-			rec.Reference() == serverTx.GetReference() &&
-			rec.Reverted() == serverTx.GetReverted() &&
-			rec.RevertedBy() == serverTx.GetRevertedByTransaction() &&
-			rec.RevertsTransaction() == serverTx.GetRevertsTransaction() &&
-			tsOK && raOK &&
-			postingsEqual(rec.Postings(), serverTx.GetPostings()) &&
-			metaMapEqual(rec.Metadata(), serverTx.GetMetadata())
+		return txRecordMatches(txs.Get(int(id-1)), serverTx)
 	}) {
 		return
 	}
