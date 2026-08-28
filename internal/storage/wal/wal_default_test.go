@@ -918,7 +918,13 @@ func TestApplySnapshotUnlocksOnSnapshotSaveFailure(t *testing.T) {
 	t.Parallel()
 
 	w := newTestWAL(t)
-	w.snapshotter.dir = filepath.Join(t.TempDir(), "missing", "snap")
+
+	// A vanished snapshot directory is recreated by Save, so the failure has
+	// to sit deeper: occupy the parent with a regular file so the recreation
+	// itself cannot succeed.
+	parent := filepath.Join(t.TempDir(), "occupied")
+	require.NoError(t, os.WriteFile(parent, nil, 0o600))
+	w.snapshotter.dir = filepath.Join(parent, "snap")
 
 	err := w.ApplySnapshot(&raftpb.Snapshot{
 		Metadata: snapshotMeta(10, 2, &raftpb.ConfState{Voters: []uint64{1}}),
