@@ -2764,7 +2764,7 @@
           "type": "object"
         },
         "queryProfileThreshold": {
-          "description": "QueryProfileThreshold logs and emits OTel attributes for queries exceeding this duration (0 to disable).",
+          "description": "QueryProfileThreshold logs and emits OTel attributes for reads whose total\nserver-side handling (excluding the caller-requested read barrier) exceeds\nthis duration. 0 disables the slow-read log.",
           "type": "string"
         },
         "raft": {
