@@ -39,6 +39,18 @@ func boolEnv(name string, value bool) corev1.EnvVar {
 	return corev1.EnvVar{Name: name, Value: strconv.FormatBool(value)}
 }
 
+func secretKeyEnv(name, secretName, secretKey string) corev1.EnvVar {
+	return corev1.EnvVar{
+		Name: name,
+		ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: secretName},
+				Key:                  secretKey,
+			},
+		},
+	}
+}
+
 // appendIfStr appends an env var if the string value is non-empty.
 func appendIfStr(envs []corev1.EnvVar, name, value string) []corev1.EnvVar {
 	if value != "" {
@@ -266,6 +278,25 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 		if spec.TLS != nil && spec.TLS.CASecretKey != "" {
 			envs = append(envs, strEnv("TLS_CA_CERT_FILE", "/tls/"+spec.TLS.CASecretKey))
 		}
+	}
+
+	// Make the ledgerctl binary shipped in the ledger image immediately usable
+	// from an interactive pod shell. The pod's headless DNS is covered by the
+	// cluster certificate, unlike localhost/127.0.0.1, and avoids the
+	// IPv6 localhost resolution mismatch when the server listens on IPv4 only.
+	ledgerctlServer := fmt.Sprintf("$(POD_NAME).%s.$(POD_NAMESPACE).svc.cluster.local:%d", hlsSvcName, spec.GrpcPort)
+	envs = append(envs, strEnv("LEDGERCTL_SERVER", ledgerctlServer))
+	if targetTLSMode == tlsModeDisabled {
+		envs = append(envs, boolEnv("LEDGERCTL_INSECURE", true))
+	} else {
+		if spec.TLS != nil && spec.TLS.CASecretKey != "" {
+			envs = append(envs, strEnv("LEDGERCTL_TLS_CA_CERT", "/tls/"+spec.TLS.CASecretKey))
+		}
+		envs = append(envs, secretKeyEnv(
+			"LEDGERCTL_AUTH_TOKEN",
+			clusterSecretName(ledger.Name),
+			clusterSecretKey,
+		))
 	}
 
 	// GOMEMLIMIT: set to a percentage of memory limit if available.

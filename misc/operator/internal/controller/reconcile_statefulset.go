@@ -415,17 +415,11 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 	// optional mode (rolling update phase 1), so pods on either side of
 	// the rollout see consistent behavior.
 	if shouldInjectClusterSecret(targetTLSMode) {
-		envVars = append(envVars, corev1.EnvVar{
-			Name: "CLUSTER_SECRET",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: clusterSecretName(ledger.Name),
-					},
-					Key: clusterSecretKey,
-				},
-			},
-		})
+		envVars = append(envVars, secretKeyEnv(
+			"CLUSTER_SECRET",
+			clusterSecretName(ledger.Name),
+			clusterSecretKey,
+		))
 	}
 
 	container := corev1.Container{
