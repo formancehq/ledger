@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"context"
 	"errors"
 	"io"
 
@@ -9,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/readdiag"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -89,6 +91,7 @@ type UpstreamTrailer interface {
 // compatibility reads, drain loops — get a normal EOF and never see a fake
 // record.
 type upstreamPeekCursor[Res any] struct {
+	ctx        context.Context
 	client     grpc.ServerStreamingClient[Res]
 	exhausted  bool
 	nextCursor string
@@ -105,6 +108,15 @@ func (c *upstreamPeekCursor[Res]) Next() (*Res, error) {
 	if errors.Is(err, io.EOF) && !c.exhausted {
 		c.exhausted = true
 		c.nextCursor = nextCursorFromTrailer(c.client.Trailer())
+		// Surface the upstream server's own diag trailer through this
+		// request's diag, so a forwarded read's response names both hops.
+		if fwd := c.client.Trailer().Get(metadataKeyDiag); len(fwd) > 0 {
+			readdiag.Set(c.ctx, "fwd", "{"+fwd[0]+"}")
+		}
+	}
+
+	if err != nil && !errors.Is(err, io.EOF) {
+		readdiag.Set(c.ctx, "fwd_err", err.Error())
 	}
 
 	return nil, err
@@ -123,8 +135,8 @@ func (c *upstreamPeekCursor[Res]) Close() error {
 // (so generic consumers see only real items + io.EOF) and additionally
 // satisfies UpstreamTrailer so sendPagedToStream can pick up the leader's
 // x-next-cursor.
-func NewUpstreamPeekCursor[T any](client grpc.ServerStreamingClient[T]) cursor.Cursor[*T] {
-	return &upstreamPeekCursor[T]{client: client}
+func NewUpstreamPeekCursor[T any](ctx context.Context, client grpc.ServerStreamingClient[T]) cursor.Cursor[*T] {
+	return &upstreamPeekCursor[T]{ctx: ctx, client: client}
 }
 
 // ListOptionsSupport captures, per resource, which ListOptions sub-fields the

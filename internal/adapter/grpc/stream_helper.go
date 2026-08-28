@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/readdiag"
 )
 
 // NextCursorTrailerKey is the gRPC trailer key under which streaming list
@@ -89,8 +90,13 @@ func sendPagedToStream[Res any](
 					}
 				}
 
+				readdiag.Set(ctx, "rows_sent", count)
+
 				return nil
 			}
+
+			readdiag.Set(ctx, "rows_sent", count)
+			readdiag.Set(ctx, "stream_err", err.Error())
 
 			return fmt.Errorf("reading %s: %w", itemName, err)
 		}
@@ -102,6 +108,7 @@ func sendPagedToStream[Res any](
 			emitTrailer()
 
 			span.SetAttributes(attribute.Int64("stream.items_sent", int64(count)))
+			readdiag.Set(ctx, "rows_sent", count)
 
 			return nil
 		}
