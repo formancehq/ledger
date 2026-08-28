@@ -612,8 +612,10 @@ plain `-tags e2e` run neither builds nor runs them:
 | `databricks` | Databricks event sink | real workspace credentials; skips itself when unset |
 
 `just test-e2e` runs the light set for a fast local loop. **CI runs the full tag
-set** through `just test-e2e-coverage`, so a green `just test-e2e` does not
-guarantee a green pipeline. Reproduce the CI set locally with:
+set** through separate isolated Business and Cluster invocations of
+`just test-e2e-coverage`, so a green `just test-e2e` does not guarantee a green
+pipeline. The recipe's no-argument form retains the combined package selection
+for local coverage. Reproduce the CI set locally with:
 
 ```bash
 just test-e2e-full
