@@ -60,7 +60,9 @@ JSON files under `config/dashboards/`. All seven are committed so Pulumi
 can deploy without invoking Jsonnet.
 
 `generate-dashboards` is part of `just pre-commit`; CI fails if the
-generated files have drifted from the source.
+generated files have drifted from the source. `just test-dashboards`
+regenerates those files and then runs the nested Go module's semantic tests;
+it is also part of `pre-commit` and therefore runs in the Default CI workflow.
 
 ## Seven variants
 
