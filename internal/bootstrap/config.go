@@ -311,6 +311,13 @@ func (c Config) Validate() error {
 		return errors.New("--query-checkpoint-limit must be greater than zero")
 	}
 
+	// A negative TTL wraps to a huge value once converted to the policy's
+	// unsigned micros, so reject it at boot rather than committing a garbage
+	// idempotency window.
+	if c.IdempotencyTTL < 0 {
+		return errors.New("--idempotency-ttl must not be negative")
+	}
+
 	if err := validateHealthThresholds(c.HealthConfig.WALThreshold, c.HealthConfig.WALResumeThreshold); err != nil {
 		return fmt.Errorf("wal: %w", err)
 	}

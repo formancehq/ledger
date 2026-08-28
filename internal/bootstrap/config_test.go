@@ -136,6 +136,14 @@ func TestValidateClusterPolicyFields(t *testing.T) {
 		cfg.QueryCheckpointLimit = 0
 		require.ErrorContains(t, cfg.Validate(), "--query-checkpoint-limit must be greater than zero")
 	})
+
+	t.Run("negative idempotency TTL rejected", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validBaseConfig()
+		cfg.IdempotencyTTL = -time.Second
+		require.ErrorContains(t, cfg.Validate(), "--idempotency-ttl must not be negative")
+	})
 }
 
 func TestValidateTLSConfig(t *testing.T) {
