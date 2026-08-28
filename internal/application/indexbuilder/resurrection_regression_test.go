@@ -163,7 +163,7 @@ func TestDropRecreate_DeletedValueStaysDead(t *testing.T) {
 
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
-	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id})
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id}))
 	require.NoError(t, b.wb.Flush())
 	driveBackfills(t, b, 1)
 
@@ -198,7 +198,7 @@ func TestDropRecreate_DeletedValueStaysDead(t *testing.T) {
 	// Incarnation 2.
 	batch = b.readStore.NewBatch()
 	b.initBatch(batch)
-	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id})
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id}))
 	require.NoError(t, b.wb.Flush())
 	driveBackfills(t, b, 2)
 

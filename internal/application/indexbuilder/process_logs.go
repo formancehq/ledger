@@ -352,7 +352,7 @@ func (b *Builder) indexPayload(
 	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 		return b.handleRemovedMetadataFieldType(kb, cfg, ledgerName, p.RemovedMetadataFieldType)
 	case *commonpb.LedgerLogPayload_CreateIndex:
-		b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
+		return b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
 		if err := b.handleDroppedIndexLog(kb, ledgerName, p.DropIndex); err != nil {
 			return err
@@ -562,7 +562,7 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
 	case *commonpb.LedgerLogPayload_CreateIndex:
-		b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
+		return b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
 		if err := b.handleDroppedIndexLog(b.kb, ledgerName, p.DropIndex); err != nil {
 			return err

@@ -415,9 +415,10 @@ func (b *Builder) removeSchemaRewriteTask(idx int) {
 // reached the atomic switch on this replica when it stopped; the
 // dual-write path was active, and v_pending was being populated. The
 // resumed task carries the same target keyspace (read from the cache),
-// the rmap cursor and the new declared_type (read from the persisted
-// BackfillCursor written at the previous batch), and continues the
-// rmap scan from where it left off.
+// the new declared_type (IndexVersionState.PendingType — the value the
+// atomic switch will promote into CurrentType) and the rmap cursor
+// (read from the persisted BackfillCursor written at the previous
+// batch), and continues the rmap scan from where it left off.
 func (b *Builder) scheduleResumedRewrites() {
 	for ledgerName, inner := range b.indexVersions {
 		cfg := b.ledgerConfig(ledgerName)
@@ -455,28 +456,33 @@ func (b *Builder) scheduleResumedRewrites() {
 
 			rawCursor, hasCursor := b.readStore.ReadBackfillCursor(bbKey)
 
-			var (
-				toType     commonpb.MetadataType
-				rmapCursor []byte
-				haveType   bool
-			)
+			// The persisted IndexVersionState is the authority on the
+			// pending version's bound type: bumpPendingVersion commits
+			// PendingType in the same batch that enqueues the rewrite,
+			// and the atomic switch copies it into CurrentType — so the
+			// rewrite must encode v_pending under exactly this type.
+			toType := state.PendingType
+
+			var rmapCursor []byte
 
 			if hasCursor && len(rawCursor) >= 1 {
-				toType = commonpb.MetadataType(rawCursor[0])
-				haveType = true
-
-				if len(rawCursor) > 1 {
+				// The cursor's leading type byte is a cross-check: it
+				// commits in the same batch as the version state, so a
+				// mismatch means corrupted persisted artifacts. The scan
+				// then restarts from zero under the authoritative type —
+				// resuming would extend a keyspace half-encoded under
+				// another one.
+				if got := commonpb.MetadataType(rawCursor[0]); got != state.PendingType {
+					b.logger.WithFields(map[string]any{
+						"ledger":      ledgerName,
+						"key":         key,
+						"cursorType":  got.String(),
+						"pendingType": state.PendingType.String(),
+					}).Errorf("invariant: resumed rewrite cursor type disagrees with IndexVersionState.PendingType")
+				} else if len(rawCursor) > 1 {
 					rmapCursor = make([]byte, len(rawCursor)-1)
 					copy(rmapCursor, rawCursor[1:])
 				}
-			}
-
-			// If no persisted cursor (the rewrite had been enqueued
-			// but never ran a batch), source toType from the FSM —
-			// the latest SetMetadataFieldType committed it as the
-			// field's declared type before the pending bump landed.
-			if !haveType {
-				toType = b.resolveResumedToType(ledgerName, target, key)
 			}
 
 			b.schemaRewriteTasks = append(b.schemaRewriteTasks, &schemaRewriteTask{
@@ -497,45 +503,6 @@ func (b *Builder) scheduleResumedRewrites() {
 			}).Infof("Resumed in-flight schema rewrite from persisted state")
 		}
 	}
-}
-
-// resolveResumedToType reads the declared_type for a metadata field
-// from the FSM-side LedgerInfo.MetadataSchema. Used at boot when the
-// resumed rewrite has no persisted toType byte (because the task was
-// enqueued but never ran a batch). Falls back to the zero
-// MetadataType (STRING) if the FSM has no entry — pathological but
-// safe: the rewrite will treat existing rmap entries as already at
-// the declared type, run an idempotent re-encode, and reach the
-// atomic switch with no functional damage.
-func (b *Builder) resolveResumedToType(ledgerName string, target commonpb.TargetType, key string) commonpb.MetadataType {
-	handle, err := b.pebbleStore.NewDirectReadHandle()
-	if err != nil {
-		return commonpb.MetadataType_METADATA_TYPE_STRING
-	}
-
-	defer func() { _ = handle.Close() }()
-
-	info, err := query.GetLedgerByName(context.Background(), handle, ledgerName)
-	if err != nil || info == nil || info.GetMetadataSchema() == nil {
-		return commonpb.MetadataType_METADATA_TYPE_STRING
-	}
-
-	var fields map[string]*commonpb.MetadataFieldSchema
-
-	switch target {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
-		fields = info.GetMetadataSchema().GetAccountFields()
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
-		fields = info.GetMetadataSchema().GetTransactionFields()
-	default:
-		return commonpb.MetadataType_METADATA_TYPE_STRING
-	}
-
-	if schema, ok := fields[key]; ok {
-		return schema.GetType()
-	}
-
-	return commonpb.MetadataType_METADATA_TYPE_STRING
 }
 
 // removeSchemaRewriteTaskByField cancels any in-flight rewrite task matching

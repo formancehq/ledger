@@ -109,9 +109,9 @@ func (b *Builder) initIndexConfig(ctx context.Context) error {
 	// built v_current at some point) gets a schemaRewriteTask. The
 	// atomic switch hasn't fired yet on this replica, so v_current
 	// keeps serving queries while the rewrite catches up and v_pending
-	// receives the new keyspace. Cursor and toType come from the
-	// persisted BackfillCursor — the rewrite resumes mid-rmap-scan
-	// instead of restarting from scratch.
+	// receives the new keyspace. toType comes from the version state's
+	// PendingType, the cursor from the persisted BackfillCursor — the
+	// rewrite resumes mid-rmap-scan instead of restarting from scratch.
 	b.scheduleResumedRewrites()
 
 	// Crash-recovery sweep: the atomic switch GCs v_old in the same
@@ -400,34 +400,10 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 // backfill scheduling so the builder does not redo work that has already
 // completed — and, more importantly, does not knock a live index back into
 // ErrIndexBuilding.
-// boundTypeAtCreation resolves the declared type an index's first version is
-// bound to: the schema entry in force when the CreateIndex log folds. Only
-// metadata indexes carry one; for every other kind — and for a key declared
-// after the index — the version is bound to no type and rows keep each
-// value's natural encoding.
-func (b *Builder) boundTypeAtCreation(ledgerName string, id *commonpb.IndexID) (commonpb.MetadataType, bool) {
-	meta, ok := id.GetKind().(*commonpb.IndexID_Metadata)
-	if !ok || meta.Metadata == nil || b.batchSchema == nil {
-		return 0, false
-	}
-
-	schema, err := b.batchSchema.For(ledgerName)
-	if err != nil || schema == nil {
-		return 0, false
-	}
-
-	_, fs := commonpb.SchemaFieldForTarget(schema, meta.Metadata.GetTarget(), meta.Metadata.GetKey())
-	if fs == nil {
-		return 0, false
-	}
-
-	return fs.GetType(), true
-}
-
-func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.CreatedIndexLog) {
+func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.CreatedIndexLog) error {
 	id := log.GetId()
 	if id == nil {
-		return
+		return nil
 	}
 
 	cfg := b.getOrCreateLedgerConfig(ledgerName)
@@ -441,14 +417,14 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	// loadIndexRegistry boot guard and covers both the EN-1564 initial fast
 	// path and the normal post-backfill live state.
 	if current, pending := b.versionFor(ledgerName, indexes.Canonical(id)); current != 0 {
-		return
+		return nil
 	} else if pending != 0 {
 		// A build for this incarnation is already in flight: the running
 		// backfill fills that pending version and will promote it. Allocating
 		// a fresh number here would orphan the half-built keyspace while the
 		// task's caught-up cursor promotes the never-filled replacement — a
 		// permanently empty index. The duplicate create is a no-op.
-		return
+		return nil
 	}
 
 	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{
@@ -465,8 +441,14 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	prior, _ := b.versionStateFor(ledgerName, indexes.Canonical(id))
 	next := prior.HighWater + 1
 
+	// The first version binds to the declared type stamped into the log by
+	// the FSM at mint time — the schema entry in force at exactly this log's
+	// sequence. A local schema read here could not reproduce that: the
+	// readable schema is batch-final at best and arbitrarily far ahead when
+	// the log folds during a backfill or a rebuild replay.
+	boundType, declared := log.GetBoundType(), log.GetBoundTypeDeclared()
+
 	if log.GetInitial() {
-		boundType, declared := b.boundTypeAtCreation(ledgerName, id)
 		state := readstore.IndexVersionState{
 			CurrentVersion:      next,
 			PendingVersion:      0,
@@ -478,18 +460,14 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 		if b.wb != nil && b.readStore != nil {
 			if batch := b.wb.Batch(); batch != nil {
 				if err := b.readStore.WriteIndexVersionState(batch, ledgerName, indexes.Canonical(id), state); err != nil {
-					b.logger.WithFields(map[string]any{
-						"ledger": ledgerName,
-						"index":  indexes.Canonical(id),
-						"error":  err,
-					}).Errorf("Persisting IndexVersionState on initial CreateIndex")
+					return fmt.Errorf("persisting IndexVersionState on initial CreateIndex: %w", err)
 				}
 			}
 		}
 
 		b.putVersionState(ledgerName, indexes.Canonical(id), state)
 
-		return
+		return nil
 	}
 
 	// First time this replica sees the index: target v=1 via the
@@ -500,7 +478,6 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	// boot recovery would otherwise have to guess from cfg.byCanonical
 	// alone, which loses the distinction between "fresh index" and
 	// "stale READY index from a snapshot install".
-	boundType, declared := b.boundTypeAtCreation(ledgerName, id)
 	state := readstore.IndexVersionState{
 		CurrentVersion:      0,
 		PendingVersion:      next,
@@ -512,11 +489,7 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	if b.wb != nil && b.readStore != nil {
 		if batch := b.wb.Batch(); batch != nil {
 			if err := b.readStore.WriteIndexVersionState(batch, ledgerName, indexes.Canonical(id), state); err != nil {
-				b.logger.WithFields(map[string]any{
-					"ledger": ledgerName,
-					"index":  indexes.Canonical(id),
-					"error":  err,
-				}).Errorf("Persisting IndexVersionState on CreateIndex")
+				return fmt.Errorf("persisting IndexVersionState on CreateIndex: %w", err)
 			}
 		}
 	}
@@ -524,6 +497,8 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	b.putVersionState(ledgerName, indexes.Canonical(id), state)
 
 	b.scheduleBackfillForIndex(ledgerName, id)
+
+	return nil
 }
 
 // handleDroppedIndexLog updates the index config cache when a DropIndex log

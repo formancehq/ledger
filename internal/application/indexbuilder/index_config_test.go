@@ -117,7 +117,7 @@ func TestHandleCreatedIndexLog(t *testing.T) {
 
 			b := &Builder{indexConfig: make(map[string]*ledgerIndexConfig)}
 
-			b.handleCreatedIndexLog("ledger1", &commonpb.CreatedIndexLog{Id: tt.id})
+			require.NoError(t, b.handleCreatedIndexLog("ledger1", &commonpb.CreatedIndexLog{Id: tt.id}))
 
 			cfg := b.indexConfig["ledger1"]
 			require.NotNil(t, cfg)
@@ -144,7 +144,7 @@ func TestHandleDroppedIndexLog(t *testing.T) {
 	defer func() { _ = batch.Cancel() }()
 	b.initBatch(batch)
 
-	b.handleCreatedIndexLog("ledger1", &commonpb.CreatedIndexLog{Id: id})
+	require.NoError(t, b.handleCreatedIndexLog("ledger1", &commonpb.CreatedIndexLog{Id: id}))
 	require.Len(t, b.backfillTasks, 1)
 	assert.True(t, b.indexConfig["ledger1"].isIndexed(id))
 
@@ -962,11 +962,15 @@ func TestInitIndexConfig_ResumesRewriteFromPendingVersion(t *testing.T) {
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
 
 	// Persist the in-flight version state: current=1 (serving
-	// queries), pending=2 (rewrite that didn't finish).
+	// queries), pending=2 (rewrite that didn't finish), bound to the
+	// retype's target type — bumpPendingVersion commits PendingType in
+	// the same batch, and the resume path reads the type from here.
 	stateBatch := b.readStore.NewBatch()
 	require.NoError(t, b.readStore.WriteIndexVersionState(stateBatch, ledger, canonical, readstore.IndexVersionState{
-		CurrentVersion: 1,
-		PendingVersion: 2,
+		CurrentVersion:      1,
+		PendingVersion:      2,
+		PendingType:         commonpb.MetadataType_METADATA_TYPE_INT64,
+		PendingTypeDeclared: true,
 	}))
 	require.NoError(t, stateBatch.Commit())
 
@@ -1020,6 +1024,111 @@ func TestInitIndexConfig_ResumesRewriteFromPendingVersion(t *testing.T) {
 	current, pending := b.versionFor(ledger, canonical)
 	assert.Equal(t, uint32(1), current)
 	assert.Equal(t, uint32(2), pending)
+}
+
+// TestInitIndexConfig_ResumeBeforeFirstBatch_TypeFromVersionState pins the
+// crash window between the pending-state commit and the rewrite's first
+// batch: no BackfillCursor exists yet, and the resumed task's toType must
+// come from IndexVersionState.PendingType — the value the atomic switch
+// will promote into CurrentType. The FSM schema is deliberately left
+// undeclared: a fallback that guesses from an empty or failed schema read
+// comes back STRING, and the promoted version then advertises a type its
+// rows were never encoded under — every typed row silently out of range.
+func TestInitIndexConfig_ResumeBeforeFirstBatch_TypeFromVersionState(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.logger = noopLogger{}
+
+	const (
+		ledger = "customer"
+		key    = "score"
+	)
+
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	canonical := indexes.Canonical(id)
+
+	stateBatch := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteIndexVersionState(stateBatch, ledger, canonical, readstore.IndexVersionState{
+		CurrentVersion:      1,
+		PendingVersion:      2,
+		PendingType:         commonpb.MetadataType_METADATA_TYPE_INT64,
+		PendingTypeDeclared: true,
+	}))
+	require.NoError(t, stateBatch.Commit())
+
+	fsmBatch := b.pebbleStore.OpenWriteSession()
+	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{Name: ledger}))
+	indexKey := domain.IndexKey{LedgerName: ledger, Canonical: canonical}.Bytes()
+	_, err := b.attrs.Index.Set(fsmBatch, indexKey, &commonpb.Index{
+		Ledger:                 ledger,
+		Id:                     id,
+		ForwardEncodingVersion: 2,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fsmBatch.Commit())
+
+	require.NoError(t, b.initIndexConfig(context.Background()))
+
+	require.Len(t, b.schemaRewriteTasks, 1)
+	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, b.schemaRewriteTasks[0].toType)
+	assert.Nil(t, b.schemaRewriteTasks[0].rmapCursor)
+}
+
+// TestInitIndexConfig_ResumeCursorTypeMismatch_RestartsUnderPendingType pins
+// the cross-check on the cursor's leading type byte: it commits in the same
+// batch as the version state, so a disagreement means corrupted persisted
+// artifacts. The resume keeps the authoritative PendingType and drops the
+// cursor — the scan restarts from zero under the type the atomic switch will
+// promote.
+func TestInitIndexConfig_ResumeCursorTypeMismatch_RestartsUnderPendingType(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.logger = noopLogger{}
+
+	const (
+		ledger = "customer"
+		key    = "score"
+	)
+
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	canonical := indexes.Canonical(id)
+
+	stateBatch := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteIndexVersionState(stateBatch, ledger, canonical, readstore.IndexVersionState{
+		CurrentVersion:      1,
+		PendingVersion:      2,
+		PendingType:         commonpb.MetadataType_METADATA_TYPE_INT64,
+		PendingTypeDeclared: true,
+	}))
+	require.NoError(t, stateBatch.Commit())
+
+	rewriteBBKey := schemaRewriteBBKey(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
+	val := append([]byte{byte(commonpb.MetadataType_METADATA_TYPE_STRING)}, []byte("mid-rewrite-cursor")...)
+
+	cursorBatch := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteBackfillCursor(cursorBatch, rewriteBBKey, val))
+	require.NoError(t, cursorBatch.Commit())
+
+	fsmBatch := b.pebbleStore.OpenWriteSession()
+	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{Name: ledger}))
+	indexKey := domain.IndexKey{LedgerName: ledger, Canonical: canonical}.Bytes()
+	_, err := b.attrs.Index.Set(fsmBatch, indexKey, &commonpb.Index{
+		Ledger:                 ledger,
+		Id:                     id,
+		ForwardEncodingVersion: 2,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fsmBatch.Commit())
+
+	require.NoError(t, b.initIndexConfig(context.Background()))
+
+	require.Len(t, b.schemaRewriteTasks, 1)
+	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, b.schemaRewriteTasks[0].toType,
+		"IndexVersionState.PendingType is the authority, never the cursor byte")
+	assert.Nil(t, b.schemaRewriteTasks[0].rmapCursor,
+		"a mismatched cursor is discarded so the scan restarts from zero")
 }
 
 // noopLogger implements the logging.Logger interface for tests without output.
@@ -1121,7 +1230,7 @@ func TestHandleCreatedIndexLog_InitialSkipsBackfill(t *testing.T) {
 
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
-	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: true})
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: true}))
 	require.NoError(t, b.wb.Flush())
 
 	require.Empty(t, b.backfillTasks, "initial index must not schedule a backfill")
@@ -1144,7 +1253,7 @@ func TestHandleCreatedIndexLog_NonInitialSchedulesBackfill(t *testing.T) {
 
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
-	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false}))
 	require.NoError(t, b.wb.Flush())
 
 	require.Len(t, b.backfillTasks, 1, "non-initial index must schedule a backfill")
@@ -1152,6 +1261,62 @@ func TestHandleCreatedIndexLog_NonInitialSchedulesBackfill(t *testing.T) {
 	current, pending := b.versionFor(ledger, canonical)
 	require.Equal(t, uint32(0), current, "non-initial index stays gated until backfill catches up")
 	require.Equal(t, uint32(1), pending)
+}
+
+// TestHandleCreatedIndexLog_BindsStampedType pins the EN-1724 binding source:
+// the version created for a CreateIndex log binds to the type stamped into
+// the log by the FSM at mint time (CreatedIndexLog.bound_type). The schema
+// readable when the log folds plays no part — it is batch-final at best and
+// arbitrarily newer when the log folds during a backfill or rebuild replay,
+// so deriving the binding from it would let a later retype leak into the
+// creation binding.
+func TestHandleCreatedIndexLog_BindsStampedType(t *testing.T) {
+	t.Parallel()
+
+	const ledger = "test"
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+	canonical := indexes.Canonical(id)
+
+	t.Run("backfilling index binds the stamp to the pending version", func(t *testing.T) {
+		t.Parallel()
+
+		b := newTestBuilderWithStore(t)
+
+		batch := b.readStore.NewBatch()
+		b.initBatch(batch)
+		require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
+			Id:                id,
+			BoundType:         commonpb.MetadataType_METADATA_TYPE_INT64,
+			BoundTypeDeclared: true,
+		}))
+		require.NoError(t, b.wb.Flush())
+
+		st, ok := b.versionStateFor(ledger, canonical)
+		require.True(t, ok)
+		assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, st.PendingType)
+		assert.True(t, st.PendingTypeDeclared)
+	})
+
+	t.Run("initial index binds the stamp to the live version", func(t *testing.T) {
+		t.Parallel()
+
+		b := newTestBuilderWithStore(t)
+
+		batch := b.readStore.NewBatch()
+		b.initBatch(batch)
+		require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
+			Id:                id,
+			Initial:           true,
+			BoundType:         commonpb.MetadataType_METADATA_TYPE_INT64,
+			BoundTypeDeclared: true,
+		}))
+		require.NoError(t, b.wb.Flush())
+
+		st, ok := b.versionStateFor(ledger, canonical)
+		require.True(t, ok)
+		assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, st.CurrentType)
+		assert.True(t, st.CurrentTypeDeclared)
+	})
 }
 
 // TestHandleCreatedIndexLog_DuplicateAfterLive_IsIdempotent pins the fix for the
@@ -1172,7 +1337,7 @@ func TestHandleCreatedIndexLog_DuplicateAfterLive_IsIdempotent(t *testing.T) {
 	// First create promotes the index straight to live (current=1, no backfill).
 	first := b.readStore.NewBatch()
 	b.initBatch(first)
-	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: true})
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: true}))
 	require.NoError(t, b.wb.Flush())
 
 	require.Empty(t, b.backfillTasks)
@@ -1184,7 +1349,7 @@ func TestHandleCreatedIndexLog_DuplicateAfterLive_IsIdempotent(t *testing.T) {
 	// the ledger is no longer born-empty — must be a no-op on this live replica.
 	second := b.readStore.NewBatch()
 	b.initBatch(second)
-	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false}))
 	require.NoError(t, b.wb.Flush())
 
 	require.Empty(t, b.backfillTasks, "duplicate create must not reschedule a backfill")
@@ -1214,7 +1379,7 @@ func TestHandleCreatedIndexLog_DuplicateDuringBackfill_KeepsPending(t *testing.T
 
 	first := b.readStore.NewBatch()
 	b.initBatch(first)
-	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false}))
 	require.NoError(t, b.wb.Flush())
 
 	require.Len(t, b.backfillTasks, 1)
@@ -1224,7 +1389,7 @@ func TestHandleCreatedIndexLog_DuplicateDuringBackfill_KeepsPending(t *testing.T
 
 	second := b.readStore.NewBatch()
 	b.initBatch(second)
-	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false}))
 	require.NoError(t, b.wb.Flush())
 
 	require.Len(t, b.backfillTasks, 1, "duplicate create must not schedule another backfill")
@@ -1287,7 +1452,7 @@ func TestHandleCreatedIndexLog_RecreateAfterDelete_ReseedsBackfill(t *testing.T)
 	// re-seed {current:0, pending:1} and schedule a backfill, not short-circuit.
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
-	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false})
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false}))
 	require.NoError(t, b.wb.Flush())
 
 	require.Len(t, b.backfillTasks, 1, "recreated ledger index must schedule a backfill")

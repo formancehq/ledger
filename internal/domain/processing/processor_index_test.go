@@ -162,3 +162,75 @@ func TestProcessCreateIndex_NotInitialWithoutBornEmpty(t *testing.T) {
 	require.Nil(t, derr)
 	require.False(t, payload.GetCreateIndex().GetInitial())
 }
+
+// TestProcessCreateIndex_StampsBoundTypeAtSequence pins the EN-1724 binding
+// contract: the minted CreatedIndexLog carries the metadata field's declared
+// type as it stands when the order applies. Replicas fold the log at
+// arbitrary replay distance — a backfill or a rebuild sees a schema that may
+// be several retypes ahead — so the log itself is the only place the
+// at-sequence binding can live.
+func TestProcessCreateIndex_StampsBoundTypeAtSequence(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+
+	ledgerInfo := &commonpb.LedgerInfo{
+		Name: "test-ledger",
+		Id:   7,
+		MetadataSchema: &commonpb.MetadataSchema{
+			AccountFields: map[string]*commonpb.MetadataFieldSchema{
+				"score": {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+			},
+		},
+	}
+	indexID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+	now := &commonpb.Timestamp{Data: 1}
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil)
+	mockStore.EXPECT().GetDate().Return(now.AsReader())
+
+	idxStub := setupIndexesStub(mockStore)
+	idxStub.expectGet(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)}, nil, domain.ErrNotFound)
+	idxStub.putHook = func(domain.IndexKey, *commonpb.Index) {}
+
+	payload, derr := processCreateIndex("test-ledger", &raftcmdpb.CreateIndexOrder{Id: indexID}, &Context{Scope: mockStore})
+	require.Nil(t, derr)
+
+	log := payload.GetCreateIndex()
+	require.NotNil(t, log)
+	require.True(t, log.GetBoundTypeDeclared())
+	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, log.GetBoundType())
+}
+
+// TestProcessCreateIndex_BuiltinCarriesNoBinding verifies a builtin index's
+// CreatedIndexLog is stamped with no type binding: there is no metadata
+// field, and its values keep the natural encoding.
+func TestProcessCreateIndex_BuiltinCarriesNoBinding(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+
+	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 7}
+	indexID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	now := &commonpb.Timestamp{Data: 1}
+
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil)
+	mockStore.EXPECT().GetDate().Return(now.AsReader())
+
+	idxStub := setupIndexesStub(mockStore)
+	idxStub.expectGet(domain.IndexKey{LedgerName: "test-ledger", Canonical: indexes.Canonical(indexID)}, nil, domain.ErrNotFound)
+	idxStub.putHook = func(domain.IndexKey, *commonpb.Index) {}
+
+	payload, derr := processCreateIndex("test-ledger", &raftcmdpb.CreateIndexOrder{Id: indexID}, &Context{Scope: mockStore})
+	require.Nil(t, derr)
+
+	log := payload.GetCreateIndex()
+	require.NotNil(t, log)
+	require.False(t, log.GetBoundTypeDeclared())
+}
