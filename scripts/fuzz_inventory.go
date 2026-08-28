@@ -54,6 +54,7 @@ func discoverRepositoryFuzzTargets(files []string) ([]locatedFuzzTarget, error) 
 		targets          []locatedFuzzTarget
 		platformSuffixes map[string]struct{}
 	)
+	nestedModules := nestedGoModuleDirectories(files)
 
 	for _, path := range files {
 		if !strings.HasSuffix(path, "_test.go") {
@@ -77,14 +78,19 @@ func discoverRepositoryFuzzTargets(files []string) ([]locatedFuzzTarget, error) 
 		if len(declared) == 0 {
 			continue
 		}
-		if platformSuffixes == nil {
-			platformSuffixes, err = goPlatformSuffixes()
-			if err != nil {
-				return nil, err
+		var reason string
+		if module := nestedGoModuleForPath(path, nestedModules); module != "" {
+			reason = "the declaration belongs to nested Go module " + module
+		} else {
+			if platformSuffixes == nil {
+				platformSuffixes, err = goPlatformSuffixes()
+				if err != nil {
+					return nil, err
+				}
 			}
-		}
 
-		reason := fuzzFileConstraintReason(path, source, platformSuffixes)
+			reason = fuzzFileConstraintReason(path, source, platformSuffixes)
+		}
 		for index := range declared {
 			declared[index].unreachableReason = reason
 		}
@@ -97,6 +103,36 @@ func discoverRepositoryFuzzTargets(files []string) ([]locatedFuzzTarget, error) 
 	})
 
 	return targets, nil
+}
+
+func nestedGoModuleDirectories(files []string) []string {
+	var modules []string
+
+	for _, path := range files {
+		cleaned := filepath.ToSlash(filepath.Clean(path))
+		if cleaned == "go.mod" || !strings.HasSuffix(cleaned, "/go.mod") {
+			continue
+		}
+
+		modules = append(modules, strings.TrimSuffix(cleaned, "/go.mod"))
+	}
+
+	sort.Slice(modules, func(left, right int) bool {
+		return len(modules[left]) > len(modules[right])
+	})
+
+	return modules
+}
+
+func nestedGoModuleForPath(path string, modules []string) string {
+	cleaned := filepath.ToSlash(filepath.Clean(path))
+	for _, module := range modules {
+		if strings.HasPrefix(cleaned, module+"/") {
+			return module
+		}
+	}
+
+	return ""
 }
 
 func goPlatformSuffixes() (map[string]struct{}, error) {
@@ -169,10 +205,15 @@ func unreachableFuzzTargetFindings(targets []locatedFuzzTarget) []finding {
 		}
 
 		location := target.location
+		resolution := "move it to an unconstrained test file or extend the runner explicitly"
+		if strings.HasPrefix(target.unreachableReason, "the declaration belongs to nested Go module ") {
+			resolution = "extend the runner to invoke targets from that module before adding the target"
+		}
 		location.message = fmt.Sprintf(
-			"Go fuzz target %s is not reachable by the untagged, platform-independent active runner because %s; move it to an unconstrained test file or extend the runner explicitly",
+			"Go fuzz target %s is not reachable by the untagged, root-module active runner because %s; %s",
 			target.target.name,
 			target.unreachableReason,
+			resolution,
 		)
 		findings = append(findings, location)
 	}
@@ -372,6 +413,9 @@ func compareFuzzTargets(actual, runner []locatedFuzzTarget) []finding {
 	var findings []finding
 
 	for key, target := range actualByKey {
+		if target.unreachableReason != "" {
+			continue
+		}
 		if _, ok := runnerByKey[key]; ok {
 			continue
 		}

@@ -70,6 +70,46 @@ func TestFuzzFileConstraintReasonRejectsBuildAndPlatformConstraints(t *testing.T
 	)
 }
 
+func TestNestedGoModuleForPathUsesOwningModule(t *testing.T) {
+	t.Parallel()
+
+	modules := nestedGoModuleDirectories([]string{
+		"go.mod",
+		"misc/operator/go.mod",
+		"misc/operator/tools/go.mod",
+		"misc/other/not-go.mod",
+	})
+
+	require.Equal(t, []string{"misc/operator/tools", "misc/operator"}, modules)
+	require.Equal(t,
+		"misc/operator/tools",
+		nestedGoModuleForPath("misc/operator/tools/internal/fuzz_test.go", modules),
+	)
+	require.Equal(t,
+		"misc/operator",
+		nestedGoModuleForPath("misc/operator/internal/fuzz_test.go", modules),
+	)
+	require.Empty(t, nestedGoModuleForPath("internal/fuzz_test.go", modules))
+}
+
+func TestUnreachableFuzzTargetFindingsReportsNestedModule(t *testing.T) {
+	t.Parallel()
+
+	targets := []locatedFuzzTarget{
+		{
+			target:            fuzzTarget{packagePath: "./misc/operator/internal/", name: "FuzzNested"},
+			location:          finding{path: "misc/operator/internal/fuzz_test.go", line: 7, column: 6},
+			unreachableReason: "the declaration belongs to nested Go module misc/operator",
+		},
+	}
+	findings := unreachableFuzzTargetFindings(targets)
+
+	require.Len(t, findings, 1)
+	require.Contains(t, findings[0].message, "nested Go module misc/operator")
+	require.Contains(t, findings[0].message, "extend the runner to invoke targets from that module")
+	require.Empty(t, compareFuzzTargets(targets, nil))
+}
+
 func TestReadFuzzRunnerInventoryAcceptsRootPackage(t *testing.T) {
 	t.Parallel()
 
