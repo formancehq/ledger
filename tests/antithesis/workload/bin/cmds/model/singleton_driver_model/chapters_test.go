@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -136,8 +137,9 @@ func TestTakeChapterOrder_WithholdsAtTheCeiling(t *testing.T) {
 	now := time.Unix(1, 0)
 
 	c := NewChecker([]string{"L"}, nil)
-	c.chapterCloseGap = time.Hour
-	c.chapterArchiveGap = time.Nanosecond
+	// Every draw off an hourly median outlasts the test; every draw off a
+	// nanosecond one is already due.
+	c.enableChapterOrders(time.Hour, time.Nanosecond)
 	c.lastChapterClose = now
 
 	require.Equal(t, chapterOrderArchive, c.takeChapterOrderLocked(now.Add(time.Second)),
@@ -214,4 +216,44 @@ func TestApplyWithAutonomy(t *testing.T) {
 		pinned := registry(t, oracle.ChapterClosing, oracle.ChapterOpen)
 		require.Len(t, chapterVariants(pinned, nil), 1)
 	})
+}
+
+// The tail is the point: a fixed gap keeps the successor the only sealed chapter,
+// so an archive request past it can never be answered out-of-order.
+func TestSampleGap_MedianAndTail(t *testing.T) {
+	t.Parallel()
+
+	const (
+		base    = 10 * time.Second
+		samples = 20000
+	)
+
+	gaps := make([]time.Duration, 0, samples)
+	for range samples {
+		gaps = append(gaps, sampleGap(base))
+	}
+	slices.Sort(gaps)
+
+	require.InEpsilon(t, float64(base), float64(gaps[samples/2]), 0.05,
+		"the configured gap must stay the median, so the pacing knob keeps meaning what it says")
+
+	var long, capped int
+	for _, gap := range gaps {
+		if gap > 4*base {
+			long++
+		}
+		if gap >= chapterGapMaxMultiple*base {
+			capped++
+		}
+	}
+
+	require.Greater(t, long, samples/50, "the tail must reach four times the median often enough to stack two sealed chapters")
+	require.Less(t, long, samples/5, "a tail that common would starve the accepted-archive path")
+	require.Less(t, capped, samples/100, "the ceiling is a backstop against a wasted run, not the shape of the distribution")
+}
+
+func TestSampleGap_DisabledStaysDisabled(t *testing.T) {
+	t.Parallel()
+
+	require.Zero(t, sampleGap(0), "a run without cold storage emits no chapter orders at all")
 }

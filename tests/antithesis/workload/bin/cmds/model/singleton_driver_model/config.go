@@ -183,6 +183,26 @@ const (
 	chapterArchivesPerInterval = 8
 )
 
+// Log-normal spread of the chapter-order gaps around their median, and the
+// ceiling on a single draw as a multiple of that median.
+//
+// Fixed gaps put the registry in one shape: the successor is archived seconds
+// after the Sealer seals it, so it is the only sealed chapter above the archived
+// prefix and an archive request past it can only ever be answered
+// CHAPTER_NOT_CLOSED or CHAPTER_NOT_FOUND. CHAPTER_ARCHIVE_OUT_OF_ORDER needs two
+// sealed chapters at once, which needs a stretch with no accepted archive in it.
+//
+// At sigma 0.9 about one draw in sixteen exceeds four times the median and one in
+// a hundred exceeds eight times, so those stretches happen without being staged.
+// The ceiling is run economics, not correctness: an unbounded draw can idle
+// chapter orders for most of a short run, and the archival interval is
+// deliberately shorter than the restore interval so a restore lands on an
+// archived baseline.
+const (
+	chapterGapSigma       = 0.9
+	chapterGapMaxMultiple = 12
+)
+
 // Ceiling on the chapters the driver's outstanding orders may name at once.
 // candidateBases folds each named chapter's unobserved seal as its own branch, so
 // the search grows as 2^n. The driver enforces the ceiling by withholding archive
