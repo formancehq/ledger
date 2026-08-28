@@ -365,7 +365,7 @@ var _ = Context("Ledger engine tests", func() {
 					Transactions:    []ledger.Transaction{ConvertSDKTxToCoreTX(&bulkResponse.V2BulkResponse.Data[0].V2BulkElementResultCreateTransaction.Data)},
 					AccountMetadata: ledger.AccountMetadata{},
 				}))))
-				Eventually(events).ShouldNot(Receive())
+				Consistently(events).ShouldNot(Receive(Event(ledgerevents.EventTypeCommittedTransactions)))
 			})
 		})
 		Context("with atomic", func() {
@@ -382,7 +382,7 @@ var _ = Context("Ledger engine tests", func() {
 				Expect(txs.V2TransactionsCursorResponse.Cursor.Data).To(HaveLen(0))
 
 				By("Should not have sent any event", func() {
-					Eventually(events).ShouldNot(Receive())
+					Consistently(events, time.Second).ShouldNot(Receive(Event(ledgerevents.EventTypeCommittedTransactions)))
 				})
 			})
 		})

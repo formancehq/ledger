@@ -227,6 +227,24 @@ func TestTransactionsCommit(t *testing.T) {
 
 	ctx := logging.TestingContext()
 
+	t.Run("generated id collision returns an error", func(t *testing.T) {
+		t.Parallel()
+
+		store := newLedgerStore(t)
+		imported := ledger.NewTransaction().
+			WithID(1).
+			WithPostings(ledger.NewPosting("world", "bank", "USD", big.NewInt(100)))
+		require.NoError(t, store.InsertTransaction(ctx, &imported))
+
+		generated := ledger.NewTransaction().
+			WithPostings(ledger.NewPosting("world", "bank", "USD", big.NewInt(100)))
+		var err error
+		require.NotPanics(t, func() {
+			err = store.InsertTransaction(ctx, &generated)
+		})
+		require.ErrorContains(t, err, "invariant: generated transaction ID conflicts with an existing transaction")
+	})
+
 	t.Run("inserting some transactions", func(t *testing.T) {
 		t.Parallel()
 

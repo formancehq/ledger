@@ -98,6 +98,7 @@ func (store *Store) InsertLog(ctx context.Context, log *ledger.Log) error {
 					if err.(postgres.ErrConstraintsFailed).GetConstraint() == "logs_idempotency_key" {
 						return NewErrIdempotencyKeyConflict(log.IdempotencyKey)
 					}
+					return fmt.Errorf("inserting log: %w", err)
 				default:
 					return fmt.Errorf("inserting log: %w", err)
 				}
