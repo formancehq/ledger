@@ -89,7 +89,10 @@ func discoverRepositoryFuzzTargets(files []string) ([]locatedFuzzTarget, error) 
 				}
 			}
 
-			reason = fuzzFileConstraintReason(path, source, platformSuffixes)
+			reason, err = fuzzFileConstraintReason(path, source, platformSuffixes)
+			if err != nil {
+				return nil, err
+			}
 		}
 		for index := range declared {
 			declared[index].unreachableReason = reason
@@ -170,7 +173,7 @@ func goPlatformSuffixes() (map[string]struct{}, error) {
 	return suffixes, nil
 }
 
-func fuzzFileConstraintReason(path string, source []byte, platformSuffixes map[string]struct{}) string {
+func fuzzFileConstraintReason(path string, source []byte, platformSuffixes map[string]struct{}) (string, error) {
 	scanner := bufio.NewScanner(bytes.NewReader(source))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -178,8 +181,11 @@ func fuzzFileConstraintReason(path string, source []byte, platformSuffixes map[s
 			break
 		}
 		if constraint.IsGoBuild(line) || constraint.IsPlusBuild(line) {
-			return "the declaration file has a Go build constraint"
+			return "the declaration file has a Go build constraint", nil
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("scanning build constraints in %s: %w", path, err)
 	}
 
 	stem := strings.TrimSuffix(filepath.Base(path), "_test.go")
@@ -190,10 +196,10 @@ func fuzzFileConstraintReason(path string, source []byte, platformSuffixes map[s
 		}
 	}
 	if matchedSuffix != "" {
-		return "the declaration file has the platform suffix " + matchedSuffix
+		return "the declaration file has the platform suffix " + matchedSuffix, nil
 	}
 
-	return ""
+	return "", nil
 }
 
 func unreachableFuzzTargetFindings(targets []locatedFuzzTarget) []finding {

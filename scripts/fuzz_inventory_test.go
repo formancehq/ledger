@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -57,17 +58,47 @@ func TestFuzzFileConstraintReasonRejectsBuildAndPlatformConstraints(t *testing.T
 		"_linux_amd64": {},
 	}
 
-	require.Equal(t,
+	requireConstraintReason(t,
 		"the declaration file has a Go build constraint",
-		fuzzFileConstraintReason("fuzz_test.go", []byte("//go:build integration\n\npackage sample\n"), platformSuffixes),
+		"fuzz_test.go",
+		[]byte("//go:build integration\n\npackage sample\n"),
+		platformSuffixes,
 	)
-	require.Equal(t,
+	requireConstraintReason(t,
 		"the declaration file has the platform suffix _linux_amd64",
-		fuzzFileConstraintReason("fuzz_linux_amd64_test.go", []byte("package sample\n"), platformSuffixes),
+		"fuzz_linux_amd64_test.go",
+		[]byte("package sample\n"),
+		platformSuffixes,
 	)
-	require.Empty(t,
-		fuzzFileConstraintReason("fuzz_test.go", []byte("package sample\n"), platformSuffixes),
+	requireConstraintReason(t,
+		"",
+		"fuzz_test.go",
+		[]byte("package sample\n"),
+		platformSuffixes,
 	)
+}
+
+func TestFuzzFileConstraintReasonFailsClosedOnScannerError(t *testing.T) {
+	t.Parallel()
+
+	source := []byte("//" + strings.Repeat("x", 70<<10) + "\n//go:build integration\n\npackage sample\n")
+	reason, err := fuzzFileConstraintReason("fuzz_test.go", source, nil)
+	require.ErrorContains(t, err, "scanning build constraints in fuzz_test.go")
+	require.Empty(t, reason)
+}
+
+func requireConstraintReason(
+	t *testing.T,
+	expected string,
+	path string,
+	source []byte,
+	platformSuffixes map[string]struct{},
+) {
+	t.Helper()
+
+	reason, err := fuzzFileConstraintReason(path, source, platformSuffixes)
+	require.NoError(t, err)
+	require.Equal(t, expected, reason)
 }
 
 func TestNestedGoModuleForPathUsesOwningModule(t *testing.T) {
