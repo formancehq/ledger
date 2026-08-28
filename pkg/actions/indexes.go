@@ -67,10 +67,10 @@ func CreateLogBuiltinIndexAction(ledger string, index commonpb.LogBuiltinIndex) 
 // incarnation's numbers), so they are NOT comparable to the registry
 // row's forward_encoding_version. Callers that need to observe a
 // RETYPE completing must capture the pre-retype current_version and
-// use indexRewriteDoneOnReplica — the pre-retype keyspace stays live
+// use indexVersionAdvancedOnReplica — the previous keyspace stays live
 // (current_version > 0, and pending_version is 0 until the replica's
-// builder picks the retype up), so this check alone can pass before
-// the rewrite starts.
+// builder picks the operation up), so this check alone can pass before
+// a retype or drop+recreate starts locally.
 //
 // Each replica advances its IndexVersionState independently as soon as
 // its local backfill / rewrite finishes (EN-1323) — readiness is always
@@ -92,20 +92,20 @@ func indexReadyOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, 
 	return nil
 }
 
-// indexRewriteDoneOnReplica returns nil when the replica has switched
-// PAST preVersion with no rewrite in flight — the causal completion
-// signal for a retype: the pre-retype keyspace stays live throughout
-// the rewrite, so only advancement beyond the captured pre-retype
-// current_version proves the switch.
-func indexRewriteDoneOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*commonpb.IndexID) bool, preVersion uint32, label string) error {
+// indexVersionAdvancedOnReplica returns nil when the replica has switched
+// past preVersion with no build in flight. Version advancement is the causal
+// completion signal for any operation that replaces a live incarnation: the
+// previous current_version remains observable until the local builder consumes
+// the triggering log, so ordinary readiness can pass before work starts.
+func indexVersionAdvancedOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*commonpb.IndexID) bool, preVersion uint32, label string) error {
 	entry := findIndexEntry(resp, ledger, matches)
 	if entry == nil {
 		return fmt.Errorf("index %s on %s not found in GetIndexStatus", label, ledger)
 	}
 
 	current := entry.GetCurrentVersion()
-	if current == preVersion || current == 0 {
-		return fmt.Errorf("index %s on %s still serves pre-retype version %d", label, ledger, current)
+	if current <= preVersion {
+		return fmt.Errorf("index %s on %s still serves version %d; waiting to advance past %d", label, ledger, current, preVersion)
 	}
 
 	if p := entry.GetPendingVersion(); p != 0 {
@@ -144,11 +144,12 @@ func WaitForMetadataIndexReady(ctx context.Context, client servicepb.BucketServi
 
 // MetadataIndexCurrentVersion returns the per-replica current_version of the
 // (target, key) metadata index on the replica the client is talking to.
-// Capture it BEFORE issuing a retype so WaitForMetadataIndexRewrite can
-// observe the advancement past it. A replica whose initial backfill has not
-// switched yet (current_version == 0) is an error: zero is not a live
-// pre-retype keyspace, and waiting for advancement past it would be
-// satisfied by the initial switch rather than the requested retype.
+// Capture it BEFORE issuing an operation that must allocate a fresh version
+// (such as a retype or drop+recreate) so the corresponding wait can observe
+// the advancement past it. A replica whose initial backfill has not switched
+// yet (current_version == 0) is an error: zero is not a live predecessor
+// keyspace, and waiting for advancement past it would be satisfied by the
+// initial switch rather than the requested operation.
 //
 // The capture and the wait MUST observe the same replica: versions are
 // replica-local, so a client whose connection load-balances across nodes
@@ -177,24 +178,31 @@ func MetadataIndexCurrentVersion(ctx context.Context, client servicepb.BucketSer
 	return entry.GetCurrentVersion(), nil
 }
 
-// WaitForMetadataIndexRewrite polls until the replica has atomically switched
-// the (target, key) metadata index past preVersion (captured before the
-// retype) with no rewrite in flight. preVersion must come from
-// MetadataIndexCurrentVersion over the SAME per-node connection — see the
-// replica-affinity requirement there.
-func WaitForMetadataIndexRewrite(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string, preVersion uint32) error {
+// WaitForMetadataIndexVersionAdvance polls until the replica has atomically
+// switched the (target, key) metadata index past preVersion with no build in
+// flight. It is the causal wait for retypes and drop+recreates, where ordinary
+// readiness may still observe the previous live incarnation. preVersion must
+// come from MetadataIndexCurrentVersion over the SAME per-node connection —
+// see the replica-affinity requirement there.
+func WaitForMetadataIndexVersionAdvance(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string, preVersion uint32) error {
 	return poll(ctx, 10*time.Second, 200*time.Millisecond, func() error {
 		resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
 		if err != nil {
 			return err
 		}
 
-		return indexRewriteDoneOnReplica(resp, ledger, func(id *commonpb.IndexID) bool {
+		return indexVersionAdvancedOnReplica(resp, ledger, func(id *commonpb.IndexID) bool {
 			m, ok := id.GetKind().(*commonpb.IndexID_Metadata)
 
 			return ok && m.Metadata.GetTarget() == target && m.Metadata.GetKey() == key
 		}, preVersion, fmt.Sprintf("metadata[%s] on %s", key, target.String()))
 	})
+}
+
+// WaitForMetadataIndexRewrite is the retype-specific name for
+// WaitForMetadataIndexVersionAdvance.
+func WaitForMetadataIndexRewrite(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string, preVersion uint32) error {
+	return WaitForMetadataIndexVersionAdvance(ctx, client, ledger, target, key, preVersion)
 }
 
 // WaitForBuiltinIndexReady polls until a builtin transaction index has been

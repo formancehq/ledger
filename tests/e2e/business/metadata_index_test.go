@@ -501,11 +501,14 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 				actions.CreateAccountMetadataIndexAction(ledgerName, "tier")))
 			Expect(err).To(Succeed())
 
-			// The wait must complete even though the recreated registry row
-			// restarts at forward_encoding_version 1 while this replica's
-			// version numbers continue past the dropped incarnation.
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName,
-				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")).To(Succeed())
+			// The old incarnation remains superficially ready until this replica's
+			// asynchronous builder consumes the drop. A generic readiness wait can
+			// therefore return on the stale current_version; require causal version
+			// advancement instead. The recreated registry row restarts at
+			// forward_encoding_version 1 while local versions continue past the
+			// dropped incarnation.
+			Expect(actions.WaitForMetadataIndexVersionAdvance(sharedCtx, sharedClient, ledgerName,
+				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier", preVersion)).To(Succeed())
 
 			postVersion, err := actions.MetadataIndexCurrentVersion(sharedCtx, sharedClient, ledgerName,
 				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
