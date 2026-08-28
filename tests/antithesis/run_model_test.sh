@@ -24,10 +24,12 @@
 #   ./run_model_test.sh [--nodes N | --cluster] [--restore] [--archive] [DURATION_SECONDS]
 #   NODES=3 ./run_model_test.sh 300
 #
-# --archive enables filesystem cold storage on the node and drives an online
-# archival cycle (close -> seal -> archive -> confirm -> purge) alongside the
-# workers; combined with --restore it exercises restore-from-archived-baseline.
-# A teardown `store check` verifies the archived store's integrity.
+# --archive enables filesystem cold storage on the node, which lets the driver
+# emit chapter orders (close and archive) into its modeled bulk stream: the
+# oracle predicts which the server should accept, so both the accepted archives
+# and the rejections around them are checked. Combined with --restore it
+# exercises restore-from-archived-baseline. A teardown `store check` verifies the
+# archived store's integrity.
 #
 # Environment:
 #   REPO              path to the ledger repo checkout (default: the repo root, two levels up from this script)
@@ -37,7 +39,7 @@
 #   RESTART_INTERVAL  seconds to soak between restarts, N>1 only; 0 disables restarts (default: 15)
 #   RECOVER_TIMEOUT   seconds to wait for N-voter recovery after a restart, N>1 only (default: 90)
 #   RESTORE_INTERVAL  seconds between backup/restore cycles, --restore only (default: 45)
-#   MODEL_ARCHIVE_INTERVAL  seconds between archival cycles, --archive only (default: 20)
+#   MODEL_ARCHIVE_INTERVAL  chapter-order pacing base in seconds, --archive only (default: 20)
 #   DEAD_TIME             seconds a killed node stays down, N>1 only (default: 30)
 #   COMPACTION_MARGIN     raft log entries between snapshots; low forces snapshot recovery (default: 200)
 #   MAINTENANCE_INTERVAL  background WAL snapshot + checkpoint cadence (default: 10s)
@@ -304,13 +306,15 @@ start_node() {
 		join)      flags+=( --join "127.0.0.1:${RAFT_PORTS[0]}" ) ;;
 		rejoin)    ;;
 	esac
-	# Filesystem cold storage for the archival cycle. The path is a sibling of the
-	# node data dir (NOT inside it), so archived chapters survive the restore
-	# cycle's data-dir swap. The bucket id defaults to CLUSTER_ID, stable across
-	# a restore.
+	# Filesystem cold storage for the archival cycle, shared by every node: cold
+	# storage is an object store in production, and any node may serve a read of an
+	# archived transaction, so a per-node path would leave a follower unable to open
+	# an archive the leader uploaded. The path is a sibling of the node data dirs
+	# (NOT inside one), so archived chapters survive the restore cycle's data-dir
+	# swap. The bucket id defaults to CLUSTER_ID, stable across a restore.
 	local cold_flags=()
 	if [ "$ARCHIVE" = 1 ]; then
-		cold_flags+=( --cold-storage-driver filesystem --cold-storage-path "$WORKDIR/cold-n$i" )
+		cold_flags+=( --cold-storage-driver filesystem --cold-storage-path "$WORKDIR/cold" )
 	fi
 	"$SERVER_BIN" run \
 		--node-id "$(( i + 1 ))" \
@@ -554,10 +558,11 @@ kill -9 "$DRIVER_PID" 2>/dev/null
 wait "$DRIVER_PID" 2>/dev/null
 DRIVER_PID=""
 
-# Archival cycles the driver completed (each logs "chapter archived + purged").
+# Archivals the driver saw complete (each logs "chapter <id> archived + purged"
+# when the confirm extended the model's archived prefix).
 ARCHIVE_CYCLES=0
 if [ "$ARCHIVE" = 1 ]; then
-	ARCHIVE_CYCLES=$(grep -c "chapter archived + purged" "$DRIVER_LOG" 2>/dev/null || true)
+	ARCHIVE_CYCLES=$(grep -c "archived + purged" "$DRIVER_LOG" 2>/dev/null || true)
 	ARCHIVE_CYCLES=${ARCHIVE_CYCLES:-0}
 fi
 
@@ -676,13 +681,13 @@ if [ "$RESTORE" = 1 ] && [ "$RESTORE_FAILED_CYCLES" -gt 0 ]; then
 	findings=$((findings + 1))
 fi
 
-# 8. --archive ran zero cycles: the archival path was never exercised, so a green
+# 8. --archive archived nothing: the archival path was never exercised, so a green
 # run says nothing about cold storage -- a vacuous pass. Skipped when a finding
 # already stopped the run early.
 if [ "$ARCHIVE" = 1 ] && [ "$ARCHIVE_CYCLES" -eq 0 ] && [ "$findings" -eq 0 ]; then
 	echo
-	echo "NO ARCHIVAL CYCLES: --archive was requested but no chapter was archived+purged"
-	echo "  (duration ${DURATION}s vs archive interval ~${ARCHIVE_INTERVAL}s plus seal/confirm waits; increase the duration)"
+	echo "NO ARCHIVALS: --archive was requested but no chapter was archived+purged"
+	echo "  (duration ${DURATION}s vs chapter-order pacing ~${ARCHIVE_INTERVAL}s plus seal/confirm latency; increase the duration)"
 	findings=$((findings + 1))
 fi
 
@@ -700,12 +705,34 @@ fi
 # and the combined run proved nothing beyond the two flags in isolation. Driver
 # log line order is chronological, so compare line numbers.
 if [ "$ARCHIVE" = 1 ] && [ "$RESTORE" = 1 ] && [ "$ARCHIVE_CYCLES" -gt 0 ] && [ "$RESTORE_CYCLES" -gt 0 ] && [ "$findings" -eq 0 ]; then
-	first_archive_line=$(grep -n "chapter archived + purged" "$DRIVER_LOG" | head -1 | cut -d: -f1)
+	first_archive_line=$(grep -n "archived + purged" "$DRIVER_LOG" | head -1 | cut -d: -f1)
 	last_restore_line=$(grep -n "restore cycle: complete, resumed" "$DRIVER_LOG" | tail -1 | cut -d: -f1)
 	if [ -z "$first_archive_line" ] || [ -z "$last_restore_line" ] || [ "$last_restore_line" -lt "$first_archive_line" ]; then
 		echo
 		echo "NO POST-ARCHIVAL RESTORE: every restore completed before the first archival"
 		echo "  (the rebuild-from-archived-history path was never exercised; lengthen the run or shrink MODEL_ARCHIVE_INTERVAL)"
+		findings=$((findings + 1))
+	fi
+fi
+
+# 11. The archival ordering rule went unchecked: chapters were archived but no
+# out-of-order request was ever rejected, so nothing exercised the rule that keeps
+# the archived prefix contiguous -- and a green run says only that the happy path
+# works. The driver aims most requests at the prefix successor and the rest past it
+# or inside the prefix, so a run that archived at all should reach this.
+if [ "$ARCHIVE" = 1 ] && [ "$ARCHIVE_CYCLES" -gt 0 ] && [ "$findings" -eq 0 ]; then
+	gate_hit=""
+	if [ -s "$ASSERTIONS" ]; then
+		if command -v jq >/dev/null 2>&1; then
+			gate_hit="$(jq -c 'select(.antithesis_assert.hit == true and (.antithesis_assert.message | test("out-of-order chapter archive")))' "$ASSERTIONS" 2>/dev/null | head -1)"
+		else
+			gate_hit="$(grep -E '"hit":true' "$ASSERTIONS" 2>/dev/null | grep -F 'out-of-order chapter archive' | head -1)"
+		fi
+	fi
+	if [ -z "$gate_hit" ]; then
+		echo
+		echo "ORDERING RULE UNEXERCISED: chapters were archived but no out-of-order archive request was rejected"
+		echo "  (lengthen the run, or check that the driver still aims requests past the archived frontier)"
 		findings=$((findings + 1))
 	fi
 fi

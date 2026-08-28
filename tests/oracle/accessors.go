@@ -12,6 +12,19 @@ import "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 
 func (g GlobalState) Ledgers() map[string]LedgerState { return g.ledgers }
 
+// Chapters is the bucket-global chapter registry.
+func (g GlobalState) Chapters() Chapters { return g.chapters }
+
+// WithChapters replaces the chapter registry. The driver pins the model to a
+// registry it observed with it, and hypothesises a pending autonomous transition
+// (WithSealed/WithConfirmed) the same way — the two the server makes on its own,
+// which no order announces.
+func (g GlobalState) WithChapters(c Chapters) GlobalState {
+	g.chapters = c
+
+	return g
+}
+
 func (s LedgerState) Types() Map[string, TypeState]                    { return s.types }
 func (s LedgerState) Volumes() Map[VolumeKey, VolumePair]              { return s.volumes }
 func (s LedgerState) Metadata() Map[MetaKey, *commonpb.MetadataValue]  { return s.metadata }

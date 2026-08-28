@@ -36,7 +36,29 @@ import (
 // pendingIndex and remaining-inflight are folded in because a state reachable
 // with different continuations (e.g. a duplicate-effect in-flight bulk landing
 // on the same state as a pending one) must be explored under each.
-func (c *Checker) candidateBases(maxTicket uint64, visit func(oracle.GlobalState) bool) {
+//
+// A third kind folds alongside them: the chapter transitions the server makes with
+// no request behind it — the Sealer's CLOSING -> CLOSED, the Archiver's ARCHIVING ->
+// ARCHIVED. They are the same kind of uncertainty as an in-flight bulk (an event
+// that may already have happened, that no response announced), so they fold the
+// same way. Without them a committed archive buffered in the re-order queue would
+// stall the pending prefix — a prefix advances only through Apply succeeding — and
+// hide every later pending effect from the search, turning a correct server into a
+// business-read or unexplained-failure finding.
+//
+// Only the chapters an order in play names are folded (addressed, plus the ones the
+// buffered and in-flight bulks ask to archive). No other chapter's seal state is
+// visible to what this search validates: business reads carry no chapter
+// information, and a failure reveals a chapter's status only through a chapter
+// order's own reason. ListChapters would see every chapter's status, which is why
+// runChapterRead validates against the model directly instead of through here — a
+// new read that exposes chapter state must do the same, or this bound stops
+// holding.
+//
+// The set's size is bounded at the source: the driver withholds an archive order
+// that would push the chapters in play past maxChaptersInPlay, so this branches
+// over a handful at most.
+func (c *Checker) candidateBases(maxTicket uint64, addressed []uint64, visit func(oracle.GlobalState) bool) {
 	// Only operations dispatched no later than maxTicket (the observation's
 	// high-water) can precede it; one dispatched after the observation's response
 	// cannot have committed before it, so folding it would invent a state the
@@ -64,6 +86,12 @@ func (c *Checker) candidateBases(maxTicket uint64, visit func(oracle.GlobalState
 		panic(fmt.Sprintf("candidateBases: %d in-flight bulks exceed the 64-bit set", len(inflight)))
 	}
 	allRem := uint64(1)<<len(inflight) - 1
+
+	// The observation being validated is no longer in the in-flight set by the time
+	// a failure validates (handleObservation drops the ticket first), so its own
+	// chapter arrives through addressed — which is why folding it back in cannot
+	// grow the set past what was in play when it was dispatched.
+	sealable := chaptersInPlay(pending, inflight, addressed)
 
 	type dedupKey struct {
 		state oracle.Digest
@@ -107,6 +135,23 @@ func (c *Checker) candidateBases(maxTicket uint64, visit func(oracle.GlobalState
 			}
 
 			if rec(res.State, pIdx, rem&^(1<<idx)) {
+				return true
+			}
+		}
+
+		// Fold one transition the server makes unasked. Each moves a chapter forward
+		// along a five-state chain with no cycles, so the recursion still terminates,
+		// and the dedup key collapses the orders in which a step and a bulk commute.
+		for _, id := range sealable {
+			if next, sealed := base.Chapters().WithSealed(id); sealed {
+				if rec(base.WithChapters(next), pIdx, rem) {
+					return true
+				}
+			}
+		}
+
+		if next, confirmed := base.Chapters().WithConfirmed(); confirmed {
+			if rec(base.WithChapters(next), pIdx, rem) {
 				return true
 			}
 		}
