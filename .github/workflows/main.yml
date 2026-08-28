@@ -164,6 +164,21 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  Tests-Antithesis-Workload:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
+        with:
+          fetch-depth: 0
+          dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Run deterministic model workload tests with race detection
+        run: >
+          nix develop --command go -C tests/antithesis/workload test -race ./...
+
   Tests-Model:
     runs-on: namespace-profile-linux-amd64-4vcpu
     env:
@@ -289,6 +304,7 @@ jobs:
         Tests-E2E-Business,
         Tests-E2E-Cluster,
         Tests-Scenarios,
+        Tests-Antithesis-Workload,
         Tests-Model,
         Tests-Schemathesis,
         Build,
@@ -346,6 +362,7 @@ jobs:
         Tests-E2E-Business,
         Tests-E2E-Cluster,
         Tests-Scenarios,
+        Tests-Antithesis-Workload,
         Tests-Model,
         Tests-Schemathesis,
         Build,

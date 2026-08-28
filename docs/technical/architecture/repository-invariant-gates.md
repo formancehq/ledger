@@ -74,3 +74,17 @@ nix develop --command bash scripts/check-repo-invariants
 
 The full definition of done remains `scripts/agent-check` (or
 `scripts/agent-check-full` when the full unit suite is required).
+
+## Model workload test reachability
+
+Root-module `go test ./...` does not cross the nested module boundary at
+`tests/antithesis/workload`. The default CI workflow must therefore run that
+module's deterministic test suite with the race detector in the dedicated
+`Tests-Antithesis-Workload` job. The existing runtime campaign remains in the
+separate `Tests-Model` job.
+
+The reachability check parses the workflow YAML and verifies both commands
+structurally within their respective jobs; the same command elsewhere in the
+workflow does not satisfy the invariant. Both jobs and commands must be
+unconditional, neither command can ignore failures, and the runtime campaign
+remains required alongside the deterministic suite.
