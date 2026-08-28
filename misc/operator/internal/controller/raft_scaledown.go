@@ -35,6 +35,8 @@ type ledgerctlExec func(
 	command []string,
 ) (*execResult, error)
 
+const scaleDownLeaderNodeID int32 = 1
+
 // podExec runs a command inside a container using the Kubernetes exec API.
 func podExec(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
 	namespace, podName, container string, command []string,
@@ -112,7 +114,7 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 	// Transfer leadership to node 1 (pod-0) so the leader is never among the removed nodes.
 	logger.Info("transferring Raft leadership to node 1 before scale-down")
 	result, err := podExecWithTimeout(ctx, cfg, clientset, ledger.Namespace, pod0, container,
-		ledgerctlCommand(serverAddr, tlsMode, "cluster", "transfer-leader", "1"),
+		ledgerctlCommand(serverAddr, tlsMode, "cluster", "transfer-leader", strconv.Itoa(int(scaleDownLeaderNodeID))),
 	)
 	if err != nil {
 		// If already leader on node 1, that's fine — check for known benign messages.
@@ -200,7 +202,7 @@ func removeNodeWithExec(ctx context.Context, cfg *rest.Config, clientset kuberne
 	logger := log.FromContext(ctx)
 	present, err := raftNodePresent(
 		ctx, cfg, clientset,
-		namespace, pod0, container, serverAddr, tlsMode, nodeID,
+		namespace, pod0, container, serverAddr, tlsMode, nodeID, force,
 		exec,
 	)
 	if err != nil {
@@ -235,7 +237,7 @@ func removeNodeWithExec(ctx context.Context, cfg *rest.Config, clientset kuberne
 		// may be intentionally sanitized by the gRPC server.
 		stillPresent, statusErr := raftNodePresent(
 			ctx, cfg, clientset,
-			namespace, pod0, container, serverAddr, tlsMode, nodeID,
+			namespace, pod0, container, serverAddr, tlsMode, nodeID, force,
 			exec,
 		)
 		if statusErr != nil {
@@ -266,15 +268,22 @@ func removeNodeWithExec(ctx context.Context, cfg *rest.Config, clientset kuberne
 	return nil
 }
 
-// raftNodePresent queries the leader-routed cluster state in structured JSON
-// and reports whether nodeID is in the current Raft membership. Keeping this
-// check independent from remove-node's stderr makes scale-down idempotence
-// robust to gRPC error sanitization and message changes.
+// raftNodePresent reports whether nodeID is in the current Raft membership.
+// Normal removal uses leader routing. Force removal explicitly queries node 1,
+// which raftScaleDown has already made the pod-0 leader, so the check remains a
+// local raw Raft status read and never depends on a quorum-backed route during
+// quorum-loss recovery. The leader-state check below still fails closed if
+// leadership changes before removal.
 func raftNodePresent(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
-	namespace, pod0, container, serverAddr, tlsMode string, nodeID int32,
+	namespace, pod0, container, serverAddr, tlsMode string, nodeID int32, force bool,
 	exec ledgerctlExec,
 ) (bool, error) {
-	args := ledgerctlCommand(serverAddr, tlsMode, "cluster", "status", "--json")
+	statusArgs := []string{"cluster", "status"}
+	if force {
+		statusArgs = append(statusArgs, "--node-id", strconv.Itoa(int(scaleDownLeaderNodeID)))
+	}
+	statusArgs = append(statusArgs, "--json")
+	args := ledgerctlCommand(serverAddr, tlsMode, statusArgs...)
 	result, err := exec(ctx, cfg, clientset, namespace, pod0, container, args)
 	if err != nil {
 		return false, fmt.Errorf("executing ledgerctl cluster status: %w", err)

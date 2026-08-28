@@ -37,6 +37,45 @@ func TestRemoveNodeSkipsRemoveWhenMembershipPostconditionAlreadyHolds(t *testing
 	require.Equal(t, 1, calls, "an absent node must not trigger remove-node")
 }
 
+func TestForceRemoveNodeUsesLeaderLocalMembershipCheck(t *testing.T) {
+	t.Parallel()
+
+	var calls int
+	exec := ledgerctlExec(func(
+		_ context.Context,
+		_ *rest.Config,
+		_ kubernetes.Interface,
+		_, _, _ string,
+		command []string,
+	) (*execResult, error) {
+		calls++
+		shellCommand := command[2]
+
+		switch calls {
+		case 1:
+			require.Contains(t, shellCommand, "'cluster' 'status' '--node-id' '1' '--json'")
+
+			return &execResult{Stdout: `{"state":"Leader","nodes":[{"id":1},{"id":3}]}`}, nil
+		case 2:
+			require.Contains(t, shellCommand, "'cluster' 'remove-node' '3' '--force'")
+
+			return &execResult{}, nil
+		default:
+			t.Fatalf("unexpected ledgerctl call %d: %s", calls, shellCommand)
+
+			return nil, nil
+		}
+	})
+
+	err := removeNodeWithExec(
+		context.Background(), nil, nil,
+		"ns", "ledger-0", "ledger", "ledger-0:3068", "disabled", 3, true,
+		exec,
+	)
+	require.NoError(t, err)
+	require.Equal(t, 2, calls)
+}
+
 func TestRemoveNodeAcceptsAbsentPostconditionAfterOpaqueError(t *testing.T) {
 	t.Parallel()
 
@@ -128,7 +167,7 @@ func TestRaftNodePresentRejectsNonLeaderStatus(t *testing.T) {
 
 	present, err := raftNodePresent(
 		context.Background(), nil, nil,
-		"ns", "ledger-0", "ledger", "ledger-0:3068", "disabled", 3,
+		"ns", "ledger-0", "ledger", "ledger-0:3068", "disabled", 3, false,
 		exec,
 	)
 	require.False(t, present)
