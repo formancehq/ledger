@@ -10,6 +10,8 @@ import (
 // MarshalJSON implements json.Marshaler for Event.
 func (x *Event) MarshalJSON() ([]byte, error) {
 	type Aux struct {
+		App         string        `json:"app"`
+		Version     string        `json:"version"`
 		Type        string        `json:"type"`
 		Ledger      string        `json:"ledger"`
 		Date        *time.Time    `json:"date,omitempty"`
@@ -18,6 +20,8 @@ func (x *Event) MarshalJSON() ([]byte, error) {
 	}
 
 	aux := Aux{
+		App:         x.GetApp(),
+		Version:     x.GetVersion(),
 		Type:        x.GetType().String(),
 		Ledger:      x.GetLedger(),
 		LogSequence: x.GetLogSequence(),

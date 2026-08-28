@@ -27,6 +27,20 @@ func (m *Event) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.Version) > 0 {
+		i -= len(m.Version)
+		copy(dAtA[i:], m.Version)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Version)))
+		i--
+		dAtA[i] = 0x3a
+	}
+	if len(m.App) > 0 {
+		i -= len(m.App)
+		copy(dAtA[i:], m.App)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.App)))
+		i--
+		dAtA[i] = 0x32
+	}
 	if m.Log != nil {
 		size, _ := m.Log.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 		i -= size

@@ -17,4 +17,6 @@ message Event {
   common.Timestamp date = 3;
   fixed64 log_sequence = 4;
   common.Log log = 5;
+  string app = 6;      // Stable producer identifier ("ledger").
+  string version = 7;  // Event envelope generation ("v3").
 }

@@ -15,6 +15,8 @@ type EventReader interface {
 	GetDate() commonpb.TimestampReader
 	GetLogSequence() uint64
 	GetLog() commonpb.LogReader
+	GetApp() string
+	GetVersion() string
 	Mutate() *Event
 }
 
@@ -46,6 +48,14 @@ func (r *eventReadonly) GetLog() commonpb.LogReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *eventReadonly) GetApp() string {
+	return (*Event)(r).GetApp()
+}
+
+func (r *eventReadonly) GetVersion() string {
+	return (*Event)(r).GetVersion()
 }
 
 func (r *eventReadonly) Mutate() *Event {
