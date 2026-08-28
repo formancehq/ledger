@@ -46,6 +46,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
@@ -132,6 +133,16 @@ func main() {
 		}()
 	}
 
+	var checkpoints sync.WaitGroup
+
+	checkpoints.Add(1)
+
+	clusterClient := clusterpb.NewClusterServiceClient(conn)
+	go func() {
+		defer checkpoints.Done()
+		runCheckpointCycle(ctx, checker, client, clusterClient)
+	}()
+
 	var restore sync.WaitGroup
 	if trigger := selectRestoreTrigger(); trigger != nil {
 		restore.Add(1)
@@ -164,6 +175,7 @@ func main() {
 	workers.Wait()
 	restore.Wait()
 	pollers.Wait()
+	checkpoints.Wait()
 	close(checker.incoming)
 	processors.Wait()
 }
@@ -195,7 +207,7 @@ func runWorker(
 		// in-flight bulk set, exercising cross-node freshness without needing
 		// quiescence.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -210,6 +222,12 @@ func runWorker(
 				runReplay(ctx, client, c)
 			case 6:
 				runLogQuery(ctx, client, c)
+			case 7:
+				runAggregateQuery(ctx, client, c)
+			case 8:
+				runAuditQuery(ctx, client, c)
+			case 9:
+				runLedgersList(ctx, client, c)
 			default:
 				runRead(ctx, client, c)
 			}

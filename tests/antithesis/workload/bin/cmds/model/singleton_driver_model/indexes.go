@@ -91,15 +91,22 @@ type workloadIndex struct {
 }
 
 // workloadIndexes is every index the workload creates and drops: the
-// account-by-asset builtin plus the tx builtins.
+// account-by-asset builtin, the tx builtins, and the log-date builtin.
 func workloadIndexes() []workloadIndex {
-	out := []workloadIndex{{assetIndexID(), assetIndexCanonical}}
+	out := []workloadIndex{{assetIndexID(), assetIndexCanonical}, {logDateIndexID(), logDateIndexCanonical}}
 	for _, field := range workloadTxBuiltins {
 		out = append(out, workloadIndex{indexes.TxBuiltinID(field), txBuiltinCanonical(field)})
 	}
 
 	return out
 }
+
+// logDateIndexID is the log-date builtin serving date leaves on LOGS queries.
+func logDateIndexID() *commonpb.IndexID {
+	return indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+}
+
+var logDateIndexCanonical = indexes.Canonical(logDateIndexID())
 
 // indexStateLabel renders an index's model lifecycle state for finding details.
 // indexStateLabelFull renders one canonical's model state, retype window

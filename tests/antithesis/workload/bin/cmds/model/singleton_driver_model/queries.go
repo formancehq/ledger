@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sort"
 	"strconv"
@@ -1442,6 +1443,26 @@ func joinUint64(s []uint64) string {
 
 // describeFilter renders a filter as a compact prefix expression for assertion
 // details and debug logs.
+// describeUintBounds renders a UintCondition's bounds compactly.
+func describeUintBounds(c *commonpb.UintCondition) string {
+	lo, hi := "-", "-"
+	if c.Min != nil {
+		lo = strconv.FormatUint(c.GetMin(), 10)
+		if c.GetMinExclusive() {
+			lo = "(" + lo
+		}
+	}
+
+	if c.Max != nil {
+		hi = strconv.FormatUint(c.GetMax(), 10)
+		if c.GetMaxExclusive() {
+			hi = hi + ")"
+		}
+	}
+
+	return lo + ".." + hi
+}
+
 func describeFilter(f *commonpb.QueryFilter) string {
 	if f == nil {
 		return "*"
@@ -1467,6 +1488,14 @@ func describeFilter(f *commonpb.QueryFilter) string {
 		return "addr?"
 	case *commonpb.QueryFilter_Reverted:
 		return "reverted=" + strconv.FormatBool(x.Reverted.GetValue())
+	case *commonpb.QueryFilter_LogBuiltinUint:
+		c := x.LogBuiltinUint.GetCond()
+
+		return fmt.Sprintf("logDate[%s]", describeUintBounds(c))
+	case *commonpb.QueryFilter_LogId:
+		return fmt.Sprintf("logId[%s]", describeUintBounds(x.LogId.GetCond()))
+	case *commonpb.QueryFilter_Ledger:
+		return "ledger=" + x.Ledger.GetCond().GetHardcoded()
 	case *commonpb.QueryFilter_Reference:
 		return "ref=" + x.Reference.GetCond().GetHardcoded()
 	case *commonpb.QueryFilter_BuiltinUint:

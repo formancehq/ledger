@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -31,34 +32,34 @@ import (
 // genLogFilter builds a filter over the conditions valid on LOGS: ledger name,
 // log id range, and the boolean combinators. Returns nil for the unfiltered
 // case, which exercises the universe scan itself.
-func genLogFilter(ledger string, depth int) *commonpb.QueryFilter {
+func genLogFilter(ledger string, dates []uint64, depth int) *commonpb.QueryFilter {
 	if depth >= 2 || oneIn(3) {
-		return genLogLeaf(ledger)
+		return genLogLeaf(ledger, dates)
 	}
 
 	switch random.RandomChoice([]uint8{0, 1, 2}) {
 	case 0:
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{
 			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{
-				genLogFilter(ledger, depth+1), genLogFilter(ledger, depth+1),
+				genLogFilter(ledger, dates, depth+1), genLogFilter(ledger, dates, depth+1),
 			}},
 		}}
 	case 1:
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{
 			Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{
-				genLogFilter(ledger, depth+1), genLogFilter(ledger, depth+1),
+				genLogFilter(ledger, dates, depth+1), genLogFilter(ledger, dates, depth+1),
 			}},
 		}}
 	default:
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{
-			Not: &commonpb.NotFilter{Filter: genLogFilter(ledger, depth+1)},
+			Not: &commonpb.NotFilter{Filter: genLogFilter(ledger, dates, depth+1)},
 		}}
 	}
 }
 
 // genLogLeaf picks one LOGS-valid leaf. Bounds straddle the populated range so
 // empty, partial and total windows all occur.
-func genLogLeaf(ledger string) *commonpb.QueryFilter {
+func genLogLeaf(ledger string, dates []uint64) *commonpb.QueryFilter {
 	switch random.RandomChoice([]uint8{0, 1, 2}) {
 	case 0:
 		name := ledger
@@ -79,7 +80,7 @@ func genLogLeaf(ledger string) *commonpb.QueryFilter {
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
 			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
 				Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-				Cond:  genLogUintCond(),
+				Cond:  genLogDateCond(dates),
 			},
 		}}
 	}
@@ -97,6 +98,38 @@ func genLogUintCond() *commonpb.UintCondition {
 	if oneIn(2) {
 		max := 8 + internal.Rand().Uint64()%64
 		cond.Max = &max
+		cond.MaxExclusive = oneIn(2)
+	}
+
+	return cond
+}
+
+// genLogDateCond rolls date bounds on the learned-date scale, straddling the
+// populated range so empty, partial and total windows all occur. At least one
+// bound is always set — a boundless condition is the trivial match and reads
+// nothing from the index.
+func genLogDateCond(dates []uint64) *commonpb.UintCondition {
+	pick := func() uint64 {
+		if len(dates) == 0 {
+			return 0
+		}
+
+		d := dates[int(random.GetRandom()%uint64(len(dates)))]
+		// Jitter around the sample so bounds fall between dates too.
+		return d + random.GetRandom()%2001 - 1000
+	}
+
+	cond := &commonpb.UintCondition{}
+
+	if oneIn(2) {
+		lo := pick()
+		cond.Min = &lo
+		cond.MinExclusive = oneIn(2)
+	}
+
+	if cond.Min == nil || oneIn(2) {
+		hi := pick()
+		cond.Max = &hi
 		cond.MaxExclusive = oneIn(2)
 	}
 
@@ -215,7 +248,7 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 
 	var filter *commonpb.QueryFilter
 	if !oneIn(4) {
-		filter = genLogFilter(ledger, 0)
+		filter = genLogFilter(ledger, c.modelLogDateSample(ledger), 0)
 	}
 
 	pageSize := queryPageSize()
@@ -260,10 +293,27 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 			return
 		}
 
-		// The log date is served by an opt-in builtin index this driver never
-		// creates, so a filter reading it is expected to be refused. That
-		// refusal is the coverage: it exercises the index gate on LOGS.
+		// The log date is served by the opt-in log-date builtin the index
+		// churn creates and drops; a refusal is legal exactly while some
+		// candidate base holds the index not active.
 		if hasDateLeaf(filter) && status.Code(err) == codes.FailedPrecondition {
+			if c.matchesModel(maxTicket, "LOGGATE", func(base oracle.GlobalState) bool {
+				exists, active := base.Ledger(ledger).IndexState(logDateIndexCanonical)
+
+				return !exists || !active
+			}) {
+				// Coverage: the LOGS index gate refused a date leaf legally.
+				assert.Reachable("singleton_driver_model: log date query gated", internal.Details{"ledger": ledger})
+
+				return
+			}
+
+			assert.Unreachable("singleton_driver_model: log date query rejected with an active index", internal.Details{
+				"ledger": ledger,
+				"filter": describeFilter(filter),
+				"error":  err.Error(),
+			})
+
 			return
 		}
 
@@ -308,13 +358,29 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 		}
 	}
 
+	needsDate := hasDateLeaf(filter)
+
 	if c.matchesModel(maxTicket, "LOGQUERY", func(base oracle.GlobalState) bool {
-		return equalUint64(logWindow(base.Ledger(ledger), ledger, filter, afterSeq, pageSize), ids)
+		ls := base.Ledger(ledger)
+		if needsDate {
+			// A served date leaf requires the index declared on that base;
+			// absent means no state could have compiled this page.
+			if exists, _ := ls.IndexState(logDateIndexCanonical); !exists {
+				return false
+			}
+		}
+
+		return equalUint64(logWindow(ls, ledger, filter, afterSeq, pageSize), ids)
 	}) {
+		if needsDate {
+			// Coverage: a date-filtered log page was served from the index.
+			assert.Reachable("singleton_driver_model: log date query served results", internal.Details{"ledger": ledger})
+		}
+
 		return
 	}
 
-	assert.Unreachable("singleton_driver_model: log query outside model", internal.Details{
+	details := internal.Details{
 		"ledger":      ledger,
 		"filter":      describeFilter(filter),
 		"afterSeq":    afterSeq,
@@ -325,7 +391,59 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 		"recheck":     joinUint64(recheckLogIDs(ctx, client, ledger)),
 		"modelKinds":  strings.Join(c.modelLogKinds(ledger), ","),
 		"serverKinds": strings.Join(recheckLogKinds(ctx, client, ledger), ","),
-	})
+		"modelDates":  c.modelLogDates(ledger),
+	}
+
+	if needsDate {
+		// Date-filtered pages get their own class: the log-date index path is
+		// fresh coverage with an open model/server discrepancy under triage,
+		// and must not muddy the established log-query class. The instrumentor
+		// catalogues literal messages only, hence two call sites.
+		assert.Unreachable("singleton_driver_model: log date query outside model", details)
+
+		return
+	}
+
+	assert.Unreachable("singleton_driver_model: log query outside model", details)
+}
+
+// modelLogDates renders each committed log's learned date for diagnostics
+// ("id:date" pairs, "-" when never learned). Acquires c.mu.
+func (c *Checker) modelLogDates(ledger string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	rows := c.modelState.Ledger(ledger).LogDates()
+
+	parts := make([]string, 0, len(rows))
+	for _, r := range rows {
+		d := "-"
+		if r.Date != nil {
+			d = strconv.FormatUint(r.Date.GetData(), 10)
+		}
+
+		parts = append(parts, fmt.Sprintf("%d:%s", r.ID, d))
+	}
+
+	return strings.Join(parts, " ")
+}
+
+// modelLogDateSample returns the ledger's learned log dates for the bound
+// generator. Acquires c.mu.
+func (c *Checker) modelLogDateSample(ledger string) []uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	rows := c.modelState.Ledger(ledger).LogDates()
+
+	out := make([]uint64, 0, len(rows))
+	for _, r := range rows {
+		if r.Date != nil {
+			out = append(out, r.Date.GetData())
+		}
+	}
+
+	return out
 }
 
 // modelLogWindow returns the log window on the committed modelState for a
