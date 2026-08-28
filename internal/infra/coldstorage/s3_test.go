@@ -143,12 +143,11 @@ func (r *recordingS3Client) PutObject(ctx context.Context, in *s3.PutObjectInput
 	return r.Client.PutObject(ctx, in, optFns...)
 }
 
-// transfermanager's default multipart threshold (16 MiB) is larger than the
-// old feature/s3/manager default (5 MiB); payloads here must exceed it so
-// these tests keep exercising CreateMultipartUpload/UploadPart/
-// CompleteMultipartUpload instead of silently falling back to a single
-// PutObject.
-const multipartTestObjectSize = 20 << 20
+// multipartTestObjectSize must exceed the production part size
+// (s3UploadPartSize, 32 MiB) so these tests exercise at least two
+// UploadPart calls at the actual configured part size, not just transfermanager's
+// default multipart threshold (16 MiB).
+const multipartTestObjectSize = 40 << 20
 
 func TestS3Storage_ArchiveAndExists(t *testing.T) {
 	t.Parallel()
@@ -391,7 +390,9 @@ func TestS3Storage_ArchiveMultipartLargeObject(t *testing.T) {
 
 	client, _ := setupMinIO(t)
 	recorder := &recordingS3Client{Client: client}
-	storage := &S3Storage{client: client, uploader: transfermanager.New(recorder), bucket: minioBucket}
+	storage := &S3Storage{client: client, uploader: transfermanager.New(recorder, func(o *transfermanager.Options) {
+		o.PartSizeBytes = s3UploadPartSize
+	}), bucket: minioBucket}
 	ctx := context.Background()
 
 	const size = multipartTestObjectSize

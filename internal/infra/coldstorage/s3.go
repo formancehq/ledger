@@ -54,6 +54,14 @@ func NewS3Client(region, endpoint, accessKeyID, secretAccessKey string) (*s3.Cli
 	return s3.NewFromConfig(cfg, s3Opts...), nil
 }
 
+// s3UploadPartSize is the multipart part size for cold-storage archive
+// uploads. It matches the backup uploader (see internal/infra/backup/s3.go):
+// 32 MiB instead of the transfermanager default 8 MiB, so multi-GB chapter
+// archives upload in far fewer parts (smaller failure surface, higher
+// single-object ceiling) with per-part memory still bounded by
+// partSize x concurrency.
+const s3UploadPartSize = 32 << 20 // 32 MiB
+
 // S3Storage implements ColdStorage using Amazon S3 (or S3-compatible stores like MinIO).
 type S3Storage struct {
 	client   *s3.Client
@@ -63,7 +71,13 @@ type S3Storage struct {
 
 // NewS3Storage creates a new S3Storage backed by the given S3 client and bucket.
 func NewS3Storage(client *s3.Client, bucket string) *S3Storage {
-	return &S3Storage{client: client, uploader: transfermanager.New(client), bucket: bucket}
+	return &S3Storage{
+		client: client,
+		uploader: transfermanager.New(client, func(o *transfermanager.Options) {
+			o.PartSizeBytes = s3UploadPartSize
+		}),
+		bucket: bucket,
+	}
 }
 
 func (s *S3Storage) archiveKey(bucketID string, chapterID uint64) string {
