@@ -6,6 +6,7 @@ import (
 	"io"
 	"runtime/debug"
 
+	prettyconsole "github.com/thessem/zap-prettyconsole"
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
@@ -114,10 +115,10 @@ func Logger(cfg ModuleConfig) (logging.Logger, error) {
 		encoderCfg.EncodeLevel = logging.EncodeLevelWithTrace(encoderCfg.EncodeLevel)
 		encoder = zapcore.NewJSONEncoder(encoderCfg)
 	} else {
-		encoderCfg := zap.NewDevelopmentEncoderConfig()
+		encoderCfg := prettyconsole.NewEncoderConfig()
 		encoderCfg.EncodeTime = zapcore.TimeEncoderOfLayout(logTimeLayout)
 		encoderCfg.EncodeLevel = logging.EncodeLevelWithTrace(encoderCfg.EncodeLevel)
-		encoder = zapcore.NewConsoleEncoder(encoderCfg)
+		encoder = prettyconsole.NewEncoder(encoderCfg)
 	}
 
 	consoleCore := zapcore.NewCore(encoder, zapcore.AddSync(cfg.Output), consoleLevel)
