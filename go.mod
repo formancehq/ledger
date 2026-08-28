@@ -50,6 +50,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/clickhouse v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/kafka v0.40.0
+	github.com/thessem/zap-prettyconsole v0.7.0
 	github.com/xdg-go/scram v1.2.0
 	github.com/zalando/go-keyring v0.2.6
 	github.com/zeebo/blake3 v0.2.4
