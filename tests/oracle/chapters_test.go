@@ -186,12 +186,12 @@ func TestChapters_Archive(t *testing.T) {
 	// the running node's working set and present after recovery, so a
 	// residency-first order would answer CHAPTER_NOT_FOUND on one and
 	// CHAPTER_NOT_CLOSED on the other.
-	t.Run("rejects a re-archive as out of order, not as missing", func(t *testing.T) {
+	t.Run("rejects a re-archive as already archived, not as missing", func(t *testing.T) {
 		t.Parallel()
 
 		res := archive(stateOf(t, ChapterArchived, ChapterClosed, ChapterOpen), 1)
 		require.False(t, res.OK)
-		require.Equal(t, domain.ErrReasonChapterArchiveOutOfOrder, res.Reason)
+		require.Equal(t, domain.ErrReasonChapterAlreadyArchived, res.Reason)
 	})
 
 	// An unsealed chapter past the successor reports NOT_CLOSED while a sealed one
