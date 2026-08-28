@@ -304,7 +304,7 @@ func TestUpstreamPeekCursor(t *testing.T) {
 			return nil
 		})
 
-		c := NewUpstreamPeekCursor[stringItem](client)
+		c := NewUpstreamPeekCursor[stringItem](context.Background(), client)
 		ut, ok := c.(UpstreamTrailer)
 		require.True(t, ok, "cursor returned by NewUpstreamPeekCursor must satisfy UpstreamTrailer")
 
