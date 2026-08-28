@@ -801,6 +801,7 @@ func TestArchiverSSTRoundtrip(t *testing.T) {
 
 	pebbleReader, err := coldReader.GetReader(ctx, 1)
 	require.NoError(t, err)
+	defer func() { require.NoError(t, pebbleReader.Close()) }()
 
 	// Verify the log is readable from the ingested SST
 	log, err := query.ReadLogBySequence(ctx, pebbleReader, 1)

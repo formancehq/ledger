@@ -11,7 +11,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	dal "github.com/formancehq/ledger/v3/internal/storage/dal"
+	coldstorage "github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -40,10 +40,10 @@ func (m *MockColdChapterReader) EXPECT() *MockColdChapterReaderMockRecorder {
 }
 
 // GetReader mocks base method.
-func (m *MockColdChapterReader) GetReader(ctx context.Context, chapterID uint64) (dal.PebbleReader, error) {
+func (m *MockColdChapterReader) GetReader(ctx context.Context, chapterID uint64) (coldstorage.ReadHandle, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetReader", ctx, chapterID)
-	ret0, _ := ret[0].(dal.PebbleReader)
+	ret0, _ := ret[0].(coldstorage.ReadHandle)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -61,19 +61,19 @@ type MockColdChapterReaderGetReaderCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockColdChapterReaderGetReaderCall) Return(arg0 dal.PebbleReader, arg1 error) *MockColdChapterReaderGetReaderCall {
+func (c *MockColdChapterReaderGetReaderCall) Return(arg0 coldstorage.ReadHandle, arg1 error) *MockColdChapterReaderGetReaderCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockColdChapterReaderGetReaderCall) Do(f func(context.Context, uint64) (dal.PebbleReader, error)) *MockColdChapterReaderGetReaderCall {
+func (c *MockColdChapterReaderGetReaderCall) Do(f func(context.Context, uint64) (coldstorage.ReadHandle, error)) *MockColdChapterReaderGetReaderCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockColdChapterReaderGetReaderCall) DoAndReturn(f func(context.Context, uint64) (dal.PebbleReader, error)) *MockColdChapterReaderGetReaderCall {
+func (c *MockColdChapterReaderGetReaderCall) DoAndReturn(f func(context.Context, uint64) (coldstorage.ReadHandle, error)) *MockColdChapterReaderGetReaderCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

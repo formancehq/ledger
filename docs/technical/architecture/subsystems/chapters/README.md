@@ -12,6 +12,10 @@ Chapters partition a ledger's transaction history into discrete sealed segments.
 | [backup.md](backup.md) | Full-database backup (Pebble checkpoint + incremental segments) to S3, Azure, or filesystem; restore for disaster recovery. |
 | [incremental-restore-contract.md](incremental-restore-contract.md) | Required parity between live apply and checkpoint-plus-delta restore for persisted state. |
 
+Cold-storage reads use explicit handles: capacity/TTL eviction and shutdown
+must retain an archived chapter's Pebble database until its last active handle
+closes. See [cold-storage.md](cold-storage.md#reading-from-cold-storage).
+
 ## Related
 
 - [Storage](../storage/) — the Pebble zones that hold logs / audit entries before archival.

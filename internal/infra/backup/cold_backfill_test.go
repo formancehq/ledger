@@ -11,6 +11,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -68,14 +69,12 @@ func purgeChapterRanges(t *testing.T, store *dal.Store, chapter *commonpb.Chapte
 func coldReaderFor(t *testing.T, ctrl *gomock.Controller, chapterID uint64, coldStore *dal.Store) *MockColdChapterReader {
 	t.Helper()
 
-	handle, err := coldStore.NewDirectReadHandle()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = handle.Close() })
-
 	reader := NewMockColdChapterReader(ctrl)
 	reader.EXPECT().
 		GetReader(gomock.Any(), chapterID).
-		Return(handle, nil).
+		DoAndReturn(func(context.Context, uint64) (coldstorage.ReadHandle, error) {
+			return coldStore.NewDirectReadHandle()
+		}).
 		AnyTimes()
 
 	return reader

@@ -59,7 +59,13 @@ Using SST directly (rather than re-encoding into a portable format like Parquet 
 `internal/infra/coldstorage/reader.go` exposes the read side: open an archived chapter, iterate its log + audit ranges, and feed them back into queries that span archived data. Concretely:
 
 - **Audit-chain verification** by the [checker](../checker/checker.md) walks past archive boundaries by joining each chapter's sealed `last_audit_hash` to the start of the next live chain (see [audit-chain.md § Verification](../checker/audit-chain.md#verification)).
-- **Log lookups** by ID across the archived range go through `coldstorage.Reader.Open(chapterID)` and stream the SST.
+- **Log lookups** by ID across the archived range acquire a `ColdReader` read
+  handle and stream the SST. The handle is an explicit lease: callers close it
+  only after their point reads, value closers, and iterators are finished.
+  Capacity and TTL eviction remove an idle chapter immediately, but an active
+  chapter's Pebble database and cache directory stay alive until its last lease
+  closes. `ColdReader.Close` likewise refuses new leases and waits for active
+  handles before releasing the databases it owns.
 - **Reverting an archived transaction** does **not** read cold storage — it uses a [receipt](receipts.md) to skip the round-trip entirely.
 
 ## Configuration

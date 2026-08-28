@@ -274,6 +274,7 @@ func TestS3Storage_SSTRoundtripWithColdReader(t *testing.T) {
 	pebbleReader, err := reader.GetReader(ctx, 1)
 	require.NoError(t, err)
 	require.NotNil(t, pebbleReader)
+	defer func() { require.NoError(t, pebbleReader.Close()) }()
 
 	// Verify all keys are readable
 	for i, expected := range []struct {
@@ -312,18 +313,22 @@ func TestS3Storage_ColdReaderCacheEviction(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	// Load chapters 1 and 2
-	_, err := reader.GetReader(ctx, 1)
+	r1, err := reader.GetReader(ctx, 1)
 	require.NoError(t, err)
-	_, err = reader.GetReader(ctx, 2)
+	require.NoError(t, r1.Close())
+	r2, err := reader.GetReader(ctx, 2)
 	require.NoError(t, err)
+	require.NoError(t, r2.Close())
 
 	// Load chapter 3 → evicts chapter 1
-	_, err = reader.GetReader(ctx, 3)
-	require.NoError(t, err)
-
-	// Chapter 3 should be readable (re-downloaded if needed)
 	r3, err := reader.GetReader(ctx, 3)
 	require.NoError(t, err)
+	require.NoError(t, r3.Close())
+
+	// Chapter 3 should be readable (re-downloaded if needed)
+	r3, err = reader.GetReader(ctx, 3)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, r3.Close()) }()
 
 	val, closer, err := r3.Get([]byte("key"))
 	require.NoError(t, err)

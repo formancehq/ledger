@@ -416,8 +416,15 @@ func (v *signingVerifier) foldArchived(
 			return nil
 		}
 
-		if err := v.foldChapter(ctx, coldPebble); err != nil {
-			logger.Infof("folding signing orders from archived chapter %d failed: %v", ch.GetId(), err)
+		foldErr := v.foldChapter(ctx, coldPebble)
+		closeErr := coldPebble.Close()
+		if foldErr != nil {
+			logger.Infof("folding signing orders from archived chapter %d failed: %v", ch.GetId(), foldErr)
+
+			return nil
+		}
+		if closeErr != nil {
+			logger.Infof("closing archived chapter %d after signing verification failed: %v", ch.GetId(), closeErr)
 
 			return nil
 		}

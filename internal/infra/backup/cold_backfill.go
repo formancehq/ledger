@@ -10,6 +10,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -22,7 +23,7 @@ import (
 // deployments without cold storage; backfillArchivedRanges then fails loudly
 // if an export window overlaps an archived chapter.
 type ColdChapterReader interface {
-	GetReader(ctx context.Context, chapterID uint64) (dal.PebbleReader, error)
+	GetReader(ctx context.Context, chapterID uint64) (coldstorage.ReadHandle, error)
 }
 
 // archivedOverlap is the intersection of one ARCHIVED chapter's sequence
@@ -86,95 +87,122 @@ func backfillArchivedRanges(
 	}
 
 	for _, ov := range overlaps {
-		chapterID := ov.chapter.GetId()
-
-		logger.WithFields(map[string]any{
-			"chapterId": chapterID,
-			"logRange":  fmt.Sprintf("[%d, %d]", ov.logLo, ov.logHi),
-		}).Infof("Backfilling archived chapter range from cold storage")
-
-		cold, err := coldReader.GetReader(ctx, chapterID)
+		chapterSegments, chapterLogCount, chapterAuditCount, err := backfillArchivedOverlap(
+			ctx, logger, storage, coldReader, bucketID, ov, maxSegmentBytes,
+		)
 		if err != nil {
-			return nil, 0, 0, fmt.Errorf("opening cold archive for chapter %d: %w", chapterID, err)
+			return nil, 0, 0, err
 		}
 
-		if ov.logLo <= ov.logHi {
-			segs, count, err := exportEntries(
-				ctx, storage, cold,
-				dal.ZoneCold, dal.SubColdLog, ov.logLo-1, ov.logHi, "log",
-				func(part int) string { return ExportLogSegmentKey(bucketID, ov.logLo, ov.logHi, part) },
-				maxSegmentBytes,
-			)
-			if err != nil {
-				return nil, 0, 0, fmt.Errorf("exporting archived log entries for chapter %d: %w", chapterID, err)
-			}
+		segments = append(segments, chapterSegments...)
+		logCount += chapterLogCount
+		auditCount += chapterAuditCount
+	}
 
-			// The log stream is gap-free (one log per sequence, allocated on
-			// append), so the archive must hold exactly the overlap. Fewer
-			// means the SST is truncated or the chapter registry is wrong —
-			// exporting it would publish a backup missing entries the purge
-			// already deleted from hot.
-			if expected := ov.logHi - ov.logLo + 1; count != expected {
-				return nil, 0, 0, fmt.Errorf(
-					"invariant: cold archive for chapter %d holds %d log entries in [%d, %d], expected %d",
-					chapterID, count, ov.logLo, ov.logHi, expected)
-			}
+	return segments, logCount, auditCount, nil
+}
 
-			segments = append(segments, segs...)
-			logCount += count
+func backfillArchivedOverlap(
+	ctx context.Context,
+	logger logging.Logger,
+	storage Storage,
+	coldReader ColdChapterReader,
+	bucketID string,
+	ov archivedOverlap,
+	maxSegmentBytes int64,
+) (segments []ExportSegment, logCount, auditCount uint64, err error) {
+	chapterID := ov.chapter.GetId()
+	logger.WithFields(map[string]any{
+		"chapterId": chapterID,
+		"logRange":  fmt.Sprintf("[%d, %d]", ov.logLo, ov.logHi),
+	}).Infof("Backfilling archived chapter range from cold storage")
+
+	cold, err := coldReader.GetReader(ctx, chapterID)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("opening cold archive for chapter %d: %w", chapterID, err)
+	}
+	defer func() {
+		if closeErr := cold.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("closing cold archive for chapter %d: %w", chapterID, closeErr))
+		}
+	}()
+
+	if ov.logLo <= ov.logHi {
+		segs, count, exportErr := exportEntries(
+			ctx, storage, cold,
+			dal.ZoneCold, dal.SubColdLog, ov.logLo-1, ov.logHi, "log",
+			func(part int) string { return ExportLogSegmentKey(bucketID, ov.logLo, ov.logHi, part) },
+			maxSegmentBytes,
+		)
+		if exportErr != nil {
+			return nil, 0, 0, fmt.Errorf("exporting archived log entries for chapter %d: %w", chapterID, exportErr)
 		}
 
-		if ov.auditLo <= ov.auditHi {
-			segs, count, err := exportEntries(
-				ctx, storage, cold,
-				dal.ZoneCold, dal.SubColdAudit, ov.auditLo-1, ov.auditHi, "audit",
-				func(part int) string { return ExportAuditSegmentKey(bucketID, ov.auditLo, ov.auditHi, part) },
-				maxSegmentBytes,
-			)
-			if err != nil {
-				return nil, 0, 0, fmt.Errorf("exporting archived audit entries for chapter %d: %w", chapterID, err)
-			}
-
-			// The audit stream is a hash chain — one entry per sequence, no
-			// gaps — so the same completeness bound applies as for logs.
-			if expected := ov.auditHi - ov.auditLo + 1; count != expected {
-				return nil, 0, 0, fmt.Errorf(
-					"invariant: cold archive for chapter %d holds %d audit entries in [%d, %d], expected %d",
-					chapterID, count, ov.auditLo, ov.auditHi, expected)
-			}
-
-			segments = append(segments, segs...)
-			auditCount += count
-
-			// Audit items and applied proposals share the audit sequence
-			// counter but are legitimately sparse (failures carry no items,
-			// only successes write an AppliedProposal), so no completeness
-			// bound applies and empty results add no segment — same contract
-			// as the hot export.
-			itemSegs, _, err := exportEntries(
-				ctx, storage, cold,
-				dal.ZoneCold, dal.SubColdAuditItem, ov.auditLo-1, ov.auditHi, "auditItem",
-				func(part int) string { return ExportAuditItemSegmentKey(bucketID, ov.auditLo, ov.auditHi, part) },
-				maxSegmentBytes,
-			)
-			if err != nil {
-				return nil, 0, 0, fmt.Errorf("exporting archived audit items for chapter %d: %w", chapterID, err)
-			}
-
-			segments = append(segments, itemSegs...)
-
-			appliedSegs, _, err := exportEntries(
-				ctx, storage, cold,
-				dal.ZoneCold, dal.SubColdAppliedProposal, ov.auditLo-1, ov.auditHi, "appliedProposal",
-				func(part int) string { return ExportAppliedProposalSegmentKey(bucketID, ov.auditLo, ov.auditHi, part) },
-				maxSegmentBytes,
-			)
-			if err != nil {
-				return nil, 0, 0, fmt.Errorf("exporting archived applied proposals for chapter %d: %w", chapterID, err)
-			}
-
-			segments = append(segments, appliedSegs...)
+		// The log stream is gap-free (one log per sequence, allocated on
+		// append), so the archive must hold exactly the overlap. Fewer
+		// means the SST is truncated or the chapter registry is wrong —
+		// exporting it would publish a backup missing entries the purge
+		// already deleted from hot.
+		if expected := ov.logHi - ov.logLo + 1; count != expected {
+			return nil, 0, 0, fmt.Errorf(
+				"invariant: cold archive for chapter %d holds %d log entries in [%d, %d], expected %d",
+				chapterID, count, ov.logLo, ov.logHi, expected)
 		}
+
+		segments = append(segments, segs...)
+		logCount += count
+	}
+
+	if ov.auditLo <= ov.auditHi {
+		segs, count, exportErr := exportEntries(
+			ctx, storage, cold,
+			dal.ZoneCold, dal.SubColdAudit, ov.auditLo-1, ov.auditHi, "audit",
+			func(part int) string { return ExportAuditSegmentKey(bucketID, ov.auditLo, ov.auditHi, part) },
+			maxSegmentBytes,
+		)
+		if exportErr != nil {
+			return nil, 0, 0, fmt.Errorf("exporting archived audit entries for chapter %d: %w", chapterID, exportErr)
+		}
+
+		// The audit stream is a hash chain — one entry per sequence, no
+		// gaps — so the same completeness bound applies as for logs.
+		if expected := ov.auditHi - ov.auditLo + 1; count != expected {
+			return nil, 0, 0, fmt.Errorf(
+				"invariant: cold archive for chapter %d holds %d audit entries in [%d, %d], expected %d",
+				chapterID, count, ov.auditLo, ov.auditHi, expected)
+		}
+
+		segments = append(segments, segs...)
+		auditCount += count
+
+		// Audit items and applied proposals share the audit sequence
+		// counter but are legitimately sparse (failures carry no items,
+		// only successes write an AppliedProposal), so no completeness
+		// bound applies and empty results add no segment — same contract
+		// as the hot export.
+		itemSegs, _, exportErr := exportEntries(
+			ctx, storage, cold,
+			dal.ZoneCold, dal.SubColdAuditItem, ov.auditLo-1, ov.auditHi, "auditItem",
+			func(part int) string { return ExportAuditItemSegmentKey(bucketID, ov.auditLo, ov.auditHi, part) },
+			maxSegmentBytes,
+		)
+		if exportErr != nil {
+			return nil, 0, 0, fmt.Errorf("exporting archived audit items for chapter %d: %w", chapterID, exportErr)
+		}
+
+		segments = append(segments, itemSegs...)
+
+		appliedSegs, _, exportErr := exportEntries(
+			ctx, storage, cold,
+			dal.ZoneCold, dal.SubColdAppliedProposal, ov.auditLo-1, ov.auditHi, "appliedProposal",
+			func(part int) string { return ExportAppliedProposalSegmentKey(bucketID, ov.auditLo, ov.auditHi, part) },
+			maxSegmentBytes,
+		)
+		if exportErr != nil {
+			return nil, 0, 0, fmt.Errorf("exporting archived applied proposals for chapter %d: %w", chapterID, exportErr)
+		}
+
+		segments = append(segments, appliedSegs...)
 	}
 
 	return segments, logCount, auditCount, nil

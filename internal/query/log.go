@@ -260,7 +260,16 @@ func ReadLogBySequenceWithCold(
 		return nil, fmt.Errorf("getting cold reader for chapter %d: %w", chapterID, err)
 	}
 
-	return ReadLogBySequence(ctx, coldPebble, sequence)
+	log, readErr := ReadLogBySequence(ctx, coldPebble, sequence)
+	closeErr := coldPebble.Close()
+	if readErr != nil {
+		return nil, errors.Join(readErr, closeErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("closing cold reader for chapter %d: %w", chapterID, closeErr)
+	}
+
+	return log, nil
 }
 
 // findArchivedChapterForSequence iterates chapters to find an archived one containing the given sequence.

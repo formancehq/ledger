@@ -2,6 +2,7 @@ package coldstorage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -36,11 +37,50 @@ type ColdReader struct {
 	lru         []uint64 // eviction order, oldest first
 	logger      logging.Logger
 	stopSweep   chan struct{}
+	sweepDone   chan struct{}
+	stopOnce    sync.Once
+	closed      bool
+	closeCond   *sync.Cond
+	closeErr    error
 }
 
 type cachedChapter struct {
-	db         *pebble.DB
-	lastAccess time.Time
+	db            *pebble.DB
+	lastAccess    time.Time
+	activeReaders int
+	evicted       bool
+}
+
+// ReadHandle is a lease on a cached archived chapter. Callers must close the
+// handle after all point reads, value closers, and iterators are finished.
+// Closing the handle lets cache eviction close the backing Pebble database.
+type ReadHandle interface {
+	dal.PebbleReader
+	io.Closer
+}
+
+type readHandle struct {
+	reader    *ColdReader
+	chapterID uint64
+	cached    *cachedChapter
+	once      sync.Once
+	err       error
+}
+
+func (h *readHandle) Get(key []byte) ([]byte, io.Closer, error) {
+	return h.cached.db.Get(key)
+}
+
+func (h *readHandle) NewIter(opts *pebble.IterOptions) (*pebble.Iterator, error) {
+	return h.cached.db.NewIter(opts)
+}
+
+func (h *readHandle) Close() error {
+	h.once.Do(func() {
+		h.err = h.reader.release(h.chapterID, h.cached)
+	})
+
+	return h.err
 }
 
 // NewColdReader creates a ColdReader that caches up to maxCached opened Pebble DBs.
@@ -63,27 +103,45 @@ func NewColdReader(
 		cache:       make(map[uint64]*cachedChapter),
 		logger:      logger.WithFields(map[string]any{"cmp": "cold-reader"}),
 		stopSweep:   make(chan struct{}),
+		sweepDone:   make(chan struct{}),
 	}
+	r.closeCond = sync.NewCond(&r.mu)
 
 	if ttl > 0 {
 		go r.sweepLoop()
+	} else {
+		close(r.sweepDone)
 	}
 
 	return r
 }
 
-// GetReader returns a PebbleReader for the given archived chapter.
-// It downloads and caches the SST file if not already cached.
-func (r *ColdReader) GetReader(ctx context.Context, chapterID uint64) (dal.PebbleReader, error) {
+// GetReader returns a leased Pebble reader for the given archived chapter.
+// The caller must close the returned handle after all reads and iterators are
+// finished. It downloads and caches the SST file if not already cached.
+func (r *ColdReader) GetReader(ctx context.Context, chapterID uint64) (ReadHandle, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.closed {
+		return nil, errors.New("cold reader is closed")
+	}
 
 	// Cache hit
 	if cached, ok := r.cache[chapterID]; ok {
+		if cached.evicted {
+			if len(r.lru) >= r.maxCached {
+				r.evictOldest()
+			}
+
+			cached.evicted = false
+			r.lru = append(r.lru, chapterID)
+		}
+
 		cached.lastAccess = time.Now()
+		cached.activeReaders++
 		r.touchLRU(chapterID)
 
-		return cached.db, nil
+		return &readHandle{reader: r, chapterID: chapterID, cached: cached}, nil
 	}
 
 	// Cache miss: fetch, ingest, cache
@@ -107,14 +165,15 @@ func (r *ColdReader) GetReader(ctx context.Context, chapterID uint64) (dal.Pebbl
 	}
 
 	// Evict oldest if at capacity
-	if len(r.cache) >= r.maxCached {
+	if len(r.lru) >= r.maxCached {
 		r.evictOldest()
 	}
 
-	r.cache[chapterID] = &cachedChapter{db: db, lastAccess: time.Now()}
+	cached := &cachedChapter{db: db, lastAccess: time.Now(), activeReaders: 1}
+	r.cache[chapterID] = cached
 	r.lru = append(r.lru, chapterID)
 
-	return db, nil
+	return &readHandle{reader: r, chapterID: chapterID, cached: cached}, nil
 }
 
 func (r *ColdReader) downloadSST(ctx context.Context, chapterID uint64, destPath string) error {
@@ -194,17 +253,18 @@ func (r *ColdReader) evictOldest() {
 
 	if cached, ok := r.cache[oldest]; ok {
 		r.logger.WithFields(map[string]any{"chapterId": oldest}).Infof("Evicting cached chapter")
-
-		_ = cached.db.Close()
-		delete(r.cache, oldest)
-
-		chapterDir := filepath.Join(r.cacheDir, "chapter-"+strconv.FormatUint(oldest, 10))
-		_ = os.RemoveAll(chapterDir)
+		cached.evicted = true
+		if cached.activeReaders == 0 {
+			// finalize records cleanup errors for the owning ColdReader.Close.
+			_ = r.finalize(oldest, cached)
+		}
 	}
 }
 
 // sweepLoop periodically evicts cache entries that have not been accessed within the TTL.
 func (r *ColdReader) sweepLoop() {
+	defer close(r.sweepDone)
+
 	ticker := time.NewTicker(r.ttl / 2)
 	defer ticker.Stop()
 
@@ -243,9 +303,7 @@ func (r *ColdReader) evictByID(id uint64) {
 	}
 
 	r.logger.WithFields(map[string]any{"chapterId": id}).Infof("Evicting expired cached chapter")
-
-	_ = cached.db.Close()
-	delete(r.cache, id)
+	cached.evicted = true
 
 	// Remove from LRU slice
 	for i, lruID := range r.lru {
@@ -256,26 +314,86 @@ func (r *ColdReader) evictByID(id uint64) {
 		}
 	}
 
-	chapterDir := filepath.Join(r.cacheDir, "chapter-"+strconv.FormatUint(id, 10))
-	_ = os.RemoveAll(chapterDir)
+	if cached.activeReaders == 0 {
+		// finalize records cleanup errors for the owning ColdReader.Close.
+		_ = r.finalize(id, cached)
+	}
 }
 
-// Close closes all cached Pebble databases and removes the cache directory contents.
-func (r *ColdReader) Close() error {
-	close(r.stopSweep)
-
+func (r *ColdReader) release(id uint64, cached *cachedChapter) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	for id, cached := range r.cache {
-		_ = cached.db.Close()
-
-		chapterDir := filepath.Join(r.cacheDir, "chapter-"+strconv.FormatUint(id, 10))
-		_ = os.RemoveAll(chapterDir)
+	if cached.activeReaders <= 0 {
+		return errors.New("cold reader handle released more than once")
 	}
 
-	r.cache = make(map[uint64]*cachedChapter)
+	cached.activeReaders--
+	var err error
+	if cached.activeReaders == 0 && (cached.evicted || r.closed) {
+		err = r.finalize(id, cached)
+	}
+	r.closeCond.Broadcast()
+
+	return err
+}
+
+// finalize closes an idle cached chapter. The caller must hold r.mu.
+func (r *ColdReader) finalize(id uint64, cached *cachedChapter) error {
+	if current, ok := r.cache[id]; !ok || current != cached {
+		return nil
+	}
+
+	err := cached.db.Close()
+	if err != nil {
+		err = fmt.Errorf("closing cached chapter %d: %w", id, err)
+	}
+	delete(r.cache, id)
+
+	chapterDir := filepath.Join(r.cacheDir, "chapter-"+strconv.FormatUint(id, 10))
+	if removeErr := os.RemoveAll(chapterDir); removeErr != nil {
+		err = errors.Join(err, fmt.Errorf("removing cached chapter %d: %w", id, removeErr))
+	}
+	r.closeErr = errors.Join(r.closeErr, err)
+
+	return err
+}
+
+func (r *ColdReader) hasActiveReaders() bool {
+	for _, cached := range r.cache {
+		if cached.activeReaders > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Close stops eviction, refuses new leases, waits for active handles, then
+// closes all cached Pebble databases and removes their cache directories.
+func (r *ColdReader) Close() error {
+	r.mu.Lock()
+	r.closed = true
+	r.mu.Unlock()
+
+	r.stopOnce.Do(func() { close(r.stopSweep) })
+	<-r.sweepDone
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.lru = nil
 
-	return nil
+	for id, cached := range r.cache {
+		cached.evicted = true
+		if cached.activeReaders == 0 {
+			// finalize records cleanup errors for this Close return value.
+			_ = r.finalize(id, cached)
+		}
+	}
+
+	for r.hasActiveReaders() {
+		r.closeCond.Wait()
+	}
+
+	return r.closeErr
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -172,6 +173,7 @@ func TestColdReaderCacheMiss(t *testing.T) {
 	pebbleReader, err := reader.GetReader(ctx, 1)
 	require.NoError(t, err)
 	require.NotNil(t, pebbleReader)
+	defer func() { require.NoError(t, pebbleReader.Close()) }()
 
 	// Verify the data is readable
 	val, closer, err := pebbleReader.Get([]byte("key1"))
@@ -210,8 +212,10 @@ func TestColdReaderCacheHit(t *testing.T) {
 	r2, err := reader.GetReader(ctx, 1)
 	require.NoError(t, err)
 
-	// Both should be the same underlying *pebble.DB
-	require.Equal(t, r1, r2)
+	// Both leases should reference the same cached DB.
+	require.Same(t, r1.(*readHandle).cached, r2.(*readHandle).cached)
+	require.NoError(t, r1.Close())
+	require.NoError(t, r2.Close())
 }
 
 func TestColdReaderEviction(t *testing.T) {
@@ -235,14 +239,17 @@ func TestColdReaderEviction(t *testing.T) {
 	reader := NewColdReader(cs, "bucket", cacheDir, 2, 0, logger)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	_, err := reader.GetReader(ctx, 1)
+	r1, err := reader.GetReader(ctx, 1)
 	require.NoError(t, err)
-	_, err = reader.GetReader(ctx, 2)
+	require.NoError(t, r1.Close())
+	r2, err := reader.GetReader(ctx, 2)
 	require.NoError(t, err)
+	require.NoError(t, r2.Close())
 
 	// This should evict chapter 1
 	r3, err := reader.GetReader(ctx, 3)
 	require.NoError(t, err)
+	defer func() { require.NoError(t, r3.Close()) }()
 
 	val, closer, err := r3.Get([]byte("key-3"))
 	require.NoError(t, err)
@@ -254,13 +261,195 @@ func TestColdReaderEviction(t *testing.T) {
 	require.True(t, os.IsNotExist(err), "chapter-1 cache directory should have been removed")
 
 	// Chapter 2 should still be cached
-	r2, err := reader.GetReader(ctx, 2)
+	r2, err = reader.GetReader(ctx, 2)
 	require.NoError(t, err)
+	defer func() { require.NoError(t, r2.Close()) }()
 
 	val, closer, err = r2.Get([]byte("key-2"))
 	require.NoError(t, err)
 	require.Equal(t, []byte("value-2"), val)
 	_ = closer.Close()
+}
+
+func TestColdReaderCapacityEvictionKeepsAcquiredReaderAlive(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+
+	cs := newInMemoryColdStorage()
+	cacheDir := t.TempDir()
+
+	for chapterID := uint64(1); chapterID <= 2; chapterID++ {
+		sstData := buildTestSST(t, [][2][]byte{
+			{fmt.Appendf(nil, "key-%d", chapterID), fmt.Appendf(nil, "value-%d", chapterID)},
+		})
+		require.NoError(t, cs.Archive(ctx, "bucket", chapterID, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
+	}
+
+	reader := NewColdReader(cs, "bucket", cacheDir, 1, 0, logger)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	acquired := make(chan struct{})
+	evicted := make(chan struct{})
+	readResult := make(chan error, 1)
+
+	go func() {
+		chapter, err := reader.GetReader(ctx, 1)
+		if err != nil {
+			readResult <- err
+
+			return
+		}
+		defer func() { _ = chapter.Close() }()
+
+		close(acquired)
+		<-evicted
+
+		value, closer, err := chapter.Get([]byte("key-1"))
+		if err != nil {
+			readResult <- err
+
+			return
+		}
+		defer func() { _ = closer.Close() }()
+
+		if !bytes.Equal(value, []byte("value-1")) {
+			readResult <- fmt.Errorf("unexpected value: %q", value)
+
+			return
+		}
+
+		readResult <- nil
+	}()
+
+	<-acquired
+	chapter2, err := reader.GetReader(ctx, 2)
+	require.NoError(t, err)
+	require.NoError(t, chapter2.Close())
+	close(evicted)
+
+	require.NoError(t, <-readResult, "an acquired reader must remain usable after cache eviction")
+}
+
+func TestColdReaderTTLEvictionWaitsForLastReader(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	cs := newInMemoryColdStorage()
+	cacheDir := t.TempDir()
+	sstData := buildTestSST(t, [][2][]byte{{[]byte("key"), []byte("value")}})
+	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
+
+	reader := NewColdReader(cs, "bucket", cacheDir, 4, time.Hour, logger)
+	t.Cleanup(func() { require.NoError(t, reader.Close()) })
+
+	first, err := reader.GetReader(ctx, 1)
+	require.NoError(t, err)
+	second, err := reader.GetReader(ctx, 1)
+	require.NoError(t, err)
+
+	reader.mu.Lock()
+	reader.cache[1].lastAccess = time.Now().Add(-2 * time.Hour)
+	reader.mu.Unlock()
+	reader.sweepExpired()
+
+	_, err = os.Stat(filepath.Join(cacheDir, "chapter-1"))
+	require.NoError(t, err, "an evicted chapter stays resident while readers hold leases")
+	require.NoError(t, first.Close())
+
+	_, err = os.Stat(filepath.Join(cacheDir, "chapter-1"))
+	require.NoError(t, err, "the first of multiple releases must not close the database")
+	value, closer, err := second.Get([]byte("key"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("value"), value)
+	require.NoError(t, closer.Close())
+	require.NoError(t, second.Close())
+
+	_, err = os.Stat(filepath.Join(cacheDir, "chapter-1"))
+	require.True(t, os.IsNotExist(err), "the last release must close and remove an evicted chapter")
+}
+
+func TestColdReaderEvictedChapterCanBeReacquired(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	cs := newInMemoryColdStorage()
+	cacheDir := t.TempDir()
+	sstData := buildTestSST(t, [][2][]byte{{[]byte("key"), []byte("value")}})
+	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
+
+	reader := NewColdReader(cs, "bucket", cacheDir, 1, 0, logger)
+	t.Cleanup(func() { require.NoError(t, reader.Close()) })
+
+	first, err := reader.GetReader(ctx, 1)
+	require.NoError(t, err)
+
+	reader.mu.Lock()
+	reader.evictByID(1)
+	reader.mu.Unlock()
+
+	second, err := reader.GetReader(ctx, 1)
+	require.NoError(t, err)
+	require.Same(t, first.(*readHandle).cached, second.(*readHandle).cached)
+
+	reader.mu.Lock()
+	reader.evictByID(1)
+	reader.evictByID(1)
+	reader.mu.Unlock()
+
+	require.NoError(t, first.Close())
+	value, closer, err := second.Get([]byte("key"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("value"), value)
+	require.NoError(t, closer.Close())
+	require.NoError(t, second.Close())
+
+	_, err = os.Stat(filepath.Join(cacheDir, "chapter-1"))
+	require.True(t, os.IsNotExist(err), "repeated eviction must still release the database exactly once")
+}
+
+func TestColdReaderCloseWaitsForActiveReader(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	cs := newInMemoryColdStorage()
+	cacheDir := t.TempDir()
+	sstData := buildTestSST(t, [][2][]byte{{[]byte("key"), []byte("value")}})
+	require.NoError(t, cs.Archive(ctx, "bucket", 1, bytes.NewReader(sstData), ComputeSHA256OrPanic(sstData)))
+
+	reader := NewColdReader(cs, "bucket", cacheDir, 1, 0, logger)
+	handle, err := reader.GetReader(ctx, 1)
+	require.NoError(t, err)
+
+	closeResult := make(chan error, 1)
+	go func() { closeResult <- reader.Close() }()
+	require.Eventually(t, func() bool {
+		reader.mu.Lock()
+		defer reader.mu.Unlock()
+
+		return reader.closed
+	}, time.Second, time.Millisecond, "shutdown must first refuse new leases")
+
+	select {
+	case err := <-closeResult:
+		require.Failf(t, "Close returned with an active reader", "error: %v", err)
+	default:
+	}
+
+	value, closer, err := handle.Get([]byte("key"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("value"), value)
+	require.NoError(t, closer.Close())
+	require.NoError(t, handle.Close())
+	require.NoError(t, <-closeResult)
+	require.NoError(t, reader.Close(), "Close must be idempotent")
+
+	_, err = reader.GetReader(ctx, 1)
+	require.EqualError(t, err, "cold reader is closed")
 }
 
 func TestColdReaderLRUTouchOrder(t *testing.T) {
@@ -283,18 +472,22 @@ func TestColdReaderLRUTouchOrder(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	// Load chapters 1 and 2
-	_, err := reader.GetReader(ctx, 1)
+	r1, err := reader.GetReader(ctx, 1)
 	require.NoError(t, err)
-	_, err = reader.GetReader(ctx, 2)
+	require.NoError(t, r1.Close())
+	r2, err := reader.GetReader(ctx, 2)
 	require.NoError(t, err)
+	require.NoError(t, r2.Close())
 
 	// Touch chapter 1 (moves it to end of LRU)
-	_, err = reader.GetReader(ctx, 1)
+	r1, err = reader.GetReader(ctx, 1)
 	require.NoError(t, err)
+	require.NoError(t, r1.Close())
 
 	// Load chapter 3 → should evict chapter 2 (oldest untouched), not chapter 1
-	_, err = reader.GetReader(ctx, 3)
+	r3, err := reader.GetReader(ctx, 3)
 	require.NoError(t, err)
+	require.NoError(t, r3.Close())
 
 	// Chapter 1 should still be cached
 	_, err = os.Stat(cacheDir + "/chapter-1")
@@ -321,8 +514,9 @@ func TestColdReaderClose(t *testing.T) {
 
 	reader := NewColdReader(cs, "bucket", cacheDir, 4, 0, logger)
 
-	_, err := reader.GetReader(ctx, 1)
+	handle, err := reader.GetReader(ctx, 1)
 	require.NoError(t, err)
+	require.NoError(t, handle.Close())
 
 	// Close should clean up
 	require.NoError(t, reader.Close())
@@ -372,6 +566,7 @@ func TestColdReaderPebbleQueries(t *testing.T) {
 
 	pebbleReader, err := reader.GetReader(ctx, 1)
 	require.NoError(t, err)
+	defer func() { require.NoError(t, pebbleReader.Close()) }()
 
 	// Test iterator over prefix 0x01
 	iter, err := pebbleReader.NewIter(&pebble.IterOptions{
@@ -418,8 +613,9 @@ func TestColdReaderTTLEviction(t *testing.T) {
 	reader := NewColdReader(cs, "bucket", cacheDir, 4, 100*time.Millisecond, logger)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	_, err := reader.GetReader(ctx, 1)
+	handle, err := reader.GetReader(ctx, 1)
 	require.NoError(t, err)
+	require.NoError(t, handle.Close())
 
 	// Cache directory should exist
 	_, err = os.Stat(cacheDir + "/chapter-1")
@@ -451,8 +647,9 @@ func TestColdReaderTTLRefreshedOnAccess(t *testing.T) {
 	reader := NewColdReader(cs, "bucket", cacheDir, 4, 200*time.Millisecond, logger)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	_, err := reader.GetReader(ctx, 1)
+	handle, err := reader.GetReader(ctx, 1)
 	require.NoError(t, err)
+	require.NoError(t, handle.Close())
 
 	cachePath := cacheDir + "/chapter-1"
 
@@ -463,7 +660,10 @@ func TestColdReaderTTLRefreshedOnAccess(t *testing.T) {
 			return true
 		}
 
-		_, getErr := reader.GetReader(ctx, 1)
+		handle, getErr := reader.GetReader(ctx, 1)
+		if getErr == nil {
+			getErr = handle.Close()
+		}
 
 		return getErr != nil
 	}, 400*time.Millisecond, 80*time.Millisecond, "chapter-1 should remain cached while accesses refresh its TTL")
