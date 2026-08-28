@@ -1481,6 +1481,8 @@ func describeFilter(f *commonpb.QueryFilter) string {
 				return "logId" + describeUintBounds(x.LogId.GetCond())
 			case *commonpb.QueryFilter_LogBuiltinUint:
 				return "logDate" + describeUintBounds(x.LogBuiltinUint.GetCond())
+			case *commonpb.QueryFilter_Audit:
+				return "audit:" + x.Audit.GetField().String() + "=" + x.Audit.GetStringCond().GetHardcoded()
 			default:
 				return "?"
 			}

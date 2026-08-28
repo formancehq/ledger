@@ -1,6 +1,8 @@
 package main
 
 import (
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -44,6 +46,18 @@ type Checker struct {
 	// reads: tickets of outstanding reads. Holding a read's ticket gates draining
 	// (see tryDrain), so reads need no drain-race skip.
 	reads map[uint64]struct{}
+
+	// rejections is the set of rejection shapes the model explained, as the
+	// audit trail records a rejected bulk: the distinct ledgers it touched, its
+	// order count and the reason. The oracle keeps no rejected history of its
+	// own, since a rejection leaves its state untouched. Guarded by mu.
+	rejections map[rejectedBulk]struct{}
+
+	// ledgerLogSeqs maps the global sequence of each committed log that carries
+	// no ledger-local id — a ledger-metadata log — to its ledger. The oracle keeps
+	// no row for those, so their sequences are learned here at drain. Guarded by
+	// mu.
+	ledgerLogSeqs map[uint64]string
 
 	// Worker → processor channel.
 	incoming chan observation
@@ -149,6 +163,8 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		checkpoints:                map[uint64]checkpointSnapshot{},
 		deletedCheckpointSnapshots: map[uint64]checkpointSnapshot{},
 		retypeObs:                  map[string]*retypeObservation{},
+		ledgerLogSeqs:              map[uint64]string{},
+		rejections:                 map[rejectedBulk]struct{}{},
 
 		indexCreateSeq: map[string]map[string]uint64{},
 	}
@@ -214,4 +230,55 @@ func (c *Checker) noteRetypeCommit(ledger, canonical string, seq uint64) {
 	obs.foldSeen = map[int]bool{}
 	obs.pendClear = map[int]bool{}
 	obs.confirmedAt = 0
+}
+
+// rejectedBulk is the shape of one model-explained rejection as the audit trail
+// records it. Every audit page from the start of the trail can name any past
+// rejection, so the set is never pruned; it is bounded by the distinct shapes,
+// not by the number of rejections.
+type rejectedBulk struct {
+	ledgers string // distinct ledgers, ascending, comma-joined
+	orders  uint32
+	reason  string // domain reason name, e.g. INSUFFICIENT_FUNDS
+}
+
+// recordRejection remembers a rejection the model explained. Caller holds c.mu.
+func (c *Checker) recordRejection(bulk oracle.Bulk, reason string) {
+	c.rejections[rejectedBulk{
+		ledgers: strings.Join(distinctLedgers(bulk), ","),
+		orders:  uint32(len(bulk.Requests)),
+		reason:  reason,
+	}] = struct{}{}
+}
+
+// distinctLedgers lists the ledgers a bulk's requests name, ascending.
+func distinctLedgers(bulk oracle.Bulk) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, r := range bulk.Requests {
+		if l := oracle.LedgerOf(r); l != "" && !seen[l] {
+			seen[l] = true
+			out = append(out, l)
+		}
+	}
+	slices.Sort(out)
+
+	return out
+}
+
+// learnLedgerLogSequences records the sequences of a committed bulk's logs
+// that carry no ledger-local id. Caller holds c.mu.
+func (c *Checker) learnLedgerLogSequences(bulk oracle.Bulk, logs []*commonpb.Log) {
+	for i, req := range bulk.Requests {
+		if i >= len(logs) {
+			break
+		}
+
+		seq := logs[i].GetSequence()
+		if seq == 0 || logs[i].GetPayload().GetApply().GetLog().GetId() != 0 {
+			continue
+		}
+
+		c.ledgerLogSeqs[seq] = oracle.LedgerOf(req)
+	}
 }

@@ -215,7 +215,7 @@ func runWorker(
 		// in-flight bulk set, exercising cross-node freshness without needing
 		// quiescence.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -233,6 +233,12 @@ func runWorker(
 			case 8:
 				node := random.RandomChoice(checkpointNodes)
 				runCheckpointRead(ctx, node.Bucket, node.Cluster, c)
+			case 9:
+				runAggregateQuery(ctx, client, c)
+			case 10:
+				runAuditQuery(ctx, client, c)
+			case 11:
+				runLedgersList(ctx, client, c)
 			default:
 				runRead(ctx, client, c)
 			}
