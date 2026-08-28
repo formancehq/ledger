@@ -95,6 +95,8 @@ func checkFile(path string) ([]finding, error) {
 	}
 
 	switch {
+	case path == defaultCIWorkflowPath:
+		return checkModelWorkloadTestReachability(path, source)
 	case strings.HasSuffix(path, ".go"):
 		return checkGoSource(path, source)
 	case isProtoPath(path):
