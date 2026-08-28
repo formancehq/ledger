@@ -79,7 +79,7 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  Tests-E2E:
+  Tests-E2E-Business:
     runs-on: namespace-profile-linux-amd64-4vcpu
     env:
       GOPATH: /tmp/go
@@ -90,17 +90,40 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
-      - name: Run E2E tests with coverage
+      - name: Run Business E2E tests with coverage
         run: >
-          nix develop --command just test-e2e-coverage
-      - name: Upload coverage profile
+          nix develop --command just test-e2e-coverage './tests/e2e/business/...' e2e-business.out
+      - name: Upload Business coverage profile
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: coverage-e2e
-          path: build/coverage/e2e.out
+          name: coverage-e2e-business
+          path: build/coverage/e2e-business.out
           retention-days: 7
-          if-no-files-found: ignore
+          if-no-files-found: error
+
+  Tests-E2E-Cluster:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
+        with:
+          fetch-depth: 0
+          dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Run Cluster E2E tests with coverage
+        run: >
+          nix develop --command just test-e2e-coverage './tests/e2e/cluster/...' e2e-cluster.out
+      - name: Upload Cluster coverage profile
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-e2e-cluster
+          path: build/coverage/e2e-cluster.out
+          retention-days: 7
+          if-no-files-found: error
 
   Tests-S3:
     runs-on: namespace-profile-linux-amd64-4vcpu
@@ -165,7 +188,7 @@ jobs:
 
   Coverage:
     if: always()
-    needs: [Tests, Tests-E2E, Tests-S3, Tests-Scenarios]
+    needs: [Tests, Tests-E2E-Business, Tests-E2E-Cluster, Tests-S3, Tests-Scenarios]
     runs-on: namespace-profile-linux-amd64-4vcpu
     env:
       GOPATH: /tmp/go
@@ -186,6 +209,13 @@ jobs:
         run: |
           nix develop --command bash -c '
             cd build/coverage
+            required_profiles=(e2e-business.out e2e-cluster.out)
+            for f in "${required_profiles[@]}"; do
+              if [ ! -s "$f" ]; then
+                echo "Missing required coverage profile: $f"
+                exit 1
+              fi
+            done
             profiles=()
             for f in *.out; do
               [ -f "$f" ] && profiles+=("$f")
@@ -262,7 +292,8 @@ jobs:
       [
         Dirty,
         Tests,
-        Tests-E2E,
+        Tests-E2E-Business,
+        Tests-E2E-Cluster,
         Tests-Scenarios,
         Tests-Model,
         Tests-Schemathesis,
@@ -317,7 +348,8 @@ jobs:
       [
         Dirty,
         Tests,
-        Tests-E2E,
+        Tests-E2E-Business,
+        Tests-E2E-Cluster,
         Tests-Scenarios,
         Tests-Model,
         Tests-Schemathesis,

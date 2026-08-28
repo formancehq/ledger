@@ -38,7 +38,6 @@ func TestProcessCreateTransaction_NumscriptReference_ResolvesContent(t *testing.
 	}{
 		{name: "exact version", selector: "1.2.3", resolvedVersion: "1.2.3"},
 		{name: "latest", selector: "latest", resolvedVersion: "2.0.0", resolveLatest: true},
-		{name: "empty selector", selector: "", resolvedVersion: "2.0.0", resolveLatest: true},
 	}
 
 	for _, tt := range tests {
@@ -178,6 +177,24 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 				require.ErrorAs(t, err, &notFound)
 				require.Equal(t, name, notFound.Name)
 				require.Equal(t, "1.2.3", notFound.Version)
+			},
+		},
+		{
+			// Only the literal "latest" resolves through the latest pointer.
+			// Admission rejects an empty selector (NUMSCRIPT_INVALID_VERSION), so
+			// it cannot reach apply; setting no GetNumscriptLatestVersion
+			// expectation asserts the pointer is never consulted for it.
+			name:     "empty selector is not resolved as latest",
+			selector: "",
+			setup: func(mockStore *MockScope) {
+				mockStore.EXPECT().ResolveNumscriptContent(ledger, name, "").Return(nil, nil)
+			},
+			assert: func(t *testing.T, err domain.Describable) {
+				t.Helper()
+				var notFound *domain.ErrNumscriptNotFound
+				require.ErrorAs(t, err, &notFound)
+				require.Equal(t, name, notFound.Name)
+				require.Empty(t, notFound.Version)
 			},
 		},
 	}

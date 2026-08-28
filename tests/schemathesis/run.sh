@@ -40,10 +40,13 @@ cd "$REPO_ROOT"
 go build -o "$TMPDIR/ledger-server" .
 
 echo "==> Starting server (single-node, bootstrap, no auth)..."
+# This disposable store shares the host filesystem. Keep conformance results
+# independent from the host's production disk-pressure threshold.
 "$TMPDIR/ledger-server" run \
     --node-id 1 --cluster-id schemathesis-test --bootstrap \
     --bind-addr "127.0.0.1:$RAFT_PORT" \
     --wal-dir "$TMPDIR/wal" --data-dir "$TMPDIR/data" \
+    --health-wal-threshold 1 --health-data-threshold 1 \
     --http-port "$HTTP_PORT" --grpc-port "$GRPC_PORT" \
     > "$TMPDIR/server.log" 2>&1 &
 SERVER_PID=$!

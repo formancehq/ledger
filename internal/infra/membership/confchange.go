@@ -22,15 +22,27 @@ type ConfChangeContext struct {
 	RaftAddress    string `json:"raftAddress"`
 	ServiceAddress string `json:"serviceAddress"`
 	InstanceID     []byte `json:"instanceId,omitempty"`
+	// ProposalID is a leader-local correlation token. It is committed with the
+	// ConfChange so the proposing leader can resolve only the matching waiter;
+	// FSM apply deliberately ignores it.
+	ProposalID string `json:"proposalId,omitempty"`
 }
 
 // Equal reports whether two ConfChangeContext values carry identical
-// addresses and instance ID. The []byte InstanceID field prevents the use
-// of Go's == operator on the struct directly.
+// peer registration data. ProposalID is deliberately excluded: it identifies
+// an operation, not a member. The []byte InstanceID field prevents the use of
+// Go's == operator on the struct directly.
 func (c ConfChangeContext) Equal(other ConfChangeContext) bool {
 	return c.RaftAddress == other.RaftAddress &&
 		c.ServiceAddress == other.ServiceAddress &&
 		bytes.Equal(c.InstanceID, other.InstanceID)
+}
+
+// HasPeerRegistration reports whether the context carries data that should
+// create or refresh a peer row. Promotion contexts contain only ProposalID and
+// must not overwrite the existing row with empty addresses.
+func (c ConfChangeContext) HasPeerRegistration() bool {
+	return c.RaftAddress != "" || c.ServiceAddress != "" || len(c.InstanceID) > 0
 }
 
 // MarshalConfChangeContext serialises a ConfChangeContext to JSON bytes
@@ -55,6 +67,22 @@ func UnmarshalConfChangeContext(data []byte) (ConfChangeContext, error) {
 	}
 
 	return ctx, nil
+}
+
+// ConfChangeProposalID extracts the leader-local correlation token from a
+// committed ConfChange. Empty contexts belong to internal/automatic changes
+// that have no synchronous waiter.
+func ConfChangeProposalID(cc *raftpb.ConfChangeV2) (string, error) {
+	if cc == nil || len(cc.GetContext()) == 0 {
+		return "", nil
+	}
+
+	ctx, err := UnmarshalConfChangeContext(cc.GetContext())
+	if err != nil {
+		return "", err
+	}
+
+	return ctx.ProposalID, nil
 }
 
 // UnmarshalConfChangeV2 decodes a ConfChange or ConfChangeV2 entry into a
@@ -103,7 +131,8 @@ func UnmarshalConfChangeV2(entry *raftpb.Entry) (*raftpb.ConfChangeV2, bool, err
 //     path lands the corresponding RemovedMemberEntry atomically with the
 //     peer row delete (EN-1045). The RaftAddress / ServiceAddress fields
 //     on the RemoveNode ctx are empty by convention.
-//   - PromoteLearner sends AddNode with empty Context — ctx is nil there.
+//   - PromoteLearner sends AddNode with a correlation-only Context. Callers
+//     must use HasPeerRegistration before treating it as an address payload.
 //
 // A single cc.Context carries exactly one peer identity. A ConfChangeV2
 // that bundles multiple Add/AddLearner/UpdateNode/RemoveNode changes with

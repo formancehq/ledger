@@ -13,16 +13,16 @@ import (
 // TestCacheCoherenceAfterRestart verifies that the in-memory volume cache
 // remains coherent after a simulated restart (cache reset + restore from 0xFF).
 //
-// The bug scenario:
+// The restart scenario:
 //  1. Process entries 1..N (some entries modify volumes, cache rotations happen)
 //  2. Simulate restart: reset cache → restore from Pebble 0xFF
 //  3. Continue processing entries N+1..M (more rotations happen)
-//  4. Verify ALL volumes that are in the 0xF1 attribute zone are also reachable
-//     from the in-memory cache (gen0 or gen1)
+//  4. Verify the active persisted 0xFF volume mirror and the corresponding
+//     in-memory cache generations contain exactly the same keys
 //
-// If any volume is in 0xF1 but not in the cache after restart + rotations,
-// proposals marked CacheHit for that volume will fail with
-// "not preloaded: not found" — the root cause of the volume divergence bug.
+// Historical volumes can legitimately remain in the 0xF1 attribute zone after
+// they leave the two active cache generations, so 0xF1 is not part of the
+// equality asserted here.
 func TestCacheCoherenceAfterRestart(t *testing.T) {
 	t.Parallel()
 
@@ -113,8 +113,8 @@ func TestCacheCoherenceAfterRestart(t *testing.T) {
 	}
 
 	// ---------------------------------------------------------------
-	// Final verification: cache must match 0xFF (no in-memory entries
-	// that are missing from Pebble 0xFF — the restart invariant)
+	// Final verification: the cache and active 0xFF mirror must still match
+	// bidirectionally after further entries and rotations.
 	// ---------------------------------------------------------------
 	t.Log("After restart + more entries: verifying cache matches 0xFF")
 	verifyCacheMatchesPebbleFF(t, machine, dataStore)
@@ -157,37 +157,95 @@ func logCacheState(t *testing.T, machine *Machine, store *dal.Store, attrs *attr
 	)
 }
 
-// verifyCacheMatchesPebbleFF checks that the in-memory cache is consistent
-// with the 0xFF Pebble zone: every key in memory must also be in 0xFF.
-// This is the restart safety invariant — if a key is in memory but not in
-// 0xFF, a restart would lose it.
+// verifyCacheMatchesPebbleFF checks that the active in-memory volume cache and
+// its persisted 0xFF mirror contain exactly the same keys in each generation.
 func verifyCacheMatchesPebbleFF(t *testing.T, machine *Machine, store *dal.Store) {
 	t.Helper()
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, reader.Close())
+	}()
 
 	currentGen := machine.Registry.Cache.CurrentGeneration()
 	gen0Byte := byte(currentGen % 2)
 	gen1Byte := byte((currentGen + 1) % 2)
 
-	var missing int
+	var missingFromPebble int
 
 	for id := range machine.Registry.Cache.Volumes.Gen0().Iter() {
-		if !hasCacheZoneEntry(t, store, gen0Byte, dal.SubAttrVolume, id) {
+		if !hasCacheZoneEntry(t, reader, gen0Byte, dal.SubAttrVolume, id) {
 			t.Errorf("Volume U128=%x in memory gen0 but NOT in 0xFF byte %d", id, gen0Byte)
-			missing++
+			missingFromPebble++
 		}
 	}
 
 	for id := range machine.Registry.Cache.Volumes.Gen1().Iter() {
-		if !hasCacheZoneEntry(t, store, gen1Byte, dal.SubAttrVolume, id) {
+		if !hasCacheZoneEntry(t, reader, gen1Byte, dal.SubAttrVolume, id) {
 			t.Errorf("Volume U128=%x in memory gen1 but NOT in 0xFF byte %d", id, gen1Byte)
+			missingFromPebble++
+		}
+	}
+
+	require.Zero(t, missingFromPebble, "in-memory cache has entries missing from the active 0xFF mirror")
+
+	missingFromMemory := countPebbleFFVolumesMissingFromMemory(t, reader, gen0Byte, "gen0", func(id attributes.U128) bool {
+		_, ok := machine.Registry.Cache.Volumes.Gen0().Get(id)
+
+		return ok
+	})
+	missingFromMemory += countPebbleFFVolumesMissingFromMemory(t, reader, gen1Byte, "gen1", func(id attributes.U128) bool {
+		_, ok := machine.Registry.Cache.Volumes.Gen1().Get(id)
+
+		return ok
+	})
+
+	require.Zero(t, missingFromMemory, "active 0xFF mirror has entries missing from the in-memory cache")
+}
+
+func countPebbleFFVolumesMissingFromMemory(
+	t *testing.T,
+	reader dal.PebbleReader,
+	genByte byte,
+	generation string,
+	contains func(attributes.U128) bool,
+) int {
+	t.Helper()
+
+	lower := []byte{dal.ZoneCache, genByte, dal.SubAttrVolume}
+	upper := []byte{dal.ZoneCache, genByte, dal.SubAttrVolume + 1}
+
+	iter, err := dal.NewBoundedIter(reader, lower, upper)
+	require.NoError(t, err)
+
+	missing := 0
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if len(key) != 3+16 {
+			t.Errorf("Volume row in 0xFF byte %d has key length %d, expected %d", genByte, len(key), 3+16)
+
+			continue
+		}
+
+		id := attributes.U128FromBytes(key[3:])
+		if !contains(id) {
+			t.Errorf("Volume U128=%x in 0xFF byte %d but NOT in memory %s", id, genByte, generation)
 			missing++
 		}
 	}
 
-	require.Zero(t, missing, "in-memory cache has entries missing from 0xFF — restart would lose them")
+	iterErr := iter.Error()
+	closeErr := iter.Close()
+	require.NoError(t, iterErr)
+	require.NoError(t, closeErr)
+
+	return missing
 }
 
-func hasCacheZoneEntry(t *testing.T, store *dal.Store, genByte, cacheType byte, id attributes.U128) bool {
+func hasCacheZoneEntry(t *testing.T, store dal.PebbleGetter, genByte, cacheType byte, id attributes.U128) bool {
 	t.Helper()
 
 	var key [3 + 16]byte
@@ -201,7 +259,7 @@ func hasCacheZoneEntry(t *testing.T, store *dal.Store, genByte, cacheType byte, 
 		return false
 	}
 
-	_ = closer.Close()
+	require.NoError(t, closer.Close())
 
 	return true
 }

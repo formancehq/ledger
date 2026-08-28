@@ -792,8 +792,8 @@ func TestBuiltinCompilers_GateOnLocalReadiness(t *testing.T) {
 
 	// indexRegistry declares every builtin index via the bucket-scoped
 	// Lookup interface (post-PR#453 architecture). Per-replica readiness
-	// lives in IndexVersionState (modelled here via the resolver), not
-	// on Index.BuildStatus — see EN-1323.
+	// lives in IndexVersionState (modelled here via the resolver) — see
+	// EN-1323.
 	indexRegistry := staticIndexLookup{}
 	for _, id := range []*commonpb.IndexID{
 		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),

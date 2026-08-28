@@ -239,7 +239,6 @@ func TestInitIndexConfig_PurgesOrphanVersionsOnBoot(t *testing.T) {
 	_, err := b.attrs.Index.Set(fsmBatch, indexKey, &commonpb.Index{
 		Ledger:                 ledger,
 		Id:                     id,
-		BuildStatus:            commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY,
 		ForwardEncodingVersion: 2,
 	})
 	require.NoError(t, err)

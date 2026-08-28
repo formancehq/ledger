@@ -166,6 +166,5 @@ Not all FSM operations are modeled as orders. Internal, background operations th
 Examples of this pattern:
 - `repeated MetadataConversionBatch metadata_conversion_batches` -- background metadata value conversion batches
 - `repeated MetadataConversionCompletion metadata_conversions_complete` -- signals that a metadata conversion is done
-- `repeated IndexReadyUpdate index_ready_updates` -- signals from the index builder that a new index is queryable
 
 These fields are processed by the FSM alongside orders but do not produce `Log` entries and do not carry idempotency keys.

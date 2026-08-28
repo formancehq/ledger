@@ -20,7 +20,7 @@ These invariants are upheld by a layered stack between the order processor and t
  │   Order processor (processing.RequestProcessor)                       │
  │   Technical-update handlers (applyMirrorSyncUpdate,                   │
  │     applyMetadataConversionBatch, applyMetadataConversionCompletion,  │
- │     applyIndexReady, applyConvertEntry…)                              │
+ │     applyConvertEntry…)                                               │
  │                                                                       │
  │   All receive a `processing.Scope` (interface). The engine is hidden  │
  │   — handlers cannot reach into Derived / view / Registry directly.    │

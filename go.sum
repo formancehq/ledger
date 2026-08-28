@@ -614,6 +614,8 @@ github.com/testcontainers/testcontainers-go/modules/clickhouse v0.40.0 h1:JhYAFt
 github.com/testcontainers/testcontainers-go/modules/clickhouse v0.40.0/go.mod h1:UoMHEYTzGmwKyeCQaKfcQHSVs/kQwimfzX+y1gVSRIk=
 github.com/testcontainers/testcontainers-go/modules/kafka v0.40.0 h1:BW4CMO6rYLvJRC7UF4l0rudnwm7IX/kJPvGd9MCJM6I=
 github.com/testcontainers/testcontainers-go/modules/kafka v0.40.0/go.mod h1:O4U0SUR8blhkRLLfIFHQqNRKzee7fOxzya2H+rnl4OY=
+github.com/thessem/zap-prettyconsole v0.7.0 h1:NIBesiXkPAewO9UEWtIm2kY6oWV0MKndJ/zeATCKyd8=
+github.com/thessem/zap-prettyconsole v0.7.0/go.mod h1:VxXZiwztq2kvlHIFltV338vM0eOWuupGJI4z/8QOyRY=
 github.com/tidwall/gjson v1.18.0 h1:FIDeeyB800efLX89e5a8Y0BNH+LOngJyGrIWxG2FKQY=
 github.com/tidwall/gjson v1.18.0/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
 github.com/tidwall/match v1.2.0 h1:0pt8FlkOwjN2fPt4bIl4BoNxb98gGHN2ObFEDkrfZnM=

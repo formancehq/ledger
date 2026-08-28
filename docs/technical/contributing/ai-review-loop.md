@@ -244,7 +244,10 @@ PR worktree as the recipe working directory. A PR therefore cannot replace a
 required recipe with a no-op. Script-backed gates are split the same way:
 Schemathesis and model-checker runners come from the trusted base, while their
 server build, OpenAPI input, and other reviewed sources come from the candidate
-worktree. The model driver/oracle is also base-pinned. The loop does not query
+worktree. Base-pinned shell adapters used only for publication are invoked
+explicitly through `bash` and need to be readable, non-symlink regular files; their
+executable bit is not an additional trust boundary. The model driver/oracle is
+also base-pinned. The loop does not query
 or wait for GitHub Actions checks.
 
 ## Claude Code fix adapter

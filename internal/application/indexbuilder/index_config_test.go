@@ -203,7 +203,7 @@ func TestStripBuildingIndexes(t *testing.T) {
 
 	b.indexConfig["ledger1"] = cfg
 
-	// Mark BUILDING for all but tsID.
+	// Schedule backfills for all but tsID.
 	b.addBackfillTaskForTxBuiltin("ledger1", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	b.addBackfillTaskForTxMetadata("ledger1", "category")
 	b.addBackfillTaskForAcctMetadata("ledger1", "role")
@@ -242,13 +242,12 @@ func TestStripBuildingIndexes_NilConfig(t *testing.T) {
 	restore()
 }
 
-// TestScheduleBackfillForIndex_OnlyBuilding pins the per-index dispatch
+// TestScheduleBackfillForIndex_Dispatches pins the per-index dispatch
 // rule scheduleBackfillForIndex enforces: every kind we recognise plugs
-// into its matching backfill scheduler, and READY entries are filtered
-// upstream by the caller (here the test mirrors that filter explicitly).
+// into its matching backfill scheduler.
 // This is the unit-level contract; TestLoadIndexRegistry_StreamsAndDispatches
 // covers the end-to-end Pebble scan path.
-func TestScheduleBackfillForIndex_OnlyBuilding(t *testing.T) {
+func TestScheduleBackfillForIndex_Dispatches(t *testing.T) {
 	t.Parallel()
 
 	b := newTestBuilderWithStore(t)
@@ -261,17 +260,13 @@ func TestScheduleBackfillForIndex_OnlyBuilding(t *testing.T) {
 	dateID := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 
 	cfg := b.indexConfig["ledger1"]
-	cfg.byCanonical[indexes.Canonical(refID)] = &commonpb.Index{Id: refID, BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING, Ledger: "ledger1"}
-	cfg.byCanonical[indexes.Canonical(tsID)] = &commonpb.Index{Id: tsID, BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY, Ledger: "ledger1"}
-	cfg.byCanonical[indexes.Canonical(roleID)] = &commonpb.Index{Id: roleID, BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING, Ledger: "ledger1"}
-	cfg.byCanonical[indexes.Canonical(categoryID)] = &commonpb.Index{Id: categoryID, BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING, Ledger: "ledger1"}
-	cfg.byCanonical[indexes.Canonical(dateID)] = &commonpb.Index{Id: dateID, BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING, Ledger: "ledger1"}
+	cfg.byCanonical[indexes.Canonical(refID)] = &commonpb.Index{Id: refID, Ledger: "ledger1"}
+	cfg.byCanonical[indexes.Canonical(tsID)] = &commonpb.Index{Id: tsID, Ledger: "ledger1"}
+	cfg.byCanonical[indexes.Canonical(roleID)] = &commonpb.Index{Id: roleID, Ledger: "ledger1"}
+	cfg.byCanonical[indexes.Canonical(categoryID)] = &commonpb.Index{Id: categoryID, Ledger: "ledger1"}
+	cfg.byCanonical[indexes.Canonical(dateID)] = &commonpb.Index{Id: dateID, Ledger: "ledger1"}
 
 	for _, idx := range cfg.byCanonical {
-		if idx.GetBuildStatus() != commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING {
-			continue
-		}
-
 		b.scheduleBackfillForIndex("ledger1", idx.GetId())
 	}
 
@@ -281,8 +276,7 @@ func TestScheduleBackfillForIndex_OnlyBuilding(t *testing.T) {
 	assert.True(t, cfg.isIndexed(categoryID))
 	assert.True(t, cfg.isIndexed(dateID))
 
-	// Only BUILDING entries trigger backfill scheduling (4 of the 5 above).
-	assert.Len(t, b.backfillTasks, 4)
+	assert.Len(t, b.backfillTasks, 5)
 }
 
 // TestLoadIndexRegistry_StreamsAndDispatches drives the SubAttrIndex scan
@@ -291,7 +285,7 @@ func TestScheduleBackfillForIndex_OnlyBuilding(t *testing.T) {
 // every dispatch branch the loader implements:
 //   - per-ledger entries land in the matching indexConfig.byCanonical
 //   - bucket-scope entries (Ledger == "") land in bucketIndexConfig
-//   - BUILDING entries schedule a backfill, READY entries don't
+//   - per-ledger entries schedule a backfill
 //   - orphan rows whose Ledger has no indexConfig are dropped silently
 func TestLoadIndexRegistry_StreamsAndDispatches(t *testing.T) {
 	t.Parallel()
@@ -309,23 +303,21 @@ func TestLoadIndexRegistry_StreamsAndDispatches(t *testing.T) {
 	type seed struct {
 		ledger string
 		id     *commonpb.IndexID
-		status commonpb.IndexBuildStatus
 	}
 	seeds := []seed{
-		{"ledgerA", refID, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING},
-		{"ledgerA", roleID, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_READY},
-		{"ledgerB", categoryID, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING},
-		{"", dateID, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING},        // bucket-scope
-		{"ghost", orphanID, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING}, // orphan: no indexConfig entry
+		{"ledgerA", refID},
+		{"ledgerA", roleID},
+		{"ledgerB", categoryID},
+		{"", dateID},        // bucket-scope
+		{"ghost", orphanID}, // orphan: no indexConfig entry
 	}
 
 	fsmBatch := b.pebbleStore.OpenWriteSession()
 	for _, s := range seeds {
 		k := domain.IndexKey{LedgerName: s.ledger, Canonical: indexes.Canonical(s.id)}.Bytes()
 		_, err := b.attrs.Index.Set(fsmBatch, k, &commonpb.Index{
-			Ledger:      s.ledger,
-			Id:          s.id,
-			BuildStatus: s.status,
+			Ledger: s.ledger,
+			Id:     s.id,
 		})
 		require.NoError(t, err)
 	}
@@ -337,7 +329,7 @@ func TestLoadIndexRegistry_StreamsAndDispatches(t *testing.T) {
 
 	require.NoError(t, b.loadIndexRegistry(handle))
 
-	// Per-ledger dispatch + status preserved.
+	// Per-ledger dispatch.
 	assert.True(t, b.indexConfig["ledgerA"].isIndexed(refID))
 	assert.True(t, b.indexConfig["ledgerA"].isIndexed(roleID))
 	assert.True(t, b.indexConfig["ledgerB"].isIndexed(categoryID))
@@ -350,9 +342,9 @@ func TestLoadIndexRegistry_StreamsAndDispatches(t *testing.T) {
 	_, hasGhost := b.indexConfig["ghost"]
 	assert.False(t, hasGhost, "orphan ledger must not be implicitly created")
 
-	// Only BUILDING per-ledger entries scheduled backfills — bucket-scope and
+	// Every per-ledger entry scheduled a backfill — bucket-scope and
 	// orphan rows never reach scheduleBackfillForIndex.
-	require.Len(t, b.backfillTasks, 2)
+	require.Len(t, b.backfillTasks, 3)
 	scheduledLedgers := map[string]struct{}{}
 	for _, task := range b.backfillTasks {
 		scheduledLedgers[task.ledger] = struct{}{}
@@ -362,12 +354,12 @@ func TestLoadIndexRegistry_StreamsAndDispatches(t *testing.T) {
 }
 
 // TestLoadIndexRegistry_SkipsCompletedBuiltinBackfill pins the version guard
-// for builtin indexes: a BUILDING entry whose local IndexVersionState was
+// for builtin indexes: an entry whose local IndexVersionState was
 // already promoted ({current:1, pending:0}) must NOT be re-scheduled on
-// restart, while a BUILDING entry that was never built locally
+// restart, while an entry that was never built locally
 // ({current:0, pending:1}) still IS. Without the guard the completed
 // account-builtin backfill re-runs and trips the pending==0 invariant in
-// completeBackfill, stranding the task in a BUILDING logging loop.
+// completeBackfill, stranding the task in an endless retry-logging loop.
 func TestLoadIndexRegistry_SkipsCompletedBuiltinBackfill(t *testing.T) {
 	t.Parallel()
 
@@ -380,23 +372,20 @@ func TestLoadIndexRegistry_SkipsCompletedBuiltinBackfill(t *testing.T) {
 	type seed struct {
 		ledger string
 		id     *commonpb.IndexID
-		status commonpb.IndexBuildStatus
 	}
 	seeds := []seed{
-		// Completed locally but still BUILDING in the registry (READY flip
-		// not yet applied) — must be skipped.
-		{"done", assetID, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING},
+		// Completed locally — must be skipped.
+		{"done", assetID},
 		// Never built locally — must be scheduled.
-		{"fresh", assetID, commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING},
+		{"fresh", assetID},
 	}
 
 	fsmBatch := b.pebbleStore.OpenWriteSession()
 	for _, s := range seeds {
 		k := domain.IndexKey{LedgerName: s.ledger, Canonical: indexes.Canonical(s.id)}.Bytes()
 		_, err := b.attrs.Index.Set(fsmBatch, k, &commonpb.Index{
-			Ledger:      s.ledger,
-			Id:          s.id,
-			BuildStatus: s.status,
+			Ledger: s.ledger,
+			Id:     s.id,
 		})
 		require.NoError(t, err)
 	}
@@ -637,8 +626,8 @@ func TestRemoveSchemaRewriteTask(t *testing.T) {
 // TestAddSchemaRewriteTask_ResetsInFlightBackfill pins the race window
 // where SetMetadataFieldType arrives while an initial backfill is still
 // running for the same metadata index. Scheduling a separate
-// schemaRewriteTask would scan only the partial rmap and could propose
-// IndexReady before the backfill replays the historical rows. The
+// schemaRewriteTask would scan only the partial rmap and could switch
+// the index live before the backfill replays the historical rows. The
 // expected fix: reset the existing backfill's cursor to 0 (so it replays
 // under the new declared_type), and do NOT enqueue a separate schema
 // rewrite task.
@@ -717,7 +706,7 @@ func TestAddSchemaRewriteTask_ResetsInFlightBackfill(t *testing.T) {
 // must still reset the backfill (regardless of cfg.isMetadataIndexed) so
 // the replay restarts from 0 and emits forward entries under the new
 // declared_type — otherwise the resumed backfill produces a mix of
-// old/new typed entries and the index is marked READY incoherent.
+// old/new typed entries and the index switches live incoherent.
 func TestAddSchemaRewriteTask_ResetsBackfillEvenWhenIndexStripped(t *testing.T) {
 	t.Parallel()
 
@@ -822,8 +811,8 @@ func TestAddSchemaRewriteTask_DoesNotResetOtherLedgersBackfill(t *testing.T) {
 // TestRemoveSchemaRewriteTaskByField pins that the helper cancels the right
 // (ledger, target, key) task and leaves siblings intact. handleRemovedMetadataFieldType
 // relies on this to avoid leaking a rewrite task once its underlying index
-// is dropped — otherwise the builder would retry IndexReady proposals
-// forever against a now-missing index.
+// is dropped — otherwise the builder would keep driving a rewrite for a
+// now-missing index.
 func TestRemoveSchemaRewriteTaskByField(t *testing.T) {
 	t.Parallel()
 
@@ -997,7 +986,6 @@ func TestInitIndexConfig_ResumesRewriteFromPendingVersion(t *testing.T) {
 	_, err := b.attrs.Index.Set(fsmBatch, indexKey, &commonpb.Index{
 		Ledger:                 ledger,
 		Id:                     id,
-		BuildStatus:            commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 		ForwardEncodingVersion: 2,
 	})
 	require.NoError(t, err)
@@ -1063,7 +1051,7 @@ func TestInitIndexConfig_PropagatesReadError(t *testing.T) {
 // TestInitIndexConfig_IdempotentAcrossRetries pins EN-1441: initIndexConfig
 // may run more than once (the loop retries it on a transient boot error), so
 // a second call must not double-schedule the backfillTasks / schemaRewriteTasks
-// slices. A BUILDING index with no persisted version state (current == 0)
+// slices. An index with no persisted version state (current == 0)
 // schedules exactly one backfill task per call.
 func TestInitIndexConfig_IdempotentAcrossRetries(t *testing.T) {
 	t.Parallel()
@@ -1077,7 +1065,7 @@ func TestInitIndexConfig_IdempotentAcrossRetries(t *testing.T) {
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
 
 	// Persist a LedgerInfo (so seedLedgerIndexConfig -> ReadLedgers returns
-	// it and the index is not dropped as an orphan) and a BUILDING Index
+	// it and the index is not dropped as an orphan) and an Index
 	// registry entry with no version state, so loadIndexRegistry schedules
 	// a backfill (versionFor defaults current == 0).
 	fsmBatch := b.pebbleStore.OpenWriteSession()
@@ -1093,7 +1081,6 @@ func TestInitIndexConfig_IdempotentAcrossRetries(t *testing.T) {
 	_, err := b.attrs.Index.Set(fsmBatch, indexKey, &commonpb.Index{
 		Ledger:                 ledger,
 		Id:                     id,
-		BuildStatus:            commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
 		ForwardEncodingVersion: 1,
 	})
 	require.NoError(t, err)
@@ -1102,7 +1089,7 @@ func TestInitIndexConfig_IdempotentAcrossRetries(t *testing.T) {
 	require.NoError(t, b.initIndexConfig(context.Background()))
 	firstBackfills := len(b.backfillTasks)
 	firstRewrites := len(b.schemaRewriteTasks)
-	require.Equal(t, 1, firstBackfills, "one BUILDING index must schedule one backfill")
+	require.Equal(t, 1, firstBackfills, "one unbuilt index must schedule one backfill")
 
 	require.NoError(t, b.initIndexConfig(context.Background()))
 	assert.Equal(t, firstBackfills, len(b.backfillTasks), "retry must not double-schedule backfills")

@@ -99,8 +99,8 @@ func (b *Builder) handleRemovedMetadataFieldType(
 
 	// Drop any in-flight schema-rewrite task for this (ledger, target, key).
 	// Without this, a rewrite started by a prior SetMetadataFieldType would
-	// outlive the index it was rewriting, and the builder would retry
-	// IndexReady proposals forever against an index that no longer exists.
+	// outlive the index it was rewriting, and the builder would keep
+	// driving a rewrite for an index that no longer exists.
 	b.removeSchemaRewriteTaskByField(ledgerName, meta.Metadata.GetTarget(), key)
 
 	// Same hazard on the backfill side: an initial CreateIndex backfill

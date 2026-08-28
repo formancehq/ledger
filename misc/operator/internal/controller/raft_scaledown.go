@@ -3,6 +3,8 @@ package controller
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -24,6 +26,16 @@ type execResult struct {
 	Stdout string
 	Stderr string
 }
+
+type ledgerctlExec func(
+	ctx context.Context,
+	cfg *rest.Config,
+	clientset kubernetes.Interface,
+	namespace, podName, container string,
+	command []string,
+) (*execResult, error)
+
+const scaleDownLeaderNodeID int32 = 1
 
 // podExec runs a command inside a container using the Kubernetes exec API.
 func podExec(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
@@ -102,7 +114,7 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 	// Transfer leadership to node 1 (pod-0) so the leader is never among the removed nodes.
 	logger.Info("transferring Raft leadership to node 1 before scale-down")
 	result, err := podExecWithTimeout(ctx, cfg, clientset, ledger.Namespace, pod0, container,
-		ledgerctlCommand(serverAddr, tlsMode, "cluster", "transfer-leader", "1"),
+		ledgerctlCommand(serverAddr, tlsMode, "cluster", "transfer-leader", strconv.Itoa(int(scaleDownLeaderNodeID))),
 	)
 	if err != nil {
 		// If already leader on node 1, that's fine — check for known benign messages.
@@ -176,7 +188,35 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 func removeNode(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
 	namespace, pod0, container, serverAddr, tlsMode string, nodeID int32, force bool,
 ) error {
+	return removeNodeWithExec(
+		ctx, cfg, clientset,
+		namespace, pod0, container, serverAddr, tlsMode, nodeID, force,
+		podExecWithTimeout,
+	)
+}
+
+func removeNodeWithExec(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
+	namespace, pod0, container, serverAddr, tlsMode string, nodeID int32, force bool,
+	exec ledgerctlExec,
+) error {
 	logger := log.FromContext(ctx)
+	present, err := raftNodePresent(
+		ctx, cfg, clientset,
+		namespace, pod0, container, serverAddr, tlsMode, nodeID, force,
+		exec,
+	)
+	if err != nil {
+		return fmt.Errorf("checking Raft membership before removing node %d: %w", nodeID, err)
+	}
+
+	if !present {
+		logger.Info("Raft node already absent before scale-down removal; postcondition satisfied",
+			"nodeID", nodeID,
+			"force", force,
+		)
+
+		return nil
+	}
 
 	subArgs := []string{"cluster", "remove-node", strconv.Itoa(int(nodeID))}
 	if force {
@@ -189,12 +229,29 @@ func removeNode(ctx context.Context, cfg *rest.Config, clientset kubernetes.Inte
 		"force", force,
 	)
 
-	result, err := podExecWithTimeout(ctx, cfg, clientset, namespace, pod0, container, args)
+	_, err = exec(ctx, cfg, clientset, namespace, pod0, container, args)
 	if err != nil {
-		// Idempotent: node already removed or never in cluster.
-		if result != nil && (isNodeNotInCluster(result.Stderr) || isNodeNotInCluster(result.Stdout)) {
-			logger.Info("node not in cluster, skipping",
+		// The RPC can fail after ConfChangeRemoveNode has committed (for
+		// example while its tombstone is still waiting on Pebble). Verify the
+		// actual membership postcondition rather than matching CLI text, which
+		// may be intentionally sanitized by the gRPC server.
+		stillPresent, statusErr := raftNodePresent(
+			ctx, cfg, clientset,
+			namespace, pod0, container, serverAddr, tlsMode, nodeID, force,
+			exec,
+		)
+		if statusErr != nil {
+			return fmt.Errorf(
+				"removing node %d (force=%v): %w; membership verification after failure also failed: %w",
+				nodeID, force, err, statusErr,
+			)
+		}
+
+		if !stillPresent {
+			logger.Info("Raft node absent after remove-node error; committed postcondition satisfied",
 				"nodeID", nodeID,
+				"force", force,
+				"removeError", err.Error(),
 			)
 
 			return nil
@@ -209,6 +266,52 @@ func removeNode(ctx context.Context, cfg *rest.Config, clientset kubernetes.Inte
 	)
 
 	return nil
+}
+
+// raftNodePresent reports whether nodeID is in the current Raft membership.
+// Normal removal uses leader routing. Force removal explicitly queries node 1,
+// which raftScaleDown has already made the pod-0 leader, so the check remains a
+// local raw Raft status read and never depends on a quorum-backed route during
+// quorum-loss recovery. The leader-state check below still fails closed if
+// leadership changes before removal.
+func raftNodePresent(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
+	namespace, pod0, container, serverAddr, tlsMode string, nodeID int32, force bool,
+	exec ledgerctlExec,
+) (bool, error) {
+	statusArgs := []string{"cluster", "status"}
+	if force {
+		statusArgs = append(statusArgs, "--node-id", strconv.Itoa(int(scaleDownLeaderNodeID)))
+	}
+	statusArgs = append(statusArgs, "--json")
+	args := ledgerctlCommand(serverAddr, tlsMode, statusArgs...)
+	result, err := exec(ctx, cfg, clientset, namespace, pod0, container, args)
+	if err != nil {
+		return false, fmt.Errorf("executing ledgerctl cluster status: %w", err)
+	}
+	if result == nil {
+		return false, errors.New("executing ledgerctl cluster status returned no result")
+	}
+
+	var state struct {
+		State string `json:"state"`
+		Nodes []struct {
+			ID uint32 `json:"id"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal([]byte(result.Stdout), &state); err != nil {
+		return false, fmt.Errorf("decoding ledgerctl cluster status JSON: %w", err)
+	}
+	if !strings.EqualFold(state.State, "leader") {
+		return false, fmt.Errorf("cluster status was served by a non-leader node (state %q)", state.State)
+	}
+
+	for _, member := range state.Nodes {
+		if member.ID == uint32(nodeID) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // ledgerctlCommand builds a shell command that runs ledgerctl with the cluster
@@ -380,16 +483,6 @@ func isPodCrashed(ctx context.Context, clientset kubernetes.Interface, namespace
 	}
 
 	return false
-}
-
-// isNodeNotInCluster checks whether the error output indicates the node is already
-// absent from the Raft cluster (idempotent removal).
-func isNodeNotInCluster(stderr string) bool {
-	lower := strings.ToLower(stderr)
-
-	return strings.Contains(lower, "not in cluster") ||
-		strings.Contains(lower, "not a member") ||
-		strings.Contains(lower, "not found")
 }
 
 // isAlreadyLeader checks whether the error output indicates the target is already

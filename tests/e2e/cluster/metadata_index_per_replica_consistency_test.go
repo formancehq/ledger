@@ -32,9 +32,9 @@ import (
 // every replica eventually serves the same entity under the new
 // encoding. Strict mid-rewrite ordering needs a stronger primitive
 // than min_log_sequence (which only gates on log application, not on
-// rewrite completion); the existing helper polls
-// `current_version > 0` and is correct only for the initial backfill
-// case — left as a follow-up.
+// rewrite completion); actions.WaitForMetadataIndexRewrite provides it
+// client-side by capturing the pre-retype version and waiting for the
+// advancement past it.
 var _ = Describe("MetadataIndexPerReplicaConsistency", Ordered, func() {
 	const (
 		countInstances = 3
@@ -95,7 +95,7 @@ var _ = Describe("MetadataIndexPerReplicaConsistency", Ordered, func() {
 				g.Expect(listErr).To(Succeed())
 				g.Expect(accounts).To(HaveLen(1))
 				g.Expect(accounts[0].Address).To(Equal("alice"))
-			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed(),
+			}).Within(5*time.Second).ProbeEvery(200*time.Millisecond).Should(Succeed(),
 				fmt.Sprintf("node %d must surface alice under the STRING encoding", i))
 		}
 
@@ -117,7 +117,7 @@ var _ = Describe("MetadataIndexPerReplicaConsistency", Ordered, func() {
 				g.Expect(listErr).To(Succeed())
 				g.Expect(accounts).To(HaveLen(1))
 				g.Expect(accounts[0].Address).To(Equal("alice"))
-			}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed(),
+			}).Within(15*time.Second).ProbeEvery(200*time.Millisecond).Should(Succeed(),
 				fmt.Sprintf("node %d must eventually surface alice under the UINT64 encoding after the local rewrite", i))
 		}
 	})

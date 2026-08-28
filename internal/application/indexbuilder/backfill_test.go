@@ -798,7 +798,7 @@ func readStoreKeyExists(t *testing.T, store *readstore.Store, key []byte) bool {
 }
 
 // TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding guards the
-// fix for an index desync during the BUILDING window. The incremental update
+// fix for an index desync during the backfill window. The incremental update
 // deletes the old entry using the index's own reverse-map value, not the log's
 // previous value: while the schema-rewrite backfill has not yet rewritten an
 // entity's entry, the index still holds the pre-conversion (raw) encoding, which
@@ -833,12 +833,11 @@ func TestIndexSavedMetadata_OverwriteDeletesByReverseMapDuringBuilding(t *testin
 	require.NoError(t, seed.Commit())
 	seedMetadataEvent(t, b, ledger, readstore.NamespaceAccount, key, 1, rawEncoded, entityID, 1, readstore.MetadataEventAdd)
 
-	// The "age" account index is BUILDING; incremental writes still flow to it.
+	// The "age" account index is still backfilling; incremental writes flow to it.
 	cfg := newLedgerIndexConfig()
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
 	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{
-		Id:          id,
-		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
+		Id: id,
 	}
 
 	// Incremental write age=40. previous_values is no longer in the log;
@@ -1908,11 +1907,11 @@ func writeAppliedProposalToFSM(t *testing.T, b *Builder, seq, minLog, maxLog uin
 }
 
 // TestAccountAssetBackfillLifecycle exercises the end-to-end PENDING →
-// BUILDING → READY lifecycle for an ACCT_BUILTIN_INDEX_ASSET index:
+// build lifecycle for an ACCT_BUILTIN_INDEX_ASSET index:
 // CreateIndex schedules a backfill, the driver replays historical
 // CreatedTransaction / RevertedTransaction logs through the shared posting
 // walk with the account-asset index registered, and on catch-up the index's
-// version flips current ← pending (READY) while AccountByAssetPrefix scans
+// version flips current ← pending while AccountByAssetPrefix scans
 // return the historical accounts.
 func TestAccountAssetBackfillLifecycle(t *testing.T) {
 	t.Parallel()
@@ -1944,7 +1943,7 @@ func TestAccountAssetBackfillLifecycle(t *testing.T) {
 
 	canonical := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
 
-	// CreateIndex: registers the index BUILDING, sets pending=1, schedules
+	// CreateIndex: registers the index, seeds {current:0, pending:1}, schedules
 	// the backfill task. Wrap in an active batch so the IndexVersionState
 	// persistence inside handleCreatedIndexLog has a batch to write into.
 	batch := b.readStore.NewBatch()
@@ -1975,7 +1974,7 @@ func TestAccountAssetBackfillLifecycle(t *testing.T) {
 
 	require.Empty(t, b.backfillTasks, "backfill task must be retired after catch-up")
 
-	// READY: the atomic switch promoted current ← pending.
+	// Built: the atomic switch promoted current ← pending.
 	current, pending = b.versionFor(ledger, canonical)
 	assert.Equal(t, uint32(1), current, "index must be READY (current=pending) after backfill catches up")
 	assert.Equal(t, uint32(0), pending)
@@ -2054,7 +2053,7 @@ func TestAccountAssetBackfillWipesDeletedLedgerGeneration(t *testing.T) {
 	}
 	require.Empty(t, b.backfillTasks, "backfill task must be retired after catch-up")
 
-	// READY: the atomic switch promoted current ← pending.
+	// Built: the atomic switch promoted current ← pending.
 	current, pending := b.versionFor(ledger, canonical)
 	assert.Equal(t, uint32(1), current)
 	assert.Equal(t, uint32(0), pending)
@@ -2074,7 +2073,7 @@ func TestAccountAssetBackfillWipesDeletedLedgerGeneration(t *testing.T) {
 // account-asset backfill, which replays the GLOBAL log, must not act on a
 // DeleteLedger entry for a *different* ledger. DeleteLedgerIndexes is a full
 // wipe of every ledger-scoped prefix (version state, backfill state, all index
-// keyspaces), so firing it for an unrelated, currently-READY ledger during this
+// keyspaces), so firing it for an unrelated, currently-live ledger during this
 // task's replay would silently degrade that ledger's indexes (version reset to
 // 0, rows gone). Regression for the EN-1368 review blocker.
 func TestAccountAssetBackfillDoesNotWipeUnrelatedLedger(t *testing.T) {
@@ -2118,7 +2117,7 @@ func TestAccountAssetBackfillDoesNotWipeUnrelatedLedger(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), globalCursor)
 
-	// Bring "other"'s account-asset index to READY first. Its own backfill
+	// Bring "other"'s account-asset index live first. Its own backfill
 	// honors the mid-stream DeleteLedger(other), so only the recreated
 	// generation survives.
 	runAccountAssetBackfill(t, b, other, globalCursor)

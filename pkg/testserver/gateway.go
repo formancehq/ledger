@@ -16,6 +16,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 	"github.com/formancehq/ledger/v3/internal/proto/rafttransportpb"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 )
@@ -98,6 +99,19 @@ func (g *Gateway) RemoveInterceptor() {
 	g.interceptor = nil
 }
 
+// Address returns the loopback address allocated for the proxy in front of the
+// node at nodeIndex. Start must have completed before Address is called.
+func (g *Gateway) Address(nodeIndex int) string {
+	if nodeIndex < 0 || nodeIndex >= len(g.ports) {
+		panic(fmt.Sprintf("testserver: gateway node index %d is outside [0, %d)", nodeIndex, len(g.ports)))
+	}
+	if g.ports[nodeIndex] == 0 {
+		panic("testserver: gateway must be started before requesting an address")
+	}
+
+	return fmt.Sprintf("127.0.0.1:%d", g.ports[nodeIndex])
+}
+
 // Start starts the gateway servers on all configured ports.
 func (g *Gateway) Start(ctx context.Context) error {
 	for i, nodeAddr := range g.nodes {
@@ -145,6 +159,10 @@ func (g *Gateway) Start(ctx context.Context) error {
 			client: snapshotpb.NewSnapshotServiceClient(conn),
 		})
 
+		clusterbootstrappb.RegisterClusterBootstrapServiceServer(server, &clusterBootstrapServiceGateway{
+			client: clusterbootstrappb.NewClusterBootstrapServiceClient(conn),
+		})
+
 		g.servers[i] = server
 		g.listeners[i] = lis
 
@@ -180,7 +198,12 @@ func (g *Gateway) Stop(ctx context.Context) error {
 			g.logger.WithFields(map[string]any{
 				"port": g.ports[i],
 			}).Infof("Stopping gateway server on port %d", g.ports[i])
-			server.GracefulStop()
+			// Raft streams are intentionally long-lived. GracefulStop waits for
+			// them to finish, while the streams wait for the proxy to close, so
+			// an exercised gateway can deadlock during test cleanup. Stop cancels
+			// the streams and waits for their handlers; the waitgroup below
+			// verifies that every Serve goroutine returned.
+			server.Stop()
 		}
 
 		if g.listeners[i] != nil {
@@ -380,11 +403,11 @@ type snapshotServiceGateway struct {
 }
 
 func (g *snapshotServiceGateway) PrepareSnapshot(ctx context.Context, req *snapshotpb.PrepareSnapshotRequest) (*snapshotpb.PrepareSnapshotResponse, error) {
-	return g.client.PrepareSnapshot(ctx, req)
+	return g.client.PrepareSnapshot(forwardIncomingMetadata(ctx), req)
 }
 
 func (g *snapshotServiceGateway) FetchFile(req *snapshotpb.FetchFileRequest, stream grpc.ServerStreamingServer[snapshotpb.FetchFileResponse]) error {
-	ctx := stream.Context()
+	ctx := forwardIncomingMetadata(stream.Context())
 
 	clientStream, err := g.client.FetchFile(ctx, req)
 	if err != nil {
@@ -408,5 +431,25 @@ func (g *snapshotServiceGateway) FetchFile(req *snapshotpb.FetchFileRequest, str
 }
 
 func (g *snapshotServiceGateway) CloseSession(ctx context.Context, req *snapshotpb.CloseSessionRequest) (*snapshotpb.CloseSessionResponse, error) {
-	return g.client.CloseSession(ctx, req)
+	return g.client.CloseSession(forwardIncomingMetadata(ctx), req)
+}
+
+type clusterBootstrapServiceGateway struct {
+	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
+
+	client clusterbootstrappb.ClusterBootstrapServiceClient
+}
+
+func (g *clusterBootstrapServiceGateway) GetPeers(ctx context.Context, req *clusterbootstrappb.GetPeersRequest) (*clusterbootstrappb.GetPeersResponse, error) {
+	return g.client.GetPeers(forwardIncomingMetadata(ctx), req)
+}
+
+func (g *clusterBootstrapServiceGateway) JoinAsLearner(ctx context.Context, req *clusterbootstrappb.JoinAsLearnerRequest) (*clusterbootstrappb.JoinAsLearnerResponse, error) {
+	return g.client.JoinAsLearner(forwardIncomingMetadata(ctx), req)
+}
+
+func forwardIncomingMetadata(ctx context.Context) context.Context {
+	md, _ := metadata.FromIncomingContext(ctx)
+
+	return metadata.NewOutgoingContext(ctx, md)
 }

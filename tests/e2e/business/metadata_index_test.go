@@ -455,11 +455,83 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 	})
 
 	// ========================================================================
-	// Schema change of an indexed metadata field — exercises both the R-028
-	// reverse-map decoder fix (#188) and the IndexReady-after-rewrite fix
-	// (#275), since the typed query past the schema change requires the
-	// reverse-map entries to have been re-encoded AND the index status to
-	// have flipped back from BUILDING to READY.
+	// Drop + recreate of an indexed metadata field — pins the version
+	// numbering across incarnations: the replica allocates the recreated
+	// index's versions from its retained local high-water mark, so the
+	// post-recreate current_version continues PAST the dropped
+	// incarnation's numbers while the registry row restarts at
+	// forward_encoding_version 1. The readiness wait must complete on
+	// pending-state semantics (a comparison against the registry version
+	// would never be satisfied) and queries must serve from the rebuilt
+	// keyspace.
+	// ========================================================================
+	Context("Index drop and recreate", Ordered, func() {
+		const ledgerName = "idx-acct-meta-recreate"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+				{
+					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+					Key:        "tier",
+					Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
+				},
+			}),
+				actions.CreateAccountMetadataIndexAction(ledgerName, "tier")))
+			Expect(err).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
+			}, nil),
+				actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"tier": "gold"})))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should become ready again after a drop and recreate, numbering past the old incarnation", func() {
+			preVersion, err := actions.MetadataIndexCurrentVersion(sharedCtx, sharedClient, ledgerName,
+				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+			Expect(err).To(Succeed())
+			Expect(preVersion).To(BeNumerically(">", uint32(0)), "premise: the index must be live before the drop")
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.DropAccountMetadataIndexAction(ledgerName, "tier")))
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateAccountMetadataIndexAction(ledgerName, "tier")))
+			Expect(err).To(Succeed())
+
+			// The old incarnation remains superficially ready until this replica's
+			// asynchronous builder consumes the drop. A generic readiness wait can
+			// therefore return on the stale current_version; require causal version
+			// advancement instead. The recreated registry row restarts at
+			// forward_encoding_version 1 while local versions continue past the
+			// dropped incarnation.
+			Expect(actions.WaitForMetadataIndexVersionAdvance(sharedCtx, sharedClient, ledgerName,
+				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier", preVersion)).To(Succeed())
+
+			postVersion, err := actions.MetadataIndexCurrentVersion(sharedCtx, sharedClient, ledgerName,
+				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+			Expect(err).To(Succeed())
+			Expect(postVersion).To(BeNumerically(">", preVersion),
+				"the recreated incarnation must number past the dropped one (local high-water rule)")
+
+			// The rebuilt keyspace serves queries again.
+			Eventually(func(g Gomega) {
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.StringMetadataFilter("tier", "gold"))
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(1))
+				g.Expect(accounts[0].Address).To(Equal("alice"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+	})
+
+	// ========================================================================
+	// Schema change of an indexed metadata field — exercises the R-028
+	// reverse-map re-encode (#188) and the per-replica rewrite switch: the
+	// typed query past the schema change requires the reverse-map entries
+	// to have been re-encoded AND the replica to have atomic-switched the
+	// rewritten keyspace live.
 	// ========================================================================
 	Context("Schema change rewrites the indexed reverse-map", Ordered, func() {
 		const ledgerName = "idx-acct-meta-schemachg"
@@ -496,8 +568,13 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
-		It("Should flip IndexBuildStatus back to READY after the reverse-map rewrite", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
+		It("Should report the index ready locally after the reverse-map rewrite", func() {
+			preVersion, err := actions.MetadataIndexCurrentVersion(sharedCtx, sharedClient, ledgerName,
+				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+			Expect(err).To(Succeed())
+			Expect(preVersion).To(BeNumerically(">", uint32(0)), "premise: the index must be live before the retype")
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
 				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score",
 				commonpb.MetadataType_METADATA_TYPE_INT64)))
 			Expect(err).To(Succeed())
@@ -510,14 +587,16 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 				g.Expect(resp.AccountFields).To(HaveKey("score"))
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
-			// The #275 claim: after the reverse-map rewrite completes,
-			// processSchemaRewrites proposes IndexReady so the field's
-			// IndexBuildStatus flips back from BUILDING to READY. Pre-fix
-			// this would have stayed BUILDING forever; WaitForMetadataIndexReady
-			// would time out and every typed query stayed permanently
-			// rejected by the "index is still building" guard.
-			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName,
-				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")).To(Succeed())
+			// After the retype's version bump, this replica rewrites its
+			// reverse map and atomic-switches the new version live. The
+			// pre-retype keyspace stays live (and non-zero) throughout the
+			// rewrite, so completion is only proven by the per-replica
+			// current_version ADVANCING past the value captured before the
+			// retype, with no pending rewrite left. A rewrite that never
+			// completes would keep every typed query rejected by the
+			// "index is still building" guard.
+			Expect(actions.WaitForMetadataIndexRewrite(sharedCtx, sharedClient, ledgerName,
+				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score", preVersion)).To(Succeed())
 
 			// Sanity: the API surfaces the raw value the client wrote
 			// (declared_type is an index hint, not an API contract).
@@ -532,24 +611,16 @@ var _ = Describe("MetadataIndexConsistency", Ordered, func() {
 			Expect(ok).To(BeTrue(), "expected string_value (raw client write), got %T", v.Type)
 			Expect(strVal.StringValue).To(Equal("42"))
 
-			// NOTE: a follow-up test asserting that the typed range filter
-			// finds the account is intentionally NOT added here. With the
-			// #275 fix the index status reaches READY (this test), and the
-			// reverse map has been re-encoded under the new type (locked by
-			// the #188 unit roundtrip), but a separate behaviour leaves the
-			// forward index lookup returning empty on this exact path.
-			// Tracked separately; out of scope for #275 which is purely the
-			// IndexReady proposal.
+			// The consumer proof: after the rewrite wait returns, the typed
+			// range filter must find alice through the re-encoded index.
+			Eventually(func(g Gomega) {
+				lo := int64(42)
+				accounts, err := actions.ListAccountsFiltered(sharedCtx, sharedClient, ledgerName, 0, "", actions.Int64RangeMetadataFilter("score", &lo, &lo))
+				g.Expect(err).To(Succeed())
+				g.Expect(accounts).To(HaveLen(1), "typed range query must find the re-encoded row")
+				g.Expect(accounts[0].Address).To(Equal("alice"))
+			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+
 		})
 	})
 })
-
-// Note: an end-to-end test covering the schema-change rewrite of an indexed
-// reverse-map (the R-028 path) would create an index, populate it, change
-// the field type, and query through the new type. Such a test is blocked
-// today because the SetMetadataFieldType apply leaves
-// IndexBuildStatus = BUILDING with no path to re-reach READY, so the post-
-// rewrite typed query is rejected by the "index is still building" guard.
-// The unit roundtrip in internal/storage/readstore/encode_metadata_test.go
-// covers the bug at the decoder level; the e2e gap will be closed once the
-// separate index-status reset path lands.

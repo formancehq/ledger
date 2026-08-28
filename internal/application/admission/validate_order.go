@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -269,12 +270,25 @@ func validateOrderContent(order *raftcmdpb.Order) domain.Describable {
 		return domain.ErrEmptyTransaction
 	}
 
+	// An executable reference's selector — the literal "latest" or a full semver
+	// (omitted and partial selectors are read-only) — is state-independent, so it
+	// is gated structurally for every accepted order. Script resolution runs far
+	// later, and is short-circuited for an order the fold loop predicts the FSM
+	// will skip, so a selector reaching the audit chain is decided here.
+	if refValid {
+		if v := o.GetNumscriptReference().GetVersion(); v != "latest" {
+			if _, err := semver.Parse(v); err != nil {
+				return &domain.ErrNumscriptInvalidVersion{Version: v}
+			}
+		}
+	}
+
 	return nil
 }
 
 // validateOrderCreateIndex rejects a CreateIndex order for an IndexID the
 // builder has no backfill path for — which would otherwise be persisted as a
-// permanently-BUILDING registry entry that never completes. ParseCanonical
+// registry entry whose backfill never runs or completes. ParseCanonical
 // decodes any well-formed IndexID reachable from an HTTP/gRPC create body,
 // including unsupported enum values (e.g. metadata:TARGET_TYPE_LEDGER:<key>,
 // account_builtin:ACCT_BUILTIN_INDEX_UNSPECIFIED, log_builtin:...UNSPECIFIED),

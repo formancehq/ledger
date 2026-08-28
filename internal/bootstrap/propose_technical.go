@@ -20,7 +20,7 @@ const maxTechnicalStaleRetries = 5
 // proposeTechnical submits a technical Raft proposal through the
 // preload runner. It blocks until the FSM applies. Used by callers
 // that previously went through NodeProposer.ProposeProposal — cluster
-// config updates, idempotency eviction, IndexReady notifications.
+// config updates, idempotency eviction, backup orders.
 //
 // Why route technical proposals through the preload runner:
 //   - PredictedIndex is set as a backstop: a stale tracker (e.g. a

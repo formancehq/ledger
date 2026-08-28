@@ -67,7 +67,52 @@ func TestPushRefusesBaseWithoutTrustedValidator(t *testing.T) {
 	fixture := newPushFixture(t, pushFixtureOptions{omitTrustedValidator: true})
 	output, exitCode := fixture.run(t)
 	require.Equal(t, 1, exitCode, output)
-	require.Contains(t, output, "trusted base does not provide executable scripts/agent-check-pr")
+	require.Contains(t, output, "trusted base does not provide readable non-symlink regular file scripts/agent-check-pr")
+
+	remoteHead := runGitOutput(t, fixture.root, "--git-dir", fixture.remote, "rev-parse", "refs/heads/feature")
+	require.Equal(t, fixture.headSHA, remoteHead)
+}
+
+func TestPushAcceptsNonExecutableBasePinnedPublicationScripts(t *testing.T) {
+	t.Parallel()
+
+	fixture := newPushFixture(t, pushFixtureOptions{trustedPublicationToolsNonExecutable: true})
+	output, exitCode := fixture.run(t)
+	require.Equal(t, 0, exitCode, output)
+	require.Contains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
+}
+
+func TestPushRefusesNonRegularBasePinnedPublicationScript(t *testing.T) {
+	t.Parallel()
+
+	fixture := newPushFixture(t, pushFixtureOptions{trustedValidatorDirectory: true})
+	output, exitCode := fixture.run(t)
+	require.Equal(t, 1, exitCode, output)
+	require.Contains(t, output, "trusted base does not provide readable non-symlink regular file scripts/agent-check-pr")
+
+	remoteHead := runGitOutput(t, fixture.root, "--git-dir", fixture.remote, "rev-parse", "refs/heads/feature")
+	require.Equal(t, fixture.headSHA, remoteHead)
+}
+
+func TestPushRefusesSymlinkedBasePinnedPublicationScript(t *testing.T) {
+	t.Parallel()
+
+	fixture := newPushFixture(t, pushFixtureOptions{trustedValidatorSymlink: true})
+	output, exitCode := fixture.run(t)
+	require.Equal(t, 1, exitCode, output)
+	require.Contains(t, output, "trusted base does not provide readable non-symlink regular file scripts/agent-check-pr")
+
+	remoteHead := runGitOutput(t, fixture.root, "--git-dir", fixture.remote, "rev-parse", "refs/heads/feature")
+	require.Equal(t, fixture.headSHA, remoteHead)
+}
+
+func TestPushKeepsExecutableRequirementForDirectTrustedTools(t *testing.T) {
+	t.Parallel()
+
+	fixture := newPushFixture(t, pushFixtureOptions{trustedDirectToolNonExecutable: true})
+	output, exitCode := fixture.run(t)
+	require.Equal(t, 1, exitCode, output)
+	require.Contains(t, output, "trusted base does not provide executable scripts/ai-review-codex")
 
 	remoteHead := runGitOutput(t, fixture.root, "--git-dir", fixture.remote, "rev-parse", "refs/heads/feature")
 	require.Equal(t, fixture.headSHA, remoteHead)
@@ -85,10 +130,14 @@ func TestPushQuotesValidationPathsContainingAnApostrophe(t *testing.T) {
 }
 
 type pushFixtureOptions struct {
-	moveRemote            bool
-	moveLocalHead         bool
-	tamperTargetToolchain bool
-	omitTrustedValidator  bool
+	moveRemote                           bool
+	moveLocalHead                        bool
+	tamperTargetToolchain                bool
+	omitTrustedValidator                 bool
+	trustedPublicationToolsNonExecutable bool
+	trustedValidatorDirectory            bool
+	trustedValidatorSymlink              bool
+	trustedDirectToolNonExecutable       bool
 
 	// quotedRepositoryParent nests the repository under a parent directory whose
 	// name contains an apostrophe, which the run directory inherits.
@@ -131,15 +180,34 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 	guard, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-git-guard"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-git-guard"), guard, 0o755))
-	if !options.omitTrustedValidator {
-		validator, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "agent-check-pr"))
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "agent-check-pr"), validator, 0o755))
-		writeExecutable(t, filepath.Join(seed, "scripts", "agent-just"), "#!/usr/bin/env bash\nexit 0\n")
+	publicationToolMode := os.FileMode(0o755)
+	if options.trustedPublicationToolsNonExecutable {
+		publicationToolMode = 0o644
 	}
-	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 0\n")
+	if !options.omitTrustedValidator {
+		validatorPath := filepath.Join(seed, "scripts", "agent-check-pr")
+		switch {
+		case options.trustedValidatorDirectory:
+			require.NoError(t, os.Mkdir(validatorPath, 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(validatorPath, "tracked"), []byte("not a script\n"), 0o644))
+		case options.trustedValidatorSymlink:
+			externalValidatorPath := filepath.Join(root, "outside-agent-check-pr")
+			require.NoError(t, os.WriteFile(externalValidatorPath, []byte("#!/usr/bin/env bash\nexit 0\n"), 0o644))
+			require.NoError(t, os.Symlink(externalValidatorPath, validatorPath))
+		default:
+			validator, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "agent-check-pr"))
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(validatorPath, validator, publicationToolMode))
+		}
+		require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "agent-just"), []byte("#!/usr/bin/env bash\nexit 0\n"), publicationToolMode))
+	}
+	directToolMode := os.FileMode(0o755)
+	if options.trustedDirectToolNonExecutable {
+		directToolMode = 0o644
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-review-codex"), []byte("#!/usr/bin/env bash\nexit 0\n"), directToolMode))
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-known-findings"), "#!/usr/bin/env bash\nexit 0\n")
-	writeExecutable(t, filepath.Join(seed, "scripts", "ai-fix-claude"), "#!/usr/bin/env bash\nexit 0\n")
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-fix-claude"), []byte("#!/usr/bin/env bash\nexit 0\n"), publicationToolMode))
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-known-findings"), []byte(`#!/usr/bin/env bash
 set -euo pipefail
 pr=$1

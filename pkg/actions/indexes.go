@@ -58,31 +58,71 @@ func CreateLogBuiltinIndexAction(ledger string, index commonpb.LogBuiltinIndex) 
 }
 
 // indexReadyOnReplica returns nil when the (ledger, IndexID) entry in
-// the GetIndexStatus response carries a non-zero current_version on
-// the replica the client is talking to. current_version == 0 (or a
-// missing entry) means the local backfill / rewrite has not yet
-// performed the atomic switch into a live keyspace, so queries that
-// require this index would short-read.
+// the GetIndexStatus response has a live keyspace and no rewrite in
+// flight on the replica the client is talking to: current_version > 0
+// and pending_version == 0.
 //
-// Replaces the BuildStatus-based ready check: EN-1323 made BuildStatus
-// informational only. The cluster-wide IndexReady proposal that used
-// to flip BuildStatus to READY is gone; each replica advances its
-// IndexVersionState independently as soon as its local backfill / rewrite
-// finishes.
+// Per-replica version numbers are allocated from the replica's local
+// high-water mark (a drop+recreate resumes past the dropped
+// incarnation's numbers), so they are NOT comparable to the registry
+// row's forward_encoding_version. Callers that need to observe a
+// RETYPE completing must capture the pre-retype current_version and
+// use indexVersionAdvancedOnReplica — the previous keyspace stays live
+// (current_version > 0, and pending_version is 0 until the replica's
+// builder picks the operation up), so this check alone can pass before
+// a retype or drop+recreate starts locally.
+//
+// Each replica advances its IndexVersionState independently as soon as
+// its local backfill / rewrite finishes (EN-1323) — readiness is always
+// a per-replica question.
 func indexReadyOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*commonpb.IndexID) bool, label string) error {
-	for _, entry := range resp.GetIndexes() {
-		if entry.GetLedger() != ledger || !matches(entry.GetIndex().GetId()) {
-			continue
-		}
-
-		if entry.GetCurrentVersion() == 0 {
-			return fmt.Errorf("index %s on %s has current_version=0 (local backfill / rewrite not finished)", label, ledger)
-		}
-
-		return nil
+	entry := findIndexEntry(resp, ledger, matches)
+	if entry == nil {
+		return fmt.Errorf("index %s on %s not found in GetIndexStatus", label, ledger)
 	}
 
-	return fmt.Errorf("index %s on %s not found in GetIndexStatus", label, ledger)
+	if entry.GetCurrentVersion() == 0 {
+		return fmt.Errorf("index %s on %s has current_version=0 (local backfill not switched)", label, ledger)
+	}
+
+	if p := entry.GetPendingVersion(); p != 0 {
+		return fmt.Errorf("index %s on %s has rewrite to version %d in flight", label, ledger, p)
+	}
+
+	return nil
+}
+
+// indexVersionAdvancedOnReplica returns nil when the replica has switched
+// past preVersion with no build in flight. Version advancement is the causal
+// completion signal for any operation that replaces a live incarnation: the
+// previous current_version remains observable until the local builder consumes
+// the triggering log, so ordinary readiness can pass before work starts.
+func indexVersionAdvancedOnReplica(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*commonpb.IndexID) bool, preVersion uint32, label string) error {
+	entry := findIndexEntry(resp, ledger, matches)
+	if entry == nil {
+		return fmt.Errorf("index %s on %s not found in GetIndexStatus", label, ledger)
+	}
+
+	current := entry.GetCurrentVersion()
+	if current <= preVersion {
+		return fmt.Errorf("index %s on %s still serves version %d; waiting to advance past %d", label, ledger, current, preVersion)
+	}
+
+	if p := entry.GetPendingVersion(); p != 0 {
+		return fmt.Errorf("index %s on %s has rewrite to version %d in flight", label, ledger, p)
+	}
+
+	return nil
+}
+
+func findIndexEntry(resp *servicepb.GetIndexStatusResponse, ledger string, matches func(*commonpb.IndexID) bool) *servicepb.IndexEntry {
+	for _, entry := range resp.GetIndexes() {
+		if entry.GetLedger() == ledger && matches(entry.GetIndex().GetId()) {
+			return entry
+		}
+	}
+
+	return nil
 }
 
 // WaitForMetadataIndexReady polls until the metadata index has been
@@ -100,6 +140,69 @@ func WaitForMetadataIndexReady(ctx context.Context, client servicepb.BucketServi
 			return ok && m.Metadata.GetTarget() == target && m.Metadata.GetKey() == key
 		}, fmt.Sprintf("metadata[%s] on %s", key, target.String()))
 	})
+}
+
+// MetadataIndexCurrentVersion returns the per-replica current_version of the
+// (target, key) metadata index on the replica the client is talking to.
+// Capture it BEFORE issuing an operation that must allocate a fresh version
+// (such as a retype or drop+recreate) so the corresponding wait can observe
+// the advancement past it. A replica whose initial backfill has not switched
+// yet (current_version == 0) is an error: zero is not a live predecessor
+// keyspace, and waiting for advancement past it would be satisfied by the
+// initial switch rather than the requested operation.
+//
+// The capture and the wait MUST observe the same replica: versions are
+// replica-local, so a client whose connection load-balances across nodes
+// can capture one replica's version and poll another whose different
+// number satisfies the inequality without any rewrite having run. Use a
+// per-node connection (as every caller in this repo does).
+func MetadataIndexCurrentVersion(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string) (uint32, error) {
+	resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
+	if err != nil {
+		return 0, err
+	}
+
+	entry := findIndexEntry(resp, ledger, func(id *commonpb.IndexID) bool {
+		m, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+
+		return ok && m.Metadata.GetTarget() == target && m.Metadata.GetKey() == key
+	})
+	if entry == nil {
+		return 0, fmt.Errorf("metadata index [%s] on %s not found in GetIndexStatus", key, ledger)
+	}
+
+	if entry.GetCurrentVersion() == 0 {
+		return 0, fmt.Errorf("metadata index [%s] on %s has no live keyspace yet (current_version=0) — wait for the initial build before capturing a retype token", key, ledger)
+	}
+
+	return entry.GetCurrentVersion(), nil
+}
+
+// WaitForMetadataIndexVersionAdvance polls until the replica has atomically
+// switched the (target, key) metadata index past preVersion with no build in
+// flight. It is the causal wait for retypes and drop+recreates, where ordinary
+// readiness may still observe the previous live incarnation. preVersion must
+// come from MetadataIndexCurrentVersion over the SAME per-node connection —
+// see the replica-affinity requirement there.
+func WaitForMetadataIndexVersionAdvance(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string, preVersion uint32) error {
+	return poll(ctx, 10*time.Second, 200*time.Millisecond, func() error {
+		resp, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
+		if err != nil {
+			return err
+		}
+
+		return indexVersionAdvancedOnReplica(resp, ledger, func(id *commonpb.IndexID) bool {
+			m, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+
+			return ok && m.Metadata.GetTarget() == target && m.Metadata.GetKey() == key
+		}, preVersion, fmt.Sprintf("metadata[%s] on %s", key, target.String()))
+	})
+}
+
+// WaitForMetadataIndexRewrite is the retype-specific name for
+// WaitForMetadataIndexVersionAdvance.
+func WaitForMetadataIndexRewrite(ctx context.Context, client servicepb.BucketServiceClient, ledger string, target commonpb.TargetType, key string, preVersion uint32) error {
+	return WaitForMetadataIndexVersionAdvance(ctx, client, ledger, target, key, preVersion)
 }
 
 // WaitForBuiltinIndexReady polls until a builtin transaction index has been

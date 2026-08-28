@@ -20,7 +20,7 @@ import (
 
 // backfillTask tracks the progress of backfilling a single index.
 type backfillTask struct {
-	ledger             string // ledger name (used for BB keys, readstore keys, IndexReady proposal, logging)
+	ledger             string // ledger name (used for BB keys, readstore keys, logging)
 	index              *commonpb.IndexID
 	cursor             uint64 // current position (persisted in Pebble)
 	appliedProposalSeq uint64 // safe AppliedProposal resume sequence for transient-account filtering
@@ -243,8 +243,8 @@ func schemaRewriteBBKey(ledgerName string, targetType commonpb.TargetType, key s
 
 // addSchemaRewriteTask creates a deferred schema rewrite task for a SetMetadataFieldType
 // log entry, avoiding duplicates. The ledger name is captured so the
-// follow-up IndexReady proposal can address the right LedgerInfo (the FSM
-// keys by name).
+// task's readstore writes and version-state keys address the right
+// ledger.
 //
 // Returns an error if persisting the bumped pending_version (or the
 // reset backfill cursor) fails — the caller propagates so the batch
@@ -407,11 +407,6 @@ func (b *Builder) removeSchemaRewriteTask(idx int) {
 // the rmap cursor and the new declared_type (read from the persisted
 // BackfillCursor written at the previous batch), and continues the
 // rmap scan from where it left off.
-//
-// Replaces the legacy stopgap that scheduled a from-scratch backfill
-// when ReadAllSchemaRewriteProgress found a leftover cursor — that
-// path relied on cluster-wide IndexReady to mark progress and didn't
-// know which (current, pending) the local replica was at.
 func (b *Builder) scheduleResumedRewrites() {
 	for ledgerName, inner := range b.indexVersions {
 		cfg := b.ledgerConfig(ledgerName)
@@ -534,8 +529,8 @@ func (b *Builder) resolveResumedToType(ledgerName string, target commonpb.Target
 
 // removeSchemaRewriteTaskByField cancels any in-flight rewrite task matching
 // (ledger, target, key). Called when the schema field is removed: the index
-// it would mark READY no longer exists, so the task must be discarded
-// instead of looping on isSchemaRewriteIndexReady forever.
+// it was rewriting no longer exists, so the task must be discarded
+// instead of scanning toward a keyspace nothing will ever serve.
 func (b *Builder) removeSchemaRewriteTaskByField(ledgerName string, target commonpb.TargetType, key string) {
 	for i, t := range b.schemaRewriteTasks {
 		if t.ledger == ledgerName && t.targetType == target && t.key == key {
@@ -1019,8 +1014,8 @@ func metadataReverseMapKeyV(
 
 // processBackgroundTasks advances both backfill and schema rewrite tasks using
 // round-robin scheduling with a time budget.
-// When a backfill catches up to globalCursor, it proposes IndexReady (leader only).
-// If the proposal fails (not leader or Raft error), the task is kept and retried.
+// When a backfill catches up to globalCursor, completeBackfill performs the
+// local atomic switch and the task is dropped.
 func (b *Builder) processBackgroundTasks(ctx context.Context, stop <-chan struct{}, globalCursor uint64) {
 	b.processBackfills(ctx, stop, globalCursor)
 	b.processSchemaRewrites(ctx, stop)
@@ -1099,8 +1094,8 @@ func (b *Builder) processSchemaRewrites(ctx context.Context, stop <-chan struct{
 // processBackfills advances backfill tasks using round-robin scheduling with a
 // time budget. Each task gets an equal share of the budget per tick, preventing
 // starvation when multiple indexes are building concurrently.
-// When a backfill catches up to globalCursor, it proposes IndexReady (leader only).
-// If the proposal fails (not leader or Raft error), the task is kept and retried.
+// When a backfill catches up to globalCursor, completeBackfill performs the
+// local atomic switch and the task is dropped.
 func (b *Builder) processBackfills(ctx context.Context, stop <-chan struct{}, globalCursor uint64) {
 	if len(b.backfillTasks) == 0 {
 		return
@@ -1218,8 +1213,7 @@ const backfillBatchSize = 10_000
 // in-memory cache after commit. Covers both metadata indexes (where
 // the dual-write path also targets v_pending) and builtin indexes
 // (tx/account/log) — the unified IndexVersionState is the per-replica
-// "this index is ready to serve queries" signal that drove away
-// from the cluster-wide IndexReady proposal.
+// "this index is ready to serve queries" signal.
 //
 // Note: there's no v_old GC here because a backfill builds v_pending
 // from scratch — there's no v_old to reclaim on this replica. (The
@@ -1422,8 +1416,7 @@ func (b *Builder) buildBackfillConfig(task *backfillTask) *ledgerIndexConfig {
 	}
 
 	cfg.byCanonical[indexes.Canonical(task.index)] = &commonpb.Index{
-		Id:          task.index,
-		BuildStatus: commonpb.IndexBuildStatus_INDEX_BUILD_STATUS_BUILDING,
+		Id: task.index,
 	}
 
 	return cfg
@@ -1435,7 +1428,7 @@ func (b *Builder) buildBackfillConfig(task *backfillTask) *ledgerIndexConfig {
 // assignSkipLogIDAndDate in the FSM apply path), so it participates in
 // the per-ledger LedgerLogIndex and the log-date builtin index just
 // like any other ledger log. Returns false for config-mutation logs
-// (CreateIndex, DropIndex, IndexReady, etc.) which the live path
+// (CreateIndex, DropIndex, etc.) which the live path
 // already applied in-memory and never need re-indexing on backfill.
 func isDataLog(log *commonpb.Log) bool {
 	if log.GetPayload() == nil {

@@ -2731,10 +2731,9 @@ paths:
     get:
       summary: Get a single index registry entry
       description: |
-        Returns the `Index` registry entry (id, buildStatus, ledger,
-        createdAt, forwardEncodingVersion) for a single
-        index, serialized in protobuf-JSON camelCase. Requires
-        `ledger:LedgerRead` scope.
+        Returns the `Index` registry entry (id, ledger, createdAt,
+        forwardEncodingVersion) for a single index, serialized in
+        protobuf-JSON camelCase. Requires `ledger:LedgerRead` scope.
       operationId: getIndex
       tags:
         - Indexes
@@ -3447,13 +3446,17 @@ components:
       type: object
       required:
         - name
+        - version
       properties:
         name:
           type: string
           description: Name of the numscript in the ledger's library
         version:
           type: string
-          description: Optional semver constraint. Empty means latest.
+          description: |
+            Version selector: the literal `latest` or an exact full semver
+            (`1.2.3`). Partial selectors such as `1` or `1.2` are read-only and
+            rejected here.
         vars:
           type: object
           additionalProperties:

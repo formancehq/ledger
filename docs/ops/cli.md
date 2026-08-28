@@ -538,8 +538,12 @@ ledgerctl ledgers set-metadata-type [flags]
 - Always O(1): stored metadata values and log payloads are immutable. The
   declared type only affects the forward-index encoding. Type changes —
   including back-to-back retypes — apply immediately. Range-query indexes
-  are rebuilt asynchronously; query the index's `BuildStatus` to know when
-  the new encoding is fully indexed.
+  are rebuilt asynchronously; `ledgerctl ledgers list-indexes` shows
+  `READY (vN, rewriting → vM)` while a replica rebuilds, and the new
+  encoding is fully indexed there once its `currentVersion` has advanced
+  past the pre-retype value with no rewrite pending (per-replica version
+  numbers are local — they are not comparable to
+  `forwardEncodingVersion`).
 
 **Example:**
 
@@ -2701,6 +2705,9 @@ ledgerctl cluster remove-node <node-id> [flags]
 - The request is forwarded to the current leader if sent to a follower
 - The leader proposes a ConfChange to remove the node from the cluster
 - Once committed, all nodes remove the peer from their transport and service pool
+- The leader waits for the committed Raft index to be durable in the FSM, including the peer-row deletion and, when an instance ID exists, the removed-member tombstone; this uses the caller's `--timeout` rather than a separate fixed five-second wait
+- If the caller timeout expires after the Raft removal committed, the server returns `Unavailable` with reason `RAFT_NODE_REMOVAL_COMMITTED`; confirm the node is absent with `cluster status`
+- Removing an already-absent node returns `NotFound` with reason `RAFT_NODE_NOT_IN_CLUSTER`
 - Cannot remove the leader node; use `cluster transfer-leader` first
 - Works for both voters and learners
 - The removed node is not automatically shut down; the operator must stop it manually

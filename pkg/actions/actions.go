@@ -520,7 +520,9 @@ func SaveNumscriptWithVersionAction(ledger, name, content, version string) *serv
 	}
 }
 
-// CreateScriptRefTransactionAction creates a transaction using a script reference from the library.
+// CreateScriptRefTransactionAction creates a transaction using a script reference
+// from the library. version is required: the literal "latest" or an exact full
+// semver.
 func CreateScriptRefTransactionAction(ledgerName, scriptName, version string, vars map[string]string, metadata map[string]string) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{

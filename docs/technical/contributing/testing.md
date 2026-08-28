@@ -129,6 +129,14 @@ BeforeEach(func() {
 `SetupSingleNode` does the same for a one-node cluster. Both accept extra
 instruments for the node under test.
 
+`WithGateway()` places an allocated loopback proxy in front of every Raft and
+snapshot service endpoint. Each node advertises its proxy address, so a gateway
+interceptor observes the real post-admission peer traffic rather than an unused
+side channel. Initial bootstrap discovery starts direct; the proxy also forwards
+the bootstrap unary RPCs required after discovery because the returned peer
+addresses already point at the proxies. The proxy preserves incoming gRPC
+metadata on every backend hop so authenticated peer traffic remains valid.
+
 ### Ports are leased, never chosen
 
 A test node's ports come from `testserver.AllocateNodeLease()`. Do not write a
@@ -612,8 +620,10 @@ plain `-tags e2e` run neither builds nor runs them:
 | `databricks` | Databricks event sink | real workspace credentials; skips itself when unset |
 
 `just test-e2e` runs the light set for a fast local loop. **CI runs the full tag
-set** through `just test-e2e-coverage`, so a green `just test-e2e` does not
-guarantee a green pipeline. Reproduce the CI set locally with:
+set** through separate isolated Business and Cluster invocations of
+`just test-e2e-coverage`, so a green `just test-e2e` does not guarantee a green
+pipeline. The recipe's no-argument form retains the combined package selection
+for local coverage. Reproduce the CI set locally with:
 
 ```bash
 just test-e2e-full

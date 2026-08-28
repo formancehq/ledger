@@ -178,7 +178,8 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 						Data: &servicepb.LedgerAction_CreateTransaction{
 							CreateTransaction: &servicepb.CreateTransactionPayload{
 								ScriptReference: &servicepb.ScriptReference{
-									Name: "does-not-exist",
+									Name:    "does-not-exist",
+									Version: "latest",
 								},
 							},
 						},

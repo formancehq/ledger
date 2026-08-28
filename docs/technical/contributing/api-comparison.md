@@ -383,12 +383,11 @@ Numscripts use **semantic versioning** (semver) with the format `major.minor.pat
 
 When saving a numscript via `PUT /v3/{ledgerName}/numscripts/{name}`, the request body includes:
 - `content` (required): The numscript source code
-- `version` (optional): Controls versioning behavior:
-  - A semver string (e.g. `"2.0.0"`) creates a new version. Fails with 409 if the version already exists.
-  - The special value `"latest"` overwrites the content of the current latest version.
-  - If omitted or empty, defaults to `"latest"`.
+- `version` (required): An explicit full semver (e.g. `"2.0.0"`) creating a new immutable version. Fails with 409 if the version already exists, and with 400 (`NUMSCRIPT_INVALID_VERSION`) for an empty, partial, or `"latest"` value.
 
 When retrieving a numscript via `GET /v3/{ledgerName}/numscripts/{name}`, the `version` query parameter selects which version to return. If omitted or empty, the latest version is returned.
+
+When referencing a numscript from a transaction (`scriptReference` on `POST /v3/{ledgerName}/transactions`), `version` is **required** and accepts only the literal `"latest"` or an exact full semver. The read-only convenience selectors are rejected with 400 (`NUMSCRIPT_INVALID_VERSION`): the submitted selector is what the audit chain records, so an executable reference must name its version explicitly, and a partial selector (`1`, `1.2`) would additionally need a Pebble scan that the FSM apply path cannot make.
 
 **Response schema (NumscriptInfo):**
 - `name` (string): Numscript name
@@ -623,17 +622,19 @@ See [Idempotency](../architecture/subsystems/admission/idempotency.md) for detai
 local `IndexVersionState` (`current_version`, `pending_version`), not
 by a cluster-wide flag.
 
-- `CreateIndex` registers the index with `BuildStatus = BUILDING` and
-  each replica starts a local backfill. When the backfill catches up
-  to the global indexer cursor, the replica performs a local atomic
+- `CreateIndex` registers the index at `forward_encoding_version = 1`
+  and each replica starts a local backfill. When the backfill catches
+  up to the global indexer cursor, the replica performs a local atomic
   switch (`current_version` 0 → 1) in a single Pebble batch. There is
   no cluster-wide `IndexReady` proposal — different replicas can be
   in different states at the same wall-clock moment.
-- `BuildStatus` on the API is **informational only**. It is set to
-  `BUILDING` at CreateIndex and never flipped to `READY` by the FSM.
-  Clients that need to gate on "this replica is ready to query" must
-  use `GetIndexStatus` and check `IndexEntry.current_version > 0`,
-  or use `min_log_sequence` (below) to enforce ordering.
+- Clients that need to gate on "this replica is ready to query" use
+  `GetIndexStatus` and wait for `current_version > 0` with
+  `pending_version == 0`; a RETYPE is complete once `current_version`
+  has advanced past its pre-retype value (per-replica numbers are
+  allocated from a local high-water mark and are not comparable to
+  `forward_encoding_version`). `min_log_sequence` (below) enforces
+  log-application ordering.
 - `SetMetadataFieldType` (retype) bumps the cluster-wide
   `Index.forward_encoding_version`. Each replica then runs a local
   rewrite into the new versioned keyspace (`pending_version`), with
@@ -662,18 +663,21 @@ the FSM seq the rewrite observed. Queries against the replica
 continue serving from `current_version` (the pre-retype encoding)
 until that switch fires — see the previous bullet's "consistent
 throughout" guarantee. Clients that need *post-switch* consistency
-must poll `GetIndexStatus.IndexEntry.current_version` and wait for
-it to reflect the bumped forward-encoding version, OR rely on the
-eventual-consistency window (typically seconds) inherent to
-background rewrites. No client primitive currently blocks until
-that switch lands.
+capture `GetIndexStatus.IndexEntry.current_version` before the
+retype and poll until it has advanced past that value with
+`pending_version == 0` (per-replica numbers are local high-water
+allocations, never comparable to `forward_encoding_version`), OR
+rely on the eventual-consistency window (typically seconds)
+inherent to background rewrites. `pkg/actions` ships this as
+`MetadataIndexCurrentVersion` + `WaitForMetadataIndexRewrite`.
 
 **Original:** No equivalent — the original ledger has no
 per-replica versioning and reaches "ready" via a single
 synchronously-applied schema migration.
 
-**Status:** ⚠️ Different model — wire shape compatible (BuildStatus
-still on the proto, populated, just ignored by query gating).
+**Status:** ⚠️ Different model — readiness is per-replica version
+state (`IndexEntry.current_version` / `pending_version`), with no
+cluster-wide ready flag on the wire.
 
 ---
 
@@ -906,6 +910,8 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Stale proposal | `UNAVAILABLE` | `STALE_PROPOSAL` | *(none)* |
 | Stale Numscript inputs resolution | `UNAVAILABLE` | `STALE_INPUTS_RESOLUTION` | *(none)* |
 | Preload unavailable (discovery failed; forwarded for idempotent replay) | `UNAVAILABLE` | `PRELOAD_UNAVAILABLE` | *(none)* |
+| Raft node already absent during removal | `NOT_FOUND` | `RAFT_NODE_NOT_IN_CLUSTER` | *(none)* |
+| Raft node removal committed; durable FSM apply still pending | `UNAVAILABLE` | `RAFT_NODE_REMOVAL_COMMITTED` | `nodeId`, `committedIndex` |
 | Writes blocked — disk full | `RESOURCE_EXHAUSTED` | `WRITES_BLOCKED_DISK_FULL` | *(none)* |
 | Writes blocked — clock skew | `UNAVAILABLE` | `WRITES_BLOCKED_CLOCK_SKEW` | *(none)* |
 | Cold storage disabled | `FAILED_PRECONDITION` | `COLD_STORAGE_DISABLED` | *(none)* |

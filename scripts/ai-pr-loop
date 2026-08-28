@@ -397,8 +397,10 @@ if [[ "$push_changes" == "true" ]]; then
     # Publication additionally base-pins the mutating fixer and validator.
     for trusted_tool in ai-fix-claude agent-check-pr agent-just; do
         trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
-        if [[ ! -x "$trusted_tool_path" ]]; then
-            echo "ai-pr-loop: trusted base does not provide executable scripts/$trusted_tool" >&2
+        # Every adapter in this set is invoked explicitly through bash below.
+        # Its executable bit is therefore not part of the trust boundary.
+        if [[ -L "$trusted_tool_path" || ! -f "$trusted_tool_path" || ! -r "$trusted_tool_path" ]]; then
+            echo "ai-pr-loop: trusted base does not provide readable non-symlink regular file scripts/$trusted_tool" >&2
             exit 1
         fi
     done

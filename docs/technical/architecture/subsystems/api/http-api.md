@@ -445,7 +445,7 @@ Content-Type: application/json
 }
 ```
 
-Returns `201 Created` once the FSM has queued the backfill. The index enters `BUILDING` on the registry; poll `GET /v3/{ledgerName}/indexes/{canonicalId}/status` and wait for `currentVersion > 0` before running queries that need it.
+Returns `201 Created` once the FSM has queued the backfill. Poll `GET /v3/{ledgerName}/indexes/{canonicalId}/status` and wait for `currentVersion > 0` with `pendingVersion == 0` before running queries that need it. After a *retype*, the pre-retype keyspace stays live, so capture `currentVersion` before issuing the change and wait until it has advanced past that value with `pendingVersion == 0` (per-replica version numbers are local and not comparable to `forwardEncodingVersion`).
 
 #### List indexes on a ledger
 
@@ -461,7 +461,7 @@ Returns the `Index` registry entries owned by the ledger.
 GET /v3/{ledgerName}/indexes/{canonicalId}
 ```
 
-Returns the `Index` registry entry (id, build_status, ledger, created_at, forward_encoding_version).
+Returns the `Index` registry entry (id, ledger, created_at, forward_encoding_version).
 
 #### Get per-replica index status
 

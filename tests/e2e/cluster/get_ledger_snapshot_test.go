@@ -38,7 +38,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 		// The race trips in well under a second when present, so a bounded number
 		// of toggles gives ample coverage while keeping write volume small. The
 		// deadline is only a backstop against a stuck cluster.
-		writerToggles = 3000
+		writerToggles = 750
 		backstop      = 60 * time.Second
 	)
 
@@ -66,11 +66,21 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 		defer cancel()
 
 		var (
-			wg         sync.WaitGroup
-			torn       atomic.Pointer[string]
-			bulkSeen   atomic.Uint64
-			writerDone = make(chan struct{})
+			wg                 sync.WaitGroup
+			readersReady       sync.WaitGroup
+			failure            atomic.Pointer[string]
+			bulkSeen           atomic.Uint64
+			validatedGetReads  atomic.Uint64
+			validatedListReads atomic.Uint64
+			startWriter        = make(chan struct{})
+			writerDone         = make(chan struct{})
 		)
+		readersReady.Add(getReaders + listReaders)
+
+		fail := func(format string, args ...any) {
+			failure.CompareAndSwap(nil, ptr(fmt.Sprintf(format, args...)))
+			cancel()
+		}
 
 		// Writer: alternate the toggle type on/off, each step in one atomic bulk
 		// that also writes the matching count. expanded → 1 type, count=1;
@@ -80,6 +90,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 			defer wg.Done()
 			defer GinkgoRecover()
 			defer close(writerDone)
+			<-startWriter
 
 			expanded := false
 			for i := 0; i < writerToggles && runCtx.Err() == nil; i++ {
@@ -102,8 +113,7 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 					}
 					// A rejected toggle would desync the local expanded/count
 					// tracking — fail loudly rather than poison the invariant.
-					torn.CompareAndSwap(nil, ptr(fmt.Sprintf("writer Apply failed: %v", err)))
-					cancel()
+					fail("writer Apply failed: %v", err)
 					return
 				}
 
@@ -113,32 +123,42 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 		}()
 
 		// checkInfo enforces the coupled invariant: a LedgerInfo's account-type
-		// count must equal its own meta["count"]. Returns false (skip) when the
-		// info is absent or carries no count yet.
-		checkInfo := func(label string, info *commonpb.LedgerInfo) {
+		// count must equal its own meta["count"]. A read is valid only after it
+		// reaches and passes this comparison.
+		checkInfo := func(label string, info *commonpb.LedgerInfo) bool {
 			if info == nil {
-				return
+				fail("%s returned no ledger info", label)
+				return false
 			}
 			countVal, ok := info.GetMetadata()["count"]
 			if !ok {
-				return
+				fail("%s returned ledger metadata without count", label)
+				return false
 			}
 			count, err := strconv.Atoi(countVal.GetStringValue())
 			if err != nil {
-				return
+				fail("%s returned an unparsable metadata count %q: %v",
+					label, countVal.GetStringValue(), err)
+				return false
 			}
 			if got := len(info.GetAccountTypes()); got != count {
-				torn.CompareAndSwap(nil, ptr(fmt.Sprintf(
-					"torn %s: len(AccountTypes)=%d but meta[count]=%d", label, got, count)))
-				cancel()
+				fail("torn %s: len(AccountTypes)=%d but meta[count]=%d", label, got, count)
+				return false
 			}
+
+			return true
 		}
 
 		// runReader spins one read function until the writer is done, a tear is
 		// found, or the backstop fires.
-		runReader := func(read func() *commonpb.LedgerInfo, label string) {
+		runReader := func(
+			read func() (*commonpb.LedgerInfo, error),
+			label string,
+			validated *atomic.Uint64,
+		) {
 			defer wg.Done()
 			defer GinkgoRecover()
+			readersReady.Done()
 
 			for {
 				select {
@@ -149,47 +169,58 @@ var _ = Describe("GetLedger snapshot consistency", Ordered, func() {
 				default:
 				}
 
-				info := read()
-				if torn.Load() != nil {
+				info, err := read()
+				if err != nil {
+					// Cancellation is expected after another goroutine has already
+					// established the terminal outcome. While the run is active,
+					// setup is complete and no read error is transient.
+					if runCtx.Err() == nil {
+						fail("%s failed: %v", label, err)
+					}
 					return
 				}
-				checkInfo(label, info)
+				if failure.Load() != nil {
+					return
+				}
+				if checkInfo(label, info) {
+					validated.Add(1)
+				}
 			}
 		}
 
 		// GetLedger readers — the path the fix targets directly.
 		for range getReaders {
 			wg.Add(1)
-			go runReader(func() *commonpb.LedgerInfo {
-				info, err := client.GetLedger(runCtx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
-				if err != nil {
-					return nil
-				}
-
-				return info
-			}, "GetLedger")
+			go runReader(func() (*commonpb.LedgerInfo, error) {
+				return client.GetLedger(runCtx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
+			}, "GetLedger", &validatedGetReads)
 		}
 
 		// ListLedgers readers — the sibling path that enriches each ledger's
 		// metadata alongside its account types, sharing GetLedger's coupling.
 		for range listReaders {
 			wg.Add(1)
-			go runReader(func() *commonpb.LedgerInfo {
+			go runReader(func() (*commonpb.LedgerInfo, error) {
 				ledgers, err := actions.ListLedgers(runCtx, client)
 				if err != nil {
-					return nil
+					return nil, err
 				}
 
-				return ledgers[ledgerName]
-			}, "ListLedgers")
+				return ledgers[ledgerName], nil
+			}, "ListLedgers", &validatedListReads)
 		}
+
+		readersReady.Wait()
+		close(startWriter)
 
 		wg.Wait()
 
-		if d := torn.Load(); d != nil {
+		if d := failure.Load(); d != nil {
 			Fail(*d)
 		}
-		Expect(bulkSeen.Load()).To(BeNumerically(">", 0), "writer never committed a bulk")
+		Expect(bulkSeen.Load()).To(Equal(uint64(writerToggles)), "writer did not commit every bulk")
+		Expect(validatedGetReads.Load()).To(BeNumerically(">", 0), "GetLedger produced no validated reads")
+		Expect(validatedListReads.Load()).To(BeNumerically(">", 0), "ListLedgers produced no validated reads")
 	})
 })
 

@@ -33,7 +33,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
-	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -543,7 +542,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 
 	ctx, sigSpan := tracer.Start(ctx, "admission.verify_signatures")
 	resolveBatchStart := time.Now()
-	batch, err := a.resolveBatch(req)
+	batch, err := a.resolveBatch(ctx, req)
 	a.resolveBatchDurationHistogram.Record(ctx, time.Since(resolveBatchStart).Microseconds())
 
 	sigSpan.End()
@@ -941,7 +940,7 @@ type verifiedBatch struct {
 // signature is verified against the payload bytes and the trusted batch is
 // unmarshaled from them — the server never re-serializes. An unsigned batch is
 // admitted only when signatures are not required (or for signing bootstrap).
-func (a *Admission) resolveBatch(req *servicepb.ApplyRequest) (verifiedBatch, error) {
+func (a *Admission) resolveBatch(ctx context.Context, req *servicepb.ApplyRequest) (verifiedBatch, error) {
 	switch v := req.GetVariant().(type) {
 	case *servicepb.ApplyRequest_Signed:
 		sb := v.Signed
@@ -971,7 +970,7 @@ func (a *Admission) resolveBatch(req *servicepb.ApplyRequest) (verifiedBatch, er
 			return verifiedBatch{}, fmt.Errorf("%w: empty unsigned batch", signing.ErrMissingSignature)
 		}
 
-		if err := a.authorizeUnsignedBatch(batch.GetRequests()); err != nil {
+		if err := a.authorizeUnsignedBatch(ctx, batch.GetRequests()); err != nil {
 			return verifiedBatch{}, err
 		}
 
@@ -990,7 +989,16 @@ func (a *Admission) resolveBatch(req *servicepb.ApplyRequest) (verifiedBatch, er
 //   - RegisterSigningKey is allowed unsigned when no keys exist yet (bootstrap)
 //   - all other signing-management requests require a signature once keys exist
 //   - regular requests check the requireSignatures flag
-func (a *Admission) authorizeUnsignedBatch(reqs []*servicepb.Request) error {
+func (a *Admission) authorizeUnsignedBatch(ctx context.Context, reqs []*servicepb.Request) error {
+	// Leader-internal proposals (chapter archiver, sealer, schedulers, the
+	// query-checkpoint scheduler) travel through admission unsigned under a system
+	// actor set only by server-internal code. RequireSignatures authenticates
+	// client writes; the leader's own audited proposals are inside the trust
+	// boundary and would otherwise be permanently rejected on a signed cluster.
+	if auth.IsSystemActor(ctx) {
+		return nil
+	}
+
 	for _, req := range reqs {
 		if isSigningManagementRequest(req) {
 			// HasUndecodableRows closes the bootstrap window on a store whose signing
@@ -1368,8 +1376,9 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			}
 
 		case *raftcmdpb.LedgerApplyOrder_CreateIndex:
-			// processCreateIndex consults the registry to short-circuit on
-			// READY duplicates — preload the matching entry.
+			// processCreateIndex overwrites the registry row; keep the key
+			// inside the declared preload set so the cache is seeded
+			// consistently with the drop / retype paths below.
 			p.Add(dal.SubAttrIndex, domain.IndexKey{LedgerName: ledgerName, Canonical: indexes.Canonical(applyData.CreateIndex.GetId())}.Bytes())
 
 		case *raftcmdpb.LedgerApplyOrder_DropIndex:
@@ -1384,9 +1393,9 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			}.Bytes())
 
 		case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType:
-			// Schema changes touch the matching metadata index entry to
-			// flip it back to BUILDING; preload so processSetMetadataFieldType
-			// finds the current state.
+			// Schema changes bump the matching metadata index entry's
+			// forward_encoding_version; preload so
+			// processSetMetadataFieldType finds the current row.
 			p.Add(dal.SubAttrIndex, domain.IndexKey{
 				LedgerName: ledgerName,
 				Canonical:  indexes.Canonical(indexes.MetadataID(applyData.SetMetadataFieldType.GetTargetType(), applyData.SetMetadataFieldType.GetKey())),
@@ -1531,7 +1540,7 @@ func describableCause(cause error) (domain.Describable, bool) {
 // ERROR_REASON_PRELOAD_UNAVAILABLE. Without a key there is no replay to preserve,
 // so we keep the cheap fail-fast (returns a terminal error).
 //
-// refIsLatest is true only for a `latest`/"" numscript reference selector, whose
+// refIsLatest is true only for a `latest` numscript reference selector, whose
 // resolution could differ from a previously-saved version that already produced
 // the frozen outcome; an inline script or an exact immutable version is
 // deterministic. It is a standalone method (not a closure) so the classification
@@ -1797,14 +1806,8 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 		)
 
 		if ref := createTx.CreateTransaction.GetNumscriptReference(); ref != nil && ref.GetName() != "" {
-			// Executable references accept only "latest"/"" or a full semver;
-			// partial selectors (1, 1.2) are read-only in v3.0.
-			if v := ref.GetVersion(); v != "" && v != "latest" {
-				if _, perr := semver.Parse(v); perr != nil {
-					return &domain.BusinessError{Err: &domain.ErrNumscriptInvalidVersion{Version: v}}
-				}
-			}
-
+			// The selector is already gated structurally (validateOrderContent),
+			// so it is either "latest" or a full semver here.
 			content, rv, err := a.resolveNumscriptReference(overlay, ledgerName, ref.GetName(), ref.GetVersion())
 			if err != nil {
 				return err
@@ -1814,7 +1817,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			scriptVars = ref.GetVars()
 			resolvedVersion = rv
 			refName = ref.GetName()
-			refIsLatest = ref.GetVersion() == "" || ref.GetVersion() == "latest"
+			refIsLatest = ref.GetVersion() == "latest"
 			isReference = true
 		} else if createTx.CreateTransaction.GetScript() != nil &&
 			createTx.CreateTransaction.GetScript().GetPlain() != "" &&
@@ -2501,7 +2504,7 @@ func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledgerName s
 	}
 	defer func() { _ = nsHandle.Close() }()
 
-	if version == "" || version == "latest" {
+	if version == "latest" {
 		// Greatest = max(in-bulk greatest, persisted greatest).
 		greatest := ""
 		if ov, ok := overlay.numscriptLatest.Get(numscriptNameKey{Ledger: ledgerName, Name: name}); ok {
@@ -2527,8 +2530,9 @@ func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledgerName s
 		}
 
 		version = greatest
-	} else if content, resolvedVersion, found := a.resolveNumscriptFromOverlay(overlay, ledgerName, name, version); found {
-		return content, resolvedVersion, nil
+	} else if content, ok := overlay.numscriptEntries.Get(numscriptEntryKey{Ledger: ledgerName, Name: name, Version: version}); ok {
+		// Exact selector saved earlier in the same bulk, not yet in Pebble.
+		return content, version, nil
 	}
 
 	info, err := query.ReadNumscript(a.attrs.NumscriptVersion, a.attrs.NumscriptContent, nsHandle, ledgerName, name, version)
@@ -2541,62 +2545,6 @@ func (a *Admission) resolveNumscriptReference(overlay *bulkOverlay, ledgerName s
 	}
 
 	return info.GetContent(), info.GetVersion(), nil
-}
-
-// resolveNumscriptFromOverlay resolves an exact or partial semver selector from
-// the intra-bulk overlay. "latest"/"" are handled by resolveNumscriptReference.
-func (a *Admission) resolveNumscriptFromOverlay(overlay *bulkOverlay, ledger, name, version string) (string, string, bool) {
-	// Exact semver lookup
-	if content, ok := overlay.numscriptEntries.Get(numscriptEntryKey{Ledger: ledger, Name: name, Version: version}); ok {
-		return content, version, true
-	}
-
-	// Partial semver: iterate overlay entries and find highest match
-	major, minor, _, depth, err := semver.ParsePartial(version)
-	if err != nil || depth == 3 {
-		return "", "", false
-	}
-
-	var (
-		bestContent string
-		bestVersion semver.Version
-		found       bool
-	)
-
-	overlay.numscriptEntries.Range(func(key numscriptEntryKey, content string) bool {
-		if key.Ledger != ledger || key.Name != name || key.Version == "latest" {
-			return true
-		}
-
-		v, parseErr := semver.Parse(key.Version)
-		if parseErr != nil {
-			return true
-		}
-
-		if v.Major != major {
-			return true
-		}
-
-		if depth >= 2 && v.Minor != minor {
-			return true
-		}
-
-		if !found || v.Major > bestVersion.Major ||
-			(v.Major == bestVersion.Major && v.Minor > bestVersion.Minor) ||
-			(v.Major == bestVersion.Major && v.Minor == bestVersion.Minor && v.Patch > bestVersion.Patch) {
-			bestContent = content
-			bestVersion = v
-			found = true
-		}
-
-		return true
-	})
-
-	if !found {
-		return "", "", false
-	}
-
-	return bestContent, bestVersion.String(), true
 }
 
 func (a *Admission) requestsToOrders(ctx context.Context, reqs []*servicepb.Request, batchSig *signaturepb.SignedApplyBatch) ([]*raftcmdpb.Order, *bulkOverlay, error) {
