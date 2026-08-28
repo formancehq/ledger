@@ -13,8 +13,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-func uintCond(min, max uint64, minExcl, maxExcl bool) *commonpb.UintCondition {
-	return &commonpb.UintCondition{Min: &min, Max: &max, MinExclusive: minExcl, MaxExclusive: maxExcl}
+func uintCond(lo, hi uint64, minExcl, maxExcl bool) *commonpb.UintCondition {
+	return &commonpb.UintCondition{Min: &lo, Max: &hi, MinExclusive: minExcl, MaxExclusive: maxExcl}
 }
 
 // TestResolveBounds_DegenerateRangesAreEmpty pins the crossed-bounds rule: max
@@ -46,7 +46,7 @@ func TestResolveBounds_DegenerateRangesAreEmpty(t *testing.T) {
 			require.Equal(t, tc.empty, b.empty)
 
 			ic := &commonpb.IntCondition{
-				Min: int64Ptr(int64(tc.cond.GetMin())), Max: int64Ptr(int64(tc.cond.GetMax())),
+				Min: new(int64(tc.cond.GetMin())), Max: new(int64(tc.cond.GetMax())),
 				MinExclusive: tc.cond.GetMinExclusive(), MaxExclusive: tc.cond.GetMaxExclusive(),
 			}
 			ib, err := resolveIntBounds(ic, nil)
@@ -56,7 +56,8 @@ func TestResolveBounds_DegenerateRangesAreEmpty(t *testing.T) {
 	}
 }
 
-func int64Ptr(v int64) *int64 { return &v }
+//go:fix inline
+func int64Ptr(v int64) *int64 { return new(v) }
 
 // TestCompile_NotOverDegenerateRange_YieldsUniverse pins the composition that
 // panicked under the invariants build: not(logId[(x,x)]) on LOGS. The
