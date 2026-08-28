@@ -3,7 +3,7 @@
 Some repository rules are precise enough to enforce mechanically. The
 `scripts/check-repo-invariants` entry point turns that narrow set into a shared
 local and CI gate. It runs from `scripts/agent-check` and from the dedicated
-`Repository Invariants` workflow.
+`Repository Invariants` job in the `Default` workflow.
 
 The checker deliberately covers tracked files and non-ignored untracked files.
 This keeps a local agent handoff equivalent to the committed tree that CI will
@@ -30,6 +30,12 @@ The current rules are:
    `Tests-Operator` job that runs the full default-tag `misc/operator` unit
    suite through the pinned Nix toolchain. The command is kept explicit so
    the nested Go module cannot silently fall outside root-module `./...` tests.
+6. Every pull-request workflow job must be a producer in `Required-CI.needs`,
+   the aggregate itself, or an explicit qualified optional job in
+   `.github/required-ci.json`. The checker also pins the emitted name to
+   `Required CI`, requires `if: always()`, rejects pull-request path/branch
+   filters, and verifies that the aggregate receives the full `needs` result
+   object.
 
 The FSM boundary is recursive and consists of:
 
@@ -58,6 +64,12 @@ The operator-test reachability check parses the workflow as YAML and requires
 the exact argument-free unit-test command. It rejects job or step conditions,
 allowed failures, non-Nix execution, and added build tags; integration/envtest
 and Chainsaw coverage remain separate suites.
+
+The CI-topology check parses GitHub workflow YAML and its small JSON
+classification contract. New jobs are mandatory by default; optional jobs must
+be named individually with a reason. A stale producer name or a pull-request
+job in a separate workflow therefore fails mechanically instead of silently
+weakening the aggregate.
 
 ## Extending the gate
 

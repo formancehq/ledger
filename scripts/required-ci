@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -z "${REQUIRED_CI_NEEDS:-}" ]]; then
+    echo "REQUIRED_CI_INVALID_INPUT: REQUIRED_CI_NEEDS is empty" >&2
+    exit 1
+fi
+
+if ! jq -e 'type == "object" and length > 0' <<<"$REQUIRED_CI_NEEDS" >/dev/null; then
+    echo "REQUIRED_CI_INVALID_INPUT: expected a non-empty needs object" >&2
+    exit 1
+fi
+
+failed=0
+while IFS= read -r producer; do
+    result=""
+    if ! result=$(jq -er --arg producer "$producer" '.[$producer].result | strings' \
+        <<<"$REQUIRED_CI_NEEDS"); then
+        echo "REQUIRED_CI_PRODUCER_NOT_SUCCESS: ${producer}=missing" >&2
+        failed=1
+        continue
+    fi
+
+    if [[ "$result" != "success" ]]; then
+        echo "REQUIRED_CI_PRODUCER_NOT_SUCCESS: ${producer}=${result}" >&2
+        failed=1
+    else
+        echo "REQUIRED_CI_PRODUCER_SUCCESS: ${producer}"
+    fi
+done < <(jq -r 'keys[]' <<<"$REQUIRED_CI_NEEDS")
+
+if (( failed != 0 )); then
+    echo "Required CI: FAIL" >&2
+    exit 1
+fi
+
+echo "Required CI: PASS"

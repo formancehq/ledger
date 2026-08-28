@@ -1,0 +1,7 @@
+{
+  "aggregateJob": "Required-CI",
+  "optionalJobs": {
+    ".github/workflows/main.yml#Build-PR-Image": "opt-in PR image publication selected by the build-images label",
+    ".github/workflows/main.yml#Release-Latest": "nightly publication on pushes to main or master"
+  }
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -12,6 +13,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"go.yaml.in/yaml/v3"
+)
+
+const (
+	requiredCIContractPath = ".github/required-ci.json"
+	requiredCIWorkflowPath = ".github/workflows/main.yml"
 )
 
 type finding struct {
@@ -35,8 +43,18 @@ func main() {
 	}
 
 	failed := false
-
 	if !fuzzInventoryOnly {
+		topologyFindings, err := checkRequiredCIRepository(files)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "check-repo-invariants: checking Required CI topology: %v\n", err)
+			failed = true
+		} else {
+			for _, item := range topologyFindings {
+				printFinding(item)
+				failed = true
+			}
+		}
+
 		for _, path := range files {
 			findings, err := checkFile(path)
 			if err != nil {
@@ -74,6 +92,456 @@ func main() {
 
 func printFinding(item finding) {
 	fmt.Printf("%s:%d:%d: ERROR: %s\n", item.path, item.line, item.column, item.message)
+}
+
+type requiredCIContract struct {
+	AggregateJob string            `json:"aggregateJob"`
+	OptionalJobs map[string]string `json:"optionalJobs"`
+}
+
+type parsedWorkflow struct {
+	path             string
+	root             *yaml.Node
+	pullRequest      *yaml.Node
+	pullRequestKey   *yaml.Node
+	jobs             map[string]*yaml.Node
+	jobKeys          map[string]*yaml.Node
+	jobsNode         *yaml.Node
+	pullRequestFound bool
+}
+
+func checkRequiredCIRepository(files []string) ([]finding, error) {
+	contractSource, err := os.ReadFile(requiredCIContractPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", requiredCIContractPath, err)
+	}
+
+	workflows := make(map[string][]byte)
+	for _, path := range files {
+		if !isWorkflowPath(path) {
+			continue
+		}
+
+		source, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+
+			return nil, fmt.Errorf("reading workflow %s: %w", path, err)
+		}
+
+		workflows[path] = source
+	}
+
+	return checkRequiredCITopology(workflows, contractSource)
+}
+
+func checkRequiredCITopology(
+	workflowSources map[string][]byte,
+	contractSource []byte,
+) ([]finding, error) {
+	var contract requiredCIContract
+	if err := json.Unmarshal(contractSource, &contract); err != nil {
+		return nil, fmt.Errorf("parsing %s: %w", requiredCIContractPath, err)
+	}
+
+	if strings.TrimSpace(contract.AggregateJob) == "" {
+		return []finding{contractFinding("REQUIRED_CI_CONTRACT: aggregateJob must not be empty")}, nil
+	}
+
+	if contract.OptionalJobs == nil {
+		return []finding{contractFinding("REQUIRED_CI_CONTRACT: optionalJobs must be an object")}, nil
+	}
+
+	parsed := make(map[string]*parsedWorkflow, len(workflowSources))
+	for path, source := range workflowSources {
+		workflow, err := parseWorkflow(path, source)
+		if err != nil {
+			return nil, err
+		}
+
+		parsed[path] = workflow
+	}
+
+	primary, ok := parsed[requiredCIWorkflowPath]
+	if !ok {
+		return []finding{contractFinding(
+			"REQUIRED_CI_WORKFLOW_MISSING: " + requiredCIWorkflowPath,
+		)}, nil
+	}
+
+	var findings []finding
+	findings = append(findings, checkRequiredCITrigger(primary)...)
+
+	aggregate, ok := primary.jobs[contract.AggregateJob]
+	if !ok {
+		findings = append(findings, yamlFinding(
+			primary.path,
+			primary.jobsNode,
+			"REQUIRED_CI_AGGREGATE_MISSING: "+contract.AggregateJob,
+		))
+
+		return append(findings, classifyWorkflowJobs(parsed, contract, nil)...), nil
+	}
+
+	findings = append(findings, checkRequiredCIJob(primary, aggregate, contract)...)
+	needs, needsNode := workflowJobNeeds(aggregate)
+	needSet := make(map[string]struct{}, len(needs))
+	for _, need := range needs {
+		if _, duplicate := needSet[need]; duplicate {
+			findings = append(findings, yamlFinding(
+				primary.path,
+				needsNode,
+				"DUPLICATE_REQUIRED_CI_NEED: "+need,
+			))
+		}
+
+		needSet[need] = struct{}{}
+		if _, exists := primary.jobs[need]; !exists {
+			findings = append(findings, yamlFinding(
+				primary.path,
+				needsNode,
+				"UNKNOWN_REQUIRED_CI_NEED: "+need,
+			))
+		}
+
+		qualified := qualifiedJob(primary.path, need)
+		if _, optional := contract.OptionalJobs[qualified]; optional {
+			findings = append(findings, yamlFinding(
+				primary.path,
+				needsNode,
+				"OPTIONAL_PR_JOB_AGGREGATED: "+qualified,
+			))
+		}
+	}
+
+	findings = append(findings, classifyWorkflowJobs(parsed, contract, needSet)...)
+
+	return findings, nil
+}
+
+func parseWorkflow(path string, source []byte) (*parsedWorkflow, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(source, &document); err != nil {
+		return nil, fmt.Errorf("parsing workflow %s: %w", path, err)
+	}
+
+	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("parsing workflow %s: expected a top-level mapping", path)
+	}
+
+	root := document.Content[0]
+	_, onNode := yamlMappingValue(root, "on")
+	pullRequestKey, pullRequest := yamlMappingValue(onNode, "pull_request")
+	_, jobsNode := yamlMappingValue(root, "jobs")
+	if jobsNode == nil || jobsNode.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("parsing workflow %s: jobs must be a mapping", path)
+	}
+
+	jobs := make(map[string]*yaml.Node, len(jobsNode.Content)/2)
+	jobKeys := make(map[string]*yaml.Node, len(jobsNode.Content)/2)
+	for index := 0; index < len(jobsNode.Content); index += 2 {
+		key := jobsNode.Content[index]
+		value := jobsNode.Content[index+1]
+		jobs[key.Value] = value
+		jobKeys[key.Value] = key
+	}
+
+	return &parsedWorkflow{
+		path:             path,
+		root:             root,
+		pullRequest:      pullRequest,
+		pullRequestKey:   pullRequestKey,
+		jobs:             jobs,
+		jobKeys:          jobKeys,
+		jobsNode:         jobsNode,
+		pullRequestFound: yamlTriggerContains(onNode, "pull_request"),
+	}, nil
+}
+
+func checkRequiredCITrigger(workflow *parsedWorkflow) []finding {
+	if !workflow.pullRequestFound {
+		return []finding{yamlFinding(
+			workflow.path,
+			workflow.root,
+			"REQUIRED_CI_PULL_REQUEST_TRIGGER_MISSING",
+		)}
+	}
+
+	if workflow.pullRequest == nil || workflow.pullRequest.Kind == yaml.ScalarNode && workflow.pullRequest.Tag == "!!null" {
+		return nil
+	}
+
+	if workflow.pullRequest.Kind != yaml.MappingNode {
+		return []finding{yamlFinding(
+			workflow.path,
+			workflow.pullRequestKey,
+			"REQUIRED_CI_PULL_REQUEST_TRIGGER_INVALID: expected a mapping or null",
+		)}
+	}
+
+	var findings []finding
+	for _, filter := range []string{"branches", "branches-ignore", "paths", "paths-ignore"} {
+		key, _ := yamlMappingValue(workflow.pullRequest, filter)
+		if key != nil {
+			findings = append(findings, yamlFinding(
+				workflow.path,
+				key,
+				"REQUIRED_CI_PULL_REQUEST_FILTER_FORBIDDEN: "+filter,
+			))
+		}
+	}
+
+	_, typesNode := yamlMappingValue(workflow.pullRequest, "types")
+	if typesNode == nil {
+		return findings
+	}
+
+	types := yamlStringList(typesNode)
+	typeSet := make(map[string]struct{}, len(types))
+	for _, eventType := range types {
+		typeSet[eventType] = struct{}{}
+	}
+
+	for _, requiredType := range []string{"opened", "synchronize", "reopened"} {
+		if _, ok := typeSet[requiredType]; !ok {
+			findings = append(findings, yamlFinding(
+				workflow.path,
+				typesNode,
+				"REQUIRED_CI_PULL_REQUEST_EVENT_MISSING: "+requiredType,
+			))
+		}
+	}
+
+	return findings
+}
+
+func checkRequiredCIJob(
+	workflow *parsedWorkflow,
+	aggregate *yaml.Node,
+	contract requiredCIContract,
+) []finding {
+	var findings []finding
+	_, nameNode := yamlMappingValue(aggregate, "name")
+	if nameNode == nil || nameNode.Value != "Required CI" {
+		findings = append(findings, yamlFinding(
+			workflow.path,
+			nameNode,
+			"REQUIRED_CI_CHECK_NAME: aggregate job name must be exactly Required CI",
+		))
+	}
+
+	_, ifNode := yamlMappingValue(aggregate, "if")
+	if ifNode == nil || strings.TrimSpace(ifNode.Value) != "always()" {
+		findings = append(findings, yamlFinding(
+			workflow.path,
+			ifNode,
+			"REQUIRED_CI_IF: aggregate job must use if: always()",
+		))
+	}
+
+	_, needsNode := yamlMappingValue(aggregate, "needs")
+	if needsNode == nil || len(yamlStringList(needsNode)) == 0 {
+		findings = append(findings, yamlFinding(
+			workflow.path,
+			needsNode,
+			"REQUIRED_CI_NEEDS_EMPTY",
+		))
+	}
+
+	_, envNode := yamlMappingValue(aggregate, "env")
+	_, resultsNode := yamlMappingValue(envNode, "REQUIRED_CI_NEEDS")
+	if resultsNode == nil || strings.TrimSpace(resultsNode.Value) != "${{ toJSON(needs) }}" {
+		findings = append(findings, yamlFinding(
+			workflow.path,
+			resultsNode,
+			"REQUIRED_CI_RESULTS_INPUT: REQUIRED_CI_NEEDS must be exactly ${{ toJSON(needs) }}",
+		))
+	}
+
+	_, stepsNode := yamlMappingValue(aggregate, "steps")
+	if !yamlTreeContainsScalar(stepsNode, "nix develop --command bash scripts/required-ci") {
+		findings = append(findings, yamlFinding(
+			workflow.path,
+			stepsNode,
+			"REQUIRED_CI_GATE_COMMAND_MISSING: nix develop --command bash scripts/required-ci",
+		))
+	}
+
+	aggregateKey := qualifiedJob(workflow.path, contract.AggregateJob)
+	if _, optional := contract.OptionalJobs[aggregateKey]; optional {
+		findings = append(findings, contractFinding(
+			"REQUIRED_CI_AGGREGATE_OPTIONAL: "+aggregateKey,
+		))
+	}
+
+	return findings
+}
+
+func classifyWorkflowJobs(
+	workflows map[string]*parsedWorkflow,
+	contract requiredCIContract,
+	needs map[string]struct{},
+) []finding {
+	var findings []finding
+	seenOptional := make(map[string]struct{}, len(contract.OptionalJobs))
+
+	for path, workflow := range workflows {
+		if path != requiredCIWorkflowPath && !workflow.pullRequestFound {
+			continue
+		}
+
+		for jobID := range workflow.jobs {
+			qualified := qualifiedJob(path, jobID)
+			if path == requiredCIWorkflowPath && jobID == contract.AggregateJob {
+				continue
+			}
+
+			if _, optional := contract.OptionalJobs[qualified]; optional {
+				seenOptional[qualified] = struct{}{}
+
+				continue
+			}
+
+			if path == requiredCIWorkflowPath {
+				if _, required := needs[jobID]; required {
+					continue
+				}
+			}
+
+			findings = append(findings, yamlFinding(
+				path,
+				workflow.jobKeys[jobID],
+				"UNAGGREGATED_PR_JOB: "+qualified,
+			))
+		}
+	}
+
+	for optional, reason := range contract.OptionalJobs {
+		if strings.TrimSpace(reason) == "" {
+			findings = append(findings, contractFinding(
+				"OPTIONAL_PR_JOB_REASON_MISSING: "+optional,
+			))
+		}
+
+		if _, seen := seenOptional[optional]; !seen {
+			findings = append(findings, contractFinding(
+				"STALE_OPTIONAL_PR_JOB: "+optional,
+			))
+		}
+	}
+
+	return findings
+}
+
+func workflowJobNeeds(job *yaml.Node) ([]string, *yaml.Node) {
+	_, needsNode := yamlMappingValue(job, "needs")
+
+	return yamlStringList(needsNode), needsNode
+}
+
+func yamlMappingValue(mapping *yaml.Node, key string) (*yaml.Node, *yaml.Node) {
+	if mapping == nil || mapping.Kind != yaml.MappingNode {
+		return nil, nil
+	}
+
+	for index := 0; index < len(mapping.Content); index += 2 {
+		if mapping.Content[index].Value == key {
+			return mapping.Content[index], mapping.Content[index+1]
+		}
+	}
+
+	return nil, nil
+}
+
+func yamlTriggerContains(node *yaml.Node, trigger string) bool {
+	if node == nil {
+		return false
+	}
+
+	switch node.Kind {
+	case yaml.MappingNode:
+		key, _ := yamlMappingValue(node, trigger)
+
+		return key != nil
+	case yaml.SequenceNode:
+		for _, item := range node.Content {
+			if item.Value == trigger {
+				return true
+			}
+		}
+	case yaml.ScalarNode:
+		return node.Value == trigger
+	}
+
+	return false
+}
+
+func yamlStringList(node *yaml.Node) []string {
+	if node == nil {
+		return nil
+	}
+
+	switch node.Kind {
+	case yaml.ScalarNode:
+		if node.Tag == "!!null" {
+			return nil
+		}
+
+		return []string{node.Value}
+	case yaml.SequenceNode:
+		values := make([]string, 0, len(node.Content))
+		for _, item := range node.Content {
+			values = append(values, item.Value)
+		}
+
+		return values
+	default:
+		return nil
+	}
+}
+
+func yamlTreeContainsScalar(node *yaml.Node, value string) bool {
+	if node == nil {
+		return false
+	}
+
+	if node.Kind == yaml.ScalarNode && strings.TrimSpace(node.Value) == value {
+		return true
+	}
+
+	for _, child := range node.Content {
+		if yamlTreeContainsScalar(child, value) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func yamlFinding(path string, node *yaml.Node, message string) finding {
+	line := 1
+	column := 1
+	if node != nil {
+		line = node.Line
+		column = node.Column
+	}
+
+	return finding{path: path, line: line, column: column, message: message}
+}
+
+func contractFinding(message string) finding {
+	return finding{path: requiredCIContractPath, line: 1, column: 1, message: message}
+}
+
+func qualifiedJob(path, jobID string) string {
+	return path + "#" + jobID
+}
+
+func isWorkflowPath(path string) bool {
+	return strings.HasPrefix(path, ".github/workflows/") &&
+		(strings.HasSuffix(path, ".yml") || strings.HasSuffix(path, ".yaml"))
 }
 
 func repositoryFiles() ([]string, error) {

@@ -42,7 +42,7 @@ When current code and authoritative documentation disagree, stop treating the do
 | `cmd/ledgerctl/**` | `docs/ops/cli.md`, `docs/technical/contributing/conventions.md` |
 | `internal/bootstrap/**` | `docs/technical/architecture/overview.md`, relevant subsystem docs, and `docs/ops/deployment.md` for persisted/config behavior |
 | tests only | `docs/technical/contributing/testing.md` plus the subsystem documentation for the behavior under test |
-| contributor/build tooling | `docs/technical/contributing/getting-started.md`, `docs/technical/contributing/development.md`, `docs/technical/contributing/conventions.md` as relevant |
+| contributor/build tooling | `docs/technical/contributing/getting-started.md`, `docs/technical/contributing/development.md`, `docs/technical/contributing/conventions.md` as relevant; add `docs/technical/contributing/ci.md` for GitHub Actions or CI-topology changes |
 
 If a touched production area has no matching row, do not assume that no subsystem rules apply. Identify its callers/callees or owning subsystem first, then load that subsystem's documentation before editing.
 
