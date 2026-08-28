@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"math"
 	"os"
 	"slices"
 	"sort"
@@ -211,6 +212,25 @@ func (c *Checker) enableChapterOrders(closeGap, archiveGap time.Duration) {
 
 	c.chapterCloseGap = closeGap
 	c.chapterArchiveGap = archiveGap
+	c.nextCloseGap = sampleGap(closeGap)
+	c.nextArchiveGap = sampleGap(archiveGap)
+}
+
+// sampleGap draws one wait from a log-normal distribution whose median is the
+// configured gap, by inverting the normal CDF over a uniform Antithesis draw. The
+// median is the configured value, so the pacing knob keeps meaning what it says
+// while the tail supplies the occasional long stretch the registry shapes depend
+// on. Draws beyond chapterGapMaxMultiple are clamped.
+func sampleGap(median time.Duration) time.Duration {
+	if median <= 0 {
+		return median
+	}
+
+	// (0,1) exclusive: erfInv is infinite at either end.
+	u := (float64(random.GetRandom()>>11) + 0.5) / (1 << 53)
+	multiple := math.Exp(chapterGapSigma * math.Sqrt2 * math.Erfinv(2*u-1))
+
+	return time.Duration(float64(median) * math.Min(multiple, chapterGapMaxMultiple))
 }
 
 // seedChapters replaces the model's registry with the server's. Chapters are
@@ -238,7 +258,9 @@ func (c *Checker) seedChapters(ctx context.Context, client servicepb.BucketServi
 // takeChapterOrderLocked reports which chapter order this bulk should carry, if
 // any, consuming that kind's pacing budget. Paced rather than drawn per bulk
 // because the workers' bulk rate depends on the run's concurrency and the machine,
-// not on anything the test controls. Caller holds c.mu.
+// not on anything the test controls. Each gap is redrawn as it is consumed, so the
+// registry passes through shapes a fixed cadence never reaches — see sampleGap.
+// Caller holds c.mu.
 //
 // An archive order is withheld when the chapters already named by orders in play
 // have reached maxChaptersInPlay: candidateBases branches over each of their
@@ -249,13 +271,14 @@ func (c *Checker) takeChapterOrderLocked(now time.Time) chapterOrderKind {
 		return chapterOrderNone
 	}
 
-	if now.Sub(c.lastChapterClose) >= c.chapterCloseGap {
+	if now.Sub(c.lastChapterClose) >= c.nextCloseGap {
 		c.lastChapterClose = now
+		c.nextCloseGap = sampleGap(c.chapterCloseGap)
 
 		return chapterOrderClose
 	}
 
-	if now.Sub(c.lastChapterArchive) < c.chapterArchiveGap {
+	if now.Sub(c.lastChapterArchive) < c.nextArchiveGap {
 		return chapterOrderNone
 	}
 
@@ -271,6 +294,7 @@ func (c *Checker) takeChapterOrderLocked(now time.Time) chapterOrderKind {
 	}
 
 	c.lastChapterArchive = now
+	c.nextArchiveGap = sampleGap(c.chapterArchiveGap)
 
 	return chapterOrderArchive
 }

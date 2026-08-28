@@ -715,24 +715,34 @@ if [ "$ARCHIVE" = 1 ] && [ "$RESTORE" = 1 ] && [ "$ARCHIVE_CYCLES" -gt 0 ] && [ 
 	fi
 fi
 
-# 11. The archival ordering rule went unchecked: chapters were archived but no
-# out-of-order request was ever rejected, so nothing exercised the rule that keeps
-# the archived prefix contiguous -- and a green run says only that the happy path
-# works. The driver aims most requests at the prefix successor and the rest past it
-# or inside the prefix, so a run that archived at all should reach this.
-if [ "$ARCHIVE" = 1 ] && [ "$ARCHIVE_CYCLES" -gt 0 ] && [ "$findings" -eq 0 ]; then
-	gate_hit=""
-	if [ -s "$ASSERTIONS" ]; then
-		if command -v jq >/dev/null 2>&1; then
-			gate_hit="$(jq -c 'select(.antithesis_assert.hit == true and (.antithesis_assert.message | test("out-of-order chapter archive")))' "$ASSERTIONS" 2>/dev/null | head -1)"
-		else
-			gate_hit="$(grep -E '"hit":true' "$ASSERTIONS" 2>/dev/null | grep -F 'out-of-order chapter archive' | head -1)"
-		fi
+# 11/12. The two chapter-archival rejection rules went unchecked. Each has its own
+# reason, so each needs its own evidence: one reason covering both situations is
+# what let the past-frontier rule go untested while the guard reported it covered.
+#   - out of order: the target is sealed but is not the prefix successor, which
+#     needs two sealed chapters at once -- a stretch with no accepted archive.
+#   - already archived: the target is inside the archived prefix, so the order has
+#     already been carried out.
+assert_hit() { # $1 = assertion message substring
+	[ -s "$ASSERTIONS" ] || return 1
+	if command -v jq >/dev/null 2>&1; then
+		[ -n "$(jq -c --arg m "$1" 'select(.antithesis_assert.hit == true and (.antithesis_assert.message | test($m)))' "$ASSERTIONS" 2>/dev/null | head -1)" ]
+	else
+		[ -n "$(grep -E '"hit":true' "$ASSERTIONS" 2>/dev/null | grep -F "$1" | head -1)" ]
 	fi
-	if [ -z "$gate_hit" ]; then
+}
+
+if [ "$ARCHIVE" = 1 ] && [ "$ARCHIVE_CYCLES" -gt 0 ] && [ "$findings" -eq 0 ]; then
+	if ! assert_hit "out-of-order chapter archive"; then
 		echo
 		echo "ORDERING RULE UNEXERCISED: chapters were archived but no out-of-order archive request was rejected"
-		echo "  (lengthen the run, or check that the driver still aims requests past the archived frontier)"
+		echo "  (needs two chapters sealed at once; lengthen the run, or check that the driver still aims requests past the archived frontier)"
+		findings=$((findings + 1))
+	fi
+
+	if ! assert_hit "already-archived chapter archive"; then
+		echo
+		echo "RE-ARCHIVE RULE UNEXERCISED: chapters were archived but no request inside the archived prefix was rejected"
+		echo "  (lengthen the run, or check that the driver still aims requests inside the prefix)"
 		findings=$((findings + 1))
 	fi
 fi

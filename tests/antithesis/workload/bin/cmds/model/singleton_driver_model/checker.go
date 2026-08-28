@@ -72,11 +72,13 @@ type Checker struct {
 	paused   bool
 	resumeCh chan struct{}
 
-	// Chapter-order pacing: the minimum gap between orders of each kind (0 = the
-	// run emits none) and when the last of each was handed out. See
-	// takeChapterOrderLocked. Guarded by mu.
+	// Chapter-order pacing: the median gap between orders of each kind (0 = the
+	// run emits none), the gap drawn for the current wait, and when the last of
+	// each was handed out. See takeChapterOrderLocked. Guarded by mu.
 	chapterCloseGap    time.Duration
 	chapterArchiveGap  time.Duration
+	nextCloseGap       time.Duration
+	nextArchiveGap     time.Duration
 	lastChapterClose   time.Time
 	lastChapterArchive time.Time
 
