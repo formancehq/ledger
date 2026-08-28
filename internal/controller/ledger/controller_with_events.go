@@ -12,11 +12,18 @@ import (
 
 type ControllerWithEvents struct {
 	Controller
-	ledger   ledger.Ledger
-	listener Listener
-	atCommit []func()
-	parent   *ControllerWithEvents
-	hasTx    bool
+	ledger      ledger.Ledger
+	listener    Listener
+	eventBuffer *transactionalEventBuffer
+}
+
+// transactionalEventBuffer follows transaction boundaries independently from
+// the controller wrappers created by BeginTX and LockLedger. A nested commit
+// promotes its events to the enclosing transaction; only the root commit
+// publishes them.
+type transactionalEventBuffer struct {
+	parent    *transactionalEventBuffer
+	callbacks []func()
 }
 
 func NewControllerWithEvents(ledger ledger.Ledger, underlying Controller, listener Listener) *ControllerWithEvents {
@@ -28,16 +35,31 @@ func NewControllerWithEvents(ledger ledger.Ledger, underlying Controller, listen
 }
 
 func (c *ControllerWithEvents) handleEvent(ctx context.Context, fn func()) {
-	if !c.hasTx {
+	if c.eventBuffer == nil {
 		fn()
 		return
 	}
-	if c.parent != nil && c.parent.hasTx {
-		c.parent.handleEvent(ctx, fn)
-		return
-	}
 
-	c.atCommit = append(c.atCommit, fn)
+	c.eventBuffer.add(fn)
+}
+
+func (b *transactionalEventBuffer) add(fn func()) {
+	b.callbacks = append(b.callbacks, fn)
+}
+
+func (b *transactionalEventBuffer) commit() {
+	if b.parent != nil {
+		b.parent.callbacks = append(b.parent.callbacks, b.callbacks...)
+	} else {
+		for _, callback := range b.callbacks {
+			callback()
+		}
+	}
+	b.callbacks = nil
+}
+
+func (b *transactionalEventBuffer) rollback() {
+	b.callbacks = nil
 }
 
 func (c *ControllerWithEvents) CreateTransaction(ctx context.Context, parameters Parameters[CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, bool, error) {
@@ -177,8 +199,9 @@ func (c *ControllerWithEvents) BeginTX(ctx context.Context, options *sql.TxOptio
 		ledger:     c.ledger,
 		Controller: ctrl,
 		listener:   c.listener,
-		parent:     c,
-		hasTx:      true,
+		eventBuffer: &transactionalEventBuffer{
+			parent: c.eventBuffer,
+		},
 	}, tx, nil
 }
 
@@ -188,11 +211,13 @@ func (c *ControllerWithEvents) LockLedger(ctx context.Context) (Controller, bun.
 		return nil, nil, nil, err
 	}
 
+	// Locking swaps the underlying controller but does not create a transaction
+	// boundary, so both wrappers share the same event buffer.
 	return &ControllerWithEvents{
-		ledger:     c.ledger,
-		Controller: ctrl,
-		listener:   c.listener,
-		parent:     c,
+		ledger:      c.ledger,
+		Controller:  ctrl,
+		listener:    c.listener,
+		eventBuffer: c.eventBuffer,
 	}, db, release, nil
 }
 
@@ -202,15 +227,19 @@ func (c *ControllerWithEvents) Commit(ctx context.Context) error {
 		return err
 	}
 
-	for _, f := range c.atCommit {
-		f()
+	if c.eventBuffer != nil {
+		c.eventBuffer.commit()
+		c.eventBuffer = nil
 	}
 
 	return nil
 }
 
 func (c *ControllerWithEvents) Rollback(ctx context.Context) error {
-	c.atCommit = nil
+	if c.eventBuffer != nil {
+		c.eventBuffer.rollback()
+		c.eventBuffer = nil
+	}
 
 	return c.Controller.Rollback(ctx)
 }

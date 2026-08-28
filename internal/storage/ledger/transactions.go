@@ -128,6 +128,9 @@ func (store *Store) InsertTransaction(ctx context.Context, tx *ledger.Transactio
 						return nil, NewErrTransactionReferenceConflict(tx.Reference)
 					}
 					if err.(postgres.ErrConstraintsFailed).GetConstraint() == "transactions_ledger" {
+						if tx.ID == nil {
+							return nil, fmt.Errorf("invariant: generated transaction ID conflicts with an existing transaction: %w", err)
+						}
 						return nil, NewErrConcurrentTransaction(*tx.ID)
 					}
 
