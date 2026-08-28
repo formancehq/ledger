@@ -6,16 +6,22 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"path/filepath"
 	"time"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	raftwal "github.com/formancehq/ledger/v3/internal/storage/wal"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.etcd.io/raft/v3/raftpb"
+	"google.golang.org/grpc/metadata"
 )
 
 var _ = Describe("Simple cluster", func() {
@@ -87,21 +93,34 @@ var _ = Describe("Simple cluster", func() {
 
 	Context("When losing a follower", Ordered, func() {
 		const (
-			ledgerName        = "ledger2"
-			countTransactions = 15
+			ledgerName            = "ledger2"
+			countTransactions     = 3
+			raftCompactionMargin  = uint64(1)
+			maintenanceInterval   = 250 * time.Millisecond
+			offlineAccountAddress = "snapshot-restored"
 		)
 
 		var (
 			ctx        context.Context
 			servers    []*testutil.ServiceWithClient
+			gateway    *testserver.Gateway
 			leaderID   *uint64
 			followerID uint64
 		)
 
 		BeforeAll(func() {
-			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(
+			clusterOptions := []testutil.MultiNodeOption{testutil.WithGateway()}
+			for i := range countInstances {
+				clusterOptions = append(clusterOptions, testutil.WithNodeInstruments(
+					i,
+					testserver.WithRaftCompactionMargin(raftCompactionMargin),
+					testserver.WithMaintenanceInterval(maintenanceInterval),
+				))
+			}
+
+			ctx, servers, gateway, leaderID = testutil.SetupMultiNodeCluster(
 				countInstances,
-				testutil.WithGateway(),
+				clusterOptions...,
 			)
 
 			// Find and stop a follower
@@ -155,21 +174,115 @@ var _ = Describe("Simple cluster", func() {
 		})
 
 		It("should restore the state from a snapshot sent by the leader", func() {
+			lid := *leaderID
+
+			By("Capturing the caught-up follower progress before shutdown")
+			var followerLastIndex uint64
+			Eventually(func(g Gomega) {
+				leaderState, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+					NodeId: uint32(lid),
+				})
+				g.Expect(err).To(Succeed())
+
+				followerState, err := servers[followerID-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+					NodeId: uint32(followerID),
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(followerState.GetState()).To(Equal("Follower"))
+				g.Expect(followerState.GetRaftStatus().GetApplied()).To(BeNumerically(">=", leaderState.GetRaftStatus().GetLastIndex()))
+				g.Expect(followerState.GetRaftStatus().GetLastPersistedIndex()).To(BeNumerically(">=", leaderState.GetRaftStatus().GetLastIndex()))
+
+				followerLastIndex = followerState.GetRaftStatus().GetLastIndex()
+			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+
 			By("Stopping the follower")
 			testutil.StopNode(ctx, servers[followerID-1])
 
-			By("Creating transactions to trigger background maintenance")
-			lid := *leaderID
+			By("Creating state that cannot be replayed after compaction")
 			for i := 0; i < countTransactions; i++ {
 				_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
-					actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
+					actions.NewPosting("world", offlineAccountAddress, big.NewInt(100), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())
 			}
 
-			By("Starting the follower")
+			minimumSnapshotIndex := followerLastIndex + raftCompactionMargin + 1
+			var targetIndex uint64
+			Eventually(func(g Gomega) {
+				leaderState, err := servers[lid-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+					NodeId: uint32(lid),
+				})
+				g.Expect(err).To(Succeed())
+
+				targetIndex = leaderState.GetRaftStatus().GetLastPersistedIndex()
+				g.Expect(targetIndex).To(BeNumerically(">=", minimumSnapshotIndex),
+					"offline writes must advance beyond the stopped follower's recoverable log range")
+			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+
+			By("Waiting for leader maintenance to snapshot beyond the follower's retained range")
+			leaderSnapshotter, err := raftwal.NewSnapshotter(
+				filepath.Join(servers[lid-1].WalDir, "snap"),
+				logging.FromContext(ctx),
+			)
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) uint64 {
+				snapshot, err := leaderSnapshotter.Load()
+				g.Expect(err).To(Succeed())
+				g.Expect(snapshot).NotTo(BeNil())
+
+				return snapshot.GetMetadata().GetIndex()
+			}).Within(15 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeNumerically(">=", targetIndex))
+
+			By("Allowing only snapshot catch-up while recording the real Raft MsgSnap")
+			snapshotSent := make(chan uint64, 1)
+			gateway.SetInterceptor(testserver.MessageInterceptorFunc(func(msg *raftpb.Message) bool {
+				if msg.GetTo() != followerID {
+					return true
+				}
+
+				if msg.GetType() == raftpb.MsgApp {
+					return false
+				}
+
+				if msg.GetType() == raftpb.MsgSnap {
+					select {
+					case snapshotSent <- msg.GetSnapshot().GetMetadata().GetIndex():
+					default:
+					}
+				}
+
+				return true
+			}))
+			DeferCleanup(gateway.RemoveInterceptor)
+
+			By("Starting the follower and requiring snapshot transfer evidence")
 			testutil.RestartNode(ctx, servers[followerID-1])
-			Eventually(servers[followerID-1], 15*time.Second).Should(BeFollower(), "Timed out waiting for node to become follower")
+
+			var sentSnapshotIndex uint64
+			Eventually(snapshotSent).Within(15 * time.Second).Should(Receive(&sentSnapshotIndex))
+			Expect(sentSnapshotIndex).To(BeNumerically(">=", targetIndex))
+			gateway.RemoveInterceptor()
+
+			By("Waiting for the follower's applied and durable indexes to pass the installed snapshot")
+			Eventually(func(g Gomega) {
+				followerState, err := servers[followerID-1].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{
+					NodeId: uint32(followerID),
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(followerState.GetState()).To(Equal("Follower"))
+				g.Expect(followerState.GetRaftStatus().GetApplied()).To(BeNumerically(">=", sentSnapshotIndex))
+				g.Expect(followerState.GetRaftStatus().GetLastPersistedIndex()).To(BeNumerically(">=", sentSnapshotIndex))
+			}).Within(30 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
+
+			By("Reading state created while the follower was offline from that follower")
+			staleCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "stale")
+			account, err := servers[followerID-1].Client.GetAccount(staleCtx, &servicepb.GetAccountRequest{
+				Ledger:  ledgerName,
+				Address: offlineAccountAddress,
+			})
+			Expect(err).To(Succeed())
+			Expect(account.FindVolume("USD", "").Balance).To(Equal(fmt.Sprintf("%d", countTransactions*100)))
 		})
 
 		It("should restart as expected after a second restart", func() {

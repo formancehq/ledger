@@ -184,6 +184,13 @@ func SetupMultiNodeCluster(
 			testserver.WithRaftCompactionMargin(1),
 			testserver.WithAutoPromoteThreshold(10),
 		)
+		if gw != nil {
+			// Peers must advertise the proxy, not their backend listener;
+			// otherwise WithGateway starts inert servers while Raft silently
+			// continues to use direct connections and no interceptor can
+			// observe or manipulate the real network path.
+			instruments = append(instruments, testserver.WithRaftAdvertiseAddr(gw.Address(i)))
+		}
 		instruments = append(instruments, options.ExtraInstruments...)
 
 		return instruments
