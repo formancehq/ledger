@@ -20,7 +20,7 @@ type V2Transaction struct {
 	Postings []V2Posting `json:"postings"`
 	// Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
 	Reference *string `json:"reference,omitempty"`
-	// Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
+	// Arbitrary key/value pairs attached to the transaction. Transaction metadata is bi-temporal, so a point-in-time query returns it as it stood at that time
 	Metadata map[string]string `json:"metadata"`
 	// Unique sequential identifier for this transaction within the ledger
 	ID *big.Int `json:"id"`

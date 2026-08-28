@@ -17,7 +17,7 @@ type V2Ledger struct {
 	Bucket string `json:"bucket"`
 	// When the ledger was deleted, absent for active ledgers
 	DeletedAt *time.Time `json:"deletedAt,omitempty"`
-	// Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
+	// Arbitrary key/value pairs attached to the resource
 	Metadata map[string]string `json:"metadata,omitempty"`
 	// Feature flags enabled on the ledger, keyed by feature name
 	Features map[string]string `json:"features,omitempty"`
