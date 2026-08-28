@@ -1351,8 +1351,25 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 				return err
 			}
 
-			// Skip config-mutation log types during backfill.
+			// Config-mutation log types carry no forward/rmap rows to
+			// build, but they are ledger logs with an id and a date like
+			// any other, and the live fold date-indexes every ledger log.
+			// Mirror that here, or the date index's content would depend
+			// on whether a log folded before or after the index was
+			// created.
 			if !isDataLog(log) {
+				if ll := log.GetPayload().GetApply().GetLog(); ll != nil &&
+					log.GetPayload().GetApply().GetLedgerName() == task.ledger &&
+					cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
+					b.wb.SetEventSequence(log.GetSequence())
+
+					if err := b.wb.WriteLedgerLogDateIndex(b.kb, task.ledger, ll.GetDate().GetData(), ll.GetId()); err != nil {
+						_ = batch.Cancel()
+
+						return err
+					}
+				}
+
 				lastSeq = log.GetSequence()
 				batchCount++
 
