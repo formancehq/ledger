@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"go/ast"
+	"go/build/constraint"
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -23,8 +26,9 @@ type fuzzTarget struct {
 }
 
 type locatedFuzzTarget struct {
-	target   fuzzTarget
-	location finding
+	target            fuzzTarget
+	location          finding
+	unreachableReason string
 }
 
 func checkFuzzInventory(files []string) ([]finding, error) {
@@ -38,11 +42,18 @@ func checkFuzzInventory(files []string) ([]finding, error) {
 		return nil, err
 	}
 
-	return append(findings, compareFuzzTargets(actual, runner)...), nil
+	findings = append(findings, unreachableFuzzTargetFindings(actual)...)
+	findings = append(findings, compareFuzzTargets(actual, runner)...)
+	sortFindings(findings)
+
+	return findings, nil
 }
 
 func discoverRepositoryFuzzTargets(files []string) ([]locatedFuzzTarget, error) {
-	var targets []locatedFuzzTarget
+	var (
+		targets          []locatedFuzzTarget
+		platformSuffixes map[string]struct{}
+	)
 
 	for _, path := range files {
 		if !strings.HasSuffix(path, "_test.go") {
@@ -51,12 +62,31 @@ func discoverRepositoryFuzzTargets(files []string) ([]locatedFuzzTarget, error) 
 
 		source, err := os.ReadFile(path)
 		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+
 			return nil, fmt.Errorf("reading %s: %w", path, err)
 		}
 
 		declared, err := discoverFuzzTargets(path, source)
 		if err != nil {
 			return nil, err
+		}
+
+		if len(declared) == 0 {
+			continue
+		}
+		if platformSuffixes == nil {
+			platformSuffixes, err = goPlatformSuffixes()
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		reason := fuzzFileConstraintReason(path, source, platformSuffixes)
+		for index := range declared {
+			declared[index].unreachableReason = reason
 		}
 
 		targets = append(targets, declared...)
@@ -67,6 +97,87 @@ func discoverRepositoryFuzzTargets(files []string) ([]locatedFuzzTarget, error) 
 	})
 
 	return targets, nil
+}
+
+func goPlatformSuffixes() (map[string]struct{}, error) {
+	output, err := exec.Command("go", "tool", "dist", "list").Output()
+	if err != nil {
+		return nil, fmt.Errorf("listing Go platforms: %w", err)
+	}
+
+	operatingSystems := map[string]struct{}{}
+	architectures := map[string]struct{}{}
+	platforms := make([][2]string, 0)
+
+	for line := range strings.FieldsSeq(string(output)) {
+		parts := strings.Split(line, "/")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("decoding Go platform %q", line)
+		}
+
+		operatingSystems[parts[0]] = struct{}{}
+		architectures[parts[1]] = struct{}{}
+		platforms = append(platforms, [2]string{parts[0], parts[1]})
+	}
+
+	suffixes := make(map[string]struct{}, len(operatingSystems)+len(architectures)+len(platforms))
+	for operatingSystem := range operatingSystems {
+		suffixes["_"+operatingSystem] = struct{}{}
+	}
+	for architecture := range architectures {
+		suffixes["_"+architecture] = struct{}{}
+	}
+	for _, platform := range platforms {
+		suffixes["_"+platform[0]+"_"+platform[1]] = struct{}{}
+	}
+
+	return suffixes, nil
+}
+
+func fuzzFileConstraintReason(path string, source []byte, platformSuffixes map[string]struct{}) string {
+	scanner := bufio.NewScanner(bytes.NewReader(source))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "package ") {
+			break
+		}
+		if constraint.IsGoBuild(line) || constraint.IsPlusBuild(line) {
+			return "the declaration file has a Go build constraint"
+		}
+	}
+
+	stem := strings.TrimSuffix(filepath.Base(path), "_test.go")
+	matchedSuffix := ""
+	for suffix := range platformSuffixes {
+		if strings.HasSuffix(stem, suffix) && len(suffix) > len(matchedSuffix) {
+			matchedSuffix = suffix
+		}
+	}
+	if matchedSuffix != "" {
+		return "the declaration file has the platform suffix " + matchedSuffix
+	}
+
+	return ""
+}
+
+func unreachableFuzzTargetFindings(targets []locatedFuzzTarget) []finding {
+	var findings []finding
+
+	for _, target := range targets {
+		if target.unreachableReason == "" {
+			continue
+		}
+
+		location := target.location
+		location.message = fmt.Sprintf(
+			"Go fuzz target %s is not reachable by the untagged, platform-independent active runner because %s; move it to an unconstrained test file or extend the runner explicitly",
+			target.target.name,
+			target.unreachableReason,
+		)
+		findings = append(findings, location)
+	}
+
+	return findings
 }
 
 func discoverFuzzTargets(path string, source []byte) ([]locatedFuzzTarget, error) {
@@ -200,7 +311,11 @@ func readFuzzRunnerInventory(path string) ([]locatedFuzzTarget, []finding, error
 		}
 
 		packagePath, name := fields[0], fields[1]
-		cleanPackagePath := "./" + strings.TrimPrefix(filepath.ToSlash(filepath.Clean(packagePath)), "./") + "/"
+		cleanedPackagePath := filepath.ToSlash(filepath.Clean(packagePath))
+		cleanPackagePath := "./"
+		if cleanedPackagePath != "." {
+			cleanPackagePath += strings.TrimPrefix(cleanedPackagePath, "./") + "/"
+		}
 		if !strings.HasPrefix(packagePath, "./") || !strings.HasSuffix(packagePath, "/") ||
 			cleanPackagePath != packagePath {
 			location.message = fmt.Sprintf("active fuzz runner package %q must be a clean ./-relative path ending in /", packagePath)
@@ -286,6 +401,12 @@ func compareFuzzTargets(actual, runner []locatedFuzzTarget) []finding {
 		findings = append(findings, location)
 	}
 
+	sortFindings(findings)
+
+	return findings
+}
+
+func sortFindings(findings []finding) {
 	sort.Slice(findings, func(left, right int) bool {
 		if findings[left].path != findings[right].path {
 			return findings[left].path < findings[right].path
@@ -296,8 +417,6 @@ func compareFuzzTargets(actual, runner []locatedFuzzTarget) []finding {
 
 		return findings[left].column < findings[right].column
 	})
-
-	return findings
 }
 
 func fuzzTargetKey(target fuzzTarget) string {

@@ -70,7 +70,10 @@ Go fuzz declarations are authoritative. The active runner reads
 `scripts/fuzz-targets.txt`, and `just fuzz-inventory-check` compares every
 package/target pair in that file with the repository's `func Fuzz...(*testing.F)`
 declarations. The check reports both missing declarations and stale runner
-entries, and runs as part of pre-commit and the repository invariant gate.
+entries, rejects fuzz declarations hidden by build constraints or platform
+filename suffixes, and runs as part of pre-commit and the repository invariant
+gate. Keep active fuzz declarations in untagged, platform-independent test
+files unless the runner is explicitly extended to support another mode.
 
 Use `just fuzz <duration>` for active fuzzing of every checked target. Use
 `just fuzz-check` for seed corpus replay; seed replay is a separate validation

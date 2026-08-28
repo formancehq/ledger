@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -33,6 +35,54 @@ import testpkg "testing"
 				line:   5,
 				column: 7,
 			},
+		},
+	}, targets)
+}
+
+func TestDiscoverRepositoryFuzzTargetsSkipsDeletedTrackedFiles(t *testing.T) {
+	t.Parallel()
+
+	targets, err := discoverRepositoryFuzzTargets([]string{
+		filepath.Join(t.TempDir(), "deleted_test.go"),
+	})
+	require.NoError(t, err)
+	require.Empty(t, targets)
+}
+
+func TestFuzzFileConstraintReasonRejectsBuildAndPlatformConstraints(t *testing.T) {
+	t.Parallel()
+
+	platformSuffixes := map[string]struct{}{
+		"_linux":       {},
+		"_linux_amd64": {},
+	}
+
+	require.Equal(t,
+		"the declaration file has a Go build constraint",
+		fuzzFileConstraintReason("fuzz_test.go", []byte("//go:build integration\n\npackage sample\n"), platformSuffixes),
+	)
+	require.Equal(t,
+		"the declaration file has the platform suffix _linux_amd64",
+		fuzzFileConstraintReason("fuzz_linux_amd64_test.go", []byte("package sample\n"), platformSuffixes),
+	)
+	require.Empty(t,
+		fuzzFileConstraintReason("fuzz_test.go", []byte("package sample\n"), platformSuffixes),
+	)
+}
+
+func TestReadFuzzRunnerInventoryAcceptsRootPackage(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "fuzz-targets.txt")
+	require.NoError(t, os.WriteFile(path, []byte("./ FuzzRoot\n"), 0o600))
+
+	targets, findings, err := readFuzzRunnerInventory(path)
+	require.NoError(t, err)
+	require.Empty(t, findings)
+	require.Equal(t, []locatedFuzzTarget{
+		{
+			target:   fuzzTarget{packagePath: "./", name: "FuzzRoot"},
+			location: finding{path: path, line: 1, column: 1},
 		},
 	}, targets)
 }
