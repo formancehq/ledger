@@ -88,7 +88,9 @@ just test-e2e
 3. Verify compilation: `go build ./...`
 4. Run tests: `just test`
 
-The pre-commit command runs `go generate ./...` (mocks + proto), `go mod tidy`, and `golangci-lint run --fix`.
+The pre-commit command runs `go generate ./...` (mocks + proto), `go mod tidy`
+for the root, operator, and Antithesis model-workload modules, and
+`golangci-lint run --fix`.
 
 ## Dependency Injection with fx
 
