@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/preload"
@@ -318,9 +318,22 @@ func resolveCoverage[T interface {
 				// cache epoch, so a stale cached absence would poison every
 				// later preload of the key — deterministically, since the
 				// plan is replicated. For index keys, arbitrate an absent
-				// answer against a fresh read before trusting it.
+				// answer against a fresh read before trusting it. A failed
+				// arbitration fails the resolve, exactly like the primary
+				// load and marshal paths: a coverage-only plan carries no
+				// seed, so apply would route back through the very cache
+				// this read exists to distrust.
 				if !hasValue && attrCode == dal.SubAttrIndex {
-					if fresh, freshErr := getValue(store, canonicalKey); freshErr == nil && any(fresh) != any(zero) {
+					fresh, freshErr := getValue(store, canonicalKey)
+					if freshErr != nil {
+						if firstErr == nil {
+							firstErr = freshErr
+						}
+
+						return
+					}
+
+					if any(fresh) != any(zero) {
 						logger.WithFields(map[string]any{
 							"type": typeName,
 							"key":  hex.EncodeToString(canonicalKey),
@@ -330,11 +343,18 @@ func resolveCoverage[T interface {
 							"key":  hex.EncodeToString(canonicalKey),
 						})
 
-						if attrValue, mErr := buildPreloadPayload(attrCode, fresh); mErr == nil {
-							plans = append(plans, slab.appendSeed(id, tag, attrCode, attrValue))
+						attrValue, marshalErr := buildPreloadPayload(attrCode, fresh)
+						if marshalErr != nil {
+							if firstErr == nil {
+								firstErr = marshalErr
+							}
 
 							return
 						}
+
+						plans = append(plans, slab.appendSeed(id, tag, attrCode, attrValue))
+
+						return
 					}
 				}
 
