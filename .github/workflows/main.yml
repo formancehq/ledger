@@ -79,6 +79,22 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  Tests-Operator:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
+        with:
+          fetch-depth: 0
+          dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Run operator unit tests
+        run: >
+          nix develop --command bash -c "unset GOROOT;
+          cd misc/operator && go test ./..."
+
   Tests-E2E-Business:
     runs-on: namespace-profile-linux-amd64-4vcpu
     env:
@@ -269,6 +285,7 @@ jobs:
       [
         Dirty,
         Tests,
+        Tests-Operator,
         Tests-E2E-Business,
         Tests-E2E-Cluster,
         Tests-Scenarios,
@@ -325,6 +342,7 @@ jobs:
       [
         Dirty,
         Tests,
+        Tests-Operator,
         Tests-E2E-Business,
         Tests-E2E-Cluster,
         Tests-Scenarios,

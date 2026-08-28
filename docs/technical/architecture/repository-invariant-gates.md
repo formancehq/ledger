@@ -26,6 +26,10 @@ The current rules are:
    Default CI workflow. The dashboard test recipe regenerates the committed
    dashboards before testing them, and `pre-commit` must continue to invoke
    that recipe.
+5. The `Default` GitHub Actions workflow must retain an unconditional
+   `Tests-Operator` job that runs the full default-tag `misc/operator` unit
+   suite through the pinned Nix toolchain. The command is kept explicit so
+   the nested Go module cannot silently fall outside root-module `./...` tests.
 
 The FSM boundary is recursive and consists of:
 
@@ -49,6 +53,11 @@ The dashboard reachability check inspects the tracked nested module, Just
 recipe metadata, and the Default workflow. It fails if the module loses its
 tracked tests, generation no longer precedes the tests, the nested
 `go test ./...` command disappears, or CI stops invoking `pre-commit`.
+
+The operator-test reachability check parses the workflow as YAML and requires
+the exact argument-free unit-test command. It rejects job or step conditions,
+allowed failures, non-Nix execution, and added build tags; integration/envtest
+and Chainsaw coverage remain separate suites.
 
 ## Extending the gate
 
