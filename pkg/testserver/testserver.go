@@ -82,6 +82,14 @@ func WithRaftPort(port int) testservice.InstrumentationFunc {
 	}
 }
 
+func WithRaftAdvertiseAddr(address string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--advertise-addr", address)
+
+		return nil
+	}
+}
+
 func WithWalDir(dir string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--wal-dir", dir)

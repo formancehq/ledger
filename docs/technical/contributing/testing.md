@@ -129,6 +129,14 @@ BeforeEach(func() {
 `SetupSingleNode` does the same for a one-node cluster. Both accept extra
 instruments for the node under test.
 
+`WithGateway()` places an allocated loopback proxy in front of every Raft and
+snapshot service endpoint. Each node advertises its proxy address, so a gateway
+interceptor observes the real post-admission peer traffic rather than an unused
+side channel. Initial bootstrap discovery starts direct; the proxy also forwards
+the bootstrap unary RPCs required after discovery because the returned peer
+addresses already point at the proxies. The proxy preserves incoming gRPC
+metadata on every backend hop so authenticated peer traffic remains valid.
+
 ### Ports are leased, never chosen
 
 A test node's ports come from `testserver.AllocateNodeLease()`. Do not write a
