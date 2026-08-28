@@ -171,6 +171,16 @@ func TestErrorTypes(t *testing.T) {
 			expected: "chapter 5 has sealing hash abcd, but the archive confirmation carries 01",
 		},
 		{
+			name:     "ErrChapterArchiveOutOfOrder",
+			err:      &ErrChapterArchiveOutOfOrder{ChapterID: 5, BlockingChapterID: 3},
+			expected: "chapter 5 cannot be archived while older chapter 3 is not archived",
+		},
+		{
+			name:     "ErrChapterAlreadyArchived",
+			err:      &ErrChapterAlreadyArchived{ChapterID: 1, ArchivedThroughChapterID: 3},
+			expected: "chapter 1 is already archived (archived through chapter 3)",
+		},
+		{
 			name:     "ErrInvalidCronExpression",
 			err:      &ErrInvalidCronExpression{Expression: "bad", Details: "parse failed"},
 			expected: `invalid cron expression "bad": parse failed`,
@@ -354,7 +364,9 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrChapterNotClosing":              &ErrChapterNotClosing{},
 		"ErrChapterNotClosed":               &ErrChapterNotClosed{},
 		"ErrChapterNotArchiving":            &ErrChapterNotArchiving{},
+		"ErrChapterArchiveOutOfOrder":       &ErrChapterArchiveOutOfOrder{},
 		"ErrChapterArchiveIdentityMismatch": &ErrChapterArchiveIdentityMismatch{},
+		"ErrChapterAlreadyArchived":         &ErrChapterAlreadyArchived{},
 		"ErrInvalidCronExpression":          &ErrInvalidCronExpression{},
 		"ErrLedgerInMirrorMode":             &ErrLedgerInMirrorMode{},
 		"ErrLedgerNotInMirrorMode":          &ErrLedgerNotInMirrorMode{},

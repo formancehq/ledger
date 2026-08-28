@@ -309,28 +309,32 @@ data/
 
 All non-purged chapters are kept in memory in the FSM's `allChapters` map, eliminating Pebble reads for chapter lookups. The `currentOpenChapter` and `closingChapter` fields are convenience pointers into this map for fast access on the hot path.
 
-- `WriteSet.GetChapterByID()` reads from the in-memory map (no Pebble fallback).
-- `DefaultController.ListChapters()` reads from `Machine.AllChapters()` via the `ChapterProvider` interface.
-- When a chapter is archived and purged, it is removed from the in-memory map.
-- Chapters are still persisted to Pebble (for crash recovery and startup), but never read from Pebble during normal operation after startup.
+The map's membership rule is **hot-storage residency**, not existence: in steady state it holds the `OPEN` chapter plus every `CLOSING`, `CLOSED` and `ARCHIVING` one. An `ARCHIVED` chapter is dropped, because the FSM has no remaining decision to make about data that is no longer in Pebble.
 
-## FSM Snapshot
+- `WriteSet.GetChapterByID()` reads from the in-memory map (no Pebble fallback) — required, since the FSM apply path may not read Pebble at all.
+- When a chapter is archived and purged, it is removed from the in-memory map. History questions ("is this chapter archived?") therefore cannot be answered from the map; the archived prefix is tracked explicitly as `archivedThroughID` (see [Archival is strictly ordered](#archival-is-strictly-ordered)).
+- `DefaultController.ListChapters()` reads the persisted rows from Pebble (`query.ReadChapters`), so it returns the full history including archived chapters — the query path is not restricted to the FSM's working set.
+- The `ZoneGlobal/SubGlobChapters` rows are the durable, complete registry: every chapter that ever existed, never deleted. They are the source the tracker is rebuilt from at startup and on follower checkpoint-sync, and what cold-read routing, the checker, and the incremental-backup backfill consult.
 
-The chapter state is included in Raft snapshots:
+## Recovering chapter state
 
-```protobuf
-message MemorySnapshot {
-  // ... other fields ...
-  common.Chapter open_chapter = 10;               // Current open chapter
-  common.Chapter closing_chapter = 11;            // Chapter being sealed (nil when idle)
-  fixed64 next_chapter_id = 12;
-  repeated common.Chapter closed_chapters = 13;   // CLOSED + ARCHIVED chapters (non-purged)
-}
-```
+Chapter state is **not** serialized into a memory snapshot; it is rebuilt from the persisted `ZoneGlobal/SubGlobChapters` rows. `state.Recovery` reads them with `query.ReadChapters`, partitions them into the current `OPEN` chapter and the `CLOSING` set, reads `SubGlobNextChapterID`, derives the archived prefix, and installs the result with `ChapterTracker.Reset`.
+
+The same path runs for a follower joining through checkpoint-sync (`SynchronizeWithLeader`), since a checkpoint ships the SSTs holding those rows. A node that has just recovered therefore sees archived chapters as present-and-`ARCHIVED`, whereas a long-running node has dropped them from the map — the two representations must never lead to different FSM decisions, which is why the archived prefix is a tracked marker rather than an inference from the map.
 
 ## Archival (CLOSED → ARCHIVED)
 
 Once a chapter is sealed (CLOSED), it can be archived to cold storage. Archival exports logs and audit entries to an external storage backend and purges them from Pebble, reducing hot storage size and compaction pressure. Attributes (volumes, metadata, reversion status) remain in Pebble to serve read queries.
+
+### Archival is strictly ordered
+
+**Archived chapters always form a contiguous prefix of history.** `ArchiveChapter` admits only the chapter immediately after that prefix. A chapter beyond it is rejected with reason `CHAPTER_ARCHIVE_OUT_OF_ORDER`, whose `blockingChapterId` names the chapter that must be archived first. A chapter *inside* it is rejected with `CHAPTER_ALREADY_ARCHIVED`, whose `archivedThroughChapterId` reports how far the prefix reaches: the order has already been carried out, and since every chapter outside the prefix is newer, no archive makes an older one archivable again — a client handed a blocker there would walk forward forever.
+
+The prefix is an explicit marker on the chapter tracker (`archivedThroughID`), advanced by `ConfirmArchiveChapter` and derived at recovery as the longest run of `ARCHIVED` rows from chapter 1. It is deliberately **not** inferred from which chapters are still in the in-memory map: that map holds only chapters whose data is still in hot storage (see [In-Memory Chapter Management](#in-memory-chapter-management)), so absence there means "purged", and reading it as "archived" would conflate a residency fact with a history one — and would answer differently on a restarted node, which reloads archived rows.
+
+The rule exists because the purge deletes *everything* up to the archived chapter's close sequence. Archiving out of order would leave an older, un-archived chapter's logs retained *below* the archive boundary, which has two consequences: the checker's replay skips everything at or below that boundary, so those logs become a permanently unverified window; and cold storage keeps a hole that no later archive ever fills. Enforcing the order makes "below the archive boundary" and "archived" the same statement, which is what every archive-aware pass assumes.
+
+Because a chapter may not be archived until its predecessor is `ARCHIVED` (not merely `ARCHIVING`), **at most one chapter is ever in `ARCHIVING`**. The trade-off is deliberate: a chapter whose upload cannot complete blocks archival of newer chapters rather than being stepped over, so hot storage grows until the underlying cold-storage problem is fixed. A skip would trade a loud, recoverable stall for a silent permanent gap.
 
 ### Two-Step Archive Process
 
@@ -338,7 +342,7 @@ Like the seal process, archival uses two Raft commands to avoid blocking consens
 
 #### Step 1: ArchiveChapter (validation, state transition to ARCHIVING)
 
-The `ArchiveChapter` order validates that the chapter is CLOSED and transitions it to `ARCHIVING`. This state change is deterministic across all nodes via Raft. Only the **leader** dispatches the actual archive request to the background Archiver — followers apply the state transition but do not perform the S3 upload. This avoids N redundant exports in an N-node cluster.
+The `ArchiveChapter` order validates that the chapter is CLOSED, that every older chapter is already ARCHIVED (see above), and transitions it to `ARCHIVING`. This state change is deterministic across all nodes via Raft. Only the **leader** dispatches the actual archive request to the background Archiver — followers apply the state transition but do not perform the S3 upload. This avoids N redundant exports in an N-node cluster.
 
 **File**: `internal/domain/processing/processor_chapter.go`
 

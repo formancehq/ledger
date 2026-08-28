@@ -191,7 +191,9 @@ const (
 	ErrReasonChapterNotClosing              = "CHAPTER_NOT_CLOSING"
 	ErrReasonChapterNotClosed               = "CHAPTER_NOT_CLOSED"
 	ErrReasonChapterNotArchiving            = "CHAPTER_NOT_ARCHIVING"
+	ErrReasonChapterArchiveOutOfOrder       = "CHAPTER_ARCHIVE_OUT_OF_ORDER"
 	ErrReasonChapterArchiveIdentityMismatch = "CHAPTER_ARCHIVE_IDENTITY_MISMATCH"
+	ErrReasonChapterAlreadyArchived         = "CHAPTER_ALREADY_ARCHIVED"
 	ErrReasonMetadataNotFound               = "METADATA_NOT_FOUND"
 	ErrReasonInvalidReceipt                 = "INVALID_RECEIPT"
 	ErrReasonMaintenanceMode                = "MAINTENANCE_MODE"
@@ -873,6 +875,49 @@ func (e *ErrChapterArchiveIdentityMismatch) Metadata() map[string]string {
 		"chapterId":           strconv.FormatUint(e.ChapterID, 10),
 		"expectedSealingHash": hex.EncodeToString(e.Expected),
 		"gotSealingHash":      hex.EncodeToString(e.Got),
+	}
+}
+
+// ErrChapterArchiveOutOfOrder — attempting to archive a CLOSED chapter while an
+// older one is not ARCHIVED yet. Archived chapters must form a contiguous
+// prefix: the purge deletes everything up to the archived chapter's close
+// sequence, so a hole would leave an un-archived chapter's logs retained below
+// the archive boundary, where the checker's replay skips them.
+type ErrChapterArchiveOutOfOrder struct {
+	ChapterID uint64
+	// BlockingChapterID is the oldest chapter that must be archived first.
+	BlockingChapterID uint64
+}
+
+func (e *ErrChapterArchiveOutOfOrder) Error() string {
+	return fmt.Sprintf("chapter %d cannot be archived while older chapter %d is not archived", e.ChapterID, e.BlockingChapterID)
+}
+func (*ErrChapterArchiveOutOfOrder) Reason() string { return ErrReasonChapterArchiveOutOfOrder }
+func (e *ErrChapterArchiveOutOfOrder) Metadata() map[string]string {
+	return map[string]string{
+		"chapterId":         strconv.FormatUint(e.ChapterID, 10),
+		"blockingChapterId": strconv.FormatUint(e.BlockingChapterID, 10),
+	}
+}
+
+// ErrChapterAlreadyArchived — attempting to archive a chapter inside the
+// archived prefix. The order has already been carried out: the chapter's logs
+// are purged and its archive is in cold storage, so there is no chapter to
+// archive first and no retry that succeeds.
+type ErrChapterAlreadyArchived struct {
+	ChapterID uint64
+	// ArchivedThroughChapterID is the newest chapter in the archived prefix.
+	ArchivedThroughChapterID uint64
+}
+
+func (e *ErrChapterAlreadyArchived) Error() string {
+	return fmt.Sprintf("chapter %d is already archived (archived through chapter %d)", e.ChapterID, e.ArchivedThroughChapterID)
+}
+func (*ErrChapterAlreadyArchived) Reason() string { return ErrReasonChapterAlreadyArchived }
+func (e *ErrChapterAlreadyArchived) Metadata() map[string]string {
+	return map[string]string{
+		"chapterId":                strconv.FormatUint(e.ChapterID, 10),
+		"archivedThroughChapterId": strconv.FormatUint(e.ArchivedThroughChapterID, 10),
 	}
 }
 

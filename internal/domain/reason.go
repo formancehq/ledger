@@ -86,7 +86,8 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED,
 		commonpb.ErrorReason_ERROR_REASON_LEDGER_IN_MIRROR_MODE,
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_HAS_ACCOUNTS,
-		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_CONFLICT:
+		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_CONFLICT,
+		commonpb.ErrorReason_ERROR_REASON_CHAPTER_ALREADY_ARCHIVED:
 		return KindConflict
 	case commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 		commonpb.ErrorReason_ERROR_REASON_VOLUME_OVERFLOW,
@@ -98,6 +99,7 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_CHAPTER_NOT_CLOSED,
 		commonpb.ErrorReason_ERROR_REASON_CHAPTER_NOT_ARCHIVING,
 		commonpb.ErrorReason_ERROR_REASON_CHAPTER_ARCHIVE_IDENTITY_MISMATCH,
+		commonpb.ErrorReason_ERROR_REASON_CHAPTER_ARCHIVE_OUT_OF_ORDER,
 		commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE,
 		commonpb.ErrorReason_ERROR_REASON_INDEX_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA,

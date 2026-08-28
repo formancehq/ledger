@@ -3475,6 +3475,7 @@ ledgerctl chapters archive 1
 
 **Notes:**
 - The chapter must be in `CLOSED` state (sealed). `OPEN`, `CLOSING`, or `ARCHIVED` chapters are rejected.
+- **Chapters must be archived oldest-first.** Archiving a chapter while an older one is not yet `ARCHIVED` is rejected with `CHAPTER_ARCHIVE_OUT_OF_ORDER`, whose `blockingChapterId` names the chapter to archive first. Re-archiving a chapter that is already inside the archived prefix — a retry after a timeout, say — is rejected with `CHAPTER_ALREADY_ARCHIVED` and `archivedThroughChapterId` instead: the work is done, and there is no chapter to archive first. Archived chapters form a contiguous prefix of history, so a chapter whose archive cannot complete blocks newer ones until the underlying cold-storage problem is resolved — it is never stepped over, which would leave a permanent hole in cold storage.
 - Archival is asynchronous: the command returns immediately after validation, and a background Archiver exports the data and confirms the transition to `ARCHIVED`.
 - Cold storage is configured on the server with `--cold-storage-driver`, `--cold-storage-path`, and S3 flags (`--cold-storage-bucket-id`, `--cold-storage-s3-bucket`, `--cold-storage-s3-region`, `--cold-storage-s3-endpoint`).
 

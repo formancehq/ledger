@@ -323,3 +323,86 @@ func TestChapterTrackerCloneNilChapters(t *testing.T) {
 	require.Empty(t, clone.ClosingChapters())
 	require.Len(t, clone.AllChapters(), 1)
 }
+
+// TestChapterTrackerArchivedThroughDerivation covers the recovery side of the
+// archived-prefix marker: both boot and follower checkpoint-sync rebuild the
+// tracker from the persisted chapter rows, so the marker has to be derived from
+// them and must agree with the value a running node carries incrementally.
+func TestChapterTrackerArchivedThroughDerivation(t *testing.T) {
+	t.Parallel()
+
+	chapter := func(id uint64, status commonpb.ChapterStatus) *commonpb.Chapter {
+		return &commonpb.Chapter{Id: id, Status: status}
+	}
+
+	for name, tc := range map[string]struct {
+		rows          map[uint64]*commonpb.Chapter
+		nextChapterID uint64
+		want          uint64
+	}{
+		"nothing archived": {
+			rows:          map[uint64]*commonpb.Chapter{1: chapter(1, commonpb.ChapterStatus_CHAPTER_OPEN)},
+			nextChapterID: 2,
+			want:          0,
+		},
+		"contiguous archived prefix": {
+			rows: map[uint64]*commonpb.Chapter{
+				1: chapter(1, commonpb.ChapterStatus_CHAPTER_ARCHIVED),
+				2: chapter(2, commonpb.ChapterStatus_CHAPTER_ARCHIVED),
+				3: chapter(3, commonpb.ChapterStatus_CHAPTER_CLOSED),
+				4: chapter(4, commonpb.ChapterStatus_CHAPTER_OPEN),
+			},
+			nextChapterID: 5,
+			want:          2,
+		},
+		// A gap stops the prefix rather than counting past it: chapter 3 is not
+		// archived, so a purge for 4 would delete data 3 still owns.
+		"gap in the middle stops the prefix": {
+			rows: map[uint64]*commonpb.Chapter{
+				1: chapter(1, commonpb.ChapterStatus_CHAPTER_ARCHIVED),
+				2: chapter(2, commonpb.ChapterStatus_CHAPTER_ARCHIVED),
+				3: chapter(3, commonpb.ChapterStatus_CHAPTER_CLOSED),
+				4: chapter(4, commonpb.ChapterStatus_CHAPTER_ARCHIVED),
+				5: chapter(5, commonpb.ChapterStatus_CHAPTER_OPEN),
+			},
+			nextChapterID: 6,
+			want:          2,
+		},
+		// Rows are never deleted, so a missing one is anomalous; it cannot be
+		// shown to be archived and therefore stops the prefix too.
+		"missing row stops the prefix": {
+			rows: map[uint64]*commonpb.Chapter{
+				1: chapter(1, commonpb.ChapterStatus_CHAPTER_ARCHIVED),
+				3: chapter(3, commonpb.ChapterStatus_CHAPTER_ARCHIVED),
+				4: chapter(4, commonpb.ChapterStatus_CHAPTER_OPEN),
+			},
+			nextChapterID: 5,
+			want:          1,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			built := NewChapterTracker(tc.rows, nil, nil, tc.nextChapterID, "")
+			require.Equal(t, tc.want, built.ArchivedThroughID())
+
+			// Reset is the runtime path (RecoverState, SynchronizeWithLeader) and
+			// must derive identically to construction.
+			reset := newTestChapterTracker()
+			reset.Reset(tc.rows, nil, nil, tc.nextChapterID)
+			require.Equal(t, tc.want, reset.ArchivedThroughID())
+		})
+	}
+}
+
+// TestChapterTrackerCloneCarriesArchivedThrough guards the WriteSet path: the
+// per-proposal buffer works on a clone, so a clone that dropped the marker would
+// read 0 and reject every archive.
+func TestChapterTrackerCloneCarriesArchivedThrough(t *testing.T) {
+	t.Parallel()
+
+	tracker := newTestChapterTracker()
+	tracker.SetArchivedThroughID(7)
+
+	require.Equal(t, uint64(7), tracker.Clone().ArchivedThroughID())
+}

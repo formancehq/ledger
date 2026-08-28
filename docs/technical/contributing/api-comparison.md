@@ -914,6 +914,9 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Chapter not closing | `FAILED_PRECONDITION` | `CHAPTER_NOT_CLOSING` | `chapterId` |
 | Chapter not closed | `FAILED_PRECONDITION` | `CHAPTER_NOT_CLOSED` | `chapterId` |
 | Chapter not archiving | `FAILED_PRECONDITION` | `CHAPTER_NOT_ARCHIVING` | `chapterId` |
+| Chapter archive out of order | `FAILED_PRECONDITION` | `CHAPTER_ARCHIVE_OUT_OF_ORDER` | `chapterId`, `blockingChapterId` |
+| Chapter already archived | `FAILED_PRECONDITION` | `CHAPTER_ALREADY_ARCHIVED` | `chapterId`, `archivedThroughChapterId` |
+| Chapter archive incarnation mismatch | `FAILED_PRECONDITION` | `CHAPTER_ARCHIVE_IDENTITY_MISMATCH` | `chapterId`, `expectedSealingHash`, `gotSealingHash` |
 | Metadata not found | `NOT_FOUND` | `METADATA_NOT_FOUND` | `target`, `key` |
 | Metadata field not in schema | `FAILED_PRECONDITION` | `METADATA_FIELD_NOT_IN_SCHEMA` | `target`, `key` |
 | Invalid receipt | `INVALID_ARGUMENT` | `INVALID_RECEIPT` | `reason` |
