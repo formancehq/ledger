@@ -14,6 +14,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
@@ -178,10 +179,14 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 	// U128 id. With the tag check, only a tombstone for THIS key
 	// short-circuits.
 	if existing, ok := s.ac.Gen1().Get(id); ok && existing.Deleted && existing.Tag == tag {
+		reportSuppressedIndexSeed(s.cacheType, "gen1", rawValue)
+
 		return nil
 	}
 
 	if existing, ok := s.ac.Gen0().Get(id); ok && existing.Deleted && existing.Tag == tag {
+		reportSuppressedIndexSeed(s.cacheType, "gen0", rawValue)
+
 		return nil
 	}
 
@@ -1007,4 +1012,25 @@ func (s *CacheSnapshotter) Stop() {
 	s.bloomPopulateReason = ""
 	s.bloomExecutor.Interrupt()
 	s.bloomMu.Unlock()
+}
+
+// reportSuppressedIndexSeed fires when a cache tombstone discards a seeded
+// index registry value. Admission now loads and seeds these keys on every
+// path, so a suppression here is the only remaining way an index durably in
+// Pebble reads as absent at apply — a tombstone outliving the row it was
+// paired with.
+func reportSuppressedIndexSeed(cacheType byte, gen string, rawValue []byte) {
+	if cacheType != dal.SubAttrIndex {
+		return
+	}
+
+	details := map[string]any{"gen": gen}
+
+	idx := &commonpb.Index{}
+	if err := idx.UnmarshalVT(rawValue); err == nil {
+		details["ledger"] = idx.GetLedger()
+		details["canonical"] = indexes.Canonical(idx.GetId())
+	}
+
+	assert.Unreachable("index seed suppressed by cache tombstone", details)
 }

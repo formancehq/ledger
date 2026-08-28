@@ -1,6 +1,8 @@
 package processing
 
 import (
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -50,6 +52,14 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 		ForwardEncodingVersion: 1,
 	})
 
+	// Registry mutation trace: paired with the removal probes below, the
+	// event stream carries the FSM's own view of when an entry was written
+	// and when a later lookup no longer found it.
+	assert.Reachable("index registry entry written", map[string]any{
+		"ledger":    ledger,
+		"canonical": indexes.Canonical(id),
+	})
+
 	return buildCreatedIndexLogPayload(id, ctx.isBornEmpty(ledger)), nil
 }
 
@@ -66,6 +76,11 @@ func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Conte
 	if err := indexes.Remove(ctx.Scope.Indexes(), ledger, id); err != nil {
 		return nil, domain.StoreFailure("dropping index", err)
 	}
+
+	assert.Reachable("index registry entry removed", map[string]any{
+		"ledger":    ledger,
+		"canonical": indexes.Canonical(id),
+	})
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_DropIndex{

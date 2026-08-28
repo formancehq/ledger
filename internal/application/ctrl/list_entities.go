@@ -39,7 +39,7 @@ type entityListParams[T interface{ ~string | ~uint64 }] struct {
 	indexRegistry indexes.Lookup
 	// indexVersionFor is filled in by listEntities (bound to the
 	// iteration snapshot); leaf compilers should never see a nil here.
-	indexVersionFor func(canonical string) (uint32, bool, error)
+	indexVersionFor readstore.IndexVersionResolver
 	// afterToBytes converts the after cursor to a byte slice for pagination.
 	afterToBytes func(T) []byte
 	// pin is filled in by listEntities: the main handle's applied sequence,

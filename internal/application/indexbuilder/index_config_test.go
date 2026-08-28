@@ -677,7 +677,8 @@ func TestAddSchemaRewriteTask_ResetsInFlightBackfill(t *testing.T) {
 	}
 
 	// A backfill task always coexists with its version state and runs inside
-	// an active fold batch — CreateIndex writes both in one commit.
+	// an active fold batch — CreateIndex writes both in one commit, and boot
+	// rebuilds the task FROM the persisted state.
 	b.putVersionState("ledger1", indexes.Canonical(id), readstore.IndexVersionState{
 		CurrentVersion: 0,
 		PendingVersion: 1,
@@ -706,6 +707,9 @@ func TestAddSchemaRewriteTask_ResetsInFlightBackfill(t *testing.T) {
 	assert.Equal(t, uint32(2), state.PendingVersion,
 		"the restart must fill a FRESH keyspace — refolding the half-built one re-encodes values at their original sequences, and those retractions lose the same-seq tie forever")
 	assert.Equal(t, uint32(2), state.HighWater)
+	require.True(t, state.PendingTypeDeclared)
+	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_UINT64, state.PendingType,
+		"the fresh keyspace is bound to the retype's target type")
 }
 
 // TestAddSchemaRewriteTask_ResetsBackfillEvenWhenIndexStripped pins the
@@ -753,8 +757,9 @@ func TestAddSchemaRewriteTask_ResetsBackfillEvenWhenIndexStripped(t *testing.T) 
 		},
 	}
 
-	// stripBuildingIndexes hides the index from cfg, but the version state
-	// and the fold batch are untouched by the strip.
+	// stripBuildingIndexes hides the index from cfg, but the version state and
+	// the fold batch are untouched by the strip — both still exist whenever a
+	// backfill task does.
 	b.putVersionState("ledger1", indexes.Canonical(id), readstore.IndexVersionState{
 		CurrentVersion: 0,
 		PendingVersion: 1,
@@ -776,6 +781,13 @@ func TestAddSchemaRewriteTask_ResetsBackfillEvenWhenIndexStripped(t *testing.T) 
 		"stripped index must not block the retype reset — backfill must restart from 0")
 	assert.Equal(t, uint64(0), b.backfillTasks[0].appliedProposalSeq)
 	assert.Empty(t, b.schemaRewriteTasks, "no separate schema rewrite needed; backfill replay covers it")
+
+	state, ok := b.versionStateFor("ledger1", indexes.Canonical(id))
+	require.True(t, ok)
+	require.True(t, state.PendingTypeDeclared)
+	assert.Equal(t, uint32(2), state.PendingVersion,
+		"the restarted backfill fills a fresh keyspace bound to the retype's target type")
+	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_UINT64, state.PendingType)
 }
 
 // TestAddSchemaRewriteTask_DoesNotResetOtherLedgersBackfill guards against

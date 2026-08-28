@@ -55,7 +55,9 @@ func TestCompile_AccountHasAsset_RequiresReady(t *testing.T) {
 	registry := staticIndexLookup{
 		indexes.KeyFor(ledgerName, assetID): {Ledger: ledgerName, Id: assetID},
 	}
-	resolverZero := func(string) (uint32, bool, error) { return 0, true, nil }
+	resolverZero := func(string) (readstore.ResolvedIndexVersion, bool, error) {
+		return readstore.ResolvedIndexVersion{BindingKnown: true}, true, nil
+	}
 
 	_, err := query.Compile(
 		nil, dal.NewKeyBuilder(), accountHasAssetFilter("USD", 2),
@@ -109,7 +111,9 @@ func TestCompile_AccountHasAsset_PrefixScan(t *testing.T) {
 	registry := staticIndexLookup{
 		indexes.KeyFor(ledgerName, assetID): {Ledger: ledgerName, Id: assetID},
 	}
-	resolverReady := func(string) (uint32, bool, error) { return 1, true, nil }
+	resolverReady := func(string) (readstore.ResolvedIndexVersion, bool, error) {
+		return readstore.ResolvedIndexVersion{Version: 1, BindingKnown: true}, true, nil
+	}
 
 	iter, err := query.Compile(
 		reader, dal.NewKeyBuilder(), accountHasAssetFilter("USD", 2),
@@ -168,7 +172,9 @@ func TestCompile_AccountHasAsset_PinExcludesLaterFirstTouch(t *testing.T) {
 	registry := staticIndexLookup{
 		indexes.KeyFor(ledgerName, assetID): {Ledger: ledgerName, Id: assetID},
 	}
-	resolverReady := func(string) (uint32, bool, error) { return 1, true, nil }
+	resolverReady := func(string) (readstore.ResolvedIndexVersion, bool, error) {
+		return readstore.ResolvedIndexVersion{Version: 1, BindingKnown: true}, true, nil
+	}
 
 	scan := func(pin uint64) []string {
 		iter, cErr := query.Compile(
@@ -234,7 +240,9 @@ func TestCompile_RevertedAt_PinExcludesLaterRevert(t *testing.T) {
 	registry := staticIndexLookup{
 		indexes.KeyFor(ledgerName, rvatID): {Ledger: ledgerName, Id: rvatID},
 	}
-	resolverReady := func(string) (uint32, bool, error) { return 1, true, nil }
+	resolverReady := func(string) (readstore.ResolvedIndexVersion, bool, error) {
+		return readstore.ResolvedIndexVersion{Version: 1, BindingKnown: true}, true, nil
+	}
 
 	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
 		BuiltinUint: &commonpb.BuiltinUintCondition{
