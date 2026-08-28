@@ -253,13 +253,17 @@ type reverseKeyForVersion func(version uint32) []byte
 // in flight. rmapKeyAtVersion returns the reverse-map key the namespace
 // uses for a given version.
 //
-// On the encoding side, the value (newEncoded) is identical across
-// versions — the live path always coerces to the *current* declared
-// type. The rmap rows differ only by the version embedded in the key;
-// having distinct rows means a query at v_pending sees only entries
-// that were either backfilled by the rewrite OR mirrored here. Once
-// the rewrite finishes and the atomic switch flips current←pending,
-// the v_pending rows become the authoritative view.
+// Each write coerces the raw value to the type ITS version is bound to
+// (coerceForVersion in writeMetadataIndexAtVersion): v_current encodes
+// under CurrentType, v_pending under PendingType, so the two rows for
+// one value generally differ. That per-version encoding is what keeps
+// v_current's view complete and correctly typed while a retype is in
+// flight — queries serve v_current's semantics until the atomic switch.
+// The rmap rows differ by the version embedded in the key; having
+// distinct rows means a query at v_pending sees only entries that were
+// either backfilled by the rewrite OR mirrored here. Once the rewrite
+// finishes and the atomic switch flips current←pending, the v_pending
+// rows become the authoritative view.
 func (b *Builder) dualWriteMetadataIndex(
 	kb *dal.KeyBuilder,
 	ledger, ns, metaKey string,
