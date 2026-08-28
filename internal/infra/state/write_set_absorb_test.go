@@ -125,18 +125,6 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 		require.True(t, b.MirrorConfigChanged())
 	})
 
-	t.Run("CloseChapter → chapterClosing", func(t *testing.T) {
-		t.Parallel()
-		b, _, _ := newTestBuffer(t)
-		require.False(t, b.ChapterClosing())
-		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CloseChapter{CloseChapter: &commonpb.ClosedChapterLog{
-				ClosedChapter: &commonpb.Chapter{Id: 42},
-			}},
-		}})
-		require.True(t, b.ChapterClosing())
-	})
-
 	t.Run("CreateLedger Mirror → mirrorConfigChanged", func(t *testing.T) {
 		t.Parallel()
 		b, _, _ := newTestBuffer(t)
@@ -212,7 +200,6 @@ func TestWriteSetAbsorb_NoOpForUnmappedPayloads(t *testing.T) {
 		require.Nil(t, b.chapterScheduleUpdate)
 		require.Nil(t, b.queryCheckpointScheduleUpdate)
 		require.Empty(t, b.deletedLedgers)
-		require.False(t, b.ChapterClosing())
 		require.False(t, b.MirrorConfigChanged())
 		require.Zero(t, b.QueryCheckpointCreated())
 		require.Zero(t, b.QueryCheckpointDeleted())

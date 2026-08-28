@@ -162,6 +162,7 @@ func (s *skipSafeScope) GetSinkConfig(name string) (commonpb.SinkConfigReader, e
 func (s *skipSafeScope) GetNextSequenceID() uint64         { return s.inner.GetNextSequenceID() }
 func (s *skipSafeScope) IncrementNextSequenceID() uint64   { return s.inner.IncrementNextSequenceID() }
 func (s *skipSafeScope) GetNextAuditSequenceID() uint64    { return s.inner.GetNextAuditSequenceID() }
+func (s *skipSafeScope) GetLastAuditHash() []byte          { return s.inner.GetLastAuditHash() }
 func (s *skipSafeScope) GetNextLedgerID() uint32           { return s.inner.GetNextLedgerID() }
 func (s *skipSafeScope) IncrementNextLedgerID() uint32     { return s.inner.IncrementNextLedgerID() }
 func (s *skipSafeScope) GetDate() commonpb.TimestampReader { return s.inner.GetDate() }

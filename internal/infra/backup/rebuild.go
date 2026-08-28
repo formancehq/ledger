@@ -882,25 +882,14 @@ func (w *attributeReplayWriter) storeChapterRow(chapter *commonpb.Chapter) error
 func (w *attributeReplayWriter) replayClosedChapter(ctx context.Context, p *commonpb.ClosedChapterLog) error {
 	closed := p.GetClosedChapter()
 
-	// The log's snapshot is cloned before the live apply stamps
-	// LastAuditHash onto the tracker's chapter (machine.applyProposal), so
-	// it is empty here. That hash — the chain hash of the audit entry at
-	// CloseAuditSequence — seeds the checker's chain verification across
-	// the chapter's eventual purge, and the later lifecycle logs carry it
-	// only when the seal predates the backup. Recover it from the stored
-	// audit entry so a chapter sealed after the restore carries it too.
+	// The close stamps the anchor onto the chapter before the log's snapshot is
+	// cloned, so a close log carries it. Rebuilding a row without it would restore
+	// a chapter the checker cannot verify — the anchor seeds its chain
+	// verification across the chapter's eventual purge and is folded into the
+	// sealing hash a later seal commits to — so refuse rather than restore one.
 	if len(closed.GetLastAuditHash()) == 0 && closed.GetCloseAuditSequence() > 0 {
-		// The entry cannot be missing: it is at or above the incremental
-		// window's floor (every archival confirm audits above the range it
-		// purges, so no purge reaches CloseAuditSequence of a delta close),
-		// and below-floor entries ride the checkpoint SSTs.
-		entry, err := query.ReadAuditEntry(ctx, w.readHandle, closed.GetCloseAuditSequence())
-		if err != nil {
-			return fmt.Errorf("reading audit entry %d to recover closed chapter %d's last audit hash: %w",
-				closed.GetCloseAuditSequence(), closed.GetId(), err)
-		}
-
-		closed.LastAuditHash = entry.GetHash()
+		return fmt.Errorf("closed chapter %d carries no audit anchor at close audit sequence %d: refusing to rebuild a registry the checker cannot verify",
+			closed.GetId(), closed.GetCloseAuditSequence())
 	}
 
 	if err := w.storeChapterRow(closed); err != nil {

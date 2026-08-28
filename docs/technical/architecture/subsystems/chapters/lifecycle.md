@@ -69,7 +69,7 @@ Closing a chapter is split into two Raft commands to avoid blocking the consensu
 
 The `CloseChapter` order is a lightweight Raft command that:
 
-1. Transitions the current `OPEN` chapter to `CLOSING`, recording `close_sequence` and `end` timestamp. The `last_audit_hash` is set by `applyProposal` after the batch-level audit hash is computed.
+1. Transitions the current `OPEN` chapter to `CLOSING`, recording `close_sequence`, the `end` timestamp, and `last_audit_hash` — the audit chain head as the closing proposal began, since the entry that proposal writes belongs to the next chapter's range. All four are written in the close's own batch: the seal folds `last_audit_hash` into the sealing hash, and the process that applies the seal need not be the one that applied the close.
 2. Creates a new `OPEN` chapter (transactions continue flowing into the new chapter immediately).
 3. Triggers a **maintenance task** that creates a Pebble seal checkpoint — a frozen snapshot of the database at the exact close boundary.
 4. Sends a `SealRequest` to the background Sealer.

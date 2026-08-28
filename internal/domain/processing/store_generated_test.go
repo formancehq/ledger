@@ -589,6 +589,44 @@ func (c *MockScopeGetDateCall) DoAndReturn(f func() commonpb.TimestampReader) *M
 	return c
 }
 
+// GetLastAuditHash mocks base method.
+func (m *MockScope) GetLastAuditHash() []byte {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLastAuditHash")
+	ret0, _ := ret[0].([]byte)
+	return ret0
+}
+
+// GetLastAuditHash indicates an expected call of GetLastAuditHash.
+func (mr *MockScopeMockRecorder) GetLastAuditHash() *MockScopeGetLastAuditHashCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastAuditHash", reflect.TypeOf((*MockScope)(nil).GetLastAuditHash))
+	return &MockScopeGetLastAuditHashCall{Call: call}
+}
+
+// MockScopeGetLastAuditHashCall wrap *gomock.Call
+type MockScopeGetLastAuditHashCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeGetLastAuditHashCall) Return(arg0 []byte) *MockScopeGetLastAuditHashCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeGetLastAuditHashCall) Do(f func() []byte) *MockScopeGetLastAuditHashCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeGetLastAuditHashCall) DoAndReturn(f func() []byte) *MockScopeGetLastAuditHashCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetNextAuditSequenceID mocks base method.
 func (m *MockScope) GetNextAuditSequenceID() uint64 {
 	m.ctrl.T.Helper()
