@@ -3,6 +3,7 @@
 package components
 
 type V2GetTransactionResponse struct {
+	// A transaction recorded in the ledger, carrying its postings, metadata and both bi-temporal timestamps
 	Data V2Transaction `json:"data"`
 }
 

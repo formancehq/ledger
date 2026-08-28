@@ -1,5 +1,7 @@
 # Resource
 
+The resource type carried by this cursor
+
 ## Example Usage
 
 ```go

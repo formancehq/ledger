@@ -8,6 +8,7 @@ import (
 )
 
 type V2AggregateBalancesResponse struct {
+	// Balances keyed by asset
 	Data map[string]*big.Int `json:"data"`
 }
 

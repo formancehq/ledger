@@ -1,5 +1,7 @@
 # V2LedgerListResponseCursor
 
+Paginated cursor wrapping the list of ledgers
+
 
 ## Fields
 

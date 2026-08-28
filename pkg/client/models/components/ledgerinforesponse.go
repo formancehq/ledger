@@ -3,6 +3,7 @@
 package components
 
 type LedgerInfoResponse struct {
+	// Runtime information about a ledger, including the state of its storage migrations
 	Data *LedgerInfo `json:"data,omitempty"`
 }
 

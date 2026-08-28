@@ -8,10 +8,11 @@ import (
 )
 
 type V2BulkElementRevertTransactionData struct {
-	ID              *big.Int          `json:"id"`
-	Force           *bool             `json:"force,omitempty"`
-	AtEffectiveDate *bool             `json:"atEffectiveDate,omitempty"`
-	Metadata        map[string]string `json:"metadata,omitempty"`
+	ID              *big.Int `json:"id"`
+	Force           *bool    `json:"force,omitempty"`
+	AtEffectiveDate *bool    `json:"atEffectiveDate,omitempty"`
+	// Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 func (v V2BulkElementRevertTransactionData) MarshalJSON() ([]byte, error) {
@@ -57,9 +58,11 @@ func (v *V2BulkElementRevertTransactionData) GetMetadata() map[string]string {
 // #endregion class-body-v2bulkelementreverttransactiondata
 
 type V2BulkElementRevertTransaction struct {
-	Action string                              `json:"action"`
-	Ik     *string                             `json:"ik,omitempty"`
-	Data   *V2BulkElementRevertTransactionData `json:"data,omitempty"`
+	// The bulk action this element performs
+	Action string `json:"action"`
+	// Idempotency key scoped to this element, making it safe to retry the bulk request
+	Ik   *string                             `json:"ik,omitempty"`
+	Data *V2BulkElementRevertTransactionData `json:"data,omitempty"`
 }
 
 func (v V2BulkElementRevertTransaction) MarshalJSON() ([]byte, error) {

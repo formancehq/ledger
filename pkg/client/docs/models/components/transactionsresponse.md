@@ -5,4 +5,4 @@
 
 | Field                                                              | Type                                                               | Required                                                           | Description                                                        |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| `Data`                                                             | [][components.Transaction](../../models/components/transaction.md) | :heavy_check_mark:                                                 | N/A                                                                |
+| `Data`                                                             | [][components.Transaction](../../models/components/transaction.md) | :heavy_check_mark:                                                 | The transactions that were created                                 |

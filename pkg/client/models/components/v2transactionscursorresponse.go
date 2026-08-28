@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/pkg/client/internal/utils"
 )
 
+// V2TransactionsCursorResponseResource - The resource type carried by this cursor
 type V2TransactionsCursorResponseResource string
 
 const (
@@ -31,6 +32,7 @@ func (e *V2TransactionsCursorResponseResource) UnmarshalJSON(data []byte) error 
 	}
 }
 
+// V2TransactionsCursorResponseCursor - Paginated cursor wrapping the list of transactions
 type V2TransactionsCursorResponseCursor struct {
 	PageSize int64           `json:"pageSize"`
 	HasMore  bool            `json:"hasMore"`
@@ -89,8 +91,10 @@ func (v *V2TransactionsCursorResponseCursor) GetData() []V2Transaction {
 // #endregion class-body-v2transactionscursorresponsecursor
 
 type V2TransactionsCursorResponse struct {
+	// The resource type carried by this cursor
 	Resource *V2TransactionsCursorResponseResource `json:"resource,omitempty"`
-	Cursor   V2TransactionsCursorResponseCursor    `json:"cursor"`
+	// Paginated cursor wrapping the list of transactions
+	Cursor V2TransactionsCursorResponseCursor `json:"cursor"`
 }
 
 func (v V2TransactionsCursorResponse) MarshalJSON() ([]byte, error) {

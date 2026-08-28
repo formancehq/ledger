@@ -7,13 +7,21 @@ import (
 	"time"
 )
 
+// V2Account - An account in the ledger, identified by its address and carrying its metadata and volumes
 type V2Account struct {
-	Address          string              `json:"address"`
-	Metadata         map[string]string   `json:"metadata"`
-	InsertionDate    *time.Time          `json:"insertionDate,omitempty"`
-	UpdatedAt        *time.Time          `json:"updatedAt,omitempty"`
-	FirstUsage       *time.Time          `json:"firstUsage,omitempty"`
-	Volumes          map[string]V2Volume `json:"volumes,omitempty"`
+	// The account address, a colon-separated segmented path such as users:001
+	Address string `json:"address"`
+	// Arbitrary key/value pairs attached to the account. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
+	Metadata map[string]string `json:"metadata"`
+	// When the account was first written to the ledger, on the request-time axis
+	InsertionDate *time.Time `json:"insertionDate,omitempty"`
+	// When the account was last modified, for example by a metadata change
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+	// Transaction time of the earliest transaction touching this account. Inserting a backdated transaction can move it earlier
+	FirstUsage *time.Time `json:"firstUsage,omitempty"`
+	// Volumes per asset for a single account
+	Volumes map[string]V2Volume `json:"volumes,omitempty"`
+	// Volumes per asset for a single account
 	EffectiveVolumes map[string]V2Volume `json:"effectiveVolumes,omitempty"`
 }
 

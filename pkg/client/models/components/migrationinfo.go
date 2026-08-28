@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// State - Current state of the migration
 type State string
 
 const (
@@ -36,10 +37,14 @@ func (e *State) UnmarshalJSON(data []byte) error {
 }
 
 type MigrationInfo struct {
-	Version *string    `json:"version,omitempty"`
-	Name    *string    `json:"name,omitempty"`
-	Date    *time.Time `json:"date,omitempty"`
-	State   *State     `json:"state,omitempty"`
+	// Sequence number of the migration
+	Version *string `json:"version,omitempty"`
+	// Name of the migration
+	Name *string `json:"name,omitempty"`
+	// When the migration was applied
+	Date *time.Time `json:"date,omitempty"`
+	// Current state of the migration
+	State *State `json:"state,omitempty"`
 }
 
 func (m MigrationInfo) MarshalJSON() ([]byte, error) {

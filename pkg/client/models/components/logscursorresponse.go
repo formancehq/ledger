@@ -2,6 +2,7 @@
 
 package components
 
+// LogsCursorResponseCursor - Paginated cursor wrapping the list of logs
 type LogsCursorResponseCursor struct {
 	PageSize int64   `json:"pageSize"`
 	HasMore  bool    `json:"hasMore"`
@@ -46,6 +47,7 @@ func (l *LogsCursorResponseCursor) GetData() []Log {
 }
 
 type LogsCursorResponse struct {
+	// Paginated cursor wrapping the list of logs
 	Cursor LogsCursorResponseCursor `json:"cursor"`
 }
 

@@ -3,8 +3,11 @@
 package components
 
 type V2ConfigInfoResponse struct {
-	Server               string   `json:"server"`
-	Version              string   `json:"version"`
+	// Name of the server serving the API
+	Server string `json:"server"`
+	// Version of the ledger service
+	Version string `json:"version"`
+	// Experimental feature flags enabled on this deployment
 	ExperimentalFeatures []string `json:"experimentalFeatures,omitempty"`
 }
 

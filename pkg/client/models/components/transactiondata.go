@@ -8,10 +8,14 @@ import (
 )
 
 type TransactionData struct {
-	Postings  []Posting      `json:"postings"`
-	Reference *string        `json:"reference,omitempty"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
-	Timestamp *time.Time     `json:"timestamp,omitempty"`
+	// The fund movements making up the transaction
+	Postings []Posting `json:"postings"`
+	// Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
+	Reference *string `json:"reference,omitempty"`
+	// Arbitrary key/value pairs attached to the resource
+	Metadata map[string]any `json:"metadata,omitempty"`
+	// The transaction time to record, letting you backdate or postdate the transaction. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
+	Timestamp *time.Time `json:"timestamp,omitempty"`
 }
 
 func (t TransactionData) MarshalJSON() ([]byte, error) {

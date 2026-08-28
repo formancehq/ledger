@@ -3,6 +3,7 @@
 package components
 
 type V2RevertTransactionRequest struct {
+	// Metadata to attach to the compensating transaction created by the revert
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 

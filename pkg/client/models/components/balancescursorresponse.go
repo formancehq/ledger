@@ -2,6 +2,7 @@
 
 package components
 
+// BalancesCursorResponseCursor - Paginated cursor wrapping the list of balances
 type BalancesCursorResponseCursor struct {
 	PageSize int64                         `json:"pageSize"`
 	HasMore  bool                          `json:"hasMore"`
@@ -46,6 +47,7 @@ func (b *BalancesCursorResponseCursor) GetData() []map[string]map[string]int64 {
 }
 
 type BalancesCursorResponse struct {
+	// Paginated cursor wrapping the list of balances
 	Cursor BalancesCursorResponseCursor `json:"cursor"`
 }
 

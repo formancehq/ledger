@@ -3,8 +3,11 @@
 package components
 
 type Account struct {
-	Address  string         `json:"address"`
-	Type     *string        `json:"type,omitempty"`
+	// The account address, a colon-separated segmented path such as users:001
+	Address string `json:"address"`
+	// Free-form classification of the account
+	Type *string `json:"type,omitempty"`
+	// Arbitrary key/value pairs attached to the account
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 

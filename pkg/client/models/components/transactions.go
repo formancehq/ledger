@@ -3,6 +3,7 @@
 package components
 
 type Transactions struct {
+	// The transactions to create, applied in order
 	Transactions []TransactionData `json:"transactions"`
 }
 

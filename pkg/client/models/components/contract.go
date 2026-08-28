@@ -2,12 +2,15 @@
 
 package components
 
+// Expr - Expression the account's balances must satisfy
 type Expr struct {
 }
 
 type Contract struct {
+	// Account address, or pattern, the contract applies to
 	Account *string `json:"account,omitempty"`
-	Expr    Expr    `json:"expr"`
+	// Expression the account's balances must satisfy
+	Expr Expr `json:"expr"`
 }
 
 func (c *Contract) GetAccount() *string {

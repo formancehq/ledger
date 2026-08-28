@@ -3,6 +3,7 @@
 package components
 
 type ConfigInfoResponse struct {
+	// Configuration and version information for the ledger server
 	Data ConfigInfo `json:"data"`
 }
 

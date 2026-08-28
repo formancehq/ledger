@@ -2,7 +2,9 @@
 
 package components
 
+// Mapping - Contracts constraining the balances a ledger's accounts may hold
 type Mapping struct {
+	// Constraints enforced on the ledger's accounts
 	Contracts []Contract `json:"contracts"`
 }
 

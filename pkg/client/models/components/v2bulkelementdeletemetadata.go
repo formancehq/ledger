@@ -48,9 +48,11 @@ func (v *V2BulkElementDeleteMetadataData) GetKey() string {
 // #endregion class-body-v2bulkelementdeletemetadatadata
 
 type V2BulkElementDeleteMetadata struct {
-	Action string                           `json:"action"`
-	Ik     *string                          `json:"ik,omitempty"`
-	Data   *V2BulkElementDeleteMetadataData `json:"data,omitempty"`
+	// The bulk action this element performs
+	Action string `json:"action"`
+	// Idempotency key scoped to this element, making it safe to retry the bulk request
+	Ik   *string                          `json:"ik,omitempty"`
+	Data *V2BulkElementDeleteMetadataData `json:"data,omitempty"`
 }
 
 func (v V2BulkElementDeleteMetadata) MarshalJSON() ([]byte, error) {

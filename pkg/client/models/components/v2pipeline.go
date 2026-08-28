@@ -8,7 +8,9 @@ import (
 )
 
 type V2Pipeline struct {
-	Ledger     string    `json:"ledger"`
+	// Name of the ledger the pipeline reads from
+	Ledger string `json:"ledger"`
+	// Identifier of the exporter the pipeline feeds
 	ExporterID string    `json:"exporterID"`
 	ID         string    `json:"id"`
 	CreatedAt  time.Time `json:"createdAt"`

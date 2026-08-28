@@ -1,5 +1,7 @@
 # V2ErrorsEnum
 
+Machine-readable error code identifying the failure
+
 ## Example Usage
 
 ```go

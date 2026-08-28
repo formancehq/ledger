@@ -10,7 +10,9 @@ import (
 )
 
 type V2BulkElementResultError struct {
-	ResponseType     string  `json:"responseType"`
+	// The action this result corresponds to
+	ResponseType string `json:"responseType"`
+	// Identifier of the log entry produced by this element
 	LogID            int64   `json:"logID"`
 	ErrorCode        string  `json:"errorCode"`
 	ErrorDescription string  `json:"errorDescription"`
@@ -67,8 +69,10 @@ func (v *V2BulkElementResultError) GetErrorDetails() *string {
 // #endregion class-body-v2bulkelementresulterror
 
 type V2BulkElementResultDeleteMetadata struct {
+	// The action this result corresponds to
 	ResponseType string `json:"responseType"`
-	LogID        int64  `json:"logID"`
+	// Identifier of the log entry produced by this element
+	LogID int64 `json:"logID"`
 }
 
 func (v V2BulkElementResultDeleteMetadata) MarshalJSON() ([]byte, error) {
@@ -100,9 +104,12 @@ func (v *V2BulkElementResultDeleteMetadata) GetLogID() int64 {
 // #endregion class-body-v2bulkelementresultdeletemetadata
 
 type V2BulkElementResultRevertTransaction struct {
-	ResponseType string        `json:"responseType"`
-	LogID        int64         `json:"logID"`
-	Data         V2Transaction `json:"data"`
+	// The action this result corresponds to
+	ResponseType string `json:"responseType"`
+	// Identifier of the log entry produced by this element
+	LogID int64 `json:"logID"`
+	// A transaction recorded in the ledger, carrying its postings, metadata and both bi-temporal timestamps
+	Data V2Transaction `json:"data"`
 }
 
 func (v V2BulkElementResultRevertTransaction) MarshalJSON() ([]byte, error) {
@@ -141,8 +148,10 @@ func (v *V2BulkElementResultRevertTransaction) GetData() V2Transaction {
 // #endregion class-body-v2bulkelementresultreverttransaction
 
 type V2BulkElementResultAddMetadata struct {
+	// The action this result corresponds to
 	ResponseType string `json:"responseType"`
-	LogID        int64  `json:"logID"`
+	// Identifier of the log entry produced by this element
+	LogID int64 `json:"logID"`
 }
 
 func (v V2BulkElementResultAddMetadata) MarshalJSON() ([]byte, error) {
@@ -174,9 +183,12 @@ func (v *V2BulkElementResultAddMetadata) GetLogID() int64 {
 // #endregion class-body-v2bulkelementresultaddmetadata
 
 type V2BulkElementResultCreateTransaction struct {
-	ResponseType string        `json:"responseType"`
-	LogID        int64         `json:"logID"`
-	Data         V2Transaction `json:"data"`
+	// The action this result corresponds to
+	ResponseType string `json:"responseType"`
+	// Identifier of the log entry produced by this element
+	LogID int64 `json:"logID"`
+	// A transaction recorded in the ledger, carrying its postings, metadata and both bi-temporal timestamps
+	Data V2Transaction `json:"data"`
 }
 
 func (v V2BulkElementResultCreateTransaction) MarshalJSON() ([]byte, error) {

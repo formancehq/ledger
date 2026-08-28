@@ -1,5 +1,7 @@
 # Storage
 
+Storage backend information, including the applied migrations
+
 
 ## Fields
 

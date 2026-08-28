@@ -8,8 +8,11 @@ import (
 )
 
 type V2Volume struct {
-	Input   *big.Int `json:"input"`
-	Output  *big.Int `json:"output"`
+	// Total amount credited for this asset
+	Input *big.Int `json:"input"`
+	// Total amount debited for this asset
+	Output *big.Int `json:"output"`
+	// Net balance, equal to input minus output
 	Balance *big.Int `json:"balance,omitempty"`
 }
 

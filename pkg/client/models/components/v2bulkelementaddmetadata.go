@@ -45,9 +45,11 @@ func (d *Data) GetMetadata() map[string]string {
 }
 
 type V2BulkElementAddMetadata struct {
-	Action string  `json:"action"`
-	Ik     *string `json:"ik,omitempty"`
-	Data   *Data   `json:"data,omitempty"`
+	// The bulk action this element performs
+	Action string `json:"action"`
+	// Idempotency key scoped to this element, making it safe to retry the bulk request
+	Ik   *string `json:"ik,omitempty"`
+	Data *Data   `json:"data,omitempty"`
 }
 
 func (v V2BulkElementAddMetadata) MarshalJSON() ([]byte, error) {

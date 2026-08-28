@@ -2,6 +2,7 @@
 
 package components
 
+// V2PipelinesCursorResponseCursor - Paginated cursor wrapping the list of pipelines
 type V2PipelinesCursorResponseCursor struct {
 	PageSize int64        `json:"pageSize"`
 	HasMore  bool         `json:"hasMore"`
@@ -50,6 +51,7 @@ func (v *V2PipelinesCursorResponseCursor) GetData() []V2Pipeline {
 
 // V2PipelinesCursorResponse - Pipelines list
 type V2PipelinesCursorResponse struct {
+	// Paginated cursor wrapping the list of pipelines
 	Cursor V2PipelinesCursorResponseCursor `json:"cursor"`
 }
 

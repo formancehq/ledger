@@ -3,6 +3,7 @@
 package components
 
 type AccountResponse struct {
+	// An account together with its volumes and net balances per asset
 	Data AccountWithVolumesAndBalances `json:"data"`
 }
 

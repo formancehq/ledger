@@ -8,9 +8,9 @@ import (
 
 // V2LogDataRevertedTransaction - Payload for REVERTED_TRANSACTION log entries. Contains both the original reverted transaction and the new reverting transaction.
 type V2LogDataRevertedTransaction struct {
-	// Transaction structure as it appears in log payloads
+	// The original transaction that was reverted
 	RevertedTransaction V2LogTransaction `json:"revertedTransaction"`
-	// Transaction structure as it appears in log payloads
+	// The new reverting transaction created to cancel the original
 	Transaction V2LogTransaction `json:"transaction"`
 }
 
