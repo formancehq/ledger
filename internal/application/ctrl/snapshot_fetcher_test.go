@@ -1,6 +1,7 @@
 package ctrl
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -592,4 +593,31 @@ func TestGRPCSnapshotFetcher_CloseSessionAlwaysCalled(t *testing.T) {
 	_, err := fetcher.FetchSnapshot(t.Context(), t.TempDir(), nil, 0)
 	require.Error(t, err)
 	require.GreaterOrEqual(t, csState.closeCalled.Load(), int32(1))
+}
+
+// TestGRPCSnapshotFetcher_LogsThroughInjectedLogger pins the logging wiring:
+// the fetcher must write through the logger it was constructed with, not
+// through logging.FromContext on a context that carries no logger (which
+// degrades to go-libs' bare logrus stderr fallback and produced mixed log
+// formats in production). Reverting to FromContext keeps every other fetcher
+// test green but fails this one, because the context passed here is bare.
+func TestGRPCSnapshotFetcher_LogsThroughInjectedLogger(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	files := map[string][]byte{"a.txt": []byte("aaa")}
+
+	var logs bytes.Buffer
+	logger := logging.NewDefaultLogger(&logs, false, false, false)
+
+	client, _ := buildMockClient(t, files)
+	fetcher := &grpcSnapshotFetcher{client: client, logger: logger, parallelism: 1, retryCount: 1, fileRetryCount: 1}
+
+	_, err := fetcher.FetchSnapshot(t.Context(), dir, nil, 0)
+	require.NoError(t, err)
+
+	logged := logs.String()
+	require.Contains(t, logged, "Requesting snapshot session from leader")
+	require.Contains(t, logged, "Downloading snapshot file")
+	require.Contains(t, logged, "Snapshot file downloaded")
 }
