@@ -16,14 +16,21 @@ import "context"
 // node (docs/ops/memory.md); the production-baseline deployment profile
 // (GOMEMLIMIT=3600MiB, docs/ops/deployment-profiles.md) leaves under 400 MiB
 // of headroom above that budget for "workload-dependent gRPC buffers and
-// transient allocations" (deployment-profiles.md) — a single upload already
-// consumes most of it. Nothing else bounds concurrency across uploads:
-// BackupJobsState excludes only per destination, and the Archiver can
-// overlap with backups, so without a process-wide cap the number of
-// concurrently active uploads — and therefore aggregate uploader memory —
-// is unbounded. Fixed at 1 (uploads serialize across the whole process)
-// rather than left as a knob that could silently blow the budget if raised.
-const s3UploadSlots = 1
+// transient allocations" (deployment-profiles.md). Nothing else bounds
+// concurrency across uploads: BackupJobsState excludes only per
+// destination, and the Archiver can overlap with backups, so without a
+// process-wide cap the number of concurrently active uploads — and
+// therefore aggregate uploader memory — is unbounded.
+//
+// Fixed at 2 rather than left as an unbounded knob: 2 concurrent uploads is
+// ~384 MiB steady-state, and up to ~448 MiB if both are transiently at
+// their peak at once — deliberately traded against the production-baseline
+// profile's <400 MiB of headroom for throughput (a single destination
+// backing up while a chapter archives, or two destinations backing up at
+// once, no longer serialize behind each other). Nodes running that profile
+// close to the wire should either raise GOMEMLIMIT or watch the
+// startup-logged memory estimate under concurrent backup+archive load.
+const s3UploadSlots = 2
 
 var s3UploadSem = make(chan struct{}, s3UploadSlots)
 
