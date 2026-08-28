@@ -387,6 +387,8 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 			assert.Reachable("singleton_driver_model: idempotency-conflict rejection exercised", internal.Details{})
 		case domain.ErrReasonChapterArchiveOutOfOrder:
 			assert.Reachable("singleton_driver_model: out-of-order chapter archive rejection exercised", internal.Details{})
+		case domain.ErrReasonChapterAlreadyArchived:
+			assert.Reachable("singleton_driver_model: already-archived chapter archive rejection exercised", internal.Details{})
 		case domain.ErrReasonChapterNotClosed:
 			assert.Reachable("singleton_driver_model: unsealed-chapter archive rejection exercised", internal.Details{})
 		case domain.ErrReasonChapterNotFound:

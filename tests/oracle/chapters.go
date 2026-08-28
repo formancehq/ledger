@@ -276,11 +276,13 @@ func (c Chapters) applyClose() (Chapters, OrderResult) {
 // applyArchive predicts ArchiveChapter. The order of the checks is observable
 // contract, not an implementation detail: the prefix gate runs before the
 // residency lookup, so a re-archive of an archived chapter reports
-// CHAPTER_ARCHIVE_OUT_OF_ORDER rather than the CHAPTER_NOT_FOUND a
-// residency-first order would report on a node that has purged it.
+// CHAPTER_ALREADY_ARCHIVED rather than the CHAPTER_NOT_FOUND a residency-first
+// order would report on a node that has purged it.
 func (c Chapters) applyArchive(id uint64) (Chapters, OrderResult) {
+	// Inside the prefix the order is already carried out; past the successor it is
+	// waiting on another chapter. Two situations, two reasons.
 	if id <= c.archivedThrough {
-		return c, OrderResult{Reason: domain.ErrReasonChapterArchiveOutOfOrder}
+		return c, OrderResult{Reason: domain.ErrReasonChapterAlreadyArchived}
 	}
 
 	status, ok := c.StatusOf(id)
