@@ -63,6 +63,16 @@ func systemActorFromContext(ctx context.Context) (string, bool) {
 	return c, ok && c != ""
 }
 
+// IsSystemActor reports whether the context carries a system actor set by
+// WithSystemActor — a leader-internal proposal (chapter archiver, sealer,
+// schedulers) rather than a client request. The flag is set only by
+// server-internal code, never derived from client input.
+func IsSystemActor(ctx context.Context) bool {
+	_, ok := systemActorFromContext(ctx)
+
+	return ok
+}
+
 // ResolveCallerSnapshot returns the caller snapshot for the current context,
 // in precedence order:
 //  1. an explicit system actor (WithSystemActor) — a background action;

@@ -1374,7 +1374,7 @@ func TestResolveBatch(t *testing.T) {
 			},
 		})
 
-		result, err := adm.resolveBatch(req)
+		result, err := adm.resolveBatch(context.Background(), req)
 		require.NoError(t, err)
 		require.Len(t, result.requests, 1)
 		require.Nil(t, result.sig, "bootstrap request should have no signature")
@@ -1399,7 +1399,7 @@ func TestResolveBatch(t *testing.T) {
 			},
 		})
 
-		_, err := adm.resolveBatch(req)
+		_, err := adm.resolveBatch(context.Background(), req)
 		require.ErrorIs(t, err, signing.ErrMissingSignature)
 	})
 
@@ -1419,7 +1419,7 @@ func TestResolveBatch(t *testing.T) {
 			},
 		})
 
-		_, err := adm.resolveBatch(req)
+		_, err := adm.resolveBatch(context.Background(), req)
 		require.ErrorIs(t, err, signing.ErrMissingSignature)
 	})
 
@@ -1439,7 +1439,7 @@ func TestResolveBatch(t *testing.T) {
 			},
 		})
 
-		_, err := adm.resolveBatch(req)
+		_, err := adm.resolveBatch(context.Background(), req)
 		require.ErrorIs(t, err, signing.ErrMissingSignature)
 	})
 
@@ -1462,7 +1462,7 @@ func TestResolveBatch(t *testing.T) {
 			},
 		}
 
-		result, err := adm.resolveBatch(signedBatchRequest(t, req, "existing", existingPrivKey))
+		result, err := adm.resolveBatch(context.Background(), signedBatchRequest(t, req, "existing", existingPrivKey))
 		require.NoError(t, err)
 		require.Len(t, result.requests, 1)
 		require.NotNil(t, result.sig, "signature should be preserved for propagation")
@@ -1481,7 +1481,7 @@ func TestResolveBatch(t *testing.T) {
 			},
 		})
 
-		result, err := adm.resolveBatch(req)
+		result, err := adm.resolveBatch(context.Background(), req)
 		require.NoError(t, err)
 		require.Len(t, result.requests, 1)
 	})
@@ -1501,7 +1501,7 @@ func TestResolveBatch(t *testing.T) {
 			},
 		})
 
-		_, err := adm.resolveBatch(req)
+		_, err := adm.resolveBatch(context.Background(), req)
 		require.ErrorIs(t, err, signing.ErrMissingSignature)
 	})
 
@@ -1522,7 +1522,7 @@ func TestResolveBatch(t *testing.T) {
 			},
 		}
 
-		result, err := adm.resolveBatch(signedBatchRequest(t, req, "my-key", privKey))
+		result, err := adm.resolveBatch(context.Background(), signedBatchRequest(t, req, "my-key", privKey))
 		require.NoError(t, err)
 		require.Len(t, result.requests, 1)
 		require.NotNil(t, result.sig)
@@ -1543,7 +1543,7 @@ func TestResolveBatch(t *testing.T) {
 			},
 		}
 
-		_, err := adm.resolveBatch(signedBatchRequest(t, req, "unknown-key", privKey))
+		_, err := adm.resolveBatch(context.Background(), signedBatchRequest(t, req, "unknown-key", privKey))
 		require.ErrorIs(t, err, signing.ErrUnknownKeyID)
 	})
 
@@ -1566,7 +1566,7 @@ func TestResolveBatch(t *testing.T) {
 		}
 
 		// Sign with a different private key
-		_, err := adm.resolveBatch(signedBatchRequest(t, req, "my-key", otherPrivKey))
+		_, err := adm.resolveBatch(context.Background(), signedBatchRequest(t, req, "my-key", otherPrivKey))
 		require.ErrorIs(t, err, signing.ErrInvalidSignature)
 	})
 }

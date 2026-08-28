@@ -4,7 +4,7 @@
 
 Request signing is what makes a Ledger v3 batch **tamper-evident end-to-end**: the client signs the exact bytes it submits, the server verifies them without re-serialising, and the resulting log entries carry the original signature into the audit trail. Response signing does the symmetric thing on the way back: the server signs the committed logs so clients can audit them after the fact.
 
-Signing is **optional by default** and can be made mandatory cluster-wide via `signing require`. When mandatory, unsigned batches are rejected at admission. Operations documentation lives in [`docs/ops/signing.md`](../../../../ops/signing.md) and the maintenance-mode interaction is covered in [`docs/ops/maintenance-mode.md`](../../../../ops/maintenance-mode.md); this page covers the architecture.
+Signing is **optional by default** and can be made mandatory cluster-wide via `signing require`. When mandatory, unsigned batches are rejected at admission, except for the narrow cases below (bootstrap registration, maintenance mode, and leader-internal proposals). Operations documentation lives in [`docs/ops/signing.md`](../../../../ops/signing.md) and the maintenance-mode interaction is covered in [`docs/ops/maintenance-mode.md`](../../../../ops/maintenance-mode.md); this page covers the architecture.
 
 ## Algorithm
 
@@ -77,6 +77,10 @@ Because registrations and revocations go through Raft, key changes are subject t
 ### Maintenance mode interaction
 
 When signing is required and the operator needs to register a fresh key without an existing signer (e.g. all parents revoked), the cluster can be put into maintenance mode. In maintenance, admission rejects every request type *except* `SetMaintenanceMode` — and `authorizeUnsignedBatch()` is allowed to admit an unsigned registration on the way out. See `docs/ops/maintenance-mode.md`.
+
+### Leader-internal proposals
+
+Background work the leader schedules — chapter archiving, sealing, rotation, and query-checkpoint creation — travels through admission as an unsigned batch under a **system actor** (`auth.WithSystemActor`, attributed to a `commands.Component*`). `authorizeUnsignedBatch()` admits these even when signing is mandatory. The exception is safe because the system actor is set only by server-internal code and is never derived from client input, so it cannot be forged over the wire; and the resulting order is audited under a `system_component` caller source, so it is still attributable in the audit chain. Mandatory signing authenticates *client* writes; the leader's own audited proposals are already inside the trust boundary. Without this exception a signed cluster could never archive/seal chapters or create query checkpoints.
 
 ## Signing is not replay protection
 
