@@ -10,6 +10,7 @@ import (
 
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
@@ -110,6 +111,10 @@ func requestKinds(b oracle.Bulk) string {
 			parts[i] = "setFieldType"
 		case *servicepb.Request_RemoveMetadataFieldType:
 			parts[i] = "removeFieldType"
+		case *servicepb.Request_CreateIndex:
+			parts[i] = "createIndex"
+		case *servicepb.Request_DropIndex:
+			parts[i] = "dropIndex"
 		default:
 			parts[i] = "other"
 		}
@@ -155,6 +160,12 @@ func bulkMeta(b oracle.Bulk) string {
 		case *servicepb.Request_RemoveMetadataFieldType:
 			ft := t.RemoveMetadataFieldType
 			parts = append(parts, fmt.Sprintf("rmFT %s/tgt%d/%s", ft.GetLedger(), ft.GetTargetType(), ft.GetKey()))
+		case *servicepb.Request_CreateIndex:
+			ci := t.CreateIndex
+			parts = append(parts, fmt.Sprintf("crIdx %s/%s", ci.GetLedger(), indexes.Canonical(ci.GetId())))
+		case *servicepb.Request_DropIndex:
+			di := t.DropIndex
+			parts = append(parts, fmt.Sprintf("drIdx %s/%s", di.GetLedger(), indexes.Canonical(di.GetId())))
 		}
 	}
 
@@ -269,6 +280,23 @@ func renderVolumeSet(vols map[string]oracle.VolumePair) string {
 	return "{" + strings.Join(parts, ",") + "}"
 }
 
+// modelIndexDump renders a ledger's model index set as canonical[state], sorted
+// — "a" for active (READY confirmed by the poller), "?" for ambiguous. Takes a
+// LedgerState so callsites already holding c.mu can use it.
+func modelIndexDump(ls oracle.LedgerState) string {
+	var parts []string
+	for canon, active := range ls.Indexes().All() {
+		state := "?"
+		if active {
+			state = "a"
+		}
+		parts = append(parts, fmt.Sprintf("%s[%s]", canon, state))
+	}
+	sort.Strings(parts)
+
+	return "[" + strings.Join(parts, " ") + "]"
+}
+
 // modelAccountMetaDump renders the committed model's metadata for addr as
 // {k=value[ft],...} — for diagnosing read mismatches. Acquires c.mu.
 func (c *Checker) modelAccountMetaDump(ledger, addr string) string {
@@ -308,6 +336,35 @@ func (c *Checker) modelLedgerMetaDump(ledger string) string {
 	sort.Strings(parts)
 
 	return "{" + strings.Join(parts, ",") + "}"
+}
+
+// modelChartDump renders the committed model's account-type chart as sorted
+// "name=pattern|persistence" entries, for a chart-divergence finding. Acquires c.mu.
+func (c *Checker) modelChartDump(ledger string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	ls := c.modelState.Ledger(ledger)
+
+	var parts []string
+	for name, t := range ls.Types().All() {
+		parts = append(parts, fmt.Sprintf("%s=%s|%d", name, t.Pattern, t.Persistence))
+	}
+	sort.Strings(parts)
+
+	return "[" + strings.Join(parts, ",") + "]"
+}
+
+// renderChart renders a server account-type map the same way as modelChartDump,
+// so the two can be diffed directly in a finding.
+func renderChart(types map[string]*commonpb.AccountType) string {
+	var parts []string
+	for name, t := range types {
+		parts = append(parts, fmt.Sprintf("%s=%s|%d", name, t.GetPattern(), t.GetPersistence()))
+	}
+	sort.Strings(parts)
+
+	return "[" + strings.Join(parts, ",") + "]"
 }
 
 // modelTxDump renders the committed model's transaction at id (reference,
@@ -361,4 +418,42 @@ func logSeqs(logs []*commonpb.Log) string {
 		ids[i] = fmt.Sprintf("%d", l.GetSequence())
 	}
 	return "[" + strings.Join(ids, ",") + "]"
+}
+
+// modelTxMetaDump renders the model's metadata for a transaction, so a row the
+// server returned but the model excluded can be classified: a DIFFERENT value
+// for the filtered key means a stale index entry, no value means a phantom.
+func (c *Checker) modelTxMetaDump(ledger string, id uint64) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	txs := c.modelState.Ledger(ledger).Txs()
+	if id == 0 || id > uint64(txs.Len()) {
+		return "<no such tx in model>"
+	}
+
+	meta := txs.Get(int(id - 1)).Metadata()
+	if len(meta) == 0 {
+		return "<no metadata>"
+	}
+
+	keys := make([]string, 0, len(meta))
+	for k := range meta {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+
+	ls := c.modelState.Ledger(ledger)
+
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		ft := "none"
+		if t, ok := ls.FieldTypeFor(commonpb.TargetType_TARGET_TYPE_TRANSACTION, k); ok {
+			ft = fmt.Sprintf("%d", t)
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s[ft=%s]", k, oracle.MetaValueString(meta[k]), ft))
+	}
+
+	return strings.Join(parts, ",")
 }

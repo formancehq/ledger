@@ -355,6 +355,16 @@ func IsReadIndexNotCaughtUp(err error) bool {
 	return HasErrorReason(err, "READ_INDEX_NOT_CAUGHT_UP")
 }
 
+// IsWritesBlockedDiskFull returns true for the write gate's disk-pressure
+// rejection (ResourceExhausted / WRITES_BLOCKED_DISK_FULL). The gate refuses
+// the write before consensus, so the bulk definitively did not commit and a
+// retry is sound; under fault injection disk pressure comes and goes, so the
+// workload treats it as transient. The clock-skew twin is Unavailable and
+// already lands in the transient set through IsUnavailable.
+func IsWritesBlockedDiskFull(err error) bool {
+	return HasErrorReason(err, "WRITES_BLOCKED_DISK_FULL")
+}
+
 // HasErrorReason returns true if the error is a gRPC status with an
 // ErrorInfo detail matching the given reason.
 func HasErrorReason(err error, reason string) bool {
@@ -479,7 +489,8 @@ func IsTransient(err error) bool {
 	return IsUnavailable(err) ||
 		IsDeadlineExceeded(err) ||
 		IsReadIndexNotCaughtUp(err) ||
-		IsExternalServiceError(err)
+		IsExternalServiceError(err) ||
+		IsWritesBlockedDiskFull(err)
 }
 
 // IsTolerated returns true for any error the workload should NOT surface as
