@@ -92,6 +92,19 @@ An index gets a fast path when it is declared in the **same atomic apply batch**
 
 The classification is deliberately conservative: only the same-atomic-batch-before-any-data case qualifies as initial. A separate-batch index on a still-empty ledger backfills exactly as before — safe (it replays an empty history and completes immediately), just not routed through the zero-cost promotion.
 
+## Restore Lifecycle
+
+The index registry (the bucket-scoped `Index` rows under `SubAttrIndex`) is a persisted projection of the audited order stream, so a cross-cluster restore must reproduce it the same way the live apply path built it: the checkpoint's attribute zone carries the rows as of the checkpoint, and `RebuildDelta` (`internal/infra/backup/rebuild.go`, shared with `ledgerctl store bootstrap`) folds every post-checkpoint ledger log into them. The replay evidence is the exported logs themselves — each registry mutation is derived from a log payload alone, never from state the source cluster held outside the export:
+
+- **`CreateIndex`** writes the same fresh registry row the live `processCreateIndex` writes, at `forward_encoding_version` 1, stamped with the enclosing `LedgerLog`'s date (the apply-time effective date). A duplicate `CreateIndex` overwrites the row, matching the live handler.
+- **`SetMetadataFieldType`** applies the retype cascade: when a registry row covers the retyped `(target, key)`, its `forward_encoding_version` is bumped, mirroring the live `processSetMetadataFieldType`. A field with no covering index is a registry no-op.
+- **`DropIndex`** deletes the registry row.
+- **`RemovedMetadataFieldType`** carries the removal cascade in the log itself: the payload names the index the removal dropped (`dropped_index`), and the row is deleted from the log alone — the replay never re-derives which index a removal covered.
+
+Same-window visibility follows the pattern of the other replayed projections (cf. volumes): replay-touched rows — including deletions, kept as explicit markers — are read back from the in-flight overlay, untouched rows from the committed checkpoint store. The deletion markers are what keep a later read in the same replay window from resurrecting a checkpoint row the replay already deleted (drop-then-recreate folds to exactly one live row).
+
+What is deliberately **not** restored: the per-replica `IndexVersionState` rows and the read-store keyspaces. Both live in each node's read store, outside the checkpoint. A restored node boots with an empty read store against the restored registry, so `loadIndexRegistry` schedules a fresh backfill for every registry entry (no local `CurrentVersion` yet) and the normal build lifecycle repopulates the keyspaces. A data directory whose `read-indexes/` survived an offline restore of an *older* backup is the classic corruption shape the checker's cursor pass reports — see [Checker Coverage](#checker-coverage).
+
 ## Statistics (computed on demand)
 
 There is **no persisted statistics structure**. The figures returned by `InspectIndex` are recomputed by scanning the live Pebble keyspace at the version the caller asks for.
