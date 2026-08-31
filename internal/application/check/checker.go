@@ -255,6 +255,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 	}
 
+	if err := verifyArchivedChapterResidency(snap, chapters, callback); err != nil {
+		return fmt.Errorf("verifying archived chapter residency: %w", err)
+	}
+
 	// Create replay store (replaces in-memory maps + txStateStore)
 	replay, err := newReplayStore()
 	if err != nil {
