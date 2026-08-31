@@ -396,6 +396,10 @@ operator-docker-build tag='':
             --platform linux/amd64,linux/arm64 --push misc/operator
     fi
 
+# Build and push a PR operator image under one explicit tag without moving :latest.
+operator-docker-build-pr image:
+    docker buildx build -t '{{ image }}' --platform linux/amd64,linux/arm64 --push misc/operator
+
 # Package and publish operator Helm charts to GHCR. Args are positional: version then suffix.
 operator-helm-publish version='' suffix='':
     cd misc/operator && just helm-publish '{{ version }}' '{{ suffix }}'
