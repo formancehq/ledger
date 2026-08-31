@@ -22,7 +22,7 @@ require (
 	github.com/bytedance/sonic v1.15.0
 	github.com/cockroachdb/pebble/v2 v2.1.4
 	github.com/databricks/databricks-sql-go v1.10.0
-	github.com/formancehq/go-libs/v5 v5.7.0
+	github.com/formancehq/go-libs/v5 v5.7.1-0.20260831090714-f02153bac631
 	github.com/formancehq/invariants v0.11.0
 	github.com/formancehq/numscript v0.0.25-0.20260713092057-edde2b17f0a0 // pinned to numscript main @edde2b17 (#169, ResolveDependencies); repin to v0.0.25 once tagged off main
 	github.com/fsnotify/fsnotify v1.5.4

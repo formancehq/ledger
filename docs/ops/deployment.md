@@ -68,6 +68,15 @@ Options can be provided via:
 - Command line arguments
 - Environment variables (without prefix, with underscores)
 
+Configuration precedence is explicit command-line flag, then environment
+variable, then the flag's default. An environment value selected by that
+precedence is parsed as the flag's declared type before service startup. A
+malformed selected value fails startup with the environment variable and flag
+named in the diagnostic; Ledger does not open its service listeners or report
+readiness. When the same flag is explicitly supplied on the command line, that
+higher-precedence value is used and the lower-precedence environment value is
+ignored.
+
 Example with environment variables:
 ```bash
 export NODE_ID=1
