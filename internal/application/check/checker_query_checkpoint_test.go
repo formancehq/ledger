@@ -1,6 +1,7 @@
 package check
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -172,4 +173,30 @@ func TestCompareQueryCheckpoints_PayloadIDMismatch(t *testing.T) {
 	events := collectQueryCheckpointEvents(t, store, map[uint64]*commonpb.CreatedQueryCheckpointLog{5: derivedLog(5)})
 	require.Len(t, events, 1)
 	require.Contains(t, events[0].GetMessage(), "mismatched payload checkpoint_id")
+}
+
+// TestCheck_QueryCheckpointProjection_EmptyAuditWiring pins that the checkpoint
+// comparison runs on the lastSequence == 0 fast path, which returns before the
+// replay (and thus before the compare phase every other projection pass lives
+// in). A zero-log store proves no CreateQueryCheckpoint order was audited, so a
+// stored checkpoint row is unaudited by construction; reporting it clean would
+// let it be loaded into LiveQueryCheckpointIDs unchecked.
+func TestCheck_QueryCheckpointProjection_EmptyAuditWiring(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	writeQueryCheckpointRow(t, store, 1)
+
+	checker := NewChecker(store, attributes.New(), "test-cluster", nil, nil, nil, logging.Testing())
+
+	var got []*servicepb.CheckStoreError
+	require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
+		if errEvent, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+			got = append(got, errEvent.Error)
+		}
+	}))
+
+	require.Len(t, got, 1, "a stored query checkpoint with no audited creation must be reported")
+	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH, got[0].GetErrorType())
+	require.Contains(t, got[0].GetMessage(), "not justified by the audit chain")
 }

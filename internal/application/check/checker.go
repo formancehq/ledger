@@ -209,6 +209,15 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return fmt.Errorf("comparing cluster policy projection: %w", err)
 		}
 
+		// Query checkpoints are cluster-global too: a zero-log store proves no
+		// CreateQueryCheckpoint order was audited, so the live set is empty and
+		// every stored SubGlobQueryCheckpoint row is unaudited. Diffing against an
+		// empty derived set reports it — otherwise the injected row is loaded into
+		// LiveQueryCheckpointIDs unchecked.
+		if err := c.compareQueryCheckpoints(snap, nil, callback); err != nil {
+			return fmt.Errorf("comparing query checkpoint projection: %w", err)
+		}
+
 		callback(&servicepb.CheckStoreEvent{
 			Type: &servicepb.CheckStoreEvent_Progress{
 				Progress: &servicepb.CheckStoreProgress{
