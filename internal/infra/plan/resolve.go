@@ -295,7 +295,9 @@ func resolveCoverage[T interface {
 
 				// Track bloom false positives: MayContain said "maybe" but Pebble
 				// had nothing. Only counts loads we actually performed (FromLoad).
-				if result.FromLoad && !hasValue && bloomFilter != nil {
+				// A bloom-negative load (an index key exempt from the veto) is a
+				// true negative, not a false positive.
+				if result.FromLoad && !hasValue && bloomFilter != nil && !bloomAbsent {
 					bloomFilter.RecordFalsePositive()
 				}
 
