@@ -27,3 +27,7 @@ of the effective toolchain.
 Immediately before a guarded push, the loop runs `just pre-commit` and checks
 `git status --porcelain`. If pre-commit changes files, the candidate must be
 updated and re-reviewed; the workflow never resets those changes to hide them.
+After final pre-commit and exact review, the launcher re-fetches the target and
+requires it to remain at the run's immutable base before guarded publication.
+Any target advance requires explicit synchronization and a fresh trust pipeline,
+regardless of whether the changed paths overlap the candidate.

@@ -18,7 +18,9 @@ never runs a fixer.
 - the candidate commit exists locally;
 - the candidate is a strict descendant of that PR head.
 
-If the target advanced, return `BASE_UPDATE_REQUIRED`. If the PR head moved or the candidate is not a descendant, refuse adoption.
+If the target advanced, return `BASE_UPDATE_REQUIRED`. This rule applies even
+when the target and candidate changed disjoint paths. If the PR head moved or
+the candidate is not a descendant, refuse adoption.
 
 After those identity checks, adoption runs the same base-pinned publication
 precondition helper as `ai-pr-loop`. The helper:
@@ -80,6 +82,13 @@ loaded/built from a detached worktree at the exact verified PR base SHA.
 
 The candidate is reviewed in a detached clean worktree. The review pass has no fixer. Local validation runs only after approval, through the base-pinned `agent-check-pr` path.
 
+The startup base comparison cannot authorize a long-running adoption by itself.
+Adoption re-fetches and compares the exact target again after normalization and
+before exact review, after review before that evidence can authorize approval,
+and after the final trusted pre-commit immediately before a guarded push. These
+checks all compare with the immutable base established at startup; they never
+move that expected base forward.
+
 Adoption uses the same immutable PR/worktree manifest, explicit `env -C`
 process cwd, root snapshot, cross-PR guard, Git mutation guard, and disjoint
 validation directory described in
@@ -92,15 +101,25 @@ Without `--push`, a successful run ends with `APPROVED_NOT_PUSHED`.
 
 With `--push`, publication is allowed only if:
 
-1. the exact candidate SHA was approved and validated;
-2. review/validation left its worktree clean and did not change HEAD;
-3. the base-pinned pre-commit recipe is rerun after review and leaves the exact
+1. the target still equals the startup base immediately before exact review;
+2. the exact candidate SHA was approved and validated;
+3. the target still equals the startup base before that exact review becomes
+   publication-authorizing evidence;
+4. review/validation left its worktree clean and did not change HEAD;
+5. the base-pinned pre-commit recipe is rerun after review and leaves the exact
    candidate clean and unchanged;
-4. the remote PR head still equals the original verified head;
-5. the candidate still descends from that original head;
-6. `git push --force-with-lease=<head-ref>:<original-head>` succeeds.
+6. the remote PR head still equals the original verified head;
+7. the candidate still descends from that original head;
+8. the target still equals the startup base immediately before push;
+9. `git push --force-with-lease=<head-ref>:<original-head>` succeeds.
 
 The force-with-lease is only a compare-and-swap guard. The candidate itself must be a normal descendant of the existing PR head.
+
+If any last-mile target check observes an advance, adoption reports the
+expected base, observed base, and candidate SHA, preserves the candidate
+worktree, and returns `BASE_UPDATE_REQUIRED` without approving or pushing.
+Synchronization is manual and must be followed by a fresh trust run. A review
+of the pre-synchronization candidate is never reused.
 
 ## Non-goals
 
