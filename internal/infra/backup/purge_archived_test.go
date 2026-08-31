@@ -63,10 +63,8 @@ func TestPurgeArchivedRanges_RemovesTheReIngestedRange(t *testing.T) {
 	require.Equal(t, 1, countKeysInSub(t, store, dal.SubColdAppliedProposal),
 		"the purge receipt inside the archived range is what the exclusion pass was tripping over")
 
-	// Archival leaves audit items alone (WriteSet.executePurge covers logs, audit
-	// entries and applied proposals), so identity means leaving them here too.
-	require.Equal(t, 1, countKeysInSub(t, store, dal.SubColdAuditItem),
-		"audit items are outside the archival purge's scope on the source as well")
+	require.Equal(t, 0, countKeysInSub(t, store, dal.SubColdAuditItem),
+		"audit items are purged at the confirm, so the restore must purge them too")
 }
 
 // The registry's status is the whole authority for this: a chapter the source had

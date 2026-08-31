@@ -32,8 +32,8 @@ import (
 // corrupt, which is the signal telling us the ranges should not be there.
 //
 // The ranges mirror WriteSet.executePurge, so the result is the split the archival
-// confirm produced on the source. Audit items are outside it there and stay
-// outside it here.
+// confirm produced on the source, and verifyArchivedChapterResidency holds both
+// paths to it.
 //
 // Not covered: the confirm also runs the deferred cleanup for ledgers whose
 // DeleteLedger log falls inside the purged range (State.PendingLedgerCleanups).
@@ -129,6 +129,15 @@ func deleteChapterRange(batch *dal.WriteSession, chapter *commonpb.Chapter) erro
 
 	if err := batch.DeleteRange(auditStart, auditEnd, nil); err != nil {
 		return fmt.Errorf("purging audit [%d, %d]: %w", chapter.GetStartAuditSequence(), chapter.GetCloseAuditSequence(), err)
+	}
+
+	// AuditItem keys carry a 4-byte order-index suffix after the audit sequence,
+	// so the suffix-free bounds cover every item of every sequence in the range.
+	itemStart := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(chapter.GetStartAuditSequence()).Build()
+	itemEnd := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(chapter.GetCloseAuditSequence() + 1).Build()
+
+	if err := batch.DeleteRange(itemStart, itemEnd, nil); err != nil {
+		return fmt.Errorf("purging audit items [%d, %d]: %w", chapter.GetStartAuditSequence(), chapter.GetCloseAuditSequence(), err)
 	}
 
 	// AppliedProposal rows share the audit counter. These carry the transient

@@ -488,17 +488,21 @@ var _ = Describe("Restore chapter registry", Ordered, func() {
 			Expect(checked).To(BeNumerically(">", 0),
 				"store check must have verified logs; a zero count means it exited early and proved nothing")
 
-			var exclusions []string
+			var residency []string
 			for _, checkErr := range result.Errors {
-				if checkErr.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH {
-					exclusions = append(exclusions, checkErr.GetMessage())
+				switch checkErr.GetErrorType() {
+				case servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNPURGED_ARCHIVED_DATA:
+					residency = append(residency, checkErr.GetMessage())
 				}
 			}
 
-			// Scoped to this class deliberately. Without the post-rebuild purge this
-			// reports the transient volume's receipt — the restore re-ingests the
-			// archived range so the rebuild can fold it, and a receipt left behind
-			// there is compared against a replay that skips that range.
+			// Scoped to these two classes deliberately. Without the post-rebuild
+			// purge, UNPURGED_ARCHIVED_DATA reports the re-ingested range outright
+			// and EXCLUSION_RECORD_MISMATCH reports the transient volume's receipt
+			// inside it — the rebuild needs that range to fold the chapter
+			// lifecycle, and anything left behind is then compared against a replay
+			// that skips it.
 			//
 			// The same run also reports VOLUME_MISMATCH on acc:post-archive and
 			// world, with the replay-derived side one transaction high. That is
@@ -506,8 +510,8 @@ var _ = Describe("Restore chapter registry", Ordered, func() {
 			// is a separate pre-existing issue on restored stores and is not
 			// asserted here — broadening this to result.Errors would couple this
 			// spec to it.
-			Expect(exclusions).To(BeEmpty(),
-				"the restore must not leave purge receipts from the archived range behind")
+			Expect(residency).To(BeEmpty(),
+				"a restored store must hold no hot keys inside an archived chapter's ranges, and no purge receipts from them")
 		})
 	})
 })
