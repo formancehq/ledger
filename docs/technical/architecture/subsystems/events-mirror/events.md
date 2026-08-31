@@ -54,10 +54,14 @@ message Event {
   common.Timestamp date = 3;         // Event timestamp (HLC)
   fixed64 log_sequence = 4;          // Global log sequence (monotonic, unique)
   common.Log log = 5;                // Full log entry with payload
+  string app = 6;                    // Stable producer identifier: "ledger"
+  string version = 7;                // Event envelope generation: "v3"
 }
 ```
 
 The event carries the full `Log` entry, which contains the typed payload (transaction, metadata change, etc.) in its `LedgerLogPayload` oneof. This avoids duplicating payload definitions and ensures events always carry the complete log data.
+
+`app` and `version` are routing and decoding metadata for broker consumers. Ledger v2's `publish.EventMessage` constructors emitted `app="ledger"` and `version="v2"`; the v3 envelope preserves the producer identity and reports its distinct contract as `version="v3"`. The emitter sets both fields before any sink-specific serialization, so NATS and Kafka publish the same values in JSON and Protobuf formats.
 
 ### JSON Format
 
@@ -65,6 +69,8 @@ When `format=json` in the events config, the event is serialized as JSON via `in
 
 ```json
 {
+  "app": "ledger",
+  "version": "v3",
   "type": "COMMITTED_TRANSACTION",
   "ledger": "orders",
   "date": "2026-02-18T10:30:00.000Z",

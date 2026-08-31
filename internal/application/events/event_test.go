@@ -1,6 +1,7 @@
 package events
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -199,6 +200,8 @@ func TestLogToEvent(t *testing.T) {
 
 			event := LogToEvent(tc.log)
 
+			require.Equal(t, EventApp, event.GetApp())
+			require.Equal(t, EventVersion, event.GetVersion())
 			require.Equal(t, tc.expectedType, event.GetType())
 			require.Equal(t, tc.expectedName, event.GetLedger())
 			require.Equal(t, tc.log.GetSequence(), event.GetLogSequence())
@@ -211,6 +214,8 @@ func TestSerializeEvent_JSON(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
+		App:         EventApp,
+		Version:     EventVersion,
 		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "orders",
 		LogSequence: 42,
@@ -220,14 +225,21 @@ func TestSerializeEvent_JSON(t *testing.T) {
 	data, err := SerializeEvent(event, FormatJSON)
 	require.NoError(t, err)
 	require.NotEmpty(t, data)
-	require.Contains(t, string(data), "COMMITTED_TRANSACTION")
-	require.Contains(t, string(data), "orders")
+
+	decoded := map[string]any{}
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	require.Equal(t, EventApp, decoded["app"])
+	require.Equal(t, EventVersion, decoded["version"])
+	require.Equal(t, "COMMITTED_TRANSACTION", decoded["type"])
+	require.Equal(t, "orders", decoded["ledger"])
 }
 
 func TestSerializeEvent_Proto(t *testing.T) {
 	t.Parallel()
 
 	event := &eventspb.Event{
+		App:         EventApp,
+		Version:     EventVersion,
 		Type:        commonpb.EventType_COMMITTED_TRANSACTION,
 		Ledger:      "orders",
 		LogSequence: 42,
@@ -241,6 +253,8 @@ func TestSerializeEvent_Proto(t *testing.T) {
 	// Verify we can unmarshal back
 	decoded := &eventspb.Event{}
 	require.NoError(t, decoded.UnmarshalVT(data))
+	require.Equal(t, event.GetApp(), decoded.GetApp())
+	require.Equal(t, event.GetVersion(), decoded.GetVersion())
 	require.Equal(t, event.GetType(), decoded.GetType())
 	require.Equal(t, event.GetLedger(), decoded.GetLedger())
 	require.Equal(t, event.GetLogSequence(), decoded.GetLogSequence())

@@ -127,6 +127,8 @@ func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 	// Verify CREATED_LEDGER event (JSON)
 	var evt1 map[string]any
 	require.NoError(t, json.Unmarshal(msgs[0].Value, &evt1))
+	require.Equal(t, events.EventApp, evt1["app"])
+	require.Equal(t, events.EventVersion, evt1["version"])
 	require.Equal(t, "CREATED_LEDGER", evt1["type"])
 	require.Equal(t, "orders", evt1["ledger"])
 	require.Equal(t, float64(1), evt1["logSequence"])
@@ -134,6 +136,8 @@ func TestKafkaSinkIntegration_PublishAndConsume(t *testing.T) {
 	// Verify COMMITTED_TRANSACTION event (JSON)
 	var evt2 map[string]any
 	require.NoError(t, json.Unmarshal(msgs[1].Value, &evt2))
+	require.Equal(t, events.EventApp, evt2["app"])
+	require.Equal(t, events.EventVersion, evt2["version"])
 	require.Equal(t, "COMMITTED_TRANSACTION", evt2["type"])
 	require.Equal(t, "orders", evt2["ledger"])
 	require.Equal(t, float64(2), evt2["logSequence"])
@@ -270,6 +274,8 @@ func TestKafkaSinkIntegration_ProtobufFormat(t *testing.T) {
 	// Deserialize protobuf and verify
 	var evt eventspb.Event
 	require.NoError(t, evt.UnmarshalVT(msgs[0].Value))
+	require.Equal(t, events.EventApp, evt.GetApp())
+	require.Equal(t, events.EventVersion, evt.GetVersion())
 	require.Equal(t, commonpb.EventType_COMMITTED_TRANSACTION, evt.GetType())
 	require.Equal(t, "payments", evt.GetLedger())
 	require.Equal(t, uint64(1), evt.GetLogSequence())

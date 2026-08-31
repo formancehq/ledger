@@ -16,11 +16,18 @@ const (
 	FormatProto Format = "protobuf"
 )
 
+const (
+	EventApp     = "ledger"
+	EventVersion = "v3"
+)
+
 // LogToEvent converts a committed global log entry into a domain event.
 func LogToEvent(log *commonpb.Log) *eventspb.Event {
 	event := &eventspb.Event{
 		LogSequence: log.GetSequence(),
 		Log:         log,
+		App:         EventApp,
+		Version:     EventVersion,
 	}
 
 	switch p := log.GetPayload().GetType().(type) {

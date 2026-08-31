@@ -30,6 +30,8 @@ type Event struct {
 	Date          *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=date,proto3" json:"date,omitempty"`
 	LogSequence   uint64                 `protobuf:"fixed64,4,opt,name=log_sequence,json=logSequence,proto3" json:"log_sequence,omitempty"`
 	Log           *commonpb.Log          `protobuf:"bytes,5,opt,name=log,proto3" json:"log,omitempty"`
+	App           string                 `protobuf:"bytes,6,opt,name=app,proto3" json:"app,omitempty"`         // Stable producer identifier ("ledger").
+	Version       string                 `protobuf:"bytes,7,opt,name=version,proto3" json:"version,omitempty"` // Event envelope generation ("v3").
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -99,17 +101,33 @@ func (x *Event) GetLog() *commonpb.Log {
 	return nil
 }
 
+func (x *Event) GetApp() string {
+	if x != nil {
+		return x.App
+	}
+	return ""
+}
+
+func (x *Event) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
 var File_events_proto protoreflect.FileDescriptor
 
 const file_events_proto_rawDesc = "" +
 	"\n" +
-	"\fevents.proto\x12\x06events\x1a\fcommon.proto\"\xaf\x01\n" +
+	"\fevents.proto\x12\x06events\x1a\fcommon.proto\"\xdb\x01\n" +
 	"\x05Event\x12%\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x11.common.EventTypeR\x04type\x12\x16\n" +
 	"\x06ledger\x18\x02 \x01(\tR\x06ledger\x12%\n" +
 	"\x04date\x18\x03 \x01(\v2\x11.common.TimestampR\x04date\x12!\n" +
 	"\flog_sequence\x18\x04 \x01(\x06R\vlogSequence\x12\x1d\n" +
-	"\x03log\x18\x05 \x01(\v2\v.common.LogR\x03logB9Z7github.com/formancehq/ledger/v3/internal/proto/eventspbb\x06proto3"
+	"\x03log\x18\x05 \x01(\v2\v.common.LogR\x03log\x12\x10\n" +
+	"\x03app\x18\x06 \x01(\tR\x03app\x12\x18\n" +
+	"\aversion\x18\a \x01(\tR\aversionB9Z7github.com/formancehq/ledger/v3/internal/proto/eventspbb\x06proto3"
 
 var (
 	file_events_proto_rawDescOnce sync.Once
