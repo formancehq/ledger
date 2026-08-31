@@ -4134,7 +4134,7 @@ This operation does not require authentication
 
 ```
 
-Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
+Arbitrary key/value pairs attached to the resource
 
 ### Properties
 
@@ -4383,7 +4383,7 @@ A transaction recorded in the ledger, carrying its postings, metadata and both b
 |timestamp|string(date-time)|true|none|The transaction time: when the transaction is considered to have occurred, also called the effective or booking date. This is the axis the ledger uses to compute balances and resolve point-in-time queries. Settable at creation, defaulting to current machine time if omitted, and immutable once written. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)|
 |postings|[[V2Posting](#schemav2posting)]|true|none|The fund movements making up the transaction|
 |reference|string|false|none|Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions|
-|metadata|[V2Metadata](#schemav2metadata)|true|none|Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time|
+|metadata|[V2Metadata](#schemav2metadata)|true|none|Arbitrary key/value pairs attached to the transaction. Transaction metadata is bi-temporal, so a point-in-time query returns it as it stood at that time|
 |id|integer(bigint)|true|none|Unique sequential identifier for this transaction within the ledger|
 |reverted|boolean|true|none|Indicates if the transaction has been reverted|
 |revertedAt|string(date-time)|false|none|When the transaction was reverted, on the request-time axis. Absent if the transaction has not been reverted|
@@ -4449,9 +4449,9 @@ A transaction recorded in the ledger, carrying its postings, metadata and both b
 |»» **additionalProperties**|string|false|none|none|
 |runtime|[Runtime](#schemaruntime)|false|none|The numscript runtime used to execute the script. Uses "machine" by default, unless the "--experimental-numscript-interpreter" feature flag is passed.|
 |reference|string|false|none|Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions|
-|metadata|[V2Metadata](#schemav2metadata)|true|none|Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time|
+|metadata|[V2Metadata](#schemav2metadata)|true|none|Arbitrary key/value pairs attached to the resource|
 |accountMetadata|object|false|none|Metadata to set on the accounts involved in the transaction, keyed by account address|
-|» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time|
+|» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource|
 |force|boolean|false|none|When true, lets source accounts overdraft without bound, bypassing the balance check. Applies to the postings form only|
 
 <h2 id="tocS_V2Stats">V2Stats</h2>
@@ -4682,7 +4682,7 @@ Transaction structure as it appears in log payloads
 |---|---|---|---|---|
 |id|integer(bigint)|true|none|Unique sequential identifier for this transaction within the ledger|
 |postings|[[V2Posting](#schemav2posting)]|true|none|The fund movements making up the transaction|
-|metadata|[V2Metadata](#schemav2metadata)|true|none|Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time|
+|metadata|[V2Metadata](#schemav2metadata)|true|none|Arbitrary key/value pairs attached to the resource|
 |timestamp|string(date-time)|true|none|The transaction time: when the transaction is considered to have occurred. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)|
 |reference|string|false|none|Optional caller-supplied identifier, unique within the ledger|
 |insertedAt|string(date-time)|false|none|The request time: when the transaction was actually written to the ledger. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)|
@@ -4736,7 +4736,7 @@ Payload for NEW_TRANSACTION log entries. Contains the created transaction and an
 |---|---|---|---|---|
 |transaction|[V2LogTransaction](#schemav2logtransaction)|true|none|Transaction structure as it appears in log payloads|
 |accountMetadata|object|true|none|Metadata applied to accounts involved in the transaction|
-|» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time|
+|» **additionalProperties**|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource|
 
 <h2 id="tocS_V2LogDataSetMetadata">V2LogDataSetMetadata</h2>
 <!-- backwards compatibility -->
@@ -4782,7 +4782,7 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|metadata|[V2Metadata](#schemav2metadata)|true|none|Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time|
+|metadata|[V2Metadata](#schemav2metadata)|true|none|Arbitrary key/value pairs attached to the resource|
 
 #### Enumerated Values
 
@@ -5944,7 +5944,7 @@ and
 |»» id|integer(bigint)|true|none|none|
 |»» force|boolean|false|none|none|
 |»» atEffectiveDate|boolean|false|none|none|
-|»» metadata|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time|
+|»» metadata|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource|
 
 <h2 id="tocS_V2BulkElementDeleteMetadata">V2BulkElementDeleteMetadata</h2>
 <!-- backwards compatibility -->
@@ -7471,7 +7471,7 @@ Paginated cursor over the ledger's schemas
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |bucket|string|false|none|Name of the storage bucket backing the ledger. Ledgers sharing a bucket share a database schema|
-|metadata|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time|
+|metadata|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource|
 |features|object|false|none|Feature flags to enable on the ledger, keyed by feature name|
 |» **additionalProperties**|string|false|none|none|
 
@@ -7510,7 +7510,7 @@ A ledger and its configuration
 |addedAt|string(date-time)|true|none|When the ledger was created|
 |bucket|string|true|none|Name of the storage bucket backing the ledger|
 |deletedAt|string(date-time)¦null|false|none|When the ledger was deleted, absent for active ledgers|
-|metadata|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time|
+|metadata|[V2Metadata](#schemav2metadata)|false|none|Arbitrary key/value pairs attached to the resource|
 |features|object|false|none|Feature flags enabled on the ledger, keyed by feature name|
 |» **additionalProperties**|string|false|none|none|
 |id|integer|false|none|Unique sequential identifier for the ledger|

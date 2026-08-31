@@ -107,7 +107,7 @@ type V2LogDataSetMetadata struct {
 	TargetType TargetType `json:"targetType"`
 	// Identifier of the entity the metadata was set on, either an account address or a transaction ID
 	TargetID TargetID `json:"targetId"`
-	// Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
+	// Arbitrary key/value pairs attached to the resource
 	Metadata map[string]string `json:"metadata"`
 }
 

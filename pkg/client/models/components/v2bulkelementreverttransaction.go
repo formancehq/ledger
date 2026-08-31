@@ -11,7 +11,7 @@ type V2BulkElementRevertTransactionData struct {
 	ID              *big.Int `json:"id"`
 	Force           *bool    `json:"force,omitempty"`
 	AtEffectiveDate *bool    `json:"atEffectiveDate,omitempty"`
-	// Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
+	// Arbitrary key/value pairs attached to the resource
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 

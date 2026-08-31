@@ -14,7 +14,7 @@ type V2LogTransaction struct {
 	ID *big.Int `json:"id"`
 	// The fund movements making up the transaction
 	Postings []V2Posting `json:"postings"`
-	// Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
+	// Arbitrary key/value pairs attached to the resource
 	Metadata map[string]string `json:"metadata"`
 	// The transaction time: when the transaction is considered to have occurred. See [bi-temporality](https://docs.formance.com/modules/ledger/working-with/bi-temporality)
 	Timestamp time.Time `json:"timestamp"`

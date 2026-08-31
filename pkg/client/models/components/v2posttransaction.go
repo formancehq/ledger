@@ -60,7 +60,7 @@ type V2PostTransaction struct {
 	Runtime *Runtime `json:"runtime,omitempty"`
 	// Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
 	Reference *string `json:"reference,omitempty"`
-	// Arbitrary key/value pairs attached to the resource. Metadata is bi-temporal, so a point-in-time query returns the metadata as it stood at that time
+	// Arbitrary key/value pairs attached to the resource
 	Metadata map[string]string `json:"metadata"`
 	// Metadata to set on the accounts involved in the transaction, keyed by account address
 	AccountMetadata map[string]map[string]string `json:"accountMetadata,omitempty"`
