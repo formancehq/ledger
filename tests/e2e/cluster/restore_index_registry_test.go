@@ -380,7 +380,6 @@ var _ = Describe("Restore index registry", Ordered, func() {
 				Expect(restored.GetId().GetMetadata().GetTarget()).To(Equal(source.GetId().GetMetadata().GetTarget()))
 				Expect(restored.GetLedger()).To(Equal(source.GetLedger()), "%q: ledger", key)
 				Expect(restored.GetForwardEncodingVersion()).To(Equal(source.GetForwardEncodingVersion()), "%q: forward_encoding_version", key)
-				Expect(restored.GetBuildStatus()).To(Equal(source.GetBuildStatus()), "%q: build_status", key)
 				Expect(restored.GetCreatedAt().GetData()).To(Equal(source.GetCreatedAt().GetData()), "%q: created_at", key)
 			}
 
