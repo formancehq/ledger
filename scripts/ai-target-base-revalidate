@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: bash scripts/ai-target-base-revalidate <remote> <target-ref> <expected-sha>
+
+Fetches the exact remote target branch and classifies it against an immutable
+expected commit. Exit 0 is reserved for UNCHANGED; ADVANCED exits 3,
+REWRITTEN_OR_DIVERGED exits 4, and FETCH_ERROR exits 1.
+EOF
+}
+
+if [[ $# -ne 3 ]]; then
+    usage >&2
+    exit 1
+fi
+
+remote=$1
+target_ref=$2
+expected_sha=$3
+
+if ! git check-ref-format --branch "$target_ref" >/dev/null 2>&1; then
+    echo "ai-target-base-revalidate: invalid target branch: $target_ref" >&2
+    echo "BASE_REVALIDATION_CLASSIFICATION=FETCH_ERROR"
+    exit 1
+fi
+if [[ ! "$expected_sha" =~ ^[0-9a-f]{40,64}$ ]]; then
+    echo "ai-target-base-revalidate: expected SHA must be a full lowercase commit SHA" >&2
+    echo "BASE_REVALIDATION_CLASSIFICATION=FETCH_ERROR"
+    exit 1
+fi
+if ! git remote get-url "$remote" >/dev/null 2>&1; then
+    echo "ai-target-base-revalidate: remote is unavailable: $remote" >&2
+    echo "BASE_REVALIDATION_CLASSIFICATION=FETCH_ERROR"
+    exit 1
+fi
+
+remote_ref="refs/remotes/$remote/$target_ref"
+if ! git fetch --no-tags "$remote" "+refs/heads/$target_ref:$remote_ref"; then
+    echo "ai-target-base-revalidate: failed to fetch $remote/$target_ref" >&2
+    echo "BASE_REVALIDATION_CLASSIFICATION=FETCH_ERROR"
+    printf 'EXPECTED_BASE_SHA=%s\n' "$expected_sha"
+    exit 1
+fi
+if ! observed_sha=$(git rev-parse --verify "${remote_ref}^{commit}" 2>/dev/null); then
+    echo "ai-target-base-revalidate: fetched target does not resolve to a commit" >&2
+    echo "BASE_REVALIDATION_CLASSIFICATION=FETCH_ERROR"
+    printf 'EXPECTED_BASE_SHA=%s\n' "$expected_sha"
+    exit 1
+fi
+
+printf 'EXPECTED_BASE_SHA=%s\n' "$expected_sha"
+printf 'OBSERVED_BASE_SHA=%s\n' "$observed_sha"
+if [[ "$observed_sha" == "$expected_sha" ]]; then
+    echo "BASE_REVALIDATION_CLASSIFICATION=UNCHANGED"
+    exit 0
+fi
+
+if ! git cat-file -e "${expected_sha}^{commit}" 2>/dev/null; then
+    if ! git fetch --no-tags "$remote" "$expected_sha"; then
+        echo "ai-target-base-revalidate: expected base commit is unavailable: $expected_sha" >&2
+        echo "BASE_REVALIDATION_CLASSIFICATION=FETCH_ERROR"
+        exit 1
+    fi
+fi
+if ! git cat-file -e "${expected_sha}^{commit}" 2>/dev/null; then
+    echo "ai-target-base-revalidate: expected base does not resolve to a commit: $expected_sha" >&2
+    echo "BASE_REVALIDATION_CLASSIFICATION=FETCH_ERROR"
+    exit 1
+fi
+
+expected_is_ancestor=false
+if git merge-base --is-ancestor "$expected_sha" "$observed_sha"; then
+    expected_is_ancestor=true
+elif [[ "$(git rev-parse --is-shallow-repository)" == "true" ]]; then
+    # Both endpoints may exist without their connecting history. Restore the
+    # exact fetched target's ancestry before classifying a rewrite/divergence.
+    if ! git fetch --no-tags --unshallow "$remote" "$observed_sha"; then
+        echo "ai-target-base-revalidate: could not deepen target history" >&2
+        echo "BASE_REVALIDATION_CLASSIFICATION=FETCH_ERROR"
+        exit 1
+    fi
+    if git merge-base --is-ancestor "$expected_sha" "$observed_sha"; then
+        expected_is_ancestor=true
+    fi
+fi
+
+if [[ "$expected_is_ancestor" == "true" ]]; then
+    echo "BASE_REVALIDATION_CLASSIFICATION=ADVANCED"
+    exit 3
+fi
+
+echo "BASE_REVALIDATION_CLASSIFICATION=REWRITTEN_OR_DIVERGED"
+exit 4

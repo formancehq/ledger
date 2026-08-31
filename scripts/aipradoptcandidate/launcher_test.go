@@ -234,6 +234,38 @@ func TestAdoptCandidateRerunsPreCommitImmediatelyBeforePush(t *testing.T) {
 	require.Equal(t, fixture.candidateSHA, remoteHead)
 }
 
+func TestAdoptCandidateRevalidatesBeforeAndAfterExactReview(t *testing.T) {
+	t.Parallel()
+
+	for _, stage := range []string{"before-exact-review", "after-exact-review"} {
+		t.Run(stage, func(t *testing.T) {
+			fixture := newAdoptionFixture(t, adoptionFixtureOptions{})
+			output, exitCode := fixture.run(t, adoptionRun{targetMutation: stage})
+			require.Equal(t, 3, exitCode, output)
+			require.Contains(t, output, "BASE_REVALIDATION_CLASSIFICATION=ADVANCED")
+			require.Contains(t, output, "AI_PR_ADOPT_RESULT: BASE_UPDATE_REQUIRED")
+			require.NotContains(t, output, "AI_PR_ADOPT_RESULT: APPROVED_NOT_PUSHED")
+			require.Contains(t, output, "CURRENT_CANDIDATE_SHA="+fixture.candidateSHA)
+			require.Contains(t, output, "EXPECTED_BASE_SHA="+fixture.baseSHA)
+			require.Contains(t, output, "OBSERVED_BASE_SHA="+fixture.advancedBaseSHA)
+			candidateWorktree := preservedAdoptionWorktree(t, output)
+			require.Equal(t, fixture.candidateSHA, runGitOutput(t, candidateWorktree, "rev-parse", "HEAD"))
+		})
+	}
+}
+
+func TestAdoptCandidateRevalidatesAfterLastPreCommitBeforePush(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAdoptionFixture(t, adoptionFixtureOptions{})
+	output, exitCode := fixture.run(t, adoptionRun{push: true, targetMutation: "during-final-precommit"})
+	require.Equal(t, 3, exitCode, output)
+	require.Contains(t, output, "AI_PR_ADOPT_RESULT: BASE_UPDATE_REQUIRED")
+	require.NotContains(t, output, "AI_PR_ADOPT_RESULT: PUSHED")
+	require.Equal(t, fixture.headSHA, runGitOutput(t, fixture.root, "--git-dir", fixture.remote, "rev-parse", "refs/heads/feature"))
+	require.Equal(t, fixture.candidateSHA, runGitOutput(t, preservedAdoptionWorktree(t, output), "rev-parse", "HEAD"))
+}
+
 type adoptionRun struct {
 	title             string
 	body              string
@@ -243,19 +275,21 @@ type adoptionRun struct {
 	candidateSHA      string
 	push              bool
 	validationFailure bool
+	targetMutation    string
 }
 
 type adoptionFixture struct {
-	root         string
-	remote       string
-	seed         string
-	checkout     string
-	fakeBin      string
-	baseSHA      string
-	headSHA      string
-	candidateSHA string
-	capture      string
-	countsDir    string
+	root            string
+	remote          string
+	seed            string
+	checkout        string
+	fakeBin         string
+	baseSHA         string
+	headSHA         string
+	candidateSHA    string
+	advancedBaseSHA string
+	capture         string
+	countsDir       string
 }
 
 type adoptionFixtureOptions struct {
@@ -276,7 +310,7 @@ func newAdoptionFixture(t *testing.T, options adoptionFixtureOptions) adoptionFi
 	runGit(t, seed, "config", "user.name", "Adoption Test")
 	runGit(t, seed, "config", "user.email", "adoption@example.com")
 
-	baseScripts := []string{"ai-pr-adopt-candidate", "ai-bugfix-gate", "ai-git-guard"}
+	baseScripts := []string{"ai-pr-adopt-candidate", "ai-target-base-revalidate", "ai-bugfix-gate", "ai-git-guard"}
 	if !options.omitPreconditions {
 		baseScripts = append(baseScripts, "ai-pr-publication-preconditions")
 	}
@@ -327,6 +361,11 @@ increment "$TEST_COUNTS_DIR/validation"
 	writeExecutable(t, filepath.Join(seed, "scripts", "agent-just"), `#!/usr/bin/env bash
 set -euo pipefail
 increment "$TEST_COUNTS_DIR/pre-commit"
+precommit_count=$(<"$TEST_COUNTS_DIR/pre-commit")
+if [[ "${TEST_TARGET_MUTATION:-}" == "before-exact-review" && "$precommit_count" == "1" ]] ||
+   [[ "${TEST_TARGET_MUTATION:-}" == "during-final-precommit" && "$precommit_count" == "2" ]]; then
+    git --git-dir="$TEST_REMOTE" update-ref refs/heads/release/v3.0 "$TEST_ADVANCED_BASE_SHA"
+fi
 `)
 	writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), `#!/usr/bin/env bash
 set -euo pipefail
@@ -344,6 +383,9 @@ while [[ $# -gt 0 ]]; do
 done
 bash -c "$review_cmd"
 bash -c "$validation_cmd"
+if [[ "${TEST_TARGET_MUTATION:-}" == "after-exact-review" ]]; then
+    git --git-dir="$TEST_REMOTE" update-ref refs/heads/release/v3.0 "$TEST_ADVANCED_BASE_SHA"
+fi
 `)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "base.txt"), []byte("base\n"), 0o644))
 	runGit(t, seed, "add", ".")
@@ -352,6 +394,13 @@ bash -c "$validation_cmd"
 	baseSHA := runGitOutput(t, seed, "rev-parse", "HEAD")
 	runGit(t, seed, "remote", "add", "origin", remote)
 	runGit(t, seed, "push", "-u", "origin", "release/v3.0")
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "advanced-base.txt"), []byte("advanced base\n"), 0o644))
+	runGit(t, seed, "add", "advanced-base.txt")
+	runGit(t, seed, "commit", "-m", "advance target fixture")
+	advancedBaseSHA := runGitOutput(t, seed, "rev-parse", "HEAD")
+	runGit(t, seed, "push", "origin", "release/v3.0")
+	runGit(t, seed, "reset", "--hard", baseSHA)
+	runGit(t, seed, "push", "--force", "origin", "release/v3.0")
 
 	runGit(t, seed, "switch", "-c", "feature")
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "feature.txt"), []byte("feature\n"), 0o644))
@@ -419,7 +468,7 @@ chmod 755 "$output"
 
 	return adoptionFixture{
 		root: root, remote: remote, seed: seed, checkout: checkout, fakeBin: fakeBin,
-		baseSHA: baseSHA, headSHA: headSHA, candidateSHA: candidateSHA,
+		baseSHA: baseSHA, headSHA: headSHA, candidateSHA: candidateSHA, advancedBaseSHA: advancedBaseSHA,
 		capture: filepath.Join(root, "review-args"), countsDir: countsDir,
 	}
 }
@@ -466,6 +515,9 @@ func (fixture adoptionFixture) run(t *testing.T, options adoptionRun) (string, i
 		"TEST_KNOWN_FINDINGS_JSON="+options.knownFindings,
 		"TEST_COUNTS_DIR="+fixture.countsDir,
 		"TEST_CAPTURE="+fixture.capture,
+		"TEST_REMOTE="+fixture.remote,
+		"TEST_ADVANCED_BASE_SHA="+fixture.advancedBaseSHA,
+		"TEST_TARGET_MUTATION="+options.targetMutation,
 	)
 	if options.validationFailure {
 		command.Env = append(command.Env, "VALIDATION_FAILURE=1")
@@ -494,11 +546,20 @@ func (fixture adoptionFixture) count(t *testing.T, name string) string {
 func (fixture adoptionFixture) advanceBase(t *testing.T) {
 	t.Helper()
 
-	runGit(t, fixture.seed, "switch", "release/v3.0")
-	require.NoError(t, os.WriteFile(filepath.Join(fixture.seed, "advanced.txt"), []byte("advanced\n"), 0o644))
-	runGit(t, fixture.seed, "add", "advanced.txt")
-	runGit(t, fixture.seed, "commit", "-m", "advance base")
-	runGit(t, fixture.seed, "push", "origin", "release/v3.0")
+	runGit(t, fixture.root, "--git-dir", fixture.remote, "update-ref", "refs/heads/release/v3.0", fixture.advancedBaseSHA)
+}
+
+func preservedAdoptionWorktree(t *testing.T, output string) string {
+	t.Helper()
+
+	for line := range strings.SplitSeq(output, "\n") {
+		if worktree, found := strings.CutPrefix(line, "CANDIDATE_WORKTREE="); found {
+			return worktree
+		}
+	}
+	require.FailNow(t, "preserved candidate worktree not reported", output)
+
+	return ""
 }
 
 func sourceScriptPath(t *testing.T, name string) string {

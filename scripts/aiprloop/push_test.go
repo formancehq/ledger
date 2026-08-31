@@ -129,6 +129,55 @@ func TestPushQuotesValidationPathsContainingAnApostrophe(t *testing.T) {
 	require.Contains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
 }
 
+func TestPushRevalidatesTargetAtEveryPublicationBoundary(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		stage string
+	}{
+		{name: "after initial review before readiness", stage: "after-initial-review"},
+		{name: "during normalization before exact review", stage: "before-exact-review"},
+		{name: "during exact review before authorization", stage: "after-exact-review"},
+		{name: "during final pre-commit before push", stage: "during-final-precommit"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newPushFixture(t, pushFixtureOptions{targetMutation: test.stage})
+			output, exitCode := fixture.run(t)
+			require.Equal(t, 3, exitCode, output)
+			require.Contains(t, output, "BASE_REVALIDATION_CLASSIFICATION=ADVANCED")
+			require.Contains(t, output, "AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED")
+			require.NotContains(t, output, "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW")
+			require.NotContains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
+			require.Contains(t, output, "EXPECTED_BASE_SHA="+fixture.baseSHA)
+			require.Contains(t, output, "OBSERVED_BASE_SHA="+fixture.advancedBaseSHA)
+			require.Contains(t, output, "REQUIRED_NEXT_ACTION=")
+			worktree := worktreeFromOutput(t, output)
+			require.DirExists(t, worktree, "stale-base work must remain inspectable")
+			require.Equal(t, fixture.headSHA, runGitOutput(t, fixture.root, "--git-dir", fixture.remote, "rev-parse", "refs/heads/feature"))
+		})
+	}
+}
+
+func TestPushFailsClosedWhenTargetIsRewrittenMidRun(t *testing.T) {
+	fixture := newPushFixture(t, pushFixtureOptions{targetMutation: "rewrite-after-initial-review"})
+	output, exitCode := fixture.run(t)
+	require.Equal(t, 1, exitCode, output)
+	require.Contains(t, output, "BASE_REVALIDATION_CLASSIFICATION=REWRITTEN_OR_DIVERGED")
+	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (target base rewritten or diverged)")
+	require.NotContains(t, output, "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW")
+	require.NotContains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
+}
+
+func TestPushFailsClosedWhenLastMileTargetFetchFails(t *testing.T) {
+	fixture := newPushFixture(t, pushFixtureOptions{targetMutation: "fetch-error-after-initial-review"})
+	output, exitCode := fixture.run(t)
+	require.Equal(t, 1, exitCode, output)
+	require.Contains(t, output, "BASE_REVALIDATION_CLASSIFICATION=FETCH_ERROR")
+	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (target base fetch failed)")
+	require.NotContains(t, output, "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW")
+	require.NotContains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
+	require.DirExists(t, worktreeFromOutput(t, output), "candidate work must survive a fetch failure")
+}
+
 type pushFixtureOptions struct {
 	moveRemote                           bool
 	moveLocalHead                        bool
@@ -138,6 +187,7 @@ type pushFixtureOptions struct {
 	trustedValidatorDirectory            bool
 	trustedValidatorSymlink              bool
 	trustedDirectToolNonExecutable       bool
+	targetMutation                       string
 
 	// quotedRepositoryParent nests the repository under a parent directory whose
 	// name contains an apostrophe, which the run directory inherits.
@@ -151,6 +201,8 @@ type pushFixture struct {
 	fakeBin         string
 	baseSHA         string
 	headSHA         string
+	advancedBaseSHA string
+	divergedBaseSHA string
 	reviewCountFile string
 	options         pushFixtureOptions
 }
@@ -177,6 +229,9 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 	launcher, err := os.ReadFile(launcherPath(t))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-loop"), launcher, 0o755))
+	revalidator, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-target-base-revalidate"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-target-base-revalidate"), revalidator, 0o755))
 	guard, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-git-guard"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-git-guard"), guard, 0o755))
@@ -205,7 +260,18 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 			require.NoError(t, err)
 			require.NoError(t, os.WriteFile(validatorPath, validator, publicationToolMode))
 		}
-		require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "agent-just"), []byte("#!/usr/bin/env bash\nexit 0\n"), publicationToolMode))
+		require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "agent-just"), []byte(`#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${TEST_TARGET_MUTATION:-}" == "before-exact-review" && ! -e "$TEST_TARGET_MUTATION_MARKER" ]]; then
+    git --git-dir="$TEST_REMOTE" update-ref refs/heads/release/v3.0 "$TEST_ADVANCED_BASE_SHA"
+    : > "$TEST_TARGET_MUTATION_MARKER"
+fi
+if [[ "${TEST_TARGET_MUTATION:-}" == "during-final-precommit" && -f "$TEST_REVIEW_COUNT_FILE" ]] &&
+   [[ "$(<"$TEST_REVIEW_COUNT_FILE")" == "2" ]]; then
+    git --git-dir="$TEST_REMOTE" update-ref refs/heads/release/v3.0 "$TEST_ADVANCED_BASE_SHA"
+fi
+exit 0
+`), publicationToolMode))
 	}
 	directToolMode := os.FileMode(0o755)
 	if options.trustedDirectToolNonExecutable {
@@ -312,12 +378,25 @@ count=$((count + 1))
 printf '%s' "$count" > "$TEST_REVIEW_COUNT_FILE"
 if [[ "$count" -eq 1 ]]; then
     printf 'review fix\n' >> feature.txt
+    case "${TEST_TARGET_MUTATION:-}" in
+        after-initial-review)
+            git --git-dir="$TEST_REMOTE" update-ref refs/heads/release/v3.0 "$TEST_ADVANCED_BASE_SHA"
+            ;;
+        rewrite-after-initial-review)
+            git --git-dir="$TEST_REMOTE" update-ref refs/heads/release/v3.0 "$TEST_DIVERGED_BASE_SHA"
+            ;;
+        fetch-error-after-initial-review)
+            mv "$TEST_REMOTE" "$TEST_REMOTE.unavailable"
+            ;;
+    esac
 elif [[ "$count" -eq 2 && "${TEST_MOVE_REMOTE:-false}" == "true" ]]; then
     git --git-dir="$TEST_REMOTE" update-ref refs/heads/feature "$TEST_BASE_SHA"
 elif [[ "$count" -eq 2 && "${TEST_MOVE_LOCAL_HEAD:-false}" == "true" ]]; then
     printf 'unreviewed commit\n' > unreviewed.txt
     git add unreviewed.txt
     git commit -m 'test: move reviewed candidate head'
+elif [[ "$count" -eq 2 && "${TEST_TARGET_MUTATION:-}" == "after-exact-review" ]]; then
+    git --git-dir="$TEST_REMOTE" update-ref refs/heads/release/v3.0 "$TEST_ADVANCED_BASE_SHA"
 fi
 exit 0
 `)
@@ -329,6 +408,14 @@ exit 0
 	baseSHA := runGitOutput(t, seed, "rev-parse", "HEAD")
 	runGit(t, seed, "remote", "add", "origin", remote)
 	runGit(t, seed, "push", "-u", "origin", "release/v3.0")
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "advanced-base.txt"), []byte("advanced base\n"), 0o644))
+	runGit(t, seed, "add", "advanced-base.txt")
+	runGit(t, seed, "commit", "-m", "advance target fixture")
+	advancedBaseSHA := runGitOutput(t, seed, "rev-parse", "HEAD")
+	runGit(t, seed, "push", "origin", "release/v3.0")
+	runGit(t, seed, "reset", "--hard", baseSHA)
+	runGit(t, seed, "push", "--force", "origin", "release/v3.0")
+	divergedBaseSHA := createCommitObject(t, remote, baseSHA+"^{tree}", "diverged target fixture")
 
 	runGit(t, seed, "checkout", "-b", "feature")
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "feature.txt"), []byte("feature\n"), 0o644))
@@ -405,6 +492,8 @@ chmod 755 "$output"
 		fakeBin:         fakeBin,
 		baseSHA:         baseSHA,
 		headSHA:         headSHA,
+		advancedBaseSHA: advancedBaseSHA,
+		divergedBaseSHA: divergedBaseSHA,
 		reviewCountFile: filepath.Join(root, "review-count"),
 		options:         options,
 	}
@@ -423,6 +512,10 @@ func (fixture pushFixture) run(t *testing.T) (string, int) {
 		"TEST_MOVE_REMOTE="+strconv.FormatBool(fixture.options.moveRemote),
 		"TEST_MOVE_LOCAL_HEAD="+strconv.FormatBool(fixture.options.moveLocalHead),
 		"TEST_REMOTE="+fixture.remote,
+		"TEST_ADVANCED_BASE_SHA="+fixture.advancedBaseSHA,
+		"TEST_DIVERGED_BASE_SHA="+fixture.divergedBaseSHA,
+		"TEST_TARGET_MUTATION="+fixture.options.targetMutation,
+		"TEST_TARGET_MUTATION_MARKER="+filepath.Join(fixture.root, "target-mutation-marker"),
 	)
 	output, err := command.CombinedOutput()
 	if err == nil {
@@ -432,4 +525,19 @@ func (fixture pushFixture) run(t *testing.T) (string, int) {
 	require.ErrorAs(t, err, &exitError, string(output))
 
 	return string(output), exitError.ExitCode()
+}
+
+func createCommitObject(t *testing.T, gitDirectory, tree, message string) string {
+	t.Helper()
+	command := exec.Command("git", "--git-dir", gitDirectory, "commit-tree", tree, "-m", message)
+	command.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=Target Rewrite",
+		"GIT_AUTHOR_EMAIL=target-rewrite@example.com",
+		"GIT_COMMITTER_NAME=Target Rewrite",
+		"GIT_COMMITTER_EMAIL=target-rewrite@example.com",
+	)
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, string(output))
+
+	return strings.TrimSpace(string(output))
 }
