@@ -2,12 +2,11 @@ package backup
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -54,6 +53,9 @@ func purgeArchivedRanges(ctx context.Context, logger logging.Logger, store *dal.
 
 	batch := store.OpenWriteSession()
 
+	// Cancel is a no-op once Commit has run, so this covers every early return.
+	defer func() { _ = batch.Cancel() }()
+
 	for _, chapter := range archived {
 		if err := deleteChapterRange(batch, chapter); err != nil {
 			return fmt.Errorf("purging archived chapter %d: %w", chapter.GetId(), err)
@@ -74,6 +76,11 @@ func purgeArchivedRanges(ctx context.Context, logger logging.Logger, store *dal.
 }
 
 // archivedChapters reads the rebuilt registry and returns the ARCHIVED rows.
+//
+// cursor.Collect closes the cursor, which owns a Pebble iterator of its own:
+// closing the read handle releases the snapshot but not the iterator, and an
+// iterator still pinned when the staging store closes takes Store.Close down with
+// it — FinalizeRestore closes that store, so the whole restore fails.
 func archivedChapters(ctx context.Context, store *dal.Store) ([]*commonpb.Chapter, error) {
 	handle, err := store.NewReadHandle()
 	if err != nil {
@@ -82,27 +89,25 @@ func archivedChapters(ctx context.Context, store *dal.Store) ([]*commonpb.Chapte
 
 	defer func() { _ = handle.Close() }()
 
-	cursor, err := query.ReadChapters(ctx, handle)
+	chaptersCursor, err := query.ReadChapters(ctx, handle)
 	if err != nil {
 		return nil, fmt.Errorf("reading chapters: %w", err)
 	}
 
+	chapters, err := cursor.Collect(chaptersCursor)
+	if err != nil {
+		return nil, fmt.Errorf("collecting chapters: %w", err)
+	}
+
 	var archived []*commonpb.Chapter
 
-	for {
-		chapter, err := cursor.Next()
-		if errors.Is(err, io.EOF) {
-			return archived, nil
-		}
-
-		if err != nil {
-			return nil, fmt.Errorf("reading chapter: %w", err)
-		}
-
+	for _, chapter := range chapters {
 		if chapter.GetStatus() == commonpb.ChapterStatus_CHAPTER_ARCHIVED {
 			archived = append(archived, chapter)
 		}
 	}
+
+	return archived, nil
 }
 
 // deleteChapterRange removes one chapter's hot entries. The key ranges are the

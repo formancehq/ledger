@@ -200,4 +200,10 @@ func TestApplyExportsAndRebuild_PurgesTheArchivedRangeItReIngested(t *testing.T)
 	require.NotContains(t, logs, uint64(3), "log 3 is inside the archived range")
 	require.Contains(t, logs, uint64(4), "log 4 is above it and must survive")
 	require.Contains(t, logs, uint64(5))
+
+	// The scan must not leave an iterator pinned. FinalizeRestore closes the
+	// staging store right after this path, and Pebble takes a still-referenced
+	// iterator as grounds to panic in Close — which fails the whole restore, not
+	// just the purge. Tests that close with `_ = store.Close()` cannot see it.
+	require.NoError(t, restored.Close(), "the restored store must close cleanly after the purge")
 }
