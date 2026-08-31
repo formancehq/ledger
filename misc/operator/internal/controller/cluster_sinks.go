@@ -29,6 +29,7 @@ type actualEventSink struct {
 
 type eventSinkDiff struct {
 	toCreate []managedNATSSink
+	toAdopt  []string
 	toDrop   []string
 	conflict []string
 }
@@ -187,11 +188,13 @@ func eventSinksEqual(desired managedNATSSink, actual actualEventSink) bool {
 }
 
 // diffEventSinks computes an ownership-scoped reconciliation plan. A desired
-// sink that already exists with the same configuration is accepted but not
-// adopted. A mismatched externally-owned sink is a conflict. Mismatched sinks
-// owned by this operator are removed first and recreated on the next pass;
-// Ledger retains the per-name cursor, so the two-pass update delays delivery
-// without losing committed events.
+// sink that already exists with the same configuration is adopted. Adoption
+// makes ownership recoverable when Ledger committed add-sink but its response
+// or the subsequent Kubernetes status write was lost. A mismatched
+// externally-owned sink is a conflict. Mismatched sinks owned by this operator
+// are removed first and recreated on the next pass; Ledger retains the
+// per-name cursor, so the two-pass update delays delivery without losing
+// committed events.
 func diffEventSinks(desired []managedNATSSink, actual map[string]actualEventSink, applied []string) eventSinkDiff {
 	desiredByName := make(map[string]managedNATSSink, len(desired))
 	owned := make(map[string]struct{}, len(applied))
@@ -209,6 +212,10 @@ func diffEventSinks(desired []managedNATSSink, actual map[string]actualEventSink
 			continue
 		}
 		if eventSinksEqual(sink, actualSink) {
+			if _, operatorOwned := owned[sink.name]; !operatorOwned {
+				diff.toAdopt = append(diff.toAdopt, sink.name)
+			}
+
 			continue
 		}
 		if _, operatorOwned := owned[sink.name]; operatorOwned {

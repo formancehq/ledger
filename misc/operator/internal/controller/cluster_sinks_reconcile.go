@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -15,8 +16,9 @@ import (
 )
 
 const (
-	conditionSinksSynced = "SinksSynced"
-	sinkRequeueInterval  = 5 * time.Second
+	conditionSinksSynced   = "SinksSynced"
+	sinkRequeueInterval    = 5 * time.Second
+	sinkDriftCheckInterval = time.Minute
 )
 
 type ledgerctlSinkExec func(args ...string) (string, error)
@@ -94,7 +96,7 @@ func (r *ClusterReconciler) handleSinkReconcile(ctx context.Context, cluster *le
 		ObservedGeneration: cluster.Generation,
 	})
 
-	return baseResult
+	return earlierRequeue(baseResult, ctrl.Result{RequeueAfter: sinkDriftCheckInterval})
 }
 
 func (r *ClusterReconciler) clusterReadyForSinkReconcile(ctx context.Context, cluster *ledgerv1alpha1.Cluster) (bool, error) {
@@ -145,17 +147,15 @@ func reconcileEventSinks(cluster *ledgerv1alpha1.Cluster, exec ledgerctlSinkExec
 	}
 
 	diff := diffEventSinks(desired, actual, cluster.Status.AppliedSinks)
-	if len(diff.conflict) > 0 {
-		return false, fmt.Errorf("event sink name conflict: %v already exist with a different configuration and are not operator-owned", diff.conflict)
-	}
 
 	oldApplied := cluster.Status.AppliedSinks
-	var created, dropped []string
+	created := slices.Clone(diff.toAdopt)
+	var dropped []string
 	defer func() {
 		cluster.Status.AppliedSinks = nextAppliedSinks(oldApplied, created, dropped)
 	}()
 
-	changed := false
+	changed := len(created) > 0
 	for _, sink := range diff.toCreate {
 		if _, err := exec(addNATSSinkArgs(sink)...); err != nil {
 			return false, err
@@ -166,12 +166,26 @@ func reconcileEventSinks(cluster *ledgerv1alpha1.Cluster, exec ledgerctlSinkExec
 
 	for _, name := range diff.toDrop {
 		if _, exists := actual[name]; exists {
-			if _, err := exec(removeEventSinkArgs(name)...); err != nil && !isLedgerNotFound(err) {
-				return false, err
+			if _, removeErr := exec(removeEventSinkArgs(name)...); removeErr != nil {
+				verifyStdout, verifyErr := exec("events", "list", "--json")
+				if verifyErr != nil {
+					return false, fmt.Errorf("removing event sink %q: %w (verification failed: %w)", name, removeErr, verifyErr)
+				}
+				verified, verifyErr := parseActualEventSinks(verifyStdout)
+				if verifyErr != nil {
+					return false, fmt.Errorf("removing event sink %q: %w (verification output invalid: %w)", name, removeErr, verifyErr)
+				}
+				if _, stillExists := verified[name]; stillExists {
+					return false, fmt.Errorf("removing event sink %q: %w", name, removeErr)
+				}
 			}
 			changed = true
 		}
 		dropped = append(dropped, name)
+	}
+
+	if len(diff.conflict) > 0 {
+		return false, fmt.Errorf("event sink name conflict: %v already exist with a different configuration and are not operator-owned", diff.conflict)
 	}
 
 	return !changed, nil

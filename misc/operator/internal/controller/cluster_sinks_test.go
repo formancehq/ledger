@@ -98,12 +98,12 @@ func TestDiffEventSinksScopesOwnership(t *testing.T) {
 			want:    eventSinkDiff{toCreate: []managedNATSSink{desiredNew}},
 		},
 		{
-			name:    "matching external sink is preserved and not adopted",
+			name:    "matching desired sink is adopted to recover ownership",
 			desired: []managedNATSSink{desiredPrimary},
 			actual: map[string]actualEventSink{
 				"primary": {kind: "nats", nats: desiredPrimary},
 			},
-			want: eventSinkDiff{},
+			want: eventSinkDiff{toAdopt: []string{"primary"}},
 		},
 		{
 			name:    "mismatched external sink conflicts",
@@ -188,6 +188,59 @@ func TestReconcileEventSinksPersistsPartialProgress(t *testing.T) {
 	assert.False(t, synced)
 	require.ErrorContains(t, err, "injected add failure")
 	assert.Equal(t, []string{"alpha"}, cluster.Status.AppliedSinks)
+}
+
+func TestReconcileEventSinksRecoversOwnershipAfterAmbiguousAdd(t *testing.T) {
+	t.Parallel()
+
+	cluster := clusterWithNATSSinks("primary")
+	added := false
+	exec := func(args ...string) (string, error) {
+		if slices.Equal(args, []string{"events", "list", "--json"}) {
+			if added {
+				return `{"sinks":[{"name":"primary","nats":{"url":"nats://nats:4222","topic":"ledger.events"},"format":"json","batchSize":0,"batchDelayMs":"0","eventTypes":[]}]}`, nil
+			}
+
+			return `{"sinks":[]}`, nil
+		}
+
+		added = true
+
+		return "", errors.New("response lost after commit")
+	}
+
+	synced, err := reconcileEventSinks(cluster, exec)
+	assert.False(t, synced)
+	require.ErrorContains(t, err, "response lost after commit")
+	assert.Empty(t, cluster.Status.AppliedSinks)
+
+	synced, err = reconcileEventSinks(cluster, exec)
+	require.NoError(t, err)
+	assert.False(t, synced)
+	assert.Equal(t, []string{"primary"}, cluster.Status.AppliedSinks)
+}
+
+func TestReconcileEventSinksKeepsOwnershipWhenRemoveTransportFails(t *testing.T) {
+	t.Parallel()
+
+	cluster := clusterWithNATSSinks()
+	cluster.Status.AppliedSinks = []string{"primary"}
+	listCalls := 0
+	exec := func(args ...string) (string, error) {
+		if slices.Equal(args, []string{"events", "list", "--json"}) {
+			listCalls++
+
+			return `{"sinks":[{"name":"primary","nats":{"url":"nats://nats:4222","topic":"ledger.events"},"format":"json","batchSize":0,"batchDelayMs":"0","eventTypes":[]}]}`, nil
+		}
+
+		return "", errors.New(`pods "ledger-0" not found`)
+	}
+
+	synced, err := reconcileEventSinks(cluster, exec)
+	assert.False(t, synced)
+	require.ErrorContains(t, err, `pods "ledger-0" not found`)
+	assert.Equal(t, 2, listCalls)
+	assert.Equal(t, []string{"primary"}, cluster.Status.AppliedSinks)
 }
 
 func TestReconcileEventSinksUpdatesOwnedSinkInTwoPasses(t *testing.T) {
