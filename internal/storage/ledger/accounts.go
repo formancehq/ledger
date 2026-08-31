@@ -79,19 +79,32 @@ func (store *Store) UpdateAccountsMetadata(ctx context.Context, m map[string]met
 	return err
 }
 
-func (store *Store) DeleteAccountMetadata(ctx context.Context, account, key string) error {
+func (store *Store) DeleteAccountMetadata(ctx context.Context, account, key string, at time.Time) error {
 	_, err := tracing.TraceWithMetric(
 		ctx,
 		"DeleteAccountMetadata",
 		store.tracer,
 		store.deleteAccountMetadataHistogram,
 		tracing.NoResult(func(ctx context.Context) error {
-			_, err := store.db.NewUpdate().
+			query := store.db.NewUpdate().
 				ModelTableExpr(store.GetPrefixedRelationName("accounts")).
 				Set("metadata = metadata - ?", key).
 				Where("address = ?", account).
 				Where("ledger = ?", store.ledger.Name).
-				Exec(ctx)
+				// An absent key leaves the row untouched: no updated_at bump and no
+				// history revision for a request that changes nothing, matching the
+				// no-op set (whose upsert is guarded the same way).
+				Where("metadata -> ? is not null", key)
+			// The metadata-history trigger dates the delete's revision at updated_at,
+			// so the delete must carry its own instant: left stale, the revision is
+			// dated at the previous write's and erases the key from every pit at or
+			// after it.
+			if at.IsZero() {
+				query = query.Set("updated_at = " + store.GetPrefixedRelationName("transaction_date") + "()")
+			} else {
+				query = query.Set("updated_at = ?", at)
+			}
+			_, err := query.Exec(ctx)
 			return postgres.ResolveError(err)
 		}),
 	)

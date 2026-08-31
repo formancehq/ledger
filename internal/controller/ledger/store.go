@@ -43,7 +43,7 @@ type Store interface {
 	UpdateAccountsMetadata(ctx context.Context, m map[string]metadata.Metadata, at time.Time) error
 	// UpsertAccount returns a boolean indicating if the account was upserted
 	UpsertAccounts(ctx context.Context, accounts ...*ledger.Account) error
-	DeleteAccountMetadata(ctx context.Context, address, key string) error
+	DeleteAccountMetadata(ctx context.Context, address, key string, at time.Time) error
 	InsertLog(ctx context.Context, log *ledger.Log) error
 
 	LockLedger(ctx context.Context) (Store, bun.IDB, func() error, error)

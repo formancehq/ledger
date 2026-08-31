@@ -198,7 +198,7 @@ func TestBalancesAggregates(t *testing.T) {
 		},
 	}, time.Time{}))
 
-	require.NoError(t, store.DeleteAccountMetadata(ctx, "users:2", "category"))
+	require.NoError(t, store.DeleteAccountMetadata(ctx, "users:2", "category", time.Time{}))
 
 	require.NoError(t, store.UpdateAccountsMetadata(ctx, map[string]metadata.Metadata{
 		"users:1": {
