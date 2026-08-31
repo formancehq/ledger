@@ -22,6 +22,12 @@ type finding struct {
 }
 
 func main() {
+	fuzzInventoryOnly := len(os.Args) == 2 && os.Args[1] == "--fuzz-inventory"
+	if len(os.Args) > 1 && !fuzzInventoryOnly {
+		fmt.Fprintln(os.Stderr, "usage: check-repo-invariants [--fuzz-inventory]")
+		os.Exit(2)
+	}
+
 	files, err := repositoryFiles()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "check-repo-invariants: listing repository files: %v\n", err)
@@ -30,17 +36,30 @@ func main() {
 
 	failed := false
 
-	for _, path := range files {
-		findings, err := checkFile(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "check-repo-invariants: checking %s: %v\n", path, err)
-			failed = true
+	if !fuzzInventoryOnly {
+		for _, path := range files {
+			findings, err := checkFile(path)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "check-repo-invariants: checking %s: %v\n", path, err)
+				failed = true
 
-			continue
+				continue
+			}
+
+			for _, item := range findings {
+				printFinding(item)
+				failed = true
+			}
 		}
+	}
 
-		for _, item := range findings {
-			fmt.Printf("%s:%d:%d: ERROR: %s\n", item.path, item.line, item.column, item.message)
+	fuzzFindings, err := checkFuzzInventory(files)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "check-repo-invariants: checking fuzz inventory: %v\n", err)
+		failed = true
+	} else {
+		for _, item := range fuzzFindings {
+			printFinding(item)
 			failed = true
 		}
 	}
@@ -51,6 +70,10 @@ func main() {
 	}
 
 	fmt.Println("check-repo-invariants: PASS")
+}
+
+func printFinding(item finding) {
+	fmt.Printf("%s:%d:%d: ERROR: %s\n", item.path, item.line, item.column, item.message)
 }
 
 func repositoryFiles() ([]string, error) {

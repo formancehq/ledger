@@ -64,6 +64,23 @@ func TestValidateBucketConfig(t *testing.T) {
 }
 ```
 
+### Fuzz Tests
+
+Go fuzz declarations are authoritative. The active runner reads
+`scripts/fuzz-targets.txt`, and `just fuzz-inventory-check` compares every
+package/target pair in that file with the repository's `func Fuzz...(*testing.F)`
+declarations. The check reports both missing declarations and stale runner
+entries, rejects fuzz declarations hidden by build constraints or platform
+filename suffixes, and runs as part of pre-commit and the repository invariant
+gate. Keep active fuzz declarations in untagged, platform-independent test
+files in the root Go module unless the runner is explicitly extended to support
+another mode. A fuzz declaration in a nested Go module fails the inventory check
+with the owning module path because the root-module runner cannot invoke it.
+
+Use `just fuzz <duration>` for active fuzzing of every checked target. Use
+`just fuzz-check` for seed corpus replay; seed replay is a separate validation
+layer and does not perform active fuzzing.
+
 ### Integration Tests
 
 **Location**: Files `*_integration_test.go`

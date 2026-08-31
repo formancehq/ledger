@@ -3,6 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+if [[ "${1:-}" == "--fuzz-inventory" ]]; then
+    exec go run ./scripts "$@"
+fi
+
 bash "$SCRIPT_DIR/check-dashboard-test-reachability"
-go run ./scripts
+go run ./scripts "$@"
 go run ./scripts/checkoperatorci

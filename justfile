@@ -1,6 +1,6 @@
 set dotenv-load
 
-pre-commit: generate generate-proto operator-generate test-dashboards tidy lint
+pre-commit: fuzz-inventory-check generate generate-proto operator-generate test-dashboards tidy lint
 pc: pre-commit
 
 # Regenerate the Grafana dashboards (otel + prom variants) from Jsonnet
@@ -132,39 +132,21 @@ fuzz-check:
     go test ./internal/pkg/semver/ -run 'Fuzz' -timeout 60s
     echo "All fuzz seed corpora passed."
 
+# Verify the active fuzz runner inventory matches Go fuzz declarations.
+fuzz-inventory-check:
+    bash scripts/check-repo-invariants --fuzz-inventory
+
 # Run active fuzzing on all targets (default: 30s each)
-fuzz duration="30s":
+fuzz duration="30s": fuzz-inventory-check
     #!/usr/bin/env bash
     set -euo pipefail
-    targets=(
-        "FuzzUint256UnmarshalJSON ./internal/proto/commonpb/"
-        "FuzzMetadataSetUnmarshalJSON ./internal/proto/commonpb/"
-        "FuzzTimestampUnmarshalJSON ./internal/proto/commonpb/"
-        "FuzzLedgerLogUnmarshalJSON ./internal/proto/commonpb/"
-        "FuzzConvertMetadataValue ./internal/proto/commonpb/"
-        "FuzzBulkElementUnmarshalJSON ./internal/proto/servicepb/"
-        "FuzzLedgerApplyRequestUnmarshalJSON ./internal/proto/servicepb/"
-        "FuzzRaftRequestBatchUnmarshalVT ./internal/proto/rafttransportpb/"
-        "FuzzSendMessageRequestUnmarshalVT ./internal/proto/rafttransportpb/"
-        "FuzzProposalUnmarshalVT ./internal/proto/raftcmdpb/"
-        "FuzzOrderUnmarshalVT ./internal/proto/raftcmdpb/"
-        "FuzzStateUnmarshalVT ./internal/proto/raftcmdpb/"
-        "FuzzSignedApplyBatchUnmarshalVT ./internal/proto/signaturepb/"
-        "FuzzSignedLogUnmarshalVT ./internal/proto/signaturepb/"
-        "FuzzFetchSnapshotResponseUnmarshalVT ./internal/proto/snapshotpb/"
-        "FuzzFilterExprParse ./internal/pkg/filterexpr/"
-        "FuzzSemverParse ./internal/pkg/semver/"
-        "FuzzSemverParsePartial ./internal/pkg/semver/"
-    )
-    for entry in "${targets[@]}"; do
-        name="${entry%% *}"
-        pkg="${entry#* }"
+    while read -r pkg name || [[ -n "${pkg:-}${name:-}" ]]; do
         echo "==> Fuzzing $name ({{duration}})..."
         if ! go test "$pkg" -run '^$' -fuzz="^${name}$" -fuzztime="{{duration}}" -timeout 600s; then
             echo "FAIL: $name"
             exit 1
         fi
-    done
+    done < scripts/fuzz-targets.txt
     echo "All fuzz targets passed."
 
 # Run active fuzzing on a single target
