@@ -120,17 +120,17 @@ func (mr *MockStoreMockRecorder) CommitTransaction(ctx, transaction any) *gomock
 }
 
 // DeleteAccountMetadata mocks base method.
-func (m *MockStore) DeleteAccountMetadata(ctx context.Context, address, key string) error {
+func (m *MockStore) DeleteAccountMetadata(ctx context.Context, address, key string, at time.Time) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteAccountMetadata", ctx, address, key)
+	ret := m.ctrl.Call(m, "DeleteAccountMetadata", ctx, address, key, at)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteAccountMetadata indicates an expected call of DeleteAccountMetadata.
-func (mr *MockStoreMockRecorder) DeleteAccountMetadata(ctx, address, key any) *gomock.Call {
+func (mr *MockStoreMockRecorder) DeleteAccountMetadata(ctx, address, key, at any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAccountMetadata", reflect.TypeOf((*MockStore)(nil).DeleteAccountMetadata), ctx, address, key)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAccountMetadata", reflect.TypeOf((*MockStore)(nil).DeleteAccountMetadata), ctx, address, key, at)
 }
 
 // DeleteTransactionMetadata mocks base method.

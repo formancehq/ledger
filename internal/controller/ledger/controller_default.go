@@ -348,7 +348,7 @@ func (ctrl *DefaultController) importLog(ctx context.Context, store Store, log l
 					}
 				case ledger.MetaTargetTypeAccount:
 					logging.FromContext(ctx).Debugf("Deleting metadata of account %s", payload.TargetID)
-					if err := store.DeleteAccountMetadata(ctx, payload.TargetID.(string), payload.Key); err != nil {
+					if err := store.DeleteAccountMetadata(ctx, payload.TargetID.(string), payload.Key, log.Date); err != nil {
 						return nil, fmt.Errorf("failed to delete account metadata: %w", err)
 					}
 				}
@@ -662,7 +662,7 @@ func (ctrl *DefaultController) DeleteTransactionMetadata(ctx context.Context, pa
 }
 
 func (ctrl *DefaultController) deleteAccountMetadata(ctx context.Context, store Store, schema *ledger.Schema, parameters Parameters[DeleteAccountMetadata]) (*ledger.DeletedMetadata, error) {
-	err := store.DeleteAccountMetadata(ctx, parameters.Input.Address, parameters.Input.Key)
+	err := store.DeleteAccountMetadata(ctx, parameters.Input.Address, parameters.Input.Key, time.Time{})
 	if err != nil {
 		return nil, err
 	}
