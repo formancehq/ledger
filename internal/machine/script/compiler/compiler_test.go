@@ -399,50 +399,51 @@ func TestDestinationInOrder(t *testing.T) {
 				program.OP_APUSH, 01, 00, // [COIN @a <?>], [COIN 50]
 				program.OP_TAKE,          // [COIN @a <?>], [COIN @a 50]
 				program.OP_APUSH, 04, 00, // [COIN @a <?>], [COIN @a 50], 1
-				program.OP_BUMP,          // [COIN @a 50], [COIN @a <?>]
-				program.OP_REPAY,         // [COIN @a 50]
-				program.OP_FUNDING_SUM,   // [COIN @a 50], [COIN 50] <- start of DestinationInOrder
-				program.OP_ASSET,         // [COIN @a 50], COIN
-				program.OP_APUSH, 03, 00, // [COIN @a 50], COIN, 0
-				program.OP_MONETARY_NEW,  // [COIN @a 50], [COIN 0]
-				program.OP_APUSH, 04, 00, // [COIN @a 50], [COIN 0], 1
-				program.OP_BUMP,          // [COIN 0], [COIN @a 50]
-				program.OP_APUSH, 05, 00, // [COIN 0], [COIN @a 50], [COIN 10] <- start processing max subdestinations
-				program.OP_TAKE_MAX,      // [COIN 0], [COIN 0], [COIN @a 40], [COIN @a 10]
-				program.OP_APUSH, 06, 00, // [COIN 0], [COIN 0], [COIN @a 40], [COIN @a 10], 2
-				program.OP_BUMP,          // [COIN 0], [COIN @a 40], [COIN @a 10], [COIN 0]
-				program.OP_DELETE,        // [COIN 0], [COIN @a 40], [COIN @a 10]
-				program.OP_FUNDING_SUM,   // [COIN 0], [COIN @a 40], [COIN @a 10], [COIN 10]
-				program.OP_TAKE,          // [COIN 0], [COIN @a 40], [COIN], [COIN @a 10]
-				program.OP_APUSH, 07, 00, // [COIN 0], [COIN @a 40], [COIN], [COIN @a 10], @b
-				program.OP_SEND,         // [COIN 0], [COIN @a 40], [COIN]
-				program.OP_FUNDING_SUM,  // [COIN 0], [COIN @a 40], [COIN], [COIN 0]
-				program.OP_APUSH, 8, 00, // [COIN 0], [COIN @a 40], [COIN], [COIN 0], 3
-				program.OP_BUMP,          // [COIN @a 40], [COIN], [COIN 0], [COIN 0]
-				program.OP_MONETARY_ADD,  // [COIN @a 40], [COIN], [COIN 0]
-				program.OP_APUSH, 04, 00, // [COIN @a 40], [COIN], [COIN 0], 1
-				program.OP_BUMP,          // [COIN @a 40], [COIN 0], [COIN]
-				program.OP_APUSH, 06, 00, // [COIN @a 40], [COIN 0], [COIN] 2
-				program.OP_BUMP,          // [COIN 0], [COIN], [COIN @a 40]
-				program.OP_APUSH, 06, 00, // [COIN 0], [COIN], [COIN @a 40], 2
-				program.OP_FUNDING_ASSEMBLE, // [COIN 0], [COIN @a 40]
-				program.OP_FUNDING_REVERSE,  // [COIN 0], [COIN @a 40] <- start processing remaining subdestination
-				program.OP_APUSH, 04, 00,    // [COIN 0], [COIN @a 40], 1
-				program.OP_BUMP,            // [COIN @a 40], [COIN 0]
-				program.OP_TAKE,            // [COIN @a 40], [COIN]
-				program.OP_FUNDING_REVERSE, // [COIN @a 40], [COIN]
-				program.OP_APUSH, 04, 00,   // [COIN @a 40], [COIN], 1
-				program.OP_BUMP,            // [COIN], [COIN @a 40]
-				program.OP_FUNDING_REVERSE, // [COIN], [COIN @a 40]
-				program.OP_FUNDING_SUM,     // [COIN], [COIN @a 40], [COIN 40]
-				program.OP_TAKE,            // [COIN], [COIN], [COIN @a 40]
-				program.OP_APUSH, 9, 00,    // [COIN], [COIN], [COIN @a 40], @c
-				program.OP_SEND,          // [COIN], [COIN]
-				program.OP_APUSH, 04, 00, // [COIN], [COIN], 1
-				program.OP_BUMP,          // [COIN], [COIN]
-				program.OP_APUSH, 06, 00, // [COIN], [COIN], 2
-				program.OP_FUNDING_ASSEMBLE, // [COIN]
-				program.OP_REPAY,            //
+				program.OP_BUMP,        // [COIN @a 50], [COIN @a <?>]
+				program.OP_REPAY,       // [COIN @a 50]
+				program.OP_FUNDING_SUM, // [COIN @a 50], [COIN 50] <- start of DestinationInOrder
+				program.OP_TAKE,
+				program.OP_APUSH, 05, 00,
+				program.OP_TAKE_MAX,
+				program.OP_APUSH, 06, 00,
+				program.OP_BUMP,
+				program.OP_DELETE,
+				program.OP_FUNDING_SUM,
+				program.OP_TAKE,
+				program.OP_APUSH, 07, 00,
+				program.OP_SEND,
+				program.OP_FUNDING_SUM,
+				program.OP_APUSH, 04, 00,
+				program.OP_BUMP,
+				program.OP_APUSH, 06, 00,
+				program.OP_BUMP,
+				program.OP_APUSH, 06, 00,
+				program.OP_FUNDING_ASSEMBLE,
+				program.OP_FUNDING_REVERSE,
+				program.OP_APUSH, 04, 00,
+				program.OP_BUMP,
+				program.OP_TAKE,
+				program.OP_FUNDING_REVERSE,
+				program.OP_APUSH, 04, 00,
+				program.OP_BUMP,
+				program.OP_FUNDING_REVERSE,
+				program.OP_APUSH, 04, 00,
+				program.OP_BUMP,
+				program.OP_APUSH, 06, 00,
+				program.OP_BUMP,
+				program.OP_APUSH, 06, 00,
+				program.OP_FUNDING_ASSEMBLE,
+				program.OP_APUSH, 04, 00,
+				program.OP_BUMP,
+				program.OP_FUNDING_SUM,
+				program.OP_TAKE,
+				program.OP_APUSH, 8, 00,
+				program.OP_SEND,
+				program.OP_APUSH, 04, 00,
+				program.OP_BUMP,
+				program.OP_APUSH, 06, 00,
+				program.OP_FUNDING_ASSEMBLE,
+				program.OP_REPAY,
 			},
 			Resources: []program.Resource{
 				program.Constant{Inner: machine.Asset("COIN")},
@@ -459,7 +460,6 @@ func TestDestinationInOrder(t *testing.T) {
 				},
 				program.Constant{Inner: machine.NewMonetaryInt(2)},
 				program.Constant{Inner: machine.AccountAddress("b")},
-				program.Constant{Inner: machine.NewMonetaryInt(3)},
 				program.Constant{Inner: machine.AccountAddress("c")},
 			},
 		},
