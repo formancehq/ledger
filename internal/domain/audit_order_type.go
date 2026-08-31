@@ -108,6 +108,8 @@ func systemScopedOrderType(o *raftcmdpb.SystemScopedOrder) string {
 		return "set_query_checkpoint_schedule"
 	case *raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule:
 		return "delete_query_checkpoint_schedule"
+	case *raftcmdpb.SystemScopedOrder_SetClusterPolicy:
+		return "set_cluster_policy"
 	default:
 		return "unknown"
 	}
