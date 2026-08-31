@@ -49,6 +49,7 @@ func TestKeptDestinationAllotment(t *testing.T) {
 
 func TestKeptComplex(t *testing.T) {
 	tc := NewTestCase()
+	// [GEM | @foo 20, @bar 40, @baz 40]
 	tc.compile(t, `send [GEM 100] (
 			source = {
 				@foo
@@ -113,6 +114,35 @@ func TestKeptComplex(t *testing.T) {
 			},
 		},
 		Error: nil,
+	}
+	test(t, tc)
+}
+
+func TestTwoConsecutiveKepts(t *testing.T) {
+	tc := NewTestCase()
+
+	tc.compile(t, `
+		send [COIN 100] (
+			source = @acc0
+			destination = {
+				max [COIN 60] to @acc1
+				max [COIN 40] kept
+				max [COIN 50] kept
+				remaining to @acc2
+			}
+		)
+	`)
+
+	tc.balances = map[string]map[string]*machine.MonetaryInt{
+		"acc0": {
+			"COIN": machine.NewMonetaryInt(100),
+		},
+	}
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+			{"acc0", "acc1", machine.NewMonetaryInt(60), "COIN"},
+		},
 	}
 	test(t, tc)
 }
