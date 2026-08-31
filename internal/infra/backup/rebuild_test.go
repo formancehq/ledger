@@ -767,6 +767,8 @@ func newAttributeReplayWriter(t *testing.T) (*attributeReplayWriter, *attributes
 		reversions:      make(map[string]*bitset.Bitset),
 		dirtyReversions: make(map[string]struct{}),
 		readHandle:      readHandle,
+		index:           attrs.Index,
+		pendingIndexes:  make(map[string]*commonpb.Index),
 	}
 	t.Cleanup(func() { _ = writer.batch.Cancel() })
 
@@ -1334,4 +1336,104 @@ func TestRebuildDelta_BumpsCheckpointIndexOnRetype(t *testing.T) {
 	require.NotNil(t, row)
 	require.Equal(t, uint32(3), row.GetForwardEncodingVersion(), "the retype must bump the checkpoint row's version")
 	require.Equal(t, uint64(111), row.GetCreatedAt().GetData(), "the bump must not touch created_at")
+}
+
+// TestAttributeReplayWriter_SetMetadataFieldType_LedgerTarget pins the
+// ledger- and transaction-target arms of the replayed schema fold: each
+// declaration lands in its target's field map, and the ledger-target retype
+// cascade finds no covering index (there is no ledger-target metadata index),
+// so no registry row appears.
+func TestAttributeReplayWriter_SetMetadataFieldType_LedgerTarget(t *testing.T) {
+	t.Parallel()
+
+	writer, attrs, store := newAttributeReplayWriter(t)
+	writer.ledgerInfos["ledger"] = &commonpb.LedgerInfo{Name: "ledger"}
+
+	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_LEDGER, "env",
+		commonpb.MetadataType_METADATA_TYPE_STRING))
+	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_TRANSACTION, "batch_id",
+		commonpb.MetadataType_METADATA_TYPE_UINT64))
+	require.NoError(t, writer.batch.Commit())
+
+	info, err := attrs.Ledger.Get(store, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING,
+		info.GetMetadataSchema().GetLedgerFields()["env"].GetType())
+	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_UINT64,
+		info.GetMetadataSchema().GetTransactionFields()["batch_id"].GetType())
+
+	row, err := attrs.Index.Get(store, indexes.KeyFor("ledger",
+		indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_LEDGER, "env")).Bytes())
+	require.NoError(t, err)
+	require.Nil(t, row)
+}
+
+// TestAttributeReplayWriter_RetypeCascade_MissingRowIsNoOp pins the cascade's
+// missing-row path: a field declaration with no covering index folds the
+// schema and writes no registry row.
+func TestAttributeReplayWriter_RetypeCascade_MissingRowIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	writer, attrs, store := newAttributeReplayWriter(t)
+	writer.ledgerInfos["ledger"] = &commonpb.LedgerInfo{Name: "ledger"}
+
+	metaID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+
+	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
+		commonpb.MetadataType_METADATA_TYPE_INT64))
+	require.NoError(t, writer.batch.Commit())
+
+	row, err := attrs.Index.Get(store, indexes.KeyFor("ledger", metaID).Bytes())
+	require.NoError(t, err)
+	require.Nil(t, row)
+}
+
+// TestAttributeReplayWriter_RetypeCascade_TombstoneShadowsCheckpointRow pins
+// the same-window deletion marker: a checkpoint row dropped earlier in the
+// replay window must read as absent for the rest of the window, so a
+// subsequent retype of the same field neither bumps nor resurrects it.
+func TestAttributeReplayWriter_RetypeCascade_TombstoneShadowsCheckpointRow(t *testing.T) {
+	t.Parallel()
+
+	writer, attrs, store := newAttributeReplayWriter(t)
+	writer.ledgerInfos["ledger"] = &commonpb.LedgerInfo{Name: "ledger"}
+
+	metaID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+
+	// Checkpoint state: the row is committed before the replay window opens.
+	seed := store.OpenWriteSession()
+	_, err := attrs.Index.Set(seed, indexes.KeyFor("ledger", metaID).Bytes(), &commonpb.Index{
+		Id:                     metaID,
+		Ledger:                 "ledger",
+		ForwardEncodingVersion: 2,
+	})
+	require.NoError(t, err)
+	require.NoError(t, seed.Commit())
+
+	require.NoError(t, writer.DropIndex("ledger", metaID))
+	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
+		commonpb.MetadataType_METADATA_TYPE_UINT64))
+	require.NoError(t, writer.batch.Commit())
+
+	row, err := attrs.Index.Get(store, indexes.KeyFor("ledger", metaID).Bytes())
+	require.NoError(t, err)
+	require.Nil(t, row, "the dropped checkpoint row must not be bumped back into existence")
+}
+
+// TestAttributeReplayWriter_RetypeCascade_ReadFailureSurfaces pins the
+// cascade's read error path: a failing registry read fails the schema fold
+// loudly instead of silently restoring a registry missing the version bump.
+func TestAttributeReplayWriter_RetypeCascade_ReadFailureSurfaces(t *testing.T) {
+	t.Parallel()
+
+	writer, _, _ := newAttributeReplayWriter(t)
+	writer.ledgerInfos["ledger"] = &commonpb.LedgerInfo{Name: "ledger"}
+
+	closed := newRebuildTestStore(t)
+	require.NoError(t, closed.Close())
+	writer.store = closed
+
+	err := writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
+		commonpb.MetadataType_METADATA_TYPE_INT64)
+	require.ErrorContains(t, err, "retype cascade")
 }
