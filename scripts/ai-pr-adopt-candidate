@@ -6,9 +6,10 @@ usage() {
 Usage: bash scripts/ai-pr-adopt-candidate <pr-number-or-url> <candidate-sha> [--push]
 
 Adopts an already-created local candidate commit for an open same-repository PR.
-The command never runs a fixer. It verifies the exact PR/base/head state, reviews
-and validates the exact candidate from base-pinned trusted tooling, and only with
---push updates the PR branch using force-with-lease as an atomic compare-and-swap.
+The command never runs a fixer. It re-runs the relevant publication preconditions,
+reviews and validates the exact candidate from base-pinned trusted tooling, and
+only with --push updates the PR branch using force-with-lease as an atomic
+compare-and-swap. Old review, validation, and pre-commit receipts are ignored.
 EOF
 }
 
@@ -38,7 +39,7 @@ trusted_root_checkout=$(cd "$trusted_root_checkout" && pwd -P)
 repo_root=$trusted_root_checkout
 cd "$trusted_root_checkout"
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
-pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
+pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,title,body,labels,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
 pr_number=$(jq -r .number <<<"$pr_json")
 state=$(jq -r .state <<<"$pr_json")
 base_ref=$(jq -r .baseRefName <<<"$pr_json")
@@ -75,6 +76,7 @@ trusted_worktree="$run_dir/trusted-tools"
 validation_run_dir="$run_dir/validation"
 binding_file="$run_dir/candidate-binding.json"
 review_loop_binary="$run_dir/review-loop"
+metadata_file="$run_dir/pr-metadata.json"
 cleanup() {
     status=$?
     trap - EXIT
@@ -100,6 +102,7 @@ trap cleanup EXIT
 git worktree add --detach "$candidate_worktree" "$candidate_sha"
 git worktree add --detach "$trusted_worktree" "$base_sha"
 mkdir -p "$validation_run_dir"
+printf '%s\n' "$pr_json" >"$metadata_file"
 jq -n \
     --argjson pr "$pr_number" \
     --arg worktree "$candidate_worktree" \
@@ -107,11 +110,48 @@ jq -n \
     --arg root "$trusted_root_checkout" \
     '{version: 1, expectedPrNumber: $pr, candidateWorktree: $worktree, expectedHead: $head, trustedRootCheckout: $root}' \
     >"$binding_file"
-for trusted_tool in ai-review-codex agent-check-pr ai-git-guard; do
+
+preconditions_tool="$trusted_worktree/scripts/ai-pr-publication-preconditions"
+if [[ -L "$preconditions_tool" || ! -f "$preconditions_tool" || ! -r "$preconditions_tool" ]]; then
+    echo "ai-pr-adopt-candidate: trusted base lacks readable non-symlink scripts/ai-pr-publication-preconditions" >&2
+    echo "AI_PR_ADOPT_RESULT: TOOLING_ERROR (missing publication preconditions)"
+    exit 1
+fi
+set +e
+bash "$preconditions_tool" "$pr_number" \
+    --base "$base_sha" \
+    --head "$head_sha" \
+    --metadata "$metadata_file" \
+    --run-dir "$run_dir"
+preconditions_status=$?
+set -e
+case "$preconditions_status" in
+    0) ;;
+    20)
+        echo "AI_PR_ADOPT_RESULT: HUMAN_DECISION_REQUIRED"
+        exit 2
+        ;;
+    21)
+        echo "AI_PR_ADOPT_RESULT: LEGITIMACY_REJECTED"
+        exit 2
+        ;;
+    *)
+        echo "AI_PR_ADOPT_RESULT: REFUSED (publication preconditions exit $preconditions_status)"
+        exit 1
+        ;;
+esac
+
+known_findings="$run_dir/known-findings.json"
+export AI_REVIEW_KNOWN_FINDINGS="$known_findings"
+export AI_REVIEW_KNOWN_FINDINGS_PR="$pr_number"
+export AI_REVIEW_KNOWN_FINDINGS_HEAD="$head_sha"
+known_findings_digest=$(git hash-object -- "$known_findings")
+
+for trusted_tool in ai-review-codex ai-review-known-findings agent-check-pr agent-just ai-git-guard; do
     [[ -x "$trusted_worktree/scripts/$trusted_tool" ]] || { echo "ai-pr-adopt-candidate: trusted base lacks executable scripts/$trusted_tool" >&2; exit 1; }
 done
 nix develop "path:$trusted_worktree" --command env -u GOROOT go -C "$trusted_worktree" build -o "$review_loop_binary" ./scripts/reviewloop
-printf -v review_cmd 'bash %q' "$trusted_worktree/scripts/ai-review-codex"
+printf -v review_cmd 'bash %q' "$trusted_worktree/scripts/ai-review-known-findings"
 # The run directory derives from the repository location, which may contain
 # whitespace or quoting characters such as an apostrophe, and the nested
 # `bash -c` program is shell input too. Quote every interpolated path so the
@@ -173,6 +213,11 @@ env -C "$candidate_worktree" "$review_loop_binary" \
     --validation-cmd "$validation_cmd"
 review_status=$?
 set -e
+current_known_findings_digest=$(git hash-object -- "$known_findings")
+if [[ "$current_known_findings_digest" != "$known_findings_digest" ]]; then
+    echo "AI_PR_ADOPT_RESULT: REFUSED (known findings ledger modified)"
+    exit 1
+fi
 if [[ $review_status -ne 0 ]]; then
     echo "AI_PR_ADOPT_RESULT: REFUSED (candidate was not approved)"
     exit "$review_status"
@@ -191,6 +236,23 @@ if [[ "$push_changes" == "false" ]]; then
     echo "AI_PR_ADOPT_RESULT: APPROVED_NOT_PUSHED $candidate_sha"
     exit 0
 fi
+
+# Publication re-runs the trusted pre-commit recipe after exact review. Any
+# mutation invalidates the reviewed SHA instead of being reset or inherited as
+# an old receipt.
+bash -c "$normalization_cmd"
+[[ -z "$(git status --porcelain)" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (pre-commit changed candidate after review)"; exit 1; }
+[[ "$(git rev-parse HEAD)" == "$candidate_sha" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (candidate HEAD changed after review)"; exit 1; }
+current_known_findings_digest=$(git hash-object -- "$known_findings")
+if [[ "$current_known_findings_digest" != "$known_findings_digest" ]]; then
+    echo "AI_PR_ADOPT_RESULT: REFUSED (known findings ledger modified by pre-commit)"
+    exit 1
+fi
+
+remote_head=""
+read -r remote_head _ < <(git ls-remote --exit-code "$remote" "refs/heads/$head_ref") || true
+[[ -n "$remote_head" ]] || { echo "ai-pr-adopt-candidate: could not re-resolve remote PR head before push" >&2; exit 1; }
+[[ "$remote_head" == "$head_sha" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (remote PR head moved before push)"; exit 2; }
 
 if ! git push --force-with-lease="refs/heads/$head_ref:$head_sha" "$remote" "$candidate_sha:refs/heads/$head_ref"; then
     echo "AI_PR_ADOPT_RESULT: REFUSED (remote changed during push or push failed)"

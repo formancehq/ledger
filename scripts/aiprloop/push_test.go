@@ -180,6 +180,12 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 	guard, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-git-guard"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-git-guard"), guard, 0o755))
+	preconditions, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-pr-publication-preconditions"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-publication-preconditions"), preconditions, 0o755))
+	bugfixGate, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-bugfix-gate"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-bugfix-gate"), bugfixGate, 0o755))
 	publicationToolMode := os.FileMode(0o755)
 	if options.trustedPublicationToolsNonExecutable {
 		publicationToolMode = 0o644
