@@ -1231,6 +1231,70 @@ spec:
                   LogLevel takes precedence when both are set; prefer LogLevel for new
                   manifests since it also unlocks the trace level.
                 type: boolean
+              dnsEndpoint:
+                description: |-
+                  DNSEndpoint is the legacy single ExternalDNS DNSEndpoint configuration.
+
+                  Deprecated: use DNSEndpoints for new configurations. When DNSEndpoints is
+                  non-empty, it takes precedence over this field.
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: Annotations to add to the DNSEndpoint resource.
+                    type: object
+                  enabled:
+                    description: Enabled enables the DNSEndpoint resource.
+                    type: boolean
+                  endpoints:
+                    description: Endpoints is the list of DNS endpoint entries.
+                    items:
+                      description: DNSEndpointEntry defines a single DNS endpoint.
+                      properties:
+                        dnsName:
+                          description: DNSName is the hostname for the DNS record.
+                          type: string
+                        providerSpecific:
+                          description: ProviderSpecific holds provider-specific properties.
+                          items:
+                            description: ProviderSpecificProperty defines a provider-specific
+                              key-value pair.
+                            properties:
+                              name:
+                                description: Name is the property name.
+                                type: string
+                              value:
+                                description: Value is the property value.
+                                type: string
+                            required:
+                            - name
+                            - value
+                            type: object
+                          type: array
+                        recordTTL:
+                          description: RecordTTL is the TTL in seconds for the DNS
+                            record.
+                          format: int64
+                          type: integer
+                        recordType:
+                          description: RecordType is the DNS record type (e.g., CNAME,
+                            A). Defaults to CNAME.
+                          type: string
+                        targets:
+                          description: Targets is the list of target hostnames or
+                            IPs.
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - dnsName
+                      - targets
+                      type: object
+                    type: array
+                type: object
+                x-kubernetes-validations:
+                - message: endpoints are required when the DNSEndpoint is enabled
+                  rule: '!self.enabled || size(self.endpoints) > 0'
               dnsEndpoints:
                 description: |-
                   DNSEndpoints configures one or more ExternalDNS DNSEndpoint resources.

@@ -27,6 +27,7 @@ func computeSpecHash(spec *ledgerv1alpha1.ClusterSpec) string {
 	cp.Ingress = nil
 	cp.IngressGrpc = nil
 	cp.NetworkPolicy = nil
+	cp.DNSEndpoint = nil //nolint:staticcheck // Hashing must ignore the deprecated field while it remains supported.
 	cp.DNSEndpoints = nil
 
 	// Event sinks are reconciled through Ledger's runtime Raft API. Changing

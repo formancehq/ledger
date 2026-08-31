@@ -332,6 +332,13 @@ type ClusterSpec struct {
 	// +optional
 	NetworkPolicy *NetworkPolicySpec `json:"networkPolicy,omitempty"`
 
+	// DNSEndpoint is the legacy single ExternalDNS DNSEndpoint configuration.
+	//
+	// Deprecated: use DNSEndpoints for new configurations. When DNSEndpoints is
+	// non-empty, it takes precedence over this field.
+	// +optional
+	DNSEndpoint *LegacyDNSEndpointSpec `json:"dnsEndpoint,omitempty"`
+
 	// DNSEndpoints configures one or more ExternalDNS DNSEndpoint resources.
 	// Each entry is reconciled into its own DNSEndpoint object, so distinct
 	// endpoints (e.g. a public and a private one) can carry different
@@ -1298,6 +1305,23 @@ type NetworkPolicySpec struct {
 	// Use this to allow traffic to cluster-internal services (e.g. databases, message brokers).
 	// +optional
 	AdditionalEgress []networkingv1.NetworkPolicyEgressRule `json:"additionalEgress,omitempty"`
+}
+
+// LegacyDNSEndpointSpec defines the deprecated single ExternalDNS DNSEndpoint
+// configuration retained for backwards compatibility.
+// +kubebuilder:validation:XValidation:rule="!self.enabled || size(self.endpoints) > 0",message="endpoints are required when the DNSEndpoint is enabled"
+type LegacyDNSEndpointSpec struct {
+	// Enabled enables the DNSEndpoint resource.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Annotations to add to the DNSEndpoint resource.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+
+	// Endpoints is the list of DNS endpoint entries.
+	// +optional
+	Endpoints []DNSEndpointEntry `json:"endpoints,omitempty"`
 }
 
 // DNSEndpointSpec defines a single ExternalDNS DNSEndpoint configuration.
