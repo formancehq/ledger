@@ -162,6 +162,13 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("collecting chapters: %w", err)
 	}
 
+	// Runs before the zero-log fast path: the pass needs only the registry
+	// rows and the snapshot, and a store with no logs can still hold ARCHIVED
+	// chapter rows with residue in their purge ranges.
+	if err := verifyArchivedChapterResidency(snap, chapters, callback); err != nil {
+		return fmt.Errorf("verifying archived chapter residency: %w", err)
+	}
+
 	if lastSequence == 0 {
 		// An empty audit does not make the peer store trustworthy: the read
 		// index folds FROM the log stream, so any reverse-map row over a
@@ -233,10 +240,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				archiveLastAuditHash = p.GetLastAuditHash()
 			}
 		}
-	}
-
-	if err := verifyArchivedChapterResidency(snap, chapters, callback); err != nil {
-		return fmt.Errorf("verifying archived chapter residency: %w", err)
 	}
 
 	// Create replay store (replaces in-memory maps + txStateStore)

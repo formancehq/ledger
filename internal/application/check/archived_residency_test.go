@@ -1,6 +1,7 @@
 package check
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -8,6 +9,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -135,6 +137,44 @@ func TestVerifyArchivedChapterResidency_IgnoresOutOfScopeKeys(t *testing.T) {
 	})
 
 	require.Empty(t, findings)
+}
+
+// The pass runs before Check's zero-log fast path: a store with no logs can
+// still hold ARCHIVED chapter registry rows with residue in their purge
+// ranges, and returning from the fast path without scanning would report
+// that store clean.
+func TestVerifyArchivedChapterResidency_RunsOnZeroLogStore(t *testing.T) {
+	t.Parallel()
+
+	store := newResidencyTestStore(t)
+
+	batch := store.OpenWriteSession()
+	chapterKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneGlobal, dal.SubGlobChapters).PutUint64(1).Build()
+	require.NoError(t, batch.SetProto(chapterKey, &commonpb.Chapter{
+		Id:                 1,
+		Status:             commonpb.ChapterStatus_CHAPTER_ARCHIVED,
+		StartSequence:      10,
+		CloseSequence:      20,
+		StartAuditSequence: 5,
+		CloseAuditSequence: 8,
+	}))
+	require.NoError(t, batch.Commit())
+
+	writeColdKey(t, store, dal.SubColdAuditItem, 6, 0)
+
+	checker := NewChecker(store, attributes.New(), "test-cluster", nil, nil, nil, logging.Testing())
+
+	var got []*servicepb.CheckStoreError
+
+	require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
+			e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNPURGED_ARCHIVED_DATA {
+			got = append(got, e.Error)
+		}
+	}))
+
+	require.Len(t, got, 1)
+	require.Contains(t, got[0].GetMessage(), "1 unpurged audit item key(s)")
 }
 
 // A chapter that closed without audit entries carries close < start on the
