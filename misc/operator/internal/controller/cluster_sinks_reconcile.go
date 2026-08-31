@@ -62,7 +62,13 @@ func (r *ClusterReconciler) handleSinkReconcile(ctx context.Context, cluster *le
 		return r.ledgerctlExecOutput(execCtx, cluster.Namespace, cluster.Name, pod0, cluster.Spec.GrpcPort, args...)
 	}
 
-	synced, err := reconcileEventSinks(cluster, exec)
+	synced, err := reconcileEventSinks(cluster, exec, func() error {
+		if err := r.updateStatus(ctx, cluster); err != nil {
+			return fmt.Errorf("persisting event sink ownership reservation: %w", err)
+		}
+
+		return nil
+	})
 	if err != nil {
 		meta.SetStatusCondition(&cluster.Status.Conditions, metav1.Condition{
 			Type:               conditionSinksSynced,
@@ -133,7 +139,7 @@ func (r *ClusterReconciler) ledgerctlExecOutput(ctx context.Context, namespace, 
 	return res.Stdout, nil
 }
 
-func reconcileEventSinks(cluster *ledgerv1alpha1.Cluster, exec ledgerctlSinkExec) (bool, error) {
+func reconcileEventSinks(cluster *ledgerv1alpha1.Cluster, exec ledgerctlSinkExec, persistOwnership func() error) (bool, error) {
 	desired := desiredEventSinks(cluster.Spec.Sinks)
 
 	stdout, err := exec("events", "list", "--json")
@@ -148,19 +154,22 @@ func reconcileEventSinks(cluster *ledgerv1alpha1.Cluster, exec ledgerctlSinkExec
 
 	diff := diffEventSinks(desired, actual, cluster.Status.AppliedSinks)
 
-	oldApplied := cluster.Status.AppliedSinks
-	created := slices.Clone(diff.toAdopt)
-	var dropped []string
-	defer func() {
-		cluster.Status.AppliedSinks = nextAppliedSinks(oldApplied, created, dropped)
-	}()
-
-	changed := len(created) > 0
+	changed := false
 	for _, sink := range diff.toCreate {
+		if !slices.Contains(cluster.Status.AppliedSinks, sink.name) {
+			previous := slices.Clone(cluster.Status.AppliedSinks)
+			cluster.Status.AppliedSinks = nextAppliedSinks(previous, []string{sink.name}, nil)
+			if persistOwnership != nil {
+				if err := persistOwnership(); err != nil {
+					cluster.Status.AppliedSinks = previous
+
+					return false, err
+				}
+			}
+		}
 		if _, err := exec(addNATSSinkArgs(sink)...); err != nil {
 			return false, err
 		}
-		created = append(created, sink.name)
 		changed = true
 	}
 
@@ -181,11 +190,11 @@ func reconcileEventSinks(cluster *ledgerv1alpha1.Cluster, exec ledgerctlSinkExec
 			}
 			changed = true
 		}
-		dropped = append(dropped, name)
+		cluster.Status.AppliedSinks = nextAppliedSinks(cluster.Status.AppliedSinks, nil, []string{name})
 	}
 
 	if len(diff.conflict) > 0 {
-		return false, fmt.Errorf("event sink name conflict: %v already exist with a different configuration and are not operator-owned", diff.conflict)
+		return false, fmt.Errorf("event sink name conflict: %v already exist and are not operator-owned", diff.conflict)
 	}
 
 	return !changed, nil

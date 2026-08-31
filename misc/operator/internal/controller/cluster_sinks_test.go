@@ -98,12 +98,12 @@ func TestDiffEventSinksScopesOwnership(t *testing.T) {
 			want:    eventSinkDiff{toCreate: []managedNATSSink{desiredNew}},
 		},
 		{
-			name:    "matching desired sink is adopted to recover ownership",
+			name:    "matching external sink conflicts without adoption",
 			desired: []managedNATSSink{desiredPrimary},
 			actual: map[string]actualEventSink{
 				"primary": {kind: "nats", nats: desiredPrimary},
 			},
-			want: eventSinkDiff{toAdopt: []string{"primary"}},
+			want: eventSinkDiff{conflict: []string{"primary"}},
 		},
 		{
 			name:    "mismatched external sink conflicts",
@@ -161,12 +161,32 @@ func TestReconcileEventSinksCreatesAndRecordsOwnership(t *testing.T) {
 		return "", nil
 	}
 
-	synced, err := reconcileEventSinks(cluster, exec)
+	synced, err := reconcileEventSinks(cluster, exec, nil)
 	require.NoError(t, err)
 	assert.False(t, synced)
 	assert.Equal(t, []string{"primary"}, cluster.Status.AppliedSinks)
 	require.Len(t, calls, 2)
 	assert.Equal(t, []string{"events", "add-sink", "--name", "primary", "--nats-url", "nats://nats:4222", "--nats-topic", "ledger.events", "--format", "json", "--batch-size", "0", "--batch-delay-ms", "0"}, calls[1])
+}
+
+func TestReconcileEventSinksDoesNotCreateBeforeOwnershipIsPersisted(t *testing.T) {
+	t.Parallel()
+
+	cluster := clusterWithNATSSinks("primary")
+	callCount := 0
+	exec := func(args ...string) (string, error) {
+		callCount++
+
+		return `{"sinks":[]}`, nil
+	}
+
+	synced, err := reconcileEventSinks(cluster, exec, func() error {
+		return errors.New("injected status failure")
+	})
+	assert.False(t, synced)
+	require.ErrorContains(t, err, "injected status failure")
+	assert.Equal(t, 1, callCount, "add-sink must not run before ownership is durable")
+	assert.Empty(t, cluster.Status.AppliedSinks)
 }
 
 func TestReconcileEventSinksPersistsPartialProgress(t *testing.T) {
@@ -184,10 +204,10 @@ func TestReconcileEventSinksPersistsPartialProgress(t *testing.T) {
 		return "", nil
 	}
 
-	synced, err := reconcileEventSinks(cluster, exec)
+	synced, err := reconcileEventSinks(cluster, exec, nil)
 	assert.False(t, synced)
 	require.ErrorContains(t, err, "injected add failure")
-	assert.Equal(t, []string{"alpha"}, cluster.Status.AppliedSinks)
+	assert.Equal(t, []string{"alpha", "beta"}, cluster.Status.AppliedSinks)
 }
 
 func TestReconcileEventSinksRecoversOwnershipAfterAmbiguousAdd(t *testing.T) {
@@ -209,14 +229,14 @@ func TestReconcileEventSinksRecoversOwnershipAfterAmbiguousAdd(t *testing.T) {
 		return "", errors.New("response lost after commit")
 	}
 
-	synced, err := reconcileEventSinks(cluster, exec)
+	synced, err := reconcileEventSinks(cluster, exec, nil)
 	assert.False(t, synced)
 	require.ErrorContains(t, err, "response lost after commit")
-	assert.Empty(t, cluster.Status.AppliedSinks)
+	assert.Equal(t, []string{"primary"}, cluster.Status.AppliedSinks)
 
-	synced, err = reconcileEventSinks(cluster, exec)
+	synced, err = reconcileEventSinks(cluster, exec, nil)
 	require.NoError(t, err)
-	assert.False(t, synced)
+	assert.True(t, synced)
 	assert.Equal(t, []string{"primary"}, cluster.Status.AppliedSinks)
 }
 
@@ -236,7 +256,7 @@ func TestReconcileEventSinksKeepsOwnershipWhenRemoveTransportFails(t *testing.T)
 		return "", errors.New(`pods "ledger-0" not found`)
 	}
 
-	synced, err := reconcileEventSinks(cluster, exec)
+	synced, err := reconcileEventSinks(cluster, exec, nil)
 	assert.False(t, synced)
 	require.ErrorContains(t, err, `pods "ledger-0" not found`)
 	assert.Equal(t, 2, listCalls)
@@ -270,12 +290,12 @@ func TestReconcileEventSinksUpdatesOwnedSinkInTwoPasses(t *testing.T) {
 		return "", nil
 	}
 
-	synced, err := reconcileEventSinks(cluster, exec)
+	synced, err := reconcileEventSinks(cluster, exec, nil)
 	require.NoError(t, err)
 	assert.False(t, synced)
 	assert.Empty(t, cluster.Status.AppliedSinks)
 
-	synced, err = reconcileEventSinks(cluster, exec)
+	synced, err = reconcileEventSinks(cluster, exec, nil)
 	require.NoError(t, err)
 	assert.False(t, synced)
 	assert.Equal(t, []string{"primary"}, cluster.Status.AppliedSinks)
@@ -295,7 +315,25 @@ func TestReconcileEventSinksRejectsExternalNameConflictWithoutMutation(t *testin
 		return `{"sinks":[{"name":"primary","format":"json","batchSize":0,"batchDelayMs":"0","eventTypes":[],"http":{"endpoint":"https://example.com","secret":""}}]}`, nil
 	}
 
-	synced, err := reconcileEventSinks(cluster, exec)
+	synced, err := reconcileEventSinks(cluster, exec, nil)
+	assert.False(t, synced)
+	require.ErrorContains(t, err, "not operator-owned")
+	assert.Equal(t, 1, callCount)
+	assert.Empty(t, cluster.Status.AppliedSinks)
+}
+
+func TestReconcileEventSinksDoesNotAdoptMatchingExternalSink(t *testing.T) {
+	t.Parallel()
+
+	cluster := clusterWithNATSSinks("primary")
+	callCount := 0
+	exec := func(args ...string) (string, error) {
+		callCount++
+
+		return `{"sinks":[{"name":"primary","nats":{"url":"nats://nats:4222","topic":"ledger.events"},"format":"json","batchSize":0,"batchDelayMs":"0","eventTypes":[]}]}`, nil
+	}
+
+	synced, err := reconcileEventSinks(cluster, exec, nil)
 	assert.False(t, synced)
 	require.ErrorContains(t, err, "not operator-owned")
 	assert.Equal(t, 1, callCount)
