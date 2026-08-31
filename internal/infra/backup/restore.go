@@ -195,5 +195,11 @@ func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage 
 		return fmt.Errorf("rebuilding derived state: %w", err)
 	}
 
+	// The rebuild is the last consumer of the archived ranges the export carried;
+	// past it they belong in cold storage alone, as they did on the source.
+	if err := purgeArchivedRanges(ctx, logger, store); err != nil {
+		return fmt.Errorf("purging archived ranges: %w", err)
+	}
+
 	return nil
 }

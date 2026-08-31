@@ -21,6 +21,17 @@ history. If one advances, deletes, or creates a durable projection and the other
 does not, the restored store can contain business data that disagrees with the
 state used to admit or apply the next order.
 
+Residency is part of that state, not an implementation detail below it. An
+incremental export whose window overlaps an archived chapter is backfilled from
+cold storage, so the delta carries entries the source had already purged from hot
+storage; `RebuildDelta` needs them to fold the chapter lifecycle. Once it has run
+they must go, because the restored store has to hold the split the source held: a
+chapter the registry calls `ARCHIVED` is served from its cold object, and reads
+try hot storage first (`ReadLogBySequenceWithCold`). Leaving them resident answers
+reads from history the registry calls archived, keeps a second copy of it on disk,
+and leaves purge receipts the checker's replay cannot derive — a healthy store
+reported as corrupt.
+
 ## Restore evidence and responsibilities
 
 A full checkpoint carries the Pebble state at its log and audit sequence
