@@ -352,7 +352,7 @@ After the Archiver exports data to cold storage and verifies the upload, it prop
 
 1. Validates the chapter is in `ARCHIVING` state (not CLOSED — the intermediate state provides crash recovery).
 2. Transitions the chapter from ARCHIVING to ARCHIVED.
-3. Signals a purge of logs and audit entries for the chapter's sequence range `[start_sequence, close_sequence]`.
+3. Signals a purge of the chapter's ranges: logs over `[start_sequence, close_sequence]`, and audit entries, audit items and applied proposals over `[start_audit_sequence, close_audit_sequence]`.
 4. The purge is executed as `DeleteRange` operations in the Pebble batch during `Merge()`.
 
 **File**: `internal/infra/state/archiver.go`

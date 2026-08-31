@@ -1717,6 +1717,16 @@ func (b *WriteSet) executePurge(batch *dal.WriteSession, pr *purgeRange) error {
 			return fmt.Errorf("purging audit [%d, %d]: %w", pr.startAuditSequence, pr.closeAuditSequence, err)
 		}
 
+		// AuditItem keys carry a 4-byte order-index suffix after the audit
+		// sequence, so the suffix-free bounds cover every item of every
+		// sequence in the range.
+		itemStart := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(pr.startAuditSequence).Build()
+		itemEnd := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(pr.closeAuditSequence + 1).Build()
+
+		if err := batch.DeleteRange(itemStart, itemEnd, nil); err != nil {
+			return fmt.Errorf("purging audit items [%d, %d]: %w", pr.startAuditSequence, pr.closeAuditSequence, err)
+		}
+
 		// AppliedProposal entries share the audit sequence counter (1:1 with
 		// AuditEntry on the success path). Failed proposals leave gaps but
 		// DeleteRange tolerates them.

@@ -891,6 +891,16 @@ enum CheckStoreErrorType {
   // never seeded from the live projection -- that would verify old,
   // never-touched keys against a copy of themselves.
   CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE = 23;
+  // Emitted when hot storage still holds keys inside an ARCHIVED chapter's
+  // purge ranges: logs by log sequence, audit entries / audit items / applied
+  // proposals by audit sequence. ConfirmArchiveChapter's apply deletes those
+  // ranges in the same proposal that marks the chapter ARCHIVED, so resident
+  // data under an ARCHIVED registry row means a lost purge or a path that
+  // re-ingested archived history without purging it (e.g. a restore rebuilt
+  // from a cold-backfilled delta). The canonical copy lives in the chapter's
+  // cold-storage object; the hot residue shadows it on read paths that try
+  // hot storage first and grows the store without bound.
+  CHECK_STORE_ERROR_TYPE_UNPURGED_ARCHIVED_DATA = 24;
 }
 
 message CheckStoreError {

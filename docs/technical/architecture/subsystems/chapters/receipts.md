@@ -4,7 +4,7 @@
 
 A **receipt** is a short JWT, issued when a transaction is created, that carries a signed copy of the transaction's postings. A client can present it when reverting so that admission does not have to read the transaction's postings itself.
 
-The reversal is always applied by the FSM from the transaction's own state (`TransactionState`), which lives in the coverage-gated cache and **survives chapter archival** — archival purges only the cold `Log` / `Audit` / `AppliedProposal` ranges, never `TransactionState` (see `WriteSet.executePurge`). No revert path — receipt or not — reads cold storage. The receipt's role is purely admission-side: it is one source (versus admission's own store read) for the postings admission uses to declare the volume-preload coverage the reversed postings touch (invariant #9).
+The reversal is always applied by the FSM from the transaction's own state (`TransactionState`), which lives in the coverage-gated cache and **survives chapter archival** — archival purges only the cold `Log` / `Audit` / `AuditItem` / `AppliedProposal` ranges, never `TransactionState` (see `WriteSet.executePurge`). No revert path — receipt or not — reads cold storage. The receipt's role is purely admission-side: it is one source (versus admission's own store read) for the postings admission uses to declare the volume-preload coverage the reversed postings touch (invariant #9).
 
 > **Open question.** Because `TransactionState` survives archival and the FSM reverts from it, admission can normally read the postings directly, so the receipt's distinct value is now thin. Whether the receipt feature is still needed is under review (tracked in the Ledger v3.0 backlog).
 

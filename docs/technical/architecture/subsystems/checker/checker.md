@@ -45,6 +45,7 @@ Each pass takes a persisted projection, re-derives the expected value by replayi
 | 12 | `compareNumscripts` | `SubAttrNumscriptContent` immutable version entries and `SubAttrNumscriptVersion` latest pointers (the greatest stored semver) match the saved versions | Replay of `SavedNumscript` / `DeleteLedger` logs | `NUMSCRIPT_MISMATCH` |
 | 13 | `compareReverseMapOrphans` | Reverse-map (`0x03`) rows in the **peer readstore** whose `(ledger, target, metadata key)` is in **neither** the stored `SubAttrIndex` registry **nor** the audit-replayed `MetadataSchema`; also rows belonging to a ledger the audit does not list as live, and keys that do not decode | Stored index registry **and** the replayed schema (`CreateLedger.initial_schema` + `SetMetadataFieldType` / `RemovedMetadataFieldType`) | `REVERSE_MAP_ORPHAN` |
 | 14 | `signingVerifier.compare` | The `SubGlobSigningKey` rows (public-key bytes + `parent_key_id`) and the `SubGlobSigningConfig` require-signatures flag, compared in both directions | Fold of the chain-bound `RegisterSigningKey` / `RevokeSigningKey` / `SetSigningConfig` orders over the archived (cold-storage) then live audit ranges | `SIGNING_KEY_MISMATCH`, `SIGNING_CONFIG_MISMATCH`, `SIGNING_VERIFICATION_INCOMPLETE` |
+| 15 | `verifyArchivedChapterResidency` | Hot storage holds no keys inside an ARCHIVED chapter's purge ranges — logs by log sequence; audit entries, audit items and applied proposals by audit sequence | The chapter registry: `ConfirmArchiveChapter`'s apply purges those ranges in the same proposal that marks the row ARCHIVED, so an ARCHIVED row is the receipt that the purge ran | `UNPURGED_ARCHIVED_DATA` |
 
 Notes:
 
@@ -61,7 +62,8 @@ Notes:
   - **A verdict requires an exactly aligned peer cursor.** Every oracle term is pinned at the verified log sequence, so the pass only judges rows when the read index has folded exactly that range (`indexedSequence == lastSequence`). Malformed keys need no oracle and are always reported. The two unaligned positions are not symmetric. *Behind* is the ordinary state on a live cluster — the registry is written at Raft apply while the rmap folds later — so nothing can be concluded. *Ahead* cannot happen by race, because the builder folds from the primary log stream and writes its cursor only for logs it has already read out of the primary store (`progress(t) <= maxLogSeq(t)` at every instant) and **`Check()` pins the peer snapshot strictly before the primary one** so the two pinned values inherit that ordering. That ordering is what removes the need for cross-store atomicity: an ordering that can only leave the peer behind is sufficient, since behind is already a skip. Ahead is not reachable at runtime at all: `RestoreCheckpoint`'s only production caller (`dal.incomingRestoreFactory.Run`, via `state.Synchronizer.SynchronizeWithLeader`) installs a checkpoint fetched from the leader, which only moves a node forward. Reaching it means the primary store was replaced beneath a surviving read index — an offline restore into a dirty data directory — and that never self-heals, so the position is **reported** as `REVERSE_MAP_ORPHAN` rather than skipped (invariant #7). No per-row verdict is produced either way, the oracle terms being frozen at the verified sequence.
   - **The unknown-ledger verdict is driven by liveness alone.** A ledger recreated under the same name is live again in the audit-derived set, so its fresh rows are legitimate. Deriving the verdict from a separate append-only "was deleted in the replay" set consulted *before* the live set would report them, and would leave correctness resting on the retained tombstone that makes the lifecycle unreachable rather than on the pass's own structure.
   - Findings are aggregated per `(ledger, namespace, metadata key)` with a row count and one sample entity — a field dropped on a large ledger can strand millions of rows, and the pass must stay `O(distinct fields)` in both memory and emitted events.
-- **Order matters**: `verifyAuditHashChain` runs **first**. A broken chain stops the walk before any downstream pass — running them with a tampered chain would produce noise from already-detected corruption.
+- **`verifyArchivedChapterResidency` is a residency check, not a projection compare.** It re-derives nothing from the audit chain: the oracle is the registry status plus the ranges recorded on the chapter row, both hash-bound through the confirmed chapter's payload and cross-verified by `verifySealingHash`. It runs before the chain walk (it needs only the snapshot and the chapter rows) and scans exactly the ranges `WriteSet.executePurge` deletes, one event per `(chapter, sub-prefix)` with a resident-key count, so the event stream stays bounded by the chapter count rather than the residue size. Beyond a lost purge, it catches any path that re-ingests archived history into hot storage without purging it afterwards — an incremental restore rebuilt from a cold-backfilled delta is the known case.
+- **Order matters**: `verifyAuditHashChain` runs **first** among the chain-derived passes. A broken chain stops the walk before any downstream pass — running them with a tampered chain would produce noise from already-detected corruption.
 
 ### Signing keys and signing config
 
@@ -140,7 +142,9 @@ The transaction merge operator is associative. On a partial merge — Pebble com
 
 ```mermaid
 flowchart TB
-    A[NewReadHandle: point-in-time snapshot] --> B[verifyAuditHashChain]
+    A[NewReadHandle: point-in-time snapshot] --> R[verifyArchivedChapterResidency]
+    R --> K
+    A --> B[verifyAuditHashChain]
     B -->|on hash break| Z((stop))
     B -->|on success: build expectedIdempotency| C[compareIdempotencyOutcomes]
     B --> D[compareVolumes]
@@ -201,6 +205,7 @@ enum CheckStoreErrorType {
   SIGNING_KEY_MISMATCH        = 21;
   SIGNING_CONFIG_MISMATCH     = 22;
   SIGNING_VERIFICATION_INCOMPLETE = 23;
+  UNPURGED_ARCHIVED_DATA      = 24;
 }
 ```
 

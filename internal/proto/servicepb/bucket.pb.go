@@ -167,6 +167,16 @@ const (
 	// never seeded from the live projection -- that would verify old,
 	// never-touched keys against a copy of themselves.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE CheckStoreErrorType = 23
+	// Emitted when hot storage still holds keys inside an ARCHIVED chapter's
+	// purge ranges: logs by log sequence, audit entries / audit items / applied
+	// proposals by audit sequence. ConfirmArchiveChapter's apply deletes those
+	// ranges in the same proposal that marks the chapter ARCHIVED, so resident
+	// data under an ARCHIVED registry row means a lost purge or a path that
+	// re-ingested archived history without purging it (e.g. a restore rebuilt
+	// from a cold-backfilled delta). The canonical copy lives in the chapter's
+	// cold-storage object; the hot residue shadows it on read paths that try
+	// hot storage first and grows the store without bound.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNPURGED_ARCHIVED_DATA CheckStoreErrorType = 24
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -196,6 +206,7 @@ var (
 		21: "CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH",
 		22: "CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH",
 		23: "CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE",
+		24: "CHECK_STORE_ERROR_TYPE_UNPURGED_ARCHIVED_DATA",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                     0,
@@ -222,6 +233,7 @@ var (
 		"CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH":            21,
 		"CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH":         22,
 		"CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE": 23,
+		"CHECK_STORE_ERROR_TYPE_UNPURGED_ARCHIVED_DATA":          24,
 	}
 )
 
@@ -9886,7 +9898,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xfc\b\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xaf\t\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9912,7 +9924,8 @@ const file_bucket_proto_rawDesc = "" +
 	")CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN\x10\x14\x12/\n" +
 	"+CHECK_STORE_ERROR_TYPE_SIGNING_KEY_MISMATCH\x10\x15\x122\n" +
 	".CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH\x10\x16\x12:\n" +
-	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17*W\n" +
+	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17\x121\n" +
+	"-CHECK_STORE_ERROR_TYPE_UNPURGED_ARCHIVED_DATA\x10\x18*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +
