@@ -148,7 +148,12 @@ State is recomputed from immutable qualification plus the latest observation;
 there is no manual state-transition command. Target advancement does not reuse
 an older `READY` interpretation. A confirmed finding with no PR becomes
 `BLOCKED` / `REQUALIFY_ON_CURRENT_TARGET` until qualification is established on
-the current target.
+the current target. For same-repository PRs, `branchExists` is true only when
+the configured Git remote contains the exact observed head ref and SHA. Version
+1 does not query a fork's remote directly, so an unmerged cross-repository PR is
+conservatively `BROKEN_BINDING` with
+`CROSS_REPOSITORY_BRANCH_UNVERIFIED`; its retained GitHub head OID is not treated
+as proof that the source branch still exists.
 
 ## Next action
 

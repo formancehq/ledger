@@ -300,6 +300,20 @@ func TestMissingPRBranchIsBrokenBinding(t *testing.T) {
 	require.Equal(t, "REPAIR_BINDING", inspection.Findings[0].NextAction)
 }
 
+func TestCrossRepositoryPRHeadOIDDoesNotProveBranchExists(t *testing.T) {
+	t.Parallel()
+
+	campaign := testCampaign("CONFIRMED")
+	pullRequest := openPR(41, "fork-branch", "AI_AUDIT_MARKER")
+	pullRequest.CrossRepository = true
+	inspection := runFakeInspection(campaign, fakeObservations{
+		pullRequests: pullRequestSlice(pullRequest),
+	})
+	require.Equal(t, "BROKEN_BINDING", inspection.Findings[0].State)
+	require.Equal(t, "REPAIR_BINDING", inspection.Findings[0].NextAction)
+	require.Contains(t, inspection.Findings[0].Blockers, "CROSS_REPOSITORY_BRANCH_UNVERIFIED")
+}
+
 type fixtureFinding struct {
 	name   string
 	status string

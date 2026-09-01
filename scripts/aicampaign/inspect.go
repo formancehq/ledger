@@ -127,7 +127,10 @@ func (runner inspector) run(ctx context.Context, campaign *Campaign, options ins
 			}
 			if gitError == nil {
 				if match.CrossRepository {
-					match.BranchExists = match.HeadSHA != ""
+					// GitHub retains a pull request's head commit after a fork or
+					// source branch is deleted. Without an authoritative lookup
+					// against that fork, the branch is not proven to exist.
+					match.BranchExists = false
 				} else {
 					match.BranchExists = gitValues["refs/heads/"+match.HeadRef] == match.HeadSHA && match.HeadSHA != ""
 				}
@@ -325,7 +328,11 @@ func projectFinding(
 			}
 		case !match.BranchExists:
 			projection.State = "BROKEN_BINDING"
-			projection.Blockers = append(projection.Blockers, "PR_BRANCH_MISSING")
+			if match.CrossRepository {
+				projection.Blockers = append(projection.Blockers, "CROSS_REPOSITORY_BRANCH_UNVERIFIED")
+			} else {
+				projection.Blockers = append(projection.Blockers, "PR_BRANCH_MISSING")
+			}
 			projection.NextAction = "REPAIR_BINDING"
 		case strings.EqualFold(match.State, "OPEN"):
 			projection.State = "PR_OPEN"
