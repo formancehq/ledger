@@ -120,6 +120,12 @@ func requiredScopeForRequest(req *servicepb.Request) (Scope, bool) {
 		return ScopeClusterWrite, true
 	case *servicepb.Request_DeleteQueryCheckpointSchedule:
 		return ScopeClusterWrite, true
+	// The cluster policy is internal/control-plane state (EN-1827): proposed by
+	// the leader-side reconciler, not exposed via ClusterService, reachable
+	// through Apply only. ClusterWrite matches its cluster-wide, admin-only
+	// nature, consistent with the query-checkpoint variants above.
+	case *servicepb.Request_SetClusterPolicy:
+		return ScopeClusterWrite, true
 	default:
 		return ScopeOpsWrite, false
 	}

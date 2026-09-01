@@ -236,6 +236,9 @@ const (
 	ErrReasonPreloadUnavailable             = "PRELOAD_UNAVAILABLE"
 	ErrReasonMirrorV2LogIDGap               = "MIRROR_V2_LOG_ID_GAP"
 	ErrReasonMirrorV2LogIDInvalid           = "MIRROR_V2_LOG_ID_INVALID"
+	ErrReasonStaleClusterPolicy             = "STALE_CLUSTER_POLICY"
+	ErrReasonClusterPolicyRevisionConflict  = "CLUSTER_POLICY_REVISION_CONFLICT"
+	ErrReasonClusterPolicyInvalid           = "CLUSTER_POLICY_INVALID"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -1430,6 +1433,56 @@ func (e *ErrInvalidOrderType) Error() string {
 func (*ErrInvalidOrderType) Reason() string { return ErrReasonInvalidOrderType }
 func (e *ErrInvalidOrderType) Metadata() map[string]string {
 	return map[string]string{"typeName": e.TypeName}
+}
+
+// ErrStaleClusterPolicy — a cluster-policy update carried a revision lower than
+// the applied one. The FSM rejects it deterministically on every node; the
+// leader-side reconciler treats it as benign (a newer policy already won).
+type ErrStaleClusterPolicy struct {
+	ProposedRevision uint64
+	AppliedRevision  uint64
+}
+
+func (e *ErrStaleClusterPolicy) Error() string {
+	return fmt.Sprintf("stale cluster policy: proposed revision %d below applied revision %d", e.ProposedRevision, e.AppliedRevision)
+}
+func (*ErrStaleClusterPolicy) Reason() string { return ErrReasonStaleClusterPolicy }
+func (e *ErrStaleClusterPolicy) Metadata() map[string]string {
+	return map[string]string{
+		"proposedRevision": strconv.FormatUint(e.ProposedRevision, 10),
+		"appliedRevision":  strconv.FormatUint(e.AppliedRevision, 10),
+	}
+}
+
+// ErrClusterPolicyRevisionConflict — two cluster-policy updates carried the same
+// revision with different payloads. The control plane must assign a fresh
+// revision per distinct policy, so this is a contract violation (KindInternal).
+type ErrClusterPolicyRevisionConflict struct {
+	Revision uint64
+}
+
+func (e *ErrClusterPolicyRevisionConflict) Error() string {
+	return fmt.Sprintf("cluster policy revision conflict: revision %d carries a payload different from the applied policy", e.Revision)
+}
+func (*ErrClusterPolicyRevisionConflict) Reason() string {
+	return ErrReasonClusterPolicyRevisionConflict
+}
+func (e *ErrClusterPolicyRevisionConflict) Metadata() map[string]string {
+	return map[string]string{"revision": strconv.FormatUint(e.Revision, 10)}
+}
+
+// ErrClusterPolicyInvalid — a cluster-policy update carried a structurally
+// invalid payload (missing policy, or query_checkpoint_limit below 1).
+type ErrClusterPolicyInvalid struct {
+	Detail string
+}
+
+func (e *ErrClusterPolicyInvalid) Error() string {
+	return "invalid cluster policy: " + e.Detail
+}
+func (*ErrClusterPolicyInvalid) Reason() string { return ErrReasonClusterPolicyInvalid }
+func (e *ErrClusterPolicyInvalid) Metadata() map[string]string {
+	return map[string]string{"detail": e.Detail}
 }
 
 // ErrIdempotencyCheckFailed — Pebble lookup for an idempotency key returned

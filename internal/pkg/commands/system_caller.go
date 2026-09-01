@@ -12,6 +12,7 @@ const (
 	ComponentMirror           = "mirror"
 	ComponentEventsSink       = "events-sink"
 	ComponentClusterConfig    = "cluster-config"
+	ComponentClusterPolicy    = "cluster-policy"
 	ComponentIdempotencyEvict = "idempotency-eviction"
 	ComponentBackup           = "backup"
 )

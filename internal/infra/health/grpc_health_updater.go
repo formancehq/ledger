@@ -17,20 +17,26 @@ const grpcHealthUpdateInterval = 5 * time.Second
 // (used by k8s gRPC probes or grpc-health-probe) reflect actual readiness
 // rather than always reporting SERVING.
 type GRPCHealthUpdater struct {
-	node         nodeState
-	healthServer *health.Server
-	interval     time.Duration
-	w            worker.Worker
+	node               nodeState
+	healthServer       *health.Server
+	interval           time.Duration
+	clusterPolicyReady func() bool
+	w                  worker.Worker
 }
 
 // NewGRPCHealthUpdater creates a new updater that will poll readiness at the
 // given interval and set the gRPC serving status on healthServer.
-func NewGRPCHealthUpdater(n *node.Node, healthServer *health.Server) *GRPCHealthUpdater {
+//
+// clusterPolicyReady reports whether the Raft-replicated cluster policy has been
+// committed at least once: the node is not write-ready until it has, so writes
+// never depend on a policy that has not yet been agreed cluster-wide (EN-1827).
+func NewGRPCHealthUpdater(n *node.Node, healthServer *health.Server, clusterPolicyReady func() bool) *GRPCHealthUpdater {
 	return &GRPCHealthUpdater{
-		node:         n,
-		healthServer: healthServer,
-		interval:     grpcHealthUpdateInterval,
-		w:            worker.New(),
+		node:               n,
+		healthServer:       healthServer,
+		interval:           grpcHealthUpdateInterval,
+		clusterPolicyReady: clusterPolicyReady,
+		w:                  worker.New(),
 	}
 }
 
@@ -48,7 +54,7 @@ func (u *GRPCHealthUpdater) Stop() {
 }
 
 func (u *GRPCHealthUpdater) update() {
-	ready := u.node.IsHealthy() && u.node.GetLeader() != 0
+	ready := u.node.IsHealthy() && u.node.GetLeader() != 0 && u.clusterPolicyReady()
 
 	status := healthpb.HealthCheckResponse_NOT_SERVING
 	if ready {

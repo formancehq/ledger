@@ -147,6 +147,18 @@ func (s *skipSafeScope) SetMaintenanceMode(enabled bool) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// Cluster policy — writes are NOT buffered; reads pass through.
+// ──────────────────────────────────────────────────────────────────────────
+
+func (s *skipSafeScope) GetClusterPolicy() *commonpb.ClusterPolicy {
+	return s.inner.GetClusterPolicy()
+}
+
+func (s *skipSafeScope) SetClusterPolicy(policy *commonpb.ClusterPolicy) {
+	trapUnbuffered("SetClusterPolicy", map[string]any{"revision": policy.GetRevision()})
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // Sink read.
 // ──────────────────────────────────────────────────────────────────────────
 

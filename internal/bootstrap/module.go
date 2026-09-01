@@ -67,6 +67,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
@@ -847,11 +848,22 @@ func Module() fx.Option {
 					servicePool,
 				), defaultCtrl
 			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``, `optional:"true"`, ``, ``)),
-			func(serviceServer *grpcadp.ServiceServer, n *node.Node) *clusterhealth.GRPCHealthUpdater {
+			func(serviceServer *grpcadp.ServiceServer, n *node.Node, store *dal.Store) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
 
-				return clusterhealth.NewGRPCHealthUpdater(n, hs)
+				clusterPolicyReady := func() bool {
+					policy, err := query.ReadClusterPolicy(store)
+
+					return err == nil && policy.GetRevision() > 0
+				}
+
+				return clusterhealth.NewGRPCHealthUpdater(n, hs, clusterPolicyReady)
+			},
+			func(admission ctrl.Admission, store *dal.Store, cfg Config, raftNode *node.Node, logger logging.Logger) *ClusterPolicyReconciler {
+				return NewClusterPolicyReconciler(func(ctx context.Context) {
+					reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger)
+				})
 			},
 		),
 		fx.Decorate(func(
@@ -1251,6 +1263,9 @@ func Module() fx.Option {
 			},
 			func(lc fx.Lifecycle, sealer *state.Sealer) {
 				lc.Append(worker.FxHook(sealer))
+			},
+			func(lc fx.Lifecycle, reconciler *ClusterPolicyReconciler) {
+				lc.Append(worker.FxHook(reconciler))
 			},
 			func(lc fx.Lifecycle, scheduler *state.ChapterScheduler) {
 				lc.Append(worker.FxHook(scheduler))
@@ -1707,6 +1722,64 @@ func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *da
 		logger.WithFields(map[string]any{
 			"error": err,
 		}).Errorf("Failed to propose cluster config update")
+	}
+}
+
+// reconcileClusterPolicy drives the replicated cluster policy toward the desired
+// revision. It gates on leadership itself and is safe to call repeatedly: the
+// ClusterPolicyReconciler invokes it on a ticker so a transient proposal failure
+// self-heals on the next tick. Unlike the cluster config, the policy flows
+// through Admit (as an audited SetClusterPolicy order) so the checker can
+// re-derive it; the write-readiness gate exempts the policy request so this
+// proposal is never blocked by its own gate.
+func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store *dal.Store, cfg Config, isLeader func() bool, logger logging.Logger) {
+	if !isLeader() {
+		return
+	}
+
+	applied, err := query.ReadClusterPolicy(store)
+	if err != nil {
+		logger.WithFields(map[string]any{"error": err}).Errorf("Reading applied cluster policy for reconciliation")
+
+		return
+	}
+
+	desired := &commonpb.ClusterPolicy{
+		Revision:             cfg.ClusterPolicyRevision,
+		IdempotencyTtlMicros: uint64(cfg.IdempotencyTTL.Microseconds()),
+		QueryCheckpointLimit: cfg.QueryCheckpointLimit,
+	}
+
+	appliedRev := applied.GetRevision()
+
+	switch {
+	case appliedRev > desired.GetRevision():
+		// A newer policy is already applied; the FSM would reject this as stale.
+		return
+	case appliedRev == desired.GetRevision():
+		// Same revision must carry the same payload; a divergence means the
+		// control plane assigned one revision to two policies. Surface it and do
+		// not re-propose (the FSM would reject it as a revision conflict).
+		if applied != nil && !applied.EqualVT(desired) {
+			logger.Errorf("cluster policy revision %d is already applied with a different payload; bump --cluster-policy-revision to change it", appliedRev)
+		}
+
+		return
+	}
+
+	logger.Infof("Proposing cluster policy revision %d", desired.GetRevision())
+
+	if _, err := admission.Admit(
+		internalauth.WithSystemActor(ctx, commands.ComponentClusterPolicy),
+		servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_SetClusterPolicy{
+				SetClusterPolicy: &servicepb.SetClusterPolicyRequest{Policy: desired},
+			},
+		}),
+	); err != nil {
+		// Transient (propose timeout, momentary write gate, leadership churn):
+		// the next tick retries while this node stays leader.
+		logger.WithFields(map[string]any{"error": err}).Errorf("Cluster policy proposal failed; will retry")
 	}
 }
 

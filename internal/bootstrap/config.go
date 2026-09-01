@@ -196,7 +196,15 @@ type Config struct {
 	BloomConfig                 *commonpb.ClusterConfig
 	IdempotencyTTL              time.Duration
 	IdempotencyEvictionInterval time.Duration
-	SnapshotSyncConfig          SnapshotSyncConfig
+	// ClusterPolicyRevision is the desired revision of the replicated cluster
+	// policy. The leader-side reconciler proposes the policy when it exceeds the
+	// applied revision. Node-local for now; PR4 derives it from the operator
+	// resource generation.
+	ClusterPolicyRevision uint64
+	// QueryCheckpointLimit is the desired cap on live query checkpoints, carried
+	// in the replicated cluster policy.
+	QueryCheckpointLimit uint64
+	SnapshotSyncConfig   SnapshotSyncConfig
 }
 
 // EffectiveRestoreListen returns the bind host for restore mode, falling
@@ -290,6 +298,24 @@ func (c Config) Validate() error {
 
 	if err := c.SnapshotSyncConfig.Validate(); err != nil {
 		return err
+	}
+
+	// The reconciler only proposes when the desired revision exceeds the applied
+	// one, and the FSM reserves revision 0 for "no policy committed"; a zero
+	// desired revision would never commit a policy, leaving the node write-unready.
+	if c.ClusterPolicyRevision == 0 {
+		return errors.New("--cluster-policy-revision must be greater than zero")
+	}
+
+	if c.QueryCheckpointLimit == 0 {
+		return errors.New("--query-checkpoint-limit must be greater than zero")
+	}
+
+	// A negative TTL wraps to a huge value once converted to the policy's
+	// unsigned micros, so reject it at boot rather than committing a garbage
+	// idempotency window.
+	if c.IdempotencyTTL < 0 {
+		return errors.New("--idempotency-ttl must not be negative")
 	}
 
 	if err := validateHealthThresholds(c.HealthConfig.WALThreshold, c.HealthConfig.WALResumeThreshold); err != nil {

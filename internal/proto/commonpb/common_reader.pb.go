@@ -2884,6 +2884,77 @@ func NewSetMaintenanceModeLogListReader(s []*SetMaintenanceModeLog) SetMaintenan
 	return setMaintenanceModeLogListReadonly(s)
 }
 
+// SetClusterPolicyLogReader provides read-only access to SetClusterPolicyLog.
+// Call Mutate() to obtain a mutable clone.
+type SetClusterPolicyLogReader interface {
+	GetPolicy() ClusterPolicyReader
+	Mutate() *SetClusterPolicyLog
+}
+
+type setClusterPolicyLogReadonly SetClusterPolicyLog
+
+func (r *setClusterPolicyLogReadonly) GetPolicy() ClusterPolicyReader {
+	v := (*SetClusterPolicyLog)(r).GetPolicy()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *setClusterPolicyLogReadonly) Mutate() *SetClusterPolicyLog {
+	return (*SetClusterPolicyLog)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SetClusterPolicyLog.
+func (m *SetClusterPolicyLog) AsReader() SetClusterPolicyLogReader {
+	if m == nil {
+		return nil
+	}
+	return (*setClusterPolicyLogReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SetClusterPolicyLog.
+func (m *SetClusterPolicyLog) Mutate() *SetClusterPolicyLog {
+	return m.CloneVT()
+}
+
+// SetClusterPolicyLogListReader provides read-only iteration over []*SetClusterPolicyLog.
+type SetClusterPolicyLogListReader interface {
+	Len() int
+	Get(i int) SetClusterPolicyLogReader
+	Range(yield func(int, SetClusterPolicyLogReader) bool)
+}
+
+type setClusterPolicyLogListReadonly []*SetClusterPolicyLog
+
+func (l setClusterPolicyLogListReadonly) Len() int { return len(l) }
+
+func (l setClusterPolicyLogListReadonly) Get(i int) SetClusterPolicyLogReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l setClusterPolicyLogListReadonly) Range(yield func(int, SetClusterPolicyLogReader) bool) {
+	for i, v := range l {
+		var r SetClusterPolicyLogReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSetClusterPolicyLogListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSetClusterPolicyLogListReader(s []*SetClusterPolicyLog) SetClusterPolicyLogListReader {
+	return setClusterPolicyLogListReadonly(s)
+}
+
 // BloomTypeConfigReader provides read-only access to BloomTypeConfig.
 // Call Mutate() to obtain a mutable clone.
 type BloomTypeConfigReader interface {
@@ -3210,6 +3281,83 @@ func (l persistedClusterStateListReadonly) Range(yield func(int, PersistedCluste
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewPersistedClusterStateListReader(s []*PersistedClusterState) PersistedClusterStateListReader {
 	return persistedClusterStateListReadonly(s)
+}
+
+// ClusterPolicyReader provides read-only access to ClusterPolicy.
+// Call Mutate() to obtain a mutable clone.
+type ClusterPolicyReader interface {
+	GetRevision() uint64
+	GetIdempotencyTtlMicros() uint64
+	GetQueryCheckpointLimit() uint64
+	Mutate() *ClusterPolicy
+}
+
+type clusterPolicyReadonly ClusterPolicy
+
+func (r *clusterPolicyReadonly) GetRevision() uint64 {
+	return (*ClusterPolicy)(r).GetRevision()
+}
+
+func (r *clusterPolicyReadonly) GetIdempotencyTtlMicros() uint64 {
+	return (*ClusterPolicy)(r).GetIdempotencyTtlMicros()
+}
+
+func (r *clusterPolicyReadonly) GetQueryCheckpointLimit() uint64 {
+	return (*ClusterPolicy)(r).GetQueryCheckpointLimit()
+}
+
+func (r *clusterPolicyReadonly) Mutate() *ClusterPolicy {
+	return (*ClusterPolicy)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ClusterPolicy.
+func (m *ClusterPolicy) AsReader() ClusterPolicyReader {
+	if m == nil {
+		return nil
+	}
+	return (*clusterPolicyReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ClusterPolicy.
+func (m *ClusterPolicy) Mutate() *ClusterPolicy {
+	return m.CloneVT()
+}
+
+// ClusterPolicyListReader provides read-only iteration over []*ClusterPolicy.
+type ClusterPolicyListReader interface {
+	Len() int
+	Get(i int) ClusterPolicyReader
+	Range(yield func(int, ClusterPolicyReader) bool)
+}
+
+type clusterPolicyListReadonly []*ClusterPolicy
+
+func (l clusterPolicyListReadonly) Len() int { return len(l) }
+
+func (l clusterPolicyListReadonly) Get(i int) ClusterPolicyReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l clusterPolicyListReadonly) Range(yield func(int, ClusterPolicyReader) bool) {
+	for i, v := range l {
+		var r ClusterPolicyReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewClusterPolicyListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewClusterPolicyListReader(s []*ClusterPolicy) ClusterPolicyListReader {
+	return clusterPolicyListReadonly(s)
 }
 
 // SetChapterScheduleLogReader provides read-only access to SetChapterScheduleLog.
