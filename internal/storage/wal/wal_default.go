@@ -182,6 +182,38 @@ func walDirPopulated(walDir string) (bool, error) {
 	return populated, nil
 }
 
+type walInitializer interface {
+	ReadAll() ([]byte, *raftpb.HardState, []*raftpb.Entry, error)
+	SaveSnapshot(*walpb.Snapshot) error
+	Close() error
+}
+
+// initializeNewWAL makes the initial replay cursor durable and closes the WAL
+// before its separate creation-completion file can be published.
+func initializeNewWAL(w walInitializer) error {
+	if _, _, _, err := w.ReadAll(); err != nil {
+		readErr := fmt.Errorf("reading newly created DefaultWAL for initialization: %w", err)
+		if closeErr := w.Close(); closeErr != nil {
+			return errors.Join(readErr, fmt.Errorf("closing newly created DefaultWAL after initialization read failure: %w", closeErr))
+		}
+
+		return readErr
+	}
+	if err := w.SaveSnapshot(newCompactionMarker(0, 0)); err != nil {
+		saveErr := fmt.Errorf("saving initial compaction marker: %w", err)
+		if closeErr := w.Close(); closeErr != nil {
+			return errors.Join(saveErr, fmt.Errorf("closing newly created DefaultWAL after initial compaction marker failure: %w", closeErr))
+		}
+
+		return saveErr
+	}
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("closing initialized DefaultWAL: %w", err)
+	}
+
+	return nil
+}
+
 // New creates a new DefaultWAL instance.
 func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Option) (*DefaultWAL, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
@@ -415,24 +447,8 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 		if err != nil {
 			return nil, fmt.Errorf("opening newly created DefaultWAL for initialization: %w", err)
 		}
-		if _, _, _, err := initialWAL.ReadAll(); err != nil {
-			readErr := fmt.Errorf("reading newly created DefaultWAL for initialization: %w", err)
-			if closeErr := initialWAL.Close(); closeErr != nil {
-				return nil, errors.Join(readErr, fmt.Errorf("closing newly created DefaultWAL after initialization read failure: %w", closeErr))
-			}
-
-			return nil, readErr
-		}
-		if err := initialWAL.SaveSnapshot(newCompactionMarker(0, 0)); err != nil {
-			saveErr := fmt.Errorf("saving initial compaction marker: %w", err)
-			if closeErr := initialWAL.Close(); closeErr != nil {
-				return nil, errors.Join(saveErr, fmt.Errorf("closing newly created DefaultWAL after initial compaction marker failure: %w", closeErr))
-			}
-
-			return nil, saveErr
-		}
-		if err := initialWAL.Close(); err != nil {
-			return nil, fmt.Errorf("closing initialized DefaultWAL: %w", err)
+		if err := initializeNewWAL(initialWAL); err != nil {
+			return nil, err
 		}
 
 		f, err := os.Create(markerFilePath)
