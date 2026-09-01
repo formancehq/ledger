@@ -91,7 +91,7 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 				runGit(t, repository, "-c", "user.name=Agent Check PR Test", "-c", "user.email=agent-check-pr@example.com", "commit", "-m", "changes")
 			}
 
-			stdout, _ := runSelectorList(t, repository, append(os.Environ(), "AI_REVIEW_BASE_SHA="+baseSHA))
+			stdout, _ := runSelectorList(t, repository, selectorEnvironment("AI_REVIEW_BASE_SHA="+baseSHA))
 			require.Equal(t, testCase.expected, strings.Fields(stdout))
 		})
 	}
@@ -120,7 +120,7 @@ func TestSelectorListKeepsDiagnosticsOutOfStructuredStdout(t *testing.T) {
 		"XDG_CACHE_HOME":      "cache",
 		"GOLANGCI_LINT_CACHE": "cache/golangci-lint",
 	}
-	environment := append(os.Environ(),
+	environment := selectorEnvironment(
 		"AI_REVIEW_BASE_SHA="+baseSHA,
 		"VALIDATION_RUN_DIR="+runDirectory,
 		"VALIDATION_RUN_ID=selector-test",
@@ -134,6 +134,30 @@ func TestSelectorListKeepsDiagnosticsOutOfStructuredStdout(t *testing.T) {
 	stdout, stderr := runSelectorList(t, repository, environment)
 	require.Equal(t, "agent-check-full\ntest-operator\n", stdout, "stdout must contain structured gates only")
 	require.Contains(t, stderr, "LINT_ISOLATION_GATE=PASS (", "stderr may contain validation diagnostics")
+}
+
+// The selector runs against a synthetic repository in these tests. A parent
+// review loop may bind its own candidate worktree through these variables;
+// carrying that unrelated binding into the child process would make the
+// selector reject the synthetic repository before exercising the test case.
+func selectorEnvironment(overrides ...string) []string {
+	environment := make([]string, 0, len(os.Environ())+len(overrides))
+	for _, value := range os.Environ() {
+		name, _, _ := strings.Cut(value, "=")
+		switch name {
+		case "EXPECTED_PR_NUMBER",
+			"EXPECTED_WORKTREE",
+			"EXPECTED_HEAD",
+			"AI_WORKTREE_PR",
+			"AI_WORKTREE_PATH",
+			"AI_WORKTREE_EXPECTED_HEAD",
+			"TRUSTED_ROOT_CHECKOUT":
+			continue
+		}
+		environment = append(environment, value)
+	}
+
+	return append(environment, overrides...)
 }
 
 func runSelectorList(t *testing.T, repository string, environment []string) (string, string) {
