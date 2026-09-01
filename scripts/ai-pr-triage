@@ -116,8 +116,11 @@ REJECT is advisory and requires positive repository evidence that the change is 
 Copy base_sha and head exactly. Output only JSON matching the schema.
 
 At the start, verify `pwd` and `git rev-parse --show-toplevel`. Both must equal
-the expected trusted worktree supplied below. `EXPECTED_PR_NUMBER` and
-`EXPECTED_HEAD` bind this read-only triage to the exact PR state.
+the trusted worktree supplied below. `EXPECTED_PR_NUMBER`, `EXPECTED_WORKTREE`,
+and `EXPECTED_HEAD` identify the exact PR evidence target. `AI_WORKTREE_PATH`
+and `AI_WORKTREE_EXPECTED_HEAD` separately bind this provider process to the
+base-pinned trusted worktree; never compare the PR head to the trusted-tool
+HEAD as though they were the same identity.
 EOF
 {
   printf '\nTRUSTED POLICY FILES\n- AGENTS: `%s`\n- agent context: `%s`\n- triage contract: `%s`\n- traceability contract: `%s`\n' \
@@ -179,11 +182,13 @@ root_fingerprint=$(root_workspace_fingerprint "$repo_root")
 echo "WORKTREE_BINDING_GATE=PASS role=trusted-triage pr=$pr_number path=$trusted_worktree head=$base_sha"
 set +e
 EXPECTED_PR_NUMBER="$pr_number" \
-EXPECTED_WORKTREE="$trusted_worktree" \
-EXPECTED_HEAD="$base_sha" \
+EXPECTED_WORKTREE="$head_worktree" \
+EXPECTED_HEAD="$head_sha" \
 AI_WORKTREE_PR="$pr_number" \
 AI_WORKTREE_PATH="$trusted_worktree" \
 AI_WORKTREE_EXPECTED_HEAD="$base_sha" \
+TARGET_BASE_SHA="$base_sha" \
+PR_HEAD_SHA="$head_sha" \
   env -C "$trusted_worktree" HOME="$isolation_root/home" CODEX_HOME="$isolation_root/home/.codex" codex exec \
     --ephemeral --ignore-user-config --ignore-rules \
     --disable hooks --disable plugins --disable apps --disable memories --disable multi_agent --disable skill_search \
