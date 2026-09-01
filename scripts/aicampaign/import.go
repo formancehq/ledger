@@ -94,7 +94,7 @@ func (runner importer) run(auditPath, qualifiedPath string) (*Campaign, error) {
 			Audit:     digestBytes(auditContent),
 			Qualified: digestBytes(qualifiedContent),
 		},
-		SourceFacts: SourceFacts{FactType: sourceFactType},
+		SourceFacts: SourceFacts{FactType: sourceFactType, Findings: []SourceFinding{}},
 	}
 	sourceIndexes := make(map[string]int, len(source.Findings))
 	for index, finding := range source.Findings {
@@ -141,7 +141,7 @@ func (runner importer) run(auditPath, qualifiedPath string) (*Campaign, error) {
 
 func validateImportReports(source *auditReport, qualified *challengeReport, auditContent []byte) error {
 	if !auditIDPattern.MatchString(source.AuditID) || !shaPattern.MatchString(source.Head) ||
-		len(source.Findings) == 0 || source.InspectedAreas == nil || source.Questions == nil ||
+		source.Findings == nil || source.InspectedAreas == nil || source.Questions == nil ||
 		!validResidualRisk(source.ResidualRisk) || !nonEmptyStrings(source.InspectedAreas) ||
 		!validQuestions(source.Questions) {
 		return errors.New("malformed source audit schema")
@@ -152,7 +152,7 @@ func validateImportReports(source *auditReport, qualified *challengeReport, audi
 	if !digestPattern.MatchString(qualified.SourceAuditDigest) || qualified.SourceAuditDigest != digestBytes(auditContent) {
 		return errors.New("source audit digest mismatch")
 	}
-	if !validResidualRisk(qualified.ResidualRisk) || len(qualified.Results) == 0 || qualified.Questions == nil ||
+	if !validResidualRisk(qualified.ResidualRisk) || qualified.Results == nil || qualified.Questions == nil ||
 		!validQuestions(qualified.Questions) {
 		return errors.New("malformed qualification schema")
 	}

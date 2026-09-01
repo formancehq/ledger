@@ -38,6 +38,28 @@ func TestImportValidQualifiedAudit(t *testing.T) {
 	require.NoError(t, campaign.validate())
 }
 
+func TestImportAllowsQualifiedAuditWithNoFindings(t *testing.T) {
+	t.Parallel()
+
+	sourcePath, qualifiedPath := writeImportFixture(t, []fixtureFinding{})
+	campaign, err := (importer{now: func() time.Time { return testNow }}).run(sourcePath, qualifiedPath)
+	require.NoError(t, err)
+	require.Empty(t, campaign.SourceFacts.Findings)
+	require.NotNil(t, campaign.SourceFacts.Findings)
+	require.NoError(t, campaign.validate())
+
+	inspection := runFakeInspection(campaign, fakeObservations{})
+	require.Empty(t, inspection.Findings)
+	require.NotNil(t, inspection.Findings)
+	next := buildNextResult(campaign)
+	require.Empty(t, next.Findings)
+	require.NotNil(t, next.Findings)
+
+	encoded, err := json.Marshal(campaign)
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), `"findings":[]`)
+}
+
 func TestImportRetainsNonConfirmedFindingsAsNonDispatchable(t *testing.T) {
 	t.Parallel()
 

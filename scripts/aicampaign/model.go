@@ -206,7 +206,7 @@ func (campaign *Campaign) validate() error {
 		!digestPattern.MatchString(campaign.SourceDigests.Qualified) {
 		return errors.New("invalid campaign provenance")
 	}
-	if campaign.SourceFacts.FactType != sourceFactType || len(campaign.SourceFacts.Findings) == 0 {
+	if campaign.SourceFacts.FactType != sourceFactType || campaign.SourceFacts.Findings == nil {
 		return errors.New("invalid source facts")
 	}
 	ids := make(map[string]SourceFinding, len(campaign.SourceFacts.Findings))
@@ -252,7 +252,8 @@ func (campaign *Campaign) validate() error {
 
 func (campaign *Campaign) validateObservations(sourceFindings map[string]SourceFinding) error {
 	observations := campaign.Observations
-	if observations.FactType != observationFactType || !validFreshness(observations.Freshness) {
+	if observations.FactType != observationFactType || observations.Findings == nil ||
+		!validFreshness(observations.Freshness) {
 		return errors.New("invalid observation envelope")
 	}
 	if observations.Freshness != combinedFreshness(observations.Providers) {

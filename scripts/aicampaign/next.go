@@ -12,6 +12,7 @@ func buildNextResult(campaign *Campaign) *NextResult {
 		AuditedSHA:         campaign.AuditedSHA,
 		BasedOnRefreshedAt: inspection.RefreshedAt,
 		Freshness:          inspection.Freshness,
+		Findings:           []NextFinding{},
 	}
 	for _, finding := range inspection.Findings {
 		result.Findings = append(result.Findings, NextFinding{

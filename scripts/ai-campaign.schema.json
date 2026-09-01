@@ -57,7 +57,6 @@
         "identityDigest": { "$ref": "#/$defs/digest" },
         "findings": {
           "type": "array",
-          "minItems": 1,
           "items": { "$ref": "#/$defs/sourceFinding" }
         }
       }

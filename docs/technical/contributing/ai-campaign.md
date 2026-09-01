@@ -59,7 +59,9 @@ All `CONFIRMED`, `LIKELY`, `QUESTION`, and `REJECTED` findings are retained.
 Only `CONFIRMED` has `dispatchable: true`. Import sorts findings by stable ID and
 derives `campaignId` from the schema version, audit identity, audited SHA, and
 both artifact digests. Import time is recorded separately and does not enter the
-logical identity.
+logical identity. A qualified clean audit with empty `findings` and `results`
+arrays imports as a valid zero-finding campaign; those arrays remain explicit
+empty JSON arrays in campaign, inspection, and next-action output.
 
 The schema is [`scripts/ai-campaign.schema.json`](../../../scripts/ai-campaign.schema.json).
 The artifact separates:

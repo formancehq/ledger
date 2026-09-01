@@ -85,6 +85,7 @@ func (runner inspector) run(ctx context.Context, campaign *Campaign, options ins
 		RefreshedAt: refreshedAt,
 		Freshness:   freshness,
 		Providers:   providers,
+		Findings:    []FindingObservation{},
 		Target: TargetObservation{
 			FactType: observationFactType,
 			Branch:   options.target,
@@ -244,6 +245,7 @@ func staleObservations(campaign *Campaign, previous priorObservationSet, target 
 		FactType:  observationFactType,
 		Freshness: freshness,
 		Providers: providers,
+		Findings:  []FindingObservation{},
 		Target: TargetObservation{
 			FactType:    observationFactType,
 			Branch:      target,
@@ -383,6 +385,7 @@ func buildInspection(campaign *Campaign) *Inspection {
 		RefreshedAt:   observations.RefreshedAt,
 		Freshness:     observations.Freshness,
 		Providers:     observations.Providers,
+		Findings:      []InspectionFinding{},
 	}
 	byID := make(map[string]FindingObservation, len(observations.Findings))
 	for _, finding := range observations.Findings {
