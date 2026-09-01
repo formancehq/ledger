@@ -398,9 +398,21 @@ The system can recover completely from:
 
 The WAL is compacted after snapshots to prevent unbounded growth:
 
-1. When a snapshot is created at index `N`, entries before `N - CompactionMargin` are deleted
-2. The `CompactionMargin` keeps a buffer for slow followers to catch up
-3. Old WAL segment files are removed from disk
+1. When a snapshot is created at index `N`, maintenance requests compaction at
+   `C = N - CompactionMargin`. A target older than the current retained-log
+   boundary is a no-op; compaction never moves the boundary backwards.
+2. When the boundary advances to `C`, entry `C` is retained as a dummy matching
+   point: `Term(C)` remains available, `FirstIndex()` becomes `C + 1`, and
+   entries `[C + 1, N]` remain available through `Entries`. A follower whose
+   last matching entry is `C` can therefore catch up through `MsgApp` without
+   receiving a full snapshot.
+3. Snapshot publication and log compaction are independent boundaries.
+   Advancing `Snapshot().Metadata.Index` must not make retained entries or their
+   terms unavailable. This `raft.Storage` contract prevents a maintenance tick
+   from turning a small follower lag into a full store synchronization (EN-1925).
+4. Old WAL segment files are removed from disk after the in-memory boundary has
+   advanced. Segment reclamation remains best-effort and does not change the
+   logical availability boundary.
 
 For detailed explanation, see [WAL Compaction in Data Flows](../../data-flows.md#wal-compaction).
 

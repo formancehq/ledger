@@ -321,6 +321,15 @@ Leader Progress Tracker:
 
 3. **Follower too far behind**: If the required entries have been compacted from the WAL (index < compactIndex), the leader **cannot** send the missing entries.
 
+Snapshot creation does not itself make older retained entries unavailable. The
+WAL exposes compaction index `C` as the matching point at `FirstIndex()-1`:
+`Term(C)` remains readable and entries after `C` remain available even when the
+latest snapshot index is newer. A follower at `C` must therefore be caught up
+with `MsgApp`; `MsgSnap` is reserved for followers older than the retained
+boundary. This separation is the operational purpose of `CompactionMargin` and
+prevents routine maintenance from forcing a full business-log synchronization
+for a follower that is only a few entries behind (EN-1925).
+
 #### Snapshot Transfer (MsgSnap)
 
 When a follower is too far behind for log replay, the leader sends a **MsgSnap** (InstallSnapshot) message:
