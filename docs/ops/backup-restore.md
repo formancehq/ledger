@@ -320,7 +320,7 @@ The server-side job:
 3. Reads the manifest from S3 and downloads the checkpoint files in parallel
    through an `errgroup` worker pool. The pool size is set by the server flag
    `--restore-download-parallelism` (default 16, clamped to `[1, 64]`).
-4. Applies any incremental export segments on top of the checkpoint and rebuilds derived state (volumes, metadata, transactions, reversion bitsets, the chapter registry) from the exported logs, starting at the checkpoint's last log sequence. This is the same `ApplyExports` + `RebuildDelta` path used by the offline `ledgerctl store bootstrap` command, so a manifest with incremental backups restores all data written after the last full checkpoint.
+4. Applies any incremental export segments on top of the checkpoint and rebuilds derived state (volumes, metadata, transactions, reversion bitsets, the chapter registry, the index registry) from the exported logs, starting at the checkpoint's last log sequence. This is the same `ApplyExports` + `RebuildDelta` path used by the offline `ledgerctl store bootstrap` command, so a manifest with incremental backups restores all data written after the last full checkpoint. The index registry fold covers the full lifecycle — create, retype version bump, drop, and the removal cascade — see [Restore Lifecycle](../technical/architecture/subsystems/indexer/indexes.md#restore-lifecycle); per-replica read indexes are deliberately NOT restored and are rebuilt by each node's indexbuilder from the restored registry.
 5. On success, marks the staging as ready.
 
 If the job fails or is cancelled, the staging directory is wiped so the

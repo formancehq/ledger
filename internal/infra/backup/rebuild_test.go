@@ -11,6 +11,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
@@ -766,6 +767,8 @@ func newAttributeReplayWriter(t *testing.T) (*attributeReplayWriter, *attributes
 		reversions:      make(map[string]*bitset.Bitset),
 		dirtyReversions: make(map[string]struct{}),
 		readHandle:      readHandle,
+		index:           attrs.Index,
+		pendingIndexes:  make(map[string]*commonpb.Index),
 	}
 	t.Cleanup(func() { _ = writer.batch.Cancel() })
 
@@ -1194,4 +1197,243 @@ func TestRebuildDelta_ReplaysRevokeSigningKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+// applyLedgerLogAt is applyLedgerLog with an explicit log date — the replayed
+// CreateIndex stamps it on the registry row.
+func applyLedgerLogAt(seq uint64, ledger string, date uint64, payload *commonpb.LedgerLogPayload) *commonpb.Log {
+	log := applyLedgerLog(seq, ledger, payload)
+	log.GetPayload().GetApply().GetLog().Date = &commonpb.Timestamp{Data: date}
+
+	return log
+}
+
+func TestRebuildDelta_ReplaysIndexRegistry(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	metaID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0")
+	refID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	dateID := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
+			SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
+				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				Key:        "k0",
+				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+			},
+		},
+	})))
+	require.NoError(t, batch.SetProto(coldLogKey(3), applyLedgerLogAt(3, "ledger", 777, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreateIndex{
+			CreateIndex: &commonpb.CreatedIndexLog{Id: metaID},
+		},
+	})))
+	// Retype: bumps the covered index's forward-encoding version.
+	require.NoError(t, batch.SetProto(coldLogKey(4), applyLedgerLog(4, "ledger", &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
+			SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
+				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				Key:        "k0",
+				Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+			},
+		},
+	})))
+	require.NoError(t, batch.SetProto(coldLogKey(5), applyLedgerLogAt(5, "ledger", 888, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreateIndex{
+			CreateIndex: &commonpb.CreatedIndexLog{Id: refID},
+		},
+	})))
+	require.NoError(t, batch.SetProto(coldLogKey(6), applyLedgerLogAt(6, "ledger", 999, &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_CreateIndex{
+			CreateIndex: &commonpb.CreatedIndexLog{Id: dateID},
+		},
+	})))
+	// The removal cascade: the log carries the dropped index id.
+	require.NoError(t, batch.SetProto(coldLogKey(7), applyLedgerLog(7, "ledger", &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{
+			RemovedMetadataFieldType: &commonpb.RemovedMetadataFieldTypeLog{
+				TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				Key:          "k0",
+				DroppedIndex: metaID,
+			},
+		},
+	})))
+	require.NoError(t, batch.SetProto(coldLogKey(8), applyLedgerLog(8, "ledger", &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_DropIndex{
+			DropIndex: &commonpb.DroppedIndexLog{Id: refID},
+		},
+	})))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	attrs := attributes.New()
+
+	metaRow, err := attrs.Index.Get(handle, indexes.KeyFor("ledger", metaID).Bytes())
+	require.NoError(t, err)
+	require.Nil(t, metaRow, "the field removal's cascade must drop the registry row")
+
+	refRow, err := attrs.Index.Get(handle, indexes.KeyFor("ledger", refID).Bytes())
+	require.NoError(t, err)
+	require.Nil(t, refRow, "the DropIndex log must drop the registry row")
+
+	dateRow, err := attrs.Index.Get(handle, indexes.KeyFor("ledger", dateID).Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, dateRow, "a created index must survive the rebuild")
+	require.Equal(t, "ledger", dateRow.GetLedger())
+	require.True(t, indexes.Equal(dateID, dateRow.GetId()))
+	require.Equal(t, uint32(1), dateRow.GetForwardEncodingVersion())
+	require.Equal(t, uint64(999), dateRow.GetCreatedAt().GetData())
+}
+
+func TestRebuildDelta_BumpsCheckpointIndexOnRetype(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+	attrs := attributes.New()
+
+	metaID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0")
+
+	// Checkpoint state: the index predates the delta, so the retype's bump
+	// must read it from the committed store, not from the replay window.
+	seed := store.OpenWriteSession()
+	_, err := attrs.Index.Set(seed, indexes.KeyFor("ledger", metaID).Bytes(), &commonpb.Index{
+		Id:                     metaID,
+		CreatedAt:              &commonpb.Timestamp{Data: 111},
+		Ledger:                 "ledger",
+		ForwardEncodingVersion: 2,
+	})
+	require.NoError(t, err)
+	require.NoError(t, seed.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, seed.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", &commonpb.LedgerLogPayload{
+		Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
+			SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
+				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				Key:        "k0",
+				Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+			},
+		},
+	})))
+	require.NoError(t, seed.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	row, err := attrs.Index.Get(handle, indexes.KeyFor("ledger", metaID).Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, row)
+	require.Equal(t, uint32(3), row.GetForwardEncodingVersion(), "the retype must bump the checkpoint row's version")
+	require.Equal(t, uint64(111), row.GetCreatedAt().GetData(), "the bump must not touch created_at")
+}
+
+// TestAttributeReplayWriter_SetMetadataFieldType_LedgerTarget pins the
+// ledger- and transaction-target arms of the replayed schema fold: each
+// declaration lands in its target's field map, and the ledger-target retype
+// cascade finds no covering index (there is no ledger-target metadata index),
+// so no registry row appears.
+func TestAttributeReplayWriter_SetMetadataFieldType_LedgerTarget(t *testing.T) {
+	t.Parallel()
+
+	writer, attrs, store := newAttributeReplayWriter(t)
+	writer.ledgerInfos["ledger"] = &commonpb.LedgerInfo{Name: "ledger"}
+
+	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_LEDGER, "env",
+		commonpb.MetadataType_METADATA_TYPE_STRING))
+	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_TRANSACTION, "batch_id",
+		commonpb.MetadataType_METADATA_TYPE_UINT64))
+	require.NoError(t, writer.batch.Commit())
+
+	info, err := attrs.Ledger.Get(store, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING,
+		info.GetMetadataSchema().GetLedgerFields()["env"].GetType())
+	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_UINT64,
+		info.GetMetadataSchema().GetTransactionFields()["batch_id"].GetType())
+
+	row, err := attrs.Index.Get(store, indexes.KeyFor("ledger",
+		indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_LEDGER, "env")).Bytes())
+	require.NoError(t, err)
+	require.Nil(t, row)
+}
+
+// TestAttributeReplayWriter_RetypeCascade_MissingRowIsNoOp pins the cascade's
+// missing-row path: a field declaration with no covering index folds the
+// schema and writes no registry row.
+func TestAttributeReplayWriter_RetypeCascade_MissingRowIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	writer, attrs, store := newAttributeReplayWriter(t)
+	writer.ledgerInfos["ledger"] = &commonpb.LedgerInfo{Name: "ledger"}
+
+	metaID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+
+	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
+		commonpb.MetadataType_METADATA_TYPE_INT64))
+	require.NoError(t, writer.batch.Commit())
+
+	row, err := attrs.Index.Get(store, indexes.KeyFor("ledger", metaID).Bytes())
+	require.NoError(t, err)
+	require.Nil(t, row)
+}
+
+// TestAttributeReplayWriter_RetypeCascade_TombstoneShadowsCheckpointRow pins
+// the same-window deletion marker: a checkpoint row dropped earlier in the
+// replay window must read as absent for the rest of the window, so a
+// subsequent retype of the same field neither bumps nor resurrects it.
+func TestAttributeReplayWriter_RetypeCascade_TombstoneShadowsCheckpointRow(t *testing.T) {
+	t.Parallel()
+
+	writer, attrs, store := newAttributeReplayWriter(t)
+	writer.ledgerInfos["ledger"] = &commonpb.LedgerInfo{Name: "ledger"}
+
+	metaID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+
+	// Checkpoint state: the row is committed before the replay window opens.
+	seed := store.OpenWriteSession()
+	_, err := attrs.Index.Set(seed, indexes.KeyFor("ledger", metaID).Bytes(), &commonpb.Index{
+		Id:                     metaID,
+		Ledger:                 "ledger",
+		ForwardEncodingVersion: 2,
+	})
+	require.NoError(t, err)
+	require.NoError(t, seed.Commit())
+
+	require.NoError(t, writer.DropIndex("ledger", metaID))
+	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
+		commonpb.MetadataType_METADATA_TYPE_UINT64))
+	require.NoError(t, writer.batch.Commit())
+
+	row, err := attrs.Index.Get(store, indexes.KeyFor("ledger", metaID).Bytes())
+	require.NoError(t, err)
+	require.Nil(t, row, "the dropped checkpoint row must not be bumped back into existence")
+}
+
+// TestAttributeReplayWriter_RetypeCascade_ReadFailureSurfaces pins the
+// cascade's read error path: a failing registry read fails the schema fold
+// loudly instead of silently restoring a registry missing the version bump.
+func TestAttributeReplayWriter_RetypeCascade_ReadFailureSurfaces(t *testing.T) {
+	t.Parallel()
+
+	writer, _, _ := newAttributeReplayWriter(t)
+	writer.ledgerInfos["ledger"] = &commonpb.LedgerInfo{Name: "ledger"}
+
+	closed := newRebuildTestStore(t)
+	require.NoError(t, closed.Close())
+	writer.store = closed
+
+	err := writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
+		commonpb.MetadataType_METADATA_TYPE_INT64)
+	require.ErrorContains(t, err, "retype cascade")
 }

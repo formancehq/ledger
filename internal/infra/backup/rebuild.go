@@ -15,6 +15,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -50,8 +51,10 @@ func RebuildDelta(
 		ledger:          attrs.Ledger,
 		references:      attrs.References,
 		boundary:        attrs.Boundary,
+		index:           attrs.Index,
 		pendingVolumes:  make(map[string]*raftcmdpb.VolumePair),
 		pendingTx:       make(map[string]*commonpb.TransactionState),
+		pendingIndexes:  make(map[string]*commonpb.Index),
 		ledgerInfos:     make(map[string]*commonpb.LedgerInfo),
 		boundaries:      make(map[string]*raftcmdpb.LedgerBoundaries),
 		reversions:      make(map[string]*bitset.Bitset),
@@ -186,7 +189,7 @@ func RebuildDelta(
 
 			ledgerName := p.Apply.GetLedgerName()
 
-			if err := replay.ReplayLedgerLog(ledgerName, seq, p.Apply.GetLog().GetData(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+			if err := replay.ReplayLedgerLog(ledgerName, seq, p.Apply.GetLog().GetData(), p.Apply.GetLog().GetDate(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("replaying ledger log %d: %w", seq, err)
@@ -509,6 +512,7 @@ func RebuildDelta(
 			writer.batch = batch
 			clear(writer.pendingVolumes)
 			clear(writer.pendingTx)
+			clear(writer.pendingIndexes)
 
 			logger.WithFields(map[string]any{
 				"logsProcessed": count,
@@ -722,7 +726,79 @@ func (w *attributeReplayWriter) SetMetadataFieldType(ledger string, target commo
 		info.MetadataSchema.LedgerFields[key] = field
 	}
 
-	return w.saveLedgerInfo(info)
+	if err := w.saveLedgerInfo(info); err != nil {
+		return err
+	}
+
+	// The retype cascade processSetMetadataFieldType applies: if an index
+	// covers this field, bump its forward_encoding_version so the restored
+	// registry row matches the one the live apply wrote.
+	id := indexes.MetadataID(target, key)
+
+	row, err := w.getIndex(ledger, id)
+	if err != nil {
+		return fmt.Errorf("reading index registry row for retype cascade: %w", err)
+	}
+
+	if row == nil {
+		return nil
+	}
+
+	row = row.CloneVT()
+	row.ForwardEncodingVersion++
+
+	return w.putIndex(ledger, id, row)
+}
+
+// CreateIndex writes the registry row the live processCreateIndex writes: a
+// fresh entry at forward-encoding version 1, stamped with the log's apply
+// date. A duplicate CreateIndex overwrites the row, matching the live
+// handler.
+func (w *attributeReplayWriter) CreateIndex(ledger string, id *commonpb.IndexID, createdAt *commonpb.Timestamp) error {
+	return w.putIndex(ledger, id, &commonpb.Index{
+		Id:                     id,
+		CreatedAt:              createdAt,
+		Ledger:                 ledger,
+		ForwardEncodingVersion: 1,
+	})
+}
+
+// DropIndex deletes the registry row for (ledger, id) — the DropIndex log and
+// the RemovedMetadataFieldType cascade both land here. The pending entry is
+// set to nil (not removed) so a later same-window read does not resurrect a
+// committed checkpoint row the replay already deleted.
+func (w *attributeReplayWriter) DropIndex(ledger string, id *commonpb.IndexID) error {
+	key := indexes.KeyFor(ledger, id).Bytes()
+	w.pendingIndexes[string(key)] = nil
+
+	if err := w.index.Delete(w.batch, key); err != nil {
+		return fmt.Errorf("deleting index registry row: %w", err)
+	}
+
+	return nil
+}
+
+func (w *attributeReplayWriter) putIndex(ledger string, id *commonpb.IndexID, row *commonpb.Index) error {
+	key := indexes.KeyFor(ledger, id).Bytes()
+	w.pendingIndexes[string(key)] = row
+
+	if _, err := w.index.Set(w.batch, key, row); err != nil {
+		return fmt.Errorf("writing index registry row: %w", err)
+	}
+
+	return nil
+}
+
+// getIndex resolves the registry row for (ledger, id): replay-touched rows
+// (including nil deletion markers) come from pendingIndexes, checkpoint rows
+// from the committed store — same-batch visibility, cf. GetVolume.
+func (w *attributeReplayWriter) getIndex(ledger string, id *commonpb.IndexID) (*commonpb.Index, error) {
+	key := indexes.KeyFor(ledger, id).Bytes()
+	if row, ok := w.pendingIndexes[string(key)]; ok {
+		return row, nil
+	}
+
+	return w.index.Get(w.store, key)
 }
 
 // RemoveMetadataFieldType drops a field-type declaration from the ledger's
@@ -824,8 +900,17 @@ type attributeReplayWriter struct {
 	ledger         *attributes.Attribute[*commonpb.LedgerInfo]
 	references     *attributes.Attribute[*commonpb.TransactionReferenceValue]
 	boundary       *attributes.Attribute[*raftcmdpb.LedgerBoundaries]
+	index          *attributes.Attribute[*commonpb.Index]
 	pendingVolumes map[string]*raftcmdpb.VolumePair
 	pendingTx      map[string]*commonpb.TransactionState
+
+	// Index registry rows touched by the replay window, keyed by the
+	// canonical IndexKey bytes. w.batch is non-indexed, so same-window reads
+	// (the retype version bump) resolve here first; a nil value marks a row
+	// the replay deleted, shadowing a committed checkpoint row. Cleared at
+	// every batch commit alongside pendingVolumes/pendingTx — the committed
+	// rows are then visible through the direct store read.
+	pendingIndexes map[string]*commonpb.Index
 
 	// LedgerInfo per ledger, carrying the evolving metadata schema and account
 	// types. Both live on LedgerInfo (not a per-key attribute), so schema and
