@@ -26,6 +26,7 @@ import (
 	otlp "github.com/formancehq/go-libs/v5/pkg/observe"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
+	otlppyroscopetraces "github.com/formancehq/go-libs/v5/pkg/observe/pyroscopetraces"
 	otlptraces "github.com/formancehq/go-libs/v5/pkg/observe/traces"
 	"github.com/formancehq/go-libs/v5/pkg/service"
 
@@ -96,6 +97,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	// Add OpenTelemetry flags from go-libs
 	otlp.AddFlags(runCmd.Flags())
 	otlptraces.AddFlags(runCmd.Flags())
+	otlppyroscopetraces.AddFlags(runCmd.Flags())
 	otlpmetrics.AddFlags(runCmd.Flags())
 	addOtlpLogsFlags(runCmd.Flags())
 
@@ -369,6 +371,11 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		// Add OpenTelemetry modules from go-libs (using flags)
 		observefx.ResourceModuleFromFlags(cmd, otlp.WithServiceVersion(fmt.Sprintf("%s-%s", info.Version, info.Commit))),
 		observefx.TracesModuleFromFlags(cmd),
+		// Decorates the trace.TracerProvider from TracesModule with a
+		// pyroscope.profile.id span attribute (see PyroscopeTracesModule doc
+		// comment) so Grafana can correlate a trace span with the Pyroscope
+		// profile samples captured while it ran. No-op unless enabled by flag.
+		observefx.PyroscopeTracesModuleFromFlags(cmd),
 		observefx.MetricsModuleFromFlags(cmd),
 		// Add trace sampling module (wraps exporter with error-aware sampling)
 		tracesampling.Module(traceSamplingCfg),

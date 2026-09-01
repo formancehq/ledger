@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -129,10 +130,20 @@ func RequireScope(cfg AuthConfig, scopes ...Scope) func(http.Handler) http.Handl
 
 // logHTTPAuthFailure logs an authentication failure from an HTTP request with structured fields.
 func logHTTPAuthFailure(r *http.Request, keyID, reason string, err error) {
+	// middleware.RealIP used to mutate r.RemoteAddr; its replacement
+	// (middleware.ClientIPFromXFFTrustedProxies, see handler.go) resolves
+	// the client IP into the request context instead, read here via
+	// GetClientIP. Fall back to r.RemoteAddr (the proxy's IP, not the
+	// client's) only if resolution failed, so this field is never empty.
+	remoteAddr := middleware.GetClientIP(r.Context())
+	if remoteAddr == "" {
+		remoteAddr = r.RemoteAddr
+	}
+
 	fields := map[string]any{
 		"reason":     reason,
 		"error":      err.Error(),
-		"remoteAddr": r.RemoteAddr,
+		"remoteAddr": remoteAddr,
 	}
 	if keyID != "" {
 		fields["keyId"] = keyID
