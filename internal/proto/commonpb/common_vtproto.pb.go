@@ -982,6 +982,15 @@ func (m *LogPayload_DeletedLedgerMetadata) CloneVT() isLogPayload_Type {
 	return r
 }
 
+func (m *LogPayload_SetClusterPolicy) CloneVT() isLogPayload_Type {
+	if m == nil {
+		return (*LogPayload_SetClusterPolicy)(nil)
+	}
+	r := new(LogPayload_SetClusterPolicy)
+	r.SetClusterPolicy = m.SetClusterPolicy.CloneVT()
+	return r
+}
+
 func (m *PromotedLedgerLog) CloneVT() *PromotedLedgerLog {
 	if m == nil {
 		return (*PromotedLedgerLog)(nil)
@@ -1135,6 +1144,23 @@ func (m *SetMaintenanceModeLog) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
+func (m *SetClusterPolicyLog) CloneVT() *SetClusterPolicyLog {
+	if m == nil {
+		return (*SetClusterPolicyLog)(nil)
+	}
+	r := new(SetClusterPolicyLog)
+	r.Policy = m.Policy.CloneVT()
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *SetClusterPolicyLog) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
 func (m *BloomTypeConfig) CloneVT() *BloomTypeConfig {
 	if m == nil {
 		return (*BloomTypeConfig)(nil)
@@ -1198,6 +1224,25 @@ func (m *PersistedClusterState) CloneVT() *PersistedClusterState {
 }
 
 func (m *PersistedClusterState) CloneMessageVT() proto.Message {
+	return m.CloneVT()
+}
+
+func (m *ClusterPolicy) CloneVT() *ClusterPolicy {
+	if m == nil {
+		return (*ClusterPolicy)(nil)
+	}
+	r := new(ClusterPolicy)
+	r.Revision = m.Revision
+	r.IdempotencyTtlMicros = m.IdempotencyTtlMicros
+	r.QueryCheckpointLimit = m.QueryCheckpointLimit
+	if len(m.unknownFields) > 0 {
+		r.unknownFields = make([]byte, len(m.unknownFields))
+		copy(r.unknownFields, m.unknownFields)
+	}
+	return r
+}
+
+func (m *ClusterPolicy) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -6322,6 +6367,31 @@ func (this *LogPayload_DeletedLedgerMetadata) EqualVT(thatIface isLogPayload_Typ
 	return true
 }
 
+func (this *LogPayload_SetClusterPolicy) EqualVT(thatIface isLogPayload_Type) bool {
+	that, ok := thatIface.(*LogPayload_SetClusterPolicy)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if p, q := this.SetClusterPolicy, that.SetClusterPolicy; p != q {
+		if p == nil {
+			p = &SetClusterPolicyLog{}
+		}
+		if q == nil {
+			q = &SetClusterPolicyLog{}
+		}
+		if !p.EqualVT(q) {
+			return false
+		}
+	}
+	return true
+}
+
 func (this *PromotedLedgerLog) EqualVT(that *PromotedLedgerLog) bool {
 	if this == that {
 		return true
@@ -6495,6 +6565,25 @@ func (this *SetMaintenanceModeLog) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
+func (this *SetClusterPolicyLog) EqualVT(that *SetClusterPolicyLog) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if !this.Policy.EqualVT(that.Policy) {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *SetClusterPolicyLog) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*SetClusterPolicyLog)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
 func (this *BloomTypeConfig) EqualVT(that *BloomTypeConfig) bool {
 	if this == that {
 		return true
@@ -6592,6 +6681,31 @@ func (this *PersistedClusterState) EqualVT(that *PersistedClusterState) bool {
 
 func (this *PersistedClusterState) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*PersistedClusterState)
+	if !ok {
+		return false
+	}
+	return this.EqualVT(that)
+}
+func (this *ClusterPolicy) EqualVT(that *ClusterPolicy) bool {
+	if this == that {
+		return true
+	} else if this == nil || that == nil {
+		return false
+	}
+	if this.Revision != that.Revision {
+		return false
+	}
+	if this.IdempotencyTtlMicros != that.IdempotencyTtlMicros {
+		return false
+	}
+	if this.QueryCheckpointLimit != that.QueryCheckpointLimit {
+		return false
+	}
+	return string(this.unknownFields) == string(that.unknownFields)
+}
+
+func (this *ClusterPolicy) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*ClusterPolicy)
 	if !ok {
 		return false
 	}
@@ -14431,6 +14545,27 @@ func (m *LogPayload_DeletedLedgerMetadata) MarshalToSizedBufferVT(dAtA []byte) (
 	}
 	return len(dAtA) - i, nil
 }
+func (m *LogPayload_SetClusterPolicy) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *LogPayload_SetClusterPolicy) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.SetClusterPolicy != nil {
+		size, err := m.SetClusterPolicy.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1
+		i--
+		dAtA[i] = 0xda
+	}
+	return len(dAtA) - i, nil
+}
 func (m *PromotedLedgerLog) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -14797,6 +14932,49 @@ func (m *SetMaintenanceModeLog) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
+func (m *SetClusterPolicyLog) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SetClusterPolicyLog) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *SetClusterPolicyLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Policy != nil {
+		size, err := m.Policy.MarshalToSizedBufferVT(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *BloomTypeConfig) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -15049,6 +15227,57 @@ func (m *PersistedClusterState) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ClusterPolicy) MarshalVT() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ClusterPolicy) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *ClusterPolicy) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.QueryCheckpointLimit != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.QueryCheckpointLimit))
+		i--
+		dAtA[i] = 0x19
+	}
+	if m.IdempotencyTtlMicros != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.IdempotencyTtlMicros))
+		i--
+		dAtA[i] = 0x11
+	}
+	if m.Revision != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Revision))
+		i--
+		dAtA[i] = 0x9
 	}
 	return len(dAtA) - i, nil
 }
@@ -24245,6 +24474,18 @@ func (m *LogPayload_DeletedLedgerMetadata) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *LogPayload_SetClusterPolicy) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.SetClusterPolicy != nil {
+		l = m.SetClusterPolicy.SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	return n
+}
 func (m *PromotedLedgerLog) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -24377,6 +24618,20 @@ func (m *SetMaintenanceModeLog) SizeVT() (n int) {
 	return n
 }
 
+func (m *SetClusterPolicyLog) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Policy != nil {
+		l = m.Policy.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *BloomTypeConfig) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -24468,6 +24723,25 @@ func (m *PersistedClusterState) SizeVT() (n int) {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.CacheEpoch != 0 {
+		n += 9
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *ClusterPolicy) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Revision != 0 {
+		n += 9
+	}
+	if m.IdempotencyTtlMicros != 0 {
+		n += 9
+	}
+	if m.QueryCheckpointLimit != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
@@ -33412,6 +33686,47 @@ func (m *LogPayload) UnmarshalVT(dAtA []byte) error {
 				m.Type = &LogPayload_DeletedLedgerMetadata{DeletedLedgerMetadata: v}
 			}
 			iNdEx = postIndex
+		case 27:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SetClusterPolicy", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if oneof, ok := m.Type.(*LogPayload_SetClusterPolicy); ok {
+				if err := oneof.SetClusterPolicy.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+			} else {
+				v := &SetClusterPolicyLog{}
+				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+					return err
+				}
+				m.Type = &LogPayload_SetClusterPolicy{SetClusterPolicy: v}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -34242,6 +34557,93 @@ func (m *SetMaintenanceModeLog) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *SetClusterPolicyLog) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SetClusterPolicyLog: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SetClusterPolicyLog: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Policy", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Policy == nil {
+				m.Policy = &ClusterPolicy{}
+			}
+			if err := m.Policy.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *BloomTypeConfig) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -34918,6 +35320,87 @@ func (m *PersistedClusterState) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.CacheEpoch = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		default:
+			iNdEx = preIndex
+			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ClusterPolicy) UnmarshalVT(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return protohelpers.ErrIntOverflow
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ClusterPolicy: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ClusterPolicy: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Revision", wireType)
+			}
+			m.Revision = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Revision = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 2:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IdempotencyTtlMicros", wireType)
+			}
+			m.IdempotencyTtlMicros = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.IdempotencyTtlMicros = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 3:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field QueryCheckpointLimit", wireType)
+			}
+			m.QueryCheckpointLimit = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.QueryCheckpointLimit = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex

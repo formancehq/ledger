@@ -469,6 +469,38 @@ func TestRebuildDelta_ReplaysLedgerMetadata(t *testing.T) {
 	require.Nil(t, tier, "ledger metadata deleted after the checkpoint must not resurrect")
 }
 
+// A SetClusterPolicy log replayed after the checkpoint must rebuild the
+// persisted cluster policy row.
+func TestRebuildDelta_ReplaysClusterPolicy(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	policy := &commonpb.ClusterPolicy{Revision: 4, IdempotencyTtlMicros: 5000, QueryCheckpointLimit: 12}
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), &commonpb.Log{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_SetClusterPolicy{
+				SetClusterPolicy: &commonpb.SetClusterPolicyLog{Policy: policy},
+			},
+		},
+	}))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	got, err := query.ReadClusterPolicy(handle)
+	require.NoError(t, err)
+	require.NotNil(t, got, "the cluster policy must be rebuilt from the SetClusterPolicy log")
+	require.True(t, policy.EqualVT(got))
+}
+
 func TestRebuildDelta_ReplaysDeleteLedger(t *testing.T) {
 	t.Parallel()
 

@@ -71,6 +71,12 @@ type Scope interface {
 	// Maintenance mode operations
 	SetMaintenanceMode(enabled bool)
 
+	// Cluster policy operations. GetClusterPolicy returns the effective policy
+	// for the FSM revision check (never nil); SetClusterPolicy stages the new
+	// policy after the handler has validated its revision.
+	GetClusterPolicy() *commonpb.ClusterPolicy
+	SetClusterPolicy(policy *commonpb.ClusterPolicy)
+
 	// Events sink reads (writes moved to the WriteSet sink via Absorb).
 	GetSinkConfig(name string) (commonpb.SinkConfigReader, error)
 

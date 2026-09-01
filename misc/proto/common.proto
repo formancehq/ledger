@@ -340,6 +340,7 @@ message LogPayload {
     DeletedQueryCheckpointScheduleLog delete_query_checkpoint_schedule = 24;
     SavedLedgerMetadataLog saved_ledger_metadata = 25;
     DeletedLedgerMetadataLog deleted_ledger_metadata = 26;
+    SetClusterPolicyLog set_cluster_policy = 27;
   }
 }
 
@@ -391,6 +392,11 @@ message SetMaintenanceModeLog {
   bool enabled = 1;
 }
 
+// SetClusterPolicyLog records a cluster policy change.
+message SetClusterPolicyLog {
+  ClusterPolicy policy = 1;
+}
+
 // BloomTypeConfig holds the configuration for a single bloom filter type.
 message BloomTypeConfig {
   uint64 expected_keys = 1;
@@ -427,6 +433,16 @@ message ClusterConfig {
 message PersistedClusterState {
   ClusterConfig config = 1;
   fixed64 cache_epoch = 2;  // Incremented on each config-driven cache reset
+}
+
+// ClusterPolicy is the Raft-replicated cluster-wide policy for behavior that
+// must apply identically on every node during FSM apply (idempotency
+// expiration, query-checkpoint admission). revision is monotonic so a stale
+// proposal can never overwrite a newer committed policy.
+message ClusterPolicy {
+  fixed64 revision = 1;
+  fixed64 idempotency_ttl_micros = 2;  // 0 means never expires
+  fixed64 query_checkpoint_limit = 3;  // must be >= 1
 }
 
 
@@ -1281,6 +1297,20 @@ enum ErrorReason {
   // chapter that must be archived first: here there is nothing to archive
   // first, and the metadata reports how far the prefix reaches instead.
   ERROR_REASON_CHAPTER_ALREADY_ARCHIVED = 72;
+  // ERROR_REASON_STALE_CLUSTER_POLICY: a cluster-policy update carried a
+  // revision lower than the applied one. Deterministic rejection — a newer
+  // policy already won; the leader-side reconciler re-evaluates on the next
+  // tick. See EN-1827.
+  ERROR_REASON_STALE_CLUSTER_POLICY = 73;
+  // ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT: two cluster-policy updates
+  // carried the same revision with different payloads. The control plane must
+  // assign a fresh revision per distinct policy, so this is a contract
+  // violation surfaced deterministically on every node. See EN-1827.
+  ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT = 74;
+  // ERROR_REASON_CLUSTER_POLICY_INVALID: a cluster-policy update carried a
+  // structurally invalid payload (missing policy, or query_checkpoint_limit
+  // below 1). See EN-1827.
+  ERROR_REASON_CLUSTER_POLICY_INVALID = 75;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

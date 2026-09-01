@@ -598,6 +598,8 @@ func processSystemScoped(ss *raftcmdpb.SystemScopedOrder, ctx *Context) (*common
 		return processSetQueryCheckpointSchedule(payload.SetQueryCheckpointSchedule, ctx)
 	case *raftcmdpb.SystemScopedOrder_DeleteQueryCheckpointSchedule:
 		return processDeleteQueryCheckpointSchedule(ctx)
+	case *raftcmdpb.SystemScopedOrder_SetClusterPolicy:
+		return processSetClusterPolicy(payload.SetClusterPolicy, ctx)
 	default:
 		return nil, &domain.ErrInvalidOrderType{TypeName: fmt.Sprintf("%T", ss.GetPayload())}
 	}

@@ -19,6 +19,9 @@ func TestRunnerPinsPolicyToBaseAndExposesExactPRHeadAsEvidence(t *testing.T) {
 	require.NoError(t, err, output)
 	require.Equal(t, fixture.baseSHA, strings.TrimSpace(readFile(t, fixture.codexHeadCapture)))
 	require.Equal(t, fixture.headSHA, strings.TrimSpace(readFile(t, fixture.evidenceHeadCapture)))
+	require.Equal(t, fixture.headSHA, strings.TrimSpace(readFile(t, fixture.expectedHeadCapture)))
+	require.Equal(t, fixture.baseSHA, strings.TrimSpace(readFile(t, fixture.trustedHeadCapture)))
+	require.Equal(t, fixture.baseSHA+" "+fixture.headSHA+" ", strings.TrimSuffix(readFile(t, fixture.identityCapture), "\n"))
 	require.Equal(t, "trusted", strings.TrimSpace(readFile(t, fixture.trustedInstructionsCapture)))
 	require.Equal(t, "false", strings.TrimSpace(readFile(t, fixture.callerMarkerCapture)))
 	require.Contains(t, readFile(t, fixture.promptCapture), "product-technical-traceability.md")
@@ -73,6 +76,9 @@ type fixture struct {
 	callerMarkerCapture        string
 	promptCapture              string
 	trustedInstructionsCapture string
+	expectedHeadCapture        string
+	trustedHeadCapture         string
+	identityCapture            string
 	rootMutation               string
 }
 
@@ -164,6 +170,9 @@ cat >"$TEST_PROMPT_CAPTURE"
 pwd >"$TEST_CODEX_DIRECTORY_CAPTURE"
 git rev-parse HEAD >"$TEST_CODEX_HEAD_CAPTURE"
 git -C ../head-worktree rev-parse HEAD >"$TEST_EVIDENCE_HEAD_CAPTURE"
+printf '%s\n' "$EXPECTED_HEAD" >"$TEST_EXPECTED_HEAD_CAPTURE"
+printf '%s\n' "$AI_WORKTREE_EXPECTED_HEAD" >"$TEST_TRUSTED_HEAD_CAPTURE"
+printf '%s %s %s\n' "$TARGET_BASE_SHA" "$PR_HEAD_SHA" "${CANDIDATE_SHA:-}" >"$TEST_IDENTITY_CAPTURE"
 if grep -qx 'trusted base instruction' AGENTS.md && grep -qx 'untrusted head instruction' ../head-worktree/AGENTS.md; then
   printf 'trusted\n' >"$TEST_TRUSTED_INSTRUCTIONS_CAPTURE"
 else
@@ -190,6 +199,9 @@ printf '{"decision":"KEEP","base_sha":"%s","head":"%s","problem_statement":"test
 		callerMarkerCapture:        filepath.Join(testRoot, "caller-marker"),
 		promptCapture:              filepath.Join(testRoot, "prompt"),
 		trustedInstructionsCapture: filepath.Join(testRoot, "trusted-instructions"),
+		expectedHeadCapture:        filepath.Join(testRoot, "expected-head"),
+		trustedHeadCapture:         filepath.Join(testRoot, "trusted-head"),
+		identityCapture:            filepath.Join(testRoot, "identities"),
 	}
 }
 
@@ -210,6 +222,9 @@ func (f fixture) run(t *testing.T) (string, error) {
 		"TEST_CALLER_MARKER_CAPTURE="+f.callerMarkerCapture,
 		"TEST_PROMPT_CAPTURE="+f.promptCapture,
 		"TEST_TRUSTED_INSTRUCTIONS_CAPTURE="+f.trustedInstructionsCapture,
+		"TEST_EXPECTED_HEAD_CAPTURE="+f.expectedHeadCapture,
+		"TEST_TRUSTED_HEAD_CAPTURE="+f.trustedHeadCapture,
+		"TEST_IDENTITY_CAPTURE="+f.identityCapture,
 		"TEST_CALLER_CHECKOUT="+f.checkout,
 		"TEST_ROOT_MUTATION="+f.rootMutation,
 	)

@@ -125,6 +125,23 @@ Before allowing configuration to influence a write path, answer:
 
 If question 3 is not unconditionally true, the configuration is on the wrong side of the admission/FSM boundary.
 
+### 3.5 Raft-replicated cluster policy
+
+When a setting must influence FSM apply identically on every node — not merely gate admission — it cannot stay node-local. The **cluster policy** (`ClusterPolicy`) is the Raft-replicated home for such settings: the idempotency TTL and the query-checkpoint limit. It is a single global row (`ZoneGlobal` / `SubGlobClusterPolicy`) carried in `FSMState`, so it rides inside snapshots and cold backups and is checker-verified (`clusterPolicyVerifier`) against the audited `SetClusterPolicy` orders.
+
+Every policy carries a monotonic `revision`. Node-local configuration still names the *desired* policy — the admission-side use the boundary permits — but the FSM alone decides whether a committed update applies, purely from committed state (`FSMState.ClusterPolicy`) and the committed order:
+
+| Committed revision vs applied | FSM outcome |
+|-------------------------------|-------------|
+| Higher | Apply the new policy; emit `SetClusterPolicyLog`. |
+| Equal, identical payload | Idempotent no-op (no log). |
+| Equal, different payload | Rejected `CLUSTER_POLICY_REVISION_CONFLICT`: the control plane assigned one revision to two policies. |
+| Lower | Rejected `STALE_CLUSTER_POLICY`: a newer policy already won. |
+
+Because the decision reads only committed state, every replica resolves a given entry identically, and a stale proposal committed after a leadership change can never overwrite a newer policy.
+
+**Rollout.** The desired policy is sourced from node-local startup configuration (the control plane owns it in the full rollout). A leader-gated reconciler runs periodically: each tick it reads the applied revision and proposes the desired policy only when its revision is greater; a lower desired revision is left alone, and an equal revision carrying a different payload is surfaced as an operational error rather than re-proposed. Reconciling on a ticker (rather than once on leadership acquisition) lets a transient proposal failure self-heal on the next tick instead of leaving the node stuck not-serving until another leadership event. The update travels through admission as an audited `SetClusterPolicy` order — not a technical update — so the checker can re-derive it. Write readiness gates on the policy at two levels: the node reports not-serving until a policy has been committed at least once, steering load-balancers away, and admission holds every business write until it observes a committed policy — so a write never precedes the agreed policy, including from a client that connected directly or before the not-serving signal propagated. Admission latches on the first committed policy it observes, so the hold is a startup-window cost that a fresh leader clears within a reconcile interval. The `SetClusterPolicy` proposal itself is exempt from the admission hold, so the policy-setting path cannot deadlock against its own readiness condition.
+
 ---
 
 ## 4. Deterministic Cache via Generations

@@ -299,6 +299,13 @@ func TestAuditOrderType(t *testing.T) {
 			want: "delete_query_checkpoint_schedule",
 		},
 		{
+			name: "set cluster policy",
+			order: &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
+				SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{}},
+			}},
+			want: "set_cluster_policy",
+		},
+		{
 			name:  "nil order",
 			order: nil,
 			want:  "unknown",
@@ -310,5 +317,34 @@ func TestAuditOrderType(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.want, domain.AuditOrderType(tt.order))
 		})
+	}
+}
+
+// TestSystemScopedOrderType_ProtoExhaustive walks the SystemScopedOrder.payload
+// oneof descriptor and asserts every declared variant maps to an explicit token
+// rather than falling through to "unknown". A new oneof arm added without a
+// corresponding case in systemScopedOrderType fails here — audit indexing
+// (order_type filtering) and the admission order_type metric would otherwise
+// silently mislabel it.
+func TestSystemScopedOrderType_ProtoExhaustive(t *testing.T) {
+	t.Parallel()
+
+	payload := (&raftcmdpb.SystemScopedOrder{}).ProtoReflect().Descriptor().Oneofs().ByName("payload")
+	require.NotNil(t, payload, "SystemScopedOrder must declare a oneof named 'payload'")
+
+	fields := payload.Fields()
+	for i := range fields.Len() {
+		field := fields.Get(i)
+
+		sso := &raftcmdpb.SystemScopedOrder{}
+		m := sso.ProtoReflect()
+		m.Set(field, m.NewField(field))
+
+		got := domain.AuditOrderType(&raftcmdpb.Order{
+			Type: &raftcmdpb.Order_SystemScoped{SystemScoped: sso},
+		})
+		require.NotEqualf(t, "unknown", got,
+			"SystemScopedOrder.payload.%s has no arm in systemScopedOrderType (falls through to %q)",
+			field.Name(), "unknown")
 	}
 }
