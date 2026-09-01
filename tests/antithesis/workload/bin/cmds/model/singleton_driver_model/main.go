@@ -239,7 +239,7 @@ func runWorker(
 		// transaction queries receive extra slots because together they must
 		// exercise every builtin and declared metadata index.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -271,6 +271,8 @@ func runWorker(
 				runLedgerStats(ctx, client, c)
 			case 18:
 				runIndexIntrospection(ctx, client, c)
+			case 19:
+				runGetLog(ctx, client, c)
 			default:
 				runRead(ctx, client, c)
 			}
