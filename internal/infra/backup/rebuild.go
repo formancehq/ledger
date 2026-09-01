@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -887,9 +888,28 @@ func (w *attributeReplayWriter) replayClosedChapter(ctx context.Context, p *comm
 	// a chapter the checker cannot verify — the anchor seeds its chain
 	// verification across the chapter's eventual purge and is folded into the
 	// sealing hash a later seal commits to — so refuse rather than restore one.
-	if len(closed.GetLastAuditHash()) == 0 && closed.GetCloseAuditSequence() > 0 {
-		return fmt.Errorf("closed chapter %d carries no audit anchor at close audit sequence %d: refusing to rebuild a registry the checker cannot verify",
-			closed.GetId(), closed.GetCloseAuditSequence())
+	if seq := closed.GetCloseAuditSequence(); seq > 0 {
+		if len(closed.GetLastAuditHash()) == 0 {
+			return fmt.Errorf("closed chapter %d carries no audit anchor at close audit sequence %d: refusing to rebuild a registry the checker cannot verify",
+				closed.GetId(), seq)
+		}
+
+		// The log payload's bytes are outside the audit chain, so a corrupted
+		// anchor would restore, seal and verify self-consistently while the
+		// chain it claims to seed is broken. Accept only an anchor matching
+		// the authoritative entry at the close boundary — resident whenever
+		// the close log is, because archival purges a chapter's logs and audit
+		// entries together (executePurge).
+		entry, err := query.ReadAuditEntry(ctx, w.readHandle, seq)
+		if err != nil {
+			return fmt.Errorf("reading audit entry %d to verify closed chapter %d's audit anchor: %w",
+				seq, closed.GetId(), err)
+		}
+
+		if !bytes.Equal(closed.GetLastAuditHash(), entry.GetHash()) {
+			return fmt.Errorf("closed chapter %d's audit anchor %x does not match audit entry %d's hash %x: refusing to rebuild a registry the checker cannot verify",
+				closed.GetId(), closed.GetLastAuditHash(), seq, entry.GetHash())
+		}
 	}
 
 	if err := w.storeChapterRow(closed); err != nil {

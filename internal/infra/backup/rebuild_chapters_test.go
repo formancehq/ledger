@@ -296,3 +296,37 @@ func TestRebuildDelta_CloseWithoutTheAuditAnchorIsRefused(t *testing.T) {
 	err := RebuildDelta(context.Background(), logging.Testing(), store, 0, 0)
 	require.ErrorContains(t, err, "carries no audit anchor")
 }
+
+// A non-empty anchor is accepted only when it matches the audit entry at the
+// close boundary: the log payload's bytes are outside the audit chain, so a
+// corrupted anchor would otherwise restore and later seal self-consistently,
+// leaving the chain unverifiable once archival purges the entries it covers.
+func TestRebuildDelta_CloseWithMismatchedAuditAnchorIsRefused(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	closing := &commonpb.Chapter{
+		Id:                 1,
+		Status:             commonpb.ChapterStatus_CHAPTER_CLOSING,
+		StartSequence:      1,
+		CloseSequence:      3,
+		StartAuditSequence: 1,
+		CloseAuditSequence: 2,
+		LastAuditHash:      []byte("tampered-hash"),
+	}
+	opened := &commonpb.Chapter{
+		Id:                 2,
+		Status:             commonpb.ChapterStatus_CHAPTER_OPEN,
+		StartSequence:      4,
+		StartAuditSequence: 3,
+	}
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldAuditKey(2), auditEntryWithHash(2, []byte("boundary-hash"))))
+	require.NoError(t, batch.SetProto(coldLogKey(3), closeChapterLog(3, closing, opened)))
+	require.NoError(t, batch.Commit())
+
+	err := RebuildDelta(context.Background(), logging.Testing(), store, 0, 0)
+	require.ErrorContains(t, err, "does not match audit entry 2's hash")
+}
