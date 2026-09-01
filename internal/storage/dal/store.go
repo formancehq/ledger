@@ -1122,7 +1122,10 @@ func (s *Store) BaselineCheckpointPath() (string, uint64, bool) {
 // installed store's boundary while holding different state — the id-guard
 // cannot tell them apart, so the artifacts must go. The checker degrades until
 // the next close/confirm cycle mints a baseline from the installed store.
-func clearBaselines(dataDir string) error {
+// A function variable so the failure branch is reachable from a test:
+// os.RemoveAll cannot be made to fail deterministically across environments
+// (permission tricks do not bind as root).
+var clearBaselines = func(dataDir string) error {
 	if err := os.RemoveAll(filepath.Join(dataDir, baselineCheckpointsDir)); err != nil {
 		return fmt.Errorf("clearing baseline snapshots: %w", err)
 	}

@@ -1,6 +1,7 @@
 package dal
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -275,4 +276,45 @@ func TestNewStore_AdoptingACheckpointClearsBaselines(t *testing.T) {
 
 	_, _, ok := reopened.BaselineCheckpointPath()
 	require.False(t, ok, "baselines from before the adoption must not survive it")
+}
+
+// A cleanup failure at the publish boundary must roll back like every other
+// pre-publish failure: the original database stays installed and open. The
+// failure is injected through the clearBaselines seam — os.RemoveAll cannot be
+// made to fail deterministically across environments.
+func TestRestoreCheckpoint_BaselineCleanupFailureRollsBack(t *testing.T) {
+	store := newBaselineTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte("seed"), []byte("value")))
+	require.NoError(t, batch.Commit())
+
+	checkpointID, err := store.CreateSnapshot()
+	require.NoError(t, err)
+
+	stageBaseline(t, store, 1)
+
+	original := clearBaselines
+	clearBaselines = func(string) error { return errors.New("injected cleanup failure") }
+	t.Cleanup(func() { clearBaselines = original })
+
+	err = store.RestoreCheckpoint(checkpointID)
+	require.ErrorContains(t, err, "clearing baselines")
+
+	// The rollback restored the original live database and reopened it: the
+	// pre-restore bytes are still served.
+	handle, err := store.NewReadHandle()
+	require.NoError(t, err)
+
+	value, closer, err := handle.Get([]byte("seed"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("value"), value)
+	require.NoError(t, closer.Close())
+	// The handle pins dbMu; RestoreCheckpoint takes it exclusively.
+	require.NoError(t, handle.Close())
+
+	// And the failure is recoverable in place: with the injection gone the same
+	// restore succeeds.
+	clearBaselines = original
+	require.NoError(t, store.RestoreCheckpoint(checkpointID))
 }
