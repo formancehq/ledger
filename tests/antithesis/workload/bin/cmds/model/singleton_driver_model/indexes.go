@@ -219,15 +219,15 @@ func genAccountAssetFilter() *commonpb.QueryFilter {
 //
 //   - a result set is legal iff some base holds the index (ambiguous or active)
 //     and its ordered window equals the streamed accounts position-for-position;
-//   - a not-ready rejection (FailedPrecondition — ErrIndexNotFound and
-//     ErrIndexBuilding both map there) is legal iff some base does not hold the
-//     index active (absent or ambiguous).
+//   - a not-ready rejection (ErrIndexNotFound as FailedPrecondition, or
+//     ErrIndexBuilding as Unavailable + reason INDEX_BUILDING) is legal iff
+//     some base does not hold the index active (absent or ambiguous).
 //
 // Any other error code is a finding. So is a result set no base can produce
 // (spurious rows without the index) and a rejection when every base has the index
 // active (ready everywhere, yet rejected).
 func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, err error) {
-	if err != nil && status.Code(err) != codes.FailedPrecondition {
+	if err != nil && status.Code(err) != codes.FailedPrecondition && !isIndexNotReady(err) {
 		assert.Unreachable("singleton_driver_model: asset-index account query returned unexpected error", internal.Details{
 			"ledger": ledger,
 			"filter": describeFilter(filter),
@@ -1092,6 +1092,11 @@ func classifyIndexedQueryError(err error) (indexedErrKind, bool) {
 	case err == nil:
 		return indexedErrNone, true
 	case status.Code(err) == codes.FailedPrecondition:
+		// ErrIndexNotFound: the filter needs an index no replica holds.
+		return indexedErrNotReady, true
+	case isIndexNotReady(err):
+		// ErrIndexBuilding rides codes.Unavailable so SDK retry predicates
+		// retry it; the reason is what identifies it as the not-ready class.
 		return indexedErrNotReady, true
 	case status.Code(err) == codes.InvalidArgument && internal.HasErrorReason(err, "FILTER_COMPILATION_ERROR"):
 		return indexedErrCompilation, true
