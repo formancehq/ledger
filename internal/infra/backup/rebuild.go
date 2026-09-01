@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -141,7 +142,13 @@ func RebuildDelta(
 		ephemeralPurgeBuffer = replay.NewEphemeralPurgeBuffer()
 	}
 
-	var count uint64
+	var (
+		count uint64
+		// Highest query-checkpoint id seen across CreatedQueryCheckpoint logs
+		// (deleted ones included). Used after the replay to restore the monotonic
+		// SubGlobNextQueryCheckpointID counter.
+		maxQueryCheckpointID uint64
+	)
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -485,12 +492,39 @@ func RebuildDelta(
 				return fmt.Errorf("replaying archived chapter at log %d: %w", seq, err)
 			}
 
+		case *commonpb.LogPayload_CreatedQueryCheckpoint:
+			// Rebuild the metadata row (id + max_sequence + created_at) from the log.
+			// The physical checkpoint files cannot be reconstructed from the audit, so a
+			// rebuilt checkpoint reads as Unavailable until an operator deletes it. The
+			// row keeps the projection audit-consistent so the cap and
+			// compareQueryCheckpoints stay correct after a rebuild.
+			if cp := p.CreatedQueryCheckpoint; cp != nil {
+				if err := state.SaveQueryCheckpoint(batch, &raftcmdpb.QueryCheckpointState{
+					CheckpointId: cp.GetCheckpointId(),
+					MaxSequence:  cp.GetMaxSequence(),
+					CreatedAt:    cp.GetCreatedAt(),
+				}); err != nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("rebuilding query checkpoint at log %d: %w", seq, err)
+				}
+
+				maxQueryCheckpointID = max(maxQueryCheckpointID, cp.GetCheckpointId())
+			}
+
+		case *commonpb.LogPayload_DeletedQueryCheckpoint:
+			if cp := p.DeletedQueryCheckpoint; cp != nil {
+				if err := state.DeleteQueryCheckpointFromBatch(batch, cp.GetCheckpointId()); err != nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("removing query checkpoint at log %d: %w", seq, err)
+				}
+			}
+
 		// Log types with no persistent state to rebuild:
 		case *commonpb.LogPayload_RemovedEventsSink:
 		case *commonpb.LogPayload_DeleteChapterSchedule:
 		case *commonpb.LogPayload_DeletedPreparedQuery:
-		case *commonpb.LogPayload_CreatedQueryCheckpoint:
-		case *commonpb.LogPayload_DeletedQueryCheckpoint:
 		case *commonpb.LogPayload_DeleteQueryCheckpointSchedule:
 		}
 
@@ -546,6 +580,17 @@ func RebuildDelta(
 			_ = batch.Cancel()
 
 			return fmt.Errorf("storing rebuilt next chapter id: %w", err)
+		}
+	}
+
+	// Restore the monotonic next-ID counter above every replayed checkpoint id
+	// (deleted ids included — the counter never rewinds), so post-rebuild creates
+	// allocate fresh ids instead of reissuing one and overwriting a rebuilt row.
+	if maxQueryCheckpointID > 0 {
+		if err := state.StoreNextQueryCheckpointID(batch, maxQueryCheckpointID+1); err != nil {
+			_ = batch.Cancel()
+
+			return fmt.Errorf("restoring next query checkpoint ID: %w", err)
 		}
 	}
 
@@ -976,25 +1021,33 @@ func (w *attributeReplayWriter) storeChapterRow(chapter *commonpb.Chapter) error
 func (w *attributeReplayWriter) replayClosedChapter(ctx context.Context, p *commonpb.ClosedChapterLog) error {
 	closed := p.GetClosedChapter()
 
-	// The log's snapshot is cloned before the live apply stamps
-	// LastAuditHash onto the tracker's chapter (machine.applyProposal), so
-	// it is empty here. That hash — the chain hash of the audit entry at
-	// CloseAuditSequence — seeds the checker's chain verification across
-	// the chapter's eventual purge, and the later lifecycle logs carry it
-	// only when the seal predates the backup. Recover it from the stored
-	// audit entry so a chapter sealed after the restore carries it too.
-	if len(closed.GetLastAuditHash()) == 0 && closed.GetCloseAuditSequence() > 0 {
-		// The entry cannot be missing: it is at or above the incremental
-		// window's floor (every archival confirm audits above the range it
-		// purges, so no purge reaches CloseAuditSequence of a delta close),
-		// and below-floor entries ride the checkpoint SSTs.
-		entry, err := query.ReadAuditEntry(ctx, w.readHandle, closed.GetCloseAuditSequence())
-		if err != nil {
-			return fmt.Errorf("reading audit entry %d to recover closed chapter %d's last audit hash: %w",
-				closed.GetCloseAuditSequence(), closed.GetId(), err)
+	// The close stamps the anchor onto the chapter before the log's snapshot is
+	// cloned, so a close log carries it. Rebuilding a row without it would restore
+	// a chapter the checker cannot verify — the anchor seeds its chain
+	// verification across the chapter's eventual purge and is folded into the
+	// sealing hash a later seal commits to — so refuse rather than restore one.
+	if seq := closed.GetCloseAuditSequence(); seq > 0 {
+		if len(closed.GetLastAuditHash()) == 0 {
+			return fmt.Errorf("closed chapter %d carries no audit anchor at close audit sequence %d: refusing to rebuild a registry the checker cannot verify",
+				closed.GetId(), seq)
 		}
 
-		closed.LastAuditHash = entry.GetHash()
+		// The log payload's bytes are outside the audit chain, so a corrupted
+		// anchor would restore, seal and verify self-consistently while the
+		// chain it claims to seed is broken. Accept only an anchor matching
+		// the authoritative entry at the close boundary — resident whenever
+		// the close log is, because archival purges a chapter's logs and audit
+		// entries together (executePurge).
+		entry, err := query.ReadAuditEntry(ctx, w.readHandle, seq)
+		if err != nil {
+			return fmt.Errorf("reading audit entry %d to verify closed chapter %d's audit anchor: %w",
+				seq, closed.GetId(), err)
+		}
+
+		if !bytes.Equal(closed.GetLastAuditHash(), entry.GetHash()) {
+			return fmt.Errorf("closed chapter %d's audit anchor %x does not match audit entry %d's hash %x: refusing to rebuild a registry the checker cannot verify",
+				closed.GetId(), closed.GetLastAuditHash(), seq, entry.GetHash())
+		}
 	}
 
 	if err := w.storeChapterRow(closed); err != nil {

@@ -174,6 +174,7 @@ func (s *skipSafeScope) GetSinkConfig(name string) (commonpb.SinkConfigReader, e
 func (s *skipSafeScope) GetNextSequenceID() uint64         { return s.inner.GetNextSequenceID() }
 func (s *skipSafeScope) IncrementNextSequenceID() uint64   { return s.inner.IncrementNextSequenceID() }
 func (s *skipSafeScope) GetNextAuditSequenceID() uint64    { return s.inner.GetNextAuditSequenceID() }
+func (s *skipSafeScope) GetLastAuditHash() []byte          { return s.inner.GetLastAuditHash() }
 func (s *skipSafeScope) GetNextLedgerID() uint32           { return s.inner.GetNextLedgerID() }
 func (s *skipSafeScope) IncrementNextLedgerID() uint32     { return s.inner.IncrementNextLedgerID() }
 func (s *skipSafeScope) GetDate() commonpb.TimestampReader { return s.inner.GetDate() }
@@ -269,6 +270,14 @@ func (s *skipSafeScope) SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState) 
 
 func (s *skipSafeScope) DeleteQueryCheckpoint(checkpointID uint64) {
 	trapUnbuffered("DeleteQueryCheckpoint", map[string]any{"checkpointID": checkpointID})
+}
+
+func (s *skipSafeScope) LiveQueryCheckpointCount() uint64 {
+	return s.inner.LiveQueryCheckpointCount()
+}
+
+func (s *skipSafeScope) QueryCheckpointExists(id uint64) bool {
+	return s.inner.QueryCheckpointExists(id)
 }
 
 // ──────────────────────────────────────────────────────────────────────────

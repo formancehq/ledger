@@ -627,6 +627,44 @@ func (c *MockScopeGetDateCall) DoAndReturn(f func() commonpb.TimestampReader) *M
 	return c
 }
 
+// GetLastAuditHash mocks base method.
+func (m *MockScope) GetLastAuditHash() []byte {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLastAuditHash")
+	ret0, _ := ret[0].([]byte)
+	return ret0
+}
+
+// GetLastAuditHash indicates an expected call of GetLastAuditHash.
+func (mr *MockScopeMockRecorder) GetLastAuditHash() *MockScopeGetLastAuditHashCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastAuditHash", reflect.TypeOf((*MockScope)(nil).GetLastAuditHash))
+	return &MockScopeGetLastAuditHashCall{Call: call}
+}
+
+// MockScopeGetLastAuditHashCall wrap *gomock.Call
+type MockScopeGetLastAuditHashCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeGetLastAuditHashCall) Return(arg0 []byte) *MockScopeGetLastAuditHashCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeGetLastAuditHashCall) Do(f func() []byte) *MockScopeGetLastAuditHashCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeGetLastAuditHashCall) DoAndReturn(f func() []byte) *MockScopeGetLastAuditHashCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetNextAuditSequenceID mocks base method.
 func (m *MockScope) GetNextAuditSequenceID() uint64 {
 	m.ctrl.T.Helper()
@@ -1238,6 +1276,44 @@ func (c *MockScopeLedgersCall) DoAndReturn(f func() Accessor[domain.LedgerKey, *
 	return c
 }
 
+// LiveQueryCheckpointCount mocks base method.
+func (m *MockScope) LiveQueryCheckpointCount() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LiveQueryCheckpointCount")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// LiveQueryCheckpointCount indicates an expected call of LiveQueryCheckpointCount.
+func (mr *MockScopeMockRecorder) LiveQueryCheckpointCount() *MockScopeLiveQueryCheckpointCountCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LiveQueryCheckpointCount", reflect.TypeOf((*MockScope)(nil).LiveQueryCheckpointCount))
+	return &MockScopeLiveQueryCheckpointCountCall{Call: call}
+}
+
+// MockScopeLiveQueryCheckpointCountCall wrap *gomock.Call
+type MockScopeLiveQueryCheckpointCountCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeLiveQueryCheckpointCountCall) Return(arg0 uint64) *MockScopeLiveQueryCheckpointCountCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeLiveQueryCheckpointCountCall) Do(f func() uint64) *MockScopeLiveQueryCheckpointCountCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeLiveQueryCheckpointCountCall) DoAndReturn(f func() uint64) *MockScopeLiveQueryCheckpointCountCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // NumscriptVersionExists mocks base method.
 func (m *MockScope) NumscriptVersionExists(ledgerName, name, version string) (bool, error) {
 	m.ctrl.T.Helper()
@@ -1383,6 +1459,44 @@ func (c *MockScopePutRevertedCall) Do(f func(domain.TransactionKey, bool)) *Mock
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopePutRevertedCall) DoAndReturn(f func(domain.TransactionKey, bool)) *MockScopePutRevertedCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// QueryCheckpointExists mocks base method.
+func (m *MockScope) QueryCheckpointExists(id uint64) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "QueryCheckpointExists", id)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// QueryCheckpointExists indicates an expected call of QueryCheckpointExists.
+func (mr *MockScopeMockRecorder) QueryCheckpointExists(id any) *MockScopeQueryCheckpointExistsCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryCheckpointExists", reflect.TypeOf((*MockScope)(nil).QueryCheckpointExists), id)
+	return &MockScopeQueryCheckpointExistsCall{Call: call}
+}
+
+// MockScopeQueryCheckpointExistsCall wrap *gomock.Call
+type MockScopeQueryCheckpointExistsCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeQueryCheckpointExistsCall) Return(arg0 bool) *MockScopeQueryCheckpointExistsCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeQueryCheckpointExistsCall) Do(f func(uint64) bool) *MockScopeQueryCheckpointExistsCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeQueryCheckpointExistsCall) DoAndReturn(f func(uint64) bool) *MockScopeQueryCheckpointExistsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

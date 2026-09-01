@@ -144,15 +144,13 @@ func TestRebuildDelta_RebuildsChapterRegistry(t *testing.T) {
 		StartAuditSequence: 3,
 	}
 
-	// The lifecycle as the live logs carry it: the close snapshot is CLOSING
-	// with no hashes yet (LastAuditHash is stamped on the tracker's row after
-	// the log snapshot is cloned), the later snapshots carry the accumulated
-	// state.
+	// The lifecycle as the live logs carry it: the close snapshot is CLOSING with
+	// the audit anchor the close persists but none of the seal's hashes yet, and
+	// the later snapshots carry the accumulated state.
 	closing := archived.CloneVT()
 	closing.Status = commonpb.ChapterStatus_CHAPTER_CLOSING
 	closing.SealingHash = nil
 	closing.StateHash = nil
-	closing.LastAuditHash = nil
 
 	closed := archived.CloneVT()
 	closed.Status = commonpb.ChapterStatus_CHAPTER_CLOSED
@@ -222,13 +220,11 @@ func TestRebuildDelta_MalformedChapterLog_FailsLoudly(t *testing.T) {
 	}
 }
 
-// TestRebuildDelta_CloseOnlyDelta_RecoversLastAuditHash: a chapter closed but
-// not yet sealed at backup time carries no LastAuditHash in its close log (the
-// live apply stamps it on the tracker's row after the snapshot is cloned). The
-// rebuild must recover it from the stored audit entry at CloseAuditSequence —
-// it is the chain seed the checker uses across the chapter's eventual purge,
-// and no later lifecycle log exists in the delta to carry it.
-func TestRebuildDelta_CloseOnlyDelta_RecoversLastAuditHash(t *testing.T) {
+// TestRebuildDelta_CloseOnlyDelta_KeepsTheAuditAnchor: a chapter closed but not
+// yet sealed at backup time has only its close log in the delta, so the anchor
+// that log carries is the only copy the rebuild can put on the row — and the
+// chain seed the checker needs across the chapter's eventual purge.
+func TestRebuildDelta_CloseOnlyDelta_KeepsTheAuditAnchor(t *testing.T) {
 	t.Parallel()
 
 	store := newRebuildTestStore(t)
@@ -240,6 +236,7 @@ func TestRebuildDelta_CloseOnlyDelta_RecoversLastAuditHash(t *testing.T) {
 		CloseSequence:      3,
 		StartAuditSequence: 1,
 		CloseAuditSequence: 2,
+		LastAuditHash:      []byte("boundary-hash"),
 	}
 	opened := &commonpb.Chapter{
 		Id:                 2,
@@ -262,7 +259,74 @@ func TestRebuildDelta_CloseOnlyDelta_RecoversLastAuditHash(t *testing.T) {
 	require.NotNil(t, got)
 	require.Equal(t, commonpb.ChapterStatus_CHAPTER_CLOSING, got.GetStatus())
 	require.Equal(t, []byte("boundary-hash"), got.GetLastAuditHash(),
-		"the close-boundary audit entry's hash must be recovered onto the rebuilt row")
+		"the anchor the close log carries must land on the rebuilt row")
 
 	require.EqualValues(t, 3, readNextChapterID(t, store))
+}
+
+// A close log without the anchor cannot be rebuilt into a verifiable registry:
+// the chapter's sealing hash commits to a value the row would not carry, and the
+// checker has no chain seed across its purge. The restore path is the worst place
+// to paper over that, so it fails instead.
+func TestRebuildDelta_CloseWithoutTheAuditAnchorIsRefused(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	closing := &commonpb.Chapter{
+		Id:                 1,
+		Status:             commonpb.ChapterStatus_CHAPTER_CLOSING,
+		StartSequence:      1,
+		CloseSequence:      3,
+		StartAuditSequence: 1,
+		CloseAuditSequence: 2,
+	}
+	opened := &commonpb.Chapter{
+		Id:                 2,
+		Status:             commonpb.ChapterStatus_CHAPTER_OPEN,
+		StartSequence:      4,
+		StartAuditSequence: 3,
+	}
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldAuditKey(2), auditEntryWithHash(2, []byte("boundary-hash"))))
+	require.NoError(t, batch.SetProto(coldLogKey(3), closeChapterLog(3, closing, opened)))
+	require.NoError(t, batch.Commit())
+
+	err := RebuildDelta(context.Background(), logging.Testing(), store, 0, 0)
+	require.ErrorContains(t, err, "carries no audit anchor")
+}
+
+// A non-empty anchor is accepted only when it matches the audit entry at the
+// close boundary: the log payload's bytes are outside the audit chain, so a
+// corrupted anchor would otherwise restore and later seal self-consistently,
+// leaving the chain unverifiable once archival purges the entries it covers.
+func TestRebuildDelta_CloseWithMismatchedAuditAnchorIsRefused(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	closing := &commonpb.Chapter{
+		Id:                 1,
+		Status:             commonpb.ChapterStatus_CHAPTER_CLOSING,
+		StartSequence:      1,
+		CloseSequence:      3,
+		StartAuditSequence: 1,
+		CloseAuditSequence: 2,
+		LastAuditHash:      []byte("tampered-hash"),
+	}
+	opened := &commonpb.Chapter{
+		Id:                 2,
+		Status:             commonpb.ChapterStatus_CHAPTER_OPEN,
+		StartSequence:      4,
+		StartAuditSequence: 3,
+	}
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldAuditKey(2), auditEntryWithHash(2, []byte("boundary-hash"))))
+	require.NoError(t, batch.SetProto(coldLogKey(3), closeChapterLog(3, closing, opened)))
+	require.NoError(t, batch.Commit())
+
+	err := RebuildDelta(context.Background(), logging.Testing(), store, 0, 0)
+	require.ErrorContains(t, err, "does not match audit entry 2's hash")
 }

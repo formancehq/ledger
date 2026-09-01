@@ -73,7 +73,8 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_CHAPTER_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_PREPARED_QUERY_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_NOT_FOUND,
-		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND:
+		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,
+		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_FOUND:
 		return KindNotFound
 	case commonpb.ErrorReason_ERROR_REASON_LEDGER_ALREADY_EXISTS,
 		commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT,
@@ -107,7 +108,8 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA,
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_NOT_MATCHING_TYPE,
 		commonpb.ErrorReason_ERROR_REASON_COLD_STORAGE_DISABLED,
-		commonpb.ErrorReason_ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO:
+		commonpb.ErrorReason_ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO,
+		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_LIMIT_REACHED:
 		return KindPrecondition
 	case commonpb.ErrorReason_ERROR_REASON_BALANCE_NOT_PRELOADED,
 		commonpb.ErrorReason_ERROR_REASON_MAINTENANCE_MODE,

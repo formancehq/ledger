@@ -20,6 +20,7 @@ func TestProcessCloseChapter_Success(t *testing.T) {
 	mockStore := NewMockScope(ctrl)
 
 	now := &commonpb.Timestamp{Data: 1700000000}
+	anchor := []byte("audit-chain-head-at-close")
 	openChapter := &commonpb.Chapter{
 		Id:     1,
 		Start:  &commonpb.Timestamp{Data: 1699000000},
@@ -32,10 +33,14 @@ func TestProcessCloseChapter_Success(t *testing.T) {
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(2)
 	mockStore.EXPECT().GetNextAuditSequenceID().Return(uint64(10)).Times(2)
 	mockStore.EXPECT().IncrementNextChapterID().Return(uint64(2))
+	mockStore.EXPECT().GetLastAuditHash().Return(anchor)
 	mockStore.EXPECT().AddClosingChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {
 		require.Equal(t, commonpb.ChapterStatus_CHAPTER_CLOSING, chapter.GetStatus())
 		require.Equal(t, uint64(42), chapter.GetCloseSequence())
 		require.Equal(t, uint64(9), chapter.GetCloseAuditSequence()) // nextAuditSeq - 1
+		// The chain input for the first entry surviving this chapter's purge: it
+		// has to be on the row the close persists, not filled in afterwards.
+		require.Equal(t, anchor, chapter.GetLastAuditHash())
 	})
 	mockStore.EXPECT().SetCurrentOpenChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {
 		require.Equal(t, commonpb.ChapterStatus_CHAPTER_OPEN, chapter.GetStatus())
@@ -54,6 +59,8 @@ func TestProcessCloseChapter_Success(t *testing.T) {
 	require.Equal(t, commonpb.ChapterStatus_CHAPTER_CLOSING, closeChapterLog.GetClosedChapter().GetStatus())
 	require.Equal(t, uint64(2), closeChapterLog.GetNewChapter().GetId())
 	require.Equal(t, commonpb.ChapterStatus_CHAPTER_OPEN, closeChapterLog.GetNewChapter().GetStatus())
+	require.Equal(t, anchor, closeChapterLog.GetClosedChapter().GetLastAuditHash(),
+		"the log carries the anchor too, so a rebuild does not have to re-derive it")
 }
 
 func TestProcessCloseChapter_NoChapterOpen(t *testing.T) {
@@ -92,6 +99,7 @@ func TestProcessCloseChapter_SucceedsWhileAnotherChapterIsClosing(t *testing.T) 
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(2)
 	mockStore.EXPECT().GetNextAuditSequenceID().Return(uint64(20)).Times(2)
 	mockStore.EXPECT().IncrementNextChapterID().Return(uint64(3))
+	mockStore.EXPECT().GetLastAuditHash().Return([]byte("audit-chain-head-at-close"))
 	mockStore.EXPECT().AddClosingChapter(gomock.Any()).Do(func(chapter *commonpb.Chapter) {
 		require.Equal(t, uint64(2), chapter.GetId())
 		require.Equal(t, commonpb.ChapterStatus_CHAPTER_CLOSING, chapter.GetStatus())

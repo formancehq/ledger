@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"context"
 	"errors"
 	"io"
 
@@ -14,6 +15,7 @@ import (
 
 // GRPCStreamCursor implements cursor.Cursor[To] by reading from a gRPC server stream.
 type GRPCStreamCursor[Res, To any] struct {
+	ctx    context.Context
 	client grpc.ServerStreamingClient[Res]
 	mapper func(*Res) (To, error)
 }
@@ -21,9 +23,7 @@ type GRPCStreamCursor[Res, To any] struct {
 func (c GRPCStreamCursor[Res, To]) Next() (To, error) {
 	next, err := c.client.Recv()
 	if err != nil {
-		if status.Code(err) == codes.Canceled {
-			err = io.EOF
-		}
+		err = normalizeStreamEnd(c.ctx, err)
 
 		var zero To
 
@@ -33,6 +33,39 @@ func (c GRPCStreamCursor[Res, To]) Next() (To, error) {
 	return c.mapper(next)
 }
 
+// normalizeStreamEnd maps a Canceled Recv error to io.EOF ONLY when the
+// cancellation is the consumer's own — the caller-supplied context is done
+// because the consumer stopped reading and tore the stream down, so the
+// results gathered so far form a complete answer for it. A Canceled status
+// while that context is still live is a failed transfer (connection churn,
+// remote teardown): surfacing it as EOF would fabricate a clean-looking
+// empty or truncated page that the caller then serves with OK status.
+//
+// That not-ours cancellation is re-coded as Unavailable: the failure is a
+// peer-transport transient exactly like ErrNodeNotReachable, and Canceled
+// means "the caller gave up" to every classifier downstream — SDK retry
+// predicates treat it as the client's own shutdown and give up, and the
+// HTTP boundary degrades it to a plain 500. Unavailable is what routes it
+// into the retry path (gRPC clients retry it; HTTP serves 503 with
+// Retry-After).
+//
+// The ours/not-ours verdict MUST come from the caller-supplied context,
+// never from ClientStream.Context(): gRPC derives the stream context with
+// WithCancel and cancels it in finish() on EVERY stream termination, so by
+// the time Recv returns a terminal error that context is always done and
+// gates nothing.
+func normalizeStreamEnd(ctx context.Context, err error) error {
+	if status.Code(err) != codes.Canceled {
+		return err
+	}
+
+	if ctx.Err() != nil {
+		return io.EOF
+	}
+
+	return status.Errorf(codes.Unavailable, "forwarded stream failed mid-transfer: %s", status.Convert(err).Message())
+}
+
 func (c GRPCStreamCursor[Res, To]) Close() error {
 	return c.client.CloseSend()
 }
@@ -40,13 +73,13 @@ func (c GRPCStreamCursor[Res, To]) Close() error {
 var _ cursor.Cursor[any] = (*GRPCStreamCursor[any, any])(nil)
 
 // NewGRPCStreamCursor creates a cursor that reads from a gRPC server stream and maps each element.
-func NewGRPCStreamCursor[Res, To any](client grpc.ServerStreamingClient[Res], mapper func(*Res) (To, error)) cursor.Cursor[To] {
-	return GRPCStreamCursor[Res, To]{client: client, mapper: mapper}
+func NewGRPCStreamCursor[Res, To any](ctx context.Context, client grpc.ServerStreamingClient[Res], mapper func(*Res) (To, error)) cursor.Cursor[To] {
+	return GRPCStreamCursor[Res, To]{ctx: ctx, client: client, mapper: mapper}
 }
 
 // NewGRPCIdentityCursor creates a GRPCStreamCursor with an identity mapper.
-func NewGRPCIdentityCursor[T any](client grpc.ServerStreamingClient[T]) cursor.Cursor[*T] {
-	return NewGRPCStreamCursor(client, func(res *T) (*T, error) {
+func NewGRPCIdentityCursor[T any](ctx context.Context, client grpc.ServerStreamingClient[T]) cursor.Cursor[*T] {
+	return NewGRPCStreamCursor(ctx, client, func(res *T) (*T, error) {
 		return res, nil
 	})
 }
@@ -76,6 +109,7 @@ type UpstreamTrailer interface {
 // compatibility reads, drain loops — get a normal EOF and never see a fake
 // record.
 type upstreamPeekCursor[Res any] struct {
+	ctx        context.Context
 	client     grpc.ServerStreamingClient[Res]
 	exhausted  bool
 	nextCursor string
@@ -87,9 +121,7 @@ func (c *upstreamPeekCursor[Res]) Next() (*Res, error) {
 		return item, nil
 	}
 
-	if status.Code(err) == codes.Canceled {
-		err = io.EOF
-	}
+	err = normalizeStreamEnd(c.ctx, err)
 
 	if errors.Is(err, io.EOF) && !c.exhausted {
 		c.exhausted = true
@@ -112,8 +144,8 @@ func (c *upstreamPeekCursor[Res]) Close() error {
 // (so generic consumers see only real items + io.EOF) and additionally
 // satisfies UpstreamTrailer so sendPagedToStream can pick up the leader's
 // x-next-cursor.
-func NewUpstreamPeekCursor[T any](client grpc.ServerStreamingClient[T]) cursor.Cursor[*T] {
-	return &upstreamPeekCursor[T]{client: client}
+func NewUpstreamPeekCursor[T any](ctx context.Context, client grpc.ServerStreamingClient[T]) cursor.Cursor[*T] {
+	return &upstreamPeekCursor[T]{ctx: ctx, client: client}
 }
 
 // ListOptionsSupport captures, per resource, which ListOptions sub-fields the

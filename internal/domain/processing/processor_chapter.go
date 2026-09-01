@@ -26,7 +26,13 @@ func processCloseChapter(_ *raftcmdpb.CloseChapterOrder, ctx *Context) (*commonp
 	currentChapter.Status = commonpb.ChapterStatus_CHAPTER_CLOSING
 	currentChapter.CloseSequence = s.GetNextSequenceID()
 	currentChapter.End = s.GetDate().Mutate()
-	// LastAuditHash is set later in applyProposal after the audit hash is computed.
+	// The chain input for the first audit entry that survives this chapter's
+	// purge, and one of the four fields the sealing hash commits to. It is the
+	// head as this proposal began: the entry this proposal writes belongs to the
+	// next chapter's range. Written here so it is durable with the close itself —
+	// the seal that hashes it can be applied by a process that never saw this
+	// apply.
+	currentChapter.LastAuditHash = bytes.Clone(s.GetLastAuditHash())
 	// Capture the audit sequence at close time. The next audit sequence ID is
 	// one past the last written, so close_audit_sequence = next - 1.
 	// If no audit entries were written (nextAudit == startAudit), close equals
@@ -46,8 +52,6 @@ func processCloseChapter(_ *raftcmdpb.CloseChapterOrder, ctx *Context) (*commonp
 	s.SetCurrentOpenChapter(newChapter)
 
 	// Clone the chapter for the log payload so the log's snapshot is immutable.
-	// applyProposal will set LastAuditHash on the FSM chapter after computing
-	// the batch-level audit hash.
 	closedChapterSnapshot := currentChapter.CloneVT()
 
 	return &commonpb.LogPayload{

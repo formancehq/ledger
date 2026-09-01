@@ -501,6 +501,50 @@ func TestRebuildDelta_ReplaysClusterPolicy(t *testing.T) {
 	require.True(t, policy.EqualVT(got))
 }
 
+// Query-checkpoint create/delete logs replayed after the checkpoint rebuild the
+// live rows (a deleted one does not survive) and advance the monotonic next-id
+// counter above every replayed id.
+func TestRebuildDelta_ReplaysQueryCheckpoint(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	created := func(seq, id, maxSeq, createdAt uint64) *commonpb.Log {
+		return &commonpb.Log{Sequence: seq, Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+				CheckpointId: id, MaxSequence: maxSeq, CreatedAt: &commonpb.Timestamp{Data: createdAt},
+			}},
+		}}
+	}
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), created(1, 1, 10, 100)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), created(2, 2, 20, 200)))
+	require.NoError(t, batch.SetProto(coldLogKey(3), &commonpb.Log{Sequence: 3, Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: 1}},
+	}}))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	rows, err := query.ReadQueryCheckpointRows(handle)
+	require.NoError(t, err)
+	require.NotContains(t, rows, uint64(1), "a deleted checkpoint must not survive the rebuild")
+	require.Contains(t, rows, uint64(2))
+	require.Equal(t, uint64(20), rows[2].GetMaxSequence())
+	require.Equal(t, uint64(200), rows[2].GetCreatedAt().GetData())
+
+	// The counter never rewinds: it advances above the highest replayed id (2),
+	// the deleted one included.
+	next, err := query.ReadNextQueryCheckpointID(handle)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), next)
+}
+
 func TestRebuildDelta_ReplaysDeleteLedger(t *testing.T) {
 	t.Parallel()
 

@@ -263,6 +263,18 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"detail": "query_checkpoint_limit must be at least 1"},
 		},
 		{
+			name:        "CheckpointLimitReached",
+			err:         &domain.ErrCheckpointLimitReached{Limit: 10},
+			wantReason:  domain.ErrReasonCheckpointLimitReached,
+			wantContext: map[string]string{"limit": "10"},
+		},
+		{
+			name:        "CheckpointNotFound",
+			err:         &domain.ErrCheckpointNotFound{CheckpointID: 7},
+			wantReason:  domain.ErrReasonCheckpointNotFound,
+			wantContext: map[string]string{"checkpointId": "7"},
+		},
+		{
 			name:        "InvalidCronExpression",
 			err:         &domain.ErrInvalidCronExpression{Expression: "* * * *", Details: "expected 5 or 6 fields"},
 			wantReason:  domain.ErrReasonInvalidCronExpression,

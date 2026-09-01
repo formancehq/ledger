@@ -93,7 +93,7 @@ func (g *BucketGrpcClient) ListTransactions(ctx context.Context, ledgerName stri
 		return nil, err
 	}
 
-	return NewUpstreamPeekCursor(stream), nil
+	return NewUpstreamPeekCursor(ctx, stream), nil
 }
 
 func (g *BucketGrpcClient) GetAccount(ctx context.Context, ledgerName string, address string, opts ctrl.GetAccountOptions) (*commonpb.Account, error) {
@@ -118,7 +118,7 @@ func (g *BucketGrpcClient) ListAccounts(ctx context.Context, ledgerName string, 
 		return nil, err
 	}
 
-	return NewUpstreamPeekCursor(stream), nil
+	return NewUpstreamPeekCursor(ctx, stream), nil
 }
 
 func (g *BucketGrpcClient) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
@@ -139,7 +139,7 @@ func (g *BucketGrpcClient) ListLogs(ctx context.Context, ledgerName string, afte
 		return nil, err
 	}
 
-	return NewUpstreamPeekCursor(stream), nil
+	return NewUpstreamPeekCursor(ctx, stream), nil
 }
 
 func (g *BucketGrpcClient) ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
@@ -208,7 +208,7 @@ func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, pageSize uint32
 		return nil, err
 	}
 
-	return NewUpstreamPeekCursor(stream), nil
+	return NewUpstreamPeekCursor(ctx, stream), nil
 }
 
 func (g *BucketGrpcClient) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
@@ -523,7 +523,7 @@ func (g *BucketGrpcClient) ListIndexes(ctx context.Context, req *servicepb.ListI
 	// it, so the first item is available before the leader sends EOF and peak
 	// memory is O(1) instead of O(total). Matches ListTransactions /
 	// ListAccounts / ListLogs.
-	return NewUpstreamPeekCursor(stream), nil
+	return NewUpstreamPeekCursor(ctx, stream), nil
 }
 
 var _ ctrl.Controller = (*BucketGrpcClient)(nil)

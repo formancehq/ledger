@@ -966,6 +966,17 @@ The REST adapter uses the same `Describable.Reason()` as the JSON `errorCode` fi
 | `KindPermissionDenied` | 403 Forbidden |
 | `KindInternal` | 500 Internal Server Error |
 
+Every response the table maps to 503 also carries `Retry-After: 1` — the kind is by definition retry-now, so the header covers the whole class, not just the no-leader sentinel.
+
+**Bare gRPC statuses at the HTTP boundary.** A handler can surface a `google.golang.org/grpc/status` error that is not a domain `Describable`; `handleError` translates exactly two codes and deliberately lets every other one fall through to the sanitized 500:
+
+| gRPC code | HTTP response |
+|-----------|---------------|
+| `INVALID_ARGUMENT` | 400, `errorCode: INVALID_REQUEST` |
+| `UNAVAILABLE` | 503 + `Retry-After: 1`, `errorCode: UNAVAILABLE` |
+
+The `UNAVAILABLE` row is the forwarded-stream error shape: a syncing follower forwards a read to the leader, and the forwarded stream is torn down mid-transfer (peer connection churn) — `normalizeStreamEnd` re-codes that from the raw `Canceled` the transport reports into `Unavailable` with the original message, since the caller did not cancel and an immediate retry can succeed. gRPC clients see the same event as `codes.Unavailable`; SDK retry predicates treat it as retryable on both surfaces.
+
 **Breaking change in #432**: HTTP `errorCode` JSON field previously used HTTP-specific codes (`"CONFLICT"`, `"NOT_FOUND"`, `"SCRIPT_PARSE_ERROR"`, `"INSUFFICIENT_FUNDS"`, ...) that were sometimes the same as the gRPC Reason and sometimes different. After the Describable refactor (#432) it is uniformly `Reason()` from the table above — e.g. `"LEDGER_ALREADY_EXISTS"` (was `"CONFLICT"`), `"NUMSCRIPT_PARSE_ERROR"` (was `"SCRIPT_PARSE_ERROR"`). Update REST clients to widen pattern matching accordingly.
 
 **Client-side Kind reconstruction is lossy — match on `Reason`, not `Kind`.** The server-side `Kind` enum has two values (`KindConflict` and `KindPrecondition`) that both serialise to `codes.FailedPrecondition` on the wire. Client SDKs that reconstruct a `RemoteError` from a gRPC status (see `cmd/ledgerctl/cmdutil`) conservatively pick `KindPrecondition` for every `FailedPrecondition` response — so a server-side `KindConflict` (e.g. ledger deleted, transaction already reverted) reads as `KindPrecondition` client-side. Branching on `RemoteError.Kind()` will therefore misclassify conflict responses. Match on `Reason()` (`LEDGER_DELETED`, `TRANSACTION_ALREADY_REVERTED`, etc.) instead — it is preserved end-to-end and is the reliable discriminator.

@@ -44,11 +44,15 @@ type clusterPolicyUpdate struct {
 }
 
 type WriteSet struct {
-	fsm                   *Machine
-	attrs                 *attributes.Attributes
-	Date                  *commonpb.Timestamp
-	NextSequenceID        uint64
-	NextAuditSequenceID   uint64
+	fsm                 *Machine
+	attrs               *attributes.Attributes
+	Date                *commonpb.Timestamp
+	NextSequenceID      uint64
+	NextAuditSequenceID uint64
+	// LastAuditHash is the audit chain head as this proposal began — the
+	// predecessor of the entry this proposal writes. A chapter closing here
+	// records it as the chain input for the first entry that survives its purge.
+	LastAuditHash         []byte
 	NextLedgerID          uint32
 	NextQueryCheckpointID uint64
 
@@ -147,13 +151,6 @@ type WriteSet struct {
 	// Pending query checkpoint changes for Merge.
 	pendingQueryCheckpointSaves   []*raftcmdpb.QueryCheckpointState
 	pendingQueryCheckpointDeletes []uint64
-
-	// chapterClosing is true when a processor emitted at least one
-	// CloseChapter intent during this proposal. applyProposal reads it
-	// (via ChapterClosing) AFTER the audit entry is written so the
-	// LastAuditHash carry to ChapterTracker.LatestClosingChapter happens
-	// in O(1) instead of by walking the log slice.
-	chapterClosing bool
 
 	// mirrorConfigChanged is true when a processor emitted a mirror-config
 	// change (CreateLedger Mirror or PromoteLedger). Read by applyProposal
@@ -761,20 +758,30 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// sub-prefix. The (checkpoint_id BE 8) tail keeps per-call ordering
 	// deterministic; the contract is at zone+sub only.
 	for _, cp := range b.pendingQueryCheckpointSaves {
-		if err := saveQueryCheckpoint(batch, cp); err != nil {
+		if err := SaveQueryCheckpoint(batch, cp); err != nil {
 			return fmt.Errorf("saving query checkpoint %d: %w", cp.GetCheckpointId(), err)
 		}
 	}
 
 	for _, cpID := range b.pendingQueryCheckpointDeletes {
-		if err := deleteQueryCheckpointFromBatch(batch, cpID); err != nil {
+		if err := DeleteQueryCheckpointFromBatch(batch, cpID); err != nil {
 			return fmt.Errorf("deleting query checkpoint %d: %w", cpID, err)
 		}
 	}
 
+	// Keep the in-memory live-ID set in lockstep with the persisted rows so the
+	// next proposal's cap/existence checks see this proposal's effect.
+	for _, cp := range b.pendingQueryCheckpointSaves {
+		b.fsm.State.LiveQueryCheckpointIDs[cp.GetCheckpointId()] = struct{}{}
+	}
+
+	for _, cpID := range b.pendingQueryCheckpointDeletes {
+		delete(b.fsm.State.LiveQueryCheckpointIDs, cpID)
+	}
+
 	// SubGlobNextQueryCheckpointID (0x0F)
 	if b.NextQueryCheckpointID != b.fsm.State.NextQueryCheckpointID {
-		if err := storeNextQueryCheckpointID(batch, b.NextQueryCheckpointID); err != nil {
+		if err := StoreNextQueryCheckpointID(batch, b.NextQueryCheckpointID); err != nil {
 			return fmt.Errorf("storing next query checkpoint ID: %w", err)
 		}
 	}
@@ -912,6 +919,7 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.Date = at
 	b.NextSequenceID = b.fsm.State.NextSequenceID
 	b.NextAuditSequenceID = b.fsm.State.NextAuditSequenceID
+	b.LastAuditHash = b.fsm.State.LastAuditHash
 	b.NextLedgerID = b.fsm.State.NextLedgerID
 	b.NextQueryCheckpointID = b.fsm.State.NextQueryCheckpointID
 	b.Derived.Reset()
@@ -941,7 +949,6 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.bloomUpdates.Reset()
 	b.pendingQueryCheckpointSaves = b.pendingQueryCheckpointSaves[:0]
 	b.pendingQueryCheckpointDeletes = b.pendingQueryCheckpointDeletes[:0]
-	b.chapterClosing = false
 	b.mirrorConfigChanged = false
 	b.queryCheckpointCreated = 0
 	b.queryCheckpointDeleted = 0
@@ -1025,13 +1032,6 @@ func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 		// dispatches to all of them, so it is a read handle each, not one
 		// overall. Idempotent, and ledger deletion is rare.
 		b.mirrorConfigChanged = true
-	case *commonpb.LogPayload_CloseChapter:
-		// Admission + FSM (ClassifyCheckpointOrderPosition) guarantee
-		// CloseChapter is the last order of its proposal, so at most one
-		// flip per proposal. applyProposal reads ChapterClosing
-		// after writeAuditEntry to carry preAuditHash onto
-		// LatestClosingChapter — same effect as the legacy log walk.
-		b.chapterClosing = true
 	case *commonpb.LogPayload_CreateLedger:
 		// Only mirror creations reshape the mirror worker set. Reading
 		// order.Mode matches the legacy hasMirrorConfigChange walk and
@@ -1055,12 +1055,6 @@ func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 	case *commonpb.LogPayload_DeletedQueryCheckpoint:
 		b.queryCheckpointDeleted = p.DeletedQueryCheckpoint.GetCheckpointId()
 	}
-}
-
-// ChapterClosing reports whether the CloseChapter intent was
-// absorbed during this proposal.
-func (b *WriteSet) ChapterClosing() bool {
-	return b.chapterClosing
 }
 
 // MirrorConfigChanged reports whether a change that reshapes the mirror worker
@@ -1509,6 +1503,10 @@ func (b *WriteSet) GetNextAuditSequenceID() uint64 {
 	return b.NextAuditSequenceID
 }
 
+func (b *WriteSet) GetLastAuditHash() []byte {
+	return b.LastAuditHash
+}
+
 func (b *WriteSet) IncrementNextSequenceID() uint64 {
 	id := b.NextSequenceID
 	b.NextSequenceID++
@@ -1862,6 +1860,48 @@ func (b *WriteSet) SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState) {
 // DeleteQueryCheckpoint marks a query checkpoint for deletion during Merge.
 func (b *WriteSet) DeleteQueryCheckpoint(checkpointID uint64) {
 	b.pendingQueryCheckpointDeletes = append(b.pendingQueryCheckpointDeletes, checkpointID)
+}
+
+// LiveQueryCheckpointCount returns how many query checkpoints would be live if
+// this proposal committed now: the recovered set with this proposal's staged
+// creates added and staged deletes removed. A staged delete of a checkpoint
+// created earlier in the same proposal nets to zero, so the effective set is
+// computed directly rather than counting saves and deletes independently. Used
+// by the create handler to enforce the replicated policy cap.
+func (b *WriteSet) LiveQueryCheckpointCount() uint64 {
+	live := make(map[uint64]struct{}, len(b.fsm.State.LiveQueryCheckpointIDs)+len(b.pendingQueryCheckpointSaves))
+	for id := range b.fsm.State.LiveQueryCheckpointIDs {
+		live[id] = struct{}{}
+	}
+
+	for _, cp := range b.pendingQueryCheckpointSaves {
+		live[cp.GetCheckpointId()] = struct{}{}
+	}
+
+	for _, id := range b.pendingQueryCheckpointDeletes {
+		delete(live, id)
+	}
+
+	return uint64(len(live))
+}
+
+// QueryCheckpointExists reports whether the checkpoint id is live, accounting
+// for this proposal's staged creates/deletes (staged wins over the recovered
+// set). Used by the delete handler to reject a non-live id.
+func (b *WriteSet) QueryCheckpointExists(id uint64) bool {
+	if slices.Contains(b.pendingQueryCheckpointDeletes, id) {
+		return false
+	}
+
+	for _, cp := range b.pendingQueryCheckpointSaves {
+		if cp.GetCheckpointId() == id {
+			return true
+		}
+	}
+
+	_, ok := b.fsm.State.LiveQueryCheckpointIDs[id]
+
+	return ok
 }
 
 // BloomUpdates returns the canonical keys collected during Merge for bloom filter updates.
