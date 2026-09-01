@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cockroachdb/pebble/v2"
+
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -110,9 +112,16 @@ func archivedChapters(ctx context.Context, store *dal.Store) ([]*commonpb.Chapte
 	return archived, nil
 }
 
+// rangeDeleter narrows what deleteChapterRange needs from dal.WriteSession, so a
+// test can drive the failure returns below without a live Pebble batch — nothing
+// makes DeleteRange fail on a healthy one.
+type rangeDeleter interface {
+	DeleteRange(start, end []byte, options *pebble.WriteOptions) error
+}
+
 // deleteChapterRange removes one chapter's hot entries. The key ranges are the
 // ones WriteSet.executePurge deletes at archival confirmation.
-func deleteChapterRange(batch *dal.WriteSession, chapter *commonpb.Chapter) error {
+func deleteChapterRange(batch rangeDeleter, chapter *commonpb.Chapter) error {
 	logStart := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(chapter.GetStartSequence()).Build()
 	logEnd := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(chapter.GetCloseSequence() + 1).Build()
 

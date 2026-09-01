@@ -2,8 +2,10 @@ package backup
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -204,4 +206,147 @@ func TestApplyExportsAndRebuild_PurgesTheArchivedRangeItReIngested(t *testing.T)
 	// iterator as grounds to panic in Close — which fails the whole restore, not
 	// just the purge. Tests that close with `_ = store.Close()` cannot see it.
 	require.NoError(t, restored.Close(), "the restored store must close cleanly after the purge")
+}
+
+// A purge that fails must fail the restore. Finalizing after an incomplete purge
+// would leave a store whose registry calls a chapter ARCHIVED while its ranges are
+// still resident — the state verifyArchivedChapterResidency reports as corrupt,
+// reached silently.
+func TestApplyExportsAndRebuild_PropagatesAPurgeFailure(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "purge-failure-bucket"
+
+	ctx := context.Background()
+	source := newBackupTestStore(t)
+
+	batch := source.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldAuditKey(1), auditEntryWithHash(1, []byte("h1"))))
+	require.NoError(t, batch.SetProto(coldLogKey(2), createLedgerLog(2, "l", 1)))
+	require.NoError(t, batch.Commit())
+
+	storage := newInMemoryBackupStorage()
+	require.NoError(t, WriteManifest(ctx, storage, ManifestKey(bucketID), &Manifest{
+		Checkpoint: &CheckpointManifest{LastLogSequence: 1, LastAuditSequence: 0},
+	}))
+
+	_, err := RunIncrementalBackup(ctx, logging.Testing(), source, nil, storage, bucketID, 0)
+	require.NoError(t, err)
+
+	manifest, err := ReadManifest(ctx, storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+
+	restored := newBackupTestStore(t)
+
+	// A chapter row the registry scan cannot decode. The rebuild writes rows for
+	// the chapters its logs describe and never reads this id, so the purge's scan
+	// is the first step that touches it.
+	corrupt := restored.OpenWriteSession()
+	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneGlobal, dal.SubGlobChapters).PutUint64(99).Build()
+	require.NoError(t, corrupt.SetBytes(key, []byte("not-a-chapter")))
+	require.NoError(t, corrupt.Commit())
+
+	err = ApplyExportsAndRebuild(ctx, logging.Testing(), storage, restored, manifest)
+	require.ErrorContains(t, err, "purging archived ranges",
+		"the restore must fail rather than finalize after an incomplete purge")
+}
+
+// A chapter that closed with no audit entries of its own carries
+// close_audit_sequence < start_audit_sequence. The confirm's purge skips the
+// audit-keyed ranges for it rather than deleting a range that runs backwards, and
+// so must this: a backwards range would either delete nothing or, if the bounds
+// were swapped, take the successor's entries with it.
+func TestPurgeArchivedRanges_SkipsAnInvertedAuditRange(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+	ctx := context.Background()
+
+	writeChapterRow(t, store, &commonpb.Chapter{
+		Id:                 1,
+		Status:             commonpb.ChapterStatus_CHAPTER_ARCHIVED,
+		StartSequence:      1,
+		CloseSequence:      10,
+		StartAuditSequence: 5,
+		CloseAuditSequence: 4,
+	})
+
+	writeColdEntry(t, store, dal.SubColdLog, 3)
+	writeColdEntry(t, store, dal.SubColdAudit, 5)
+	writeColdEntry(t, store, dal.SubColdAuditItem, 5)
+	writeAppliedProposal(t, store, 5)
+
+	require.NoError(t, purgeArchivedRanges(ctx, logging.Testing(), store))
+
+	require.Equal(t, 0, countKeysInSub(t, store, dal.SubColdLog),
+		"the log range is still well-formed and is purged")
+	require.Equal(t, 1, countKeysInSub(t, store, dal.SubColdAudit),
+		"the audit-keyed ranges are skipped, so the successor's entry at 5 survives")
+	require.Equal(t, 1, countKeysInSub(t, store, dal.SubColdAuditItem))
+	require.Equal(t, 1, countKeysInSub(t, store, dal.SubColdAppliedProposal))
+}
+
+// The registry scan is the first thing the purge does, and a store that cannot be
+// read is a restore that must fail rather than finalize.
+func TestPurgeArchivedRanges_PropagatesAReadFailure(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+	ctx := context.Background()
+
+	writeChapterRow(t, store, &commonpb.Chapter{
+		Id:     1,
+		Status: commonpb.ChapterStatus_CHAPTER_ARCHIVED,
+	})
+
+	require.NoError(t, store.Close())
+
+	require.Error(t, purgeArchivedRanges(ctx, logging.Testing(), store))
+}
+
+// failingDeleter fails the nth DeleteRange, so each range's error return is
+// reachable: on a healthy Pebble batch none of them are.
+type failingDeleter struct {
+	failOn int
+	calls  int
+}
+
+func (d *failingDeleter) DeleteRange(_, _ []byte, _ *pebble.WriteOptions) error {
+	d.calls++
+	if d.calls == d.failOn {
+		return errors.New("delete range failed")
+	}
+
+	return nil
+}
+
+// Each range is deleted in its own call, and a failure in any of them must surface
+// rather than leave the chapter half-purged and the restore reporting success.
+func TestDeleteChapterRange_SurfacesEachRangeFailure(t *testing.T) {
+	t.Parallel()
+
+	chapter := &commonpb.Chapter{
+		Id:                 1,
+		StartSequence:      1,
+		CloseSequence:      10,
+		StartAuditSequence: 1,
+		CloseAuditSequence: 4,
+	}
+
+	for name, tc := range map[string]struct {
+		failOn int
+		expect string
+	}{
+		"logs":              {failOn: 1, expect: "purging logs"},
+		"audit entries":     {failOn: 2, expect: "purging audit"},
+		"audit items":       {failOn: 3, expect: "purging audit items"},
+		"applied proposals": {failOn: 4, expect: "purging applied proposals"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := deleteChapterRange(&failingDeleter{failOn: tc.failOn}, chapter)
+			require.ErrorContains(t, err, tc.expect)
+		})
+	}
 }
