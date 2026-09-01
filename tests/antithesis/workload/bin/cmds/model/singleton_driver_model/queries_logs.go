@@ -353,16 +353,21 @@ func logWindowRows(ls oracle.LedgerState, ledger string, filter *commonpb.QueryF
 			continue
 		}
 
-		rows = append(rows, logWindowRow{
-			id: row.ID, kind: row.Kind, payload: row.Payload,
-			tx: modelTxForLog(ls, row.TxID), revertsID: revertedIDForLog(ls, row),
-			date: row.Date, sequence: row.Sequence,
-			purged: row.PurgedVolumes, newKept: row.NewKeptVolumes, ephemeral: row.EphemeralVolumes,
-			required: known,
-		})
+		rows = append(rows, logWindowRowOf(ls, row, known))
 	}
 
 	return rows
+}
+
+// logWindowRowOf is one committed log as a comparable row of its base.
+func logWindowRowOf(ls oracle.LedgerState, row oracle.LogRow, required bool) logWindowRow {
+	return logWindowRow{
+		id: row.ID, kind: row.Kind, payload: row.Payload,
+		tx: modelTxForLog(ls, row.TxID), revertsID: revertedIDForLog(ls, row),
+		date: row.Date, sequence: row.Sequence,
+		purged: row.PurgedVolumes, newKept: row.NewKeptVolumes, ephemeral: row.EphemeralVolumes,
+		required: required,
+	}
 }
 
 // modelTxForLog resolves the transaction a log announces, nil when the log
@@ -802,22 +807,6 @@ func (c *Checker) modelLogWindow(ledger string, filter *commonpb.QueryFilter, af
 	return logWindow(c.modelState.Ledger(ledger), ledger, filter, afterSeq, pageSize)
 }
 
-// equalUint64 compares two id sequences elementwise; a nil and an empty slice
-// are the same empty page.
-func equalUint64(a, b []uint64) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-
-	return true
-}
-
 // recheckLogIDs re-reads the ledger's logs unfiltered after the finding, at a
 // later horizon. It separates "not yet visible at the first read's horizon"
 // from "never visible": if the ids the model expected show up here, the page
@@ -864,30 +853,7 @@ func recheckLogKinds(ctx context.Context, client servicepb.BucketServiceClient, 
 
 	out := make([]string, 0, len(logs))
 	for _, l := range logs {
-		switch d := l.GetPayload().GetApply().GetLog().GetData(); {
-		case d.GetCreatedTransaction() != nil:
-			out = append(out, "created_transaction")
-		case d.GetRevertedTransaction() != nil:
-			out = append(out, "reverted_transaction")
-		case d.GetSavedMetadata() != nil:
-			out = append(out, "saved_metadata")
-		case d.GetDeletedMetadata() != nil:
-			out = append(out, "deleted_metadata")
-		case d.GetSetMetadataFieldType() != nil:
-			out = append(out, "set_metadata_field_type")
-		case d.GetRemovedMetadataFieldType() != nil:
-			out = append(out, "removed_metadata_field_type")
-		case d.GetCreateIndex() != nil:
-			out = append(out, "create_index")
-		case d.GetDropIndex() != nil:
-			out = append(out, "drop_index")
-		case d.GetAddedAccountType() != nil:
-			out = append(out, "added_account_type")
-		case d.GetRemovedAccountType() != nil:
-			out = append(out, "removed_account_type")
-		default:
-			out = append(out, "other")
-		}
+		out = append(out, serverLogKind(l))
 	}
 
 	return out, nil
