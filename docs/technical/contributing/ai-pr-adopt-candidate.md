@@ -1,8 +1,14 @@
 # Guarded AI PR candidate adoption
 
-`ai-pr-adopt-candidate` is the recovery path for a candidate commit that already exists locally after an interrupted or exhausted fix loop.
+`ai-pr-adopt-candidate` is the recovery path for candidate bytes that already
+exist in a local commit after an interrupted or exhausted fix loop. It is not a
+review bypass or a second, weaker publication workflow.
 
-It does **not** trust a claim that the candidate was previously validated. It re-establishes the publication guarantees from scratch for the exact candidate SHA and never runs a fixer.
+Adoption reuses the implementation commit, not the trust receipts produced by
+the interrupted run. An old exact review, validation result, pre-commit receipt,
+or bot approval never authorizes adoption. The launcher re-establishes the
+relevant publication guarantees from scratch for the exact candidate SHA and
+never runs a fixer.
 
 ## Preconditions
 
@@ -14,9 +20,63 @@ It does **not** trust a claim that the candidate was previously validated. It re
 
 If the target advanced, return `BASE_UPDATE_REQUIRED`. If the PR head moved or the candidate is not a descendant, refuse adoption.
 
+After those identity checks, adoption runs the same base-pinned publication
+precondition helper as `ai-pr-loop`. The helper:
+
+- performs legitimacy triage and continues only for `KEEP`;
+- snapshots qualifying blocking GitHub findings for the exact verified PR head;
+- uses the normal bugfix-intent rules and enforces `DISCOVERY`, `BEFORE_FIX`,
+  `AFTER_FIX`, and conditional baseline classification through
+  `ai-bugfix-gate`;
+- records fresh run-local outputs and refuses to reuse pre-existing outputs.
+
+The exact-candidate review then runs through
+`ai-review-known-findings`. Every snapshotted finding is reconciled against the
+candidate even when the fresh base review does not rediscover it. A
+`STILL_VALID` blocker or unresolved human decision prevents approval.
+
+## Policy comparison
+
+| Gate | Normal `ai-pr-loop` | Adoption | Should adoption require it? | Why? |
+|---|---|---|---:|---|
+| PR/worktree binding | Immutable manifest and isolated worktree | Same binding for the supplied SHA | Yes | Review and validation must target the intended PR and commit. |
+| Base/head freshness | Verified before the loop; guarded head lease before push | Verified before adoption; guarded head lease before push | Yes | A stale target or moved PR head invalidates the review target. |
+| Legitimacy triage | Base-pinned shared precondition | Base-pinned shared precondition | Yes | Recovery does not establish that the change is legitimate. |
+| Known findings | Fresh exact-head snapshot | Fresh exact-head snapshot | Yes | A prior explicit blocker cannot disappear through non-rediscovery. |
+| Known-finding reconciliation | Every review pass | Exact-candidate review | Yes | Every known finding needs an evidence-based current classification. |
+| Bugfix intent | Shared metadata classifier | Same classifier | Yes | A bugfix must not be relabeled by choosing another launcher. |
+| `DISCOVERY` | Required for bugfixes | Required for bugfixes | Yes | Existing-work classification is a publication precondition. |
+| `BEFORE_FIX` | Required for bugfixes | Required for bugfixes | Yes | Adoption cannot bypass reproduction evidence. |
+| `AFTER_FIX` | Required for bugfixes | Required for bugfixes | Yes | The claimed fix still needs passing after-fix evidence. |
+| Baseline classification | Required when validation failure makes it applicable | Same conditional requirement | Yes, when applicable | Candidate attribution must remain explicit. |
+| Candidate normalization | Bounded fixpoint before assigning the final SHA | Supplied SHA must already be normalized | Yes | Adoption preserves bytes and therefore refuses instead of rewriting them. |
+| Exact review | Final candidate commit is reviewed | Supplied candidate commit is reviewed | Yes | No earlier review receipt is inherited. |
+| Validation | Runs for the exact approved candidate | Runs for the exact approved candidate | Yes | No earlier validation receipt is inherited. |
+| Push binding | Clean reviewed SHA plus force-with-lease | Same descendant and lease checks | Yes | Publication must be an atomic update of the verified PR head. |
+
+The engineering implementation/fix loop is intentionally not rerun. That work
+already produced the candidate bytes and is the only part adoption recovers.
+
+## Trusted-tool rollout
+
+The shared precondition helper follows the same rollout rule as the
+known-finding toolchain: a PR that introduces or changes base-pinned policy is
+reviewed and published by the preceding target-branch toolchain. It cannot use
+its candidate copy to authorize itself. After the change lands, PRs whose
+historical base predates the helper must synchronize with the target branch and
+rerun from scratch. The launcher reports `BASE_UPDATE_REQUIRED` before resolving
+the helper whenever the target has advanced. If the helper is genuinely absent
+from the selected, synchronized base-pinned graph, the result is `TOOLING_ERROR`,
+never `HUMAN_DECISION_REQUIRED`. There is deliberately no fallback to the
+candidate worktree. See
+[Known external PR findings](ai-pr-known-findings.md#trusted-tool-rollout).
+
 ## Trust boundary
 
-The candidate must not provide the policy, reviewer, validator, or review-loop binary that authorizes its own publication. Those tools are loaded/built from a detached worktree at the exact verified PR base SHA.
+The candidate must not provide the precondition policy, triage adapter,
+known-finding collector/reconciler, bugfix gate, reviewer, validator, or
+review-loop binary that authorizes its own publication. Those tools are
+loaded/built from a detached worktree at the exact verified PR base SHA.
 
 The candidate is reviewed in a detached clean worktree. The review pass has no fixer. Local validation runs only after approval, through the base-pinned `agent-check-pr` path.
 
@@ -34,9 +94,11 @@ With `--push`, publication is allowed only if:
 
 1. the exact candidate SHA was approved and validated;
 2. review/validation left its worktree clean and did not change HEAD;
-3. the remote PR head still equals the original verified head;
-4. the candidate still descends from that original head;
-5. `git push --force-with-lease=<head-ref>:<original-head>` succeeds.
+3. the base-pinned pre-commit recipe is rerun after review and leaves the exact
+   candidate clean and unchanged;
+4. the remote PR head still equals the original verified head;
+5. the candidate still descends from that original head;
+6. `git push --force-with-lease=<head-ref>:<original-head>` succeeds.
 
 The force-with-lease is only a compare-and-swap guard. The candidate itself must be a normal descendant of the existing PR head.
 

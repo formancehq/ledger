@@ -309,6 +309,15 @@ The adapter does not commit, push, comment on GitHub, resolve threads, or decide
 
 Because one launcher exit code can cover several outcomes, automation must key on the emitted `AI_PR_LOOP_RESULT` / `AI_PR_LOOP_PUSH_RESULT` line and use the exit status only as a success/failure signal.
 
+Before review, `ai-pr-loop` invokes the base-pinned
+`ai-pr-publication-preconditions` helper for legitimacy triage, exact-head
+known-finding collection, shared bugfix-intent classification, and bugfix
+evidence validation. `ai-pr-adopt-candidate` invokes that same helper; adoption
+changes which implementation bytes enter exact review, not the publication
+policy that authorizes them. Target advancement is classified as
+`BASE_UPDATE_REQUIRED` before helper lookup. A helper genuinely missing from the
+selected complete base-pinned graph is a `TOOLING_ERROR`, not a human decision.
+
 ## Safety boundary
 
 `review-loop` itself never posts comments, resolves threads, pushes commits, or merges pull requests. The higher-level `ai-pr-loop` also remains read-only with respect to GitHub by default. Its explicit `--push` mode may create a local candidate commit and update only the existing same-repository PR head branch under the verified lease described above; it still never comments, resolves threads, changes PR metadata, or merges.
