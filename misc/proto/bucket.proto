@@ -911,6 +911,14 @@ enum CheckStoreErrorType {
   // cold storage. When cold storage is unavailable or a chapter cannot be read,
   // the pass reports this rather than presenting a partial replay as clean.
   CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE = 25;
+  // Emitted when the persisted query-checkpoint rows (SubGlobQueryCheckpoint)
+  // diverge from the set the checker re-derived from chain-bound
+  // CreatedQueryCheckpoint / DeletedQueryCheckpoint logs: a stored row the audit
+  // never created (or later deleted), a live checkpoint missing its row, or a
+  // row whose max_sequence / created_at differs from the audited value. The rows
+  // back point-in-time query reads and the FSM's live-count cap, so a tampered
+  // row changes which checkpoints exist. See EN-1501.
+  CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH = 26;
 }
 
 message CheckStoreError {

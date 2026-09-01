@@ -179,6 +179,14 @@ const (
 	// cold storage. When cold storage is unavailable or a chapter cannot be read,
 	// the pass reports this rather than presenting a partial replay as clean.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE CheckStoreErrorType = 25
+	// Emitted when the persisted query-checkpoint rows (SubGlobQueryCheckpoint)
+	// diverge from the set the checker re-derived from chain-bound
+	// CreatedQueryCheckpoint / DeletedQueryCheckpoint logs: a stored row the audit
+	// never created (or later deleted), a live checkpoint missing its row, or a
+	// row whose max_sequence / created_at differs from the audited value. The rows
+	// back point-in-time query reads and the FSM's live-count cap, so a tampered
+	// row changes which checkpoints exist. See EN-1501.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH CheckStoreErrorType = 26
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -210,6 +218,7 @@ var (
 		23: "CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE",
 		24: "CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH",
 		25: "CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE",
+		26: "CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                            0,
@@ -238,6 +247,7 @@ var (
 		"CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE":        23,
 		"CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH":                24,
 		"CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE": 25,
+		"CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH":              26,
 	}
 )
 
@@ -9968,7 +9978,8 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xf3\t\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xa9\n" +
+	"\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9996,7 +10007,8 @@ const file_bucket_proto_rawDesc = "" +
 	".CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH\x10\x16\x12:\n" +
 	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17\x122\n" +
 	".CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH\x10\x18\x12A\n" +
-	"=CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE\x10\x19*W\n" +
+	"=CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE\x10\x19\x124\n" +
+	"0CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH\x10\x1a*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +

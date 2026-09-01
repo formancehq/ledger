@@ -99,6 +99,10 @@ func writeBaselineAttributes(reader dal.PebbleReader, db *pebble.DB) error {
 		return fmt.Errorf("writing baseline ledgers: %w", err)
 	}
 
+	if err := copyBaselineQueryCheckpoints(reader, db); err != nil {
+		return fmt.Errorf("writing baseline query checkpoints: %w", err)
+	}
+
 	return nil
 }
 
@@ -133,4 +137,16 @@ func copyBaselineLedgers(reader dal.PebbleReader, db *pebble.DB) error {
 	return copyBaselineRange(reader, db,
 		[]byte{dal.ZoneGlobal, dal.SubGlobLedgerInfo},
 		[]byte{dal.ZoneGlobal, dal.SubGlobLedgerInfo + 1})
+}
+
+// copyBaselineQueryCheckpoints copies the live query-checkpoint rows
+// (ZoneGlobal / SubGlobQueryCheckpoint) verbatim into the baseline DB, so the
+// checker can seed its audit-derived live-checkpoint set from them under
+// archiving, where the CreatedQueryCheckpoint logs that would otherwise rebuild
+// the set are purged with the archived chapter. The SubGlobNextQueryCheckpointID
+// counter (0x0F) is excluded by the [0x0E, 0x0F) bound.
+func copyBaselineQueryCheckpoints(reader dal.PebbleReader, db *pebble.DB) error {
+	return copyBaselineRange(reader, db,
+		[]byte{dal.ZoneGlobal, dal.SubGlobQueryCheckpoint},
+		[]byte{dal.ZoneGlobal, dal.SubGlobQueryCheckpoint + 1})
 }

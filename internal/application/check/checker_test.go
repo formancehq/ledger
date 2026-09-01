@@ -742,6 +742,8 @@ func (s *scopeImpl) GetNextQueryCheckpointID() uint64                      { ret
 func (s *scopeImpl) IncrementNextQueryCheckpointID() uint64                { return 1 }
 func (s *scopeImpl) SaveQueryCheckpoint(_ *raftcmdpb.QueryCheckpointState) {}
 func (s *scopeImpl) DeleteQueryCheckpoint(_ uint64)                        {}
+func (s *scopeImpl) LiveQueryCheckpointCount() uint64                      { return 0 }
+func (s *scopeImpl) QueryCheckpointExists(_ uint64) bool                   { return false }
 func (s *scopeImpl) ResolveNumscriptContent(ledger, name, version string) (commonpb.NumscriptInfoReader, error) {
 	info, ok := s.engine.numscriptContent[string(domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: version}.Bytes())]
 	if !ok {

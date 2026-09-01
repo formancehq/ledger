@@ -761,20 +761,30 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// sub-prefix. The (checkpoint_id BE 8) tail keeps per-call ordering
 	// deterministic; the contract is at zone+sub only.
 	for _, cp := range b.pendingQueryCheckpointSaves {
-		if err := saveQueryCheckpoint(batch, cp); err != nil {
+		if err := SaveQueryCheckpoint(batch, cp); err != nil {
 			return fmt.Errorf("saving query checkpoint %d: %w", cp.GetCheckpointId(), err)
 		}
 	}
 
 	for _, cpID := range b.pendingQueryCheckpointDeletes {
-		if err := deleteQueryCheckpointFromBatch(batch, cpID); err != nil {
+		if err := DeleteQueryCheckpointFromBatch(batch, cpID); err != nil {
 			return fmt.Errorf("deleting query checkpoint %d: %w", cpID, err)
 		}
 	}
 
+	// Keep the in-memory live-ID set in lockstep with the persisted rows so the
+	// next proposal's cap/existence checks see this proposal's effect.
+	for _, cp := range b.pendingQueryCheckpointSaves {
+		b.fsm.State.LiveQueryCheckpointIDs[cp.GetCheckpointId()] = struct{}{}
+	}
+
+	for _, cpID := range b.pendingQueryCheckpointDeletes {
+		delete(b.fsm.State.LiveQueryCheckpointIDs, cpID)
+	}
+
 	// SubGlobNextQueryCheckpointID (0x0F)
 	if b.NextQueryCheckpointID != b.fsm.State.NextQueryCheckpointID {
-		if err := storeNextQueryCheckpointID(batch, b.NextQueryCheckpointID); err != nil {
+		if err := StoreNextQueryCheckpointID(batch, b.NextQueryCheckpointID); err != nil {
 			return fmt.Errorf("storing next query checkpoint ID: %w", err)
 		}
 	}
@@ -1862,6 +1872,48 @@ func (b *WriteSet) SaveQueryCheckpoint(cp *raftcmdpb.QueryCheckpointState) {
 // DeleteQueryCheckpoint marks a query checkpoint for deletion during Merge.
 func (b *WriteSet) DeleteQueryCheckpoint(checkpointID uint64) {
 	b.pendingQueryCheckpointDeletes = append(b.pendingQueryCheckpointDeletes, checkpointID)
+}
+
+// LiveQueryCheckpointCount returns how many query checkpoints would be live if
+// this proposal committed now: the recovered set with this proposal's staged
+// creates added and staged deletes removed. A staged delete of a checkpoint
+// created earlier in the same proposal nets to zero, so the effective set is
+// computed directly rather than counting saves and deletes independently. Used
+// by the create handler to enforce the replicated policy cap.
+func (b *WriteSet) LiveQueryCheckpointCount() uint64 {
+	live := make(map[uint64]struct{}, len(b.fsm.State.LiveQueryCheckpointIDs)+len(b.pendingQueryCheckpointSaves))
+	for id := range b.fsm.State.LiveQueryCheckpointIDs {
+		live[id] = struct{}{}
+	}
+
+	for _, cp := range b.pendingQueryCheckpointSaves {
+		live[cp.GetCheckpointId()] = struct{}{}
+	}
+
+	for _, id := range b.pendingQueryCheckpointDeletes {
+		delete(live, id)
+	}
+
+	return uint64(len(live))
+}
+
+// QueryCheckpointExists reports whether the checkpoint id is live, accounting
+// for this proposal's staged creates/deletes (staged wins over the recovered
+// set). Used by the delete handler to reject a non-live id.
+func (b *WriteSet) QueryCheckpointExists(id uint64) bool {
+	if slices.Contains(b.pendingQueryCheckpointDeletes, id) {
+		return false
+	}
+
+	for _, cp := range b.pendingQueryCheckpointSaves {
+		if cp.GetCheckpointId() == id {
+			return true
+		}
+	}
+
+	_, ok := b.fsm.State.LiveQueryCheckpointIDs[id]
+
+	return ok
 }
 
 // BloomUpdates returns the canonical keys collected during Merge for bloom filter updates.

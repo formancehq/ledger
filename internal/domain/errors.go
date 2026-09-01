@@ -239,6 +239,8 @@ const (
 	ErrReasonStaleClusterPolicy             = "STALE_CLUSTER_POLICY"
 	ErrReasonClusterPolicyRevisionConflict  = "CLUSTER_POLICY_REVISION_CONFLICT"
 	ErrReasonClusterPolicyInvalid           = "CLUSTER_POLICY_INVALID"
+	ErrReasonCheckpointLimitReached         = "CHECKPOINT_LIMIT_REACHED"
+	ErrReasonCheckpointNotFound             = "CHECKPOINT_NOT_FOUND"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -1563,6 +1565,39 @@ func (errCheckpointIDRequired) Reason() string              { return ErrReasonCh
 func (errCheckpointIDRequired) Metadata() map[string]string { return nil }
 
 var ErrCheckpointIDRequired Describable = errCheckpointIDRequired{}
+
+// ErrCheckpointLimitReached — a CreateQueryCheckpoint was rejected because the
+// live query-checkpoint count is at the replicated policy limit. Creation never
+// evicts; an existing checkpoint must be deleted before another can be created.
+// KindPrecondition (a definitive, freezable outcome): enforced in the FSM after
+// the idempotency gate, so a keyed retry replays this rejection rather than
+// re-executing once a slot frees — the idempotency contract fixes one outcome
+// per key.
+type ErrCheckpointLimitReached struct {
+	Limit uint64
+}
+
+func (e *ErrCheckpointLimitReached) Error() string {
+	return fmt.Sprintf("query checkpoint limit reached (max %d); delete an existing checkpoint before creating another", e.Limit)
+}
+func (*ErrCheckpointLimitReached) Reason() string { return ErrReasonCheckpointLimitReached }
+func (e *ErrCheckpointLimitReached) Metadata() map[string]string {
+	return map[string]string{"limit": strconv.FormatUint(e.Limit, 10)}
+}
+
+// ErrCheckpointNotFound — a DeleteQueryCheckpoint targeted a checkpoint ID that
+// is not live (never created, or already deleted). KindNotFound.
+type ErrCheckpointNotFound struct {
+	CheckpointID uint64
+}
+
+func (e *ErrCheckpointNotFound) Error() string {
+	return fmt.Sprintf("query checkpoint %d not found", e.CheckpointID)
+}
+func (*ErrCheckpointNotFound) Reason() string { return ErrReasonCheckpointNotFound }
+func (e *ErrCheckpointNotFound) Metadata() map[string]string {
+	return map[string]string{"checkpointId": strconv.FormatUint(e.CheckpointID, 10)}
+}
 
 // ErrNumscriptRuntime — the Numscript program produced output that violates
 // a server-side invariant at apply time (negative posting amount, posting
