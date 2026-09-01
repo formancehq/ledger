@@ -618,10 +618,16 @@ type txRecordView interface {
 // txRecordMatches reports whether the model record rec is consistent with the
 // server transaction: same id, reference, revert relationships, postings, and
 // metadata. Timestamps follow the model's nil-means-server-dated convention — a
-// nil model timestamp is unpredictable, so it is not checked; reverted_at is the
-// same, and only a reverted record may carry one at all.
+// nil model timestamp is unpredictable, so it is not checked; inserted_at and
+// reverted_at are the same, and only a reverted record may carry the latter at
+// all.
 func txRecordMatches(rec txRecordView, serverTx *commonpb.Transaction) bool {
 	tsOK := rec.Timestamp() == nil || rec.Timestamp().GetData() == serverTx.GetTimestamp().GetData()
+
+	// inserted_at follows the same convention: server-assigned, so it is
+	// checked only once learned — and once learned it also drives inserted_at
+	// filter evaluation, so a row serving a different value must not pass.
+	insOK := rec.InsertedAt() == nil || rec.InsertedAt().GetData() == serverTx.GetInsertedAt().GetData()
 
 	var raOK bool
 	switch {
@@ -638,7 +644,7 @@ func txRecordMatches(rec txRecordView, serverTx *commonpb.Transaction) bool {
 		rec.Reverted() == serverTx.GetReverted() &&
 		rec.RevertedBy() == serverTx.GetRevertedByTransaction() &&
 		rec.RevertsTransaction() == serverTx.GetRevertsTransaction() &&
-		tsOK && raOK &&
+		tsOK && insOK && raOK &&
 		postingsEqual(rec.Postings(), serverTx.GetPostings()) &&
 		metaMapEqual(rec.Metadata(), serverTx.GetMetadata())
 }

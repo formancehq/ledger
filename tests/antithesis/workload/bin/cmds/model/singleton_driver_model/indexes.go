@@ -530,21 +530,64 @@ func generateIndexOp(g oracle.GlobalState, ledger string) *servicepb.Request {
 
 // --- readiness poller ----------------------------------------------------
 
-// trackedIndexes snapshots the (ledger → canonical IDs) set the model currently
-// holds, so the poller can query each one's per-replica readiness without holding
-// mu across the network round-trips.
-func (c *Checker) trackedIndexes() map[string][]string {
+// trackedIndexes snapshots the (ledger → canonical → create frontier) set the
+// model currently holds, so the poller can query each one's per-replica
+// readiness without holding mu across the network round-trips. The frontier is
+// part of the snapshot: it names the incarnation the poll is about, and the
+// apply step refuses the verdict if it moved (a drop+recreate reused the
+// canonical while the RPCs were in flight).
+func (c *Checker) trackedIndexes() map[string]map[string]uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	out := map[string][]string{}
+	out := map[string]map[string]uint64{}
 	for _, ledger := range c.ledgerNames {
 		for canon := range c.modelState.Ledger(ledger).Indexes().All() {
-			out[ledger] = append(out[ledger], canon)
+			if out[ledger] == nil {
+				out[ledger] = map[string]uint64{}
+			}
+
+			out[ledger][canon] = c.indexCreateSeq[ledger][canon]
 		}
 	}
 
 	return out
+}
+
+// applyIndexReadiness folds one poll's per-canonical verdicts into the model.
+// canons is the poll's snapshot (canonical → create frontier), readyAll the
+// all-replicas verdict gathered against it. Each verdict is bound to the
+// incarnation it sampled: a moved create frontier means a drop+recreate reused
+// the canonical while the RPCs were in flight, and an all-replicas-ready
+// snapshot of the dead incarnation must not promote its successor — skip both
+// directions, the poll says nothing about the current entry. Caller holds c.mu.
+func (c *Checker) applyIndexReadiness(ledger string, canons map[string]uint64, readyAll map[string]bool) {
+	for canon, createSeq := range canons {
+		exists, wasActive := c.modelState.Ledger(ledger).IndexState(canon)
+		if !exists {
+			continue // dropped between the snapshot and now
+		}
+
+		if c.indexCreateSeq[ledger][canon] != createSeq {
+			continue // recreated between the snapshot and now
+		}
+
+		if readyAll[canon] {
+			c.modelState.SetIndexActive(ledger, canon)
+			if !wasActive {
+				// Coverage: the poller confirmed the index READY on every replica
+				// and promoted it — after which its queries must return results.
+				assert.Reachable("singleton_driver_model: index promoted to active", internal.Details{"ledger": ledger, "index": canon})
+			}
+		} else {
+			c.modelState.SetIndexAmbiguous(ledger, canon)
+			if wasActive {
+				// Coverage: a replica reported the index not-ready again (node
+				// down / restored node rebuilding), demoting it back to ambiguous.
+				assert.Reachable("singleton_driver_model: index demoted to ambiguous", internal.Details{"ledger": ledger, "index": canon})
+			}
+		}
+	}
 }
 
 // demoteAllIndexes flips every tracked index back to ambiguous. Called around a
@@ -590,7 +633,7 @@ func reconcileIndexes(ctx context.Context, c *Checker, conns internal.PerNodeCon
 		// readyAll starts true and is cleared for any canonical a replica reports
 		// missing, not-yet-live, or that we could not read at all.
 		readyAll := make(map[string]bool, len(canons))
-		for _, canon := range canons {
+		for canon := range canons {
 			readyAll[canon] = true
 		}
 
@@ -603,9 +646,13 @@ func reconcileIndexes(ctx context.Context, c *Checker, conns internal.PerNodeCon
 		nodePending := make([]map[string]uint32, len(conns))
 
 		for i, pc := range conns {
-			resp, err := pc.Bucket.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
+			// Stale consistency: the question is "is THIS replica's index
+			// ready", so the answer must be locally attributable. The default
+			// linearizable read forwards exactly when the node is syncing —
+			// crediting a rebuilding follower with the leader's ready state.
+			resp, err := pc.Bucket.GetIndexStatus(internal.WithStaleConsistency(ctx), &servicepb.GetIndexStatusRequest{Ledger: ledger})
 			if err != nil {
-				for _, canon := range canons {
+				for canon := range canons {
 					readyAll[canon] = false
 				}
 
@@ -623,36 +670,19 @@ func reconcileIndexes(ctx context.Context, c *Checker, conns internal.PerNodeCon
 				nodePending[i][canon] = e.GetPendingVersion()
 			}
 
-			for _, canon := range canons {
-				if version[canon] == 0 { // absent on this replica, or backfill not yet live
+			for canon, createSeq := range canons {
+				// A node proves it is reporting on THIS incarnation only once
+				// its indexer folded past the create: below that, a non-zero
+				// version describes the previous same-canonical incarnation
+				// (dropped and recreated), whose readiness must not transfer.
+				if version[canon] == 0 || resp.GetLastIndexedSequence() < createSeq {
 					readyAll[canon] = false
 				}
 			}
 		}
 
 		c.mu.Lock()
-		for _, canon := range canons {
-			exists, wasActive := c.modelState.Ledger(ledger).IndexState(canon)
-			if !exists {
-				continue // dropped between the snapshot and now
-			}
-
-			if readyAll[canon] {
-				c.modelState.SetIndexActive(ledger, canon)
-				if !wasActive {
-					// Coverage: the poller confirmed the index READY on every replica
-					// and promoted it — after which its queries must return results.
-					assert.Reachable("singleton_driver_model: index promoted to active", internal.Details{"ledger": ledger, "index": canon})
-				}
-			} else {
-				c.modelState.SetIndexAmbiguous(ledger, canon)
-				if wasActive {
-					// Coverage: a replica reported the index not-ready again (node
-					// down / restored node rebuilding), demoting it back to ambiguous.
-					assert.Reachable("singleton_driver_model: index demoted to ambiguous", internal.Details{"ledger": ledger, "index": canon})
-				}
-			}
-		}
+		c.applyIndexReadiness(ledger, canons, readyAll)
 
 		// Retype-window closure, two-phase per node (see retypeObservation):
 		// a node is armed once a poll proves this retype's log folded, and
