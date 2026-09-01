@@ -649,6 +649,15 @@ func resolveIntBounds(cond *commonpb.IntCondition, params map[string]*commonpb.P
 		}
 	}
 
+	// max is the exclusive upper, so [min, max) holds nothing once the
+	// adjusted bounds meet or cross — e.g. `(x, x)` resolves to [x+1, x).
+	// Every consumer must see that as the empty match, never as Pebble
+	// iterator bounds: LowerBound above UpperBound is an iterator
+	// invariant violation, not an empty scan.
+	if b.hasMin && b.hasMax && b.min >= b.max {
+		b.empty = true
+	}
+
 	return b, nil
 }
 
@@ -821,6 +830,12 @@ func resolveUintBounds(cond *commonpb.UintCondition, params map[string]*commonpb
 			b.max = nv
 			b.hasMax = true
 		}
+	}
+
+	// See resolveIntBounds: adjusted bounds that meet or cross are the
+	// empty match, and must never reach Pebble as iterator bounds.
+	if b.hasMin && b.hasMax && b.min >= b.max {
+		b.empty = true
 	}
 
 	return b, nil
@@ -1220,6 +1235,10 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 		return nil, err
 	}
 
+	if bounds.empty {
+		return &SliceIterator{}, nil
+	}
+
 	// Equality optimization: single txID -> check existence in Pebble and return slice
 	if bounds.isEquality() {
 		exists, pErr := pebbleTxExists(ctx.pebbleReader, ctx.ledgerName, bounds.min)
@@ -1330,6 +1349,10 @@ func compileTimestampRangeCondition(
 		return nil, err
 	}
 
+	if bounds.empty {
+		return &SliceIterator{}, nil
+	}
+
 	// Key layout: [prefix_byte][ledger\x00][timestamp_BE(8B)][entityID_BE(8B)]
 	entityOffset := len(ledgerPrefix) + 8
 	entityLen := 8
@@ -1411,6 +1434,10 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 	bounds, err := resolveUintBounds(cond, ctx.params)
 	if err != nil {
 		return nil, err
+	}
+
+	if bounds.empty {
+		return &SliceIterator{}, nil
 	}
 
 	prefix := readstore.LedgerLogPrefix(ctx.kb, ctx.ledgerName)
