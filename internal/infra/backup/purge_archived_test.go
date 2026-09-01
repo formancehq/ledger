@@ -304,17 +304,26 @@ func TestPurgeArchivedRanges_PropagatesAReadFailure(t *testing.T) {
 	require.Error(t, purgeArchivedRanges(ctx, logging.Testing(), store))
 }
 
-// failingDeleter fails the nth DeleteRange, so each range's error return is
-// reachable: on a healthy Pebble batch none of them are.
+// failingDeleter fails the nth DeleteRange, and optionally the commit, so each
+// error return is reachable: on a healthy Pebble batch none of them are.
 type failingDeleter struct {
-	failOn int
-	calls  int
+	failOn     int
+	failCommit bool
+	calls      int
 }
 
 func (d *failingDeleter) DeleteRange(_, _ []byte, _ *pebble.WriteOptions) error {
 	d.calls++
 	if d.calls == d.failOn {
 		return errors.New("delete range failed")
+	}
+
+	return nil
+}
+
+func (d *failingDeleter) Commit() error {
+	if d.failCommit {
+		return errors.New("commit failed")
 	}
 
 	return nil
@@ -349,4 +358,37 @@ func TestDeleteChapterRange_SurfacesEachRangeFailure(t *testing.T) {
 			require.ErrorContains(t, err, tc.expect)
 		})
 	}
+}
+
+// A commit that fails must fail the restore: the ranges are deleted in one batch,
+// so a lost commit leaves every chapter unpurged rather than some.
+func TestPurgeChapters_SurfacesACommitFailure(t *testing.T) {
+	t.Parallel()
+
+	archived := []*commonpb.Chapter{{
+		Id:                 1,
+		StartSequence:      1,
+		CloseSequence:      10,
+		StartAuditSequence: 1,
+		CloseAuditSequence: 4,
+	}}
+
+	err := purgeChapters(logging.Testing(), &failingDeleter{failCommit: true}, archived)
+	require.ErrorContains(t, err, "committing archived range purge")
+}
+
+// And a chapter whose delete fails names that chapter, so an operator reading the
+// failed restore knows which one stopped it.
+func TestPurgeChapters_NamesTheChapterThatFailed(t *testing.T) {
+	t.Parallel()
+
+	archived := []*commonpb.Chapter{
+		{Id: 7, StartSequence: 1, CloseSequence: 10, StartAuditSequence: 1, CloseAuditSequence: 4},
+		{Id: 8, StartSequence: 11, CloseSequence: 20, StartAuditSequence: 5, CloseAuditSequence: 9},
+	}
+
+	// Fifth call: chapter 7 takes four, so chapter 8's log delete is the failure.
+	err := purgeChapters(logging.Testing(), &failingDeleter{failOn: 5}, archived)
+	require.ErrorContains(t, err, "purging archived chapter 8")
+	require.ErrorContains(t, err, "purging logs")
 }

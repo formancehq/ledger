@@ -58,6 +58,16 @@ func purgeArchivedRanges(ctx context.Context, logger logging.Logger, store *dal.
 	// Cancel is a no-op once Commit has run, so this covers every early return.
 	defer func() { _ = batch.Cancel() }()
 
+	return purgeChapters(logger, batch, archived)
+}
+
+// purgeChapters deletes each chapter's ranges and commits them as one batch: a
+// half-applied purge would leave a store whose registry calls a chapter ARCHIVED
+// while some of its ranges are resident.
+//
+// Takes the session as an interface so the delete and commit failures are
+// reachable from a test; a healthy Pebble batch returns from neither.
+func purgeChapters(logger logging.Logger, batch purgeSession, archived []*commonpb.Chapter) error {
 	for _, chapter := range archived {
 		if err := deleteChapterRange(batch, chapter); err != nil {
 			return fmt.Errorf("purging archived chapter %d: %w", chapter.GetId(), err)
@@ -117,6 +127,12 @@ func archivedChapters(ctx context.Context, store *dal.Store) ([]*commonpb.Chapte
 // makes DeleteRange fail on a healthy one.
 type rangeDeleter interface {
 	DeleteRange(start, end []byte, options *pebble.WriteOptions) error
+}
+
+// purgeSession adds the commit purgeChapters owns. dal.WriteSession satisfies it.
+type purgeSession interface {
+	rangeDeleter
+	Commit() error
 }
 
 // deleteChapterRange removes one chapter's hot entries. The key ranges are the
