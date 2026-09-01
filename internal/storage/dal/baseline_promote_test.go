@@ -216,3 +216,63 @@ func TestPromoteStagedBaseline_PromotesTheCleanSnapshotPastItsTemp(t *testing.T)
 	require.EqualValues(t, 1, id)
 	require.ElementsMatch(t, []string{"checker-00000000000000000001"}, baselineNames(t, store))
 }
+
+// A checkpoint restore replaces live/ with content that did not produce the
+// baselines sitting next to it. A previous incarnation's snapshot can share a
+// chapter id with the installed store's boundary while holding different state —
+// the id-guard cannot tell them apart — so every baseline artifact goes with the
+// old live/, and the checker degrades until the installed store mints its own.
+func TestRestoreCheckpoint_ClearsBaselines(t *testing.T) {
+	t.Parallel()
+
+	store := newBaselineTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte("seed"), []byte("value")))
+	require.NoError(t, batch.Commit())
+
+	checkpointID, err := store.CreateSnapshot()
+	require.NoError(t, err)
+
+	stageBaseline(t, store, 1)
+	require.NoError(t, store.PromoteStagedBaseline(1))
+	stageBaseline(t, store, 2)
+
+	require.NoError(t, store.RestoreCheckpoint(checkpointID))
+
+	_, _, ok := store.BaselineCheckpointPath()
+	require.False(t, ok, "the previous incarnation's live baseline must not survive the restore")
+	require.Empty(t, baselineNames(t, store), "staged snapshots are the previous incarnation's too")
+}
+
+// Boot adoption of a checkpoint (no live/ present) is the same situation one
+// step earlier: whatever baselines sit in the data directory were not produced
+// by the checkpoint being adopted.
+func TestNewStore_AdoptingACheckpointClearsBaselines(t *testing.T) {
+	t.Parallel()
+
+	store := newBaselineTestStore(t)
+	dataDir := store.dataDir
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte("seed"), []byte("value")))
+	require.NoError(t, batch.Commit())
+
+	_, err := store.CreateSnapshot()
+	require.NoError(t, err)
+
+	stageBaseline(t, store, 1)
+	require.NoError(t, store.PromoteStagedBaseline(1))
+	require.NoError(t, store.Close())
+
+	// No live/, checkpoints present, stale baselines present: the boot path
+	// adopts the checkpoint and must discard the baselines with the old live/.
+	require.NoError(t, os.RemoveAll(filepath.Join(dataDir, "live")))
+
+	reopened, err := NewStore(dataDir, logging.Testing(), noop.NewMeterProvider().Meter("t"), DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reopened.Close() })
+
+	_, _, ok := reopened.BaselineCheckpointPath()
+	require.False(t, ok, "baselines from before the adoption must not survive it")
+}

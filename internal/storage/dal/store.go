@@ -496,6 +496,12 @@ func NewStore(
 
 			logger.Infof("No live directory found, restoring from checkpoint %d", latestCheckpointID)
 
+			// The adopted checkpoint did not produce whatever baselines sit in
+			// this data directory.
+			if err = clearBaselines(dataDir); err != nil {
+				return nil, err
+			}
+
 			if err = HardLink(checkpointPath, liveDir); err != nil {
 				return nil, fmt.Errorf("hard linking checkpoint to live directory: %w", err)
 			}
@@ -1108,6 +1114,22 @@ func (s *Store) BaselineCheckpointPath() (string, uint64, bool) {
 	return "", 0, false
 }
 
+// ClearBaselines removes every baseline artifact — the live checker baseline
+// and all staged snapshots. Called whenever live/ is replaced with content that
+// did not produce them (a checkpoint restore, follower sync's publish, boot
+// adoption of a checkpoint): a baseline describes the store it was captured
+// from, and a previous incarnation's snapshot can share a chapter id with the
+// installed store's boundary while holding different state — the id-guard
+// cannot tell them apart, so the artifacts must go. The checker degrades until
+// the next close/confirm cycle mints a baseline from the installed store.
+func clearBaselines(dataDir string) error {
+	if err := os.RemoveAll(filepath.Join(dataDir, baselineCheckpointsDir)); err != nil {
+		return fmt.Errorf("clearing baseline snapshots: %w", err)
+	}
+
+	return nil
+}
+
 // parseBaselineName reads a baseline directory name of the form
 // <prefix><zero-padded id>, refusing anything with a remainder — an interrupted
 // write's ".tmp-<pid>-<ns>" sibling must never pass as the snapshot it was
@@ -1544,6 +1566,14 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	}
 
 	s.db = nil
+
+	// Before the publish rename, so every crash window is safe: before this,
+	// the rollback restores the original live/ whose baselines still match it;
+	// between this and the rename, the rollback comes back with no baselines and
+	// the checker degrades honestly; after, the foreign live/ starts clean.
+	if err := clearBaselines(s.dataDir); err != nil {
+		return err
+	}
 
 	if err := os.Rename(stagingDirectory, liveDirectory); err != nil {
 		return rollback(fmt.Errorf("publishing live.staging to live: %w", err))
