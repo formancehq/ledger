@@ -209,7 +209,7 @@ func runWorker(
 		// in-flight bulk set, exercising cross-node freshness without needing
 		// quiescence.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -234,6 +234,8 @@ func runWorker(
 				runLedgerStats(ctx, client, c)
 			case 11:
 				runIndexIntrospection(ctx, client, c)
+			case 12:
+				runGetLog(ctx, client, c)
 			default:
 				runRead(ctx, client, c)
 			}

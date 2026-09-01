@@ -373,6 +373,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		}
 	}
 	learnTxStamps(c.modelState, bulk, logs)
+	c.learnLogSequences(bulk, logs)
 
 	// A committed keyed bulk is frozen in modelState; remember it (with the
 	// sequences it committed at) so runReplay can re-send it and check the server

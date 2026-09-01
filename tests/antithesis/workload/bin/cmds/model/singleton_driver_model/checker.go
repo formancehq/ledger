@@ -42,6 +42,18 @@ type Checker struct {
 	// (see tryDrain), so reads need no drain-race skip.
 	reads map[uint64]struct{}
 
+	// logBySeq maps a global log sequence to the Apply log that took it. The
+	// sequence is handed out cluster-wide across ledgers, so which (ledger,
+	// ledger-local id) owns one is the single fact about the log stream the model
+	// cannot derive — it is learned from committed bulk responses, like a log's
+	// date. logSeqRing is the insertion order, bounding the table to
+	// learnedLogSeqWindow entries. maxLogSeq is the highest sequence any response
+	// has carried, the floor for picking one that cannot be assigned. Guarded by
+	// mu; see learnLogSequences.
+	logBySeq   map[uint64]learnedLog
+	logSeqRing []uint64
+	maxLogSeq  uint64
+
 	// Worker → processor channel.
 	incoming chan observation
 
@@ -131,6 +143,7 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		ledgerNames: ledgerNames,
 		inflight:    map[uint64]oracle.Bulk{},
 		reads:       map[uint64]struct{}{},
+		logBySeq:    map[uint64]learnedLog{},
 		incoming:    make(chan observation, incomingBuffer),
 		modelState:  modelState,
 		retypeObs:   map[string]*retypeObservation{},

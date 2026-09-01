@@ -872,30 +872,7 @@ func recheckLogKinds(ctx context.Context, client servicepb.BucketServiceClient, 
 
 	out := make([]string, 0, len(logs))
 	for _, l := range logs {
-		switch d := l.GetPayload().GetApply().GetLog().GetData(); {
-		case d.GetCreatedTransaction() != nil:
-			out = append(out, "created_transaction")
-		case d.GetRevertedTransaction() != nil:
-			out = append(out, "reverted_transaction")
-		case d.GetSavedMetadata() != nil:
-			out = append(out, "saved_metadata")
-		case d.GetDeletedMetadata() != nil:
-			out = append(out, "deleted_metadata")
-		case d.GetSetMetadataFieldType() != nil:
-			out = append(out, "set_metadata_field_type")
-		case d.GetRemovedMetadataFieldType() != nil:
-			out = append(out, "removed_metadata_field_type")
-		case d.GetCreateIndex() != nil:
-			out = append(out, "create_index")
-		case d.GetDropIndex() != nil:
-			out = append(out, "drop_index")
-		case d.GetAddedAccountType() != nil:
-			out = append(out, "added_account_type")
-		case d.GetRemovedAccountType() != nil:
-			out = append(out, "removed_account_type")
-		default:
-			out = append(out, "other")
-		}
+		out = append(out, serverLogKind(l))
 	}
 
 	return out, nil

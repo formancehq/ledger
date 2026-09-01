@@ -286,6 +286,16 @@ func (s LedgerState) LogRows() []LogRow {
 	return out
 }
 
+// LogKindAt names the LedgerLogPayload arm of one log by ledger-local id, in
+// O(1). ok=false when the ledger holds no such log.
+func (s LedgerState) LogKindAt(id uint64) (kind string, ok bool) {
+	if id == 0 || id > uint64(s.logs.Len()) {
+		return "", false
+	}
+
+	return s.logs.Get(int(id - 1)).kind, true
+}
+
 // LogDates returns each committed log's (id, date), ascending. A nil date is
 // one not yet learned from a commit response.
 func (s LedgerState) LogDates() []struct {
