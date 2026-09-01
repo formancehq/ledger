@@ -116,14 +116,20 @@ When a new WAL is created, the system uses a marker file (`WAL_CREATION_COMPLETE
 1. Check if `WAL_CREATION_COMPLETED` marker exists
 2. **If marker exists**: Open the existing WAL normally
 3. **If marker does not exist**:
-   - Delete any existing WAL directory (incomplete previous creation)
+   - Inspect any existing WAL and fail closed if it contains consensus state or
+     cannot be proven empty
+   - Delete only a verified-empty WAL directory (incomplete previous creation)
    - Create a new WAL using `wal.Create()`
    - Close and reopen the WAL (required by etcd/server WAL)
+   - Persist and fsync the initial compaction replay marker, then close the WAL
    - Create the marker file
-   - Sync and close the marker file
+   - Sync and close the marker file, then fsync the data directory
    - Open the WAL for use
 
-This mechanism ensures that if the process crashes during WAL creation, the incomplete WAL will be detected and recreated on the next startup, preventing corruption.
+The replay marker is durable before the completion file is published. A crash
+before publication therefore leaves only an empty-bootstrap WAL, which is
+detected and recreated on the next startup. Once the completion file is
+visible, startup is guaranteed to find the compaction replay marker it requires.
 
 #### 2. Atomic Snapshot File Writes
 

@@ -54,9 +54,8 @@ type DefaultWAL struct {
 	// compactedIndex is the last entry incorporated into the compacted log
 	// prefix. Its term remains available through compactedTerm so raft can
 	// match an AppendEntries request at FirstIndex()-1. This boundary is
-	// deliberately independent from snapshot.Metadata.Index: a newer snapshot
-	// may be published while older entries remain available for follower
-	// catch-up.
+	// allowed to lag behind snapshot.Metadata.Index: a newer snapshot may be
+	// published while older entries remain available for follower catch-up.
 	compactedIndex uint64
 	compactedTerm  uint64
 
@@ -250,7 +249,6 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	}
 
 	replaySnap := &walpb.Snapshot{}
-	created := false
 
 	if err == nil {
 		s.logger.Infof("WAL creation completed, opening existing DefaultWAL")
@@ -344,7 +342,6 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			"duration": time.Since(walOpenStart).String(),
 		}).Infof("WAL opened")
 	} else {
-		created = true
 		s.logger.Infof("DefaultWAL creation not completed, creating new DefaultWAL")
 
 		// A WAL holding state on this branch means the creation marker was lost
@@ -409,17 +406,55 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			return nil, fmt.Errorf("closing newly created DefaultWAL: %w", err)
 		}
 
+		// Persist the initial replay cursor before publishing the creation
+		// completion marker. Once the completion marker is visible, every later
+		// open requires this WAL record and must never observe a completed WAL
+		// without it. A crash before the completion marker leaves only a verified
+		// empty bootstrap remnant, which this branch safely recreates.
+		initialWAL, err := wal.Open(zapLogger, s.etcdWalDir, replaySnap)
+		if err != nil {
+			return nil, fmt.Errorf("opening newly created DefaultWAL for initialization: %w", err)
+		}
+		if _, _, _, err := initialWAL.ReadAll(); err != nil {
+			readErr := fmt.Errorf("reading newly created DefaultWAL for initialization: %w", err)
+			if closeErr := initialWAL.Close(); closeErr != nil {
+				return nil, errors.Join(readErr, fmt.Errorf("closing newly created DefaultWAL after initialization read failure: %w", closeErr))
+			}
+
+			return nil, readErr
+		}
+		if err := initialWAL.SaveSnapshot(newCompactionMarker(0, 0)); err != nil {
+			saveErr := fmt.Errorf("saving initial compaction marker: %w", err)
+			if closeErr := initialWAL.Close(); closeErr != nil {
+				return nil, errors.Join(saveErr, fmt.Errorf("closing newly created DefaultWAL after initial compaction marker failure: %w", closeErr))
+			}
+
+			return nil, saveErr
+		}
+		if err := initialWAL.Close(); err != nil {
+			return nil, fmt.Errorf("closing initialized DefaultWAL: %w", err)
+		}
+
 		f, err := os.Create(markerFilePath)
 		if err != nil {
 			return nil, fmt.Errorf("creating DefaultWAL creation completion marker: %w", err)
 		}
 
-		if err := f.Sync(); err != nil {
-			return nil, fmt.Errorf("syncing DefaultWAL creation completion marker: %w", err)
-		}
+		syncErr := f.Sync()
+		closeErr := f.Close()
+		if syncErr != nil {
+			syncErr = fmt.Errorf("syncing DefaultWAL creation completion marker: %w", syncErr)
+			if closeErr != nil {
+				return nil, errors.Join(syncErr, fmt.Errorf("closing DefaultWAL creation completion marker after sync failure: %w", closeErr))
+			}
 
-		if err := f.Close(); err != nil {
-			return nil, fmt.Errorf("closing DefaultWAL creation completion marker: %w", err)
+			return nil, syncErr
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("closing DefaultWAL creation completion marker: %w", closeErr)
+		}
+		if err := syncDir(s.dataDir); err != nil {
+			return nil, fmt.Errorf("syncing data directory after DefaultWAL creation: %w", err)
 		}
 
 		s.wal, err = wal.Open(zapLogger, s.etcdWalDir, replaySnap)
@@ -468,14 +503,6 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	}
 	if s.hardState == nil {
 		s.hardState = &raftpb.HardState{}
-	}
-	if created {
-		// Persist the initial replay cursor before returning the fresh WAL. Every
-		// later open requires an explicit compaction marker instead of guessing
-		// the logical boundary from the newest FSM snapshot.
-		if err := s.wal.SaveSnapshot(newCompactionMarker(0, 0)); err != nil {
-			return nil, fmt.Errorf("saving initial compaction marker: %w", err)
-		}
 	}
 
 	s.logger.
@@ -664,7 +691,7 @@ func (s *DefaultWAL) FirstIndex() (uint64, error) {
 // firstIndexLocked returns the first index without acquiring lock (caller must hold lock).
 func (s *DefaultWAL) firstIndexLocked() uint64 {
 	if len(s.entries) == 0 {
-		return s.snapshot.GetMetadata().GetIndex() + 1
+		return max(s.snapshot.GetMetadata().GetIndex(), s.compactedIndex) + 1
 	}
 
 	// Compact retains the boundary entry as a dummy so its term remains
@@ -950,10 +977,6 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 
 	if i == s.compactedIndex {
 		return s.compactedTerm, nil
-	}
-
-	if i == s.snapshot.GetMetadata().GetIndex() {
-		return s.snapshot.GetMetadata().GetTerm(), nil
 	}
 
 	if len(s.entries) > 0 {

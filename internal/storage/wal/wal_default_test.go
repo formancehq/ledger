@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	etcdwal "go.etcd.io/etcd/server/v3/storage/wal"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.uber.org/zap"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
@@ -211,17 +213,37 @@ func reopenWAL(t *testing.T, dir string) error {
 }
 
 // TestNew_MarkerMissing_EmptyWAL_Recreates covers the disposable
-// empty-bootstrap remnant: a crash between wal.Create and the marker write
-// leaves a fresh, state-free WAL. New() must clean it up and recreate the
-// marker (existing bootstrap-recovery behaviour).
+// empty-bootstrap remnant: a crash between wal.Create and the initial
+// compaction-marker write leaves a fresh, state-free WAL. New() must clean it
+// up and recreate the marker (existing bootstrap-recovery behaviour).
 func TestNew_MarkerMissing_EmptyWAL_Recreates(t *testing.T) {
 	t.Parallel()
 
-	dir, _ := walDirWithMarkerRemoved(t, nil)
+	dir := t.TempDir()
+	w, err := etcdwal.Create(zap.NewNop(), filepath.Join(dir, etcdWalDir), nil)
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
 
 	require.NoError(t, reopenWAL(t, dir), "a verified-empty WAL must be recreated, not rejected")
 	_, statErr := os.Stat(filepath.Join(dir, walCreationCompletedFile))
 	require.NoError(t, statErr, "the creation marker must be rewritten after recreation")
+}
+
+// TestNew_MarkerMissing_InitialCompactionMarker_Recreates covers a crash after
+// the initial replay cursor is durable but before WAL_CREATION_COMPLETED is
+// published. The sentinel snapshot carries no consensus state, so the next
+// startup must still recognize this prefix as an empty bootstrap remnant.
+func TestNew_MarkerMissing_InitialCompactionMarker_Recreates(t *testing.T) {
+	t.Parallel()
+
+	dir, etcdDir := walDirWithMarkerRemoved(t, nil)
+	walSnaps, err := etcdwal.ValidSnapshotEntries(zap.NewNop(), etcdDir)
+	require.NoError(t, err)
+	require.NotNil(t, latestCompactionMarker(walSnaps), "the interrupted prefix must contain the initial replay cursor")
+
+	require.NoError(t, reopenWAL(t, dir), "an initialized but unpublished empty WAL must be recreated")
+	_, statErr := os.Stat(filepath.Join(dir, walCreationCompletedFile))
+	require.NoError(t, statErr, "the creation marker must be published after recreation")
 }
 
 // TestNew_MarkerMissing_PopulatedHardState_FailsClosed is the core EN-1525
