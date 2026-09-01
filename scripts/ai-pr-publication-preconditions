@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: scripts/ai-pr-publication-preconditions <pr-number> --base <sha> --head <sha> --metadata <path> --run-dir <path>
+
+Runs the base-pinned legitimacy, known-finding, and bugfix-evidence gates shared
+by the normal PR loop and candidate adoption. Outputs are created in run-dir.
+EOF
+}
+
+die() {
+    echo "ai-pr-publication-preconditions: $*" >&2
+    exit 1
+}
+
+[[ $# -gt 0 ]] || { usage >&2; exit 1; }
+case "${1:-}" in -h|--help) usage; exit 0 ;; esac
+pr_number=$1
+shift
+base_sha=""
+head_sha=""
+metadata_file=""
+run_dir=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --base) [[ $# -ge 2 ]] || { usage >&2; exit 1; }; base_sha=$2; shift 2 ;;
+        --head) [[ $# -ge 2 ]] || { usage >&2; exit 1; }; head_sha=$2; shift 2 ;;
+        --metadata) [[ $# -ge 2 ]] || { usage >&2; exit 1; }; metadata_file=$2; shift 2 ;;
+        --run-dir) [[ $# -ge 2 ]] || { usage >&2; exit 1; }; run_dir=$2; shift 2 ;;
+        *) die "unknown argument: $1" ;;
+    esac
+done
+
+[[ "$pr_number" =~ ^[1-9][0-9]*$ ]] || die "PR number must be a positive integer"
+[[ "$base_sha" =~ ^[0-9a-f]{40,64}$ ]] || die "--base must be a full SHA"
+[[ "$head_sha" =~ ^[0-9a-f]{40,64}$ ]] || die "--head must be a full SHA"
+[[ -f "$metadata_file" ]] || die "metadata file not found: $metadata_file"
+[[ -d "$run_dir" ]] || die "run directory not found: $run_dir"
+failure_file="$run_dir/publication-preconditions-failure"
+record_failure() {
+    printf '%s\n' "$1" >"$failure_file"
+}
+for command in git jq; do
+    command -v "$command" >/dev/null 2>&1 || die "required command not found in PATH: $command"
+done
+
+if ! jq -e --argjson pr "$pr_number" --arg base "$base_sha" --arg head "$head_sha" '
+  .number == $pr and
+  .baseRefOid == $base and
+  .headRefOid == $head and
+  ((.title // "") | type == "string") and
+  ((.body // "") | type == "string") and
+  ((.labels // []) | type == "array") and
+  all((.labels // [])[]; (.name | type == "string"))
+' "$metadata_file" >/dev/null; then
+    die "PR metadata does not describe the verified target"
+fi
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+triage_tool="$script_dir/ai-pr-triage"
+known_findings_tool="$script_dir/ai-pr-known-findings"
+bugfix_gate="$script_dir/ai-bugfix-gate"
+for trusted_tool in "$triage_tool" "$known_findings_tool" "$bugfix_gate"; do
+    [[ ! -L "$trusted_tool" && -f "$trusted_tool" && -r "$trusted_tool" ]] || \
+        die "trusted tool is not a readable non-symlink regular file: $trusted_tool"
+done
+
+intent=non-bugfix
+pr_title=$(jq -r '.title // ""' "$metadata_file")
+pr_body=$(jq -r '.body // ""' "$metadata_file")
+if jq -e '.labels[]?.name | ascii_downcase == "bugfix" or ascii_downcase == "bug-fix"' "$metadata_file" >/dev/null || \
+   [[ "$pr_title" == fix:* || "$pr_title" == Fix:* ]] || \
+   grep -Eiq '(^|[[:space:]])(fixes|fix|resolves)[[:space:]]+EN-[0-9]+' <<<"$pr_body"; then
+    intent=bugfix
+fi
+printf '%s\n' "$intent" >"$run_dir/bugfix-intent"
+printf '%s\n' "$pr_body" >"$run_dir/bugfix-evidence.txt"
+
+triage_result="$run_dir/triage.json"
+[[ ! -e "$triage_result" ]] || die "refusing to reuse an existing triage result"
+set +e
+AI_PR_TRIAGE_EXPECT_BASE_SHA="$base_sha" \
+AI_PR_TRIAGE_EXPECT_HEAD_SHA="$head_sha" \
+    bash "$triage_tool" "$pr_number" --output "$triage_result"
+triage_status=$?
+set -e
+if [[ $triage_status -ne 0 ]]; then
+    record_failure "TRIAGE_EXIT=$triage_status"
+    die "triage exited with status $triage_status"
+fi
+if ! jq -e --arg base "$base_sha" --arg head "$head_sha" '
+  .base_sha == $base and
+  .head == $head and
+  (.decision == "KEEP" or .decision == "QUESTION" or .decision == "REJECT")
+' "$triage_result" >/dev/null; then
+    record_failure "TRIAGE_TARGET_MISMATCH"
+    die "triage result does not describe the verified target"
+fi
+triage_decision=$(jq -r '.decision' "$triage_result")
+printf 'AI_PR_PRECONDITIONS_TRIAGE: %s\n' "$triage_decision"
+printf 'AI_PR_PRECONDITIONS_TRIAGE_RESULT: %s\n' "$triage_result"
+case "$triage_decision" in
+    KEEP) ;;
+    QUESTION) exit 20 ;;
+    REJECT) exit 21 ;;
+esac
+
+known_findings="$run_dir/known-findings.json"
+[[ ! -e "$known_findings" ]] || die "refusing to reuse an existing known-findings ledger"
+set +e
+bash "$known_findings_tool" "$pr_number" --head "$head_sha" --output "$known_findings"
+known_findings_status=$?
+set -e
+if [[ $known_findings_status -ne 0 ]]; then
+    record_failure "KNOWN_FINDINGS_EXIT=$known_findings_status"
+    die "known-findings collection exited with status $known_findings_status"
+fi
+if ! jq -e --argjson pr "$pr_number" --arg head "$head_sha" '
+  .version == 1 and
+  .pr_number == $pr and
+  .head == $head and
+  (.findings | type == "array") and
+  ([.findings[].id] | length == (unique | length)) and
+  all(.findings[];
+    (.id | type == "string") and
+    (.kind == "inline-review-comment" or .kind == "review-body" or .kind == "review-body-finding") and
+    (.source_review_id | type == "number") and
+    (.source_id | type == "number") and
+    (.url | type == "string") and
+    (.author | type == "string") and
+    (.path | type == "string") and
+    ((.line | type) == "null" or (.line | type) == "number") and
+    (.body | type == "string" and length > 0) and
+    (if .kind == "inline-review-comment" then
+       .id == ("github-review-comment-" + (.source_id | tostring))
+     elif .kind == "review-body" then
+       .id == ("github-review-" + (.source_id | tostring)) and
+       .source_review_id == .source_id and
+       .path == "" and .line == null
+     else
+       (.id as $id | .source_id as $source_id | $id | test("^github-review-" + ($source_id | tostring) + "-finding-[1-9][0-9]*$")) and
+       .source_review_id == .source_id and
+       .path == "" and .line == null and
+       (.body | test("^\\[P[0-3]\\]\\[blocking\\]"))
+     end)
+  )
+' "$known_findings" >/dev/null; then
+    record_failure "KNOWN_FINDINGS_TARGET_MISMATCH"
+    die "known-findings ledger does not describe the verified target"
+fi
+
+set +e
+bash "$bugfix_gate" evidence "$run_dir/bugfix-evidence.txt" "$intent"
+bugfix_status=$?
+set -e
+if [[ $bugfix_status -ne 0 ]]; then
+    record_failure "BUGFIX_EVIDENCE_EXIT=$bugfix_status"
+    exit "$bugfix_status"
+fi
+printf 'AI_PR_PRECONDITIONS_KNOWN_FINDINGS_COUNT: %s\n' "$(jq '.findings | length' "$known_findings")"
+printf 'AI_PR_PRECONDITIONS_KNOWN_FINDINGS_RESULT: %s\n' "$known_findings"
+printf 'AI_PR_PRECONDITIONS_BUGFIX_INTENT: %s\n' "$intent"
+echo 'AI_PR_PUBLICATION_PRECONDITIONS=PASS'

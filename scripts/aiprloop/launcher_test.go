@@ -226,6 +226,30 @@ func TestLauncherTreatsTriageFailureAsOrchestrationError(t *testing.T) {
 	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (triage exit 2)")
 }
 
+func TestLauncherClassifiesGenuinelyMissingSharedPolicyAsToolingError(t *testing.T) {
+	t.Parallel()
+
+	fixture := newLauncherFixture(t)
+	updater := filepath.Join(fixture.root, "missing-policy-base")
+	runGit(t, fixture.root, "clone", "--branch", "release/v3.0", filepath.Join(fixture.root, "remote.git"), updater)
+	runGit(t, updater, "config", "user.name", "Target Branch Update")
+	runGit(t, updater, "config", "user.email", "target-update@example.com")
+	runGit(t, updater, "rm", "scripts/ai-pr-publication-preconditions")
+	runGit(t, updater, "commit", "-m", "remove publication preconditions")
+	runGit(t, updater, "push", "origin", "release/v3.0")
+	fixture.baseSHA = runGitOutput(t, updater, "rev-parse", "HEAD")
+
+	capture := filepath.Join(fixture.root, "review-args")
+	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"})
+	require.Error(t, err, output)
+	var exitError *exec.ExitError
+	require.ErrorAs(t, err, &exitError)
+	require.Equal(t, 1, exitError.ExitCode(), output)
+	require.Contains(t, output, "AI_PR_LOOP_RESULT: TOOLING_ERROR (missing publication preconditions)")
+	require.NotContains(t, output, "HUMAN_DECISION_REQUIRED")
+	require.NoFileExists(t, capture, "technical review must not run")
+}
+
 type launcherFixture struct {
 	root     string
 	checkout string
@@ -254,6 +278,12 @@ func newLauncherFixture(t *testing.T) launcherFixture {
 	guard, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-git-guard"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-git-guard"), guard, 0o755))
+	preconditions, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-pr-publication-preconditions"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-publication-preconditions"), preconditions, 0o755))
+	bugfixGate, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-bugfix-gate"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-bugfix-gate"), bugfixGate, 0o755))
 	writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" > "$TEST_CAPTURE_FILE"
