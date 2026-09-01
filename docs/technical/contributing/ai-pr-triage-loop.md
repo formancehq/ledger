@@ -24,7 +24,10 @@ The base-pinned triage adapter may predate that binding, so `ai-pr-loop` does no
 
 The triage provider itself starts with `env -C` in the workflow-created trusted
 worktree, never in the primary checkout. Immediately before launch, the adapter
-checks the trusted top-level and base HEAD and binds `EXPECTED_PR_NUMBER`,
-`EXPECTED_WORKTREE`, and `EXPECTED_HEAD`. It snapshots primary-checkout HEAD,
-branch, and status around Codex and reports `ROOT_MUTATION_DETECTED` on any
-change. The separate PR-head worktree remains read-only evidence.
+checks the trusted top-level and base HEAD. `EXPECTED_WORKTREE` and
+`EXPECTED_HEAD` identify the read-only PR evidence worktree and actual PR head;
+`AI_WORKTREE_PATH` and `AI_WORKTREE_EXPECTED_HEAD` independently bind the
+provider cwd to the trusted worktree and target-base HEAD. `TARGET_BASE_SHA` and
+`PR_HEAD_SHA` expose those identities without overloading either one. The
+adapter snapshots primary-checkout HEAD, branch, and status around Codex and
+reports `ROOT_MUTATION_DETECTED` on any change.

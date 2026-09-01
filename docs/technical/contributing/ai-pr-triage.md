@@ -23,8 +23,11 @@ available only after it reaches the target branch; its bootstrap review uses the
 normal technical review workflow.
 
 Both detached worktrees are workflow-owned child worktrees. The provider
-process uses an explicit process cwd (`env -C`) in the trusted target worktree,
-receives the expected PR/worktree/HEAD values, and is surrounded by the same
+process uses an explicit process cwd (`env -C`) in the trusted target worktree.
+`EXPECTED_WORKTREE` and `EXPECTED_HEAD` identify the PR evidence worktree and
+actual PR head. The separate `AI_WORKTREE_PATH` and
+`AI_WORKTREE_EXPECTED_HEAD` values bind the provider cwd to the trusted target
+worktree and target-base HEAD. The process is surrounded by the same
 primary-checkout mutation detection described in
 [AI PR worktree isolation](ai-worktree-isolation.md).
 

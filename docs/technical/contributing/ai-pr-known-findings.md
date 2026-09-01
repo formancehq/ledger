@@ -60,6 +60,13 @@ Structured splitting is syntax-only. The collector does not trust severity label
 
 The launcher snapshots findings before the technical loop and binds the snapshot to the PR number/head. It does not resolve threads, edit comments, or infer that a GitHub thread being marked resolved proves the underlying defect is fixed.
 
+During reconciliation, `EXPECTED_HEAD` always means the exact reviewed
+candidate SHA. `PR_HEAD_SHA` is the PR head to which the known-findings ledger
+was bound, and `TARGET_BASE_SHA` is the base-pinned policy/tool identity. An
+adopted candidate may differ from `PR_HEAD_SHA`; the provider cwd is therefore
+bound separately with `AI_WORKTREE_PATH` and `AI_WORKTREE_EXPECTED_HEAD` rather
+than reusing `EXPECTED_HEAD` for the trusted-tool worktree.
+
 ## Trusted-tool rollout
 
 Run `ai-pr-loop` from an up-to-date checkout of the target branch, never from
@@ -67,7 +74,10 @@ the PR worktree it is reviewing. A change that introduces or updates a
 base-pinned collector, reviewer, schema, or policy is reviewed and published by
 the preceding target-branch toolchain; it cannot authorize itself. The new
 toolchain becomes available atomically when all of those files land on the
-target branch. Until then, directly running the candidate launcher correctly
-fails closed when its historical target base does not contain the tools it
-requires. Do not add a fallback to the PR-head copies to bootstrap such a
-change.
+target branch. Until then, use the complete preceding target-branch launcher
+and dependency graph. A newer launcher must not resolve a newly introduced
+dependency from a historical base that predates it: it must require target-base
+synchronization with `BASE_UPDATE_REQUIRED` before dependency lookup. A missing
+tool that should genuinely exist in the selected complete base-pinned graph is
+a tooling error, never `HUMAN_DECISION_REQUIRED`. Do not add a fallback to the
+PR-head copies to bootstrap such a change.

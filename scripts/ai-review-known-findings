@@ -105,6 +105,12 @@ Copy head and worktree_fingerprint exactly. Output only JSON matching the schema
 
 At the start, verify `pwd` and `git rev-parse --show-toplevel` against the
 base-pinned trusted worktree supplied below. Stop if either differs.
+
+`EXPECTED_WORKTREE` and `EXPECTED_HEAD` identify the exact candidate being
+reviewed. `AI_WORKTREE_PATH` and `AI_WORKTREE_EXPECTED_HEAD` separately bind
+this reconciliation process to its base-pinned trusted-tool worktree. The PR
+head recorded by the known-findings ledger can differ from the candidate head
+during adoption; do not collapse any of those identities.
 EOF
 printf '\nUNTRUSTED INPUT FILES\n- base_review: `%s`\n- known_findings: `%s`\n- candidate_worktree: `%s`\n' \
   "$base_result" "$AI_REVIEW_KNOWN_FINDINGS" "$repo_root" >> "$prompt"
@@ -112,10 +118,13 @@ printf '\nTRUSTED TARGET\n- head: %s\n- worktree_fingerprint: %s\n- trusted_work
   "$AI_REVIEW_HEAD" "$AI_REVIEW_WORKTREE_FINGERPRINT" "$trusted_root" >> "$prompt"
 
 trusted_head=$(jq -r '.base_sha' "$AI_REVIEW_CHANGE_TARGET")
-EXPECTED_WORKTREE="$trusted_root" \
-EXPECTED_HEAD="$trusted_head" \
+EXPECTED_WORKTREE="$repo_root" \
+EXPECTED_HEAD="$AI_REVIEW_HEAD" \
 AI_WORKTREE_PATH="$trusted_root" \
 AI_WORKTREE_EXPECTED_HEAD="$trusted_head" \
+TARGET_BASE_SHA="$trusted_head" \
+PR_HEAD_SHA="$AI_REVIEW_KNOWN_FINDINGS_HEAD" \
+CANDIDATE_SHA="$AI_REVIEW_HEAD" \
   env -C "$trusted_root" HOME="$isolation_root/home" CODEX_HOME="$isolation_root/home/.codex" codex exec \
     --ephemeral --ignore-user-config --ignore-rules \
     --disable hooks --disable plugins --disable apps --disable memories --disable multi_agent --disable skill_search \

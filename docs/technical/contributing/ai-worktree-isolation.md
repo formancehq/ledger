@@ -76,6 +76,15 @@ Codex and Claude adapters re-check them, add the expected values to the trusted
 prompt, and use `env -C "$EXPECTED_WORKTREE"` for the provider process. An
 agent's `pwd` self-check is defense in depth, not the authorization mechanism.
 
+For the ordinary technical review/fix/validation path, the reviewed candidate
+is also the provider cwd, so both pairs are equal. Trusted-policy passes such as
+legitimacy triage and known-finding reconciliation intentionally execute from a
+base-pinned worktree while inspecting a separate PR/candidate worktree. In
+those passes, `EXPECTED_WORKTREE` / `EXPECTED_HEAD` retain target semantics,
+while `AI_WORKTREE_PATH` / `AI_WORKTREE_EXPECTED_HEAD` bind the provider cwd and
+trusted-tool HEAD. `EXPECTED_HEAD` must never carry the target-base SHA merely
+because the provider executes from the base-pinned worktree.
+
 ## Root protection and Git guard
 
 Before the first subprocess, `review-loop` captures `ROOT_HEAD`, `ROOT_BRANCH`,

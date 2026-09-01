@@ -18,6 +18,7 @@ const (
 	testReviewedHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	testLedgerHead   = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	testFingerprint  = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	testTrustedHead  = "dddddddddddddddddddddddddddddddddddddddd"
 )
 
 func TestNoKnownFindingsPreservesBaseResultByteForByte(t *testing.T) {
@@ -229,6 +230,27 @@ func TestReconcilerUsesBasePinnedInstructions(t *testing.T) {
 	require.Contains(t, prompt, fixture.repository)
 }
 
+func TestReconcilerBindsCandidateHeadSeparatelyFromTrustedToolHead(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAdapterFixture(t)
+	known := newKnownFinding(114)
+	base := newReview("APPROVE", "LOW")
+	fixture.writeInputs(t, base, newLedger(known), combined(base, classification(known, "FIXED")))
+
+	output, err := fixture.run(t, nil)
+	require.NoError(t, err, output)
+	repository, err := filepath.EvalSymlinks(fixture.repository)
+	require.NoError(t, err)
+	trustedRoot, err := filepath.EvalSymlinks(fixture.trustedRoot)
+	require.NoError(t, err)
+	require.Equal(t, testReviewedHead, strings.TrimSpace(readFile(t, fixture.expectedHeadCapture)))
+	require.Equal(t, repository, strings.TrimSpace(readFile(t, fixture.expectedWorktreeCapture)))
+	require.Equal(t, testTrustedHead, strings.TrimSpace(readFile(t, fixture.trustedHeadCapture)))
+	require.Equal(t, trustedRoot, strings.TrimSpace(readFile(t, fixture.trustedWorktreeCapture)))
+	require.Equal(t, testTrustedHead+" "+testLedgerHead+" "+testReviewedHead, strings.TrimSpace(readFile(t, fixture.identityCapture)))
+}
+
 func assertResolvedKnownFindingLeavesBaseUnchanged(t *testing.T, status string) {
 	t.Helper()
 
@@ -243,18 +265,23 @@ func assertResolvedKnownFindingLeavesBaseUnchanged(t *testing.T, status string) 
 }
 
 type adapterFixture struct {
-	repository  string
-	trustedRoot string
-	adapter     string
-	fakeBin     string
-	home        string
-	result      string
-	baseResult  string
-	combined    string
-	ledger      string
-	target      string
-	prompt      string
-	cwdCapture  string
+	repository              string
+	trustedRoot             string
+	adapter                 string
+	fakeBin                 string
+	home                    string
+	result                  string
+	baseResult              string
+	combined                string
+	ledger                  string
+	target                  string
+	prompt                  string
+	cwdCapture              string
+	expectedHeadCapture     string
+	expectedWorktreeCapture string
+	trustedHeadCapture      string
+	trustedWorktreeCapture  string
+	identityCapture         string
 }
 
 func newAdapterFixture(t *testing.T) adapterFixture {
@@ -297,6 +324,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 pwd > "$TEST_CWD_CAPTURE"
+printf '%s\n' "$EXPECTED_HEAD" > "$TEST_EXPECTED_HEAD_CAPTURE"
+printf '%s\n' "$EXPECTED_WORKTREE" > "$TEST_EXPECTED_WORKTREE_CAPTURE"
+printf '%s\n' "$AI_WORKTREE_EXPECTED_HEAD" > "$TEST_TRUSTED_HEAD_CAPTURE"
+printf '%s\n' "$AI_WORKTREE_PATH" > "$TEST_TRUSTED_WORKTREE_CAPTURE"
+printf '%s %s %s\n' "$TARGET_BASE_SHA" "$PR_HEAD_SHA" "$CANDIDATE_SHA" > "$TEST_IDENTITY_CAPTURE"
 cat > "$TEST_PROMPT_CAPTURE"
 [[ -n "$output" ]]
 cp "$TEST_COMBINED_RESULT" "$output"
@@ -307,21 +339,26 @@ cp "$TEST_COMBINED_RESULT" "$output"
 	tmp := filepath.Join(root, "tmp")
 	require.NoError(t, os.MkdirAll(tmp, 0o755))
 	target := filepath.Join(root, "target.json")
-	writeFile(t, target, "{}\n", 0o644)
+	writeFile(t, target, `{"base_sha":"`+testTrustedHead+`"}`+"\n", 0o644)
 
 	return adapterFixture{
-		repository:  repository,
-		trustedRoot: trustedRoot,
-		adapter:     filepath.Join(trustedRoot, "scripts", "ai-review-known-findings"),
-		fakeBin:     fakeBin,
-		home:        home,
-		result:      filepath.Join(root, "result.json"),
-		baseResult:  filepath.Join(root, "base.json"),
-		combined:    filepath.Join(root, "combined.json"),
-		ledger:      filepath.Join(root, "ledger.json"),
-		target:      target,
-		prompt:      filepath.Join(root, "prompt.txt"),
-		cwdCapture:  filepath.Join(root, "codex-cwd.txt"),
+		repository:              repository,
+		trustedRoot:             trustedRoot,
+		adapter:                 filepath.Join(trustedRoot, "scripts", "ai-review-known-findings"),
+		fakeBin:                 fakeBin,
+		home:                    home,
+		result:                  filepath.Join(root, "result.json"),
+		baseResult:              filepath.Join(root, "base.json"),
+		combined:                filepath.Join(root, "combined.json"),
+		ledger:                  filepath.Join(root, "ledger.json"),
+		target:                  target,
+		prompt:                  filepath.Join(root, "prompt.txt"),
+		cwdCapture:              filepath.Join(root, "codex-cwd.txt"),
+		expectedHeadCapture:     filepath.Join(root, "expected-head.txt"),
+		expectedWorktreeCapture: filepath.Join(root, "expected-worktree.txt"),
+		trustedHeadCapture:      filepath.Join(root, "trusted-head.txt"),
+		trustedWorktreeCapture:  filepath.Join(root, "trusted-worktree.txt"),
+		identityCapture:         filepath.Join(root, "identities.txt"),
 	}
 }
 
@@ -355,6 +392,11 @@ func (fixture adapterFixture) run(t *testing.T, extra map[string]string) (string
 		"TEST_COMBINED_RESULT":           fixture.combined,
 		"TEST_PROMPT_CAPTURE":            fixture.prompt,
 		"TEST_CWD_CAPTURE":               fixture.cwdCapture,
+		"TEST_EXPECTED_HEAD_CAPTURE":     fixture.expectedHeadCapture,
+		"TEST_EXPECTED_WORKTREE_CAPTURE": fixture.expectedWorktreeCapture,
+		"TEST_TRUSTED_HEAD_CAPTURE":      fixture.trustedHeadCapture,
+		"TEST_TRUSTED_WORKTREE_CAPTURE":  fixture.trustedWorktreeCapture,
+		"TEST_IDENTITY_CAPTURE":          fixture.identityCapture,
 	}
 	maps.Copy(environment, extra)
 
