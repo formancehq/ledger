@@ -70,11 +70,17 @@ func withPurgeInterval(d time.Duration) Option {
 func newTestWAL(t *testing.T, opts ...Option) *DefaultWAL {
 	t.Helper()
 
+	return newTestWALAt(t, t.TempDir(), opts...)
+}
+
+func newTestWALAt(t *testing.T, dir string, opts ...Option) *DefaultWAL {
+	t.Helper()
+
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
 
-	w, err := New(t.TempDir(), logger, meter, opts...)
+	w, err := New(dir, logger, meter, opts...)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = w.Close() })
 
@@ -89,7 +95,13 @@ func newTestWAL(t *testing.T, opts ...Option) *DefaultWAL {
 func newWALWithRetainedMargin(t *testing.T) *DefaultWAL {
 	t.Helper()
 
-	w := newTestWAL(t)
+	return newWALWithRetainedMarginAt(t, t.TempDir())
+}
+
+func newWALWithRetainedMarginAt(t *testing.T, dir string) *DefaultWAL {
+	t.Helper()
+
+	w := newTestWALAt(t, dir)
 	entries := make([]*raftpb.Entry, 5)
 	for i := range entries {
 		entries[i] = ent(uint64(i+1), 1, []byte{byte(i + 1)})
@@ -772,6 +784,39 @@ func TestRaftFollowerWithinRetainedMarginReceivesAppend(t *testing.T) {
 	t.Parallel()
 
 	w := newWALWithRetainedMargin(t)
+	assertFollowerWithinRetainedMarginReceivesAppend(t, w)
+}
+
+func TestRetainedMarginSurvivesRestart(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newWALWithRetainedMarginAt(t, dir)
+	require.NoError(t, w.Close())
+
+	reopened := newTestWALAt(t, dir)
+	firstIndex, err := reopened.FirstIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), firstIndex)
+
+	boundaryTerm, err := reopened.Term(2)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), boundaryTerm)
+
+	entries, err := reopened.Entries(3, 6, math.MaxUint64)
+	require.NoError(t, err)
+	require.Equal(t, []uint64{3, 4, 5}, []uint64{
+		entries[0].GetIndex(),
+		entries[1].GetIndex(),
+		entries[2].GetIndex(),
+	})
+
+	assertFollowerWithinRetainedMarginReceivesAppend(t, reopened)
+}
+
+func assertFollowerWithinRetainedMarginReceivesAppend(t *testing.T, w *DefaultWAL) {
+	t.Helper()
+
 	rawNode, err := raft.NewRawNode(&raft.Config{
 		ID:              1,
 		ElectionTick:    10,
@@ -1038,6 +1083,37 @@ func TestApplySnapshot(t *testing.T) {
 	idx, err := w.LastIndex()
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), idx, "last index should be snapshot index after apply")
+}
+
+func TestAppliedSnapshotCompactionBoundarySurvivesRestart(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+	require.NoError(t, w.Append(hs(1, 1, 2), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+	}))
+	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{
+		Metadata: snapshotMeta(10, 5, &raftpb.ConfState{Voters: []uint64{1, 2, 3}}),
+		Data:     []byte("full-snapshot"),
+	}))
+	require.NoError(t, w.Close())
+
+	reopened := newTestWALAt(t, dir)
+	firstIndex, err := reopened.FirstIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(11), firstIndex)
+
+	boundaryTerm, err := reopened.Term(10)
+	require.NoError(t, err)
+	require.Equal(t, uint64(5), boundaryTerm)
+
+	_, err = reopened.Term(2)
+	require.ErrorIs(t, err, raft.ErrCompacted)
+	lastIndex, err := reopened.LastIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(10), lastIndex)
 }
 
 func TestApplySnapshotUnlocksOnSnapshotSaveFailure(t *testing.T) {
@@ -1368,12 +1444,21 @@ func TestWAL_Persistence(t *testing.T) {
 	require.Equal(t, uint64(2), snap.GetMetadata().GetIndex())
 	require.Equal(t, []byte("snap"), snap.GetData())
 
-	// Verify entries: after snapshot at index 2, entries before the snapshot
-	// may or may not be available depending on the etcd WAL replay.
-	// At minimum, last index should be >= snapshot index.
+	// Snapshot publication alone does not compact the WAL. With no Compact call,
+	// restart replays from the initial boundary and retains both entries.
+	firstIdx, err := w2.FirstIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), firstIdx)
+	entries, err := w2.Entries(1, 3, math.MaxUint64)
+	require.NoError(t, err)
+	require.Equal(t, []uint64{1, 2}, []uint64{
+		entries[0].GetIndex(),
+		entries[1].GetIndex(),
+	})
+
 	lastIdx, err := w2.LastIndex()
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, lastIdx, uint64(2))
+	require.Equal(t, uint64(2), lastIdx)
 }
 
 // --- WAL repair tests ---

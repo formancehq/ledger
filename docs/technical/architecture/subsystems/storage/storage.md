@@ -87,10 +87,13 @@ When a new entry is proposed:
 
 At startup, the WAL is replayed to rebuild the memory cache:
 
-1. The last snapshot is loaded
-2. WAL entries after the snapshot are replayed
-3. The memory cache is rebuilt
-4. The FSM state is restored
+1. The latest full FSM snapshot is loaded
+2. The latest persisted compaction marker supplies the independent WAL replay
+   cursor `(index, term)`
+3. WAL entries after that compaction marker are replayed, including entries at
+   or before the newer FSM snapshot when they are inside the retained margin
+4. The memory cache is rebuilt and the FSM state is restored from the full
+   snapshot
 
 ### WAL Management
 
@@ -413,6 +416,16 @@ The WAL is compacted after snapshots to prevent unbounded growth:
 4. Old WAL segment files are removed from disk after the in-memory boundary has
    advanced. Segment reclamation remains best-effort and does not change the
    logical availability boundary.
+
+The compaction boundary is persisted as a distinguished etcd WAL snapshot
+record before the in-memory prefix is truncated and before `ReleaseLockTo`
+makes old segments reclaimable. On restart, `wal.Open` uses this record rather
+than the latest full FSM snapshot. Applying a received snapshot persists its
+replacement-log marker before advancing the durable HardState, so every durable
+prefix either replays the previous retained window or starts at the received
+snapshot; it never resurrects entries below that snapshot. Failure to persist a
+compaction marker leaves the previous wider window intact and prevents segment
+reclamation for the attempted boundary.
 
 For detailed explanation, see [WAL Compaction in Data Flows](../../data-flows.md#wal-compaction).
 
