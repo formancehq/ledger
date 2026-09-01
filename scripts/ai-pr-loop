@@ -72,6 +72,12 @@ trusted_root_checkout=$(cd "$trusted_root_checkout" && pwd -P)
 repo_root=$trusted_root_checkout
 cd "$trusted_root_checkout"
 
+base_revalidator="$repo_root/scripts/ai-target-base-revalidate"
+if [[ -L "$base_revalidator" || ! -f "$base_revalidator" || ! -r "$base_revalidator" ]]; then
+    echo "ai-pr-loop: trusted root does not provide scripts/ai-target-base-revalidate" >&2
+    exit 1
+fi
+
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,isDraft,title,body,labels,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
 
@@ -105,59 +111,60 @@ if ! git remote get-url "$remote" >/dev/null 2>&1; then
     exit 1
 fi
 
-# Fetch the current target/head refs. GitHub's baseRefOid describes the PR
-# snapshot and may legitimately lag behind the current target branch.
-git fetch --no-tags "$remote" \
-    "+refs/heads/$base_ref:refs/remotes/$remote/$base_ref" \
-    "+refs/heads/$head_ref:refs/remotes/$remote/$head_ref"
+revalidate_target_or_exit() {
+    local candidate_sha=${1:-}
+    local revalidation_output
+    local revalidation_status
+    set +e
+    revalidation_output=$(bash "$base_revalidator" "$remote" "$base_ref" "$base_sha" 2>&1)
+    revalidation_status=$?
+    set -e
+    printf '%s\n' "$revalidation_output"
+    case "$revalidation_status" in
+        0)
+            return 0
+            ;;
+        3)
+            printf 'ai-pr-loop: target branch %s advanced during this run\n' "$base_ref" >&2
+            if [[ -n "$candidate_sha" ]]; then
+                printf 'CURRENT_CANDIDATE_SHA=%s\n' "$candidate_sha"
+            else
+                echo "CURRENT_CANDIDATE_SHA=UNAVAILABLE"
+            fi
+            if [[ -n "${worktree:-}" && -d "${worktree:-}" ]]; then
+                printf 'CANDIDATE_WORKTREE=%s\n' "$worktree"
+                keep_worktree=true
+            fi
+            echo "REQUIRED_NEXT_ACTION=synchronize the PR with the target branch, then rerun the full trust pipeline"
+            echo "AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED"
+            exit 3
+            ;;
+        4)
+            echo "AI_PR_LOOP_RESULT: ERROR (target base rewritten or diverged)"
+            if [[ -n "${worktree:-}" && -d "${worktree:-}" ]]; then
+                keep_worktree=true
+            fi
+            exit 1
+            ;;
+        *)
+            echo "AI_PR_LOOP_RESULT: ERROR (target base fetch failed)"
+            if [[ -n "${worktree:-}" && -d "${worktree:-}" ]]; then
+                keep_worktree=true
+            fi
+            exit 1
+            ;;
+    esac
+}
 
-current_base=$(git rev-parse "refs/remotes/$remote/$base_ref")
+# Fetch the current head, then establish the immutable target-base trust anchor
+# through the same classifier used at every later publication boundary.
+git fetch --no-tags "$remote" "+refs/heads/$head_ref:refs/remotes/$remote/$head_ref"
 fetched_head=$(git rev-parse "refs/remotes/$remote/$head_ref")
 if [[ "$fetched_head" != "$head_sha" ]]; then
     echo "ai-pr-loop: fetched head SHA does not match GitHub: got $fetched_head expected $head_sha" >&2
     exit 1
 fi
-
-# Keep the review target synchronized with the branch that will eventually
-# receive the PR. Reviewing against a historical base can miss semantic
-# conflicts introduced since the PR was opened. Fail closed, but report this as
-# an actionable synchronization state rather than a generic orchestration error.
-if [[ "$current_base" != "$base_sha" ]]; then
-    if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
-        git fetch --no-tags "$remote" "$base_sha" >/dev/null 2>&1 || true
-    fi
-    if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
-        echo "ai-pr-loop: GitHub-reported PR base commit is unavailable locally: $base_sha" >&2
-        exit 1
-    fi
-    base_is_ancestor=false
-    if git merge-base --is-ancestor "$base_sha" "$current_base"; then
-        base_is_ancestor=true
-    elif [[ "$(git rev-parse --is-shallow-repository)" == "true" ]]; then
-        # A shallow repository can contain both commits without their connecting
-        # history. Restore ancestry for the exact fetched target before treating
-        # a negative merge-base result as evidence of a rewrite or divergence.
-        if ! git fetch --no-tags --unshallow "$remote" "$current_base" >/dev/null 2>&1; then
-            echo "ai-pr-loop: could not deepen shallow history for target base classification" >&2
-            exit 1
-        fi
-        if git merge-base --is-ancestor "$base_sha" "$current_base"; then
-            base_is_ancestor=true
-        fi
-    fi
-    if [[ "$base_is_ancestor" == "true" ]]; then
-        printf 'ai-pr-loop: target branch %s advanced since this PR snapshot\n' "$base_ref" >&2
-        printf 'ai-pr-loop: PR base:      %s\n' "$base_sha" >&2
-        printf 'ai-pr-loop: current base: %s\n' "$current_base" >&2
-        echo "AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED"
-        exit 3
-    fi
-    echo "ai-pr-loop: target branch no longer descends from the GitHub-reported PR base" >&2
-    printf 'ai-pr-loop: PR base:      %s\n' "$base_sha" >&2
-    printf 'ai-pr-loop: current base: %s\n' "$current_base" >&2
-    echo "AI_PR_LOOP_RESULT: ERROR (target base rewritten or diverged)"
-    exit 1
-fi
+revalidate_target_or_exit
 
 repo_parent=$(dirname "$repo_root")
 repo_name=$(basename "$repo_root")
@@ -442,7 +449,17 @@ fi
 
 echo
 case "$loop_status" in
-    0) echo "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW" ;;
+    0)
+        # A startup check cannot authorize a readiness decision after a long
+        # review/validation pass. In publish mode this is only an intermediate
+        # approval; final readiness is deferred until publication completes.
+        revalidate_target_or_exit
+        if [[ "$push_changes" == "false" ]]; then
+            echo "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW"
+        else
+            echo "AI_PR_LOOP_REVIEW_RESULT: APPROVED_FOR_CANDIDATE_CREATION"
+        fi
+        ;;
     2) echo "AI_PR_LOOP_RESULT: HUMAN_DECISION_REQUIRED" ;;
     *) echo "AI_PR_LOOP_RESULT: ERROR (review-loop exit $loop_status)" ;;
 esac
@@ -467,6 +484,7 @@ fi
 
 if [[ -z "$(git status --porcelain)" ]]; then
     echo "No local fixes to publish; remote PR branch is unchanged."
+    echo "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW"
     echo "AI_PR_LOOP_PUSH_RESULT: NO_CHANGES"
     exit 0
 fi
@@ -478,6 +496,8 @@ if [[ -n "$(git status --porcelain)" ]]; then
     echo "PRECOMMIT_NORMALIZATION: CHANGES"
 else
     echo "PRECOMMIT_NORMALIZATION: NO_CHANGES"
+    revalidate_target_or_exit
+    echo "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW"
     echo "AI_PR_LOOP_PUSH_RESULT: NO_CHANGES"
     exit 0
 fi
@@ -522,6 +542,10 @@ if [[ -n "$(git status --porcelain)" ]]; then
 fi
 echo "PRECOMMIT_FIXPOINT: PASS"
 
+# Do not spend or trust an exact candidate review against a target that moved
+# during normalization. The synchronized candidate must start a fresh run.
+revalidate_target_or_exit "$candidate_sha"
+
 set +e
 run_commit_review
 commit_review_status=$?
@@ -540,6 +564,11 @@ if [[ "$commit_review_status" -ne 0 ]]; then
     keep_worktree=true
     exit "$commit_review_status"
 fi
+
+# An exact review only becomes publication-authorizing evidence while the
+# immutable target snapshot is still current. The final pre-push check below
+# separately covers target movement during the last trusted pre-commit pass.
+revalidate_target_or_exit "$candidate_sha"
 
 if [[ -n "$(git status --porcelain)" ]]; then
     echo "ai-pr-loop: candidate review left the worktree dirty; refusing push" >&2
@@ -591,6 +620,10 @@ if ! git merge-base --is-ancestor "$head_sha" "$candidate_sha"; then
     exit 1
 fi
 
+# Keep the last target fetch immediately adjacent to the guarded push. The PR
+# head lease remains the atomic guard for the independently mutable head ref.
+revalidate_target_or_exit "$candidate_sha"
+
 if ! git push \
     --force-with-lease="refs/heads/$head_ref:$head_sha" \
     "$remote" \
@@ -601,5 +634,6 @@ if ! git push \
     exit 2
 fi
 
+echo "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW"
 echo "AI_PR_LOOP_PUSH_RESULT: PUSHED $candidate_sha"
 exit 0

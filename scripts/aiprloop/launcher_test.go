@@ -251,11 +251,13 @@ func TestLauncherClassifiesGenuinelyMissingSharedPolicyAsToolingError(t *testing
 }
 
 type launcherFixture struct {
-	root     string
-	checkout string
-	fakeBin  string
-	baseSHA  string
-	headSHA  string
+	root            string
+	remote          string
+	checkout        string
+	fakeBin         string
+	baseSHA         string
+	advancedBaseSHA string
+	headSHA         string
 }
 
 func newLauncherFixture(t *testing.T) launcherFixture {
@@ -275,6 +277,9 @@ func newLauncherFixture(t *testing.T) launcherFixture {
 	launcher, err := os.ReadFile(launcherPath(t))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-loop"), launcher, 0o755))
+	revalidator, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-target-base-revalidate"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-target-base-revalidate"), revalidator, 0o755))
 	guard, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-git-guard"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-git-guard"), guard, 0o755))
@@ -305,6 +310,9 @@ if [[ -n "${TEST_RUN_VALIDATION_CMD:-}" ]]; then
     # then invokes the trusted validator, which this fixture does not provide.
     bash -lc "$validation_cmd" >/dev/null 2>&1 || true
     ls -1 "$validation_run_dir" > "$TEST_CAPTURE_FILE.rundir"
+fi
+if [[ "${TEST_ADVANCE_TARGET_AFTER_REVIEW:-false}" == "true" ]]; then
+    git --git-dir="$TEST_REMOTE" update-ref refs/heads/release/v3.0 "$TEST_ADVANCED_BASE_SHA"
 fi
 `)
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 0\n")
@@ -351,6 +359,13 @@ printf '{"decision":"%s","base_sha":"%s","head":"%s"}\n' \
 	baseSHA := runGitOutput(t, seed, "rev-parse", "HEAD")
 	runGit(t, seed, "remote", "add", "origin", remote)
 	runGit(t, seed, "push", "-u", "origin", "release/v3.0")
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "advanced-base.txt"), []byte("advanced base\n"), 0o644))
+	runGit(t, seed, "add", "advanced-base.txt")
+	runGit(t, seed, "commit", "-m", "advance target fixture")
+	advancedBaseSHA := runGitOutput(t, seed, "rev-parse", "HEAD")
+	runGit(t, seed, "push", "origin", "release/v3.0")
+	runGit(t, seed, "reset", "--hard", baseSHA)
+	runGit(t, seed, "push", "--force", "origin", "release/v3.0")
 
 	runGit(t, seed, "checkout", "-b", "feature")
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "feature.txt"), []byte("feature\n"), 0o644))
@@ -398,7 +413,7 @@ cp "$source_root/scripts/review-loop" "$output"
 chmod 755 "$output"
 `)
 
-	return launcherFixture{root: testRoot, checkout: checkout, fakeBin: fakeBin, baseSHA: baseSHA, headSHA: headSHA}
+	return launcherFixture{root: testRoot, remote: remote, checkout: checkout, fakeBin: fakeBin, baseSHA: baseSHA, advancedBaseSHA: advancedBaseSHA, headSHA: headSHA}
 }
 
 func launcherPath(t *testing.T) string {
@@ -446,6 +461,8 @@ func runLauncherWithFlags(
 		"PATH="+fixture.fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"TEST_BASE_SHA="+fixture.baseSHA,
 		"TEST_HEAD_SHA="+fixture.headSHA,
+		"TEST_REMOTE="+fixture.remote,
+		"TEST_ADVANCED_BASE_SHA="+fixture.advancedBaseSHA,
 		"TEST_CAPTURE_FILE="+capturePath,
 		"TEST_TRIAGE_DECISION="+triage.decision,
 		"TEST_TRIAGE_BASE_SHA="+triage.baseSHA,
