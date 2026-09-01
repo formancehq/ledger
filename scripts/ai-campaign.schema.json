@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://formance.com/schemas/ai-campaign/v1",
+  "title": "Ledger AI audit campaign state v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "campaignId",
+    "auditId",
+    "auditedSha",
+    "importedAt",
+    "sourceDigests",
+    "sourceFacts",
+    "observations"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "ai-campaign/v1" },
+    "campaignId": { "type": "string", "pattern": "^campaign-[0-9a-f]{64}$" },
+    "auditId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "auditedSha": { "$ref": "#/$defs/sha" },
+    "importedAt": { "type": "string", "format": "date-time" },
+    "sourceDigests": { "$ref": "#/$defs/sourceDigests" },
+    "sourceFacts": { "$ref": "#/$defs/sourceFacts" },
+    "observations": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/observations" }
+      ]
+    }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" },
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "nullableTime": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "format": "date-time" }
+      ]
+    },
+    "freshness": { "enum": ["FRESH", "PARTIAL", "STALE", "UNAVAILABLE"] },
+    "sourceDigests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["audit", "qualified"],
+      "properties": {
+        "audit": { "$ref": "#/$defs/digest" },
+        "qualified": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "sourceFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factType", "identityDigest", "findings"],
+      "properties": {
+        "factType": { "const": "SOURCE_FACT" },
+        "identityDigest": { "$ref": "#/$defs/digest" },
+        "findings": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/sourceFinding" }
+        }
+      }
+    },
+    "sourceFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "factType",
+        "id",
+        "title",
+        "severity",
+        "qualification",
+        "dispatchable",
+        "references",
+        "identityDigest"
+      ],
+      "properties": {
+        "factType": { "const": "SOURCE_FACT" },
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*/[a-z0-9]+(-[a-z0-9]+)*$" },
+        "title": { "type": "string", "minLength": 1 },
+        "severity": { "enum": ["P0", "P1", "P2", "P3"] },
+        "qualification": { "enum": ["CONFIRMED", "LIKELY", "QUESTION", "REJECTED"] },
+        "dispatchable": { "type": "boolean" },
+        "references": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["auditFinding", "invariant", "qualificationResult", "challengeSummary"],
+          "properties": {
+            "auditFinding": { "type": "string", "minLength": 1 },
+            "invariant": { "type": "string", "minLength": 1 },
+            "qualificationResult": { "type": "string", "minLength": 1 },
+            "challengeSummary": { "type": "string", "minLength": 1 }
+          }
+        },
+        "identityDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "observedAt", "error"],
+      "properties": {
+        "status": { "enum": ["FRESH", "STALE", "UNAVAILABLE"] },
+        "observedAt": { "$ref": "#/$defs/nullableTime" },
+        "error": { "type": "string" }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["github", "jira", "git"],
+      "properties": {
+        "github": { "$ref": "#/$defs/provider" },
+        "jira": { "$ref": "#/$defs/provider" },
+        "git": { "$ref": "#/$defs/provider" }
+      }
+    },
+    "jiraIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "url", "status", "assignee"],
+      "properties": {
+        "key": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*-[1-9][0-9]*$" },
+        "url": { "type": "string" },
+        "status": { "type": "string" },
+        "assignee": { "type": "string" }
+      }
+    },
+    "jira": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "bindingBasis", "issues"],
+      "properties": {
+        "status": { "enum": ["UNBOUND", "BOUND", "AMBIGUOUS", "UNKNOWN"] },
+        "bindingBasis": { "enum": ["", "AI_AUDIT_MARKER"] },
+        "issues": { "type": "array", "items": { "$ref": "#/$defs/jiraIssue" } }
+      }
+    },
+    "prMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "number",
+        "url",
+        "state",
+        "headRef",
+        "headSha",
+        "baseRef",
+        "baseSha",
+        "merged",
+        "branchExists",
+        "crossRepository",
+        "reviewDecision",
+        "checks",
+        "bindingBasis"
+      ],
+      "properties": {
+        "number": { "type": "integer", "minimum": 1 },
+        "url": { "type": "string" },
+        "state": { "type": "string" },
+        "headRef": { "type": "string" },
+        "headSha": { "type": "string" },
+        "baseRef": { "type": "string" },
+        "baseSha": { "type": "string" },
+        "merged": { "type": "boolean" },
+        "branchExists": { "type": "boolean" },
+        "crossRepository": { "type": "boolean" },
+        "reviewDecision": { "type": "string" },
+        "checks": { "type": "string" },
+        "bindingBasis": { "enum": ["AI_AUDIT_MARKER", "JIRA_KEY"] }
+      }
+    },
+    "pr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "bindingBasis", "matches"],
+      "properties": {
+        "status": { "enum": ["UNBOUND", "BOUND", "AMBIGUOUS", "UNKNOWN"] },
+        "bindingBasis": { "enum": ["", "AI_AUDIT_MARKER", "JIRA_KEY"] },
+        "matches": { "type": "array", "items": { "$ref": "#/$defs/prMatch" } }
+      }
+    },
+    "findingObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "factType",
+        "id",
+        "state",
+        "jira",
+        "pr",
+        "observedCandidateSha",
+        "observedTargetSha",
+        "blockers",
+        "nextAction",
+        "freshness",
+        "confidence"
+      ],
+      "properties": {
+        "factType": { "const": "DERIVED_OBSERVATION" },
+        "id": { "type": "string" },
+        "state": {
+          "enum": [
+            "CONFIRMED_UNASSIGNED",
+            "TRACKED",
+            "PR_OPEN",
+            "PR_CLOSED",
+            "MERGED",
+            "BLOCKED",
+            "SUPERSEDED",
+            "AMBIGUOUS",
+            "BROKEN_BINDING",
+            "NON_DISPATCHABLE"
+          ]
+        },
+        "jira": { "$ref": "#/$defs/jira" },
+        "pr": { "$ref": "#/$defs/pr" },
+        "observedCandidateSha": { "type": "string" },
+        "observedTargetSha": { "type": "string" },
+        "blockers": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "nextAction": {
+          "enum": [
+            "PUBLISH_JIRA_OR_REVIEW_POLICY",
+            "READY_FOR_CLAIM_OR_DISPATCH",
+            "CONTINUE_PR",
+            "VERIFY_RESOLUTION",
+            "NO_ACTION",
+            "HUMAN_DECISION_REQUIRED",
+            "RESOLVE_BINDING",
+            "REFRESH_REQUIRED",
+            "REPAIR_BINDING",
+            "REVIEW_CLOSED_PR",
+            "REQUALIFY_ON_CURRENT_TARGET"
+          ]
+        },
+        "freshness": { "$ref": "#/$defs/freshness" },
+        "confidence": { "enum": ["HIGH", "MEDIUM", "LOW"] }
+      }
+    },
+    "observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factType", "refreshedAt", "freshness", "providers", "target", "findings"],
+      "properties": {
+        "factType": { "const": "DERIVED_OBSERVATION" },
+        "refreshedAt": { "$ref": "#/$defs/nullableTime" },
+        "freshness": { "$ref": "#/$defs/freshness" },
+        "providers": { "$ref": "#/$defs/providers" },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["factType", "branch", "observedSha"],
+          "properties": {
+            "factType": { "const": "DERIVED_OBSERVATION" },
+            "branch": { "type": "string", "minLength": 1 },
+            "observedSha": { "type": "string" }
+          }
+        },
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/findingObservation" } }
+      }
+    }
+  }
+}
