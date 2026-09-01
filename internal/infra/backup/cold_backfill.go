@@ -147,10 +147,12 @@ func backfillArchivedRanges(
 			auditCount += count
 
 			// Audit items and applied proposals share the audit sequence
-			// counter but are legitimately sparse (failures carry no items,
-			// only successes write an AppliedProposal), so no completeness
-			// bound applies and empty results add no segment — same contract
-			// as the hot export.
+			// counter but diverge in cardinality: every audit entry has audit
+			// items regardless of outcome (order_count of them, carrying
+			// LogSequence = 0 on a failure), while applied proposals are the
+			// ones legitimately sparse — only successes write one. Neither
+			// export enforces a completeness bound here; empty results add no
+			// segment, same contract as the hot export.
 			itemSegs, _, err := exportEntries(
 				ctx, storage, cold,
 				dal.ZoneCold, dal.SubColdAuditItem, ov.auditLo-1, ov.auditHi, "auditItem",
