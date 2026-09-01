@@ -103,7 +103,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	maxTicket := c.ticketSeq.Load()
 
 	if err != nil {
-		if internal.IsTransient(err) || isShutdownError(err) {
+		if (internal.IsTransient(err) && !isIndexNotReady(err)) || isShutdownError(err) {
 			return
 		}
 		if handleInvalidTargetError(invalidTarget, "account", ledger, filter, err) {
@@ -214,7 +214,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 	maxTicket := c.ticketSeq.Load()
 
 	if err != nil {
-		if internal.IsTransient(err) || isShutdownError(err) {
+		if (internal.IsTransient(err) && !isIndexNotReady(err)) || isShutdownError(err) {
 			return
 		}
 		if handleInvalidTargetError(invalidTarget, "transaction", ledger, filter, err) {
@@ -654,6 +654,15 @@ func txRecordMatches(rec txRecordView, serverTx *commonpb.Transaction) bool {
 // maxQueryGenDepth bounds generated boolean nesting. It must stay well under
 // domain.MaxFilterDepth (100), the depth the compiler rejects.
 const maxQueryGenDepth = 3
+
+// isIndexNotReady matches the server's index-building rejection. The reason
+// rides codes.Unavailable (SDK retry predicates retry it), which puts it
+// inside internal.IsTransient — so the generic transient bail must peel it
+// off first: an index the model holds active answering INDEX_BUILDING is the
+// exact finding the lifecycle coverage exists to catch, not a skippable blip.
+func isIndexNotReady(err error) bool {
+	return internal.HasErrorReason(err, "INDEX_BUILDING")
+}
 
 // oneIn reports a 1-in-n chance through the Antithesis chooser, so the platform
 // can steer toward the (rare) branch it gates. n must be in [1, 256].

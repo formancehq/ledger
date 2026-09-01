@@ -5,7 +5,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -253,4 +256,35 @@ func TestReconcileIndexes_IncarnationGuard(t *testing.T) {
 	c.applyIndexReadiness("L", map[string]uint64{canon: 10}, map[string]bool{canon: true})
 	c.mu.Unlock()
 	require.False(t, active(c), "a moved create frontier discards the verdict")
+}
+
+// TestIndexBuildingErrorReachesValidators pins the not-ready plumbing for
+// ErrIndexBuilding, which rides codes.Unavailable and therefore sits inside
+// internal.IsTransient: the query paths must peel it off the generic transient
+// bail (isIndexNotReady) and the classifier must bucket it as not-ready —
+// otherwise a server wrongly rejecting an active index is silently skipped and
+// the lifecycle coverage never fires.
+func TestIndexBuildingErrorReachesValidators(t *testing.T) {
+	t.Parallel()
+
+	st, err := status.New(codes.Unavailable, "index is building").WithDetails(&errdetails.ErrorInfo{
+		Domain: "ledger",
+		Reason: "INDEX_BUILDING",
+	})
+	require.NoError(t, err)
+
+	building := st.Err()
+
+	require.True(t, internal.IsTransient(building),
+		"the trap this test guards: INDEX_BUILDING is inside the transient set")
+	require.True(t, isIndexNotReady(building))
+
+	kind, ok := classifyIndexedQueryError(building)
+	require.True(t, ok)
+	require.Equal(t, indexedErrNotReady, kind)
+
+	// A plain Unavailable (node down) stays a skippable transient.
+	plain := status.Error(codes.Unavailable, "connection refused")
+	require.True(t, internal.IsTransient(plain))
+	require.False(t, isIndexNotReady(plain))
 }
