@@ -99,8 +99,8 @@ github.com/emicklei/go-restful/v3 v3.13.0 h1:C4Bl2xDndpU6nJ4bc1jXd+uTmYPVUwkD6bF
 github.com/emicklei/go-restful/v3 v3.13.0/go.mod h1:6n3XBCmQQb25CM2LCACGz8ukIrRry+4bhvbpWn3mrbc=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
-github.com/formancehq/go-libs/v5 v5.7.1-0.20260831090714-f02153bac631 h1:kRYaf71b8qbPbUPP5yhPlFQewgpXS5vllTOG9ZmpRuE=
-github.com/formancehq/go-libs/v5 v5.7.1-0.20260831090714-f02153bac631/go.mod h1:+jfCYWJ4Z10NGbhmbfon0hGoLe5pysbVQgePrg8M8W4=
+github.com/formancehq/go-libs/v5 v5.7.1-0.20260901090328-77516f9f3e01 h1:QvAmIMIs+LH2jswpkBiOibCg4aT52D/wi+xP/knSReQ=
+github.com/formancehq/go-libs/v5 v5.7.1-0.20260901090328-77516f9f3e01/go.mod h1:+jfCYWJ4Z10NGbhmbfon0hGoLe5pysbVQgePrg8M8W4=
 github.com/formancehq/invariants v0.11.0 h1:AHFBhK7U8Ak/qoJwgaNU+cAb9w61Ba7dwlcrJTkWBE4=
 github.com/formancehq/invariants v0.11.0/go.mod h1:ywzSexCUdhw2dC9Njiv0t4u2KfPVKj6SecFujPgmXno=
 github.com/formancehq/numscript v0.0.25-0.20260713092057-edde2b17f0a0 h1:aroUBKKmWXiQXyU2DBv57s54SXLgTN9tASjSMQZ08lU=
