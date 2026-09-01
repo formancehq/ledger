@@ -758,6 +758,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		lastSequenceID:       fsm.State.NextSequenceID - 1,
 		needsArchiveDispatch: needsArchiveDispatch,
 		needsColdCompaction:  needsColdCompaction,
+		archivedThrough:      fsm.Chapters.ArchivedThroughID(),
 		sinkConfigChanged:    sinkConfigChanged,
 		mirrorConfigChanged:  mirrorConfigChanged,
 		entryCount:           len(decoded),
@@ -905,7 +906,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 		// above; non-fatal, because the checker degrades honestly without a
 		// baseline while a stale one makes it report a healthy store as corrupt —
 		// which is also why promotion happens here and not when a chapter closes.
-		if err := fsm.fileArtifacts.PromoteStagedBaseline(fsm.Chapters.ArchivedThroughID()); err != nil {
+		if err := fsm.fileArtifacts.PromoteStagedBaseline(pb.archivedThrough); err != nil {
 			fsm.logger.WithFields(map[string]any{"error": err}).
 				Errorf("Failed to promote staged checker baseline (checker will degrade gracefully)")
 		}
@@ -2024,9 +2025,15 @@ type PreparedBatch struct {
 	lastSequenceID       uint64
 	needsArchiveDispatch bool
 	needsColdCompaction  bool
-	sinkConfigChanged    bool
-	mirrorConfigChanged  bool
-	checkpointDeletes    []uint64
+	// archivedThrough is the archived boundary as THIS batch's confirms left it,
+	// captured at prepare like every other post-commit input: preparation is
+	// pipelined, so by the time this batch's post-commit hook runs the live
+	// tracker may already carry a later batch's advance, and promoting to that
+	// boundary would consume a staged baseline whose confirm is not yet durable.
+	archivedThrough     uint64
+	sinkConfigChanged   bool
+	mirrorConfigChanged bool
+	checkpointDeletes   []uint64
 
 	// Sentinel data (captured during prepare, validated after commit).
 	sentinelMode        bool
