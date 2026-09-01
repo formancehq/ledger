@@ -185,7 +185,7 @@ var _ = Describe("Restore chapter audit anchor", Ordered, func() {
 			})
 			instruments = append(instruments, testserver.WithBootstrap(), withColdStorage())
 
-			sourceServer = testservice.New(cmdserver.NewRunCommand, testservice.WithInstruments(instruments...))
+			sourceServer = lease.NewService(cmdserver.NewRunCommandWithBindings, testservice.WithInstruments(instruments...))
 			Expect(sourceServer.Start(ctx)).To(Succeed())
 
 			var err error
@@ -258,7 +258,7 @@ var _ = Describe("Restore chapter audit anchor", Ordered, func() {
 		)
 
 		BeforeAll(func() {
-			server = testservice.New(cmdserver.NewRunCommand,
+			server = lease.NewService(cmdserver.NewRunCommandWithBindings,
 				testservice.WithInstruments(
 					testservice.DebugInstrumentation(testutil.Debug),
 					testservice.OutputInstrumentation(GinkgoWriter),
@@ -321,7 +321,7 @@ var _ = Describe("Restore chapter audit anchor", Ordered, func() {
 			})
 			instruments = append(instruments, testserver.WithBootstrap(), withColdStorage())
 
-			server = testservice.New(cmdserver.NewRunCommand, testservice.WithInstruments(instruments...))
+			server = lease.NewService(cmdserver.NewRunCommandWithBindings, testservice.WithInstruments(instruments...))
 			Expect(server.Start(ctx)).To(Succeed())
 
 			var clusterClient clusterpb.ClusterServiceClient
