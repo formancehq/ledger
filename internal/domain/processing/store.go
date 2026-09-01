@@ -84,6 +84,10 @@ type Scope interface {
 	GetNextSequenceID() uint64
 	IncrementNextSequenceID() uint64
 	GetNextAuditSequenceID() uint64
+	// GetLastAuditHash returns the audit chain head as this proposal began, so a
+	// closing chapter can record the chain input for the first entry that
+	// survives its purge. Read-only: callers that persist it must copy.
+	GetLastAuditHash() []byte
 	GetNextLedgerID() uint32
 	IncrementNextLedgerID() uint32
 	GetDate() commonpb.TimestampReader

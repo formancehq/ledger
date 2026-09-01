@@ -716,6 +716,8 @@ func (s *scopeImpl) AdvanceArchivedThroughChapterID() {}
 
 func (s *scopeImpl) GetNextAuditSequenceID() uint64 { return 0 }
 
+func (s *scopeImpl) GetLastAuditHash() []byte { return nil }
+
 func (s *scopeImpl) UpdateChapter(_ *commonpb.Chapter) {}
 
 func (s *scopeImpl) GetPreparedQuery(_ string, _ string) (commonpb.PreparedQueryReader, error) {

@@ -44,11 +44,15 @@ type clusterPolicyUpdate struct {
 }
 
 type WriteSet struct {
-	fsm                   *Machine
-	attrs                 *attributes.Attributes
-	Date                  *commonpb.Timestamp
-	NextSequenceID        uint64
-	NextAuditSequenceID   uint64
+	fsm                 *Machine
+	attrs               *attributes.Attributes
+	Date                *commonpb.Timestamp
+	NextSequenceID      uint64
+	NextAuditSequenceID uint64
+	// LastAuditHash is the audit chain head as this proposal began — the
+	// predecessor of the entry this proposal writes. A chapter closing here
+	// records it as the chain input for the first entry that survives its purge.
+	LastAuditHash         []byte
 	NextLedgerID          uint32
 	NextQueryCheckpointID uint64
 
@@ -147,13 +151,6 @@ type WriteSet struct {
 	// Pending query checkpoint changes for Merge.
 	pendingQueryCheckpointSaves   []*raftcmdpb.QueryCheckpointState
 	pendingQueryCheckpointDeletes []uint64
-
-	// chapterClosing is true when a processor emitted at least one
-	// CloseChapter intent during this proposal. applyProposal reads it
-	// (via ChapterClosing) AFTER the audit entry is written so the
-	// LastAuditHash carry to ChapterTracker.LatestClosingChapter happens
-	// in O(1) instead of by walking the log slice.
-	chapterClosing bool
 
 	// mirrorConfigChanged is true when a processor emitted a mirror-config
 	// change (CreateLedger Mirror or PromoteLedger). Read by applyProposal
@@ -922,6 +919,7 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.Date = at
 	b.NextSequenceID = b.fsm.State.NextSequenceID
 	b.NextAuditSequenceID = b.fsm.State.NextAuditSequenceID
+	b.LastAuditHash = b.fsm.State.LastAuditHash
 	b.NextLedgerID = b.fsm.State.NextLedgerID
 	b.NextQueryCheckpointID = b.fsm.State.NextQueryCheckpointID
 	b.Derived.Reset()
@@ -951,7 +949,6 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.bloomUpdates.Reset()
 	b.pendingQueryCheckpointSaves = b.pendingQueryCheckpointSaves[:0]
 	b.pendingQueryCheckpointDeletes = b.pendingQueryCheckpointDeletes[:0]
-	b.chapterClosing = false
 	b.mirrorConfigChanged = false
 	b.queryCheckpointCreated = 0
 	b.queryCheckpointDeleted = 0
@@ -1035,13 +1032,6 @@ func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 		// dispatches to all of them, so it is a read handle each, not one
 		// overall. Idempotent, and ledger deletion is rare.
 		b.mirrorConfigChanged = true
-	case *commonpb.LogPayload_CloseChapter:
-		// Admission + FSM (ClassifyCheckpointOrderPosition) guarantee
-		// CloseChapter is the last order of its proposal, so at most one
-		// flip per proposal. applyProposal reads ChapterClosing
-		// after writeAuditEntry to carry preAuditHash onto
-		// LatestClosingChapter — same effect as the legacy log walk.
-		b.chapterClosing = true
 	case *commonpb.LogPayload_CreateLedger:
 		// Only mirror creations reshape the mirror worker set. Reading
 		// order.Mode matches the legacy hasMirrorConfigChange walk and
@@ -1065,12 +1055,6 @@ func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 	case *commonpb.LogPayload_DeletedQueryCheckpoint:
 		b.queryCheckpointDeleted = p.DeletedQueryCheckpoint.GetCheckpointId()
 	}
-}
-
-// ChapterClosing reports whether the CloseChapter intent was
-// absorbed during this proposal.
-func (b *WriteSet) ChapterClosing() bool {
-	return b.chapterClosing
 }
 
 // MirrorConfigChanged reports whether a change that reshapes the mirror worker
@@ -1517,6 +1501,10 @@ func (b *WriteSet) GetNextSequenceID() uint64 {
 
 func (b *WriteSet) GetNextAuditSequenceID() uint64 {
 	return b.NextAuditSequenceID
+}
+
+func (b *WriteSet) GetLastAuditHash() []byte {
+	return b.LastAuditHash
 }
 
 func (b *WriteSet) IncrementNextSequenceID() uint64 {

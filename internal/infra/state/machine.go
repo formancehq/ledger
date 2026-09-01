@@ -1610,12 +1610,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// which produces false positives when batch boundaries differ across nodes.
 	ledgerNames := collectLedgerNames(proposal.GetOrders())
 
-	// Capture the audit hash BEFORE writing this proposal's audit entry.
-	// This is the hash of the predecessor — used as LastAuditHash on the
-	// chapter so the checker can chain-verify from the first non-purged entry.
-	preAuditHash := make([]byte, len(fsm.State.LastAuditHash))
-	copy(preAuditHash, fsm.State.LastAuditHash)
-
 	// SUCCESS: emit batch-level side effects. The min/max sequence range
 	// was accumulated during ProcessOrders — no second walk over `logs`.
 	minLogSeq, maxLogSeq := ordersResult.MinLogSequence, ordersResult.MaxLogSequence
@@ -1665,17 +1659,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	applied.ReturnToVTPool()
 	if appendErr != nil {
 		return nil, fmt.Errorf("appending applied proposal: %w", appendErr)
-	}
-
-	// Update closing chapter's LastAuditHash if this batch contains a CloseChapter.
-	// We use preAuditHash (the hash before this proposal's audit entry) so the
-	// checker can use it as the chain input when verifying the first non-purged
-	// audit entry after archive. The CloseChapter processor flips an O(1) flag
-	// on the buffer; previously this was reconstructed by walking the log slice.
-	if buffer.ChapterClosing() {
-		if closingChapter := fsm.Chapters.LatestClosingChapter(); closingChapter != nil {
-			closingChapter.LastAuditHash = preAuditHash
-		}
 	}
 
 	fsm.logsAppendedCounter.Add(ctx, int64(len(createdLogs)))
@@ -1967,10 +1950,8 @@ func (fsm *Machine) QueryCheckpointScheduleChanged() signal.Signal {
 // Only created logs are checked since reference sequences are idempotent
 // responses that already triggered sealing when first applied.
 //
-// Uses the FSM state's closing chapter (not the log payload snapshot) because
-// applyProposal updates closingChapter.LastAuditHash after computing the batch
-// audit hash. The sealer must use the same value for the sealing hash to be
-// verifiable by the checker.
+// Reads the FSM state's closing chapter so the request carries the same fields
+// the row holds, including the audit anchor the sealing hash commits to.
 func (fsm *Machine) checkCloseChapter(result *ApplyResult) *SealRequest {
 	if result == nil {
 		return nil
