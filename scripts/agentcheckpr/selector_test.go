@@ -12,6 +12,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSelectorEnvironmentDropsParentReviewBinding(t *testing.T) {
+	validationRunDirectory := t.TempDir()
+	gitGuardDirectory := filepath.Join(validationRunDirectory, "git-guard-bin")
+	t.Setenv("VALIDATION_RUN_DIR", validationRunDirectory)
+	t.Setenv("PATH", strings.Join([]string{gitGuardDirectory, "/usr/bin"}, string(os.PathListSeparator)))
+
+	binding := map[string]string{
+		"EXPECTED_PR_NUMBER":        "1852",
+		"EXPECTED_WORKTREE":         "/parent/candidate",
+		"EXPECTED_HEAD":             "deadbeef",
+		"AI_WORKTREE_PR":            "1852",
+		"AI_WORKTREE_PATH":          "/parent/candidate",
+		"AI_WORKTREE_EXPECTED_HEAD": "deadbeef",
+		"TRUSTED_ROOT_CHECKOUT":     "/parent/root",
+	}
+	for name, value := range binding {
+		t.Setenv(name, value)
+	}
+
+	environment := map[string]string{}
+	for _, value := range selectorEnvironment() {
+		name, contents, _ := strings.Cut(value, "=")
+		environment[name] = contents
+	}
+
+	for name := range binding {
+		_, present := environment[name]
+		require.False(t, present, "%s must not escape into the synthetic repository", name)
+	}
+	require.Equal(t, "/usr/bin", environment["PATH"])
+}
+
 func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 	t.Parallel()
 
@@ -137,13 +169,19 @@ func TestSelectorListKeepsDiagnosticsOutOfStructuredStdout(t *testing.T) {
 }
 
 // The selector runs against a synthetic repository in these tests. A parent
-// review loop may bind its own candidate worktree through these variables;
-// carrying that unrelated binding into the child process would make the
-// selector reject the synthetic repository before exercising the test case.
+// review loop may bind its own candidate worktree through these variables and
+// prepend a Git guard that depends on that binding. Carrying either into the
+// child process would reject the synthetic repository before exercising the
+// test case.
 func selectorEnvironment(overrides ...string) []string {
+	parentGitGuard := ""
+	if validationRunDirectory := os.Getenv("VALIDATION_RUN_DIR"); validationRunDirectory != "" {
+		parentGitGuard = filepath.Join(validationRunDirectory, "git-guard-bin")
+	}
+
 	environment := make([]string, 0, len(os.Environ())+len(overrides))
 	for _, value := range os.Environ() {
-		name, _, _ := strings.Cut(value, "=")
+		name, contents, _ := strings.Cut(value, "=")
 		switch name {
 		case "EXPECTED_PR_NUMBER",
 			"EXPECTED_WORKTREE",
@@ -153,6 +191,16 @@ func selectorEnvironment(overrides ...string) []string {
 			"AI_WORKTREE_EXPECTED_HEAD",
 			"TRUSTED_ROOT_CHECKOUT":
 			continue
+		case "PATH":
+			paths := strings.Split(contents, string(os.PathListSeparator))
+			filteredPaths := paths[:0]
+			for _, path := range paths {
+				if parentGitGuard != "" && filepath.Clean(path) == filepath.Clean(parentGitGuard) {
+					continue
+				}
+				filteredPaths = append(filteredPaths, path)
+			}
+			value = name + "=" + strings.Join(filteredPaths, string(os.PathListSeparator))
 		}
 		environment = append(environment, value)
 	}
