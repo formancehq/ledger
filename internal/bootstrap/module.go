@@ -423,7 +423,7 @@ func Module() fx.Option {
 					logger,
 					registry,
 					snapshotter,
-					store, // QueryCheckpoints
+					store, // FSMFileArtifacts
 					dal.NewSentinelFactory(store, cfg.SentinelMode),
 					meterProvider,
 					ks,

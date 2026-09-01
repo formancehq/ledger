@@ -586,6 +586,19 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 
 			// The checkpoint is now on disk. The Sealer's recoverPendingSeal
 			// and periodic reconciliation will pick it up once started.
+
+			// A missing seal checkpoint is the proof that nothing after the close
+			// was applied — Pebble is at the close boundary, which is what makes
+			// the checkpoint above valid. The same proof makes staging the
+			// checker's baseline valid here, so the crash window between the
+			// close's commit and its staging closes too. When the checkpoint
+			// already exists that proof is gone, and a chapter whose staging
+			// failed stays unstaged: its promotion degrades rather than serves
+			// state captured at the wrong boundary.
+			if err := a.createBaselineSnapshot(chapter.GetId()); err != nil {
+				a.logger.WithFields(map[string]any{"error": err}).
+					Errorf("Failed to stage recovery baseline snapshot (checker will degrade gracefully)")
+			}
 		}
 	}
 

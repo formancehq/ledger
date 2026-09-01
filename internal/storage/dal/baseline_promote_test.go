@@ -154,3 +154,65 @@ func TestPromoteStagedBaseline_NothingArchivedIsANoOp(t *testing.T) {
 	require.False(t, ok)
 	require.ElementsMatch(t, []string{"staged-00000000000000000001"}, baselineNames(t, store))
 }
+
+// A hard crash between CreateBaselineSnapshot's temp write and its rename leaves
+// a "staged-<id>.tmp-<pid>-<ns>" sibling. It must never pass for the snapshot it
+// was meant to become — fmt.Sscanf's %d would accept it — and it is swept.
+func TestPromoteStagedBaseline_IgnoresAndSweepsInterruptedWrites(t *testing.T) {
+	t.Parallel()
+
+	store := newBaselineTestStore(t)
+
+	stageBaseline(t, store, 1)
+	require.NoError(t, store.PromoteStagedBaseline(1))
+
+	// Chapter 2's staging crashed mid-write: only the temp sibling exists.
+	dir := filepath.Join(store.dataDir, baselineCheckpointsDir)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "staged-00000000000000000002.tmp-1234-5678"), 0755))
+
+	require.NoError(t, store.PromoteStagedBaseline(2))
+
+	// The temp must not have been promoted as chapter 2's snapshot; with no real
+	// snapshot for the boundary, the stale live baseline goes and the checker
+	// degrades. The interrupted write is swept either way.
+	_, _, ok := store.BaselineCheckpointPath()
+	require.False(t, ok, "an interrupted write must not serve as the boundary snapshot")
+	require.Empty(t, baselineNames(t, store))
+}
+
+// BaselineCheckpointPath applies the same anchored parse: an interrupted write
+// next to the live baseline must not shadow or impersonate it.
+func TestBaselineCheckpointPath_IgnoresInterruptedWrites(t *testing.T) {
+	t.Parallel()
+
+	store := newBaselineTestStore(t)
+
+	stageBaseline(t, store, 3)
+	require.NoError(t, store.PromoteStagedBaseline(3))
+
+	dir := filepath.Join(store.dataDir, baselineCheckpointsDir)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "checker-00000000000000000009.tmp-1-1"), 0755))
+
+	_, id, ok := store.BaselineCheckpointPath()
+	require.True(t, ok)
+	require.EqualValues(t, 3, id)
+}
+
+// The clean snapshot must win over a leftover temp for the same chapter — the
+// crash-then-retry case where staging eventually succeeded.
+func TestPromoteStagedBaseline_PromotesTheCleanSnapshotPastItsTemp(t *testing.T) {
+	t.Parallel()
+
+	store := newBaselineTestStore(t)
+
+	stageBaseline(t, store, 1)
+	dir := filepath.Join(store.dataDir, baselineCheckpointsDir)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "staged-00000000000000000001.tmp-9-9"), 0755))
+
+	require.NoError(t, store.PromoteStagedBaseline(1))
+
+	_, id, ok := store.BaselineCheckpointPath()
+	require.True(t, ok)
+	require.EqualValues(t, 1, id)
+	require.ElementsMatch(t, []string{"checker-00000000000000000001"}, baselineNames(t, store))
+}

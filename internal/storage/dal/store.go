@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -1023,8 +1024,7 @@ func (s *Store) PromoteStagedBaseline(archivedThrough uint64) error {
 	)
 
 	for _, entry := range entries {
-		var id uint64
-		if n, _ := fmt.Sscanf(entry.Name(), "staged-%d", &id); n == 1 {
+		if id, ok := parseBaselineName(entry.Name(), "staged-"); ok {
 			if id <= archivedThrough {
 				stagedBelow = append(stagedBelow, entry.Name())
 				if id > bestStaged {
@@ -1035,9 +1035,20 @@ func (s *Store) PromoteStagedBaseline(archivedThrough uint64) error {
 			continue
 		}
 
-		if n, _ := fmt.Sscanf(entry.Name(), "checker-%d", &id); n == 1 {
+		if id, ok := parseBaselineName(entry.Name(), "checker-"); ok {
 			currentID = id
 			currentPath = filepath.Join(dir, entry.Name())
+
+			continue
+		}
+
+		// CreateBaselineSnapshot writes through a sibling ".tmp-<pid>-<ns>"
+		// directory, so a hard crash mid-write leaves one here. It is not a
+		// snapshot — sweep it. Nothing else writes into this directory.
+		if strings.Contains(entry.Name(), ".tmp-") {
+			if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
+				return fmt.Errorf("removing interrupted baseline write %s: %w", entry.Name(), err)
+			}
 		}
 	}
 
@@ -1089,13 +1100,31 @@ func (s *Store) BaselineCheckpointPath() (string, uint64, bool) {
 	}
 
 	for _, entry := range entries {
-		var id uint64
-		if n, _ := fmt.Sscanf(entry.Name(), "checker-%d", &id); n == 1 {
+		if id, ok := parseBaselineName(entry.Name(), "checker-"); ok {
 			return filepath.Join(dir, entry.Name()), id, true
 		}
 	}
 
 	return "", 0, false
+}
+
+// parseBaselineName reads a baseline directory name of the form
+// <prefix><zero-padded id>, refusing anything with a remainder — an interrupted
+// write's ".tmp-<pid>-<ns>" sibling must never pass as the snapshot it was
+// meant to become (fmt.Sscanf would accept it: %d stops at the first non-digit
+// and trailing input is ignored).
+func parseBaselineName(name, prefix string) (uint64, bool) {
+	rest, found := strings.CutPrefix(name, prefix)
+	if !found {
+		return 0, false
+	}
+
+	id, err := strconv.ParseUint(rest, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+
+	return id, true
 }
 
 // cleanupTemporaryCheckpoints removes the entire tmp/ directory on startup.
