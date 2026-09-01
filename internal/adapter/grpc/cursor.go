@@ -41,17 +41,29 @@ func (c GRPCStreamCursor[Res, To]) Next() (To, error) {
 // remote teardown): surfacing it as EOF would fabricate a clean-looking
 // empty or truncated page that the caller then serves with OK status.
 //
-// The verdict MUST come from the caller-supplied context, never from
-// ClientStream.Context(): gRPC derives the stream context with WithCancel
-// and cancels it in finish() on EVERY stream termination, so by the time
-// Recv returns a terminal error that context is always done and gates
-// nothing.
+// That not-ours cancellation is re-coded as Unavailable: the failure is a
+// peer-transport transient exactly like ErrNodeNotReachable, and Canceled
+// means "the caller gave up" to every classifier downstream — SDK retry
+// predicates treat it as the client's own shutdown and give up, and the
+// HTTP boundary degrades it to a plain 500. Unavailable is what routes it
+// into the retry path (gRPC clients retry it; HTTP serves 503 with
+// Retry-After).
+//
+// The ours/not-ours verdict MUST come from the caller-supplied context,
+// never from ClientStream.Context(): gRPC derives the stream context with
+// WithCancel and cancels it in finish() on EVERY stream termination, so by
+// the time Recv returns a terminal error that context is always done and
+// gates nothing.
 func normalizeStreamEnd(ctx context.Context, err error) error {
-	if status.Code(err) == codes.Canceled && ctx.Err() != nil {
+	if status.Code(err) != codes.Canceled {
+		return err
+	}
+
+	if ctx.Err() != nil {
 		return io.EOF
 	}
 
-	return err
+	return status.Errorf(codes.Unavailable, "forwarded stream failed mid-transfer: %s", status.Convert(err).Message())
 }
 
 func (c GRPCStreamCursor[Res, To]) Close() error {

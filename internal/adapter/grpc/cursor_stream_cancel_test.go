@@ -110,8 +110,11 @@ func TestUpstreamPeekCursorStreamDeath(t *testing.T) {
 			t.Fatalf("a dead transfer surfaced as clean EOF: a caller would serve the truncated page with OK status")
 		}
 
-		if status.Code(err) != codes.Canceled {
-			t.Fatalf("want Canceled, got %v", err)
+		// The not-ours cancellation is re-coded as the peer-transport
+		// transient it is: Unavailable routes it into every retry path
+		// (Canceled would read as the caller's own shutdown downstream).
+		if status.Code(err) != codes.Unavailable {
+			t.Fatalf("want Unavailable, got %v", err)
 		}
 
 		// The stream-derived context is already canceled here even though the

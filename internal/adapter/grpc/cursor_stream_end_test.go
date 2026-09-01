@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc/codes"
@@ -13,10 +14,14 @@ import (
 func TestNormalizeStreamEnd(t *testing.T) {
 	canceled := status.Error(codes.Canceled, "context canceled")
 
-	t.Run("canceled with live caller context propagates", func(t *testing.T) {
+	t.Run("canceled with live caller context becomes the Unavailable transient", func(t *testing.T) {
 		got := normalizeStreamEnd(context.Background(), canceled)
-		if status.Code(got) != codes.Canceled {
-			t.Fatalf("want Canceled, got %v", got)
+		if status.Code(got) != codes.Unavailable {
+			t.Fatalf("want Unavailable, got %v", got)
+		}
+
+		if msg := status.Convert(got).Message(); !strings.Contains(msg, "context canceled") {
+			t.Fatalf("the original failure must survive in the message, got %q", msg)
 		}
 	})
 
