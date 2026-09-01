@@ -182,38 +182,6 @@ func walDirPopulated(walDir string) (bool, error) {
 	return populated, nil
 }
 
-type walInitializer interface {
-	ReadAll() ([]byte, *raftpb.HardState, []*raftpb.Entry, error)
-	SaveSnapshot(*walpb.Snapshot) error
-	Close() error
-}
-
-// initializeNewWAL makes the initial replay cursor durable and closes the WAL
-// before its separate creation-completion file can be published.
-func initializeNewWAL(w walInitializer) error {
-	if _, _, _, err := w.ReadAll(); err != nil {
-		readErr := fmt.Errorf("reading newly created DefaultWAL for initialization: %w", err)
-		if closeErr := w.Close(); closeErr != nil {
-			return errors.Join(readErr, fmt.Errorf("closing newly created DefaultWAL after initialization read failure: %w", closeErr))
-		}
-
-		return readErr
-	}
-	if err := w.SaveSnapshot(newCompactionMarker(0, 0)); err != nil {
-		saveErr := fmt.Errorf("saving initial compaction marker: %w", err)
-		if closeErr := w.Close(); closeErr != nil {
-			return errors.Join(saveErr, fmt.Errorf("closing newly created DefaultWAL after initial compaction marker failure: %w", closeErr))
-		}
-
-		return saveErr
-	}
-	if err := w.Close(); err != nil {
-		return fmt.Errorf("closing initialized DefaultWAL: %w", err)
-	}
-
-	return nil
-}
-
 // New creates a new DefaultWAL instance.
 func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Option) (*DefaultWAL, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
@@ -280,7 +248,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 		return nil, fmt.Errorf("checking DefaultWAL creation completion marker: %w", err)
 	}
 
-	replaySnap := &walpb.Snapshot{}
+	snap := &walpb.Snapshot{}
 
 	if err == nil {
 		s.logger.Infof("WAL creation completed, opening existing DefaultWAL")
@@ -295,14 +263,6 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			"duration": time.Since(validStart).String(),
 			"count":    len(walSnaps),
 		}).Infof("WAL valid snapshot entries scanned")
-
-		compactionMarker := latestCompactionMarker(walSnaps)
-		if compactionMarker == nil {
-			return nil, errors.New("existing WAL has no persisted compaction marker")
-		}
-		replaySnap = compactionMarker
-		s.compactedIndex = compactionMarker.GetIndex()
-		s.compactedTerm = compactionMarker.GetTerm()
 
 		// Load the newest snap file that matches a WAL snapshot record.
 		// This ensures orphaned snap files (written before a crash, without
@@ -322,6 +282,10 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 					"duration": time.Since(loadStart).String(),
 				}).
 				Infof("Loaded snapshot from disk")
+			snap = &walpb.Snapshot{
+				Index: new(s.snapshot.GetMetadata().GetIndex()),
+				Term:  new(s.snapshot.GetMetadata().GetTerm()),
+			}
 		} else if recovered := recoverConfStateFromWALRecords(walSnaps); recovered != nil {
 			// Snap file lost (crash during non-atomic write, corrupted, or deleted).
 			// Recover the ConfState from the latest WAL snapshot record so the node
@@ -352,21 +316,20 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 				// rediscovered via etcd). The FSM state lives in Pebble
 				// (separate volume) and is not affected.
 			}
+			snap = &walpb.Snapshot{
+				Index: new(recovered.GetIndex()),
+				Term:  new(recovered.GetTerm()),
+			}
+
 			// Persist the recovered snapshot so subsequent restarts succeed normally.
 			if saveErr := s.snapshotter.Save(s.snapshot); saveErr != nil {
 				s.logger.WithFields(map[string]any{"error": saveErr}).
 					Errorf("Failed to persist recovered snapshot (node will retry recovery on next restart)")
 			}
 		}
-		if s.compactedIndex > s.snapshot.GetMetadata().GetIndex() {
-			return nil, fmt.Errorf(
-				"persisted compaction index %d is after latest snapshot index %d",
-				s.compactedIndex,
-				s.snapshot.GetMetadata().GetIndex(),
-			)
-		}
+
 		walOpenStart := time.Now()
-		s.wal, err = wal.Open(zapLogger, s.etcdWalDir, replaySnap)
+		s.wal, err = wal.Open(zapLogger, s.etcdWalDir, snap)
 		if err != nil {
 			return nil, fmt.Errorf("opening existing DefaultWAL: %w", err)
 		}
@@ -438,42 +401,20 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			return nil, fmt.Errorf("closing newly created DefaultWAL: %w", err)
 		}
 
-		// Persist the initial replay cursor before publishing the creation
-		// completion marker. Once the completion marker is visible, every later
-		// open requires this WAL record and must never observe a completed WAL
-		// without it. A crash before the completion marker leaves only a verified
-		// empty bootstrap remnant, which this branch safely recreates.
-		initialWAL, err := wal.Open(zapLogger, s.etcdWalDir, replaySnap)
-		if err != nil {
-			return nil, fmt.Errorf("opening newly created DefaultWAL for initialization: %w", err)
-		}
-		if err := initializeNewWAL(initialWAL); err != nil {
-			return nil, err
-		}
-
 		f, err := os.Create(markerFilePath)
 		if err != nil {
 			return nil, fmt.Errorf("creating DefaultWAL creation completion marker: %w", err)
 		}
 
-		syncErr := f.Sync()
-		closeErr := f.Close()
-		if syncErr != nil {
-			syncErr = fmt.Errorf("syncing DefaultWAL creation completion marker: %w", syncErr)
-			if closeErr != nil {
-				return nil, errors.Join(syncErr, fmt.Errorf("closing DefaultWAL creation completion marker after sync failure: %w", closeErr))
-			}
-
-			return nil, syncErr
-		}
-		if closeErr != nil {
-			return nil, fmt.Errorf("closing DefaultWAL creation completion marker: %w", closeErr)
-		}
-		if err := syncDir(s.dataDir); err != nil {
-			return nil, fmt.Errorf("syncing data directory after DefaultWAL creation: %w", err)
+		if err := f.Sync(); err != nil {
+			return nil, fmt.Errorf("syncing DefaultWAL creation completion marker: %w", err)
 		}
 
-		s.wal, err = wal.Open(zapLogger, s.etcdWalDir, replaySnap)
+		if err := f.Close(); err != nil {
+			return nil, fmt.Errorf("closing DefaultWAL creation completion marker: %w", err)
+		}
+
+		s.wal, err = wal.Open(zapLogger, s.etcdWalDir, snap)
 		if err != nil {
 			return nil, fmt.Errorf("opening newly created DefaultWAL: %w", err)
 		}
@@ -503,7 +444,7 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 
 		s.logger.Errorf("WAL repair succeeded — re-opening WAL")
 
-		s.wal, err = wal.Open(zapLogger, s.etcdWalDir, replaySnap)
+		s.wal, err = wal.Open(zapLogger, s.etcdWalDir, snap)
 		if err != nil {
 			return nil, fmt.Errorf("opening repaired WAL: %w", err)
 		}
@@ -520,6 +461,12 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	if s.hardState == nil {
 		s.hardState = &raftpb.HardState{}
 	}
+	// etcd WAL replay starts immediately after the latest durable full
+	// snapshot. That snapshot is therefore the compacted-prefix boundary after
+	// a restart. Compact advances the boundary independently for the remainder
+	// of this process lifetime.
+	s.compactedIndex = s.snapshot.GetMetadata().GetIndex()
+	s.compactedTerm = s.snapshot.GetMetadata().GetTerm()
 
 	s.logger.
 		WithFields(map[string]any{
@@ -528,8 +475,6 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 			"hardState.Commit": s.hardState.GetCommit(),
 			"snapshot.Index":   s.snapshot.GetMetadata().GetIndex(),
 			"snapshot.Term":    s.snapshot.GetMetadata().GetTerm(),
-			"compacted.Index":  s.compactedIndex,
-			"compacted.Term":   s.compactedTerm,
 		}).Infof("WAL replay completed")
 
 	// Start background purger to delete old WAL segment files that have been
@@ -541,43 +486,6 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	s.purgeDone, _ = fileutil.PurgeFileWithDoneNotify(zap.NewNop(), s.etcdWalDir, ".wal", 1, s.purgeInterval, s.stopPurge)
 
 	return s, nil
-}
-
-// Compaction markers are WAL snapshot records with an impossible Raft
-// ConfState: AutoLeave is set while both the incoming and outgoing voter sets
-// are empty. etcd's WAL already uses snapshot records as durable replay
-// cursors, so the marker gives wal.Open an exact retained-log boundary without
-// coupling it to the latest full FSM snapshot. The sentinel ConfState keeps
-// these records distinct from real snapshots and from membership recovery.
-func newCompactionMarker(index, term uint64) *walpb.Snapshot {
-	return &walpb.Snapshot{
-		Index: new(index),
-		Term:  new(term),
-		ConfState: &raftpb.ConfState{
-			AutoLeave: new(true),
-		},
-	}
-}
-
-func isCompactionMarker(snap *walpb.Snapshot) bool {
-	cs := snap.GetConfState()
-
-	return cs != nil &&
-		cs.GetAutoLeave() &&
-		len(cs.GetVoters()) == 0 &&
-		len(cs.GetLearners()) == 0 &&
-		len(cs.GetVotersOutgoing()) == 0 &&
-		len(cs.GetLearnersNext()) == 0
-}
-
-func latestCompactionMarker(walSnaps []*walpb.Snapshot) *walpb.Snapshot {
-	for i := range slices.Backward(walSnaps) {
-		if isCompactionMarker(walSnaps[i]) {
-			return walSnaps[i]
-		}
-	}
-
-	return nil
 }
 
 // recoverConfStateFromWALRecords scans WAL snapshot records from newest to
@@ -882,9 +790,8 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 		},
 		Data: data,
 	}
-	advancesCompactionBoundary := len(s.entries) == 0
 	s.snapshot = snap
-	if advancesCompactionBoundary {
+	if len(s.entries) == 0 {
 		// Restore/empty-storage snapshots have no retained log entries. The
 		// snapshot itself is therefore the only matching point available to
 		// Raft and becomes the compacted prefix boundary.
@@ -895,14 +802,6 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 
 	if err := s.snapshotter.Save(snap); err != nil {
 		return fmt.Errorf("saving snapshot file: %w", err)
-	}
-	if advancesCompactionBoundary {
-		// Empty-storage and restore snapshots replace the entire log. Persist
-		// their replay cursor before the real snapshot record so a restart can
-		// never resurrect entries below the replacement snapshot.
-		if err := s.wal.SaveSnapshot(newCompactionMarker(index, term)); err != nil {
-			return fmt.Errorf("saving snapshot compaction marker: %w", err)
-		}
 	}
 
 	// Write the WAL snapshot record BEFORE cleaning up old snap files.
@@ -1065,17 +964,6 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
 
 		return fmt.Errorf("saving guard snapshot to WAL: %w", err)
 	}
-	// Persist the replacement-log cursor while the old HardState still makes
-	// both new records invalid to startup replay. If the following HardState is
-	// ever durable, this marker is already durable and becomes valid with it.
-	if err := s.wal.SaveSnapshot(newCompactionMarker(
-		snap.GetMetadata().GetIndex(),
-		snap.GetMetadata().GetTerm(),
-	)); err != nil {
-		s.mu.Unlock()
-
-		return fmt.Errorf("saving applied snapshot compaction marker: %w", err)
-	}
 
 	// A commit-only HardState update does not make etcd WAL Save sync by
 	// itself. Buffer it after the durable guard record, then write the same
@@ -1108,9 +996,6 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
 
 // Compact compacts the log up to the given index.
 func (s *DefaultWAL) Compact(compactIndex uint64) error {
-	s.snapshotPersistenceMu.Lock()
-	defer s.snapshotPersistenceMu.Unlock()
-
 	s.mu.Lock()
 
 	if compactIndex > s.snapshot.GetMetadata().GetIndex() {
@@ -1143,16 +1028,6 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 
 		return fmt.Errorf("reading term at compaction index %d: %w", compactIndex, err)
 	}
-	// Save a durable replay cursor before making the retained prefix
-	// unavailable in memory or releasing any segment locks. A crash after this
-	// fsync can safely replay from compactIndex; a crash before it retains the
-	// previous, wider window.
-	if err := s.wal.SaveSnapshot(newCompactionMarker(compactIndex, compactTerm)); err != nil {
-		s.mu.Unlock()
-
-		return fmt.Errorf("saving compaction marker at index %d: %w", compactIndex, err)
-	}
-
 	// Truncate entries before compactIndex
 	offset := s.entries[0].GetIndex()
 	truncateIndex := compactIndex - offset

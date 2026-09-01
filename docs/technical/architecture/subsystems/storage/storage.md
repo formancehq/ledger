@@ -88,12 +88,13 @@ When a new entry is proposed:
 At startup, the WAL is replayed to rebuild the memory cache:
 
 1. The latest full FSM snapshot is loaded
-2. The latest persisted compaction marker supplies the independent WAL replay
-   cursor `(index, term)`
-3. WAL entries after that compaction marker are replayed, including entries at
-   or before the newer FSM snapshot when they are inside the retained margin
-4. The memory cache is rebuilt and the FSM state is restored from the full
-   snapshot
+2. WAL entries after that snapshot are replayed
+3. The in-memory entry cache is rebuilt and the FSM state is restored
+
+The latest durable snapshot is also the compacted-prefix boundary after a
+restart. A compaction margin retained by the previous process is not
+reconstructed; the margin is a running leader's catch-up optimization, matching
+the etcd storage model.
 
 ### WAL Management
 
@@ -116,20 +117,14 @@ When a new WAL is created, the system uses a marker file (`WAL_CREATION_COMPLETE
 1. Check if `WAL_CREATION_COMPLETED` marker exists
 2. **If marker exists**: Open the existing WAL normally
 3. **If marker does not exist**:
-   - Inspect any existing WAL and fail closed if it contains consensus state or
-     cannot be proven empty
-   - Delete only a verified-empty WAL directory (incomplete previous creation)
+   - Delete any existing WAL directory (incomplete previous creation)
    - Create a new WAL using `wal.Create()`
    - Close and reopen the WAL (required by etcd/server WAL)
-   - Persist and fsync the initial compaction replay marker, then close the WAL
    - Create the marker file
-   - Sync and close the marker file, then fsync the data directory
+   - Sync and close the marker file
    - Open the WAL for use
 
-The replay marker is durable before the completion file is published. A crash
-before publication therefore leaves only an empty-bootstrap WAL, which is
-detected and recreated on the next startup. Once the completion file is
-visible, startup is guaranteed to find the compaction replay marker it requires.
+This mechanism ensures that if the process crashes during WAL creation, the incomplete WAL will be detected and recreated on the next startup, preventing corruption.
 
 #### 2. Atomic Snapshot File Writes
 
@@ -415,7 +410,8 @@ The WAL is compacted after snapshots to prevent unbounded growth:
    entries `[C + 1, N]` remain available through `Entries`. A follower whose
    last matching entry is `C` can therefore catch up through `MsgApp` without
    receiving a full snapshot.
-3. Snapshot publication and log compaction are independent boundaries.
+3. During the current process lifetime, snapshot publication and log compaction
+   are independent boundaries.
    Advancing `Snapshot().Metadata.Index` must not make retained entries or their
    terms unavailable. This `raft.Storage` contract prevents a maintenance tick
    from turning a small follower lag into a full store synchronization (EN-1925).
@@ -423,15 +419,10 @@ The WAL is compacted after snapshots to prevent unbounded growth:
    advanced. Segment reclamation remains best-effort and does not change the
    logical availability boundary.
 
-The compaction boundary is persisted as a distinguished etcd WAL snapshot
-record before the in-memory prefix is truncated and before `ReleaseLockTo`
-makes old segments reclaimable. On restart, `wal.Open` uses this record rather
-than the latest full FSM snapshot. Applying a received snapshot persists its
-replacement-log marker before advancing the durable HardState, so every durable
-prefix either replays the previous retained window or starts at the received
-snapshot; it never resurrects entries below that snapshot. Failure to persist a
-compaction marker leaves the previous wider window intact and prevents segment
-reclamation for the attempted boundary.
+On restart, `wal.Open` replays from the latest durable full snapshot. That
+snapshot becomes the new compacted-prefix boundary, so the previous process's
+margin is deliberately discarded. No separate compaction marker or storage
+format is persisted for this optimization.
 
 For detailed explanation, see [WAL Compaction in Data Flows](../../data-flows.md#wal-compaction).
 

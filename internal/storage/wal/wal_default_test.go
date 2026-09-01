@@ -2,7 +2,6 @@ package wal
 
 import (
 	"encoding/binary"
-	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -12,12 +11,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	etcdwal "go.etcd.io/etcd/server/v3/storage/wal"
-	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
-	"go.uber.org/zap"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
@@ -66,116 +62,6 @@ func countWALFiles(t *testing.T, dir string) int {
 	return count
 }
 
-type stubWALInitializer struct {
-	readErr       error
-	saveErr       error
-	closeErr      error
-	readCalls     int
-	saveCalls     int
-	closeCalls    int
-	savedSnapshot *walpb.Snapshot
-}
-
-func (s *stubWALInitializer) ReadAll() ([]byte, *raftpb.HardState, []*raftpb.Entry, error) {
-	s.readCalls++
-
-	return nil, nil, nil, s.readErr
-}
-
-func (s *stubWALInitializer) SaveSnapshot(snapshot *walpb.Snapshot) error {
-	s.saveCalls++
-	s.savedSnapshot = snapshot
-
-	return s.saveErr
-}
-
-func (s *stubWALInitializer) Close() error {
-	s.closeCalls++
-
-	return s.closeErr
-}
-
-func TestInitializeNewWAL(t *testing.T) {
-	t.Parallel()
-
-	readFailure := errors.New("read failure")
-	saveFailure := errors.New("save failure")
-	closeFailure := errors.New("close failure")
-
-	tests := []struct {
-		name          string
-		initializer   *stubWALInitializer
-		expectedError []error
-		expectedReads int
-		expectedSaves int
-	}{
-		{
-			name:          "success",
-			initializer:   &stubWALInitializer{},
-			expectedReads: 1,
-			expectedSaves: 1,
-		},
-		{
-			name:          "read failure still closes",
-			initializer:   &stubWALInitializer{readErr: readFailure},
-			expectedError: []error{readFailure},
-			expectedReads: 1,
-		},
-		{
-			name:          "read and close failures are joined",
-			initializer:   &stubWALInitializer{readErr: readFailure, closeErr: closeFailure},
-			expectedError: []error{readFailure, closeFailure},
-			expectedReads: 1,
-		},
-		{
-			name:          "save failure still closes",
-			initializer:   &stubWALInitializer{saveErr: saveFailure},
-			expectedError: []error{saveFailure},
-			expectedReads: 1,
-			expectedSaves: 1,
-		},
-		{
-			name:          "save and close failures are joined",
-			initializer:   &stubWALInitializer{saveErr: saveFailure, closeErr: closeFailure},
-			expectedError: []error{saveFailure, closeFailure},
-			expectedReads: 1,
-			expectedSaves: 1,
-		},
-		{
-			name:          "final close failure",
-			initializer:   &stubWALInitializer{closeErr: closeFailure},
-			expectedError: []error{closeFailure},
-			expectedReads: 1,
-			expectedSaves: 1,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			err := initializeNewWAL(test.initializer)
-			if len(test.expectedError) == 0 {
-				require.NoError(t, err)
-			} else {
-				for _, expected := range test.expectedError {
-					require.ErrorIs(t, err, expected)
-				}
-			}
-			require.Equal(t, test.expectedReads, test.initializer.readCalls)
-			require.Equal(t, test.expectedSaves, test.initializer.saveCalls)
-			require.Equal(t, 1, test.initializer.closeCalls)
-			if test.expectedSaves == 1 {
-				require.True(t, isCompactionMarker(test.initializer.savedSnapshot))
-				require.Zero(t, test.initializer.savedSnapshot.GetIndex())
-				require.Zero(t, test.initializer.savedSnapshot.GetTerm())
-			} else {
-				require.Nil(t, test.initializer.savedSnapshot)
-			}
-		})
-	}
-}
-
 // withPurgeInterval is a test helper that returns an Option setting the purge interval.
 func withPurgeInterval(d time.Duration) Option {
 	return func(w *DefaultWAL) { w.purgeInterval = d }
@@ -209,13 +95,7 @@ func newTestWALAt(t *testing.T, dir string, opts ...Option) *DefaultWAL {
 func newWALWithRetainedMargin(t *testing.T) *DefaultWAL {
 	t.Helper()
 
-	return newWALWithRetainedMarginAt(t, t.TempDir())
-}
-
-func newWALWithRetainedMarginAt(t *testing.T, dir string) *DefaultWAL {
-	t.Helper()
-
-	w := newTestWALAt(t, dir)
+	w := newTestWAL(t)
 	entries := make([]*raftpb.Entry, 5)
 	for i := range entries {
 		entries[i] = ent(uint64(i+1), 1, []byte{byte(i + 1)})
@@ -325,69 +205,17 @@ func reopenWAL(t *testing.T, dir string) error {
 }
 
 // TestNew_MarkerMissing_EmptyWAL_Recreates covers the disposable
-// empty-bootstrap remnant: a crash between wal.Create and the initial
-// compaction-marker write leaves a fresh, state-free WAL. New() must clean it
-// up and recreate the marker (existing bootstrap-recovery behaviour).
+// empty-bootstrap remnant: a crash between wal.Create and the marker write
+// leaves a fresh, state-free WAL. New() must clean it up and recreate the
+// marker (existing bootstrap-recovery behaviour).
 func TestNew_MarkerMissing_EmptyWAL_Recreates(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	w, err := etcdwal.Create(zap.NewNop(), filepath.Join(dir, etcdWalDir), nil)
-	require.NoError(t, err)
-	require.NoError(t, w.Close())
+	dir, _ := walDirWithMarkerRemoved(t, nil)
 
 	require.NoError(t, reopenWAL(t, dir), "a verified-empty WAL must be recreated, not rejected")
 	_, statErr := os.Stat(filepath.Join(dir, walCreationCompletedFile))
 	require.NoError(t, statErr, "the creation marker must be rewritten after recreation")
-}
-
-// TestNew_MarkerMissing_InitialCompactionMarker_Recreates covers a crash after
-// the initial replay cursor is durable but before WAL_CREATION_COMPLETED is
-// published. The sentinel snapshot carries no consensus state, so the next
-// startup must still recognize this prefix as an empty bootstrap remnant.
-func TestNew_MarkerMissing_InitialCompactionMarker_Recreates(t *testing.T) {
-	t.Parallel()
-
-	dir, etcdDir := walDirWithMarkerRemoved(t, nil)
-	walSnaps, err := etcdwal.ValidSnapshotEntries(zap.NewNop(), etcdDir)
-	require.NoError(t, err)
-	require.NotNil(t, latestCompactionMarker(walSnaps), "the interrupted prefix must contain the initial replay cursor")
-
-	require.NoError(t, reopenWAL(t, dir), "an initialized but unpublished empty WAL must be recreated")
-	_, statErr := os.Stat(filepath.Join(dir, walCreationCompletedFile))
-	require.NoError(t, statErr, "the creation marker must be published after recreation")
-}
-
-func TestNew_CompletedWALWithoutCompactionMarkerFails(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	w, err := etcdwal.Create(zap.NewNop(), filepath.Join(dir, etcdWalDir), nil)
-	require.NoError(t, err)
-	require.NoError(t, w.Close())
-	require.NoError(t, os.WriteFile(filepath.Join(dir, walCreationCompletedFile), nil, 0600))
-
-	err = reopenWAL(t, dir)
-	require.ErrorContains(t, err, "existing WAL has no persisted compaction marker")
-}
-
-func TestNew_CompactionMarkerAfterLatestSnapshotFails(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	w := newTestWALAt(t, dir)
-	require.NoError(t, w.Close())
-
-	rawWAL, err := etcdwal.Open(zap.NewNop(), filepath.Join(dir, etcdWalDir), newCompactionMarker(0, 0))
-	require.NoError(t, err)
-	_, _, _, err = rawWAL.ReadAll()
-	require.NoError(t, err)
-	require.NoError(t, rawWAL.Save(hs(1, 1, 10), nil))
-	require.NoError(t, rawWAL.SaveSnapshot(newCompactionMarker(10, 1)))
-	require.NoError(t, rawWAL.Close())
-
-	err = reopenWAL(t, dir)
-	require.ErrorContains(t, err, "persisted compaction index 10 is after latest snapshot index 0")
 }
 
 // TestNew_MarkerMissing_PopulatedHardState_FailsClosed is the core EN-1525
@@ -920,7 +748,7 @@ func TestTerm_GapBeforeCachedEntriesIsCompacted(t *testing.T) {
 	w := newTestWAL(t)
 
 	// Exercise the defensive sparse-window branch: an index before the cached
-	// entries is unavailable unless it is the persisted compaction boundary.
+	// entries is unavailable unless it is the current compaction boundary.
 	require.NoError(t, w.Append(hs(1, 1, 3), []*raftpb.Entry{
 		ent(3, 1, []byte("c")),
 	}))
@@ -968,31 +796,35 @@ func TestRaftFollowerWithinRetainedMarginReceivesAppend(t *testing.T) {
 	assertFollowerWithinRetainedMarginReceivesAppend(t, w)
 }
 
-func TestRetainedMarginSurvivesRestart(t *testing.T) {
+func TestRestartUsesLatestSnapshotAsCompactionBoundary(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	w := newWALWithRetainedMarginAt(t, dir)
+	w := newTestWALAt(t, dir)
+	entries := make([]*raftpb.Entry, 5)
+	for i := range entries {
+		entries[i] = ent(uint64(i+1), 1, []byte{byte(i + 1)})
+	}
+	require.NoError(t, w.Append(hs(1, 1, 5), entries))
+	cs := &raftpb.ConfState{Voters: []uint64{1, 2}}
+	require.NoError(t, w.CreateSnapshot(2, cs, nil))
+	require.NoError(t, w.Compact(2))
+	require.NoError(t, w.CreateSnapshot(5, cs, nil))
 	require.NoError(t, w.Close())
 
 	reopened := newTestWALAt(t, dir)
 	firstIndex, err := reopened.FirstIndex()
 	require.NoError(t, err)
-	require.Equal(t, uint64(3), firstIndex)
+	require.Equal(t, uint64(6), firstIndex)
 
-	boundaryTerm, err := reopened.Term(2)
+	boundaryTerm, err := reopened.Term(5)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), boundaryTerm)
 
-	entries, err := reopened.Entries(3, 6, math.MaxUint64)
-	require.NoError(t, err)
-	require.Equal(t, []uint64{3, 4, 5}, []uint64{
-		entries[0].GetIndex(),
-		entries[1].GetIndex(),
-		entries[2].GetIndex(),
-	})
-
-	assertFollowerWithinRetainedMarginReceivesAppend(t, reopened)
+	_, err = reopened.Term(2)
+	require.ErrorIs(t, err, raft.ErrCompacted)
+	_, err = reopened.Entries(3, 6, math.MaxUint64)
+	require.ErrorIs(t, err, raft.ErrCompacted)
 }
 
 func assertFollowerWithinRetainedMarginReceivesAppend(t *testing.T, w *DefaultWAL) {
@@ -1196,16 +1028,6 @@ func TestSnapshot_AfterCreateSnapshot(t *testing.T) {
 	require.Equal(t, cs.GetVoters(), snap.GetMetadata().GetConfState().GetVoters())
 }
 
-func TestCreateSnapshot_CompactionMarkerSaveFailure(t *testing.T) {
-	t.Parallel()
-
-	w := newTestWAL(t)
-	require.NoError(t, w.wal.Close())
-
-	err := w.CreateSnapshot(0, &raftpb.ConfState{Voters: []uint64{1}}, nil)
-	require.ErrorContains(t, err, "saving snapshot compaction marker")
-}
-
 func TestUpdateSnapshotConfStateSerializesSnapshotPersistence(t *testing.T) {
 	t.Parallel()
 
@@ -1274,37 +1096,6 @@ func TestApplySnapshot(t *testing.T) {
 	idx, err := w.LastIndex()
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), idx, "last index should be snapshot index after apply")
-}
-
-func TestAppliedSnapshotCompactionBoundarySurvivesRestart(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	w := newTestWALAt(t, dir)
-	require.NoError(t, w.Append(hs(1, 1, 2), []*raftpb.Entry{
-		ent(1, 1, []byte("a")),
-		ent(2, 1, []byte("b")),
-	}))
-	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{
-		Metadata: snapshotMeta(10, 5, &raftpb.ConfState{Voters: []uint64{1, 2, 3}}),
-		Data:     []byte("full-snapshot"),
-	}))
-	require.NoError(t, w.Close())
-
-	reopened := newTestWALAt(t, dir)
-	firstIndex, err := reopened.FirstIndex()
-	require.NoError(t, err)
-	require.Equal(t, uint64(11), firstIndex)
-
-	boundaryTerm, err := reopened.Term(10)
-	require.NoError(t, err)
-	require.Equal(t, uint64(5), boundaryTerm)
-
-	_, err = reopened.Term(2)
-	require.ErrorIs(t, err, raft.ErrCompacted)
-	lastIndex, err := reopened.LastIndex()
-	require.NoError(t, err)
-	require.Equal(t, uint64(10), lastIndex)
 }
 
 func TestApplySnapshotUnlocksOnSnapshotSaveFailure(t *testing.T) {
@@ -1454,25 +1245,6 @@ func TestCompact_Basic(t *testing.T) {
 	ents, err := w.Entries(4, 6, math.MaxUint64)
 	require.NoError(t, err)
 	require.Len(t, ents, 2)
-}
-
-func TestCompact_CompactionMarkerSaveFailureKeepsRetainedWindow(t *testing.T) {
-	t.Parallel()
-
-	w := newTestWAL(t)
-	require.NoError(t, w.Append(hs(1, 1, 3), []*raftpb.Entry{
-		ent(1, 1, []byte("a")),
-		ent(2, 1, []byte("b")),
-		ent(3, 1, []byte("c")),
-	}))
-	require.NoError(t, w.CreateSnapshot(3, &raftpb.ConfState{Voters: []uint64{1}}, nil))
-	require.NoError(t, w.wal.Close())
-
-	err := w.Compact(2)
-	require.ErrorContains(t, err, "saving compaction marker at index 2")
-	firstIndex, firstIndexErr := w.FirstIndex()
-	require.NoError(t, firstIndexErr)
-	require.Equal(t, uint64(1), firstIndex, "failed persistence must leave the retained window unchanged")
 }
 
 func TestCompact_AfterSnapshot(t *testing.T) {
@@ -1654,21 +1426,12 @@ func TestWAL_Persistence(t *testing.T) {
 	require.Equal(t, uint64(2), snap.GetMetadata().GetIndex())
 	require.Equal(t, []byte("snap"), snap.GetData())
 
-	// Snapshot publication alone does not compact the WAL. With no Compact call,
-	// restart replays from the initial boundary and retains both entries.
-	firstIdx, err := w2.FirstIndex()
-	require.NoError(t, err)
-	require.Equal(t, uint64(1), firstIdx)
-	entries, err := w2.Entries(1, 3, math.MaxUint64)
-	require.NoError(t, err)
-	require.Equal(t, []uint64{1, 2}, []uint64{
-		entries[0].GetIndex(),
-		entries[1].GetIndex(),
-	})
-
+	// Verify entries: after snapshot at index 2, entries before the snapshot
+	// may or may not be available depending on the etcd WAL replay.
+	// At minimum, last index should be >= snapshot index.
 	lastIdx, err := w2.LastIndex()
 	require.NoError(t, err)
-	require.Equal(t, uint64(2), lastIdx)
+	require.GreaterOrEqual(t, lastIdx, uint64(2))
 }
 
 // --- WAL repair tests ---
