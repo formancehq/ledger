@@ -106,6 +106,25 @@ type QueryCheckpoints interface {
 	DeleteQueryCheckpointFiles(id uint64) error
 }
 
+// CheckerBaselines is the FSM's handle on the checker's baseline snapshot.
+// A baseline is staged per chapter when that chapter closes (the applier writes
+// it at the seal-checkpoint boundary) and promoted to the live baseline when the
+// chapter's archival is confirmed — the promotion is what keeps the baseline
+// equal to the state at the archived boundary the checker replays from.
+//
+// Intended consumer: the FSM's post-commit hook, next to the query-checkpoint
+// file deletes.
+type CheckerBaselines interface {
+	PromoteStagedBaseline(archivedThrough uint64) error
+}
+
+// FSMFileArtifacts groups the node-local file lifecycles the FSM drives from
+// post-commit hooks: query-checkpoint files and the checker's baseline.
+type FSMFileArtifacts interface {
+	QueryCheckpoints
+	CheckerBaselines
+}
+
 // ColdStorageScanner exposes the cold-storage iteration primitive used to
 // export an archived chapter's data.
 //

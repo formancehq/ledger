@@ -136,6 +136,32 @@ Replay reads from a Pebble-backed `replayStore` with merge operators so a multi-
 
 The transaction merge operator is associative. On a partial merge — Pebble compacting operands without the base value, `includesBase=false` — it defers the ordered ops as a `txOpBatch` instead of collapsing them into a finalized snapshot: a metadata delete has no snapshot representation, so collapsing would silently drop it and a later fold with the base could not undo it. Only a base-inclusive fold (at read, or the LSM bottom) resolves to a finalized `TransactionState`. Under archiving, each transaction's pre-archive baseline state is seeded lazily on the first post-archive delta that touches it (`newLazyTxSeedWriter`), so the delta merges onto the full state whose create log has been purged; untouched transactions carry no replay entry and fall back to the baseline in `compareTransactions`.
 
+### The baseline snapshot and the archived boundary
+
+Every baseline-seeded pass computes `expected = baseline + replay(boundary..now)`,
+where the boundary is the newest **archived** chapter's close. That arithmetic is
+only sound when the baseline is the state at exactly that close, so the baseline's
+lifecycle is bound to the archival confirm, not to the close:
+
+- the applier **stages** a compact attribute-only snapshot per closing chapter,
+  inside the seal-checkpoint maintenance gate (`StagedBaselineDir`) — state at
+  exactly that chapter's close;
+- the FSM **promotes** the staged snapshot to the live baseline
+  (`checker-<chapterID>`) in the post-commit hook of the proposal whose archival
+  confirm moved the boundary onto it (`PromoteStagedBaseline`); the applier runs
+  the same reconciliation once at boot for the crash window between the commit
+  and the rename;
+- `Check()` **refuses** a live baseline whose chapter id differs from the
+  snapshot's archived boundary — a promotion racing the check, or one whose
+  staging failed — and degrades to skipping entry-by-entry verification, exactly
+  as it does when no baseline exists.
+
+Promoting at close instead — the earlier behavior — double-counts every
+transaction between the boundary and the newest close: with a chapter closed but
+not yet archived — the lifecycle's normal intermediate state — those transactions
+sit in the baseline *and* in the replay window, and `Check()` reported a healthy
+store as corrupt with one `VOLUME_MISMATCH` per touched account.
+
 ## Pass-by-pass derivation flow
 
 ```mermaid

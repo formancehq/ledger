@@ -971,11 +971,19 @@ func (s *Store) QueryCheckpointMainDir(id uint64) string {
 	return filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10), "main")
 }
 
-// BaselineSnapshotDir returns the path where the baseline attribute snapshot
-// should be written and ensures its parent directory exists.
-// Callers (e.g. the applier) use this path with attributes.CreateBaselineSnapshot.
-func (s *Store) BaselineSnapshotDir() (string, error) {
-	path := filepath.Join(s.dataDir, baselineCheckpointsDir, "checker")
+// StagedBaselineDir returns the path where the baseline attribute snapshot for
+// one closing chapter should be written, and ensures its parent directory
+// exists. Callers (the applier) use this path with
+// attributes.CreateBaselineSnapshot at the seal-checkpoint boundary, so the
+// staged snapshot is the state at exactly that chapter's close.
+//
+// The snapshot stays staged until the chapter's archival is confirmed —
+// PromoteStagedBaseline then makes it the checker's live baseline. Promotion is
+// what the checker's arithmetic depends on: it seeds expected volumes with the
+// baseline and replays everything above the archived boundary, so a baseline
+// from any other close double-counts or drops the difference.
+func (s *Store) StagedBaselineDir(chapterID uint64) (string, error) {
+	path := filepath.Join(s.dataDir, baselineCheckpointsDir, fmt.Sprintf("staged-%020d", chapterID))
 
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return "", fmt.Errorf("creating baseline snapshot directory: %w", err)
@@ -984,14 +992,110 @@ func (s *Store) BaselineSnapshotDir() (string, error) {
 	return path, nil
 }
 
-// BaselineCheckpointPath returns the path to the baseline checker checkpoint and whether it exists.
-func (s *Store) BaselineCheckpointPath() (string, bool) {
-	path := filepath.Join(s.dataDir, baselineCheckpointsDir, "checker")
-	if _, err := os.Stat(path); err != nil {
-		return "", false
+// PromoteStagedBaseline aligns the checker's live baseline with the archived
+// prefix: the staged snapshot of the newest archived close becomes
+// checker-<id>, consuming it, and staged snapshots at or below the boundary are
+// deleted. Idempotent, and safe to call again after a crash anywhere in the
+// sequence — every step is an atomic rename or a remove of something already
+// consumed.
+//
+// A live baseline that no staged snapshot can bring up to the boundary is
+// removed rather than kept: the checker degrades honestly on a missing baseline
+// (it skips entry-by-entry verification), while a stale one makes it report a
+// healthy store as corrupt.
+func (s *Store) PromoteStagedBaseline(archivedThrough uint64) error {
+	dir := filepath.Join(s.dataDir, baselineCheckpointsDir)
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+
+		return fmt.Errorf("reading baseline snapshot directory: %w", err)
 	}
 
-	return path, true
+	var (
+		bestStaged  uint64
+		currentID   uint64
+		currentPath string
+		stagedBelow []string
+	)
+
+	for _, entry := range entries {
+		var id uint64
+		if n, _ := fmt.Sscanf(entry.Name(), "staged-%d", &id); n == 1 {
+			if id <= archivedThrough {
+				stagedBelow = append(stagedBelow, entry.Name())
+				if id > bestStaged {
+					bestStaged = id
+				}
+			}
+
+			continue
+		}
+
+		if n, _ := fmt.Sscanf(entry.Name(), "checker-%d", &id); n == 1 {
+			currentID = id
+			currentPath = filepath.Join(dir, entry.Name())
+		}
+	}
+
+	switch {
+	case bestStaged == archivedThrough && bestStaged > 0 && bestStaged != currentID:
+		// The staged snapshot of the boundary close exists: make it live.
+		if currentPath != "" {
+			if err := os.RemoveAll(currentPath); err != nil {
+				return fmt.Errorf("removing superseded baseline: %w", err)
+			}
+		}
+
+		from := filepath.Join(dir, fmt.Sprintf("staged-%020d", bestStaged))
+		to := filepath.Join(dir, fmt.Sprintf("checker-%020d", bestStaged))
+
+		if err := os.Rename(from, to); err != nil {
+			return fmt.Errorf("promoting staged baseline %d: %w", bestStaged, err)
+		}
+
+	case currentID != archivedThrough && currentPath != "":
+		// The boundary moved past the live baseline and no staged snapshot of the
+		// boundary close exists (its staging failed at close time, which is
+		// non-fatal there). A lower staged snapshot would be just as stale, so
+		// nothing is promoted and the live baseline is removed.
+		if err := os.RemoveAll(currentPath); err != nil {
+			return fmt.Errorf("removing stale baseline: %w", err)
+		}
+	}
+
+	for _, name := range stagedBelow {
+		if err := os.RemoveAll(filepath.Join(dir, name)); err != nil {
+			return fmt.Errorf("removing consumed staged baseline: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// BaselineCheckpointPath returns the path to the checker's live baseline, the
+// chapter whose close it captures, and whether one exists. The chapter id lets
+// the checker refuse a baseline that does not match the archived boundary of
+// the snapshot it is verifying.
+func (s *Store) BaselineCheckpointPath() (string, uint64, bool) {
+	dir := filepath.Join(s.dataDir, baselineCheckpointsDir)
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", 0, false
+	}
+
+	for _, entry := range entries {
+		var id uint64
+		if n, _ := fmt.Sscanf(entry.Name(), "checker-%d", &id); n == 1 {
+			return filepath.Join(dir, entry.Name()), id, true
+		}
+	}
+
+	return "", 0, false
 }
 
 // cleanupTemporaryCheckpoints removes the entire tmp/ directory on startup.

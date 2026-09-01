@@ -213,6 +213,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	var (
 		hasArchivedChapters  bool
 		archiveEndSeq        uint64 // max close_sequence among archived chapters
+		archivedMaxID        uint64 // max chapter id among archived chapters
 		archiveLastAuditHash []byte // last_audit_hash from the latest archived chapter
 	)
 
@@ -231,6 +232,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			if p.GetCloseSequence() > archiveEndSeq {
 				archiveEndSeq = p.GetCloseSequence()
 				archiveLastAuditHash = p.GetLastAuditHash()
+			}
+
+			if p.GetId() > archivedMaxID {
+				archivedMaxID = p.GetId()
 			}
 		}
 	}
@@ -271,7 +276,21 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	var baselineDB *pebble.DB
 
 	if hasArchivedChapters {
-		baselinePath, exists := c.store.BaselineCheckpointPath()
+		baselinePath, baselineChapterID, exists := c.store.BaselineCheckpointPath()
+
+		// The arithmetic below assumes the baseline is the state at exactly the
+		// archived boundary: expected = baseline + replay(boundary..now). A
+		// baseline from any other close double-counts or drops the difference and
+		// reports a healthy store as corrupt, so a mismatched one — a promotion
+		// racing this snapshot, or one lost to a crash — is refused the same way
+		// a missing one is: entry-by-entry verification degrades honestly.
+		if exists && baselineChapterID != archivedMaxID {
+			c.logger.Infof("baseline checkpoint is for chapter %d but the snapshot's archived boundary is chapter %d (skipping entry-by-entry comparison)",
+				baselineChapterID, archivedMaxID)
+
+			exists = false
+		}
+
 		if exists {
 			db, openErr := pebble.Open(baselinePath, &pebble.Options{
 				Logger:   dal.NewPebbleLogger(c.logger),
