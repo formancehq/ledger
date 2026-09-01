@@ -1572,7 +1572,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// between this and the rename, the rollback comes back with no baselines and
 	// the checker degrades honestly; after, the foreign live/ starts clean.
 	if err := clearBaselines(s.dataDir); err != nil {
-		return err
+		return rollback(fmt.Errorf("clearing baselines before publish: %w", err))
 	}
 
 	if err := os.Rename(stagingDirectory, liveDirectory); err != nil {
