@@ -732,6 +732,19 @@ message CreatedIndexLog {
   // The read-side indexbuilder promotes such indexes straight to live with no
   // historical backfill; later indexes (initial=false) keep backfilling. EN-1564.
   bool initial = 2;
+  // bound_type is the declared type of the indexed metadata field at this
+  // log's sequence, stamped by the FSM when the log is minted. The index's
+  // first version binds to it: every replica encodes that version's rows —
+  // live folds and backfill replays alike — under this type until a retype's
+  // atomic switch rebinds. Stamping at mint time is what keeps the binding
+  // stable at any replay distance; the schema readable when a replica folds
+  // the log may already be many retypes ahead. EN-1724.
+  MetadataType bound_type = 3;
+  // bound_type_declared is false for builtin indexes, which have no metadata
+  // field and therefore no binding: their values keep the natural encoding.
+  // Metadata indexes always carry a binding — CreateIndex validates that the
+  // field is declared in the schema.
+  bool bound_type_declared = 4;
 }
 
 // DroppedIndexLog records the removal of an index.

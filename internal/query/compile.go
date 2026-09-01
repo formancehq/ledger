@@ -57,7 +57,7 @@ type compileCtx struct {
 	// read failure. Compile uses it to pick the right v_n keyspace
 	// and to refuse early with ErrIndexBuilding when no live keyspace
 	// exists yet.
-	indexVersionFor func(canonical string) (uint32, bool, error)
+	indexVersionFor readstore.IndexVersionResolver
 	// pin is the main-store handle's applied sequence: metadata / exists
 	// index leaves resolve their event groups at this sequence, so index
 	// selection observes exactly the state the rest of the query reads
@@ -102,7 +102,7 @@ func Compile(
 	schema map[string]*commonpb.MetadataFieldSchema,
 	info *commonpb.LedgerInfo,
 	indexRegistry indexes.Lookup,
-	indexVersionFor func(canonical string) (uint32, bool, error),
+	indexVersionFor readstore.IndexVersionResolver,
 	profile *QueryProfile,
 	pebbleReader dal.PebbleReader,
 	pin uint64,
@@ -121,7 +121,9 @@ func Compile(
 		// A nil resolver means "every index is at v=1" — only safe in
 		// tests that pre-date EN-1323 versioning. Production wiring
 		// always supplies a resolver backed by readstore.
-		indexVersionFor = func(string) (uint32, bool, error) { return 1, true, nil }
+		indexVersionFor = func(string) (readstore.ResolvedIndexVersion, bool, error) {
+			return readstore.ResolvedIndexVersion{Version: 1}, true, nil
+		}
 	}
 
 	ctx := &compileCtx{
@@ -483,10 +485,32 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 
 	metaID := indexes.MetadataID(targetTypeForQueryTarget(ctx.target), metaKey)
 
-	indexVersion, err := requireIndexReady(ctx, metaID,
+	resolved, err := requireIndexReady(ctx, metaID,
 		fmt.Sprintf("metadata[%q] on %s", metaKey, targetName))
 	if err != nil {
 		return nil, err
+	}
+
+	// The condition is validated and encoded under the type BOUND to the
+	// version being served, not the live schema: a retype flips the schema at
+	// FSM apply but re-encodes rows only when the background rewrite finishes,
+	// so until the atomic switch the served version still carries the old
+	// type. Compiling under the new one would scan its type-tagged byte
+	// ranges over old-encoded rows — partial results (EN-1724). Old-kind
+	// conditions therefore stay valid over the complete old index for the
+	// whole window, and the new kind becomes valid atomically at the switch.
+	switch {
+	case !resolved.BindingKnown:
+		// Pre-versioning resolver (test default): the live schema is all
+		// there is.
+	case !resolved.TypeDeclared:
+		// The served version was built before any type was declared for this
+		// key. Field conditions on an undeclared key were rejected then, and
+		// the window keeps that behavior until the rewrite promotes the
+		// declared-type keyspace.
+		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
+	default:
+		fieldSchema = &commonpb.MetadataFieldSchema{Type: resolved.Type}
 	}
 
 	fc, err = validateAndCoerceCondition(fc, fieldSchema)
@@ -495,10 +519,10 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 	}
 
 	mc := &metadataCtx{
-		prefix:    readstore.MetadataIndexPrefixV(ctx.kb, ctx.ledgerName, ns, metaKey, indexVersion),
+		prefix:    readstore.MetadataIndexPrefixV(ctx.kb, ctx.ledgerName, ns, metaKey, resolved.Version),
 		namespace: ns,
 		metaKey:   metaKey,
-		version:   indexVersion,
+		version:   resolved.Version,
 	}
 
 	switch cond := fc.GetCondition().(type) {
@@ -1551,14 +1575,14 @@ func checkIndexed(ctx *compileCtx, id *commonpb.IndexID, label string) error {
 // which MUST be bound to the iteration snapshot — never the live
 // store — so the gate and the scan observe the same point-in-time
 // view of the atomic-switch state.
-func requireIndexReady(ctx *compileCtx, id *commonpb.IndexID, label string) (uint32, error) {
+func requireIndexReady(ctx *compileCtx, id *commonpb.IndexID, label string) (readstore.ResolvedIndexVersion, error) {
 	if err := checkIndexed(ctx, id, label); err != nil {
-		return 0, err
+		return readstore.ResolvedIndexVersion{}, err
 	}
 
-	v, primed, err := ctx.indexVersionFor(indexes.Canonical(id))
+	resolved, primed, err := ctx.indexVersionFor(indexes.Canonical(id))
 	if err != nil {
-		return 0, fmt.Errorf("resolving index version for %s: %w", label, err)
+		return readstore.ResolvedIndexVersion{}, fmt.Errorf("resolving index version for %s: %w", label, err)
 	}
 
 	if !primed {
@@ -1575,14 +1599,14 @@ func requireIndexReady(ctx *compileCtx, id *commonpb.IndexID, label string) (uin
 		// a checkpoint fetched FROM the leader, which moves the node forward,
 		// and an applied index can never exceed the leader's log to begin
 		// with.
-		return 0, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: label}}
+		return readstore.ResolvedIndexVersion{}, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: label}}
 	}
 
-	if v == 0 {
-		return 0, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: label}}
+	if resolved.Version == 0 {
+		return readstore.ResolvedIndexVersion{}, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: label}}
 	}
 
-	return v, nil
+	return resolved, nil
 }
 
 // targetTypeForQueryTarget maps a QueryTarget to the matching TargetType used

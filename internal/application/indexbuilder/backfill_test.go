@@ -1949,9 +1949,9 @@ func TestAccountAssetBackfillLifecycle(t *testing.T) {
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	b.wb.SetEventSequence(1)
-	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
 		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
-	})
+	}))
 	require.NoError(t, b.wb.Flush())
 
 	require.Len(t, b.backfillTasks, 1, "CreateIndex must schedule one account-asset backfill task")
@@ -2034,9 +2034,9 @@ func TestAccountAssetBackfillWipesDeletedLedgerGeneration(t *testing.T) {
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	b.wb.SetEventSequence(1)
-	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
 		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
-	})
+	}))
 	require.NoError(t, b.wb.Flush())
 	require.Len(t, b.backfillTasks, 1, "CreateIndex must schedule one account-asset backfill task")
 
@@ -2174,9 +2174,9 @@ func runAccountAssetBackfill(t *testing.T, b *Builder, ledger string, globalCurs
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	b.wb.SetEventSequence(1)
-	b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
 		Id: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
-	})
+	}))
 	require.NoError(t, b.wb.Flush())
 
 	b.backfillBudget = time.Second
@@ -2289,9 +2289,9 @@ func TestMetadataBackfillSkipsForeignLedgerLogs(t *testing.T) {
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	b.wb.SetEventSequence(1)
-	b.handleCreatedIndexLog(taskLedger, &commonpb.CreatedIndexLog{
+	require.NoError(t, b.handleCreatedIndexLog(taskLedger, &commonpb.CreatedIndexLog{
 		Id: indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey),
-	})
+	}))
 	require.NoError(t, b.wb.Flush())
 	require.Len(t, b.backfillTasks, 1, "CreateIndex must schedule one metadata backfill task")
 

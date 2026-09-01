@@ -32,23 +32,40 @@ Build progress is deliberately absent from the registry row: it is a per-replica
 
 ```go
 type IndexVersionState struct {
-    CurrentVersion  uint32 // version actually served by queries; 0 = not built locally
-    PendingVersion  uint32 // target of an in-flight rewrite; 0 = no rewrite running
-    RewriteProgress []byte // opaque cursor for the in-flight rewrite
+    CurrentVersion     uint32 // version actually served by queries; 0 = not built locally
+    PendingVersion     uint32 // target of an in-flight rewrite; 0 = no rewrite running
+    ActivationSequence uint64 // log sequence CurrentVersion's keyspace became complete at; 0 = resolvable at any pin
+    RewriteProgress    []byte // opaque cursor for the in-flight rewrite
+    HighWater          uint32 // highest version ever allocated locally — version numbers are single-use; survives a drop as the tombstone
+
+    CurrentType         commonpb.MetadataType // declared type CurrentVersion's rows are encoded under (EN-1724)
+    CurrentTypeDeclared bool                  // false = bound to no declared type; rows keep each value's natural encoding
+    PendingType         commonpb.MetadataType // the retype's target: the type PendingVersion's rows are encoded under
+    PendingTypeDeclared bool
 }
 ```
 
-Source: `internal/storage/readstore/store.go:339-353`.
+Source: `type IndexVersionState` in `internal/storage/readstore/store.go`.
+
+The type bindings are what keep a retype invisible until the atomic switch: the
+declared schema flips at FSM apply, but a query serves `CurrentVersion` and
+must validate and encode its conditions under the type those rows actually
+carry. The switch promotes `PendingType` into `CurrentType` together with the
+version — binding and keyspace flip as one.
 
 ### Storage encoding
 
-Fixed 4 B big-endian for each version, followed by the variable-length opaque progress cursor:
+Fixed 22 B header, followed by the variable-length opaque progress cursor:
 
 ```
-[ current_version (4B BE) ][ pending_version (4B BE) ][ rewrite_progress … ]
+[ current_version (4B BE) ][ pending_version (4B BE) ][ activation_sequence (8B BE) ][ high_water (4B BE) ][ current_type (1B) ][ pending_type (1B) ][ rewrite_progress … ]
 ```
 
-`encodeIndexVersionState` / `decodeIndexVersionState`: `internal/storage/readstore/store.go:364-391`.
+A type byte holds `0` for "no declared type bound" and `1 + MetadataType`
+otherwise, keeping undeclared distinct from `METADATA_TYPE_STRING` (enum
+value 0).
+
+`encodeIndexVersionState` / `decodeIndexVersionState`: `internal/storage/readstore/store.go`.
 
 ### Versioned keyspace
 

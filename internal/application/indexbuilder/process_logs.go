@@ -352,7 +352,7 @@ func (b *Builder) indexPayload(
 	case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 		return b.handleRemovedMetadataFieldType(kb, cfg, ledgerName, p.RemovedMetadataFieldType)
 	case *commonpb.LedgerLogPayload_CreateIndex:
-		b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
+		return b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
 		if err := b.handleDroppedIndexLog(kb, ledgerName, p.DropIndex); err != nil {
 			return err
@@ -562,7 +562,7 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
 	case *commonpb.LedgerLogPayload_CreateIndex:
-		b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
+		return b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
 	case *commonpb.LedgerLogPayload_DropIndex:
 		if err := b.handleDroppedIndexLog(b.kb, ledgerName, p.DropIndex); err != nil {
 			return err
@@ -623,17 +623,11 @@ func (b *Builder) indexCreatedTransaction(
 					continue
 				}
 
-				coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, value)
-				if err != nil {
-					return err
-				}
-				newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 				if err := b.dualWriteMetadataIndex(
 					kb,
 					ledger, readstore.NamespaceAccount, key,
 					commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-					newEncoded, []byte(account),
+					value, []byte(account),
 					func(version uint32) []byte {
 						return readstore.AccountReverseMapKeyV(kb, ledger, account, key, version)
 					},
@@ -659,17 +653,11 @@ func (b *Builder) indexCreatedTransaction(
 				continue
 			}
 
-			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
-			if err != nil {
-				return err
-			}
-			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 			if err := b.dualWriteMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceTransaction, key,
 				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-				newEncoded, txIDBytes,
+				value, txIDBytes,
 				func(version uint32) []byte {
 					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
 				},
@@ -753,17 +741,11 @@ func (b *Builder) indexRevertedTransaction(
 				continue
 			}
 
-			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
-			if err != nil {
-				return err
-			}
-			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 			if err := b.dualWriteMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceTransaction, key,
 				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-				newEncoded, txIDBytes,
+				value, txIDBytes,
 				func(version uint32) []byte {
 					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
 				},
@@ -996,17 +978,11 @@ func (b *Builder) indexSavedMetadata(
 				continue
 			}
 
-			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, value)
-			if err != nil {
-				return err
-			}
-			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 			if err := b.dualWriteMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceAccount, key,
 				commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-				newEncoded, []byte(account),
+				value, []byte(account),
 				func(version uint32) []byte {
 					return readstore.AccountReverseMapKeyV(kb, ledger, account, key, version)
 				},
@@ -1024,17 +1000,11 @@ func (b *Builder) indexSavedMetadata(
 				continue
 			}
 
-			coerced, err := b.coerceForLedger(ledger, commonpb.TargetType_TARGET_TYPE_TRANSACTION, key, value)
-			if err != nil {
-				return err
-			}
-			newEncoded := readstore.EncodeMetadataValue(nil, coerced)
-
 			if err := b.dualWriteMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceTransaction, key,
 				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-				newEncoded, txIDBytes,
+				value, txIDBytes,
 				func(version uint32) []byte {
 					return readstore.TransactionReverseMapKeyV(kb, ledger, txID, key, version)
 				},

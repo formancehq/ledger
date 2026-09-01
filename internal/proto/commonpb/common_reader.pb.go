@@ -5696,6 +5696,8 @@ func (m orderSkippedLog_contextMapReadonly) Range(yield func(string, string) boo
 type CreatedIndexLogReader interface {
 	GetId() IndexIDReader
 	GetInitial() bool
+	GetBoundType() MetadataType
+	GetBoundTypeDeclared() bool
 	Mutate() *CreatedIndexLog
 }
 
@@ -5711,6 +5713,14 @@ func (r *createdIndexLogReadonly) GetId() IndexIDReader {
 
 func (r *createdIndexLogReadonly) GetInitial() bool {
 	return (*CreatedIndexLog)(r).GetInitial()
+}
+
+func (r *createdIndexLogReadonly) GetBoundType() MetadataType {
+	return (*CreatedIndexLog)(r).GetBoundType()
+}
+
+func (r *createdIndexLogReadonly) GetBoundTypeDeclared() bool {
+	return (*CreatedIndexLog)(r).GetBoundTypeDeclared()
 }
 
 func (r *createdIndexLogReadonly) Mutate() *CreatedIndexLog {
