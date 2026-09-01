@@ -267,6 +267,7 @@ func serverTxFromRec(rec txRecordView) *commonpb.Transaction {
 		RevertedByTransaction: rec.RevertedBy(),
 		RevertsTransaction:    rec.RevertsTransaction(),
 		Timestamp:             rec.Timestamp(),
+		InsertedAt:            rec.InsertedAt(),
 		RevertedAt:            rec.RevertedAt(),
 		Postings:              rec.Postings(),
 		Metadata:              rec.Metadata(),
@@ -572,4 +573,30 @@ func TestMatchFieldCondition_Coercion(t *testing.T) {
 // intRange2Filter rewraps a FieldCondition into a QueryFilter (test helper).
 func intRange2Filter(fc *commonpb.FieldCondition) *commonpb.QueryFilter {
 	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{Field: fc}}
+}
+
+// TestTxRecordMatches_LearnedInsertedAt pins inserted_at's place in row
+// equality: once the stamp is learned it also drives inserted_at filter
+// evaluation, so a row serving a different value must fail the match — while
+// an unlearned (nil) stamp keeps the server-dated tolerance.
+func TestTxRecordMatches_LearnedInsertedAt(t *testing.T) {
+	t.Parallel()
+
+	gs := buildGlobal(t, oracletest.TxReqL("L", "world", "acc:1", "USD", 5))
+	gs.LearnTxStamps("L", 1, stamp(100), stamp(110), nil)
+
+	rec := gs.Ledger("L").Txs().Get(0)
+
+	require.True(t, txRecordMatches(rec, serverTxFromRec(rec)))
+
+	mismatched := serverTxFromRec(rec)
+	mismatched.InsertedAt = stamp(999)
+	require.False(t, txRecordMatches(rec, mismatched),
+		"a learned inserted_at must reject a row serving a different value")
+
+	unlearned := buildGlobal(t, oracletest.TxReqL("L", "world", "acc:1", "USD", 5)).Ledger("L").Txs().Get(0)
+	anyStamp := serverTxFromRec(unlearned)
+	anyStamp.InsertedAt = stamp(123)
+	require.True(t, txRecordMatches(unlearned, anyStamp),
+		"an unlearned inserted_at stays server-dated and unchecked")
 }

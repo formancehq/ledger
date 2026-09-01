@@ -28,7 +28,34 @@ func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyRes
 
 	c.crossCheckCommit(bulk, resp)
 	c.captureReceipts(bulk, resp)
+	c.recordIndexCreates(bulk, resp)
 	coverReceiptReverts(bulk)
+}
+
+// recordIndexCreates advances the create frontier of every index this bulk
+// created: the committed log sequence of the CreateIndex is the incarnation
+// the readiness poller must prove each replica has folded before crediting a
+// status report to it. The response log at index i pairs with
+// bulk.Requests[i] (same convention as captureReceipts). Caller holds c.mu.
+func (c *Checker) recordIndexCreates(bulk oracle.Bulk, resp *servicepb.ApplyResponse) {
+	logs := resp.GetLogs()
+	for i, req := range bulk.Requests {
+		if i >= len(logs) {
+			break
+		}
+
+		ci := req.GetCreateIndex()
+		if ci == nil || ci.GetId() == nil || logs[i].GetSequence() == 0 {
+			continue
+		}
+
+		ledger := ci.GetLedger()
+		if c.indexCreateSeq[ledger] == nil {
+			c.indexCreateSeq[ledger] = map[string]uint64{}
+		}
+
+		c.indexCreateSeq[ledger][indexes.Canonical(ci.GetId())] = logs[i].GetSequence()
+	}
 }
 
 // coverReceiptReverts fires a coverage signal when the server commits a

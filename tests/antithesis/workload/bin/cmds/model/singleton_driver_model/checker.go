@@ -73,6 +73,15 @@ type Checker struct {
 	// see retypeObservation. Keyed by retypeObsKey. Guarded by mu.
 	retypeObs map[string]*retypeObservation
 
+	// indexCreateSeq is each tracked index's create frontier: the committed log
+	// sequence of the latest CreateIndex folded for (ledger → canonical). A
+	// drop+recreate reuses the canonical but moves the frontier, so it is the
+	// index's lifecycle generation. The readiness poller snapshots it before
+	// polling, discards any per-node report whose indexer has not folded past
+	// it (the report describes the prior incarnation), and refuses to apply a
+	// verdict once the frontier moved under it. Guarded by mu.
+	indexCreateSeq map[string]map[string]uint64
+
 	// replayable holds committed bulks that carried a tracked idempotency key —
 	// the originals runReplay re-sends to exercise the server's idempotency
 	// replay. Populated at commit (rememberReplayable), capped at
@@ -144,6 +153,8 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		modelState:   modelState,
 		receiptByRef: map[string]string{},
 		retypeObs:    map[string]*retypeObservation{},
+
+		indexCreateSeq: map[string]map[string]uint64{},
 	}
 }
 

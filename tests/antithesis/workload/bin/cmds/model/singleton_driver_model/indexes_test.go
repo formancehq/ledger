@@ -1,14 +1,19 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func TestIndexNeeds(t *testing.T) {
@@ -171,4 +176,81 @@ func TestIndexedQueryOutcomeLegal_MismatchAndAbsentCoexist(t *testing.T) {
 	require.True(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, alone, neededAlone, indexedErrCompilation, noWindow))
 	require.False(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, alone, neededAlone, indexedErrNotReady, noWindow),
 		"with every needed index active, a not-ready rejection is unexplained")
+}
+
+// fakeStatusClient serves a canned GetIndexStatus response, standing in for one
+// node of PerNodeConns. Every other client method panics via the embedded nil
+// interface — the poller must not call anything else.
+type fakeStatusClient struct {
+	servicepb.BucketServiceClient
+	resp *servicepb.GetIndexStatusResponse
+}
+
+func (f fakeStatusClient) GetIndexStatus(context.Context, *servicepb.GetIndexStatusRequest, ...grpc.CallOption) (*servicepb.GetIndexStatusResponse, error) {
+	return f.resp, nil
+}
+
+// TestReconcileIndexes_IncarnationGuard pins the readiness poll's binding to
+// the sampled incarnation: a node's report counts toward promotion only once
+// its indexer has folded past the index's create frontier, and a verdict is
+// discarded when the frontier moved while the RPCs were in flight (a
+// drop+recreate reused the canonical). Without either gate, a report about a
+// dead incarnation promotes its still-building successor and manufactures a
+// false "rejected while active" finding.
+func TestReconcileIndexes_IncarnationGuard(t *testing.T) {
+	t.Parallel()
+
+	id := assetIndexID()
+	canon := assetIndexCanonical
+
+	newTracked := func(createSeq uint64) *Checker {
+		c := NewChecker([]string{"L"}, nil)
+		res := c.modelState.Apply(oracle.Bulk{Requests: []*servicepb.Request{oracletest.CreateIndexReq(id)}})
+		require.True(t, res.OK)
+		c.modelState = res.State
+		c.recordIndexCreates(
+			oracle.Bulk{Requests: []*servicepb.Request{oracletest.CreateIndexReq(id)}},
+			&servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: createSeq}}},
+		)
+
+		return c
+	}
+
+	statusConns := func(lastIndexed uint64, version uint32) internal.PerNodeConns {
+		return internal.PerNodeConns{{Bucket: fakeStatusClient{resp: &servicepb.GetIndexStatusResponse{
+			LastIndexedSequence: lastIndexed,
+			Indexes:             []*servicepb.IndexEntry{{Ledger: "L", Index: &commonpb.Index{Id: id}, CurrentVersion: version}},
+		}}}}
+	}
+
+	active := func(c *Checker) bool {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		_, a := c.modelState.Ledger("L").IndexState(canon)
+
+		return a
+	}
+
+	// Node folded past the create and serves the index live: promote.
+	c := newTracked(10)
+	reconcileIndexes(context.Background(), c, statusConns(12, 1))
+	require.True(t, active(c), "a report about this incarnation promotes")
+
+	// Node still folding toward the create: its live version describes the
+	// previous same-canonical incarnation and must not promote this one.
+	c = newTracked(10)
+	reconcileIndexes(context.Background(), c, statusConns(9, 1))
+	require.False(t, active(c), "a pre-create fold cursor must not promote")
+
+	// Frontier moved while the poll was in flight (drop+recreate): the
+	// all-ready verdict was gathered against frontier 10, the recreate moved
+	// it to 20 before the apply — the verdict belongs to the dead incarnation
+	// and is discarded. Drives the apply step directly, since the window sits
+	// between reconcileIndexes' own snapshot and its apply.
+	c = newTracked(10)
+	c.mu.Lock()
+	c.indexCreateSeq["L"][canon] = 20 // recreate committed mid-poll
+	c.applyIndexReadiness("L", map[string]uint64{canon: 10}, map[string]bool{canon: true})
+	c.mu.Unlock()
+	require.False(t, active(c), "a moved create frontier discards the verdict")
 }
