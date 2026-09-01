@@ -86,7 +86,7 @@ same guarantee for the `Request` oneof.
 - `400 Bad Request`: Invalid request
 - `404 Not Found`: Resource not found
 - `409 Conflict`: Conflict (ex: resource already exists)
-- `503 Service Unavailable`: No Leader available (with `Retry-After` header)
+- `503 Service Unavailable`: the server cannot serve the request right now but a retry can succeed — no leader elected, admission cache horizon exceeded, any `KindUnavailable` domain error (index still building, writes blocked on clock skew, node syncing), or an internal forwarding failure surfaced as gRPC `Unavailable` (always with `Retry-After` header)
 - `500 Internal Server Error`: Server error
 
 ### Internal Errors and Sanitization
@@ -111,38 +111,25 @@ The correlation ID is the request's `X-Request-Id` (Chi `RequestID`) so operator
 
 ### Retry-After Header
 
-The `Retry-After` header is used to indicate when a client should retry a request after receiving a `503 Service Unavailable` response.
+The `Retry-After` header is used to indicate when a client should retry a request after receiving a `503 Service Unavailable` response. Every `503` the adapter emits carries it — `503` is by definition the retry-now class.
 
 #### When It's Returned
 
-The `Retry-After` header is included in responses when no leader is available in the Raft cluster. This can occur in the following situations:
+`handleError` (`internal/adapter/http/error_handler.go`) maps four error families to `503` + `Retry-After`:
 
-1. **Leader Election in Progress**
-   - The previous leader has failed or stepped down
-   - A new leader election is currently taking place
-   - No leader has been elected yet
+1. **No leader** (`errorCode: NO_LEADER`) — the Raft cluster has no elected leader: an election is in progress, a partition or insufficient nodes prevent a quorum, or the cluster is still starting up.
 
-2. **Network Partition**
-   - The cluster is split into multiple partitions
-   - No partition has a majority of nodes
-   - No leader can be elected without a majority
+2. **Admission cache horizon exceeded** (`errorCode: CACHE_HORIZON_EXCEEDED`) — admission predicted the proposal would outlive its preload (2+ cache rotations between propose and apply); retry against a fresher admission snapshot.
 
-3. **Cluster Startup**
-   - The cluster is initializing
-   - Nodes are still discovering each other
-   - Leader election has not completed yet
+3. **`KindUnavailable` domain errors** (`errorCode` = the error's `Reason()`) — the whole kind shares the contract: an index still building, writes blocked on clock skew, a node syncing. Anything `kindToHTTPStatus` maps to `503` gets the header.
 
-4. **Insufficient Nodes**
-   - Not enough nodes are available to form a quorum
-   - The cluster cannot elect a leader
+4. **gRPC `Unavailable` statuses** (`errorCode: UNAVAILABLE`) — an internal forwarding failure surfaced by the read path: a forwarded stream torn down mid-transfer (peer connection churn during a syncing follower's leader fallback), or a peer connection missing from the pool. The original transport message is preserved in `errorMessage`.
 
 #### Response Format
 
-When no leader is available, the API returns:
-
 - **HTTP Status Code**: `503 Service Unavailable`
 - **Header**: `Retry-After: 1` (seconds)
-- **Response Body**:
+- **Response Body** (the `errorCode` discriminates the family, e.g. no leader):
 ```json
 {
   "errorCode": "NO_LEADER",

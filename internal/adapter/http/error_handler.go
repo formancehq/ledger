@@ -115,14 +115,25 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	// must not degrade to a 500. The audit-filter compiler (query.CompileAuditFilter,
 	// shared with the gRPC surface) rejects filters that parse but are not
 	// audit-supported — `not outcome == failure`, a non-audit condition, an unknown
-	// field — as codes.InvalidArgument; surface that as a 400. Only
-	// InvalidArgument is translated here; other status codes keep the generic
-	// 500 fallthrough deliberately, since no other HTTP handler is expected to
-	// produce them and we do not want to leak arbitrary gRPC semantics.
-	if st, ok := status.FromError(err); ok && st.Code() == codes.InvalidArgument {
-		writeErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New(st.Message()))
+	// field — as codes.InvalidArgument; surface that as a 400. A codes.Unavailable
+	// status is a retry-now transient (a forwarded stream torn down mid-transfer,
+	// a peer connection missing from the pool) and gets the same 503 + Retry-After
+	// contract as the KindUnavailable Describables above. Only these two codes are
+	// translated; the rest keep the generic 500 fallthrough deliberately, since no
+	// other HTTP handler is expected to produce them and we do not want to leak
+	// arbitrary gRPC semantics.
+	if st, ok := status.FromError(err); ok {
+		switch st.Code() {
+		case codes.InvalidArgument:
+			writeErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", errors.New(st.Message()))
 
-		return
+			return
+		case codes.Unavailable:
+			w.Header().Set("Retry-After", "1")
+			writeErrorResponse(w, http.StatusServiceUnavailable, "UNAVAILABLE", errors.New(st.Message()))
+
+			return
+		}
 	}
 
 	writeInternalServerError(w, r, err)

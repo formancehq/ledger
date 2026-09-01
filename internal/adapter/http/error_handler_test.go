@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
@@ -151,6 +153,19 @@ func TestHandleError(t *testing.T) {
 		{
 			name:           "unknown error",
 			err:            errors.New("something unexpected"),
+			expectedStatus: http.StatusInternalServerError,
+			expectedCode:   "INTERNAL_ERROR",
+		},
+		{
+			name:           "grpc unavailable status",
+			err:            status.Error(codes.Unavailable, "forwarded stream failed mid-transfer: serving node torn down"),
+			expectedStatus: http.StatusServiceUnavailable,
+			expectedCode:   "UNAVAILABLE",
+			checkRetry:     true,
+		},
+		{
+			name:           "grpc canceled status stays a sanitized 500",
+			err:            status.Error(codes.Canceled, "context canceled"),
 			expectedStatus: http.StatusInternalServerError,
 			expectedCode:   "INTERNAL_ERROR",
 		},
