@@ -914,6 +914,21 @@ func TestTerm_Compacted(t *testing.T) {
 	require.ErrorIs(t, err, raft.ErrCompacted)
 }
 
+func TestTerm_GapBeforeCachedEntriesIsCompacted(t *testing.T) {
+	t.Parallel()
+
+	w := newTestWAL(t)
+
+	// Exercise the defensive sparse-window branch: an index before the cached
+	// entries is unavailable unless it is the persisted compaction boundary.
+	require.NoError(t, w.Append(hs(1, 1, 3), []*raftpb.Entry{
+		ent(3, 1, []byte("c")),
+	}))
+
+	_, err := w.Term(2)
+	require.ErrorIs(t, err, raft.ErrCompacted)
+}
+
 func TestStorageRetainedMarginAfterSnapshotAdvance(t *testing.T) {
 	t.Parallel()
 
