@@ -3052,7 +3052,14 @@ components:
 
   responses:
     ServiceUnavailable:
-      description: Service unavailable (no leader available)
+      description: >-
+        Service unavailable — the server cannot serve the request right now
+        but an immediate retry can succeed. The `errorCode` field
+        discriminates the cause: `NO_LEADER` (no elected Raft leader),
+        `CACHE_HORIZON_EXCEEDED` (admission snapshot too old, retry against a
+        fresh one), `UNAVAILABLE` (an internal forwarded stream was torn down
+        mid-transfer), or the reason of any domain error of the unavailable
+        kind (e.g. `INDEX_BUILDING`).
       headers:
         Retry-After:
           description: Number of seconds to wait before retrying the request
