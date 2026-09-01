@@ -85,3 +85,20 @@ func TestLauncherTreatsRewrittenTargetAsError(t *testing.T) {
 	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (target base rewritten or diverged)")
 	require.NoFileExists(t, capture, "technical review must not run")
 }
+
+func TestLauncherDoesNotEmitReadinessWhenTargetAdvancesAfterTriage(t *testing.T) {
+	fixture := newLauncherFixture(t)
+	capture := filepath.Join(fixture.root, "review-args")
+	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"}, "TEST_ADVANCE_TARGET_AFTER_REVIEW=true")
+
+	require.Error(t, err, output)
+	var exitError *exec.ExitError
+	require.ErrorAs(t, err, &exitError)
+	require.Equal(t, 3, exitError.ExitCode(), output)
+	require.FileExists(t, capture, "the target must advance after review, not at startup")
+	require.Contains(t, output, "AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED")
+	require.NotContains(t, output, "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW")
+	require.Contains(t, output, "EXPECTED_BASE_SHA="+fixture.baseSHA)
+	require.Contains(t, output, "OBSERVED_BASE_SHA="+fixture.advancedBaseSHA)
+	require.DirExists(t, worktreeFromOutput(t, output), "reviewed worktree must be preserved")
+}

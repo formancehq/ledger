@@ -29,6 +29,9 @@ A full PR URL is accepted as well. The launcher:
 - resolves the current repository and PR metadata through `gh`;
 - requires an open same-repository PR and currently rejects fork/cross-repository heads;
 - fetches the current target-branch tip and the PR head ref, requires the fetched head to equal the GitHub-reported head SHA, and requires the fetched target tip to still equal the GitHub-reported base SHA before running agents;
+- treats that base SHA as immutable for the run and re-fetches the exact target
+  before reporting local readiness, before and after an exact-candidate review,
+  and immediately before a guarded push;
 - creates a detached linked worktree outside the primary checkout, under a unique sibling `.<repo>-ai-worktrees/pr-<number>.<run>/worktree` directory;
 - writes an immutable PR/worktree binding outside that candidate, starts the
   orchestrator with `env -C` in the candidate, and requires the mechanical
@@ -62,6 +65,17 @@ When the checkout is shallow and the first ancestry check is negative, the launc
 
 Only the first case reaches an agent; every other case stops before triage, so no legitimacy triage, technical review, fix, or validation runs.
 
+The startup comparison is necessary but is not sufficient for a long-running
+review. The launcher uses the same exact-fetch classifier again at publication
+boundaries. Any target advance after startup invalidates the current readiness
+and any exact-candidate approval, including when the changed paths are
+disjoint. The launcher reports the expected and observed base SHAs, the current
+candidate SHA when available, preserves the useful worktree, and returns
+`BASE_UPDATE_REQUIRED` without pushing or silently restarting triage.
+Synchronization remains an explicit manual action. After synchronizing the PR,
+rerun the complete trust pipeline; an exact review made against the old base
+cannot authorize the synchronized candidate.
+
 ### Guarded publish mode
 
 Publishing reviewed fixes is explicit and opt-in:
@@ -74,13 +88,18 @@ bash scripts/ai-pr-loop 1732 --push
 
 1. creates a second detached worktree at the exact verified base SHA, builds the policy engine in that base's pinned Nix environment, and uses only the base-pinned reviewer, fixer, and validation tools; the PR under review cannot supply the tooling that authorizes its own publication;
 2. stages the complete isolated fix set and creates one local `fix: address AI review findings` candidate commit;
-3. runs a second **review-only** pass on that exact clean commit, with no fixer configured;
-4. refuses publication unless that candidate commit is approved as-is, `HEAD` still equals its immutable SHA, and the worktree remains clean;
+3. re-fetches the target, then runs a second **review-only** pass on that exact
+   clean commit, with no fixer configured;
+4. refuses publication unless that candidate commit is approved as-is, the
+   target remains unchanged after review, `HEAD` still equals its immutable SHA,
+   and the worktree remains clean;
 5. verifies that the remote PR branch still points to the exact head SHA observed before any agent ran;
 6. checks that the candidate is a descendant of that original head;
-7. pushes the candidate SHA, rather than the mutable `HEAD` name, to the PR branch with an explicit lease on the original head SHA.
+7. re-fetches the target immediately before pushing, then pushes the candidate
+   SHA, rather than the mutable `HEAD` name, to the PR branch with an explicit
+   lease on the original head SHA.
 
-The lease acts as an atomic compare-and-swap guard. The candidate update is still a normal fast-forward, but the push is rejected if another actor updates or rewrites the PR branch between the initial metadata lookup and publication. A failed candidate review, moved remote head, dirty post-review worktree, or failed push preserves the candidate worktree for inspection and never overwrites the remote branch.
+The lease acts as an atomic compare-and-swap guard. The candidate update is still a normal fast-forward, but the push is rejected if another actor updates or rewrites the PR branch between the initial metadata lookup and publication. A target update, failed candidate review, moved remote head, dirty post-review worktree, or failed push preserves the candidate worktree for inspection and never overwrites the remote branch. `READY_FOR_HUMAN_REVIEW` is not emitted in publish mode until these last-mile checks and publication succeed.
 
 If the bounded loop produces no fixes, `--push` reports `NO_CHANGES` and does not create a commit. The launcher never comments on GitHub, resolves review threads, marks a PR ready, or merges it.
 
