@@ -60,3 +60,7 @@ The challenge result is caller-owned and may live outside the worktree, so it ca
 ## Failure behavior
 
 Publishing is fail-closed per finding. Search failure, malformed challenge input, unsupported qualification status, or creation failure stops the command. Successfully created issues are reported so a retry can deduplicate them by stable marker.
+
+`scripts/ai-campaign inspect` reuses this exact description-line marker for
+read-only Jira discovery. It does not weaken the publisher's exact-match rule or
+mutate the discovered issue.

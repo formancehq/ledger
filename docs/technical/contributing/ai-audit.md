@@ -46,6 +46,10 @@ Every finding emitted by the audit is a hypothesis. Qualify the report with `bas
 
 A `CONFIRMED` challenge result is eligible to become a backlog/Jira candidate after human or policy approval. Jira handling is an explicit downstream action through `bash scripts/ai-audit-jira <challenge-result>`; the command previews candidates unless separately invoked with `--publish`. Neither the audit nor challenge pass fixes code, creates issues, or publishes findings automatically.
 
+For durable read-only coordination across every qualification status, import the
+source and qualified artifacts with `scripts/ai-campaign`; see
+`ai-campaign.md`. Campaign import and inspection do not publish or fix findings.
+
 ## Output
 
 `bash scripts/ai-audit <domain>` writes a structured JSON report. The report records the audited HEAD, manifest id, findings, questions, inspected areas, and residual risk.

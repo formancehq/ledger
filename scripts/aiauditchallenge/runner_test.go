@@ -1,7 +1,9 @@
 package aiauditchallenge
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,6 +61,7 @@ func TestRunnerPublishesOneQualifiedResultPerOriginalFinding(t *testing.T) {
 	published := readJSON(t, fixture.outputPath)
 	require.Equal(t, testAuditID, published["audit_id"])
 	require.Equal(t, fixture.head, published["head"])
+	require.Equal(t, fileDigest(t, fixture.sourceReport), published["sourceAuditDigest"])
 	require.Equal(t, []string{firstFindingID, secondFindingID}, resultIDs(t, published))
 }
 
@@ -487,6 +490,15 @@ func resultIDs(t *testing.T, report map[string]any) []string {
 	}
 
 	return ids
+}
+
+func fileDigest(t *testing.T, path string) string {
+	t.Helper()
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	return fmt.Sprintf("sha256:%x", sha256.Sum256(content))
 }
 
 // The runner builds the trusted publisher from the fixture checkout with an

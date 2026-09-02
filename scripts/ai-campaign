@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(git rev-parse --show-toplevel)
+exec env -u GOROOT go run "$repo_root/scripts/aicampaign" "$@"

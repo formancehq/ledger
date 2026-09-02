@@ -20,7 +20,7 @@ while [[ $# -gt 0 ]]; do
         *) echo "ai-audit-challenge: unknown argument: $1" >&2; usage >&2; exit 1 ;;
     esac
 done
-for command in codex git go jq; do command -v "$command" >/dev/null 2>&1 || { echo "ai-audit-challenge: required command not found: $command" >&2; exit 1; }; done
+for command in codex git go jq sha256sum; do command -v "$command" >/dev/null 2>&1 || { echo "ai-audit-challenge: required command not found: $command" >&2; exit 1; }; done
 
 repo_root=$(git rev-parse --show-toplevel)
 repo_root=$(cd -- "$repo_root" && pwd -P)
@@ -42,6 +42,7 @@ trap cleanup EXIT
 source_snapshot="$isolation_root/source-audit.json"
 cp -- "$source_report" "$source_snapshot"
 chmod 400 "$source_snapshot"
+source_audit_digest="sha256:$(sha256sum "$source_snapshot" | cut -d' ' -f1)"
 
 # The audit_id is untrusted report content that is interpolated into the default
 # destination path, so it must be a single safe path component. Finding ids must
@@ -167,6 +168,7 @@ run_challenge() {
     if [[ -f "$original_codex_home/auth.json" ]]; then cp "$original_codex_home/auth.json" "$isolation_root/home/.codex/auth.json"; chmod 600 "$isolation_root/home/.codex/auth.json"; fi
     prompt="$isolation_root/prompt.txt"
     result="$isolation_root/result.json"
+    qualified_result="$isolation_root/qualified-result.json"
     publisher_binary="$isolation_root/audit-publish"
     (cd "$repo_root" && env -u GOROOT go build -o "$publisher_binary" ./scripts/auditpublish) || { echo "ai-audit-challenge: failed to build the trusted output publisher" >&2; exit 1; }
 
@@ -221,7 +223,13 @@ EOF
     # challenge. The helper uses rename(2) with basename-only paths from that
     # anchored directory, so publication cannot follow a substituted parent,
     # destination symlink, or hard link into tracked repository content.
-    "$publisher_binary" "$result" "$output_basename"
+    # Provenance is added by the trusted runner after the provider result has
+    # passed its semantic checks. It binds the native qualification artifact to
+    # the exact caller-owned audit snapshot challenged above without asking the
+    # reasoning provider to establish its own source identity.
+    jq --arg digest "$source_audit_digest" '. + {sourceAuditDigest: $digest}' \
+        "$result" >"$qualified_result"
+    "$publisher_binary" "$qualified_result" "$output_basename"
 
     printf 'AI_AUDIT_CHALLENGE_RESULT: %s\n' "$output"
     printf 'AI_AUDIT_CHALLENGE_CONFIRMED: %s\n' "$(jq '[.results[] | select(.status == "CONFIRMED")] | length' "$result")"
