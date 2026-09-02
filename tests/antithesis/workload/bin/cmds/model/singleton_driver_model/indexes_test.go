@@ -320,3 +320,24 @@ func TestIndexNotFoundMatchedByReason(t *testing.T) {
 	require.False(t, ok)
 	require.False(t, isIndexNotFound(other.Err()))
 }
+
+// TestIndexNotReadyRequiresDocumentedCode pins isIndexNotReady to the
+// documented wire shape: the INDEX_BUILDING reason on any other status code is
+// an API error-code regression and must surface as a finding, not be accepted
+// as the expected not-ready response.
+func TestIndexNotReadyRequiresDocumentedCode(t *testing.T) {
+	t.Parallel()
+
+	wrongCode, err := status.New(codes.FailedPrecondition, "index is building").WithDetails(&errdetails.ErrorInfo{
+		Domain: "ledger",
+		Reason: "INDEX_BUILDING",
+	})
+	require.NoError(t, err)
+
+	require.False(t, isIndexNotReady(wrongCode.Err()),
+		"INDEX_BUILDING on a non-Unavailable code is a regression, not a not-ready response")
+	require.False(t, isIndexNotFound(wrongCode.Err()))
+
+	_, ok := classifyIndexedQueryError(wrongCode.Err())
+	require.False(t, ok, "the wrong-code shape must stay a finding")
+}
