@@ -150,6 +150,17 @@ var _ = Describe("Chapter Schedule", Ordered, func() {
 			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", deleteChapterScheduleAction()))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
+
+			// The scheduler's CloseChapter proposal completes before this delete,
+			// but the resulting SealChapter proposal runs asynchronously. Do not
+			// leak that audited system proposal into the next shared-server spec.
+			Eventually(func(g Gomega) {
+				chapters, err := actions.ListAllChapters(sharedCtx, sharedClient)
+				g.Expect(err).To(Succeed())
+				for _, chapter := range chapters {
+					g.Expect(chapter.Status).NotTo(Equal(commonpb.ChapterStatus_CHAPTER_CLOSING))
+				}
+			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
 })

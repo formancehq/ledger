@@ -61,12 +61,21 @@ func decodeOrder(item *auditpb.AuditItem) *raftcmdpb.Order {
 	return order
 }
 
+func auditEntryWithIdempotency(entries []*auditpb.AuditEntry, key string) *auditpb.AuditEntry {
+	matches := make([]*auditpb.AuditEntry, 0, 1)
+	for _, entry := range entries {
+		if entry.GetIdempotency().GetKey() == key {
+			matches = append(matches, entry)
+		}
+	}
+
+	Expect(matches).To(HaveLen(1), "expected exactly one audit entry for idempotency key %q", key)
+
+	return matches[0]
+}
+
 var _ = Describe("Audit Log", Ordered, func() {
 	const ledgerName = "audit-test"
-
-	// entriesBeforeTest tracks the number of audit entries before each test
-	// so assertions can be relative to the test's own actions.
-	var entriesBeforeTest int
 
 	BeforeAll(func() {
 		// Create the test ledger (generates 1 audit entry)
@@ -74,43 +83,47 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(err).To(Succeed())
 	})
 
-	// Snapshot the current entry count before each test for relative assertions.
-	BeforeEach(func() {
-		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
-		Expect(err).To(Succeed())
-		entriesBeforeTest = len(entries)
-	})
-
 	It("Should record a success audit entry for a successful transaction", func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		const (
+			idempotencyKey = "audit-successful-transaction"
+			noiseKey       = "audit-success-unrelated-entry"
+		)
+
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 			actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())
 
+		// A background worker can commit an unrelated audited proposal between
+		// the transaction and this read. Add one deterministically so the test
+		// proves it identifies the transaction instead of assuming it is last.
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(noiseKey, actions.CreateLedgerAction("audit-success-noise", nil)))
+		Expect(err).To(Succeed())
+
 		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
 		Expect(err).To(Succeed())
-		Expect(len(entries)).To(Equal(entriesBeforeTest + 1))
 
-		last := entries[len(entries)-1]
-		Expect(last.GetSuccess()).NotTo(BeNil(), "expected success outcome")
-		Expect(last.GetSuccess().GetMinLogSequence()).NotTo(BeZero())
-		Expect(last.Sequence).NotTo(BeZero())
+		entry := auditEntryWithIdempotency(entries, idempotencyKey)
+		Expect(entry.GetSuccess()).NotTo(BeNil(), "expected success outcome")
+		Expect(entry.GetSuccess().GetMinLogSequence()).NotTo(BeZero())
+		Expect(entry.Sequence).NotTo(BeZero())
 	})
 
 	It("Should record a failure audit entry for insufficient funds", func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		const idempotencyKey = "audit-insufficient-funds"
+
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 			actions.NewPosting("empty:account", "bank", big.NewInt(99999), "USD"),
 		}, nil, nil)))
 		Expect(err).To(HaveOccurred())
 
 		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
 		Expect(err).To(Succeed())
-		Expect(len(entries)).To(Equal(entriesBeforeTest + 1))
 
-		last := entries[len(entries)-1]
-		Expect(last.GetFailure()).NotTo(BeNil(), "expected failure outcome")
-		Expect(domain.ReasonString(last.GetFailure().GetReason())).To(Equal(domain.ErrReasonInsufficientFunds))
-		Expect(last.GetFailure().Message).NotTo(BeEmpty())
+		entry := auditEntryWithIdempotency(entries, idempotencyKey)
+		Expect(entry.GetFailure()).NotTo(BeNil(), "expected failure outcome")
+		Expect(domain.ReasonString(entry.GetFailure().GetReason())).To(Equal(domain.ErrReasonInsufficientFunds))
+		Expect(entry.GetFailure().Message).NotTo(BeEmpty())
 	})
 
 	It("Should filter audit entries by ledger name", func() {
