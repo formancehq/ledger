@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
@@ -525,6 +526,82 @@ func TestWriteSetSetPurgeRange(t *testing.T) {
 	require.Equal(t, uint64(10), buf.purgeRanges[0].startSequence)
 	require.Equal(t, uint64(51), buf.purgeRanges[1].startSequence)
 	require.True(t, (len(buf.purgeRanges) > 0))
+}
+
+// TestWriteSetMergePurgesConfirmedChapterRanges pins the purge surface of a
+// ConfirmArchiveChapter apply: Merge must delete every cold sub-prefix the
+// confirmed chapter covers — logs by log sequence; audit entries, audit items
+// and applied proposals by audit sequence — and leave keys outside the
+// confirmed ranges untouched.
+func TestWriteSetMergePurgesConfirmedChapterRanges(t *testing.T) {
+	t.Parallel()
+	buf, _, dataStore := newTestBuffer(t)
+
+	coldKey := func(sub byte, seq uint64) []byte {
+		return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, sub).PutUint64(seq).Build()
+	}
+	itemKey := func(seq uint64, idx uint32) []byte {
+		return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(seq).PutUint32(idx).Build()
+	}
+
+	// Chapter ranges: logs [10, 20], audit sequences [5, 8].
+	inside := map[string][]byte{
+		"log at start":            coldKey(dal.SubColdLog, 10),
+		"log at close":            coldKey(dal.SubColdLog, 20),
+		"audit at start":          coldKey(dal.SubColdAudit, 5),
+		"audit at close":          coldKey(dal.SubColdAudit, 8),
+		"item at start, order 0":  itemKey(5, 0),
+		"item at start, order 1":  itemKey(5, 1),
+		"item at close, order 3":  itemKey(8, 3),
+		"applied proposal, start": coldKey(dal.SubColdAppliedProposal, 5),
+		"applied proposal, close": coldKey(dal.SubColdAppliedProposal, 8),
+	}
+	outside := map[string][]byte{
+		"log below":              coldKey(dal.SubColdLog, 9),
+		"log above":              coldKey(dal.SubColdLog, 21),
+		"audit below":            coldKey(dal.SubColdAudit, 4),
+		"audit above":            coldKey(dal.SubColdAudit, 9),
+		"item below":             itemKey(4, 0),
+		"item above":             itemKey(9, 0),
+		"applied proposal below": coldKey(dal.SubColdAppliedProposal, 4),
+		"applied proposal above": coldKey(dal.SubColdAppliedProposal, 9),
+	}
+
+	seed := dataStore.OpenWriteSession()
+	for _, k := range inside {
+		require.NoError(t, seed.Set(k, []byte("x"), nil))
+	}
+
+	for _, k := range outside {
+		require.NoError(t, seed.Set(k, []byte("x"), nil))
+	}
+	require.NoError(t, seed.Commit())
+
+	buf.Absorb(&raftcmdpb.Order{}, confirmArchiveLog(1, 10, 20, 5, 8))
+
+	batch := dataStore.OpenWriteSession()
+	require.NoError(t, buf.Merge(batch, nil))
+	require.NoError(t, batch.Commit())
+
+	rh, err := dataStore.NewReadHandle()
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = rh.Close() })
+
+	for name, k := range inside {
+		_, closer, err := rh.Get(k)
+		if closer != nil {
+			_ = closer.Close()
+		}
+
+		require.ErrorIs(t, err, pebble.ErrNotFound, "key inside the confirmed ranges must be purged: %s", name)
+	}
+
+	for name, k := range outside {
+		_, closer, err := rh.Get(k)
+		require.NoError(t, err, "key outside the confirmed ranges must survive: %s", name)
+		require.NoError(t, closer.Close())
+	}
 }
 
 func TestWriteSetSetPendingArchive(t *testing.T) {

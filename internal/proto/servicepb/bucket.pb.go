@@ -187,6 +187,16 @@ const (
 	// back point-in-time query reads and the FSM's live-count cap, so a tampered
 	// row changes which checkpoints exist. See EN-1501.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH CheckStoreErrorType = 26
+	// Emitted when hot storage still holds keys inside an ARCHIVED chapter's
+	// purge ranges: logs by log sequence, audit entries / audit items / applied
+	// proposals by audit sequence. ConfirmArchiveChapter's apply deletes those
+	// ranges in the same proposal that marks the chapter ARCHIVED, so resident
+	// data under an ARCHIVED registry row means a lost purge or a path that
+	// re-ingested archived history without purging it (e.g. a restore rebuilt
+	// from a cold-backfilled delta). The canonical copy lives in the chapter's
+	// cold-storage object; the hot residue shadows it on read paths that try
+	// hot storage first and grows the store without bound.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNPURGED_ARCHIVED_DATA CheckStoreErrorType = 27
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -219,6 +229,7 @@ var (
 		24: "CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH",
 		25: "CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE",
 		26: "CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH",
+		27: "CHECK_STORE_ERROR_TYPE_UNPURGED_ARCHIVED_DATA",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                            0,
@@ -248,6 +259,7 @@ var (
 		"CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH":                24,
 		"CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE": 25,
 		"CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH":              26,
+		"CHECK_STORE_ERROR_TYPE_UNPURGED_ARCHIVED_DATA":                 27,
 	}
 )
 
@@ -9978,7 +9990,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xa9\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xdc\n" +
 	"\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
@@ -10008,7 +10020,8 @@ const file_bucket_proto_rawDesc = "" +
 	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17\x122\n" +
 	".CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH\x10\x18\x12A\n" +
 	"=CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE\x10\x19\x124\n" +
-	"0CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH\x10\x1a*W\n" +
+	"0CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH\x10\x1a\x121\n" +
+	"-CHECK_STORE_ERROR_TYPE_UNPURGED_ARCHIVED_DATA\x10\x1b*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +

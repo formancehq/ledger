@@ -245,6 +245,57 @@ var _ = Describe("Restore chapter registry", Ordered, func() {
 
 			commitTx(client, "acc:pre-archive")
 
+			// A transient account driven to zero inside the chapter that gets
+			// archived. Its purge is recorded in AppliedProposal.TransientVolumes —
+			// a receipt inside the archived audit range, which is what the restore
+			// re-ingests and the checker's exclusion pass compares against a replay
+			// that skips that range. Chapters are bucket-global, so a ledger of its
+			// own keeps account types off the untyped ledger the rest of this spec
+			// uses while landing the receipt in the same chapter.
+			const transientLedger = "chapter-restore-transient"
+
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.CreateLedgerAction(transientLedger, nil)))
+			Expect(err).To(Succeed())
+
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				&servicepb.Request{
+					Type: &servicepb.Request_AddAccountType{
+						AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+							Ledger: transientLedger,
+							AccountType: &commonpb.AccountType{
+								Name:        "staging",
+								Pattern:     "staging:{id}",
+								Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT,
+							},
+						},
+					},
+				},
+				&servicepb.Request{
+					Type: &servicepb.Request_AddAccountType{
+						AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+							Ledger: transientLedger,
+							AccountType: &commonpb.AccountType{
+								Name:    "wallet",
+								Pattern: "wallet:{id}",
+							},
+						},
+					},
+				}))
+			Expect(err).To(Succeed())
+
+			// Both postings in one batch: a transient account must be zero by the
+			// end of the batch that touched it.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.CreateTransactionAction(transientLedger, []*commonpb.Posting{
+					actions.NewPosting("world", "staging:tx1", big.NewInt(10), "USD"),
+				}, nil, nil),
+				actions.CreateTransactionAction(transientLedger, []*commonpb.Posting{
+					actions.NewPosting("staging:tx1", "wallet:main", big.NewInt(10), "USD"),
+				}, nil, nil),
+			))
+			Expect(err).To(Succeed())
+
 			archived = archiveCurrentChapter(client)
 			Expect(archived.GetStartSequence()).To(Equal(uint64(1)))
 			Expect(archived.GetCloseSequence()).To(BeNumerically(">", archived.GetStartSequence()))
@@ -377,7 +428,7 @@ var _ = Describe("Restore chapter registry", Ordered, func() {
 			successor := byID[archived.GetId()+1]
 			Expect(successor).ToNot(BeNil(), "the successor chapter opened at close must survive the restore")
 			Expect(successor.GetStatus()).To(Equal(commonpb.ChapterStatus_CHAPTER_OPEN))
-			Expect(successor.GetStartSequence()).To(Equal(archived.GetCloseSequence()+1))
+			Expect(successor.GetStartSequence()).To(Equal(archived.GetCloseSequence() + 1))
 		})
 
 		It("closes the successor chapter, never a rewound impostor", func() {
@@ -416,6 +467,51 @@ var _ = Describe("Restore chapter registry", Ordered, func() {
 				g.Expect(opened).ToNot(BeNil(), "the close must open a chapter under a fresh id")
 				g.Expect(opened.GetStatus()).To(Equal(commonpb.ChapterStatus_CHAPTER_OPEN))
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
+		})
+		It("passes store check once the restored node has a baseline", func() {
+			// The close above produced a chapter checkpoint, and with it the
+			// baseline snapshot Check() needs on a store with archived chapters —
+			// without one it returns early and reports nothing whatever the store
+			// holds.
+			result, err := actions.CollectCheckStoreEvents(ctx, client)
+			Expect(err).To(Succeed())
+
+			// Guard against a vacuous pass: Check() returns early on an archived
+			// store with no baseline checkpoint, and then reports nothing whatever
+			// the store holds.
+			var checked uint64
+			for _, progress := range result.Progress {
+				if progress.GetLogsChecked() > checked {
+					checked = progress.GetLogsChecked()
+				}
+			}
+			Expect(checked).To(BeNumerically(">", 0),
+				"store check must have verified logs; a zero count means it exited early and proved nothing")
+
+			var residency []string
+			for _, checkErr := range result.Errors {
+				switch checkErr.GetErrorType() {
+				case servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNPURGED_ARCHIVED_DATA:
+					residency = append(residency, checkErr.GetMessage())
+				}
+			}
+
+			// Scoped to these two classes deliberately. Without the post-rebuild
+			// purge, UNPURGED_ARCHIVED_DATA reports the re-ingested range outright
+			// and EXCLUSION_RECORD_MISMATCH reports the transient volume's receipt
+			// inside it — the rebuild needs that range to fold the chapter
+			// lifecycle, and anything left behind is then compared against a replay
+			// that skips it.
+			//
+			// The same run also reports VOLUME_MISMATCH on acc:post-archive and
+			// world, with the replay-derived side one transaction high. That is
+			// present with and without this purge (verified by disabling it), so it
+			// is a separate pre-existing issue on restored stores and is not
+			// asserted here — broadening this to result.Errors would couple this
+			// spec to it.
+			Expect(residency).To(BeEmpty(),
+				"a restored store must hold no hot keys inside an archived chapter's ranges, and no purge receipts from them")
 		})
 	})
 })
