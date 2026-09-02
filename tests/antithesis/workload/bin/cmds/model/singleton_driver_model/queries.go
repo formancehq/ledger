@@ -1500,7 +1500,7 @@ func describeFilter(f *commonpb.QueryFilter) string {
 	case *commonpb.QueryFilter_Not:
 		return "not(" + describeFilter(x.Not.GetFilter()) + ")"
 	case *commonpb.QueryFilter_Field:
-		return "field:" + x.Field.GetField().GetMetadata()
+		return "field:" + x.Field.GetField().GetMetadata() + describeFieldCondition(x.Field)
 	case *commonpb.QueryFilter_AccountHasAsset:
 		return "hasAsset:" + x.AccountHasAsset.GetAssetBase()
 	default:
@@ -1546,4 +1546,61 @@ func describeChildren(children []*commonpb.QueryFilter) string {
 	}
 
 	return strings.Join(parts, ",")
+}
+
+// describeFieldCondition renders a Field leaf's condition — the bounds are
+// what a retype-window finding needs to be diagnosable from its details alone
+// (which coercions the serving types apply to them decides the verdict).
+func describeFieldCondition(fc *commonpb.FieldCondition) string {
+	intBound := func(v *int64, excl bool, close bool) string {
+		if v == nil {
+			return "_"
+		}
+		s := strconv.FormatInt(*v, 10)
+		switch {
+		case excl && close:
+			return s + ")"
+		case excl:
+			return "(" + s
+		}
+
+		return s
+	}
+	uintBound := func(v *uint64, excl bool, close bool) string {
+		if v == nil {
+			return "_"
+		}
+		s := strconv.FormatUint(*v, 10)
+		switch {
+		case excl && close:
+			return s + ")"
+		case excl:
+			return "(" + s
+		}
+
+		return s
+	}
+
+	switch c := fc.GetCondition().(type) {
+	case *commonpb.FieldCondition_ExistsCond:
+		if c.ExistsCond.GetIncludeNull() {
+			return "?exists+null"
+		}
+
+		return "?exists"
+	case *commonpb.FieldCondition_StringCond:
+		return "=" + strconv.Quote(c.StringCond.GetHardcoded())
+	case *commonpb.FieldCondition_BoolCond:
+		return "=" + strconv.FormatBool(c.BoolCond.GetHardcoded())
+	case *commonpb.FieldCondition_IntCond:
+		ic := c.IntCond
+
+		return "[" + intBound(ic.Min, ic.GetMinExclusive(), false) + "," + intBound(ic.Max, ic.GetMaxExclusive(), true) + "]"
+	case *commonpb.FieldCondition_UintCond:
+		uc := c.UintCond
+
+		return "u[" + uintBound(uc.Min, uc.GetMinExclusive(), false) + "," + uintBound(uc.Max, uc.GetMaxExclusive(), true) + "]"
+	default:
+		return "?"
+	}
 }
