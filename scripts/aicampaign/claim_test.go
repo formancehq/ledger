@@ -343,6 +343,39 @@ func TestSameFindingIDDifferentQualifiedDigestConflicts(t *testing.T) {
 	require.Contains(t, conflict.Reason, "identity does not match")
 }
 
+func TestClaimBoundToDifferentTargetSHAFailsClosed(t *testing.T) {
+	remote, targetSHA := newClaimRemote(t)
+	campaign := claimCampaignAt(targetSHA, "CONFIRMED")
+	finding := campaign.SourceFacts.Findings[0]
+	forged := ClaimRecord{
+		SchemaVersion: claimSchemaVersion, CampaignID: campaign.CampaignID, AuditID: campaign.AuditID,
+		FindingID: finding.ID, FindingIdentityDigest: finding.IdentityDigest,
+		SourceQualifiedDigest: campaign.SourceDigests.Qualified, AuditedSHA: campaign.AuditedSHA,
+		Qualification: "CONFIRMED", Claimant: testClaimantA, CreatedAt: testNow,
+		ExpiresAt: testNow.Add(defaultClaimLease), TargetBranch: testTarget,
+		TargetSHA: strings.Repeat("e", 40),
+	}
+	ref := claimRef(campaign.AuditID, finding.ID)
+	forgedSHA := writeRemoteClaimRecord(t, remote, forged, "")
+	runGit(t, "", "--git-dir", remote, "update-ref", ref, forgedSHA)
+
+	claimed := createClaim(context.Background(), campaign, finding, testClaimantB, defaultClaimLease,
+		remote, testTarget, "", func() time.Time { return testNow })
+	renewed := renewClaim(context.Background(), campaign, finding, testClaimantA, defaultClaimLease,
+		remote, "", forgedSHA, func() time.Time { return testNow.Add(time.Hour) })
+	released := releaseClaim(context.Background(), campaign, finding, testClaimantA, remote, forgedSHA)
+	taken := takeoverClaim(context.Background(), campaign, finding, testClaimantB, defaultClaimLease,
+		remote, "", forgedSHA, func() time.Time { return testNow.Add(defaultClaimLease + claimClockSkew) })
+	require.Equal(t, "CLAIM_CONFLICT", claimed.Status)
+	require.Equal(t, "CLAIM_CONFLICT", renewed.Status)
+	require.Equal(t, "CLAIM_CHANGED", released.Status)
+	require.Equal(t, "CLAIM_CONFLICT", taken.Status)
+
+	inspection := inspectAgainstRemote(campaign, remote, testClaimantA, testNow)
+	require.Equal(t, "AMBIGUOUS", inspection.Findings[0].State)
+	require.Equal(t, "CLAIM_IDENTITY_CONFLICT", inspection.Findings[0].Claim.Problem)
+}
+
 func TestNonConfirmedAndRejectedFindingsCannotBeClaimed(t *testing.T) {
 	remote, targetSHA := newClaimRemote(t)
 	campaign := claimCampaignAt(targetSHA, "LIKELY", "QUESTION", "REJECTED")

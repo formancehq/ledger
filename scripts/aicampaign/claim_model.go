@@ -117,7 +117,7 @@ func (claim ClaimRecord) matches(campaign *Campaign, finding SourceFinding) bool
 	return claim.CampaignID == campaign.CampaignID && claim.AuditID == campaign.AuditID &&
 		claim.FindingID == finding.ID && claim.FindingIdentityDigest == finding.IdentityDigest &&
 		claim.SourceQualifiedDigest == campaign.SourceDigests.Qualified && claim.AuditedSHA == campaign.AuditedSHA &&
-		claim.Qualification == finding.Qualification
+		claim.Qualification == finding.Qualification && claim.TargetSHA == campaign.AuditedSHA
 }
 
 func claimRef(auditID, findingID string) string {
