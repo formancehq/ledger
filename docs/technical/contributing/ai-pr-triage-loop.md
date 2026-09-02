@@ -29,5 +29,7 @@ checks the trusted top-level and base HEAD. `EXPECTED_WORKTREE` and
 `AI_WORKTREE_PATH` and `AI_WORKTREE_EXPECTED_HEAD` independently bind the
 provider cwd to the trusted worktree and target-base HEAD. `TARGET_BASE_SHA` and
 `PR_HEAD_SHA` expose those identities without overloading either one. The
-adapter snapshots primary-checkout HEAD, branch, and status around Codex and
-reports `ROOT_MUTATION_DETECTED` on any change.
+adapter uses the shared, resident full-content rootguard around Codex and
+reports `ROOT_MUTATION_DETECTED` on any change. The same process owns both
+snapshots; scope and observation frequency match the technical review
+root-protection contract.

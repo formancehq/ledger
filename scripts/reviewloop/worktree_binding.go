@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +12,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/rootguard"
 )
 
 type worktreeBindingFile struct {
@@ -22,13 +22,6 @@ type worktreeBindingFile struct {
 	CandidateWorktree   string `json:"candidateWorktree"`
 	ExpectedHead        string `json:"expectedHead"`
 	TrustedRootCheckout string `json:"trustedRootCheckout"`
-}
-
-type rootCheckoutSnapshot struct {
-	Head                 string
-	Branch               string
-	Status               []byte
-	WorkspaceFingerprint string
 }
 
 type boundCommandRunner struct {
@@ -40,7 +33,7 @@ type boundCommandRunner struct {
 	bindingFile         string
 	bindingFileContent  []byte
 	gitGuardBin         string
-	rootSnapshot        rootCheckoutSnapshot
+	rootSnapshot        rootguard.Snapshot
 }
 
 func newBoundCommandRunner(
@@ -130,17 +123,23 @@ func newBoundCommandRunner(
 	if err := runner.verifyWorktreeBinding(); err != nil {
 		return nil, err
 	}
-	runner.rootSnapshot, err = captureRootCheckoutSnapshot(trustedRoot)
+	runner.rootSnapshot, err = rootguard.Capture(trustedRoot)
 	if err != nil {
 		return nil, err
 	}
-	statusDigest := sha256.Sum256(runner.rootSnapshot.Status)
 	fmt.Printf(
-		"ROOT_PROTECTION_ARMED head=%s branch=%s statusSha256=%s workspaceFingerprint=%s\n",
+		"ROOT_PROTECTION_ARMED head=%s branch=%s statusSha256=%s workspaceFingerprint=%s entries=%d regularFiles=%d logicalBytes=%d ignoredEntries=%d ignoredRegularFiles=%d ignoredLogicalBytes=%d gitProcesses=%d\n",
 		runner.rootSnapshot.Head,
 		runner.rootSnapshot.Branch,
-		hex.EncodeToString(statusDigest[:]),
+		runner.rootSnapshot.StatusSHA256(),
 		runner.rootSnapshot.WorkspaceFingerprint,
+		runner.rootSnapshot.Metrics.Entries,
+		runner.rootSnapshot.Metrics.RegularFiles,
+		runner.rootSnapshot.Metrics.LogicalBytes,
+		runner.rootSnapshot.Metrics.IgnoredEntries,
+		runner.rootSnapshot.Metrics.IgnoredRegularFiles,
+		runner.rootSnapshot.Metrics.IgnoredLogicalBytes,
+		runner.rootSnapshot.Metrics.GitProcesses,
 	)
 
 	return runner, nil
@@ -312,95 +311,12 @@ func (runner *boundCommandRunner) verifyWorktreeBinding() error {
 }
 
 func (runner *boundCommandRunner) verifyRootUnchanged() error {
-	current, err := captureRootCheckoutSnapshot(runner.trustedRootCheckout)
+	current, err := rootguard.Capture(runner.trustedRootCheckout)
 	if err != nil {
 		return err
 	}
-	if current.Head != runner.rootSnapshot.Head {
-		return fmt.Errorf("root HEAD changed: got %s, expected %s", current.Head, runner.rootSnapshot.Head)
-	}
-	if current.Branch != runner.rootSnapshot.Branch {
-		return fmt.Errorf("root branch changed: got %s, expected %s", current.Branch, runner.rootSnapshot.Branch)
-	}
-	if !bytes.Equal(current.Status, runner.rootSnapshot.Status) {
-		return errors.New("root status changed")
-	}
-	if current.WorkspaceFingerprint != runner.rootSnapshot.WorkspaceFingerprint {
-		return errors.New("root workspace content changed")
-	}
 
-	return nil
-}
-
-func captureRootCheckoutSnapshot(root string) (rootCheckoutSnapshot, error) {
-	head, err := gitOutput(root, "rev-parse", "HEAD")
-	if err != nil {
-		return rootCheckoutSnapshot{}, fmt.Errorf("capturing ROOT_HEAD: %w", err)
-	}
-	branch, err := gitOutput(root, "rev-parse", "--abbrev-ref", "HEAD")
-	if err != nil {
-		return rootCheckoutSnapshot{}, fmt.Errorf("capturing ROOT_BRANCH: %w", err)
-	}
-	status, err := gitOutput(root, "status", "--porcelain=v1", "--untracked-files=all")
-	if err != nil {
-		return rootCheckoutSnapshot{}, fmt.Errorf("capturing ROOT_STATUS: %w", err)
-	}
-	workspaceFingerprint, err := captureRootWorkspaceFingerprint(root)
-	if err != nil {
-		return rootCheckoutSnapshot{}, fmt.Errorf("capturing ROOT_STATUS content fingerprint: %w", err)
-	}
-
-	return rootCheckoutSnapshot{
-		Head:                 strings.TrimSpace(string(head)),
-		Branch:               strings.TrimSpace(string(branch)),
-		Status:               status,
-		WorkspaceFingerprint: workspaceFingerprint,
-	}, nil
-}
-
-func captureRootWorkspaceFingerprint(root string) (string, error) {
-	workspace, err := captureWorkspaceState(root)
-	if err != nil {
-		return "", err
-	}
-	ignoredOutput, err := gitOutput(root, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
-	if err != nil {
-		return "", fmt.Errorf("listing ignored workspace files: %w", err)
-	}
-
-	hasher := sha256.New()
-	writeHashField(hasher, []byte(workspace.Fingerprint))
-	for rawPath := range bytes.SplitSeq(ignoredOutput, []byte{0}) {
-		if len(rawPath) == 0 {
-			continue
-		}
-		path := string(rawPath)
-		absolutePath := filepath.Join(root, filepath.FromSlash(path))
-		info, err := os.Lstat(absolutePath)
-		if err != nil {
-			return "", fmt.Errorf("reading ignored path metadata %s: %w", path, err)
-		}
-		writeHashField(hasher, rawPath)
-		writeHashField(hasher, []byte(info.Mode().String()))
-
-		var content []byte
-		switch {
-		case info.Mode()&os.ModeSymlink != 0:
-			target, err := os.Readlink(absolutePath)
-			if err != nil {
-				return "", fmt.Errorf("reading ignored symlink %s: %w", path, err)
-			}
-			content = []byte(target)
-		case info.Mode().IsRegular():
-			content, err = os.ReadFile(absolutePath)
-			if err != nil {
-				return "", fmt.Errorf("reading ignored file %s: %w", path, err)
-			}
-		}
-		writeHashField(hasher, content)
-	}
-
-	return hex.EncodeToString(hasher.Sum(nil)), nil
+	return rootguard.Compare(runner.rootSnapshot, current)
 }
 
 func gitCommonDirectory(worktree string) (string, error) {
