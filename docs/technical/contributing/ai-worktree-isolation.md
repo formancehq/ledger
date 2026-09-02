@@ -17,8 +17,11 @@ The workflow keeps three directory roles separate:
   expected HEAD. Reviewers, fixers, and PR validation run there. It must never
   equal `TRUSTED_ROOT_CHECKOUT`.
 - `VALIDATION_RUN_DIR` is a unique non-worktree directory for `HOME`, Go caches,
-  `TMPDIR`, the golangci-lint cache, and the Git guard wrapper. It must neither
-  equal nor contain either checkout, and neither checkout may contain it.
+  `TMPDIR`, the golangci-lint cache, the Git guard wrapper, and run-local module
+  download preparation state. It must neither equal nor contain either
+  checkout, and neither checkout may contain it. Extracted Go module trees and
+  `.ziphash` files never leave this directory; only the separately documented
+  verified `.zip`/`.mod` seed is shared.
 
 `ai-pr-loop` uses
 `.<repo>-ai-worktrees/pr-<pr>.<run>/{worktree,trusted-tools,validation}`.

@@ -293,6 +293,11 @@ if ! command -v nix >/dev/null 2>&1; then
     echo "ai-pr-loop: required command not found in PATH: nix" >&2
     exit 1
 fi
+if [[ -f "$trusted_tool_worktree/go.mod" ]]; then
+    env -u GOROOT nix develop "path:$trusted_tool_worktree" --command \
+        env -C "$validation_run_dir" SHARE_DOWNLOAD_CACHE_ONLY=1 \
+        bash "$trusted_tool_worktree/scripts/agent-validation-env" "$validation_run_dir" true
+fi
 
 # READY_FOR_HUMAN_REVIEW is itself a policy decision, even without publication.
 # Build its orchestrator from the verified base and use the base-pinned reviewer

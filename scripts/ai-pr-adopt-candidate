@@ -196,6 +196,11 @@ known_findings_digest=$(git hash-object -- "$known_findings")
 for trusted_tool in ai-review-codex ai-review-known-findings agent-check-pr agent-just ai-git-guard; do
     [[ -x "$trusted_worktree/scripts/$trusted_tool" ]] || { echo "ai-pr-adopt-candidate: trusted base lacks executable scripts/$trusted_tool" >&2; exit 1; }
 done
+if [[ -f "$trusted_worktree/go.mod" ]]; then
+    env -u GOROOT nix develop "path:$trusted_worktree" --command \
+        env -C "$validation_run_dir" SHARE_DOWNLOAD_CACHE_ONLY=1 \
+        bash "$trusted_worktree/scripts/agent-validation-env" "$validation_run_dir" true
+fi
 nix develop "path:$trusted_worktree" --command env -u GOROOT go -C "$trusted_worktree" build -o "$review_loop_binary" ./scripts/reviewloop
 printf -v review_cmd 'bash %q' "$trusted_worktree/scripts/ai-review-known-findings"
 # The run directory derives from the repository location, which may contain

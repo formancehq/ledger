@@ -33,4 +33,14 @@ case "$PWD/" in
         ;;
 esac
 
+share_download_cache=${SHARE_DOWNLOAD_CACHE_ONLY:-0}
+unset SHARE_DOWNLOAD_CACHE_ONLY
+if [[ "$share_download_cache" == "1" ]]; then
+    script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+    bash "$script_dir/agent-module-download-cache" "$run_dir"
+elif [[ "$share_download_cache" != "0" ]]; then
+    echo "agent-validation-env: SHARE_DOWNLOAD_CACHE_ONLY must be 0 or 1" >&2
+    exit 2
+fi
+
 exec "$@"

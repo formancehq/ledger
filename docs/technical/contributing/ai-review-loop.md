@@ -347,8 +347,17 @@ run must use a unique temporary validation directory and isolate `HOME`,
 `GOCACHE`, `GOMODCACHE`, `GOPATH`, `TMPDIR`, `XDG_CACHE_HOME`, and the
 `golangci-lint` cache. The canonical `agent-validation-env` wrapper creates
 these directories and records `VALIDATION_RUN_ID`; `ai-pr-loop` and
-`ai-pr-adopt-candidate` invoke validation through it. This keeps generated
-files and absolute paths from one concurrent run out of another run's caches.
+`ai-pr-adopt-candidate` invoke it from the base-pinned trusted worktree before
+candidate execution, then pass the same paths to every validation phase. This
+keeps generated files and absolute paths from one concurrent run out of
+another run's caches.
+
+The wrapper also prepares the
+[agent module download cache](agent-module-download-cache.md). Reuse is limited
+to copied `.zip`/`.mod` downloads that Go re-verifies against the trusted base
+module graph before extraction. `GOMODCACHE` itself, including extracted
+module trees and `.ziphash` state, remains unique and writable only by its
+owning run. `GOCACHE` isolation is unchanged.
 
 Those caches live inside the run's dedicated `validation/` directory, disjoint
 from both Git worktrees, so `ai-pr-loop` reclaims the whole

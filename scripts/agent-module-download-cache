@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+    echo "Usage: agent-module-download-cache RUN_DIR" >&2
+    exit 2
+fi
+
+run_dir=$(cd "$1" 2>/dev/null && pwd -P) || {
+    echo "agent-module-download-cache: invalid run directory: $1" >&2
+    exit 1
+}
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+trusted_root=$(cd "$script_dir/.." && pwd -P)
+
+gomodcache=$(cd "${GOMODCACHE:-}" 2>/dev/null && pwd -P) || {
+    echo "agent-module-download-cache: GOMODCACHE is not configured" >&2
+    exit 1
+}
+case "$gomodcache/" in
+    "$run_dir/"*) ;;
+    *)
+        echo "agent-module-download-cache: GOMODCACHE escapes the validation run" >&2
+        exit 1
+        ;;
+esac
+
+gosumdb=$(go env GOSUMDB)
+goprivate=$(go env GOPRIVATE)
+gonosumdb=$(go env GONOSUMDB)
+gonoproxy=$(go env GONOPROXY)
+if [[ -z "$gosumdb" || "$gosumdb" == "off" || -n "$goprivate" || -n "$gonosumdb" || -n "$gonoproxy" ]]; then
+    echo "MODULE_DOWNLOAD_CACHE=DISABLED_PRIVATE_OR_NOSUMDB_POLICY" >&2
+    exit 0
+fi
+
+module_files=()
+manifest_files=()
+while IFS= read -r -d '' tracked_file; do
+    case "$tracked_file" in
+        go.mod|*/go.mod)
+            module_files+=("$tracked_file")
+            manifest_files+=("$tracked_file")
+            ;;
+        go.sum|*/go.sum)
+            manifest_files+=("$tracked_file")
+            ;;
+    esac
+done < <(git -C "$trusted_root" ls-files -z)
+
+if (( ${#module_files[@]} == 0 )); then
+    echo "MODULE_DOWNLOAD_CACHE=DISABLED_NO_MODULES" >&2
+    exit 0
+fi
+
+for manifest_file in "${manifest_files[@]}"; do
+    if [[ -L "$trusted_root/$manifest_file" || ! -f "$trusted_root/$manifest_file" ]]; then
+        echo "agent-module-download-cache: invalid tracked module manifest: $manifest_file" >&2
+        exit 1
+    fi
+done
+if ! git -C "$trusted_root" diff --quiet HEAD -- "${manifest_files[@]}" ||
+    ! git -C "$trusted_root" diff --cached --quiet HEAD -- "${manifest_files[@]}"; then
+    echo "agent-module-download-cache: trusted module manifests are dirty" >&2
+    exit 1
+fi
+
+go_version=$(go env GOVERSION)
+goproxy=$(go env GOPROXY)
+fingerprint=$(
+    {
+        printf 'version=1\ngo=%s\ngoproxy=%s\ngosumdb=%s\n' "$go_version" "$goproxy" "$gosumdb"
+        for manifest_file in "${manifest_files[@]}"; do
+            printf '%s ' "$manifest_file"
+            git -C "$trusted_root" hash-object -- "$manifest_file"
+        done
+    } | sha256sum | awk '{print $1}'
+)
+
+marker_dir="$run_dir/module-download-cache"
+marker="$marker_dir/$fingerprint.ready"
+if [[ -f "$marker" && ! -L "$marker" ]]; then
+    echo "MODULE_DOWNLOAD_CACHE=RUN_LOCAL_READY key=$fingerprint" >&2
+    exit 0
+fi
+
+common_dir=$(git -C "$trusted_root" rev-parse --path-format=absolute --git-common-dir)
+common_dir=$(cd "$common_dir" && pwd -P)
+cache_root="$common_dir/ledger-agent-module-download-cache/v1"
+if [[ -L "$common_dir/ledger-agent-module-download-cache" ]]; then
+    echo "agent-module-download-cache: shared cache root must not be a symlink" >&2
+    exit 1
+fi
+version_root="$cache_root/$go_version"
+if [[ -L "$version_root" ]]; then
+    echo "agent-module-download-cache: toolchain cache root must not be a symlink" >&2
+    exit 1
+fi
+mkdir -p "$version_root"
+resolved_cache_root=$(cd "$cache_root" && pwd -P)
+case "$resolved_cache_root/" in
+    "$common_dir/"*) ;;
+    *)
+        echo "agent-module-download-cache: shared cache root escapes the Git common directory" >&2
+        exit 1
+        ;;
+esac
+resolved_version_root=$(cd "$version_root" && pwd -P)
+case "$resolved_version_root/" in
+    "$resolved_cache_root/"*) ;;
+    *)
+        echo "agent-module-download-cache: toolchain cache root escapes the shared cache" >&2
+        exit 1
+        ;;
+esac
+
+generation="$version_root/$fingerprint"
+generation_ready="$generation/READY"
+download_dir="$gomodcache/cache/download"
+mkdir -p "$download_dir" "$marker_dir"
+
+seeded_files="$run_dir/module-download-cache/$fingerprint.seeded-files"
+: >"$seeded_files"
+reused=false
+if [[ -d "$generation" && ! -L "$generation" && -f "$generation_ready" && ! -L "$generation_ready" && -d "$generation/download" && ! -L "$generation/download" ]]; then
+    (
+        cd "$generation/download"
+        find . -type f \( -name '*.zip' -o -name '*.mod' \) -print0 |
+            xargs -0 -r cp --parents --reflink=auto --no-dereference -t "$download_dir"
+    )
+    if [[ -n "$(find "$download_dir" -type l -print -quit)" ]]; then
+        echo "agent-module-download-cache: shared seed contained a symlink" >&2
+        exit 1
+    fi
+    find "$download_dir" -type f \( -name '*.zip' -o -name '*.mod' \) -print0 >"$seeded_files"
+    reused=true
+fi
+
+# Run the trusted dependency graph through the ordinary Go downloader. The
+# shared seed deliberately has no .ziphash files, so Go re-hashes every reused
+# archive and checks it against the trusted go.sum / checksum database before
+# extracting it into this run's private GOMODCACHE.
+for module_file in "${module_files[@]}"; do
+    module_dir=$(dirname "$module_file")
+    if [[ "$module_dir" == "." ]]; then
+        module_dir="$trusted_root"
+    else
+        module_dir="$trusted_root/$module_dir"
+    fi
+    env GOFLAGS= GOWORK=off go -C "$module_dir" mod download
+done
+if ! git -C "$trusted_root" diff --quiet HEAD -- "${manifest_files[@]}" ||
+    ! git -C "$trusted_root" diff --cached --quiet HEAD -- "${manifest_files[@]}"; then
+    echo "agent-module-download-cache: trusted module download changed a manifest" >&2
+    exit 1
+fi
+
+if [[ "$reused" == true ]]; then
+    while IFS= read -r -d '' seeded_file; do
+        case "$seeded_file" in
+            *.zip)
+                ziphash_file="${seeded_file}hash"
+                if [[ ! -f "$ziphash_file" || -L "$ziphash_file" ]]; then
+                    rm -f -- "$seeded_file" "${seeded_file%.zip}.mod"
+                fi
+                ;;
+            *.mod)
+                ziphash_file="${seeded_file%.mod}.ziphash"
+                if [[ ! -f "$ziphash_file" || -L "$ziphash_file" ]]; then
+                    rm -f -- "$seeded_file"
+                fi
+                ;;
+        esac
+    done <"$seeded_files"
+fi
+rm -f -- "$seeded_files"
+
+# A cold run publishes only content that Go just verified. The generation is
+# built in the run directory and renamed atomically; concurrent cold runs may
+# duplicate downloads, but they never observe a partial shared generation.
+if [[ ! -f "$generation_ready" ]]; then
+    publish_dir="$run_dir/module-download-cache/publish-$fingerprint"
+    rm -rf -- "$publish_dir"
+    mkdir -p "$publish_dir/download"
+    (
+        cd "$download_dir"
+        find . -type f \( -name '*.zip' -o -name '*.mod' \) -print0 |
+            xargs -0 -r cp --parents --reflink=auto --no-dereference -t "$publish_dir/download"
+    )
+    printf 'version=1\nkey=%s\ngo=%s\ngoproxy=%s\ngosumdb=%s\n' \
+        "$fingerprint" "$go_version" "$goproxy" "$gosumdb" >"$publish_dir/READY"
+    mv -T -n -- "$publish_dir" "$generation"
+    if [[ -d "$publish_dir" ]]; then
+        rm -rf -- "$publish_dir"
+    fi
+fi
+
+printf 'key=%s\n' "$fingerprint" >"$marker"
+if [[ "$reused" == true ]]; then
+    echo "MODULE_DOWNLOAD_CACHE=REUSED key=$fingerprint" >&2
+else
+    echo "MODULE_DOWNLOAD_CACHE=POPULATED key=$fingerprint" >&2
+fi
