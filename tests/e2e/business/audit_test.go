@@ -62,6 +62,8 @@ func decodeOrder(item *auditpb.AuditItem) *raftcmdpb.Order {
 }
 
 func auditEntryWithIdempotency(entries []*auditpb.AuditEntry, key string) *auditpb.AuditEntry {
+	GinkgoHelper()
+
 	matches := make([]*auditpb.AuditEntry, 0, 1)
 	for _, entry := range entries {
 		if entry.GetIdempotency().GetKey() == key {
@@ -72,6 +74,19 @@ func auditEntryWithIdempotency(entries []*auditpb.AuditEntry, key string) *audit
 	Expect(matches).To(HaveLen(1), "expected exactly one audit entry for idempotency key %q", key)
 
 	return matches[0]
+}
+
+func auditSequenceMaxFilter(maxSequence uint64) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Audit{
+			Audit: &commonpb.AuditCondition{
+				Field: commonpb.AuditField_AUDIT_FIELD_SEQUENCE,
+				Condition: &commonpb.AuditCondition_UintCond{
+					UintCond: &commonpb.UintCondition{Max: &maxSequence},
+				},
+			},
+		},
+	}
 }
 
 var _ = Describe("Audit Log", Ordered, func() {
@@ -203,30 +218,39 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 		// Get entries after the first one
 		afterSeq := allEntries[0].Sequence
-		afterEntries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-			Options: &commonpb.ListOptions{
-				Cursor: strconv.FormatUint(afterSeq, 10),
-			},
-		})
-		Expect(err).To(Succeed())
-		Expect(len(afterEntries)).To(Equal(len(allEntries) - 1))
+		maxSequence := allEntries[len(allEntries)-1].Sequence
+		Eventually(func(g Gomega) {
+			afterEntries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
+				Options: &commonpb.ListOptions{
+					Cursor: strconv.FormatUint(afterSeq, 10),
+					Filter: auditSequenceMaxFilter(maxSequence),
+				},
+			})
+			g.Expect(err).To(Succeed())
+			g.Expect(len(afterEntries)).To(Equal(len(allEntries) - 1))
+		}).Should(Succeed())
 	})
 
 	It("Should include order details via GetAuditEntry with order_count on list and items on get", func() {
+		const (
+			createLedgerKey      = "audit-order-details-create-ledger"
+			createTransactionKey = "audit-order-details-create-transaction"
+		)
+
 		// Create a ledger — produces a CreateLedger order
 		ledgerForOrders := "audit-orders-test"
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerForOrders, nil)))
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(createLedgerKey, actions.CreateLedgerAction(ledgerForOrders, nil)))
 		Expect(err).To(Succeed())
 
 		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
 		Expect(err).To(Succeed())
 
-		last := entries[len(entries)-1]
-		Expect(last.GetOrderCount()).To(Equal(uint32(1)))
+		entry := auditEntryWithIdempotency(entries, createLedgerKey)
+		Expect(entry.GetOrderCount()).To(Equal(uint32(1)))
 
 		// Get the full entry with items
 		full, err := sharedClient.GetAuditEntry(sharedCtx, &servicepb.GetAuditEntryRequest{
-			Sequence: last.Sequence,
+			Sequence: entry.Sequence,
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(1))
@@ -236,7 +260,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(firstOrder.GetLedgerScoped().GetCreateLedger()).NotTo(BeNil())
 
 		// Create a transaction — produces an Apply/CreateTransaction order
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerForOrders, []*commonpb.Posting{
+		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(createTransactionKey, actions.CreateTransactionAction(ledgerForOrders, []*commonpb.Posting{
 			actions.NewPosting("world", "bank", big.NewInt(500), "EUR"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())
@@ -244,11 +268,11 @@ var _ = Describe("Audit Log", Ordered, func() {
 		entries, err = collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
 		Expect(err).To(Succeed())
 
-		last = entries[len(entries)-1]
-		Expect(last.GetOrderCount()).To(Equal(uint32(1)))
+		entry = auditEntryWithIdempotency(entries, createTransactionKey)
+		Expect(entry.GetOrderCount()).To(Equal(uint32(1)))
 
 		full, err = sharedClient.GetAuditEntry(sharedCtx, &servicepb.GetAuditEntryRequest{
-			Sequence: last.Sequence,
+			Sequence: entry.Sequence,
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(1))
@@ -308,8 +332,10 @@ var _ = Describe("Audit Log", Ordered, func() {
 	})
 
 	It("Should include multiple items in a batch audit entry", func() {
+		const idempotencyKey = "audit-multiple-items"
+
 		// Submit multiple requests in a single Apply (batch)
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 			actions.NewPosting("world", "batch:a", big.NewInt(100), "USD"),
 		}, nil, nil),
 			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -320,11 +346,11 @@ var _ = Describe("Audit Log", Ordered, func() {
 		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
 		Expect(err).To(Succeed())
 
-		last := entries[len(entries)-1]
-		Expect(last.GetOrderCount()).To(Equal(uint32(2)))
+		entry := auditEntryWithIdempotency(entries, idempotencyKey)
+		Expect(entry.GetOrderCount()).To(Equal(uint32(2)))
 
 		full, err := sharedClient.GetAuditEntry(sharedCtx, &servicepb.GetAuditEntryRequest{
-			Sequence: last.Sequence,
+			Sequence: entry.Sequence,
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(2))
@@ -377,8 +403,10 @@ var _ = Describe("Audit Log", Ordered, func() {
 	})
 
 	It("Should have sequential order_index values", func() {
+		const idempotencyKey = "audit-sequential-order-indexes"
+
 		// Submit 3 requests in a single batch
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 			actions.NewPosting("world", "seq:a", big.NewInt(10), "USD"),
 		}, nil, nil),
 			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -392,9 +420,9 @@ var _ = Describe("Audit Log", Ordered, func() {
 		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
 		Expect(err).To(Succeed())
 
-		last := entries[len(entries)-1]
+		entry := auditEntryWithIdempotency(entries, idempotencyKey)
 		full, err := sharedClient.GetAuditEntry(sharedCtx, &servicepb.GetAuditEntryRequest{
-			Sequence: last.Sequence,
+			Sequence: entry.Sequence,
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(3))
@@ -404,8 +432,10 @@ var _ = Describe("Audit Log", Ordered, func() {
 	})
 
 	It("Should have item log_sequence that correlates to an actual log", func() {
+		const idempotencyKey = "audit-log-sequence-correlation"
+
 		// Create a transaction to get a log sequence
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 			actions.NewPosting("world", "logcorr:dest", big.NewInt(500), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())
@@ -413,11 +443,11 @@ var _ = Describe("Audit Log", Ordered, func() {
 		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
 		Expect(err).To(Succeed())
 
-		last := entries[len(entries)-1]
-		Expect(last.GetSuccess()).NotTo(BeNil())
+		entry := auditEntryWithIdempotency(entries, idempotencyKey)
+		Expect(entry.GetSuccess()).NotTo(BeNil())
 
 		full, err := sharedClient.GetAuditEntry(sharedCtx, &servicepb.GetAuditEntryRequest{
-			Sequence: last.Sequence,
+			Sequence: entry.Sequence,
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(1))
@@ -457,19 +487,22 @@ var _ = Describe("Audit Log", Ordered, func() {
 	})
 
 	It("Should have multiple ledgers in a multi-ledger batch", func() {
-		ledgerA := "audit-multi-a"
-		ledgerB := "audit-multi-b"
+		const (
+			idempotencyKey = "audit-multiple-ledgers"
+			ledgerA        = "audit-multi-a"
+			ledgerB        = "audit-multi-b"
+		)
 
 		// Create 2 ledgers in one Apply
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerA, nil),
+		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idempotencyKey, actions.CreateLedgerAction(ledgerA, nil),
 			actions.CreateLedgerAction(ledgerB, nil)))
 		Expect(err).To(Succeed())
 
 		entries, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{})
 		Expect(err).To(Succeed())
 
-		last := entries[len(entries)-1]
-		ledgers := last.GetLedgers()
+		entry := auditEntryWithIdempotency(entries, idempotencyKey)
+		ledgers := entry.GetLedgers()
 		Expect(ledgers).To(ContainElement(ledgerA))
 		Expect(ledgers).To(ContainElement(ledgerB))
 	})
@@ -529,16 +562,22 @@ var _ = Describe("Audit Log", Ordered, func() {
 		Expect(err).To(Succeed())
 		Expect(len(asc)).To(BeNumerically(">=", 2))
 
-		desc, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
-			Options: &commonpb.ListOptions{Reverse: true},
-		})
-		Expect(err).To(Succeed())
-		Expect(len(desc)).To(Equal(len(asc)))
+		maxSequence := asc[len(asc)-1].Sequence
+		Eventually(func(g Gomega) {
+			desc, err := collectAuditEntries(sharedCtx, sharedClient, &servicepb.ListAuditEntriesRequest{
+				Options: &commonpb.ListOptions{
+					Filter:  auditSequenceMaxFilter(maxSequence),
+					Reverse: true,
+				},
+			})
+			g.Expect(err).To(Succeed())
+			g.Expect(len(desc)).To(Equal(len(asc)))
 
-		// Ascending is oldest-first (increasing sequence); reverse is newest-first.
-		Expect(asc[0].GetSequence()).To(BeNumerically("<", asc[len(asc)-1].GetSequence()))
-		Expect(desc[0].GetSequence()).To(Equal(asc[len(asc)-1].GetSequence()))
-		Expect(desc[len(desc)-1].GetSequence()).To(Equal(asc[0].GetSequence()))
+			// Ascending is oldest-first (increasing sequence); reverse is newest-first.
+			g.Expect(asc[0].GetSequence()).To(BeNumerically("<", asc[len(asc)-1].GetSequence()))
+			g.Expect(desc[0].GetSequence()).To(Equal(asc[len(asc)-1].GetSequence()))
+			g.Expect(desc[len(desc)-1].GetSequence()).To(Equal(asc[0].GetSequence()))
+		}).Should(Succeed())
 	})
 
 	It("Should honor options.filter for the bare seq range", func() {
