@@ -361,39 +361,6 @@ func projectFinding(
 
 		return projection
 	}
-	if claim.State == "AMBIGUOUS" || claim.State == "CLAIM_HISTORY_MISSING" {
-		projection.State = "AMBIGUOUS"
-		projection.Blockers = append(projection.Blockers, claim.State)
-		if claim.Problem != "" {
-			projection.Blockers = append(projection.Blockers, claim.Problem)
-		}
-		projection.NextAction = "REFRESH_REQUIRED"
-
-		return projection
-	}
-	if claim.State == "BROKEN_BINDING" {
-		projection.State = "BROKEN_BINDING"
-		projection.Blockers = append(projection.Blockers, claim.Problem)
-		projection.NextAction = "REPAIR_BINDING"
-
-		return projection
-	}
-	if claim.State == "CLAIM_EXPIRED" {
-		projection.State = "CLAIM_EXPIRED"
-		projection.NextAction = "REVIEW_EXPIRED_CLAIM"
-
-		return projection
-	}
-	if claim.State == "CLAIMED" {
-		projection.State = "CLAIMED"
-		if claim.OwnedBySession {
-			projection.NextAction = "CONTINUE_CLAIMED_WORK"
-		} else {
-			projection.NextAction = "WAIT_OR_COORDINATE"
-		}
-
-		return projection
-	}
 
 	switch {
 	case jira.Status == "AMBIGUOUS":
@@ -404,6 +371,17 @@ func projectFinding(
 		projection.State = "AMBIGUOUS"
 		projection.Blockers = append(projection.Blockers, "AMBIGUOUS_PR_BINDING")
 		projection.NextAction = "RESOLVE_BINDING"
+	case claim.State == "AMBIGUOUS" || claim.State == "CLAIM_HISTORY_MISSING":
+		projection.State = "AMBIGUOUS"
+		projection.Blockers = append(projection.Blockers, claim.State)
+		if claim.Problem != "" {
+			projection.Blockers = append(projection.Blockers, claim.Problem)
+		}
+		projection.NextAction = "REFRESH_REQUIRED"
+	case claim.State == "BROKEN_BINDING":
+		projection.State = "BROKEN_BINDING"
+		projection.Blockers = append(projection.Blockers, claim.Problem)
+		projection.NextAction = "REPAIR_BINDING"
 	case len(pr.Matches) == 1:
 		match := pr.Matches[0]
 		switch {
@@ -445,6 +423,16 @@ func projectFinding(
 		projection.State = "BLOCKED"
 		projection.Blockers = append(projection.Blockers, "TARGET_ADVANCED")
 		projection.NextAction = "REQUALIFY_ON_CURRENT_TARGET"
+	case claim.State == "CLAIM_EXPIRED":
+		projection.State = "CLAIM_EXPIRED"
+		projection.NextAction = "REVIEW_EXPIRED_CLAIM"
+	case claim.State == "CLAIMED":
+		projection.State = "CLAIMED"
+		if claim.OwnedBySession {
+			projection.NextAction = "CONTINUE_CLAIMED_WORK"
+		} else {
+			projection.NextAction = "WAIT_OR_COORDINATE"
+		}
 	case len(jira.Issues) == 1:
 		projection.State = "TRACKED"
 		projection.NextAction = "CLAIM"

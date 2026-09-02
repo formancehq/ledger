@@ -347,6 +347,14 @@ func TestClaimProviderUnavailableFailsClosed(t *testing.T) {
 	require.NotEqual(t, "CONFIRMED_UNASSIGNED", inspection.Findings[0].State)
 }
 
+func TestLiveInspectSupportsZeroFindingCampaign(t *testing.T) {
+	remote, targetSHA := newClaimRemote(t)
+	campaign := claimCampaignAt(targetSHA)
+	inspection := inspectAgainstRemote(campaign, remote, testClaimantA, testNow)
+	require.Equal(t, "FRESH", inspection.Freshness)
+	require.Empty(t, inspection.Findings)
+}
+
 func newClaimRemote(t *testing.T) (string, string) {
 	t.Helper()
 	remote := filepath.Join(t.TempDir(), "remote.git")

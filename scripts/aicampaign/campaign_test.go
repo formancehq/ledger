@@ -218,6 +218,34 @@ func TestInspectOfflineGitHubNeverReportsReady(t *testing.T) {
 	require.NotEqual(t, "READY_FOR_CLAIM_OR_DISPATCH", inspection.Findings[0].NextAction)
 }
 
+func TestClaimedFindingStillHonorsFreshnessAndTargetGates(t *testing.T) {
+	t.Parallel()
+
+	campaign := testCampaign("CONFIRMED")
+	source := campaign.SourceFacts.Findings[0]
+	createdAt := testNow.Add(-time.Hour)
+	expiresAt := testNow.Add(defaultClaimLease)
+	claim := ClaimObservation{
+		State: "CLAIMED", Claimant: testClaimantA, CreatedAt: &createdAt, ExpiresAt: &expiresAt,
+		RemoteRef: claimRef(campaign.AuditID, source.ID), ObservedClaimSHA: strings.Repeat("c", 40),
+		Freshness: "FRESH", OwnedBySession: true,
+	}
+	providerUnavailable := runFakeInspection(campaign, fakeObservations{
+		claims: map[string]ClaimObservation{source.ID: claim}, githubError: errors.New("offline"),
+	})
+	require.Equal(t, "CLAIMED", providerUnavailable.Findings[0].State)
+	require.Equal(t, "REFRESH_REQUIRED", providerUnavailable.Findings[0].NextAction)
+
+	campaign = testCampaign("CONFIRMED")
+	source = campaign.SourceFacts.Findings[0]
+	claim.RemoteRef = claimRef(campaign.AuditID, source.ID)
+	targetAdvanced := runFakeInspection(campaign, fakeObservations{
+		claims: map[string]ClaimObservation{source.ID: claim}, targetSHA: strings.Repeat("a", 40),
+	})
+	require.Equal(t, "BLOCKED", targetAdvanced.Findings[0].State)
+	require.Equal(t, "REQUALIFY_ON_CURRENT_TARGET", targetAdvanced.Findings[0].NextAction)
+}
+
 func TestInspectOfflineJiraMarksStatusUnknown(t *testing.T) {
 	t.Parallel()
 
@@ -420,6 +448,8 @@ type fakeObservations struct {
 	jiraError       error
 	githubError     error
 	gitError        error
+	claimError      error
+	claims          map[string]ClaimObservation
 	targetSHA       string
 	missingBranches bool
 }
@@ -440,7 +470,7 @@ func runFakeInspection(campaign *Campaign, observations fakeObservations) *Inspe
 		jira:   fakeJiraProvider{issues: observations.jira, err: observations.jiraError},
 		github: fakeGitHubProvider{pullRequests: observations.pullRequests, err: observations.githubError},
 		git:    fakeGitProvider{refs: refs, err: observations.gitError},
-		claims: fakeClaimProvider{},
+		claims: fakeClaimProvider{values: observations.claims, err: observations.claimError},
 	}
 
 	return runner.run(context.Background(), campaign, inspectOptions{

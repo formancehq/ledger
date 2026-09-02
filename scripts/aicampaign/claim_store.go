@@ -70,6 +70,9 @@ func (repository *claimRepository) close() {
 }
 
 func (repository *claimRepository) listRefs(ctx context.Context, refs ...string) (map[string]string, error) {
+	if len(refs) == 0 {
+		return map[string]string{}, nil
+	}
 	arguments := []string{"ls-remote", "--heads", repository.remoteURL}
 	arguments = append(arguments, refs...)
 	output, err := repository.git(ctx, nil, arguments...)
