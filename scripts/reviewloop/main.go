@@ -266,7 +266,17 @@ func main() {
 			if err := writeFindings(findingsPath, blockers); err != nil {
 				fatal(err)
 			}
-			fixerInputs, err := captureFileSnapshots(findingsPath, resultPath)
+			fixerFindingsPath, fixerResultPath, err := stageCandidateAgentInputs(
+				repositoryRoot,
+				filepath.Base(runStateDir),
+				pass,
+				findingsPath,
+				resultPath,
+			)
+			if err != nil {
+				fatal(fmt.Errorf("staging candidate-local fixer inputs: %w", err))
+			}
+			fixerInputs, err := captureFileSnapshots(fixerFindingsPath, fixerResultPath)
 			if err != nil {
 				fatal(fmt.Errorf("capturing immutable fixer inputs: %w", err))
 			}
@@ -274,8 +284,8 @@ func main() {
 			fmt.Printf("==> review-loop: auto-fix %d blocking finding(s)\n", len(blockers))
 			if err := runner.run("fix", fixCmd, map[string]string{
 				"AI_REVIEW_PASS":     strconv.Itoa(pass),
-				"AI_REVIEW_FINDINGS": findingsPath,
-				"AI_REVIEW_RESULT":   resultPath,
+				"AI_REVIEW_FINDINGS": fixerFindingsPath,
+				"AI_REVIEW_RESULT":   fixerResultPath,
 			}); err != nil {
 				fatal(fmt.Errorf("fix command failed: %w", err))
 			}
@@ -287,7 +297,7 @@ func main() {
 			if err := validationReceipts.executeAndRecord(runner, validationCmd, validationEnv, runStateDir); err != nil {
 				fatal(fmt.Errorf("validation failed after auto-fix: %w", err))
 			}
-			previousResult = resultPath
+			previousResult = fixerResultPath
 			previous := result
 			previousReview = &previous
 		}
@@ -590,6 +600,78 @@ func verifyFileUnchanged(path string, expected []byte) error {
 	}
 	if !bytes.Equal(actual, expected) {
 		return fmt.Errorf("%s content changed", path)
+	}
+
+	return nil
+}
+
+func stageCandidateAgentInputs(
+	repositoryRoot string,
+	runID string,
+	pass int,
+	findingsSource string,
+	reviewSource string,
+) (string, string, error) {
+	findings, err := os.ReadFile(findingsSource)
+	if err != nil {
+		return "", "", fmt.Errorf("reading fixer findings: %w", err)
+	}
+	review, err := os.ReadFile(reviewSource)
+	if err != nil {
+		return "", "", fmt.Errorf("reading fixer review result: %w", err)
+	}
+
+	relativeDirectory := filepath.Join(
+		"build",
+		"ai-review-loop",
+		"agent-inputs",
+		runID,
+		fmt.Sprintf("pass-%d", pass),
+	)
+	if !filepath.IsLocal(relativeDirectory) {
+		return "", "", errors.New("candidate-local agent input path is not local")
+	}
+	root, err := os.OpenRoot(repositoryRoot)
+	if err != nil {
+		return "", "", fmt.Errorf("opening candidate root for agent inputs: %w", err)
+	}
+	defer func() {
+		_ = root.Close() // The staging result takes precedence over best-effort descriptor cleanup.
+	}()
+	if err := root.MkdirAll(relativeDirectory, 0o700); err != nil {
+		return "", "", fmt.Errorf("creating candidate-local agent input directory: %w", err)
+	}
+
+	findingsRelative := filepath.Join(relativeDirectory, "findings.json")
+	reviewRelative := filepath.Join(relativeDirectory, "review.json")
+	if err := writeExclusiveRootFile(root, findingsRelative, findings); err != nil {
+		return "", "", fmt.Errorf("writing candidate-local fixer findings: %w", err)
+	}
+	if err := writeExclusiveRootFile(root, reviewRelative, review); err != nil {
+		return "", "", fmt.Errorf("writing candidate-local fixer review result: %w", err)
+	}
+
+	return filepath.Join(repositoryRoot, findingsRelative), filepath.Join(repositoryRoot, reviewRelative), nil
+}
+
+func writeExclusiveRootFile(root *os.Root, path string, content []byte) error {
+	file, err := root.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	written, writeErr := file.Write(content)
+	closeErr := file.Close()
+	if writeErr != nil && closeErr != nil {
+		return errors.Join(writeErr, closeErr)
+	}
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if written != len(content) {
+		return io.ErrShortWrite
 	}
 
 	return nil

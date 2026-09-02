@@ -23,7 +23,10 @@ The workflow keeps three directory roles separate:
 The PR launchers also place each `review-loop` state directory in their
 workflow-owned run directory, outside `CANDIDATE_WORKTREE`. This lets exact-state
 validation receipts cover ignored/generated candidate inputs while excluding
-only the loop's own changing review JSON from candidate state.
+only the loop's own changing review JSON from candidate state. Fixer and
+re-review inputs that must remain project-local are copied through an `os.Root`
+capability into a run-unique ignored candidate directory before validation;
+those immutable copies are included in the candidate receipt fingerprint.
 
 `ai-pr-loop` uses
 `.<repo>-ai-worktrees/pr-<pr>.<run>/{worktree,trusted-tools,validation}`.

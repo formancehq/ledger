@@ -433,6 +433,24 @@ func TestVerifyFileSnapshotsUnchangedRejectsFixerStateMutation(t *testing.T) {
 	require.ErrorContains(t, err, resultPath+" content changed")
 }
 
+func TestStageCandidateAgentInputsRejectsSymlinkEscape(t *testing.T) {
+	t.Parallel()
+
+	repository := t.TempDir()
+	outside := t.TempDir()
+	require.NoError(t, os.Symlink(outside, filepath.Join(repository, "build")))
+	findings := filepath.Join(t.TempDir(), "findings.json")
+	review := filepath.Join(t.TempDir(), "review.json")
+	require.NoError(t, os.WriteFile(findings, []byte("findings\n"), 0o600))
+	require.NoError(t, os.WriteFile(review, []byte("review\n"), 0o600))
+
+	_, _, err := stageCandidateAgentInputs(repository, "run-1", 1, findings, review)
+	require.Error(t, err)
+	entries, readErr := os.ReadDir(outside)
+	require.NoError(t, readErr)
+	require.Empty(t, entries, "root-scoped staging must not write through an escaping symlink")
+}
+
 func TestValidationReceiptReviewLoopFlows(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "review-loop")
 	build := exec.Command("go", "build", "-o", binary, ".")
@@ -568,6 +586,14 @@ fi
 	fixer := filepath.Join(toolWorktree, "fixer.sh")
 	require.NoError(t, os.WriteFile(fixer, []byte(`#!/usr/bin/env bash
 set -euo pipefail
+case "$AI_REVIEW_FINDINGS" in
+  "$EXPECTED_WORKTREE"/*) ;;
+  *) echo "findings escaped candidate: $AI_REVIEW_FINDINGS" >&2; exit 71 ;;
+esac
+case "$AI_REVIEW_RESULT" in
+  "$EXPECTED_WORKTREE"/*) ;;
+  *) echo "review result escaped candidate: $AI_REVIEW_RESULT" >&2; exit 72 ;;
+esac
 printf 'fixed\n' > "fixed-$AI_REVIEW_PASS.txt"
 printf 'aaaa\n' > .ignored-input
 cp -p .ignored-input "$VALIDATION_RUN_DIR/ignored-input-reference"

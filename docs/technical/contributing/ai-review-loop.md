@@ -289,7 +289,11 @@ shared between concurrent candidates, or carried into another invocation,
 base synchronization, candidate adoption, normalization, or crash recovery.
 The PR launchers keep review-loop state outside the candidate so receipt
 observation can cover ignored candidate inputs without hashing the loop's own
-changing JSON artifacts.
+changing JSON artifacts. Before a fixer runs, the orchestrator copies only its
+immutable findings and review inputs into a run-unique ignored directory inside
+the candidate, using a root-scoped filesystem handle. This preserves the
+fixer's project-local input boundary; the copies are themselves covered by the
+candidate root fingerprint and are never persisted as receipt data.
 
 The same local validation runs after an `APPROVE` decision and before
 `READY_FOR_HUMAN_REVIEW` is emitted. The orchestrator fingerprints the
