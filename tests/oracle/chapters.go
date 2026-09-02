@@ -263,6 +263,23 @@ func (c Chapters) WithConfirmed() (Chapters, bool) {
 
 // applyClose predicts CloseChapter: the open chapter becomes CLOSING and its
 // successor opens. The successor needs no entry — it is the implied open one.
+// WithClosed is the registry after a CloseChapter the server accepted, and
+// whether acceptance was possible. A move for reachability folds: the same
+// transition Apply performs, without an order's response semantics.
+func (c Chapters) WithClosed() (Chapters, bool) {
+	next, res := c.applyClose()
+
+	return next, res.OK
+}
+
+// WithArchived is the registry after an ArchiveChapter(id) the server accepted,
+// and whether acceptance was possible.
+func (c Chapters) WithArchived(id uint64) (Chapters, bool) {
+	next, res := c.applyArchive(id)
+
+	return next, res.OK
+}
+
 func (c Chapters) applyClose() (Chapters, OrderResult) {
 	if !c.hasOpen {
 		return c, OrderResult{Reason: domain.ErrReasonNoChapterOpen}

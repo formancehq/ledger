@@ -114,6 +114,32 @@ func TestChapterAdvanceExplained(t *testing.T) {
 			observed:  registry(t, oracle.ChapterOpen),
 			explained: false,
 		},
+		// The composition Antithesis found (run 2a269ed1, vtime 224s): between two
+		// observations the server ran close(2), seal(2), archive(2), close(3),
+		// seal(3). Chapter 3's whole life happened inside the gap, so it appears
+		// already CLOSED — reachable, since every step folds from the two
+		// outstanding closes, the outstanding archive, and autonomous seals.
+		"a chapter appeared already sealed": {
+			pinned:    registry(t, oracle.ChapterArchived, oracle.ChapterOpen),
+			observed:  registry(t, oracle.ChapterArchived, oracle.ChapterArchiving, oracle.ChapterClosed, oracle.ChapterOpen),
+			closes:    2,
+			archives:  []uint64{2},
+			explained: true,
+		},
+		"the same gap with the confirm landed too": {
+			pinned:    registry(t, oracle.ChapterArchived, oracle.ChapterOpen),
+			observed:  registry(t, oracle.ChapterArchived, oracle.ChapterArchived, oracle.ChapterClosed, oracle.ChapterOpen),
+			closes:    2,
+			archives:  []uint64{2},
+			explained: true,
+		},
+		"a later chapter archiving without an archive order for it": {
+			pinned:    registry(t, oracle.ChapterArchived, oracle.ChapterOpen),
+			observed:  registry(t, oracle.ChapterArchived, oracle.ChapterArchived, oracle.ChapterArchiving, oracle.ChapterOpen),
+			closes:    2,
+			archives:  []uint64{2},
+			explained: false,
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

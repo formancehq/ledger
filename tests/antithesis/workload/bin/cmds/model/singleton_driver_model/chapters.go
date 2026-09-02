@@ -443,88 +443,73 @@ func (c *Checker) outstandingChapterOrders() (closes int, archives []uint64) {
 	return closes, archives
 }
 
-// chapterAdvanceExplained reports whether observed is reachable from the model's
-// registry: every chapter moved forward or not at all, every move the server does
-// not make unasked is backed by an outstanding order, and the chapters that
-// appeared are covered by outstanding closes. The returned string names the first
-// violation, for the finding's details.
+// chapterAdvanceExplained reports whether the observed registry is reachable
+// from the pinned one by folding the outstanding chapter orders and the two
+// autonomous transitions, in some order. Each outstanding order may also be
+// absent from the fold — not applied yet and applied-but-rejected leave the
+// registry equally untouched, and the response, once it arrives, is judged by
+// the response validation.
+//
+// The moves are the oracle's own (WithClosed, WithArchived, WithSealed,
+// WithConfirmed), so there is no second statement of the lifecycle here to
+// drift from the spec: reachability is whatever composes from them. Every move
+// strictly advances the registry, so the walk terminates; the memo bounds it.
 func chapterAdvanceExplained(pinned, observed oracle.Chapters, closes int, archives []uint64) (string, bool) {
-	if observed.ArchivedThrough() < pinned.ArchivedThrough() {
-		return fmt.Sprintf("archived prefix rewound from %d to %d", pinned.ArchivedThrough(), observed.ArchivedThrough()), false
-	}
+	target := observed.Fingerprint()
 
-	if observed.LastID() < pinned.LastID() {
-		return fmt.Sprintf("chapter %d no longer exists", pinned.LastID()), false
-	}
+	archives = slices.Sorted(slices.Values(archives))
+	seen := map[string]bool{}
 
-	if appeared := observed.LastID() - pinned.LastID(); appeared > uint64(closes) {
-		return fmt.Sprintf("%d chapters appeared with %d close orders outstanding", appeared, closes), false
-	}
-
-	requested := map[uint64]bool{}
-	for _, id := range archives {
-		requested[id] = true
-	}
-
-	for id := uint64(1); id <= observed.LastID(); id++ {
-		got, ok := observed.StatusOf(id)
-		if !ok {
-			return fmt.Sprintf("chapter %d missing from the observed registry", id), false
+	var reachable func(c oracle.Chapters, closes int, archives []uint64) bool
+	reachable = func(c oracle.Chapters, closes int, archives []uint64) bool {
+		if c.Fingerprint() == target {
+			return true
 		}
 
-		was, existed := pinned.StatusOf(id)
-		if !existed {
-			// A chapter an outstanding close created — the count above bounded how
-			// many. It can only be the new open one, or one an earlier close in the
-			// same window left CLOSING.
-			if got != oracle.ChapterClosing && got != oracle.ChapterOpen {
-				return fmt.Sprintf("chapter %d appeared as %s", id, got), false
+		key := fmt.Sprintf("%v|%d|%v", c.Fingerprint(), closes, archives)
+		if seen[key] {
+			return false
+		}
+		seen[key] = true
+
+		if closes > 0 {
+			if next, ok := c.WithClosed(); ok && reachable(next, closes-1, archives) {
+				return true
+			}
+		}
+
+		for i, id := range archives {
+			next, ok := c.WithArchived(id)
+			if !ok {
+				continue
 			}
 
-			continue
+			rest := append(append([]uint64(nil), archives[:i]...), archives[i+1:]...)
+			if reachable(next, closes, rest) {
+				return true
+			}
 		}
 
-		if got < was {
-			return fmt.Sprintf("chapter %d moved back from %s to %s", id, was, got), false
+		for id := c.ArchivedThrough() + 1; id <= c.LastID(); id++ {
+			if status, ok := c.StatusOf(id); ok && status == oracle.ChapterClosing {
+				if next, ok := c.WithSealed(id); ok && reachable(next, closes, archives) {
+					return true
+				}
+			}
 		}
 
-		if violation, backed := advanceBacked(id, was, got, closes, requested); !backed {
-			return violation, false
+		if next, ok := c.WithConfirmed(); ok && reachable(next, closes, archives) {
+			return true
 		}
+
+		return false
 	}
 
-	return "", true
-}
-
-// advanceBacked walks the transitions between was and got, requiring each to be
-// one the server makes unasked or one an outstanding order asked for.
-func advanceBacked(id uint64, was, got oracle.ChapterStatus, closes int, requested map[uint64]bool) (string, bool) {
-	for status := was; status != got; {
-		if next, autonomous := oracle.AutonomousNext(status); autonomous {
-			status = next
-
-			continue
-		}
-
-		switch status {
-		case oracle.ChapterOpen:
-			if closes == 0 {
-				return fmt.Sprintf("chapter %d closed with no close order outstanding", id), false
-			}
-
-			status = oracle.ChapterClosing
-		case oracle.ChapterClosed:
-			if !requested[id] {
-				return fmt.Sprintf("chapter %d started archiving with no archive order outstanding for it", id), false
-			}
-
-			status = oracle.ChapterArchiving
-		default:
-			return fmt.Sprintf("chapter %d reached %s from %s by no known transition", id, got, was), false
-		}
+	if reachable(pinned, closes, archives) {
+		return "", true
 	}
 
-	return "", true
+	return fmt.Sprintf("no fold of %d close order(s), archives %v and autonomous transitions reaches the observed registry", closes, archives), false
 }
 
 // noteChapterProgress reports a completed archival: the confirm extended the
