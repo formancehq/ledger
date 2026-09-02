@@ -232,7 +232,7 @@ func TestOfflineInspectUsesStaleCache(t *testing.T) {
 
 	campaign := testCampaign("CONFIRMED")
 	first := runFakeInspection(campaign, fakeObservations{jira: []JiraIssue{{Key: "EN-41", Status: "Open"}}})
-	require.Equal(t, "READY_FOR_CLAIM_OR_DISPATCH", first.Findings[0].NextAction)
+	require.Equal(t, "CLAIM", first.Findings[0].NextAction)
 	stale := (inspector{}).run(context.Background(), campaign, inspectOptions{target: testTarget, offline: true})
 	require.Equal(t, "STALE", stale.Freshness)
 	require.Equal(t, "EN-41", stale.Findings[0].Jira.Issues[0].Key)
@@ -440,6 +440,7 @@ func runFakeInspection(campaign *Campaign, observations fakeObservations) *Inspe
 		jira:   fakeJiraProvider{issues: observations.jira, err: observations.jiraError},
 		github: fakeGitHubProvider{pullRequests: observations.pullRequests, err: observations.githubError},
 		git:    fakeGitProvider{refs: refs, err: observations.gitError},
+		claims: fakeClaimProvider{},
 	}
 
 	return runner.run(context.Background(), campaign, inspectOptions{
@@ -486,6 +487,38 @@ func (provider fakeGitHubProvider) Observe(
 type fakeGitProvider struct {
 	refs map[string]string
 	err  error
+}
+
+type fakeClaimProvider struct {
+	values map[string]ClaimObservation
+	err    error
+}
+
+func (provider fakeClaimProvider) Observe(
+	_ context.Context,
+	_ string,
+	campaign *Campaign,
+	_ time.Time,
+	_ string,
+	_ map[string]string,
+) (map[string]ClaimObservation, error) {
+	if provider.err != nil {
+		return nil, provider.err
+	}
+	values := make(map[string]ClaimObservation, len(campaign.SourceFacts.Findings))
+	for _, finding := range campaign.SourceFacts.Findings {
+		if observation, ok := provider.values[finding.ID]; ok {
+			values[finding.ID] = observation
+		} else if finding.Qualification == "CONFIRMED" {
+			values[finding.ID] = emptyClaimObservation(campaign.AuditID, finding.ID, "FRESH")
+		} else {
+			observation := emptyClaimObservation(campaign.AuditID, finding.ID, "FRESH")
+			observation.State = "NON_CLAIMABLE"
+			values[finding.ID] = observation
+		}
+	}
+
+	return values, nil
 }
 
 func (provider fakeGitProvider) ObserveRefs(context.Context, string, []string) (map[string]string, error) {

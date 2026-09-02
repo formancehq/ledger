@@ -38,6 +38,14 @@ func run(arguments []string, stdout, stderr io.Writer) error {
 		return runInspect(arguments[1:], stdout, stderr)
 	case "next":
 		return runNext(arguments[1:], stdout, stderr)
+	case "claim":
+		return runClaim(arguments[1:], stdout, stderr)
+	case "renew":
+		return runRenew(arguments[1:], stdout, stderr)
+	case "release":
+		return runRelease(arguments[1:], stdout, stderr)
+	case "takeover":
+		return runTakeover(arguments[1:], stdout, stderr)
 	default:
 		if err := usage(stderr); err != nil {
 			return err
@@ -101,12 +109,13 @@ func runImport(arguments []string, stdout, stderr io.Writer) error {
 func runInspect(arguments []string, stdout, stderr io.Writer) error {
 	values, flags, err := parseArguments(arguments, map[string]bool{
 		"--offline": false, "--repo": true, "--jira-project": true, "--remote": true, "--target": true,
+		"--claimant": true,
 	})
 	if err != nil {
 		return err
 	}
 	if len(values) != 1 {
-		return errors.New("usage: ai-campaign inspect <campaign> [--offline] [--repo <owner/name>] [--jira-project <key>] [--remote <name>] [--target <branch>]")
+		return errors.New("usage: ai-campaign inspect <campaign> [--offline] [--claimant <id>] [--repo <owner/name>] [--jira-project <key>] [--remote <name>] [--target <branch>]")
 	}
 	repoRoot, err := repositoryRoot()
 	if err != nil {
@@ -126,6 +135,7 @@ func runInspect(arguments []string, stdout, stderr io.Writer) error {
 		remote:      valueOr(flags["--remote"], "origin"),
 		target:      valueOr(flags["--target"], "release/v3.0"),
 		offline:     flags["--offline"] == "true",
+		claimant:    valueOr(flags["--claimant"], os.Getenv("AI_CAMPAIGN_CLAIMANT")),
 	}
 	if err := validateInspectOptions(options); err != nil {
 		return err
@@ -134,6 +144,7 @@ func runInspect(arguments []string, stdout, stderr io.Writer) error {
 	defer cancel()
 	result := (inspector{
 		now: time.Now, jira: commandJiraProvider{}, github: commandGitHubProvider{}, git: commandGitProvider{},
+		claims: commandClaimProvider{},
 	}).run(ctx, campaign, options)
 	if err := writeCampaign(campaignPath, campaign); err != nil {
 		return err
@@ -220,6 +231,9 @@ func validateInspectOptions(options inspectOptions) error {
 	if options.target == "" || exec.Command("git", "check-ref-format", "refs/heads/"+options.target).Run() != nil {
 		return errors.New("invalid target branch")
 	}
+	if options.claimant != "" && !claimantPattern.MatchString(options.claimant) {
+		return errors.New("invalid claimant")
+	}
 
 	return nil
 }
@@ -263,8 +277,12 @@ func writeInspectionHuman(destination io.Writer, inspection *Inspection) error {
 		if len(finding.Blockers) > 0 {
 			blockers = strings.Join(finding.Blockers, ",")
 		}
-		if err := writeHuman(destination, "  %s [%s] %s jira=%s pr=%s freshness=%s blockers=%s next=%s\n",
-			finding.ID, finding.Qualification, finding.State, jira, pullRequest, finding.Freshness, blockers,
+		claim := finding.Claim.State
+		if finding.Claim.Claimant != "" {
+			claim += "/" + finding.Claim.Claimant
+		}
+		if err := writeHuman(destination, "  %s [%s] %s claim=%s jira=%s pr=%s freshness=%s blockers=%s next=%s\n",
+			finding.ID, finding.Qualification, finding.State, claim, jira, pullRequest, finding.Freshness, blockers,
 			finding.NextAction); err != nil {
 			return err
 		}
@@ -286,6 +304,10 @@ func usage(destination io.Writer) error {
   scripts/ai-campaign import <qualified-result> --audit <source-audit> [--output <path>]
   scripts/ai-campaign inspect <campaign> [--offline]
   scripts/ai-campaign next <campaign>
+  scripts/ai-campaign claim <campaign> --finding <id> [--claimant <id>]
+  scripts/ai-campaign renew <campaign> --finding <id> --claimant <id>
+  scripts/ai-campaign release <campaign> --finding <id> --claimant <id>
+  scripts/ai-campaign takeover <campaign> --finding <id> [--claimant <id>]
 
 Human summaries are written to stderr; stable JSON is written to stdout.
 `)
