@@ -97,13 +97,15 @@ const (
 )
 
 func main() {
-	var reviewCmd, fixCmd, validationCmd, stateDir, baseRef string
+	var reviewCmd, fixCmd, validationCmd, validationGatesCmd, validationToolRoot, stateDir, baseRef string
 	var candidateWorktree, expectedHead, trustedRoot, bindingFile, validationRunDir, gitGuard string
 	var maxPasses, prNumber int
 
 	flag.StringVar(&reviewCmd, "review-cmd", "", "command that writes the review JSON to $AI_REVIEW_RESULT")
 	flag.StringVar(&fixCmd, "fix-cmd", "", "command that fixes findings from $AI_REVIEW_FINDINGS")
 	flag.StringVar(&validationCmd, "validation-cmd", defaultValidationCmd, "local validation command run after fixes and before approval")
+	flag.StringVar(&validationGatesCmd, "validation-gates-cmd", "", "trusted command that prints the selected validation gates for receipt identity")
+	flag.StringVar(&validationToolRoot, "validation-tool-root", "", "absolute base-pinned worktree containing the trusted validator")
 	flag.StringVar(&stateDir, "state-dir", "build/ai-review-loop", "directory for review-loop state")
 	flag.StringVar(&baseRef, "base", "", "explicit git ref for committed changes under review")
 	flag.IntVar(&prNumber, "pr", 0, "expected pull request number")
@@ -148,6 +150,10 @@ func main() {
 	}
 	validationEnv := map[string]string{
 		"AI_REVIEW_BASE_SHA": base.SHA,
+	}
+	validationReceipts, err := newValidationReceiptCache(runner, base, validationToolRoot, validationGatesCmd)
+	if err != nil {
+		fatal(err)
 	}
 	runStateDir, err := createRunStateDir(repositoryRoot, runner.trustedRootCheckout, stateDir)
 	if err != nil {
@@ -223,7 +229,7 @@ func main() {
 		switch action {
 		case actionReady:
 			fmt.Println("==> review-loop: local validation before readiness")
-			if err := runner.run("validation", validationCmd, validationEnv); err != nil {
+			if _, err := validationReceipts.reuseOrExecute(runner, validationCmd, validationEnv, runStateDir); err != nil {
 				fatal(fmt.Errorf("local validation failed before readiness: %w", err))
 			}
 			validatedState, err := captureWorkspaceState(repositoryRoot, runStateDir)
@@ -278,7 +284,7 @@ func main() {
 			}
 
 			fmt.Println("==> review-loop: validation after auto-fix")
-			if err := runner.run("validation", validationCmd, validationEnv); err != nil {
+			if err := validationReceipts.executeAndRecord(runner, validationCmd, validationEnv, runStateDir); err != nil {
 				fatal(fmt.Errorf("validation failed after auto-fix: %w", err))
 			}
 			previousResult = resultPath

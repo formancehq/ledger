@@ -6,9 +6,9 @@ review bypass or a second, weaker publication workflow.
 
 Adoption reuses the implementation commit, not the trust receipts produced by
 the interrupted run. An old exact review, validation result, pre-commit receipt,
-or bot approval never authorizes adoption. The launcher re-establishes the
-relevant publication guarantees from scratch for the exact candidate SHA and
-never runs a fixer.
+same-run validation receipt, or bot approval never authorizes adoption. The
+launcher re-establishes the relevant publication guarantees from scratch for
+the exact candidate SHA and never runs a fixer.
 
 ## Preconditions
 

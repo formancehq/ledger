@@ -20,6 +20,11 @@ The workflow keeps three directory roles separate:
   `TMPDIR`, the golangci-lint cache, and the Git guard wrapper. It must neither
   equal nor contain either checkout, and neither checkout may contain it.
 
+The PR launchers also place each `review-loop` state directory in their
+workflow-owned run directory, outside `CANDIDATE_WORKTREE`. This lets exact-state
+validation receipts cover ignored/generated candidate inputs while excluding
+only the loop's own changing review JSON from candidate state.
+
 `ai-pr-loop` uses
 `.<repo>-ai-worktrees/pr-<pr>.<run>/{worktree,trusted-tools,validation}`.
 `ai-pr-adopt-candidate` uses the corresponding
@@ -212,3 +217,8 @@ all binding flags:
 
 There is no fallback to the caller's cwd and no mode that authorizes the
 primary checkout as the candidate.
+
+The supported PR launchers additionally provide `--validation-tool-root` and
+`--validation-gates-cmd`, which enable process-local exact-state validation
+receipts. A low-level caller that omits both remains safe but always executes
+the readiness validator; supplying only one is rejected.

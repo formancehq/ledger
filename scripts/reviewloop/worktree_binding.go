@@ -185,6 +185,35 @@ func (runner *boundCommandRunner) run(label, command string, extraEnv map[string
 	return commandErr
 }
 
+func (runner *boundCommandRunner) output(command string, extraEnv map[string]string) ([]byte, error) {
+	cmd := exec.Command("bash", "-lc", command)
+	cmd.Dir = runner.candidateWorktree
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	cmd.Env = runner.environment(extraEnv)
+
+	return cmd.Output()
+}
+
+func (runner *boundCommandRunner) verifyValidationReceiptBoundary() error {
+	if err := runner.verifyWorktreeBinding(); err != nil {
+		fmt.Fprintf(os.Stderr, "WORKTREE_BINDING_GATE=FAIL (%v)\n", err)
+
+		return err
+	}
+	if err := runner.verifyRootUnchanged(); err != nil {
+		fmt.Fprintf(os.Stderr, "ROOT_MUTATION_DETECTED (%v)\n", err)
+
+		return err
+	}
+
+	return nil
+}
+
+func (runner *boundCommandRunner) gitGuardPath() string {
+	return filepath.Join(runner.gitGuardBin, "git")
+}
+
 func (runner *boundCommandRunner) environment(extra map[string]string) []string {
 	values := map[string]string{
 		"EXPECTED_PR_NUMBER":        strconv.Itoa(runner.prNumber),
