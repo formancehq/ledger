@@ -29,7 +29,12 @@ actual PR head. The separate `AI_WORKTREE_PATH` and
 `AI_WORKTREE_EXPECTED_HEAD` values bind the provider cwd to the trusted target
 worktree and target-base HEAD. The process is surrounded by the same
 primary-checkout mutation detection described in
-[AI PR worktree isolation](ai-worktree-isolation.md).
+[AI PR worktree isolation](ai-worktree-isolation.md). A base-pinned, Nix-built
+resident rootguard process captures the full-content state before launching the
+provider, waits for it, and captures and compares the state again in that same
+process. The provider cannot replace an on-disk post-snapshot helper, and the
+guard uses a bounded number of Git enumeration processes rather than one `git
+hash-object` process per ignored file.
 
 ## Decisions
 

@@ -89,7 +89,8 @@ func newFixture(t *testing.T, headRepository string) fixture {
 	remote := filepath.Join(testRoot, "remote.git")
 	seed := filepath.Join(testRoot, "seed")
 	checkout := filepath.Join(testRoot, "checkout")
-	require.NoError(t, os.MkdirAll(filepath.Join(seed, "scripts"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(seed, "scripts", "rootguard"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(seed, "scripts", "internal", "rootguard"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(seed, "docs", "technical", "contributing"), 0o755))
 
 	runGit(t, testRoot, "init", "--bare", remote)
@@ -98,6 +99,13 @@ func newFixture(t *testing.T, headRepository string) fixture {
 	runGit(t, seed, "config", "user.email", "ai-pr-triage@example.com")
 	copyFile(t, runnerPath(t), filepath.Join(seed, "scripts", "ai-pr-triage"), 0o755)
 	copyFile(t, schemaPath(t), filepath.Join(seed, "scripts", "codex-pr-triage.schema.json"), 0o644)
+	copyFile(t, rootguardMainPath(t), filepath.Join(seed, "scripts", "rootguard", "main.go"), 0o644)
+	copyFile(t, rootguardPackagePath(t), filepath.Join(seed, "scripts", "internal", "rootguard", "rootguard.go"), 0o644)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(seed, "go.mod"),
+		[]byte("module github.com/formancehq/ledger/v3\n\ngo 1.26.0\n"),
+		0o644,
+	))
 	require.NoError(t, os.WriteFile(
 		filepath.Join(seed, "docs", "technical", "contributing", "ai-pr-triage.md"),
 		[]byte("# AI PR triage contract\n"),
@@ -125,7 +133,12 @@ func newFixture(t *testing.T, headRepository string) fixture {
 	runGit(t, seed, "checkout", "-b", "feature")
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "AGENTS.md"), []byte("untrusted head instruction\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "head.txt"), []byte("head\n"), 0o644))
-	runGit(t, seed, "add", "--", "AGENTS.md", "head.txt")
+	require.NoError(t, os.WriteFile(
+		filepath.Join(seed, "scripts", "rootguard", "main.go"),
+		[]byte("package main\n\nfunc main() {}\n"),
+		0o644,
+	))
+	runGit(t, seed, "add", "--", "AGENTS.md", "head.txt", "scripts/rootguard/main.go")
 	runGit(t, seed, "commit", "-m", "feature")
 	headSHA := gitOutput(t, seed, "rev-parse", "HEAD")
 	runGit(t, seed, "push", "-u", "origin", "feature")
@@ -183,6 +196,12 @@ if [[ "${TEST_ROOT_MUTATION:-}" == dirty-content ]]; then
   printf 'different caller content\n' >"$TEST_CALLER_CHECKOUT/caller-only.txt"
 fi
 printf '{"decision":"KEEP","base_sha":"%s","head":"%s","problem_statement":"test","documented_needs":[],"technical_decisions":[],"existing_alternatives":[],"cost_assessment":"test","consequence_of_doing_nothing":"test","questions_for_author":[],"summary":"test"}\n' "$TEST_BASE_SHA" "$TEST_HEAD_SHA" >"$output"
+`)
+	writeExecutable(t, filepath.Join(fakeBin, "nix"), `#!/usr/bin/env bash
+set -euo pipefail
+[[ "$1" == develop && "$3" == --command ]]
+shift 3
+exec "$@"
 `)
 
 	return fixture{
@@ -248,6 +267,22 @@ func schemaPath(t *testing.T) string {
 	require.True(t, ok)
 
 	return filepath.Clean(filepath.Join(filepath.Dir(filename), "..", "codex-pr-triage.schema.json"))
+}
+
+func rootguardMainPath(t *testing.T) string {
+	t.Helper()
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+
+	return filepath.Clean(filepath.Join(filepath.Dir(filename), "..", "rootguard", "main.go"))
+}
+
+func rootguardPackagePath(t *testing.T) string {
+	t.Helper()
+	_, filename, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+
+	return filepath.Clean(filepath.Join(filepath.Dir(filename), "..", "internal", "rootguard", "rootguard.go"))
 }
 
 func copyFile(t *testing.T, source, destination string, mode os.FileMode) {
