@@ -43,8 +43,8 @@ A full PR URL is accepted as well. The launcher:
 - runs repository validation locally before accepting any approval; no GitHub
   Actions status participates in the decision;
 - never checks out or edits the primary checkout, and fails with
-  `ROOT_MUTATION_DETECTED` if its HEAD, branch, or status changes while a
-  subprocess runs;
+  `ROOT_MUTATION_DETECTED` if its HEAD, branch, status, workspace content, or
+  ignored configuration changes while a subprocess runs;
 - preserves the isolated worktree automatically when fixes remain so the resulting diff can be inspected manually;
 - removes a clean temporary worktree after the loop unless `--keep-worktree` is supplied, together with the run directory that holds its triage result, known-findings ledger, and isolated validation caches.
 

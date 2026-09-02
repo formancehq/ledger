@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
         *) echo "ai-pr-triage: unknown argument: $1" >&2; exit 1 ;;
     esac
 done
-for command in codex git gh jq; do command -v "$command" >/dev/null 2>&1 || { echo "ai-pr-triage: required command not found: $command" >&2; exit 1; }; done
+for command in codex git gh jq nix; do command -v "$command" >/dev/null 2>&1 || { echo "ai-pr-triage: required command not found: $command" >&2; exit 1; }; done
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
@@ -92,6 +92,10 @@ agent_context="$trusted_worktree/docs/technical/agent-context.md"
 for trusted_file in "$trusted_worktree/AGENTS.md" "$agent_context" "$contract" "$traceability" "$schema"; do
     [[ -f "$trusted_file" ]] || { echo "ai-pr-triage: trusted base is missing $trusted_file" >&2; exit 1; }
 done
+rootguard_binary="$isolation_root/rootguard"
+env -u GOROOT nix develop "path:$trusted_worktree" --command \
+    go -C "$trusted_worktree" build -o "$rootguard_binary" ./scripts/rootguard
+[[ -x "$rootguard_binary" ]] || { echo "ai-pr-triage: trusted rootguard build produced no executable" >&2; exit 1; }
 
 cat > "$prompt" <<'EOF'
 You are performing advisory PR legitimacy triage for Ledger before technical code review.
@@ -143,42 +147,6 @@ repo_root=$(cd "$repo_root" && pwd -P)
     exit 1
 }
 
-root_workspace_fingerprint() (
-  cd "$1"
-  {
-    printf 'head\0'
-    git rev-parse HEAD
-    printf 'staged\0'
-    git diff --cached --binary --full-index HEAD --
-    printf 'unstaged\0'
-    git diff --binary --full-index --
-    for ignored in false true; do
-      printf 'untracked-ignored=%s\0' "$ignored"
-      list_args=(ls-files --others --exclude-standard -z)
-      if [[ "$ignored" == true ]]; then
-        list_args=(ls-files --others --ignored --exclude-standard -z)
-      fi
-      git "${list_args[@]}" | while IFS= read -r -d '' path; do
-        printf 'path\0%s\0' "$path"
-        if [[ -d "$path" && ! -L "$path" ]]; then
-          printf 'directory\0'
-        elif [[ -L "$path" ]]; then
-          printf 'symlink\0%s\0' "$(readlink "$path")"
-        elif [[ -f "$path" ]]; then
-          printf 'file\0'
-          git hash-object --no-filters -- "$path"
-        else
-          printf 'special\0'
-        fi
-      done
-    done
-  } | git hash-object --stdin
-)
-
-root_head=$(git -C "$repo_root" rev-parse HEAD)
-root_branch=$(git -C "$repo_root" rev-parse --abbrev-ref HEAD)
-root_status=$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)
-root_fingerprint=$(root_workspace_fingerprint "$repo_root")
 echo "WORKTREE_BINDING_GATE=PASS role=trusted-triage pr=$pr_number path=$trusted_worktree head=$base_sha"
 set +e
 EXPECTED_PR_NUMBER="$pr_number" \
@@ -189,22 +157,14 @@ AI_WORKTREE_PATH="$trusted_worktree" \
 AI_WORKTREE_EXPECTED_HEAD="$base_sha" \
 TARGET_BASE_SHA="$base_sha" \
 PR_HEAD_SHA="$head_sha" \
-  env -C "$trusted_worktree" HOME="$isolation_root/home" CODEX_HOME="$isolation_root/home/.codex" codex exec \
+  "$rootguard_binary" --root "$repo_root" -- \
+    env -C "$trusted_worktree" HOME="$isolation_root/home" CODEX_HOME="$isolation_root/home/.codex" codex exec \
     --ephemeral --ignore-user-config --ignore-rules \
     --disable hooks --disable plugins --disable apps --disable memories --disable multi_agent --disable skill_search \
     --sandbox read-only --output-schema "$schema" -o "$result" - < "$prompt"
-codex_status=$?
+guard_status=$?
 set -e
-current_root_head=$(git -C "$repo_root" rev-parse HEAD)
-current_root_branch=$(git -C "$repo_root" rev-parse --abbrev-ref HEAD)
-current_root_status=$(git -C "$repo_root" status --porcelain=v1 --untracked-files=all)
-current_root_fingerprint=$(root_workspace_fingerprint "$repo_root")
-if [[ "$current_root_head" != "$root_head" || "$current_root_branch" != "$root_branch" || "$current_root_status" != "$root_status" || "$current_root_fingerprint" != "$root_fingerprint" ]]; then
-    echo "ROOT_MUTATION_DETECTED" >&2
-    exit 1
-fi
-echo "ROOT_UNCHANGED=PASS"
-[[ $codex_status -eq 0 ]] || exit "$codex_status"
+[[ $guard_status -eq 0 ]] || exit "$guard_status"
 [[ -s "$result" ]] || { echo "ai-pr-triage: provider produced no result" >&2; exit 1; }
 jq -e --arg base "$base_sha" --arg head "$head_sha" '.base_sha == $base and .head == $head' "$result" >/dev/null || { echo "ai-pr-triage: result target mismatch" >&2; exit 1; }
 cp "$result" "$output"
