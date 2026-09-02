@@ -187,8 +187,11 @@ if [[ ! -f "$generation_ready" ]]; then
         find . -type f \( -name '*.zip' -o -name '*.mod' \) -print0 |
             xargs -0 -r cp --parents --reflink=auto --no-dereference -t "$publish_dir/download"
     )
-    printf 'version=1\nkey=%s\ngo=%s\ngoproxy=%s\ngosumdb=%s\n' \
-        "$fingerprint" "$go_version" "$goproxy" "$gosumdb" >"$publish_dir/READY"
+    # GOPROXY may contain embedded credentials. Its complete value influences
+    # the opaque fingerprint above but must never be persisted in shared
+    # metadata.
+    printf 'version=1\nkey=%s\ngo=%s\n' \
+        "$fingerprint" "$go_version" >"$publish_dir/READY"
     mv -T -n -- "$publish_dir" "$generation"
     if [[ -d "$publish_dir" ]]; then
         rm -rf -- "$publish_dir"

@@ -136,7 +136,9 @@ Shared generations live at:
 The fingerprint covers pinned Go version, `GOPROXY`, `GOSUMDB`, and every
 tracked root/nested `go.mod` and `go.sum` blob. Source-only changes reuse the
 same generation; dependency, proxy, checksum-database, or toolchain changes
-select a new generation.
+select a new generation. `GOPROXY` is used only as input to that opaque digest;
+the shared generation metadata never persists its raw value because proxy URLs
+may contain credentials.
 
 Cold preparation downloads through the existing Go configuration into the
 current run's private `GOMODCACHE`, then publishes only verified `.zip`/`.mod`

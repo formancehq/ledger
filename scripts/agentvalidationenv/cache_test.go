@@ -204,6 +204,39 @@ func TestPrivateOrNoSumDBPolicyDisablesSharing(t *testing.T) {
 	}
 }
 
+func TestSharedMetadataDoesNotPersistProxyCredentials(t *testing.T) {
+	t.Parallel()
+
+	fixture := newCacheFixture(t)
+	runDir := fixture.newRun(t)
+	output, err := fixture.prepare(runDir, nil)
+	require.NoError(t, err, output)
+
+	// The already-verified run-local cache keeps this hermetic: Go has no reason
+	// to contact the deliberately unreachable authenticated proxy.
+	output, err = fixture.prepare(runDir, []string{"GOPROXY=https://cache-user:cache-secret@example.invalid"})
+	require.NoError(t, err, output)
+	readyFiles := 0
+	cacheRoot := filepath.Join(fixture.trustedRoot, ".git", "ledger-agent-module-download-cache")
+	require.NoError(t, filepath.WalkDir(cacheRoot, func(walkPath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Name() != "READY" {
+			return nil
+		}
+		readyFiles++
+		metadata, readErr := os.ReadFile(walkPath)
+		require.NoError(t, readErr)
+		require.NotContains(t, string(metadata), "cache-user")
+		require.NotContains(t, string(metadata), "cache-secret")
+		require.NotContains(t, string(metadata), "goproxy=")
+
+		return nil
+	}))
+	require.Equal(t, 2, readyFiles, "proxy configuration must select a distinct generation")
+}
+
 func TestNewCandidateDependencyIsNotInventedByTheSharedSeed(t *testing.T) {
 	t.Parallel()
 
