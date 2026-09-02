@@ -5,9 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"google.golang.org/grpc/metadata"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -263,7 +260,7 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		// The log date is served by an opt-in builtin index this driver never
 		// creates, so a filter reading it is expected to be refused. That
 		// refusal is the coverage: it exercises the index gate on LOGS.
-		if hasDateLeaf(filter) && status.Code(err) == codes.FailedPrecondition {
+		if hasDateLeaf(filter) && isIndexNotFound(err) {
 			return
 		}
 

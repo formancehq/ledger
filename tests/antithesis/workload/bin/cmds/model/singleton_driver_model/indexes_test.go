@@ -288,3 +288,35 @@ func TestIndexBuildingErrorReachesValidators(t *testing.T) {
 	require.True(t, internal.IsTransient(plain))
 	require.False(t, isIndexNotReady(plain))
 }
+
+// TestIndexNotFoundMatchedByReason pins the reason requirement on the
+// index-absent rejection: a FailedPrecondition carrying an unrelated reason
+// (or none) must stay a finding, never be explained away as a missing index.
+func TestIndexNotFoundMatchedByReason(t *testing.T) {
+	t.Parallel()
+
+	st, err := status.New(codes.FailedPrecondition, "index not found").WithDetails(&errdetails.ErrorInfo{
+		Domain: "ledger",
+		Reason: "INDEX_NOT_FOUND",
+	})
+	require.NoError(t, err)
+
+	kind, ok := classifyIndexedQueryError(st.Err())
+	require.True(t, ok)
+	require.Equal(t, indexedErrNotReady, kind)
+	require.True(t, isIndexNotFound(st.Err()))
+
+	// Bare FailedPrecondition: not part of the indexed-query surface.
+	_, ok = classifyIndexedQueryError(status.Error(codes.FailedPrecondition, "boom"))
+	require.False(t, ok, "a reasonless precondition error must stay a finding")
+
+	// Unrelated reason on the same code: also a finding.
+	other, err := status.New(codes.FailedPrecondition, "transient account non-zero").WithDetails(&errdetails.ErrorInfo{
+		Domain: "ledger",
+		Reason: "TRANSIENT_ACCOUNT_NON_ZERO",
+	})
+	require.NoError(t, err)
+	_, ok = classifyIndexedQueryError(other.Err())
+	require.False(t, ok)
+	require.False(t, isIndexNotFound(other.Err()))
+}
