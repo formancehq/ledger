@@ -88,7 +88,7 @@ func createClaim(
 		return result
 	}
 	if observedSHA := refs[result.RemoteRef]; observedSHA != "" {
-		return classifyExistingClaim(ctx, repository, result, campaign, finding, observedSHA, now().UTC())
+		return classifyExistingClaim(ctx, repository, result, campaign, finding, target, observedSHA, now().UTC())
 	}
 	createdAt := now().UTC()
 	record := ClaimRecord{
@@ -105,7 +105,7 @@ func createClaim(
 			return remoteUnavailable(result, refreshErr)
 		}
 		if observedSHA := refs[result.RemoteRef]; observedSHA != "" {
-			return classifyExistingClaim(ctx, repository, result, campaign, finding, observedSHA, now().UTC())
+			return classifyExistingClaim(ctx, repository, result, campaign, finding, target, observedSHA, now().UTC())
 		}
 
 		return remoteUnavailable(result, err)
@@ -124,6 +124,7 @@ func classifyExistingClaim(
 	result ClaimResult,
 	campaign *Campaign,
 	finding SourceFinding,
+	targetBranch string,
 	observedSHA string,
 	now time.Time,
 ) ClaimResult {
@@ -136,7 +137,7 @@ func classifyExistingClaim(
 		return result
 	}
 	result.Claim = &observed.Record
-	if !observed.Record.matches(campaign, finding) {
+	if !observed.Record.matches(campaign, finding, targetBranch) {
 		result.Status = "CLAIM_CONFLICT"
 		result.Reason = "remote claim identity does not match campaign finding"
 

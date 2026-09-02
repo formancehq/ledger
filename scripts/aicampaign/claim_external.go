@@ -6,7 +6,7 @@ import (
 )
 
 type claimProvider interface {
-	Observe(context.Context, string, *Campaign, time.Time, string, map[string]string) (map[string]ClaimObservation, error)
+	Observe(context.Context, string, *Campaign, string, time.Time, string, map[string]string) (map[string]ClaimObservation, error)
 }
 
 type commandClaimProvider struct{}
@@ -15,6 +15,7 @@ func (commandClaimProvider) Observe(
 	ctx context.Context,
 	remote string,
 	campaign *Campaign,
+	targetBranch string,
 	now time.Time,
 	currentClaimant string,
 	previousClaimSHAs map[string]string,
@@ -57,7 +58,7 @@ func (commandClaimProvider) Observe(
 
 			continue
 		}
-		if !claim.Record.matches(campaign, finding) {
+		if !claim.Record.matches(campaign, finding, targetBranch) {
 			observation.State = "AMBIGUOUS"
 			observation.Problem = "CLAIM_IDENTITY_CONFLICT"
 			observations[finding.ID] = observation

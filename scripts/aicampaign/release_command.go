@@ -9,13 +9,13 @@ import (
 
 func runRelease(arguments []string, stdout, stderr io.Writer) error {
 	values, flags, err := parseArguments(arguments, map[string]bool{
-		"--finding": true, "--claimant": true, "--remote": true, "--expected-claim-sha": true,
+		"--finding": true, "--claimant": true, "--remote": true, "--target": true, "--expected-claim-sha": true,
 	})
 	if err != nil {
 		return err
 	}
 	if len(values) != 1 || flags["--finding"] == "" {
-		return errors.New("usage: ai-campaign release <campaign> --finding <id> --claimant <id> [--expected-claim-sha <sha>] [--remote <name>]")
+		return errors.New("usage: ai-campaign release <campaign> --finding <id> --claimant <id> [--expected-claim-sha <sha>] [--remote <name>] [--target <branch>]")
 	}
 	claimant, err := resolveClaimant(flags["--claimant"], false)
 	if err != nil {
@@ -26,8 +26,9 @@ func runRelease(arguments []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	remote := valueOr(flags["--remote"], "origin")
-	if !gitRemotePattern.MatchString(remote) {
-		return errors.New("invalid Git remote")
+	target := valueOr(flags["--target"], "release/v3.0")
+	if err := validateClaimCommandOptions(remote, target); err != nil {
+		return err
 	}
 	expectedSHA := flags["--expected-claim-sha"]
 	if expectedSHA != "" && !shaPattern.MatchString(expectedSHA) {
@@ -35,7 +36,7 @@ func runRelease(arguments []string, stdout, stderr io.Writer) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	result := releaseClaim(ctx, campaign, finding, claimant, remote, expectedSHA)
+	result := releaseClaim(ctx, campaign, finding, claimant, remote, target, expectedSHA)
 	if result.Status == "RELEASED" && clearCachedClaim(campaign, finding.ID) {
 		if writeErr := writeCampaign(values[0], campaign); writeErr != nil {
 			result.Reason = "remote released; local campaign cache update failed: " + conciseError(writeErr)
@@ -51,6 +52,7 @@ func releaseClaim(
 	finding SourceFinding,
 	claimant string,
 	remote string,
+	targetBranch string,
 	expectedSHA string,
 ) ClaimResult {
 	result := baseClaimResult(campaign, finding)
@@ -79,7 +81,7 @@ func releaseClaim(
 		return claimResultChanged(result, conciseError(err))
 	}
 	result.Claim = &observed.Record
-	if !observed.Record.matches(campaign, finding) {
+	if !observed.Record.matches(campaign, finding, targetBranch) {
 		result.Status = "CLAIM_CHANGED"
 		result.Reason = "remote claim identity does not match campaign finding"
 

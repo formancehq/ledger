@@ -528,6 +528,7 @@ func (provider fakeClaimProvider) Observe(
 	_ context.Context,
 	_ string,
 	campaign *Campaign,
+	_ string,
 	_ time.Time,
 	_ string,
 	_ map[string]string,

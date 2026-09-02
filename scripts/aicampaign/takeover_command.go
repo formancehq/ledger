@@ -10,13 +10,13 @@ import (
 func runTakeover(arguments []string, stdout, stderr io.Writer) error {
 	values, flags, err := parseArguments(arguments, map[string]bool{
 		"--finding": true, "--claimant": true, "--lease": true, "--remote": true,
-		"--work-branch": true, "--expected-claim-sha": true,
+		"--target": true, "--work-branch": true, "--expected-claim-sha": true,
 	})
 	if err != nil {
 		return err
 	}
 	if len(values) != 1 || flags["--finding"] == "" {
-		return errors.New("usage: ai-campaign takeover <campaign> --finding <id> [--claimant <id>] [--lease <duration>] [--work-branch <branch>] [--expected-claim-sha <sha>] [--remote <name>]")
+		return errors.New("usage: ai-campaign takeover <campaign> --finding <id> [--claimant <id>] [--lease <duration>] [--work-branch <branch>] [--expected-claim-sha <sha>] [--remote <name>] [--target <branch>]")
 	}
 	lease, err := validateClaimLease(flags["--lease"])
 	if err != nil {
@@ -34,8 +34,9 @@ func runTakeover(arguments []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	remote := valueOr(flags["--remote"], "origin")
-	if !gitRemotePattern.MatchString(remote) {
-		return errors.New("invalid Git remote")
+	target := valueOr(flags["--target"], "release/v3.0")
+	if err := validateClaimCommandOptions(remote, target); err != nil {
+		return err
 	}
 	expectedSHA := flags["--expected-claim-sha"]
 	if expectedSHA != "" && !shaPattern.MatchString(expectedSHA) {
@@ -43,7 +44,8 @@ func runTakeover(arguments []string, stdout, stderr io.Writer) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	result := takeoverClaim(ctx, campaign, finding, claimant, lease, remote, flags["--work-branch"], expectedSHA, time.Now)
+	result := takeoverClaim(ctx, campaign, finding, claimant, lease, remote, target,
+		flags["--work-branch"], expectedSHA, time.Now)
 
 	return emitClaimResult(stdout, stderr, result)
 }
@@ -55,6 +57,7 @@ func takeoverClaim(
 	claimant string,
 	lease time.Duration,
 	remote string,
+	targetBranch string,
 	workBranch string,
 	expectedSHA string,
 	now func() time.Time,
@@ -88,7 +91,7 @@ func takeoverClaim(
 		return result
 	}
 	result.Claim = &observed.Record
-	if !observed.Record.matches(campaign, finding) {
+	if !observed.Record.matches(campaign, finding, targetBranch) {
 		result.Status = "CLAIM_CONFLICT"
 		result.Reason = "remote claim identity does not match campaign finding"
 

@@ -123,7 +123,7 @@ func TestRenewRaceRejectsTheStaleObservedSHA(t *testing.T) {
 			<-start
 			renewedAt := testNow.Add(time.Duration(index+1) * time.Minute)
 			results <- renewClaim(context.Background(), campaign, finding, testClaimantA, defaultClaimLease,
-				remote, "", claimed.ClaimSHA, func() time.Time { return renewedAt })
+				remote, testTarget, "", claimed.ClaimSHA, func() time.Time { return renewedAt })
 		})
 	}
 	close(start)
@@ -144,10 +144,10 @@ func TestReleaseRaceDoesNotDeleteChangedClaim(t *testing.T) {
 	claimed := createClaim(context.Background(), campaign, finding, testClaimantA, defaultClaimLease,
 		remote, testTarget, "", func() time.Time { return testNow })
 	renewed := renewClaim(context.Background(), campaign, finding, testClaimantA, defaultClaimLease,
-		remote, "", claimed.ClaimSHA, func() time.Time { return testNow.Add(time.Hour) })
+		remote, testTarget, "", claimed.ClaimSHA, func() time.Time { return testNow.Add(time.Hour) })
 	require.Equal(t, "RENEWED", renewed.Status)
 
-	released := releaseClaim(context.Background(), campaign, finding, testClaimantA, remote, claimed.ClaimSHA)
+	released := releaseClaim(context.Background(), campaign, finding, testClaimantA, remote, testTarget, claimed.ClaimSHA)
 	require.Equal(t, "CLAIM_CHANGED", released.Status)
 	require.Equal(t, renewed.ClaimSHA, remoteRefSHA(t, remote, claimed.RemoteRef))
 }
@@ -162,7 +162,7 @@ func TestExpiredClaimTakeoverUsesExactCASAndPreservesPredecessor(t *testing.T) {
 	require.Equal(t, "CLAIMED", claimed.Status)
 
 	taken := takeoverClaim(context.Background(), campaign, finding, testClaimantB, defaultClaimLease,
-		remote, "", claimed.ClaimSHA, func() time.Time { return testNow })
+		remote, testTarget, "", claimed.ClaimSHA, func() time.Time { return testNow })
 	require.Equal(t, "TAKEN_OVER", taken.Status)
 	require.NotNil(t, taken.Claim.Predecessor)
 	require.Equal(t, claimed.ClaimSHA, taken.Claim.Predecessor.ClaimSHA)
@@ -178,7 +178,7 @@ func TestLiveClaimTakeoverIsRefused(t *testing.T) {
 		remote, testTarget, "", func() time.Time { return testNow })
 
 	taken := takeoverClaim(context.Background(), campaign, finding, testClaimantB, defaultClaimLease,
-		remote, "", claimed.ClaimSHA, func() time.Time { return testNow.Add(time.Hour) })
+		remote, testTarget, "", claimed.ClaimSHA, func() time.Time { return testNow.Add(time.Hour) })
 	require.Equal(t, "CLAIM_CONFLICT", taken.Status)
 	require.Contains(t, taken.Reason, "live claims cannot be taken over")
 }
@@ -195,9 +195,10 @@ func TestClaimExpiryAndOwnershipStatuses(t *testing.T) {
 		remote, testTarget, "", func() time.Time { return testNow.Add(defaultClaimLease + claimClockSkew) })
 	require.Equal(t, "CLAIM_EXPIRED", alreadyExpired.Status)
 	notRenewOwner := renewClaim(context.Background(), campaign, finding, testClaimantB, defaultClaimLease,
-		remote, "", claimed.ClaimSHA, func() time.Time { return testNow.Add(time.Hour) })
+		remote, testTarget, "", claimed.ClaimSHA, func() time.Time { return testNow.Add(time.Hour) })
 	require.Equal(t, "NOT_OWNER", notRenewOwner.Status)
-	notReleaseOwner := releaseClaim(context.Background(), campaign, finding, testClaimantB, remote, claimed.ClaimSHA)
+	notReleaseOwner := releaseClaim(context.Background(), campaign, finding, testClaimantB,
+		remote, testTarget, claimed.ClaimSHA)
 	require.Equal(t, "NOT_OWNER", notReleaseOwner.Status)
 
 	inspection := inspectAgainstRemote(campaign, remote, testClaimantB, testNow.Add(time.Hour))
@@ -223,10 +224,10 @@ func TestRemoteUnavailableAllowsNoClaimMutation(t *testing.T) {
 	claim := createClaim(context.Background(), campaign, finding, testClaimantA, defaultClaimLease,
 		remote, testTarget, "", func() time.Time { return testNow })
 	renew := renewClaim(context.Background(), campaign, finding, testClaimantA, defaultClaimLease,
-		remote, "", "", func() time.Time { return testNow })
-	release := releaseClaim(context.Background(), campaign, finding, testClaimantA, remote, "")
+		remote, testTarget, "", "", func() time.Time { return testNow })
+	release := releaseClaim(context.Background(), campaign, finding, testClaimantA, remote, testTarget, "")
 	takeover := takeoverClaim(context.Background(), campaign, finding, testClaimantB, defaultClaimLease,
-		remote, "", "", func() time.Time { return testNow })
+		remote, testTarget, "", "", func() time.Time { return testNow })
 	for _, result := range []ClaimResult{claim, renew, release, takeover} {
 		require.Equal(t, "REMOTE_UNAVAILABLE", result.Status)
 	}
@@ -362,16 +363,44 @@ func TestClaimBoundToDifferentTargetSHAFailsClosed(t *testing.T) {
 	claimed := createClaim(context.Background(), campaign, finding, testClaimantB, defaultClaimLease,
 		remote, testTarget, "", func() time.Time { return testNow })
 	renewed := renewClaim(context.Background(), campaign, finding, testClaimantA, defaultClaimLease,
-		remote, "", forgedSHA, func() time.Time { return testNow.Add(time.Hour) })
-	released := releaseClaim(context.Background(), campaign, finding, testClaimantA, remote, forgedSHA)
+		remote, testTarget, "", forgedSHA, func() time.Time { return testNow.Add(time.Hour) })
+	released := releaseClaim(context.Background(), campaign, finding, testClaimantA, remote, testTarget, forgedSHA)
 	taken := takeoverClaim(context.Background(), campaign, finding, testClaimantB, defaultClaimLease,
-		remote, "", forgedSHA, func() time.Time { return testNow.Add(defaultClaimLease + claimClockSkew) })
+		remote, testTarget, "", forgedSHA, func() time.Time { return testNow.Add(defaultClaimLease + claimClockSkew) })
 	require.Equal(t, "CLAIM_CONFLICT", claimed.Status)
 	require.Equal(t, "CLAIM_CONFLICT", renewed.Status)
 	require.Equal(t, "CLAIM_CHANGED", released.Status)
 	require.Equal(t, "CLAIM_CONFLICT", taken.Status)
 
 	inspection := inspectAgainstRemote(campaign, remote, testClaimantA, testNow)
+	require.Equal(t, "AMBIGUOUS", inspection.Findings[0].State)
+	require.Equal(t, "CLAIM_IDENTITY_CONFLICT", inspection.Findings[0].Claim.Problem)
+}
+
+func TestClaimBoundToDifferentTargetBranchFailsClosed(t *testing.T) {
+	remote, targetSHA := newClaimRemote(t)
+	campaign := claimCampaignAt(targetSHA, "CONFIRMED")
+	finding := campaign.SourceFacts.Findings[0]
+	const otherTarget = "release/other"
+	runGit(t, "", "--git-dir", remote, "update-ref", "refs/heads/"+otherTarget, targetSHA)
+	claimed := createClaim(context.Background(), campaign, finding, testClaimantA, defaultClaimLease,
+		remote, testTarget, "", func() time.Time { return testNow })
+	require.Equal(t, "CLAIMED", claimed.Status)
+
+	otherClaim := createClaim(context.Background(), campaign, finding, testClaimantB, defaultClaimLease,
+		remote, otherTarget, "", func() time.Time { return testNow })
+	otherRenew := renewClaim(context.Background(), campaign, finding, testClaimantA, defaultClaimLease,
+		remote, otherTarget, "", claimed.ClaimSHA, func() time.Time { return testNow.Add(time.Hour) })
+	otherRelease := releaseClaim(context.Background(), campaign, finding, testClaimantA,
+		remote, otherTarget, claimed.ClaimSHA)
+	otherTakeover := takeoverClaim(context.Background(), campaign, finding, testClaimantB, defaultClaimLease,
+		remote, otherTarget, "", claimed.ClaimSHA, func() time.Time { return testNow.Add(time.Hour) })
+	require.Equal(t, "CLAIM_CONFLICT", otherClaim.Status)
+	require.Equal(t, "CLAIM_CONFLICT", otherRenew.Status)
+	require.Equal(t, "CLAIM_CHANGED", otherRelease.Status)
+	require.Equal(t, "CLAIM_CONFLICT", otherTakeover.Status)
+
+	inspection := inspectAgainstRemoteTarget(campaign, remote, otherTarget, testClaimantA, testNow)
 	require.Equal(t, "AMBIGUOUS", inspection.Findings[0].State)
 	require.Equal(t, "CLAIM_IDENTITY_CONFLICT", inspection.Findings[0].Claim.Problem)
 }
@@ -395,7 +424,7 @@ func TestRenewCanBindWorkBranchAndInspectDetectsItsDeletion(t *testing.T) {
 		remote, testTarget, "", func() time.Time { return testNow })
 	runGit(t, "", "--git-dir", remote, "update-ref", "refs/heads/work/finding", targetSHA)
 	renewed := renewClaim(context.Background(), campaign, finding, testClaimantA, defaultClaimLease,
-		remote, "work/finding", claimed.ClaimSHA, func() time.Time { return testNow.Add(time.Hour) })
+		remote, testTarget, "work/finding", claimed.ClaimSHA, func() time.Time { return testNow.Add(time.Hour) })
 	require.Equal(t, "RENEWED", renewed.Status)
 	inspection := inspectAgainstRemote(campaign, remote, testClaimantA, testNow.Add(time.Hour))
 	require.Equal(t, "CLAIMED", inspection.Findings[0].State)
@@ -480,11 +509,21 @@ func cloneCampaignWithQualifiedDigest(source *Campaign, digest string) *Campaign
 }
 
 func inspectAgainstRemote(campaign *Campaign, remote, claimant string, now time.Time) *Inspection {
+	return inspectAgainstRemoteTarget(campaign, remote, testTarget, claimant, now)
+}
+
+func inspectAgainstRemoteTarget(
+	campaign *Campaign,
+	remote string,
+	target string,
+	claimant string,
+	now time.Time,
+) *Inspection {
 	return (inspector{
 		now: func() time.Time { return now }, jira: fakeJiraProvider{}, github: fakeGitHubProvider{},
 		git: commandGitProvider{}, claims: commandClaimProvider{},
 	}).run(context.Background(), campaign, inspectOptions{
-		repository: "formancehq/ledger", jiraProject: "EN", remote: remote, target: testTarget, claimant: claimant,
+		repository: "formancehq/ledger", jiraProject: "EN", remote: remote, target: target, claimant: claimant,
 	})
 }
 

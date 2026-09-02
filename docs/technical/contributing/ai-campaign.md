@@ -129,23 +129,28 @@ can create the ref. No local lock or remote-tracking ref is authoritative.
 
 ```sh
 bash scripts/ai-campaign claim <campaign> --finding <audit-id/finding-id> \
-  [--claimant <session-id>] [--lease 24h] [--work-branch <branch>]
+  [--claimant <session-id>] [--lease 24h] [--work-branch <branch>] \
+  [--target release/v3.0]
 
 bash scripts/ai-campaign renew <campaign> --finding <audit-id/finding-id> \
   --claimant <session-id> [--lease 24h] [--work-branch <branch>] \
-  [--expected-claim-sha <sha>]
+  [--expected-claim-sha <sha>] [--target release/v3.0]
 
 bash scripts/ai-campaign release <campaign> --finding <audit-id/finding-id> \
-  --claimant <session-id> [--expected-claim-sha <sha>]
+  --claimant <session-id> [--expected-claim-sha <sha>] \
+  [--target release/v3.0]
 
 bash scripts/ai-campaign takeover <campaign> --finding <audit-id/finding-id> \
   [--claimant <new-session-id>] [--lease 24h] \
-  [--expected-claim-sha <sha>]
+  [--expected-claim-sha <sha>] [--target release/v3.0]
 ```
 
 Only an immutable imported `CONFIRMED` finding is claimable. Claim also requires
-the freshly observed target branch SHA to equal the campaign's audited SHA. A
-`LIKELY`, `QUESTION`, or `REJECTED` finding is refused even when Jira or PR
+the freshly observed target branch SHA to equal the campaign's audited SHA.
+Every read and mutation requires the record's target branch and SHA to match the
+active `--target` and campaign audited SHA; another branch pointing at the same
+commit is still a distinct claim binding. A `LIKELY`, `QUESTION`, or `REJECTED`
+finding is refused even when Jira or PR
 evidence exists. The optional work branch is a claim binding only; these commands
 never create a branch or mutate a PR binding. `renew --work-branch` can add or
 replace that binding through the same exact-SHA CAS.

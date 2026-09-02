@@ -56,7 +56,7 @@ func (runner inspector) run(ctx context.Context, campaign *Campaign, options ins
 		previousClaimSHAs[source.ID] = previous.claim(source.ID).ObservedClaimSHA
 	}
 	claimValues, claimError := runner.claims.Observe(
-		ctx, options.remote, campaign, now, options.claimant, previousClaimSHAs,
+		ctx, options.remote, campaign, options.target, now, options.claimant, previousClaimSHAs,
 	)
 	claimProviderObservation := freshProvider(now)
 	if claimError != nil {
