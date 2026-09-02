@@ -274,6 +274,27 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 			continue
 		}
 
+		// The persisted cursor reset must land in the SAME batch as the
+		// bumped pending_version. Deleting it out-of-band would leave a
+		// window where the new pending version commits while the old
+		// non-zero cursor survives: a crash there reloads that cursor for
+		// a fresh, empty keyspace, and boot deliberately schedules no
+		// reverse-map rewrite for a current_version == 0 state
+		// (scheduleResumedRewrites) — so nothing would ever fill the
+		// skipped prefix and the promoted index would permanently omit
+		// every log below the stale cursor.
+		batch := b.wb.Batch()
+		if batch == nil {
+			// Same contract as bumpPendingVersion below: addSchemaRewriteTask
+			// is only ever called with an active batch. Surface it loudly per
+			// CLAUDE.md invariant #7.
+			return errors.New("invariant: addSchemaRewriteTask called without an active write batch")
+		}
+
+		if err := b.readStore.DeleteBackfillProgressInBatch(batch, bt.bbKey); err != nil {
+			return fmt.Errorf("resetting persisted backfill cursor on retype: %w", err)
+		}
+
 		if err := b.bumpPendingVersion(ledgerName, indexID, smft.GetType()); err != nil {
 			return fmt.Errorf("bumping pending_version on retype during backfill: %w", err)
 		}
@@ -281,18 +302,6 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 		bt.cursor = 0
 		bt.appliedProposalSeq = 0
 		bt.lastProgressSeq = 0
-		// If DeleteBackfillProgress fails, a crash before the first
-		// post-reset Commit would resume from the stale persisted cursor
-		// under the new declared_type — inconsistent encoding. Log it
-		// loudly so operators notice; the in-memory cursor=0 still wins
-		// for the current process.
-		if err := b.readStore.DeleteBackfillProgress(bt.bbKey); err != nil {
-			b.logger.WithFields(map[string]any{
-				"ledger": bt.ledger,
-				"index":  backfillIndexName(bt.index),
-				"error":  err,
-			}).Errorf("Deleting persisted backfill cursor on retype reset")
-		}
 
 		return nil
 	}

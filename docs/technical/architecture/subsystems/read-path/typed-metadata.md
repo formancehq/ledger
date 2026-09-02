@@ -97,9 +97,14 @@ If a retype arrives during an initial index backfill, the builder abandons the
 partially populated pending version, allocates a fresh `HighWater+1` version,
 and resets the persisted `BackfillKey` cursor to replay from the beginning.
 Reusing the partial keyspace would mix encodings at identical event sequences.
-After restart, `CurrentVersion == 0` keeps this state owned exclusively by the
-historical-log backfill; only a state with non-zero current and pending versions
-is resumed as a reverse-map schema rewrite.
+The new pending state and the cursor deletion are written into the fold batch
+that ingested the schema log, so a single commit makes both durable together;
+a failure to stage either one aborts that batch instead of committing half the
+reset. After restart, `CurrentVersion == 0` keeps this state owned exclusively
+by the historical-log backfill; only a state with non-zero current and pending
+versions is resumed as a reverse-map schema rewrite. Nothing else would fill
+the prefix below a surviving cursor, which is why the reset cannot be a
+separate direct write.
 
 `IndexVersionState.RewriteProgress` remains an encoded opaque tail but is not
 currently mutated by the indexbuilder. Both initial-backfill and schema-rewrite

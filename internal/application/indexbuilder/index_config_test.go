@@ -1091,6 +1091,100 @@ func TestInitIndexConfig_CurrentZeroPendingResumesOnlyBackfill(t *testing.T) {
 	assert.Equal(t, uint32(2), pending)
 }
 
+// TestRetypeDuringBackfill_CursorResetSurvivesRestart pins the atomicity of the
+// mid-backfill retype reset: addSchemaRewriteTask bumps pending_version to a
+// fresh, empty keyspace, so the previously persisted non-zero cursor must be
+// dropped in the SAME batch. If the two were separate writes, a crash between
+// them would boot with the stale cursor pointing into a keyspace nothing ever
+// wrote, and scheduleResumedRewrites deliberately enqueues no reverse-map
+// rewrite for a current_version == 0 state — the skipped prefix would stay
+// missing from the promoted index forever.
+//
+// The restart is exercised through initIndexConfig (the real recovery path)
+// against the same read store the retype committed to.
+func TestRetypeDuringBackfill_CursorResetSurvivesRestart(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.logger = noopLogger{}
+
+	const (
+		ledger = "customer"
+		key    = "role"
+	)
+
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key)
+	canonical := indexes.Canonical(id)
+
+	// Initial build in flight: never promoted locally (current=0), filling
+	// v_pending=1, with 77 log sequences already folded and persisted.
+	stateBatch := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteIndexVersionState(stateBatch, ledger, canonical, readstore.IndexVersionState{
+		CurrentVersion: 0,
+		PendingVersion: 1,
+		HighWater:      1,
+	}))
+	require.NoError(t, stateBatch.Commit())
+
+	backfillKey := backfillBBKey(ledger, id)
+	progressBatch := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteBackfillProgress(progressBatch, backfillKey, 77))
+	require.NoError(t, progressBatch.Commit())
+
+	fsmBatch := b.pebbleStore.OpenWriteSession()
+	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
+		Name: ledger,
+		MetadataSchema: &commonpb.MetadataSchema{
+			TransactionFields: map[string]*commonpb.MetadataFieldSchema{
+				key: {Type: commonpb.MetadataType_METADATA_TYPE_UINT64},
+			},
+		},
+	}))
+	indexKey := domain.IndexKey{LedgerName: ledger, Canonical: canonical}.Bytes()
+	_, err := b.attrs.Index.Set(fsmBatch, indexKey, &commonpb.Index{
+		Ledger:                 ledger,
+		Id:                     id,
+		ForwardEncodingVersion: 2,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fsmBatch.Commit())
+
+	// Boot the pre-retype process state: the backfill task resumes at 77.
+	require.NoError(t, b.initIndexConfig(context.Background()))
+	require.Len(t, b.backfillTasks, 1)
+	require.Equal(t, uint64(77), b.backfillTasks[0].cursor)
+
+	// processLogs reaches the SetMetadataFieldType log and commits its fold
+	// batch — the pending bump and the cursor reset are one commit.
+	foldBatch := b.readStore.NewBatch()
+	b.initBatch(foldBatch)
+	require.NoError(t, b.addSchemaRewriteTask(b.indexConfig[ledger], ledger, &commonpb.SetMetadataFieldTypeLog{
+		TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+		Key:        key,
+		Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+	}))
+	require.NoError(t, b.wb.Flush())
+
+	_, hasCursor := b.readStore.ReadBackfillProgress(backfillKey)
+	assert.False(t, hasCursor,
+		"the reset must be persisted by the retype's own commit, not left to a separate direct-DB delete")
+
+	// Crash right after that commit, then restart: the recovery path must
+	// rebuild the backfill from 0 against the fresh pending version.
+	require.NoError(t, b.initIndexConfig(context.Background()))
+
+	require.Len(t, b.backfillTasks, 1, "current=0 must still be owned by the initial backfill")
+	assert.True(t, indexes.Equal(id, b.backfillTasks[0].index))
+	assert.Zero(t, b.backfillTasks[0].cursor,
+		"a restart must replay from 0 — the fresh pending keyspace has no prefix below the old cursor")
+	assert.Empty(t, b.schemaRewriteTasks,
+		"no reverse-map rewrite exists to fill the prefix, which is why the reset must be atomic")
+
+	current, pending := b.versionFor(ledger, canonical)
+	assert.Zero(t, current)
+	assert.Equal(t, uint32(2), pending, "the retype's fresh keyspace must have survived the restart")
+}
+
 // TestInitIndexConfig_ResumeBeforeFirstBatch_TypeFromVersionState pins the
 // crash window between the pending-state commit and the rewrite's first
 // batch: no BackfillCursor exists yet, and the resumed task's toType must

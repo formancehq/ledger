@@ -344,6 +344,21 @@ func (s *Store) DeleteBackfillProgress(key []byte) error {
 	return s.db.Delete(fullKey, pebble.NoSync)
 }
 
+// DeleteBackfillProgressInBatch removes a backfill cursor inside an existing
+// batch, so the reset commits atomically with whatever else that batch carries.
+// Use it whenever a stale cursor surviving alongside a committed state change
+// would be a correctness problem (e.g. a mid-backfill retype that bumps
+// pending_version to a fresh, empty keyspace); the direct-DB
+// DeleteBackfillProgress remains for standalone task teardown.
+func (s *Store) DeleteBackfillProgressInBatch(batch *dal.WriteSession, key []byte) error {
+	prefix := BackfillKeyPrefix()
+	fullKey := make([]byte, len(prefix)+len(key))
+	copy(fullKey, prefix)
+	copy(fullKey[len(prefix):], key)
+
+	return batch.DeleteKey(fullKey)
+}
+
 // IndexVersionState is the per-replica forward-encoding state for one index.
 // Type bindings are meaningful only for metadata indexes. Persisted under
 // SubInternalIndexVersion.
