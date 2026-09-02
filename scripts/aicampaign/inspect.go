@@ -70,7 +70,10 @@ func (runner inspector) run(ctx context.Context, campaign *Campaign, options ins
 			current := claimValues[source.ID]
 			prior := previous.claim(source.ID)
 			if current.State == "UNCLAIMED" && prior.ObservedClaimSHA != "" && prior.State != "UNCLAIMED" {
+				current = prior
 				current.State = "CLAIM_HISTORY_MISSING"
+				current.Freshness = "FRESH"
+				current.OwnedBySession = current.Claimant != "" && current.Claimant == options.claimant
 				current.Problem = "previously observed remote claim ref is missing"
 				claimValues[source.ID] = current
 			}

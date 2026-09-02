@@ -246,8 +246,15 @@ func TestManuallyDeletedClaimIsNotSilentlyUnassigned(t *testing.T) {
 
 	second := inspectAgainstRemote(campaign, remote, testClaimantA, testNow.Add(time.Minute))
 	require.Equal(t, "CLAIM_HISTORY_MISSING", second.Findings[0].Claim.State)
+	require.Equal(t, claimed.ClaimSHA, second.Findings[0].Claim.ObservedClaimSHA)
 	require.Equal(t, "AMBIGUOUS", second.Findings[0].State)
 	require.Equal(t, "REFRESH_REQUIRED", second.Findings[0].NextAction)
+
+	third := inspectAgainstRemote(campaign, remote, testClaimantA, testNow.Add(2*time.Minute))
+	require.Equal(t, "CLAIM_HISTORY_MISSING", third.Findings[0].Claim.State)
+	require.Equal(t, claimed.ClaimSHA, third.Findings[0].Claim.ObservedClaimSHA)
+	require.Equal(t, "AMBIGUOUS", third.Findings[0].State)
+	require.Equal(t, "REFRESH_REQUIRED", third.Findings[0].NextAction)
 }
 
 func TestMalformedClaimRecordFailsClosed(t *testing.T) {
