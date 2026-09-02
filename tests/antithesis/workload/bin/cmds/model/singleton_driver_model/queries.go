@@ -664,6 +664,13 @@ func isIndexNotReady(err error) bool {
 	return internal.HasErrorReason(err, "INDEX_BUILDING")
 }
 
+// isIndexNotFound matches the server's index-absent rejection by its reason,
+// not by the bare FailedPrecondition code — an unrelated precondition error
+// must stay a finding instead of being explained away as a missing index.
+func isIndexNotFound(err error) bool {
+	return status.Code(err) == codes.FailedPrecondition && internal.HasErrorReason(err, "INDEX_NOT_FOUND")
+}
+
 // oneIn reports a 1-in-n chance through the Antithesis chooser, so the platform
 // can steer toward the (rare) branch it gates. n must be in [1, 256].
 func oneIn(n int) bool {
