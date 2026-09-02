@@ -264,6 +264,35 @@ func TestMalformedClaimRecordFailsClosed(t *testing.T) {
 	require.Contains(t, inspection.Findings[0].Claim.Problem, "INVALID_CLAIM_RECORD")
 }
 
+func TestClaimReadValidatesEveryLineageGeneration(t *testing.T) {
+	remote, targetSHA := newClaimRemote(t)
+	campaign := claimCampaignAt(targetSHA, "CONFIRMED")
+	finding := campaign.SourceFacts.Findings[0]
+	claimed := createClaim(context.Background(), campaign, finding, testClaimantA, defaultClaimLease,
+		remote, testTarget, "", func() time.Time { return testNow })
+	require.Equal(t, "CLAIMED", claimed.Status)
+
+	forgedParent := *claimed.Claim
+	firstRenewedAt := testNow.Add(time.Hour)
+	forgedParent.RenewedAt = &firstRenewedAt
+	forgedParent.RenewalCount = 1
+	forgedParent.ExpiresAt = firstRenewedAt.Add(defaultClaimLease)
+	forgedParentSHA := writeRemoteClaimRecord(t, remote, forgedParent, "")
+
+	forgedTip := forgedParent
+	secondRenewedAt := testNow.Add(2 * time.Hour)
+	forgedTip.RenewedAt = &secondRenewedAt
+	forgedTip.RenewalCount = 2
+	forgedTip.ExpiresAt = secondRenewedAt.Add(defaultClaimLease)
+	forgedTipSHA := writeRemoteClaimRecord(t, remote, forgedTip, forgedParentSHA)
+	runGit(t, "", "--git-dir", remote, "update-ref", claimed.RemoteRef, forgedTipSHA, claimed.ClaimSHA)
+
+	inspection := inspectAgainstRemote(campaign, remote, testClaimantA, secondRenewedAt)
+	require.Equal(t, "AMBIGUOUS", inspection.Findings[0].State)
+	require.Equal(t, "AMBIGUOUS", inspection.Findings[0].Claim.State)
+	require.Contains(t, inspection.Findings[0].Claim.Problem, "INVALID_CLAIM_RECORD")
+}
+
 func TestValidButForceRewrittenClaimHistoryFailsClosed(t *testing.T) {
 	remote, targetSHA := newClaimRemote(t)
 	campaign := claimCampaignAt(targetSHA, "CONFIRMED")
@@ -444,6 +473,14 @@ func writeRemoteClaimContent(t *testing.T, remote string, content []byte, parent
 	}
 
 	return strings.TrimSpace(runGitInput(t, nil, "", arguments...))
+}
+
+func writeRemoteClaimRecord(t *testing.T, remote string, record ClaimRecord, parent string) string {
+	t.Helper()
+	content, err := json.MarshalIndent(record, "", "  ")
+	require.NoError(t, err)
+
+	return writeRemoteClaimContent(t, remote, append(content, '\n'), parent)
 }
 
 func runGit(t *testing.T, directory string, arguments ...string) string {

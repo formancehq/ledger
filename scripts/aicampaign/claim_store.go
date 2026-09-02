@@ -108,59 +108,76 @@ func (repository *claimRepository) readClaim(ctx context.Context, ref, expectedS
 	if expectedSHA != "" && actualSHA != expectedSHA {
 		return nil, errClaimChanged
 	}
-	tree, err := repository.git(ctx, nil, "ls-tree", "--name-only", actualSHA)
+	record, err := repository.validateClaimLineage(ctx, actualSHA)
 	if err != nil {
-		return nil, fmt.Errorf("inspect claim tree: %w", err)
-	}
-	if string(tree) != "claim.json\n" {
-		return nil, errors.New("claim commit must contain only claim.json")
-	}
-	parents, err := repository.git(ctx, nil, "show", "-s", "--format=%P", actualSHA)
-	if err != nil {
-		return nil, fmt.Errorf("inspect claim parents: %w", err)
-	}
-	parentSHAs := strings.Fields(string(parents))
-	if len(parentSHAs) > 1 {
-		return nil, errors.New("claim commit has multiple parents")
-	}
-	content, err := repository.git(ctx, nil, "show", actualSHA+":claim.json")
-	if err != nil {
-		return nil, fmt.Errorf("read claim record: %w", err)
-	}
-	var record ClaimRecord
-	if err := decodeStrictJSON(content, &record); err != nil {
-		return nil, fmt.Errorf("decode claim record: %w", err)
-	}
-	if err := record.validate(); err != nil {
-		return nil, fmt.Errorf("validate claim record: %w", err)
-	}
-	if record.RenewalCount == 0 && record.Predecessor == nil && len(parentSHAs) != 0 {
-		return nil, errors.New("initial claim commit must be parentless")
-	}
-	if (record.RenewalCount > 0 || record.Predecessor != nil) && len(parentSHAs) != 1 {
-		return nil, errors.New("updated claim commit must have one parent")
-	}
-	if record.RenewalCount == 0 && record.Predecessor != nil && parentSHAs[0] != record.Predecessor.ClaimSHA {
-		return nil, errors.New("takeover predecessor does not match claim parent")
-	}
-	if len(parentSHAs) == 1 {
-		parentContent, err := repository.git(ctx, nil, "show", parentSHAs[0]+":claim.json")
-		if err != nil {
-			return nil, fmt.Errorf("read parent claim record: %w", err)
-		}
-		var parentRecord ClaimRecord
-		if err := decodeStrictJSON(parentContent, &parentRecord); err != nil {
-			return nil, fmt.Errorf("decode parent claim record: %w", err)
-		}
-		if err := parentRecord.validate(); err != nil {
-			return nil, fmt.Errorf("validate parent claim record: %w", err)
-		}
-		if err := validateClaimTransition(record, parentRecord, parentSHAs[0]); err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
 
 	return &observedClaim{Record: record, SHA: actualSHA, Ref: ref}, nil
+}
+
+func (repository *claimRepository) validateClaimLineage(ctx context.Context, tipSHA string) (ClaimRecord, error) {
+	currentRecord, parentSHA, err := repository.readClaimCommit(ctx, tipSHA)
+	if err != nil {
+		return ClaimRecord{}, err
+	}
+	tipRecord := currentRecord
+	for parentSHA != "" {
+		parentRecord, nextParentSHA, err := repository.readClaimCommit(ctx, parentSHA)
+		if err != nil {
+			return ClaimRecord{}, err
+		}
+		if err := validateClaimTransition(currentRecord, parentRecord, parentSHA); err != nil {
+			return ClaimRecord{}, err
+		}
+		currentRecord = parentRecord
+		parentSHA = nextParentSHA
+	}
+
+	return tipRecord, nil
+}
+
+func (repository *claimRepository) readClaimCommit(ctx context.Context, claimSHA string) (ClaimRecord, string, error) {
+	tree, err := repository.git(ctx, nil, "ls-tree", "--name-only", claimSHA)
+	if err != nil {
+		return ClaimRecord{}, "", fmt.Errorf("inspect claim tree: %w", err)
+	}
+	if string(tree) != "claim.json\n" {
+		return ClaimRecord{}, "", errors.New("claim commit must contain only claim.json")
+	}
+	parents, err := repository.git(ctx, nil, "show", "-s", "--format=%P", claimSHA)
+	if err != nil {
+		return ClaimRecord{}, "", fmt.Errorf("inspect claim parents: %w", err)
+	}
+	parentSHAs := strings.Fields(string(parents))
+	if len(parentSHAs) > 1 {
+		return ClaimRecord{}, "", errors.New("claim commit has multiple parents")
+	}
+	content, err := repository.git(ctx, nil, "show", claimSHA+":claim.json")
+	if err != nil {
+		return ClaimRecord{}, "", fmt.Errorf("read claim record: %w", err)
+	}
+	var record ClaimRecord
+	if err := decodeStrictJSON(content, &record); err != nil {
+		return ClaimRecord{}, "", fmt.Errorf("decode claim record: %w", err)
+	}
+	if err := record.validate(); err != nil {
+		return ClaimRecord{}, "", fmt.Errorf("validate claim record: %w", err)
+	}
+	if record.RenewalCount == 0 && record.Predecessor == nil && len(parentSHAs) != 0 {
+		return ClaimRecord{}, "", errors.New("initial claim commit must be parentless")
+	}
+	if (record.RenewalCount > 0 || record.Predecessor != nil) && len(parentSHAs) != 1 {
+		return ClaimRecord{}, "", errors.New("updated claim commit must have one parent")
+	}
+	if record.RenewalCount == 0 && record.Predecessor != nil && parentSHAs[0] != record.Predecessor.ClaimSHA {
+		return ClaimRecord{}, "", errors.New("takeover predecessor does not match claim parent")
+	}
+	if len(parentSHAs) == 0 {
+		return record, "", nil
+	}
+
+	return record, parentSHAs[0], nil
 }
 
 func validateClaimTransition(current, previous ClaimRecord, previousSHA string) error {
