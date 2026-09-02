@@ -26,20 +26,28 @@ func readStrictJSON(path string, destination any) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	if err := rejectDuplicateObjectKeys(content); err != nil {
+	if err := decodeStrictJSON(content, destination); err != nil {
 		return nil, fmt.Errorf("decode %s: %w", path, err)
+	}
+
+	return content, nil
+}
+
+func decodeStrictJSON(content []byte, destination any) error {
+	if err := rejectDuplicateObjectKeys(content); err != nil {
+		return err
 	}
 	decoder := json.NewDecoder(bytes.NewReader(content))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(destination); err != nil {
-		return nil, fmt.Errorf("decode %s: %w", path, err)
+		return err
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("decode %s: trailing JSON value", path)
+		return errors.New("trailing JSON value")
 	}
 
-	return content, nil
+	return nil
 }
 
 func rejectDuplicateObjectKeys(content []byte) error {

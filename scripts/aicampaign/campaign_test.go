@@ -218,6 +218,34 @@ func TestInspectOfflineGitHubNeverReportsReady(t *testing.T) {
 	require.NotEqual(t, "READY_FOR_CLAIM_OR_DISPATCH", inspection.Findings[0].NextAction)
 }
 
+func TestClaimedFindingStillHonorsFreshnessAndTargetGates(t *testing.T) {
+	t.Parallel()
+
+	campaign := testCampaign("CONFIRMED")
+	source := campaign.SourceFacts.Findings[0]
+	createdAt := testNow.Add(-time.Hour)
+	expiresAt := testNow.Add(defaultClaimLease)
+	claim := ClaimObservation{
+		State: "CLAIMED", Claimant: testClaimantA, CreatedAt: &createdAt, ExpiresAt: &expiresAt,
+		RemoteRef: claimRef(campaign.AuditID, source.ID), ObservedClaimSHA: strings.Repeat("c", 40),
+		Freshness: "FRESH", OwnedBySession: true,
+	}
+	providerUnavailable := runFakeInspection(campaign, fakeObservations{
+		claims: map[string]ClaimObservation{source.ID: claim}, githubError: errors.New("offline"),
+	})
+	require.Equal(t, "CLAIMED", providerUnavailable.Findings[0].State)
+	require.Equal(t, "REFRESH_REQUIRED", providerUnavailable.Findings[0].NextAction)
+
+	campaign = testCampaign("CONFIRMED")
+	source = campaign.SourceFacts.Findings[0]
+	claim.RemoteRef = claimRef(campaign.AuditID, source.ID)
+	targetAdvanced := runFakeInspection(campaign, fakeObservations{
+		claims: map[string]ClaimObservation{source.ID: claim}, targetSHA: strings.Repeat("a", 40),
+	})
+	require.Equal(t, "BLOCKED", targetAdvanced.Findings[0].State)
+	require.Equal(t, "REQUALIFY_ON_CURRENT_TARGET", targetAdvanced.Findings[0].NextAction)
+}
+
 func TestInspectOfflineJiraMarksStatusUnknown(t *testing.T) {
 	t.Parallel()
 
@@ -232,7 +260,7 @@ func TestOfflineInspectUsesStaleCache(t *testing.T) {
 
 	campaign := testCampaign("CONFIRMED")
 	first := runFakeInspection(campaign, fakeObservations{jira: []JiraIssue{{Key: "EN-41", Status: "Open"}}})
-	require.Equal(t, "READY_FOR_CLAIM_OR_DISPATCH", first.Findings[0].NextAction)
+	require.Equal(t, "CLAIM", first.Findings[0].NextAction)
 	stale := (inspector{}).run(context.Background(), campaign, inspectOptions{target: testTarget, offline: true})
 	require.Equal(t, "STALE", stale.Freshness)
 	require.Equal(t, "EN-41", stale.Findings[0].Jira.Issues[0].Key)
@@ -420,6 +448,8 @@ type fakeObservations struct {
 	jiraError       error
 	githubError     error
 	gitError        error
+	claimError      error
+	claims          map[string]ClaimObservation
 	targetSHA       string
 	missingBranches bool
 }
@@ -440,6 +470,7 @@ func runFakeInspection(campaign *Campaign, observations fakeObservations) *Inspe
 		jira:   fakeJiraProvider{issues: observations.jira, err: observations.jiraError},
 		github: fakeGitHubProvider{pullRequests: observations.pullRequests, err: observations.githubError},
 		git:    fakeGitProvider{refs: refs, err: observations.gitError},
+		claims: fakeClaimProvider{values: observations.claims, err: observations.claimError},
 	}
 
 	return runner.run(context.Background(), campaign, inspectOptions{
@@ -486,6 +517,39 @@ func (provider fakeGitHubProvider) Observe(
 type fakeGitProvider struct {
 	refs map[string]string
 	err  error
+}
+
+type fakeClaimProvider struct {
+	values map[string]ClaimObservation
+	err    error
+}
+
+func (provider fakeClaimProvider) Observe(
+	_ context.Context,
+	_ string,
+	campaign *Campaign,
+	_ string,
+	_ time.Time,
+	_ string,
+	_ map[string]string,
+) (map[string]ClaimObservation, error) {
+	if provider.err != nil {
+		return nil, provider.err
+	}
+	values := make(map[string]ClaimObservation, len(campaign.SourceFacts.Findings))
+	for _, finding := range campaign.SourceFacts.Findings {
+		if observation, ok := provider.values[finding.ID]; ok {
+			values[finding.ID] = observation
+		} else if finding.Qualification == "CONFIRMED" {
+			values[finding.ID] = emptyClaimObservation(campaign.AuditID, finding.ID, "FRESH")
+		} else {
+			observation := emptyClaimObservation(campaign.AuditID, finding.ID, "FRESH")
+			observation.State = "NON_CLAIMABLE"
+			values[finding.ID] = observation
+		}
+	}
+
+	return values, nil
 }
 
 func (provider fakeGitProvider) ObserveRefs(context.Context, string, []string) (map[string]string, error) {

@@ -43,6 +43,7 @@ When current code and authoritative documentation disagree, stop treating the do
 | `internal/bootstrap/**` | `docs/technical/architecture/overview.md`, relevant subsystem docs, and `docs/ops/deployment.md` for persisted/config behavior |
 | tests only | `docs/technical/contributing/testing.md` plus the subsystem documentation for the behavior under test |
 | contributor/build tooling | `docs/technical/contributing/getting-started.md`, `docs/technical/contributing/development.md`, `docs/technical/contributing/conventions.md` as relevant |
+| `scripts/aicampaign/**`, `scripts/ai-campaign*` | `docs/technical/contributing/ai-campaign.md`, `docs/technical/contributing/testing.md`; also `docs/technical/contributing/product-technical-traceability.md` for distributed coordination semantics |
 
 If a touched production area has no matching row, do not assume that no subsystem rules apply. Identify its callers/callees or owning subsystem first, then load that subsystem's documentation before editing.
 

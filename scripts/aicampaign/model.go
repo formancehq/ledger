@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os/exec"
 	"regexp"
 	"slices"
 	"strings"
@@ -14,8 +15,9 @@ import (
 
 const (
 	campaignSchemaVersion   = "ai-campaign/v1"
-	inspectionSchemaVersion = "ai-campaign-inspection/v1"
-	nextSchemaVersion       = "ai-campaign-next/v1"
+	inspectionSchemaVersion = "ai-campaign-inspection/v2"
+	nextSchemaVersion       = "ai-campaign-next/v2"
+	claimSchemaVersion      = "ai-claim/v1"
 	sourceFactType          = "SOURCE_FACT"
 	observationFactType     = "DERIVED_OBSERVATION"
 )
@@ -29,6 +31,8 @@ var (
 	jiraProjectPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
 	githubRepoPattern  = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 	gitRemotePattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
+	claimantPattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@:/+#=-]{2,159}$`)
+	campaignIDPattern  = regexp.MustCompile(`^campaign-[0-9a-f]{64}$`)
 )
 
 type Campaign struct {
@@ -84,6 +88,7 @@ type ProviderObservations struct {
 	GitHub ProviderObservation `json:"github"`
 	Jira   ProviderObservation `json:"jira"`
 	Git    ProviderObservation `json:"git"`
+	Claims ProviderObservation `json:"claims"`
 }
 
 type ProviderObservation struct {
@@ -99,17 +104,18 @@ type TargetObservation struct {
 }
 
 type FindingObservation struct {
-	FactType             string          `json:"factType"`
-	ID                   string          `json:"id"`
-	State                string          `json:"state"`
-	Jira                 JiraObservation `json:"jira"`
-	PR                   PRObservation   `json:"pr"`
-	ObservedCandidateSHA string          `json:"observedCandidateSha"`
-	ObservedTargetSHA    string          `json:"observedTargetSha"`
-	Blockers             []string        `json:"blockers"`
-	NextAction           string          `json:"nextAction"`
-	Freshness            string          `json:"freshness"`
-	Confidence           string          `json:"confidence"`
+	FactType             string           `json:"factType"`
+	ID                   string           `json:"id"`
+	State                string           `json:"state"`
+	Jira                 JiraObservation  `json:"jira"`
+	PR                   PRObservation    `json:"pr"`
+	Claim                ClaimObservation `json:"claim"`
+	ObservedCandidateSHA string           `json:"observedCandidateSha"`
+	ObservedTargetSHA    string           `json:"observedTargetSha"`
+	Blockers             []string         `json:"blockers"`
+	NextAction           string           `json:"nextAction"`
+	Freshness            string           `json:"freshness"`
+	Confidence           string           `json:"confidence"`
 }
 
 type JiraObservation struct {
@@ -160,20 +166,21 @@ type Inspection struct {
 }
 
 type InspectionFinding struct {
-	ID                   string          `json:"id"`
-	Title                string          `json:"title"`
-	Severity             string          `json:"severity"`
-	Qualification        string          `json:"qualification"`
-	Dispatchable         bool            `json:"dispatchable"`
-	State                string          `json:"state"`
-	Jira                 JiraObservation `json:"jira"`
-	PR                   PRObservation   `json:"pr"`
-	ObservedCandidateSHA string          `json:"observedCandidateSha"`
-	ObservedTargetSHA    string          `json:"observedTargetSha"`
-	Blockers             []string        `json:"blockers"`
-	NextAction           string          `json:"nextAction"`
-	Freshness            string          `json:"freshness"`
-	Confidence           string          `json:"confidence"`
+	ID                   string           `json:"id"`
+	Title                string           `json:"title"`
+	Severity             string           `json:"severity"`
+	Qualification        string           `json:"qualification"`
+	Dispatchable         bool             `json:"dispatchable"`
+	State                string           `json:"state"`
+	Jira                 JiraObservation  `json:"jira"`
+	PR                   PRObservation    `json:"pr"`
+	Claim                ClaimObservation `json:"claim"`
+	ObservedCandidateSHA string           `json:"observedCandidateSha"`
+	ObservedTargetSHA    string           `json:"observedTargetSha"`
+	Blockers             []string         `json:"blockers"`
+	NextAction           string           `json:"nextAction"`
+	Freshness            string           `json:"freshness"`
+	Confidence           string           `json:"confidence"`
 }
 
 type NextResult struct {
@@ -193,6 +200,19 @@ type NextFinding struct {
 	NextAction    string   `json:"nextAction"`
 	Blockers      []string `json:"blockers"`
 	Freshness     string   `json:"freshness"`
+}
+
+type ClaimObservation struct {
+	State            string     `json:"state"`
+	Claimant         string     `json:"claimant"`
+	CreatedAt        *time.Time `json:"createdAt"`
+	ExpiresAt        *time.Time `json:"expiresAt"`
+	RemoteRef        string     `json:"remoteRef"`
+	WorkBranch       string     `json:"workBranch"`
+	ObservedClaimSHA string     `json:"observedClaimSha"`
+	Freshness        string     `json:"freshness"`
+	OwnedBySession   bool       `json:"ownedBySession"`
+	Problem          string     `json:"problem"`
 }
 
 func (campaign *Campaign) validate() error {
@@ -263,6 +283,7 @@ func (campaign *Campaign) validateObservations(sourceFindings map[string]SourceF
 		"github": observations.Providers.GitHub,
 		"jira":   observations.Providers.Jira,
 		"git":    observations.Providers.Git,
+		"claims": observations.Providers.Claims,
 	} {
 		if !validProviderStatus(provider.Status) ||
 			(provider.Status != "UNAVAILABLE" && provider.ObservedAt == nil) ||
@@ -311,8 +332,11 @@ func (campaign *Campaign) validateObservations(sourceFindings map[string]SourceF
 		if err := validatePRObservation(finding.PR); err != nil {
 			return fmt.Errorf("invalid PR observation for %q: %w", finding.ID, err)
 		}
+		if err := validateClaimObservation(finding.Claim); err != nil {
+			return fmt.Errorf("invalid claim observation for %q: %w", finding.ID, err)
+		}
 		expected := projectFinding(source, finding.Jira, finding.PR, campaign.AuditedSHA,
-			observations.Target.Branch, observations.Target.ObservedSHA, observations.Freshness)
+			observations.Target.Branch, observations.Target.ObservedSHA, observations.Freshness, finding.Claim)
 		if finding.State != expected.State || finding.ObservedCandidateSHA != expected.ObservedCandidateSHA ||
 			finding.NextAction != expected.NextAction || finding.Confidence != expected.Confidence ||
 			!slices.Equal(finding.Blockers, expected.Blockers) {
@@ -321,6 +345,47 @@ func (campaign *Campaign) validateObservations(sourceFindings map[string]SourceF
 	}
 	if len(seen) != len(sourceFindings) {
 		return errors.New("incomplete finding observations")
+	}
+
+	return nil
+}
+
+func validateClaimObservation(observation ClaimObservation) error {
+	if !slices.Contains([]string{
+		"UNCLAIMED", "CLAIMED", "CLAIM_EXPIRED", "BROKEN_BINDING", "AMBIGUOUS",
+		"CLAIM_HISTORY_MISSING", "UNKNOWN", "NON_CLAIMABLE",
+	}, observation.State) {
+		return errors.New("invalid claim state")
+	}
+	if !slices.Contains([]string{"FRESH", "STALE", "UNAVAILABLE"}, observation.Freshness) {
+		return errors.New("invalid claim freshness")
+	}
+	if observation.State == "UNKNOWN" && observation.Freshness == "FRESH" ||
+		observation.State != "UNKNOWN" && observation.Freshness != "FRESH" {
+		return errors.New("claim state does not match freshness")
+	}
+	if observation.RemoteRef == "" || execCheckRef(observation.RemoteRef) != nil {
+		return errors.New("invalid claim remote ref")
+	}
+	if observation.ObservedClaimSHA != "" && !shaPattern.MatchString(observation.ObservedClaimSHA) {
+		return errors.New("invalid observed claim SHA")
+	}
+	if observation.Claimant != "" && !claimantPattern.MatchString(observation.Claimant) {
+		return errors.New("invalid claimant")
+	}
+	if observation.CreatedAt != nil && observation.CreatedAt.IsZero() ||
+		observation.ExpiresAt != nil && observation.ExpiresAt.IsZero() {
+		return errors.New("invalid claim time")
+	}
+	if observation.State == "CLAIMED" || observation.State == "CLAIM_EXPIRED" || observation.State == "BROKEN_BINDING" {
+		if observation.Claimant == "" || observation.CreatedAt == nil || observation.ExpiresAt == nil ||
+			observation.ObservedClaimSHA == "" {
+			return errors.New("incomplete claim")
+		}
+	}
+	if observation.OwnedBySession && observation.State != "CLAIMED" && observation.State != "CLAIM_EXPIRED" &&
+		observation.State != "BROKEN_BINDING" {
+		return errors.New("invalid current-session ownership")
 	}
 
 	return nil
@@ -405,16 +470,24 @@ func validProviderStatus(value string) bool {
 func validState(value string) bool {
 	return slices.Contains([]string{
 		"CONFIRMED_UNASSIGNED", "TRACKED", "PR_OPEN", "PR_CLOSED", "MERGED", "BLOCKED",
-		"SUPERSEDED", "AMBIGUOUS", "BROKEN_BINDING", "NON_DISPATCHABLE",
+		"SUPERSEDED", "AMBIGUOUS", "BROKEN_BINDING", "NON_DISPATCHABLE", "CLAIMED", "CLAIM_EXPIRED",
 	}, value)
 }
 
 func validNextAction(value string) bool {
 	return slices.Contains([]string{
-		"PUBLISH_JIRA_OR_REVIEW_POLICY", "READY_FOR_CLAIM_OR_DISPATCH", "CONTINUE_PR", "VERIFY_RESOLUTION",
+		"CLAIM", "CONTINUE_CLAIMED_WORK", "WAIT_OR_COORDINATE", "REVIEW_EXPIRED_CLAIM", "CONTINUE_PR", "VERIFY_RESOLUTION",
 		"NO_ACTION", "HUMAN_DECISION_REQUIRED", "RESOLVE_BINDING", "REFRESH_REQUIRED", "REPAIR_BINDING",
 		"REVIEW_CLOSED_PR", "REQUALIFY_ON_CURRENT_TARGET",
 	}, value)
+}
+
+func execCheckRef(ref string) error {
+	if !strings.HasPrefix(ref, claimRefPrefix) {
+		return errors.New("outside claim namespace")
+	}
+
+	return exec.Command("git", "check-ref-format", ref).Run()
 }
 
 func validSeverity(value string) bool {

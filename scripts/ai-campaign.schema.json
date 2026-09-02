@@ -108,11 +108,12 @@
     "providers": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["github", "jira", "git"],
+      "required": ["github", "jira", "git", "claims"],
       "properties": {
         "github": { "$ref": "#/$defs/provider" },
         "jira": { "$ref": "#/$defs/provider" },
-        "git": { "$ref": "#/$defs/provider" }
+        "git": { "$ref": "#/$defs/provider" },
+        "claims": { "$ref": "#/$defs/provider" }
       }
     },
     "jiraIssue": {
@@ -189,6 +190,7 @@
         "state",
         "jira",
         "pr",
+        "claim",
         "observedCandidateSha",
         "observedTargetSha",
         "blockers",
@@ -210,18 +212,23 @@
             "SUPERSEDED",
             "AMBIGUOUS",
             "BROKEN_BINDING",
+            "CLAIMED",
+            "CLAIM_EXPIRED",
             "NON_DISPATCHABLE"
           ]
         },
         "jira": { "$ref": "#/$defs/jira" },
         "pr": { "$ref": "#/$defs/pr" },
+        "claim": { "$ref": "#/$defs/claim" },
         "observedCandidateSha": { "type": "string" },
         "observedTargetSha": { "type": "string" },
         "blockers": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "nextAction": {
           "enum": [
-            "PUBLISH_JIRA_OR_REVIEW_POLICY",
-            "READY_FOR_CLAIM_OR_DISPATCH",
+            "CLAIM",
+            "CONTINUE_CLAIMED_WORK",
+            "WAIT_OR_COORDINATE",
+            "REVIEW_EXPIRED_CLAIM",
             "CONTINUE_PR",
             "VERIFY_RESOLUTION",
             "NO_ACTION",
@@ -235,6 +242,45 @@
         },
         "freshness": { "$ref": "#/$defs/freshness" },
         "confidence": { "enum": ["HIGH", "MEDIUM", "LOW"] }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "claimant",
+        "createdAt",
+        "expiresAt",
+        "remoteRef",
+        "workBranch",
+        "observedClaimSha",
+        "freshness",
+        "ownedBySession",
+        "problem"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "UNCLAIMED",
+            "CLAIMED",
+            "CLAIM_EXPIRED",
+            "BROKEN_BINDING",
+            "AMBIGUOUS",
+            "CLAIM_HISTORY_MISSING",
+            "UNKNOWN",
+            "NON_CLAIMABLE"
+          ]
+        },
+        "claimant": { "type": "string" },
+        "createdAt": { "$ref": "#/$defs/nullableTime" },
+        "expiresAt": { "$ref": "#/$defs/nullableTime" },
+        "remoteRef": { "type": "string", "pattern": "^refs/heads/ai-claims/v1/[0-9a-f]{64}$" },
+        "workBranch": { "type": "string" },
+        "observedClaimSha": { "type": "string" },
+        "freshness": { "enum": ["FRESH", "STALE", "UNAVAILABLE"] },
+        "ownedBySession": { "type": "boolean" },
+        "problem": { "type": "string" }
       }
     },
     "observations": {

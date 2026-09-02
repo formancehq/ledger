@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ type inspectOptions struct {
 	remote      string
 	target      string
 	offline     bool
+	claimant    string
 }
 
 type inspector struct {
@@ -20,6 +22,7 @@ type inspector struct {
 	jira   jiraProvider
 	github githubProvider
 	git    gitProvider
+	claims claimProvider
 }
 
 func (runner inspector) run(ctx context.Context, campaign *Campaign, options inspectOptions) *Inspection {
@@ -48,6 +51,35 @@ func (runner inspector) run(ctx context.Context, campaign *Campaign, options ins
 		githubProviderObservation = unavailableProvider(previous.provider("github"), githubError)
 	}
 
+	previousClaimSHAs := make(map[string]string, len(campaign.SourceFacts.Findings))
+	for _, source := range campaign.SourceFacts.Findings {
+		previousClaimSHAs[source.ID] = previous.claim(source.ID).ObservedClaimSHA
+	}
+	claimValues, claimError := runner.claims.Observe(
+		ctx, options.remote, campaign, options.target, now, options.claimant, previousClaimSHAs,
+	)
+	claimProviderObservation := freshProvider(now)
+	if claimError != nil {
+		claimProviderObservation = unavailableProvider(previous.provider("claims"), claimError)
+		claimValues = make(map[string]ClaimObservation, len(campaign.SourceFacts.Findings))
+		for _, source := range campaign.SourceFacts.Findings {
+			claimValues[source.ID] = unavailableClaimObservation(campaign, source, previous.claim(source.ID), claimError)
+		}
+	} else {
+		for _, source := range campaign.SourceFacts.Findings {
+			current := claimValues[source.ID]
+			prior := previous.claim(source.ID)
+			if current.State == "UNCLAIMED" && prior.ObservedClaimSHA != "" && prior.State != "UNCLAIMED" {
+				current = prior
+				current.State = "CLAIM_HISTORY_MISSING"
+				current.Freshness = "FRESH"
+				current.OwnedBySession = current.Claimant != "" && current.Claimant == options.claimant
+				current.Problem = "previously observed remote claim ref is missing"
+				claimValues[source.ID] = current
+			}
+		}
+	}
+
 	refs := []string{"refs/heads/" + options.target}
 	prValuesForRefs := githubValues
 	if githubError != nil {
@@ -58,6 +90,11 @@ func (runner inspector) run(ctx context.Context, campaign *Campaign, options ins
 			if !match.CrossRepository && match.HeadRef != "" {
 				refs = append(refs, "refs/heads/"+match.HeadRef)
 			}
+		}
+	}
+	for _, claim := range claimValues {
+		if claim.WorkBranch != "" {
+			refs = append(refs, "refs/heads/"+claim.WorkBranch)
 		}
 	}
 	slices.Sort(refs)
@@ -72,6 +109,7 @@ func (runner inspector) run(ctx context.Context, campaign *Campaign, options ins
 		GitHub: githubProviderObservation,
 		Jira:   jiraProviderObservation,
 		Git:    gitProviderObservation,
+		Claims: claimProviderObservation,
 	}
 	freshness := combinedFreshness(providers)
 	var refreshedAt *time.Time
@@ -137,9 +175,16 @@ func (runner inspector) run(ctx context.Context, campaign *Campaign, options ins
 				}
 			}
 		}
+		claimObservation := claimValues[source.ID]
+		if claimObservation.WorkBranch != "" && gitError == nil &&
+			gitValues["refs/heads/"+claimObservation.WorkBranch] == "" &&
+			(claimObservation.State == "CLAIMED" || claimObservation.State == "CLAIM_EXPIRED") {
+			claimObservation.State = "BROKEN_BINDING"
+			claimObservation.Problem = "CLAIM_WORK_BRANCH_MISSING"
+		}
 
 		projection := projectFinding(source, jiraObservation, prObservation,
-			campaign.AuditedSHA, options.target, observations.Target.ObservedSHA, freshness)
+			campaign.AuditedSHA, options.target, observations.Target.ObservedSHA, freshness, claimObservation)
 		observations.Findings = append(observations.Findings, projection)
 	}
 	campaign.Observations = observations
@@ -166,9 +211,19 @@ func (previous priorObservationSet) provider(name string) ProviderObservation {
 		return previous.set.Providers.Jira
 	case "git":
 		return previous.set.Providers.Git
+	case "claims":
+		return previous.set.Providers.Claims
 	default:
 		panic("unknown provider " + name)
 	}
+}
+
+func (previous priorObservationSet) claim(id string) ClaimObservation {
+	if finding, ok := previous.finding(id); ok && finding.Claim.RemoteRef != "" {
+		return finding.Claim
+	}
+
+	return ClaimObservation{}
 }
 
 func (previous priorObservationSet) finding(id string) (FindingObservation, bool) {
@@ -239,6 +294,7 @@ func staleObservations(campaign *Campaign, previous priorObservationSet, target 
 		GitHub: staleProvider(previous.provider("github"), "offline inspection"),
 		Jira:   staleProvider(previous.provider("jira"), "offline inspection"),
 		Git:    staleProvider(previous.provider("git"), "offline inspection"),
+		Claims: staleProvider(previous.provider("claims"), "offline inspection"),
 	}
 	freshness := combinedFreshness(providers)
 	observations := &ObservationSet{
@@ -260,8 +316,9 @@ func staleObservations(campaign *Campaign, previous priorObservationSet, target 
 		jira.Status = "UNKNOWN"
 		pr := previous.pr(source.ID)
 		pr.Status = "UNKNOWN"
+		claim := unavailableClaimObservation(campaign, source, previous.claim(source.ID), errors.New("offline inspection"))
 		observations.Findings = append(observations.Findings,
-			projectFinding(source, jira, pr, campaign.AuditedSHA, target, observations.Target.ObservedSHA, freshness))
+			projectFinding(source, jira, pr, campaign.AuditedSHA, target, observations.Target.ObservedSHA, freshness, claim))
 	}
 
 	return observations
@@ -275,12 +332,14 @@ func projectFinding(
 	targetBranch string,
 	targetSHA string,
 	freshness string,
+	claim ClaimObservation,
 ) FindingObservation {
 	projection := FindingObservation{
 		FactType:          observationFactType,
 		ID:                source.ID,
 		Jira:              jira,
 		PR:                pr,
+		Claim:             claim,
 		ObservedTargetSHA: targetSHA,
 		Blockers:          []string{},
 		Freshness:         freshness,
@@ -315,6 +374,17 @@ func projectFinding(
 		projection.State = "AMBIGUOUS"
 		projection.Blockers = append(projection.Blockers, "AMBIGUOUS_PR_BINDING")
 		projection.NextAction = "RESOLVE_BINDING"
+	case claim.State == "AMBIGUOUS" || claim.State == "CLAIM_HISTORY_MISSING":
+		projection.State = "AMBIGUOUS"
+		projection.Blockers = append(projection.Blockers, claim.State)
+		if claim.Problem != "" {
+			projection.Blockers = append(projection.Blockers, claim.Problem)
+		}
+		projection.NextAction = "REFRESH_REQUIRED"
+	case claim.State == "BROKEN_BINDING":
+		projection.State = "BROKEN_BINDING"
+		projection.Blockers = append(projection.Blockers, claim.Problem)
+		projection.NextAction = "REPAIR_BINDING"
 	case len(pr.Matches) == 1:
 		match := pr.Matches[0]
 		switch {
@@ -356,12 +426,22 @@ func projectFinding(
 		projection.State = "BLOCKED"
 		projection.Blockers = append(projection.Blockers, "TARGET_ADVANCED")
 		projection.NextAction = "REQUALIFY_ON_CURRENT_TARGET"
+	case claim.State == "CLAIM_EXPIRED":
+		projection.State = "CLAIM_EXPIRED"
+		projection.NextAction = "REVIEW_EXPIRED_CLAIM"
+	case claim.State == "CLAIMED":
+		projection.State = "CLAIMED"
+		if claim.OwnedBySession {
+			projection.NextAction = "CONTINUE_CLAIMED_WORK"
+		} else {
+			projection.NextAction = "WAIT_OR_COORDINATE"
+		}
 	case len(jira.Issues) == 1:
 		projection.State = "TRACKED"
-		projection.NextAction = "READY_FOR_CLAIM_OR_DISPATCH"
+		projection.NextAction = "CLAIM"
 	default:
 		projection.State = "CONFIRMED_UNASSIGNED"
-		projection.NextAction = "PUBLISH_JIRA_OR_REVIEW_POLICY"
+		projection.NextAction = "CLAIM"
 	}
 
 	if freshness != "FRESH" {
@@ -402,6 +482,7 @@ func buildInspection(campaign *Campaign) *Inspection {
 			State:                observation.State,
 			Jira:                 observation.Jira,
 			PR:                   observation.PR,
+			Claim:                observation.Claim,
 			ObservedCandidateSHA: observation.ObservedCandidateSHA,
 			ObservedTargetSHA:    observation.ObservedTargetSHA,
 			Blockers:             nonNilStrings(observation.Blockers),
@@ -448,7 +529,7 @@ func staleProvider(previous ProviderObservation, reason string) ProviderObservat
 }
 
 func combinedFreshness(providers ProviderObservations) string {
-	statuses := []string{providers.GitHub.Status, providers.Jira.Status, providers.Git.Status}
+	statuses := []string{providers.GitHub.Status, providers.Jira.Status, providers.Git.Status, providers.Claims.Status}
 	fresh := 0
 	stale := 0
 	for _, status := range statuses {
