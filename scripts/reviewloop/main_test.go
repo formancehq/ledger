@@ -459,6 +459,8 @@ func TestValidationReceiptReviewLoopFlows(t *testing.T) {
 	require.NoError(t, err, string(output))
 
 	t.Run("same state", func(t *testing.T) {
+		t.Parallel()
+
 		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{})
 		require.NoError(t, result.err, result.output)
 		require.Len(t, result.identities, 1, "validator must run once for the unchanged post-fix candidate")
@@ -467,6 +469,8 @@ func TestValidationReceiptReviewLoopFlows(t *testing.T) {
 	})
 
 	t.Run("ignored same-size restored-mtime reviewer mutation", func(t *testing.T) {
+		t.Parallel()
+
 		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{reviewMutation: "ignored-same-size"})
 		require.NoError(t, result.err, result.output)
 		require.Len(t, result.identities, 2, "ignored candidate mutation must invalidate the receipt")
@@ -477,6 +481,8 @@ func TestValidationReceiptReviewLoopFlows(t *testing.T) {
 	})
 
 	t.Run("tracked reviewer mutation", func(t *testing.T) {
+		t.Parallel()
+
 		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{reviewMutation: "tracked"})
 		require.Error(t, result.err, result.output)
 		require.Len(t, result.identities, 1)
@@ -485,6 +491,8 @@ func TestValidationReceiptReviewLoopFlows(t *testing.T) {
 	})
 
 	t.Run("trusted tool mutation", func(t *testing.T) {
+		t.Parallel()
+
 		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{reviewMutation: "tool"})
 		require.Error(t, result.err, result.output)
 		require.Len(t, result.identities, 1, "a changed trusted validator must never be executed")
@@ -493,6 +501,8 @@ func TestValidationReceiptReviewLoopFlows(t *testing.T) {
 	})
 
 	t.Run("rootguard mismatch", func(t *testing.T) {
+		t.Parallel()
+
 		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{reviewMutation: "root"})
 		require.Error(t, result.err, result.output)
 		require.Len(t, result.identities, 1)
@@ -501,6 +511,8 @@ func TestValidationReceiptReviewLoopFlows(t *testing.T) {
 	})
 
 	t.Run("another fixer", func(t *testing.T) {
+		t.Parallel()
+
 		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{secondFix: true})
 		require.NoError(t, result.err, result.output)
 		require.Len(t, result.identities, 2, "each fixer must be followed by a real validator invocation")
@@ -510,6 +522,8 @@ func TestValidationReceiptReviewLoopFlows(t *testing.T) {
 
 	for _, exitCode := range []string{"42", "124", "130"} {
 		t.Run("unsuccessful validation exit "+exitCode, func(t *testing.T) {
+			t.Parallel()
+
 			result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{validationExit: exitCode})
 			require.Error(t, result.err, result.output)
 			require.Len(t, result.identities, 1)
