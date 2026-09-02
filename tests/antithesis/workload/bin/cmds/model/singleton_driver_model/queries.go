@@ -661,7 +661,7 @@ const maxQueryGenDepth = 3
 // off first: an index the model holds active answering INDEX_BUILDING is the
 // exact finding the lifecycle coverage exists to catch, not a skippable blip.
 func isIndexNotReady(err error) bool {
-	return internal.HasErrorReason(err, "INDEX_BUILDING")
+	return status.Code(err) == codes.Unavailable && internal.HasErrorReason(err, "INDEX_BUILDING")
 }
 
 // isIndexNotFound matches the server's index-absent rejection by its reason,
