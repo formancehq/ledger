@@ -328,6 +328,20 @@ func TestConcurrentPRRunsUseDistinctWorktreesAndValidationDirs(t *testing.T) {
 	require.Equal(t, canonicalTestPath(t, secondCandidate), strings.TrimSpace(readTestFile(t, secondCWD)))
 }
 
+func TestWithoutOuterGitGuard(t *testing.T) {
+	t.Parallel()
+
+	environment := []string{
+		"PATH=" + strings.Join([]string{"/usr/bin", "/tmp/git-guard-bin", "/bin"}, string(os.PathListSeparator)),
+		"OTHER=value",
+	}
+
+	require.Equal(t, []string{
+		"PATH=" + strings.Join([]string{"/usr/bin", "/bin"}, string(os.PathListSeparator)),
+		"OTHER=value",
+	}, withoutOuterGitGuard(environment))
+}
+
 func newWorktreeBindingFixture(t *testing.T) worktreeBindingFixture {
 	t.Helper()
 
@@ -452,9 +466,35 @@ func (fixture worktreeBindingFixture) command(
 	}
 	command := exec.Command(fixture.binary, arguments...)
 	command.Dir = candidate
-	command.Env = replaceEnvironment(os.Environ(), extraEnvironment)
+	// These commands exercise nested review loops in synthetic repositories.
+	// An outer ai-pr-loop puts a Git guard bound to the real candidate first in
+	// PATH; inheriting it makes the nested setup fail before its reviewer can
+	// signal readiness, leaving the paired concurrent fixture waiting forever.
+	command.Env = replaceEnvironment(withoutOuterGitGuard(os.Environ()), extraEnvironment)
 
 	return command
+}
+
+func withoutOuterGitGuard(environment []string) []string {
+	filtered := append([]string(nil), environment...)
+	for idx, entry := range filtered {
+		name, value, ok := strings.Cut(entry, "=")
+		if !ok || name != "PATH" {
+			continue
+		}
+
+		paths := filepath.SplitList(value)
+		withoutGuard := paths[:0]
+		for _, path := range paths {
+			if filepath.Base(filepath.Clean(path)) == "git-guard-bin" {
+				continue
+			}
+			withoutGuard = append(withoutGuard, path)
+		}
+		filtered[idx] = "PATH=" + strings.Join(withoutGuard, string(os.PathListSeparator))
+	}
+
+	return filtered
 }
 
 func readTestFile(t *testing.T, path string) string {
