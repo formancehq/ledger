@@ -52,6 +52,11 @@ func DefaultTestInstruments(cfg TestNodeConfig) []testservice.Instrumentation {
 		WithRaftTickInterval(cfg.TickInterval),
 		WithRaftHeartbeatTick(1),
 		WithRaftElectionTick(10),
+		// E2E nodes share the developer or CI host filesystem. Keep the
+		// production disk-pressure gate from making unrelated tests depend on
+		// that host's current occupancy; dedicated health tests exercise the
+		// gate with explicit thresholds.
+		withHealthDiskThresholds(1, 0.99),
 		WithBloomTestConfig(),
 	}
 }
@@ -133,6 +138,23 @@ func WithAutoPromoteThreshold(threshold uint64) testservice.InstrumentationFunc 
 func WithMaintenanceInterval(interval time.Duration) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--maintenance-interval", interval.String())
+
+		return nil
+	}
+}
+
+// withHealthDiskThresholds configures the WAL and data disk-pressure block and
+// resume marks shared by the default test nodes.
+func withHealthDiskThresholds(block, resume float64) testservice.InstrumentationFunc {
+	return func(_ context.Context, cfg *testservice.RunConfiguration) error {
+		blockArg := strconv.FormatFloat(block, 'f', -1, 64)
+		resumeArg := strconv.FormatFloat(resume, 'f', -1, 64)
+		cfg.AppendArgs(
+			"--health-wal-threshold", blockArg,
+			"--health-data-threshold", blockArg,
+			"--health-wal-resume-threshold", resumeArg,
+			"--health-data-resume-threshold", resumeArg,
+		)
 
 		return nil
 	}

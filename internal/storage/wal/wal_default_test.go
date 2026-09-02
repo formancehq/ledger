@@ -70,13 +70,43 @@ func withPurgeInterval(d time.Duration) Option {
 func newTestWAL(t *testing.T, opts ...Option) *DefaultWAL {
 	t.Helper()
 
+	return newTestWALAt(t, t.TempDir(), opts...)
+}
+
+func newTestWALAt(t *testing.T, dir string, opts ...Option) *DefaultWAL {
+	t.Helper()
+
 	ctx := logging.TestingContext()
 	logger := logging.FromContext(ctx)
 	meter := noop.NewMeterProvider().Meter("test")
 
-	w, err := New(t.TempDir(), logger, meter, opts...)
+	w, err := New(dir, logger, meter, opts...)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = w.Close() })
+
+	return w
+}
+
+// newWALWithRetainedMargin reproduces the maintenance sequence behind EN-1925:
+// an older compaction boundary remains in force while a newer snapshot is
+// published. The subsequent Compact call is older than FirstIndex and is a
+// no-op, as happens when the configured margin is wider than the entries
+// accumulated since the previous snapshot.
+func newWALWithRetainedMargin(t *testing.T) *DefaultWAL {
+	t.Helper()
+
+	w := newTestWAL(t)
+	entries := make([]*raftpb.Entry, 5)
+	for i := range entries {
+		entries[i] = ent(uint64(i+1), 1, []byte{byte(i + 1)})
+	}
+
+	require.NoError(t, w.Append(hs(1, 1, 5), entries))
+	cs := &raftpb.ConfState{Voters: []uint64{1, 2}}
+	require.NoError(t, w.CreateSnapshot(2, cs, nil))
+	require.NoError(t, w.Compact(2))
+	require.NoError(t, w.CreateSnapshot(5, cs, nil))
+	require.ErrorIs(t, w.Compact(1), raft.ErrCompacted)
 
 	return w
 }
@@ -712,6 +742,160 @@ func TestTerm_Compacted(t *testing.T) {
 	require.ErrorIs(t, err, raft.ErrCompacted)
 }
 
+func TestTerm_GapBeforeCachedEntriesIsCompacted(t *testing.T) {
+	t.Parallel()
+
+	w := newTestWAL(t)
+
+	// Exercise the defensive sparse-window branch: an index before the cached
+	// entries is unavailable unless it is the current compaction boundary.
+	require.NoError(t, w.Append(hs(1, 1, 3), []*raftpb.Entry{
+		ent(3, 1, []byte("c")),
+	}))
+
+	_, err := w.Term(2)
+	require.ErrorIs(t, err, raft.ErrCompacted)
+}
+
+func TestStorageRetainedMarginAfterSnapshotAdvance(t *testing.T) {
+	t.Parallel()
+
+	w := newWALWithRetainedMargin(t)
+
+	firstIndex, err := w.FirstIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), firstIndex)
+
+	boundaryTerm, err := w.Term(firstIndex - 1)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), boundaryTerm)
+
+	retainedTerm, err := w.Term(firstIndex)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), retainedTerm)
+
+	entries, err := w.Entries(firstIndex, 6, math.MaxUint64)
+	require.NoError(t, err)
+	require.Len(t, entries, 3)
+	require.Equal(t, []uint64{3, 4, 5}, []uint64{
+		entries[0].GetIndex(),
+		entries[1].GetIndex(),
+		entries[2].GetIndex(),
+	})
+
+	_, err = w.Term(firstIndex - 2)
+	require.ErrorIs(t, err, raft.ErrCompacted)
+	_, err = w.Entries(firstIndex-1, 6, math.MaxUint64)
+	require.ErrorIs(t, err, raft.ErrCompacted)
+}
+
+func TestRaftFollowerWithinRetainedMarginReceivesAppend(t *testing.T) {
+	t.Parallel()
+
+	w := newWALWithRetainedMargin(t)
+	assertFollowerWithinRetainedMarginReceivesAppend(t, w)
+}
+
+func TestRestartUsesLatestSnapshotAsCompactionBoundary(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+	entries := make([]*raftpb.Entry, 5)
+	for i := range entries {
+		entries[i] = ent(uint64(i+1), 1, []byte{byte(i + 1)})
+	}
+	require.NoError(t, w.Append(hs(1, 1, 5), entries))
+	cs := &raftpb.ConfState{Voters: []uint64{1, 2}}
+	require.NoError(t, w.CreateSnapshot(2, cs, nil))
+	require.NoError(t, w.Compact(2))
+	require.NoError(t, w.CreateSnapshot(5, cs, nil))
+	require.NoError(t, w.Close())
+
+	reopened := newTestWALAt(t, dir)
+	firstIndex, err := reopened.FirstIndex()
+	require.NoError(t, err)
+	require.Equal(t, uint64(6), firstIndex)
+
+	boundaryTerm, err := reopened.Term(5)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), boundaryTerm)
+
+	_, err = reopened.Term(2)
+	require.ErrorIs(t, err, raft.ErrCompacted)
+	_, err = reopened.Entries(3, 6, math.MaxUint64)
+	require.ErrorIs(t, err, raft.ErrCompacted)
+}
+
+func assertFollowerWithinRetainedMarginReceivesAppend(t *testing.T, w *DefaultWAL) {
+	t.Helper()
+
+	rawNode, err := raft.NewRawNode(&raft.Config{
+		ID:              1,
+		ElectionTick:    10,
+		HeartbeatTick:   1,
+		Storage:         w,
+		Applied:         5,
+		MaxSizePerMsg:   math.MaxUint64,
+		MaxInflightMsgs: 256,
+	})
+	require.NoError(t, err)
+
+	persistReady := func() raft.Ready {
+		t.Helper()
+		require.True(t, rawNode.HasReady())
+		ready := rawNode.Ready()
+		require.NoError(t, w.Append(ready.HardState, ready.Entries))
+		rawNode.Advance(ready)
+
+		return ready
+	}
+
+	require.NoError(t, rawNode.Campaign())
+	persistReady()
+	require.NoError(t, rawNode.Step(&raftpb.Message{
+		Type: new(raftpb.MsgVoteResp),
+		From: new(uint64(2)),
+		To:   new(uint64(1)),
+		Term: new(uint64(2)),
+	}))
+	persistReady()
+
+	// The leader initially probes at index 5. The follower reports that its
+	// last matching entry is index 3, which is still inside the retained WAL
+	// window even though the latest snapshot is at index 5.
+	require.NoError(t, rawNode.Step(&raftpb.Message{
+		Type:       new(raftpb.MsgAppResp),
+		From:       new(uint64(2)),
+		To:         new(uint64(1)),
+		Term:       new(uint64(2)),
+		Index:      new(uint64(5)),
+		Reject:     new(true),
+		RejectHint: new(uint64(3)),
+		LogTerm:    new(uint64(1)),
+	}))
+	require.True(t, rawNode.HasReady())
+	ready := rawNode.Ready()
+
+	var appendMessage *raftpb.Message
+	for _, message := range ready.Messages {
+		require.NotEqual(t, raftpb.MsgSnap, message.GetType(),
+			"a follower inside the retained margin must not receive a snapshot")
+		if message.GetType() == raftpb.MsgApp && message.GetTo() == 2 {
+			appendMessage = message
+		}
+	}
+	require.NotNil(t, appendMessage, "the follower must catch up through MsgApp")
+	require.Equal(t, uint64(3), appendMessage.GetIndex())
+	require.Equal(t, uint64(1), appendMessage.GetLogTerm())
+	require.Len(t, appendMessage.GetEntries(), 3)
+	require.Equal(t, []uint64{4, 5, 6}, []uint64{
+		appendMessage.GetEntries()[0].GetIndex(),
+		appendMessage.GetEntries()[1].GetIndex(),
+		appendMessage.GetEntries()[2].GetIndex(),
+	})
+}
+
 // --- LastIndex tests ---
 
 func TestLastIndex_EmptyWAL(t *testing.T) {
@@ -805,8 +989,8 @@ func TestFirstIndex_AfterCompaction(t *testing.T) {
 
 	idx, err := w.FirstIndex()
 	require.NoError(t, err)
-	// After compacting to index 3, the first available entry should be 3 or later
-	require.GreaterOrEqual(t, idx, uint64(3))
+	// Index 3 is retained only as the matching term at FirstIndex()-1.
+	require.Equal(t, uint64(4), idx)
 }
 
 // --- Snapshot tests ---
@@ -1050,14 +1234,17 @@ func TestCompact_Basic(t *testing.T) {
 	require.NoError(t, w.CreateSnapshot(3, cs, nil))
 	require.NoError(t, w.Compact(3))
 
-	// After compaction, entries before index 3 should be compacted
+	// After compaction, entries through index 3 should be unavailable. Index 3
+	// remains only as the dummy matching term required by raft.Storage.
 	_, err := w.Entries(1, 3, math.MaxUint64)
+	require.ErrorIs(t, err, raft.ErrCompacted)
+	_, err = w.Entries(3, 6, math.MaxUint64)
 	require.ErrorIs(t, err, raft.ErrCompacted)
 
 	// Entries after compaction point should still be available
-	ents, err := w.Entries(3, 6, math.MaxUint64)
+	ents, err := w.Entries(4, 6, math.MaxUint64)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(ents), 1)
+	require.Len(t, ents, 2)
 }
 
 func TestCompact_AfterSnapshot(t *testing.T) {

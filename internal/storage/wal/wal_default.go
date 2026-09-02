@@ -51,6 +51,14 @@ type DefaultWAL struct {
 	// Snapshot stores the most recent snapshot
 	snapshot *raftpb.Snapshot
 
+	// compactedIndex is the last entry incorporated into the compacted log
+	// prefix. Its term remains available through compactedTerm so raft can
+	// match an AppendEntries request at FirstIndex()-1. This boundary is
+	// allowed to lag behind snapshot.Metadata.Index: a newer snapshot may be
+	// published while older entries remain available for follower catch-up.
+	compactedIndex uint64
+	compactedTerm  uint64
+
 	// DefaultWAL for storing log entries
 	wal *wal.WAL
 
@@ -453,6 +461,12 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	if s.hardState == nil {
 		s.hardState = &raftpb.HardState{}
 	}
+	// etcd WAL replay starts immediately after the latest durable full
+	// snapshot. That snapshot is therefore the compacted-prefix boundary after
+	// a restart. Compact advances the boundary independently for the remainder
+	// of this process lifetime.
+	s.compactedIndex = s.snapshot.GetMetadata().GetIndex()
+	s.compactedTerm = s.snapshot.GetMetadata().GetTerm()
 
 	s.logger.
 		WithFields(map[string]any{
@@ -601,10 +615,13 @@ func (s *DefaultWAL) FirstIndex() (uint64, error) {
 // firstIndexLocked returns the first index without acquiring lock (caller must hold lock).
 func (s *DefaultWAL) firstIndexLocked() uint64 {
 	if len(s.entries) == 0 {
-		return s.snapshot.GetMetadata().GetIndex() + 1
+		return max(s.snapshot.GetMetadata().GetIndex(), s.compactedIndex) + 1
 	}
 
-	return s.entries[0].GetIndex()
+	// Compact retains the boundary entry as a dummy so its term remains
+	// available for matching, but the entry itself is no longer returned by
+	// Entries. This mirrors raft.MemoryStorage's Storage contract.
+	return max(s.entries[0].GetIndex(), s.compactedIndex+1)
 }
 
 // Snapshot returns the most recent snapshot.
@@ -774,6 +791,13 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 		Data: data,
 	}
 	s.snapshot = snap
+	if len(s.entries) == 0 {
+		// Restore/empty-storage snapshots have no retained log entries. The
+		// snapshot itself is therefore the only matching point available to
+		// Raft and becomes the compacted prefix boundary.
+		s.compactedIndex = index
+		s.compactedTerm = term
+	}
 	s.mu.Unlock()
 
 	if err := s.snapshotter.Save(snap); err != nil {
@@ -855,14 +879,8 @@ func (s *DefaultWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 
 // termLocked returns the term of entry i without taking a lock (assumes lock is already held).
 func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
-	firstIndex := s.snapshot.GetMetadata().GetIndex() + 1
-
-	var lastIndex uint64
-	if len(s.entries) == 0 {
-		lastIndex = s.snapshot.GetMetadata().GetIndex()
-	} else {
-		lastIndex = s.entries[len(s.entries)-1].GetIndex()
-	}
+	firstIndex := s.firstIndexLocked()
+	lastIndex := s.lastIndexLocked()
 
 	if i < firstIndex-1 {
 		return 0, raft.ErrCompacted
@@ -872,24 +890,22 @@ func (s *DefaultWAL) termLocked(i uint64) (uint64, error) {
 		return 0, fmt.Errorf("term of index %d is out of bound", i)
 	}
 
-	if i == firstIndex-1 {
-		return s.snapshot.GetMetadata().GetTerm(), nil
+	if i == s.compactedIndex {
+		return s.compactedTerm, nil
 	}
 
-	if len(s.entries) == 0 {
-		return 0, raft.ErrUnavailable
+	if len(s.entries) > 0 {
+		offset := s.entries[0].GetIndex()
+		if i >= offset && i < offset+uint64(len(s.entries)) {
+			return s.entries[i-offset].GetTerm(), nil
+		}
+
+		if i < offset {
+			return 0, raft.ErrCompacted
+		}
 	}
 
-	offset := s.entries[0].GetIndex()
-	if i < offset {
-		return 0, raft.ErrCompacted
-	}
-
-	if i >= offset+uint64(len(s.entries)) {
-		return 0, raft.ErrUnavailable
-	}
-
-	return s.entries[i-offset].GetTerm(), nil
+	return 0, raft.ErrUnavailable
 }
 
 // ApplySnapshot applies a snapshot to the storage.
@@ -909,6 +925,8 @@ func (s *DefaultWAL) ApplySnapshot(snap *raftpb.Snapshot) error {
 
 	s.snapshot = snap
 	s.entries = nil // Clear entries after applying snapshot
+	s.compactedIndex = snap.GetMetadata().GetIndex()
+	s.compactedTerm = snap.GetMetadata().GetTerm()
 
 	// Ensure the HardState commit index is at least as high as the snapshot.
 	// A snapshot at index N implies all entries up to N are committed.
@@ -1004,8 +1022,15 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 		return nil
 	}
 
+	compactTerm, err := s.termLocked(compactIndex)
+	if err != nil {
+		s.mu.Unlock()
+
+		return fmt.Errorf("reading term at compaction index %d: %w", compactIndex, err)
+	}
 	// Truncate entries before compactIndex
-	truncateIndex := compactIndex - firstIndex
+	offset := s.entries[0].GetIndex()
+	truncateIndex := compactIndex - offset
 	if truncateIndex < uint64(len(s.entries)) {
 		// IMPORTANT: Create a new slice to release memory of old entries.
 		// Simply re-slicing with s.entries[truncateIndex:] keeps a reference
@@ -1018,6 +1043,8 @@ func (s *DefaultWAL) Compact(compactIndex uint64) error {
 		// Set to nil instead of s.entries[:0] to release the backing array
 		s.entries = nil
 	}
+	s.compactedIndex = compactIndex
+	s.compactedTerm = compactTerm
 
 	// Release s.mu before the I/O-bound ReleaseLockTo call.
 	// The in-memory compaction is done; holding s.mu during file cleanup

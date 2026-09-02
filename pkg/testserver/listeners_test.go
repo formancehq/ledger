@@ -1,11 +1,14 @@
 package testserver
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 )
 
 func TestPortSetClaimsEachPortOnce(t *testing.T) {
@@ -187,6 +190,19 @@ func TestDefaultTestInstrumentsRejectsUnallocatedPorts(t *testing.T) {
 			ClusterID: "test-cluster",
 		})
 	})
+}
+
+func TestHealthDiskThresholdsConfigureBothTestVolumes(t *testing.T) {
+	t.Parallel()
+
+	cfg := &testservice.RunConfiguration{}
+	require.NoError(t, withHealthDiskThresholds(1, 0.99).Instrument(context.Background(), cfg))
+	require.Equal(t, []string{
+		"--health-wal-threshold", "1",
+		"--health-data-threshold", "1",
+		"--health-wal-resume-threshold", "0.99",
+		"--health-data-resume-threshold", "0.99",
+	}, cfg.GetArgs())
 }
 
 func mustBindLoopbackZero(t *testing.T) net.Listener {
