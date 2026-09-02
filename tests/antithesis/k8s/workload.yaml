@@ -109,7 +109,7 @@ spec:
         # disables; substituted by generate-manifests.sh from the
         # MODEL_DUMP_BATCHES env at config-image build.
         - name: MODEL_DUMP_BATCHES
-          value: "1"
+          value: "__MODEL_DUMP_BATCHES__"
         # Restore-cycle rendezvous with the restore-orchestrator sidecar (only
         # the model driver writes requests; other templates leave it idle).
         # The interval and lease are k8s-sized: one cycle is a full cluster
