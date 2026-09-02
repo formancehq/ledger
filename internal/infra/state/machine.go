@@ -51,11 +51,12 @@ type Machine struct {
 	// WriteSessionFactory as a parameter to PrepareEntries / ApplyEntries, not
 	// as a field.
 
-	// queryCheckpoints lets the FSM delete query-checkpoint files when an
-	// apply removes their metadata. Two methods only: create + delete. The
-	// surface is not a read capability and does not give access to Pebble
-	// contents.
-	queryCheckpoints dal.QueryCheckpoints
+	// fileArtifacts lets the FSM drive the node-local file lifecycles bound to
+	// applied orders: deleting query-checkpoint files when an order removes
+	// their metadata, and promoting the checker's staged baseline when an
+	// archival confirm advances the archived prefix. The surface is not a read
+	// capability and does not give access to Pebble contents.
+	fileArtifacts dal.FSMFileArtifacts
 
 	// sentinel runs scoped post-commit reader-based checks in debug mode.
 	// The Reader never escapes the callback, so even in sentinelMode the
@@ -184,7 +185,7 @@ type Machine struct {
 // confChangeHandler is invoked from PrepareEntries for every
 // EntryConfChange* in the in-flight batch (see the field comment on
 // Machine). Must be non-nil.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, queryCheckpoints dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.FSMFileArtifacts, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
 	sentinelMode := sentinel.IsEnabled()
 	// raft.* metrics describe the consensus engine and follow the
 	// upstream etcd-raft naming convention; numscript.* metrics are
@@ -241,7 +242,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 
 	fsm := &Machine{
 		logger:                         logger,
-		queryCheckpoints:               queryCheckpoints,
+		fileArtifacts:                  fileArtifacts,
 		sentinel:                       sentinel,
 		BloomFilters:                   bloomFilters,
 		sentinelMode:                   sentinelMode,
@@ -757,6 +758,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		lastSequenceID:       fsm.State.NextSequenceID - 1,
 		needsArchiveDispatch: needsArchiveDispatch,
 		needsColdCompaction:  needsColdCompaction,
+		archivedThrough:      fsm.Chapters.ArchivedThroughID(),
 		sinkConfigChanged:    sinkConfigChanged,
 		mirrorConfigChanged:  mirrorConfigChanged,
 		entryCount:           len(decoded),
@@ -897,6 +899,17 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 		default:
 			// Coalescent signal — safe to drop, next purge will re-signal.
 		}
+
+		// A purge means an archival confirm advanced the archived prefix, so the
+		// staged baseline of the newly archived close becomes the checker's live
+		// one. Node-local file bookkeeping like the query-checkpoint deletes
+		// above; non-fatal, because the checker degrades honestly without a
+		// baseline while a stale one makes it report a healthy store as corrupt —
+		// which is also why promotion happens here and not when a chapter closes.
+		if err := fsm.fileArtifacts.PromoteStagedBaseline(pb.archivedThrough); err != nil {
+			fsm.logger.WithFields(map[string]any{"error": err}).
+				Errorf("Failed to promote staged checker baseline (checker will degrade gracefully)")
+		}
 	}
 
 	fsm.notifier.NotifyLogsCommitted(pb.lastSequenceID)
@@ -931,7 +944,7 @@ func (fsm *Machine) ApplyEntries(ctx context.Context, sessions dal.WriteSessionF
 // deleteQueryCheckpointFiles removes the physical files for a deleted checkpoint.
 // Called after the batch containing the DeleteQueryCheckpoint metadata removal is committed.
 func (fsm *Machine) deleteQueryCheckpointFiles(checkpointID uint64) {
-	if err := fsm.queryCheckpoints.DeleteQueryCheckpointFiles(checkpointID); err != nil {
+	if err := fsm.fileArtifacts.DeleteQueryCheckpointFiles(checkpointID); err != nil {
 		if fsm.logger.Enabled(logging.DebugLevel) {
 			fsm.logger.WithFields(map[string]any{
 				"error":        err,
@@ -1993,9 +2006,15 @@ type PreparedBatch struct {
 	lastSequenceID       uint64
 	needsArchiveDispatch bool
 	needsColdCompaction  bool
-	sinkConfigChanged    bool
-	mirrorConfigChanged  bool
-	checkpointDeletes    []uint64
+	// archivedThrough is the archived boundary as THIS batch's confirms left it,
+	// captured at prepare like every other post-commit input: preparation is
+	// pipelined, so by the time this batch's post-commit hook runs the live
+	// tracker may already carry a later batch's advance, and promoting to that
+	// boundary would consume a staged baseline whose confirm is not yet durable.
+	archivedThrough     uint64
+	sinkConfigChanged   bool
+	mirrorConfigChanged bool
+	checkpointDeletes   []uint64
 
 	// Sentinel data (captured during prepare, validated after commit).
 	sentinelMode        bool

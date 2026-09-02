@@ -586,7 +586,31 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 
 			// The checkpoint is now on disk. The Sealer's recoverPendingSeal
 			// and periodic reconciliation will pick it up once started.
+
+			// A missing seal checkpoint is the proof that nothing after the close
+			// was applied — Pebble is at the close boundary, which is what makes
+			// the checkpoint above valid. The same proof makes staging the
+			// checker's baseline valid here, so the crash window between the
+			// close's commit and its staging closes too. When the checkpoint
+			// already exists that proof is gone, and a chapter whose staging
+			// failed stays unstaged: its promotion degrades rather than serves
+			// state captured at the wrong boundary.
+			if err := a.createBaselineSnapshot(chapter.GetId()); err != nil {
+				a.logger.WithFields(map[string]any{"error": err}).
+					Errorf("Failed to stage recovery baseline snapshot (checker will degrade gracefully)")
+			}
 		}
+	}
+
+	// Reconcile the checker baseline with the archived prefix. Promotion
+	// normally rides the confirm's post-commit hook, but a crash between that
+	// commit and the rename loses it, and nothing re-applies the confirm on
+	// restart. Idempotent; replayed confirms below promote through the same
+	// hook. Non-fatal: the checker refuses a baseline whose chapter does not
+	// match the boundary, so a missed promotion degrades rather than misleads.
+	if err := a.store.PromoteStagedBaseline(a.fsm.Chapters.ArchivedThroughID()); err != nil {
+		a.logger.WithFields(map[string]any{"error": err}).
+			Errorf("Failed to reconcile staged checker baselines at boot (checker will degrade gracefully)")
 	}
 
 	storeLastAppliedIndex, err := query.ReadLastAppliedIndex(a.store)
@@ -1683,8 +1707,8 @@ func (a *Applier) handleCheckpointRequired(
 				applyResult.OnCheckpointDone(path)
 			}
 
-			// Create compact baseline snapshot for the checker (non-fatal on error).
-			if err := a.createBaselineSnapshot(); err != nil {
+			// Stage the checker baseline for this close (non-fatal on error).
+			if err := a.createBaselineSnapshot(applyResult.CheckpointChapterID); err != nil {
 				a.logger.WithFields(map[string]any{"error": err}).
 					Errorf("Failed to create baseline snapshot (checker will degrade gracefully)")
 			}
@@ -2062,9 +2086,9 @@ func (a *Applier) createReplayCheckpoint(result *state.ApplyEntriesResult) error
 		result.OnCheckpointDone(checkpointPath)
 	}
 
-	if err := a.createBaselineSnapshot(); err != nil {
+	if err := a.createBaselineSnapshot(result.CheckpointChapterID); err != nil {
 		a.logger.WithFields(map[string]any{"error": err}).
-			Errorf("Failed to create baseline snapshot during replay (checker will degrade gracefully)")
+			Errorf("Failed to stage baseline snapshot during replay (checker will degrade gracefully)")
 	}
 
 	if lastResult, deferred := a.extractDeferredFuture(result); deferred != nil {
@@ -2092,11 +2116,19 @@ func (a *Applier) createMainStoreCheckpoint(checkpointID uint64) error {
 	return nil
 }
 
-// createBaselineSnapshot creates a compact attribute-only snapshot for the checker.
-// Unlike a full Pebble checkpoint, this contains only computed attribute values
-// (volumes, metadata, transactions), making it orders of magnitude smaller.
-func (a *Applier) createBaselineSnapshot() error {
-	destPath, err := a.store.BaselineSnapshotDir()
+// createBaselineSnapshot stages a compact attribute-only snapshot for the
+// checker. Unlike a full Pebble checkpoint, this contains only computed
+// attribute values (volumes, metadata, transactions), making it orders of
+// magnitude smaller.
+//
+// It runs inside the seal-checkpoint maintenance gate, so what it captures is
+// the state at exactly this chapter's close. It stays staged until the
+// chapter's archival is confirmed: the checker replays everything above the
+// archived boundary and seeds the sums with the baseline, so making this live
+// at close time double-counts every transaction between the boundary and the
+// close — the FSM promotes it on the confirm instead (PromoteStagedBaseline).
+func (a *Applier) createBaselineSnapshot(chapterID uint64) error {
+	destPath, err := a.store.StagedBaselineDir(chapterID)
 	if err != nil {
 		return err
 	}

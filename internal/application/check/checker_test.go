@@ -2132,7 +2132,7 @@ func TestFoldBaselineIndexes_SeedSilencesArchivedEntry(t *testing.T) {
 	reader, err := store.NewReadHandle()
 	require.NoError(t, err)
 
-	dest, err := store.BaselineSnapshotDir()
+	dest, err := store.StagedBaselineDir(1)
 	require.NoError(t, err)
 	require.NoError(t, attributes.CreateBaselineSnapshot(reader, dest))
 	_ = reader.Close()
@@ -2521,7 +2521,7 @@ func TestSeedExpectedFromBaseline(t *testing.T) {
 	reader, err := store.NewReadHandle()
 	require.NoError(t, err)
 
-	dest, err := store.BaselineSnapshotDir()
+	dest, err := store.StagedBaselineDir(1)
 	require.NoError(t, err)
 	require.NoError(t, attributes.CreateBaselineSnapshot(reader, dest))
 	_ = reader.Close()
