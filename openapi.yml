@@ -1253,8 +1253,8 @@ paths:
 
   /v3/{ledgerName}/metadata-schema:
     get:
-      summary: Get metadata schema status
-      description: Returns the metadata schema for a ledger, including per-field type declarations and conversion status. Requires `ledger:read` scope.
+      summary: Get metadata schema
+      description: Returns the declared type of every metadata field on a ledger. Requires `ledger:read` scope.
       operationId: getMetadataSchemaStatus
       tags:
         - Metadata Schema
@@ -1500,7 +1500,7 @@ paths:
       summary: Remove metadata field type
       description: |
         Removes the type declaration for a metadata key on a ledger.
-        Existing typed values are converted back to strings. Requires `ledger:write` scope.
+        Existing metadata values remain unchanged and an attached index is dropped. Requires `ledger:write` scope.
       operationId: removeMetadataFieldType
       tags:
         - Metadata Schema
@@ -4410,23 +4410,22 @@ components:
               type: object
               additionalProperties:
                 $ref: '#/components/schemas/MetadataFieldStatus'
-              description: Account metadata field statuses
+              description: Account metadata field declarations
             transactionFields:
               type: object
               additionalProperties:
                 $ref: '#/components/schemas/MetadataFieldStatus'
-              description: Transaction metadata field statuses
+              description: Transaction metadata field declarations
             ledgerFields:
               type: object
               additionalProperties:
                 $ref: '#/components/schemas/MetadataFieldStatus'
-              description: Ledger metadata field statuses
+              description: Ledger metadata field declarations
 
     MetadataFieldStatus:
       type: object
       required:
         - declaredType
-        - status
       properties:
         declaredType:
           type: string
@@ -4443,13 +4442,6 @@ components:
             - uint32
             - datetime
           description: Declared type for this metadata field
-        status:
-          type: string
-          enum:
-            - COMPLETE
-            - CONVERTING
-          description: Conversion status for this field
-
     SetMetadataTypeRequest:
       type: object
       required:

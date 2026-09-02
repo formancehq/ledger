@@ -18,7 +18,7 @@ import (
 )
 
 // EditableConfig represents the editable (declarative) configuration of a ledger.
-// Read-only status fields (build status, conversion status, etc.) are excluded.
+// Read-only runtime and index-build status fields are excluded.
 type EditableConfig struct {
 	DefaultEnforcementMode string                                  `json:"defaultEnforcementMode,omitempty" yaml:"defaultEnforcementMode,omitempty"`
 	AccountTypes           map[string]EditableAccountType          `json:"accountTypes,omitempty"           yaml:"accountTypes,omitempty"`

@@ -67,8 +67,7 @@ type SnapshotReader interface {
 }
 
 // BackgroundReader is the read surface used by background workers that need
-// snapshot consistency plus point lookups (e.g. the metadata converter
-// resolving a ledger by name then iterating its rows under a snapshot).
+// snapshot consistency plus point lookups.
 type BackgroundReader interface {
 	SnapshotReader
 	Get(key []byte) ([]byte, io.Closer, error)

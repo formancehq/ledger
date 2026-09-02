@@ -74,7 +74,7 @@ service BucketService {
   rpc ListSigningKeys(ListSigningKeysRequest) returns (stream common.SigningKey);
   // Discovery returns server capabilities and configuration for clients
   rpc Discovery(DiscoveryRequest) returns (DiscoveryResponse);
-  // GetMetadataSchemaStatus returns the conversion status for all declared metadata fields
+  // GetMetadataSchemaStatus returns the declared type of every metadata field.
   rpc GetMetadataSchemaStatus(GetMetadataSchemaStatusRequest) returns (GetMetadataSchemaStatusResponse);
   // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts
   rpc AnalyzeAccounts(AnalyzeAccountsRequest) returns (stream AnalyzeAccountsEvent);
@@ -382,7 +382,7 @@ message SetChapterScheduleRequest {
 message DeleteChapterScheduleRequest {}
 
 // SetMetadataFieldTypeRequest declares or changes the type of a single metadata key.
-// Automatically triggers background conversion for that key.
+// Existing primary metadata values remain unchanged; attached indexes are rewritten.
 message SetMetadataFieldTypeRequest {
   string ledger = 1;
   common.TargetType target_type = 2;
@@ -391,7 +391,7 @@ message SetMetadataFieldTypeRequest {
 }
 
 // RemoveMetadataFieldTypeRequest removes the type declaration for a single metadata key.
-// Values are converted back to string (always succeeds).
+// Existing primary metadata values remain unchanged and an attached index is dropped.
 message RemoveMetadataFieldTypeRequest {
   string ledger = 1;
   common.TargetType target_type = 2;
@@ -990,7 +990,7 @@ message GetEventsSinksResponse {
 }
 
 // ============================================================================
-// Metadata Conversion Messages
+// Metadata Schema Messages
 // ============================================================================
 
 message GetMetadataSchemaStatusRequest {

@@ -159,12 +159,14 @@ Mirror mode introduces several protobuf types across multiple files:
 5. Add a handler method in `internal/infra/state/machine.go`
 6. Rebuild and test: `go build ./... && go test ./...`
 
-### Technical Proposal Fields (Non-Order Pattern)
+### Technical Update Fields (Non-Order Pattern)
 
-Not all FSM operations are modeled as orders. Internal, background operations that do not produce log entries can be added as **direct repeated fields on the `Proposal` message** instead. This avoids polluting the `Order`/`LedgerApplyOrder` oneofs with types that have no user-visible log semantics.
+Not all FSM operations are modeled as orders. Internal operations that do not produce user-visible log entries are wrapped in `TechnicalUpdate` entries under `Proposal.technical_updates`. Each update has its own coverage bitset and one payload selected by the `TechnicalUpdate.kind` oneof. This avoids polluting the `Order`/`LedgerApplyOrder` oneofs while preserving the same preload-coverage isolation.
 
 Examples of this pattern:
-- `repeated MetadataConversionBatch metadata_conversion_batches` -- background metadata value conversion batches
-- `repeated MetadataConversionCompletion metadata_conversions_complete` -- signals that a metadata conversion is done
+- `MirrorSyncUpdate`
+- `EventsSinkUpdate`
+- `BackupOrder` / `IncrementalBackupOrder`
+- `common.ClusterConfig`
 
-These fields are processed by the FSM alongside orders but do not produce `Log` entries and do not carry idempotency keys.
+These updates are processed by the FSM alongside orders but do not produce ledger `Log` entries and do not carry client idempotency keys.

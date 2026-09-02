@@ -99,18 +99,15 @@ After any change to interfaces annotated with `//go:generate mockgen`, regenerat
 go generate ./...
 ```
 
-Interfaces with mockgen annotations:
+Do not maintain a static interface inventory here; annotations are the source
+of truth and new interfaces are added regularly. Discover them with:
 
-| Interface | File |
-|-----------|------|
-| `Transport` | `internal/infra/node/transport.go` |
-| `Controller` | `internal/application/ctrl/controller.go` |
-| `Admission` | `internal/application/ctrl/controller_default.go` |
-| `Spool` | `internal/storage/spool/spool.go` |
-| `WAL` | `internal/storage/wal/wal.go` |
-| `InMemoryStore` | `internal/domain/processing/store.go` |
-| `Checker` | `internal/infra/health/healthcheck.go` |
-| `Proposer` | `internal/infra/state/metadata_converter.go` |
+```bash
+rg -n '^//go:generate mockgen' --glob '*.go'
+```
+
+Always run `go generate ./...` rather than generating only the interface you
+remember changing, so every annotated package stays synchronized.
 
 ## Adding a New CLI Command
 

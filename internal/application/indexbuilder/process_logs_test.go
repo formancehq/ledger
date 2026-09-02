@@ -40,6 +40,6 @@ func TestCloneBytes(t *testing.T) {
 	})
 }
 
-// Incremental metadata index updates resolve the old value to delete from the
-// index's own reverse map (see reverseMapValue), not the log's previous value,
-// so the previous-value lookup helper no longer exists.
+// Metadata overwrites and deletes resolve the old value from the index's own
+// reverse map (see reverseMapValue). Newly minted transaction metadata uses the
+// separate insert-known-absent path and needs no old value.

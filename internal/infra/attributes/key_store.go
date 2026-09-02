@@ -133,9 +133,8 @@ func (s *KeyStore[K, T]) Get(canonical []byte) (value T, id U128, err error) {
 
 // GetEntry returns the raw Entry for canonical key, including the
 // Deleted tombstone flag. Unlike Get, it does NOT treat tombstones as
-// absent — that distinction is what callers like the metadata-conversion
-// apply path rely on to skip keys deleted between scan and apply without
-// also skipping cache-evicted keys (#359).
+// absent — that distinction lets callers skip keys deleted between scan and
+// apply without also skipping cache-evicted keys (#359).
 //
 // Returns (entry, true) when the key is in the underlying map AND the
 // stored tag matches the canonical key. A tag mismatch (U128 collision

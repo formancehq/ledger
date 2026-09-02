@@ -2787,7 +2787,7 @@ func (*DeleteChapterScheduleRequest) Descriptor() ([]byte, []int) {
 }
 
 // SetMetadataFieldTypeRequest declares or changes the type of a single metadata key.
-// Automatically triggers background conversion for that key.
+// Existing primary metadata values remain unchanged; attached indexes are rewritten.
 type SetMetadataFieldTypeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
@@ -2857,7 +2857,7 @@ func (x *SetMetadataFieldTypeRequest) GetType() commonpb.MetadataType {
 }
 
 // RemoveMetadataFieldTypeRequest removes the type declaration for a single metadata key.
-// Values are converted back to string (always succeeds).
+// Existing primary metadata values remain unchanged and an attached index is dropped.
 type RemoveMetadataFieldTypeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ledger        string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`

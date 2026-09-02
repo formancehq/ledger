@@ -182,6 +182,31 @@ func (wb *WriteBatch) WriteAccountByAssetIndex(kb *dal.KeyBuilder, ledgerName, a
 	return wb.put(key, stamp[:])
 }
 
+// InsertMetadataIndexV inserts a metadata index entry at an explicit
+// forward-encoding version when the caller's lifecycle contract guarantees
+// that (entity, metadataKey, version) has no prior entry. It deliberately
+// emits no delete event and still writes the reverse-map overlay, so a later
+// mutation in the same batch can resolve this insert through
+// ReverseMapOverlay.
+//
+// Callers that cannot prove absence must use ReplaceMetadataIndexV with the
+// authoritative old encoded value instead.
+func (wb *WriteBatch) InsertMetadataIndexV(
+	kb *dal.KeyBuilder,
+	reverseKey []byte,
+	ledgerName string, ns, metadataKey string,
+	version uint32,
+	encodedValue, entityID []byte,
+) error {
+	return wb.ReplaceMetadataIndexV(
+		kb,
+		reverseKey,
+		ledgerName, ns, metadataKey,
+		version,
+		encodedValue, nil, entityID,
+	)
+}
+
 // ReplaceMetadataIndexV replaces a metadata index entry at an explicit
 // forward-encoding version. The reverseKey is supplied by the caller so
 // dual-write call sites can target distinct rmap rows for v_current and

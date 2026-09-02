@@ -170,10 +170,10 @@ func (b *Builder) seedLedgerIndexConfig(ctx context.Context, handle *dal.ReadHan
 //
 // Backfill scheduling cross-checks the local IndexVersionState cache, which
 // every index kind (builtin tx/account/log and metadata) maintains
-// identically — CreateIndex seeds {current:0, pending:1} and completeBackfill
-// promotes to {current:1, pending:0}:
+// identically — CreateIndex allocates pending=HighWater+1 and completeBackfill
+// promotes that single-use version to current:
 //   - CurrentVersion == 0: this replica has never built the index; a backfill
-//     IS needed to populate v_pending (v=1 by default).
+//     IS needed to populate v_pending.
 //   - CurrentVersion != 0: this replica already finished the backfill; any
 //     in-flight retype is owned by scheduleResumedRewrites (a rewrite task,
 //     NOT a backfill from cursor 0). Re-scheduling would re-run a completed
@@ -229,9 +229,9 @@ func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 		cfg.byCanonical[canonical] = idx
 
 		// Every index kind (builtin tx/account/log and metadata) records a
-		// per-replica IndexVersionState: handleCreatedIndexLog seeds
-		// {current:0, pending:1} and completeBackfill promotes it to
-		// {current:1, pending:0}. A non-zero current_version therefore means
+		// per-replica IndexVersionState: handleCreatedIndexLog allocates
+		// pending=HighWater+1 and completeBackfill promotes it to current.
+		// A non-zero current_version therefore means
 		// this replica already finished the backfill; a metadata retype in
 		// flight is owned by scheduleResumedRewrites. Re-scheduling here
 		// would re-run a completed backfill and trip the pending==0 invariant in
@@ -388,12 +388,12 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 }
 
 // handleCreatedIndexLog updates the index config cache when a CreateIndex log is processed.
-// The index starts in BUILDING state — it is NOT marked as ready here.
-// A backfill task is created to replay historical logs for the new index.
+// A non-initial index starts locally unbuilt and gets a backfill task that
+// replays historical logs. An initial index takes the fast path below.
 //
 // Initial fast path (EN-1564): when the log carries the initial flag (index
 // declared on a born-empty ledger), there is no local history to replay — the
-// index is promoted straight to live (current=1) and NO backfill is scheduled.
+// index is promoted straight to live at HighWater+1 and NO backfill is scheduled.
 //
 // Idempotency: when the same CreateIndex is replayed (or re-submitted) against
 // an index this replica has already promoted to live, we skip the reset and
@@ -412,7 +412,7 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	// (EN-1323). If this replica has already promoted the index to live
 	// (current != 0), a repeated CreatedIndexLog — a duplicate CreateIndex
 	// re-emitted by the processor, or an apply replay — must be a no-op:
-	// re-seeding {current:0, pending:1} and rescheduling a backfill would
+	// allocating a new pending version and rescheduling a backfill would
 	// flip an already-live index back to ErrIndexBuilding. This mirrors the
 	// loadIndexRegistry boot guard and covers both the EN-1564 initial fast
 	// path and the normal post-backfill live state.
@@ -433,7 +433,7 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	}
 
 	// EN-1564: an index declared on a born-empty ledger has no local history to
-	// replay. Promote it straight to live (current=1) and skip the backfill;
+	// replay. Promote it straight to live at HighWater+1 and skip the backfill;
 	// the live indexing path maintains it from ledger birth. Persist so a reboot
 	// sees current!=0 and loadIndexRegistry skips scheduling a backfill.
 	// A prior incarnation's tombstone holds the high-water version; a fresh
@@ -470,7 +470,8 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 		return nil
 	}
 
-	// First time this replica sees the index: target v=1 via the
+	// First time this replica sees this index incarnation: target the freshly
+	// allocated HighWater+1 version via the
 	// backfill task. current stays at 0 until the backfill completes
 	// and switches it via the atomic-switch path. Persisted in the
 	// active batch so the per-replica readiness signal survives a

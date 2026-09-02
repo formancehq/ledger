@@ -1563,9 +1563,9 @@ func checkIndexed(ctx *compileCtx, id *commonpb.IndexID, label string) error {
 //   - ErrIndexBuilding when the local replica's initial backfill /
 //     rewrite hasn't yet performed an atomic switch. This holds for
 //     EVERY index kind — builtin (reference, timestamp, inserted_at,
-//     address, log_date) and metadata alike — because handleCreatedIndexLog
-//     primes each new index at {CurrentVersion: 0, PendingVersion: 1}
-//     and only completeBackfill / processSchemaRewrite flips it past 0.
+//     address, log_date) and metadata alike. Non-initial indexes allocate
+//     PendingVersion=HighWater+1 and completeBackfill promotes it; indexes
+//     declared on a born-empty ledger take the direct-ready fast path.
 //   - A wrapped error on Pebble I/O failure (per CLAUDE.md invariant
 //     #7 the silent "treat as building" fallback is forbidden).
 //

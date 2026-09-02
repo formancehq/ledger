@@ -33,12 +33,12 @@ The ticker is intentional: an indexer that wakes only on signal would stall on s
 
 On `Start()`, the builder runs a boot prologue (`bootInit`) that rebuilds the in-memory index-config cache and seeds the progress cursors as a single **retryable unit**:
 
-1. Rebuilds the index-config cache (`initIndexConfig`): reads all `IndexVersionState` rows under `SubInternalIndexVersion`, seeds a per-ledger config from the active ledgers, and loads the `SubAttrIndex` registry, scheduling backfills/rewrites for `BUILDING` entries. `initIndexConfig` resets its own builder-local state at entry, so re-running it on retry is idempotent (no double-scheduled backfill/rewrite tasks).
+1. Rebuilds the index-config cache (`initIndexConfig`): reads all `IndexVersionState` rows under `SubInternalIndexVersion`, seeds a per-ledger config from the active ledgers, and loads the `SubAttrIndex` registry. A registry entry with `CurrentVersion == 0` resumes only its historical-log backfill, even when a retype already bumped its pending version; a served entry with both current and pending versions resumes its reverse-map schema rewrite. `initIndexConfig` resets its own builder-local state at entry, so re-running it on retry is idempotent (no double-scheduled tasks).
 2. Reads the persisted progress cursors (main + AppliedProposal) and the last-known Pebble sequence — see [Progress Cursors](#progress-cursors).
 
 `bootInit` is wrapped in `worker.RetryWithBackoff` (100 ms → 10 s). A transient Pebble / read-store failure at boot must **not** advance the persisted cursor against an incomplete config, so boot retries until it succeeds or shutdown is requested. The config rebuild, `LastIndexedSequence`, and the Pebble read-handle open are fatal (retried); the AppliedProposal-progress and last-sequence reads stay best-effort. After the retry returns, a `ctx.Err()` check distinguishes "init succeeded" from "shutdown requested" so the loop never processes logs against a failed init. A boot *read* failure is thus treated as transient and retried, rather than the non-recoverable panic path noted above — which remains reserved for invariant violations during processing.
 
-Only once boot init succeeds does the builder perform an **initial catch-up pass** with a larger batch size, stripping `BUILDING` indexes from the dispatch set so partially-built keyspaces do not get half-populated rows before backfill resumes.
+Only once boot init succeeds does the builder perform an **initial catch-up pass** with a larger batch size, stripping locally unbuilt indexes from the dispatch set so partially built keyspaces do not receive ordinary live writes before backfill resumes.
 
 ## `processLogs` — Two-Pass Commit
 
@@ -81,18 +81,24 @@ flowchart TB
 
 | Log type | Handler | What it writes |
 |----------|---------|---------------|
-| `CreatedTransaction` | `indexCreatedTransaction` | Postings-address mappings (any / source / destination via `WriteAccountTxMapping` + `WriteSourceAccountTxMapping` + `WriteDestinationAccountTxMapping`), reference / timestamp / inserted-at builtin indexes, account-metadata via `dualWriteMetadataIndex`, transaction-metadata via `dualWriteMetadataIndex`. Existence rows are written by `dualWriteMetadataIndex` *only* for entities that carry an indexed metadata key — there is no standalone transaction-existence or account-existence write. |
-| `RevertedTransaction` | `indexRevertedTransaction` | Inverse adjustments to the postings mappings; the revert link is kept (not deleted) so revert lookups stay queryable. |
+| `CreatedTransaction` | `indexCreatedTransaction` | Postings-address mappings (any / source / destination via `WriteAccountTxMapping` + `WriteSourceAccountTxMapping` + `WriteDestinationAccountTxMapping`), reference / timestamp / inserted-at builtin indexes, account-metadata via `dualWriteMetadataIndex`, transaction-metadata via the insert-known-absent path. Existence rows are written only for entities that carry an indexed metadata key — there is no standalone transaction-existence or account-existence write. |
+| `RevertedTransaction` | `indexRevertedTransaction` | Inverse adjustments to the postings mappings; the revert link is kept (not deleted) so revert lookups stay queryable. Metadata on the newly minted revert transaction uses the insert-known-absent path. |
 | `SavedMetadata` | `indexSavedMetadata` → `dualWriteMetadataIndex` | New `(value, entity)` row in the metadata index, plus a reverse-map row for later schema rewrites. |
 | `DeletedMetadata` | `indexDeletedMetadata` → `dualDeleteMetadataEntry` | Removes the metadata index row and the reverse-map row. |
 | `SetMetadataFieldType` | `addSchemaRewriteTask` | Schedules a deferred rewrite that re-encodes the existing values under a new type tag (see [Schema Rewrite](#schema-rewrite)). |
-| `CreateIndex` / `DropIndex` | `handleCreatedIndexLog` / `handleDroppedIndexLog` | Mutates the in-memory `indexVersions` map and writes the initial / cleared `IndexVersionState`. `DropIndex` reclaims **no** read-store rows (`0x01` / `0x02` / `0x03`); the stranded rows are tracked as `EN-1621` and are deliberately outside the checker's reverse-map pass. |
+| `CreateIndex` / `DropIndex` | `handleCreatedIndexLog` / `handleDroppedIndexLog` | Mutates the in-memory config and per-replica version state. `DropIndex` tombstones the state so `HighWater` survives, cancels local work, and purges all metadata-index forward (`0x01`), existence (`0x02`), and reverse-map (`0x03`) rows in the same fold batch. |
 
 ### Dual-write while a rewrite is in flight
 
 When `IndexVersionState.PendingVersion != 0`, metadata-index handlers go through `dualWriteMetadataIndex` (`builder.go`) and write to **both** `v_current` and `v_pending` keyspaces, encoding the value once per version under **that version's bound type** (`coerceForVersion`): `v_current` rows keep `CurrentType`'s encoding, `v_pending` rows carry `PendingType` — the retype's target (EN-1724). During a retype the two versions therefore differ both by the version embedded in their keys and by the encoding of the value; the per-version binding is what keeps `v_current`'s view complete and correctly typed until the atomic switch. The `CreatedIndexLog` itself carries the first version's binding (`bound_type`, stamped by the FSM at mint time), so a replica folding it at any replay distance binds the same type.
 
 This is what allows the atomic switch (see below) to flip the served version with zero rebuild cost at the moment of the switch — `v_pending` is already fully consistent with live writes by the time the rewrite cursor reaches the head. See the [Changing a Metadata Key's Type](#changing-a-metadata-keys-type-setmetadatafieldtype) section for the transient query semantics this design produces during the rewrite window.
+
+### New-transaction insert fast path
+
+`CreatedTransaction` and `RevertedTransaction` mint transaction IDs exactly once. Their transaction metadata therefore uses `dualInsertKnownAbsentMetadataIndex`, which writes the forward event, existence event, reverse-map row, and reverse-map batch overlay without first issuing a Pebble point read for an old reverse-map value. This avoids one negative read per indexed transaction-metadata field on the ingestion hot path. Account metadata on `CreatedTransaction` does not use this path because an account can already exist; `SavedMetadata`, `DeletedMetadata`, and schema rewrites also retain authoritative reverse-map lookups.
+
+The absence guarantee also holds during index creation backfill. The backfill owns a single-use pending version, and a retype received mid-backfill bumps `PendingVersion` before resetting the log cursor, abandoning the partially built version and replaying into a fresh keyspace. A READY-index schema rewrite cannot pre-populate a pending row for an as-yet-unfolded transaction: it enumerates candidates from the current-version reverse map, which is itself created by folding the transaction log. Later same-batch metadata mutations remain correct because the insert writes the reverse-map overlay consumed by the replacement path.
 
 ## Read Store Key Layout
 
@@ -174,9 +180,9 @@ Two distinct backfill paths share the same atomic-switch primitive:
 | Index backfill | `CreateIndex` for a new index, or a fresh replica catching up | A log-sequence cursor (replay history from 0 to head). |
 | Schema rewrite | `SetMetadataFieldType` for an existing index | A reverse-map cursor (iterate live entities, re-encode under the new type tag). |
 
-**Index backfill** (initial `CreateIndex`): `IndexVersionState = {Current: 0, Pending: 1}` and queries return `ErrIndexBuilding` until the switch — there is no served `v_current` yet. `effectiveCurrentVersion` promotes `0 → 1` for live writes, so the dual-write call site degenerates to a single write at `v=1` (the pending version), which is also where the backfill replays history. No real dual-write occurs.
+**Index backfill** (a non-initial `CreateIndex`): the builder allocates `pending = HighWater + 1`, keeps `Current = 0`, and queries return `ErrIndexBuilding` until the switch — there is no served `v_current` yet. `effectiveCurrentVersion` maps `0 → pending` for live writes, so the dual-write call site degenerates to a single write in the pending version, which is also where the backfill replays history. No real dual-write occurs.
 
-**Schema rewrite** (`SetMetadataFieldType` on an already-built index): `IndexVersionState = {Current: N, Pending: N+1}` with `N ≥ 1`. Queries continue to serve `v_current = N` while live writes are dual-written to both `v_current` and `v_pending` (see [Dual-write while a rewrite is in flight](#dual-write-while-a-rewrite-is-in-flight)), and the rewrite scan re-encodes pre-existing rows into `v_pending`.
+**Schema rewrite** (`SetMetadataFieldType` on an already-built index): the builder preserves `Current = N` and allocates `Pending = max(Current, Pending, HighWater) + 1`. In steady state that is `N+1`; repeated retypes keep climbing rather than reusing an abandoned version. Queries continue to serve `v_current = N` while live writes are dual-written to both keyspaces (see [Dual-write while a rewrite is in flight](#dual-write-while-a-rewrite-is-in-flight)), and the rewrite scan re-encodes pre-existing rows into `v_pending`.
 
 ### `completeBackfill` — the switch
 
@@ -184,14 +190,14 @@ The two paths use the **same** switch primitive but write **different** batches.
 
 **Index backfill path** (`internal/application/indexbuilder/backfill.go:1197+`, `completeBackfill`). There is no `v_old` keyspace to reclaim — the index has never been served before, the previous "version" is the empty sentinel `v=0`. The batch performs a single operation:
 
-1. `WriteIndexVersionState(batch, ledger, canonicalID, {Current: pending, Pending: 0, CurrentType: PendingType, RewriteProgress: nil})` — flips the served version and promotes the pending type binding with it.
+1. `WriteIndexVersionState(batch, ledger, canonicalID, {Current: pending, Pending: 0, CurrentType: PendingType})` — flips the served version and promotes the pending type binding with it.
 2. `batch.Commit()`.
 
 No `gcVersionAt` call is needed (and none is made — see the explicit comment in `backfill.go:1193-1196`).
 
 **Schema-rewrite path** (in `processSchemaRewrite`, around `backfill.go:855-864` and the deferred-switch path at `backfill.go:931-937`). The batch additionally reclaims the old keyspace:
 
-1. `WriteIndexVersionState(batch, ledger, canonicalID, {Current: pending, Pending: 0, CurrentType: PendingType, RewriteProgress: nil})`.
+1. `WriteIndexVersionState(batch, ledger, canonicalID, {Current: pending, Pending: 0, CurrentType: PendingType})`.
 2. `gcVersionAt(batch, old)` — `DeleteRange` over `MetadataIndexPrefixV(..., old)` and `EntityExistsKey…PrefixV(..., old)`, plus per-key reverse-map cleanup at `gcReverseMapVersion`. Immediate, in-batch, **not deferred**.
 3. `batch.Commit()`.
 
@@ -207,10 +213,10 @@ Re-typing a metadata key (e.g. `category: string → int`) is the most subtle pa
 
 ### Order flow
 
-1. **Admission** receives a `SetMetadataFieldTypeRequest` and emits a `SetMetadataFieldTypeOrder(target, key, type)` (`internal/application/admission/admission.go:1391-1405`). The admission layer preloads the current `MetadataID` (READY or BUILDING) so the FSM can read the prior schema state (`admission.go:995-1002`). **There is no pre-validation of value convertibility** — admission only validates the metadata key shape via `ValidateMetadataKey`.
+1. **Admission** receives a `SetMetadataFieldTypeRequest` and emits a `SetMetadataFieldTypeOrder(target, key, type)` (`internal/application/admission/admission.go:1391-1405`). The admission layer preloads the matching `MetadataID` registry slot so the FSM can update an attached index deterministically (`admission.go:995-1002`). **There is no pre-validation of value convertibility** — admission only validates the metadata key shape via `ValidateMetadataKey`.
 2. **FSM apply** updates the per-ledger schema in `LedgerInfo` and emits a `SetMetadataFieldType` audit log. The corresponding `Index.forward_encoding_version` is bumped (cluster-wide).
 3. **Indexer**, on the next tick, sees the log in `processLogs` and dispatches to `addSchemaRewriteTask` (`internal/application/indexbuilder/backfill.go:247+`). Two transitions happen in the same Pebble batch as the indexer's progress write:
-   - `bumpPendingVersion(ledger, indexID)` — sets `IndexVersionState.PendingVersion = max(pending, current) + 1`, binds `PendingType` to the retype's target, and persists it. In steady state this is `current + 1`; the `max(pending, …)` only matters when a second `SetMetadataFieldType` lands during an in-flight rewrite, in which case the version keeps climbing rather than being recycled.
+   - `bumpPendingVersion(ledger, indexID)` — sets `IndexVersionState.PendingVersion = max(pending, current, highWater) + 1`, advances `HighWater` to the same value, binds `PendingType` to the retype's target, and persists it. In steady state this is `current + 1`; the maximum matters after abandoned work or a prior incarnation, where the version must keep climbing rather than be recycled.
    - A `schemaRewriteTask` is registered in memory with the target type, an empty reverse-map cursor, and `requiredIndexedSeq = 0`. The gate watermark is **not** sampled at task creation — it is sampled per batch later, see [below](#atomic-switch--and-why-it-is-gated).
 
 ### What runs during the rewrite — a state scan, not a log replay
@@ -246,7 +252,7 @@ The GC step (`gcVersionAt` → `gc.go:30-95`) reclaims the old forward-index ran
 
 If the field type is removed mid-rewrite (`RemovedMetadataFieldType`), the indexer purges every versioned namespace for that key (`process_metadata_field_removal.go:37-111`) and `removeSchemaRewriteTaskByField` (`backfill.go`) drops the in-flight task. Any orphan `v_pending` rows are reclaimed by the same purge. No special end-state is needed: the entire key is gone.
 
-The `0x01` and `0x02` limbs go in one `DeleteRange` each. The reverse map cannot: its metadata key sits after the fixed-width version block, so no prefix covers "every row of this field" and `purgeReverseMapForKey` (`process_metadata_field_removal.go:121+`) has to scan the namespace and point-delete row by row. A row that scan misses is a permanent orphan — the range deletes cannot half-succeed, this scan can. The scan therefore checks `iter.Error()` before reporting success: a mid-scan I/O failure is indistinguishable from exhaustion on `!iter.Valid()`, and swallowing it would commit the batch with rows left behind and never retry. Propagating aborts the batch so the fold retries the log. A missing write batch is likewise a hard error (invariant #7), since a silent skip there would strand all three limbs at once and `0x01`/`0x02` have no detector of their own. That asymmetry is why the checker scans `0x03` and no other limb: `compareReverseMapOrphans` flags rows whose field is absent from both the index registry and the audit-replayed schema, which is exactly the signature of a missed point-delete. See [Reverse-map rows are checker-visible](indexes.md#reverse-map-rows-are-checker-visible) for the oracle and its limits.
+The `0x01` and `0x02` limbs go in one `DeleteRange` each. The reverse map cannot: its metadata key sits after the fixed-width version block, so no prefix covers "every row of this field" and `purgeReverseMapForKey` (`process_metadata_field_removal.go:121+`) has to scan the namespace and point-delete row by row. A row that scan misses is a permanent orphan — the range deletes cannot half-succeed, this scan can. The scan therefore checks `iter.Error()` before reporting success: a mid-scan I/O failure is indistinguishable from exhaustion on `!iter.Valid()`, and swallowing it would commit the batch with rows left behind and never retry. Propagating aborts the batch so the fold retries the log. A missing write batch is likewise a hard error (invariant #7), since a silent skip there would strand all three limbs at once and `0x01`/`0x02` have no detector of their own. That asymmetry is why the checker scans `0x03` and no other limb: `compareReverseMapOrphans` flags rows whose field has no registered index. The audit-replayed schema only diagnoses whether `DropIndex` or `RemovedMetadataFieldType` missed its purge. See [Reverse-map rows are checker-visible](indexes.md#reverse-map-rows-are-checker-visible) for the oracle and its limits.
 
 ### Recovery and observability
 
@@ -275,7 +281,7 @@ There is **no audit-bound `IndexReady` order** in v3. Each replica builds its ow
 - Each replica replays history through its own indexer and decides locally when to flip its `IndexVersionState.CurrentVersion`.
 - The query path always reads the **local** `CurrentVersion`. A replica that has not yet completed its local backfill simply reports "index not built locally" and the client retries or contacts another replica.
 
-This is by design: a cluster-wide `IndexReady` would force the slowest replica to gate all readers, defeating the point of building indexes locally. The asymmetry is bounded by the audit log being deterministic — every replica eventually reaches the same `CurrentVersion`.
+This is by design: a cluster-wide `IndexReady` would force the slowest replica to gate all readers, defeating the point of building indexes locally. Every healthy replica eventually builds logically equivalent contents from the deterministic audit log, but its numeric `CurrentVersion` can differ because local `HighWater` histories are intentionally per-replica.
 
 ## Summary
 

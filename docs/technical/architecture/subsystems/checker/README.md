@@ -48,8 +48,8 @@ main-store checker scope as a rule — but that is not a claim they are
 integrity-safe: their contents are a current open integrity gap until per-replica
 detect/drop/rebuild is wired (`EN-1514` / `EN-1323`, not yet wired). The one
 peer-store datum a pass does verify is reverse-map (`0x03`) row *presence*
-(`compareReverseMapOrphans`, EN-1458), which covers neither row values nor
-`DropIndex` residue (`EN-1621`) — see
+(`compareReverseMapOrphans`, EN-1458), which flags rows with no registered
+index, including missed `DropIndex` purges, but does not verify row values — see
 [Audit-Bound vs Technical State](../../audit-vs-technical-state.md).
 Persisted projections that are genuinely not yet covered — prepared
 queries (`SubAttrPreparedQuery`, read by `ExecutePreparedQuery` to drive

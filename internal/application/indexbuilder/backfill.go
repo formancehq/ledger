@@ -411,9 +411,13 @@ func (b *Builder) removeSchemaRewriteTask(idx int) {
 
 // scheduleResumedRewrites reconstructs the in-flight rewrite task list
 // at boot from the persisted per-replica state. Every IndexVersionState
-// entry with pending_version != 0 belonged to a rewrite that had not
-// reached the atomic switch on this replica when it stopped; the
-// dual-write path was active, and v_pending was being populated. The
+// entry with current_version != 0 and pending_version != 0 belongs to a
+// schema rewrite that had not reached the atomic switch when this replica
+// stopped. A state with current_version == 0 is an initial index backfill,
+// including one reset into a fresh pending version by a mid-backfill retype;
+// loadIndexRegistry already schedules its backfill task. Treating it as a
+// reverse-map rewrite would violate that fresh-version contract. For rewrites,
+// the dual-write path was active and v_pending was being populated. The
 // resumed task carries the same target keyspace (read from the cache),
 // the new declared_type (IndexVersionState.PendingType — the value the
 // atomic switch will promote into CurrentType) and the rmap cursor
@@ -427,7 +431,7 @@ func (b *Builder) scheduleResumedRewrites() {
 		}
 
 		for canonical, state := range inner {
-			if state.PendingVersion == 0 {
+			if state.CurrentVersion == 0 || state.PendingVersion == 0 {
 				continue
 			}
 
@@ -1209,8 +1213,8 @@ func (b *Builder) completeBackfill(task *backfillTask) error {
 
 	if pending == 0 {
 		// No pending version was ever recorded — handleCreatedIndexLog
-		// always sets pending=1 on a fresh CreateIndex, so this branch
-		// means the cache lost the entry (snapshot install, manual
+		// always allocates pending=HighWater+1 for a fresh CreateIndex.
+		// This branch means the cache lost the entry (snapshot install, manual
 		// state drop). Surface loudly per the project's invariant rule:
 		// the backfill ran but has nowhere to promote into.
 		return fmt.Errorf("invariant: backfill complete on %s/%s but IndexVersionState has no pending_version",

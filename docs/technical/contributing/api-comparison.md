@@ -699,7 +699,7 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/{ledgerName}` | ✅ | ✅ | Get ledger info |
 | `POST /v3/{ledgerName}/promote` | ✅ | ❌ | Promote mirror ledger to normal mode |
 | `GET /v3/` | ✅ | ✅ | List all ledgers |
-| `GET /v3/{ledgerName}/metadata-schema` | ✅ | ❌ | Get metadata schema status |
+| `GET /v3/{ledgerName}/metadata-schema` | ✅ | ❌ | Get declared metadata field types |
 | `GET /v3/{ledgerName}/analyze-accounts` | ✅ | ❌ | Analyze accounts and suggest Chart of Accounts |
 | `GET /v3/{ledgerName}/analyze-transactions` | ✅ | ❌ | Analyze transaction flow patterns |
 | `PUT /v3/{ledgerName}/metadata-schema/{targetType}/{key}` | ✅ | ❌ | Set metadata field type |

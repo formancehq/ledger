@@ -86,8 +86,8 @@ type RunResult struct {
 }
 
 // Run is the single canonical "attach preload + assign bits + propose"
-// path shared by admission, mirror, the metadata converter, the events
-// emitter, and every other proposer.
+// path shared by admission, mirror, the events emitter, backup workers,
+// and every other proposer.
 //
 // The caller is responsible for:
 //   - Calling Build with the slice of WriteOperations the proposal

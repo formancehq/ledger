@@ -344,8 +344,9 @@ func (s *Store) DeleteBackfillProgress(key []byte) error {
 	return s.db.Delete(fullKey, pebble.NoSync)
 }
 
-// IndexVersionState is the per-replica forward-encoding state for a
-// single metadata index. Persisted under SubInternalIndexVersion.
+// IndexVersionState is the per-replica forward-encoding state for one index.
+// Type bindings are meaningful only for metadata indexes. Persisted under
+// SubInternalIndexVersion.
 type IndexVersionState struct {
 	// CurrentVersion is the forward-encoding version actually served
 	// by queries on this replica. Zero means the index has never been
@@ -362,9 +363,9 @@ type IndexVersionState struct {
 	// built by an initial backfill, whose events carry the sequences of the
 	// logs they were folded from and are therefore resolvable at any pin.
 	ActivationSequence uint64
-	// RewriteProgress is the cursor of the in-flight rewrite (e.g. the
-	// last reverse-map key processed). Empty when no rewrite is
-	// running. Variable-length, opaque to the readstore.
+	// RewriteProgress is a persisted opaque tail retained by the encoding.
+	// The indexbuilder currently stores backfill and schema-rewrite cursors
+	// separately under BackfillKey and does not mutate this field.
 	RewriteProgress []byte
 
 	// HighWater is the highest forward-encoding version this index has ever
@@ -422,7 +423,7 @@ type IndexVersionStateEntry struct {
 
 // encodeIndexVersionState packs the state to a single byte slice.
 // Layout: [current(4B BE)][pending(4B BE)][activation(8B BE)][high_water(4B BE)]
-// [current_type(1B)][pending_type(1B)][rewrite_progress…].
+// [current_type(1B)][pending_type(1B)][opaque_tail…].
 // A type byte holds 0 for "no declared type bound" and 1+MetadataType
 // otherwise, so undeclared stays distinct from METADATA_TYPE_STRING (0).
 func encodeIndexVersionState(s IndexVersionState) []byte {

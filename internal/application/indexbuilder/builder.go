@@ -116,11 +116,9 @@ type Builder struct {
 // versionFor returns (current, pending) for an indexed (ledger, canonicalID).
 // current == 0 means the index has not been built locally yet (no v_n
 // keyspace populated). pending > 0 means a local rewrite to v_pending is
-// in progress. Defaults: when the cache has no entry, current == 0 and
-// pending == 0 — the caller (write/query path) typically promotes
-// (0, 0) to "version 1" via effectiveCurrentVersion below because
-// Index.ForwardEncodingVersion is initialised to 1 at CreateIndex /
-// first SetMetadataFieldType apply.
+// in progress. When the cache has no entry both values are zero; the live
+// write path retains a v1 default for that untracked first incarnation, while
+// query readiness requires an explicit non-zero CurrentVersion.
 // versionStateFor returns the full cached per-replica version state for an
 // index, false when this replica has never written one.
 func (b *Builder) versionStateFor(ledgerName, canonicalID string) (readstore.IndexVersionState, bool) {
@@ -233,8 +231,9 @@ func (b *Builder) pendingVersion(ledgerName, canonicalID string) uint32 {
 
 // metadataIndexVersions returns the (current, pending) encoding versions a
 // live write must target for a metadata index on (ledger, target, key).
-// current is always >= 1 — effectiveCurrentVersion promotes the
-// never-built-yet 0 to 1 to match the non-versioned key helpers.
+// current is always >= 1 — effectiveCurrentVersion targets an allocated
+// pending version during backfill, or defaults an entirely untracked index to
+// its first v1 incarnation.
 // pending == 0 means no rewrite is in flight.
 func (b *Builder) metadataIndexVersions(ledger string, target commonpb.TargetType, key string) (current uint32, pending uint32) {
 	canonical := indexes.Canonical(indexes.MetadataID(target, key))
@@ -287,6 +286,41 @@ func (b *Builder) dualWriteMetadataIndex(
 	return nil
 }
 
+// dualInsertKnownAbsentMetadataIndex inserts a metadata index row into each
+// version targeted by the live-write contract without consulting committed
+// reverse-map state. Its callers must prove that the entity/key is new in
+// every targeted version. It still writes the reverse map (and its batch
+// overlay), so later same-batch SavedMetadata/DeleteMetadata handlers observe
+// the inserted value normally.
+//
+// CreatedTransaction and RevertedTransaction transaction metadata satisfy
+// this contract: transaction IDs are minted once, and a creation backfill
+// always writes its single-use pending version. A retype that resets such a
+// backfill first bumps PendingVersion, so replay restarts in another fresh
+// keyspace rather than replacing rows in the abandoned version.
+func (b *Builder) dualInsertKnownAbsentMetadataIndex(
+	kb *dal.KeyBuilder,
+	ledger, ns, metaKey string,
+	target commonpb.TargetType,
+	value *commonpb.MetadataValue,
+	entityID []byte,
+	rmapKeyAtVersion reverseKeyForVersion,
+) error {
+	current, pending := b.metadataIndexVersions(ledger, target, metaKey)
+
+	if err := b.insertMetadataIndexAtVersion(kb, ledger, ns, metaKey, target, current, value, entityID, rmapKeyAtVersion(current)); err != nil {
+		return err
+	}
+
+	if pending != 0 && pending != current {
+		if err := b.insertMetadataIndexAtVersion(kb, ledger, ns, metaKey, target, pending, value, entityID, rmapKeyAtVersion(pending)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // coerceForVersion coerces a metadata value under the declared type BOUND to
 // the version being written, not the live schema. During a retype's
 // conversion window the two differ, and the difference is the point: rows at
@@ -309,8 +343,8 @@ func (b *Builder) coerceForVersion(ledger string, target commonpb.TargetType, ke
 		return coerceToBound(v, state.PendingType, state.PendingTypeDeclared), nil
 	case version == state.CurrentVersion,
 		state.CurrentVersion == 0 && version == 1:
-		// The second arm is effectiveCurrentVersion's 0→1 promotion during a
-		// creation backfill whose pending is already past 1 — same binding.
+		// The second arm is effectiveCurrentVersion's legacy v1 default when a
+		// state row exists but has no current or pending version.
 		return coerceToBound(v, state.CurrentType, state.CurrentTypeDeclared), nil
 	default:
 		// Versions come from the same state the caller consulted, so a write
@@ -357,6 +391,24 @@ func (b *Builder) writeMetadataIndexAtVersion(
 	}
 
 	return b.wb.ReplaceMetadataIndexV(kb, reverseKey, ledger, ns, metaKey, version, newEncoded, oldEncoded, entityID)
+}
+
+func (b *Builder) insertMetadataIndexAtVersion(
+	kb *dal.KeyBuilder,
+	ledger, ns, metaKey string,
+	target commonpb.TargetType,
+	version uint32,
+	value *commonpb.MetadataValue,
+	entityID, reverseKey []byte,
+) error {
+	coerced, err := b.coerceForVersion(ledger, target, metaKey, version, value)
+	if err != nil {
+		return err
+	}
+
+	encoded := readstore.EncodeMetadataValue(nil, coerced)
+
+	return b.wb.InsertMetadataIndexV(kb, reverseKey, ledger, ns, metaKey, version, encoded, entityID)
 }
 
 // dualDeleteMetadataEntry mirrors dualWriteMetadataIndex for delete

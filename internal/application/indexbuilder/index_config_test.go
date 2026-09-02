@@ -941,8 +941,8 @@ func (b *Builder) seedBatchSchema(t *testing.T) {
 
 // TestInitIndexConfig_ResumesRewriteFromPendingVersion pins the
 // post-crash boot contract for the per-replica versioned recovery:
-// any IndexVersionState with pending_version != 0 belonged to a
-// rewrite that hadn't reached the atomic switch when the previous
+// any IndexVersionState with current_version != 0 and pending_version != 0
+// belonged to a rewrite that hadn't reached the atomic switch when the previous
 // process stopped. The new path schedules a schemaRewriteTask that
 // resumes from the persisted BackfillCursor (rmap cursor + toType),
 // keyed by indexes.Canonical via the in-memory cache rather than the
@@ -1010,7 +1010,7 @@ func TestInitIndexConfig_ResumesRewriteFromPendingVersion(t *testing.T) {
 	require.NoError(t, b.initIndexConfig(context.Background()))
 
 	// The rewrite task is scheduled, mid-cursor, NOT a backfill task.
-	require.Len(t, b.schemaRewriteTasks, 1, "pending_version != 0 must schedule a rewrite task")
+	require.Len(t, b.schemaRewriteTasks, 1, "served current + pending must schedule a rewrite task")
 	assert.Equal(t, ledger, b.schemaRewriteTasks[0].ledger)
 	assert.Equal(t, key, b.schemaRewriteTasks[0].key)
 	assert.Equal(t, commonpb.TargetType_TARGET_TYPE_ACCOUNT, b.schemaRewriteTasks[0].targetType)
@@ -1023,6 +1023,71 @@ func TestInitIndexConfig_ResumesRewriteFromPendingVersion(t *testing.T) {
 	// dual-write path picks the right keyspaces.
 	current, pending := b.versionFor(ledger, canonical)
 	assert.Equal(t, uint32(1), current)
+	assert.Equal(t, uint32(2), pending)
+}
+
+// TestInitIndexConfig_CurrentZeroPendingResumesOnlyBackfill pins restart after
+// a retype reset an initial build into a fresh pending version. There is no
+// served reverse map to rewrite while CurrentVersion is zero: boot must restore
+// the historical-log backfill and must not also enqueue a schema rewrite that
+// could pre-populate the fresh version before CreatedTransaction replay.
+func TestInitIndexConfig_CurrentZeroPendingResumesOnlyBackfill(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.logger = noopLogger{}
+
+	const (
+		ledger = "customer"
+		key    = "role"
+	)
+
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key)
+	canonical := indexes.Canonical(id)
+
+	stateBatch := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteIndexVersionState(stateBatch, ledger, canonical, readstore.IndexVersionState{
+		CurrentVersion:      0,
+		PendingVersion:      2,
+		HighWater:           2,
+		PendingType:         commonpb.MetadataType_METADATA_TYPE_INT64,
+		PendingTypeDeclared: true,
+	}))
+	require.NoError(t, stateBatch.Commit())
+
+	backfillKey := backfillBBKey(ledger, id)
+	progressBatch := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteBackfillProgress(progressBatch, backfillKey, 77))
+	require.NoError(t, progressBatch.Commit())
+
+	fsmBatch := b.pebbleStore.OpenWriteSession()
+	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
+		Name: ledger,
+		MetadataSchema: &commonpb.MetadataSchema{
+			TransactionFields: map[string]*commonpb.MetadataFieldSchema{
+				key: {Type: commonpb.MetadataType_METADATA_TYPE_INT64},
+			},
+		},
+	}))
+	indexKey := domain.IndexKey{LedgerName: ledger, Canonical: canonical}.Bytes()
+	_, err := b.attrs.Index.Set(fsmBatch, indexKey, &commonpb.Index{
+		Ledger:                 ledger,
+		Id:                     id,
+		ForwardEncodingVersion: 2,
+	})
+	require.NoError(t, err)
+	require.NoError(t, fsmBatch.Commit())
+
+	require.NoError(t, b.initIndexConfig(context.Background()))
+
+	require.Len(t, b.backfillTasks, 1, "current=0 must remain owned by the initial backfill")
+	assert.Equal(t, ledger, b.backfillTasks[0].ledger)
+	assert.True(t, indexes.Equal(id, b.backfillTasks[0].index))
+	assert.Equal(t, uint64(77), b.backfillTasks[0].cursor)
+	assert.Empty(t, b.schemaRewriteTasks, "no served current version exists to rewrite")
+
+	current, pending := b.versionFor(ledger, canonical)
+	assert.Zero(t, current)
 	assert.Equal(t, uint32(2), pending)
 }
 

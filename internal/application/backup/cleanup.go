@@ -69,8 +69,7 @@ type LiveJobsProbe interface {
 // tuning of two thresholds (StaleIndexGap, StaleWallClockGap). That
 // signal was indirect and prone to false positives — a slow but
 // healthy upload would be killed. The in-memory LiveJobsProbe is a
-// direct signal and removes the need for any timing heuristic. Same
-// pattern as Archiver / MetadataConverter / Mirror: durable state
+// direct signal and removes the need for any timing heuristic: durable state
 // describes the work item, in-memory presence describes the worker.
 type Cleanup struct {
 	state    StaleProvider
