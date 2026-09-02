@@ -19,6 +19,12 @@
     "targetBranch",
     "targetSha",
     "workBranch",
+    "workIdentity",
+    "initialWorkSha",
+    "targetBaseSha",
+    "workflowClassification",
+    "jiraKey",
+    "dispatchedAt",
     "renewedAt",
     "renewalCount",
     "predecessor"
@@ -38,6 +44,17 @@
     "targetBranch": { "type": "string", "minLength": 1 },
     "targetSha": { "$ref": "#/$defs/sha" },
     "workBranch": { "type": "string" },
+    "workIdentity": { "type": "string", "pattern": "^$|^work-[0-9a-f]{64}$" },
+    "initialWorkSha": { "type": "string", "pattern": "^$|^[0-9a-f]{40,64}$" },
+    "targetBaseSha": { "type": "string", "pattern": "^$|^[0-9a-f]{40,64}$" },
+    "workflowClassification": { "enum": ["", "BUGFIX", "TEST_GAP", "TOOLING_FIX", "DOCUMENTATION"] },
+    "jiraKey": { "type": "string", "pattern": "^$|^[A-Z][A-Z0-9_]*-[1-9][0-9]*$" },
+    "dispatchedAt": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "format": "date-time" }
+      ]
+    },
     "renewedAt": {
       "oneOf": [
         { "type": "null" },
@@ -52,6 +69,29 @@
       ]
     }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "workIdentity": { "const": "" } } },
+      "then": {
+        "properties": {
+          "initialWorkSha": { "const": "" },
+          "targetBaseSha": { "const": "" },
+          "workflowClassification": { "const": "" },
+          "jiraKey": { "const": "" },
+          "dispatchedAt": { "type": "null" }
+        }
+      },
+      "else": {
+        "properties": {
+          "workBranch": { "type": "string", "minLength": 1 },
+          "initialWorkSha": { "$ref": "#/$defs/sha" },
+          "targetBaseSha": { "$ref": "#/$defs/sha" },
+          "workflowClassification": { "enum": ["BUGFIX", "TEST_GAP", "TOOLING_FIX", "DOCUMENTATION"] },
+          "dispatchedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  ],
   "$defs": {
     "sha": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" },
     "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },

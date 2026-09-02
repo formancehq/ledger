@@ -18,22 +18,29 @@ const (
 	inspectionSchemaVersion = "ai-campaign-inspection/v2"
 	nextSchemaVersion       = "ai-campaign-next/v2"
 	claimSchemaVersion      = "ai-claim/v1"
+	workSchemaVersion       = "ai-campaign-work/v1"
+	dispatchSchemaVersion   = "ai-campaign-dispatch-result/v1"
 	sourceFactType          = "SOURCE_FACT"
 	observationFactType     = "DERIVED_OBSERVATION"
 )
 
 var (
-	auditIDPattern     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-	findingIDPattern   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*/[a-z0-9]+(?:-[a-z0-9]+)*$`)
-	shaPattern         = regexp.MustCompile(`^[0-9a-f]{40,64}$`)
-	digestPattern      = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-	jiraKeyPattern     = regexp.MustCompile(`^[A-Z][A-Z0-9_]*-[1-9][0-9]*$`)
-	jiraProjectPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
-	githubRepoPattern  = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
-	gitRemotePattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
-	claimantPattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@:/+#=-]{2,159}$`)
-	campaignIDPattern  = regexp.MustCompile(`^campaign-[0-9a-f]{64}$`)
+	auditIDPattern      = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	findingIDPattern    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*/[a-z0-9]+(?:-[a-z0-9]+)*$`)
+	shaPattern          = regexp.MustCompile(`^[0-9a-f]{40,64}$`)
+	digestPattern       = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	jiraKeyPattern      = regexp.MustCompile(`^[A-Z][A-Z0-9_]*-[1-9][0-9]*$`)
+	jiraProjectPattern  = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+	githubRepoPattern   = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+	gitRemotePattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
+	claimantPattern     = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@:/+#=-]{2,159}$`)
+	campaignIDPattern   = regexp.MustCompile(`^campaign-[0-9a-f]{64}$`)
+	workIdentityPattern = regexp.MustCompile(`^work-[0-9a-f]{64}$`)
 )
+
+func validWorkflow(value string) bool {
+	return slices.Contains([]string{"BUGFIX", "TEST_GAP", "TOOLING_FIX", "DOCUMENTATION"}, value)
+}
 
 type Campaign struct {
 	SchemaVersion string          `json:"schemaVersion"`
@@ -209,6 +216,12 @@ type ClaimObservation struct {
 	ExpiresAt        *time.Time `json:"expiresAt"`
 	RemoteRef        string     `json:"remoteRef"`
 	WorkBranch       string     `json:"workBranch"`
+	WorkIdentity     string     `json:"workIdentity"`
+	InitialWorkSHA   string     `json:"initialWorkSha"`
+	TargetBaseSHA    string     `json:"targetBaseSha"`
+	Workflow         string     `json:"workflowClassification"`
+	JiraKey          string     `json:"jiraKey"`
+	DispatchedAt     *time.Time `json:"dispatchedAt"`
 	ObservedClaimSHA string     `json:"observedClaimSha"`
 	Freshness        string     `json:"freshness"`
 	OwnedBySession   bool       `json:"ownedBySession"`
@@ -383,6 +396,10 @@ func validateClaimObservation(observation ClaimObservation) error {
 			return errors.New("incomplete claim")
 		}
 	}
+	if err := validateDispatchBinding(observation.WorkIdentity, observation.WorkBranch, observation.InitialWorkSHA,
+		observation.TargetBaseSHA, observation.Workflow, observation.JiraKey, observation.DispatchedAt); err != nil {
+		return fmt.Errorf("invalid dispatch binding: %w", err)
+	}
 	if observation.OwnedBySession && observation.State != "CLAIMED" && observation.State != "CLAIM_EXPIRED" &&
 		observation.State != "BROKEN_BINDING" {
 		return errors.New("invalid current-session ownership")
@@ -418,7 +435,8 @@ func validatePRObservation(observation PRObservation) error {
 	}
 	seen := map[int]struct{}{}
 	for _, match := range observation.Matches {
-		if match.Number <= 0 || match.BindingBasis != "AI_AUDIT_MARKER" && match.BindingBasis != "JIRA_KEY" ||
+		if match.Number <= 0 || match.BindingBasis != "AI_AUDIT_MARKER" && match.BindingBasis != "JIRA_KEY" &&
+			match.BindingBasis != "AI_CAMPAIGN_WORK_MARKER" ||
 			observation.BindingBasis != match.BindingBasis || match.HeadRef == "" || match.BaseRef == "" ||
 			(match.HeadSHA != "" && !shaPattern.MatchString(match.HeadSHA)) ||
 			(match.BaseSHA != "" && !shaPattern.MatchString(match.BaseSHA)) {
@@ -471,12 +489,14 @@ func validState(value string) bool {
 	return slices.Contains([]string{
 		"CONFIRMED_UNASSIGNED", "TRACKED", "PR_OPEN", "PR_CLOSED", "MERGED", "BLOCKED",
 		"SUPERSEDED", "AMBIGUOUS", "BROKEN_BINDING", "NON_DISPATCHABLE", "CLAIMED", "CLAIM_EXPIRED",
+		"DISPATCHED", "STALE_AT_DISPATCH",
 	}, value)
 }
 
 func validNextAction(value string) bool {
 	return slices.Contains([]string{
-		"CLAIM", "CONTINUE_CLAIMED_WORK", "WAIT_OR_COORDINATE", "REVIEW_EXPIRED_CLAIM", "CONTINUE_PR", "VERIFY_RESOLUTION",
+		"CLAIM", "DISPATCH", "RESUME_DISPATCH", "START_ENGINEERING_AGENT", "CONTINUE_WORK", "BASE_UPDATE_REQUIRED",
+		"CONTINUE_CLAIMED_WORK", "WAIT_OR_COORDINATE", "REVIEW_EXPIRED_CLAIM", "CONTINUE_PR", "VERIFY_RESOLUTION",
 		"NO_ACTION", "HUMAN_DECISION_REQUIRED", "RESOLVE_BINDING", "REFRESH_REQUIRED", "REPAIR_BINDING",
 		"REVIEW_CLOSED_PR", "REQUALIFY_ON_CURRENT_TARGET",
 	}, value)

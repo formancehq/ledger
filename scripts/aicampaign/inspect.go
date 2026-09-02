@@ -423,18 +423,32 @@ func projectFinding(
 		projection.Blockers = append(projection.Blockers, "TARGET_SHA_UNKNOWN")
 		projection.NextAction = "REFRESH_REQUIRED"
 	case targetSHA != "" && targetSHA != auditedSHA:
-		projection.State = "BLOCKED"
+		if claim.WorkIdentity != "" {
+			projection.State = "STALE_AT_DISPATCH"
+			projection.NextAction = "BASE_UPDATE_REQUIRED"
+		} else {
+			projection.State = "BLOCKED"
+			projection.NextAction = "REQUALIFY_ON_CURRENT_TARGET"
+		}
 		projection.Blockers = append(projection.Blockers, "TARGET_ADVANCED")
-		projection.NextAction = "REQUALIFY_ON_CURRENT_TARGET"
 	case claim.State == "CLAIM_EXPIRED":
 		projection.State = "CLAIM_EXPIRED"
 		projection.NextAction = "REVIEW_EXPIRED_CLAIM"
 	case claim.State == "CLAIMED":
-		projection.State = "CLAIMED"
-		if claim.OwnedBySession {
-			projection.NextAction = "CONTINUE_CLAIMED_WORK"
+		if claim.WorkIdentity != "" {
+			projection.State = "DISPATCHED"
+			if claim.OwnedBySession {
+				projection.NextAction = "START_ENGINEERING_AGENT"
+			} else {
+				projection.NextAction = "WAIT_OR_COORDINATE"
+			}
 		} else {
-			projection.NextAction = "WAIT_OR_COORDINATE"
+			projection.State = "CLAIMED"
+			if claim.OwnedBySession {
+				projection.NextAction = "DISPATCH"
+			} else {
+				projection.NextAction = "WAIT_OR_COORDINATE"
+			}
 		}
 	case len(jira.Issues) == 1:
 		projection.State = "TRACKED"

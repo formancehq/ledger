@@ -111,6 +111,12 @@ func renewClaim(
 		return result
 	}
 	record := observed.Record
+	if record.DispatchedAt != nil && workBranch != "" && workBranch != record.WorkBranch {
+		result.Status = "CLAIM_CONFLICT"
+		result.Reason = "a dispatched claim's work branch is immutable"
+
+		return result
+	}
 	record.RenewedAt = &renewedAt
 	record.RenewalCount++
 	record.ExpiresAt = renewedAt.Add(lease)

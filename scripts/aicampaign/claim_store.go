@@ -31,11 +31,19 @@ type claimRepository struct {
 }
 
 func openClaimRepository(ctx context.Context, remote string) (*claimRepository, error) {
+	return openClaimRepositoryAt(ctx, remote, "")
+}
+
+func openClaimRepositoryAt(ctx context.Context, remote, repoRoot string) (*claimRepository, error) {
 	remoteURL := remote
 	if !filepath.IsAbs(remote) && !strings.Contains(remote, "://") {
 		var output []byte
 		for _, suffix := range []string{"pushurl", "url"} {
-			command := exec.CommandContext(ctx, "git", "config", "--get", "remote."+remote+"."+suffix)
+			arguments := []string{"config", "--get", "remote." + remote + "." + suffix}
+			if repoRoot != "" {
+				arguments = append([]string{"-C", repoRoot}, arguments...)
+			}
+			command := exec.CommandContext(ctx, "git", arguments...)
 			value, err := command.Output()
 			if err == nil && strings.TrimSpace(string(value)) != "" {
 				output = value
@@ -164,10 +172,10 @@ func (repository *claimRepository) readClaimCommit(ctx context.Context, claimSHA
 	if err := record.validate(); err != nil {
 		return ClaimRecord{}, "", fmt.Errorf("validate claim record: %w", err)
 	}
-	if record.RenewalCount == 0 && record.Predecessor == nil && len(parentSHAs) != 0 {
+	if record.RenewalCount == 0 && record.Predecessor == nil && record.DispatchedAt == nil && len(parentSHAs) != 0 {
 		return ClaimRecord{}, "", errors.New("initial claim commit must be parentless")
 	}
-	if (record.RenewalCount > 0 || record.Predecessor != nil) && len(parentSHAs) != 1 {
+	if (record.RenewalCount > 0 || record.Predecessor != nil || record.DispatchedAt != nil) && len(parentSHAs) != 1 {
 		return ClaimRecord{}, "", errors.New("updated claim commit must have one parent")
 	}
 	if record.RenewalCount == 0 && record.Predecessor != nil && parentSHAs[0] != record.Predecessor.ClaimSHA {
@@ -188,6 +196,23 @@ func validateClaimTransition(current, previous ClaimRecord, previousSHA string) 
 		current.TargetSHA != previous.TargetSHA {
 		return errors.New("claim transition changed immutable identity")
 	}
+	if current.DispatchedAt != nil && previous.DispatchedAt == nil {
+		previousMutation := previous.CreatedAt
+		if previous.RenewedAt != nil {
+			previousMutation = *previous.RenewedAt
+		}
+		if current.Claimant != previous.Claimant || !current.CreatedAt.Equal(previous.CreatedAt) ||
+			!current.ExpiresAt.Equal(previous.ExpiresAt) || current.RenewalCount != previous.RenewalCount ||
+			!sameTime(current.RenewedAt, previous.RenewedAt) ||
+			!samePredecessor(current.Predecessor, previous.Predecessor) ||
+			(previous.WorkBranch != "" && previous.WorkBranch != current.WorkBranch) ||
+			current.DispatchedAt.Before(previousMutation) ||
+			current.DispatchedAt.After(previous.ExpiresAt.Add(claimClockSkew)) {
+			return errors.New("invalid dispatch binding transition")
+		}
+
+		return nil
+	}
 	if current.RenewalCount > 0 {
 		if current.Claimant != previous.Claimant || !current.CreatedAt.Equal(previous.CreatedAt) ||
 			current.RenewalCount != previous.RenewalCount+1 ||
@@ -201,6 +226,12 @@ func validateClaimTransition(current, previous ClaimRecord, previousSHA string) 
 		if current.RenewedAt == nil || current.RenewedAt.Before(previousMutation) {
 			return errors.New("claim renewal time moved backwards")
 		}
+		if previous.DispatchedAt != nil && (current.WorkIdentity != previous.WorkIdentity ||
+			current.WorkBranch != previous.WorkBranch || current.InitialWorkSHA != previous.InitialWorkSHA ||
+			current.TargetBaseSHA != previous.TargetBaseSHA || current.Workflow != previous.Workflow ||
+			current.JiraKey != previous.JiraKey || !sameTime(current.DispatchedAt, previous.DispatchedAt)) {
+			return errors.New("claim renewal changed dispatch binding")
+		}
 
 		return nil
 	}
@@ -211,8 +242,22 @@ func validateClaimTransition(current, previous ClaimRecord, previousSHA string) 
 		current.CreatedAt.Before(previous.ExpiresAt.Add(claimClockSkew)) {
 		return errors.New("invalid expired-claim takeover transition")
 	}
+	if current.WorkIdentity != previous.WorkIdentity || current.WorkBranch != previous.WorkBranch ||
+		current.InitialWorkSHA != previous.InitialWorkSHA || current.TargetBaseSHA != previous.TargetBaseSHA ||
+		current.Workflow != previous.Workflow || current.JiraKey != previous.JiraKey ||
+		!sameTime(current.DispatchedAt, previous.DispatchedAt) {
+		return errors.New("claim takeover changed dispatch binding")
+	}
 
 	return nil
+}
+
+func sameTime(left, right *time.Time) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+
+	return left.Equal(*right)
 }
 
 func samePredecessor(left, right *ClaimPredecessor) bool {
@@ -232,6 +277,15 @@ func (repository *claimRepository) writeClaim(
 ) (string, error) {
 	if err := record.validate(); err != nil {
 		return "", fmt.Errorf("refusing invalid claim record: %w", err)
+	}
+	if expectedSHA != "" {
+		previous, _, err := repository.readClaimCommit(ctx, expectedSHA)
+		if err != nil {
+			return "", fmt.Errorf("read claim transition parent: %w", err)
+		}
+		if err := validateClaimTransition(record, previous, expectedSHA); err != nil {
+			return "", fmt.Errorf("refusing invalid claim transition: %w", err)
+		}
 	}
 	content, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
@@ -254,6 +308,9 @@ func (repository *claimRepository) writeClaim(
 	commitTime := record.CreatedAt
 	if record.RenewedAt != nil {
 		commitTime = *record.RenewedAt
+	}
+	if record.DispatchedAt != nil && record.DispatchedAt.After(commitTime) {
+		commitTime = *record.DispatchedAt
 	}
 	environment := []string{
 		"GIT_AUTHOR_NAME=ai-campaign", "GIT_AUTHOR_EMAIL=ai-campaign@formance.invalid",
@@ -284,6 +341,73 @@ func (repository *claimRepository) deleteClaim(ctx context.Context, ref, expecte
 	}
 
 	return nil
+}
+
+func (repository *claimRepository) createBranch(
+	ctx context.Context,
+	targetRef string,
+	expectedTargetSHA string,
+	workRef string,
+) (string, error) {
+	if !strings.HasPrefix(targetRef, "refs/heads/") || !strings.HasPrefix(workRef, "refs/heads/") ||
+		strings.HasPrefix(workRef, claimRefPrefix) || !shaPattern.MatchString(expectedTargetSHA) {
+		return "BROKEN_BINDING", errors.New("invalid branch creation contract")
+	}
+	refs, err := repository.listRefs(ctx, targetRef, workRef)
+	if err != nil {
+		return "REMOTE_UNAVAILABLE", err
+	}
+	if refs[targetRef] != expectedTargetSHA {
+		return "BASE_UPDATE_REQUIRED", errors.New("target branch does not equal the expected dispatch base")
+	}
+	if workSHA := refs[workRef]; workSHA != "" {
+		if workSHA == expectedTargetSHA {
+			return "EXPECTED_EXISTING_WORK", nil
+		}
+
+		return "CONFLICTING_BRANCH", errors.New("work branch already exists at another SHA")
+	}
+	localRef := "refs/ai-campaign-target/" + strings.TrimPrefix(workRef, "refs/heads/")
+	if _, err := repository.git(ctx, nil, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head",
+		repository.remoteURL, "+"+targetRef+":"+localRef); err != nil {
+		return "REMOTE_UNAVAILABLE", fmt.Errorf("fetch exact target for branch creation: %w", err)
+	}
+	resolved, err := repository.git(ctx, nil, "rev-parse", "--verify", localRef)
+	if err != nil || strings.TrimSpace(string(resolved)) != expectedTargetSHA {
+		return "BASE_UPDATE_REQUIRED", errors.New("fetched target changed before branch creation")
+	}
+	lease := "--force-with-lease=" + workRef + ":"
+	if _, err := repository.git(ctx, nil, "push", "--porcelain", lease, repository.remoteURL,
+		expectedTargetSHA+":"+workRef); err != nil {
+		refreshed, refreshErr := repository.listRefs(ctx, targetRef, workRef)
+		if refreshErr != nil {
+			return "REMOTE_UNAVAILABLE", refreshErr
+		}
+		if refreshed[targetRef] != expectedTargetSHA {
+			return "BASE_UPDATE_REQUIRED", errors.New("target advanced during work branch creation")
+		}
+		if refreshed[workRef] == expectedTargetSHA {
+			return "EXPECTED_EXISTING_WORK", nil
+		}
+		if refreshed[workRef] != "" {
+			return "CONFLICTING_BRANCH", errors.New("concurrent writer created a conflicting work branch")
+		}
+
+		return "REMOTE_UNAVAILABLE", err
+	}
+
+	return "CREATED", nil
+}
+
+func (repository *claimRepository) fetchBranch(ctx context.Context, ref string) error {
+	if !strings.HasPrefix(ref, "refs/heads/") || strings.HasPrefix(ref, claimRefPrefix) {
+		return errors.New("invalid work branch ref")
+	}
+	localRef := "refs/ai-campaign-work/" + strings.TrimPrefix(ref, "refs/heads/")
+	_, err := repository.git(ctx, nil, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head",
+		repository.remoteURL, "+"+ref+":"+localRef)
+
+	return err
 }
 
 func (repository *claimRepository) isAncestor(ctx context.Context, ancestor, descendant string) bool {

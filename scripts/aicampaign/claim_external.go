@@ -77,6 +77,12 @@ func (commandClaimProvider) Observe(
 		observation.CreatedAt = timePointer(claim.Record.CreatedAt)
 		observation.ExpiresAt = timePointer(claim.Record.ExpiresAt)
 		observation.WorkBranch = claim.Record.WorkBranch
+		observation.WorkIdentity = claim.Record.WorkIdentity
+		observation.InitialWorkSHA = claim.Record.InitialWorkSHA
+		observation.TargetBaseSHA = claim.Record.TargetBaseSHA
+		observation.Workflow = claim.Record.Workflow
+		observation.JiraKey = claim.Record.JiraKey
+		observation.DispatchedAt = claim.Record.DispatchedAt
 		observation.OwnedBySession = currentClaimant != "" && currentClaimant == claim.Record.Claimant
 		if isExpired(claim.Record, now) {
 			observation.State = "CLAIM_EXPIRED"

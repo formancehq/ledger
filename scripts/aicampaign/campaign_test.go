@@ -560,7 +560,7 @@ func openPR(number int, branch, basis string) PRMatch {
 	return PRMatch{
 		Number: number, URL: "https://example.test/pr", State: "OPEN", HeadRef: branch,
 		HeadSHA: strings.Repeat(string(rune('a'+number%20)), 40), BaseRef: testTarget, BaseSHA: testHead,
-		ReviewDecision: "APPROVED", Checks: "SUCCESS", BindingBasis: basis,
+		BranchExists: true, ReviewDecision: "APPROVED", Checks: "SUCCESS", BindingBasis: basis,
 	}
 }
 

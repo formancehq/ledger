@@ -3,4 +3,4 @@ set -euo pipefail
 
 script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 repo_root=$(git -C "$script_root" rev-parse --show-toplevel)
-exec env -u GOROOT go run "$repo_root/scripts/aicampaign" "$@"
+exec env -u GOROOT go -C "$repo_root" run ./scripts/aicampaign "$@"

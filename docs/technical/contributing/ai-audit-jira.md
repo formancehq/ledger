@@ -7,6 +7,11 @@ Deep-audit findings become durable work only after independent qualification. Ji
 Only `CONFIRMED` findings are Jira candidates by default. `LIKELY`, `QUESTION`, and `REJECTED` are never published by this command. A human may handle them separately.
 
 Publication does not implement a fix and does not create a pull request. The resulting Jira bug is the durable handoff into the normal engineering workflow.
+Accordingly, `ai-campaign dispatch --workflow BUGFIX` requires one exact Jira
+binding and returns `JIRA_REQUIRED` when none exists. Dispatch never supplies the
+explicit publication authorization on the operator's behalf. Non-runtime
+`TEST_GAP`, `TOOLING_FIX`, and `DOCUMENTATION` dispatches may omit Jira under the
+campaign workflow contract.
 
 ## Stable identity and deduplication
 

@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://formance.com/schemas/ai-campaign-work/v1",
+  "title": "Ledger AI campaign engineering work item v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "createdAt",
+    "workflowClassification",
+    "remoteIdentity",
+    "finding",
+    "localState",
+    "requiredGates",
+    "canonicalNextAction",
+    "engineeringTask"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "ai-campaign-work/v1" },
+    "status": { "enum": ["DISPATCHED", "STALE_AT_DISPATCH"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "workflowClassification": { "$ref": "#/$defs/workflow" },
+    "remoteIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository", "campaignId", "auditId", "findingId", "workIdentity",
+        "findingIdentityDigest", "sourceAuditDigest", "qualifiedDigest", "sourceAuditSha",
+        "jiraKey", "jiraUrl", "claimRef", "claimSha", "claimant", "leaseExpiry",
+        "targetBranch", "targetBaseSha", "workBranch", "initialWorkSha", "prMarkers"
+      ],
+      "properties": {
+        "repository": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+        "campaignId": { "type": "string", "pattern": "^campaign-[0-9a-f]{64}$" },
+        "auditId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "findingId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*/[a-z0-9]+(-[a-z0-9]+)*$" },
+        "workIdentity": { "type": "string", "pattern": "^work-[0-9a-f]{64}$" },
+        "findingIdentityDigest": { "$ref": "#/$defs/digest" },
+        "sourceAuditDigest": { "$ref": "#/$defs/digest" },
+        "qualifiedDigest": { "$ref": "#/$defs/digest" },
+        "sourceAuditSha": { "$ref": "#/$defs/sha" },
+        "jiraKey": { "type": "string", "pattern": "^$|^[A-Z][A-Z0-9_]*-[1-9][0-9]*$" },
+        "jiraUrl": { "type": "string" },
+        "claimRef": { "type": "string", "pattern": "^refs/heads/ai-claims/v1/[0-9a-f]{64}$" },
+        "claimSha": { "$ref": "#/$defs/sha" },
+        "claimant": { "type": "string", "minLength": 3 },
+        "leaseExpiry": { "type": "string", "format": "date-time" },
+        "targetBranch": { "type": "string", "minLength": 1 },
+        "targetBaseSha": { "$ref": "#/$defs/sha" },
+        "workBranch": { "type": "string", "minLength": 1 },
+        "initialWorkSha": { "$ref": "#/$defs/sha" },
+        "prMarkers": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qualification", "severity", "title", "invariant", "challengeSummary",
+        "auditFindingReference", "qualificationReference", "evidenceFor", "evidenceAgainst",
+        "reproductionPlan"
+      ],
+      "properties": {
+        "qualification": { "const": "CONFIRMED" },
+        "severity": { "enum": ["P0", "P1", "P2", "P3"] },
+        "title": { "type": "string", "minLength": 1 },
+        "invariant": { "type": "string", "minLength": 1 },
+        "challengeSummary": { "type": "string", "minLength": 1 },
+        "auditFindingReference": { "type": "string", "minLength": 1 },
+        "qualificationReference": { "type": "string", "minLength": 1 },
+        "evidenceFor": { "type": "array", "items": { "type": "string" } },
+        "evidenceAgainst": { "type": "array", "items": { "type": "string" } },
+        "reproductionPlan": { "type": "string", "minLength": 1 }
+      }
+    },
+    "localState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["worktreePath", "workItemPath"],
+      "properties": {
+        "worktreePath": { "type": "string", "minLength": 1 },
+        "workItemPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "requiredGates": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "canonicalNextAction": { "enum": ["START_ENGINEERING_AGENT", "BASE_UPDATE_REQUIRED"] },
+    "engineeringTask": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{40,64}$" },
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "workflow": { "enum": ["BUGFIX", "TEST_GAP", "TOOLING_FIX", "DOCUMENTATION"] }
+  }
+}

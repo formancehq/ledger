@@ -4,9 +4,10 @@
 qualified native audit results. It preserves immutable audit provenance, caches
 external observations, reports the mechanically next valid workflow transition,
 and coordinates exclusive finding ownership through remote Git claim leases. It
-does not perform engineering reasoning, choose product priority, fix findings,
-publish issues, dispatch agents, mutate pull-request bindings, or merge pull
-requests.
+can mechanically dispatch an owned confirmed finding into an isolated branch,
+worktree, and reconstructable work-item contract. It does not invoke an agent,
+perform engineering reasoning, choose product priority, fix findings, publish
+issues, open or merge pull requests, or decide readiness.
 
 ## Motivation and boundary
 
@@ -28,8 +29,16 @@ claim. Claims coordinate ownership; they do not qualify findings, prove a branch
 or PR correct, authorize merge, or override GitHub, Jira, Git ancestry, or review
 and validation results.
 
-The v1 storage model is one JSON file. By default it is written below ignored
-`build/ai-campaign/`, so it survives an agent session without entering a
+A claim is not a dispatch. Dispatch is the one-time mechanical binding of an
+already-owned claim to a canonical work identity, branch, initial SHA, and
+workflow contract. Dispatch is not engineering work, PR readiness, publication,
+or permission to merge. The engineering agent remains responsible for
+reproduction, root cause, implementation, regression design, mutation
+sensitivity, validation, and review findings.
+
+The campaign projection is one JSON file; dispatch adds one work-item JSON file
+per canonical work identity. By default both live below ignored
+`build/ai-campaign/`, so they survive an agent session without entering a
 candidate/product commit. An explicit destination outside the repository is also
 allowed. Repository-local destinations outside ignored `build/` are rejected.
 Writes use a directory-anchored temporary file, file sync, atomic rename, and
@@ -183,6 +192,165 @@ the tool does not claim success unless it can prove the outcome. If the remote
 cannot be reached, claim, renew, release, and takeover perform no local fallback
 and report `REMOTE_UNAVAILABLE`.
 
+## Confirmed-finding dispatch
+
+Run dispatch from a clean worktree pinned to the verified target implementation:
+
+```sh
+bash scripts/ai-campaign dispatch build/ai-campaign/<campaign-id>.json \
+  --finding <audit-id/finding-id> \
+  --audit <source-audit.json> \
+  --qualified <qualified-result.json> \
+  --claimant "$AI_CAMPAIGN_CLAIMANT" \
+  --workflow BUGFIX
+```
+
+The source and qualified files are required because the campaign deliberately
+stores digest-bound JSON references instead of copying arbitrary evidence prose.
+Dispatch strictly reloads both files, validates their native schemas, recomputes
+both campaign digests, and extracts the invariant and qualification evidence for
+the work item. A changed, substituted, or incomplete artifact is rejected before
+remote mutation.
+
+Dispatch refreshes GitHub, Jira, Git, the target ref, and the claim ref before it
+creates anything, then performs a last-mile exact campaign-work-marker PR search
+after deriving the stable work identity and repeats that search immediately
+before the claim CAS. It requires one `CONFIRMED` campaign
+finding, fully fresh external truth, no ambiguous or existing PR ownership, the
+exact current audited target SHA, and a live claim owned by the supplied
+claimant. It then:
+
+1. derives the work identity and canonical branch;
+2. creates the remote branch at the immutable target SHA with an empty-value
+   `--force-with-lease`;
+3. creates or discovers a dedicated attached worktree outside the trusted
+   checkout and review validation directories, validating the discovered
+   physical path and rejecting dirty discovered state before an initial claim
+   binding;
+4. revalidates the claim, target, and branch;
+5. appends the dispatch binding to the existing claim lineage by exact claim-SHA
+   CAS; and
+6. writes the local work item atomically.
+
+It never runs Codex or another provider. The resulting worktree is clean at the
+initial work SHA; no engineering modification is made by dispatch.
+
+### Workflow and Jira policy
+
+The native audit and challenge schemas do not contain an authoritative
+engineering workflow type. The caller must therefore select one of `BUGFIX`,
+`TEST_GAP`, `TOOLING_FIX`, or `DOCUMENTATION`. Omitting it returns
+`HUMAN_DECISION_REQUIRED`; dispatch never guesses from severity, title, or prose.
+
+`BUGFIX` means a runtime product defect and requires one exact Jira binding before
+dispatch. If none exists, dispatch returns `JIRA_REQUIRED`. The tool does not call
+`ai-audit-jira` or create the issue: Jira publication remains dry-run by default
+and requires the operator's explicit `--publish` authorization. `TEST_GAP`,
+`TOOLING_FIX`, and `DOCUMENTATION` may proceed without Jira because the native
+bugfix publication contract does not require runtime bug evidence for those
+classes. If an exact Jira issue already exists for any class, its key and URL are
+preserved in the durable binding and work item. Multiple exact Jira issues are
+always ambiguous; dispatch never creates a second issue.
+
+### Work identity and branch contract
+
+The work identity is:
+
+```text
+work-<sha256("ai-campaign-work/v1" NUL campaignId NUL findingId
+             NUL qualifiedDigest NUL jiraKey-if-present)>
+```
+
+Title text is not an identity input. The branch is a human-readable
+`fix/`, `test/`, or `docs/` name containing the Jira key when present, the stable
+finding slug, and the first twelve work-identity hex characters. The full digest
+remains authoritative in the claim and work item. Dispatch searches the exact
+remote branch, claim binding, and PR binding before creation. An exact branch at
+the expected initial SHA is recoverable `EXPECTED_EXISTING_WORK`; a different SHA
+is `CONFLICTING_BRANCH`. Dispatch never force-updates an existing engineering
+branch.
+
+The branch always begins at `targetBaseSha`, and `initialWorkSha` records that
+same immutable commit. A final target observation occurs after claim binding. If
+the target advances before the binding precheck, dispatch stops with
+`BASE_UPDATE_REQUIRED` and does not bind the claim. If it advances in the narrow
+interval after the precheck and the exact claim CAS succeeds, the work item is
+written as `STALE_AT_DISPATCH` with `BASE_UPDATE_REQUIRED`. The work branch is
+never silently moved.
+
+### Durable binding and work item
+
+The existing claim commit is not replaced. Its next exact-CAS child adds:
+
+- `workIdentity`, `workBranch`, and `workflowClassification`;
+- `targetBaseSha` and `initialWorkSha`;
+- the exact Jira key when one exists; and
+- `dispatchedAt`.
+
+Renewal and expired takeover preserve these fields. A dispatched claim's work
+branch is immutable. `CLAIM_CHANGED` means another mutation won after the
+eligibility observation; the caller must refresh instead of continuing with a
+possibly renewed or stolen claim.
+
+The local artifact uses
+[`ai-campaign-work/v1`](../../../scripts/ai-campaign-work.schema.json). Its
+`remoteIdentity` section contains campaign/audit/finding digests, Jira, current
+claim SHA and lease, target/base, branch/initial SHA, and future PR markers.
+`localState` contains the ephemeral absolute worktree and artifact paths. It also
+contains exact audit/challenge provenance, workflow-specific gates, and a
+deterministic `engineeringTask`. That task contains mechanically known facts and
+the repository engineering sequence; it is context, not proof of the finding or
+of completed validation.
+
+Future PR creation must include exact trimmed body lines:
+
+```text
+AI-AUDIT:<finding-id>
+AI-CAMPAIGN-WORK:<work-identity>
+Jira: <key>                       # when present
+```
+
+The audit marker remains the current discovery key. The campaign-work marker is
+the exact work-item binding and must not be replaced by branch-name inference.
+Dispatch does not open a draft or non-draft PR.
+
+### Idempotency and crash recovery
+
+Remote claim/branch state is authoritative; the local work item is a
+reconstructable projection. Repeating dispatch with the same campaign, claim
+binding, workflow, branch, and target lineage discovers the existing worktree or
+creates the missing local one, rewrites a missing or malformed artifact from
+remote truth, and returns `ALREADY_DISPATCHED`. When the target has advanced, the
+reconstructed artifact is `STALE_AT_DISPATCH` and the next action remains
+`BASE_UPDATE_REQUIRED`; idempotency does not conceal the stale base. Any
+different binding returns `CONFLICTING_DISPATCH` or a narrower broken/ambiguous
+classification.
+
+Recovery by boundary is:
+
+| Observed state | Recovery |
+|---|---|
+| Claim only, no branch | Retry dispatch; create the exact branch. |
+| Exact branch at initial SHA, claim unbound | Reconcile `EXPECTED_EXISTING_WORK`, create/discover the worktree, then CAS-bind. |
+| Branch and worktree, claim unbound | Discover both and retry the same claim CAS. |
+| Claim bound, worktree missing | Verify branch lineage and recreate the local worktree. |
+| Claim bound, work item missing/malformed | Reconstruct it from claim, branch, campaign, and digest-verified evidence. |
+| Complete work item, session lost | Repeat dispatch; `ALREADY_DISPATCHED` returns the inherited task. |
+
+Claim binding occurs only after successful worktree creation, so a dispatch
+cannot create a new state in which it bound the claim and then failed its initial
+worktree creation. A bound claim with no local worktree means the path was lost
+or removed after binding and is recovered by the rule above.
+
+Dispatch does not blindly roll back a remote branch after an ambiguous failure.
+It only reports mutations it can prove. No retry deletes a claim or work branch.
+
+Structured stops include `FINDING_NOT_CONFIRMED`, `CLAIM_REQUIRED`,
+`CLAIM_NOT_OWNER`, `CLAIM_EXPIRED`, `JIRA_REQUIRED`, `AMBIGUOUS_BINDING`,
+`EXISTING_PR`, `ALREADY_MERGED`, `BROKEN_BINDING`, `CONFLICTING_BRANCH`,
+`CONFLICTING_DISPATCH`, `CLAIM_CHANGED`, `STALE_CAMPAIGN`,
+`REMOTE_UNAVAILABLE`, `BASE_UPDATE_REQUIRED`, and `STALE_AT_DISPATCH`.
+
 ## Inspect
 
 ```sh
@@ -258,6 +426,8 @@ the audit finding is fixed.
 | `TRACKED` | Confirmed, current audit target, exactly one Jira issue, no PR. |
 | `CLAIMED` | One valid live remote claim exists; ownership may be this session or another. |
 | `CLAIM_EXPIRED` | The valid remote claim is beyond expiry plus the skew allowance and needs explicit disposition. |
+| `DISPATCHED` | The live claim has a complete immutable dispatch binding and its remote work branch exists. |
+| `STALE_AT_DISPATCH` | A dispatched work item retains its immutable base, but the target has advanced. |
 | `PR_OPEN` | Exactly one bound PR is open and its branch/head binding is intact. |
 | `PR_CLOSED` | Exactly one bound PR is closed without merge. |
 | `MERGED` | Exactly one bound PR is merged; resolution still needs verification. |
@@ -289,7 +459,8 @@ mechanically safe workflow transition per finding from cached state:
 | Condition | `nextAction` |
 |---|---|
 | Confirmed and freshly unclaimed | `CLAIM` |
-| Live claim owned by current session | `CONTINUE_CLAIMED_WORK` |
+| Live unbound claim owned by current session | `DISPATCH` |
+| Complete dispatch owned by current session | `START_ENGINEERING_AGENT` |
 | Live claim owned by another session | `WAIT_OR_COORDINATE` |
 | Expired claim | `REVIEW_EXPIRED_CLAIM` |
 | Open PR | `CONTINUE_PR` |
@@ -297,7 +468,8 @@ mechanically safe workflow transition per finding from cached state:
 | Closed unmerged PR | `REVIEW_CLOSED_PR` |
 | Broken binding | `REPAIR_BINDING` |
 | Ambiguous binding | `RESOLVE_BINDING` |
-| Advanced target without PR | `REQUALIFY_ON_CURRENT_TARGET` |
+| Advanced target without dispatch/PR | `REQUALIFY_ON_CURRENT_TARGET` |
+| Advanced target after dispatch | `BASE_UPDATE_REQUIRED` |
 | Stale/incomplete external truth | `REFRESH_REQUIRED` |
 | `QUESTION` | `HUMAN_DECISION_REQUIRED` |
 | `LIKELY` or `REJECTED` | `NO_ACTION` |
@@ -352,8 +524,8 @@ made by this tooling.
 
 ## Explicit non-goals
 
-This milestone does not implement confirmed-finding dispatch, automatic
-branch/worktree creation, PR-binding mutation, publication resume/events,
-automatic merge, Jira mutation, composite exact-SHA readiness, a shared
-structured failure envelope, or automatic terminal reconciliation. Those
+This milestone does not implement automatic PR creation/publication,
+publication resume/events, automatic merge, Jira mutation, composite exact-SHA
+readiness, a shared structured failure envelope, automatic terminal
+reconciliation/claim cleanup, or a higher-level multi-finding scheduler. Those
 require separate contracts and trust reviews.

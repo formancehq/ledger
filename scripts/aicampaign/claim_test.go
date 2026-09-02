@@ -436,7 +436,7 @@ func TestRenewCanBindWorkBranchAndInspectDetectsItsDeletion(t *testing.T) {
 	require.Equal(t, "RENEWED", renewed.Status)
 	inspection := inspectAgainstRemote(campaign, remote, testClaimantA, testNow.Add(time.Hour))
 	require.Equal(t, "CLAIMED", inspection.Findings[0].State)
-	require.Equal(t, "CONTINUE_CLAIMED_WORK", inspection.Findings[0].NextAction)
+	require.Equal(t, "DISPATCH", inspection.Findings[0].NextAction)
 	runGit(t, "", "--git-dir", remote, "update-ref", "-d", "refs/heads/work/finding")
 
 	inspection = inspectAgainstRemote(campaign, remote, testClaimantA, testNow.Add(time.Hour))

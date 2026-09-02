@@ -119,6 +119,12 @@ func takeoverClaim(
 	if workBranch == "" {
 		workBranch = observed.Record.WorkBranch
 	}
+	if observed.Record.DispatchedAt != nil && workBranch != observed.Record.WorkBranch {
+		result.Status = "CLAIM_CONFLICT"
+		result.Reason = "a dispatched claim's work branch is immutable"
+
+		return result
+	}
 	record := ClaimRecord{
 		SchemaVersion: claimSchemaVersion, CampaignID: campaign.CampaignID, AuditID: campaign.AuditID,
 		FindingID: finding.ID, FindingIdentityDigest: finding.IdentityDigest,
@@ -126,6 +132,9 @@ func takeoverClaim(
 		Qualification: finding.Qualification, Claimant: claimant, CreatedAt: createdAt,
 		ExpiresAt: createdAt.Add(lease), TargetBranch: observed.Record.TargetBranch,
 		TargetSHA: observed.Record.TargetSHA, WorkBranch: workBranch,
+		WorkIdentity: observed.Record.WorkIdentity, InitialWorkSHA: observed.Record.InitialWorkSHA,
+		TargetBaseSHA: observed.Record.TargetBaseSHA, Workflow: observed.Record.Workflow,
+		JiraKey: observed.Record.JiraKey, DispatchedAt: observed.Record.DispatchedAt,
 		Predecessor: &ClaimPredecessor{
 			ClaimSHA: observedSHA, Claimant: observed.Record.Claimant,
 			CreatedAt: observed.Record.CreatedAt, ExpiresAt: observed.Record.ExpiresAt, Reason: "EXPIRED_TAKEOVER",

@@ -46,6 +46,8 @@ func run(arguments []string, stdout, stderr io.Writer) error {
 		return runRelease(arguments[1:], stdout, stderr)
 	case "takeover":
 		return runTakeover(arguments[1:], stdout, stderr)
+	case "dispatch":
+		return runDispatch(arguments[1:], stdout, stderr)
 	default:
 		if err := usage(stderr); err != nil {
 			return err
@@ -308,6 +310,7 @@ func usage(destination io.Writer) error {
   scripts/ai-campaign renew <campaign> --finding <id> --claimant <id>
   scripts/ai-campaign release <campaign> --finding <id> --claimant <id>
   scripts/ai-campaign takeover <campaign> --finding <id> [--claimant <id>]
+  scripts/ai-campaign dispatch <campaign> --finding <id> --audit <source-audit> --qualified <qualified-result> [--workflow <classification>]
 
 Human summaries are written to stderr; stable JSON is written to stdout.
 `)

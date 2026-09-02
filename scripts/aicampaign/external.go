@@ -125,6 +125,22 @@ func searchPullRequests(ctx context.Context, repository, query string) ([]github
 	return pullRequests, nil
 }
 
+func findCampaignWorkPRs(ctx context.Context, repository, marker string) ([]PRMatch, error) {
+	pullRequests, err := searchPullRequests(ctx, repository, marker)
+	if err != nil {
+		return nil, err
+	}
+	matches := make([]PRMatch, 0, len(pullRequests))
+	for _, pullRequest := range pullRequests {
+		if exactLine(pullRequest.Body, marker) {
+			matches = append(matches, pullRequest.toMatch("AI_CAMPAIGN_WORK_MARKER"))
+		}
+	}
+	slices.SortFunc(matches, func(left, right PRMatch) int { return left.Number - right.Number })
+
+	return matches, nil
+}
+
 func (pullRequest githubPR) toMatch(bindingBasis string) PRMatch {
 	return PRMatch{
 		Number:          pullRequest.Number,

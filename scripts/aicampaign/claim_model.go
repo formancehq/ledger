@@ -35,6 +35,12 @@ type ClaimRecord struct {
 	TargetBranch          string            `json:"targetBranch"`
 	TargetSHA             string            `json:"targetSha"`
 	WorkBranch            string            `json:"workBranch"`
+	WorkIdentity          string            `json:"workIdentity"`
+	InitialWorkSHA        string            `json:"initialWorkSha"`
+	TargetBaseSHA         string            `json:"targetBaseSha"`
+	Workflow              string            `json:"workflowClassification"`
+	JiraKey               string            `json:"jiraKey"`
+	DispatchedAt          *time.Time        `json:"dispatchedAt"`
 	RenewedAt             *time.Time        `json:"renewedAt"`
 	RenewalCount          int               `json:"renewalCount"`
 	Predecessor           *ClaimPredecessor `json:"predecessor"`
@@ -100,6 +106,13 @@ func (claim ClaimRecord) validate() error {
 		strings.HasPrefix("refs/heads/"+claim.WorkBranch, claimRefPrefix) || claim.WorkBranch == claim.TargetBranch) {
 		return errors.New("invalid claim work branch")
 	}
+	if err := validateDispatchBinding(claim.WorkIdentity, claim.WorkBranch, claim.InitialWorkSHA, claim.TargetBaseSHA,
+		claim.Workflow, claim.JiraKey, claim.DispatchedAt); err != nil {
+		return fmt.Errorf("invalid claim dispatch binding: %w", err)
+	}
+	if claim.WorkIdentity != "" && claim.TargetBaseSHA != claim.TargetSHA {
+		return errors.New("claim dispatch base does not match immutable target SHA")
+	}
 	if claim.Predecessor != nil {
 		predecessor := claim.Predecessor
 		if !shaPattern.MatchString(predecessor.ClaimSHA) || !claimantPattern.MatchString(predecessor.Claimant) ||
@@ -108,6 +121,35 @@ func (claim ClaimRecord) validate() error {
 			!predecessor.ExpiresAt.After(predecessor.CreatedAt) || predecessor.Reason != "EXPIRED_TAKEOVER" {
 			return errors.New("invalid claim predecessor")
 		}
+	}
+
+	return nil
+}
+
+func validateDispatchBinding(
+	workIdentity string,
+	workBranch string,
+	initialWorkSHA string,
+	targetBaseSHA string,
+	workflow string,
+	jiraKey string,
+	dispatchedAt *time.Time,
+) error {
+	valuesPresent := workIdentity != "" || initialWorkSHA != "" || targetBaseSHA != "" || workflow != "" ||
+		jiraKey != "" || dispatchedAt != nil
+	if !valuesPresent {
+		return nil
+	}
+	if !workIdentityPattern.MatchString(workIdentity) || workBranch == "" || !shaPattern.MatchString(initialWorkSHA) ||
+		!shaPattern.MatchString(targetBaseSHA) || !validWorkflow(workflow) || dispatchedAt == nil ||
+		dispatchedAt.IsZero() || dispatchedAt.Location() != time.UTC {
+		return errors.New("partial or malformed dispatch binding")
+	}
+	if initialWorkSHA != targetBaseSHA {
+		return errors.New("initial work SHA does not match target base SHA")
+	}
+	if jiraKey != "" && !jiraKeyPattern.MatchString(jiraKey) {
+		return errors.New("invalid dispatch Jira key")
 	}
 
 	return nil
