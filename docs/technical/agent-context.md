@@ -123,6 +123,10 @@ Use the native deep-audit workflow when the request seeks latent correctness def
 2. If a manifest exists, read `docs/technical/contributing/ai-audit.md` and run `bash scripts/ai-audit <domain>`. Keep the manifest as the campaign scope instead of replacing it with an ad-hoc audit prompt.
 3. Qualify the structured result with `bash scripts/ai-audit-challenge <audit-result>` after reading `docs/technical/contributing/ai-audit-challenge.md`. The challenge pass independently tries to disprove every finding; a first-pass finding is not a confirmed engineering defect.
 4. Treat Jira publication as a separate, later step. `scripts/ai-audit-jira` consumes a qualified report, and publication requires explicit authorization; neither the audit nor challenge pass creates issues.
+5. For cross-session coordination, read
+   `docs/technical/contributing/ai-campaign.md` and use
+   `scripts/ai-campaign`. Campaign state is a local projection; it never
+   replaces GitHub, Jira, Git, or native audit provenance.
 
 If no manifest matches, first decide whether the requested correctness scope is durable and reusable. If it is, create and review a manifest before running the native audit. If it is not, keep the work as a task-specific investigation rather than mechanically creating a new audit domain.
 
