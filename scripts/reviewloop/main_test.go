@@ -432,6 +432,86 @@ func TestVerifyFileSnapshotsUnchangedRejectsFixerStateMutation(t *testing.T) {
 	require.ErrorContains(t, err, resultPath+" content changed")
 }
 
+func TestReviewLoopRunsDuplicateValidationForUnchangedApprovedState(t *testing.T) {
+	t.Parallel()
+
+	repository := t.TempDir()
+	runGit(t, repository, "init")
+	require.NoError(t, os.WriteFile(filepath.Join(repository, "base.txt"), []byte("base\n"), 0o644))
+	runGit(t, repository, "add", "base.txt")
+	runGit(t, repository, "-c", "user.name=Review Loop Test", "-c", "user.email=review-loop@example.com", "commit", "-m", "base")
+	baseSHA := strings.TrimSpace(runGitOutput(t, repository, "rev-parse", "HEAD"))
+	fixtureRoot := t.TempDir()
+	candidate := filepath.Join(fixtureRoot, "candidate")
+	runGit(t, repository, "worktree", "add", "--detach", candidate, baseSHA)
+	validationRunDir := filepath.Join(fixtureRoot, "validation")
+	require.NoError(t, os.MkdirAll(validationRunDir, 0o755))
+	bindingFile := filepath.Join(fixtureRoot, "binding.json")
+	writeBindingFile(t, bindingFile, 123, candidate, baseSHA, repository)
+
+	reviewer := filepath.Join(repository, "reviewer.sh")
+	require.NoError(t, os.WriteFile(reviewer, []byte(`#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$AI_REVIEW_PASS" == 1 ]]; then
+  cat > "$AI_REVIEW_RESULT" <<EOF
+{"decision":"REQUEST_CHANGES","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[],"findings":[{"id":"fix-me","severity":"P2","blocking":true,"auto_fixable":true,"title":"Fix fixture","location":"base.txt:1","evidence":"fixture","impact":"fixture","resolution":"fixture"}],"residual_risk":"LOW","human_decision_context":""}
+EOF
+else
+  cat > "$AI_REVIEW_RESULT" <<EOF
+{"decision":"APPROVE","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[{"id":"fix-me","status":"FIXED","reason":"fixture was changed"}],"findings":[],"residual_risk":"LOW","human_decision_context":""}
+EOF
+fi
+`), 0o755))
+	fixer := filepath.Join(repository, "fixer.sh")
+	require.NoError(t, os.WriteFile(fixer, []byte(`#!/usr/bin/env bash
+set -euo pipefail
+printf 'fixed\n' > fixed.txt
+`), 0o755))
+	validator := filepath.Join(repository, "validator.sh")
+	require.NoError(t, os.WriteFile(validator, []byte(`#!/usr/bin/env bash
+set -euo pipefail
+{
+  printf 'base=%s\n' "$AI_REVIEW_BASE_SHA"
+  printf 'head=%s\n' "$(git rev-parse HEAD)"
+  git diff --binary --full-index HEAD --
+  git ls-files --others --exclude-standard -z | while IFS= read -r -d '' path; do
+    printf 'path=%s\n' "$path"
+    git hash-object -- "$path"
+  done
+} | git hash-object --stdin >> "$TEST_VALIDATION_IDENTITIES"
+`), 0o755))
+
+	binary := filepath.Join(fixtureRoot, "review-loop")
+	build := exec.Command("go", "build", "-o", binary, ".")
+	build.Dir = "."
+	output, err := build.CombinedOutput()
+	require.NoError(t, err, string(output))
+
+	identityLog := filepath.Join(validationRunDir, "validation-identities")
+	command := exec.Command(binary,
+		"--base", baseSHA,
+		"--pr", "123",
+		"--worktree", candidate,
+		"--expected-head", baseSHA,
+		"--trusted-root", repository,
+		"--binding-file", bindingFile,
+		"--validation-run-dir", validationRunDir,
+		"--git-guard", filepath.Join(repositoryRootForTests(t), "scripts", "ai-git-guard"),
+		"--review-cmd", "bash "+shellQuote(reviewer),
+		"--fix-cmd", "bash "+shellQuote(fixer),
+		"--validation-cmd", "bash "+shellQuote(validator),
+		"--state-dir", filepath.Join(fixtureRoot, "review-state"),
+	)
+	command.Dir = candidate
+	command.Env = append(os.Environ(), "TEST_VALIDATION_IDENTITIES="+identityLog)
+	output, err = command.CombinedOutput()
+	require.NoError(t, err, string(output))
+
+	identities := strings.Fields(readTestFile(t, identityLog))
+	require.Len(t, identities, 2, "BEFORE: validator_run_count=2")
+	require.Equal(t, identities[0], identities[1], "both validations must receive identical candidate/base inputs")
+}
+
 func TestApprovedReviewFailsWhenLocalValidationFails(t *testing.T) {
 	t.Parallel()
 
