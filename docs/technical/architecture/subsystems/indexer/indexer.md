@@ -100,6 +100,33 @@ This is what allows the atomic switch (see below) to flip the served version wit
 
 The absence guarantee also holds during index creation backfill. The backfill owns a single-use pending version, and a retype received mid-backfill bumps `PendingVersion` before resetting the log cursor, abandoning the partially built version and replaying into a fresh keyspace. A READY-index schema rewrite cannot pre-populate a pending row for an as-yet-unfolded transaction: it enumerates candidates from the current-version reverse map, which is itself created by folding the transaction log. Later same-batch metadata mutations remain correct because the insert writes the reverse-map overlay consumed by the replacement path.
 
+#### Operational motivation and scope (EN-1931)
+
+During sustained ingestion on the `sylvain` development cluster on 2026-09-01,
+filtered reads failed while waiting for local read-index alignment. After an
+operator restart, one replica started 167,642 Pebble sequences behind the
+primary store (cursor 850,223 versus sequence 1,017,865), with no index
+backfill active; folding batches of 10,000 logs took approximately 40–50
+seconds. A 2.18-hour process-CPU profile attributed 1.16 hours to
+`reverseMapValue` below the indexbuilder's 1.20-hour processing branch. The
+Pebble point-read path, including index-block reads and Snappy decoding, was
+therefore the dominant measured indexbuilder cost rather than a speculative
+micro-optimization.
+
+The operational requirement is to keep the local read index close enough to
+the primary cursor for aligned reads to complete during ingestion, without
+weakening overwrite, delete, or rewrite correctness. Keeping one uniform
+replacement path was the simpler alternative, but retained the measured
+negative read for every newly minted transaction-metadata field. The selected
+path removes reads only where absence is established by the transaction-ID and
+single-use-version lifecycle; all other callers retain the authoritative
+lookup. The restart ownership guard belongs to the same safety boundary: an
+initial backfill accidentally resumed as a schema rewrite could pre-populate
+the supposedly fresh pending version and invalidate the absence proof. The
+documentation/comment audit was used to challenge that lifecycle against the
+code and is included because it exposed this prerequisite rather than as an
+independent behavior change.
+
 ## Read Store Key Layout
 
 `internal/storage/readstore/keys.go`.
