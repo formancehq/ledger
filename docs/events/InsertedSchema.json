@@ -44,8 +44,11 @@
     },
     "ChartSegment": {
       "properties": {
-        "VariableSegment": {
-          "$ref": "#/$defs/ChartVariableSegment"
+        "VariableSegments": {
+          "items": {
+            "$ref": "#/$defs/ChartVariableSegment"
+          },
+          "type": "array"
         },
         "FixedSegments": {
           "additionalProperties": {
@@ -60,15 +63,18 @@
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "VariableSegment",
+        "VariableSegments",
         "FixedSegments",
         "Account"
       ]
     },
     "ChartVariableSegment": {
       "properties": {
-        "VariableSegment": {
-          "$ref": "#/$defs/ChartVariableSegment"
+        "VariableSegments": {
+          "items": {
+            "$ref": "#/$defs/ChartVariableSegment"
+          },
+          "type": "array"
         },
         "FixedSegments": {
           "additionalProperties": {
@@ -89,7 +95,7 @@
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "VariableSegment",
+        "VariableSegments",
         "FixedSegments",
         "Account",
         "Pattern",
