@@ -27,15 +27,15 @@ func TestHelpDoesNotRequirePRMetadata(t *testing.T) {
 	require.Contains(t, string(output), "Usage: bash scripts/ai-pr-loop")
 }
 
-func TestLauncherUsesUniqueWorktreesImmutableBaseAndKeepTriage(t *testing.T) {
+func TestLauncherUsesUniqueWorktreesImmutableBaseAndDirectReview(t *testing.T) {
 	t.Parallel()
 
 	fixture := newLauncherFixture(t)
 	firstCapture := filepath.Join(fixture.root, "first-args")
-	firstOutput, firstErr := runLauncher(t, fixture, firstCapture, triageResult{decision: "KEEP"})
+	firstOutput, firstErr := runLauncher(t, fixture, firstCapture)
 	require.NoError(t, firstErr, firstOutput)
 	secondCapture := filepath.Join(fixture.root, "second-args")
-	secondOutput, secondErr := runLauncher(t, fixture, secondCapture, triageResult{decision: "KEEP"})
+	secondOutput, secondErr := runLauncher(t, fixture, secondCapture)
 	require.NoError(t, secondErr, secondOutput)
 
 	firstWorktree := worktreeFromOutput(t, firstOutput)
@@ -55,7 +55,10 @@ func TestLauncherUsesUniqueWorktreesImmutableBaseAndKeepTriage(t *testing.T) {
 	require.Contains(t, capturedArgument(t, firstCapture, "--validation-gates-cmd"), "agent-check-pr --list")
 	require.Equal(t, fixture.baseSHA, baseArgument(t, firstCapture))
 	require.Equal(t, fixture.baseSHA, baseArgument(t, secondCapture))
-	require.Contains(t, firstOutput, "legitimacy triage KEEP")
+	require.Contains(t, capturedArgument(t, firstCapture, "--review-cmd"), "trusted-tools/scripts/ai-review-codex")
+	launcher := readCapturedFile(t, launcherPath(t))
+	require.NotContains(t, launcher, "ai-pr-triage")
+	require.NotContains(t, launcher, "codex-pr-triage")
 }
 
 func TestLauncherCreatesCandidateWithoutMutatingDirtyRoot(t *testing.T) {
@@ -66,7 +69,7 @@ func TestLauncherCreatesCandidateWithoutMutatingDirtyRoot(t *testing.T) {
 	require.NoError(t, os.WriteFile(dirtyPath, []byte("keep me\n"), 0o644))
 	statusBefore := runGitOutput(t, fixture.checkout, "status", "--porcelain=v1", "--untracked-files=all")
 	capture := filepath.Join(fixture.root, "dirty-root-args")
-	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"})
+	output, err := runLauncher(t, fixture, capture)
 	require.NoError(t, err, output)
 
 	worktree := worktreeFromOutput(t, output)
@@ -76,57 +79,19 @@ func TestLauncherCreatesCandidateWithoutMutatingDirtyRoot(t *testing.T) {
 	require.Equal(t, "keep me\n", readCapturedFile(t, dirtyPath))
 }
 
-func TestLauncherStopsBeforeReviewForQuestionAndReject(t *testing.T) {
-	for _, decision := range []string{"QUESTION", "REJECT"} {
-		t.Run(decision, func(t *testing.T) {
-			fixture := newLauncherFixture(t)
-			capture := filepath.Join(fixture.root, "review-args")
-			output, err := runLauncher(t, fixture, capture, triageResult{decision: decision})
-			require.Error(t, err, output)
-			require.NoFileExists(t, capture, "technical review must not run")
-			if decision == "QUESTION" {
-				require.Contains(t, output, "AI_PR_LOOP_RESULT: HUMAN_DECISION_REQUIRED")
-			} else {
-				require.Contains(t, output, "AI_PR_LOOP_RESULT: LEGITIMACY_REJECTED")
-			}
-		})
-	}
-}
-
-func TestLauncherRefusesTriageResultForAnotherTarget(t *testing.T) {
-	for _, moved := range []string{"head", "base"} {
-		t.Run(moved, func(t *testing.T) {
-			fixture := newLauncherFixture(t)
-			// A base-pinned triage tool that ignores the launcher-provided
-			// expected SHAs can answer for a PR state the launcher never
-			// fetched.
-			triage := triageResult{decision: "KEEP"}
-			if moved == "head" {
-				triage.headSHA = fixture.baseSHA
-			} else {
-				triage.baseSHA = fixture.headSHA
-			}
-			capture := filepath.Join(fixture.root, "review-args")
-			output, err := runLauncher(t, fixture, capture, triage)
-			require.Error(t, err, output)
-			require.NoFileExists(t, capture, "technical review must not run")
-			require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (triage target mismatch)")
-		})
-	}
-}
-
-func TestLauncherReconcilesKnownFindingsBoundToTheVerifiedTarget(t *testing.T) {
+func TestLauncherSuppliesKnownFindingsToTheDirectReviewer(t *testing.T) {
 	t.Parallel()
 
 	fixture := newLauncherFixture(t)
 	capture := filepath.Join(fixture.root, "review-args")
-	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"})
+	output, err := runLauncher(t, fixture, capture)
 	require.NoError(t, err, output)
 
-	require.Contains(t, capturedArgument(t, capture, "--review-cmd"), "trusted-tools/scripts/ai-review-known-findings")
+	require.Contains(t, capturedArgument(t, capture, "--review-cmd"), "trusted-tools/scripts/ai-review-codex")
 	ledgerPath := strings.TrimSpace(readCapturedFile(t, capture+".known"))
 	require.NotEmpty(t, ledgerPath, "the reviewer must receive AI_REVIEW_KNOWN_FINDINGS")
 	require.Equal(t, "123|"+fixture.headSHA, strings.TrimSpace(readCapturedFile(t, capture+".binding")))
+	require.FileExists(t, strings.TrimSpace(readCapturedFile(t, capture+".context")))
 
 	var ledger struct {
 		PRNumber int    `json:"pr_number"`
@@ -142,35 +107,34 @@ func TestLauncherAcceptsStructuredReviewBodyFindings(t *testing.T) {
 
 	fixture := newLauncherFixture(t)
 	capture := filepath.Join(fixture.root, "review-args")
-	// A review body split into blocker-level findings must reach reconciliation
-	// exactly like inline comments do.
-	structured := `[{"id":"github-review-7-finding-1","kind":"review-body-finding","source_review_id":7,` +
-		`"source_id":7,"url":"https://github.com/owner/repo/pull/123#pullrequestreview-7","author":"reviewer",` +
-		`"path":"","line":null,"body":"[P1][blocking] Structured blocking section"}]`
-	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"},
+	// A review body split into blocker-level findings must reach the final
+	// reviewer exactly like unresolved threads do.
+	structured := `[{"id":"github-review-7-finding-1","kind":"review-body-finding",` +
+		`"url":"https://github.com/owner/repo/pull/123#pullrequestreview-7","author":"reviewer",` +
+		`"path":"","line":null,"original_line":null,"is_outdated":false,"body":"[P1][blocking] Structured blocking section"}]`
+	output, err := runLauncher(t, fixture, capture,
 		"TEST_KNOWN_FINDINGS_JSON="+structured)
 	require.NoError(t, err, output)
-	require.Contains(t, output, "1 known blocking GitHub finding(s)")
+	require.Contains(t, output, "1 unresolved GitHub review finding(s)")
 
 	ledgerPath := strings.TrimSpace(readCapturedFile(t, capture+".known"))
 	require.NotEmpty(t, ledgerPath, "the reviewer must receive AI_REVIEW_KNOWN_FINDINGS")
 	require.Contains(t, readCapturedFile(t, ledgerPath), "github-review-7-finding-1")
 }
 
-func TestLauncherRefusesStructuredFindingWithoutBlockerMarker(t *testing.T) {
+func TestLauncherRefusesCollectedFindingWithoutIdentity(t *testing.T) {
 	t.Parallel()
 
 	fixture := newLauncherFixture(t)
 	capture := filepath.Join(fixture.root, "review-args")
-	// The structured kind is only meaningful for bodies that actually start at a
-	// blocker marker, so its identity and body must stay verifiable.
-	structured := `[{"id":"github-review-7-finding-1","kind":"review-body-finding","source_review_id":7,` +
-		`"source_id":7,"url":"","author":"reviewer","path":"","line":null,"body":"unstructured prose"}]`
-	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"},
+	// A mechanically collected item must retain a non-empty source identity.
+	structured := `[{"id":"","kind":"review-body-finding","url":"","author":"reviewer",` +
+		`"path":"","line":null,"original_line":null,"is_outdated":false,"body":"unstructured prose"}]`
+	output, err := runLauncher(t, fixture, capture,
 		"TEST_KNOWN_FINDINGS_JSON="+structured)
 	require.Error(t, err, output)
 	require.NoFileExists(t, capture, "technical review must not run")
-	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (known findings target mismatch)")
+	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (known findings collection failed)")
 }
 
 func TestLauncherRefusesMalformedKnownFindingsLedger(t *testing.T) {
@@ -178,12 +142,12 @@ func TestLauncherRefusesMalformedKnownFindingsLedger(t *testing.T) {
 
 	fixture := newLauncherFixture(t)
 	capture := filepath.Join(fixture.root, "review-args")
-	malformed := `[{"id":"github-review-1","kind":"review-body","source_review_id":1,"source_id":1,"url":"","author":"reviewer","path":"","line":null,"body":""}]`
-	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"},
+	malformed := `[{"id":"github-review-1","kind":"review-body","url":"","author":"reviewer","path":"","line":null,"original_line":null,"is_outdated":false,"body":""}]`
+	output, err := runLauncher(t, fixture, capture,
 		"TEST_KNOWN_FINDINGS_JSON="+malformed)
 	require.Error(t, err, output)
 	require.NoFileExists(t, capture, "technical review must not run")
-	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (known findings target mismatch)")
+	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (known findings collection failed)")
 }
 
 func TestLauncherRefusesKnownFindingsForAnotherTarget(t *testing.T) {
@@ -193,11 +157,47 @@ func TestLauncherRefusesKnownFindingsForAnotherTarget(t *testing.T) {
 	capture := filepath.Join(fixture.root, "review-args")
 	// A ledger snapshotted for another head cannot prove which blockers the
 	// reviewed state still carries.
-	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"},
+	output, err := runLauncher(t, fixture, capture,
 		"TEST_KNOWN_FINDINGS_HEAD="+fixture.baseSHA)
 	require.Error(t, err, output)
 	require.NoFileExists(t, capture, "technical review must not run")
 	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (known findings target mismatch)")
+}
+
+func TestOrdinaryToolingAndBugfixReachReviewWithoutTriage(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		env  []string
+	}{
+		{name: "tooling", env: []string{"TEST_PR_TITLE=chore: simplify tooling"}},
+		{name: "bugfix", env: []string{
+			"TEST_PR_TITLE=fix: repair tooling",
+			"TEST_PR_BODY=DISCOVERY: NO_EXISTING_WORK\nBEFORE_FIX: BUG_REPRODUCED\nAFTER_FIX: PASS",
+		}},
+		{name: "scoped-bugfix", env: []string{
+			"TEST_PR_TITLE=fix(wal): repair tooling",
+			"TEST_PR_BODY=DISCOVERY: NO_EXISTING_WORK\nBEFORE_FIX: BUG_REPRODUCED\nAFTER_FIX: PASS",
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newLauncherFixture(t)
+			capture := filepath.Join(fixture.root, "review-args")
+			output, err := runLauncher(t, fixture, capture, test.env...)
+			require.NoError(t, err, output)
+			require.FileExists(t, capture)
+		})
+	}
+}
+
+func TestScopedFixRequiresBugfixEvidence(t *testing.T) {
+	t.Parallel()
+
+	fixture := newLauncherFixture(t)
+	capture := filepath.Join(fixture.root, "review-args")
+	output, err := runLauncher(t, fixture, capture, "TEST_PR_TITLE=fix(wal): repair tooling")
+	require.Error(t, err, output)
+	require.NoFileExists(t, capture, "a scoped bugfix without evidence must not reach review")
+	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (bugfix evidence rejected)")
 }
 
 func TestLauncherRemovesTheRunDirectoryOfACleanRun(t *testing.T) {
@@ -207,7 +207,7 @@ func TestLauncherRemovesTheRunDirectoryOfACleanRun(t *testing.T) {
 	capture := filepath.Join(fixture.root, "review-args")
 	// Validation keeps only temporary state in the run directory. Shared caches
 	// are external and must not become run-owned cleanup targets.
-	output, err := runLauncherWithFlags(t, fixture, capture, triageResult{decision: "KEEP"}, nil,
+	output, err := runLauncherWithFlags(t, fixture, capture, nil,
 		[]string{"TEST_RUN_VALIDATION_CMD=1"})
 	require.NoError(t, err, output)
 	require.Contains(t, output, "Worktree is clean.")
@@ -215,42 +215,6 @@ func TestLauncherRemovesTheRunDirectoryOfACleanRun(t *testing.T) {
 	runEntries := strings.Fields(readCapturedFile(t, capture+".rundir"))
 	require.Empty(t, runEntries)
 	require.NoDirExists(t, filepath.Dir(worktreeFromOutput(t, output)))
-}
-
-func TestLauncherTreatsTriageFailureAsOrchestrationError(t *testing.T) {
-	fixture := newLauncherFixture(t)
-	capture := filepath.Join(fixture.root, "review-args")
-	output, err := runLauncher(t, fixture, capture, triageResult{exitCode: 2})
-	require.Error(t, err, output)
-	var exitError *exec.ExitError
-	require.ErrorAs(t, err, &exitError)
-	require.Equal(t, 1, exitError.ExitCode(), output)
-	require.NoFileExists(t, capture, "technical review must not run")
-	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (triage exit 2)")
-}
-
-func TestLauncherClassifiesGenuinelyMissingSharedPolicyAsToolingError(t *testing.T) {
-	t.Parallel()
-
-	fixture := newLauncherFixture(t)
-	updater := filepath.Join(fixture.root, "missing-policy-base")
-	runGit(t, fixture.root, "clone", "--branch", "release/v3.0", filepath.Join(fixture.root, "remote.git"), updater)
-	runGit(t, updater, "config", "user.name", "Target Branch Update")
-	runGit(t, updater, "config", "user.email", "target-update@example.com")
-	runGit(t, updater, "rm", "scripts/ai-pr-publication-preconditions")
-	runGit(t, updater, "commit", "-m", "remove publication preconditions")
-	runGit(t, updater, "push", "origin", "release/v3.0")
-	fixture.baseSHA = runGitOutput(t, updater, "rev-parse", "HEAD")
-
-	capture := filepath.Join(fixture.root, "review-args")
-	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"})
-	require.Error(t, err, output)
-	var exitError *exec.ExitError
-	require.ErrorAs(t, err, &exitError)
-	require.Equal(t, 1, exitError.ExitCode(), output)
-	require.Contains(t, output, "AI_PR_LOOP_RESULT: TOOLING_ERROR (missing publication preconditions)")
-	require.NotContains(t, output, "HUMAN_DECISION_REQUIRED")
-	require.NoFileExists(t, capture, "technical review must not run")
 }
 
 type launcherFixture struct {
@@ -286,9 +250,6 @@ func newLauncherFixture(t *testing.T) launcherFixture {
 	guard, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-git-guard"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-git-guard"), guard, 0o755))
-	preconditions, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-pr-publication-preconditions"))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-publication-preconditions"), preconditions, 0o755))
 	bugfixGate, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-bugfix-gate"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-bugfix-gate"), bugfixGate, 0o755))
@@ -310,6 +271,7 @@ printf '%s\n' "$@" > "$TEST_CAPTURE_FILE"
 pwd > "$TEST_CAPTURE_FILE.cwd"
 printf '%s\n' "${AI_REVIEW_KNOWN_FINDINGS:-}" > "$TEST_CAPTURE_FILE.known"
 printf '%s|%s\n' "${AI_REVIEW_KNOWN_FINDINGS_PR:-}" "${AI_REVIEW_KNOWN_FINDINGS_HEAD:-}" > "$TEST_CAPTURE_FILE.binding"
+printf '%s\n' "${AI_REVIEW_CONTEXT:-}" > "$TEST_CAPTURE_FILE.context"
 if [[ -n "${TEST_RUN_VALIDATION_CMD:-}" ]]; then
     validation_cmd=""
     validation_run_dir=""
@@ -331,7 +293,6 @@ if [[ "${TEST_ADVANCE_TARGET_AFTER_REVIEW:-false}" == "true" ]]; then
 fi
 `)
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 0\n")
-	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-known-findings"), "#!/usr/bin/env bash\nexit 0\n")
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-known-findings"), []byte(`#!/usr/bin/env bash
 set -euo pipefail
 pr=$1
@@ -346,26 +307,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 [[ -n "$head" && -n "$output" ]]
-printf '{"version":1,"pr_number":%s,"head":"%s","findings":%s}\n' \
+printf '{"version":1,"pr_number":%s,"head":"%s","review_decision":"REVIEW_REQUIRED","findings":%s}\n' \
 	"$pr" "${TEST_KNOWN_FINDINGS_HEAD:-$head}" "${TEST_KNOWN_FINDINGS_JSON:-[]}" > "$output"
-`), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-triage"), []byte(`#!/usr/bin/env bash
-set -euo pipefail
-[[ "${AI_PR_TRIAGE_EXPECT_BASE_SHA:-}" == "$TEST_BASE_SHA" ]]
-[[ "${AI_PR_TRIAGE_EXPECT_HEAD_SHA:-}" == "$TEST_HEAD_SHA" ]]
-if [[ "$TEST_TRIAGE_EXIT_CODE" -ne 0 ]]; then
-    exit "$TEST_TRIAGE_EXIT_CODE"
-fi
-output=""
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --output) output=$2; shift 2 ;;
-        *) shift ;;
-    esac
-done
-[[ -n "$output" ]]
-printf '{"decision":"%s","base_sha":"%s","head":"%s"}\n' \
-    "$TEST_TRIAGE_DECISION" "$TEST_TRIAGE_BASE_SHA" "$TEST_TRIAGE_HEAD_SHA" > "$output"
+jq -e 'all(.findings[]; (.id | length) > 0 and (.body | length) > 0)' "$output" >/dev/null
 `), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "base.txt"), []byte("base\n"), 0o644))
 	runGit(t, seed, "add", ".")
@@ -385,8 +329,7 @@ printf '{"decision":"%s","base_sha":"%s","head":"%s"}\n' \
 	runGit(t, seed, "checkout", "-b", "feature")
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "feature.txt"), []byte("feature\n"), 0o644))
 	writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), "#!/usr/bin/env bash\nexit 97\n")
-	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-known-findings"), "#!/usr/bin/env bash\nexit 97\n")
-	runGit(t, seed, "add", "feature.txt", "scripts/review-loop", "scripts/ai-review-known-findings")
+	runGit(t, seed, "add", "feature.txt", "scripts/review-loop")
 	runGit(t, seed, "commit", "-m", "feature")
 	headSHA := runGitOutput(t, seed, "rev-parse", "HEAD")
 	runGit(t, seed, "push", "-u", "origin", "feature")
@@ -399,7 +342,7 @@ set -euo pipefail
 case "$1 $2" in
     "repo view") printf 'owner/repo\n' ;;
     "pr view")
-        printf '{"number":123,"url":"https://github.com/owner/repo/pull/123","state":"OPEN","isDraft":false,"baseRefName":"release/v3.0","baseRefOid":"%s","headRefName":"feature","headRefOid":"%s","headRepositoryOwner":{"login":"owner"},"headRepository":{"name":"repo"}}\n' "$TEST_BASE_SHA" "$TEST_HEAD_SHA"
+        jq -n --arg base "$TEST_BASE_SHA" --arg head "$TEST_HEAD_SHA" --arg title "${TEST_PR_TITLE:-chore: tooling}" --arg body "${TEST_PR_BODY:-}" '{number:123,url:"https://github.com/owner/repo/pull/123",state:"OPEN",isDraft:false,title:$title,body:$body,labels:[],baseRefName:"release/v3.0",baseRefOid:$base,headRefName:"feature",headRefOid:$head,headRepositoryOwner:{login:"owner"},headRepository:{name:"repo"}}'
         ;;
     *) exit 98 ;;
 esac
@@ -439,36 +382,20 @@ func launcherPath(t *testing.T) string {
 	return path
 }
 
-// triageResult is the result the fake triage tool reports. Empty SHAs mean the
-// tool answers for the exact target the launcher verified.
-type triageResult struct {
-	decision string
-	baseSHA  string
-	headSHA  string
-	exitCode int
-}
-
-func runLauncher(t *testing.T, fixture launcherFixture, capturePath string, triage triageResult, extraEnv ...string) (string, error) {
+func runLauncher(t *testing.T, fixture launcherFixture, capturePath string, extraEnv ...string) (string, error) {
 	t.Helper()
 
-	return runLauncherWithFlags(t, fixture, capturePath, triage, []string{"--keep-worktree"}, extraEnv)
+	return runLauncherWithFlags(t, fixture, capturePath, []string{"--keep-worktree"}, extraEnv)
 }
 
 func runLauncherWithFlags(
 	t *testing.T,
 	fixture launcherFixture,
 	capturePath string,
-	triage triageResult,
 	flags []string,
 	extraEnv []string,
 ) (string, error) {
 	t.Helper()
-	if triage.baseSHA == "" {
-		triage.baseSHA = fixture.baseSHA
-	}
-	if triage.headSHA == "" {
-		triage.headSHA = fixture.headSHA
-	}
 	arguments := append([]string{filepath.Join(fixture.checkout, "scripts", "ai-pr-loop"), "123"}, flags...)
 	command := exec.Command("bash", arguments...)
 	command.Dir = fixture.checkout
@@ -479,10 +406,6 @@ func runLauncherWithFlags(
 		"TEST_REMOTE=" + fixture.remote,
 		"TEST_ADVANCED_BASE_SHA=" + fixture.advancedBaseSHA,
 		"TEST_CAPTURE_FILE=" + capturePath,
-		"TEST_TRIAGE_DECISION=" + triage.decision,
-		"TEST_TRIAGE_BASE_SHA=" + triage.baseSHA,
-		"TEST_TRIAGE_HEAD_SHA=" + triage.headSHA,
-		fmt.Sprintf("TEST_TRIAGE_EXIT_CODE=%d", triage.exitCode),
 	}
 	environment = append(environment, extraEnv...)
 	command.Env = testenv.Environment(environment...)

@@ -58,7 +58,7 @@ type validationReceipt struct {
 }
 
 // validationReceiptCache belongs to one review-loop process. It is deliberately
-// not serializable and is never shared with candidate adoption or publication.
+// not serializable and is never shared with another invocation or publication.
 type validationReceiptCache struct {
 	enabled      bool
 	base         reviewBase

@@ -36,6 +36,9 @@ type adapterFixture struct {
 	authCapture        string
 	homeCapture        string
 	validationRunDir   string
+	knownFindingsPath  string
+	reviewContextPath  string
+	invocationCount    string
 	substitutionMarker string
 	path               string
 }
@@ -137,6 +140,41 @@ func TestAdapterUsesTargetManifestForUntrackedFiles(t *testing.T) {
 	require.NotContains(t, prompt, "git ls-files --others --exclude-standard")
 }
 
+func TestAdapterSuppliesKnownFindingsToTheSingleTechnicalReview(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAdapterFixture(t)
+	output, err := runAdapter(t, fixture, map[string]string{
+		"AI_REVIEW_KNOWN_FINDINGS":      fixture.knownFindingsPath,
+		"AI_REVIEW_KNOWN_FINDINGS_PR":   "123",
+		"AI_REVIEW_KNOWN_FINDINGS_HEAD": testHead,
+		"AI_REVIEW_CONTEXT":             fixture.reviewContextPath,
+		"FAKE_KNOWN_STATUS":             "FIXED",
+	})
+	require.NoError(t, err, output)
+	prompt := readFile(t, fixture.promptCapture)
+	require.Contains(t, prompt, "UNTRUSTED GITHUB FINDINGS")
+	require.Contains(t, prompt, "UNTRUSTED TASK AND PR CONTEXT")
+	require.NotContains(t, prompt, "Untrusted GitHub claim")
+	require.NotContains(t, prompt, "EN-9999 untrusted task")
+	require.Equal(t, "1\n", readFile(t, fixture.invocationCount))
+	require.Contains(t, readFile(t, fixture.resultPath), `"id":"github-review-thread-THREAD_1"`)
+}
+
+func TestAdapterRejectsOmittedKnownFinding(t *testing.T) {
+	t.Parallel()
+
+	fixture := newAdapterFixture(t)
+	output, err := runAdapter(t, fixture, map[string]string{
+		"AI_REVIEW_KNOWN_FINDINGS":      fixture.knownFindingsPath,
+		"AI_REVIEW_KNOWN_FINDINGS_PR":   "123",
+		"AI_REVIEW_KNOWN_FINDINGS_HEAD": testHead,
+	})
+	require.Error(t, err, output)
+	require.Contains(t, output, "incomplete known-finding coverage")
+	require.Equal(t, "1\n", readFile(t, fixture.invocationCount))
+}
+
 func TestAdapterRejectsInconsistentUntrackedManifest(t *testing.T) {
 	t.Parallel()
 
@@ -191,6 +229,9 @@ func newAdapterFixture(t *testing.T) adapterFixture {
 		authCapture:        filepath.Join(temporaryDirectory, "auth.txt"),
 		homeCapture:        filepath.Join(temporaryDirectory, "isolated-home.txt"),
 		validationRunDir:   validationRunDir,
+		knownFindingsPath:  filepath.Join(temporaryDirectory, "known-findings.json"),
+		reviewContextPath:  filepath.Join(temporaryDirectory, "pr-metadata.json"),
+		invocationCount:    filepath.Join(temporaryDirectory, "invocation-count"),
 		substitutionMarker: filepath.Join(temporaryDirectory, "substitution-marker"),
 		path:               filepath.Join(temporaryDirectory, "bin") + string(os.PathListSeparator) + os.Getenv("PATH"),
 	}
@@ -207,11 +248,16 @@ func newAdapterFixture(t *testing.T) adapterFixture {
 }
 `
 	writeFile(t, fixture.targetPath, target, 0o644)
+	writeFile(t, fixture.knownFindingsPath, `{"version":1,"pr_number":123,"head":"`+testHead+`","review_decision":"CHANGES_REQUESTED","findings":[{"id":"github-review-thread-THREAD_1","kind":"unresolved-review-thread","url":"https://example/finding","author":"reviewer","path":"example.go","line":7,"original_line":7,"is_outdated":false,"body":"Untrusted GitHub claim"}]}`+"\n", 0o644)
+	writeFile(t, fixture.reviewContextPath, `{"title":"EN-9999 untrusted task","body":"Task details"}`+"\n", 0o644)
 
 	fakeCodex := `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" >"$FAKE_ARGUMENTS_CAPTURE"
 cat >"$FAKE_PROMPT_CAPTURE"
+count=0
+[[ ! -f "$FAKE_INVOCATION_COUNT" ]] || count=$(cat "$FAKE_INVOCATION_COUNT")
+printf '%s\n' "$((count + 1))" >"$FAKE_INVOCATION_COUNT"
 printf '%s\n' "$HOME" >"$FAKE_HOME_CAPTURE"
 {
     if [[ -e "$HOME/.agents/skills/personal-canary/SKILL.md" ]]; then printf 'personal_skill=true\n'; else printf 'personal_skill=false\n'; fi
@@ -223,7 +269,11 @@ printf '%s\n' "$HOME" >"$FAKE_HOME_CAPTURE"
 cp "$CODEX_HOME/auth.json" "$FAKE_AUTH_CAPTURE"
 if [[ -n "${FAKE_CODEX_EXIT:-}" ]]; then exit "$FAKE_CODEX_EXIT"; fi
 if [[ "${FAKE_CODEX_NO_RESULT:-}" == "1" ]]; then exit 0; fi
-printf '{"decision":"APPROVE","head":"%s","worktree_fingerprint":"%s","previous_findings":[],"findings":[],"residual_risk":"LOW","human_decision_context":""}\n' "$AI_REVIEW_HEAD" "$AI_REVIEW_WORKTREE_FINGERPRINT" >"$AI_REVIEW_RESULT"
+known='[]'
+if [[ -n "${FAKE_KNOWN_STATUS:-}" ]]; then
+    known='[{"id":"github-review-thread-THREAD_1","status":"'"$FAKE_KNOWN_STATUS"'","reason":"verified against current code"}]'
+fi
+printf '{"decision":"APPROVE","head":"%s","worktree_fingerprint":"%s","previous_findings":[],"known_findings":%s,"findings":[],"residual_risk":"LOW","human_decision_context":""}\n' "$AI_REVIEW_HEAD" "$AI_REVIEW_WORKTREE_FINGERPRINT" "$known" >"$AI_REVIEW_RESULT"
 `
 	writeFile(t, filepath.Join(temporaryDirectory, "bin", "codex"), fakeCodex, 0o755)
 	fakeHead := "#!/usr/bin/env bash\nprintf 'invoked\\n' >\"$SUBSTITUTION_MARKER\"\n"
@@ -258,6 +308,7 @@ func runAdapter(t *testing.T, fixture adapterFixture, extraEnvironment map[strin
 		"FAKE_ENVIRONMENT_CAPTURE":       fixture.environmentCapture,
 		"FAKE_AUTH_CAPTURE":              fixture.authCapture,
 		"FAKE_HOME_CAPTURE":              fixture.homeCapture,
+		"FAKE_INVOCATION_COUNT":          fixture.invocationCount,
 		"SUBSTITUTION_MARKER":            fixture.substitutionMarker,
 	}
 	maps.Copy(environment, extraEnvironment)

@@ -108,6 +108,7 @@ func TestLoadReviewResultValidatesSchema(t *testing.T) {
 		"residual_risk":"EXTREME",
 		"human_decision_context":"",
 		"previous_findings":[],
+		"known_findings":[],
 		"findings":[]
 	}`))
 	require.ErrorContains(t, err, "invalid residual_risk")
@@ -119,6 +120,7 @@ func TestLoadReviewResultValidatesSchema(t *testing.T) {
 		"residual_risk":"HIGH",
 		"human_decision_context":"",
 		"previous_findings":[],
+		"known_findings":[],
 		"findings":[{
 			"id":"x","severity":"CRITICAL","blocking":true,"auto_fixable":true,
 			"title":"x","location":"","evidence":"x","impact":"x","resolution":"x"
@@ -133,6 +135,7 @@ func TestLoadReviewResultValidatesSchema(t *testing.T) {
 		"residual_risk":"LOW",
 		"human_decision_context":"",
 		"previous_findings":[],
+		"known_findings":[],
 		"findings":[{
 			"id":"x","severity":"P0","blokcing":true,"auto_fixable":false,
 			"title":"x","location":"","evidence":"x","impact":"x","resolution":"x"
@@ -147,6 +150,7 @@ func TestLoadReviewResultValidatesSchema(t *testing.T) {
 		"residual_risk":"LOW",
 		"human_decision_context":"",
 		"previous_findings":[],
+		"known_findings":[],
 		"findings":[{
 			"id":"x","severity":"P0","auto_fixable":false,
 			"title":"x","location":"","evidence":"x","impact":"x","resolution":"x"
@@ -174,6 +178,7 @@ func TestLoadReviewResultRequiresCompleteStructuredContract(t *testing.T) {
 		"worktree_fingerprint":"fingerprint",
 		"residual_risk":"LOW",
 		"previous_findings":[],
+		"known_findings":[],
 		"findings":[]
 	}`))
 	require.ErrorContains(t, err, "human_decision_context")
@@ -185,6 +190,18 @@ func TestLoadReviewResultRequiresCompleteStructuredContract(t *testing.T) {
 		"residual_risk":"LOW",
 		"human_decision_context":"",
 		"previous_findings":[],
+		"findings":[]
+	}`))
+	require.ErrorContains(t, err, "known_findings")
+
+	_, err = loadReviewResult(writeReviewResult(t, `{
+		"decision":"APPROVE",
+		"head":"abc",
+		"worktree_fingerprint":"fingerprint",
+		"residual_risk":"LOW",
+		"human_decision_context":"",
+		"previous_findings":[],
+		"known_findings":[],
 		"findings":[{
 			"id":"x","severity":"P2","blocking":false,"auto_fixable":false,
 			"title":"x","evidence":"x","impact":"x","resolution":"x"
@@ -225,6 +242,49 @@ func TestValidatePreviousFindings(t *testing.T) {
 
 	err = validatePreviousFindings(reviewResult{PreviousFindings: []previousFinding{{ID: "unexpected", Status: "FIXED", Reason: "x"}}}, nil)
 	require.ErrorContains(t, err, "first review")
+}
+
+func TestLoadReviewResultRequiresConsistentKnownFindingCoverage(t *testing.T) {
+	t.Parallel()
+
+	_, err := loadReviewResult(writeReviewResult(t, `{
+		"decision":"APPROVE",
+		"head":"abc",
+		"worktree_fingerprint":"fingerprint",
+		"residual_risk":"LOW",
+		"human_decision_context":"",
+		"previous_findings":[],
+		"known_findings":[{"id":"github-1","status":"STILL_VALID","reason":"the path remains"}],
+		"findings":[]
+	}`))
+	require.ErrorContains(t, err, "STILL_VALID but is absent")
+
+	_, err = loadReviewResult(writeReviewResult(t, `{
+		"decision":"REQUEST_CHANGES",
+		"head":"abc",
+		"worktree_fingerprint":"fingerprint",
+		"residual_risk":"MEDIUM",
+		"human_decision_context":"",
+		"previous_findings":[],
+		"known_findings":[{"id":"github-1","status":"STILL_VALID","reason":"the path remains"}],
+		"findings":[{
+			"id":"github-1","severity":"P2","blocking":false,"auto_fixable":true,
+			"title":"x","location":"x.go:1","evidence":"x","impact":"x","resolution":"x"
+		}]
+	}`))
+	require.ErrorContains(t, err, "STILL_VALID but is not blocking")
+
+	_, err = loadReviewResult(writeReviewResult(t, `{
+		"decision":"APPROVE",
+		"head":"abc",
+		"worktree_fingerprint":"fingerprint",
+		"residual_risk":"LOW",
+		"human_decision_context":"",
+		"previous_findings":[],
+		"known_findings":[{"id":"github-1","status":"HUMAN_DECISION_REQUIRED","reason":"intent is absent"}],
+		"findings":[]
+	}`))
+	require.ErrorContains(t, err, "requires HUMAN_DECISION_REQUIRED")
 }
 
 func TestValidateReviewTarget(t *testing.T) {
@@ -596,11 +656,11 @@ func runValidationReceiptFlow(t *testing.T, binary string, options validationRec
 set -euo pipefail
 if [[ "$AI_REVIEW_PASS" == 1 ]]; then
   cat > "$AI_REVIEW_RESULT" <<EOF
-{"decision":"REQUEST_CHANGES","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[],"findings":[{"id":"fix-me","severity":"P2","blocking":true,"auto_fixable":true,"title":"Fix fixture","location":"base.txt:1","evidence":"fixture","impact":"fixture","resolution":"fixture"}],"residual_risk":"LOW","human_decision_context":""}
+{"decision":"REQUEST_CHANGES","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[],"known_findings":[],"findings":[{"id":"fix-me","severity":"P2","blocking":true,"auto_fixable":true,"title":"Fix fixture","location":"base.txt:1","evidence":"fixture","impact":"fixture","resolution":"fixture"}],"residual_risk":"LOW","human_decision_context":""}
 EOF
 elif [[ "${TEST_SECOND_FIX:-}" == "true" && "$AI_REVIEW_PASS" == 2 ]]; then
   cat > "$AI_REVIEW_RESULT" <<EOF
-{"decision":"REQUEST_CHANGES","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[{"id":"fix-me","status":"FIXED","reason":"first fixture was changed"}],"findings":[{"id":"fix-again","severity":"P2","blocking":true,"auto_fixable":true,"title":"Fix second fixture","location":"base.txt:1","evidence":"fixture","impact":"fixture","resolution":"fixture"}],"residual_risk":"LOW","human_decision_context":""}
+{"decision":"REQUEST_CHANGES","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[{"id":"fix-me","status":"FIXED","reason":"first fixture was changed"}],"known_findings":[],"findings":[{"id":"fix-again","severity":"P2","blocking":true,"auto_fixable":true,"title":"Fix second fixture","location":"base.txt:1","evidence":"fixture","impact":"fixture","resolution":"fixture"}],"residual_risk":"LOW","human_decision_context":""}
 EOF
 else
 	case "${TEST_REVIEW_MUTATION:-}" in
@@ -616,11 +676,11 @@ else
 	  esac
   if [[ "${TEST_SECOND_FIX:-}" == "true" ]]; then
     cat > "$AI_REVIEW_RESULT" <<EOF
-{"decision":"APPROVE","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[{"id":"fix-again","status":"FIXED","reason":"second fixture was changed"}],"findings":[],"residual_risk":"LOW","human_decision_context":""}
+{"decision":"APPROVE","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[{"id":"fix-again","status":"FIXED","reason":"second fixture was changed"}],"known_findings":[],"findings":[],"residual_risk":"LOW","human_decision_context":""}
 EOF
   else
     cat > "$AI_REVIEW_RESULT" <<EOF
-{"decision":"APPROVE","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[{"id":"fix-me","status":"FIXED","reason":"fixture was changed"}],"findings":[],"residual_risk":"LOW","human_decision_context":""}
+{"decision":"APPROVE","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[{"id":"fix-me","status":"FIXED","reason":"fixture was changed"}],"known_findings":[],"findings":[],"residual_risk":"LOW","human_decision_context":""}
 EOF
   fi
 fi
@@ -712,7 +772,7 @@ func TestApprovedReviewFailsWhenLocalValidationFails(t *testing.T) {
 	require.NoError(t, os.WriteFile(reviewer, []byte(`#!/usr/bin/env bash
 set -euo pipefail
 cat > "$AI_REVIEW_RESULT" <<EOF
-{"decision":"APPROVE","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[],"findings":[],"residual_risk":"LOW","human_decision_context":""}
+{"decision":"APPROVE","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[],"known_findings":[],"findings":[],"residual_risk":"LOW","human_decision_context":""}
 EOF
 `), 0o755))
 	validationBase := filepath.Join(t.TempDir(), "validation-base")

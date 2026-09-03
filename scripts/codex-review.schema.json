@@ -29,6 +29,22 @@
         "required": ["id", "status", "reason"]
       }
     },
+    "known_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["FIXED", "STILL_VALID", "OUTDATED", "HUMAN_DECISION_REQUIRED"]
+          },
+          "reason": { "type": "string" }
+        },
+        "required": ["id", "status", "reason"]
+      }
+    },
     "findings": {
       "type": "array",
       "items": {
@@ -67,6 +83,7 @@
     "head",
     "worktree_fingerprint",
     "previous_findings",
+    "known_findings",
     "findings",
     "residual_risk",
     "human_decision_context"

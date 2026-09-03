@@ -14,10 +14,7 @@ import (
 const gitGuardDirectory = "git-guard-bin"
 
 var exactOuterIdentityVariables = map[string]struct{}{
-	"CANDIDATE_SHA":         {},
 	"CANDIDATE_WORKTREE":    {},
-	"PR_HEAD_SHA":           {},
-	"TARGET_BASE_SHA":       {},
 	"TRUSTED_ROOT_CHECKOUT": {},
 }
 
@@ -25,7 +22,6 @@ var outerIdentityPrefixes = []string{
 	"EXPECTED_",
 	"AI_WORKTREE_",
 	"AI_GIT_",
-	"AI_PR_TRIAGE_",
 	"AI_REVIEW_",
 	"VALIDATION_RUN_",
 }

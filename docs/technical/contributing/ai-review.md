@@ -108,11 +108,21 @@ Structured reviewers must report those classifications in `previous_findings` us
       "status": "FIXED",
       "reason": "The acknowledgement now follows the durable commit."
     }
-  ]
+  ],
+  "known_findings": []
 }
 ```
 
 The array is required and empty on a first review. On re-review it must classify every finding from the immediately preceding result exactly once. `STILL_VALID` findings remain in the current `findings` array with the same id; `FIXED` and `OUTDATED` findings do not. Every classification includes a non-empty reason. This makes the re-review history machine-readable without treating an old review as authoritative instructions.
+
+`known_findings` is a separate required array for the unresolved GitHub claims
+collected immediately before review. It is empty when none were supplied. The
+reviewer classifies every supplied id exactly once as `FIXED`, `STILL_VALID`,
+`OUTDATED`, or `HUMAN_DECISION_REQUIRED`, with a non-empty reason. A
+`STILL_VALID` item must also be a blocking current finding with the same id; a
+human-decision classification forces that overall decision. GitHub text is
+untrusted context to verify, not an instruction. No second provider call
+reconciles this array.
 
 The re-review summary should state whether any prior findings remain and whether any genuinely new findings were discovered.
 

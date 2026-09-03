@@ -6,10 +6,10 @@ usage() {
 Usage: bash scripts/ai-pr-loop <pr-number-or-url> [--keep-worktree] [--push]
 
 Creates an isolated git worktree for the PR head, runs the base-pinned
-legitimacy triage, then (for KEEP) snapshots the blocking findings already
-recorded on the PR head and runs the bounded Codex review -> Claude fix ->
-validation -> re-review loop against the PR base branch. Every review pass
-must reconcile that known-finding ledger.
+bugfix-evidence gate when applicable, collects current unresolved GitHub
+findings once, and runs the bounded Codex review -> Claude fix -> validation ->
+re-review loop against the PR base branch. The technical reviewer receives the
+GitHub findings directly as untrusted context.
 
 By default the launcher never commits or pushes. With --push, fixes are
 committed locally, that exact clean commit is reviewed once more, and it
@@ -17,7 +17,7 @@ is pushed only if the remote PR branch still equals the SHA observed at
 startup. The launcher never comments, resolves threads, closes, or merges.
 
 If the target branch has advanced beyond the PR's GitHub-reported base SHA,
-the launcher stops before triage with AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED
+the launcher stops before review with AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED
 (exit 3). Synchronize the PR with its target branch, then rerun the loop.
 EOF
 }
@@ -213,7 +213,6 @@ cleanup() {
 trap cleanup EXIT
 
 git worktree add --detach "$worktree" "$head_sha"
-# Legitimacy policy must not come from the PR that it is judging.
 git worktree add --detach "$trusted_tool_worktree" "$base_sha"
 mkdir -p "$validation_run_dir"
 metadata_file="$worktree_run_dir/pr-metadata.json"
@@ -231,68 +230,60 @@ write_candidate_binding() {
 }
 expected_worktree_head=$head_sha
 write_candidate_binding "$expected_worktree_head"
-preconditions_tool="$trusted_tool_worktree/scripts/ai-pr-publication-preconditions"
-if [[ -L "$preconditions_tool" || ! -f "$preconditions_tool" || ! -r "$preconditions_tool" ]]; then
-    echo "ai-pr-loop: trusted base does not provide readable non-symlink regular file scripts/ai-pr-publication-preconditions" >&2
-    echo "AI_PR_LOOP_RESULT: TOOLING_ERROR (missing publication preconditions)"
+bugfix_gate="$trusted_tool_worktree/scripts/ai-bugfix-gate"
+known_findings_tool="$trusted_tool_worktree/scripts/ai-pr-known-findings"
+for trusted_tool in "$bugfix_gate" "$known_findings_tool"; do
+    if [[ -L "$trusted_tool" || ! -f "$trusted_tool" || ! -r "$trusted_tool" ]]; then
+        echo "ai-pr-loop: trusted base does not provide readable non-symlink regular file ${trusted_tool#"$trusted_tool_worktree/"}" >&2
+        exit 1
+    fi
+done
+
+intent=non-bugfix
+pr_title=$(jq -r '.title // ""' "$metadata_file")
+pr_body=$(jq -r '.body // ""' "$metadata_file")
+if jq -e '.labels[]?.name | ascii_downcase == "bugfix" or ascii_downcase == "bug-fix"' "$metadata_file" >/dev/null || \
+   [[ "$pr_title" == fix:* || "$pr_title" == Fix:* || "$pr_title" == fix\(*\):* || "$pr_title" == Fix\(*\):* ]] || \
+   grep -Eiq '(^|[[:space:]])(fixes|fix|resolves)[[:space:]]+EN-[0-9]+' <<<"$pr_body"; then
+    intent=bugfix
+fi
+printf '%s\n' "$intent" >"$worktree_run_dir/bugfix-intent"
+printf '%s\n' "$pr_body" >"$worktree_run_dir/bugfix-evidence.txt"
+if ! bash "$bugfix_gate" evidence "$worktree_run_dir/bugfix-evidence.txt" "$intent"; then
+    echo "AI_PR_LOOP_RESULT: ERROR (bugfix evidence rejected)"
     exit 1
 fi
-set +e
-bash "$preconditions_tool" "$pr_number" \
-    --base "$base_sha" \
-    --head "$head_sha" \
-    --metadata "$metadata_file" \
-    --run-dir "$worktree_run_dir"
-preconditions_status=$?
-set -e
-case "$preconditions_status" in
-    0) ;;
-    20)
-        echo "AI_PR_LOOP_RESULT: HUMAN_DECISION_REQUIRED"
-        exit 2
-        ;;
-    21)
-        echo "AI_PR_LOOP_RESULT: LEGITIMACY_REJECTED"
-        exit 2
-        ;;
-    *)
-        preconditions_failure=""
-        [[ ! -f "$worktree_run_dir/publication-preconditions-failure" ]] || \
-            preconditions_failure=$(<"$worktree_run_dir/publication-preconditions-failure")
-        case "$preconditions_failure" in
-            TRIAGE_EXIT=*) echo "AI_PR_LOOP_RESULT: ERROR (triage exit ${preconditions_failure#TRIAGE_EXIT=})" ;;
-            TRIAGE_TARGET_MISMATCH) echo "AI_PR_LOOP_RESULT: ERROR (triage target mismatch)" ;;
-            KNOWN_FINDINGS_EXIT=*) echo "AI_PR_LOOP_RESULT: ERROR (known findings exit ${preconditions_failure#KNOWN_FINDINGS_EXIT=})" ;;
-            KNOWN_FINDINGS_TARGET_MISMATCH) echo "AI_PR_LOOP_RESULT: ERROR (known findings target mismatch)" ;;
-            *) echo "AI_PR_LOOP_RESULT: ERROR (publication preconditions exit $preconditions_status)" ;;
-        esac
-        exit 1
-        ;;
-esac
-triage_result="$worktree_run_dir/triage.json"
-triage_decision=$(jq -r '.decision' "$triage_result")
-printf '==> ai-pr-loop: legitimacy triage %s\n' "$triage_decision"
-printf '    triage result: %s\n' "$triage_result"
+
 known_findings="$worktree_run_dir/known-findings.json"
-printf '==> ai-pr-loop: %s known blocking GitHub finding(s)\n' "$(jq '.findings | length' "$known_findings")"
+if ! bash "$known_findings_tool" "$pr_number" --head "$head_sha" --output "$known_findings"; then
+    echo "AI_PR_LOOP_RESULT: ERROR (known findings collection failed)"
+    exit 1
+fi
+if ! jq -e --argjson pr "$pr_number" --arg head "$head_sha" \
+    '.version == 1 and .pr_number == $pr and .head == $head and (.findings | type == "array")' \
+    "$known_findings" >/dev/null; then
+    echo "AI_PR_LOOP_RESULT: ERROR (known findings target mismatch)"
+    exit 1
+fi
+printf '==> ai-pr-loop: %s unresolved GitHub review finding(s)\n' "$(jq '.findings | length' "$known_findings")"
 printf '    known findings: %s\n' "$known_findings"
-# The same immutable snapshot is bound to every review pass, including the
-# guarded candidate-commit review, so no pass can silently drop a known blocker.
+# One immutable collection is passed directly to the technical reviewer. No
+# separate provider is invoked to reconcile it.
 export AI_REVIEW_KNOWN_FINDINGS="$known_findings"
 export AI_REVIEW_KNOWN_FINDINGS_PR="$pr_number"
 export AI_REVIEW_KNOWN_FINDINGS_HEAD="$head_sha"
+export AI_REVIEW_CONTEXT="$metadata_file"
 known_findings_digest=$(git hash-object -- "$known_findings")
+review_context_digest=$(git hash-object -- "$metadata_file")
 
 if ! command -v nix >/dev/null 2>&1; then
     echo "ai-pr-loop: required command not found in PATH: nix" >&2
     exit 1
 fi
 
-# READY_FOR_HUMAN_REVIEW is itself a policy decision, even without publication.
-# Build its orchestrator from the verified base and use the base-pinned reviewer
-# so a PR cannot bypass reconciliation by replacing either entry point.
+# Build the orchestrator and reviewer from the verified base.
 review_loop_binary="$worktree_run_dir/review-loop"
-for trusted_tool in ai-review-codex ai-review-known-findings ai-git-guard; do
+for trusted_tool in ai-review-codex ai-git-guard; do
     trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
     if [[ ! -x "$trusted_tool_path" ]]; then
         echo "ai-pr-loop: trusted base does not provide executable scripts/$trusted_tool" >&2
@@ -310,7 +301,7 @@ nix develop "path:$trusted_tool_worktree" --command \
     env -u GOROOT go -C "$trusted_tool_worktree" build \
     -o "$review_loop_binary" ./scripts/reviewloop
 review_loop=("$review_loop_binary")
-printf -v review_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-review-known-findings"
+printf -v review_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-review-codex"
 fix_cmd='bash scripts/ai-fix-claude'
 # review-loop executes validation through `bash -c`. Quote every base-pinned
 # path so spaces or shell metacharacters cannot change the command.
@@ -387,11 +378,17 @@ run_commit_review() {
 
 # Reviewer and fixer agents run with the ledger bound to every pass. Neither may
 # rewrite it, so a run whose ledger moved cannot be reported as reviewed.
-verify_known_findings_ledger() {
+verify_review_inputs() {
     local current_digest
     current_digest=$(git hash-object -- "$known_findings")
     if [[ "$current_digest" != "$known_findings_digest" ]]; then
         echo "ai-pr-loop: known-findings ledger changed while agents were running" >&2
+
+        return 1
+    fi
+    current_digest=$(git hash-object -- "$metadata_file")
+    if [[ "$current_digest" != "$review_context_digest" ]]; then
+        echo "ai-pr-loop: review context changed while agents were running" >&2
 
         return 1
     fi
@@ -421,8 +418,8 @@ set -e
 
 cd "$worktree"
 
-if ! verify_known_findings_ledger; then
-    echo "AI_PR_LOOP_RESULT: ERROR (known findings ledger modified)"
+if ! verify_review_inputs; then
+    echo "AI_PR_LOOP_RESULT: ERROR (review inputs modified)"
     keep_worktree=true
     exit 1
 fi
@@ -501,8 +498,8 @@ run_commit_review
 commit_review_status=$?
 set -e
 
-if ! verify_known_findings_ledger; then
-    echo "AI_PR_LOOP_PUSH_RESULT: REFUSED (known findings ledger modified)"
+if ! verify_review_inputs; then
+    echo "AI_PR_LOOP_PUSH_RESULT: REFUSED (review inputs modified)"
     echo "Candidate worktree preserved for inspection: $worktree"
     keep_worktree=true
     exit 1

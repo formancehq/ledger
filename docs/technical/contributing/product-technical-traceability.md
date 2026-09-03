@@ -101,7 +101,7 @@ The requirement is satisfied when: <observable validation>
 
 ## AI behavior
 
-AI reviewers, triage agents, and audit agents must never manufacture missing motivation.
+AI reviewers and audit agents must never manufacture missing motivation.
 
 - If the change is mechanical, record that traceability is not required.
 - If a significant decision has a complete chain, use it as authoritative intent subject to consistency checks against code and other authoritative sources.
@@ -111,7 +111,7 @@ AI reviewers, triage agents, and audit agents must never manufacture missing mot
 
 ## Review and audit use
 
-Legitimacy triage uses this contract to decide whether a significant technical change deserves review capacity.
+Technical review uses this contract to evaluate significant decisions against established intent.
 
 Technical review uses it to distinguish implementation correctness from design preference and to evaluate whether tests validate the actual requirement.
 
