@@ -10,7 +10,7 @@ from ordinary wrong-worktree, wrong-PR, and wrong-SHA mistakes.
   fetches, and worktree lifecycle. It may already be dirty, but agents must not
   change it.
 - `CANDIDATE_WORKTREE` is the unique detached worktree for the verified PR
-  head. Reviewers, fixers, and validation run there.
+  head. Reviewers and validation run there.
 - `VALIDATION_RUN_DIR` is a unique non-worktree directory for temporary review
   and validation state. Shared Go and lint caches remain outside all three
   directories as documented in [Local validation](local-validation.md).
@@ -34,7 +34,7 @@ The launcher writes an immutable run-local binding:
 }
 ```
 
-Before a reviewer, fixer, or validator runs, `review-loop` verifies that:
+Before a reviewer, findings collector, or validator runs, `review-loop` verifies that:
 
 1. its process cwd, Git top-level, and canonical candidate path match;
 2. candidate `HEAD` equals the expected SHA;
@@ -56,7 +56,7 @@ AI_WORKTREE_PATH
 AI_WORKTREE_EXPECTED_HEAD
 ```
 
-For ordinary review/fix/validation, both worktree/head pairs name the same
+For ordinary review/validation, both worktree/head pairs name the same
 candidate. `EXPECTED_HEAD` is candidate identity; it is not overloaded with a
 target-base SHA.
 
@@ -82,10 +82,9 @@ authorities.
 
 | Launcher/path | Provider cwd | Worktree owner |
 | --- | --- | --- |
-| `ai-pr-loop` review/fix | unique PR candidate | `ai-pr-loop` |
+| `ai-pr-loop` final review | unique PR candidate | `ai-pr-loop` |
 | `review-loop` | required `--worktree` | caller |
 | `ai-review-codex` | bound candidate | caller |
-| `ai-fix-claude` | bound candidate | caller |
 | `agent-check-pr` | bound candidate | caller |
 
 The normal entry point is `ai-pr-loop`. A low-level caller invoking
@@ -111,4 +110,4 @@ Preserve an interrupted branch or worktree and inspect it with ordinary Git.
 A new invocation establishes the current target, runs fresh evidence and
 validation, collects current GitHub findings, and requires a fresh exact
 technical review before a leased push. No historical review or validation
-receipt is imported.
+state is imported.

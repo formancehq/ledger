@@ -49,16 +49,16 @@ func TestLauncherUsesUniqueWorktreesImmutableBaseAndDirectReview(t *testing.T) {
 	require.Equal(t, fixture.headSHA, capturedArgument(t, firstCapture, "--expected-head"))
 	require.NotEqual(t, firstWorktree, capturedArgument(t, firstCapture, "--trusted-root"))
 	require.NotEqual(t, firstWorktree, capturedArgument(t, firstCapture, "--validation-run-dir"))
-	require.NotEqual(t, firstWorktree, capturedArgument(t, firstCapture, "--validation-tool-root"))
-	require.Contains(t, capturedArgument(t, firstCapture, "--validation-tool-root"), "trusted-tools")
 	require.NotContains(t, capturedArgument(t, firstCapture, "--state-dir"), firstWorktree)
-	require.Contains(t, capturedArgument(t, firstCapture, "--validation-gates-cmd"), "agent-check-pr --list")
+	require.Contains(t, capturedArgument(t, firstCapture, "--known-findings-cmd"), "trusted-tools/scripts/ai-pr-known-findings")
+	require.NotEqual(t, firstWorktree, capturedArgument(t, firstCapture, "--known-findings-file"))
 	require.Equal(t, fixture.baseSHA, baseArgument(t, firstCapture))
 	require.Equal(t, fixture.baseSHA, baseArgument(t, secondCapture))
 	require.Contains(t, capturedArgument(t, firstCapture, "--review-cmd"), "trusted-tools/scripts/ai-review-codex")
 	launcher := readCapturedFile(t, launcherPath(t))
 	require.NotContains(t, launcher, "ai-pr-triage")
 	require.NotContains(t, launcher, "codex-pr-triage")
+	require.NotContains(t, launcher, "ai-fix-claude")
 }
 
 func TestLauncherCreatesCandidateWithoutMutatingDirtyRoot(t *testing.T) {
@@ -134,7 +134,7 @@ func TestLauncherRefusesCollectedFindingWithoutIdentity(t *testing.T) {
 		"TEST_KNOWN_FINDINGS_JSON="+structured)
 	require.Error(t, err, output)
 	require.NoFileExists(t, capture, "technical review must not run")
-	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (known findings collection failed)")
+	require.Contains(t, output, "AI_PR_LOOP_RESULT: REVIEW_FAILED")
 }
 
 func TestLauncherRefusesMalformedKnownFindingsLedger(t *testing.T) {
@@ -147,7 +147,7 @@ func TestLauncherRefusesMalformedKnownFindingsLedger(t *testing.T) {
 		"TEST_KNOWN_FINDINGS_JSON="+malformed)
 	require.Error(t, err, output)
 	require.NoFileExists(t, capture, "technical review must not run")
-	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (known findings collection failed)")
+	require.Contains(t, output, "AI_PR_LOOP_RESULT: REVIEW_FAILED")
 }
 
 func TestLauncherRefusesKnownFindingsForAnotherTarget(t *testing.T) {
@@ -161,7 +161,7 @@ func TestLauncherRefusesKnownFindingsForAnotherTarget(t *testing.T) {
 		"TEST_KNOWN_FINDINGS_HEAD="+fixture.baseSHA)
 	require.Error(t, err, output)
 	require.NoFileExists(t, capture, "technical review must not run")
-	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (known findings target mismatch)")
+	require.Contains(t, output, "AI_PR_LOOP_RESULT: REVIEW_FAILED")
 }
 
 func TestOrdinaryToolingAndBugfixReachReviewWithoutTriage(t *testing.T) {
@@ -213,7 +213,7 @@ func TestLauncherRemovesTheRunDirectoryOfACleanRun(t *testing.T) {
 	require.Contains(t, output, "Worktree is clean.")
 
 	runEntries := strings.Fields(readCapturedFile(t, capture+".rundir"))
-	require.Empty(t, runEntries)
+	require.Equal(t, []string{"tmp"}, runEntries)
 	require.NoDirExists(t, filepath.Dir(worktreeFromOutput(t, output)))
 }
 
@@ -267,25 +267,30 @@ if [[ "${1:-}" == "--list" ]]; then printf 'agent-check\n'; fi
 	writeExecutable(t, filepath.Join(seed, "scripts", "agent-just"), "#!/usr/bin/env bash\nexit 0\n")
 	writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), `#!/usr/bin/env bash
 set -euo pipefail
+arguments=("$@")
+validation_cmd=""
+known_findings_cmd=""
+validation_run_dir=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --validation-cmd) validation_cmd=$2; shift 2 ;;
+        --known-findings-cmd) known_findings_cmd=$2; shift 2 ;;
+        --validation-run-dir) validation_run_dir=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+bash -c "$validation_cmd"
+bash -c "$known_findings_cmd"
+jq -e --argjson pr "$AI_REVIEW_KNOWN_FINDINGS_PR" --arg head "$AI_REVIEW_KNOWN_FINDINGS_HEAD" \
+    '.version == 1 and .pr_number == $pr and .head == $head and (.findings | type == "array")' \
+    "$AI_REVIEW_KNOWN_FINDINGS" >/dev/null
+set -- "${arguments[@]}"
 printf '%s\n' "$@" > "$TEST_CAPTURE_FILE"
 pwd > "$TEST_CAPTURE_FILE.cwd"
 printf '%s\n' "${AI_REVIEW_KNOWN_FINDINGS:-}" > "$TEST_CAPTURE_FILE.known"
 printf '%s|%s\n' "${AI_REVIEW_KNOWN_FINDINGS_PR:-}" "${AI_REVIEW_KNOWN_FINDINGS_HEAD:-}" > "$TEST_CAPTURE_FILE.binding"
 printf '%s\n' "${AI_REVIEW_CONTEXT:-}" > "$TEST_CAPTURE_FILE.context"
 if [[ -n "${TEST_RUN_VALIDATION_CMD:-}" ]]; then
-    validation_cmd=""
-    validation_run_dir=""
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --validation-cmd) validation_cmd=$2; shift 2 ;;
-            --validation-run-dir) validation_run_dir=$2; shift 2 ;;
-            *) shift ;;
-        esac
-    done
-    # review-loop runs the validation recipe through a non-login shell.
-    # The recipe keeps only temporary state in the parent run directory, then
-    # invokes the base-pinned validator.
-    bash -c "$validation_cmd" >/dev/null 2>&1 || true
     ls -1 "$validation_run_dir" > "$TEST_CAPTURE_FILE.rundir"
 fi
 if [[ "${TEST_ADVANCE_TARGET_AFTER_REVIEW:-false}" == "true" ]]; then
@@ -351,6 +356,10 @@ esac
 set -euo pipefail
 source_root=""
 output=""
+if [[ " $* " == *" --command bash -c "* ]]; then
+    eval "${@: -1}"
+    exit $?
+fi
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -C)

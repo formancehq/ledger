@@ -4,7 +4,7 @@
   "properties": {
     "decision": {
       "type": "string",
-      "enum": ["APPROVE", "REQUEST_CHANGES", "HUMAN_DECISION_REQUIRED"]
+      "enum": ["APPROVE", "FINDINGS"]
     },
     "head": { "type": "string" },
     "worktree_fingerprint": { "type": "string" },
@@ -13,22 +13,6 @@
       "enum": ["LOW", "MEDIUM", "HIGH"]
     },
     "human_decision_context": { "type": "string" },
-    "previous_findings": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "id": { "type": "string" },
-          "status": {
-            "type": "string",
-            "enum": ["FIXED", "STILL_VALID", "OUTDATED"]
-          },
-          "reason": { "type": "string" }
-        },
-        "required": ["id", "status", "reason"]
-      }
-    },
     "known_findings": {
       "type": "array",
       "items": {
@@ -57,7 +41,6 @@
             "enum": ["P0", "P1", "P2", "P3"]
           },
           "blocking": { "type": "boolean" },
-          "auto_fixable": { "type": "boolean" },
           "title": { "type": "string" },
           "location": { "type": "string" },
           "evidence": { "type": "string" },
@@ -68,7 +51,6 @@
           "id",
           "severity",
           "blocking",
-          "auto_fixable",
           "title",
           "location",
           "evidence",
@@ -82,7 +64,6 @@
     "decision",
     "head",
     "worktree_fingerprint",
-    "previous_findings",
     "known_findings",
     "findings",
     "residual_risk",

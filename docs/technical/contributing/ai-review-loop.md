@@ -1,9 +1,8 @@
-# AI review and fix loop
+# AI final review flow
 
-The PR workflow automates the mechanical handoff between an implementation
-agent and a technical reviewer. It does not grant authority to broaden scope,
-change product behavior, weaken repository invariants, or resolve genuine
-design choices without a human.
+The PR workflow performs one validation and one exact technical review. It does
+not fix reviewer findings, retry a malformed review, or carry review state into
+another invocation.
 
 For an existing same-repository pull request, run from an up-to-date checkout
 of its target branch:
@@ -13,11 +12,11 @@ bash scripts/ai-pr-loop 1732
 ```
 
 The launcher accepts a PR number or URL. `--keep-worktree` preserves its
-temporary candidate worktree. `--push` permits a guarded update of the existing
-PR branch; the launcher never comments, resolves threads, changes PR metadata,
-closes, or merges.
+temporary candidate worktree. `--push` permits a guarded publication of the
+exact approved candidate; the launcher never comments, resolves threads,
+changes PR metadata, closes, or merges.
 
-## Ordinary path
+## Linear path
 
 The launcher:
 
@@ -26,88 +25,69 @@ The launcher:
    recorded base;
 3. creates separate candidate, trusted-tool, and validation directories;
 4. validates required bugfix evidence when the PR is classified as a bugfix;
-5. collects current unresolved GitHub findings once;
-6. invokes the technical reviewer with the exact base SHA, candidate state,
-   task/PR context, and the GitHub findings as untrusted context;
-7. runs proportional `agent-check-pr` validation before readiness; and
-8. in `--push` mode, revalidates the target and remote head and publishes only
-   with an exact `--force-with-lease`.
+5. runs proportional `agent-check-pr` validation exactly once;
+6. collects current unresolved GitHub findings exactly once;
+7. invokes the technical reviewer once with the exact base SHA, candidate SHA,
+   complete diff/worktree fingerprint, task/PR context, bugfix evidence, and
+   GitHub findings as untrusted context; and
+8. after approval, revalidates target and remote head and, in `--push` mode,
+   publishes only with an exact `--force-with-lease`.
 
-A straight-through PR therefore makes no legitimacy-provider call, no
-known-finding reconciliation-provider call, and one technical-review provider
-call. If that review requests an auto-fix, the loop performs the fix, focused
-validation, and a new review. Changing bytes invalidates the older review.
-
-The current bounded review/fix state machine remains in place for this PR.
-Linearizing that implementation and collapsing its remaining guards is deferred
-to the follow-up review-loop simplification.
+The happy path therefore has one validation call, one reviewer-provider call,
+and no fixer-provider call. A validation failure stops before collection and
+review. `FINDINGS` preserves the candidate worktree and stops without another
+validation or provider call. After an engineer changes the candidate, the next
+ordinary invocation validates and reviews the new exact commit from scratch.
 
 ## Exact review target
 
 `review-loop` requires an explicit `--base` and a mechanically bound candidate
-worktree. For each pass it records:
+worktree. After validation it records:
 
 - the resolved base SHA and merge base;
-- the current HEAD;
+- the exact candidate HEAD;
 - staged, unstaged, and untracked scope; and
 - a SHA-256 fingerprint of the complete reviewed state.
 
 The reviewer copies the exact head and fingerprint into its structured result.
-The orchestrator rejects a mismatch or any reviewer mutation of the worktree.
-The review result contains the decision, risk, previous-loop finding
-classifications, current actionable findings, and classifications for every
-supplied GitHub finding. See [AI review](ai-review.md) and
-[Known GitHub PR findings](ai-pr-known-findings.md).
+The orchestrator rejects a mismatch, malformed output, provider failure, or any
+reviewer mutation of the candidate or immutable finding snapshot as
+`REVIEW_FAILED`. The only valid review decisions are `APPROVE` and `FINDINGS`.
 
-## Fix and validation behavior
+## Findings and recovery
 
-Only blocking findings whose `auto_fixable` flag is true enter the automated
-fix path. A product choice, invariant change, conflicting authoritative source,
-or scope expansion produces `HUMAN_DECISION_REQUIRED`.
+The workflow never invokes `ai-fix-claude` or another fixer. Findings are the
+handoff to the engineering agent or user. Preserve the branch/worktree, apply
+and commit the fixes, then invoke the ordinary flow again.
 
-After a fix, the base-pinned `agent-check-pr` policy runs before re-review. Its
-successful exact-state result may be reused only within the same live
-`review-loop` process when all candidate, tool, environment, binding, and
-validation inputs are unchanged. This receipt is in memory; it is not persisted
-or trusted after interruption.
-
-Validation after an approval must leave the approved worktree unchanged. The
-loop does not query or wait for GitHub Actions; CI remains the authoritative
-broad, clean validation boundary before merge.
-
-## Recovery
-
-Git is the recovery mechanism. Preserve the branch or worktree, then start a
-clean invocation and inspect its branch, commits, diff, PR state, and current
-target. Run fresh focused evidence and validation, collect current GitHub
-findings, and obtain a fresh exact technical review before a leased push.
-
-No review or validation receipt from an interrupted invocation is reusable.
-There is no candidate-adoption command or recovery state machine.
+Git is the recovery mechanism. A new invocation establishes the current target,
+runs fresh bugfix evidence and proportional validation, collects current GitHub
+findings, and obtains a new exact final review. No review or validation state is
+reused across invocations.
 
 ## Worktree and publication safety
 
-The candidate worktree is distinct from the primary checkout and is bound to
-the expected PR and SHA before reviewer, fixer, or validator subprocesses. The
-primary checkout is checked for accidental mutation at those boundaries. See
-[AI PR worktree isolation](ai-worktree-isolation.md) for the low-level binding
-contract.
+The candidate worktree remains distinct from the primary checkout and is bound
+to the expected PR and SHA before collector, validator, or reviewer subprocesses.
+The primary checkout is checked for accidental mutation at those boundaries.
+See [AI PR worktree isolation](ai-worktree-isolation.md) for the low-level
+binding contract.
 
-In `--push` mode, the launcher commits reviewed fixes when necessary, requires
-a clean reviewed candidate, verifies that it descends from the original PR
-head, refreshes the target and remote head, and pushes with:
+In `--push` mode, the launcher requires a clean reviewed candidate, verifies
+that it descends from the original PR head, refreshes the target and remote
+head, and pushes with:
 
 ```text
 --force-with-lease=refs/heads/<head>:<original-head>
 ```
 
-Any target advance requires manual synchronization followed by fresh evidence,
-validation, finding collection, and exact review.
+Any target advance requires manual synchronization followed by a fresh linear
+invocation.
 
 ## Exit results
 
-`review-loop` emits `READY_FOR_HUMAN_REVIEW`, `AUTO_FIX_REQUIRED`, or
-`HUMAN_DECISION_REQUIRED`. `ai-pr-loop` additionally emits
-`BASE_UPDATE_REQUIRED` and guarded-push results. Automation should key on the
-emitted result line rather than treating an exit code as a complete status
-protocol.
+`review-loop` emits `APPROVE`, `FINDINGS`, `VALIDATION_FAILED`, or
+`REVIEW_FAILED`. `ai-pr-loop` maps findings to `NOT_READY`, preserves the
+candidate worktree, and additionally emits target-freshness and guarded-push
+results. Automation should key on the emitted result line rather than treating
+an exit code as the complete status protocol.
