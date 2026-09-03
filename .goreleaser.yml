@@ -101,9 +101,9 @@ changelog:
   use: github
   filters:
     exclude:
-    - "^docs(\\([^)]*\\))?:"
-    - "^chore(\\([^)]*\\))?:"
-    - "^ci(\\([^)]*\\))?:"
+    - "^docs(\\([^)]*\\))?!?:"
+    - "^chore(\\([^)]*\\))?!?:"
+    - "^ci(\\([^)]*\\))?!?:"
   groups:
   - title: "New Features"
     regexp: "^.*feat(\\([^)]*\\))?!?:.*$"
