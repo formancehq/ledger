@@ -2,6 +2,7 @@ package health
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"time"
 
@@ -90,7 +91,7 @@ func NewHealthChecker(
 	// (non-nil) instrument even on error.
 	hc.pollFailures, _ = meter.Int64Counter(
 		"health.disk.poll.failures",
-		metric.WithDescription("Count of failed GetDiskUsage polls to peers (write gate stays fail-open)"),
+		metric.WithDescription("Count of failed GetDiskUsage polls to peers (failures cannot clear an existing disk write gate)"),
 	)
 
 	// The gate pointer defaults to nil, which CheckWritesAllowed treats as
@@ -132,9 +133,15 @@ type nodeUsageReport struct {
 	walUsed     uint64
 	walTotal    uint64
 	walPercent  float64
+	walValid    bool
+	walAge      time.Duration
+	walError    string
 	dataUsed    uint64
 	dataTotal   uint64
 	dataPercent float64
+	dataValid   bool
+	dataAge     time.Duration
+	dataError   string
 	fetchErr    error
 }
 
@@ -173,16 +180,23 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	var samples []VolumeSample
 	skewExceeded := false
 
-	localWalUsed := uint64(hc.collector.WALVolume.UsedBytes())
-	localWalTotal := uint64(hc.collector.WALVolume.TotalBytes())
-	localDataUsed := uint64(hc.collector.DataVolume.UsedBytes())
-	localDataTotal := uint64(hc.collector.DataVolume.TotalBytes())
+	now := time.Now()
+	localWAL := hc.collector.WALVolume.Load()
+	localData := hc.collector.DataVolume.Load()
+	localWalUsed := uint64(localWAL.UsedBytes)
+	localWalTotal := uint64(localWAL.TotalBytes)
+	localDataUsed := uint64(localData.UsedBytes)
+	localDataTotal := uint64(localData.TotalBytes)
+	localWalValid := localWAL.Usable(now)
+	localDataValid := localData.Usable(now)
 
-	hc.logIfAtBlock(hc.node.GetNodeID(), localWalUsed, localWalTotal, localDataUsed, localDataTotal)
+	hc.logIfAtBlock(hc.node.GetNodeID(), localWalUsed, localWalTotal, localWalValid, localDataUsed, localDataTotal, localDataValid)
 
 	samples = append(samples, VolumeSample{
 		WALFraction:  safeFraction(localWalUsed, localWalTotal),
+		WALValid:     localWalValid,
 		DataFraction: safeFraction(localDataUsed, localDataTotal),
+		DataValid:    localDataValid,
 	})
 
 	reports = append(reports, nodeUsageReport{
@@ -190,9 +204,15 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 		walUsed:     localWalUsed,
 		walTotal:    localWalTotal,
 		walPercent:  safePercent(localWalUsed, localWalTotal),
+		walValid:    localWalValid,
+		walAge:      sampleAge(now, localWAL.ObservedAt),
+		walError:    localWAL.Error,
 		dataUsed:    localDataUsed,
 		dataTotal:   localDataTotal,
 		dataPercent: safePercent(localDataUsed, localDataTotal),
+		dataValid:   localDataValid,
+		dataAge:     sampleAge(now, localData.ObservedAt),
+		dataError:   localData.Error,
 	})
 
 	// Check peers dynamically from the service pool
@@ -206,6 +226,15 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 
 		conn := hc.servicePool.GetConnection(peerID)
 		if conn == nil {
+			err := errors.New("peer connection is unavailable")
+			hc.logger.WithFields(map[string]any{
+				"node_id": peerID,
+				"error":   err,
+			}).Errorf("Failed to get disk usage from peer")
+			hc.pollFailures.Add(context.Background(), 1, metric.WithAttributes(attribute.Int64("node_id", int64(peerID))))
+			reports = append(reports, nodeUsageReport{nodeID: peerID, fetchErr: err})
+			samples = append(samples, VolumeSample{})
+
 			continue
 		}
 
@@ -229,17 +258,26 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				nodeID:   peerID,
 				fetchErr: err,
 			})
+			// A missing peer sample cannot establish a new disk-full state, but it
+			// must prevent an existing state from being cleared without evidence.
+			samples = append(samples, VolumeSample{})
 		} else {
-			walUsed := resp.GetWalVolume().GetUsedBytes()
-			walTotal := resp.GetWalVolume().GetTotalBytes()
-			dataUsed := resp.GetDataVolume().GetUsedBytes()
-			dataTotal := resp.GetDataVolume().GetTotalBytes()
+			walVolume := resp.GetWalVolume()
+			dataVolume := resp.GetDataVolume()
+			walUsed := walVolume.GetUsedBytes()
+			walTotal := walVolume.GetTotalBytes()
+			dataUsed := dataVolume.GetUsedBytes()
+			dataTotal := dataVolume.GetTotalBytes()
+			walValid, walError := remoteVolumeValidity(walVolume)
+			dataValid, dataError := remoteVolumeValidity(dataVolume)
 
-			hc.logIfAtBlock(peerID, walUsed, walTotal, dataUsed, dataTotal)
+			hc.logIfAtBlock(peerID, walUsed, walTotal, walValid, dataUsed, dataTotal, dataValid)
 
 			samples = append(samples, VolumeSample{
 				WALFraction:  safeFraction(walUsed, walTotal),
+				WALValid:     walValid,
 				DataFraction: safeFraction(dataUsed, dataTotal),
+				DataValid:    dataValid,
 			})
 
 			reports = append(reports, nodeUsageReport{
@@ -247,9 +285,15 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				walUsed:     walUsed,
 				walTotal:    walTotal,
 				walPercent:  safePercent(walUsed, walTotal),
+				walValid:    walValid,
+				walAge:      time.Duration(walVolume.GetSampleAgeMs()) * time.Millisecond,
+				walError:    walError,
 				dataUsed:    dataUsed,
 				dataTotal:   dataTotal,
 				dataPercent: safePercent(dataUsed, dataTotal),
+				dataValid:   dataValid,
+				dataAge:     time.Duration(dataVolume.GetSampleAgeMs()) * time.Millisecond,
+				dataError:   dataError,
 			})
 		}
 
@@ -297,11 +341,57 @@ func (hc *HealthChecker) logDiskUsageSummary(reports []nodeUsageReport) {
 		fields["wal_used"] = r.walUsed
 		fields["wal_total"] = r.walTotal
 		fields["wal_percent"] = r.walPercent
+		fields["wal_valid"] = r.walValid
+		fields["wal_sample_age"] = r.walAge.String()
+		if r.walError != "" {
+			fields["wal_error"] = r.walError
+		}
 		fields["data_used"] = r.dataUsed
 		fields["data_total"] = r.dataTotal
 		fields["data_percent"] = r.dataPercent
+		fields["data_valid"] = r.dataValid
+		fields["data_sample_age"] = r.dataAge.String()
+		if r.dataError != "" {
+			fields["data_error"] = r.dataError
+		}
 		hc.logger.WithFields(fields).Infof("Disk usage check: wal=%.1f%% data=%.1f%%", r.walPercent, r.dataPercent)
 	}
+}
+
+func sampleAge(now, observedAt time.Time) time.Duration {
+	if observedAt.IsZero() {
+		return 0
+	}
+	age := now.Sub(observedAt)
+	if age < 0 {
+		return 0
+	}
+
+	return age
+}
+
+func remoteVolumeValidity(volume *clusterpb.VolumeUsage) (bool, string) {
+	if volume == nil {
+		return false, "volume is missing from disk usage response"
+	}
+	if !volume.GetValid() {
+		if volume.GetError() != "" {
+			return false, volume.GetError()
+		}
+
+		return false, "latest collection attempt failed"
+	}
+	if volume.GetTotalBytes() == 0 {
+		return false, "reported totalBytes is zero"
+	}
+	if volume.GetObservedAtUs() == 0 {
+		return false, "reported observedAtUs is zero"
+	}
+	if volume.GetSampleAgeMs() > uint64(diskusage.MaximumSampleAge.Milliseconds()) {
+		return false, "disk usage sample is stale"
+	}
+
+	return true, ""
 }
 
 // safePercent returns the percentage of used/total as a float (0-100), or 0 if total is zero.
@@ -327,8 +417,8 @@ func safeFraction(used, total uint64) float64 {
 // block/resume verdict is owned by Thresholds.NextDiskBlocked; this method
 // exists purely to preserve the per-volume observability (loud signal when a
 // volume crosses the high-water mark).
-func (hc *HealthChecker) logIfAtBlock(nodeID uint64, walUsed, walTotal, dataUsed, dataTotal uint64) {
-	if walTotal > 0 {
+func (hc *HealthChecker) logIfAtBlock(nodeID uint64, walUsed, walTotal uint64, walValid bool, dataUsed, dataTotal uint64, dataValid bool) {
+	if walValid {
 		percent := float64(walUsed) / float64(walTotal)
 		if percent >= hc.thresholds.WALBlock {
 			details := map[string]any{
@@ -346,7 +436,7 @@ func (hc *HealthChecker) logIfAtBlock(nodeID uint64, walUsed, walTotal, dataUsed
 		}
 	}
 
-	if dataTotal > 0 {
+	if dataValid {
 		percent := float64(dataUsed) / float64(dataTotal)
 		if percent >= hc.thresholds.DataBlock {
 			details := map[string]any{

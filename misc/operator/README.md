@@ -114,10 +114,14 @@ The operator can grow PVC-backed WAL and data volumes before the Ledger reaches
 its disk-full write gate. Expansion is strictly opt-in and does not require a
 Prometheus server: every five minutes a separate controller executes
 `ledgerctl cluster disk-usage --json` inside each Ledger pod, uses the highest
-observed utilization for the volume kind, and patches every replica's PVC to
-the same target size. The replica set is read from the live StatefulSet rather
-than the Cluster spec, so a rejected Cluster update cannot leave a running
-replica outside the expansion group.
+valid utilization for the volume kind, and patches every replica's PVC to the
+same target size. Each measurement carries validity, server-computed age, last
+successful observation time, and an optional diagnostic error. The operator
+rejects the selected volume when collection failed, the sample is older than
+one minute, its observation time is missing, or total capacity is zero. The
+replica set is read from the live StatefulSet rather than the Cluster spec, so
+a rejected Cluster update cannot leave a running replica outside the expansion
+group.
 
 ```yaml
 apiVersion: ledger.formance.com/v1alpha1
@@ -175,7 +179,8 @@ Troubleshooting surfaces:
 If measurements are incomplete and no reachable replica crosses the threshold,
 the operator does not assume the cluster is healthy: it emits a warning and
 retries after one minute. A reachable replica over threshold may still trigger
-the safe cluster-wide expansion.
+the safe cluster-wide expansion. Last-known bytes from an invalid or stale
+sample are diagnostic only and never trigger a resize.
 
 ## Volume Deletion Protection
 

@@ -26,6 +26,7 @@ import (
 
 func TestParsePodDiskUsage(t *testing.T) {
 	t.Parallel()
+	observedAt := time.UnixMicro(123456789).UTC()
 
 	tests := []struct {
 		name    string
@@ -35,18 +36,24 @@ func TestParsePodDiskUsage(t *testing.T) {
 	}{
 		{
 			name:    "protobuf strings",
-			payload: `{"walVolume":{"usedBytes":"10","totalBytes":"100"},"dataVolume":{"usedBytes":"20","totalBytes":"200"}}`,
-			want:    podDiskUsage{WAL: measuredVolume{UsedBytes: 10, TotalBytes: 100}, Data: measuredVolume{UsedBytes: 20, TotalBytes: 200}},
+			payload: `{"walVolume":{"usedBytes":"10","totalBytes":"100","observedAtUs":"123456789","sampleAgeMs":"250","valid":true},"dataVolume":{"usedBytes":"20","totalBytes":"200","observedAtUs":"123456789","sampleAgeMs":"500","valid":true}}`,
+			want: podDiskUsage{
+				WAL:  measuredVolume{UsedBytes: 10, TotalBytes: 100, ObservedAt: observedAt, SampleAge: 250 * time.Millisecond, Valid: true},
+				Data: measuredVolume{UsedBytes: 20, TotalBytes: 200, ObservedAt: observedAt, SampleAge: 500 * time.Millisecond, Valid: true},
+			},
 		},
 		{
 			name:    "JSON numbers",
-			payload: `{"walVolume":{"usedBytes":10,"totalBytes":100},"dataVolume":{"usedBytes":20,"totalBytes":200}}`,
-			want:    podDiskUsage{WAL: measuredVolume{UsedBytes: 10, TotalBytes: 100}, Data: measuredVolume{UsedBytes: 20, TotalBytes: 200}},
+			payload: `{"walVolume":{"usedBytes":10,"totalBytes":100,"observedAtUs":123456789,"sampleAgeMs":250,"valid":true},"dataVolume":{"usedBytes":20,"totalBytes":200,"observedAtUs":123456789,"sampleAgeMs":500,"valid":true}}`,
+			want: podDiskUsage{
+				WAL:  measuredVolume{UsedBytes: 10, TotalBytes: 100, ObservedAt: observedAt, SampleAge: 250 * time.Millisecond, Valid: true},
+				Data: measuredVolume{UsedBytes: 20, TotalBytes: 200, ObservedAt: observedAt, SampleAge: 500 * time.Millisecond, Valid: true},
+			},
 		},
 		{
-			name:    "zero total",
-			payload: `{"walVolume":{"usedBytes":"10","totalBytes":"0"},"dataVolume":{"usedBytes":"20","totalBytes":"200"}}`,
-			wantErr: "zero totalBytes",
+			name:    "timestamp overflow",
+			payload: `{"walVolume":{"observedAtUs":"18446744073709551615"}}`,
+			wantErr: "observedAtUs exceeds int64",
 		},
 	}
 	for _, tt := range tests {
@@ -64,6 +71,62 @@ func TestParsePodDiskUsage(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestValidateMeasuredVolume(t *testing.T) {
+	t.Parallel()
+
+	fresh := measuredVolume{
+		UsedBytes:  80,
+		TotalBytes: 100,
+		ObservedAt: time.Now(),
+		SampleAge:  maximumDiskUsageSampleAge,
+		Valid:      true,
+	}
+	require.NoError(t, validateMeasuredVolume(fresh))
+
+	tests := []struct {
+		name    string
+		mutate  func(*measuredVolume)
+		wantErr string
+	}{
+		{name: "failed collection", mutate: func(v *measuredVolume) { v.Valid = false; v.Error = "input/output error" }, wantErr: "input/output error"},
+		{name: "zero total", mutate: func(v *measuredVolume) { v.TotalBytes = 0 }, wantErr: "totalBytes"},
+		{name: "missing timestamp", mutate: func(v *measuredVolume) { v.ObservedAt = time.Time{} }, wantErr: "observedAtUs"},
+		{name: "stale", mutate: func(v *measuredVolume) { v.SampleAge += time.Millisecond }, wantErr: "stale"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			volume := fresh
+			tt.mutate(&volume)
+			require.ErrorContains(t, validateMeasuredVolume(volume), tt.wantErr)
+		})
+	}
+}
+
+func TestCollectMeasurementsValidatesOnlySelectedVolume(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	reconciler := &VolumeExpansionReconciler{
+		ReadDiskUsage: func(context.Context, *ledgerv1alpha1.Cluster, string, string) (podDiskUsage, error) {
+			return podDiskUsage{
+				WAL:  measuredVolume{UsedBytes: 90, TotalBytes: 100, ObservedAt: now, Valid: false, Error: "WAL Statfs failed"},
+				Data: measuredVolume{UsedBytes: 80, TotalBytes: 100, ObservedAt: now, Valid: true},
+			}, nil
+		},
+	}
+	ledger := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"}}
+
+	data := reconciler.collectMeasurements(t.Context(), ledger, "data", "disabled", 1)
+	require.Len(t, data, 1)
+	require.NoError(t, data[0].Err)
+	require.Equal(t, uint64(80), data[0].UsedBytes)
+
+	wal := reconciler.collectMeasurements(t.Context(), ledger, "wal", "disabled", 1)
+	require.Len(t, wal, 1)
+	require.ErrorContains(t, wal[0].Err, "WAL Statfs failed")
 }
 
 func TestVolumeExpansionReconcilerExpandsAllLiveReplicas(t *testing.T) {
@@ -121,8 +184,8 @@ func TestVolumeExpansionReconcilerExpandsAllLiveReplicas(t *testing.T) {
 			}
 
 			return podDiskUsage{
-				WAL:  measuredVolume{UsedBytes: 1, TotalBytes: 100},
-				Data: measuredVolume{UsedBytes: used, TotalBytes: uint64(testQuantityValue("100Gi"))},
+				WAL:  freshMeasuredVolume(1, 100, now),
+				Data: freshMeasuredVolume(used, uint64(testQuantityValue("100Gi")), now),
 			}, nil
 		},
 	}
@@ -156,6 +219,28 @@ func TestVolumeExpansionReconcilerExpandsAllLiveReplicas(t *testing.T) {
 	assert.Condition(t, func() bool {
 		return strings.Contains(events[0], "VolumeExpansionRequested") || strings.Contains(events[1], "VolumeExpansionRequested")
 	})
+}
+
+func TestLoadVolumePVCsUsesDirectAPIReader(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, corev1.AddToScheme(scheme))
+	pvc := boundTestPVC("data-ledger-test-0", "expandable", "100Gi")
+	cachedClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	directReader := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pvc).Build()
+	reconciler := &VolumeExpansionReconciler{Client: cachedClient, APIReader: directReader}
+	ledger := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"}}
+
+	pvcs, states, err := reconciler.loadVolumePVCs(t.Context(), ledger, "data", 1)
+	require.NoError(t, err)
+	require.Len(t, pvcs, 1)
+	require.Len(t, states, 1)
+	require.Equal(t, pvc.Name, pvcs[0].Name)
+
+	reconciler.APIReader = nil
+	_, _, err = reconciler.loadVolumePVCs(t.Context(), ledger, "data", 1)
+	require.ErrorContains(t, err, "APIReader is required")
 }
 
 func TestVolumeExpansionReconcilerRejectsNonExpandableStorageClass(t *testing.T) {
@@ -208,6 +293,72 @@ func TestVolumeExpansionReconcilerRejectsNonExpandableStorageClass(t *testing.T)
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: pvc.Name}, &got))
 	request := got.Spec.Resources.Requests[corev1.ResourceStorage]
 	assert.Equal(t, "100Gi", request.String())
+}
+
+func TestVolumeExpansionReconcilerDoesNotExpandFromInvalidMeasurement(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	now := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
+	scheme := runtime.NewScheme()
+	require.NoError(t, corev1.AddToScheme(scheme))
+	require.NoError(t, storagev1.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+
+	allowExpansion := true
+	storageClassName := "expandable"
+	maximum := resource.MustParse("200Gi")
+	ledger := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "invalid-sample", Namespace: "default"},
+		Spec: ledgerv1alpha1.ClusterSpec{
+			Persistence: ledgerv1alpha1.PersistenceSpec{
+				Data: ledgerv1alpha1.VolumeSpec{
+					AutoExpansion: &ledgerv1alpha1.VolumeAutoExpansionSpec{Enabled: true, MaximumSize: &maximum},
+				},
+			},
+		},
+	}
+	pvc := boundTestPVC("data-ledger-invalid-sample-0", storageClassName, "100Gi")
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(
+		ledger,
+		&storagev1.StorageClass{
+			ObjectMeta:           metav1.ObjectMeta{Name: storageClassName},
+			AllowVolumeExpansion: &allowExpansion,
+		},
+		pvc,
+	).Build()
+	reconciler := &VolumeExpansionReconciler{
+		Client:    k8sClient,
+		APIReader: k8sClient,
+		Recorder:  record.NewFakeRecorder(10),
+		Now:       func() time.Time { return now },
+		ReadDiskUsage: func(context.Context, *ledgerv1alpha1.Cluster, string, string) (podDiskUsage, error) {
+			return podDiskUsage{
+				Data: measuredVolume{
+					UsedBytes:  uint64(testQuantityValue("90Gi")),
+					TotalBytes: uint64(testQuantityValue("100Gi")),
+					ObservedAt: now.Add(-time.Second),
+					Valid:      false,
+					Error:      "Statfs failed",
+				},
+			}, nil
+		},
+	}
+
+	retry, err := reconciler.reconcileVolume(ctx, ledger, persistenceVolumeDefinition{
+		Name:                 "data",
+		Field:                "persistence.data",
+		Spec:                 &ledger.Spec.Persistence.Data,
+		DefaultSize:          "10Gi",
+		AutoExpansionAllowed: true,
+	}, "disabled", 1)
+	require.NoError(t, err)
+	require.True(t, retry)
+
+	var got corev1.PersistentVolumeClaim
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: pvc.Name}, &got))
+	request := got.Spec.Resources.Requests[corev1.ResourceStorage]
+	require.Equal(t, "100Gi", request.String())
 }
 
 func TestVolumeExpansionReconcilerRejectsHostPathPolicyBeforeSideEffects(t *testing.T) {
@@ -389,5 +540,14 @@ func boundTestPVC(name, storageClass, size string) *corev1.PersistentVolumeClaim
 			Phase:    corev1.ClaimBound,
 			Capacity: corev1.ResourceList{corev1.ResourceStorage: quantity},
 		},
+	}
+}
+
+func freshMeasuredVolume(used, total uint64, observedAt time.Time) measuredVolume {
+	return measuredVolume{
+		UsedBytes:  used,
+		TotalBytes: total,
+		ObservedAt: observedAt,
+		Valid:      true,
 	}
 }
