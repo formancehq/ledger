@@ -15,8 +15,9 @@ const (
 	// ConsistencyStale skips the ReadIndex barrier and reads from the local store directly.
 	// Data may lag behind the latest committed index.
 	ConsistencyStale = "stale"
-	// ConsistencyLeader forwards the read to the leader node, which always has
-	// the most up-to-date data and a fast ReadIndex barrier.
+	// ConsistencyLeader routes the read to the node currently considered leader.
+	// A remote leader applies the default ReadIndex barrier, but a node that
+	// already considers itself leader serves the read locally without one.
 	ConsistencyLeader = "leader"
 )
 

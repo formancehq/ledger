@@ -29,8 +29,8 @@ type RoutedController struct {
 	localController ctrl.Controller
 }
 
-// getLeaderCtrl returns a controller that talks to the leader.
-// Used only for operations that must execute on the leader (Apply, ListChapters).
+// getLeaderCtrl returns the local controller when this node considers itself
+// leader, or a client controller for the currently known remote leader.
 func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 	if b.IsLeader() {
 		return b.localController, nil
@@ -53,7 +53,8 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 // The consistency level is determined from the context (set by the gRPC interceptor):
 //   - linearizable (default): ReadIndex+WaitForApplied barrier on the local node
 //   - stale: skip the barrier and read from the local store directly
-//   - leader: forward the read to the leader node
+//   - leader: route the read to the node currently considered leader; the local
+//     leader shortcut does not perform a ReadIndex barrier
 //
 // For linearizable reads, if the local node is still syncing the read is
 // transparently forwarded to the leader.
@@ -72,17 +73,22 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 	case grpcadp.ConsistencyLeader:
 		span.SetAttributes(attribute.String("route", "leader"))
 
-		// Forwarded: the leader runs its own ReadIndex barrier (x-consistency is
-		// not propagated, so it defaults to linearizable there) and its own
-		// execution. Neither is visible to this profile — the whole remote cost
-		// arrives as row-production time inside the local execute phase, and this
-		// node's barrier_duration_us stays 0. Flag it so a reader does not take
-		// that 0 to mean "no barrier was needed" (EN-1859).
-		query.ProfileFromContext(ctx).MarkForwarded()
-
 		c, err := b.getLeaderCtrl()
+		if err != nil {
+			return nil, nil, err
+		}
 
-		return c, nil, err
+		// When getLeaderCtrl returns a remote controller, that node runs its own
+		// ReadIndex barrier (x-consistency is not propagated, so it defaults to
+		// linearizable there). The remote barrier and execution are invisible to
+		// this profile — the whole remote cost arrives as row-production time
+		// inside the local execute phase, and this node's barrier_duration_us stays
+		// 0. Flag it so a reader does not take that 0 to mean "no barrier was
+		// needed" (EN-1859). When this node already considers itself leader,
+		// getLeaderCtrl returns the local controller and no barrier is performed.
+		b.markForwardedIfRemote(ctx, c)
+
+		return c, nil, nil
 	}
 
 	// The ReadIndex quorum round-trip plus the local WaitForApplied catch-up is
@@ -117,11 +123,9 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 			// execute_duration_us and from there in the server total. Hence
 			// forwarded=true with a non-zero barrier_duration_us is a valid,
 			// documented combination.
-			query.ProfileFromContext(ctx).MarkForwarded()
-
 			c, leaderErr := b.getLeaderCtrl()
 
-			return c, nil, leaderErr
+			return b.finishLeaderFallback(ctx, c, leaderErr, err)
 		}
 
 		span.SetAttributes(attribute.String("route", "leader_readindex_failed"))
@@ -130,11 +134,40 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 	return nil, nil, err
 }
 
+// finishLeaderFallback closes the leadership-transition race between the
+// initial IsLeader check and getLeaderCtrl. If leadership moved to this node in
+// that window, getLeaderCtrl returns the local controller; serving it would
+// bypass the ReadIndex barrier that just failed. Return the original barrier
+// failure instead. A route is profiled as forwarded only after a remote
+// controller has been resolved successfully.
+func (b *RoutedController) finishLeaderFallback(ctx context.Context, selected ctrl.Controller, resolutionErr, barrierErr error) (ctrl.Controller, *node.ReadBarrierInfo, error) {
+	if resolutionErr != nil {
+		return nil, nil, resolutionErr
+	}
+
+	if selected == b.localController {
+		return nil, nil, barrierErr
+	}
+
+	query.ProfileFromContext(ctx).MarkForwarded()
+
+	return selected, nil, nil
+}
+
+// markForwardedIfRemote preserves the query-profile contract that Forwarded
+// means another node served the read. The explicit leader-consistency path can
+// resolve to the local controller when this node considers itself leader.
+func (b *RoutedController) markForwardedIfRemote(ctx context.Context, selected ctrl.Controller) {
+	if selected != b.localController {
+		query.ProfileFromContext(ctx).MarkForwarded()
+	}
+}
+
 func (b *RoutedController) IsHealthy() bool {
 	return b.Node.IsHealthy()
 }
 
-// --- Write operations: forwarded to leader ---
+// --- Write operations: routed to leader ---
 
 func (b *RoutedController) Apply(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
 	leaderCtrl, err := b.getLeaderCtrl()
@@ -154,10 +187,11 @@ func (b *RoutedController) Barrier(ctx context.Context) (uint64, error) {
 	return leaderCtrl.Barrier(ctx)
 }
 
-// --- Read operations requiring leader state: forwarded to leader ---
+// --- Read operations requiring leader routing ---
 
 func (b *RoutedController) ListChapters(ctx context.Context) (cursor.Cursor[*commonpb.Chapter], error) {
-	// Chapter state is in-memory on the leader — route to leader
+	// Chapter lifecycle operations are coordinated by the perceived leader, so
+	// keep reads on the same routing path even though the rows live in Pebble.
 	leaderCtrl, err := b.getLeaderCtrl()
 	if err != nil {
 		return nil, err
@@ -241,13 +275,13 @@ func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*common
 	return c.GetLog(ctx, sequence)
 }
 
-func (b *RoutedController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (b *RoutedController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool, minLogSequence uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ListAuditEntries(ctx, pageSize, afterSequence, filter, reverse)
+	return c.ListAuditEntries(ctx, pageSize, afterSequence, filter, reverse, minLogSequence)
 }
 
 func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {

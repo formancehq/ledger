@@ -74,6 +74,57 @@ func TestCompileAuditFilter_Nil(t *testing.T) {
 	require.Equal(t, uint64(math.MaxUint64), hi)
 }
 
+func TestAuditFilterNeedsIndex(t *testing.T) {
+	t.Parallel()
+
+	seqLower := auditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, new(uint64(5)), nil)
+	seqUpper := auditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, nil, new(uint64(20)))
+	outcome := auditString(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure")
+
+	seqAnd := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{
+			seqLower,
+			seqUpper,
+		}}},
+	}
+	mixedAnd := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{
+			seqLower,
+			outcome,
+		}}},
+	}
+
+	tooDeep := seqLower
+	for range MaxFilterDepth {
+		tooDeep = &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{tooDeep}}},
+		}
+	}
+
+	tests := []struct {
+		name  string
+		input *commonpb.QueryFilter
+		want  bool
+	}{
+		{name: "nil", input: nil, want: false},
+		{name: "sequence bound", input: seqLower, want: false},
+		{name: "and of sequence bounds", input: seqAnd, want: false},
+		{name: "indexed field", input: outcome, want: true},
+		{name: "sequence and indexed field", input: mixedAnd, want: true},
+		{name: "malformed sequence condition", input: auditString(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, "bad"), want: true},
+		{name: "missing filter arm", input: &commonpb.QueryFilter{}, want: true},
+		{name: "over depth", input: tooDeep, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.want, AuditFilterNeedsIndex(tt.input))
+		})
+	}
+}
+
 func TestCompileAuditFilter_Outcome(t *testing.T) {
 	t.Parallel()
 

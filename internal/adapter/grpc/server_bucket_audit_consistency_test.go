@@ -112,12 +112,32 @@ func newAuditConsistencyHarness(t *testing.T) (*BucketServiceServerImpl, *ctrlmo
 	return impl, mockCtrl, mainStore, rs
 }
 
-// singleFieldFilter builds a minimal non-nil QueryFilter so the handler takes
-// the filtered branch. Its content is irrelevant here: the controller is mocked,
-// so the filter is never actually compiled — only its presence matters.
-func singleFieldFilter() *commonpb.QueryFilter {
+func indexedAuditFilter() *commonpb.QueryFilter {
 	return &commonpb.QueryFilter{
-		Filter: &commonpb.QueryFilter_Field{Field: &commonpb.FieldCondition{}},
+		Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
+			Field: commonpb.AuditField_AUDIT_FIELD_OUTCOME,
+			Condition: &commonpb.AuditCondition_StringCond{StringCond: &commonpb.StringCondition{
+				Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "failure"},
+			}},
+		}},
+	}
+}
+
+func auditSequenceFilter(lower, upper *uint64) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
+			Field: commonpb.AuditField_AUDIT_FIELD_SEQUENCE,
+			Condition: &commonpb.AuditCondition_UintCond{UintCond: &commonpb.UintCondition{
+				Min: lower,
+				Max: upper,
+			}},
+		}},
+	}
+}
+
+func auditAnd(filters ...*commonpb.QueryFilter) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_And{And: &commonpb.AndFilter{Filters: filters}},
 	}
 }
 
@@ -139,8 +159,8 @@ func TestListAuditEntriesFilteredWaitsForAuditProgress(t *testing.T) {
 	// The controller must only be called AFTER the audit index catches up.
 	controllerCalled := make(chan struct{})
 	mockCtrl.EXPECT().
-		ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Not(gomock.Nil()), gomock.Any()).
-		DoAndReturn(func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+		ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Not(gomock.Nil()), gomock.Any(), uint64(5)).
+		DoAndReturn(func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool, _ uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
 			close(controllerCalled)
 
 			return cursor.NewSliceCursor([]*auditpb.AuditEntry(nil)), nil
@@ -154,7 +174,7 @@ func TestListAuditEntriesFilteredWaitsForAuditProgress(t *testing.T) {
 		stream := newAuditStream(t, ctx)
 		req := &servicepb.ListAuditEntriesRequest{Options: &commonpb.ListOptions{
 			PageSize: 2,
-			Filter:   singleFieldFilter(),
+			Filter:   indexedAuditFilter(),
 			Read:     &commonpb.ReadOptions{MinLogSequence: 5},
 		}}
 		handlerErr <- impl.ListAuditEntries(req, stream)
@@ -205,7 +225,7 @@ func TestListAuditEntriesFilteredDoesNotWaitOnLogSequenceInAuditSpace(t *testing
 	writeReadstoreAuditProgress(t, rs, 2)
 
 	mockCtrl.EXPECT().
-		ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Not(gomock.Nil()), gomock.Any()).
+		ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Not(gomock.Nil()), gomock.Any(), uint64(10)).
 		Return(cursor.NewSliceCursor([]*auditpb.AuditEntry(nil)), nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -214,7 +234,7 @@ func TestListAuditEntriesFilteredDoesNotWaitOnLogSequenceInAuditSpace(t *testing
 	stream := newAuditStream(t, ctx)
 	req := &servicepb.ListAuditEntriesRequest{Options: &commonpb.ListOptions{
 		PageSize: 2,
-		Filter:   singleFieldFilter(),
+		Filter:   indexedAuditFilter(),
 		Read:     &commonpb.ReadOptions{MinLogSequence: 10},
 	}}
 
@@ -237,7 +257,7 @@ func TestListAuditEntriesUnfilteredDoesNotWaitOnAuditProgress(t *testing.T) {
 	// Audit index deliberately left at 0 — an unfiltered read must not care.
 
 	mockCtrl.EXPECT().
-		ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Nil(), gomock.Any()).
+		ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Nil(), gomock.Any(), uint64(5)).
 		Return(cursor.NewSliceCursor([]*auditpb.AuditEntry(nil)), nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -251,6 +271,106 @@ func TestListAuditEntriesUnfilteredDoesNotWaitOnAuditProgress(t *testing.T) {
 	}}
 
 	require.NoError(t, impl.ListAuditEntries(req, stream))
+}
+
+func TestListAuditEntriesSequenceBoundsDoNotWaitOnAuditProgress(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		filter *commonpb.QueryFilter
+	}{
+		{
+			name:   "single sequence bound",
+			filter: auditSequenceFilter(new(uint64(3)), nil),
+		},
+		{
+			name: "and-combined sequence bounds",
+			filter: auditAnd(
+				auditSequenceFilter(new(uint64(3)), nil),
+				auditSequenceFilter(nil, new(uint64(12))),
+			),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			impl, mockCtrl, mainStore, rs := newAuditConsistencyHarness(t)
+			writeReadstoreLogProgress(t, rs, 5)
+			writeMainAuditEntry(t, mainStore, 9)
+			// The query scans the audit zone directly, so a stalled audit index
+			// must not prevent the controller call.
+			writeReadstoreAuditProgress(t, rs, 1)
+
+			mockCtrl.EXPECT().
+				ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), tt.filter, gomock.Any(), uint64(5)).
+				Return(cursor.NewSliceCursor([]*auditpb.AuditEntry(nil)), nil)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			req := &servicepb.ListAuditEntriesRequest{Options: &commonpb.ListOptions{
+				PageSize: 2,
+				Filter:   tt.filter,
+				Read:     &commonpb.ReadOptions{MinLogSequence: 5},
+			}}
+
+			require.NoError(t, impl.ListAuditEntries(req, newAuditStream(t, ctx)))
+		})
+	}
+}
+
+func TestListAuditEntriesSequenceAndIndexedFieldWaitsForAuditProgress(t *testing.T) {
+	t.Parallel()
+
+	impl, mockCtrl, mainStore, rs := newAuditConsistencyHarness(t)
+	writeReadstoreLogProgress(t, rs, 5)
+	writeMainAuditEntry(t, mainStore, 9)
+	writeReadstoreAuditProgress(t, rs, 3)
+
+	filter := auditAnd(
+		auditSequenceFilter(new(uint64(3)), nil),
+		indexedAuditFilter(),
+	)
+	controllerCalled := make(chan struct{})
+	mockCtrl.EXPECT().
+		ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), filter, gomock.Any(), uint64(5)).
+		DoAndReturn(func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool, _ uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
+			close(controllerCalled)
+
+			return cursor.NewSliceCursor([]*auditpb.AuditEntry(nil)), nil
+		})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	handlerErr := make(chan error, 1)
+	go func() {
+		req := &servicepb.ListAuditEntriesRequest{Options: &commonpb.ListOptions{
+			PageSize: 2,
+			Filter:   filter,
+			Read:     &commonpb.ReadOptions{MinLogSequence: 5},
+		}}
+		handlerErr <- impl.ListAuditEntries(req, newAuditStream(t, ctx))
+	}()
+
+	select {
+	case <-controllerCalled:
+		t.Fatal("controller called before audit index caught up for a mixed filter")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	writeReadstoreAuditProgress(t, rs, 9)
+	rs.NotifyProgress()
+
+	select {
+	case err := <-handlerErr:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler did not return after audit index caught up")
+	}
 }
 
 // TestListAuditEntriesFilteredContextCancelWhileWaiting verifies a filtered read
@@ -267,7 +387,7 @@ func TestListAuditEntriesFilteredContextCancelWhileWaiting(t *testing.T) {
 
 	// Controller must never be reached.
 	mockCtrl.EXPECT().
-		ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Times(0)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -277,7 +397,7 @@ func TestListAuditEntriesFilteredContextCancelWhileWaiting(t *testing.T) {
 		stream := newAuditStream(t, ctx)
 		req := &servicepb.ListAuditEntriesRequest{Options: &commonpb.ListOptions{
 			PageSize: 2,
-			Filter:   singleFieldFilter(),
+			Filter:   indexedAuditFilter(),
 			Read:     &commonpb.ReadOptions{MinLogSequence: 5},
 		}}
 		handlerErr <- impl.ListAuditEntries(req, stream)

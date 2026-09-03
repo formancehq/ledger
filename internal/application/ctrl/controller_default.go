@@ -622,8 +622,8 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 // counter (PostingCount, RevertCount, NumscriptExecutionCount,
 // ReferenceCount, EphemeralEvictedCount, TransientUsedCount, VolumeCount)
 // is derived from the audit chain by the usagebuilder and read from the
-// usagestore side-store through a single Pebble snapshot — expect up to
-// one usagebuilder tick interval of lag behind the live FSM. See EN-1420
+// usagestore side-store through a single Pebble snapshot. The projection may
+// lag the live FSM while the usagebuilder drains pending batches. See EN-1420
 // and EN-1422.
 //
 // MetadataCount is intentionally not returned: the admission preload no
@@ -1753,7 +1753,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 // iterates ascending by sequence (oldest first) — this is the audit trail's
 // natural read order and is preserved from the pre-ListOptions behavior.
 // reverse=true iterates descending (newest first).
-func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool, _ uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	return ctrl.ListAuditEntriesFrom(ctx, ctrl.store, ctrl.readStore, pageSize, afterSequence, filter, reverse)
 }
 
@@ -1957,9 +1957,9 @@ func (ctrl *DefaultController) GetNumscript(ctx context.Context, ledger, name st
 // GetTemplateUsage returns the invocation counter and last-used timestamp
 // for a Numscript template. Values are populated by the usagebuilder
 // subsystem asynchronously from the audit chain: a template that was just
-// invoked may not yet be reflected here for up to one usagebuilder tick
-// (100 ms). Returns a zero-valued TemplateUsage (never nil) when the
-// template has never been invoked on an existing ledger.
+// invoked may not yet be reflected here while the worker drains pending
+// batches. Returns a zero-valued TemplateUsage (never nil) when the template
+// has never been invoked on an existing ledger.
 //
 // Ledger existence is validated first so an unknown or soft-deleted ledger
 // surfaces a NotFound business error (HTTP 404) rather than a zero-valued 200 —

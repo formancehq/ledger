@@ -21,8 +21,8 @@ func TestHandleListAuditEntries_Success(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), uint64(0)).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool, _ uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
 			return cursor.NewSliceCursor([]*auditpb.AuditEntry{
 				{Sequence: 1},
 				{Sequence: 2},
@@ -47,8 +47,8 @@ func TestHandleListAuditEntries_Empty(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), uint64(0)).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool, _ uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
 			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -68,8 +68,8 @@ func TestHandleListAuditEntries_Pagination(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListAuditEntries(gomock.Any(), uint32(10), uint64(42), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, pageSize uint32, afterSequence uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	backend.EXPECT().ListAuditEntries(gomock.Any(), uint32(10), uint64(42), gomock.Any(), gomock.Any(), uint64(0)).DoAndReturn(
+		func(_ context.Context, pageSize uint32, afterSequence uint64, _ *commonpb.QueryFilter, _ bool, _ uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
 			require.EqualValues(t, 10, pageSize)
 			require.EqualValues(t, 42, afterSequence)
 
@@ -89,8 +89,8 @@ func TestHandleListAuditEntries_Reverse(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, uint64(0)).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, reverse bool, _ uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
 			require.True(t, reverse)
 
 			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
@@ -114,8 +114,8 @@ func TestHandleListAuditEntries_MarshalFailureIsClean500(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), uint64(0)).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool, _ uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
 			return cursor.NewSliceCursor([]*auditpb.AuditEntry{
 				{
 					Sequence:       1,
@@ -169,8 +169,8 @@ func TestHandleListAuditEntries_LedgerFilter(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), uint64(0)).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool, _ uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
 			require.NotNil(t, filter)
 			audit := filter.GetAudit()
 			require.NotNil(t, audit)
@@ -195,8 +195,8 @@ func TestHandleListAuditEntries_OutcomeFilter(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), uint64(0)).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool, _ uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
 			require.NotNil(t, filter)
 			require.Equal(t, commonpb.AuditField_AUDIT_FIELD_OUTCOME, filter.GetAudit().GetField())
 
@@ -233,8 +233,8 @@ func TestHandleListAuditEntries_UnsupportedFilterMapsTo400(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), uint64(0)).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool, _ uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
 			return nil, status.Error(codes.InvalidArgument, "unsupported filter for audit entries")
 		}).Times(1)
 	srv := newTestServer(t, backend)

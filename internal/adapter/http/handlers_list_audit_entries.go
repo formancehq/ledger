@@ -36,12 +36,13 @@ import (
 // additionally honors the read-consistency options `checkpointId` (pinned
 // checkpoint read) and `minLogSequence` (audit-index catch-up wait for filtered
 // reads). This HTTP endpoint intentionally does not expose either — it always
-// performs a live, best-effort read. A filtered live read therefore resolves
-// through the async audit secondary index and may transiently omit very recent
-// entries that have not yet been indexed; a client needing a pinned or
-// consistency-bounded audit read must use the gRPC surface. If these options
-// are added to HTTP later, wire them through the same controller entry points
-// the gRPC path uses (impl.openCheckpointStores / minLogSequence gating).
+// performs a live, best-effort read. A filter containing a field other than
+// seq therefore resolves through the async audit secondary index and may
+// transiently omit very recent entries that have not yet been indexed; a client
+// needing a pinned or consistency-bounded audit read must use the gRPC surface.
+// If these options are added to HTTP later, wire them through the same
+// controller entry points the gRPC path uses (impl.openCheckpointStores /
+// minLogSequence gating).
 func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) {
 	pageSize, ok := parsePageSize(w, r)
 	if !ok {
@@ -67,7 +68,7 @@ func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) 
 
 	reverse := queryParamBool(r, "reverse")
 
-	cursor, err := s.backend.ListAuditEntries(r.Context(), pageSize, afterSequence, filter, reverse)
+	cursor, err := s.backend.ListAuditEntries(r.Context(), pageSize, afterSequence, filter, reverse, 0)
 	if err != nil {
 		handleError(w, r, err)
 

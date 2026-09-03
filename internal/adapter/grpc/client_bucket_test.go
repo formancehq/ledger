@@ -385,10 +385,16 @@ func TestListAuditEntries_Success(t *testing.T) {
 	stream := newRecvStream[auditpb.AuditEntry](ctrl, []*auditpb.AuditEntry{
 		{Sequence: 1},
 	}, nil)
-	mock.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any()).Return(stream, nil)
+	mock.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ListAuditEntriesRequest, _ ...grpc.CallOption) (servicepb.BucketService_ListAuditEntriesClient, error) {
+			require.Equal(t, uint64(7), req.GetOptions().GetRead().GetMinLogSequence())
+
+			return stream, nil
+		},
+	)
 
 	client := NewLedgerGrpcClient(mock)
-	cursor, err := client.ListAuditEntries(context.Background(), 10, 5, nil, false)
+	cursor, err := client.ListAuditEntries(context.Background(), 10, 5, nil, false, 7)
 	require.NoError(t, err)
 
 	entry, err := cursor.Next()
@@ -404,7 +410,7 @@ func TestListAuditEntries_StreamError(t *testing.T) {
 	mock.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any()).Return(nil, errors.New("audit error"))
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.ListAuditEntries(context.Background(), 10, 0, nil, false)
+	_, err := client.ListAuditEntries(context.Background(), 10, 0, nil, false, 0)
 	require.Error(t, err)
 }
 

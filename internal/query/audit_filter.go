@@ -44,6 +44,54 @@ type auditCompiled struct {
 	hiSeq uint64
 }
 
+// AuditFilterNeedsIndex reports whether answering an audit filter may require
+// the asynchronous audit secondary index. A nil filter and a conjunction made
+// exclusively of valid sequence bounds use the authoritative audit-zone scan
+// directly. Every other shape returns true conservatively, including malformed,
+// unknown, OR, or over-depth trees; validation and compilation remain
+// responsible for returning the precise client error later.
+//
+// This predicate deliberately performs no index reads. The gRPC handler uses it
+// before the consistency wait, so compiling first would capture stale index
+// candidates before the barrier intended to make them fresh.
+func AuditFilterNeedsIndex(filter *commonpb.QueryFilter) bool {
+	return auditFilterNeedsIndex(filter, 0)
+}
+
+func auditFilterNeedsIndex(filter *commonpb.QueryFilter, depth int) bool {
+	if filter == nil {
+		return false
+	}
+	if depth >= MaxFilterDepth || filter.GetFilter() == nil {
+		return true
+	}
+
+	switch f := filter.GetFilter().(type) {
+	case *commonpb.QueryFilter_Audit:
+		if f.Audit == nil || f.Audit.GetField() != commonpb.AuditField_AUDIT_FIELD_SEQUENCE {
+			return true
+		}
+
+		_, err := compileAuditSeqBound(f.Audit)
+
+		return err != nil
+	case *commonpb.QueryFilter_And:
+		if f.And == nil {
+			return true
+		}
+
+		for _, child := range f.And.GetFilters() {
+			if auditFilterNeedsIndex(child, depth+1) {
+				return true
+			}
+		}
+
+		return false
+	default:
+		return true
+	}
+}
+
 // CompileAuditFilter turns a QueryFilter into the set of audit sequences that
 // satisfy it, resolved entirely through the audit secondary index plus an
 // audit-zone sequence bound. It returns:
