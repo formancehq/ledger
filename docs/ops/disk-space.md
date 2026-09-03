@@ -146,8 +146,11 @@ Read operations continue to work normally:
 - **Invalid, stale, or unreachable measurement**: A missing measurement does
   not create a new disk block by itself. It cannot clear an existing disk block,
   however; recovery requires fresh valid measurements for every WAL and data
-  volume. A valid volume from the same node can still create a block
-  independently when it crosses its high-water mark.
+  volume on every member in the committed Raft configuration. Raft membership,
+  rather than the gRPC connection pool, determines which peers must report; a
+  member missing from the pool is treated as unreachable. A valid volume from
+  the same node can still create a block independently when it crosses its
+  high-water mark.
 - **Leadership change**: When leadership changes, the new leader starts checking immediately on its first tick. The health state defaults to `healthy` until the first check completes.
 
 ## Monitoring
