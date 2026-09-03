@@ -199,9 +199,11 @@ bash scripts/review-loop \
   --trusted-root "$TRUSTED_ROOT_CHECKOUT" \
   --binding-file "$AI_WORKTREE_BINDING_FILE" \
   --validation-run-dir "$VALIDATION_RUN_DIR" \
+  --validation-tool-root /trusted/base \
   --git-guard /trusted/base/scripts/ai-git-guard \
   --base origin/release/v3.0 \
-  --review-cmd 'bash scripts/ai-review-codex'
+  --review-cmd 'bash scripts/ai-review-codex' \
+  --validation-gates-cmd 'bash /trusted/base/scripts/agent-check-pr --list'
 ```
 
 The adapter:
@@ -252,6 +254,49 @@ correctness profiles selected for the changed architecture, not a mirror of
 GitHub Actions jobs. A validation failure stops the loop immediately. Only
 after validation succeeds does it invoke the reviewer again.
 
+That successful post-fix validation creates a process-local exact-state
+receipt. If the following re-review approves and repository observation proves
+that every validation input is still identical, the readiness validation point
+emits `VALIDATION_REUSED_EXACT_STATE` instead of executing the same validator a
+second time. A reviewer's claim that it was read-only is not evidence for this
+decision: the ordinary immutable-review check must pass and the receipt key is
+recomputed from repository state.
+
+The receipt key binds the immutable base ref and SHA; canonical candidate
+worktree, HEAD, review fingerprint, and a complete rootguard snapshot including
+ignored/generated inputs and ignore configuration; the protected root snapshot;
+the canonical base-pinned validation-tool worktree, its HEAD SHA, and complete
+rootguard snapshot; the exact validator and gate-selector commands; the exact
+selected-gate output; the full effective child environment (including build
+tags and options); the isolated validation and review-state directories; the
+complete root-scoped content and filesystem-metadata fingerprint of the mutable
+validation-run directory (including modes, sizes, and nanosecond modification
+times); the immutable worktree binding; and the installed Git guard. The command,
+environment, candidate snapshot, and trusted-tool snapshot together bind the
+effective pinned Nix/toolchain configuration. Any missing identity input,
+capture error, or mismatch emits `VALIDATION_RECEIPT_MISMATCH` and executes
+validation normally. A rootguard or worktree-binding failure remains fatal and
+can never fall back to receipt reuse.
+
+Status output distinguishes `VALIDATION_EXECUTED`,
+`VALIDATION_REUSED_EXACT_STATE`, and `VALIDATION_RECEIPT_MISMATCH`. A mutation
+of the base-pinned tool worktree additionally emits
+`TRUSTED_TOOL_MUTATION_DETECTED` and aborts instead of executing changed policy.
+
+Receipts exist only after validation succeeds. A failed, cancelled, or timed-out
+validator produces no receipt, and every subsequent fixer is an explicit
+invalidation boundary. Receipts are ordinary in-memory fields owned by one
+`review-loop` process: they are not written into the review state directory,
+shared between concurrent candidates, or carried into another invocation,
+base synchronization, candidate adoption, normalization, or crash recovery.
+The PR launchers keep review-loop state outside the candidate so receipt
+observation can cover ignored candidate inputs without hashing the loop's own
+changing JSON artifacts. Before a fixer runs, the orchestrator copies only its
+immutable findings and review inputs into a run-unique ignored directory inside
+the candidate, using a root-scoped filesystem handle. This preserves the
+fixer's project-local input boundary; the copies are themselves covered by the
+candidate root fingerprint and are never persisted as receipt data.
+
 The same local validation runs after an `APPROVE` decision and before
 `READY_FOR_HUMAN_REVIEW` is emitted. The orchestrator fingerprints the
 workspace again and rejects readiness if a validator changed the state that the
@@ -269,6 +314,14 @@ executable bit is not an additional trust boundary. The model driver/oracle is
 also base-pinned. The loop does not query
 or wait for GitHub Actions checks.
 
+This reuse boundary applies only to the duplicate validation inside one
+technical review/fix loop. Guarded publication still starts a separate
+review-only process for the normalized committed candidate, executes validation
+for that exact commit, revalidates the target at the existing publication
+boundaries, reruns the final trusted pre-commit gate, and keeps the guarded push
+preconditions and CI unchanged. Adoption likewise starts without a receipt and
+validates its exact supplied candidate from scratch.
+
 ## Claude Code fix adapter
 
 `scripts/ai-fix-claude` is the first provider-specific fixer adapter. It deliberately exposes a narrower autonomous surface than an interactive Claude Code session.
@@ -283,10 +336,12 @@ bash scripts/review-loop \
   --trusted-root "$TRUSTED_ROOT_CHECKOUT" \
   --binding-file "$AI_WORKTREE_BINDING_FILE" \
   --validation-run-dir "$VALIDATION_RUN_DIR" \
+  --validation-tool-root /trusted/base \
   --git-guard /trusted/base/scripts/ai-git-guard \
   --base origin/release/v3.0 \
   --review-cmd 'bash scripts/ai-review-codex' \
-  --fix-cmd 'bash scripts/ai-fix-claude'
+  --fix-cmd 'bash scripts/ai-fix-claude' \
+  --validation-gates-cmd 'bash /trusted/base/scripts/agent-check-pr --list'
 ```
 
 The adapter:

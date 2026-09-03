@@ -334,6 +334,7 @@ printf -v normalization_program \
 printf -v normalization_cmd 'env -u GOROOT nix develop %q --command bash -c %q' \
     "path:$trusted_tool_worktree" "$normalization_program"
 validation_cmd="mkdir -p $quoted_home $quoted_go_cache $quoted_go_mod_cache $quoted_go_path $quoted_tmp_dir $quoted_golangci_cache && env HOME=$quoted_home GOCACHE=$quoted_go_cache GOMODCACHE=$quoted_go_mod_cache GOPATH=$quoted_go_path TMPDIR=$quoted_tmp_dir XDG_CACHE_HOME=$quoted_cache_home GOLANGCI_LINT_CACHE=$quoted_golangci_cache VALIDATION_RUN_ID=$quoted_run_id VALIDATION_RUN_DIR=$quoted_run_dir bash $quoted_validation_tool"
+validation_gates_cmd="mkdir -p $quoted_home $quoted_go_cache $quoted_go_mod_cache $quoted_go_path $quoted_tmp_dir $quoted_golangci_cache && env HOME=$quoted_home GOCACHE=$quoted_go_cache GOMODCACHE=$quoted_go_mod_cache GOPATH=$quoted_go_path TMPDIR=$quoted_tmp_dir XDG_CACHE_HOME=$quoted_cache_home GOLANGCI_LINT_CACHE=$quoted_golangci_cache VALIDATION_RUN_ID=$quoted_run_id VALIDATION_RUN_DIR=$quoted_run_dir bash $quoted_validation_tool --list"
 if [[ "$push_changes" == "true" ]]; then
     # Publication additionally base-pins the mutating fixer and validator.
     for trusted_tool in ai-fix-claude agent-check-pr agent-just; do
@@ -380,10 +381,13 @@ run_full_loop() {
         --trusted-root "$trusted_root_checkout" \
         --binding-file "$binding_file" \
         --validation-run-dir "$validation_run_dir" \
+        --validation-tool-root "$trusted_tool_worktree" \
         --git-guard "$trusted_tool_worktree/scripts/ai-git-guard" \
+        --state-dir "$worktree_run_dir/review-state" \
         --review-cmd "$review_cmd" \
         --fix-cmd "$fix_cmd" \
-        --validation-cmd "$validation_cmd"
+        --validation-cmd "$validation_cmd" \
+        --validation-gates-cmd "$validation_gates_cmd"
 }
 
 run_commit_review() {
@@ -395,9 +399,12 @@ run_commit_review() {
         --trusted-root "$trusted_root_checkout" \
         --binding-file "$binding_file" \
         --validation-run-dir "$validation_run_dir" \
+        --validation-tool-root "$trusted_tool_worktree" \
         --git-guard "$trusted_tool_worktree/scripts/ai-git-guard" \
+        --state-dir "$worktree_run_dir/review-state" \
         --review-cmd "$review_cmd" \
-        --validation-cmd "$validation_cmd"
+        --validation-cmd "$validation_cmd" \
+        --validation-gates-cmd "$validation_gates_cmd"
 }
 
 # Reviewer and fixer agents run with the ledger bound to every pass. Neither may

@@ -326,6 +326,10 @@ func TestConcurrentPRRunsUseDistinctWorktreesAndValidationDirs(t *testing.T) {
 	require.NotEqual(t, secondCandidate, secondValidation)
 	require.Equal(t, canonicalTestPath(t, fixture.candidate), strings.TrimSpace(readTestFile(t, firstCWD)))
 	require.Equal(t, canonicalTestPath(t, secondCandidate), strings.TrimSpace(readTestFile(t, secondCWD)))
+	require.Contains(t, firstOutput.String(), "VALIDATION_EXECUTED reason=no_successful_receipt")
+	require.Contains(t, secondOutput.String(), "VALIDATION_EXECUTED reason=no_successful_receipt")
+	require.NotContains(t, firstOutput.String(), "VALIDATION_REUSED_EXACT_STATE")
+	require.NotContains(t, secondOutput.String(), "VALIDATION_REUSED_EXACT_STATE")
 }
 
 func TestWithoutOuterGitGuard(t *testing.T) {
@@ -462,6 +466,8 @@ func (fixture worktreeBindingFixture) command(
 		"--git-guard", fixture.guard,
 		"--review-cmd", "bash " + shellQuote(fixture.reviewer),
 		"--validation-cmd", "true",
+		"--validation-gates-cmd", "printf 'fixture-gate\\n'",
+		"--validation-tool-root", fixture.root,
 		"--state-dir", filepath.Join(candidate, ".review-state"),
 	}
 	command := exec.Command(fixture.binary, arguments...)

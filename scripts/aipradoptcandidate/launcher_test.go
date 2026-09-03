@@ -35,6 +35,9 @@ func TestAdoptCandidateAcceptsLegitimateNonBugfix(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, resolvedCheckout, argumentValue(t, arguments, "--trusted-root"))
 	require.Contains(t, argumentValue(t, arguments, "--review-cmd"), "trusted-tools/scripts/ai-review-known-findings")
+	require.Contains(t, argumentValue(t, arguments, "--validation-tool-root"), "trusted-tools")
+	require.NotContains(t, argumentValue(t, arguments, "--state-dir"), worktree)
+	require.Contains(t, argumentValue(t, arguments, "--validation-gates-cmd"), "agent-check-pr --list")
 	require.Equal(t, "123|"+fixture.headSHA, strings.TrimSpace(readFile(t, fixture.capture+".known-binding")))
 }
 

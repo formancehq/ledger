@@ -19,6 +19,18 @@ The workflow keeps three directory roles separate:
 - `VALIDATION_RUN_DIR` is a unique non-worktree directory for `HOME`, Go caches,
   `TMPDIR`, the golangci-lint cache, and the Git guard wrapper. It must neither
   equal nor contain either checkout, and neither checkout may contain it.
+  Same-run validation reuse fingerprints its complete contents and relevant
+  filesystem metadata (modes, sizes, and nanosecond modification times) through
+  a root-scoped filesystem handle after successful validation and again before
+  reuse; a content or metadata change forces validation to execute again.
+
+The PR launchers also place each `review-loop` state directory in their
+workflow-owned run directory, outside `CANDIDATE_WORKTREE`. This lets exact-state
+validation receipts cover ignored/generated candidate inputs while excluding
+only the loop's own changing review JSON from candidate state. Fixer and
+re-review inputs that must remain project-local are copied through an `os.Root`
+capability into a run-unique ignored candidate directory before validation;
+those immutable copies are included in the candidate receipt fingerprint.
 
 `ai-pr-loop` uses
 `.<repo>-ai-worktrees/pr-<pr>.<run>/{worktree,trusted-tools,validation}`.
@@ -212,3 +224,8 @@ all binding flags:
 
 There is no fallback to the caller's cwd and no mode that authorizes the
 primary checkout as the candidate.
+
+The supported PR launchers additionally provide `--validation-tool-root` and
+`--validation-gates-cmd`, which enable process-local exact-state validation
+receipts. A low-level caller that omits both remains safe but always executes
+the readiness validator; supplying only one is rejected.
