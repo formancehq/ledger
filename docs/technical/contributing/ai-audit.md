@@ -1,6 +1,6 @@
 # AI deep-audit contract
 
-This contract defines repository-wide audit campaigns for reusable correctness domains. It is intentionally separate from the PR review loop:
+This contract defines repository-wide audits for reusable correctness domains. It is intentionally separate from the PR review loop:
 
 - PR review asks whether a bounded change is safe to integrate;
 - deep audit asks which latent defects may already exist in an immutable repository state.
@@ -46,9 +46,10 @@ Every finding emitted by the audit is a hypothesis. Qualify the report with `bas
 
 A `CONFIRMED` challenge result is eligible to become a backlog/Jira candidate after human or policy approval. Jira handling is an explicit downstream action through `bash scripts/ai-audit-jira <challenge-result>`; the command previews candidates unless separately invoked with `--publish`. Neither the audit nor challenge pass fixes code, creates issues, or publishes findings automatically.
 
-For durable read-only coordination across every qualification status, import the
-source and qualified artifacts with `scripts/ai-campaign`; see
-`ai-campaign.md`. Campaign import and inspection do not publish or fix findings.
+After a confirmed finding is published, Jira is the durable backlog and
+assignment mechanism. Engineering proceeds through the ordinary Git
+branch/worktree/PR workflow after checking the Jira assignment and existing
+branches or pull requests; no parallel coordination record is required.
 
 ## Output
 
