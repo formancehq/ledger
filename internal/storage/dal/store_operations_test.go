@@ -431,15 +431,6 @@ func TestStore_ActivateIncomingRestore_FreshFollower(t *testing.T) {
 	require.True(t, os.IsNotExist(err), "staging dir must be renamed away, not left behind")
 }
 
-func readUint64(b []byte) uint64 {
-	var v uint64
-	for i := 0; i < 8 && i < len(b); i++ {
-		v = (v << 8) | uint64(b[i])
-	}
-
-	return v
-}
-
 func TestStore_NewIter(t *testing.T) {
 	t.Parallel()
 

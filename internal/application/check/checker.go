@@ -77,7 +77,7 @@ func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string
 // 3. Reversion invariants (no double reverts, valid revert targets)
 // 4. Volume consistency (input/output per account/asset)
 // 5. Account metadata consistency
-// 6. Transaction update consistency
+// 6. Transaction update consistency.
 func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStoreEvent)) error {
 	// Pin the peer read-index snapshot FIRST — strictly BEFORE the primary one.
 	// The order is load-bearing for compareReverseMapOrphans, which compares the

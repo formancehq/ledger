@@ -737,6 +737,7 @@ func pvcVolumeNames(persistence *ledgerv1alpha1.PersistenceSpec) []string {
 	if persistence.Data.IsPVC() {
 		names = append(names, "data")
 	}
+
 	return names
 }
 

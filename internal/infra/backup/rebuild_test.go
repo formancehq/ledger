@@ -584,7 +584,6 @@ func TestRebuildDelta_ReplaysDeleteLedger(t *testing.T) {
 	boundary, err := attrs.Boundary.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
 	require.NoError(t, err)
 	require.Nil(t, boundary, "the boundary row is dropped at delete time, matching the live apply")
-
 }
 
 func TestRebuildDelta_ReplaysPromoteLedger(t *testing.T) {

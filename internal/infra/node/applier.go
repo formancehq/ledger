@@ -1981,7 +1981,7 @@ func (a *Applier) handleCheckpointDuringReplay(_ context.Context, applyResult *s
 	if applyResult.QueryCheckpointID == 0 {
 		// CheckpointRequired is only ever set by CreateQueryCheckpoint
 		// (invariant #7 — no other trigger exists).
-		return fmt.Errorf("checkpoint required during replay with no query checkpoint id")
+		return errors.New("checkpoint required during replay with no query checkpoint id")
 	}
 
 	if err := a.createMainStoreCheckpoint(applyResult.QueryCheckpointID); err != nil {
