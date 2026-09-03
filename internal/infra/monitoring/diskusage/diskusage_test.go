@@ -32,6 +32,8 @@ func TestCollector_StartAndStop(t *testing.T) {
 	require.False(t, walSample.ObservedAt.IsZero())
 	require.Positive(t, walSample.UsedBytes)
 	require.Positive(t, walSample.TotalBytes)
+	require.Equal(t, walSample.UsedBytes, c.WALVolume.UsedBytes())
+	require.Equal(t, walSample.TotalBytes, c.WALVolume.TotalBytes())
 
 	dataSample := c.DataVolume.Load()
 	require.True(t, dataSample.Valid)

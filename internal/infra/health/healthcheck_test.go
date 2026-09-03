@@ -1,15 +1,47 @@
 package health
 
 import (
+	"context"
+	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/grpc"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 )
+
+type diskUsageTestServer struct {
+	clusterpb.UnimplementedClusterServiceServer
+	calls atomic.Int64
+}
+
+func (s *diskUsageTestServer) GetDiskUsage(context.Context, *clusterpb.GetDiskUsageRequest) (*clusterpb.DiskUsage, error) {
+	s.calls.Add(1)
+
+	return &clusterpb.DiskUsage{
+		WalVolume: &clusterpb.VolumeUsage{
+			UsedBytes:    10,
+			TotalBytes:   100,
+			ObservedAtUs: 1,
+			Valid:        true,
+		},
+		DataVolume: &clusterpb.VolumeUsage{
+			UsedBytes:    20,
+			TotalBytes:   100,
+			ObservedAtUs: 1,
+			Valid:        true,
+		},
+	}, nil
+}
 
 // TestHealthChecker_NonLeaderResetsWriteGate verifies that a node which is not
 // the leader clears any write-gate block state on its next check cycle. Without
@@ -40,6 +72,72 @@ func TestHealthChecker_NonLeaderResetsWriteGate(t *testing.T) {
 	require.NoError(t, hc.CheckWritesAllowed())
 }
 
+func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
+	t.Parallel()
+
+	provider := sdkmetric.NewMeterProvider()
+	collector := diskusage.NewCollector(
+		t.TempDir(),
+		t.TempDir(),
+		time.Hour,
+		provider.Meter("health-check-test"),
+	)
+	collector.Start()
+	t.Cleanup(collector.Stop)
+
+	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
+	t.Cleanup(func() {
+		require.NoError(t, pool.Close())
+	})
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := grpc.NewServer()
+	handler := &diskUsageTestServer{}
+	clusterpb.RegisterClusterServiceServer(server, handler)
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- server.Serve(listener)
+	}()
+	t.Cleanup(func() {
+		server.Stop()
+		require.NoError(t, <-serveErr)
+	})
+	require.NoError(t, pool.AddPeer(8, listener.Addr().String()))
+
+	ns := NewMocknodeState(gomock.NewController(t))
+	ns.EXPECT().IsLeader().Return(true)
+	ns.EXPECT().GetNodeID().Return(uint64(7)).Times(2)
+
+	hc := &HealthChecker{
+		node:        ns,
+		collector:   collector,
+		servicePool: pool,
+		logger:      logging.Testing(),
+		thresholds: Thresholds{
+			WALBlock:   1.1,
+			WALResume:  1,
+			DataBlock:  1.1,
+			DataResume: 1,
+		},
+	}
+
+	hc.check(make(chan struct{}))
+
+	require.Equal(t, int64(1), handler.calls.Load())
+	require.NoError(t, hc.CheckWritesAllowed())
+	require.False(t, hc.gate.Load().diskBlocked)
+}
+
+func TestSampleAge(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
+	require.Zero(t, sampleAge(now, time.Time{}))
+	require.Zero(t, sampleAge(now, now.Add(time.Second)))
+	require.Equal(t, 12*time.Second, sampleAge(now, now.Add(-12*time.Second)))
+}
+
 func TestRemoteVolumeValidity(t *testing.T) {
 	t.Parallel()
 
@@ -60,6 +158,7 @@ func TestRemoteVolumeValidity(t *testing.T) {
 	}{
 		{name: "missing volume", diagnostic: "missing"},
 		{name: "failed collection", volume: &clusterpb.VolumeUsage{Error: "input/output error"}, diagnostic: "input/output error"},
+		{name: "failed collection without diagnostic", volume: &clusterpb.VolumeUsage{}, diagnostic: "latest collection attempt failed"},
 		{name: "zero total", volume: &clusterpb.VolumeUsage{Valid: true, ObservedAtUs: 1}, diagnostic: "totalBytes"},
 		{name: "missing observation time", volume: &clusterpb.VolumeUsage{Valid: true, TotalBytes: 100}, diagnostic: "observedAtUs"},
 		{
