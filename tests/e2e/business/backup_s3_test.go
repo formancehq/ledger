@@ -33,8 +33,8 @@ const (
 	backupMinioSecretKey = "minioadmin"
 	backupS3Bucket       = "backup-e2e"
 	backupS3Region       = "us-east-1"
-	backupManifestKey    = "test-cluster/backups/manifest.json"
-	backupS3DataPrefix   = "test-cluster/backups/data/"
+	backupManifestKey    = "test-cluster/manifest.json"
+	backupS3DataPrefix   = "test-cluster/data/"
 )
 
 // readS3BackupManifest fetches and parses the backup manifest from S3.
@@ -247,7 +247,7 @@ var _ = Describe("S3 Backup", Ordered, func() {
 		// manifest nor any export segment.
 		_, getErr := s3Client.GetObject(ctx, &s3.GetObjectInput{
 			Bucket: aws.String(backupS3Bucket),
-			Key:    aws.String("no-prior/backups/manifest.json"),
+			Key:    aws.String("no-prior/manifest.json"),
 		})
 		Expect(getErr).To(HaveOccurred(),
 			"no manifest must be published for a rejected checkpoint-less incremental backup")
