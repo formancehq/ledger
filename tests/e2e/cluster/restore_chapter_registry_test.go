@@ -365,9 +365,10 @@ var _ = Describe("Restore chapter registry", Ordered, func() {
 
 	Describe("Phase 3: verify the restored chapter registry", Ordered, func() {
 		var (
-			client   servicepb.BucketServiceClient
-			grpcConn *grpc.ClientConn
-			server   *testservice.Service
+			client          servicepb.BucketServiceClient
+			grpcConn        *grpc.ClientConn
+			server          *testservice.Service
+			closedChapterID uint64
 		)
 
 		BeforeAll(func() {
@@ -459,6 +460,7 @@ var _ = Describe("Restore chapter registry", Ordered, func() {
 				"the closed chapter must be the successor, not a reused archived id")
 			Expect(closed.GetStartSequence()).To(Equal(archived.GetCloseSequence()+1),
 				"a start sequence of 1 would span already-archived history")
+			closedChapterID = closed.GetId()
 
 			// NextChapterID must have survived too: the chapter opened by this
 			// close gets the next fresh id.
@@ -469,24 +471,39 @@ var _ = Describe("Restore chapter registry", Ordered, func() {
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 		It("passes store check once the restored node has a baseline", func() {
-			// The close above produced a chapter checkpoint, and with it the
-			// baseline snapshot Check() needs on a store with archived chapters —
-			// without one it returns early and reports nothing whatever the store
-			// holds.
-			result, err := actions.CollectCheckStoreEvents(ctx, client)
+			// The close above only staged its checker baseline. Confirming the
+			// archive promotes that snapshot to the live baseline matching the new
+			// archived boundary.
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.ArchiveChapterAction(closedChapterID)))
 			Expect(err).To(Succeed())
 
-			// Guard against a vacuous pass: Check() returns early on an archived
-			// store with no baseline checkpoint, and then reports nothing whatever
-			// the store holds.
-			var checked uint64
-			for _, progress := range result.Progress {
-				if progress.GetLogsChecked() > checked {
-					checked = progress.GetLogsChecked()
+			Eventually(func(g Gomega) {
+				chapter := listChaptersByID(client)[closedChapterID]
+				g.Expect(chapter).ToNot(BeNil())
+				g.Expect(chapter.GetStatus()).To(Equal(commonpb.ChapterStatus_CHAPTER_ARCHIVED))
+			}).Within(30 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
+
+			// The ARCHIVED row is committed before its node-local baseline
+			// promotion runs. Retry the check across that narrow post-commit window
+			// and guard against its otherwise-vacuous missing-baseline pass.
+			var result *actions.CheckStoreResult
+
+			Eventually(func(g Gomega) {
+				candidate, checkErr := actions.CollectCheckStoreEvents(ctx, client)
+				g.Expect(checkErr).To(Succeed())
+
+				var checked uint64
+				for _, progress := range candidate.Progress {
+					if progress.GetLogsChecked() > checked {
+						checked = progress.GetLogsChecked()
+					}
 				}
-			}
-			Expect(checked).To(BeNumerically(">", 0),
-				"store check must have verified logs; a zero count means it exited early and proved nothing")
+
+				g.Expect(checked).To(BeNumerically(">", 0),
+					"store check must have verified logs; a zero count means it exited early and proved nothing")
+				result = candidate
+			}).Within(15 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			var residency []string
 			for _, checkErr := range result.Errors {
