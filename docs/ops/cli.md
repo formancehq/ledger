@@ -4323,7 +4323,9 @@ The constraint `resume < block` is validated at startup; the server refuses to s
 The health checker only acts on valid samples no older than one minute. An
 invalid, stale, or unreachable sample does not create a disk block by itself,
 but it cannot clear an existing block; recovery requires fresh samples for all
-volumes. Valid WAL and data samples are evaluated independently.
+volumes on every member in the committed Raft configuration. That configuration
+defines the required peers, so a member missing from the gRPC connection pool is
+considered unreachable. Valid WAL and data samples are evaluated independently.
 
 #### Write-gate error semantics
 

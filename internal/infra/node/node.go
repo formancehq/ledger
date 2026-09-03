@@ -2028,6 +2028,36 @@ func (node *Node) GetNodeID() uint64 {
 	return node.config.NodeID
 }
 
+// MemberIDs returns every node in the committed Raft configuration. Joint
+// consensus keeps outgoing voters and learners-next active until the transition
+// finishes, so they remain members for health polling as well.
+func (node *Node) MemberIDs() []uint64 {
+	confState := node.confState.Load()
+	if confState == nil {
+		return nil
+	}
+
+	members := make(map[uint64]struct{})
+	for _, ids := range [][]uint64{
+		confState.GetVoters(),
+		confState.GetLearners(),
+		confState.GetVotersOutgoing(),
+		confState.GetLearnersNext(),
+	} {
+		for _, id := range ids {
+			members[id] = struct{}{}
+		}
+	}
+
+	ids := make([]uint64, 0, len(members))
+	for id := range members {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+
+	return ids
+}
+
 // Logger returns the node's logger.
 func (node *Node) Logger() logging.Logger {
 	return node.logger

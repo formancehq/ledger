@@ -190,7 +190,8 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	localWalValid := localWAL.Usable(now)
 	localDataValid := localData.Usable(now)
 
-	hc.logIfAtBlock(hc.node.GetNodeID(), localWalUsed, localWalTotal, localWalValid, localDataUsed, localDataTotal, localDataValid)
+	localNodeID := hc.node.GetNodeID()
+	hc.logIfAtBlock(localNodeID, localWalUsed, localWalTotal, localWalValid, localDataUsed, localDataTotal, localDataValid)
 
 	samples = append(samples, VolumeSample{
 		WALFraction:  safeFraction(localWalUsed, localWalTotal),
@@ -200,7 +201,7 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	})
 
 	reports = append(reports, nodeUsageReport{
-		nodeID:      hc.node.GetNodeID(),
+		nodeID:      localNodeID,
 		walUsed:     localWalUsed,
 		walTotal:    localWalTotal,
 		walPercent:  safePercent(localWalUsed, localWalTotal),
@@ -215,8 +216,14 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 		dataError:   localData.Error,
 	})
 
-	// Check peers dynamically from the service pool
-	for _, peerID := range hc.servicePool.PeerIDs() {
+	// Raft membership is authoritative: a committed peer that failed to enter
+	// the service pool is still an unreachable sample and cannot clear an
+	// existing disk write gate.
+	for _, peerID := range hc.node.MemberIDs() {
+		if peerID == localNodeID {
+			continue
+		}
+
 		// Abort early if shutting down.
 		select {
 		case <-baseCtx.Done():
