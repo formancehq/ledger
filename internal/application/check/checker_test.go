@@ -242,12 +242,60 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 		require.NoError(e.t, err)
 	}
 
-	// For deleted ledgers, remove boundary from in-memory state (blocks
-	// subsequent operations) but keep all other data — it stays in Pebble
-	// until the purge cycle cleans it up.
+	// Mirror WriteSet.Merge phase 4 for deleted ledgers: drop the boundary
+	// and physically purge every ledger-owned row in the same apply that
+	// records the deletion.
 	for _, ledgerName := range e.pendingLedgerDeletions {
 		require.NoError(e.t, e.attrs.Boundary.Delete(batch, domain.LedgerKey{Name: ledgerName}.Bytes()))
 		delete(e.boundaries, ledgerName)
+
+		require.NoError(e.t, state.DeleteLedgerData(batch, ledgerName))
+		require.NoError(e.t, state.DeleteReversionsByLedger(batch, ledgerName))
+		delete(e.reversions, ledgerName)
+
+		// Ledger-scoped canonical keys all start with the fixed-size padded
+		// name block; purge the engine's write-through maps so the next batch
+		// does not resurrect the rows.
+		var pad [dal.LedgerNameFixedSize]byte
+
+		copy(pad[:], ledgerName)
+		prefix := string(pad[:])
+
+		for k := range e.volumes {
+			if strings.HasPrefix(k, prefix) {
+				delete(e.volumes, k)
+			}
+		}
+
+		for k := range e.metadata {
+			if strings.HasPrefix(k, prefix) {
+				delete(e.metadata, k)
+			}
+		}
+
+		for k := range e.transactionStates {
+			if strings.HasPrefix(k, prefix) {
+				delete(e.transactionStates, k)
+			}
+		}
+
+		for k := range e.references {
+			if strings.HasPrefix(k, prefix) {
+				delete(e.references, k)
+			}
+		}
+
+		for k := range e.numscriptContent {
+			if strings.HasPrefix(k, prefix) {
+				delete(e.numscriptContent, k)
+			}
+		}
+
+		for k := range e.numscriptLatest {
+			if strings.HasPrefix(k, prefix) {
+				delete(e.numscriptLatest, k)
+			}
+		}
 	}
 
 	e.pendingLedgerDeletions = nil
@@ -2472,6 +2520,35 @@ func TestCompareReferences_DetectsMissingAndUnaudited(t *testing.T) {
 
 	require.True(t, missing, "a dropped audited reference must surface as REFERENCE_MISMATCH")
 	require.True(t, unaudited, "an injected unaudited reference must surface as REFERENCE_MISMATCH")
+}
+
+// TestCheckerCleanAfterDeletingPopulatedLedger pins the same-apply deletion
+// cascade end to end: a ledger with transactions, metadata, and a reference is
+// deleted, the live rows are purged in the same apply, and the replayed
+// expectations must be purged with them — otherwise the checker expects
+// volumes and transaction state the store correctly lacks.
+func TestCheckerCleanAfterDeletingPopulatedLedger(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("doomed"))
+	engine.processAndCommit(createLedgerOrder("kept"))
+
+	withRef := createTransactionOrder("doomed", true, newPosting("world", "temp", "USD", 100))
+	withRef.GetLedgerScoped().GetApply().GetCreateTransaction().Reference = "ref-1"
+	engine.processAndCommit(withRef)
+	engine.processAndCommit(saveAccountMetadataOrder("doomed", "temp", map[string]string{"k": "v"}))
+	engine.processAndCommit(createTransactionOrder("kept", true, newPosting("world", "alice", "USD", 42)))
+
+	engine.processAndCommit(deleteLedgerOrder("doomed"))
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+	for _, e := range errors {
+		t.Logf("Check error: [%s] %s (ledger=%s, account=%s, asset=%s, tx=%d)",
+			e.GetErrorType(), e.GetMessage(), e.GetLedger(), e.GetAccount(), e.GetAsset(), e.GetTransactionId())
+	}
+
+	require.Empty(t, errors, "deleting a populated ledger must leave the store clean")
 }
 
 // TestCompareReferences_FlagsRowSurvivingDeletedLedger: DeleteLedger purges

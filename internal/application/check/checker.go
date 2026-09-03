@@ -381,6 +381,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					delete(expectedSchemas, name)
 					delete(rawLedgerTypes, name)
 					delete(ledgerAccountTypes, name)
+
+					// DeleteLedger physically purges the ledger's rows in the
+					// same apply (WriteSet.Merge phase 4) — mirror it on the
+					// replayed expectations, or the volume/metadata/tx/reference
+					// comparisons would expect data the store correctly lacks.
+					if err := replay.deleteLedgerData(name); err != nil {
+						return fmt.Errorf("purging replay rows for deleted ledger %q: %w", name, err)
+					}
 					// The live apply drops the boundary row at delete time, so
 					// the expectation goes with it — compareBoundaries flags a
 					// surviving stored row as unexpected.
