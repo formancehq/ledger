@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -246,6 +247,13 @@ func TestDecideVolumeExpansionDoesNotPropagateRequestAboveMaximum(t *testing.T) 
 	}, nil, now)
 	assert.Equal(t, volumeExpansionDecisionConverge, decision.Kind)
 	assert.Equal(t, testQuantityValue("200Gi"), decision.TargetBytes)
+}
+
+func TestVolumeExpansionTargetArithmeticSaturates(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, uint64(math.MaxUint64), ceilMultiplyDivideUint64(math.MaxUint64, 100, 55))
+	require.Equal(t, int64(math.MaxInt64), roundUpToGiB(math.MaxInt64))
 }
 
 func testQuantityValue(value string) int64 {

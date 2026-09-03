@@ -61,33 +61,25 @@ func (s *diskUsageTestServer) GetDiskUsage(context.Context, *clusterpb.GetDiskUs
 	}, nil
 }
 
-// TestHealthChecker_NonLeaderResetsWriteGate verifies that a node which is not
-// the leader clears any write-gate block state on its next check cycle. Without
-// this, a node that blocked writes while it was leader (e.g. a volume filled)
-// would keep fail-closed and spuriously reject writes after losing leadership,
-// for up to one health-check interval. The leader-only verdict is always
-// re-derived on the current leader.
-func TestHealthChecker_NonLeaderResetsWriteGate(t *testing.T) {
+func TestHealthChecker_LeadershipChangeInvalidatesWriteGate(t *testing.T) {
 	t.Parallel()
 
-	ns := NewMocknodeState(gomock.NewController(t))
-	ns.EXPECT().IsLeader().Return(false).AnyTimes()
-
-	hc := &HealthChecker{node: ns}
-
-	// Simulate stale block state carried over from a prior leadership term.
-	hc.gate.Store(&gateState{diskBlocked: true, skewBlocked: true})
-	require.Error(t, hc.CheckWritesAllowed())
-
-	// The non-leader branch returns before touching the collector / service
-	// pool (both nil here), so this exercises only the reset.
-	hc.check(make(chan struct{}))
-
-	s := hc.gate.Load()
-	require.NotNil(t, s)
-	require.False(t, s.diskBlocked)
-	require.False(t, s.skewBlocked)
+	hc := &HealthChecker{checkNow: make(chan struct{}, 1)}
+	hc.gate.Store(&gateState{leadershipEpoch: hc.leadershipEpoch.Load()})
 	require.NoError(t, hc.CheckWritesAllowed())
+
+	hc.OnLeadershipChange(false)
+	require.Nil(t, hc.gate.Load())
+	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
+	require.Empty(t, hc.checkNow)
+
+	hc.OnLeadershipChange(true)
+	require.Nil(t, hc.gate.Load())
+	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
+	require.Empty(t, hc.checkNow)
+
+	hc.OnLeaderReady()
+	require.Len(t, hc.checkNow, 1)
 }
 
 func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
@@ -127,17 +119,71 @@ func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
 		logger:      logging.Testing(),
 		thresholds: Thresholds{
 			WALBlock:   1.1,
-			WALResume:  1,
+			WALResume:  0.000000001,
 			DataBlock:  1.1,
-			DataResume: 1,
+			DataResume: 0.000000001,
 		},
 	}
 
+	hc.OnLeadershipChange(true)
+	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
 	hc.check(make(chan struct{}))
 
 	require.Equal(t, int64(1), handler.calls.Load())
 	require.NoError(t, hc.CheckWritesAllowed())
 	require.False(t, hc.gate.Load().diskBlocked)
+}
+
+func TestHealthChecker_NewLeaderRequiresCompleteClusterSample(t *testing.T) {
+	t.Parallel()
+
+	collector := newFreshCollector(t)
+	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
+	t.Cleanup(func() {
+		require.NoError(t, pool.Close())
+	})
+	provider := sdkmetric.NewMeterProvider()
+	pollFailures, err := provider.Meter("health-check-test").Int64Counter("test.new-leader.poll.failures")
+	require.NoError(t, err)
+
+	ns := NewMocknodeState(gomock.NewController(t))
+	ns.EXPECT().IsLeader().Return(true)
+	ns.EXPECT().GetNodeID().Return(uint64(7))
+	ns.EXPECT().MemberIDs().Return([]uint64{7, 8})
+	hc := &HealthChecker{
+		node:         ns,
+		collector:    collector,
+		servicePool:  pool,
+		logger:       logging.Testing(),
+		pollFailures: pollFailures,
+		thresholds: Thresholds{
+			WALBlock:   0.8,
+			WALResume:  0.75,
+			DataBlock:  0.8,
+			DataResume: 0.75,
+		},
+	}
+
+	hc.OnLeadershipChange(true)
+	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
+	hc.check(make(chan struct{}))
+
+	require.Nil(t, hc.gate.Load(), "an incomplete first sample set must keep the new leadership epoch unknown")
+	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
+}
+
+func TestHealthChecker_OldLeadershipEpochCannotPublish(t *testing.T) {
+	t.Parallel()
+
+	hc := &HealthChecker{}
+	oldEpoch := hc.leadershipEpoch.Load()
+	hc.OnLeadershipChange(false)
+	hc.OnLeadershipChange(true)
+
+	// Simulate a slow check from the previous term completing after the two
+	// synchronous transition callbacks.
+	hc.gate.Store(&gateState{leadershipEpoch: oldEpoch})
+	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
 }
 
 func TestHealthChecker_MissingCommittedPeerCannotClearDiskGate(t *testing.T) {

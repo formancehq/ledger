@@ -12,7 +12,6 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -670,42 +669,9 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 // expansion policy. Runtime validation complements the generated CRD rules so
 // Clusters constructed in-process receive the same guarantees.
 func validateVolumeSpec(field string, spec *ledgerv1alpha1.VolumeSpec, defaultSize string, autoExpansionAllowed bool) error {
-	if spec.HostPath != nil {
-		if spec.HostPath.Path == "" {
-			return fmt.Errorf("%s.hostPath.path must not be empty", field)
-		}
-		if spec.StorageClass != "" {
-			return fmt.Errorf("%s: storageClass and hostPath are mutually exclusive", field)
-		}
-		if spec.VolumeAttributesClassName != "" {
-			return fmt.Errorf("%s: volumeAttributesClassName and hostPath are mutually exclusive", field)
-		}
-		if spec.AutoExpansion != nil && spec.AutoExpansion.Enabled {
-			return fmt.Errorf("%s: autoExpansion and hostPath are mutually exclusive", field)
-		}
-	}
+	_, err := validateAndResolveVolumeSpec(field, spec, defaultSize, autoExpansionAllowed)
 
-	auto := spec.AutoExpansion
-	if auto == nil || !auto.Enabled {
-		return nil
-	}
-	if !autoExpansionAllowed {
-		return fmt.Errorf("%s: autoExpansion is supported only for wal and data volumes", field)
-	}
-
-	policy, err := resolveVolumeExpansionPolicy(auto)
-	if err != nil {
-		return fmt.Errorf("%s.autoExpansion: %w", field, err)
-	}
-	initialSize := spec.Size
-	if initialSize.IsZero() {
-		initialSize = resource.MustParse(defaultSize)
-	}
-	if policy.MaximumSize.Cmp(initialSize) <= 0 {
-		return fmt.Errorf("%s.autoExpansion.maximumSize must be greater than initial size %s", field, initialSize.String())
-	}
-
-	return nil
+	return err
 }
 
 // hasHostPathVolume returns true if any volume uses hostPath.
