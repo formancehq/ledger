@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -430,6 +431,262 @@ func TestVerifyFileSnapshotsUnchangedRejectsFixerStateMutation(t *testing.T) {
 	require.NoError(t, os.WriteFile(resultPath, []byte("tampered\n"), 0o644))
 	err = verifyFileSnapshotsUnchanged(snapshots)
 	require.ErrorContains(t, err, resultPath+" content changed")
+}
+
+func TestStageCandidateAgentInputsRejectsSymlinkEscape(t *testing.T) {
+	t.Parallel()
+
+	repository := t.TempDir()
+	outside := t.TempDir()
+	require.NoError(t, os.Symlink(outside, filepath.Join(repository, "build")))
+	findings := filepath.Join(t.TempDir(), "findings.json")
+	review := filepath.Join(t.TempDir(), "review.json")
+	require.NoError(t, os.WriteFile(findings, []byte("findings\n"), 0o600))
+	require.NoError(t, os.WriteFile(review, []byte("review\n"), 0o600))
+
+	_, _, err := stageCandidateAgentInputs(repository, "run-1", 1, findings, review)
+	require.Error(t, err)
+	entries, readErr := os.ReadDir(outside)
+	require.NoError(t, readErr)
+	require.Empty(t, entries, "root-scoped staging must not write through an escaping symlink")
+}
+
+func TestValidationReceiptReviewLoopFlows(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "review-loop")
+	build := exec.Command("go", "build", "-o", binary, ".")
+	build.Dir = "."
+	output, err := build.CombinedOutput()
+	require.NoError(t, err, string(output))
+
+	t.Run("same state", func(t *testing.T) {
+		t.Parallel()
+
+		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{})
+		require.NoError(t, result.err, result.output)
+		require.Len(t, result.identities, 1, "validator must run once for the unchanged post-fix candidate")
+		require.Contains(t, result.output, "VALIDATION_EXECUTED reason=post_fix")
+		require.Contains(t, result.output, "VALIDATION_REUSED_EXACT_STATE")
+	})
+
+	t.Run("ignored same-size restored-mtime reviewer mutation", func(t *testing.T) {
+		t.Parallel()
+
+		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{reviewMutation: "ignored-same-size"})
+		require.NoError(t, result.err, result.output)
+		require.Len(t, result.identities, 2, "ignored candidate mutation must invalidate the receipt")
+		require.Equal(t, result.identities[0], result.identities[1], "the pre-existing review fingerprint intentionally excludes ignored inputs")
+		require.Contains(t, result.output, "VALIDATION_RECEIPT_MISMATCH fields=candidateRootFingerprint")
+		require.Contains(t, result.output, "VALIDATION_EXECUTED reason=receipt_mismatch")
+		require.NotContains(t, result.output, "VALIDATION_REUSED_EXACT_STATE")
+	})
+
+	t.Run("validation run directory reviewer mutation", func(t *testing.T) {
+		t.Parallel()
+
+		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{reviewMutation: "validation-run"})
+		require.NoError(t, result.err, result.output)
+		require.Len(t, result.identities, 2, "validation-run mutation must invalidate the receipt")
+		require.Equal(t, result.identities[0], result.identities[1], "candidate validation inputs intentionally remain unchanged")
+		require.Contains(t, result.output, "VALIDATION_RECEIPT_MISMATCH fields=validationRunContents")
+		require.Contains(t, result.output, "VALIDATION_EXECUTED reason=receipt_mismatch")
+		require.NotContains(t, result.output, "VALIDATION_REUSED_EXACT_STATE")
+	})
+
+	t.Run("validation run metadata-only reviewer mutation", func(t *testing.T) {
+		t.Parallel()
+
+		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{reviewMutation: "validation-run-mtime"})
+		require.NoError(t, result.err, result.output)
+		require.Len(t, result.identities, 2, "validation-run metadata mutation must invalidate the receipt")
+		require.Equal(t, result.identities[0], result.identities[1], "candidate validation inputs intentionally remain unchanged")
+		require.Contains(t, result.output, "VALIDATION_RECEIPT_MISMATCH fields=validationRunContents")
+		require.Contains(t, result.output, "VALIDATION_EXECUTED reason=receipt_mismatch")
+		require.NotContains(t, result.output, "VALIDATION_REUSED_EXACT_STATE")
+	})
+
+	t.Run("tracked reviewer mutation", func(t *testing.T) {
+		t.Parallel()
+
+		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{reviewMutation: "tracked"})
+		require.Error(t, result.err, result.output)
+		require.Len(t, result.identities, 1)
+		require.Contains(t, result.output, "workspace changed while the review command was running")
+		require.NotContains(t, result.output, "VALIDATION_REUSED_EXACT_STATE")
+	})
+
+	t.Run("trusted tool mutation", func(t *testing.T) {
+		t.Parallel()
+
+		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{reviewMutation: "tool"})
+		require.Error(t, result.err, result.output)
+		require.Len(t, result.identities, 1, "a changed trusted validator must never be executed")
+		require.Contains(t, result.output, "TRUSTED_TOOL_MUTATION_DETECTED")
+		require.NotContains(t, result.output, "VALIDATION_REUSED_EXACT_STATE")
+	})
+
+	t.Run("rootguard mismatch", func(t *testing.T) {
+		t.Parallel()
+
+		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{reviewMutation: "root"})
+		require.Error(t, result.err, result.output)
+		require.Len(t, result.identities, 1)
+		require.Contains(t, result.output, "ROOT_MUTATION_DETECTED")
+		require.NotContains(t, result.output, "VALIDATION_REUSED_EXACT_STATE")
+	})
+
+	t.Run("another fixer", func(t *testing.T) {
+		t.Parallel()
+
+		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{secondFix: true})
+		require.NoError(t, result.err, result.output)
+		require.Len(t, result.identities, 2, "each fixer must be followed by a real validator invocation")
+		require.Equal(t, 2, strings.Count(result.output, "VALIDATION_EXECUTED reason=post_fix"))
+		require.Contains(t, result.output, "VALIDATION_REUSED_EXACT_STATE")
+	})
+
+	for _, exitCode := range []string{"42", "124", "130"} {
+		t.Run("unsuccessful validation exit "+exitCode, func(t *testing.T) {
+			t.Parallel()
+
+			result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{validationExit: exitCode})
+			require.Error(t, result.err, result.output)
+			require.Len(t, result.identities, 1)
+			require.NotContains(t, result.output, "VALIDATION_RECEIPT_STORED")
+			require.NotContains(t, result.output, "VALIDATION_REUSED_EXACT_STATE")
+		})
+	}
+}
+
+type validationReceiptFlowOptions struct {
+	reviewMutation string
+	validationExit string
+	secondFix      bool
+}
+
+type validationReceiptFlowResult struct {
+	output     string
+	identities []string
+	err        error
+}
+
+func runValidationReceiptFlow(t *testing.T, binary string, options validationReceiptFlowOptions) validationReceiptFlowResult {
+	t.Helper()
+
+	repository := t.TempDir()
+	runGit(t, repository, "init")
+	require.NoError(t, os.WriteFile(filepath.Join(repository, "base.txt"), []byte("base\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repository, ".gitignore"), []byte(".ignored-input\n"), 0o644))
+	runGit(t, repository, "add", "base.txt", ".gitignore")
+	runGit(t, repository, "-c", "user.name=Review Loop Test", "-c", "user.email=review-loop@example.com", "commit", "-m", "base")
+	baseSHA := strings.TrimSpace(runGitOutput(t, repository, "rev-parse", "HEAD"))
+	fixtureRoot := t.TempDir()
+	candidate := filepath.Join(fixtureRoot, "candidate")
+	runGit(t, repository, "worktree", "add", "--detach", candidate, baseSHA)
+	toolWorktree := filepath.Join(fixtureRoot, "trusted-tool")
+	runGit(t, repository, "worktree", "add", "--detach", toolWorktree, baseSHA)
+	validationRunDir := filepath.Join(fixtureRoot, "validation")
+	require.NoError(t, os.MkdirAll(validationRunDir, 0o755))
+	bindingFile := filepath.Join(fixtureRoot, "binding.json")
+	writeBindingFile(t, bindingFile, 123, candidate, baseSHA, repository)
+
+	reviewer := filepath.Join(toolWorktree, "reviewer.sh")
+	require.NoError(t, os.WriteFile(reviewer, []byte(`#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$AI_REVIEW_PASS" == 1 ]]; then
+  cat > "$AI_REVIEW_RESULT" <<EOF
+{"decision":"REQUEST_CHANGES","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[],"findings":[{"id":"fix-me","severity":"P2","blocking":true,"auto_fixable":true,"title":"Fix fixture","location":"base.txt:1","evidence":"fixture","impact":"fixture","resolution":"fixture"}],"residual_risk":"LOW","human_decision_context":""}
+EOF
+elif [[ "${TEST_SECOND_FIX:-}" == "true" && "$AI_REVIEW_PASS" == 2 ]]; then
+  cat > "$AI_REVIEW_RESULT" <<EOF
+{"decision":"REQUEST_CHANGES","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[{"id":"fix-me","status":"FIXED","reason":"first fixture was changed"}],"findings":[{"id":"fix-again","severity":"P2","blocking":true,"auto_fixable":true,"title":"Fix second fixture","location":"base.txt:1","evidence":"fixture","impact":"fixture","resolution":"fixture"}],"residual_risk":"LOW","human_decision_context":""}
+EOF
+else
+	case "${TEST_REVIEW_MUTATION:-}" in
+    ignored-same-size)
+      printf 'bbbb\n' > .ignored-input
+      touch -r "$VALIDATION_RUN_DIR/ignored-input-reference" .ignored-input
+		;;
+	  tracked) printf 'reviewer mutation\n' > fixed-1.txt ;;
+	  validation-run) printf 'reviewer mutation\n' > "$VALIDATION_RUN_DIR/reviewer-mutation" ;;
+	  validation-run-mtime) touch -t 200001010000.00 "$VALIDATION_RUN_DIR/ignored-input-reference" ;;
+	  tool) printf 'tool mutation\n' > "$TEST_VALIDATION_TOOL_ROOT/tool-marker.txt" ;;
+	  root) printf 'root mutation\n' > "$TRUSTED_ROOT_CHECKOUT/root-marker.txt" ;;
+	  esac
+  if [[ "${TEST_SECOND_FIX:-}" == "true" ]]; then
+    cat > "$AI_REVIEW_RESULT" <<EOF
+{"decision":"APPROVE","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[{"id":"fix-again","status":"FIXED","reason":"second fixture was changed"}],"findings":[],"residual_risk":"LOW","human_decision_context":""}
+EOF
+  else
+    cat > "$AI_REVIEW_RESULT" <<EOF
+{"decision":"APPROVE","head":"$AI_REVIEW_HEAD","worktree_fingerprint":"$AI_REVIEW_WORKTREE_FINGERPRINT","previous_findings":[{"id":"fix-me","status":"FIXED","reason":"fixture was changed"}],"findings":[],"residual_risk":"LOW","human_decision_context":""}
+EOF
+  fi
+fi
+`), 0o755))
+	fixer := filepath.Join(toolWorktree, "fixer.sh")
+	require.NoError(t, os.WriteFile(fixer, []byte(`#!/usr/bin/env bash
+set -euo pipefail
+case "$AI_REVIEW_FINDINGS" in
+  "$EXPECTED_WORKTREE"/*) ;;
+  *) echo "findings escaped candidate: $AI_REVIEW_FINDINGS" >&2; exit 71 ;;
+esac
+case "$AI_REVIEW_RESULT" in
+  "$EXPECTED_WORKTREE"/*) ;;
+  *) echo "review result escaped candidate: $AI_REVIEW_RESULT" >&2; exit 72 ;;
+esac
+printf 'fixed\n' > "fixed-$AI_REVIEW_PASS.txt"
+printf 'aaaa\n' > .ignored-input
+cp -p .ignored-input "$VALIDATION_RUN_DIR/ignored-input-reference"
+`), 0o755))
+	validator := filepath.Join(toolWorktree, "validator.sh")
+	require.NoError(t, os.WriteFile(validator, []byte(`#!/usr/bin/env bash
+set -euo pipefail
+{
+  printf 'base=%s\n' "$AI_REVIEW_BASE_SHA"
+  printf 'head=%s\n' "$(git rev-parse HEAD)"
+  git diff --binary --full-index HEAD --
+  git ls-files --others --exclude-standard -z | while IFS= read -r -d '' path; do
+    printf 'path=%s\n' "$path"
+    git hash-object -- "$path"
+  done
+} | git hash-object --stdin >> "$TEST_VALIDATION_IDENTITIES"
+if [[ -n "${TEST_VALIDATION_EXIT:-}" ]]; then
+  exit "$TEST_VALIDATION_EXIT"
+fi
+`), 0o755))
+
+	identityLog := filepath.Join(validationRunDir, "validation-identities")
+	command := exec.Command(binary,
+		"--base", baseSHA,
+		"--pr", "123",
+		"--worktree", candidate,
+		"--expected-head", baseSHA,
+		"--trusted-root", repository,
+		"--binding-file", bindingFile,
+		"--validation-run-dir", validationRunDir,
+		"--git-guard", filepath.Join(repositoryRootForTests(t), "scripts", "ai-git-guard"),
+		"--review-cmd", "bash "+shellQuote(reviewer),
+		"--fix-cmd", "bash "+shellQuote(fixer),
+		"--validation-cmd", "bash "+shellQuote(validator),
+		"--validation-gates-cmd", "printf 'fixture-gate\\n'",
+		"--validation-tool-root", toolWorktree,
+		"--state-dir", filepath.Join(fixtureRoot, "review-state"),
+	)
+	command.Dir = candidate
+	command.Env = append(os.Environ(),
+		"TEST_REVIEW_MUTATION="+options.reviewMutation,
+		"TEST_SECOND_FIX="+strconv.FormatBool(options.secondFix),
+		"TEST_VALIDATION_EXIT="+options.validationExit,
+		"TEST_VALIDATION_IDENTITIES="+identityLog,
+		"TEST_VALIDATION_TOOL_ROOT="+toolWorktree,
+	)
+	output, err := command.CombinedOutput()
+
+	return validationReceiptFlowResult{
+		output:     string(output),
+		identities: strings.Fields(readTestFile(t, identityLog)),
+		err:        err,
+	}
 }
 
 func TestApprovedReviewFailsWhenLocalValidationFails(t *testing.T) {
