@@ -75,6 +75,15 @@ flowchart TB
 - If the batch is **empty** (no log type in the range produced index writes), the Pebble batch is skipped entirely and the progress cursor is persisted lazily on the next non-empty batch (or via a small dedicated batch at loop exit). This reduces fsyncs to `O(1)` per active batch instead of `O(1)` per tick.
 - Query-checkpoint create/delete operations force a batch boundary so the checkpoint state is never persisted across two passes.
 
+A retype mutates its pending-version cache and task cursor optimistically so
+later logs in the same fold batch see the new version and reset. Those specific
+in-memory mutations are added lazily to a rollback journal; a successful
+Pebble commit discards the journal, while any handler, progress-write, or
+commit failure restores the pre-retype state before the builder loop can run
+background work. The durable batch is cancelled in that case, so the residual
+state remains the old pending version paired with its old cursor and the next
+fold retries the retype from the same coherent state.
+
 ## Handlers
 
 `internal/application/indexbuilder/process_logs.go` — the `indexPayload` dispatcher and every per-payload handler live in this single file.

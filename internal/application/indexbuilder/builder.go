@@ -111,6 +111,12 @@ type Builder struct {
 	// rewrite finishes. Inner map is keyed by indexes.Canonical(id),
 	// always interpreted as string(canonical) for map lookups.
 	indexVersions map[string]map[string]readstore.IndexVersionState
+
+	// foldRollbacks is a lazy undo journal for builder-local mutations whose
+	// durable counterparts are staged in the current processLogs batch. It is
+	// nil in the common data-only fold and outside processLogs.
+	foldRollbacks []func()
+	foldBatchOpen bool
 }
 
 // versionFor returns (current, pending) for an indexed (ledger, canonicalID).
@@ -507,6 +513,35 @@ func (b *Builder) initBatch(batch *dal.WriteSession) {
 	b.wb.Init(batch)
 	b.seenAcctAsset = make(map[string]struct{})
 	b.deletedThisBatch = make(map[string]struct{})
+}
+
+func (b *Builder) initFoldBatch(batch *dal.WriteSession) {
+	b.initBatch(batch)
+	b.foldRollbacks = nil
+	b.foldBatchOpen = true
+}
+
+func (b *Builder) recordFoldRollback(rollback func()) {
+	if b.foldBatchOpen {
+		b.foldRollbacks = append(b.foldRollbacks, rollback)
+	}
+}
+
+func (b *Builder) rollbackFoldBatch() {
+	if !b.foldBatchOpen {
+		return
+	}
+
+	b.foldBatchOpen = false
+	for i := len(b.foldRollbacks) - 1; i >= 0; i-- {
+		b.foldRollbacks[i]()
+	}
+	b.foldRollbacks = nil
+}
+
+func (b *Builder) commitFoldBatch() {
+	b.foldBatchOpen = false
+	b.foldRollbacks = nil
 }
 
 // SetNotifications sets the dedicated Notifications signal for the builder.

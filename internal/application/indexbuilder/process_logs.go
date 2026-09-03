@@ -34,6 +34,8 @@ import (
 // When a batch produces no index writes, the Pebble batch is skipped
 // entirely. Progress is persisted once at the end, reducing fsyncs to O(1).
 func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.Time) (uint64, error) {
+	defer b.rollbackFoldBatch()
+
 	handle, err := b.pebbleStore.NewDirectReadHandle()
 	if err != nil {
 		return cursor, fmt.Errorf("creating read handle for log processing: %w", err)
@@ -98,7 +100,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 		// Create a batch up front so write methods have a valid target.
 		batch := b.readStore.NewBatch()
-		b.initBatch(batch)
+		b.initFoldBatch(batch)
 
 		// Iterate logs from Pebble and buffer index writes into the batch.
 		for batchCount < b.batchSize {
@@ -238,10 +240,13 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				return cursor, err
 			}
 
+			b.commitFoldBatch()
+
 			needsPersist = false
 		} else {
 			_ = batch.Cancel()
 			b.wb.Reset()
+			b.rollbackFoldBatch()
 			needsPersist = true
 		}
 

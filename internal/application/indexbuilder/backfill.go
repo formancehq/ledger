@@ -299,6 +299,15 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 			return fmt.Errorf("bumping pending_version on retype during backfill: %w", err)
 		}
 
+		priorCursor := bt.cursor
+		priorAppliedProposalSeq := bt.appliedProposalSeq
+		priorLastProgressSeq := bt.lastProgressSeq
+		b.recordFoldRollback(func() {
+			bt.cursor = priorCursor
+			bt.appliedProposalSeq = priorAppliedProposalSeq
+			bt.lastProgressSeq = priorLastProgressSeq
+		})
+
 		bt.cursor = 0
 		bt.appliedProposalSeq = 0
 		bt.lastProgressSeq = 0
@@ -338,6 +347,10 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 			// across a retype would let the new rewrite skip its
 			// scan entirely and switch into v_new without writing
 			// any entries.
+			priorTask := *t
+			priorTask.rmapCursor = cloneBytes(t.rmapCursor)
+			b.recordFoldRollback(func() { *t = priorTask })
+
 			t.toType = smft.GetType()
 			t.rmapCursor = nil
 			t.processedCount = 0
@@ -348,12 +361,22 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 		}
 	}
 
-	b.schemaRewriteTasks = append(b.schemaRewriteTasks, &schemaRewriteTask{
+	task := &schemaRewriteTask{
 		ledger:     ledgerName,
 		targetType: smft.GetTargetType(),
 		key:        smft.GetKey(),
 		toType:     smft.GetType(),
 		bbKey:      bbKey,
+	}
+	b.schemaRewriteTasks = append(b.schemaRewriteTasks, task)
+	b.recordFoldRollback(func() {
+		for i, candidate := range b.schemaRewriteTasks {
+			if candidate == task {
+				b.schemaRewriteTasks = append(b.schemaRewriteTasks[:i], b.schemaRewriteTasks[i+1:]...)
+
+				return
+			}
+		}
 	})
 
 	return nil
@@ -368,7 +391,7 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 // long as every log is seen.
 func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexID, toType commonpb.MetadataType) error {
 	canonical := indexes.Canonical(indexID)
-	prior, _ := b.versionStateFor(ledgerName, canonical)
+	prior, priorExists := b.versionStateFor(ledgerName, canonical)
 
 	base := max(prior.PendingVersion, prior.CurrentVersion, prior.HighWater)
 
@@ -404,6 +427,20 @@ func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexI
 	}
 
 	b.putVersionState(ledgerName, canonical, newState)
+	b.recordFoldRollback(func() {
+		if priorExists {
+			b.putVersionState(ledgerName, canonical, prior)
+
+			return
+		}
+
+		if inner := b.indexVersions[ledgerName]; inner != nil {
+			delete(inner, canonical)
+			if len(inner) == 0 {
+				delete(b.indexVersions, ledgerName)
+			}
+		}
+	})
 
 	return nil
 }

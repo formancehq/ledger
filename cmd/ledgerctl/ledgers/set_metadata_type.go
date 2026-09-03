@@ -19,8 +19,9 @@ func NewSetMetadataTypeCommand() *cobra.Command {
 		Short:   "Set a metadata field type on a ledger",
 		Long: `Declare a typed metadata field on a ledger.
 
-Once set, all new metadata values for this key must conform to the declared type.
-Existing untyped values will be converted in the background.
+The declaration controls how an attached query index encodes the field.
+Metadata values are neither validated nor converted by this declaration, and existing
+primary values remain unchanged. Any attached index is rewritten asynchronously.
 
 Examples:
   ledgerctl ledgers set-metadata-type --ledger my-ledger --target account --key age --type int64

@@ -513,7 +513,7 @@ ledgerctl ledgers delete-metadata
 
 #### ledgers set-metadata-type
 
-Declare a typed metadata field on a ledger. The declared type is an **index hint**: it tells the indexer which canonical encoding to use for range queries on this field. It is **not** an API contract — reads return the literal bytes the client wrote, regardless of the declared type. Clients that want a coerced view can convert locally; the server-side `commonpb.CoerceToDeclaredType` helper applies the same conversion matrix.
+Declare a typed metadata field on a ledger. The declared type tells the indexer which canonical encoding to use for queries on this field. Metadata writes are neither validated nor converted by the declaration. Existing primary values remain unchanged, and entity reads return the stored typed values verbatim. If an index is attached to the field, its encoding is rebuilt asynchronously.
 
 **Aliases:** `set-type`, `smt`
 
@@ -526,7 +526,7 @@ ledgerctl ledgers set-metadata-type [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--target` | | Target type: `account` or `transaction` |
+| `--target` | | Target type: `account`, `transaction`, or `ledger` |
 | `--key` | | Metadata key name |
 | `--type` | | Metadata type: `string`, `int64`, `bool`, `uint64`, `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32`, `datetime` |
 | `--timeout` | `10s` | Request timeout |
@@ -560,7 +560,7 @@ ledgerctl ledgers set-metadata-type
 
 #### ledgers remove-metadata-type
 
-Remove a typed metadata field declaration from a ledger. After removal, the key will accept values of any type again.
+Remove a typed metadata field declaration from a ledger. Stored metadata values remain unchanged. If an index is attached to the field, it is dropped.
 
 **Aliases:** `rm-type`, `rmt`
 
@@ -573,7 +573,7 @@ ledgerctl ledgers remove-metadata-type [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
-| `--target` | | Target type: `account` or `transaction` |
+| `--target` | | Target type: `account`, `transaction`, or `ledger` |
 | `--key` | | Metadata key name to remove |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 | `--timeout` | `10s` | Request timeout |

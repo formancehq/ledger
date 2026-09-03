@@ -19,7 +19,8 @@ func NewRemoveMetadataTypeCommand() *cobra.Command {
 		Short:   "Remove a metadata field type from a ledger",
 		Long: `Remove a typed metadata field declaration from a ledger.
 
-After removal, the key will accept values of any type again.
+Stored metadata values remain unchanged. If an index is attached to the field,
+the index is dropped.
 
 Examples:
   ledgerctl ledgers remove-metadata-type --ledger my-ledger --target account --key age

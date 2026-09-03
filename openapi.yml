@@ -1453,9 +1453,9 @@ paths:
     put:
       summary: Set metadata field type
       description: |
-        Declares or changes the expected type for a metadata key on a ledger.
-        Once set, all new metadata values for this key are converted to the declared type.
-        Existing values are converted in the background. Requires `ledger:write` scope.
+        Declares or changes the type used to encode a metadata key in an attached query index.
+        Metadata values are neither validated nor converted by this declaration, and existing primary values remain unchanged.
+        Any attached index is rewritten asynchronously. Requires `ledger:write` scope.
       operationId: setMetadataFieldType
       tags:
         - Metadata Schema
@@ -1500,7 +1500,7 @@ paths:
       summary: Remove metadata field type
       description: |
         Removes the type declaration for a metadata key on a ledger.
-        Existing metadata values remain unchanged and an attached index is dropped. Requires `ledger:write` scope.
+        Existing metadata values remain unchanged and any attached index is dropped. Requires `ledger:write` scope.
       operationId: removeMetadataFieldType
       tags:
         - Metadata Schema
