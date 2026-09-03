@@ -211,10 +211,6 @@ type ClusterSpec struct {
 	// +optional
 	Bloom *BloomConfig `json:"bloom,omitempty"`
 
-	// ColdStorage configuration for chapter archival.
-	// +optional
-	ColdStorage *ColdStorageConfig `json:"coldStorage,omitempty"`
-
 	// TLS configuration for gRPC connections.
 	// +optional
 	TLS *TLSConfig `json:"tls,omitempty"`
@@ -657,26 +653,7 @@ type HealthConfig struct {
 	ClockSkewThreshold string `json:"clockSkewThreshold,omitempty"`
 }
 
-// ColdStorageConfig holds cold storage configuration.
-type ColdStorageConfig struct {
-	// Driver is the storage driver: "filesystem" or "s3".
-	// +optional
-	Driver string `json:"driver,omitempty"`
-
-	// Path is the base path for filesystem driver.
-	// +optional
-	Path string `json:"path,omitempty"`
-
-	// BucketID is the shared namespace prefix for archives.
-	// +optional
-	BucketID string `json:"bucketId,omitempty"`
-
-	// S3 configuration.
-	// +optional
-	S3 *S3Config `json:"s3,omitempty"`
-}
-
-// S3Config holds S3-specific cold storage configuration.
+// S3Config holds S3-specific object-storage configuration (backups).
 type S3Config struct {
 	// Bucket is the S3 bucket name.
 	// +optional
@@ -1083,11 +1060,6 @@ type PersistenceSpec struct {
 	// Data persistence configuration.
 	// +optional
 	Data VolumeSpec `json:"data,omitempty"`
-
-	// ColdCache persistence configuration for cold storage read cache.
-	// Uses a separate volume to avoid filling the data disk when reading archived chapters.
-	// +optional
-	ColdCache VolumeSpec `json:"coldCache,omitempty"`
 
 	// RetentionPolicy for PVCs.
 	// +optional

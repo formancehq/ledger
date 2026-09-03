@@ -66,7 +66,7 @@ spec:
               kubectl delete backup ri-bk -n $NAMESPACE --ignore-not-found
               kubectl delete cluster ri-cluster -n $NAMESPACE --wait=true --timeout=60s
               kubectl wait --for=delete pod/ledger-ri-cluster-0 -n $NAMESPACE --timeout=60s 2>/dev/null || true
-              kubectl delete pvc wal-ledger-ri-cluster-0 data-ledger-ri-cluster-0 cold-cache-ledger-ri-cluster-0 -n $NAMESPACE --ignore-not-found
+              kubectl delete pvc wal-ledger-ri-cluster-0 data-ledger-ri-cluster-0 -n $NAMESPACE --ignore-not-found
             timeout: 120s
 
     # Restore from full + incremental backup.
@@ -114,7 +114,7 @@ spec:
         - script:
             content: |
               sleep 5
-              kubectl delete pod ledger-ri-cluster-0 -n $NAMESPACE --force --grace-chapter=0
+              kubectl delete pod ledger-ri-cluster-0 -n $NAMESPACE --force --grace-period=0
             timeout: 30s
         - assert:
             resource:

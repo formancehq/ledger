@@ -25,8 +25,8 @@ func TestVolumeClaimTemplatesChanged(t *testing.T) {
 		},
 		{
 			name:     "volume removed (switched to hostPath)",
-			existing: []corev1.PersistentVolumeClaim{{ObjectMeta: metav1.ObjectMeta{Name: "wal"}}, {ObjectMeta: metav1.ObjectMeta{Name: "data"}}, {ObjectMeta: metav1.ObjectMeta{Name: "cold-cache"}}},
-			desired:  []corev1.PersistentVolumeClaim{{ObjectMeta: metav1.ObjectMeta{Name: "wal"}}, {ObjectMeta: metav1.ObjectMeta{Name: "cold-cache"}}},
+			existing: []corev1.PersistentVolumeClaim{{ObjectMeta: metav1.ObjectMeta{Name: "wal"}}, {ObjectMeta: metav1.ObjectMeta{Name: "data"}}},
+			desired:  []corev1.PersistentVolumeClaim{{ObjectMeta: metav1.ObjectMeta{Name: "wal"}}},
 			changed:  true,
 		},
 		{
@@ -71,7 +71,7 @@ func TestPvcVolumeNames(t *testing.T) {
 		{
 			name:        "all PVC (default)",
 			persistence: ledgerv1alpha1.PersistenceSpec{},
-			expected:    []string{"wal", "data", "cold-cache"},
+			expected:    []string{"wal", "data"},
 		},
 		{
 			name: "data hostPath",
@@ -80,7 +80,7 @@ func TestPvcVolumeNames(t *testing.T) {
 					HostPath: &ledgerv1alpha1.HostPathVolumeSpec{Path: "/mnt/nvme0/data"},
 				},
 			},
-			expected: []string{"wal", "cold-cache"},
+			expected: []string{"wal"},
 		},
 		{
 			name: "all hostPath",
@@ -90,9 +90,6 @@ func TestPvcVolumeNames(t *testing.T) {
 				},
 				Data: ledgerv1alpha1.VolumeSpec{
 					HostPath: &ledgerv1alpha1.HostPathVolumeSpec{Path: "/mnt/nvme0/data"},
-				},
-				ColdCache: ledgerv1alpha1.VolumeSpec{
-					HostPath: &ledgerv1alpha1.HostPathVolumeSpec{Path: "/mnt/nvme0/cold-cache"},
 				},
 			},
 			expected: nil,
@@ -104,7 +101,7 @@ func TestPvcVolumeNames(t *testing.T) {
 					HostPath: &ledgerv1alpha1.HostPathVolumeSpec{Path: "/mnt/nvme0/wal"},
 				},
 			},
-			expected: []string{"data", "cold-cache"},
+			expected: []string{"data"},
 		},
 	}
 

@@ -31,10 +31,9 @@ func TestReconcile_HostPathDataVolume(t *testing.T) {
 		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-hp-data", Namespace: ns}, sts) == nil
 	}, "StatefulSet should be created")
 
-	// Only wal and cold-cache should be VolumeClaimTemplates (data is hostPath)
-	require.Len(t, sts.Spec.VolumeClaimTemplates, 2)
+	// Only wal should be a VolumeClaimTemplate (data is hostPath)
+	require.Len(t, sts.Spec.VolumeClaimTemplates, 1)
 	assert.Equal(t, "wal", sts.Spec.VolumeClaimTemplates[0].Name)
-	assert.Equal(t, "cold-cache", sts.Spec.VolumeClaimTemplates[1].Name)
 
 	// Data should be an inline hostPath volume in pod template
 	podVolumes := sts.Spec.Template.Spec.Volumes
@@ -85,9 +84,6 @@ func TestReconcile_HostPathAllVolumes(t *testing.T) {
 		Path: "/mnt/nvme0/data",
 		Type: "Directory",
 	}
-	ls.Spec.Persistence.ColdCache.HostPath = &ledgerv1alpha1.HostPathVolumeSpec{
-		Path: "/mnt/nvme0/cold-cache",
-	}
 	ls.Spec.NodeSelector = map[string]string{"node-type": "nvme"}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
@@ -109,11 +105,9 @@ func TestReconcile_HostPathAllVolumes(t *testing.T) {
 	}
 	require.Contains(t, hostPathVols, "wal")
 	require.Contains(t, hostPathVols, "data")
-	require.Contains(t, hostPathVols, "cold-cache")
 
 	assert.Equal(t, "/mnt/nvme0/wal", hostPathVols["wal"].Path)
 	assert.Equal(t, "/mnt/nvme0/data", hostPathVols["data"].Path)
-	assert.Equal(t, "/mnt/nvme0/cold-cache", hostPathVols["cold-cache"].Path)
 
 	// Data should use Directory type (not the default DirectoryOrCreate)
 	assert.Equal(t, corev1.HostPathDirectory, *hostPathVols["data"].Type)
@@ -122,7 +116,7 @@ func TestReconcile_HostPathAllVolumes(t *testing.T) {
 
 	// All mounts should have SubPathExpr
 	container := sts.Spec.Template.Spec.Containers[0]
-	for _, name := range []string{"wal", "data", "cold-cache"} {
+	for _, name := range []string{"wal", "data"} {
 		for _, m := range container.VolumeMounts {
 			if m.Name == name {
 				assert.Equal(t, "$(POD_INDEX)", m.SubPathExpr, "volume %s should have SubPathExpr", name)

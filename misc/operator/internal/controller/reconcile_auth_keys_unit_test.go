@@ -1062,7 +1062,6 @@ func TestReconcileVolumeProtectionPass_RunsIndependentlyOfAuthKeys(t *testing.T)
 			Persistence: ledgerv1alpha1.PersistenceSpec{
 				// hostPath volumes are not PVC-backed, so only "data" is reconciled.
 				WAL:       ledgerv1alpha1.VolumeSpec{HostPath: hostPath},
-				ColdCache: ledgerv1alpha1.VolumeSpec{HostPath: hostPath},
 			},
 		},
 	}
@@ -1129,7 +1128,6 @@ func TestReconcileVolumeProtectionPass_RequeuesWhilePreservingStatefulSet(t *tes
 			Replicas: &replicas,
 			Persistence: ledgerv1alpha1.PersistenceSpec{
 				WAL:       ledgerv1alpha1.VolumeSpec{HostPath: hostPath},
-				ColdCache: ledgerv1alpha1.VolumeSpec{HostPath: hostPath},
 			},
 		},
 	}

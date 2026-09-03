@@ -192,23 +192,6 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 		envs = appendIfInt32(envs, "SNAPSHOT_FILE_RETRY_COUNT", spec.Snapshot.FileRetryCount)
 	}
 
-	// Cold storage
-	if spec.ColdStorage != nil {
-		envs = appendIfStr(envs, "COLD_STORAGE_DRIVER", spec.ColdStorage.Driver)
-		envs = appendIfStr(envs, "COLD_STORAGE_PATH", spec.ColdStorage.Path)
-		envs = appendIfStr(envs, "COLD_STORAGE_BUCKET_ID", spec.ColdStorage.BucketID)
-		if spec.ColdStorage.S3 != nil {
-			envs = appendIfStr(envs, "COLD_STORAGE_S3_BUCKET", spec.ColdStorage.S3.Bucket)
-			envs = appendIfStr(envs, "COLD_STORAGE_S3_REGION", spec.ColdStorage.S3.Region)
-			envs = appendIfStr(envs, "COLD_STORAGE_S3_ENDPOINT", spec.ColdStorage.S3.Endpoint)
-		}
-	}
-
-	// Cold cache directory — set to the dedicated mount point when cold storage is enabled
-	if spec.ColdStorage == nil || spec.ColdStorage.Driver != "none" {
-		envs = append(envs, corev1.EnvVar{Name: "COLD_CACHE_DIR", Value: "/data/cold-cache"})
-	}
-
 	// Health
 	if spec.Health != nil {
 		envs = appendIfStr(envs, "HEALTH_CHECK_INTERVAL", spec.Health.Interval)

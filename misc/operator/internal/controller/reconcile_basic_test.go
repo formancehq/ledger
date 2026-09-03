@@ -66,15 +66,13 @@ func TestReconcile_MinimalCluster(t *testing.T) {
 	assert.Equal(t, "basic", sts.Spec.Selector.MatchLabels[labelInstance])
 
 	// VolumeClaimTemplates
-	require.Len(t, sts.Spec.VolumeClaimTemplates, 3)
+	require.Len(t, sts.Spec.VolumeClaimTemplates, 2)
 	assert.Equal(t, "wal", sts.Spec.VolumeClaimTemplates[0].Name)
 	assert.Equal(t, "data", sts.Spec.VolumeClaimTemplates[1].Name)
-	assert.Equal(t, "cold-cache", sts.Spec.VolumeClaimTemplates[2].Name)
 
 	// Volume mounts
 	requireVolumeMount(t, container.VolumeMounts, "wal", "/data/raft")
 	requireVolumeMount(t, container.VolumeMounts, "data", "/data/app")
-	requireVolumeMount(t, container.VolumeMounts, "cold-cache", "/data/cold-cache")
 
 	// Container ports
 	requireContainerPort(t, container.Ports, "http", 9000)

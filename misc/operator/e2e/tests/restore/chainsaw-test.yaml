@@ -51,7 +51,7 @@ spec:
               kubectl delete backup restore-bk -n $NAMESPACE --ignore-not-found
               kubectl delete cluster restore-cluster -n $NAMESPACE --wait=true --timeout=60s
               kubectl wait --for=delete pod/ledger-restore-cluster-0 -n $NAMESPACE --timeout=60s 2>/dev/null || true
-              kubectl delete pvc wal-ledger-restore-cluster-0 data-ledger-restore-cluster-0 cold-cache-ledger-restore-cluster-0 -n $NAMESPACE --ignore-not-found
+              kubectl delete pvc wal-ledger-restore-cluster-0 data-ledger-restore-cluster-0 -n $NAMESPACE --ignore-not-found
             timeout: 120s
 
     - name: Deploy Cluster in restore mode
@@ -103,7 +103,7 @@ spec:
         - script:
             content: |
               sleep 5
-              kubectl delete pod ledger-restore-cluster-0 -n $NAMESPACE --force --grace-chapter=0
+              kubectl delete pod ledger-restore-cluster-0 -n $NAMESPACE --force --grace-period=0
             timeout: 30s
         - assert:
             resource:
