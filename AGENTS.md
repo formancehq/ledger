@@ -103,7 +103,10 @@ A task is not complete when the code merely looks correct. Before handing work t
 5. perform a self-review against the task, loaded subsystem docs, and the invariants above;
 6. report unresolved concerns instead of silently weakening or skipping a check.
 
-For broad or high-risk changes where the root-module unit suite is appropriate, run `bash scripts/agent-check-full`. Do not run the full suite mechanically for every local documentation or narrowly scoped change when targeted validation is sufficient.
+For a PR candidate, use `agent-check-pr` with the exact base SHA so focused
+race and subsystem gates are selected from the real diff. Run
+`agent-check-full` only for an explicit broad/high-risk fallback or diagnosis;
+CI owns broad clean validation before merge.
 
 ### Canonical validation commands
 
@@ -111,11 +114,16 @@ For broad or high-risk changes where the root-module unit suite is appropriate, 
 # Required baseline for code changes
 bash scripts/agent-check
 
-# Baseline + full root-module unit test suite
+# Targeted PR validation
+AI_REVIEW_BASE_SHA=<base-sha> bash scripts/agent-check-pr
+
+# Explicit/manual broad fallback
 bash scripts/agent-check-full
 ```
 
-`scripts/agent-check` runs the existing `just pre-commit` pipeline, compiles all root-module packages with `GOROOT= go build ./...`, and runs `git diff --check`. It deliberately does not choose task-specific tests for you.
+`scripts/agent-check` verifies repository invariants, compiles root-module
+packages, and checks diff whitespace. `agent-check-pr` adds applicable
+normalization, focused race tests, and affected subsystem suites.
 
 After modifying `.proto` files, run `just generate-proto` immediately.
 After changing a `//go:generate mockgen` interface, run `go generate ./...`.

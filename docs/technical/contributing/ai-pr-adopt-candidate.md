@@ -51,7 +51,7 @@ candidate even when the fresh base review does not rediscover it. A
 | `BEFORE_FIX` | Required for bugfixes | Required for bugfixes | Yes | Adoption cannot bypass reproduction evidence. |
 | `AFTER_FIX` | Required for bugfixes | Required for bugfixes | Yes | The claimed fix still needs passing after-fix evidence. |
 | Baseline classification | Required when validation failure makes it applicable | Same conditional requirement | Yes, when applicable | Candidate attribution must remain explicit. |
-| Candidate normalization | Bounded fixpoint before assigning the final SHA | Supplied SHA must already be normalized | Yes | Adoption preserves bytes and therefore refuses instead of rewriting them. |
+| Candidate normalization | Post-fix validation plus exact-SHA replay | Exact-SHA validation owns the single pass | Yes | Adoption preserves bytes and therefore refuses if validation rewrites them. |
 | Exact review | Final candidate commit is reviewed | Supplied candidate commit is reviewed | Yes | No earlier review receipt is inherited. |
 | Validation | Runs for the exact approved candidate | Runs for the exact approved candidate | Yes | No earlier validation receipt is inherited. |
 | Push binding | Clean reviewed SHA plus force-with-lease | Same descendant and lease checks | Yes | Publication must be an atomic update of the verified PR head. |
@@ -83,9 +83,9 @@ loaded/built from a detached worktree at the exact verified PR base SHA.
 The candidate is reviewed in a detached clean worktree. The review pass has no fixer. Local validation runs only after approval, through the base-pinned `agent-check-pr` path.
 
 The startup base comparison cannot authorize a long-running adoption by itself.
-Adoption re-fetches and compares the exact target again after normalization and
+Adoption re-fetches and compares the exact target again after validation and
 before exact review, after review before that evidence can authorize approval,
-and after the final trusted pre-commit immediately before a guarded push. These
+and immediately before a guarded push. These
 checks all compare with the immutable base established at startup; they never
 move that expected base forward.
 
@@ -106,8 +106,7 @@ With `--push`, publication is allowed only if:
 3. the target still equals the startup base before that exact review becomes
    publication-authorizing evidence;
 4. review/validation left its worktree clean and did not change HEAD;
-5. the base-pinned pre-commit recipe is rerun after review and leaves the exact
-   candidate clean and unchanged;
+5. exact-state validation leaves the candidate clean and unchanged;
 6. the remote PR head still equals the original verified head;
 7. the candidate still descends from that original head;
 8. the target still equals the startup base immediately before push;

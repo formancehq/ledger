@@ -24,10 +24,11 @@ selected binary and `GOROOT`, and rejects a host toolchain selected outside
 the repository environment. Being inside `nix develop` alone is not evidence
 of the effective toolchain.
 
-Immediately before a guarded push, the loop runs `just pre-commit` and checks
-`git status --porcelain`. If pre-commit changes files, the candidate must be
-updated and re-reviewed; the workflow never resets those changes to hide them.
-After final pre-commit and exact review, the launcher re-fetches the target and
+Before exact review, the loop runs applicable base-pinned normalization to a
+one-replay fixpoint. Exact-state targeted validation after review must leave the
+candidate clean; the workflow never resets generated changes to hide them and
+does not replay an identical pre-commit again before push. The launcher then
+re-fetches the target and
 requires it to remain at the run's immutable base before guarded publication.
 Any target advance requires explicit synchronization and a fresh trust pipeline,
 regardless of whether the changed paths overlap the candidate.

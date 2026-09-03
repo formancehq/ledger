@@ -184,22 +184,50 @@ fi
 
 cd "$repo_root"
 
-# Reviewers can invoke Go indirectly (for repository inspection/tests). When a
-# validation run is active, provide every mutable Go/cache directory explicitly
-# so macOS does not fall back to $HOME/Library/Caches/go-build.
+# Reviewers can invoke Go indirectly for repository inspection. Reuse the same
+# cooperative external caches as validation while keeping only temporary files
+# in the run directory. The isolated HOME below remains a reviewer-config
+# boundary; it is not a cache boundary.
 if [[ -n "${VALIDATION_RUN_DIR:-}" ]]; then
     run_dir=$(cd "$VALIDATION_RUN_DIR" 2>/dev/null && pwd -P) || exit 1
-    for dir in home go-cache go-mod-cache go-path tmp cache; do
-        mkdir -p "$run_dir/$dir"
+    shared_cache_root=${LEDGER_AI_CACHE_ROOT:-$original_home/.cache/ledger-ai}
+    [[ "$shared_cache_root" = /* ]] || {
+        echo "ai-review-codex: LEDGER_AI_CACHE_ROOT must be absolute" >&2
+        exit 1
+    }
+    [[ "$shared_cache_root" != "/" && "$shared_cache_root" != "$original_home" ]] || {
+        echo "ai-review-codex: refusing broad shared cache root" >&2
+        exit 1
+    }
+    mkdir -p "$shared_cache_root" "$run_dir/tmp"
+    shared_cache_root=$(cd "$shared_cache_root" && pwd -P)
+    if cache_worktree=$(git -C "$shared_cache_root" rev-parse --show-toplevel 2>/dev/null); then
+        echo "ai-review-codex: shared cache is inside Git worktree $cache_worktree" >&2
+        exit 1
+    fi
+    for protected_root in "$repo_root" "$run_dir" "${TRUSTED_ROOT_CHECKOUT:-}"; do
+        [[ -n "$protected_root" ]] || continue
+        protected_root=$(cd "$protected_root" 2>/dev/null && pwd -P) || {
+            echo "ai-review-codex: invalid protected root" >&2
+            exit 1
+        }
+        case "$shared_cache_root/" in
+            "$protected_root/"*)
+                echo "ai-review-codex: shared cache is inside a protected root" >&2
+                exit 1
+                ;;
+        esac
     done
-    export HOME="$run_dir/home"
-    export GOCACHE="$run_dir/go-cache"
-    export GOMODCACHE="$run_dir/go-mod-cache"
-    export GOPATH="$run_dir/go-path"
+    for dir in go-build go-mod go-path xdg golangci-lint; do
+        mkdir -p "$shared_cache_root/$dir"
+    done
+    export LEDGER_AI_CACHE_ROOT="$shared_cache_root"
+    export GOCACHE="$shared_cache_root/go-build"
+    export GOMODCACHE="$shared_cache_root/go-mod"
+    export GOPATH="$shared_cache_root/go-path"
     export TMPDIR="$run_dir/tmp"
-    export XDG_CACHE_HOME="$run_dir/cache"
-    export GOLANGCI_LINT_CACHE="$run_dir/cache/golangci-lint"
-    mkdir -p "$GOLANGCI_LINT_CACHE"
+    export XDG_CACHE_HOME="$shared_cache_root/xdg"
+    export GOLANGCI_LINT_CACHE="$shared_cache_root/golangci-lint"
 fi
 
 # Codex 0.147 has no single switch that disables every extension source. The

@@ -79,17 +79,16 @@ Avoid global variables for command flags. Use a struct to hold options and extra
 
 ## Pre-commit Checks
 
-Before completing any task:
+Before completing a PR candidate, run the base-sensitive local selector:
 
 ```bash
-# For Nix environments
-direnv allow && eval "$(direnv export bash)" && GOROOT= just pre-commit
+AI_REVIEW_BASE_SHA=<base-sha> bash scripts/agent-check-pr
 ```
 
-This runs:
-1. `go generate ./...` - regenerate mocks and protobuf files
-2. `go mod tidy` - clean up dependencies
-3. `golangci-lint run --fix` - lint and auto-fix
+For relevant inputs this runs the repository's straightforward pre-commit
+recipe once, followed by focused validation. Documentation-only changes skip
+Go normalization. The pinned Nix entry point clears inherited `GOROOT` and does
+not use a login shell. See [Local validation](local-validation.md).
 
 ## Mock Generation
 

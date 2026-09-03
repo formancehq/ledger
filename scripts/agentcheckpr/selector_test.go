@@ -60,33 +60,33 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 		{
 			name:     "documentation only",
 			paths:    []string{"docs/example.md"},
-			expected: []string{"agent-check-full"},
+			expected: []string{"agent-check"},
 		},
 		{
 			name:           "uncommitted HTTP contract",
 			paths:          []string{"openapi.yml", "internal/adapter/http/example.go"},
 			leaveUntracked: true,
-			expected:       []string{"agent-check-full", "test-e2e", "test-schemathesis"},
+			expected:       []string{"pre-commit", "agent-check", "test-race:./internal/adapter/http", "test-schemathesis"},
 		},
 		{
 			name:     "production and scenario behavior",
 			paths:    []string{"internal/domain/example.go", "tests/scenarios/example_test.go"},
-			expected: []string{"agent-check-full", "test-e2e", "test-scenarios"},
+			expected: []string{"agent-check-full", "test-scenarios"},
 		},
 		{
 			name:     "FSM and cluster persistence",
 			paths:    []string{"internal/infra/state/example.go", "internal/storage/dal/example.go"},
-			expected: []string{"agent-check-full", "test-e2e", "test-model-cluster"},
+			expected: []string{"pre-commit", "agent-check", "test-race:./internal/infra/state", "test-race:./internal/storage/dal"},
 		},
 		{
 			name:     "restore protocol",
 			paths:    []string{"misc/proto/restore.proto"},
-			expected: []string{"agent-check-full", "test-e2e", "test-model-cluster"},
+			expected: []string{"agent-check-full", "test-e2e"},
 		},
 		{
 			name:     "operator module",
 			paths:    []string{"misc/operator/internal/example.go"},
-			expected: []string{"agent-check-full", "test-operator"},
+			expected: []string{"pre-commit", "agent-check", "test-operator"},
 		},
 		{
 			name:      "production file renamed outside gated paths",
@@ -94,7 +94,17 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 			renames: [][2]string{
 				{"internal/domain/example.go", "docs/example.md"},
 			},
-			expected: []string{"agent-check-full", "test-e2e"},
+			expected: []string{"agent-check-full"},
+		},
+		{
+			name:     "focused test only",
+			paths:    []string{"internal/infra/cache/cache_test.go"},
+			expected: []string{"pre-commit", "agent-check", "test-race:./internal/infra/cache"},
+		},
+		{
+			name:     "AI tooling",
+			paths:    []string{"scripts/agent-validation-env"},
+			expected: []string{"pre-commit", "agent-check", "test-tooling"},
 		},
 	}
 
@@ -144,30 +154,9 @@ func TestSelectorListKeepsDiagnosticsOutOfStructuredStdout(t *testing.T) {
 	runGit(t, repository, "add", ".")
 	runGit(t, repository, "-c", "user.name=Agent Check PR Test", "-c", "user.email=agent-check-pr@example.com", "commit", "-m", "changes")
 
-	runDirectory := t.TempDir()
-	isolatedDirectories := map[string]string{
-		"HOME":                "home",
-		"GOCACHE":             "go-cache",
-		"GOMODCACHE":          "go-mod-cache",
-		"GOPATH":              "go-path",
-		"TMPDIR":              "tmp",
-		"XDG_CACHE_HOME":      "cache",
-		"GOLANGCI_LINT_CACHE": "cache/golangci-lint",
-	}
-	environment := testenv.Environment(
-		"AI_REVIEW_BASE_SHA="+baseSHA,
-		"VALIDATION_RUN_DIR="+runDirectory,
-		"VALIDATION_RUN_ID=selector-test",
-	)
-	for name, relativePath := range isolatedDirectories {
-		path := filepath.Join(runDirectory, relativePath)
-		require.NoError(t, os.MkdirAll(path, 0o755))
-		environment = append(environment, name+"="+path)
-	}
-
-	stdout, stderr := runSelectorList(t, repository, environment)
-	require.Equal(t, "agent-check-full\ntest-operator\n", stdout, "stdout must contain structured gates only")
-	require.Contains(t, stderr, "LINT_ISOLATION_GATE=PASS (", "stderr may contain validation diagnostics")
+	stdout, stderr := runSelectorList(t, repository, testenv.Environment("AI_REVIEW_BASE_SHA="+baseSHA))
+	require.Equal(t, "pre-commit\nagent-check\ntest-operator\n", stdout, "stdout must contain structured gates only")
+	require.Empty(t, stderr)
 }
 
 func runSelectorList(t *testing.T, repository string, environment []string) (string, string) {

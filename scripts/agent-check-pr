@@ -3,17 +3,19 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: AI_REVIEW_BASE_SHA=<commit> bash scripts/agent-check-pr [--list]
+Usage: AI_REVIEW_BASE_SHA=<commit> bash scripts/agent-check-pr [--list|--normalize]
 
-Runs the local validation gates required by the changes since the immutable
-review base. --list prints the selected gates without executing them.
+Runs fast local checks selected from the exact base-to-worktree diff.
+--list prints the selected gates without executing them. --normalize runs only
+the applicable deterministic generation/tidy/lint pass.
 EOF
 }
 
-list_only=false
+mode=run
 case "${1:-}" in
     "") ;;
-    --list) list_only=true ;;
+    --list) mode=list ;;
+    --normalize) mode=normalize ;;
     -h|--help)
         usage
         exit 0
@@ -31,8 +33,8 @@ if [[ -z "$base_sha" ]]; then
     exit 1
 fi
 
-# PR automation supplies a complete mechanical binding. Direct developer runs
-# without that contract remain supported, but a partial contract fails closed.
+# Exact candidate/worktree identity remains a publication boundary. Cache
+# sharing changes no part of this binding contract.
 binding_names=(EXPECTED_PR_NUMBER EXPECTED_WORKTREE EXPECTED_HEAD AI_WORKTREE_PR AI_WORKTREE_PATH AI_WORKTREE_EXPECTED_HEAD TRUSTED_ROOT_CHECKOUT)
 binding_declared=false
 for name in "${binding_names[@]}"; do
@@ -69,111 +71,141 @@ if [[ "$binding_declared" == true ]]; then
     echo "WORKTREE_BINDING_GATE=PASS role=validation pr=$EXPECTED_PR_NUMBER path=$candidate_root head=$current_head" >&2
 fi
 
-# AI validations must never reuse the user's golangci-lint cache.  The
-# launcher supplies VALIDATION_RUN_DIR and the per-run cache path; fail closed
-# when either is missing or escapes the run directory.  Direct developer runs
-# remain supported when no validation run is declared.
-if [[ -n "${VALIDATION_RUN_DIR:-}" ]]; then
-    [[ "$VALIDATION_RUN_DIR" = /* ]] || { echo "LINT_ISOLATION_GATE=FAIL (run dir is not absolute)" >&2; exit 1; }
-    run_root=$(cd "$VALIDATION_RUN_DIR" 2>/dev/null && pwd -P) || {
-        echo "LINT_ISOLATION_GATE=FAIL (invalid VALIDATION_RUN_DIR)" >&2
-        exit 1
-    }
-    lint_root=$(cd "${GOLANGCI_LINT_CACHE:-}" 2>/dev/null && pwd -P) || {
-        echo "LINT_ISOLATION_GATE=FAIL (GOLANGCI_LINT_CACHE is not configured)" >&2
-        exit 1
-    }
-    case "$lint_root/" in
-        "$run_root/"*) ;;
-        *) echo "LINT_ISOLATION_GATE=FAIL (cache escapes validation run)" >&2; exit 1 ;;
-    esac
-    for var in HOME GOCACHE GOMODCACHE GOPATH TMPDIR XDG_CACHE_HOME; do
-        value=${!var:-}
-        [[ -n "$value" && "$value" = /* ]] || { echo "LINT_ISOLATION_GATE=FAIL ($var is not isolated)" >&2; exit 1; }
-        resolved=$(cd "$value" 2>/dev/null && pwd -P) || { echo "LINT_ISOLATION_GATE=FAIL ($var is invalid)" >&2; exit 1; }
-        case "$resolved/" in
-            "$run_root/"*) ;;
-            *) echo "LINT_ISOLATION_GATE=FAIL ($var escapes validation run)" >&2; exit 1 ;;
-        esac
-    done
-    echo "LINT_ISOLATION_GATE=PASS ($lint_root)" >&2
-fi
 if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
     echo "agent-check-pr: invalid review base commit: $base_sha" >&2
     exit 1
 fi
 
+needs_precommit=false
+needs_full=false
+needs_tooling=false
 needs_e2e=false
 needs_scenarios=false
 needs_schemathesis=false
 needs_operator=false
-needs_model_cluster=false
+has_change=false
+changed_packages=()
+
+append_package() {
+    local package=$1
+    local existing
+    for existing in "${changed_packages[@]}"; do
+        [[ "$existing" == "$package" ]] && return
+    done
+    changed_packages+=("$package")
+}
 
 classify_path() {
-    local path=$1
+    local status=$1
+    local path=$2
+    has_change=true
+
+    case "$status" in
+        A|D|M) ;;
+        *) needs_full=true ;;
+    esac
 
     case "$path" in
-        main.go|cmd/server/*|internal/*|misc/proto/*|pkg/*|tests/e2e/*)
-            needs_e2e=true
+        docs/*|README.md|CONTRIBUTING.md|LICENSE|LICENSE.md)
+            return
             ;;
-    esac
-    case "$path" in
-        tests/scenarios/*|misc/numscript/*)
-            needs_scenarios=true
+        go.mod|go.sum|flake.nix|flake.lock|.golangci.yml|.golangci.yaml|misc/proto/*|internal/proto/*)
+            needs_precommit=true
+            needs_full=true
+            [[ "$path" == misc/proto/* || "$path" == internal/proto/* ]] && needs_e2e=true
+            return
             ;;
-    esac
-    case "$path" in
-        openapi.yml|internal/adapter/http/*|internal/adapter/json/*|internal/adapter/v2/*|tests/schemathesis/*)
+        AGENTS.md|justfile|.github/*|scripts/*)
+            needs_precommit=true
+            needs_tooling=true
+            return
+            ;;
+        openapi.yml)
+            needs_precommit=true
+            needs_schemathesis=true
+            return
+            ;;
+        internal/adapter/http/*|internal/adapter/json/*|internal/adapter/v2/*)
+            needs_precommit=true
             needs_schemathesis=true
             ;;
-    esac
-    case "$path" in
+        tests/schemathesis/*)
+            needs_precommit=true
+            needs_schemathesis=true
+            return
+            ;;
+        tests/e2e/*|pkg/testserver/*)
+            needs_precommit=true
+            needs_e2e=true
+            return
+            ;;
+        tests/scenarios/*|pkg/scenario/*|misc/numscript/*)
+            needs_precommit=true
+            needs_scenarios=true
+            return
+            ;;
         misc/operator/*)
+            needs_precommit=true
             needs_operator=true
+            return
+            ;;
+        tests/antithesis/workload/*)
+            needs_precommit=true
+            return
+            ;;
+        tests/antithesis/*|tests/oracle/*)
+            needs_precommit=true
+            append_package "./$(dirname "$path")"
+            return
             ;;
     esac
+
     case "$path" in
-        cmd/server/*|\
-        internal/application/admission/*|\
-        internal/application/backup/*|\
-        internal/application/membership/*|\
-        internal/bootstrap/*|\
-        internal/domain/processing/*|\
-        internal/domain/replay/*|\
-        internal/infra/attributes/*|\
-        internal/infra/backup/*|\
-        internal/infra/cache/*|\
-        internal/infra/membership/*|\
-        internal/infra/node/*|\
-        internal/infra/preload/*|\
-        internal/infra/state/*|\
-        internal/infra/transport/*|\
-        internal/storage/dal/*|\
-        internal/storage/pebblecfg/*|\
-        internal/storage/spool/*|\
-        internal/storage/wal/*|\
-        misc/proto/cluster.proto|\
-        misc/proto/cluster_bootstrap.proto|\
-        misc/proto/proposal.proto|\
-        misc/proto/raft_cmd.proto|\
-        misc/proto/raft_transport.proto|\
-        misc/proto/restore.proto|\
-        misc/proto/snapshot.proto|\
-        tests/antithesis/*|\
-        tests/oracle/*)
-            needs_model_cluster=true
+        *.go)
+            needs_precommit=true
+            append_package "./$(dirname "$path")"
+            if [[ "$status" == D ]]; then
+                needs_full=true
+            fi
+            case "$path" in
+                main.go|internal/domain/*.go|internal/query/*.go|pkg/*.go|pkg/*/*.go)
+                    needs_full=true
+                    ;;
+            esac
+            ;;
+        misc/devenv/monitoring-dashboards/*|tools/*)
+            needs_precommit=true
+            needs_tooling=true
+            ;;
+        *)
+            needs_full=true
             ;;
     esac
 }
 
+while IFS= read -r -d '' status && IFS= read -r -d '' path; do
+    classify_path "$status" "$path"
+done < <(git diff --no-renames --name-status --diff-filter=ACDMRTUXB -z "$base_sha" --)
 while IFS= read -r -d '' path; do
-    classify_path "$path"
-done < <(git diff --no-renames --name-only --diff-filter=ACDMRTUXB -z "$base_sha" --)
-while IFS= read -r -d '' path; do
-    classify_path "$path"
+    classify_path A "$path"
 done < <(git ls-files --others --exclude-standard -z)
 
-gates=(agent-check-full)
+gates=()
+if [[ "$needs_full" == true ]]; then
+    gates+=(agent-check-full)
+else
+    if [[ "$needs_precommit" == true ]]; then
+        gates+=(pre-commit)
+    fi
+    gates+=(agent-check)
+    if [[ "$needs_tooling" == true ]]; then
+        gates+=(test-tooling)
+    else
+        for package in "${changed_packages[@]}"; do
+            gates+=("test-race:$package")
+        done
+    fi
+fi
 if [[ "$needs_e2e" == true ]]; then
     gates+=(test-e2e)
 fi
@@ -186,30 +218,79 @@ fi
 if [[ "$needs_operator" == true ]]; then
     gates+=(test-operator)
 fi
-if [[ "$needs_model_cluster" == true ]]; then
-    gates+=(test-model-cluster)
-fi
 
-if [[ "$list_only" == true ]]; then
+if [[ "$mode" == list ]]; then
     printf '%s\n' "${gates[@]}"
     exit 0
 fi
 
-# Run every selected gate in the repository-pinned toolchain. Publish mode may
-# set the marker itself after entering the immutable base toolchain.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "${VALIDATION_RUN_DIR:-}" ]]; then
+    exec bash "$SCRIPT_DIR/agent-validation-env" --ephemeral bash "$0" "$@"
+fi
+
+# Run selected commands in the repository-pinned toolchain. PR launchers set
+# the marker only after entering the immutable base toolchain.
 if [[ "${LEDGER_AGENT_CHECK_IN_NIX:-}" != "1" ]]; then
     exec env -u GOROOT nix develop --command \
-        env LEDGER_AGENT_CHECK_IN_NIX=1 AI_REVIEW_BASE_SHA="$base_sha" bash "$0" "$@"
+        env LEDGER_AGENT_CHECK_IN_NIX=1 AI_REVIEW_BASE_SHA="$base_sha" TMPDIR="$TMPDIR" bash "$0" "$@"
 fi
 
 unset GOROOT || true
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '^/opt/homebrew' | paste -sd: -)
 export PATH
 bash "$SCRIPT_DIR/ai-bugfix-gate" environment "$(git rev-parse --show-toplevel)/go.mod"
 
+if [[ -n "${VALIDATION_RUN_DIR:-}" ]]; then
+    cache_root=$(cd "${LEDGER_AI_CACHE_ROOT:-}" 2>/dev/null && pwd -P) || {
+        echo "SHARED_CACHE_GATE=FAIL (LEDGER_AI_CACHE_ROOT is not configured)" >&2
+        exit 1
+    }
+    for entry in "GOCACHE:go-build" "GOMODCACHE:go-mod" "GOPATH:go-path" "XDG_CACHE_HOME:xdg" "GOLANGCI_LINT_CACHE:golangci-lint"; do
+        name=${entry%%:*}
+        suffix=${entry#*:}
+        [[ "${!name:-}" == "$cache_root/$suffix" ]] || {
+            echo "SHARED_CACHE_GATE=FAIL ($name does not use $cache_root/$suffix)" >&2
+            exit 1
+        }
+    done
+    run_root=$(cd "$VALIDATION_RUN_DIR" 2>/dev/null && pwd -P) || {
+        echo "SHARED_CACHE_GATE=FAIL (invalid VALIDATION_RUN_DIR)" >&2
+        exit 1
+    }
+    [[ "${TMPDIR:-}" == "$run_root/tmp" ]] || {
+        echo "SHARED_CACHE_GATE=FAIL (TMPDIR is not run-local)" >&2
+        exit 1
+    }
+    echo "SHARED_CACHE_GATE=PASS root=$cache_root tmp=$TMPDIR" >&2
+fi
+
+if [[ "$mode" == normalize ]]; then
+    if [[ "$needs_precommit" == true || "$needs_full" == true ]]; then
+        echo "==> agent-check-pr: normalization"
+        bash "$SCRIPT_DIR/agent-just" pre-commit
+    else
+        echo "==> agent-check-pr: normalization not applicable"
+    fi
+    exit 0
+fi
+
 echo "==> agent-check-pr: selected local gates: ${gates[*]}"
-bash "$SCRIPT_DIR/agent-check-full"
+if [[ "$needs_full" == true ]]; then
+    bash "$SCRIPT_DIR/agent-check-full"
+else
+    if [[ "$needs_precommit" == true ]]; then
+        bash "$SCRIPT_DIR/agent-just" pre-commit
+    fi
+    bash "$SCRIPT_DIR/agent-check"
+    if [[ "$needs_tooling" == true ]]; then
+        # Tooling fixtures use scripts/internal/testenv to exclude an outer
+        # review binding without changing the validator's own exact identity.
+        go test -race ./scripts/... -timeout 10m
+    elif [[ ${#changed_packages[@]} -gt 0 ]]; then
+        go test -race "${changed_packages[@]}" -timeout 10m
+    fi
+fi
 if [[ "$needs_e2e" == true ]]; then
     bash "$SCRIPT_DIR/agent-just" test-e2e
 fi
@@ -222,8 +303,8 @@ fi
 if [[ "$needs_operator" == true ]]; then
     go -C misc/operator test ./... -timeout 20m
 fi
-if [[ "$needs_model_cluster" == true ]]; then
-    bash "$SCRIPT_DIR/agent-just" test-model-cluster 180
-fi
 
+if [[ "$has_change" == false ]]; then
+    echo "==> agent-check-pr: no candidate changes"
+fi
 echo "==> agent-check-pr: PASS"

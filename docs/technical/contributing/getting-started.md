@@ -84,13 +84,13 @@ just test-e2e
 ## Development Workflow
 
 1. Make your changes
-2. Run pre-commit checks: `direnv allow && eval "$(direnv export bash)" && GOROOT= just pre-commit`
-3. Verify compilation: `go build ./...`
-4. Run tests: `just test`
+2. Run the fast baseline: `bash scripts/agent-check`
+3. Run focused tests for the changed package or subsystem
+4. Before publishing a PR candidate, run `AI_REVIEW_BASE_SHA=<base-sha> bash scripts/agent-check-pr`
 
-The pre-commit command runs `go generate ./...` (mocks + proto), `go mod tidy`
-for the root, operator, and Antithesis model-workload modules, and
-`golangci-lint run --fix`.
+The PR command selects applicable normalization and focused tests from the
+exact diff. Use `bash scripts/agent-check-full` only as an explicit broad
+fallback. See [Local validation](local-validation.md).
 
 ## Dependency Injection with fx
 

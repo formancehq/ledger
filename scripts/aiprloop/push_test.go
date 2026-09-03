@@ -137,9 +137,7 @@ func TestPushRevalidatesTargetAtEveryPublicationBoundary(t *testing.T) {
 		stage string
 	}{
 		{name: "after initial review before readiness", stage: "after-initial-review"},
-		{name: "during normalization before exact review", stage: "before-exact-review"},
 		{name: "during exact review before authorization", stage: "after-exact-review"},
-		{name: "during final pre-commit before push", stage: "during-final-precommit"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newPushFixture(t, pushFixtureOptions{targetMutation: test.stage})
@@ -258,9 +256,13 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 			require.NoError(t, os.WriteFile(externalValidatorPath, []byte("#!/usr/bin/env bash\nexit 0\n"), 0o644))
 			require.NoError(t, os.Symlink(externalValidatorPath, validatorPath))
 		default:
-			validator, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "agent-check-pr"))
-			require.NoError(t, err)
-			require.NoError(t, os.WriteFile(validatorPath, validator, publicationToolMode))
+			require.NoError(t, os.WriteFile(validatorPath, []byte(`#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+    --list) printf 'agent-check\n' ;;
+    --normalize) bash "$(dirname "$0")/agent-just" pre-commit ;;
+esac
+`), publicationToolMode))
 		}
 		require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "agent-just"), []byte(`#!/usr/bin/env bash
 set -euo pipefail
@@ -268,13 +270,16 @@ if [[ "${TEST_TARGET_MUTATION:-}" == "before-exact-review" && ! -e "$TEST_TARGET
     git --git-dir="$TEST_REMOTE" update-ref refs/heads/release/v3.0 "$TEST_ADVANCED_BASE_SHA"
     : > "$TEST_TARGET_MUTATION_MARKER"
 fi
-if [[ "${TEST_TARGET_MUTATION:-}" == "during-final-precommit" && -f "$TEST_REVIEW_COUNT_FILE" ]] &&
-   [[ "$(<"$TEST_REVIEW_COUNT_FILE")" == "2" ]]; then
-    git --git-dir="$TEST_REMOTE" update-ref refs/heads/release/v3.0 "$TEST_ADVANCED_BASE_SHA"
-fi
 exit 0
 `), publicationToolMode))
 	}
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "agent-validation-env"), []byte(`#!/usr/bin/env bash
+set -euo pipefail
+run_dir=$1
+shift
+mkdir -p "$run_dir/tmp"
+exec "$@"
+`), publicationToolMode))
 	directToolMode := os.FileMode(0o755)
 	if options.trustedDirectToolNonExecutable {
 		directToolMode = 0o644

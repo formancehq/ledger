@@ -1,36 +1,120 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 2 ]]; then
-    echo "Usage: agent-validation-env RUN_DIR COMMAND [ARGS...]" >&2
+clean_cache=false
+ephemeral=false
+while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+        --clean-cache) clean_cache=true ;;
+        --ephemeral) ephemeral=true ;;
+        --) shift; break ;;
+        *) echo "agent-validation-env: unknown option: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+if [[ "$ephemeral" == true ]]; then
+    [[ $# -ge 1 ]] || { echo "Usage: agent-validation-env [--clean-cache] --ephemeral COMMAND [ARGS...]" >&2; exit 2; }
+    run_dir=$(mktemp -d "${TMPDIR:-/tmp}/ledger-agent-validation.XXXXXX")
+else
+    [[ $# -ge 2 ]] || { echo "Usage: agent-validation-env [--clean-cache] RUN_DIR COMMAND [ARGS...]" >&2; exit 2; }
+    run_dir=$1
+    shift
+fi
+
+if [[ $# -lt 1 ]]; then
+    echo "agent-validation-env: command is required" >&2
     exit 2
 fi
 
-run_dir=$1
-shift
 run_id=${VALIDATION_RUN_ID:-$(basename "$run_dir")}
 
-for name in home go-cache go-mod-cache go-path tmp cache; do
-    mkdir -p "$run_dir/$name"
+mkdir -p "$run_dir"
+run_dir=$(cd "$run_dir" && pwd -P)
+
+# Cooperative local runs share stable caches. They remain outside every Git
+# worktree and outside the disposable run directory; only temporary files stay
+# run-local. Set LEDGER_AI_CACHE_ROOT to select another external location.
+cache_root=${LEDGER_AI_CACHE_ROOT:-${HOME:?HOME must be set}/.cache/ledger-ai}
+[[ "$cache_root" = /* ]] || {
+    echo "agent-validation-env: LEDGER_AI_CACHE_ROOT must be absolute" >&2
+    exit 2
+}
+[[ "$cache_root" != "/" && "$cache_root" != "$HOME" ]] || {
+    echo "agent-validation-env: refusing broad shared cache root: $cache_root" >&2
+    exit 2
+}
+mkdir -p "$cache_root"
+cache_root=$(cd "$cache_root" && pwd -P)
+if cache_worktree=$(git -C "$cache_root" rev-parse --show-toplevel 2>/dev/null); then
+    cache_worktree=$(cd "$cache_worktree" && pwd -P)
+    echo "agent-validation-env: shared cache is inside Git worktree $cache_worktree" >&2
+    exit 1
+fi
+
+reject_contained_cache() {
+    local root=$1
+    local label=$2
+    case "$cache_root/" in
+        "$root/"*)
+            echo "agent-validation-env: shared cache must be outside $label: $cache_root" >&2
+            exit 1
+            ;;
+    esac
+}
+
+reject_contained_cache "$run_dir" "VALIDATION_RUN_DIR"
+candidate_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+if [[ -n "$candidate_root" ]]; then
+    candidate_root=$(cd "$candidate_root" && pwd -P)
+    reject_contained_cache "$candidate_root" "candidate worktree"
+fi
+if [[ -n "${TRUSTED_ROOT_CHECKOUT:-}" ]]; then
+    trusted_root=$(cd "$TRUSTED_ROOT_CHECKOUT" 2>/dev/null && pwd -P) || {
+        echo "agent-validation-env: invalid TRUSTED_ROOT_CHECKOUT" >&2
+        exit 1
+    }
+    reject_contained_cache "$trusted_root" "trusted root"
+fi
+
+cache_marker="$cache_root/.ledger-ai-cache"
+if [[ "$clean_cache" == true ]]; then
+    [[ -f "$cache_marker" && "$(<"$cache_marker")" == "ledger-ai-cache-v1" ]] || {
+        echo "agent-validation-env: refusing to clear an unmarked cache root: $cache_root" >&2
+        exit 1
+    }
+    for name in go-build go-mod go-path golangci-lint xdg; do
+        cache_path="$cache_root/$name"
+        chmod -R u+w -- "$cache_path" >/dev/null 2>&1 || true
+        rm -rf -- "$cache_path"
+    done
+fi
+printf '%s\n' "ledger-ai-cache-v1" >"$cache_marker"
+
+for name in go-build go-mod go-path golangci-lint xdg; do
+    mkdir -p "$cache_root/$name"
 done
+mkdir -p "$run_dir/tmp"
 
 export VALIDATION_RUN_ID="$run_id"
 export VALIDATION_RUN_DIR="$run_dir"
-export HOME="$run_dir/home"
-export GOCACHE="$run_dir/go-cache"
-export GOMODCACHE="$run_dir/go-mod-cache"
-export GOPATH="$run_dir/go-path"
+export LEDGER_AI_CACHE_ROOT="$cache_root"
+export GOCACHE="$cache_root/go-build"
+export GOMODCACHE="$cache_root/go-mod"
+export GOPATH="$cache_root/go-path"
 export TMPDIR="$run_dir/tmp"
-export XDG_CACHE_HOME="$run_dir/cache"
-export GOLANGCI_LINT_CACHE="$run_dir/cache/golangci-lint"
-mkdir -p "$GOLANGCI_LINT_CACHE"
+export XDG_CACHE_HOME="$cache_root/xdg"
+export GOLANGCI_LINT_CACHE="$cache_root/golangci-lint"
 
-case "$PWD/" in
-    "$run_dir"/*) ;;
-    *)
-        echo "agent-validation-env: command must run from the isolated run directory" >&2
-        exit 1
-        ;;
-esac
+if [[ "$ephemeral" == true ]]; then
+    cleanup() {
+        case "$run_dir" in
+            */ledger-agent-validation.??????) find "$run_dir" -depth -delete >/dev/null 2>&1 || true ;;
+        esac
+    }
+    trap cleanup EXIT
+    "$@"
+    exit $?
+fi
 
 exec "$@"
