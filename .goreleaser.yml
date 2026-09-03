@@ -98,6 +98,7 @@ checksum:
 
 changelog:
   sort: asc
+  # Keep tagged and nightly releases independent of remote compare APIs.
   use: git
   filters:
     exclude:
