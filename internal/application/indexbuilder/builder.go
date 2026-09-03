@@ -3,6 +3,7 @@ package indexbuilder
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -533,8 +534,8 @@ func (b *Builder) rollbackFoldBatch() {
 	}
 
 	b.foldBatchOpen = false
-	for i := len(b.foldRollbacks) - 1; i >= 0; i-- {
-		b.foldRollbacks[i]()
+	for _, rollback := range slices.Backward(b.foldRollbacks) {
+		rollback()
 	}
 	b.foldRollbacks = nil
 }
