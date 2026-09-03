@@ -46,7 +46,7 @@ A full PR URL is accepted as well. The launcher:
   `ROOT_MUTATION_DETECTED` if its HEAD, branch, status, workspace content, or
   ignored configuration changes while a subprocess runs;
 - preserves the isolated worktree automatically when fixes remain so the resulting diff can be inspected manually;
-- removes a clean temporary worktree after the loop unless `--keep-worktree` is supplied, together with the run directory that holds its triage result, known-findings ledger, and isolated validation caches.
+- removes a clean temporary worktree after the loop unless `--keep-worktree` is supplied, together with the run directory that holds its triage result, known-findings ledger, and temporary validation state. Shared external caches survive the run.
 
 Each invocation owns a unique worktree and never reuses or removes another invocation's directory. Without `--push`, the launcher performs no commit or push and only reports `READY_FOR_HUMAN_REVIEW`, `HUMAN_DECISION_REQUIRED`, `LEGITIMACY_REJECTED`, `BASE_UPDATE_REQUIRED`, or an orchestration error.
 
@@ -241,18 +241,16 @@ The fix agent must:
 
 The blocker payload and originating review result are immutable inputs. The orchestrator snapshots both files before invoking the fixer and rejects the pass if either file's contents change or can no longer be read.
 
-After a successful fix command, the orchestrator runs
-`bash scripts/agent-check-pr` by default. It runs the baseline checks and unit
-tests, then selects additional local gates from the complete
-base-to-worktree diff: E2E tests for production Go paths, scenario tests for
-scenario/Numscript paths, Schemathesis for the HTTP/OpenAPI surface, and
-operator tests for the operator module. Changes to FSM, admission, Raft,
-cluster membership, cache/preload, primary persistence, snapshot/restore, or
-the model-checker harness additionally run the three-node
-`just test-model-cluster 180` gate with rolling restarts. These are local
-correctness profiles selected for the changed architecture, not a mirror of
-GitHub Actions jobs. A validation failure stops the loop immediately. Only
-after validation succeeds does it invoke the reviewer again.
+After a successful fix command, the orchestrator runs the base-pinned
+`bash scripts/agent-check-pr` policy documented in
+[Local validation](local-validation.md). Localized changes receive applicable
+normalization, the fast compile/invariant baseline, and focused race tests.
+E2E, scenarios, Schemathesis, and operator tests are additive only when their
+own surfaces are affected. Unknown/high-risk inputs use `agent-check-full`.
+Broad model, coverage, and unrelated repository suites remain CI work. A
+validation failure stops the loop immediately; only success reaches re-review.
+Commands run through non-login shells so host shell startup cannot replace the
+pinned Nix toolchain.
 
 That successful post-fix validation creates a process-local exact-state
 receipt. If the following re-review approves and repository observation proves
@@ -268,7 +266,7 @@ ignored/generated inputs and ignore configuration; the protected root snapshot;
 the canonical base-pinned validation-tool worktree, its HEAD SHA, and complete
 rootguard snapshot; the exact validator and gate-selector commands; the exact
 selected-gate output; the full effective child environment (including build
-tags and options); the isolated validation and review-state directories; the
+tags and options); the temporary validation and review-state directories; the
 complete root-scoped content and filesystem-metadata fingerprint of the mutable
 validation-run directory (including modes, sizes, and nanosecond modification
 times); the immutable worktree binding; and the installed Git guard. The command,
@@ -315,12 +313,13 @@ also base-pinned. The loop does not query
 or wait for GitHub Actions checks.
 
 This reuse boundary applies only to the duplicate validation inside one
-technical review/fix loop. Guarded publication still starts a separate
-review-only process for the normalized committed candidate, executes validation
-for that exact commit, revalidates the target at the existing publication
-boundaries, reruns the final trusted pre-commit gate, and keeps the guarded push
-preconditions and CI unchanged. Adoption likewise starts without a receipt and
-validates its exact supplied candidate from scratch.
+technical review/fix loop. Guarded publication commits the exact dirty state
+that loop approved and validated, then starts a separate review-only process
+for the committed candidate. That process executes targeted validation once
+for the publication SHA, revalidates the target at the existing boundaries,
+and keeps the guarded push preconditions and CI unchanged. There is no
+intermediate or final identical pre-commit replay. Adoption likewise starts
+without a receipt and validates its exact supplied candidate from scratch.
 
 ## Claude Code fix adapter
 
@@ -395,28 +394,20 @@ selected complete base-pinned graph is a `TOOLING_ERROR`, not a human decision.
 ## Safety boundary
 
 `review-loop` itself never posts comments, resolves threads, pushes commits, or merges pull requests. The higher-level `ai-pr-loop` also remains read-only with respect to GitHub by default. Its explicit `--push` mode may create a local candidate commit and update only the existing same-repository PR head branch under the verified lease described above; it still never comments, resolves threads, changes PR metadata, or merges.
-### Hermetic validation environments
+### Cooperative validation environments
 
-Git worktree isolation alone is insufficient for candidate validation. Each
-run must use a unique temporary validation directory and isolate `HOME`,
-`GOCACHE`, `GOMODCACHE`, `GOPATH`, `TMPDIR`, `XDG_CACHE_HOME`, and the
-`golangci-lint` cache. The canonical `agent-validation-env` wrapper creates
-these directories and records `VALIDATION_RUN_ID`; `ai-pr-loop` and
-`ai-pr-adopt-candidate` invoke validation through it. This keeps generated
-files and absolute paths from one concurrent run out of another run's caches.
-
-Those caches live inside the run's dedicated `validation/` directory, disjoint
-from both Git worktrees, so `ai-pr-loop` reclaims the whole
-run directory recursively when the run ends without `--keep-worktree`. It does
-so only after both owned worktrees are gone: a preserved worktree — inspectable
-fixes or a failed removal — keeps its run directory and its caches.
+Candidate and trusted-root worktrees remain isolated, but cooperative local
+runs share external Go, module, lint, tool, and XDG caches. The canonical
+`agent-validation-env` wrapper binds those stable cache paths and keeps only
+`TMPDIR` in the unique validation directory. Run cleanup therefore never
+deletes shared caches. See [Local validation](local-validation.md) for the
+threat model, paths, and explicit clean-retry escape hatch.
 
 ### Candidate normalization
 
-Candidate publication normalizes the candidate before assigning its final SHA.
-The trusted base-pinned `just pre-commit` recipe runs in the isolated validation
-environment; any resulting tree changes are logged, checked with `git diff
---check`, committed as normalization, and rechecked. This repeats to a bounded
-fixpoint (three passes by default). Only the converged SHA is reviewed and
-published. A candidate supplied to `ai-pr-adopt-candidate` is immutable: if it
-needs normalization, adoption refuses rather than silently changing the SHA.
+The technical review/fix loop validates the exact dirty state before the
+launcher assigns its final SHA. Publication commits those already-normalized
+bytes directly. The separate exact-candidate review then runs the selector once
+for the committed SHA; that is the fixpoint proof, not a reason for intermediate
+or last-mile replays. A candidate supplied to `ai-pr-adopt-candidate` remains
+immutable: its single exact validation pass must not change it.

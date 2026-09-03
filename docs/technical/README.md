@@ -31,6 +31,7 @@ AI agents should not preload this entire tree. Start from [`AGENTS.md`](../../AG
 | Set up the dev environment | [contributing/getting-started.md](contributing/getting-started.md) |
 | Understand code conventions | [contributing/conventions.md](contributing/conventions.md) |
 | Write and run tests | [contributing/testing.md](contributing/testing.md) |
+| Choose fast local versus broad CI validation | [contributing/local-validation.md](contributing/local-validation.md) |
 | Run a bounded AI review/fix loop | [contributing/ai-review-loop.md](contributing/ai-review-loop.md) |
 | Understand AI PR worktree isolation | [contributing/ai-worktree-isolation.md](contributing/ai-worktree-isolation.md) |
 | Work with Protocol Buffers | [contributing/protobuf.md](contributing/protobuf.md) |

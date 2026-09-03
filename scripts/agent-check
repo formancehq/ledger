@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "${VALIDATION_RUN_DIR:-}" ]]; then
+    exec bash "$SCRIPT_DIR/agent-validation-env" --ephemeral bash "$0" "$@"
+fi
+
 # Canonical agent validation must run in the repository-pinned Nix environment.
 # Re-exec once under `nix develop` instead of relying on whatever tools happen
 # to be installed or loaded by the caller's shell/direnv session.
 if [[ "${LEDGER_AGENT_CHECK_IN_NIX:-}" != "1" ]]; then
     exec env -u GOROOT nix develop --command \
-        env LEDGER_AGENT_CHECK_IN_NIX=1 bash "$0" "$@"
+        env LEDGER_AGENT_CHECK_IN_NIX=1 TMPDIR="$TMPDIR" bash "$0" "$@"
 fi
 
 # Never inherit a host GOROOT into pinned Go commands.
 unset GOROOT || true
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "==> agent-check: mechanical repository invariants"
 bash "$SCRIPT_DIR/check-repo-invariants"
-
-echo "==> agent-check: repository pre-commit validation"
-bash "$SCRIPT_DIR/agent-just" pre-commit
 
 echo "==> agent-check: compile all root-module packages"
 go build ./...

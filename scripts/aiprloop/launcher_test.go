@@ -205,18 +205,15 @@ func TestLauncherRemovesTheRunDirectoryOfACleanRun(t *testing.T) {
 
 	fixture := newLauncherFixture(t)
 	capture := filepath.Join(fixture.root, "review-args")
-	// Validation isolates HOME and the Go caches inside the run directory, so a
-	// completed run without --keep-worktree must reclaim that whole directory.
+	// Validation keeps only temporary state in the run directory. Shared caches
+	// are external and must not become run-owned cleanup targets.
 	output, err := runLauncherWithFlags(t, fixture, capture, triageResult{decision: "KEEP"}, nil,
 		[]string{"TEST_RUN_VALIDATION_CMD=1"})
 	require.NoError(t, err, output)
 	require.Contains(t, output, "Worktree is clean.")
 
-	isolatedCaches := readCapturedFile(t, capture+".rundir")
-	for _, cache := range []string{"home", "go-cache", "go-mod-cache", "go-path", "tmp", "cache"} {
-		require.Contains(t, strings.Split(isolatedCaches, "\n"), cache,
-			"validation must have populated the run directory")
-	}
+	runEntries := strings.Fields(readCapturedFile(t, capture+".rundir"))
+	require.Empty(t, runEntries)
 	require.NoDirExists(t, filepath.Dir(worktreeFromOutput(t, output)))
 }
 
@@ -295,6 +292,18 @@ func newLauncherFixture(t *testing.T) launcherFixture {
 	bugfixGate, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-bugfix-gate"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-bugfix-gate"), bugfixGate, 0o755))
+	writeExecutable(t, filepath.Join(seed, "scripts", "agent-validation-env"), `#!/usr/bin/env bash
+set -euo pipefail
+run_dir=$1
+shift
+mkdir -p "$run_dir/tmp"
+exec "$@"
+`)
+	writeExecutable(t, filepath.Join(seed, "scripts", "agent-check-pr"), `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "--list" ]]; then printf 'agent-check\n'; fi
+`)
+	writeExecutable(t, filepath.Join(seed, "scripts", "agent-just"), "#!/usr/bin/env bash\nexit 0\n")
 	writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" > "$TEST_CAPTURE_FILE"
@@ -311,10 +320,10 @@ if [[ -n "${TEST_RUN_VALIDATION_CMD:-}" ]]; then
             *) shift ;;
         esac
     done
-    # review-loop runs the validation recipe through bash -lc from the worktree.
-    # The recipe first creates the isolated caches in the parent run directory,
-    # then invokes the trusted validator, which this fixture does not provide.
-    bash -lc "$validation_cmd" >/dev/null 2>&1 || true
+    # review-loop runs the validation recipe through a non-login shell.
+    # The recipe keeps only temporary state in the parent run directory, then
+    # invokes the base-pinned validator.
+    bash -c "$validation_cmd" >/dev/null 2>&1 || true
     ls -1 "$validation_run_dir" > "$TEST_CAPTURE_FILE.rundir"
 fi
 if [[ "${TEST_ADVANCE_TARGET_AFTER_REVIEW:-false}" == "true" ]]; then
