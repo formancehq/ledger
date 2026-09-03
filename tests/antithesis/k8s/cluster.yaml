@@ -37,21 +37,11 @@ spec:
     references:
       expectedKeys: 1000000
 
-  # Cold storage via MinIO.
-  coldStorage:
-    driver: s3
-    s3:
-      bucket: archives
-      region: us-east-1
-      endpoint: http://minio.default.svc:9000
-
   persistence:
     wal:
       size: 1Gi
     data:
       size: 2Gi
-    coldCache:
-      size: 1Gi
 
   resources:
     requests:
