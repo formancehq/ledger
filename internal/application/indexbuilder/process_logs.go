@@ -24,16 +24,18 @@ import (
 // When deadline is non-zero, processing stops after the deadline to yield
 // time to other work (e.g. backfills).
 //
-// Since index handlers now receive previous metadata values directly from
-// the log (no Pebble reads needed), processing uses a 2-pass design:
-//   - Pass 1: iterate Pebble logs, dispatch to handlers that buffer writes
-//     into WriteBatch.
-//   - Pass 2 (only if needed): create an indexed batch, Init, write progress,
-//     then Flush (which commits the batch).
+// Each batch has two phases:
+//   - Fold logs and buffer their index mutations into WriteBatch. Metadata
+//     replacements and deletes resolve their old encoding through the reverse
+//     map; known-absent transaction inserts skip that lookup.
+//   - If the batch produced writes, append progress to the same Pebble batch
+//     and Flush it atomically.
 //
 // When a batch produces no index writes, the Pebble batch is skipped
 // entirely. Progress is persisted once at the end, reducing fsyncs to O(1).
 func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.Time) (uint64, error) {
+	defer b.rollbackFoldBatch()
+
 	handle, err := b.pebbleStore.NewDirectReadHandle()
 	if err != nil {
 		return cursor, fmt.Errorf("creating read handle for log processing: %w", err)
@@ -98,7 +100,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 		// Create a batch up front so write methods have a valid target.
 		batch := b.readStore.NewBatch()
-		b.initBatch(batch)
+		b.initFoldBatch(batch)
 
 		// Iterate logs from Pebble and buffer index writes into the batch.
 		for batchCount < b.batchSize {
@@ -238,10 +240,13 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				return cursor, err
 			}
 
+			b.commitFoldBatch()
+
 			needsPersist = false
 		} else {
 			_ = batch.Cancel()
 			b.wb.Reset()
+			b.rollbackFoldBatch()
 			needsPersist = true
 		}
 
@@ -612,10 +617,10 @@ func (b *Builder) indexCreatedTransaction(
 		}
 	}
 
-	// Account metadata from account_metadata map. Look up the previous
-	// encoding via the reverse-map (overlay + committed state) instead of
-	// the log's PreviousValues so a same-batch create-then-overwrite
-	// resolves correctly even when the schema rewrite is mid-flight.
+	// Account metadata from account_metadata map. Accounts may already exist,
+	// so resolve the index's old encoding through the reverse map (overlay +
+	// committed state). The overlay also makes repeated account updates in the
+	// same batch replace one another correctly during a schema rewrite.
 	for account, metadataMap := range ct.GetAccountMetadata() {
 		if metadataMap != nil {
 			for key, value := range metadataMap.GetValues() {
@@ -638,11 +643,11 @@ func (b *Builder) indexCreatedTransaction(
 		}
 	}
 
-	// Transaction metadata. On live processLogs the rmap is empty for a
-	// freshly-created tx, but a backfill replay (e.g. cursor reset on
-	// retype) can land on a tx whose forward entries already exist under
-	// the prior declared_type. Look up the existing encoded value so we
-	// delete the stale forward key on the way in.
+	// Transaction metadata is the first index write for this transaction ID.
+	// Insert directly instead of reading the reverse map: live folding sees a
+	// freshly-minted ID, and a creation backfill always targets a single-use
+	// pending version. A retype-driven reset bumps that pending version before
+	// replay, so the restarted fold also writes a fresh keyspace.
 	if len(txn.GetMetadata()) > 0 {
 		txIDBytes := make([]byte, 0, 8)
 
@@ -653,7 +658,7 @@ func (b *Builder) indexCreatedTransaction(
 				continue
 			}
 
-			if err := b.dualWriteMetadataIndex(
+			if err := b.dualInsertKnownAbsentMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceTransaction, key,
 				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
@@ -726,11 +731,10 @@ func (b *Builder) indexRevertedTransaction(
 		}
 	}
 
-	// Transaction metadata for the revert transaction. Same rationale as
-	// indexCreatedTransaction: a backfill replay (cursor reset on retype)
-	// can land on a tx whose forward entries already exist under the
-	// prior declared_type, so look up the existing encoded value to
-	// delete the stale forward key on the way in.
+	// Transaction metadata for the freshly-minted revert transaction follows
+	// the same insert-known-absent contract as CreatedTransaction. The normal
+	// fold writes a new ID, while creation-backfill replay writes a fresh,
+	// single-use pending version (including after a retype reset).
 	if len(revertTxn.GetMetadata()) > 0 {
 		txIDBytes := make([]byte, 0, 8)
 
@@ -741,7 +745,7 @@ func (b *Builder) indexRevertedTransaction(
 				continue
 			}
 
-			if err := b.dualWriteMetadataIndex(
+			if err := b.dualInsertKnownAbsentMetadataIndex(
 				kb,
 				ledger, readstore.NamespaceTransaction, key,
 				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
@@ -936,8 +940,8 @@ func (b *Builder) readstoreKeyExists(key []byte) (bool, error) {
 // reverseMapValue returns the encoded value the index currently holds for an
 // entity+key (its reverse-map entry) — the authoritative target to delete on an
 // overwrite. It reads the uncommitted-batch overlay first, then committed state.
-// Returns nil when the entity has no current entry. Unlike the log's previous
-// value, this matches the index's actual encoding even while a schema rewrite
+// Returns nil when the entity has no current entry. The reverse map is the
+// authority for the index's actual encoding, including while a schema rewrite
 // is re-encoding entries in the background.
 func (b *Builder) reverseMapValue(reverseKey []byte) ([]byte, error) {
 	if v, ok := b.wb.ReverseMapOverlay(reverseKey); ok {

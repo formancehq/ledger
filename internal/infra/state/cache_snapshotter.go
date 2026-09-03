@@ -168,9 +168,8 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 	// Preserve tombstones. A delete that landed in Raft order after the
 	// preload was scanned writes a tombstone here; overwriting it with
 	// the stale scanned value would silently resurrect metadata the
-	// user deleted, and the per-entry CAS in applyMetadataConversionBatch
-	// would then see a live entry and write the converted value. See
-	// the metadata-conversion race surfaced on #359.
+	// user deleted. This was surfaced by a former background-update race
+	// on #359; the tombstone rule remains general to every preload mirror.
 	//
 	// The tag check matters in the (improbable but non-zero) case of a
 	// U128 collision: a tombstone for canonical-key A would otherwise

@@ -164,7 +164,18 @@ func runSelectorList(t *testing.T, repository string, environment []string) (str
 
 	command := exec.Command("bash", selectorPath(t), "--list")
 	command.Dir = repository
-	command.Env = environment
+	// These tests exercise selector behavior in synthetic repositories. An
+	// outer ai-pr-loop invocation binds validation and its Git guard to the real
+	// candidate worktree, so do not leak either into the child process.
+	command.Env = withoutReviewLoopGitGuard(withoutEnvironmentVariables(environment,
+		"EXPECTED_PR_NUMBER",
+		"EXPECTED_WORKTREE",
+		"EXPECTED_HEAD",
+		"AI_WORKTREE_PR",
+		"AI_WORKTREE_PATH",
+		"AI_WORKTREE_EXPECTED_HEAD",
+		"TRUSTED_ROOT_CHECKOUT",
+	))
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 
@@ -174,6 +185,46 @@ func runSelectorList(t *testing.T, repository string, environment []string) (str
 	require.NoError(t, err, stderr.String())
 
 	return string(output), stderr.String()
+}
+
+func withoutEnvironmentVariables(environment []string, names ...string) []string {
+	excluded := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		excluded[name] = struct{}{}
+	}
+
+	filtered := make([]string, 0, len(environment))
+	for _, entry := range environment {
+		name, _, _ := strings.Cut(entry, "=")
+		if _, ok := excluded[name]; ok {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+
+	return filtered
+}
+
+func withoutReviewLoopGitGuard(environment []string) []string {
+	filtered := append([]string(nil), environment...)
+	for idx, entry := range filtered {
+		name, value, ok := strings.Cut(entry, "=")
+		if !ok || name != "PATH" {
+			continue
+		}
+
+		paths := filepath.SplitList(value)
+		withoutGuard := paths[:0]
+		for _, path := range paths {
+			if filepath.Base(filepath.Clean(path)) == "git-guard-bin" {
+				continue
+			}
+			withoutGuard = append(withoutGuard, path)
+		}
+		filtered[idx] = "PATH=" + strings.Join(withoutGuard, string(os.PathListSeparator))
+	}
+
+	return filtered
 }
 
 func writeTestFile(t *testing.T, repository, path string) {

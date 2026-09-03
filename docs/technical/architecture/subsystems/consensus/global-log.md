@@ -161,9 +161,8 @@ message Proposal {
   repeated Order orders = 2;        // List of orders to execute atomically
   Timestamp date = 3;               // Creation date in UTC
   ExecutionPlan preload = 4;           // Preloaded attributes for deterministic execution
-  // ... other fields ...
-  repeated MetadataConversionBatch metadata_conversion_batches = 10;   // Background metadata conversion (no log entry)
-  repeated MetadataConversionCompletion metadata_conversions_complete = 11; // Conversion complete signals (no log entry)
+  // ... auth and prediction fields ...
+  repeated TechnicalUpdate technical_updates = 9; // Internal updates, each with its own coverage bits
 }
 
 message Order {
@@ -176,7 +175,7 @@ message Order {
 }
 ```
 
-> **Note**: Technical operations like metadata conversion and index readiness are modeled as direct `Proposal` fields rather than orders. They are processed by the FSM but do not produce log entries.
+> **Note**: Technical operations such as mirror progress, event-sink progress, cluster configuration, and backup lifecycle updates are wrapped in `Proposal.technical_updates` rather than user orders. They are processed by the FSM but do not produce ledger log entries.
 
 Each order can target a different ledger:
 

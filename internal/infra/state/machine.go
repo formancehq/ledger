@@ -1856,9 +1856,6 @@ func (fsm *Machine) DispatchArchiveRequests(stop <-chan struct{}) {
 	}
 }
 
-// OnLeadershipAcquired lives on Recovery (it needs the Pebble reader for
-// metadata-conversion dispatch). Callers should invoke Recovery.OnLeadershipAcquired.
-
 // ensureChapterBootstrapped creates the first chapter deterministically at the
 // first proposal. The chapter start timestamp is derived from the proposal's
 // effective date so that all nodes produce the same deterministic state.

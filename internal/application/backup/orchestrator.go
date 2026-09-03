@@ -16,9 +16,8 @@
 // Liveness — "is the executor goroutine still alive?" — is observed
 // in-memory through the ExecutorRegistry below. The cleanup loop reads
 // from this registry rather than inferring liveness from FSM-side
-// progress staleness. Same pattern the Archiver and MetadataConverter
-// use: durable state for the work item, in-memory presence for "is
-// someone working on it".
+// progress staleness. The split is durable state for the work item and
+// in-memory presence for "is someone working on it".
 package backup
 
 import (
@@ -63,9 +62,7 @@ type Proposer interface {
 }
 
 // ExecutorRegistry tracks which backup jobs have a live driver
-// goroutine inside this leader process. Mirrors the "in-flight" map
-// other workers (Archiver, MetadataConverter) maintain implicitly via
-// channel reception; we make it explicit here because backups are
+// goroutine inside this leader process. We make it explicit because backups are
 // RPC-driven, not channel-driven, and the cleanup loop needs to ask
 // "is anyone still working on this job_id?" from a different
 // goroutine.

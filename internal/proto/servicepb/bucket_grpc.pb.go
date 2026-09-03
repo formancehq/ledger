@@ -106,7 +106,7 @@ type BucketServiceClient interface {
 	ListSigningKeys(ctx context.Context, in *ListSigningKeysRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.SigningKey], error)
 	// Discovery returns server capabilities and configuration for clients
 	Discovery(ctx context.Context, in *DiscoveryRequest, opts ...grpc.CallOption) (*DiscoveryResponse, error)
-	// GetMetadataSchemaStatus returns the conversion status for all declared metadata fields
+	// GetMetadataSchemaStatus returns the declared type of every metadata field.
 	GetMetadataSchemaStatus(ctx context.Context, in *GetMetadataSchemaStatusRequest, opts ...grpc.CallOption) (*GetMetadataSchemaStatusResponse, error)
 	// AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts
 	AnalyzeAccounts(ctx context.Context, in *AnalyzeAccountsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AnalyzeAccountsEvent], error)
@@ -705,7 +705,7 @@ type BucketServiceServer interface {
 	ListSigningKeys(*ListSigningKeysRequest, grpc.ServerStreamingServer[commonpb.SigningKey]) error
 	// Discovery returns server capabilities and configuration for clients
 	Discovery(context.Context, *DiscoveryRequest) (*DiscoveryResponse, error)
-	// GetMetadataSchemaStatus returns the conversion status for all declared metadata fields
+	// GetMetadataSchemaStatus returns the declared type of every metadata field.
 	GetMetadataSchemaStatus(context.Context, *GetMetadataSchemaStatusRequest) (*GetMetadataSchemaStatusResponse, error)
 	// AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts
 	AnalyzeAccounts(*AnalyzeAccountsRequest, grpc.ServerStreamingServer[AnalyzeAccountsEvent]) error

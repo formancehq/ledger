@@ -472,7 +472,7 @@ func ListLogsFiltered(ctx context.Context, client servicepb.BucketServiceClient,
 	return logs, nil
 }
 
-// GetMetadataSchemaStatus retrieves the metadata schema conversion status for a ledger.
+// GetMetadataSchemaStatus retrieves the declared metadata field types for a ledger.
 func GetMetadataSchemaStatus(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
 	return client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{
 		Ledger: ledgerName,

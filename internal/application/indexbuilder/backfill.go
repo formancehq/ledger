@@ -274,25 +274,43 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 			continue
 		}
 
+		// The persisted cursor reset must land in the SAME batch as the
+		// bumped pending_version. Deleting it out-of-band would leave a
+		// window where the new pending version commits while the old
+		// non-zero cursor survives: a crash there reloads that cursor for
+		// a fresh, empty keyspace, and boot deliberately schedules no
+		// reverse-map rewrite for a current_version == 0 state
+		// (scheduleResumedRewrites) — so nothing would ever fill the
+		// skipped prefix and the promoted index would permanently omit
+		// every log below the stale cursor.
+		batch := b.wb.Batch()
+		if batch == nil {
+			// Same contract as bumpPendingVersion below: addSchemaRewriteTask
+			// is only ever called with an active batch. Surface it loudly per
+			// CLAUDE.md invariant #7.
+			return errors.New("invariant: addSchemaRewriteTask called without an active write batch")
+		}
+
+		if err := b.readStore.DeleteBackfillProgressInBatch(batch, bt.bbKey); err != nil {
+			return fmt.Errorf("resetting persisted backfill cursor on retype: %w", err)
+		}
+
 		if err := b.bumpPendingVersion(ledgerName, indexID, smft.GetType()); err != nil {
 			return fmt.Errorf("bumping pending_version on retype during backfill: %w", err)
 		}
 
+		priorCursor := bt.cursor
+		priorAppliedProposalSeq := bt.appliedProposalSeq
+		priorLastProgressSeq := bt.lastProgressSeq
+		b.recordFoldRollback(func() {
+			bt.cursor = priorCursor
+			bt.appliedProposalSeq = priorAppliedProposalSeq
+			bt.lastProgressSeq = priorLastProgressSeq
+		})
+
 		bt.cursor = 0
 		bt.appliedProposalSeq = 0
 		bt.lastProgressSeq = 0
-		// If DeleteBackfillProgress fails, a crash before the first
-		// post-reset Commit would resume from the stale persisted cursor
-		// under the new declared_type — inconsistent encoding. Log it
-		// loudly so operators notice; the in-memory cursor=0 still wins
-		// for the current process.
-		if err := b.readStore.DeleteBackfillProgress(bt.bbKey); err != nil {
-			b.logger.WithFields(map[string]any{
-				"ledger": bt.ledger,
-				"index":  backfillIndexName(bt.index),
-				"error":  err,
-			}).Errorf("Deleting persisted backfill cursor on retype reset")
-		}
 
 		return nil
 	}
@@ -329,6 +347,10 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 			// across a retype would let the new rewrite skip its
 			// scan entirely and switch into v_new without writing
 			// any entries.
+			priorTask := *t
+			priorTask.rmapCursor = cloneBytes(t.rmapCursor)
+			b.recordFoldRollback(func() { *t = priorTask })
+
 			t.toType = smft.GetType()
 			t.rmapCursor = nil
 			t.processedCount = 0
@@ -339,12 +361,22 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 		}
 	}
 
-	b.schemaRewriteTasks = append(b.schemaRewriteTasks, &schemaRewriteTask{
+	task := &schemaRewriteTask{
 		ledger:     ledgerName,
 		targetType: smft.GetTargetType(),
 		key:        smft.GetKey(),
 		toType:     smft.GetType(),
 		bbKey:      bbKey,
+	}
+	b.schemaRewriteTasks = append(b.schemaRewriteTasks, task)
+	b.recordFoldRollback(func() {
+		for i, candidate := range b.schemaRewriteTasks {
+			if candidate == task {
+				b.schemaRewriteTasks = append(b.schemaRewriteTasks[:i], b.schemaRewriteTasks[i+1:]...)
+
+				return
+			}
+		}
 	})
 
 	return nil
@@ -359,7 +391,7 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 // long as every log is seen.
 func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexID, toType commonpb.MetadataType) error {
 	canonical := indexes.Canonical(indexID)
-	prior, _ := b.versionStateFor(ledgerName, canonical)
+	prior, priorExists := b.versionStateFor(ledgerName, canonical)
 
 	base := max(prior.PendingVersion, prior.CurrentVersion, prior.HighWater)
 
@@ -395,6 +427,20 @@ func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexI
 	}
 
 	b.putVersionState(ledgerName, canonical, newState)
+	b.recordFoldRollback(func() {
+		if priorExists {
+			b.putVersionState(ledgerName, canonical, prior)
+
+			return
+		}
+
+		if inner := b.indexVersions[ledgerName]; inner != nil {
+			delete(inner, canonical)
+			if len(inner) == 0 {
+				delete(b.indexVersions, ledgerName)
+			}
+		}
+	})
 
 	return nil
 }
@@ -411,9 +457,13 @@ func (b *Builder) removeSchemaRewriteTask(idx int) {
 
 // scheduleResumedRewrites reconstructs the in-flight rewrite task list
 // at boot from the persisted per-replica state. Every IndexVersionState
-// entry with pending_version != 0 belonged to a rewrite that had not
-// reached the atomic switch on this replica when it stopped; the
-// dual-write path was active, and v_pending was being populated. The
+// entry with current_version != 0 and pending_version != 0 belongs to a
+// schema rewrite that had not reached the atomic switch when this replica
+// stopped. A state with current_version == 0 is an initial index backfill,
+// including one reset into a fresh pending version by a mid-backfill retype;
+// loadIndexRegistry already schedules its backfill task. Treating it as a
+// reverse-map rewrite would violate that fresh-version contract. For rewrites,
+// the dual-write path was active and v_pending was being populated. The
 // resumed task carries the same target keyspace (read from the cache),
 // the new declared_type (IndexVersionState.PendingType — the value the
 // atomic switch will promote into CurrentType) and the rmap cursor
@@ -427,7 +477,7 @@ func (b *Builder) scheduleResumedRewrites() {
 		}
 
 		for canonical, state := range inner {
-			if state.PendingVersion == 0 {
+			if state.CurrentVersion == 0 || state.PendingVersion == 0 {
 				continue
 			}
 
@@ -1209,8 +1259,8 @@ func (b *Builder) completeBackfill(task *backfillTask) error {
 
 	if pending == 0 {
 		// No pending version was ever recorded — handleCreatedIndexLog
-		// always sets pending=1 on a fresh CreateIndex, so this branch
-		// means the cache lost the entry (snapshot install, manual
+		// always allocates pending=HighWater+1 for a fresh CreateIndex.
+		// This branch means the cache lost the entry (snapshot install, manual
 		// state drop). Surface loudly per the project's invariant rule:
 		// the backfill ran but has nowhere to promote into.
 		return fmt.Errorf("invariant: backfill complete on %s/%s but IndexVersionState has no pending_version",

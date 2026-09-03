@@ -753,7 +753,7 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 	return ledgerInfo, nil
 }
 
-// GetMetadataSchemaStatus returns the conversion status of all declared metadata fields.
+// GetMetadataSchemaStatus returns the declared type of every metadata field.
 func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
 	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
 	if err != nil {

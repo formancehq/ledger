@@ -197,9 +197,9 @@ enum MetadataType {
   METADATA_TYPE_DATETIME = 10;
 }
 
-// MetadataConversionStatus and the `status` field on MetadataFieldSchema
-// were removed when the FSM-side value converter was deleted. Stored
-// values are now immutable and API reads return them verbatim:
+// Field-level conversion status was removed with the FSM-side value converter.
+// Schema/type changes do not rewrite stored values, and entity reads return
+// the persisted MetadataValue branch verbatim:
 // declared_type is an index hint only — it governs how the indexer
 // encodes forward entries, never the bytes returned to clients. There
 // is no transition state observable at the field level.

@@ -3631,7 +3631,7 @@ type Proposal struct {
 	Signature *signaturepb.SignedApplyBatch `protobuf:"bytes,8,opt,name=signature,proto3" json:"signature,omitempty"`
 	// technical_updates carries every FSM-level update that bypasses the
 	// Order/Log channel. Each entry wraps a single payload (sink update,
-	// mirror sync, metadata conversion, backup lifecycle, …) with its own
+	// mirror sync, cluster configuration, backup lifecycle, …) with its own
 	// coverage_bits so the FSM applies per-update isolation, exactly like
 	// Order.coverage_bits.
 	TechnicalUpdates []*TechnicalUpdate `protobuf:"bytes,9,rep,name=technical_updates,json=technicalUpdates,proto3" json:"technical_updates,omitempty"`

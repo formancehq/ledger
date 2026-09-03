@@ -240,8 +240,7 @@ main store), and index **contents** remain unverified (`EN-1514` / `EN-1323`).
 
 `compareReverseMapOrphans` (`internal/application/check/reverse_map_orphans.go`)
 scans the `0x03` keyspace and reports rows whose `(ledger, target, metadata key)`
-is in **neither** the stored `SubAttrIndex` registry **nor** the audit-replayed
-`MetadataSchema`. The exception is justified by a property no other read-index
+has no stored `SubAttrIndex` registry entry. The exception is justified by a property no other read-index
 limb has: `0x03` is the only limb that cannot be range-deleted by field, because
 its metadata key sits *after* a fixed-width version block (see
 `internal/storage/readstore/keys.go`). Removing a field therefore has to scan the
@@ -250,17 +249,12 @@ scan misses is a permanent divergence with no other detector — whereas the `0x
 forward index and the `0x02` existence counters are dropped by a range delete,
 which is atomic and self-healing.
 
-The oracle is a conjunction because that is what makes the pass precise for its
-target: `RemovedMetadataFieldType` is the one log that both removes the schema
-field type and runs the point-delete scan, so "absent from the replayed schema and
-still has live rows" means exactly "the scan missed rows". The schema must be the
-**replayed** one, never the stored `LedgerInfo`, or the pass would be
-self-referential. Residue from a plain `DropIndex` is deliberately **not** flagged:
-`DropIndex` removes the registry entry, leaves the schema field declared, and
-purges no readstore rows at all, so a registry-only oracle would make every cluster
-that has ever dropped a metadata index permanently red on a check that has no
-warning channel. That leak is real and tracked as `EN-1621`; **this pass does not
-cover it**. Two further classes share the same error type — rows for a ledger the
+The registry alone decides the verdict. Both `DropIndex` and
+`RemovedMetadataFieldType` remove the registry entry and purge all three
+metadata-index limbs, so any residual reverse-map row at an aligned cursor is a
+missed purge. The audit-replayed schema is diagnostic only: a still-declared
+field identifies the `DropIndex` path, while an undeclared field identifies the
+`RemovedMetadataFieldType` path. Two further classes share the same error type — rows for a ledger the
 audit does not list as live, and malformed keys — and the 4-byte encoding version
 is deliberately not validated, since current and pending versions legitimately
 coexist during a per-replica rewrite.

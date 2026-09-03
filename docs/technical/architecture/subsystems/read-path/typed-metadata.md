@@ -1,311 +1,186 @@
 # Typed Metadata
 
-## Overview
-
-Metadata values support multiple types beyond plain strings. The `MetadataValue` proto uses a `oneof` discriminated union supporting `string`, `int64`, `uint64`, `datetime` (signed int64 micros), `bool`, and `NullValue` (for inconvertible values). An explicit **metadata schema** per ledger declares the expected type for each key, enabling automatic type enforcement on writes and lazy conversion on reads.
-
-## Supported Types
-
-| Type | Proto field | Go type | Use case |
-|------|------------|---------|----------|
-| String | `string_value` | `string` | Labels, categories, free-text |
-| Signed Integer | `int_value` | `int64` | Timestamps, counters, thresholds, deltas |
-| Unsigned Integer | `uint_value` | `uint64` | IDs, sequence numbers, non-negative counters |
-| Datetime | `datetime_value` | `int64` (µs) | Timestamps (signed, pre-1970 allowed) |
-| Boolean | `bool_value` | `bool` | Flags (kyc_verified, is_active, etc.) |
-| Null | `null_value` | `*NullValue` | Inconvertible value placeholder (preserves original) |
-
-The `MetadataType` enum also supports sub-64-bit integer types (`INT8`, `INT16`, `INT32`, `UINT8`, `UINT16`, `UINT32`) with range validation. These are stored using the same `int_value`/`uint_value` proto fields but enforce bounds at read/write time.
-
-The enum also supports `datetime`: a self-describing value type stored in its own `datetime_value` oneof slot as **signed int64 microseconds since the Unix epoch (UTC)**. Pre-1970 timestamps are supported (negative micros). A source string is parsed with Go-standard layouts (RFC3339 / RFC3339Nano) and read back as an RFC3339 string (`time.UnixMicro(v).UTC().Format(time.RFC3339Nano)`), round-tripping the original timestamp. For the index, datetime reuses the order-preserving signed int64 encoding (`EncodeInt64`) — datetime and int64 index keys are byte-interchangeable — so datetime fields get efficient ordered range selection (`gte` / `lte` / between) via the signed integer query path. Available for account, transaction, and ledger metadata.
-
-**Intentionally excluded:** `float64` (dangerous in financial software), `[]byte`, nested objects/arrays.
-
-### Wire Compatibility
-
-Field 1 (`string_value`) has the same wire type and field number as the previous `string value = 1` field. Existing serialized data decodes correctly into the `string_value` branch with zero migration.
-
-## Proto Schema
-
-### common.proto
-
-```protobuf
-message NullValue {
-  string original = 1;  // raw value before failed conversion
-}
-
-message MetadataValue {
-  oneof type {
-    string string_value = 1;
-    int64 int_value = 2;
-    bool bool_value = 3;
-    NullValue null_value = 4;
-    uint64 uint_value = 5;
-    int64 datetime_value = 6;  // microseconds since the Unix epoch (signed)
-  }
-}
-
-enum MetadataType {
-  METADATA_TYPE_STRING = 0;
-  METADATA_TYPE_INT64 = 1;
-  METADATA_TYPE_BOOL = 2;
-  METADATA_TYPE_UINT64 = 3;
-  METADATA_TYPE_INT8 = 4;
-  METADATA_TYPE_INT16 = 5;
-  METADATA_TYPE_INT32 = 6;
-  METADATA_TYPE_UINT8 = 7;
-  METADATA_TYPE_UINT16 = 8;
-  METADATA_TYPE_UINT32 = 9;
-  METADATA_TYPE_DATETIME = 10;
-}
-
-message MetadataFieldSchema {
-  reserved 3, 4, 5, 6;
-  reserved "total_keys", "converted_keys", "indexed", "index_build_status";
-  MetadataType type = 1;
-}
-
-message MetadataSchema {
-  map<string, MetadataFieldSchema> account_fields = 1;
-  map<string, MetadataFieldSchema> transaction_fields = 2;
-  map<string, MetadataFieldSchema> ledger_fields = 3;
-}
-```
-
-The aggregate schema is stored per-ledger in `LedgerInfo.metadata_schema` (field 5).
-
-## Metadata Schema Declaration
-
-### Per-Key Operations
-
-Schema is managed **key by key**, not as a monolithic block. Each operation targets a single metadata key:
-
-- **`SetMetadataFieldTypeRequest`** — declares or changes the type of a single key. Triggers background conversion for that key.
-- **`RemoveMetadataFieldTypeRequest`** — removes the type declaration. Existing values are converted back to string (always succeeds).
-
-This means changing the type of one key does not affect other keys, and multiple conversions for different keys can run in parallel.
-
-### Initial Schema at Ledger Creation
-
-`CreateLedgerRequest` accepts an `initial_schema` field — a list of `SetMetadataFieldTypeCommand` entries applied at creation time with status `COMPLETE` (no conversion needed for a new ledger).
-
-### Behavior Rules
-
-1. **No type declared** — metadata stored as-is (type from proto oneof on gRPC, inferred from JSON on HTTP).
-2. **Type declared** — on write, the value is converted to the declared type via the conversion matrix. On read, the value is guaranteed to be the declared type (or `NullValue`).
-3. **Type changed** — triggers background conversion for that key only.
-4. **Type removed** — values converted back to `string` (always succeeds).
-
-## Type Conversion Matrix
-
-Conversions **never produce errors at the storage level**. Inconvertible values become `NullValue` (preserving the original raw value). The client is responsible for ensuring metadata values match the expected format.
-
-### From String
-
-| Target | Rule | Failure |
-|--------|------|---------|
-| `int64` | `strconv.ParseInt(s, 10, 64)` | `NullValue` |
-| `uint64` | `strconv.ParseUint(s, 10, 64)` | `NullValue` |
-| `datetime` | `time.Parse(RFC3339Nano)` -> `UnixMicro()` (UTC), stored as signed `int64` micros (pre-1970 allowed) | `NullValue` (invalid format only) |
-| `bool` | `"true"`/`"1"` -> `true`, `"false"`/`"0"` -> `false` | `NullValue` |
-| `string` | identity | — |
-
-### From Int64
-
-| Target | Rule | Failure |
-|--------|------|---------|
-| `string` | `strconv.FormatInt(n, 10)` | never fails |
-| `uint64` | direct cast if `n >= 0` | `NullValue` |
-| `bool` | `0` -> `false`, non-zero -> `true` | never fails |
-
-### From Uint64
-
-| Target | Rule | Failure |
-|--------|------|---------|
-| `string` | `strconv.FormatUint(n, 10)` | never fails |
-| `int64` | direct cast if `n <= math.MaxInt64` | `NullValue` |
-| `bool` | `0` -> `false`, non-zero -> `true` | never fails |
-
-### From Bool
-
-| Target | Rule | Failure |
-|--------|------|---------|
-| `string` | `"true"` / `"false"` | never fails |
-| `int64` | `true` -> `1`, `false` -> `0` | never fails |
-| `uint64` | `true` -> `1`, `false` -> `0` | never fails |
-
-### From NullValue
-
-| Target | Rule | Failure |
-|--------|------|---------|
-| `string` | returns `original` field | never fails |
-| `int64` | attempt parse of `original` | stays `NullValue` |
-| `uint64` | attempt parse of `original` | stays `NullValue` |
-| `bool` | attempt parse of `original` | stays `NullValue` |
-
-**Design principle:** converting to `string` never fails. Converting from `string` to a narrower type may produce `NullValue`. Converting between `int64` and `uint64` may fail on overflow/sign.
-
-**Datetime semantics:** `datetime` is a self-describing value type stored in its own `datetime_value` oneof slot as signed `int64` **microseconds** since the Unix epoch (UTC). Pre-1970 timestamps are valid and stored as negative micros. Parsing keeps microsecond resolution — sub-microsecond fractions in an RFC3339Nano input are truncated (`UnixMicro()`), so `…:00.123456789Z` and `…:00.123456Z` map to the same value. Reading a `datetime` back renders an RFC3339 string (`time.UnixMicro(v).UTC().Format(time.RFC3339Nano)`), so a string write round-trips to an equivalent string read. For the index, `datetime` reuses the order-preserving signed `int64` encoding (`EncodeInt64`) — datetime and `int64` index keys are byte-interchangeable — so the decode path reconstructs an `int_value` and the inspect HTTP handler re-derives datetime-ness from the declared schema type to render RFC3339. Query-time gates treat a `datetime` field as a signed `int64`, so `gte`/`lte`/between range filters use an integer condition (`IntCondition`) over the microsecond value via the signed query path.
-
-Sub-64-bit types (`INT8`, `INT16`, etc.) follow the same rules with additional range checking. For example, converting `int64(200)` to `INT8` produces `NullValue` because 200 exceeds the `[-128, 127]` range.
-
-## Hybrid Conversion Strategy
-
-When a key's declared type changes, existing stored values for **that key only** must be converted. Two layers ensure correctness and eventual convergence.
-
-### Layer 1: Lazy Read-Time Conversion
-
-Any read that encounters a value whose stored type doesn't match the declared schema type applies the conversion matrix on-the-fly before returning. This check is cheap (one type comparison per read, branch-predicted hot path when types match).
-
-This layer guarantees that **reads always return the declared type** (or `NullValue`) regardless of the store's current state.
-
-**Implementation:**
-- Account metadata: `enforceAccountSchema()` in `internal/application/ctrl/store.go`
-- Transaction metadata: `enforceTransactionSchema()` in `internal/application/ctrl/controller_default.go`, applied during `assembleTransaction` which replays append-only update logs on every read
-
-Both call `commonpb.TypeMatches()` and `commonpb.ConvertMetadataValue()`.
-
-### Layer 2: Automatic Batched Conversion
-
-When the FSM applies a `SetMetadataFieldTypeOrder`, the type declaration is updated and a background conversion is **automatically started** for that key on the leader (following the existing `Sealer`/`Archiver` pattern):
-
-1. Type declaration Raft entry applied -> `LedgerInfo.metadata_schema` updated, status set to `CONVERTING`
-2. Background goroutine on the leader receives the conversion task via channel
-3. Goroutine scans Pebble for metadata entries matching (ledger, key) that don't match the declared type
-4. Groups entries into batches and proposes each as a `MetadataConversionBatch` entry (via a direct `Proposal` field, not an order)
-5. After all batches, proposes a `MetadataConversionCompletion` (also a direct `Proposal` field)
-6. FSM marks that key's status as `COMPLETE`
-
-Concurrent conversions are bounded by a configurable pool size (default: 2). Excess conversions are queued.
-
-**Implementation:** `MetadataConverter` in `internal/infra/state/metadata_converter.go`.
-
-### Writes During Conversion
-
-Writes during an ongoing conversion are safe: the schema is already declared, so new writes are converted immediately. If the background batch later encounters an already-converted entry, it skips it (no-op).
-
-### Concurrent Schema Changes
-
-If a new type change arrives for a key that is already converting, the current conversion is abandoned and restarted with the new type. Conversions for different keys proceed independently.
-
-### Leader Changes
-
-If the leader changes during conversion, the new leader detects `CONVERTING` status and restarts the scan. Already-converted entries are skipped (idempotent).
-
-### Conversion Status
-
-The `GetMetadataSchemaStatus` RPC returns per-key status (`CONVERTING` or `COMPLETE`).
-
-## Raft Commands
-
-### Orders in `LedgerApplyOrder` oneof
-
-| Order | Purpose |
-|-------|---------|
-| `SetMetadataFieldTypeOrder` | Declares/changes type for a key, starts conversion |
-| `RemoveMetadataFieldTypeOrder` | Removes type declaration, converts values back to string |
-
-### Direct Proposal fields (not orders, no log entries)
-
-| Field | Purpose |
-|-------|---------|
-| `MetadataConversionBatch` | Batch of converted entries (proposed by background worker) |
-| `MetadataConversionCompletion` | Marks conversion complete for a key |
-
-`MetadataConversionBatch` and `MetadataConversionCompletion` are direct `repeated` fields on the `Proposal` message rather than entries in the `Order`/`LedgerApplyOrder` oneofs. They do not produce log entries. Both include an `expected_type` field for staleness validation — if the declared type has changed since the batch was prepared, the batch is silently dropped.
-
-## gRPC API
-
-### Request Variants
-
-| Request | Description |
-|---------|-------------|
-| `SetMetadataFieldTypeRequest` | Sets/changes the type of a metadata key on a ledger |
-| `RemoveMetadataFieldTypeRequest` | Removes the type declaration for a metadata key |
-
-Both are added to the `Request.type` oneof (fields 18-19).
-
-### RPCs
-
-| RPC | Description |
-|-----|-------------|
-| `GetMetadataSchemaStatus` | Returns per-key field status (type + conversion state) |
-
-The aggregate schema is also available on `LedgerInfo.metadata_schema` (returned by `GetLedger`).
-
-## HTTP API
-
-### REST Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/{ledgerName}/metadata-schema` | Get schema status (per-field declared type and `COMPLETE`/`CONVERTING` status) |
-| `PUT` | `/{ledgerName}/metadata-schema/{targetType}/{key}` | Set/change metadata field type |
-| `DELETE` | `/{ledgerName}/metadata-schema/{targetType}/{key}` | Remove metadata field type declaration |
-
-The `targetType` path parameter accepts `account`, `transaction`, or `ledger`. The PUT body is `{ "type": "<metadataType>" }` where `metadataType` is one of: `string`, `int64`, `bool`, `uint64`, `int8`, `int16`, `int32`, `uint8`, `uint16`, `uint32`, `datetime`.
-
-### JSON Type Inference
-
-When no schema is declared for a key, the HTTP layer infers the type from JSON:
-
-| JSON value | MetadataValue type |
-|------------|-------------------|
-| `true` / `false` | `bool_value` |
-| Positive integer (fits `uint64`) | `uint_value` |
-| Negative integer (fits `int64`) | `int_value` |
-| String | `string_value` |
-| Number with decimal point | **rejected** (floats not supported) |
-| `null` | **deletes** the key |
-| Object / array | **rejected** |
-
-`NullValue` is serialized as JSON `null`.
-
-## CLI Commands
-
-| Command | Description |
-|---------|-------------|
-| `ledgerctl ledgers create --schema target:key:type,...` | Create ledger with initial schema |
-| `ledgerctl ledgers set-metadata-type` | Set/change type for a metadata key |
-| `ledgerctl ledgers remove-metadata-type` | Remove type declaration |
-| `ledgerctl ledgers get-schema` | Display schema with conversion status |
-
-## Numscript Integration
-
-Numscript remains **string-only**. The typed metadata system bridges via conversion at the boundary:
-
-- **Write path:** Numscript `set_tx_meta("key", "1000")` produces a string. If the schema declares `key` as `int64`, the conversion matrix is applied before storage.
-- **Read path:** The store returns a typed value (e.g., `int_value: 1000`). The Numscript bridge converts to string (`"1000"`) for Numscript consumption.
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `misc/proto/common.proto` | MetadataValue oneof, NullValue, MetadataSchema, MetadataType |
-| `misc/proto/raft_cmd.proto` | Schema/conversion Raft orders |
-| `misc/proto/bucket.proto` | gRPC requests, GetMetadataSchemaStatus RPC |
-| `internal/proto/commonpb/metadata_convert.go` | Conversion matrix implementation |
-| `internal/proto/commonpb/metadata_convert_test.go` | Conversion matrix tests (98 cases) |
-| `internal/proto/commonpb/metadata.go` | MetadataFromMap, MetadataToMap, JSON helpers |
-| `internal/domain/processing/processor_metadata_schema.go` | Schema enforcement, set/remove field type |
-| `internal/domain/processing/processor_convert_metadata.go` | Batch conversion, conversion complete |
-| `internal/infra/state/metadata_converter.go` | Background conversion worker (Layer 2) |
-| `internal/application/ctrl/store.go` | Lazy read-time conversion (Layer 1) |
-| `internal/adapter/http/handlers_get_metadata_schema.go` | HTTP: GET metadata schema status |
-| `internal/adapter/http/handlers_set_metadata_type.go` | HTTP: PUT set metadata field type |
-| `internal/adapter/http/handlers_remove_metadata_type.go` | HTTP: DELETE remove metadata field type |
-| `cmd/ledgerctl/ledgers/set_metadata_type.go` | CLI: set-metadata-type |
-| `cmd/ledgerctl/ledgers/remove_metadata_type.go` | CLI: remove-metadata-type |
-| `cmd/ledgerctl/ledgers/get_schema.go` | CLI: get-schema |
-
-### Transaction Metadata
-
-Transaction metadata is stored as append-only `TransactionUpdate` entries replayed on every read (`assembleTransaction`). Unlike account metadata (standalone Pebble attributes), background conversion would add new entries but old ones are still read — providing no performance benefit.
-
-Therefore transaction metadata uses **read-time enforcement only** (Layer 1). The conversion lifecycle still runs for status consistency: when `SetMetadataFieldType` is called for a transaction field, the converter immediately proposes completion (CONVERTING → COMPLETE) without scanning.
-
-## Future Work
-
-- **Generation rotation optimization:** Opportunistic conversion during `rotateLocked()` to reduce lazy conversion overhead.
-- **Numscript typed literals:** Extend Numscript parser for typed literals natively (coordinated with "typed variables" work).
-- **ClickHouse evolution:** Evolve from `Map(String, String)` to `Map(String, Variant(...))` when advanced read queries land.
+## Contract
+
+`MetadataValue` is a self-describing protobuf `oneof`. Account, transaction,
+and ledger metadata can carry strings, signed or unsigned integers, booleans,
+datetimes, or `NullValue`. The value persisted in the primary store is the
+client-written business value. Changing a metadata field declaration never
+rewrites that primary value, and API entity reads return it verbatim.
+
+A per-ledger `MetadataSchema` declares a type for individual keys. A declaration
+is an **index and query contract**, not a storage-conversion contract:
+
+- metadata index rows are encoded under the type bound to their local index
+  version;
+- query conditions are checked against the type bound to the version being
+  served;
+- schema changes are O(1) in the FSM and any attached index is re-encoded by
+  each replica's indexbuilder;
+- no field-level conversion state exists.
+
+Account and transaction metadata indexes are supported. Ledger metadata can be
+declared and is returned by the schema API, but `indexes.MetadataID` currently
+does not expose a ledger-metadata index target.
+
+## Types and representation
+
+| Declared type | `MetadataValue` representation | Index encoding |
+|---|---|---|
+| `string` | `string_value` | string tag + terminated bytes |
+| `int8`, `int16`, `int32`, `int64` | `int_value` (`int64`) | order-preserving signed integer |
+| `uint8`, `uint16`, `uint32`, `uint64` | `uint_value` (`uint64`) | big-endian unsigned integer |
+| `bool` | `bool_value` | boolean tag + byte |
+| `datetime` | `datetime_value` (`int64` microseconds since Unix epoch) | signed integer encoding |
+| conversion failure | `null_value` with the original string form | null tag + original bytes |
+
+Sub-width integer declarations use the 64-bit protobuf branch and enforce the
+declared range during index coercion. Datetime accepts RFC3339/RFC3339Nano
+strings, supports pre-1970 values, truncates sub-microsecond precision through
+`UnixMicro`, and renders as UTC RFC3339Nano. Float, byte-array, object, and array
+metadata values are intentionally unsupported.
+
+`commonpb.ConvertMetadataValue` implements the deterministic conversion matrix:
+
+- strings parse into the requested numeric, boolean, or datetime type;
+- signed and unsigned integers convert across numeric domains when in range;
+- integers convert to booleans using zero/non-zero semantics;
+- datetimes convert to strings or in-range integer values, but not booleans;
+- booleans convert to strings and `0`/`1` integers, but not datetimes;
+- `NullValue` retries conversion from its preserved `original` string;
+- an impossible or out-of-range conversion returns another `NullValue` rather
+  than failing the indexer.
+
+This conversion is used to derive index keys. It does not mutate the source
+metadata or change entity-read responses.
+
+## Schema lifecycle
+
+`CreateLedgerRequest.initial_schema` installs declarations when the ledger is
+created. Later changes use one-key operations:
+
+- `SetMetadataFieldType` adds or replaces a declaration. The FSM updates
+  `LedgerInfo.metadata_schema`, bumps an attached index's
+  `forward_encoding_version`, and emits `SetMetadataFieldTypeLog`.
+- `RemoveMetadataFieldType` removes a declaration, drops an attached index from
+  the registry, and emits `RemovedMetadataFieldTypeLog` with the dropped index
+  identity when applicable.
+
+Both operations leave existing account, transaction, and ledger metadata values
+untouched. Removing a declaration does not convert values to strings.
+
+The apply path remains deterministic and O(1): it updates cached primary
+projections and emits audit evidence, but performs no Pebble scan and starts no
+leader-side converter. `Proposal` has no metadata-conversion batch or completion
+payloads.
+
+## Index versioning and schema rewrite
+
+The indexbuilder consumes the schema log independently on every replica. The
+cluster-wide registry version records that a rewrite is required; the read
+store's `IndexVersionState` determines the local keyspace served by queries.
+
+For an already served metadata index, a retype performs this lifecycle:
+
+1. allocate a single-use pending version above the local high-water mark and
+   bind it to the new declared type;
+2. keep queries on `CurrentVersion` and its old `CurrentType`;
+3. scan current reverse-map entries, fetch each raw value from the canonical
+   primary store, coerce it to `PendingType`, and write the pending forward,
+   existence, and reverse-map rows;
+4. dual-write live metadata changes into current and pending versions, using
+   each version's own type binding;
+5. after the scan and log-alignment gate complete, atomically promote pending
+   to current and garbage-collect the old version.
+
+If a retype arrives during an initial index backfill, the builder abandons the
+partially populated pending version, allocates a fresh `HighWater+1` version,
+and resets the persisted `BackfillKey` cursor to replay from the beginning.
+Reusing the partial keyspace would mix encodings at identical event sequences.
+The new pending state and the cursor deletion are written into the fold batch
+that ingested the schema log, so a single commit makes both durable together;
+a failure to stage either one aborts that batch instead of committing half the
+reset. After restart, `CurrentVersion == 0` keeps this state owned exclusively
+by the historical-log backfill; only a state with non-zero current and pending
+versions is resumed as a reverse-map schema rewrite. Nothing else would fill
+the prefix below a surviving cursor, which is why the reset cannot be a
+separate direct write.
+
+`IndexVersionState.RewriteProgress` remains an encoded opaque tail but is not
+currently mutated by the indexbuilder. Both initial-backfill and schema-rewrite
+cursors live under `BackfillKey`.
+
+See [indexer.md](../indexer/indexer.md) for the full rewrite, dual-write,
+known-absent insert, switch, and recovery mechanics.
+
+## Write and read semantics
+
+### Entity writes and reads
+
+The schema does not coerce metadata at admission or FSM apply. gRPC values keep
+their selected `MetadataValue` branch; the HTTP layer maps supported JSON
+scalars to a branch. JSON `null` deletes a metadata key, and floats, objects,
+and arrays are rejected.
+
+Account, transaction, and ledger reads return the primary values verbatim. A
+field declared `int64` can therefore still be returned as `string_value` if the
+client stored a string. `NullValue` normally appears in derived index inspection
+when coercion failed; it is not written back into the entity.
+
+Numscript remains string-oriented. Its metadata operations write strings and
+read string representations at the language boundary; declarations still do
+not rewrite the stored values.
+
+### Query compilation
+
+Metadata filters require both a declared schema field and a registered, locally
+ready index. The compiler resolves the local `CurrentVersion` and validates the
+condition against that version's bound type, not blindly against the newest
+schema declaration. During a rewrite, old-type queries therefore continue to
+scan the complete old keyspace. The new type becomes visible atomically with
+the version switch.
+
+Signed conditions are accepted for signed and datetime fields. A non-negative
+signed condition can be coerced to the unsigned condition form for an unsigned
+field. String and boolean conditions require matching bound types. Existence
+conditions are valid for every declared type.
+
+### Index inspection
+
+`InspectIndex` pins a read-store snapshot, rejects `CurrentVersion == 0`, and
+scans only the locally served version. Distinct values, facets, and summary
+statistics therefore describe one consistent encoding. The HTTP adapter uses
+the declared type as a rendering hint so signed datetime index values are shown
+as RFC3339 strings.
+
+### Progress and barriers
+
+`min_log_sequence` waits for the local FSM and indexer's log cursor. It does not
+wait for a schema rewrite to switch versions. `PendingVersion != 0` is the local
+rewrite signal exposed through index status; there is no field-level conversion
+status or schema-rewrite barrier.
+
+## API surface
+
+| Layer | Operation | Current response/behavior |
+|---|---|---|
+| gRPC | `GetMetadataSchemaStatus` | Maps account, transaction, and ledger keys to `declared_type` only. The historical method name remains, but no status field exists. |
+| gRPC | `SetMetadataFieldType` / `RemoveMetadataFieldType` | Change one declaration without rewriting primary values. |
+| HTTP | `GET /v3/{ledgerName}/metadata-schema` | Returns camelCase `declaredType` entries. |
+| HTTP | `PUT` / `DELETE /v3/{ledgerName}/metadata-schema/{targetType}/{key}` | Set or remove one declaration. |
+| CLI | `ledgerctl ledgers get-schema` | Displays key and declared type columns only. |
+| CLI | `ledgerctl ledgers set-metadata-type` / `remove-metadata-type` | Manage declarations. |
+
+## Key files
+
+| File | Responsibility |
+|---|---|
+| `misc/proto/common.proto` | Typed values, declared types, and schema maps. |
+| `misc/proto/bucket.proto` | Schema RPC requests and declared-type response. |
+| `misc/proto/raft_cmd.proto` | Set/remove schema orders. |
+| `internal/domain/processing/processor_metadata_schema.go` | O(1) schema and index-registry updates. |
+| `internal/proto/commonpb/metadata_convert.go` | Deterministic index coercion matrix. |
+| `internal/application/indexbuilder/schema_resolver.go` | Resolves raw values and coercion for a bound version. |
+| `internal/application/indexbuilder/backfill.go` | Pending-version schema rewrite and atomic switch. |
+| `internal/query/compile.go` | Bound-type condition validation and encoding. |
+| `internal/application/ctrl/controller_default.go` | Declared-type response and inspect readiness gate. |

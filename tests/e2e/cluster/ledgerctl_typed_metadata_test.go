@@ -262,8 +262,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 
 		It("Should verify the field was removed but the other remains", func() {
-			// Removal triggers background conversion to STRING then deletion —
-			// wait for it to complete.
+			// Poll the declaration read until the removal is visible.
 			Eventually(func(g Gomega) {
 				resp, err := client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{
 					Ledger: ledgerName,
@@ -524,8 +523,8 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 		})
 	})
 
-	Context("CLI with background conversion monitoring", Ordered, func() {
-		const ledgerName = "cli-bg-conversion"
+	Context("CLI declaration over existing metadata", Ordered, func() {
+		const ledgerName = "cli-existing-metadata"
 
 		BeforeAll(func() {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
@@ -537,7 +536,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 			Expect(err).To(Succeed())
 		})
 
-		It("Should declare a type via CLI triggering background conversion", func() {
+		It("Should declare a type via CLI", func() {
 			_, err := runCLI(node.GRPCPort,
 				"ledgers", "set-metadata-type",
 				"--ledger", ledgerName,
@@ -548,7 +547,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 			Expect(err).To(Succeed())
 		})
 
-		It("Should eventually show COMPLETE status via get-schema --json", func() {
+		It("Should expose the declaration via get-schema --json", func() {
 			Eventually(func(g Gomega) {
 				var resp servicepb.GetMetadataSchemaStatusResponse
 				err := runCLIJSON(node.GRPCPort, &resp, "ledgers", "get-schema", ledgerName, "--json")
@@ -557,7 +556,7 @@ var _ = Describe("LedgerctlTypedMetadata", Ordered, func() {
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
-		It("Should have converted existing data to int64", func() {
+		It("Should preserve existing raw string values", func() {
 			for _, addr := range []string{"user1", "user2"} {
 				account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 					Ledger:  ledgerName,

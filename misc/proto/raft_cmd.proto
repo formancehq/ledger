@@ -442,7 +442,7 @@ message Proposal {
   signature.SignedApplyBatch signature = 8;
   // technical_updates carries every FSM-level update that bypasses the
   // Order/Log channel. Each entry wraps a single payload (sink update,
-  // mirror sync, metadata conversion, backup lifecycle, …) with its own
+  // mirror sync, cluster configuration, backup lifecycle, …) with its own
   // coverage_bits so the FSM applies per-update isolation, exactly like
   // Order.coverage_bits.
   repeated TechnicalUpdate technical_updates = 9;
