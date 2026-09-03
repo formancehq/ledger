@@ -224,17 +224,17 @@ func TestAdoptCandidateDistrustsOldTrustArtifacts(t *testing.T) {
 	require.Equal(t, "1", fixture.count(t, "known-findings"))
 	require.Equal(t, "1", fixture.count(t, "reconciliation"))
 	require.Equal(t, "1", fixture.count(t, "validation"))
-	require.Equal(t, "1", fixture.count(t, "pre-commit"), "normalization must run despite an old receipt")
+	require.Equal(t, "1", fixture.count(t, "pre-commit"), "exact validation must run despite an old receipt")
 }
 
-func TestAdoptCandidateRerunsPreCommitImmediatelyBeforePush(t *testing.T) {
+func TestAdoptCandidateDoesNotReplayPreCommitAfterExactValidation(t *testing.T) {
 	t.Parallel()
 
 	fixture := newAdoptionFixture(t, adoptionFixtureOptions{})
 	output, exitCode := fixture.run(t, adoptionRun{push: true})
 	require.Equal(t, 0, exitCode, output)
 	require.Contains(t, output, "AI_PR_ADOPT_RESULT: PUSHED")
-	require.Equal(t, "2", fixture.count(t, "pre-commit"), "normalization and last-mile pre-commit must both run")
+	require.Equal(t, "1", fixture.count(t, "pre-commit"), "unchanged exact-state validation must not add a last-mile replay")
 	remoteHead := runGitOutput(t, fixture.root, "--git-dir", fixture.remote, "rev-parse", "refs/heads/feature")
 	require.Equal(t, fixture.candidateSHA, remoteHead)
 }
@@ -257,18 +257,6 @@ func TestAdoptCandidateRevalidatesBeforeAndAfterExactReview(t *testing.T) {
 			require.Equal(t, fixture.candidateSHA, runGitOutput(t, candidateWorktree, "rev-parse", "HEAD"))
 		})
 	}
-}
-
-func TestAdoptCandidateRevalidatesAfterLastPreCommitBeforePush(t *testing.T) {
-	t.Parallel()
-
-	fixture := newAdoptionFixture(t, adoptionFixtureOptions{})
-	output, exitCode := fixture.run(t, adoptionRun{push: true, targetMutation: "during-final-precommit"})
-	require.Equal(t, 3, exitCode, output)
-	require.Contains(t, output, "AI_PR_ADOPT_RESULT: BASE_UPDATE_REQUIRED")
-	require.NotContains(t, output, "AI_PR_ADOPT_RESULT: PUSHED")
-	require.Equal(t, fixture.headSHA, runGitOutput(t, fixture.root, "--git-dir", fixture.remote, "rev-parse", "refs/heads/feature"))
-	require.Equal(t, fixture.candidateSHA, runGitOutput(t, preservedAdoptionWorktree(t, output), "rev-parse", "HEAD"))
 }
 
 type adoptionRun struct {
@@ -361,14 +349,27 @@ fi
 `)
 	writeExecutable(t, filepath.Join(seed, "scripts", "agent-check-pr"), `#!/usr/bin/env bash
 set -euo pipefail
-increment "$TEST_COUNTS_DIR/validation"
+case "${1:-}" in
+    --list) printf 'agent-check\n' ;;
+    --normalize) bash "$(dirname "$0")/agent-just" pre-commit ;;
+    *)
+        bash "$(dirname "$0")/agent-just" pre-commit
+        increment "$TEST_COUNTS_DIR/validation"
+        ;;
+esac
+`)
+	writeExecutable(t, filepath.Join(seed, "scripts", "agent-validation-env"), `#!/usr/bin/env bash
+set -euo pipefail
+run_dir=$1
+shift
+mkdir -p "$run_dir/tmp"
+exec "$@"
 `)
 	writeExecutable(t, filepath.Join(seed, "scripts", "agent-just"), `#!/usr/bin/env bash
 set -euo pipefail
 increment "$TEST_COUNTS_DIR/pre-commit"
 precommit_count=$(<"$TEST_COUNTS_DIR/pre-commit")
-if [[ "${TEST_TARGET_MUTATION:-}" == "before-exact-review" && "$precommit_count" == "1" ]] ||
-   [[ "${TEST_TARGET_MUTATION:-}" == "during-final-precommit" && "$precommit_count" == "2" ]]; then
+if [[ "${TEST_TARGET_MUTATION:-}" == "before-exact-review" && "$precommit_count" == "1" ]]; then
     git --git-dir="$TEST_REMOTE" update-ref refs/heads/release/v3.0 "$TEST_ADVANCED_BASE_SHA"
 fi
 `)

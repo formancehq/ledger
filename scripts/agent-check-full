@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "${VALIDATION_RUN_DIR:-}" ]]; then
+    exec bash "$SCRIPT_DIR/agent-validation-env" --ephemeral bash "$0" "$@"
+fi
+
 # Keep the baseline and the full test suite in the same pinned toolchain.
 if [[ "${LEDGER_AGENT_CHECK_IN_NIX:-}" != "1" ]]; then
     exec env -u GOROOT nix develop --command \
-        env LEDGER_AGENT_CHECK_IN_NIX=1 bash "$0" "$@"
+        env LEDGER_AGENT_CHECK_IN_NIX=1 TMPDIR="$TMPDIR" bash "$0" "$@"
 fi
 
 unset GOROOT || true
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "==> agent-check-full: full normalization"
+bash "$SCRIPT_DIR/agent-just" pre-commit
 
 echo "==> agent-check-full: baseline validation"
 bash "$SCRIPT_DIR/agent-check"

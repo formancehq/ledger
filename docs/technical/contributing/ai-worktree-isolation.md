@@ -16,13 +16,20 @@ The workflow keeps three directory roles separate:
 - `CANDIDATE_WORKTREE` is a unique detached worktree created for one PR and one
   expected HEAD. Reviewers, fixers, and PR validation run there. It must never
   equal `TRUSTED_ROOT_CHECKOUT`.
-- `VALIDATION_RUN_DIR` is a unique non-worktree directory for `HOME`, Go caches,
-  `TMPDIR`, the golangci-lint cache, and the Git guard wrapper. It must neither
-  equal nor contain either checkout, and neither checkout may contain it.
+- `VALIDATION_RUN_DIR` is a unique non-worktree directory for per-run temporary
+  files, review state, and the Git guard wrapper. It must neither equal nor
+  contain either checkout, and neither checkout may contain it. Go, module,
+  lint, tool, and XDG caches live in the shared external
+  `$HOME/.cache/ledger-ai` root by default.
   Same-run validation reuse fingerprints its complete contents and relevant
   filesystem metadata (modes, sizes, and nanosecond modification times) through
   a root-scoped filesystem handle after successful validation and again before
   reuse; a content or metadata change forces validation to execute again.
+
+Shared cache contents are intentionally outside worktree/root snapshots and
+same-run receipt fingerprints. Under the cooperative-agent model they are
+performance state, not publication identity. The receipt still binds the exact
+cache paths and effective build environment. See [Local validation](local-validation.md).
 
 The PR launchers also place each `review-loop` state directory in their
 workflow-owned run directory, outside `CANDIDATE_WORKTREE`. This lets exact-state

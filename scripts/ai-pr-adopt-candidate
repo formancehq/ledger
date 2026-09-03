@@ -132,9 +132,7 @@ cleanup() {
         printf 'Candidate worktree preserved for inspection: %s\n' "$candidate_worktree"
         exit "$primary_status"
     fi
-    if [[ "$run_dir" = /* && "$run_dir" == "$worktree_parent/adopt-$pr_number."?????? ]]; then
-        chmod -R u+w -- "$run_dir" >/dev/null 2>&1 || true
-    else
+    if [[ "$run_dir" != /* || "$run_dir" != "$worktree_parent/adopt-$pr_number."?????? ]]; then
         echo "CLEANUP_PATH_GUARD_FAIL path=$run_dir" >&2
         exit "$primary_status"
     fi
@@ -193,8 +191,15 @@ export AI_REVIEW_KNOWN_FINDINGS_PR="$pr_number"
 export AI_REVIEW_KNOWN_FINDINGS_HEAD="$head_sha"
 known_findings_digest=$(git hash-object -- "$known_findings")
 
-for trusted_tool in ai-review-codex ai-review-known-findings agent-check-pr agent-just ai-git-guard; do
+for trusted_tool in ai-review-codex ai-review-known-findings ai-git-guard; do
     [[ -x "$trusted_worktree/scripts/$trusted_tool" ]] || { echo "ai-pr-adopt-candidate: trusted base lacks executable scripts/$trusted_tool" >&2; exit 1; }
+done
+for trusted_tool in agent-check-pr agent-validation-env agent-just; do
+    trusted_tool_path="$trusted_worktree/scripts/$trusted_tool"
+    [[ ! -L "$trusted_tool_path" && -f "$trusted_tool_path" && -r "$trusted_tool_path" ]] || {
+        echo "ai-pr-adopt-candidate: trusted base lacks readable non-symlink scripts/$trusted_tool" >&2
+        exit 1
+    }
 done
 nix develop "path:$trusted_worktree" --command env -u GOROOT go -C "$trusted_worktree" build -o "$review_loop_binary" ./scripts/reviewloop
 printf -v review_cmd 'bash %q' "$trusted_worktree/scripts/ai-review-known-findings"
@@ -203,32 +208,16 @@ printf -v review_cmd 'bash %q' "$trusted_worktree/scripts/ai-review-known-findin
 # `bash -c` program is shell input too. Quote every interpolated path so the
 # recipe reaches the validator intact.
 printf -v quoted_run_dir %q "$validation_run_dir"
-printf -v quoted_run_id %q "$(basename "$run_dir")"
-printf -v quoted_home %q "$validation_run_dir/home"
-printf -v quoted_go_cache %q "$validation_run_dir/go-cache"
-printf -v quoted_go_mod_cache %q "$validation_run_dir/go-mod-cache"
-printf -v quoted_go_path %q "$validation_run_dir/go-path"
-printf -v quoted_tmp_dir %q "$validation_run_dir/tmp"
-printf -v quoted_cache_home %q "$validation_run_dir/cache"
-printf -v quoted_golangci_cache %q "$validation_run_dir/cache/golangci-lint"
+printf -v quoted_validation_env %q "$trusted_worktree/scripts/agent-validation-env"
 printf -v quoted_validation_tool %q "$trusted_worktree/scripts/agent-check-pr"
-printf -v quoted_agent_just %q "$trusted_worktree/scripts/agent-just"
-printf -v normalization_program \
-    'mkdir -p %s %s %s %s %s %s && env HOME=%s GOCACHE=%s GOMODCACHE=%s GOPATH=%s TMPDIR=%s XDG_CACHE_HOME=%s GOLANGCI_LINT_CACHE=%s VALIDATION_RUN_ID=%s VALIDATION_RUN_DIR=%s bash %s pre-commit' \
-    "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_golangci_cache" \
-    "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_cache_home" \
-    "$quoted_golangci_cache" "$quoted_run_id" "$quoted_run_dir" "$quoted_agent_just"
-printf -v normalization_cmd 'env -u GOROOT nix develop %q --command bash -c %q' \
-    "path:$trusted_worktree" "$normalization_program"
 printf -v nix_validation_program \
-    'mkdir -p %s %s %s %s %s %s && env LEDGER_AGENT_CHECK_IN_NIX=1 HOME=%s GOCACHE=%s GOMODCACHE=%s GOPATH=%s TMPDIR=%s XDG_CACHE_HOME=%s GOLANGCI_LINT_CACHE=%s VALIDATION_RUN_ID=%s VALIDATION_RUN_DIR=%s bash %s' \
-    "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_golangci_cache" \
-    "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_cache_home" \
-    "$quoted_golangci_cache" "$quoted_run_id" "$quoted_run_dir" "$quoted_validation_tool"
+    'env LEDGER_AGENT_CHECK_IN_NIX=1 bash %s %s bash %s' \
+    "$quoted_validation_env" "$quoted_run_dir" "$quoted_validation_tool"
 printf -v validation_cmd 'env -u GOROOT nix develop %q --command bash -c %q' \
     "path:$trusted_worktree" \
     "$nix_validation_program"
-validation_gates_cmd="mkdir -p $quoted_home $quoted_go_cache $quoted_go_mod_cache $quoted_go_path $quoted_tmp_dir $quoted_golangci_cache && env HOME=$quoted_home GOCACHE=$quoted_go_cache GOMODCACHE=$quoted_go_mod_cache GOPATH=$quoted_go_path TMPDIR=$quoted_tmp_dir XDG_CACHE_HOME=$quoted_cache_home GOLANGCI_LINT_CACHE=$quoted_golangci_cache VALIDATION_RUN_ID=$quoted_run_id VALIDATION_RUN_DIR=$quoted_run_dir bash $quoted_validation_tool --list"
+printf -v validation_gates_cmd 'bash %s %s bash %s --list' \
+    "$quoted_validation_env" "$quoted_run_dir" "$quoted_validation_tool"
 
 cd "$candidate_worktree"
 [[ -z "$(git status --porcelain)" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (candidate worktree is dirty before review)"; exit 1; }
@@ -238,16 +227,9 @@ git diff --check "$base_sha" "$candidate_sha" || {
     exit 1
 }
 
-# An adopted SHA must already be normalized; never mutate it silently.
-bash -c "$normalization_cmd"
-if [[ -n "$(git status --porcelain)" ]]; then
-    echo "CANDIDATE_NEEDS_NORMALIZATION"
-    echo "AI_PR_ADOPT_RESULT: REFUSED (candidate is not normalized)"
-    exit 1
-fi
-
-# Normalization and its validation environment can be long-running. Re-fetch
-# before asking the exact-candidate reviewer to authorize this SHA.
+# The exact-candidate validator owns the single applicable pre-commit pass. If
+# it mutates this immutable SHA, review-loop rejects the state change instead
+# of trusting or publishing different bytes.
 revalidate_target_or_exit
 
 set +e
@@ -295,25 +277,13 @@ if [[ "$push_changes" == "false" ]]; then
     exit 0
 fi
 
-# Publication re-runs the trusted pre-commit recipe after exact review. Any
-# mutation invalidates the reviewed SHA instead of being reset or inherited as
-# an old receipt.
-bash -c "$normalization_cmd"
-[[ -z "$(git status --porcelain)" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (pre-commit changed candidate after review)"; exit 1; }
-[[ "$(git rev-parse HEAD)" == "$candidate_sha" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (candidate HEAD changed after review)"; exit 1; }
-current_known_findings_digest=$(git hash-object -- "$known_findings")
-if [[ "$current_known_findings_digest" != "$known_findings_digest" ]]; then
-    echo "AI_PR_ADOPT_RESULT: REFUSED (known findings ledger modified by pre-commit)"
-    exit 1
-fi
-
 remote_head=""
 read -r remote_head _ < <(git ls-remote --exit-code "$remote" "refs/heads/$head_ref") || true
 [[ -n "$remote_head" ]] || { echo "ai-pr-adopt-candidate: could not re-resolve remote PR head before push" >&2; exit 1; }
 [[ "$remote_head" == "$head_sha" ]] || { echo "AI_PR_ADOPT_RESULT: REFUSED (remote PR head moved before push)"; exit 2; }
 
-# Target movement during the last trusted pre-commit pass must still prevent
-# the guarded push. This check intentionally remains adjacent to publication.
+# Target movement during exact review or validation must still prevent the
+# guarded push. This check intentionally remains adjacent to publication.
 revalidate_target_or_exit
 
 if ! git push --force-with-lease="refs/heads/$head_ref:$head_sha" "$remote" "$candidate_sha:refs/heads/$head_ref"; then

@@ -196,17 +196,11 @@ cleanup() {
                 git worktree remove "$worktree" >/dev/null 2>&1 || true
             fi
         fi
-        # Validation isolates HOME, the Go caches, and TMPDIR inside the run
-        # directory, so a clean run cannot be reclaimed by an empty-directory
-        # rmdir. Remove the launcher-created tree recursively, but only once both
-        # owned worktrees are gone, so a preserved worktree — dirty fixes or a
-        # failed removal — is never destroyed with it.
+        # Validation keeps only temporary files and the Git guard inside the run
+        # directory. Shared caches live outside it and survive cleanup.
         if [[ ! -e "$worktree" && ! -e "$trusted_tool_worktree" ]] &&
             [[ "$worktree_run_dir" == "$worktree_parent/pr-$pr_number."?????? ]]; then
-            # Go may create read-only module-cache entries. Normalize only the
-            # launcher-owned run tree before removal; cleanup warnings must not
-            # overwrite the primary validation result.
-            chmod -R u+w -- "$worktree_run_dir" >/dev/null 2>&1 || true
+            # Cleanup warnings must not overwrite the primary validation result.
             if ! rm -rf -- "$worktree_run_dir"; then
                 echo "VALIDATION_CLEANUP=WARNING path=$worktree_run_dir" >&2
             fi
@@ -305,39 +299,34 @@ for trusted_tool in ai-review-codex ai-review-known-findings ai-git-guard; do
         exit 1
     fi
 done
+for trusted_tool in agent-validation-env agent-check-pr agent-just; do
+    trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
+    if [[ -L "$trusted_tool_path" || ! -f "$trusted_tool_path" || ! -r "$trusted_tool_path" ]]; then
+        echo "ai-pr-loop: trusted base does not provide readable non-symlink regular file scripts/$trusted_tool" >&2
+        exit 1
+    fi
+done
 nix develop "path:$trusted_tool_worktree" --command \
     env -u GOROOT go -C "$trusted_tool_worktree" build \
     -o "$review_loop_binary" ./scripts/reviewloop
 review_loop=("$review_loop_binary")
 printf -v review_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-review-known-findings"
 fix_cmd='bash scripts/ai-fix-claude'
-# review-loop executes the validation command through `bash -lc`, and the run
-# directory derives from the repository location, which may contain whitespace or
-# quoting characters such as an apostrophe. Quote every interpolated path so the
-# recipe reaches the validator intact.
+# review-loop executes validation through `bash -c`. Quote every base-pinned
+# path so spaces or shell metacharacters cannot change the command.
 printf -v quoted_run_dir %q "$validation_run_dir"
-printf -v quoted_run_id %q "$(basename "$worktree_run_dir")"
-printf -v quoted_home %q "$validation_run_dir/home"
-printf -v quoted_go_cache %q "$validation_run_dir/go-cache"
-printf -v quoted_go_mod_cache %q "$validation_run_dir/go-mod-cache"
-printf -v quoted_go_path %q "$validation_run_dir/go-path"
-printf -v quoted_tmp_dir %q "$validation_run_dir/tmp"
-printf -v quoted_cache_home %q "$validation_run_dir/cache"
-printf -v quoted_golangci_cache %q "$validation_run_dir/cache/golangci-lint"
+printf -v quoted_validation_env %q "$trusted_tool_worktree/scripts/agent-validation-env"
 printf -v quoted_validation_tool %q "$trusted_tool_worktree/scripts/agent-check-pr"
-printf -v quoted_agent_just %q "$trusted_tool_worktree/scripts/agent-just"
-printf -v normalization_program \
-    'mkdir -p %s %s %s %s %s %s && env HOME=%s GOCACHE=%s GOMODCACHE=%s GOPATH=%s TMPDIR=%s XDG_CACHE_HOME=%s GOLANGCI_LINT_CACHE=%s VALIDATION_RUN_ID=%s VALIDATION_RUN_DIR=%s bash %s pre-commit' \
-    "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_golangci_cache" \
-    "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_cache_home" \
-    "$quoted_golangci_cache" "$quoted_run_id" "$quoted_run_dir" "$quoted_agent_just"
-printf -v normalization_cmd 'env -u GOROOT nix develop %q --command bash -c %q' \
-    "path:$trusted_tool_worktree" "$normalization_program"
-validation_cmd="mkdir -p $quoted_home $quoted_go_cache $quoted_go_mod_cache $quoted_go_path $quoted_tmp_dir $quoted_golangci_cache && env HOME=$quoted_home GOCACHE=$quoted_go_cache GOMODCACHE=$quoted_go_mod_cache GOPATH=$quoted_go_path TMPDIR=$quoted_tmp_dir XDG_CACHE_HOME=$quoted_cache_home GOLANGCI_LINT_CACHE=$quoted_golangci_cache VALIDATION_RUN_ID=$quoted_run_id VALIDATION_RUN_DIR=$quoted_run_dir bash $quoted_validation_tool"
-validation_gates_cmd="mkdir -p $quoted_home $quoted_go_cache $quoted_go_mod_cache $quoted_go_path $quoted_tmp_dir $quoted_golangci_cache && env HOME=$quoted_home GOCACHE=$quoted_go_cache GOMODCACHE=$quoted_go_mod_cache GOPATH=$quoted_go_path TMPDIR=$quoted_tmp_dir XDG_CACHE_HOME=$quoted_cache_home GOLANGCI_LINT_CACHE=$quoted_golangci_cache VALIDATION_RUN_ID=$quoted_run_id VALIDATION_RUN_DIR=$quoted_run_dir bash $quoted_validation_tool --list"
+printf -v validation_program \
+    'env LEDGER_AGENT_CHECK_IN_NIX=1 bash %s %s bash %s' \
+    "$quoted_validation_env" "$quoted_run_dir" "$quoted_validation_tool"
+printf -v validation_cmd 'env -u GOROOT nix develop %q --command bash -c %q' \
+    "path:$trusted_tool_worktree" "$validation_program"
+printf -v validation_gates_cmd 'bash %s %s bash %s --list' \
+    "$quoted_validation_env" "$quoted_run_dir" "$quoted_validation_tool"
 if [[ "$push_changes" == "true" ]]; then
-    # Publication additionally base-pins the mutating fixer and validator.
-    for trusted_tool in ai-fix-claude agent-check-pr agent-just; do
+    # Publication additionally base-pins the mutating fixer.
+    for trusted_tool in ai-fix-claude; do
         trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
         # Every adapter in this set is invoked explicitly through bash below.
         # Its executable bit is therefore not part of the trust boundary.
@@ -347,17 +336,6 @@ if [[ "$push_changes" == "true" ]]; then
         fi
     done
     printf -v fix_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-fix-claude"
-    # The nested `bash -c` program is shell input too, so it must be assembled
-    # from the same shell-safe values rather than from literal single quotes.
-    printf -v nix_validation_program \
-        'mkdir -p %s %s %s %s %s %s && env LEDGER_AGENT_CHECK_IN_NIX=1 HOME=%s GOCACHE=%s GOMODCACHE=%s GOPATH=%s TMPDIR=%s XDG_CACHE_HOME=%s GOLANGCI_LINT_CACHE=%s VALIDATION_RUN_ID=%s VALIDATION_RUN_DIR=%s bash %s' \
-        "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_golangci_cache" \
-        "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_cache_home" \
-        "$quoted_golangci_cache" "$quoted_run_id" "$quoted_run_dir" "$quoted_validation_tool"
-    printf -v validation_cmd \
-        'env -u GOROOT nix develop %q --command bash -c %q' \
-        "path:$trusted_tool_worktree" \
-        "$nix_validation_program"
 fi
 
 printf '==> ai-pr-loop: PR #%s\n' "$pr_number"
@@ -496,19 +474,10 @@ if [[ -z "$(git status --porcelain)" ]]; then
     exit 0
 fi
 
-# Normalize deterministic changes before creating the candidate SHA.
-echo "==> ai-pr-loop: pre-commit normalization"
-bash -c "$normalization_cmd"
-if [[ -n "$(git status --porcelain)" ]]; then
-    echo "PRECOMMIT_NORMALIZATION: CHANGES"
-else
-    echo "PRECOMMIT_NORMALIZATION: NO_CHANGES"
-    revalidate_target_or_exit
-    echo "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW"
-    echo "AI_PR_LOOP_PUSH_RESULT: NO_CHANGES"
-    exit 0
-fi
-
+# The technical loop approved and validated this exact dirty state. Commit its
+# bytes directly; replaying normalization here would duplicate the successful
+# post-fix pre-commit. The committed candidate's exact review runs the selector
+# once more and is the fixpoint proof for the publication SHA.
 git add -A
 if git diff --cached --quiet; then
     echo "ai-pr-loop: worktree reported changes but nothing is staged" >&2
@@ -523,34 +492,8 @@ expected_worktree_head=$candidate_sha
 write_candidate_binding "$expected_worktree_head"
 printf '==> ai-pr-loop: candidate commit %s\n' "$candidate_sha"
 
-normalization_pass=1
-while [[ "$normalization_pass" -le 3 ]]; do
-    bash -c "$normalization_cmd"
-    if [[ -z "$(git status --porcelain)" ]]; then
-        echo "PRECOMMIT_FIXPOINT: PASS"
-        break
-    fi
-    echo "PRECOMMIT_NORMALIZATION: CHANGES_COMMITTED (pass $normalization_pass)"
-    git add -A
-    git diff --cached --check
-    git commit -m "chore: normalize candidate"
-    candidate_sha=$(git rev-parse HEAD)
-    expected_worktree_head=$candidate_sha
-    write_candidate_binding "$expected_worktree_head"
-    normalization_pass=$((normalization_pass + 1))
-done
-# Always perform a final read of the trusted recipe after the last allowed
-# normalization commit. This proves the reviewed SHA is actually converged.
-bash -c "$normalization_cmd"
-if [[ -n "$(git status --porcelain)" ]]; then
-    echo "PRECOMMIT_NON_DETERMINISTIC: refusing candidate publication" >&2
-    keep_worktree=true
-    exit 1
-fi
-echo "PRECOMMIT_FIXPOINT: PASS"
-
 # Do not spend or trust an exact candidate review against a target that moved
-# during normalization. The synchronized candidate must start a fresh run.
+# while the technical loop prepared the candidate.
 revalidate_target_or_exit "$candidate_sha"
 
 set +e
@@ -573,23 +516,11 @@ if [[ "$commit_review_status" -ne 0 ]]; then
 fi
 
 # An exact review only becomes publication-authorizing evidence while the
-# immutable target snapshot is still current. The final pre-push check below
-# separately covers target movement during the last trusted pre-commit pass.
+# immutable target snapshot is still current.
 revalidate_target_or_exit "$candidate_sha"
 
 if [[ -n "$(git status --porcelain)" ]]; then
     echo "ai-pr-loop: candidate review left the worktree dirty; refusing push" >&2
-    echo "Candidate worktree preserved for inspection: $worktree"
-    keep_worktree=true
-    exit 1
-fi
-
-    # Last-mile publication gate: use only the base-pinned recipe wrapper. The
-    # candidate worktree is merely its working directory; generated output is
-    # never reset or hidden.
-bash "$trusted_tool_worktree/scripts/agent-just" pre-commit
-if [[ -n "$(git status --porcelain)" ]]; then
-    echo "ai-pr-loop: pre-commit left the candidate worktree dirty; refusing push" >&2
     echo "Candidate worktree preserved for inspection: $worktree"
     keep_worktree=true
     exit 1

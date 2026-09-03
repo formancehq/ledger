@@ -4,6 +4,12 @@
 
 Ledger v3 POC uses a multi-level testing strategy to ensure system quality and reliability.
 
+Local validation provides fast engineering feedback and focused evidence. CI
+provides the authoritative broad, clean validation before merge. A change must
+still preserve a focused regression test and mutation/sensitivity evidence
+when appropriate; moving broad suites to CI does not weaken that requirement.
+See [Local validation](local-validation.md) for the selection policy.
+
 ## Test Types
 
 ### Unit Tests

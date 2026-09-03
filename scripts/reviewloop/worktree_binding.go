@@ -164,7 +164,7 @@ func (runner *boundCommandRunner) run(label, command string, extraEnv map[string
 		runner.candidateWorktree,
 		runner.expectedHead,
 	)
-	cmd := exec.Command("bash", "-lc", command)
+	cmd := exec.Command("bash", "-c", command)
 	cmd.Dir = runner.candidateWorktree
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -186,7 +186,7 @@ func (runner *boundCommandRunner) run(label, command string, extraEnv map[string
 }
 
 func (runner *boundCommandRunner) output(command string, extraEnv map[string]string) ([]byte, error) {
-	cmd := exec.Command("bash", "-lc", command)
+	cmd := exec.Command("bash", "-c", command)
 	cmd.Dir = runner.candidateWorktree
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
