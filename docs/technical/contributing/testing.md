@@ -35,6 +35,19 @@ example that reaches nearby code.
   bypassing the guarded production call and confirming that the focused test
   fails. Never keep the mutation in the worktree.
 
+#### Nested AI-tooling fixtures
+
+Tests that launch AI workflow scripts or operate on synthetic Git repositories
+must start from `scripts/internal/testenv.Environment` (or
+`testenv.Command` when resolving Git itself). The helper removes an enclosing
+AI run's worktree/review/validation identity and every `git-guard-bin` PATH
+entry. A fixture then adds only its own synthetic identity explicitly.
+
+Concurrent subprocess fixtures must use bounded, blocking synchronization and
+supervise process exit. A peer that fails before reaching a barrier must abort
+its siblings and report every peer's combined stdout/stderr; shell spin loops
+and unbounded marker waits are not permitted.
+
 **Example**:
 ```go
 func TestValidateBucketConfig(t *testing.T) {

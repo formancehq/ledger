@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 func TestWrapperPinsJustfileAndUsesReviewedWorktree(t *testing.T) {
@@ -34,7 +36,7 @@ func TestWrapperPinsJustfileAndUsesReviewedWorktree(t *testing.T) {
 	workingDirectoryPath := filepath.Join(root, "working-directory")
 	command := exec.Command("bash", filepath.Join(toolRoot, "scripts", "agent-just"), "trusted")
 	command.Dir = worktree
-	command.Env = append(os.Environ(),
+	command.Env = testenv.Environment(
 		"TEST_RESULT="+resultPath,
 		"TEST_WORKING_DIRECTORY="+workingDirectoryPath,
 	)
@@ -85,7 +87,7 @@ printf 'trusted-schemathesis\n%s\n%s\n' "$REPO_ROOT" "$SCHEMATHESIS_OPENAPI_PATH
 	resultPath := filepath.Join(root, "result")
 	command := exec.Command("bash", filepath.Join(toolRoot, "scripts", "agent-just"), "test-model-cluster", "180")
 	command.Dir = worktree
-	command.Env = append(os.Environ(), "TEST_RESULT="+resultPath)
+	command.Env = testenv.Environment("TEST_RESULT=" + resultPath)
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, string(output))
 	result, err := os.ReadFile(resultPath)
@@ -99,7 +101,7 @@ printf 'trusted-schemathesis\n%s\n%s\n' "$REPO_ROOT" "$SCHEMATHESIS_OPENAPI_PATH
 
 	command = exec.Command("bash", filepath.Join(toolRoot, "scripts", "agent-just"), "test-schemathesis")
 	command.Dir = worktree
-	command.Env = append(os.Environ(), "TEST_RESULT="+resultPath)
+	command.Env = testenv.Environment("TEST_RESULT=" + resultPath)
 	output, err = command.CombinedOutput()
 	require.NoError(t, err, string(output))
 	result, err = os.ReadFile(resultPath)
@@ -123,7 +125,7 @@ func wrapperPath(t *testing.T) string {
 func runGit(t *testing.T, directory string, arguments ...string) {
 	t.Helper()
 
-	command := exec.Command("git", arguments...)
+	command := testenv.Command(t, "git", arguments...)
 	command.Dir = directory
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, fmt.Sprintf("git %s:\n%s", strings.Join(arguments, " "), output))

@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 const (
@@ -169,7 +171,7 @@ func (fixture fixture) run(t *testing.T, moveHead bool, mode string) (string, er
 
 	command := exec.Command("bash", fixture.runner, "123", "--head", testHead, "--output", fixture.output)
 	command.Dir = fixture.root
-	command.Env = append(os.Environ(),
+	command.Env = testenv.Environment(
 		"PATH="+fixture.fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"TEST_HEAD="+testHead,
 		"TEST_MOVED_HEAD="+testMovedHead,

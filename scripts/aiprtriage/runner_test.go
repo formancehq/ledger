@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 func TestRunnerPinsPolicyToBaseAndExposesExactPRHeadAsEvidence(t *testing.T) {
@@ -229,7 +231,7 @@ func (f fixture) run(t *testing.T) (string, error) {
 
 	command := exec.Command("bash", filepath.Join(f.checkout, "scripts", "ai-pr-triage"), "123", "--output", f.resultPath)
 	command.Dir = f.checkout
-	command.Env = append(os.Environ(),
+	command.Env = testenv.Environment(
 		"PATH="+f.fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"HOME="+t.TempDir(),
 		"TEST_BASE_SHA="+f.baseSHA,
@@ -304,7 +306,7 @@ func runGit(t *testing.T, directory string, arguments ...string) {
 
 func gitOutput(t *testing.T, directory string, arguments ...string) string {
 	t.Helper()
-	command := exec.Command("git", arguments...)
+	command := testenv.Command(t, "git", arguments...)
 	command.Dir = directory
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, fmt.Sprintf("git %s:\n%s", strings.Join(arguments, " "), output))

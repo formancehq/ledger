@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 func TestTargetBaseRevalidationClassifications(t *testing.T) {
@@ -57,6 +59,7 @@ func TestTargetBaseRevalidationClassifications(t *testing.T) {
 			}
 			command := exec.Command("bash", revalidatorPath(t), "origin", "release/v3.0", fixture.baseSHA)
 			command.Dir = fixture.checkout
+			command.Env = testenv.Environment()
 			output, err := command.CombinedOutput()
 			exitCode := 0
 			if err != nil {
@@ -115,7 +118,7 @@ func runGit(t *testing.T, directory string, arguments ...string) {
 
 func runGitOutput(t *testing.T, directory string, arguments ...string) string {
 	t.Helper()
-	command := exec.Command("git", arguments...)
+	command := testenv.Command(t, "git", arguments...)
 	command.Dir = directory
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, fmt.Sprintf("git %s:\n%s", strings.Join(arguments, " "), output))

@@ -8,11 +8,17 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 func TestMain(testingMain *testing.M) {
+	if err := testenv.SanitizeProcess(); err != nil {
+		panic(err)
+	}
 	if err := os.Setenv("GIT_CONFIG_GLOBAL", os.DevNull); err != nil {
 		panic(err)
 	}
@@ -62,17 +68,8 @@ func TestConcurrentResidentRunnersProtectSameUnchangedRoot(t *testing.T) {
 
 	root := newRunnerTestRepository(t)
 	binary := buildRunner(t)
-	coordination := t.TempDir()
-	firstReady := filepath.Join(coordination, "first-ready")
-	secondReady := filepath.Join(coordination, "second-ready")
-	first := guardedCommand(binary, root, fmt.Sprintf(
-		": > %s; while [ ! -e %s ]; do :; done",
-		shellQuote(firstReady), shellQuote(secondReady),
-	))
-	second := guardedCommand(binary, root, fmt.Sprintf(
-		": > %s; while [ ! -e %s ]; do :; done",
-		shellQuote(secondReady), shellQuote(firstReady),
-	))
+	first := guardedCommand(binary, root, "printf 'ready\\n' >&3; IFS= read -r _ <&4")
+	second := guardedCommand(binary, root, "printf 'ready\\n' >&3; IFS= read -r _ <&4")
 	firstOutput, secondOutput := runConcurrently(t, first, second)
 	require.Contains(t, firstOutput, "ROOT_UNCHANGED=PASS")
 	require.Contains(t, secondOutput, "ROOT_UNCHANGED=PASS")
@@ -84,16 +81,11 @@ func TestConcurrentResidentRunnersBothDetectOverlappingMutation(t *testing.T) {
 	root := newRunnerTestRepository(t)
 	binary := buildRunner(t)
 	coordination := t.TempDir()
-	firstReady := filepath.Join(coordination, "first-ready")
-	secondReady := filepath.Join(coordination, "second-ready")
 	mutated := filepath.Join(coordination, "mutated")
-	first := guardedCommand(binary, root, fmt.Sprintf(
-		": > %s; while [ ! -e %s ]; do :; done; printf changed > ignored/value; : > %s",
-		shellQuote(firstReady), shellQuote(secondReady), shellQuote(mutated),
-	))
+	first := guardedCommand(binary, root, "printf 'ready\\n' >&3; IFS= read -r _ <&4; printf changed > ignored/value; : > "+shellQuote(mutated))
 	second := guardedCommand(binary, root, fmt.Sprintf(
-		": > %s; while [ ! -e %s ]; do :; done; while [ ! -e %s ]; do :; done",
-		shellQuote(secondReady), shellQuote(firstReady), shellQuote(mutated),
+		"printf 'ready\\n' >&3; IFS= read -r _ <&4; for attempt in $(seq 1 100); do [ -e %s ] && exit 0; sleep 0.01; done; echo 'mutation marker timeout' >&2; exit 78",
+		shellQuote(mutated),
 	))
 	firstOutput, secondOutput := runConcurrentlyExpectingFailure(t, first, second)
 	require.Contains(t, firstOutput, "ROOT_MUTATION_DETECTED")
@@ -103,45 +95,39 @@ func TestConcurrentResidentRunnersBothDetectOverlappingMutation(t *testing.T) {
 func guardedCommand(binary, root, script string) *exec.Cmd {
 	command := exec.Command(binary, "--root", root, "--", "/bin/sh", "-c", script)
 	command.Dir = root
+	command.Env = testenv.Environment("TEST_SYNC_FDS=1")
 
 	return command
 }
 
 func runConcurrently(t *testing.T, commands ...*exec.Cmd) (string, string) {
 	t.Helper()
-	outputs := make([]bytes.Buffer, len(commands))
-	for index, command := range commands {
-		command.Stdout = &outputs[index]
-		command.Stderr = &outputs[index]
-		require.NoError(t, command.Start())
-	}
-	for index, command := range commands {
-		require.NoError(t, command.Wait(), outputs[index].String())
-	}
+	result, err := testenv.RunSynchronized(t, 30*time.Second,
+		testenv.SynchronizedCommand{Name: "first", Command: commands[0]},
+		testenv.SynchronizedCommand{Name: "second", Command: commands[1]},
+	)
+	require.NoError(t, err)
 
-	return outputs[0].String(), outputs[1].String()
+	return result.Output["first"], result.Output["second"]
 }
 
 func runConcurrentlyExpectingFailure(t *testing.T, commands ...*exec.Cmd) (string, string) {
 	t.Helper()
-	outputs := make([]bytes.Buffer, len(commands))
-	for index, command := range commands {
-		command.Stdout = &outputs[index]
-		command.Stderr = &outputs[index]
-		require.NoError(t, command.Start())
-	}
-	for index, command := range commands {
-		require.Error(t, command.Wait(), outputs[index].String())
-		require.Equal(t, exitError, command.ProcessState.ExitCode(), outputs[index].String())
-	}
+	result, err := testenv.RunSynchronized(t, 30*time.Second,
+		testenv.SynchronizedCommand{Name: "first", Command: commands[0]},
+		testenv.SynchronizedCommand{Name: "second", Command: commands[1]},
+	)
+	require.Error(t, err)
+	require.Equal(t, exitError, commands[0].ProcessState.ExitCode(), result.Output["first"])
+	require.Equal(t, exitError, commands[1].ProcessState.ExitCode(), result.Output["second"])
 
-	return outputs[0].String(), outputs[1].String()
+	return result.Output["first"], result.Output["second"]
 }
 
 func buildRunner(t *testing.T) string {
 	t.Helper()
 	binary := filepath.Join(t.TempDir(), "rootguard")
-	command := exec.Command("go", "build", "-o", binary, ".")
+	command := testenv.Command(t, "go", "build", "-o", binary, ".")
 	command.Dir = packageRoot(t)
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, string(output))
@@ -168,7 +154,7 @@ func newRunnerTestRepository(t *testing.T) string {
 
 func runRunnerGit(t *testing.T, directory string, arguments ...string) {
 	t.Helper()
-	command := exec.Command("git", arguments...)
+	command := testenv.Command(t, "git", arguments...)
 	command.Dir = directory
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, "git %s:\n%s", strings.Join(arguments, " "), output)

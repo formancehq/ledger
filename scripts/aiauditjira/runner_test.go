@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 const (
@@ -318,7 +320,7 @@ func (f *fixture) run(t *testing.T, result map[string]any, arguments ...string) 
 		[]string{filepath.Join(repositoryRoot(t), "scripts", "ai-audit-jira"), f.inputPath},
 		arguments...,
 	)...)
-	command.Env = append(os.Environ(),
+	command.Env = testenv.Environment(
 		"FAKE_ACLI_LOG="+f.logPath,
 		"FAKE_ACLI_SEARCH_JSON="+f.searchJSON,
 		`FAKE_ACLI_CREATE_JSON={"key":"`+createdKey+`"}`,

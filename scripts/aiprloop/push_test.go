@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 func TestPushReviewsCandidateCommitBeforePublishing(t *testing.T) {
@@ -504,7 +506,7 @@ func (fixture pushFixture) run(t *testing.T) (string, int) {
 
 	command := exec.Command("bash", filepath.Join(fixture.checkout, "scripts", "ai-pr-loop"), "123", "--push", "--keep-worktree")
 	command.Dir = fixture.checkout
-	command.Env = append(os.Environ(),
+	command.Env = testenv.Environment(
 		"PATH="+fixture.fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"TEST_BASE_SHA="+fixture.baseSHA,
 		"TEST_HEAD_SHA="+fixture.headSHA,
@@ -529,8 +531,8 @@ func (fixture pushFixture) run(t *testing.T) (string, int) {
 
 func createCommitObject(t *testing.T, gitDirectory, tree, message string) string {
 	t.Helper()
-	command := exec.Command("git", "--git-dir", gitDirectory, "commit-tree", tree, "-m", message)
-	command.Env = append(os.Environ(),
+	command := testenv.Command(t, "git", "--git-dir", gitDirectory, "commit-tree", tree, "-m", message)
+	command.Env = testenv.Environment(
 		"GIT_AUTHOR_NAME=Target Rewrite",
 		"GIT_AUTHOR_EMAIL=target-rewrite@example.com",
 		"GIT_COMMITTER_NAME=Target Rewrite",

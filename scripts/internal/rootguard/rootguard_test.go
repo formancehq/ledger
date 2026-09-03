@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -12,9 +11,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 func TestMain(testingMain *testing.M) {
+	if err := testenv.SanitizeProcess(); err != nil {
+		panic(err)
+	}
 	if err := os.Setenv("GIT_CONFIG_GLOBAL", os.DevNull); err != nil {
 		panic(err)
 	}
@@ -387,7 +391,7 @@ func capture(t *testing.T, root string) Snapshot {
 
 func runGit(t *testing.T, directory string, arguments ...string) {
 	t.Helper()
-	command := exec.Command("git", arguments...)
+	command := testenv.Command(t, "git", arguments...)
 	command.Dir = directory
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, "git %s:\n%s", strings.Join(arguments, " "), output)

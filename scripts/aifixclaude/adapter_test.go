@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 type adapterFixture struct {
@@ -142,7 +144,7 @@ func runAdapter(t *testing.T, fixture adapterFixture, extraEnvironment map[strin
 
 	cmd := exec.Command("bash", fixture.adapterPath)
 	cmd.Dir = fixture.repositoryRoot
-	cmd.Env = replaceEnvironment(os.Environ(), replacements)
+	cmd.Env = testenv.EnvironmentMap(replacements)
 	output, err := cmd.CombinedOutput()
 
 	return string(output), err
@@ -151,7 +153,7 @@ func runAdapter(t *testing.T, fixture adapterFixture, extraEnvironment map[strin
 func runCommand(t *testing.T, name string, arguments ...string) string {
 	t.Helper()
 
-	output, err := exec.Command(name, arguments...).CombinedOutput()
+	output, err := testenv.Command(t, name, arguments...).CombinedOutput()
 	require.NoError(t, err, string(output))
 
 	return string(output)
@@ -182,20 +184,4 @@ func argumentValue(t *testing.T, arguments []string, name string) string {
 	require.FailNow(t, "missing argument", name)
 
 	return ""
-}
-
-func replaceEnvironment(current []string, replacements map[string]string) []string {
-	result := make([]string, 0, len(current)+len(replacements))
-	for _, item := range current {
-		key, _, found := strings.Cut(item, "=")
-		if _, replaced := replacements[key]; found && replaced {
-			continue
-		}
-		result = append(result, item)
-	}
-	for key, value := range replacements {
-		result = append(result, key+"="+value)
-	}
-
-	return result
 }
