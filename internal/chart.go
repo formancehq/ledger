@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
@@ -21,9 +22,13 @@ type ChartAccount struct {
 }
 
 type ChartSegment struct {
-	VariableSegment *ChartVariableSegment
-	FixedSegments   map[string]ChartSegment
-	Account         *ChartAccount
+	// VariableSegments holds every `$variable` child declared at this level,
+	// ordered by label. A level may declare several of them as long as each one
+	// carries a `.pattern`, which is how a single level fans out into subtrees
+	// of different shapes depending on the value of the segment.
+	VariableSegments []ChartVariableSegment
+	FixedSegments    map[string]ChartSegment
+	Account          *ChartAccount
 }
 
 type ChartVariableSegment struct {
@@ -92,11 +97,11 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	var (
-		isLeaf          = true
-		isAccount       bool
-		account         ChartAccount
-		fixedSegments   map[string]ChartSegment
-		variableSegment *ChartVariableSegment
+		isLeaf           = true
+		isAccount        bool
+		account          ChartAccount
+		fixedSegments    map[string]ChartSegment
+		variableSegments []ChartVariableSegment
 	)
 	for key, value := range segment {
 		isSubsegment := !strings.HasPrefix(key, PROPERTY_PREFIX)
@@ -130,14 +135,11 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 				return fmt.Errorf("invalid segment: %v", err)
 			}
 			if strings.HasPrefix(key, "$") {
-				if variableSegment != nil {
-					return fmt.Errorf("cannot have two variable segments with the same prefix")
-				}
-				variableSegment = &ChartVariableSegment{
+				variableSegments = append(variableSegments, ChartVariableSegment{
 					ChartSegment: segment,
 					Pattern:      pattern,
 					Label:        key[1:],
-				}
+				})
 			} else if pattern != nil {
 				return fmt.Errorf("cannot have a pattern on a fixed segment")
 			} else {
@@ -168,12 +170,30 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
+	// A pattern is what keeps sibling variable segments apart: an ungated one
+	// matches every value, so it would make its siblings ambiguous.
+	if len(variableSegments) > 1 {
+		for _, variableSegment := range variableSegments {
+			if variableSegment.Pattern == nil {
+				return fmt.Errorf(
+					"variable segment $%v needs a %v: a level declaring several variable segments requires one on each of them",
+					variableSegment.Label, PATTERN_KEY,
+				)
+			}
+		}
+	}
+	// Subsegments come out of a map, so order by label to keep resolution and
+	// serialization deterministic.
+	slices.SortFunc(variableSegments, func(a, b ChartVariableSegment) int {
+		return strings.Compare(a.Label, b.Label)
+	})
+
 	isAccount = isAccount || isLeaf
 	if isAccount {
 		s.Account = &account
 	}
 	s.FixedSegments = fixedSegments
-	s.VariableSegment = variableSegment
+	s.VariableSegments = variableSegments
 
 	if _, ok := segment[METADATA_KEY]; ok && !isAccount {
 		return fmt.Errorf("cannot have %v on a non-account segment", METADATA_KEY)
@@ -206,9 +226,9 @@ func (s ChartSegment) marshalJsonObject() (map[string]any, error) {
 		}
 		out[key] = json.RawMessage(serialized)
 	}
-	if s.VariableSegment != nil {
-		key := fmt.Sprintf("$%v", s.VariableSegment.Label)
-		serialized, err := s.VariableSegment.MarshalJSON()
+	for _, variableSegment := range s.VariableSegments {
+		key := fmt.Sprintf("$%v", variableSegment.Label)
+		serialized, err := variableSegment.MarshalJSON()
 		if err != nil {
 			return nil, err
 		}
@@ -222,7 +242,7 @@ func (s ChartSegment) marshalJsonObject() (map[string]any, error) {
 		if s.Account.Rules != (ChartAccountRules{}) {
 			out[RULES_KEY] = s.Account.Rules
 		}
-		if len(s.FixedSegments) > 0 || s.VariableSegment != nil {
+		if len(s.FixedSegments) > 0 || len(s.VariableSegments) > 0 {
 			out[SELF_KEY] = map[string]any{}
 		}
 	}
@@ -248,50 +268,67 @@ func (s ChartVariableSegment) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, variableSegment *ChartVariableSegment, account []string) (*ChartAccount, error) {
+// descendInto resolves the remainder of an address against the segment
+// `account[0]` was matched by, either by recursing into its children or, when
+// the address stops here, by returning the account the segment carries.
+func descendInto(path []string, segment ChartSegment, account []string) (*ChartAccount, error) {
 	nextSegment := account[0]
-	if segment, ok := fixedSegments[nextSegment]; ok {
-		if len(account) > 1 {
-			return findAccountSchema(append(path, nextSegment), segment.FixedSegments, segment.VariableSegment, account[1:])
-		} else if segment.Account != nil {
-			return segment.Account, nil
-		} else {
-			return nil, ErrInvalidAccount{
-				path:            path,
-				segment:         nextSegment,
-				patternMismatch: false,
-				hasSubsegments:  len(account) > 1,
-			}
-		}
+	if len(account) > 1 {
+		// Cap the slice so append allocates instead of writing into the
+		// caller's backing array: sibling variable segments are tried in turn
+		// and each one's errors keep a reference to the path they were built
+		// from.
+		childPath := append(path[:len(path):len(path)], nextSegment)
+		return findAccountSchema(childPath, segment.FixedSegments, segment.VariableSegments, account[1:])
 	}
-	if variableSegment != nil {
-		matches := true
-		if variableSegment.Pattern != nil {
-			var err error
-			matches, err = regexp.Match(*variableSegment.Pattern, []byte(nextSegment))
-			if err != nil {
-				return nil, fmt.Errorf("invalid pattern regex: %v", err)
-			}
-		}
-		if matches {
-			if len(account) > 1 {
-				return findAccountSchema(append(path, nextSegment), variableSegment.FixedSegments, variableSegment.VariableSegment, account[1:])
-			} else if variableSegment.Account != nil {
-				return variableSegment.Account, nil
-			} else {
-				return nil, ErrInvalidAccount{
-					path:            path,
-					segment:         nextSegment,
-					patternMismatch: false,
-					hasSubsegments:  len(account) > 1,
-				}
-			}
-		}
+	if segment.Account != nil {
+		return segment.Account, nil
 	}
 	return nil, ErrInvalidAccount{
 		path:            path,
 		segment:         nextSegment,
-		patternMismatch: variableSegment != nil,
+		patternMismatch: false,
+		hasSubsegments:  false,
+	}
+}
+
+func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, variableSegments []ChartVariableSegment, account []string) (*ChartAccount, error) {
+	nextSegment := account[0]
+	if segment, ok := fixedSegments[nextSegment]; ok {
+		return descendInto(path, segment, account)
+	}
+	// A level can declare several variable segments, each gated by its own
+	// pattern, so the same level can hold subtrees of different shapes. They are
+	// tried in label order and the first one resolving the rest of the address
+	// wins; a candidate whose pattern matches but whose subtree rejects the
+	// remainder does not hide the others.
+	var firstMatchErr error
+	for _, variableSegment := range variableSegments {
+		if variableSegment.Pattern != nil {
+			matches, err := regexp.Match(*variableSegment.Pattern, []byte(nextSegment))
+			if err != nil {
+				return nil, fmt.Errorf("invalid pattern regex: %v", err)
+			}
+			if !matches {
+				continue
+			}
+		}
+		schema, err := descendInto(path, variableSegment.ChartSegment, account)
+		if err == nil {
+			return schema, nil
+		}
+		if firstMatchErr == nil {
+			firstMatchErr = err
+		}
+	}
+	// Some pattern admitted the segment, the address was rejected further down.
+	if firstMatchErr != nil {
+		return nil, firstMatchErr
+	}
+	return nil, ErrInvalidAccount{
+		path:            path,
+		segment:         nextSegment,
+		patternMismatch: len(variableSegments) > 0,
 		hasSubsegments:  len(account) > 1,
 	}
 }

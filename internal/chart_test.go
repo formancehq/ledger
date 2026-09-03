@@ -47,7 +47,7 @@ func TestChartValidation(t *testing.T) {
 }`,
 			expectedChart: ChartOfAccounts{
 				"banks": {
-					VariableSegment: &ChartVariableSegment{
+					VariableSegments: []ChartVariableSegment{{
 						Label:   "iban",
 						Pattern: pointer.For("^[0-9]{10}$"),
 						ChartSegment: ChartSegment{
@@ -72,10 +72,10 @@ func TestChartValidation(t *testing.T) {
 								},
 							},
 						},
-					},
+					}},
 				},
 				"users": {
-					VariableSegment: &ChartVariableSegment{
+					VariableSegments: []ChartVariableSegment{{
 						Label:   "userID",
 						Pattern: nil,
 						ChartSegment: ChartSegment{
@@ -86,7 +86,7 @@ func TestChartValidation(t *testing.T) {
 								},
 							},
 						},
-					},
+					}},
 				},
 			},
 		},
@@ -149,18 +149,54 @@ func TestChartValidation(t *testing.T) {
 			expectedError: "cannot have .rules on a non-account segment",
 		},
 		{
-			name: "two variable segments with same prefix",
+			name: "several variable segments at the same level",
+			source: `{
+    "users": {
+        "$userID": {
+            ".pattern": "^[0-9]{3}$",
+            "main": {}
+        },
+        "$username": {
+            ".pattern": "^[a-z]+$"
+        }
+    }
+}`,
+			expectedChart: ChartOfAccounts{
+				"users": {
+					VariableSegments: []ChartVariableSegment{
+						{
+							Label:   "userID",
+							Pattern: pointer.For("^[0-9]{3}$"),
+							ChartSegment: ChartSegment{
+								FixedSegments: map[string]ChartSegment{
+									"main": {
+										Account: &ChartAccount{},
+									},
+								},
+							},
+						},
+						{
+							Label:   "username",
+							Pattern: pointer.For("^[a-z]+$"),
+							ChartSegment: ChartSegment{
+								Account: &ChartAccount{},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "several variable segments with a missing pattern",
 			source: `{
 				"users": {
 					"$userID": {
 						".pattern": "^[0-9]{3}$"
 					},
-					"$otherID": {
-						".pattern": "^[0-9]{4}$"
-					}
+					"$username": {}
 				}
 			}`,
-			expectedError: "cannot have two variable segments with the same prefix",
+			expectedError: "variable segment $username needs a .pattern",
 		},
 		{
 			name: "invalid metadata",
@@ -264,7 +300,7 @@ func testChart() ChartOfAccounts {
 			Account: &ChartAccount{},
 		},
 		"bank": {
-			VariableSegment: &ChartVariableSegment{
+			VariableSegments: []ChartVariableSegment{{
 				Label:   "bankID",
 				Pattern: pointer.For("^[0-9]{3}$"),
 				ChartSegment: ChartSegment{
@@ -277,7 +313,7 @@ func testChart() ChartOfAccounts {
 						},
 					},
 				},
-			},
+			}},
 			Account: &ChartAccount{
 				Metadata: map[string]ChartAccountMetadata{
 					"root_bank_account": {},
@@ -285,7 +321,7 @@ func testChart() ChartOfAccounts {
 			},
 		},
 		"users": {
-			VariableSegment: &ChartVariableSegment{
+			VariableSegments: []ChartVariableSegment{{
 				Label:   "userID",
 				Pattern: pointer.For("^[0-9]{3}$"),
 				ChartSegment: ChartSegment{
@@ -297,10 +333,10 @@ func testChart() ChartOfAccounts {
 						},
 					},
 				},
-			},
+			}},
 		},
 		"shops": {
-			VariableSegment: &ChartVariableSegment{
+			VariableSegments: []ChartVariableSegment{{
 				Label: "shopID",
 				ChartSegment: ChartSegment{
 					Account: &ChartAccount{
@@ -311,7 +347,7 @@ func testChart() ChartOfAccounts {
 						},
 					},
 				},
-			},
+			}},
 		},
 	}
 }
@@ -450,6 +486,173 @@ func TestPostingValidation(t *testing.T) {
 			require.ErrorIs(t, err, ErrInvalidAccount{}, tc.name)
 		} else {
 			err := chart.ValidatePosting(tc.posting)
+			require.NoError(t, err, tc.name)
+		}
+	}
+}
+
+// Barrier accounts carry a `_TYPE` suffix and must never hold a client
+// subaccount, while a bare stub may. The two shapes are kept apart by giving
+// the account level one variable segment per shape, each gated by its own
+// pattern -- a single `$accountId` whose pattern makes the suffix optional
+// cannot express it, since `.pattern` only sees the segment in isolation and
+// has no visibility on whether a `client` child was addressed below it.
+const barrierChart = `{
+	"world": {},
+	"bank": {
+		"$bankId": {
+			".pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+			"branch": {
+				"$branchId": {
+					".pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+					"account": {
+						"$accountId": {
+							".self": {},
+							".pattern": "^(?<stub>[A-Z]{4})$",
+							"client": {
+								"$clientId": {
+									".pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+								}
+							}
+						},
+						"$barrierAccountId": {
+							".pattern": "^(?<stub>[A-Z]{4})_(?<type>TRADING|TOPUP|UNIDENTIFIED|CLEARED)$"
+						}
+					}
+				}
+			}
+		}
+	}
+}`
+
+func TestBarrierAccountValidation(t *testing.T) {
+	t.Parallel()
+
+	var chart ChartOfAccounts
+	require.NoError(t, json.Unmarshal([]byte(barrierChart), &chart))
+
+	const (
+		bankID   = "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+		branchID = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+		clientID = "c73bcdcc-2669-4bf6-81d3-e4ae73fb11fd"
+	)
+	accounts := "bank:" + bankID + ":branch:" + branchID + ":account:"
+
+	type testCase struct {
+		name          string
+		address       string
+		expectedError string
+	}
+
+	for _, tc := range []testCase{
+		{
+			name:    "plain account with a client",
+			address: accounts + "LSER:client:" + clientID,
+		},
+		{
+			name:    "plain account without a client",
+			address: accounts + "LSER",
+		},
+		{
+			name:    "barrier account without a client",
+			address: accounts + "LSER_TRADING",
+		},
+		{
+			name:    "every barrier type is addressable",
+			address: accounts + "LSER_UNIDENTIFIED",
+		},
+		{
+			name:          "barrier account with a client",
+			address:       accounts + "LSER_TRADING:client:" + clientID,
+			expectedError: "segment `client` is not allowed by the chart of accounts at `" + accounts + "LSER_TRADING`",
+		},
+		{
+			name:          "barrier account with an empty client subtree",
+			address:       accounts + "LSER_CLEARED:client",
+			expectedError: "segment `client` is not allowed by the chart of accounts at `" + accounts + "LSER_CLEARED`",
+		},
+		{
+			name:          "unknown barrier type",
+			address:       accounts + "LSER_SETTLED",
+			expectedError: "segment `LSER_SETTLED` defined by the chart of accounts at `bank:" + bankID + ":branch:" + branchID + ":account` does not match the pattern",
+		},
+		{
+			name:          "client of an unknown barrier type",
+			address:       accounts + "LSER_SETTLED:client:" + clientID,
+			expectedError: "segment `LSER_SETTLED` defined by the chart of accounts at `bank:" + bankID + ":branch:" + branchID + ":account` does not match the pattern",
+		},
+		{
+			name:          "plain account with an invalid client",
+			address:       accounts + "LSER:client:not-a-uuid",
+			expectedError: "segment `not-a-uuid` defined by the chart of accounts at `" + accounts + "LSER:client` does not match the pattern",
+		},
+	} {
+		_, err := chart.FindAccountSchema(tc.address)
+		if tc.expectedError == "" {
+			require.NoError(t, err, tc.name)
+		} else {
+			require.EqualError(t, err, tc.expectedError, tc.name)
+		}
+	}
+}
+
+// Postings are the enforcement point: a barrier account with a client
+// underneath it must be rejected whichever side of the posting it sits on.
+func TestBarrierPostingValidation(t *testing.T) {
+	t.Parallel()
+
+	var chart ChartOfAccounts
+	require.NoError(t, json.Unmarshal([]byte(barrierChart), &chart))
+
+	const (
+		bankID   = "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
+		branchID = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+		clientID = "c73bcdcc-2669-4bf6-81d3-e4ae73fb11fd"
+	)
+	accounts := "bank:" + bankID + ":branch:" + branchID + ":account:"
+
+	type testCase struct {
+		name        string
+		posting     Posting
+		expectError bool
+	}
+
+	for _, tc := range []testCase{
+		{
+			name: "client account funded from a barrier account",
+			posting: Posting{
+				Source:      accounts + "LSER_TOPUP",
+				Destination: accounts + "LSER:client:" + clientID,
+			},
+		},
+		{
+			name: "barrier account as destination of a client account",
+			posting: Posting{
+				Source:      accounts + "LSER:client:" + clientID,
+				Destination: accounts + "LSER_TRADING",
+			},
+		},
+		{
+			name: "client of a barrier account as source",
+			posting: Posting{
+				Source:      accounts + "LSER_TRADING:client:" + clientID,
+				Destination: "world",
+			},
+			expectError: true,
+		},
+		{
+			name: "client of a barrier account as destination",
+			posting: Posting{
+				Source:      "world",
+				Destination: accounts + "LSER_TRADING:client:" + clientID,
+			},
+			expectError: true,
+		},
+	} {
+		err := chart.ValidatePosting(tc.posting)
+		if tc.expectError {
+			require.ErrorIs(t, err, ErrInvalidAccount{}, tc.name)
+		} else {
 			require.NoError(t, err, tc.name)
 		}
 	}
