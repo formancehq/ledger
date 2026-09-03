@@ -92,3 +92,17 @@ func (mr *MocknodeStateMockRecorder) IsLeader() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsLeader", reflect.TypeOf((*MocknodeState)(nil).IsLeader))
 }
+
+// MemberIDs mocks base method.
+func (m *MocknodeState) MemberIDs() []uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MemberIDs")
+	ret0, _ := ret[0].([]uint64)
+	return ret0
+}
+
+// MemberIDs indicates an expected call of MemberIDs.
+func (mr *MocknodeStateMockRecorder) MemberIDs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MemberIDs", reflect.TypeOf((*MocknodeState)(nil).MemberIDs))
+}

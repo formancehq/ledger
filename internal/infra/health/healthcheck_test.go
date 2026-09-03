@@ -14,6 +14,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
@@ -21,7 +22,24 @@ import (
 
 type diskUsageTestServer struct {
 	clusterpb.UnimplementedClusterServiceServer
+
 	calls atomic.Int64
+}
+
+func newFreshCollector(t *testing.T) *diskusage.Collector {
+	t.Helper()
+
+	provider := sdkmetric.NewMeterProvider()
+	collector := diskusage.NewCollector(
+		t.TempDir(),
+		t.TempDir(),
+		time.Hour,
+		provider.Meter("health-check-test"),
+	)
+	collector.Start()
+	t.Cleanup(collector.Stop)
+
+	return collector
 }
 
 func (s *diskUsageTestServer) GetDiskUsage(context.Context, *clusterpb.GetDiskUsageRequest) (*clusterpb.DiskUsage, error) {
@@ -75,15 +93,7 @@ func TestHealthChecker_NonLeaderResetsWriteGate(t *testing.T) {
 func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
 	t.Parallel()
 
-	provider := sdkmetric.NewMeterProvider()
-	collector := diskusage.NewCollector(
-		t.TempDir(),
-		t.TempDir(),
-		time.Hour,
-		provider.Meter("health-check-test"),
-	)
-	collector.Start()
-	t.Cleanup(collector.Stop)
+	collector := newFreshCollector(t)
 
 	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
 	t.Cleanup(func() {
@@ -107,7 +117,8 @@ func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
 
 	ns := NewMocknodeState(gomock.NewController(t))
 	ns.EXPECT().IsLeader().Return(true)
-	ns.EXPECT().GetNodeID().Return(uint64(7)).Times(2)
+	ns.EXPECT().GetNodeID().Return(uint64(7))
+	ns.EXPECT().MemberIDs().Return([]uint64{7, 8})
 
 	hc := &HealthChecker{
 		node:        ns,
@@ -127,6 +138,45 @@ func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
 	require.Equal(t, int64(1), handler.calls.Load())
 	require.NoError(t, hc.CheckWritesAllowed())
 	require.False(t, hc.gate.Load().diskBlocked)
+}
+
+func TestHealthChecker_MissingCommittedPeerCannotClearDiskGate(t *testing.T) {
+	t.Parallel()
+
+	collector := newFreshCollector(t)
+	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
+	t.Cleanup(func() {
+		require.NoError(t, pool.Close())
+	})
+
+	provider := sdkmetric.NewMeterProvider()
+	pollFailures, err := provider.Meter("health-check-test").Int64Counter("test.poll.failures")
+	require.NoError(t, err)
+
+	ns := NewMocknodeState(gomock.NewController(t))
+	ns.EXPECT().IsLeader().Return(true)
+	ns.EXPECT().GetNodeID().Return(uint64(7))
+	ns.EXPECT().MemberIDs().Return([]uint64{7, 8})
+
+	hc := &HealthChecker{
+		node:         ns,
+		collector:    collector,
+		servicePool:  pool,
+		logger:       logging.Testing(),
+		pollFailures: pollFailures,
+		thresholds: Thresholds{
+			WALBlock:   1.1,
+			WALResume:  1,
+			DataBlock:  1.1,
+			DataResume: 1,
+		},
+	}
+	hc.gate.Store(&gateState{diskBlocked: true})
+
+	hc.check(make(chan struct{}))
+
+	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
+	require.True(t, hc.gate.Load().diskBlocked)
 }
 
 func TestSampleAge(t *testing.T) {
