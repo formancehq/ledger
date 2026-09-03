@@ -98,11 +98,21 @@ checksum:
 
 changelog:
   sort: asc
+  use: github
   filters:
     exclude:
-    - "^docs:"
-    - "^chore:"
-    - "^ci:"
+    - "^docs(\\([^)]*\\))?:"
+    - "^chore(\\([^)]*\\))?:"
+    - "^ci(\\([^)]*\\))?:"
+  groups:
+  - title: "New Features"
+    regexp: "^.*feat(\\([^)]*\\))?!?:.*$"
+    order: 0
+  - title: "Bug fixes"
+    regexp: "^.*fix(\\([^)]*\\))?!?:.*$"
+    order: 10
+  - title: "Other work"
+    order: 999
 
 dockers:
 - image_templates: ["{{ .Env.IMAGE_REPOSITORY }}:{{ if not .IsNightly }}v{{ end }}{{ .Version }}-amd64"]
