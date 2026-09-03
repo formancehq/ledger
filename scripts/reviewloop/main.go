@@ -15,35 +15,26 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 )
 
 const (
 	exitError            = 1
-	exitHumanDecision    = 2
-	exitAutoFixRequired  = 3
-	defaultMaxPasses     = 3
+	exitFindings         = 2
+	exitValidationFailed = 4
 	defaultValidationCmd = "bash scripts/agent-check-pr"
 	changeTargetKind     = "BASE_COMPARISON"
 )
 
 type finding struct {
-	ID          string  `json:"id"`
-	Severity    string  `json:"severity"`
-	Blocking    *bool   `json:"blocking"`
-	AutoFixable *bool   `json:"auto_fixable"`
-	Title       string  `json:"title"`
-	Location    *string `json:"location"`
-	Evidence    string  `json:"evidence"`
-	Impact      string  `json:"impact"`
-	Resolution  string  `json:"resolution"`
-}
-
-type previousFinding struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
-	Reason string `json:"reason"`
+	ID         string  `json:"id"`
+	Severity   string  `json:"severity"`
+	Blocking   *bool   `json:"blocking"`
+	Title      string  `json:"title"`
+	Location   *string `json:"location"`
+	Evidence   string  `json:"evidence"`
+	Impact     string  `json:"impact"`
+	Resolution string  `json:"resolution"`
 }
 
 type knownFinding struct {
@@ -52,15 +43,22 @@ type knownFinding struct {
 	Reason string `json:"reason"`
 }
 
+type knownFindingsSnapshot struct {
+	Version        int               `json:"version"`
+	PRNumber       int               `json:"pr_number"`
+	Head           string            `json:"head"`
+	ReviewDecision string            `json:"review_decision"`
+	Findings       []json.RawMessage `json:"findings"`
+}
+
 type reviewResult struct {
-	Decision             string            `json:"decision"`
-	Head                 string            `json:"head"`
-	WorktreeFingerprint  string            `json:"worktree_fingerprint"`
-	PreviousFindings     []previousFinding `json:"previous_findings"`
-	KnownFindings        []knownFinding    `json:"known_findings"`
-	Findings             []finding         `json:"findings"`
-	ResidualRisk         string            `json:"residual_risk"`
-	HumanDecisionContext *string           `json:"human_decision_context"`
+	Decision             string         `json:"decision"`
+	Head                 string         `json:"head"`
+	WorktreeFingerprint  string         `json:"worktree_fingerprint"`
+	KnownFindings        []knownFinding `json:"known_findings"`
+	Findings             []finding      `json:"findings"`
+	ResidualRisk         string         `json:"residual_risk"`
+	HumanDecisionContext *string        `json:"human_decision_context"`
 }
 
 type workspaceState struct {
@@ -90,29 +88,15 @@ type reviewChangeTarget struct {
 	UntrackedPaths  []string            `json:"untracked_paths"`
 }
 
-type loopAction string
-
-type fileSnapshot struct {
-	path    string
-	content []byte
-}
-
-const (
-	actionReady   loopAction = "READY_FOR_HUMAN_REVIEW"
-	actionAutoFix loopAction = "AUTO_FIX_REQUIRED"
-	actionHuman   loopAction = "HUMAN_DECISION_REQUIRED"
-)
-
 func main() {
-	var reviewCmd, fixCmd, validationCmd, validationGatesCmd, validationToolRoot, stateDir, baseRef string
+	var reviewCmd, validationCmd, knownFindingsCmd, knownFindingsFile, stateDir, baseRef string
 	var candidateWorktree, expectedHead, trustedRoot, bindingFile, validationRunDir, gitGuard string
-	var maxPasses, prNumber int
+	var prNumber int
 
 	flag.StringVar(&reviewCmd, "review-cmd", "", "command that writes the review JSON to $AI_REVIEW_RESULT")
-	flag.StringVar(&fixCmd, "fix-cmd", "", "command that fixes findings from $AI_REVIEW_FINDINGS")
-	flag.StringVar(&validationCmd, "validation-cmd", defaultValidationCmd, "local validation command run after fixes and before approval")
-	flag.StringVar(&validationGatesCmd, "validation-gates-cmd", "", "trusted command that prints the selected validation gates for receipt identity")
-	flag.StringVar(&validationToolRoot, "validation-tool-root", "", "absolute base-pinned worktree containing the trusted validator")
+	flag.StringVar(&validationCmd, "validation-cmd", defaultValidationCmd, "local validation command run once before final review")
+	flag.StringVar(&knownFindingsCmd, "known-findings-cmd", "", "optional command that collects unresolved GitHub findings immediately before review")
+	flag.StringVar(&knownFindingsFile, "known-findings-file", "", "file written by --known-findings-cmd and treated as immutable review input")
 	flag.StringVar(&stateDir, "state-dir", "build/ai-review-loop", "directory for review-loop state")
 	flag.StringVar(&baseRef, "base", "", "explicit git ref for committed changes under review")
 	flag.IntVar(&prNumber, "pr", 0, "expected pull request number")
@@ -122,7 +106,6 @@ func main() {
 	flag.StringVar(&bindingFile, "binding-file", "", "immutable PR/worktree binding JSON")
 	flag.StringVar(&validationRunDir, "validation-run-dir", "", "absolute cache/temp directory distinct from both worktrees")
 	flag.StringVar(&gitGuard, "git-guard", "", "absolute trusted ai-git-guard script")
-	flag.IntVar(&maxPasses, "max-passes", defaultMaxPasses, "maximum review passes")
 	flag.Parse()
 
 	if strings.TrimSpace(reviewCmd) == "" {
@@ -134,8 +117,8 @@ func main() {
 	if strings.TrimSpace(baseRef) == "" {
 		fatal(errors.New("--base is required"))
 	}
-	if maxPasses < 1 {
-		fatal(errors.New("--max-passes must be at least 1"))
+	if (strings.TrimSpace(knownFindingsCmd) == "") != (strings.TrimSpace(knownFindingsFile) == "") {
+		fatal(errors.New("--known-findings-cmd and --known-findings-file must be provided together"))
 	}
 	runner, err := newBoundCommandRunner(
 		prNumber,
@@ -158,192 +141,153 @@ func main() {
 	validationEnv := map[string]string{
 		"AI_REVIEW_BASE_SHA": base.SHA,
 	}
-	validationReceipts, err := newValidationReceiptCache(runner, base, validationToolRoot, validationGatesCmd)
-	if err != nil {
-		fatal(err)
-	}
 	runStateDir, err := createRunStateDir(repositoryRoot, runner.trustedRootCheckout, stateDir)
 	if err != nil {
 		fatal(err)
 	}
 	fmt.Printf("==> review-loop: state directory %s\n", runStateDir)
 
-	var previousResult string
-	var previousReview *reviewResult
-	for pass := 1; pass <= maxPasses; pass++ {
-		resultPath := filepath.Join(runStateDir, fmt.Sprintf("review-%d.json", pass))
-		reviewedState, err := captureWorkspaceState(repositoryRoot, runStateDir)
+	initialState, err := captureWorkspaceState(repositoryRoot, runStateDir)
+	if err != nil {
+		fatal(err)
+	}
+	fmt.Println("==> review-loop: proportional validation")
+	if err := runner.run("validation", validationCmd, validationEnv); err != nil {
+		fail(exitValidationFailed, "VALIDATION_FAILED", fmt.Errorf("proportional validation failed: %w", err))
+	}
+	validatedState, err := captureWorkspaceState(repositoryRoot, runStateDir)
+	if err != nil {
+		fatal(err)
+	}
+	if validatedState != initialState {
+		fail(exitValidationFailed, "VALIDATION_FAILED", fmt.Errorf(
+			"proportional validation changed the candidate workspace: before %s/%s, after %s/%s",
+			initialState.Head,
+			initialState.Fingerprint,
+			validatedState.Head,
+			validatedState.Fingerprint,
+		))
+	}
+
+	var knownFindingsContent []byte
+	if strings.TrimSpace(knownFindingsCmd) != "" {
+		fmt.Println("==> review-loop: collect unresolved GitHub findings")
+		if err := runner.run("known-findings", knownFindingsCmd, nil); err != nil {
+			fatal(fmt.Errorf("known-findings collection failed: %w", err))
+		}
+		knownFindingsContent, err = os.ReadFile(knownFindingsFile)
 		if err != nil {
+			fatal(fmt.Errorf("reading known-findings snapshot: %w", err))
+		}
+		if err := validateKnownFindingsSnapshot(knownFindingsContent, prNumber, expectedHead); err != nil {
 			fatal(err)
 		}
-		changeTarget, err := captureReviewChangeTarget(repositoryRoot, base, reviewedState, runStateDir)
-		if err != nil {
-			fatal(err)
-		}
-		changeTargetPath := filepath.Join(runStateDir, fmt.Sprintf("target-%d.json", pass))
-		changeTargetContent, err := writeReviewChangeTarget(changeTargetPath, changeTarget)
-		if err != nil {
-			fatal(err)
-		}
+	}
 
-		env := map[string]string{
-			"AI_REVIEW_PASS":                 strconv.Itoa(pass),
-			"AI_REVIEW_RESULT":               resultPath,
-			"AI_REVIEW_HEAD":                 reviewedState.Head,
-			"AI_REVIEW_WORKTREE_FINGERPRINT": reviewedState.Fingerprint,
-			"AI_REVIEW_CHANGE_TARGET":        changeTargetPath,
-		}
-		if previousResult != "" {
-			env["AI_REVIEW_PREVIOUS_RESULT"] = previousResult
-		}
+	reviewedState, err := captureWorkspaceState(repositoryRoot, runStateDir)
+	if err != nil {
+		fatal(err)
+	}
+	if reviewedState != validatedState {
+		fatal(fmt.Errorf(
+			"candidate workspace changed while collecting review inputs: before %s/%s, after %s/%s",
+			validatedState.Head,
+			validatedState.Fingerprint,
+			reviewedState.Head,
+			reviewedState.Fingerprint,
+		))
+	}
 
-		fmt.Printf("==> review-loop: review pass %d/%d\n", pass, maxPasses)
-		if err := runner.run("review", reviewCmd, env); err != nil {
-			fatal(fmt.Errorf("review command failed: %w", err))
-		}
-		if err := verifyFileUnchanged(changeTargetPath, changeTargetContent); err != nil {
-			fatal(fmt.Errorf("review command changed its target description: %w", err))
-		}
-		currentState, err := captureWorkspaceState(repositoryRoot, runStateDir)
-		if err != nil {
-			fatal(err)
-		}
-		if currentState != reviewedState {
-			fatal(fmt.Errorf(
-				"workspace changed while the review command was running: before %s/%s, after %s/%s",
-				reviewedState.Head,
-				reviewedState.Fingerprint,
-				currentState.Head,
-				currentState.Fingerprint,
-			))
-		}
+	resultPath := filepath.Join(runStateDir, "final-review.json")
+	changeTarget, err := captureReviewChangeTarget(repositoryRoot, base, reviewedState, runStateDir)
+	if err != nil {
+		fatal(err)
+	}
+	changeTargetPath := filepath.Join(runStateDir, "final-review-target.json")
+	changeTargetContent, err := writeReviewChangeTarget(changeTargetPath, changeTarget)
+	if err != nil {
+		fatal(err)
+	}
+	env := map[string]string{
+		"AI_REVIEW_RESULT":               resultPath,
+		"AI_REVIEW_HEAD":                 reviewedState.Head,
+		"AI_REVIEW_WORKTREE_FINGERPRINT": reviewedState.Fingerprint,
+		"AI_REVIEW_CHANGE_TARGET":        changeTargetPath,
+	}
 
-		result, err := loadReviewResult(resultPath)
-		if err != nil {
-			fatal(err)
+	fmt.Println("==> review-loop: exact final technical review")
+	if err := runner.run("review", reviewCmd, env); err != nil {
+		fail(exitError, "REVIEW_FAILED", fmt.Errorf("review command failed: %w", err))
+	}
+	if err := verifyFileUnchanged(changeTargetPath, changeTargetContent); err != nil {
+		fail(exitError, "REVIEW_FAILED", fmt.Errorf("review command changed its target description: %w", err))
+	}
+	if knownFindingsContent != nil {
+		if err := verifyFileUnchanged(knownFindingsFile, knownFindingsContent); err != nil {
+			fail(exitError, "REVIEW_FAILED", fmt.Errorf("review command changed the known-findings snapshot: %w", err))
 		}
-		if err := validatePreviousFindings(result, previousReview); err != nil {
-			fatal(err)
-		}
-		if err := validateReviewTarget(result, reviewedState); err != nil {
-			fatal(err)
-		}
-		action, blockers, err := decide(result)
-		if err != nil {
-			fatal(err)
-		}
+	}
+	currentState, err := captureWorkspaceState(repositoryRoot, runStateDir)
+	if err != nil {
+		fail(exitError, "REVIEW_FAILED", err)
+	}
+	if currentState != reviewedState {
+		fail(exitError, "REVIEW_FAILED", fmt.Errorf(
+			"workspace changed while the review command was running: before %s/%s, after %s/%s",
+			reviewedState.Head,
+			reviewedState.Fingerprint,
+			currentState.Head,
+			currentState.Fingerprint,
+		))
+	}
 
-		switch action {
-		case actionReady:
-			fmt.Println("==> review-loop: local validation before readiness")
-			if _, err := validationReceipts.reuseOrExecute(runner, validationCmd, validationEnv, runStateDir); err != nil {
-				fatal(fmt.Errorf("local validation failed before readiness: %w", err))
-			}
-			validatedState, err := captureWorkspaceState(repositoryRoot, runStateDir)
-			if err != nil {
-				fatal(err)
-			}
-			if validatedState != reviewedState {
-				fatal(fmt.Errorf(
-					"local validation changed the approved workspace: before %s/%s, after %s/%s",
-					reviewedState.Head,
-					reviewedState.Fingerprint,
-					validatedState.Head,
-					validatedState.Fingerprint,
-				))
-			}
-			printOutcome(action, pass, result, blockers)
-
-			return
-		case actionHuman:
-			printOutcome(action, pass, result, blockers)
-			os.Exit(exitHumanDecision)
-		case actionAutoFix:
-			if strings.TrimSpace(fixCmd) == "" {
-				printOutcome(action, pass, result, blockers)
-				os.Exit(exitAutoFixRequired)
-			}
-			if pass == maxPasses {
-				fmt.Fprintf(os.Stderr, "review-loop: maximum passes reached with %d blocking finding(s)\n", len(blockers))
-				printOutcome(actionHuman, pass, result, blockers)
-				os.Exit(exitHumanDecision)
-			}
-
-			findingsPath := filepath.Join(runStateDir, fmt.Sprintf("fix-%d.json", pass))
-			if err := writeFindings(findingsPath, blockers); err != nil {
-				fatal(err)
-			}
-			fixerFindingsPath, fixerResultPath, err := stageCandidateAgentInputs(
-				repositoryRoot,
-				filepath.Base(runStateDir),
-				pass,
-				findingsPath,
-				resultPath,
-			)
-			if err != nil {
-				fatal(fmt.Errorf("staging candidate-local fixer inputs: %w", err))
-			}
-			fixerInputs, err := captureFileSnapshots(fixerFindingsPath, fixerResultPath)
-			if err != nil {
-				fatal(fmt.Errorf("capturing immutable fixer inputs: %w", err))
-			}
-
-			fmt.Printf("==> review-loop: auto-fix %d blocking finding(s)\n", len(blockers))
-			if err := runner.run("fix", fixCmd, map[string]string{
-				"AI_REVIEW_PASS":     strconv.Itoa(pass),
-				"AI_REVIEW_FINDINGS": fixerFindingsPath,
-				"AI_REVIEW_RESULT":   fixerResultPath,
-			}); err != nil {
-				fatal(fmt.Errorf("fix command failed: %w", err))
-			}
-			if err := verifyFileSnapshotsUnchanged(fixerInputs); err != nil {
-				fatal(fmt.Errorf("fix command changed immutable review state: %w", err))
-			}
-
-			fmt.Println("==> review-loop: validation after auto-fix")
-			if err := validationReceipts.executeAndRecord(runner, validationCmd, validationEnv, runStateDir); err != nil {
-				fatal(fmt.Errorf("validation failed after auto-fix: %w", err))
-			}
-			previousResult = fixerResultPath
-			previous := result
-			previousReview = &previous
-		}
+	result, err := loadReviewResult(resultPath)
+	if err != nil {
+		fail(exitError, "REVIEW_FAILED", err)
+	}
+	if err := validateReviewTarget(result, reviewedState); err != nil {
+		fail(exitError, "REVIEW_FAILED", err)
+	}
+	hasFindings, err := classifyReview(result)
+	if err != nil {
+		fail(exitError, "REVIEW_FAILED", err)
+	}
+	fmt.Printf("Final review result: %s\n", resultPath)
+	printOutcome(result, hasFindings)
+	if hasFindings {
+		os.Exit(exitFindings)
 	}
 }
 
-func decide(result reviewResult) (loopAction, []finding, error) {
-	var blockers []finding
-	for index, item := range result.Findings {
-		if item.Blocking == nil || item.AutoFixable == nil {
-			return "", nil, fmt.Errorf("finding %d is missing explicit blocking flags", index+1)
-		}
-		if *item.Blocking {
-			blockers = append(blockers, item)
-		}
+func validateKnownFindingsSnapshot(content []byte, prNumber int, expectedHead string) error {
+	var snapshot knownFindingsSnapshot
+	if err := json.Unmarshal(content, &snapshot); err != nil {
+		return fmt.Errorf("decoding known-findings snapshot: %w", err)
+	}
+	if snapshot.Version != 1 || snapshot.PRNumber != prNumber || snapshot.Head != expectedHead || snapshot.Findings == nil {
+		return errors.New("known-findings snapshot target mismatch")
 	}
 
+	return nil
+}
+
+func classifyReview(result reviewResult) (bool, error) {
+	humanDecision := strings.TrimSpace(*result.HumanDecisionContext) != ""
 	switch result.Decision {
 	case "APPROVE":
-		if len(blockers) != 0 {
-			return "", nil, errors.New("review result is inconsistent: APPROVE contains blocking findings")
+		if len(result.Findings) != 0 || humanDecision {
+			return false, errors.New("review result is inconsistent: APPROVE contains findings or human-decision context")
 		}
 
-		return actionReady, nil, nil
-	case "HUMAN_DECISION_REQUIRED":
-		return actionHuman, blockers, nil
-	case "REQUEST_CHANGES":
-		if len(blockers) == 0 {
-			return "", nil, errors.New("review result is inconsistent: REQUEST_CHANGES has no blocking findings")
-		}
-		for _, item := range blockers {
-			if !*item.AutoFixable {
-				return actionHuman, blockers, nil
-			}
+		return false, nil
+	case "FINDINGS":
+		if len(result.Findings) == 0 && !humanDecision {
+			return false, errors.New("review result is inconsistent: FINDINGS contains no findings or human-decision context")
 		}
 
-		return actionAutoFix, blockers, nil
+		return true, nil
 	default:
-		return "", nil, fmt.Errorf("unknown review decision %q", result.Decision)
+		return false, fmt.Errorf("unknown review decision %q", result.Decision)
 	}
 }
 
@@ -371,16 +315,13 @@ func loadReviewResult(path string) (reviewResult, error) {
 	if result.Findings == nil {
 		return reviewResult{}, errors.New("review result must include the findings array")
 	}
-	if result.PreviousFindings == nil {
-		return reviewResult{}, errors.New("review result must include the previous_findings array")
-	}
 	if result.KnownFindings == nil {
 		return reviewResult{}, errors.New("review result must include the known_findings array")
 	}
 	if result.HumanDecisionContext == nil {
 		return reviewResult{}, errors.New("review result must include human_decision_context")
 	}
-	if !oneOf(result.Decision, "APPROVE", "REQUEST_CHANGES", "HUMAN_DECISION_REQUIRED") {
+	if !oneOf(result.Decision, "APPROVE", "FINDINGS") {
 		return reviewResult{}, fmt.Errorf("invalid decision %q", result.Decision)
 	}
 	if !oneOf(result.ResidualRisk, "LOW", "MEDIUM", "HIGH") {
@@ -394,8 +335,8 @@ func loadReviewResult(path string) (reviewResult, error) {
 		if item.Location == nil {
 			return reviewResult{}, fmt.Errorf("finding %d is missing location", index+1)
 		}
-		if item.Blocking == nil || item.AutoFixable == nil {
-			return reviewResult{}, fmt.Errorf("finding %d is missing explicit blocking flags", index+1)
+		if item.Blocking == nil {
+			return reviewResult{}, fmt.Errorf("finding %d is missing explicit blocking flag", index+1)
 		}
 		if !oneOf(item.Severity, "P0", "P1", "P2", "P3") {
 			return reviewResult{}, fmt.Errorf("finding %d has invalid severity %q", index+1, item.Severity)
@@ -404,19 +345,6 @@ func loadReviewResult(path string) (reviewResult, error) {
 			return reviewResult{}, fmt.Errorf("duplicate finding id %q", item.ID)
 		}
 		findingIDs[item.ID] = item
-	}
-	previousIDs := make(map[string]struct{}, len(result.PreviousFindings))
-	for index, item := range result.PreviousFindings {
-		if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.Reason) == "" {
-			return reviewResult{}, fmt.Errorf("previous finding %d is missing required fields", index+1)
-		}
-		if !oneOf(item.Status, "FIXED", "STILL_VALID", "OUTDATED") {
-			return reviewResult{}, fmt.Errorf("previous finding %d has invalid status %q", index+1, item.Status)
-		}
-		if _, exists := previousIDs[item.ID]; exists {
-			return reviewResult{}, fmt.Errorf("duplicate previous finding id %q", item.ID)
-		}
-		previousIDs[item.ID] = struct{}{}
 	}
 	knownIDs := make(map[string]struct{}, len(result.KnownFindings))
 	for index, item := range result.KnownFindings {
@@ -448,57 +376,17 @@ func loadReviewResult(path string) (reviewResult, error) {
 	knownNeedsHuman := slices.ContainsFunc(result.KnownFindings, func(item knownFinding) bool {
 		return item.Status == "HUMAN_DECISION_REQUIRED"
 	})
-	if knownNeedsHuman && result.Decision != "HUMAN_DECISION_REQUIRED" {
-		return reviewResult{}, errors.New("known finding requires HUMAN_DECISION_REQUIRED")
+	if knownNeedsHuman && result.Decision != "FINDINGS" {
+		return reviewResult{}, errors.New("known finding requiring a human decision requires FINDINGS")
 	}
-	if result.Decision == "HUMAN_DECISION_REQUIRED" && strings.TrimSpace(*result.HumanDecisionContext) == "" {
-		return reviewResult{}, errors.New("HUMAN_DECISION_REQUIRED must include human_decision_context")
+	if knownNeedsHuman && strings.TrimSpace(*result.HumanDecisionContext) == "" {
+		return reviewResult{}, errors.New("known finding requiring a human decision must include human_decision_context")
 	}
-	if result.Decision != "HUMAN_DECISION_REQUIRED" && *result.HumanDecisionContext != "" {
-		return reviewResult{}, errors.New("human_decision_context must be empty unless the decision is HUMAN_DECISION_REQUIRED")
+	if result.Decision == "APPROVE" && *result.HumanDecisionContext != "" {
+		return reviewResult{}, errors.New("human_decision_context must be empty when the decision is APPROVE")
 	}
 
 	return result, nil
-}
-
-func validatePreviousFindings(result reviewResult, previous *reviewResult) error {
-	if previous == nil {
-		if len(result.PreviousFindings) != 0 {
-			return errors.New("first review must use an empty previous_findings array")
-		}
-
-		return nil
-	}
-
-	previousIDs := make(map[string]struct{}, len(previous.Findings))
-	for _, item := range previous.Findings {
-		previousIDs[item.ID] = struct{}{}
-	}
-	if len(result.PreviousFindings) != len(previousIDs) {
-		return fmt.Errorf("re-review classified %d previous findings, expected %d", len(result.PreviousFindings), len(previousIDs))
-	}
-	currentIDs := make(map[string]struct{}, len(result.Findings))
-	for _, item := range result.Findings {
-		currentIDs[item.ID] = struct{}{}
-	}
-	for _, item := range result.PreviousFindings {
-		if _, exists := previousIDs[item.ID]; !exists {
-			return fmt.Errorf("previous finding classification references unknown id %q", item.ID)
-		}
-		_, stillReported := currentIDs[item.ID]
-		switch item.Status {
-		case "STILL_VALID":
-			if !stillReported {
-				return fmt.Errorf("previous finding %q is STILL_VALID but is absent from current findings", item.ID)
-			}
-		case "FIXED", "OUTDATED":
-			if stillReported {
-				return fmt.Errorf("previous finding %q is %s but is still present in current findings", item.ID, item.Status)
-			}
-		}
-	}
-
-	return nil
 }
 
 func oneOf(value string, allowed ...string) bool {
@@ -648,101 +536,6 @@ func verifyFileUnchanged(path string, expected []byte) error {
 	return nil
 }
 
-func stageCandidateAgentInputs(
-	repositoryRoot string,
-	runID string,
-	pass int,
-	findingsSource string,
-	reviewSource string,
-) (string, string, error) {
-	findings, err := os.ReadFile(findingsSource)
-	if err != nil {
-		return "", "", fmt.Errorf("reading fixer findings: %w", err)
-	}
-	review, err := os.ReadFile(reviewSource)
-	if err != nil {
-		return "", "", fmt.Errorf("reading fixer review result: %w", err)
-	}
-
-	relativeDirectory := filepath.Join(
-		"build",
-		"ai-review-loop",
-		"agent-inputs",
-		runID,
-		fmt.Sprintf("pass-%d", pass),
-	)
-	if !filepath.IsLocal(relativeDirectory) {
-		return "", "", errors.New("candidate-local agent input path is not local")
-	}
-	root, err := os.OpenRoot(repositoryRoot)
-	if err != nil {
-		return "", "", fmt.Errorf("opening candidate root for agent inputs: %w", err)
-	}
-	defer func() {
-		_ = root.Close() // The staging result takes precedence over best-effort descriptor cleanup.
-	}()
-	if err := root.MkdirAll(relativeDirectory, 0o700); err != nil {
-		return "", "", fmt.Errorf("creating candidate-local agent input directory: %w", err)
-	}
-
-	findingsRelative := filepath.Join(relativeDirectory, "findings.json")
-	reviewRelative := filepath.Join(relativeDirectory, "review.json")
-	if err := writeExclusiveRootFile(root, findingsRelative, findings); err != nil {
-		return "", "", fmt.Errorf("writing candidate-local fixer findings: %w", err)
-	}
-	if err := writeExclusiveRootFile(root, reviewRelative, review); err != nil {
-		return "", "", fmt.Errorf("writing candidate-local fixer review result: %w", err)
-	}
-
-	return filepath.Join(repositoryRoot, findingsRelative), filepath.Join(repositoryRoot, reviewRelative), nil
-}
-
-func writeExclusiveRootFile(root *os.Root, path string, content []byte) error {
-	file, err := root.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return err
-	}
-	written, writeErr := file.Write(content)
-	closeErr := file.Close()
-	if writeErr != nil && closeErr != nil {
-		return errors.Join(writeErr, closeErr)
-	}
-	if writeErr != nil {
-		return writeErr
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	if written != len(content) {
-		return io.ErrShortWrite
-	}
-
-	return nil
-}
-
-func captureFileSnapshots(paths ...string) ([]fileSnapshot, error) {
-	snapshots := make([]fileSnapshot, 0, len(paths))
-	for _, path := range paths {
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", path, err)
-		}
-		snapshots = append(snapshots, fileSnapshot{path: path, content: content})
-	}
-
-	return snapshots, nil
-}
-
-func verifyFileSnapshotsUnchanged(snapshots []fileSnapshot) error {
-	for _, snapshot := range snapshots {
-		if err := verifyFileUnchanged(snapshot.path, snapshot.content); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func captureWorkspaceState(repositoryRoot string, excludedPaths ...string) (workspaceState, error) {
 	headBytes, err := gitOutput(repositoryRoot, "rev-parse", "HEAD")
 	if err != nil {
@@ -882,29 +675,24 @@ func validateReviewTarget(result reviewResult, expected workspaceState) error {
 	return nil
 }
 
-func writeFindings(path string, findings []finding) error {
-	content, err := json.MarshalIndent(struct {
-		Findings []finding `json:"findings"`
-	}{Findings: findings}, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encoding fix findings: %w", err)
+func printOutcome(result reviewResult, hasFindings bool) {
+	outcome := "APPROVE"
+	if hasFindings {
+		outcome = "FINDINGS"
 	}
-	if err := os.WriteFile(path, append(content, '\n'), 0o644); err != nil {
-		return fmt.Errorf("writing fix findings: %w", err)
-	}
-
-	return nil
-}
-
-func printOutcome(action loopAction, pass int, result reviewResult, blockers []finding) {
-	fmt.Printf("\nREVIEW_LOOP_RESULT: %s\n", action)
-	fmt.Printf("Passes: %d\n", pass)
+	fmt.Printf("\nREVIEW_LOOP_RESULT: %s\n", outcome)
 	fmt.Printf("Head reviewed: %s\n", result.Head)
-	fmt.Printf("Blocking findings: %d\n", len(blockers))
+	fmt.Printf("Actionable findings: %d\n", len(result.Findings))
 	fmt.Printf("Residual risk: %s\n", result.ResidualRisk)
 	if result.HumanDecisionContext != nil && *result.HumanDecisionContext != "" {
 		fmt.Printf("Human decision context: %s\n", *result.HumanDecisionContext)
 	}
+}
+
+func fail(status int, result string, err error) {
+	fmt.Fprintf(os.Stderr, "review-loop: %v\n", err)
+	fmt.Printf("REVIEW_LOOP_RESULT: %s\n", result)
+	os.Exit(status)
 }
 
 func fatal(err error) {

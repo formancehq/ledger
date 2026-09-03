@@ -36,14 +36,10 @@ func TestRecoveryDiscoversInterruptedCandidateWithOrdinaryGit(t *testing.T) {
 	require.Contains(t, runGitOutput(t, inspection, "branch", "--contains", candidateSHA), "interrupted-candidate")
 }
 
-func TestRecoveryRequiresFreshReviewAndDoesNotReuseOldReceipt(t *testing.T) {
+func TestRecoveryStartsAFreshLinearInvocation(t *testing.T) {
 	t.Parallel()
 
 	fixture := newLauncherFixture(t)
-	staleReceipt := filepath.Join(fixture.checkout, "build", "ai-review-loop", "review-1.json")
-	require.NoError(t, os.MkdirAll(filepath.Dir(staleReceipt), 0o755))
-	require.NoError(t, os.WriteFile(staleReceipt, []byte(`{"decision":"APPROVE"}`), 0o644))
-
 	firstCapture := filepath.Join(fixture.root, "first-recovery-review")
 	firstOutput, firstErr := runLauncher(t, fixture, firstCapture)
 	require.NoError(t, firstErr, firstOutput)
@@ -56,5 +52,4 @@ func TestRecoveryRequiresFreshReviewAndDoesNotReuseOldReceipt(t *testing.T) {
 	require.NotEqual(t, capturedArgument(t, firstCapture, "--state-dir"), capturedArgument(t, secondCapture, "--state-dir"))
 	require.Contains(t, capturedArgument(t, firstCapture, "--review-cmd"), "ai-review-codex")
 	require.Contains(t, capturedArgument(t, secondCapture, "--review-cmd"), "ai-review-codex")
-	require.FileExists(t, staleReceipt, "recovery must neither trust nor rewrite unrelated historical state")
 }

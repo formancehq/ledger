@@ -353,10 +353,8 @@ func TestConcurrentPRRunsUseDistinctWorktreesAndValidationDirs(t *testing.T) {
 	require.NotEqual(t, secondCandidate, secondValidation)
 	require.Equal(t, canonicalTestPath(t, fixture.candidate), strings.TrimSpace(readTestFile(t, firstCWD)))
 	require.Equal(t, canonicalTestPath(t, secondCandidate), strings.TrimSpace(readTestFile(t, secondCWD)))
-	require.Contains(t, result.Output["PR 123"], "VALIDATION_EXECUTED reason=no_successful_receipt")
-	require.Contains(t, result.Output["PR 456"], "VALIDATION_EXECUTED reason=no_successful_receipt")
-	require.NotContains(t, result.Output["PR 123"], "VALIDATION_REUSED_EXACT_STATE")
-	require.NotContains(t, result.Output["PR 456"], "VALIDATION_REUSED_EXACT_STATE")
+	require.Contains(t, result.Output["PR 123"], "WORKTREE_BINDING_GATE=PASS role=validation")
+	require.Contains(t, result.Output["PR 456"], "WORKTREE_BINDING_GATE=PASS role=validation")
 	require.NoFileExists(t, outerGuardMarker, "the enclosing AI run's Git guard must never execute")
 }
 
@@ -471,7 +469,7 @@ case "${TEST_ROOT_MUTATION:-}" in
         ;;
     guard-read) git -C "$TRUSTED_ROOT_CHECKOUT" status --short >/dev/null ;;
 esac
-printf '{"decision":"APPROVE","head":"%s","worktree_fingerprint":"%s","previous_findings":[],"known_findings":[],"findings":[],"residual_risk":"LOW","human_decision_context":""}\n' \
+printf '{"decision":"APPROVE","head":"%s","worktree_fingerprint":"%s","known_findings":[],"findings":[],"residual_risk":"LOW","human_decision_context":""}\n' \
     "$AI_REVIEW_HEAD" "$AI_REVIEW_WORKTREE_FINGERPRINT" > "$AI_REVIEW_RESULT"
 `), 0o755))
 
@@ -526,8 +524,6 @@ func (fixture worktreeBindingFixture) command(
 		"--git-guard", fixture.guard,
 		"--review-cmd", "bash " + shellQuote(fixture.reviewer),
 		"--validation-cmd", "true",
-		"--validation-gates-cmd", "printf 'fixture-gate\\n'",
-		"--validation-tool-root", fixture.root,
 		"--state-dir", filepath.Join(candidate, ".review-state"),
 	}
 	command := exec.Command(fixture.binary, arguments...)

@@ -67,7 +67,7 @@ Apple workstation. They are comparative evidence, not performance budgets:
 | Focused race tests | 2.7-28.4s in representative packages | `Tests` overlap | Regression and affected behavior | `KEEP_LOCAL` when affected |
 | Full root race fallback | 7m32s warm end to end | `Tests` and coverage overlap | Useful only for unknown/high-risk changes | `MOVE_TO_CI` by default |
 | Exact review | Provider-dependent | Human review is independent | Candidate intent and exact bytes | `KEEP_LOCAL` |
-| Unchanged rereview/validation | Provider-dependent | No | None after mechanical identity proof | `REMOVE` or reuse same-run receipt |
+| Repeated review/validation | Provider-dependent | No | None in the linear workflow | `REMOVE` |
 | Target/head revalidation and leased push | Seconds | Merge protection is additive | Fresh base and exact publication identity | `KEEP_LOCAL` |
 
 Two detached worktrees at the same target SHA also completed concurrent lint
@@ -120,26 +120,27 @@ graph or generated-output dependency engine.
 The focused regression that demonstrates a real bug remains local evidence.
 The selector supplements that evidence; it does not invent or replace it.
 
-## Fixpoint and workflow DAG
+## Linear workflow DAG
 
 One normalization pass is followed by at most one replay on the resulting
-state. A clean replay proves the fixpoint. The exact review's successful
-same-state validation is reused within the same review-loop process. The
-publication path does not add another identical last-mile pre-commit pass when
-HEAD and worktree state are unchanged.
+state. A clean replay proves the fixpoint. The committed candidate then receives
+one proportional validation followed by one exact final review. The publication
+path does not add another identical last-mile validation when HEAD and worktree
+state are unchanged.
 
 ```mermaid
 flowchart LR
     A[Fetch and bind target/head] --> B[Focused reproduction or regression]
     B --> C[Applicable normalization]
     C --> D[Exact candidate commit]
-    D --> E[Exact review]
-    E --> F[Targeted agent-check-pr]
-    F --> G[Revalidate target and remote head]
-    G --> H[Leased push]
-    H --> I[Clean CI in parallel with human review]
-    I --> J[Required checks and approval]
-    J --> K[Merge]
+    D --> E[Targeted agent-check-pr]
+    E --> F[Collect unresolved GitHub findings]
+    F --> G[Exact final review]
+    G --> H[Revalidate target and remote head]
+    H --> I[Leased push]
+    I --> J[Clean CI in parallel with human review]
+    J --> K[Required checks and approval]
+    K --> L[Merge]
 ```
 
 An existing PR's CI starts from its first push while local review proceeds.

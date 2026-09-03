@@ -38,9 +38,9 @@ classify every supplied id exactly once as:
 - `HUMAN_DECISION_REQUIRED`.
 
 A `STILL_VALID` item is also emitted as an actionable blocking finding with the
-same id. A human-decision classification forces the corresponding overall
-decision. The reviewer adapter validates complete id coverage mechanically.
+same id. A human-decision classification forces `FINDINGS` and a non-empty
+`human_decision_context`. The reviewer adapter validates complete id coverage
+mechanically.
 
-The collection is run-local evidence. It is not a durable receipt, is never
-reused by a later invocation, and does not resolve threads or write GitHub
-state.
+The collection is run-local evidence, is never reused by a later invocation,
+and does not resolve threads or write GitHub state.

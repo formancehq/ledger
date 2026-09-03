@@ -132,19 +132,19 @@ If no manifest matches, first decide whether the requested correctness scope is 
 
 Do not use `ai-audit` for:
 
-- pull-request review, which follows the AI code review and re-review workflow below;
+- pull-request review, which follows the AI final-review workflow below;
 - diagnosis or implementation of one concrete known bug;
 - routine performance analysis, benchmark work, CI timing analysis, or diagnosis of one tooling failure, unless the work is intentionally being promoted into a reusable correctness domain.
 
 `ai-audit` runs a read-only, manifest-scoped provider pass and binds its structured report to an exact clean `HEAD`; `ai-audit-challenge` independently qualifies that report at the same clean `HEAD`. Their contracts prohibit code fixes, commits, pushes, comments, issue creation, and GitHub metadata changes; structured reports are their only intended writes.
 
-### AI code review and re-review
+### AI final review
 
-Read `docs/technical/contributing/ai-review.md` before reviewing a pull request or reviewing fixes to previous findings.
+Read `docs/technical/contributing/ai-review.md` before reviewing a pull request or fixes to previous findings.
 
 For a significant technical decision, also read `docs/technical/contributing/product-technical-traceability.md` and use the documented need/requirement as review intent. If that chain is missing or conflicting, do not infer it from implementation details; surface a human-decision question.
 
-Load the subsystem documentation for the behavior changed by the PR, but do not preload unrelated documentation. Findings must follow the review contract: concrete evidence, explicit severity and blocking status, no style-only noise, and a compressed final decision. On re-review, start from the current HEAD and classify previous findings as fixed, still valid, or outdated before reporting new issues.
+Load the subsystem documentation for the behavior changed by the PR, but do not preload unrelated documentation. Findings must follow the review contract: concrete evidence, explicit severity and blocking status, no style-only noise, and a compressed final decision. After fixes, start a fresh invocation against the new exact candidate.
 
 ### API changes
 

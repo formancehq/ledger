@@ -5,16 +5,14 @@ usage() {
     cat <<'EOF'
 Usage: bash scripts/ai-pr-loop <pr-number-or-url> [--keep-worktree] [--push]
 
-Creates an isolated git worktree for the PR head, runs the base-pinned
-bugfix-evidence gate when applicable, collects current unresolved GitHub
-findings once, and runs the bounded Codex review -> Claude fix -> validation ->
-re-review loop against the PR base branch. The technical reviewer receives the
-GitHub findings directly as untrusted context.
+Creates an isolated git worktree for the exact PR head, runs the base-pinned
+bugfix-evidence gate when applicable, performs one proportional validation,
+collects current unresolved GitHub findings once, and runs one exact final
+technical review. The workflow never launches a fixer or retries the review.
 
-By default the launcher never commits or pushes. With --push, fixes are
-committed locally, that exact clean commit is reviewed once more, and it
-is pushed only if the remote PR branch still equals the SHA observed at
-startup. The launcher never comments, resolves threads, closes, or merges.
+By default the launcher never pushes. With --push, the exact approved candidate
+is pushed only if the remote PR branch still equals the SHA observed at startup.
+The launcher never comments, resolves threads, closes, or merges.
 
 If the target branch has advanced beyond the PR's GitHub-reported base SHA,
 the launcher stops before review with AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED
@@ -255,25 +253,10 @@ if ! bash "$bugfix_gate" evidence "$worktree_run_dir/bugfix-evidence.txt" "$inte
 fi
 
 known_findings="$worktree_run_dir/known-findings.json"
-if ! bash "$known_findings_tool" "$pr_number" --head "$head_sha" --output "$known_findings"; then
-    echo "AI_PR_LOOP_RESULT: ERROR (known findings collection failed)"
-    exit 1
-fi
-if ! jq -e --argjson pr "$pr_number" --arg head "$head_sha" \
-    '.version == 1 and .pr_number == $pr and .head == $head and (.findings | type == "array")' \
-    "$known_findings" >/dev/null; then
-    echo "AI_PR_LOOP_RESULT: ERROR (known findings target mismatch)"
-    exit 1
-fi
-printf '==> ai-pr-loop: %s unresolved GitHub review finding(s)\n' "$(jq '.findings | length' "$known_findings")"
-printf '    known findings: %s\n' "$known_findings"
-# One immutable collection is passed directly to the technical reviewer. No
-# separate provider is invoked to reconcile it.
 export AI_REVIEW_KNOWN_FINDINGS="$known_findings"
 export AI_REVIEW_KNOWN_FINDINGS_PR="$pr_number"
 export AI_REVIEW_KNOWN_FINDINGS_HEAD="$head_sha"
 export AI_REVIEW_CONTEXT="$metadata_file"
-known_findings_digest=$(git hash-object -- "$known_findings")
 review_context_digest=$(git hash-object -- "$metadata_file")
 
 if ! command -v nix >/dev/null 2>&1; then
@@ -302,7 +285,6 @@ nix develop "path:$trusted_tool_worktree" --command \
     -o "$review_loop_binary" ./scripts/reviewloop
 review_loop=("$review_loop_binary")
 printf -v review_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-review-codex"
-fix_cmd='bash scripts/ai-fix-claude'
 # review-loop executes validation through `bash -c`. Quote every base-pinned
 # path so spaces or shell metacharacters cannot change the command.
 printf -v quoted_run_dir %q "$validation_run_dir"
@@ -313,21 +295,9 @@ printf -v validation_program \
     "$quoted_validation_env" "$quoted_run_dir" "$quoted_validation_tool"
 printf -v validation_cmd 'env -u GOROOT nix develop %q --command bash -c %q' \
     "path:$trusted_tool_worktree" "$validation_program"
-printf -v validation_gates_cmd 'bash %s %s bash %s --list' \
-    "$quoted_validation_env" "$quoted_run_dir" "$quoted_validation_tool"
-if [[ "$push_changes" == "true" ]]; then
-    # Publication additionally base-pins the mutating fixer.
-    for trusted_tool in ai-fix-claude; do
-        trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
-        # Every adapter in this set is invoked explicitly through bash below.
-        # Its executable bit is therefore not part of the trust boundary.
-        if [[ -L "$trusted_tool_path" || ! -f "$trusted_tool_path" || ! -r "$trusted_tool_path" ]]; then
-            echo "ai-pr-loop: trusted base does not provide readable non-symlink regular file scripts/$trusted_tool" >&2
-            exit 1
-        fi
-    done
-    printf -v fix_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-fix-claude"
-fi
+printf -v known_findings_cmd \
+    'bash %q %q --head %q --output %q && printf "==> ai-pr-loop: %%s unresolved GitHub review finding(s)\\n" "$(jq ".findings | length" %q)"' \
+    "$known_findings_tool" "$pr_number" "$head_sha" "$known_findings" "$known_findings"
 
 printf '==> ai-pr-loop: PR #%s\n' "$pr_number"
 printf '    URL: %s\n' "$pr_url"
@@ -341,7 +311,7 @@ if [[ "$push_changes" == "true" ]]; then
     echo "    publish: guarded commit + push enabled"
 fi
 
-run_full_loop() {
+run_final_review() {
     env -C "$worktree" "${review_loop[@]}" \
         --base "$base_sha" \
         --pr "$pr_number" \
@@ -350,42 +320,18 @@ run_full_loop() {
         --trusted-root "$trusted_root_checkout" \
         --binding-file "$binding_file" \
         --validation-run-dir "$validation_run_dir" \
-        --validation-tool-root "$trusted_tool_worktree" \
-        --git-guard "$trusted_tool_worktree/scripts/ai-git-guard" \
-        --state-dir "$worktree_run_dir/review-state" \
-        --review-cmd "$review_cmd" \
-        --fix-cmd "$fix_cmd" \
-        --validation-cmd "$validation_cmd" \
-        --validation-gates-cmd "$validation_gates_cmd"
-}
-
-run_commit_review() {
-    env -C "$worktree" "${review_loop[@]}" \
-        --base "$base_sha" \
-        --pr "$pr_number" \
-        --worktree "$worktree" \
-        --expected-head "$expected_worktree_head" \
-        --trusted-root "$trusted_root_checkout" \
-        --binding-file "$binding_file" \
-        --validation-run-dir "$validation_run_dir" \
-        --validation-tool-root "$trusted_tool_worktree" \
         --git-guard "$trusted_tool_worktree/scripts/ai-git-guard" \
         --state-dir "$worktree_run_dir/review-state" \
         --review-cmd "$review_cmd" \
         --validation-cmd "$validation_cmd" \
-        --validation-gates-cmd "$validation_gates_cmd"
+        --known-findings-cmd "$known_findings_cmd" \
+        --known-findings-file "$known_findings"
 }
 
-# Reviewer and fixer agents run with the ledger bound to every pass. Neither may
-# rewrite it, so a run whose ledger moved cannot be reported as reviewed.
+# The final reviewer runs with immutable task context. A run whose context moved
+# cannot be reported as reviewed.
 verify_review_inputs() {
     local current_digest
-    current_digest=$(git hash-object -- "$known_findings")
-    if [[ "$current_digest" != "$known_findings_digest" ]]; then
-        echo "ai-pr-loop: known-findings ledger changed while agents were running" >&2
-
-        return 1
-    fi
     current_digest=$(git hash-object -- "$metadata_file")
     if [[ "$current_digest" != "$review_context_digest" ]]; then
         echo "ai-pr-loop: review context changed while agents were running" >&2
@@ -412,7 +358,7 @@ verify_remote_pr_head() {
 }
 
 set +e
-run_full_loop
+run_final_review
 loop_status=$?
 set -e
 
@@ -432,31 +378,31 @@ fi
 echo
 case "$loop_status" in
     0)
-        # A startup check cannot authorize a readiness decision after a long
-        # review/validation pass. In publish mode this is only an intermediate
-        # approval; final readiness is deferred until publication completes.
+        # A startup check cannot authorize readiness after validation and review.
         revalidate_target_or_exit
         if [[ "$push_changes" == "false" ]]; then
             echo "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW"
         else
-            echo "AI_PR_LOOP_REVIEW_RESULT: APPROVED_FOR_CANDIDATE_CREATION"
+            echo "AI_PR_LOOP_REVIEW_RESULT: APPROVE"
         fi
         ;;
-    2) echo "AI_PR_LOOP_RESULT: HUMAN_DECISION_REQUIRED" ;;
-    *) echo "AI_PR_LOOP_RESULT: ERROR (review-loop exit $loop_status)" ;;
+    2)
+        echo "AI_PR_LOOP_REVIEW_RESULT: FINDINGS"
+        echo "AI_PR_LOOP_RESULT: NOT_READY"
+        echo "Candidate worktree preserved for engineering fixes: $worktree"
+        keep_worktree=true
+        ;;
+    4) echo "AI_PR_LOOP_RESULT: VALIDATION_FAILED" ;;
+    *) echo "AI_PR_LOOP_RESULT: REVIEW_FAILED" ;;
 esac
 
 if [[ "$loop_status" -ne 0 ]]; then
-    if [[ -n "$(git status --porcelain)" ]]; then
-        echo "Worktree contains fixes to inspect: $worktree"
-        keep_worktree=true
-    fi
     exit "$loop_status"
 fi
 
 if [[ "$push_changes" == "false" ]]; then
     if [[ -n "$(git status --porcelain)" ]]; then
-        echo "Worktree contains fixes to inspect: $worktree"
+        echo "Candidate worktree is dirty; preserved for inspection: $worktree"
         keep_worktree=true
     else
         echo "Worktree is clean."
@@ -464,53 +410,8 @@ if [[ "$push_changes" == "false" ]]; then
     exit 0
 fi
 
-if [[ -z "$(git status --porcelain)" ]]; then
-    echo "No local fixes to publish; remote PR branch is unchanged."
-    echo "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW"
-    echo "AI_PR_LOOP_PUSH_RESULT: NO_CHANGES"
-    exit 0
-fi
-
-# The technical loop approved and validated this exact dirty state. Commit its
-# bytes directly; replaying normalization here would duplicate the successful
-# post-fix pre-commit. The committed candidate's exact review runs the selector
-# once more and is the fixpoint proof for the publication SHA.
-git add -A
-if git diff --cached --quiet; then
-    echo "ai-pr-loop: worktree reported changes but nothing is staged" >&2
-    keep_worktree=true
-    exit 1
-fi
-git diff --cached --check
-
-git commit -m "fix: address AI review findings"
 candidate_sha=$(git rev-parse HEAD)
-expected_worktree_head=$candidate_sha
-write_candidate_binding "$expected_worktree_head"
 printf '==> ai-pr-loop: candidate commit %s\n' "$candidate_sha"
-
-# Do not spend or trust an exact candidate review against a target that moved
-# while the technical loop prepared the candidate.
-revalidate_target_or_exit "$candidate_sha"
-
-set +e
-run_commit_review
-commit_review_status=$?
-set -e
-
-if ! verify_review_inputs; then
-    echo "AI_PR_LOOP_PUSH_RESULT: REFUSED (review inputs modified)"
-    echo "Candidate worktree preserved for inspection: $worktree"
-    keep_worktree=true
-    exit 1
-fi
-
-if [[ "$commit_review_status" -ne 0 ]]; then
-    echo "AI_PR_LOOP_PUSH_RESULT: REFUSED (candidate commit was not approved)"
-    echo "Candidate worktree preserved for inspection: $worktree"
-    keep_worktree=true
-    exit "$commit_review_status"
-fi
 
 # An exact review only becomes publication-authorizing evidence while the
 # immutable target snapshot is still current.
