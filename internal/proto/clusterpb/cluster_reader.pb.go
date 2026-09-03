@@ -1029,6 +1029,10 @@ func NewNodeTimeListReader(s []*NodeTime) NodeTimeListReader { return nodeTimeLi
 type VolumeUsageReader interface {
 	GetUsedBytes() uint64
 	GetTotalBytes() uint64
+	GetObservedAtUs() uint64
+	GetSampleAgeMs() uint64
+	GetValid() bool
+	GetError() string
 	Mutate() *VolumeUsage
 }
 
@@ -1040,6 +1044,22 @@ func (r *volumeUsageReadonly) GetUsedBytes() uint64 {
 
 func (r *volumeUsageReadonly) GetTotalBytes() uint64 {
 	return (*VolumeUsage)(r).GetTotalBytes()
+}
+
+func (r *volumeUsageReadonly) GetObservedAtUs() uint64 {
+	return (*VolumeUsage)(r).GetObservedAtUs()
+}
+
+func (r *volumeUsageReadonly) GetSampleAgeMs() uint64 {
+	return (*VolumeUsage)(r).GetSampleAgeMs()
+}
+
+func (r *volumeUsageReadonly) GetValid() bool {
+	return (*VolumeUsage)(r).GetValid()
+}
+
+func (r *volumeUsageReadonly) GetError() string {
+	return (*VolumeUsage)(r).GetError()
 }
 
 func (r *volumeUsageReadonly) Mutate() *VolumeUsage {

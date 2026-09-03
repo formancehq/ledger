@@ -33,12 +33,20 @@ ledgerctl cluster disk-usage --json
 ```
 
 Pod exec deliberately reuses the Ledger container's cluster token, TLS CA,
-headless DNS identity, and transport mode. The JSON response carries local WAL
-and data used/total bytes. The operator evaluates the highest utilization seen
-across replicas. A failed measurement cannot turn an otherwise-below-threshold
-sample into a healthy verdict; it causes a warning and a short retry. If any
-reachable replica is already over the threshold, expansion can proceed despite
-another failed sample.
+headless DNS identity, and transport mode. For each local WAL and data volume,
+the JSON response carries the last known used/total bytes, `valid`,
+`sampleAgeMs`, `observedAtUs`, and an optional diagnostic `error`. The operator
+uses only the selected volume's validity and server-computed age for its
+decision, avoiding clock-skew-sensitive timestamp arithmetic. It rejects a
+sample that is invalid, older than one minute, lacks an observation timestamp,
+or reports zero total bytes. `observedAtUs` and `error` are diagnostic and must
+not be parsed as decision state.
+
+The operator evaluates the highest valid utilization seen across replicas. A
+failed measurement cannot turn an otherwise-below-threshold sample into a
+healthy verdict; it causes a warning and a short retry. If any replica is
+already over the threshold on a valid fresh sample, expansion can proceed
+despite another failed sample.
 
 ## Decision and convergence
 
@@ -81,6 +89,8 @@ client or cloud credentials.
 - Missing/unbound PVC or active resize: emit `VolumeExpansionPending` and retry.
 - Incomplete usage with no observed threshold crossing: emit
   `VolumeExpansionMeasurementFailed` and retry.
+- Invalid or older-than-one-minute usage: treat that replica as an incomplete
+  measurement; never resize from its last-known byte values.
 - Maximum reached while usage remains high: emit
   `VolumeExpansionLimitReached`; operators must increase the explicit cap or
   reduce data growth.

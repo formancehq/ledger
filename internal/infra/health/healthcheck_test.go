@@ -2,9 +2,13 @@ package health
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 )
 
 // TestHealthChecker_NonLeaderResetsWriteGate verifies that a node which is not
@@ -34,6 +38,49 @@ func TestHealthChecker_NonLeaderResetsWriteGate(t *testing.T) {
 	require.False(t, s.diskBlocked)
 	require.False(t, s.skewBlocked)
 	require.NoError(t, hc.CheckWritesAllowed())
+}
+
+func TestRemoteVolumeValidity(t *testing.T) {
+	t.Parallel()
+
+	valid := &clusterpb.VolumeUsage{
+		TotalBytes:   100,
+		ObservedAtUs: uint64(time.Now().UnixMicro()),
+		SampleAgeMs:  uint64(diskusage.MaximumSampleAge.Milliseconds()),
+		Valid:        true,
+	}
+	ok, diagnostic := remoteVolumeValidity(valid)
+	require.True(t, ok)
+	require.Empty(t, diagnostic)
+
+	tests := []struct {
+		name       string
+		volume     *clusterpb.VolumeUsage
+		diagnostic string
+	}{
+		{name: "missing volume", diagnostic: "missing"},
+		{name: "failed collection", volume: &clusterpb.VolumeUsage{Error: "input/output error"}, diagnostic: "input/output error"},
+		{name: "zero total", volume: &clusterpb.VolumeUsage{Valid: true, ObservedAtUs: 1}, diagnostic: "totalBytes"},
+		{name: "missing observation time", volume: &clusterpb.VolumeUsage{Valid: true, TotalBytes: 100}, diagnostic: "observedAtUs"},
+		{
+			name: "stale sample",
+			volume: &clusterpb.VolumeUsage{
+				Valid:        true,
+				TotalBytes:   100,
+				ObservedAtUs: 1,
+				SampleAgeMs:  uint64(diskusage.MaximumSampleAge.Milliseconds()) + 1,
+			},
+			diagnostic: "stale",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ok, diagnostic := remoteVolumeValidity(tt.volume)
+			require.False(t, ok)
+			require.Contains(t, diagnostic, tt.diagnostic)
+		})
+	}
 }
 
 // TestCheckWritesAllowed_NoTornStateBetweenReasons locks in the single-atomic

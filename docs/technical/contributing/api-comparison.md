@@ -89,6 +89,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
 | Store backup | ✅ | ❌ | Point-in-time Pebble backup as tar archive |
+| Filesystem disk usage | ✅ | ❌ | Node-local gRPC/CLI diagnostic with per-volume validity, server-computed sample age, last observation time, and diagnostic error |
 | Index status | ✅ | ❌ | Read index builder progress (lag, file size) |
 | Transaction receipts (JWT) | ✅ | ✅ | HMAC-SHA256 JWT receipts; surfaced on GetTransaction over both transports (`data.receipt`, empty when none) |
 | Receipt-based revert | ✅ | ❌ | Revert using JWT receipt (avoids server-side lookup) |
