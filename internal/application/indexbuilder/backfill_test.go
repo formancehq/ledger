@@ -1194,6 +1194,135 @@ func TestNewTransactionMetadataUsesKnownAbsentInsert(t *testing.T) {
 	}
 }
 
+func TestDualInsertKnownAbsentMetadataIndexPropagatesFailures(t *testing.T) {
+	t.Parallel()
+
+	const (
+		ledger = "test"
+		key    = "score"
+		txID   = uint64(23)
+	)
+
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key)
+	canonical := indexes.Canonical(id)
+	value := commonpb.NewStringValue("new")
+	entityID := readstore.EncodeTxID(make([]byte, 0, 8), txID)
+
+	t.Run("current version binding failure", func(t *testing.T) {
+		t.Parallel()
+
+		b := newTestBuilderWithStore(t)
+		b.putVersionState(ledger, canonical, readstore.IndexVersionState{CurrentVersion: 1})
+		b.seedActiveBatch(t)
+		b.wb.SetEventSequence(1)
+
+		err := b.dualInsertKnownAbsentMetadataIndex(
+			b.kb,
+			ledger, readstore.NamespaceTransaction, key,
+			commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+			value, entityID,
+			func(version uint32) []byte {
+				// Simulate the impossible wiring race guarded by
+				// coerceForVersion: the selected current version is no
+				// longer bound when the insert reaches it.
+				b.putVersionState(ledger, canonical, readstore.IndexVersionState{CurrentVersion: 2})
+
+				return readstore.TransactionReverseMapKeyV(b.kb, ledger, txID, key, version)
+			},
+		)
+
+		require.ErrorContains(t, err, "invariant: write at version 1")
+	})
+
+	t.Run("pending write failure", func(t *testing.T) {
+		t.Parallel()
+
+		b := newTestBuilderWithStore(t)
+		b.putVersionState(ledger, canonical, readstore.IndexVersionState{
+			CurrentVersion: 1,
+			PendingVersion: 2,
+		})
+
+		batch := b.readStore.NewBatch()
+		b.wb.Init(batch)
+		b.wb.SetEventSequence(1)
+		t.Cleanup(b.wb.Reset)
+
+		err := b.dualInsertKnownAbsentMetadataIndex(
+			b.kb,
+			ledger, readstore.NamespaceTransaction, key,
+			commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+			value, entityID,
+			func(version uint32) []byte {
+				if version == 2 {
+					// Commit after the current-version write so the pending
+					// version deterministically exercises write-error
+					// propagation without a production fault hook.
+					require.NoError(t, batch.Commit())
+				}
+
+				return readstore.TransactionReverseMapKeyV(b.kb, ledger, txID, key, version)
+			},
+		)
+
+		require.ErrorContains(t, err, "write session already committed")
+	})
+}
+
+func TestAddSchemaRewriteTaskBackfillResetPropagatesBatchFailures(t *testing.T) {
+	t.Parallel()
+
+	const (
+		ledger = "test"
+		key    = "score"
+	)
+
+	newBuilder := func(t *testing.T) *Builder {
+		t.Helper()
+
+		b := newTestBuilderWithStore(t)
+		b.backfillTasks = []*backfillTask{{
+			ledger: ledger,
+			index:  indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key),
+			cursor: 77,
+			bbKey:  backfillBBKey(ledger, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key)),
+		}}
+
+		return b
+	}
+
+	schemaLog := &commonpb.SetMetadataFieldTypeLog{
+		TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+		Key:        key,
+		Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+	}
+
+	t.Run("missing active batch", func(t *testing.T) {
+		t.Parallel()
+
+		b := newBuilder(t)
+		err := b.addSchemaRewriteTask(newLedgerIndexConfig(), ledger, schemaLog)
+
+		require.ErrorContains(t, err, "invariant: addSchemaRewriteTask called without an active write batch")
+		assert.Equal(t, uint64(77), b.backfillTasks[0].cursor)
+	})
+
+	t.Run("cursor delete failure", func(t *testing.T) {
+		t.Parallel()
+
+		b := newBuilder(t)
+		batch := b.readStore.NewBatch()
+		require.NoError(t, batch.Commit())
+		b.wb.Init(batch)
+		t.Cleanup(b.wb.Reset)
+
+		err := b.addSchemaRewriteTask(newLedgerIndexConfig(), ledger, schemaLog)
+
+		require.ErrorContains(t, err, "resetting persisted backfill cursor on retype: write session already committed")
+		assert.Equal(t, uint64(77), b.backfillTasks[0].cursor)
+	})
+}
+
 func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *testing.T) {
 	t.Parallel()
 
