@@ -51,7 +51,7 @@ The map-of-maps shape collapses **12** of the 13 former typed key fields into a 
 
 **Why `CoverageEntry.Tag` exists.** The map holds exactly one entry per 128-bit `id`. If two genuinely distinct canonical keys collide on that id (~2^-128), the second would be **silently dropped**, and the order would reach apply without its Pebble seed — a silent cache miss, which is precisely the failure mode preload exists to prevent. The stored `Tag` makes that case detectable: same `id`, different `tag` means a real collision. `Add` then fails loudly rather than quietly — `assert.Unreachable(...)` plus a recorded, returnable `attributes.ErrCollisionDetected` that `Build` picks up through `Coverage.Err()` and turns into a hard proposal failure. This is [invariant #7](../../../../../AGENTS.md): never silently skip a branch that is impossible by design.
 
-**`Coverage.AddIdempotencyKey(key string)`** allocates the `IdempotencyKeys` map lazily. Most proposals — system-scoped orders, index management, chapter operations — carry none, so paying an empty-map header per order would be waste.
+**`Coverage.AddIdempotencyKey(key string)`** allocates the `IdempotencyKeys` map lazily. Most proposals — system-scoped orders, index management — carry none, so paying an empty-map header per order would be waste.
 
 **`Coverage.Merge(src *Coverage)`** unions every key set from `src` into the receiver. Admission uses it to fold per-operation coverage into a single proposal-wide aggregate while keeping the per-operation `Coverage` values available for `coverage_bits` computation. `Merge` performs the same collision check as `Add`, and propagates a collision already recorded on the source.
 

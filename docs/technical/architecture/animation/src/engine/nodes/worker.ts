@@ -1,8 +1,8 @@
 import type { Emit, Msg, NodeId } from "../types";
 import { Node } from "./base";
 
-// Worker — instantiated for each of the four subscribers (Index Builder,
-// Event Sinks, Cold Storage, Sealer). All four share the same trivial
+// Worker — instantiated for each subscriber (Index Builder, Event Sinks).
+// Both share the same trivial
 // behavior: count NotifyLogs landings. Real workers would each have
 // their own consumer logic; that's Phase 3+.
 

@@ -417,7 +417,7 @@ driver's template decides who it shares the timeline with:
 
 | Template | Location | Shape |
 |----------|----------|-------|
-| `main` | `bin/cmds/main/` | Dozens of drivers run **concurrently** against one faulted cluster. Each targets a feature area (transactions, reverts, idempotency, account types, metadata, backups, chapters, …) and asserts feature-local invariants. |
+| `main` | `bin/cmds/main/` | Dozens of drivers run **concurrently** against one faulted cluster. Each targets a feature area (transactions, reverts, idempotency, account types, metadata, backups, …) and asserts feature-local invariants. |
 | `model` | `bin/cmds/model/` | A single driver (`singleton_driver_model`) **owns the whole timeline** — no other driver runs alongside it — because it drives the system itself and checks global consensus conformance. |
 
 The split is wired in `tests/antithesis/workload/Dockerfile`.
@@ -649,7 +649,7 @@ plain `-tags e2e` run neither builds nor runs them:
 
 | Tag | Coverage | External dependency |
 |-----|----------|---------------------|
-| `s3` | backup, restore, bootstrap, cold storage | MinIO (Testcontainers) |
+| `s3` | backup, restore, bootstrap | MinIO (Testcontainers) |
 | `azure` | Azure Blob backup | Azurite (Testcontainers) |
 | `clickhouse` | ClickHouse event sink | ClickHouse (Testcontainers) |
 | `nats` | NATS event sink | none (embedded in-process server) |

@@ -13,19 +13,16 @@
     "internal/adapter/grpc/server*.go",
     "internal/adapter/http/server.go",
     "internal/infra/node/**",
-    "internal/infra/state/archiver*.go",
     "internal/infra/state/cache_snapshotter*.go",
     "internal/infra/state/checkpoint*.go",
     "internal/infra/state/machine*.go",
     "internal/infra/state/query_checkpoint_scheduler*.go",
     "internal/infra/state/recovery*.go",
-    "internal/infra/state/sealer*.go",
     "internal/application/indexbuilder/**",
     "internal/application/auditindexer/**",
     "internal/application/usagebuilder/**",
     "internal/application/backup/**",
     "internal/infra/backup/**",
-    "internal/infra/coldstorage/**",
     "internal/storage/dal/batch*.go",
     "internal/storage/dal/store*.go",
     "internal/storage/dal/sync_wal_test.go",
@@ -71,7 +68,7 @@
     "docs/technical/architecture/subsystems/storage/",
     "docs/technical/architecture/subsystems/indexer/",
     "docs/technical/architecture/subsystems/usage/",
-    "docs/technical/architecture/subsystems/chapters/",
+    "docs/technical/architecture/subsystems/backup/",
     "docs/technical/contributing/ai-audit.md",
     "docs/technical/contributing/getting-started.md",
     "docs/technical/contributing/testing.md",
@@ -99,7 +96,7 @@
     "Can a restarted node appear healthy because a request is forwarded to the leader or because a peer installs a snapshot even though the restarted process did not correctly reopen its own committed local state? Which assertions address the restarted node directly with forwarding or peer repair unavailable?",
     "Do restart tests prove PID replacement, preservation of the exact WAL/data paths or PVCs, and a node-local sentinel across the replacement, or can a test named restart execute only an in-process Stop/Start cycle, observe an old PID, or validate only cluster-level availability?",
     "When a leader or follower process is killed and re-executed, which observations establish process-boundary recovery separately from the Raft domain's quorum, membership, leadership-transfer, catch-up, and routing guarantees?",
-    "Can hard death during sealing, archival, cache or query checkpointing, projection indexing, usage aggregation, backup orchestration, or cold-cache activity leave a durable progress marker that suppresses necessary work or publishes incomplete work after the new process starts?",
+    "Can hard death during cache or query checkpointing, projection indexing, usage aggregation, or backup orchestration leave a durable progress marker that suppresses necessary work or publishes incomplete work after the new process starts?",
     "Do Schemathesis, the local model runner, operator/Chainsaw, and Antithesis wait for and assert the Ledger process's own termination and replacement outcomes, or only clean up a child/container and later observe an orchestrator-managed service?"
   ],
   "dynamic_checks_to_consider": [
@@ -110,7 +107,7 @@
     "attempt startup with mismatched persisted node/cluster identity, incompatible storage schema, occupied listeners, and invalid TLS/auth files; assert no endpoint becomes ready and the process exits non-zero",
     "in a multi-node run, kill and re-exec both follower and leader PIDs while preserving their local volumes, then verify PID replacement, local integrity/state with forwarding disabled, and cluster recovery as separate assertions",
     "hold peers unavailable during a restarted node's local verification so snapshot installation, leader forwarding, and quorum reads cannot mask a broken local reopen path",
-    "interrupt sealing, archival, cache/query checkpointing, projection builders, usage aggregation, backup work, and cold-cache population with SIGKILL at deterministic barriers, then re-exec and verify durable progress is resumed, retried, rolled back, or rejected according to the owning subsystem contract",
+    "interrupt cache/query checkpointing, projection builders, usage aggregation, and backup work with SIGKILL at deterministic barriers, then re-exec and verify durable progress is resumed, retried, rolled back, or rejected according to the owning subsystem contract",
     "run the production container entrypoint as PID 1, exercise graceful and zero-grace container termination, and assert signal delivery, exit status, persistent-volume reuse, listener reuse, and a new container/PID identity"
   ]
 }

@@ -10,8 +10,6 @@ import { Node } from "./base";
 const WORKERS: readonly NodeId[] = [
   NODE.workerIndex,
   NODE.workerSinks,
-  NODE.workerArch,
-  NODE.workerSealer,
 ];
 
 export interface NotifierState {

@@ -4,9 +4,9 @@
 
 A **receipt** is a short JWT, issued when a transaction is created, that carries a signed copy of the transaction's postings. A client can present it when reverting so that admission does not have to read the transaction's postings itself.
 
-The reversal is always applied by the FSM from the transaction's own state (`TransactionState`), which lives in the coverage-gated cache and **survives chapter archival** — archival purges only the cold `Log` / `Audit` / `AuditItem` / `AppliedProposal` ranges, never `TransactionState` (see `WriteSet.executePurge`). No revert path — receipt or not — reads cold storage. The receipt's role is purely admission-side: it is one source (versus admission's own store read) for the postings admission uses to declare the volume-preload coverage the reversed postings touch (invariant #9).
+The reversal is always applied by the FSM from the transaction's own state (`TransactionState`), which lives in the coverage-gated cache. The receipt's role is purely admission-side: it is one source (versus admission's own store read) for the postings admission uses to declare the volume-preload coverage the reversed postings touch (invariant #9).
 
-> **Open question.** Because `TransactionState` survives archival and the FSM reverts from it, admission can normally read the postings directly, so the receipt's distinct value is now thin. Whether the receipt feature is still needed is under review (tracked in the Ledger v3.0 backlog).
+> **Open question.** Because the FSM reverts from `TransactionState`, admission can normally read the postings directly, so the receipt's distinct value is thin. Whether the receipt feature is still needed is under review (tracked in the Ledger v3.0 backlog).
 
 Source: `internal/infra/receipt/receipt.go`.
 
@@ -16,11 +16,10 @@ Source: `internal/infra/receipt/receipt.go`.
 
 ```go
 type Claims struct {
-    jwt.RegisteredClaims            // iss, iat
-    Ledger    string                // ledger name
-    TxID      uint64                // original transaction ID
-    Postings  []PostingClaim        // the original transaction's postings
-    ChapterID uint64                // chapter that held the original
+    jwt.RegisteredClaims           // iss, iat
+    Ledger   string                // ledger name
+    TxID     uint64                // original transaction ID
+    Postings []PostingClaim        // the original transaction's postings
 }
 ```
 
@@ -57,14 +56,11 @@ Verification runs in **admission** (`convertApplyRequest`), which also checks th
 sequenceDiagram
     actor C as Client
     participant S as Server
-    participant Cold as Cold storage
 
     C->>S: CreateTransaction(...)
     S->>S: apply, sign receipt
     S-->>C: response + receipt (JWT)
     Note over C: client stores receipt
-    ...
-    Note over S,Cold: Chapter sealed → archived
     ...
     C->>S: RevertTransaction(receipt)
     S->>S: admission: receipt.Verify(token) → declare volume coverage from receipt.Postings
@@ -82,7 +78,7 @@ At apply time the FSM sources the original postings from the target's `Transacti
 
 The receipt (when present) never reaches the FSM. Admission verifies it and uses its `Postings` only to declare the volume-preload coverage the reversed postings touch — the same coverage it would otherwise derive from its own read of `TransactionState`.
 
-The resulting `RevertedTransaction` log is hash-bound by the audit chain exactly like any other revert — the fact that the original chapter was archived has no effect on chain integrity.
+The resulting `RevertedTransaction` log is hash-bound by the audit chain exactly like any other revert.
 
 ## What a receipt does not authorise
 

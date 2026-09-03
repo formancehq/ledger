@@ -126,7 +126,7 @@ message CallerIdentity {
 
 It is built by `ResolveCallerSnapshot()` (`internal/adapter/auth/caller_snapshot.go`), in precedence order:
 
-1. **System actor** — a background action marked with `WithSystemActor(ctx, component)` resolves to a snapshot whose source is `system_component` (e.g. `chapter-archiver`, `mirror`, `events-sink`, `cluster-config`, `idempotency-eviction`, `backup`). This is what keeps system-generated entries attributable instead of blank.
+1. **System actor** — a background action marked with `WithSystemActor(ctx, component)` resolves to a snapshot whose source is `system_component` (e.g. `query-checkpoint-scheduler`, `mirror`, `events-sink`, `cluster-config`, `idempotency-eviction`, `backup`). This is what keeps system-generated entries attributable instead of blank.
 2. **Forwarded snapshot** — a request forwarded by a follower uses the snapshot the follower captured, verbatim.
 3. **Local claims** — otherwise `buildCallerSnapshot()` reads the context (subject, source, scopes, god). Returns `nil` only for an unauthenticated user request.
 

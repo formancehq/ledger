@@ -45,7 +45,7 @@ Two properties of this test are load-bearing and easy to break by "simplifying" 
 
 - **The middleware chain is not a usable oracle for the scope.** `chi.Walk` hands you the middleware
   slice, but `With(mw).Route(prefix, …)` attaches the middleware to the sub-mux's *handler* rather
-  than to `Middlewares()`, so `GET /v3/_/chapters` reports no `RequireScope` while returning 401 to a
+  than to `Middlewares()`, so `GET /v3/_/signing-keys` reports no `RequireScope` while returning 401 to a
   tokenless request. All `RequireScope` closures also share one code pointer, so reflection cannot
   tell them apart. Only a real request through `ServeHTTP` reveals the scope.
 - **Probes use granular scopes only, never the aggregate `ledger:read`.** The aggregate expands to
@@ -602,7 +602,7 @@ The camelCase convention cannot arbitrate between the two — both encoders sati
 
 Prefer `writeOKChecked` over `writeOK` when the marshaller can fail (e.g. it marshals a metadata map): `writeOK` streams, so a mid-encode failure appends an error object to an already-committed 200.
 
-This was EN-1622: the transactions list, chapters and single-log routes sent marshaller-carrying types through `protojson` and shipped `amount: {"v0":"12345"}`, `timestamp: {"data":"1786540255458491"}`, base64 hashes where the contract is hex, and quoted numeric ids.
+This was EN-1622: the transactions list and single-log routes sent marshaller-carrying types through `protojson` and shipped `amount: {"v0":"12345"}`, `timestamp: {"data":"1786540255458491"}`, base64 hashes where the contract is hex, and quoted numeric ids.
 
 **Before adding a `MarshalJSON` to a proto type, check the blast radius.** `cmd/ledgerctl/cmdutil/output.go` also prefers a custom marshaller when one exists, so adding one changes CLI output too — and `misc/operator` parses `ledgerctl indexes list --json` with a struct that hard-codes the protojson shape, in a separate Go module that a root `go build ./...` never compiles. For types that need a clean HTTP shape without moving the CLI, use an HTTP-local response DTO instead.
 

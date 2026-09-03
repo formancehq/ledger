@@ -22,7 +22,7 @@ Cross-cutting concerns (overall design, data flows shared across subsystems, the
 | [admission](subsystems/admission/) | `internal/application/admission` | Request gateway, validation, signing, idempotency. |
 | [api](subsystems/api/) | `internal/adapter/grpc`, `internal/adapter/http`, `internal/adapter/auth` | gRPC and HTTP transport surfaces. |
 | [attributes](subsystems/attributes/) | `internal/infra/attributes`, `internal/infra/cache`, `internal/infra/bloom` | In-memory attribute caches, bloom filters, key hashing. |
-| [chapters](subsystems/chapters/) | `internal/infra/coldstorage`, `internal/infra/receipt`, `internal/application/backup` | Chapter lifecycle, archival, receipt-based reverts. |
+| [backup](subsystems/backup/) | `internal/infra/backup`, `internal/application/backup` | Backup, restore, and the incremental restore contract. |
 | [checker](subsystems/checker/) | `internal/application/check`, `internal/domain/replay` | Audit hash chain and integrity verification of persisted primary-store projections. |
 | [consensus](subsystems/consensus/) | `internal/infra/node`, `internal/infra/transport` | Raft replication, global log, hybrid logical clock. |
 | [events-mirror](subsystems/events-mirror/) | `internal/application/events`, `internal/application/mirror` | Event sinks (NATS / Kafka / ClickHouse / Databricks / HTTP) and mirror ingest. |

@@ -2,6 +2,12 @@
 
 This document contains rules and conventions for AI agents working on this codebase. Detailed documentation lives in `docs/` - see [docs/README.md](docs/README.md) for navigation.
 
+> **Obsolete content warning (EN-1945):** every mention of chapters, chapter
+> archival, sealing, cold storage, `coldstorage/`, baseline checkpoints, or
+> archive-aware checker behavior in this snapshot describes a subsystem that
+> has been REMOVED. Log/audit history is now permanent in the primary store.
+> Do not treat any chapter/cold-storage material below as current behavior.
+
 ## Release Status — v3 is unreleased
 
 **CRITICAL**: The Raft-based ledger v3 has never been released. No deployment carries data across versions, and all state is wiped on every push to `release/v3.0`. Because nothing persists across versions, there is no backward-compatibility burden — break wire and storage formats freely:

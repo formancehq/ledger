@@ -317,12 +317,12 @@ All Pebble keys start with a zone byte that groups data by access pattern:
 
 | Zone | Byte | Purpose | Lifecycle |
 |------|------|---------|-----------|
-| **Attributes** | `0x01` | Volumes, metadata, boundaries, tx state, references, sink configs, numscript | Hot storage, hashed during seal |
+| **Attributes** | `0x01` | Volumes, metadata, boundaries, tx state, references, sink configs, numscript | Hot storage |
 | **Cache** | `0x02` | Generation-based 0xFF cache for fast restart | Rotated per generation |
-| **Per-Ledger** | `0x03` | Reversions, pending cleanups, mirror state | Per-ledger lifecycle |
-| **Cold** | `0x04` | Logs + audit entries | Archived to cold storage then purged per chapter |
+| **Per-Ledger** | `0x03` | Reversions, prepared queries, mirror state | Per-ledger lifecycle |
+| **History** | `0x04` | Logs + audit entries/items + applied proposals | Permanent |
 | **Idempotency** | `0x05` | Deduplication keys + time index | TTL-based eviction |
-| **Global** | `0x06` | Applied index/timestamp, ledger info, signing, chapters, cluster config, bloom | Lives forever |
+| **Global** | `0x06` | Applied index/timestamp, ledger info, signing, cluster config, bloom | Lives forever |
 
 See [Storage Drivers](storage-drivers.md) for the complete key schema.
 
@@ -356,14 +356,11 @@ data/
 │   ├── raft-state.pb              # Snapshot state (protobuf)
 │   └── WAL_CREATION_COMPLETED     # WAL creation marker
 ├── spool                          # Spool file for sync
-├── seal/                          # Temporary seal checkpoint (chapter closing)
 └── runtime/                       # All ledgers data (Pebble)
     ├── live/                      # Active database
     ├── checkpoints/               # Checkpoint directories for snapshots
     └── CURRENT_CHECKPOINT         # Current checkpoint ID file
 ```
-
-The `seal/` directory contains a temporary Pebble checkpoint created when a chapter is being closed. It is used by the background Sealer to compute the sealing hash and is removed after the hash is computed. See [Chapters](../chapters/lifecycle.md) for details on the sealing process.
 
 ## Durability and Guarantees
 

@@ -52,7 +52,7 @@ For each order that opts in, `ProcessOrders` runs it against an
 - **`skipSafeScope`** makes that guarantee exhaustive at compile time: every
   `Scope` method must be explicitly classified as read-passthrough,
   buffered-write-passthrough, or non-buffered-write-trap. A sub-processor that
-  mutates a non-buffered surface (signing keys, chapters, maintenance mode,
+  mutates a non-buffered surface (signing keys, maintenance mode,
   numscript library, query-checkpoint state) routes through `trapUnbuffered`,
   which fires `assert.Unreachable` (a first-class Antithesis finding) and panics
   — a new skippable action that writes an unbuffered kind fails loudly instead of

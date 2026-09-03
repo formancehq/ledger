@@ -68,4 +68,3 @@ is deliberately deferred.
 - [Consensus → global-log.md](../consensus/global-log.md) — what produces the audit entries the chain links.
 - [Indexer → indexes.md](../indexer/indexes.md) — the index registry is a projection the checker verifies via `compareIndexes`.
 - [Attributes](../attributes/) — volumes / metadata / reversion / idempotency projections the checker also verifies.
-- [Chapters → lifecycle.md](../chapters/lifecycle.md) — sealing hash verification is one of the checker's passes.

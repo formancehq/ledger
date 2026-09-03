@@ -80,7 +80,7 @@ Cache generation rotation, bloom filters, preload resolution, stale-proposal han
 
 Several important mechanisms operate outside the core request path while remaining coupled to audited/replicated state:
 
-- chapter archival, backup and restore — [`subsystems/chapters/`](subsystems/chapters/)
+- backup and restore — [`subsystems/backup/`](subsystems/backup/)
 - event sinks and mirror ingest — [`subsystems/events-mirror/`](subsystems/events-mirror/)
 - indexing and read projections — [`subsystems/indexer/`](subsystems/indexer/)
 - usage counters and usage-store projections — [`subsystems/usage/`](subsystems/usage/)

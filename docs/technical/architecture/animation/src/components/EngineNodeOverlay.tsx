@@ -126,9 +126,7 @@ function formatState(id: NodeId, state: unknown): ReactNode {
     case NODE.processing: rows.push(["computed", String(s.computed ?? 0)]); break;
     case NODE.notifier:   rows.push(["lastSeq",  String(s.lastSeq  ?? 0)]); break;
     case NODE.workerIndex:
-    case NODE.workerSinks:
-    case NODE.workerArch:
-    case NODE.workerSealer: {
+    case NODE.workerSinks: {
       rows.push(["processed",  String(s.processed  ?? 0)]);
       rows.push(["highestSeq", String(s.highestSeq ?? 0)]);
       break;

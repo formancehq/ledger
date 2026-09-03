@@ -196,7 +196,7 @@ neither `--page-size` nor `--cursor` is set:
 
 | Group | Commands | Default behaviour |
 |---|---|---|
-| Drain-by-default | `accounts list`, `transactions list`, `ledgers list`, `chapters list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to switch back to single-page output (and surface the resume cursor on stderr). |
+| Drain-by-default | `accounts list`, `transactions list`, `ledgers list`, `numscripts list`, `queries list`, `signing keys list` | Follow the trailer chain to the end and print every page in one shot. Set `--page-size` or `--cursor` to switch back to single-page output (and surface the resume cursor on stderr). |
 | Single-page-only | `audit list`, `logs list` | Always print one page and surface the resume cursor on stderr, even with no flags set. Resume with `--cursor <token>`. These resources commonly hold tens of thousands of rows; defaulting to a single page avoids accidentally streaming the whole history. |
 
 Both groups expose the same `--page-size` / `--cursor` semantics; only the
@@ -1999,7 +1999,7 @@ ledgerctl store check --json
 
 #### store primary compact
 
-Trigger a synchronous compaction of the primary Pebble store. Useful after bulk deletes, chapter archival, or before taking a backup.
+Trigger a synchronous compaction of the primary Pebble store. Useful after bulk deletes or before taking a backup.
 
 **Aliases:** `store p gc`
 
@@ -3373,157 +3373,6 @@ ledgerctl signing require false --signing-key /path/to/seed
 
 ---
 
-### chapters
-
-Manage accounting chapters.
-
-**Aliases:** `chapter`, `pd`
-
-#### chapters list
-
-List all chapters with their status.
-
-```bash
-ledgerctl chapters list
-```
-
-**Output columns:**
-
-| Column | Description |
-|--------|-------------|
-| ID | Chapter identifier |
-| Status | OPEN, CLOSING, CLOSED, or ARCHIVED |
-| Start | Chapter start timestamp |
-| End | Chapter end timestamp (set when closed) |
-| Close Seq | Log sequence at which the chapter was closed |
-
-**Example:**
-
-```bash
-# List all chapters
-ledgerctl chapters list
-
-# With remote server
-ledgerctl --server node1:8888 chapters list
-```
-
-#### chapters close
-
-Close the current open chapter and open a new one. A background seal process will compute the sealing hash.
-
-```bash
-ledgerctl chapters close
-```
-
-**Example:**
-
-```bash
-# Close the current chapter
-ledgerctl chapters close
-
-# Output:
-#  SUCCESS  Chapter 1 closed successfully
-#  INFO  New chapter 2 opened
-#  INFO  Background sealing process will compute the sealing hash
-```
-
-#### chapters set-schedule
-
-Set a cron schedule for automatic chapter rotation. The schedule is stored in Raft and takes effect immediately on the leader.
-
-```bash
-ledgerctl chapters set-schedule <cron-expression>
-```
-
-| Flag | Required | Description |
-|------|----------|-------------|
-| `--timeout` | No | Request timeout (default: 10s) |
-
-The cron expression uses the standard 5-field format (`minute hour day-of-month month day-of-week`) or the extended 6-field format with an optional leading seconds field (`second minute hour day-of-month month day-of-week`).
-
-**Examples:**
-
-```bash
-# Rotate every day at midnight
-ledgerctl chapters set-schedule "0 0 * * *"
-
-# Rotate on the 1st of every month at midnight
-ledgerctl chapters set-schedule "0 0 1 * *"
-
-# Rotate every 30 seconds (6-field format)
-ledgerctl chapters set-schedule "*/30 * * * * *"
-```
-
-#### chapters delete-schedule
-
-Remove the cron schedule for automatic chapter rotation, disabling automatic rotation.
-
-```bash
-ledgerctl chapters delete-schedule
-```
-
-| Flag | Required | Description |
-|------|----------|-------------|
-| `--timeout` | No | Request timeout (default: 10s) |
-
-**Example:**
-
-```bash
-ledgerctl chapters delete-schedule
-#  SUCCESS  Chapter schedule deleted
-```
-
-#### chapters get-schedule
-
-Display the current cron schedule for automatic chapter rotation.
-
-```bash
-ledgerctl chapters get-schedule
-```
-
-| Flag | Required | Description |
-|------|----------|-------------|
-| `--timeout` | No | Request timeout (default: 10s) |
-
-**Example:**
-
-```bash
-ledgerctl chapters get-schedule
-
-# Output (schedule set):
-#  SUCCESS  Chapter schedule: 0 0 1 * *
-
-# Output (no schedule):
-#  SUCCESS  No chapter schedule configured (automatic rotation disabled)
-```
-
-#### chapters archive
-
-Archive a closed chapter to cold storage. This exports logs and audit entries to the configured cold storage backend and purges them from hot storage. Attributes (volumes, metadata) remain in Pebble.
-
-```bash
-ledgerctl chapters archive <chapter-id>
-```
-
-**Example:**
-
-```bash
-# Archive chapter 1 (must be in CLOSED state)
-ledgerctl chapters archive 1
-
-# Output:
-#  SUCCESS  Chapter 1 archival initiated
-#  INFO  Background archiver will export data to cold storage and confirm
-```
-
-**Notes:**
-- The chapter must be in `CLOSED` state (sealed). `OPEN`, `CLOSING`, or `ARCHIVED` chapters are rejected.
-- **Chapters must be archived oldest-first.** Archiving a chapter while an older one is not yet `ARCHIVED` is rejected with `CHAPTER_ARCHIVE_OUT_OF_ORDER`, whose `blockingChapterId` names the chapter to archive first. Re-archiving a chapter that is already inside the archived prefix — a retry after a timeout, say — is rejected with `CHAPTER_ALREADY_ARCHIVED` and `archivedThroughChapterId` instead: the work is done, and there is no chapter to archive first. Archived chapters form a contiguous prefix of history, so a chapter whose archive cannot complete blocks newer ones until the underlying cold-storage problem is resolved — it is never stepped over, which would leave a permanent hole in cold storage.
-- Archival is asynchronous: the command returns immediately after validation, and a background Archiver exports the data and confirms the transition to `ARCHIVED`.
-- Cold storage is configured on the server with `--cold-storage-driver`, `--cold-storage-path`, and S3 flags (`--cold-storage-bucket-id`, `--cold-storage-s3-bucket`, `--cold-storage-s3-region`, `--cold-storage-s3-endpoint`).
-
----
-
 ### numscripts
 
 Manage the numscript library (per-ledger reusable scripts with semver versioning).
@@ -4457,37 +4306,6 @@ ledger run --snapshot-parallelism 8 [other flags...]
 
 # Longer session TTL for large snapshots
 ledger run --snapshot-session-ttl 15m [other flags...]
-```
-
----
-
-### Server Cold Storage Flags
-
-Configure cold storage for chapter archival. Logs and audit entries for closed chapters are exported to the cold storage backend and purged from hot storage. Attributes (volumes, metadata) remain in Pebble.
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--cold-storage-driver` | string | `none` | Cold storage driver for chapter archival (`none`, `filesystem`, `s3`) |
-| `--cold-storage-path` | string | `""` | Base path for cold storage (default: `<data-dir>/cold-storage`) |
-| `--cold-storage-bucket-id` | string | `""` | Shared namespace prefix for archives (default: cluster-id) |
-| `--cold-storage-s3-bucket` | string | `""` | S3 bucket name (required when driver=s3) |
-| `--cold-storage-s3-region` | string | `""` | AWS region for S3 |
-| `--cold-storage-s3-endpoint` | string | `""` | Custom S3 endpoint (for MinIO) |
-| `--cold-cache-dir` | string | `""` | Directory for cold storage read cache (default: `<data-dir>/cold-cache`). Use a separate volume to avoid filling the data disk. |
-
-```bash
-# Filesystem cold storage
-ledger run --cold-storage-driver filesystem --cold-storage-path /mnt/archive [other flags...]
-
-# S3 cold storage
-ledger run --cold-storage-driver s3 \
-  --cold-storage-s3-bucket my-ledger-archive \
-  --cold-storage-s3-region eu-west-1 [other flags...]
-
-# S3 with MinIO endpoint
-ledger run --cold-storage-driver s3 \
-  --cold-storage-s3-bucket archive \
-  --cold-storage-s3-endpoint http://minio:9000 [other flags...]
 ```
 
 ---

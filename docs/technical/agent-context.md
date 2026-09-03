@@ -34,8 +34,8 @@ When current code and authoritative documentation disagree, stop treating the do
 | Snapshot transfer (`internal/adapter/grpc/file_streaming.go`, `internal/adapter/grpc/server_snapshot.go`, `internal/application/ctrl/file_fetcher.go`, `internal/application/ctrl/file_receiver.go`, `internal/application/ctrl/snapshot_fetcher.go`) | `docs/technical/architecture/subsystems/storage/follower-sync.md`, `docs/technical/contributing/testing.md`; also read `docs/technical/architecture/subsystems/api/auth.md` when changing the RPC trust boundary |
 | `internal/adapter/http/**`, `openapi.yml` | `docs/technical/architecture/subsystems/api/`, `docs/technical/contributing/api-comparison.md` |
 | `internal/infra/node/**`, `internal/infra/transport/**`, `internal/infra/membership/**` | `docs/technical/architecture/subsystems/consensus/` |
-| `internal/infra/coldstorage/**`, `internal/infra/receipt/**`, `internal/application/backup/**` | `docs/technical/architecture/subsystems/chapters/`, relevant `docs/ops/` backup/restore docs |
-| `internal/infra/backup/**` | `docs/technical/architecture/subsystems/chapters/backup.md`, `docs/technical/architecture/subsystems/chapters/incremental-restore-contract.md`, `docs/ops/backup-restore.md` |
+| `internal/infra/receipt/**` | `docs/technical/architecture/subsystems/admission/receipts.md` |
+| `internal/infra/backup/**`, `internal/application/backup/**` | `docs/technical/architecture/subsystems/backup/`, `docs/ops/backup-restore.md` |
 | `internal/application/events/**`, `internal/application/mirror/**` | `docs/technical/architecture/subsystems/events-mirror/` |
 | Numscript runtime/library | `docs/technical/architecture/subsystems/scripting/`, `docs/technical/contributing/numscript.md` |
 | `misc/proto/**`, generated protobuf code | `docs/technical/contributing/protobuf.md` |
@@ -88,7 +88,7 @@ Read:
 A new primary-store projection requires checker coverage or an explicitly justified documented exemption.
 
 If a persisted value can change after a full checkpoint, also read
-`docs/technical/architecture/subsystems/chapters/incremental-restore-contract.md`.
+`docs/technical/architecture/subsystems/backup/incremental-restore-contract.md`.
 Classify it as preserved, rebuilt, or deliberately discarded during a
 cross-cluster restore, then exercise the classification with a non-empty
 post-checkpoint delta. This applies to updates and deletion cascades as well as

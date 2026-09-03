@@ -101,6 +101,4 @@ export const BOXES = {
   notifier:  box("box-notifier", 958, 200,  28, 230),
   workerIndex:    box("box-worker-index",    1000, 120, 180, 50, { title: "Index Builder",    sub: "tail log → ReadStore · batch ~1000" }),
   workerSinks:    box("box-worker-sinks",    1000, 200, 180, 50, { title: "Event Sinks",       sub: "Kafka · NATS · batch ~64" }),
-  workerArchiver: box("box-worker-archiver", 1000, 280, 180, 50, { title: "Cold Storage (S3)", sub: "FSM-dispatched archive jobs" }),
-  workerSealer:   box("box-worker-sealer",   1000, 380, 180, 50, { title: "Sealer",            sub: "periods · BLAKE3 hash chain" }),
 };

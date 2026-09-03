@@ -2,7 +2,7 @@
 
 ## Overview
 
-The audit hash chain is the **only cryptographically-bound dataset** in the system. Every other persisted dataset — volumes, metadata, transaction state, idempotency outcomes, applied-proposal records, the index registry, chapter sealing hashes, the read-side inverted index — is a *projection* of orders that already live in the audit chain, so every projection is derivable from the chain by replaying those orders. Per invariant #8 the checker must verify every such projection **it persists in the primary FSM store** on every `Check()` run (peer secondary stores are out of that scope as a rule, with one narrow exception — see the readstore note below), and it does so today for volumes, metadata, transactions, exclusion projections, reversion bitsets, sealing hashes, idempotency outcomes, and the index **registry**. The mirror ingestion position (`LedgerBoundaries.last_mirror_v2_log_id`) is verified by `compareMirrorV2LogID` (EN-1550) — its stored value must equal the audit-derived max. The former **advanced-cursor path** (a separately persisted cursor advanced beyond the source head fetching no source logs and reporting FOLLOWING, silently under-ingesting v2→v3) is **closed**: EN-1513 removed that second durable position entirely, so the only durable ingestion position is the checker-verified boundary. The readstore inverted-index *contents* are a peer secondary store, out of main-store checker scope as a rule (in the main store only the registry presence/identity is checked); their integrity is a current open gap until per-replica detect/drop/rebuild is wired (`EN-1514` / `EN-1323`). The rule has one narrow exception, and it is about presence rather than contents: `compareReverseMapOrphans` (EN-1458) opens the peer readstore read-only and flags reverse-map (`0x03`) rows whose field has no stored index-registry entry — the reverse map being the only read-index limb whose removal path point-deletes row by row and can therefore leave an undetectable orphan. The audit-replayed schema only labels whether `DropIndex` or `RemovedMetadataFieldType` missed its purge. A few main-store projections remain derivable but **not yet** re-derived by a checker pass — notably prepared queries and persisted bloom blocks reloaded on restart. Those are tracked integrity gaps rather than checker-verified state; see [Audit-Bound vs Technical State](../../audit-vs-technical-state.md) for the current coverage map.
+The audit hash chain is the **only cryptographically-bound dataset** in the system. Every other persisted dataset — volumes, metadata, transaction state, idempotency outcomes, applied-proposal records, the index registry, the read-side inverted index — is a *projection* of orders that already live in the audit chain, so every projection is derivable from the chain by replaying those orders. Per invariant #8 the checker must verify every such projection **it persists in the primary FSM store** on every `Check()` run (peer secondary stores are out of that scope as a rule, with one narrow exception — see the readstore note below), and it does so today for volumes, metadata, transactions, exclusion projections, reversion bitsets, idempotency outcomes, and the index **registry**. The mirror ingestion position (`LedgerBoundaries.last_mirror_v2_log_id`) is verified by `compareMirrorV2LogID` (EN-1550) — its stored value must equal the audit-derived max. The former **advanced-cursor path** (a separately persisted cursor advanced beyond the source head fetching no source logs and reporting FOLLOWING, silently under-ingesting v2→v3) is **closed**: EN-1513 removed that second durable position entirely, so the only durable ingestion position is the checker-verified boundary. The readstore inverted-index *contents* are a peer secondary store, out of main-store checker scope as a rule (in the main store only the registry presence/identity is checked); their integrity is a current open gap until per-replica detect/drop/rebuild is wired (`EN-1514` / `EN-1323`). The rule has one narrow exception, and it is about presence rather than contents: `compareReverseMapOrphans` (EN-1458) opens the peer readstore read-only and flags reverse-map (`0x03`) rows whose field has no stored index-registry entry — the reverse map being the only read-index limb whose removal path point-deletes row by row and can therefore leave an undetectable orphan. The audit-replayed schema only labels whether `DropIndex` or `RemovedMetadataFieldType` missed its purge. A few main-store projections remain derivable but **not yet** re-derived by a checker pass — notably prepared queries and persisted bloom blocks reloaded on restart. Those are tracked integrity gaps rather than checker-verified state; see [Audit-Bound vs Technical State](../../audit-vs-technical-state.md) for the current coverage map.
 
 The chain serves two purposes:
 
@@ -43,7 +43,7 @@ The `CallerSnapshot` bytes are built by `state.buildCallerSnapshotPayload` (`aud
 | `0x00` | none | subject with no known origin |
 | `0x01` | issuer | OIDC token issuer URL |
 | `0x02` | key_id | Ed25519 signing key ID |
-| `0x03` | system_component | system/internal action (e.g. `chapter-archiver`, `mirror`); subject is empty |
+| `0x03` | system_component | system/internal action (e.g. `mirror`, `query-checkpoint-scheduler`); subject is empty |
 
 The tag switches on the oneof *wrapper type*, not the inner string value, so a source set to an empty string is still distinct from an absent source. A system action therefore hashes differently from a caller-less entry (`0x03` + component vs `0x00` + empty), which is what makes system-generated entries unambiguously attributable in the chain.
 
@@ -86,7 +86,7 @@ message AuditEntry {
 
 Persistence layout:
 
-- The entry itself lives under zone `Cold`, sub `Audit` (the `AuditEntry` row), with `items` **intentionally set to nil on disk** (`internal/infra/state/machine.go:1403`). Items live under their own keys (zone `Cold`, sub `AuditItem`), keyed by `(audit_sequence, order_index)`. This split prevents a `ListAuditEntries` reader from receiving items that have never been hash-checked against the chain.
+- The entry itself lives under zone `History`, sub `Audit` (the `AuditEntry` row), with `items` **intentionally set to nil on disk** (`internal/infra/state/machine.go:1403`). Items live under their own keys (zone `History`, sub `AuditItem`), keyed by `(audit_sequence, order_index)`. This split prevents a `ListAuditEntries` reader from receiving items that have never been hash-checked against the chain.
 - Reads that need item bodies join through the per-item keys; the checker uses `BuildPerItemPayload` to recompute the same byte sequence the writer used.
 
 ## When the hash is computed
@@ -129,7 +129,6 @@ Covers everything a Raft proposal can produce, system-wide and ledger-management
 | Ledger apply | `apply` — wraps a `LedgerLogPayload` (see below) |
 | Signing | `register_signing_key`, `revoke_signing_key`, `set_signing_config` |
 | Event sinks | `added_events_sink`, `removed_events_sink` |
-| Chapters | `close_chapter`, `seal_chapter`, `archive_chapter`, `confirm_archive_chapter`, `set_chapter_schedule`, `delete_chapter_schedule` |
 | Maintenance | `set_maintenance_mode` |
 | Prepared queries | `created_prepared_query`, `updated_prepared_query`, `deleted_prepared_query` |
 | Numscript library | `saved_numscript`, `deleted_numscript` |
@@ -173,14 +172,14 @@ A `HashVersion` field on every entry allows future rotation (an alternate algori
 
 ## Companion streams and their gaps
 
-The FSM writes up to four datasets per proposal, all in `ZoneCold`, but they diverge sharply between the possible proposal outcomes. Code that scans the audit range and iterates a companion stream in parallel MUST anchor on `SubColdAudit` and tolerate misses on the sibling — assuming lockstep cardinality is a recurring source of bugs (see EN-1424 for a case study).
+The FSM writes up to four datasets per proposal, all in `ZoneHistory`, but they diverge sharply between the possible proposal outcomes. Code that scans the audit range and iterates a companion stream in parallel MUST anchor on `SubHistoryAudit` and tolerate misses on the sibling — assuming lockstep cardinality is a recurring source of bugs (see EN-1424 for a case study).
 
 | Sub-zone | Key | Success (N orders) | Failure | Idempotent replay (success or failure) |
 |----------|-----|--------------------|---------|----------------------------------------|
-| `SubColdAudit = 0x02` — `AuditEntry` | `[seq BE 8]` | 1 | 1 | **0** |
-| `SubColdAuditItem = 0x03` — `AuditItem` | `[seq BE 8][order_idx BE 4]` | N (≥1) | **0** | **0** |
-| `SubColdAppliedProposal = 0x04` — `AppliedProposal` | `[seq BE 8]` | 1 | **0** | **0** |
-| `SubColdLog = 0x01` — `Log` | `[log_seq BE 8]` | 0..M (=`MaxLog-MinLog+1`) | 0 | 0 |
+| `SubHistoryAudit = 0x02` — `AuditEntry` | `[seq BE 8]` | 1 | 1 | **0** |
+| `SubHistoryAuditItem = 0x03` — `AuditItem` | `[seq BE 8][order_idx BE 4]` | N (≥1) | **0** | **0** |
+| `SubHistoryAppliedProposal = 0x04` — `AppliedProposal` | `[seq BE 8]` | 1 | **0** | **0** |
+| `SubHistoryLog = 0x01` — `Log` | `[log_seq BE 8]` | 0..M (=`MaxLog-MinLog+1`) | 0 | 0 |
 
 **Idempotent replay is the one exception to "one AuditEntry per proposal":** when the proposal carries a previously-recorded idempotency key with a matching hash, `applyProposal` short-circuits (`internal/infra/state/machine.go:1313-1326`) and returns the recorded outcome verbatim — no new pipeline run, no new logs, no new audit entry. `audit_sequence` does **not** advance for that proposal. The first-time apply of that key is what's already recorded under the "Success" or "Failure" column; the replay is invisible to Pebble.
 
@@ -193,8 +192,8 @@ Two independent monotone counters, bridged per successful non-replayed proposal:
 
 Gaps live on the **companion streams**, not on `audit_sequence` itself:
 
-- `SubColdAppliedProposal` iteration shows a gap at every failed audit_seq.
-- `SubColdAuditItem[seq][…]` shows no items at every failed audit_seq.
+- `SubHistoryAppliedProposal` iteration shows a gap at every failed audit_seq.
+- `SubHistoryAuditItem[seq][…]` shows no items at every failed audit_seq.
 - A `Log` reader has no visibility into failures at all.
 
 ### Implication for downstream code
@@ -223,15 +222,13 @@ The first entry (`Sequence = 0`) is computed with `lastHash = nil`. The per-clus
 
 The chain is verified by `checker.verifyAuditHashChain` (`internal/application/check/checker.go:1449-1616`):
 
-1. Iterate non-archived `AuditEntry` rows in sequence order.
+1. Iterate `AuditEntry` rows in sequence order.
 2. For each entry, rebuild the header payload + every per-item payload (joining `AuditItem` rows by `(sequence, order_index)`).
 3. `HashGenerator.Compute(lastHash, ...)` with the version pinned by `entry.hash_version`.
 4. Compare to the stored `entry.hash`. Mismatch → emit `CHECK_STORE_ERROR_TYPE_HASH_MISMATCH` and **stop** (the chain is broken from this point; downstream verifications would be meaningless).
 5. Match → advance `lastHash`, continue.
 
 The walk also collects an `expectedIdempotency` map (which idempotency keys were committed under which outcome) that `compareIdempotencyOutcomes` consumes downstream.
-
-Archived chapters break the live chain by design: their entries have been exported to cold storage and their audit-entry range is closed by a `CloseAuditSequence` boundary on the chapter. The verification continues across the boundary using the chapter's sealed `last_audit_hash` as the new `lastHash`.
 
 ## Derivability rule
 

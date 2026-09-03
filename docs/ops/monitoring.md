@@ -304,7 +304,7 @@ An `Admit` call carries one batch = one Raft command, and a batch can hold multi
 | `admission.action.errors.total` | Counter | 1 | Number of orders whose admission batch ended in error, by `order_type`. A **strict subset** of `admission.action.total`. |
 
 **Attributes**:
-- `order_type`: The action kind, e.g. `create_transaction`, `revert_transaction`, `add_metadata`, `create_ledger`, `delete_ledger`, `save_numscript`, `create_index`, `register_signing_key`, `seal_chapter`, … This is the same stable vocabulary used by the audit filter DSL (`domain.AuditOrderType`); it is extended additively and tokens are never renamed.
+- `order_type`: The action kind, e.g. `create_transaction`, `revert_transaction`, `add_metadata`, `create_ledger`, `delete_ledger`, `save_numscript`, `create_index`, `register_signing_key`, … This is the same stable vocabulary used by the audit filter DSL (`domain.AuditOrderType`); it is extended additively and tokens are never renamed.
 
 **Per-action error rate**: `admission.action.errors.total / admission.action.total` — a ratio in `[0, 1]` because errors is a strict subset of total.
 
