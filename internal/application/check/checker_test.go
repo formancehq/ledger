@@ -1345,7 +1345,7 @@ func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
 }
 
 // TestCheckerDetectsLiveOnlyTransaction is a regression test for #347:
-// compareTransactions used to build allKeys from replay ∪ baseline only,
+// compareTransactions used to build allKeys from the replayed logs only,
 // so a transaction present in the live store without a matching log entry
 // (fabricated state, FSM bug, direct Pebble write) escaped detection. The
 // fix widens allKeys with the live store and reports the rogue entry.
@@ -1386,7 +1386,7 @@ func TestCheckerDetectsLiveOnlyTransaction(t *testing.T) {
 		count++
 	}
 
-	require.True(t, hasRogue, "checker must flag a transaction present in live but absent from replay/baseline (got %d errors total)", count)
+	require.True(t, hasRogue, "checker must flag a transaction present in live but absent from the replayed logs (got %d errors total)", count)
 }
 
 // TestCheckerDetectsSymmetricVolumeMutation is a regression test for #347:
@@ -1991,19 +1991,17 @@ func TestCompareIndexes_BucketScopeIgnored(t *testing.T) {
 	require.Empty(t, events, "bucket-scoped entries must be silently skipped until a producer lands")
 }
 
-// TestCompareIndexes_UnseededEntryFlaggedUnderArchiving inverts what used to be
-// TestCompareIndexes_ArchiveOrphanIgnored. The pass no longer has an
-// archive-orphan tolerance: under archiving the pre-archive registry state is
-// seeded from the baseline snapshot by foldBaselineIndexes, so an entry absent
-// from `expected` is genuinely unaccounted for and must be flagged rather than
-// excused.
+// TestCompareIndexes_UnexpectedEntryFlagged: the full-history replay accounts
+// for every registry entry, so an entry absent from `expected` is genuinely
+// unaccounted for and must be flagged rather than excused.
 //
-// This is the masking channel the EN-1458 review found: the old skip accepted a
-// stale or tampered metadata-index row, and compareReverseMapOrphans' registry
-// term then treated that row as proof the field was still indexed, silencing the
-// orphan verdict on its reverse-map rows. Both corrupted projections passed
-// Check() together. Keep this assertion: restoring the tolerance re-opens it.
-func TestCompareIndexes_UnseededEntryFlaggedUnderArchiving(t *testing.T) {
+// This is the masking channel the EN-1458 review found: a tolerated skip here
+// accepts a stale or tampered metadata-index row, and compareReverseMapOrphans'
+// registry term then treats that row as proof the field is still indexed,
+// silencing the orphan verdict on its reverse-map rows. Both corrupted
+// projections pass Check() together. Keep this assertion: a tolerance re-opens
+// that channel.
+func TestCompareIndexes_UnexpectedEntryFlagged(t *testing.T) {
 	t.Parallel()
 
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
@@ -2020,7 +2018,7 @@ func TestCompareIndexes_UnseededEntryFlaggedUnderArchiving(t *testing.T) {
 	var events []*servicepb.CheckStoreEvent
 	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
 
-	require.Len(t, events, 1, "a stored entry the baseline seed did not account for must be flagged even under archiving")
+	require.Len(t, events, 1, "a stored entry the replay did not account for must be flagged")
 	require.Equal(t,
 		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 		events[0].GetError().GetErrorType())
@@ -2084,14 +2082,9 @@ func TestCompareIndexes_AccountBuiltinAsset_ExtraInStored(t *testing.T) {
 }
 
 // TestCompareIndexes_DeletedInReplayFlagged pins the deleted-ledger
-// follow-up guard: a stored entry survives a DeleteLedger that was
-// replayed AND whose deferred Pebble cleanup has already completed
-// (ledger NOT in pendingCleanupLedgers). This is tampering regardless of
-// archive state — the per-key replayActivity guard cannot catch it when
-// the original CreateIndex log lived in an archived chapter, because the
-// DeleteLedger cascade iterates `expectedIndexes` and that map never
-// held the archived key. The dedicated `deletedInReplay` set closes the
-// gap.
+// guard: a stored entry surviving a replayed DeleteLedger is tampering —
+// DeleteLedger purges the ledger's registry entries in the same apply. The
+// dedicated `deletedInReplay` set names the cause in the event message.
 func TestCompareIndexes_DeletedInReplayFlagged(t *testing.T) {
 	t.Parallel()
 
@@ -2106,9 +2099,7 @@ func TestCompareIndexes_DeletedInReplayFlagged(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	// archives present + DeleteLedger replayed + cleanup completed (no
-	// entry in pending) + replayActivity empty (CreateIndex was archived,
-	// cascade couldn't mark the key) → tampering must surface.
+	// DeleteLedger replayed → a surviving stored entry must surface.
 	deleted := map[string]struct{}{"L1": {}}
 
 	var events []*servicepb.CheckStoreEvent
@@ -2481,4 +2472,37 @@ func TestCompareReferences_DetectsMissingAndUnaudited(t *testing.T) {
 
 	require.True(t, missing, "a dropped audited reference must surface as REFERENCE_MISMATCH")
 	require.True(t, unaudited, "an injected unaudited reference must surface as REFERENCE_MISMATCH")
+}
+
+// TestCompareReferences_FlagsRowSurvivingDeletedLedger: DeleteLedger purges
+// reference rows in the same apply, so a stored row for a non-live ledger is
+// an unaudited leftover and must surface as REFERENCE_MISMATCH.
+func TestCompareReferences_FlagsRowSurvivingDeletedLedger(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("doomed"))
+
+	withRef := createTransactionOrder("doomed", true, newPosting("world", "alice", "USD", 100))
+	withRef.GetLedgerScoped().GetApply().GetCreateTransaction().Reference = "ref-1"
+	engine.processAndCommit(withRef)
+	engine.processAndCommit(deleteLedgerOrder("doomed"))
+
+	// Re-inject a row the same-apply purge should have removed.
+	batch := engine.store.OpenWriteSession()
+	_, err := engine.attrs.References.Set(batch,
+		domain.TransactionReferenceKey{LedgerName: "doomed", Reference: "ref-1"}.Bytes(),
+		&commonpb.TransactionReferenceValue{TransactionId: 1})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	var leftover bool
+	for _, e := range collectCheckErrors(t, engine.store, engine.attrs) {
+		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH &&
+			strings.Contains(e.GetMessage(), "non-live ledger") {
+			leftover = true
+		}
+	}
+
+	require.True(t, leftover, "a reference row surviving a DeleteLedger must surface as REFERENCE_MISMATCH")
 }

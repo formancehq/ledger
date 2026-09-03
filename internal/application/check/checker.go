@@ -942,8 +942,8 @@ func (c *Checker) compareIndexes(
 // verified range. WriteSet.Absorb legitimately removes the Boundary row on
 // ledger deletion, so the absent-row branch is suppressed for a deleted ledger:
 // its missing boundary is expected, not corruption. The present-row equality
-// checks (ahead/behind/corrupt-to-zero) still apply to every ledger, including
-// one in the pending-cleanup window whose row is still present.
+// checks (ahead/behind/corrupt-to-zero) still apply to every ledger whose row
+// is present.
 func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chainBoundState, deletedInReplay map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) {
 	// Collect stored last_mirror_v2_log_id per ledger from the live boundary rows.
 	stored := make(map[string]uint64)
@@ -1988,13 +1988,10 @@ func (c *Checker) verifyAuditHashChain(
 		// re-derived from the chain-bound Order. Consumed by
 		// verifySkippedOrder during the log iteration loop.
 		expectedSkippable = make(map[uint64]*expectedSkippableOrder)
-		// hasVerifiedRange records whether any entry was verified; a dedicated
-		// bool rather than a 0-sentinel, since HLC timestamp 0 is a legitimate
-		// value (mirrors the *uint64 idemReportFloor tri-state below).
+		// hasVerifiedRange records whether any entry was verified — the gate
+		// for the idempotency comparison, whose expectation is only complete
+		// once the audit range has been folded.
 		hasVerifiedRange bool
-		// Timestamp of the first (lowest-sequence) verified entry — the
-		// idempotency report floor.
-		verifiedRangeStartTs uint64
 	)
 
 	for {
@@ -2011,10 +2008,7 @@ func (c *Checker) verifyAuditHashChain(
 			return nil, fmt.Errorf("reading audit entry for hash chain verification: %w", err)
 		}
 
-		if !hasVerifiedRange {
-			hasVerifiedRange = true
-			verifiedRangeStartTs = entry.GetTimestamp().GetData()
-		}
+		hasVerifiedRange = true
 
 		// `items` on the stored AuditEntry value is reserved for
 		// GetAuditEntry response shaping — the apply path forces it
@@ -2221,18 +2215,7 @@ func (c *Checker) verifyAuditHashChain(
 		c.logger.Infof("Audit hash chain verified: %d entries checked", checked)
 	}
 
-	// idemReportFloor is the lowest created_at at/above which `expectedIdem` is
-	// complete, so an unmatched stored entry there is tampering. It is a
-	// pointer so a floor of 0 ("report every entry") is distinct from "no
-	// verified range at all" (nil — report nothing). The verified range covers
-	// the whole history, so the floor is the first verified timestamp.
-	var idemReportFloor *uint64
-
-	if hasVerifiedRange {
-		idemReportFloor = &verifiedRangeStartTs
-	}
-
-	if err := c.compareIdempotencyOutcomes(reader, expectedIdem, idemReportFloor, callback); err != nil {
+	if err := c.compareIdempotencyOutcomes(reader, expectedIdem, hasVerifiedRange, callback); err != nil {
 		return nil, err
 	}
 
@@ -2885,7 +2868,7 @@ func chainBoundCreateTxApplicationUncertain(
 	}
 
 	if firstSeenSeq, claimed := chainBound.references[ledger][ref]; claimed && firstSeenSeq < logSeq {
-		// A strictly-earlier claim is visible (live or baseline):
+		// A strictly-earlier claim is visible:
 		// chainBoundCreateTxSkipped already decided skip vs. apply
 		// authoritatively. (A claim at >= logSeq is this create's own,
 		// recorded by the caller before this check.)
@@ -3039,8 +3022,6 @@ func rememberFirstRevert(
 	txID uint64,
 	logSeq uint64,
 ) {
-	// logSeq=0 is the baseline-fold sentinel (foldBaselineReverted).
-	// The live-audit path never reaches here with logSeq=0.
 	if txID == 0 {
 		return
 	}
@@ -3069,13 +3050,6 @@ func appendMetadataMutation(
 	logSeq uint64,
 	exists bool,
 ) {
-	// NOTE: logSeq=0 IS a valid sentinel value used by the baseline folds
-	// (foldBaselineMetadata / foldBaselineChainState) to record entries
-	// that predate the live audit range. The caller in
-	// collectExpectedSkippable never reaches this helper with logSeq=0
-	// (failure-side audit items early-continue at the loop top), so no
-	// guard is needed here.
-
 	perLedger, ok := metadata[ledger]
 	if !ok {
 		perLedger = make(map[string]map[string][]chainBoundMutation)
@@ -3099,9 +3073,6 @@ func appendAccountTypeMutation(
 	logSeq uint64,
 	exists bool,
 ) {
-	// logSeq=0 is the baseline-fold sentinel (see foldBaselineLedgers).
-	// The live-audit path never reaches here with logSeq=0.
-
 	perLedger, ok := accountTypes[ledger]
 	if !ok {
 		perLedger = make(map[string][]chainBoundMutation)
@@ -3846,12 +3817,12 @@ func expectedIdempotencyOutcome(entry *auditpb.AuditEntry, items []*auditpb.Audi
 // cache — left unchecked, a duplicate caller would replay an arbitrary error or
 // wrong log range while Check() passed.
 //
-// Entries are matched by (key hash, created_at). `expected` is built to be
-// complete at/above idemReportFloor: the whole audit range is re-derived. A
-// stored entry whose created_at is at/above the floor but matches no freeze is
-// therefore a tampered created_at or a fabricated entry and is reported. A nil
-// floor means nothing was re-derivable (no verified range), so all entries are
-// skipped.
+// Entries are matched by (key hash, created_at). `expected` is complete: the
+// whole audit range is re-derived, and every freeze is written by the same
+// apply as its audit entry. A stored entry matching no freeze is therefore a
+// tampered created_at or a fabricated entry and is reported. When no entry was
+// verified (hasVerifiedRange false) the expectation was never built, so all
+// entries are skipped.
 //
 // This pass verifies the INTEGRITY of the entries that are stored — it does not
 // detect a DELETED entry. A frozen outcome that is simply absent cannot be
@@ -3867,7 +3838,7 @@ func expectedIdempotencyOutcome(entry *auditpb.AuditEntry, items []*auditpb.Audi
 func (c *Checker) compareIdempotencyOutcomes(
 	reader dal.PebbleReader,
 	expected map[idemExpectedKey]expectedIdempotency,
-	idemReportFloor *uint64,
+	hasVerifiedRange bool,
 	callback func(*servicepb.CheckStoreEvent),
 ) error {
 	iter, err := reader.NewIter(&pebble.IterOptions{
@@ -3896,10 +3867,10 @@ func (c *Checker) compareIdempotencyOutcomes(
 			createdAt: stored.GetCreatedAt(),
 		}]
 		if !ok {
-			// No matching freeze. `expected` is complete at/above the report
-			// floor, so a miss there is a tampered created_at or a fabricated
+			// No matching freeze. `expected` is complete over the verified
+			// range, so a miss is a tampered created_at or a fabricated
 			// entry.
-			if idemReportFloor != nil && stored.GetCreatedAt() >= *idemReportFloor {
+			if hasVerifiedRange {
 				callback(errorEvent(
 					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH,
 					fmt.Sprintf("frozen idempotency outcome (created_at=%d) has no matching audit entry — tampered created_at or fabricated entry",
@@ -4075,7 +4046,7 @@ func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, ex
 // map (verified against the stored LedgerInfo in compareAccountTypes) and the
 // compiled map (drives the ephemeral-purge simulation). The raw map is copied
 // so the replay's add/remove mutations don't touch the source. Serves the types
-// carried by CreateLedger and the boundary-time types seeded from the baseline.
+// carried by CreateLedger.
 func seedAccountTypes(raw map[string]map[string]*commonpb.AccountType, compiled map[string][]accounttype.CompiledType, ledger string, types map[string]*commonpb.AccountType) {
 	if len(types) == 0 {
 		return
@@ -4315,8 +4286,8 @@ func errorEventWithTx(errorType servicepb.CheckStoreErrorType, message, ledger s
 // revert.
 //
 // The comparison is driven purely by audit-derived state (knownLedgers,
-// derived): no persisted marker — pending-cleanup included, since it is
-// itself an unverified projection — may exempt an audit-live ledger from the
+// derived): no persisted marker, being itself an unverified projection, may
+// exempt an audit-live ledger from the
 // check. Stored rows for ledgers the audit does not know as live are flagged
 // too: DeleteLedger deletes the rows at apply time on both the live path and
 // the replay, so nothing legitimately lingers. Rows that fail to decode are
@@ -4553,7 +4524,7 @@ func (c *Checker) collectAuditOrderBoundaryEffects(reader dal.PebbleReader, expe
 // compareBoundaries verifies each ledger's stored LedgerBoundaries against the
 // checker's re-derivation. Only the id fields (NextTransactionId, NextLogId)
 // are verified here — they come from the replayed logs plus the chain-bound
-// audit-order effects, baseline-seeded under archiving; the mirror high-water
+// audit-order effects; the mirror high-water
 // (last_mirror_v2_log_id) is verified separately by compareMirrorV2LogID. The
 // per-ledger usage counters (PostingCount, RevertCount,
 // NumscriptExecutionCount, VolumeCount, MetadataCount, ReferenceCount) no
@@ -4638,25 +4609,22 @@ func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader
 
 // compareReferences verifies the stored reference→txID uniqueness index
 // (SubAttrReference) against the references re-derived from the replayed
-// CreatedTransaction / RevertedTransaction logs, overlaid on the baseline
-// under archiving. Rows for ledgers outside the audit-derived live set, or
-// whose deferred delete cleanup is still pending, are skipped — those rows
-// legitimately linger until a covering purge runs deleteLedgerData.
+// CreatedTransaction / RevertedTransaction logs. Expected rows for ledgers
+// outside the audit-derived live set are skipped — the replay store keeps a
+// deleted ledger's claims, but DeleteLedger removes the stored rows at apply.
+// A STORED row for a non-live ledger is flagged for the same reason: nothing
+// legitimately lingers past the same-apply purge.
 func (c *Checker) compareReferences(ctx context.Context, reader dal.PebbleReader, replay *replayStore, knownLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
-	skipKey := func(canonicalKey []byte) (domain.TransactionReferenceKey, bool) {
+	parseKey := func(canonicalKey []byte) (domain.TransactionReferenceKey, bool) {
 		var rk domain.TransactionReferenceKey
 		if err := rk.Unmarshal(canonicalKey); err != nil {
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
 				fmt.Sprintf("reference row has unparsable key %x: %v", canonicalKey, err), 0, "", "", ""))
 
-			return rk, true
+			return rk, false
 		}
 
-		if _, known := knownLedgers[rk.LedgerName]; !known {
-			return rk, true
-		}
-
-		return rk, false
+		return rk, true
 	}
 
 	// expected = the replayed reference set.
@@ -4713,8 +4681,12 @@ func (c *Checker) compareReferences(ctx context.Context, reader dal.PebbleReader
 			return ctx.Err()
 		}
 
-		rk, skip := skipKey([]byte(key))
-		if skip {
+		rk, ok := parseKey([]byte(key))
+		if !ok {
+			continue
+		}
+
+		if _, known := knownLedgers[rk.LedgerName]; !known {
 			continue
 		}
 
@@ -4735,12 +4707,20 @@ func (c *Checker) compareReferences(ctx context.Context, reader dal.PebbleReader
 	}
 
 	for key, storedTxID := range stored {
-		if _, ok := expected[key]; ok {
+		rk, ok := parseKey([]byte(key))
+		if !ok {
 			continue
 		}
 
-		rk, skip := skipKey([]byte(key))
-		if skip {
+		if _, known := knownLedgers[rk.LedgerName]; !known {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
+				fmt.Sprintf("stored reference %q for non-live ledger %q (transaction %d): DeleteLedger removes reference rows at apply, so this is an unaudited leftover",
+					rk.Reference, rk.LedgerName, storedTxID), 0, rk.LedgerName, "", ""))
+
+			continue
+		}
+
+		if _, ok := expected[key]; ok {
 			continue
 		}
 
