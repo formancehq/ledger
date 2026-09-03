@@ -15,6 +15,8 @@ import (
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var _ = Describe("Leadership transfer", Ordered, func() {
@@ -82,13 +84,16 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 	It("should continue operating after leadership transfer", func() {
 		lid := *leaderID
 
-		// Create a ledger before transfer
-		_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("transfer-test", nil)))
-		Expect(err).To(Succeed())
+		// The preceding ordered scenario also transferred leadership. Wait for
+		// that leader's first complete disk verdict before creating the ledger.
+		Eventually(func(g Gomega) {
+			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("transfer-test", nil)))
+			g.Expect(err).To(Succeed())
+		}).Should(Succeed())
 
 		// Transfer leadership
 		targetID := (lid % countInstances) + 1
-		_, err = servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
+		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
 			Transferee: uint32(targetID),
 		})
 		Expect(err).To(Succeed())
@@ -104,8 +109,18 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 			}).Should(Equal(targetID))
 		}
 
-		// Create transactions through the new leader
-		for i := 0; i < 3; i++ {
+		// A new leadership epoch intentionally fails writes closed until the
+		// health worker has collected fresh WAL and data samples from every
+		// committed member. Leader discovery can complete just before that poll.
+		Eventually(func(g Gomega) {
+			_, err := servers[targetID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("transfer-test", []*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
+			}, nil, nil)))
+			g.Expect(err).To(Succeed())
+		}).Should(Succeed())
+
+		// Create the remaining transactions through the now-open new leader.
+		for i := 0; i < 2; i++ {
 			_, err := servers[targetID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("transfer-test", []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
@@ -139,7 +154,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 	})
 
 	// This test MUST be last as it stops a node
-	It("should transfer leadership automatically when leader stops gracefully", func() {
+	It("should fail writes closed after automatic transfer while a committed member is unavailable", func() {
 		lid := *leaderID
 
 		// Create a ledger and some transactions so the cluster is active
@@ -173,12 +188,15 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 			return newLeaderID != 0 && newLeaderID != oldLeaderID
 		}).Should(BeTrue(), "a new leader should be elected after the old leader stops")
 
-		// Verify the cluster continues to function: create transactions via the new leader
-		for i := 0; i < 3; i++ {
+		// The stopped node is still in the committed Raft configuration. The new
+		// leader must not publish an open disk verdict without fresh evidence from
+		// that member, even though quorum and leader discovery are available.
+		Eventually(func(g Gomega) {
 			_, err := servers[newLeaderID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
-			Expect(err).To(Succeed())
-		}
+			g.Expect(status.Code(err)).To(Equal(codes.ResourceExhausted))
+			g.Expect(err).To(MatchError(ContainSubstring("writes blocked: disk usage exceeds threshold")))
+		}).Should(Succeed())
 	})
 })

@@ -4,9 +4,9 @@ package controller
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -65,7 +65,22 @@ func TestVolumeExpansionReconcilerPatchesPVCInEnvtest(t *testing.T) {
 	pvc.Status.Capacity = corev1.ResourceList{corev1.ResourceStorage: request}
 	require.NoError(t, k8sClient.Status().Update(ctx, pvc))
 
-	require.Eventually(t, func() bool {
+	// The volume reconciler watches Cluster objects, not PVCs. Wait until the
+	// primary reconciler has created the live StatefulSet, then enqueue one
+	// deterministic Cluster update after the PVC is Bound.
+	requireEventually(t, func() bool {
+		var statefulSet appsv1.StatefulSet
+
+		return k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: "ledger-auto-expand"}, &statefulSet) == nil
+	}, "StatefulSet should exist before triggering volume expansion")
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: cluster.Name}, cluster))
+	if cluster.Annotations == nil {
+		cluster.Annotations = map[string]string{}
+	}
+	cluster.Annotations["ledger.formance.com/test-volume-expansion-trigger"] = "ready"
+	require.NoError(t, k8sClient.Update(ctx, cluster))
+
+	requireEventually(t, func() bool {
 		var current corev1.PersistentVolumeClaim
 		if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: pvc.Name}, &current); err != nil {
 			return false
@@ -74,5 +89,5 @@ func TestVolumeExpansionReconcilerPatchesPVCInEnvtest(t *testing.T) {
 
 		return requested.Cmp(resource.MustParse("146Gi")) == 0 &&
 			current.Annotations[annotationLastExpansionTarget] == "146Gi"
-	}, 15*time.Second, 250*time.Millisecond)
+	}, "PVC should be expanded after the explicit Cluster reconcile")
 }

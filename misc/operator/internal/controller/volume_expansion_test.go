@@ -13,12 +13,14 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
@@ -241,6 +243,96 @@ func TestLoadVolumePVCsUsesDirectAPIReader(t *testing.T) {
 	reconciler.APIReader = nil
 	_, _, err = reconciler.loadVolumePVCs(t.Context(), ledger, "data", 1)
 	require.ErrorContains(t, err, "APIReader is required")
+}
+
+func TestLoadVolumePVCsIgnoresDiagnosticTargetAndFutureCooldown(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC)
+	scheme := runtime.NewScheme()
+	require.NoError(t, corev1.AddToScheme(scheme))
+	pvc := boundTestPVC("data-ledger-test-0", "expandable", "100Gi")
+	pvc.Annotations = map[string]string{
+		annotationLastExpansionAt:     now.Add(365 * 24 * time.Hour).Format(time.RFC3339),
+		annotationLastExpansionTarget: "not-a-quantity",
+	}
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pvc).Build()
+	recorder := record.NewFakeRecorder(1)
+	reconciler := &VolumeExpansionReconciler{
+		Client:    k8sClient,
+		APIReader: k8sClient,
+		Recorder:  recorder,
+		Now:       func() time.Time { return now },
+	}
+	ledger := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"}}
+
+	_, states, err := reconciler.loadVolumePVCs(t.Context(), ledger, "data", 1)
+	require.NoError(t, err)
+	require.Len(t, states, 1)
+	require.True(t, states[0].LastExpansionAt.IsZero(), "a future annotation must not create an unbounded cooldown")
+
+	select {
+	case event := <-recorder.Events:
+		require.Contains(t, event, "VolumeExpansionAnnotationInvalid")
+	case <-time.After(time.Second):
+		t.Fatal("expected a warning for the future cooldown annotation")
+	}
+}
+
+func TestPatchPVCGroupUsesOptimisticLock(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, corev1.AddToScheme(scheme))
+	pvc := boundTestPVC("data-ledger-test-0", "expandable", "100Gi")
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pvc).Build()
+	reconciler := &VolumeExpansionReconciler{Client: k8sClient}
+
+	var stale corev1.PersistentVolumeClaim
+	require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKeyFromObject(pvc), &stale))
+	var concurrent corev1.PersistentVolumeClaim
+	require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKeyFromObject(pvc), &concurrent))
+	concurrent.Spec.Resources.Requests[corev1.ResourceStorage] = resource.MustParse("180Gi")
+	require.NoError(t, k8sClient.Update(t.Context(), &concurrent))
+
+	err := reconciler.patchPVCGroup(
+		t.Context(),
+		[]*corev1.PersistentVolumeClaim{stale.DeepCopy()},
+		testQuantityValue("146Gi"),
+		time.Now(),
+	)
+	require.Error(t, err)
+	require.True(t, k8serrors.IsConflict(errors.Unwrap(err)) || strings.Contains(err.Error(), "conflict"), err.Error())
+
+	var persisted corev1.PersistentVolumeClaim
+	require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKeyFromObject(pvc), &persisted))
+	requested := persisted.Spec.Resources.Requests[corev1.ResourceStorage]
+	require.Equal(t, "180Gi", requested.String())
+}
+
+func TestVolumeMetricCleanup(t *testing.T) {
+	t.Parallel()
+
+	const (
+		namespace = "metric-cleanup-namespace"
+		cluster   = "metric-cleanup-cluster"
+		pod       = "ledger-metric-cleanup-cluster-0"
+		volume    = "data"
+	)
+	volumeUsageRatioMetric.WithLabelValues(namespace, cluster, pod, volume).Set(0.8)
+	volumeUsageSampleAgeMetric.WithLabelValues(namespace, cluster, pod, volume).Set(10)
+	volumeRequestedBytesMetric.WithLabelValues(namespace, cluster, volume).Set(100)
+	volumeExpansionsMetric.WithLabelValues(namespace, cluster, volume, "requested").Inc()
+
+	resetVolumeGaugeMetrics(namespace, cluster)
+	require.False(t, volumeUsageRatioMetric.DeleteLabelValues(namespace, cluster, pod, volume))
+	require.False(t, volumeUsageSampleAgeMetric.DeleteLabelValues(namespace, cluster, pod, volume))
+	require.False(t, volumeRequestedBytesMetric.DeleteLabelValues(namespace, cluster, volume))
+	require.True(t, volumeExpansionsMetric.DeleteLabelValues(namespace, cluster, volume, "requested"))
+
+	volumeExpansionsMetric.WithLabelValues(namespace, cluster, volume, "requested").Inc()
+	deleteVolumeMetrics(namespace, cluster)
+	require.False(t, volumeExpansionsMetric.DeleteLabelValues(namespace, cluster, volume, "requested"))
 }
 
 func TestVolumeExpansionReconcilerRejectsNonExpandableStorageClass(t *testing.T) {

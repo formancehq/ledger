@@ -26,7 +26,9 @@ would hide a cache-retention problem.
 ## Measurement path
 
 No Prometheus server is required. On every enabled Cluster reconcile interval,
-the operator runs the existing command below in each expected pod:
+the operator first evaluates PVC convergence, resize state, and cooldown. When
+the group is ready for a new capacity decision, it runs the existing command
+below in each expected pod; the other states deliberately skip pod exec:
 
 ```text
 ledgerctl cluster disk-usage --json
@@ -72,6 +74,11 @@ It waits while any PVC is unbound, while requested capacity exceeds reported
 capacity, while Kubernetes reports `Resizing` or `FileSystemResizePending`, and
 until the group cooldown expires.
 
+PVC patches carry a Kubernetes `resourceVersion` precondition. A concurrent
+manual or controller-driven request increase therefore causes a conflict and a
+fresh reconcile instead of allowing the stale auto-expansion target to overwrite
+the newer request.
+
 One patch changes both `spec.resources.requests.storage` and:
 
 - `ledger.formance.com/last-expansion-at`
@@ -100,12 +107,19 @@ client or cloud credentials.
 - Partial patch: the largest PVC request becomes the recovery target on the
   next pass when it remains within `maximumSize`; cooldown does not prevent
   convergence.
+- A future `last-expansion-at` annotation: emit
+  `VolumeExpansionAnnotationInvalid` and ignore it for cooldown, so externally
+  edited or clock-skewed metadata cannot suspend expansion indefinitely. The
+  `last-expansion-target` value remains diagnostic and is not decision input.
 
 Structured logs record the decision, current/target/max bytes, highest usage,
 and failed measurement count. Kubernetes events provide the human-facing state.
-The operator's existing metrics endpoint exports usage ratios, requested bytes,
-decision counters, and error counters; scraping these metrics is optional and
-does not participate in the control loop.
+The operator's existing metrics endpoint exports usage ratios, sample age,
+requested bytes, decision counters, and error counters; scraping these metrics
+is optional and does not participate in the control loop. Ratio and age series
+are present only for fresh samples used by the latest reconciliation and are
+removed on skipped or invalid measurement paths. Cluster-labelled series are
+retired when expansion is disabled or the Cluster is deleted.
 
 ## EKS validation
 

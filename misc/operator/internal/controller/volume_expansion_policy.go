@@ -109,6 +109,50 @@ func resolveVolumeExpansionPolicy(spec *ledgerv1alpha1.VolumeAutoExpansionSpec) 
 	return policy, nil
 }
 
+func validateAndResolveVolumeSpec(
+	field string,
+	spec *ledgerv1alpha1.VolumeSpec,
+	defaultSize string,
+	autoExpansionAllowed bool,
+) (*volumeExpansionPolicy, error) {
+	if spec.HostPath != nil {
+		if spec.HostPath.Path == "" {
+			return nil, fmt.Errorf("%s.hostPath.path must not be empty", field)
+		}
+		if spec.StorageClass != "" {
+			return nil, fmt.Errorf("%s: storageClass and hostPath are mutually exclusive", field)
+		}
+		if spec.VolumeAttributesClassName != "" {
+			return nil, fmt.Errorf("%s: volumeAttributesClassName and hostPath are mutually exclusive", field)
+		}
+		if spec.AutoExpansion != nil && spec.AutoExpansion.Enabled {
+			return nil, fmt.Errorf("%s: autoExpansion and hostPath are mutually exclusive", field)
+		}
+	}
+
+	auto := spec.AutoExpansion
+	if auto == nil || !auto.Enabled {
+		return nil, nil
+	}
+	if !autoExpansionAllowed {
+		return nil, fmt.Errorf("%s: autoExpansion is supported only for wal and data volumes", field)
+	}
+
+	policy, err := resolveVolumeExpansionPolicy(auto)
+	if err != nil {
+		return nil, fmt.Errorf("%s.autoExpansion: %w", field, err)
+	}
+	initialSize := spec.Size
+	if initialSize.IsZero() {
+		initialSize = resource.MustParse(defaultSize)
+	}
+	if policy.MaximumSize.Cmp(initialSize) <= 0 {
+		return nil, fmt.Errorf("%s.autoExpansion.maximumSize must be greater than initial size %s", field, initialSize.String())
+	}
+
+	return &policy, nil
+}
+
 type volumePVCState struct {
 	Name            string
 	RequestedBytes  int64
@@ -122,6 +166,7 @@ type podVolumeMeasurement struct {
 	Pod        string
 	UsedBytes  uint64
 	TotalBytes uint64
+	SampleAge  time.Duration
 	Err        error
 }
 
@@ -253,15 +298,16 @@ func decideVolumeExpansion(
 		return decision
 	}
 
-	minimumTarget := decision.LargestRequestBytes + policy.MinimumIncrement.Value()
-	usageTarget := ceilDivideUint64(decision.MaxUsedBytes*100, uint64(policy.TargetPercent))
-	targetBytes := min(roundUpToGiB(max(minimumTarget, int64(usageTarget))), maximumBytes)
-	if targetBytes <= decision.LargestRequestBytes {
-		decision.Kind = volumeExpansionDecisionLimit
-		decision.TargetBytes = maximumBytes
-
-		return decision
+	minimumTarget := maximumBytes
+	if increment := policy.MinimumIncrement.Value(); increment < maximumBytes-decision.LargestRequestBytes {
+		minimumTarget = decision.LargestRequestBytes + increment
 	}
+	usageTarget := ceilMultiplyDivideUint64(decision.MaxUsedBytes, 100, uint64(policy.TargetPercent))
+	usageTargetBytes := maximumBytes
+	if usageTarget < uint64(maximumBytes) {
+		usageTargetBytes = int64(usageTarget)
+	}
+	targetBytes := min(roundUpToGiB(max(minimumTarget, usageTargetBytes)), maximumBytes)
 
 	decision.Kind = volumeExpansionDecisionExpand
 	decision.TargetBytes = targetBytes
@@ -269,10 +315,30 @@ func decideVolumeExpansion(
 	return decision
 }
 
-func ceilDivideUint64(value, divisor uint64) uint64 {
-	return (value + divisor - 1) / divisor
+func ceilMultiplyDivideUint64(value, multiplier, divisor uint64) uint64 {
+	quotient := value / divisor
+	remainder := value % divisor
+	if quotient > math.MaxUint64/multiplier {
+		return math.MaxUint64
+	}
+	scaled := quotient * multiplier
+	extra := (remainder*multiplier + divisor - 1) / divisor
+	if scaled > math.MaxUint64-extra {
+		return math.MaxUint64
+	}
+
+	return scaled + extra
 }
 
 func roundUpToGiB(value int64) int64 {
-	return ((value + bytesPerGiB - 1) / bytesPerGiB) * bytesPerGiB
+	remainder := value % bytesPerGiB
+	if remainder == 0 {
+		return value
+	}
+	increment := bytesPerGiB - remainder
+	if value > math.MaxInt64-increment {
+		return math.MaxInt64
+	}
+
+	return value + increment
 }
