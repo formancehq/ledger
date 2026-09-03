@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -33,6 +35,7 @@ func TestValidationReceiptKeyRequiresExactSemanticIdentity(t *testing.T) {
 		{name: "selected gates", expected: "selectedGates", mutate: func(key *validationReceiptKey) { key.SelectedGatesFingerprint = "gates-2" }},
 		{name: "environment contract and build options", expected: "validationEnvironment", mutate: func(key *validationReceiptKey) { key.ValidationEnvironment = "env-with-other-goflags" }},
 		{name: "validation run directory", expected: "validationRunDirectory", mutate: func(key *validationReceiptKey) { key.ValidationRunDirectory = "/validation-2" }},
+		{name: "validation run contents", expected: "validationRunContents", mutate: func(key *validationReceiptKey) { key.ValidationRunFingerprint = "validation-contents-2" }},
 		{name: "review state directory", expected: "reviewStateDirectory", mutate: func(key *validationReceiptKey) { key.ReviewStateDirectory = "/state-2" }},
 		{name: "binding file", expected: "worktreeBindingFile", mutate: func(key *validationReceiptKey) { key.WorktreeBindingFile = "/binding-2" }},
 		{name: "binding content", expected: "worktreeBinding", mutate: func(key *validationReceiptKey) { key.WorktreeBindingFingerprint = "binding-2" }},
@@ -103,6 +106,35 @@ func TestValidationEnvironmentIdentityIsOrderIndependentAndRejectsDuplicates(t *
 	require.ErrorContains(t, err, "duplicate variable")
 }
 
+func TestDirectoryFingerprintTracksContentsWithoutFollowingSymlinks(t *testing.T) {
+	t.Parallel()
+
+	directory := t.TempDir()
+	outside := t.TempDir()
+	first, err := directoryFingerprint(directory)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(directory, "input"), []byte("one\n"), 0o600))
+	second, err := directoryFingerprint(directory)
+	require.NoError(t, err)
+	require.NotEqual(t, first, second)
+
+	require.NoError(t, os.Mkdir(filepath.Join(directory, "nested"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(directory, "nested", "input"), []byte("nested\n"), 0o600))
+	third, err := directoryFingerprint(directory)
+	require.NoError(t, err)
+	require.NotEqual(t, second, third)
+
+	outsideFile := filepath.Join(outside, "outside")
+	require.NoError(t, os.WriteFile(outsideFile, []byte("outside-one\n"), 0o600))
+	require.NoError(t, os.Symlink(outsideFile, filepath.Join(directory, "outside-link")))
+	withSymlink, err := directoryFingerprint(directory)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(outsideFile, []byte("outside-two\n"), 0o600))
+	afterOutsideMutation, err := directoryFingerprint(directory)
+	require.NoError(t, err)
+	require.Equal(t, withSymlink, afterOutsideMutation, "root-scoped fingerprinting must not follow symlinks")
+}
+
 func completeValidationReceiptKey() validationReceiptKey {
 	return validationReceiptKey{
 		Version:                    validationReceiptVersion,
@@ -122,6 +154,7 @@ func completeValidationReceiptKey() validationReceiptKey {
 		SelectedGatesFingerprint:   "gates",
 		ValidationEnvironment:      "environment",
 		ValidationRunDirectory:     "/validation",
+		ValidationRunFingerprint:   "validation-contents",
 		ReviewStateDirectory:       "/state",
 		WorktreeBindingFile:        "/binding",
 		WorktreeBindingFingerprint: "binding",

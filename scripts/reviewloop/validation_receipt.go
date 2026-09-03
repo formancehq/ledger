@@ -6,7 +6,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
+	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -40,6 +43,7 @@ type validationReceiptKey struct {
 	SelectedGatesFingerprint   string
 	ValidationEnvironment      string
 	ValidationRunDirectory     string
+	ValidationRunFingerprint   string
 	ReviewStateDirectory       string
 	WorktreeBindingFile        string
 	WorktreeBindingFingerprint string
@@ -254,6 +258,10 @@ func (cache *validationReceiptCache) captureKey(
 	if err != nil {
 		return validationReceiptKey{}, "", err
 	}
+	validationRunFingerprint, err := directoryFingerprint(runner.validationRunDir)
+	if err != nil {
+		return validationReceiptKey{}, "", fmt.Errorf("capturing validation run directory identity: %w", err)
+	}
 
 	gates := strings.Join(strings.Fields(string(selectedGates)), ",")
 	key := validationReceiptKey{
@@ -274,6 +282,7 @@ func (cache *validationReceiptCache) captureKey(
 		SelectedGatesFingerprint:   bytesFingerprint(selectedGates),
 		ValidationEnvironment:      validationEnvironment,
 		ValidationRunDirectory:     runner.validationRunDir,
+		ValidationRunFingerprint:   validationRunFingerprint,
 		ReviewStateDirectory:       runStateDir,
 		WorktreeBindingFile:        runner.bindingFile,
 		WorktreeBindingFingerprint: bytesFingerprint(bindingContent),
@@ -344,6 +353,7 @@ func (key validationReceiptKey) mismatches(current validationReceiptKey) []strin
 	compare("selectedGates", key.SelectedGatesFingerprint, current.SelectedGatesFingerprint)
 	compare("validationEnvironment", key.ValidationEnvironment, current.ValidationEnvironment)
 	compare("validationRunDirectory", key.ValidationRunDirectory, current.ValidationRunDirectory)
+	compare("validationRunContents", key.ValidationRunFingerprint, current.ValidationRunFingerprint)
 	compare("reviewStateDirectory", key.ReviewStateDirectory, current.ReviewStateDirectory)
 	compare("worktreeBindingFile", key.WorktreeBindingFile, current.WorktreeBindingFile)
 	compare("worktreeBinding", key.WorktreeBindingFingerprint, current.WorktreeBindingFingerprint)
@@ -372,6 +382,7 @@ func validationReceiptDigest(key validationReceiptKey) string {
 		key.SelectedGatesFingerprint,
 		key.ValidationEnvironment,
 		key.ValidationRunDirectory,
+		key.ValidationRunFingerprint,
 		key.ReviewStateDirectory,
 		key.WorktreeBindingFile,
 		key.WorktreeBindingFingerprint,
@@ -419,4 +430,104 @@ func bytesFingerprint(value []byte) string {
 	digest := sha256.Sum256(value)
 
 	return hex.EncodeToString(digest[:])
+}
+
+func directoryFingerprint(directory string) (string, error) {
+	if !filepath.IsAbs(directory) {
+		return "", errors.New("directory path is not absolute")
+	}
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = root.Close() // Fingerprinting errors take precedence over best-effort descriptor cleanup.
+	}()
+
+	hasher := sha256.New()
+	writeHashField(hasher, []byte("ledger-validation-directory-v1"))
+	if err := hashDirectoryEntries(hasher, root, "."); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+func hashDirectoryEntries(hasher hash.Hash, root *os.Root, directory string) error {
+	opened, err := root.Open(directory)
+	if err != nil {
+		return fmt.Errorf("opening directory %q: %w", directory, err)
+	}
+	entries, readErr := opened.ReadDir(-1)
+	closeErr := opened.Close()
+	if readErr != nil && closeErr != nil {
+		return errors.Join(readErr, closeErr)
+	}
+	if readErr != nil {
+		return fmt.Errorf("reading directory %q: %w", directory, readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("closing directory %q: %w", directory, closeErr)
+	}
+	slices.SortFunc(entries, func(left, right os.DirEntry) int {
+		return strings.Compare(left.Name(), right.Name())
+	})
+
+	for _, entry := range entries {
+		path := entry.Name()
+		if directory != "." {
+			path = filepath.Join(directory, path)
+		}
+		if !filepath.IsLocal(path) || path == "." {
+			return fmt.Errorf("directory entry path is not local: %q", path)
+		}
+		info, err := root.Lstat(path)
+		if err != nil {
+			return fmt.Errorf("reading directory entry metadata %q: %w", path, err)
+		}
+		writeHashField(hasher, []byte(path))
+		writeHashField(hasher, []byte(info.Mode().String()))
+
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
+			writeHashField(hasher, []byte("symlink"))
+			target, err := root.Readlink(path)
+			if err != nil {
+				return fmt.Errorf("reading directory symlink %q: %w", path, err)
+			}
+			writeHashField(hasher, []byte(target))
+		case info.Mode().IsRegular():
+			writeHashField(hasher, []byte("regular"))
+			file, err := root.Open(path)
+			if err != nil {
+				return fmt.Errorf("opening directory file %q: %w", path, err)
+			}
+			contentHasher := sha256.New()
+			logicalBytes, copyErr := io.Copy(contentHasher, file)
+			openedInfo, statErr := file.Stat()
+			closeErr := file.Close()
+			if copyErr != nil {
+				return fmt.Errorf("reading directory file %q: %w", path, copyErr)
+			}
+			if statErr != nil {
+				return fmt.Errorf("checking directory file %q after read: %w", path, statErr)
+			}
+			if closeErr != nil {
+				return fmt.Errorf("closing directory file %q: %w", path, closeErr)
+			}
+			if !openedInfo.Mode().IsRegular() || !os.SameFile(info, openedInfo) || openedInfo.Mode() != info.Mode() || openedInfo.Size() != logicalBytes {
+				return fmt.Errorf("directory file %q changed type or identity while being read", path)
+			}
+			writeHashField(hasher, contentHasher.Sum(nil))
+		case info.IsDir():
+			writeHashField(hasher, []byte("directory"))
+			if err := hashDirectoryEntries(hasher, root, path); err != nil {
+				return err
+			}
+		default:
+			writeHashField(hasher, []byte("special"))
+		}
+	}
+
+	return nil
 }

@@ -480,6 +480,18 @@ func TestValidationReceiptReviewLoopFlows(t *testing.T) {
 		require.NotContains(t, result.output, "VALIDATION_REUSED_EXACT_STATE")
 	})
 
+	t.Run("validation run directory reviewer mutation", func(t *testing.T) {
+		t.Parallel()
+
+		result := runValidationReceiptFlow(t, binary, validationReceiptFlowOptions{reviewMutation: "validation-run"})
+		require.NoError(t, result.err, result.output)
+		require.Len(t, result.identities, 2, "validation-run mutation must invalidate the receipt")
+		require.Equal(t, result.identities[0], result.identities[1], "candidate validation inputs intentionally remain unchanged")
+		require.Contains(t, result.output, "VALIDATION_RECEIPT_MISMATCH fields=validationRunContents")
+		require.Contains(t, result.output, "VALIDATION_EXECUTED reason=receipt_mismatch")
+		require.NotContains(t, result.output, "VALIDATION_REUSED_EXACT_STATE")
+	})
+
 	t.Run("tracked reviewer mutation", func(t *testing.T) {
 		t.Parallel()
 
@@ -583,6 +595,7 @@ else
       touch -r "$VALIDATION_RUN_DIR/ignored-input-reference" .ignored-input
 		;;
 	  tracked) printf 'reviewer mutation\n' > fixed-1.txt ;;
+	  validation-run) printf 'reviewer mutation\n' > "$VALIDATION_RUN_DIR/reviewer-mutation" ;;
 	  tool) printf 'tool mutation\n' > "$TEST_VALIDATION_TOOL_ROOT/tool-marker.txt" ;;
 	  root) printf 'root mutation\n' > "$TRUSTED_ROOT_CHECKOUT/root-marker.txt" ;;
 	  esac
