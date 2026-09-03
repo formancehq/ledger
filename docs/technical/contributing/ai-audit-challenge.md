@@ -34,9 +34,10 @@ Challenge runs are bound to the exact `head` recorded in the source audit report
 The source report itself is caller-owned and may live outside the worktree, where the repository cleanliness check cannot observe it. A run therefore snapshots it once, before validation, and binds everything to that snapshot: the trusted `audit_id`/`head`, the evidence handed to the challenger, and the final id/severity/title comparisons. Editing or replacing the external report while a challenge runs cannot retarget or alter the published qualification.
 
 The trusted runner also records `sourceAuditDigest`, the SHA-256 identity of that
-private source snapshot, in the published qualified report. Downstream campaign
-import uses this field to reject a different or subsequently modified source
-audit artifact. The reasoning provider does not mint this provenance value.
+private source snapshot, in the published qualified report. This preserves the
+exact source provenance of the qualification even when the caller-owned audit
+artifact is later moved or modified. The reasoning provider does not mint this
+provenance value.
 
 ## Mutation policy
 

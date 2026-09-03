@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
-repo_root=$(git -C "$script_root" rev-parse --show-toplevel)
-exec env -u GOROOT go run "$repo_root/scripts/aicampaign" "$@"
