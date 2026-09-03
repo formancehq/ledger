@@ -13,6 +13,14 @@ The challenger is deliberately adversarial to the finding. Its job is to try to 
 
 When evidence is insufficient, prefer `LIKELY` or `QUESTION`; do not manufacture certainty.
 
+## Required contract
+
+The challenge consumes one exact raw audit result at the same clean `HEAD`,
+runs a separate read-only provider pass, and independently attempts to disprove
+every finding. The qualified result must contain every original finding id
+exactly once, no invented ids, and the original severity and title unchanged.
+The challenge changes qualification, not finding identity.
+
 ## Challenge procedure
 
 For every original finding:
@@ -31,12 +39,10 @@ Do not judge a finding true because the first model sounded confident. Do not re
 
 Challenge runs are bound to the exact `head` recorded in the source audit report. The local repository must be clean and currently checked out at that exact commit. If the audit target and repository state differ, fail closed instead of silently challenging newer code.
 
-The source report itself is caller-owned and may live outside the worktree, where the repository cleanliness check cannot observe it. A run therefore snapshots it once, before validation, and binds everything to that snapshot: the trusted `audit_id`/`head`, the evidence handed to the challenger, and the final id/severity/title comparisons. Editing or replacing the external report while a challenge runs cannot retarget or alter the published qualification.
-
-The trusted runner also records `sourceAuditDigest`, the SHA-256 identity of that
-private source snapshot, in the published qualified report. This preserves the
-exact source provenance of the qualification even when the caller-owned audit
-artifact is later moved or modified. The reasoning provider does not mint this
+The launcher hashes the source report before the provider runs and verifies the
+same bytes remain afterward. It records that SHA-256 identity as
+`sourceAuditDigest` in the published qualified report so downstream consumers
+can verify the exact source artifact. The reasoning provider does not mint this
 provenance value.
 
 ## Mutation policy
@@ -61,4 +67,7 @@ A `CONFIRMED` result is suitable to become a backlog/Jira candidate after human 
 
 The qualified report is rejected unless every result reuses an original finding id exactly once and preserves that finding's severity and title. A challenge pass may change the status, not the priority or the subject of the original finding.
 
-Publication is atomic and anchored to the validated destination directory. The qualified report must not overwrite tracked repository content, Git metadata, or the source audit report, and a concurrent rename or symlink substitution of the output path must not redirect the final write into repository content. Repository-local reports are allowed only at ignored paths below `build/`; an unignored or differently located worktree output is rejected before the challenge starts.
+The launcher adds the trusted source digest to a temporary file under
+`build/ai-audit/` and atomically renames the validated qualification to its final
+name. Provider failure or validation failure publishes nothing. The source
+report and tracked repository content are never written.

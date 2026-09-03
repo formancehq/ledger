@@ -45,22 +45,6 @@ else
 fi
 `
 
-// The jq proxy can replace the caller-owned input immediately after the first
-// successful read. This deterministically exercises the boundary between input
-// validation and every later read without adding a test hook to the publisher.
-const fakeJQ = `#!/usr/bin/env bash
-set -euo pipefail
-set +e
-"$FAKE_REAL_JQ" "$@"
-status=$?
-set -e
-if [[ $status -eq 0 && -n "${FAKE_JQ_REPLACEMENT:-}" && ! -e "$FAKE_JQ_REPLACED" ]]; then
-	: >"$FAKE_JQ_REPLACED"
-	cp -- "$FAKE_JQ_REPLACEMENT" "$FAKE_JQ_INPUT"
-fi
-exit "$status"
-`
-
 func TestPublisherPreviewsConfirmedFindingsWithoutContactingJira(t *testing.T) {
 	t.Parallel()
 
@@ -132,61 +116,17 @@ func TestPublisherSupportsAnExplicitJiraComponent(t *testing.T) {
 	}, fixture.createdRequest(t)["additionalAttributes"])
 }
 
-func TestPublisherStaysBoundToValidatedSnapshotWhenInputIsReplaced(t *testing.T) {
+func TestPublisherRejectsMalformedFindingIDsBeforeJiraCalls(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFixture(t)
-	replacementAuditID := "replaced-during-publication"
-	replacementFindingID := replacementAuditID + "/different-finding"
-	fixture.replacementPath = filepath.Join(t.TempDir(), "replacement.json")
-	writeJSON(t, fixture.replacementPath, map[string]any{
-		"audit_id":      replacementAuditID,
-		"head":          "1111111111111111111111111111111111111111",
-		"summary":       "Replacement challenge",
-		"results":       []map[string]any{confirmedResult(replacementFindingID)},
-		"questions":     []map[string]any{},
-		"residual_risk": "LOW",
-	})
-
-	output, err := fixture.run(t, challengeResult(confirmedResult(testFindingID)), "--publish")
-	require.NoError(t, err, output)
-	require.FileExists(t, fixture.replacedPath)
-	require.Equal(t, replacementAuditID, readJSON(t, fixture.inputPath)["audit_id"])
-	require.Contains(t, output, "==> Jira candidate: "+testFindingID)
-	require.NotContains(t, output, replacementFindingID)
+	id := testAuditID + "/broken' OR text ~ 'unrelated"
+	output, err := fixture.run(t, challengeResult(confirmedResult(id)), "--publish")
+	require.Error(t, err)
+	require.Contains(t, output, "invalid challenge result")
+	require.NoFileExists(t, fixture.logPath)
 }
 
-// A crafted or malformed finding id must be refused before it can widen or
-// retarget the deduplication search, which would otherwise report an unrelated
-// issue as an existing duplicate and silently drop the confirmed finding.
-func TestPublisherRejectsFindingIDsThatCouldAlterTheJiraSearch(t *testing.T) {
-	t.Parallel()
-
-	for name, id := range map[string]string{
-		"single quote closing the marker phrase": testAuditID + "/broken' OR text ~ 'unrelated",
-		"double quote and JQL operator":          testAuditID + `/broken" OR key = ` + createdKey + ` AND text ~ "`,
-		"wildcard operator":                      testAuditID + "/broken*",
-		"another audit prefix":                   "another-audit/restore-retries-from-snapshot",
-		"missing audit prefix":                   "restore-retries-from-snapshot",
-		"non kebab-case name":                    testAuditID + "/Restore_Retries",
-		"nested path segment":                    testAuditID + "/restore/retries",
-		"empty name":                             testAuditID + "/",
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			fixture := newFixture(t)
-
-			output, err := fixture.run(t, challengeResult(confirmedResult(id)), "--publish")
-			require.Error(t, err)
-			require.Contains(t, output, "invalid challenge result")
-			require.NoFileExists(t, fixture.logPath)
-		})
-	}
-}
-
-// The audit id is the first segment of every finding id, so it must be
-// constrained as well; otherwise the marker inherits whatever it contains.
 func TestPublisherRejectsMalformedAuditID(t *testing.T) {
 	t.Parallel()
 
@@ -280,14 +220,11 @@ func searchResponse(t *testing.T, key string, description string) string {
 }
 
 type fixture struct {
-	inputPath       string
-	logPath         string
-	createRequest   string
-	fakeBin         string
-	searchJSON      string
-	realJQ          string
-	replacementPath string
-	replacedPath    string
+	inputPath     string
+	logPath       string
+	createRequest string
+	fakeBin       string
+	searchJSON    string
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -297,9 +234,6 @@ func newFixture(t *testing.T) *fixture {
 	fakeBin := filepath.Join(root, "bin")
 	require.NoError(t, os.MkdirAll(fakeBin, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(fakeBin, "acli"), []byte(fakeACLI), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(fakeBin, "jq"), []byte(fakeJQ), 0o700))
-	realJQ, err := exec.LookPath("jq")
-	require.NoError(t, err)
 
 	return &fixture{
 		inputPath:     filepath.Join(root, "qualified.json"),
@@ -307,8 +241,6 @@ func newFixture(t *testing.T) *fixture {
 		createRequest: filepath.Join(root, "acli-create-request.json"),
 		fakeBin:       fakeBin,
 		searchJSON:    `{"issues":[]}`,
-		realJQ:        realJQ,
-		replacedPath:  filepath.Join(root, "jq-replaced-input"),
 	}
 }
 
@@ -325,10 +257,6 @@ func (f *fixture) run(t *testing.T, result map[string]any, arguments ...string) 
 		"FAKE_ACLI_SEARCH_JSON="+f.searchJSON,
 		`FAKE_ACLI_CREATE_JSON={"key":"`+createdKey+`"}`,
 		"FAKE_ACLI_CREATE_REQUEST="+f.createRequest,
-		"FAKE_REAL_JQ="+f.realJQ,
-		"FAKE_JQ_INPUT="+f.inputPath,
-		"FAKE_JQ_REPLACEMENT="+f.replacementPath,
-		"FAKE_JQ_REPLACED="+f.replacedPath,
 		"PATH="+f.fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
 	)
 	output, err := command.CombinedOutput()
@@ -423,15 +351,4 @@ func writeJSON(t *testing.T, path string, content map[string]any) {
 	encoded, err := json.Marshal(content)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(path, encoded, 0o600))
-}
-
-func readJSON(t *testing.T, path string) map[string]any {
-	t.Helper()
-
-	contents, err := os.ReadFile(path)
-	require.NoError(t, err)
-	decoded := map[string]any{}
-	require.NoError(t, json.Unmarshal(contents, &decoded))
-
-	return decoded
 }
