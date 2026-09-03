@@ -101,7 +101,6 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100))
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 
 	boundariesStub := setupBoundariesStub(mockStore)
 	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
@@ -312,7 +311,6 @@ func TestMirrorIngest_AdvancesLastMirrorV2LogId(t *testing.T) {
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100))
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 
 	boundariesStub := setupBoundariesStub(mockStore)
 	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
@@ -715,7 +713,6 @@ func TestMirrorIngest_CreatedTransaction_AbsentVolumes(t *testing.T) {
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, nil)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 
 	postings := []*commonpb.Posting{{
 		Source:      "world",

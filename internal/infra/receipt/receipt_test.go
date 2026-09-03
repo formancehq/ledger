@@ -26,7 +26,7 @@ func TestSignAndVerify(t *testing.T) {
 	}
 	timestamp := &commonpb.Timestamp{Data: 1700000000}
 
-	token, err := signer.Sign("my-ledger", 42, postings, timestamp, 1)
+	token, err := signer.Sign("my-ledger", 42, postings, timestamp)
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 
@@ -34,7 +34,6 @@ func TestSignAndVerify(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "my-ledger", claims.Ledger)
 	require.Equal(t, uint64(42), claims.TxID)
-	require.Equal(t, uint64(1), claims.ChapterID)
 	require.Equal(t, "ledger-v3", claims.Issuer)
 	require.Len(t, claims.Postings, 1)
 	require.Equal(t, "world", claims.Postings[0].Source)
@@ -58,7 +57,7 @@ func TestVerifyWithWrongKey(t *testing.T) {
 		},
 	}
 
-	token, err := signer.Sign("ledger", 1, postings, nil, 0)
+	token, err := signer.Sign("ledger", 1, postings, nil)
 	require.NoError(t, err)
 
 	_, err = wrongSigner.Verify(token)
@@ -100,14 +99,13 @@ func TestSignMultiplePostings(t *testing.T) {
 		},
 	}
 
-	token, err := signer.Sign("payments", 7, postings, nil, 2)
+	token, err := signer.Sign("payments", 7, postings, nil)
 	require.NoError(t, err)
 
 	claims, err := signer.Verify(token)
 	require.NoError(t, err)
 	require.Len(t, claims.Postings, 3)
 	require.Equal(t, uint64(7), claims.TxID)
-	require.Equal(t, uint64(2), claims.ChapterID)
 }
 
 func TestClaimsToPostings(t *testing.T) {
@@ -204,13 +202,12 @@ func TestSignWithNilTimestamp(t *testing.T) {
 		},
 	}
 
-	token, err := signer.Sign("ledger", 1, postings, nil, 0)
+	token, err := signer.Sign("ledger", 1, postings, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 
-	claims, err := signer.Verify(token)
+	_, err = signer.Verify(token)
 	require.NoError(t, err)
-	require.Equal(t, uint64(0), claims.ChapterID)
 }
 
 // TestSignBindsColor pins the receipt-vs-color contract: two postings
@@ -232,10 +229,10 @@ func TestSignBindsColor(t *testing.T) {
 		}
 	}
 
-	grantsTok, err := signer.Sign("ledger", 1, []*commonpb.Posting{makePosting("GRANTS")}, nil, 0)
+	grantsTok, err := signer.Sign("ledger", 1, []*commonpb.Posting{makePosting("GRANTS")}, nil)
 	require.NoError(t, err)
 
-	opsTok, err := signer.Sign("ledger", 1, []*commonpb.Posting{makePosting("OPS")}, nil, 0)
+	opsTok, err := signer.Sign("ledger", 1, []*commonpb.Posting{makePosting("OPS")}, nil)
 	require.NoError(t, err)
 
 	require.NotEqual(t, grantsTok, opsTok,

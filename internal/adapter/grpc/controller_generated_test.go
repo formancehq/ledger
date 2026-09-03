@@ -356,45 +356,6 @@ func (c *MockControllerGetAuditEntryCall) DoAndReturn(f func(context.Context, ui
 	return c
 }
 
-// GetChapterSchedule mocks base method.
-func (m *MockController) GetChapterSchedule(ctx context.Context) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChapterSchedule", ctx)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetChapterSchedule indicates an expected call of GetChapterSchedule.
-func (mr *MockControllerMockRecorder) GetChapterSchedule(ctx any) *MockControllerGetChapterScheduleCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChapterSchedule", reflect.TypeOf((*MockController)(nil).GetChapterSchedule), ctx)
-	return &MockControllerGetChapterScheduleCall{Call: call}
-}
-
-// MockControllerGetChapterScheduleCall wrap *gomock.Call
-type MockControllerGetChapterScheduleCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockControllerGetChapterScheduleCall) Return(arg0 string, arg1 error) *MockControllerGetChapterScheduleCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockControllerGetChapterScheduleCall) Do(f func(context.Context) (string, error)) *MockControllerGetChapterScheduleCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetChapterScheduleCall) DoAndReturn(f func(context.Context) (string, error)) *MockControllerGetChapterScheduleCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // GetEventsSinks mocks base method.
 func (m *MockController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
 	m.ctrl.T.Helper()
@@ -939,45 +900,6 @@ func (c *MockControllerListAuditEntriesCall) Do(f func(context.Context, uint32, 
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockControllerListAuditEntriesCall) DoAndReturn(f func(context.Context, uint32, uint64, *commonpb.QueryFilter, bool, uint64) (cursor.Cursor[*auditpb.AuditEntry], error)) *MockControllerListAuditEntriesCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// ListChapters mocks base method.
-func (m *MockController) ListChapters(ctx context.Context) (cursor.Cursor[*commonpb.Chapter], error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListChapters", ctx)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Chapter])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListChapters indicates an expected call of ListChapters.
-func (mr *MockControllerMockRecorder) ListChapters(ctx any) *MockControllerListChaptersCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListChapters", reflect.TypeOf((*MockController)(nil).ListChapters), ctx)
-	return &MockControllerListChaptersCall{Call: call}
-}
-
-// MockControllerListChaptersCall wrap *gomock.Call
-type MockControllerListChaptersCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockControllerListChaptersCall) Return(arg0 cursor.Cursor[*commonpb.Chapter], arg1 error) *MockControllerListChaptersCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockControllerListChaptersCall) Do(f func(context.Context) (cursor.Cursor[*commonpb.Chapter], error)) *MockControllerListChaptersCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListChaptersCall) DoAndReturn(f func(context.Context) (cursor.Cursor[*commonpb.Chapter], error)) *MockControllerListChaptersCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

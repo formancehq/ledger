@@ -138,42 +138,6 @@ func (c *MockScopeAccountMetadataCall) DoAndReturn(f func() Accessor[domain.Meta
 	return c
 }
 
-// AddClosingChapter mocks base method.
-func (m *MockScope) AddClosingChapter(chapter *commonpb.Chapter) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "AddClosingChapter", chapter)
-}
-
-// AddClosingChapter indicates an expected call of AddClosingChapter.
-func (mr *MockScopeMockRecorder) AddClosingChapter(chapter any) *MockScopeAddClosingChapterCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddClosingChapter", reflect.TypeOf((*MockScope)(nil).AddClosingChapter), chapter)
-	return &MockScopeAddClosingChapterCall{Call: call}
-}
-
-// MockScopeAddClosingChapterCall wrap *gomock.Call
-type MockScopeAddClosingChapterCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeAddClosingChapterCall) Return() *MockScopeAddClosingChapterCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeAddClosingChapterCall) Do(f func(*commonpb.Chapter)) *MockScopeAddClosingChapterCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeAddClosingChapterCall) DoAndReturn(f func(*commonpb.Chapter)) *MockScopeAddClosingChapterCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // AddSigningKey mocks base method.
 func (m *MockScope) AddSigningKey(keyID string, publicKey []byte, parentKeyID string) {
 	m.ctrl.T.Helper()
@@ -206,42 +170,6 @@ func (c *MockScopeAddSigningKeyCall) Do(f func(string, []byte, string)) *MockSco
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeAddSigningKeyCall) DoAndReturn(f func(string, []byte, string)) *MockScopeAddSigningKeyCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// AdvanceArchivedThroughChapterID mocks base method.
-func (m *MockScope) AdvanceArchivedThroughChapterID() {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "AdvanceArchivedThroughChapterID")
-}
-
-// AdvanceArchivedThroughChapterID indicates an expected call of AdvanceArchivedThroughChapterID.
-func (mr *MockScopeMockRecorder) AdvanceArchivedThroughChapterID() *MockScopeAdvanceArchivedThroughChapterIDCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdvanceArchivedThroughChapterID", reflect.TypeOf((*MockScope)(nil).AdvanceArchivedThroughChapterID))
-	return &MockScopeAdvanceArchivedThroughChapterIDCall{Call: call}
-}
-
-// MockScopeAdvanceArchivedThroughChapterIDCall wrap *gomock.Call
-type MockScopeAdvanceArchivedThroughChapterIDCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeAdvanceArchivedThroughChapterIDCall) Return() *MockScopeAdvanceArchivedThroughChapterIDCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeAdvanceArchivedThroughChapterIDCall) Do(f func()) *MockScopeAdvanceArchivedThroughChapterIDCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeAdvanceArchivedThroughChapterIDCall) DoAndReturn(f func()) *MockScopeAdvanceArchivedThroughChapterIDCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -358,160 +286,6 @@ func (c *MockScopeDeleteQueryCheckpointCall) DoAndReturn(f func(uint64)) *MockSc
 	return c
 }
 
-// GetArchivedThroughChapterID mocks base method.
-func (m *MockScope) GetArchivedThroughChapterID() uint64 {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetArchivedThroughChapterID")
-	ret0, _ := ret[0].(uint64)
-	return ret0
-}
-
-// GetArchivedThroughChapterID indicates an expected call of GetArchivedThroughChapterID.
-func (mr *MockScopeMockRecorder) GetArchivedThroughChapterID() *MockScopeGetArchivedThroughChapterIDCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetArchivedThroughChapterID", reflect.TypeOf((*MockScope)(nil).GetArchivedThroughChapterID))
-	return &MockScopeGetArchivedThroughChapterIDCall{Call: call}
-}
-
-// MockScopeGetArchivedThroughChapterIDCall wrap *gomock.Call
-type MockScopeGetArchivedThroughChapterIDCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetArchivedThroughChapterIDCall) Return(arg0 uint64) *MockScopeGetArchivedThroughChapterIDCall {
-	c.Call = c.Call.Return(arg0)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetArchivedThroughChapterIDCall) Do(f func() uint64) *MockScopeGetArchivedThroughChapterIDCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetArchivedThroughChapterIDCall) DoAndReturn(f func() uint64) *MockScopeGetArchivedThroughChapterIDCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetChapterByID mocks base method.
-func (m *MockScope) GetChapterByID(chapterID uint64) (commonpb.ChapterReader, bool) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChapterByID", chapterID)
-	ret0, _ := ret[0].(commonpb.ChapterReader)
-	ret1, _ := ret[1].(bool)
-	return ret0, ret1
-}
-
-// GetChapterByID indicates an expected call of GetChapterByID.
-func (mr *MockScopeMockRecorder) GetChapterByID(chapterID any) *MockScopeGetChapterByIDCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChapterByID", reflect.TypeOf((*MockScope)(nil).GetChapterByID), chapterID)
-	return &MockScopeGetChapterByIDCall{Call: call}
-}
-
-// MockScopeGetChapterByIDCall wrap *gomock.Call
-type MockScopeGetChapterByIDCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetChapterByIDCall) Return(arg0 commonpb.ChapterReader, arg1 bool) *MockScopeGetChapterByIDCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetChapterByIDCall) Do(f func(uint64) (commonpb.ChapterReader, bool)) *MockScopeGetChapterByIDCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetChapterByIDCall) DoAndReturn(f func(uint64) (commonpb.ChapterReader, bool)) *MockScopeGetChapterByIDCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetClosingChapterByID mocks base method.
-func (m *MockScope) GetClosingChapterByID(chapterID uint64) (commonpb.ChapterReader, bool) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetClosingChapterByID", chapterID)
-	ret0, _ := ret[0].(commonpb.ChapterReader)
-	ret1, _ := ret[1].(bool)
-	return ret0, ret1
-}
-
-// GetClosingChapterByID indicates an expected call of GetClosingChapterByID.
-func (mr *MockScopeMockRecorder) GetClosingChapterByID(chapterID any) *MockScopeGetClosingChapterByIDCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClosingChapterByID", reflect.TypeOf((*MockScope)(nil).GetClosingChapterByID), chapterID)
-	return &MockScopeGetClosingChapterByIDCall{Call: call}
-}
-
-// MockScopeGetClosingChapterByIDCall wrap *gomock.Call
-type MockScopeGetClosingChapterByIDCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetClosingChapterByIDCall) Return(arg0 commonpb.ChapterReader, arg1 bool) *MockScopeGetClosingChapterByIDCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetClosingChapterByIDCall) Do(f func(uint64) (commonpb.ChapterReader, bool)) *MockScopeGetClosingChapterByIDCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetClosingChapterByIDCall) DoAndReturn(f func(uint64) (commonpb.ChapterReader, bool)) *MockScopeGetClosingChapterByIDCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetClosingChapters mocks base method.
-func (m *MockScope) GetClosingChapters() []commonpb.ChapterReader {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetClosingChapters")
-	ret0, _ := ret[0].([]commonpb.ChapterReader)
-	return ret0
-}
-
-// GetClosingChapters indicates an expected call of GetClosingChapters.
-func (mr *MockScopeMockRecorder) GetClosingChapters() *MockScopeGetClosingChaptersCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClosingChapters", reflect.TypeOf((*MockScope)(nil).GetClosingChapters))
-	return &MockScopeGetClosingChaptersCall{Call: call}
-}
-
-// MockScopeGetClosingChaptersCall wrap *gomock.Call
-type MockScopeGetClosingChaptersCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetClosingChaptersCall) Return(arg0 []commonpb.ChapterReader) *MockScopeGetClosingChaptersCall {
-	c.Call = c.Call.Return(arg0)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetClosingChaptersCall) Do(f func() []commonpb.ChapterReader) *MockScopeGetClosingChaptersCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetClosingChaptersCall) DoAndReturn(f func() []commonpb.ChapterReader) *MockScopeGetClosingChaptersCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // GetClusterPolicy mocks base method.
 func (m *MockScope) GetClusterPolicy() *commonpb.ClusterPolicy {
 	m.ctrl.T.Helper()
@@ -546,45 +320,6 @@ func (c *MockScopeGetClusterPolicyCall) Do(f func() *commonpb.ClusterPolicy) *Mo
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeGetClusterPolicyCall) DoAndReturn(f func() *commonpb.ClusterPolicy) *MockScopeGetClusterPolicyCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetCurrentOpenChapter mocks base method.
-func (m *MockScope) GetCurrentOpenChapter() (commonpb.ChapterReader, bool) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetCurrentOpenChapter")
-	ret0, _ := ret[0].(commonpb.ChapterReader)
-	ret1, _ := ret[1].(bool)
-	return ret0, ret1
-}
-
-// GetCurrentOpenChapter indicates an expected call of GetCurrentOpenChapter.
-func (mr *MockScopeMockRecorder) GetCurrentOpenChapter() *MockScopeGetCurrentOpenChapterCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentOpenChapter", reflect.TypeOf((*MockScope)(nil).GetCurrentOpenChapter))
-	return &MockScopeGetCurrentOpenChapterCall{Call: call}
-}
-
-// MockScopeGetCurrentOpenChapterCall wrap *gomock.Call
-type MockScopeGetCurrentOpenChapterCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetCurrentOpenChapterCall) Return(arg0 commonpb.ChapterReader, arg1 bool) *MockScopeGetCurrentOpenChapterCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetCurrentOpenChapterCall) Do(f func() (commonpb.ChapterReader, bool)) *MockScopeGetCurrentOpenChapterCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetCurrentOpenChapterCall) DoAndReturn(f func() (commonpb.ChapterReader, bool)) *MockScopeGetCurrentOpenChapterCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -699,44 +434,6 @@ func (c *MockScopeGetNextAuditSequenceIDCall) Do(f func() uint64) *MockScopeGetN
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeGetNextAuditSequenceIDCall) DoAndReturn(f func() uint64) *MockScopeGetNextAuditSequenceIDCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// GetNextChapterID mocks base method.
-func (m *MockScope) GetNextChapterID() uint64 {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetNextChapterID")
-	ret0, _ := ret[0].(uint64)
-	return ret0
-}
-
-// GetNextChapterID indicates an expected call of GetNextChapterID.
-func (mr *MockScopeMockRecorder) GetNextChapterID() *MockScopeGetNextChapterIDCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNextChapterID", reflect.TypeOf((*MockScope)(nil).GetNextChapterID))
-	return &MockScopeGetNextChapterIDCall{Call: call}
-}
-
-// MockScopeGetNextChapterIDCall wrap *gomock.Call
-type MockScopeGetNextChapterIDCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeGetNextChapterIDCall) Return(arg0 uint64) *MockScopeGetNextChapterIDCall {
-	c.Call = c.Call.Return(arg0)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeGetNextChapterIDCall) Do(f func() uint64) *MockScopeGetNextChapterIDCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeGetNextChapterIDCall) DoAndReturn(f func() uint64) *MockScopeGetNextChapterIDCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1006,44 +703,6 @@ func (c *MockScopeGetSinkConfigCall) Do(f func(string) (commonpb.SinkConfigReade
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeGetSinkConfigCall) DoAndReturn(f func(string) (commonpb.SinkConfigReader, error)) *MockScopeGetSinkConfigCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// IncrementNextChapterID mocks base method.
-func (m *MockScope) IncrementNextChapterID() uint64 {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IncrementNextChapterID")
-	ret0, _ := ret[0].(uint64)
-	return ret0
-}
-
-// IncrementNextChapterID indicates an expected call of IncrementNextChapterID.
-func (mr *MockScopeMockRecorder) IncrementNextChapterID() *MockScopeIncrementNextChapterIDCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncrementNextChapterID", reflect.TypeOf((*MockScope)(nil).IncrementNextChapterID))
-	return &MockScopeIncrementNextChapterIDCall{Call: call}
-}
-
-// MockScopeIncrementNextChapterIDCall wrap *gomock.Call
-type MockScopeIncrementNextChapterIDCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeIncrementNextChapterIDCall) Return(arg0 uint64) *MockScopeIncrementNextChapterIDCall {
-	c.Call = c.Call.Return(arg0)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeIncrementNextChapterIDCall) Do(f func() uint64) *MockScopeIncrementNextChapterIDCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeIncrementNextChapterIDCall) DoAndReturn(f func() uint64) *MockScopeIncrementNextChapterIDCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1501,42 +1160,6 @@ func (c *MockScopeQueryCheckpointExistsCall) DoAndReturn(f func(uint64) bool) *M
 	return c
 }
 
-// RemoveClosingChapter mocks base method.
-func (m *MockScope) RemoveClosingChapter(chapterID uint64) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "RemoveClosingChapter", chapterID)
-}
-
-// RemoveClosingChapter indicates an expected call of RemoveClosingChapter.
-func (mr *MockScopeMockRecorder) RemoveClosingChapter(chapterID any) *MockScopeRemoveClosingChapterCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveClosingChapter", reflect.TypeOf((*MockScope)(nil).RemoveClosingChapter), chapterID)
-	return &MockScopeRemoveClosingChapterCall{Call: call}
-}
-
-// MockScopeRemoveClosingChapterCall wrap *gomock.Call
-type MockScopeRemoveClosingChapterCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeRemoveClosingChapterCall) Return() *MockScopeRemoveClosingChapterCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeRemoveClosingChapterCall) Do(f func(uint64)) *MockScopeRemoveClosingChapterCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeRemoveClosingChapterCall) DoAndReturn(f func(uint64)) *MockScopeRemoveClosingChapterCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
 // RemoveSigningKey mocks base method.
 func (m *MockScope) RemoveSigningKey(keyID string) {
 	m.ctrl.T.Helper()
@@ -1680,42 +1303,6 @@ func (c *MockScopeSetClusterPolicyCall) Do(f func(*commonpb.ClusterPolicy)) *Moc
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeSetClusterPolicyCall) DoAndReturn(f func(*commonpb.ClusterPolicy)) *MockScopeSetClusterPolicyCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// SetCurrentOpenChapter mocks base method.
-func (m *MockScope) SetCurrentOpenChapter(chapter *commonpb.Chapter) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "SetCurrentOpenChapter", chapter)
-}
-
-// SetCurrentOpenChapter indicates an expected call of SetCurrentOpenChapter.
-func (mr *MockScopeMockRecorder) SetCurrentOpenChapter(chapter any) *MockScopeSetCurrentOpenChapterCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCurrentOpenChapter", reflect.TypeOf((*MockScope)(nil).SetCurrentOpenChapter), chapter)
-	return &MockScopeSetCurrentOpenChapterCall{Call: call}
-}
-
-// MockScopeSetCurrentOpenChapterCall wrap *gomock.Call
-type MockScopeSetCurrentOpenChapterCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeSetCurrentOpenChapterCall) Return() *MockScopeSetCurrentOpenChapterCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeSetCurrentOpenChapterCall) Do(f func(*commonpb.Chapter)) *MockScopeSetCurrentOpenChapterCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeSetCurrentOpenChapterCall) DoAndReturn(f func(*commonpb.Chapter)) *MockScopeSetCurrentOpenChapterCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1900,42 +1487,6 @@ func (c *MockScopeTransactionStatesCall) Do(f func() Accessor[domain.Transaction
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockScopeTransactionStatesCall) DoAndReturn(f func() Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]) *MockScopeTransactionStatesCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// UpdateChapter mocks base method.
-func (m *MockScope) UpdateChapter(chapter *commonpb.Chapter) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "UpdateChapter", chapter)
-}
-
-// UpdateChapter indicates an expected call of UpdateChapter.
-func (mr *MockScopeMockRecorder) UpdateChapter(chapter any) *MockScopeUpdateChapterCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateChapter", reflect.TypeOf((*MockScope)(nil).UpdateChapter), chapter)
-	return &MockScopeUpdateChapterCall{Call: call}
-}
-
-// MockScopeUpdateChapterCall wrap *gomock.Call
-type MockScopeUpdateChapterCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockScopeUpdateChapterCall) Return() *MockScopeUpdateChapterCall {
-	c.Call = c.Call.Return()
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockScopeUpdateChapterCall) Do(f func(*commonpb.Chapter)) *MockScopeUpdateChapterCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeUpdateChapterCall) DoAndReturn(f func(*commonpb.Chapter)) *MockScopeUpdateChapterCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

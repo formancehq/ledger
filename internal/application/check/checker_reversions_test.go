@@ -29,7 +29,7 @@ func writeReversionWord(t *testing.T, store *dal.Store, ledger string, wordIndex
 func collectReversionEvents(t *testing.T, store *dal.Store, derived map[string]*bitset.Bitset, knownLedgers map[string]struct{}) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attributes.New(), "reversions-cluster", nil, nil, nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), "reversions-cluster", nil, logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -92,26 +92,6 @@ func TestCompareReversions_UnauditedBitFlagged(t *testing.T) {
 		map[string]struct{}{"ledger-a": {}})
 	require.Len(t, got, 1)
 	require.Equal(t, uint64(70), got[0].GetTransactionId())
-	require.Contains(t, got[0].GetMessage(), "unaudited reversion bit")
-}
-
-// A persisted pending-cleanup marker is itself an unverified projection: it
-// must not exempt an audit-live ledger from the comparison, or a forged
-// marker hides bitset tampering.
-func TestCompareReversions_PendingCleanupMarkerDoesNotHideMismatch(t *testing.T) {
-	t.Parallel()
-
-	store := createTestStore(t)
-	writeReversionWord(t, store, "ledger-a", 0, 1<<5)
-
-	batch := store.OpenWriteSession()
-	require.NoError(t, state.SavePendingLedgerCleanup(batch, "ledger-a", 9))
-	require.NoError(t, batch.Commit())
-
-	got := collectReversionEvents(t, store, nil,
-		map[string]struct{}{"ledger-a": {}})
-	require.Len(t, got, 1)
-	require.Equal(t, uint64(5), got[0].GetTransactionId())
 	require.Contains(t, got[0].GetMessage(), "unaudited reversion bit")
 }
 

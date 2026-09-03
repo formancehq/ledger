@@ -16,29 +16,10 @@ import (
 // variant is added without a matching case in Absorb, the corresponding
 // subtest here will fail (the assertion expects a non-zero
 // accumulator). Payloads with no cross-order signal — Apply,
-// SaveLedgerMetadata, SealChapter, signing/maintenance, ... — are
+// SaveLedgerMetadata, signing/maintenance, ... — are
 // covered by TestWriteSetAbsorb_NoOpForUnmappedPayloads below.
 func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 	t.Parallel()
-
-	t.Run("ArchiveChapter → archiveRequests", func(t *testing.T) {
-		t.Parallel()
-		b, _, _ := newTestBuffer(t)
-		b.Absorb(&raftcmdpb.Order{}, archiveChapterLog(7, 10, 20, 30, 40))
-		require.Equal(t, []ArchiveRequest{{ChapterID: 7, StartSequence: 10, CloseSequence: 20, StartAuditSequence: 30, CloseAuditSequence: 40}}, b.archiveRequests)
-	})
-
-	t.Run("ConfirmArchiveChapter → purgeRanges", func(t *testing.T) {
-		t.Parallel()
-		b, _, _ := newTestBuffer(t)
-		b.Absorb(&raftcmdpb.Order{}, confirmArchiveLog(8, 100, 200, 50, 60))
-		require.Len(t, b.purgeRanges, 1)
-		require.Equal(t, uint64(8), b.purgeRanges[0].chapterID)
-		require.Equal(t, uint64(100), b.purgeRanges[0].startSequence)
-		require.Equal(t, uint64(200), b.purgeRanges[0].closeSequence)
-		require.Equal(t, uint64(50), b.purgeRanges[0].startAuditSequence)
-		require.Equal(t, uint64(60), b.purgeRanges[0].closeAuditSequence)
-	})
 
 	t.Run("AddedEventsSink → SinkConfigs + sinkConfigChanged", func(t *testing.T) {
 		t.Parallel()
@@ -60,26 +41,6 @@ func TestWriteSetAbsorb_CoversEveryDerivedPayload(t *testing.T) {
 			Type: &commonpb.LogPayload_RemovedEventsSink{RemovedEventsSink: &commonpb.RemovedEventsSinkLog{Name: "gone"}},
 		}})
 		require.True(t, b.SinkConfigChanged())
-	})
-
-	t.Run("SetChapterSchedule → chapterScheduleUpdate", func(t *testing.T) {
-		t.Parallel()
-		b, _, _ := newTestBuffer(t)
-		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_SetChapterSchedule{SetChapterSchedule: &commonpb.SetChapterScheduleLog{Cron: "* * * * *"}},
-		}})
-		require.NotNil(t, b.chapterScheduleUpdate)
-		require.Equal(t, "* * * * *", *b.chapterScheduleUpdate)
-	})
-
-	t.Run("DeleteChapterSchedule → empty chapterScheduleUpdate", func(t *testing.T) {
-		t.Parallel()
-		b, _, _ := newTestBuffer(t)
-		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_DeleteChapterSchedule{DeleteChapterSchedule: &commonpb.DeletedChapterScheduleLog{}},
-		}})
-		require.NotNil(t, b.chapterScheduleUpdate)
-		require.Empty(t, *b.chapterScheduleUpdate)
 	})
 
 	t.Run("SetQueryCheckpointSchedule → queryCheckpointScheduleUpdate", func(t *testing.T) {
@@ -188,16 +149,13 @@ func TestWriteSetAbsorb_NoOpForUnmappedPayloads(t *testing.T) {
 
 	cases := []*commonpb.LogPayload{
 		{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{}}},
-		{Type: &commonpb.LogPayload_SealChapter{SealChapter: &commonpb.SealedChapterLog{}}},
+		{Type: &commonpb.LogPayload_SetMaintenanceMode{SetMaintenanceMode: &commonpb.SetMaintenanceModeLog{}}},
 	}
 
 	for _, p := range cases {
 		b, _, _ := newTestBuffer(t)
 		b.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: p})
-		require.Empty(t, b.archiveRequests)
-		require.Empty(t, b.purgeRanges)
 		require.False(t, b.SinkConfigChanged())
-		require.Nil(t, b.chapterScheduleUpdate)
 		require.Nil(t, b.queryCheckpointScheduleUpdate)
 		require.Empty(t, b.deletedLedgers)
 		require.False(t, b.MirrorConfigChanged())

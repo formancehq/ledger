@@ -133,7 +133,7 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 func collectIdempotencyMismatches(t *testing.T, store *dal.Store, clusterID string) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attributes.New(), clusterID, nil, nil, nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), clusterID, nil, logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -142,7 +142,7 @@ func collectIdempotencyMismatches(t *testing.T, store *dal.Store, clusterID stri
 
 	var got []*servicepb.CheckStoreError
 
-	_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, newChainBoundState(), nil, newSigningVerifier(), newClusterPolicyVerifier(),
+	_, err = checker.verifyAuditHashChain(context.Background(), handle, newChainBoundState(), newSigningVerifier(), newClusterPolicyVerifier(),
 		func(event *servicepb.CheckStoreEvent) {
 			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
 				e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {

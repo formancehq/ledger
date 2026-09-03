@@ -21,7 +21,6 @@ func TestCreatedTransaction_MarshalJSON_AllFields(t *testing.T) {
 				"vip": NewStringValue("yes"),
 			}},
 		},
-		ChapterId: 7,
 	}
 
 	data, err := ct.MarshalJSON()
@@ -30,7 +29,6 @@ func TestCreatedTransaction_MarshalJSON_AllFields(t *testing.T) {
 	out := string(data)
 	require.Contains(t, out, `"transaction":`)
 	require.Contains(t, out, `"accountMetadata":`)
-	require.Contains(t, out, `"chapterId":7`)
 	// postCommitVolumes rides on the transaction, so it appears after the
 	// "transaction": key, not as a top-level sibling.
 	require.Contains(t, out, `"postCommitVolumes":`)

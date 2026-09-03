@@ -293,12 +293,6 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"name": "missing-sink"},
 		},
 		{
-			name:        "ChapterNotClosed",
-			err:         &domain.ErrChapterNotClosed{ChapterID: 3},
-			wantReason:  domain.ErrReasonChapterNotClosed,
-			wantContext: map[string]string{"chapterId": "3"},
-		},
-		{
 			name:        "LedgerDeleted",
 			err:         &domain.ErrLedgerDeleted{Name: "deleted-ledger"},
 			wantReason:  domain.ErrReasonLedgerDeleted,
@@ -430,42 +424,6 @@ func auditFailureCases() []auditFailureCase {
 			err:         &domain.ErrMetadataFieldNotInSchema{Target: "TRANSACTION", Key: "invoice"},
 			wantReason:  domain.ErrReasonMetadataFieldNotInSchema,
 			wantContext: map[string]string{"target": "TRANSACTION", "key": "invoice"},
-		},
-		{
-			name:        "ChapterNotFound",
-			err:         &domain.ErrChapterNotFound{ChapterID: 4},
-			wantReason:  domain.ErrReasonChapterNotFound,
-			wantContext: map[string]string{"chapterId": "4"},
-		},
-		{
-			name:        "ChapterNotClosing",
-			err:         &domain.ErrChapterNotClosing{ChapterID: 5},
-			wantReason:  domain.ErrReasonChapterNotClosing,
-			wantContext: map[string]string{"chapterId": "5"},
-		},
-		{
-			name:        "ChapterNotArchiving",
-			err:         &domain.ErrChapterNotArchiving{ChapterID: 6},
-			wantReason:  domain.ErrReasonChapterNotArchiving,
-			wantContext: map[string]string{"chapterId": "6"},
-		},
-		{
-			name:        "ChapterArchiveIdentityMismatch",
-			err:         &domain.ErrChapterArchiveIdentityMismatch{ChapterID: 7, Expected: []byte{0xde, 0xad}, Got: []byte{0xbe, 0xef}},
-			wantReason:  domain.ErrReasonChapterArchiveIdentityMismatch,
-			wantContext: map[string]string{"chapterId": "7", "expectedSealingHash": "dead", "gotSealingHash": "beef"},
-		},
-		{
-			name:        "ChapterArchiveOutOfOrder",
-			err:         &domain.ErrChapterArchiveOutOfOrder{ChapterID: 7, BlockingChapterID: 5},
-			wantReason:  domain.ErrReasonChapterArchiveOutOfOrder,
-			wantContext: map[string]string{"chapterId": "7", "blockingChapterId": "5"},
-		},
-		{
-			name:        "ChapterAlreadyArchived",
-			err:         &domain.ErrChapterAlreadyArchived{ChapterID: 2, ArchivedThroughChapterID: 5},
-			wantReason:  domain.ErrReasonChapterAlreadyArchived,
-			wantContext: map[string]string{"chapterId": "2", "archivedThroughChapterId": "5"},
 		},
 		{
 			name:        "MirrorV2LogIDGap",
@@ -683,12 +641,6 @@ func auditFailureCases() []auditFailureCase {
 		// the concrete type is unexported, and that var IS the identity every
 		// call site compares against with errors.Is.
 		{
-			name:        "ColdStorageDisabled",
-			err:         domain.ErrColdStorageDisabled,
-			wantReason:  domain.ErrReasonColdStorageDisabled,
-			wantContext: map[string]string{},
-		},
-		{
 			name:        "AuditDisabled",
 			err:         domain.ErrAuditDisabled,
 			wantReason:  domain.ErrReasonAuditDisabled,
@@ -710,12 +662,6 @@ func auditFailureCases() []auditFailureCase {
 			name:        "PreloadUnavailable",
 			err:         domain.ErrPreloadUnavailable,
 			wantReason:  domain.ErrReasonPreloadUnavailable,
-			wantContext: map[string]string{},
-		},
-		{
-			name:        "NoChapterOpen",
-			err:         domain.ErrNoChapterOpen,
-			wantReason:  domain.ErrReasonNoChapterOpen,
 			wantContext: map[string]string{},
 		},
 		{

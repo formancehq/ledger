@@ -239,62 +239,6 @@ func TestProcessOrder_DispatchEverySystemScopedVariant(t *testing.T) {
 			check: requireErr(new(*domain.ErrSinkNotFound)),
 		},
 		{
-			name: "close_chapter/no_chapter_open",
-			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_CloseChapter{
-				CloseChapter: &raftcmdpb.CloseChapterOrder{},
-			}},
-			setup: func(m *MockScope) { m.EXPECT().GetCurrentOpenChapter().Return(nil, false) },
-			check: func(t *testing.T, got error) {
-				t.Helper()
-				require.ErrorIs(t, got, domain.ErrNoChapterOpen)
-			},
-		},
-		{
-			name: "seal_chapter/not_found",
-			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SealChapter{
-				SealChapter: &raftcmdpb.SealChapterOrder{ChapterId: 42},
-			}},
-			setup: func(m *MockScope) { m.EXPECT().GetClosingChapterByID(uint64(42)).Return(nil, false) },
-			check: requireErr(new(*domain.ErrChapterNotFound)),
-		},
-		{
-			name: "archive_chapter/not_found",
-			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_ArchiveChapter{
-				ArchiveChapter: &raftcmdpb.ArchiveChapterOrder{ChapterId: 42},
-			}},
-			setup: func(m *MockScope) {
-				m.EXPECT().GetArchivedThroughChapterID().Return(uint64(41))
-				m.EXPECT().GetChapterByID(uint64(42)).Return(nil, false)
-			},
-			check: requireErr(new(*domain.ErrChapterNotFound)),
-		},
-		{
-			name: "confirm_archive_chapter/not_found",
-			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_ConfirmArchiveChapter{
-				ConfirmArchiveChapter: &raftcmdpb.ConfirmArchiveChapterOrder{ChapterId: 42},
-			}},
-			setup: func(m *MockScope) {
-				m.EXPECT().GetArchivedThroughChapterID().Return(uint64(41))
-				m.EXPECT().GetChapterByID(uint64(42)).Return(nil, false)
-			},
-			check: requireErr(new(*domain.ErrChapterNotFound)),
-		},
-		{
-			name: "set_chapter_schedule/invalid_cron",
-			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetChapterSchedule{
-				SetChapterSchedule: &raftcmdpb.SetChapterScheduleOrder{Cron: "not-a-cron"},
-			}},
-			check: requireErr(new(*domain.ErrInvalidCronExpression)),
-		},
-		{
-			name: "delete_chapter_schedule",
-			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_DeleteChapterSchedule{
-				DeleteChapterSchedule: &raftcmdpb.DeleteChapterScheduleOrder{},
-			}},
-			setup: func(_ *MockScope) {},
-			check: func(t *testing.T, got error) { t.Helper(); require.NoError(t, got) },
-		},
-		{
 			name: "set_query_checkpoint_schedule/invalid_cron",
 			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule{
 				SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{Cron: "not-a-cron"},

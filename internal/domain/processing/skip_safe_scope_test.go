@@ -40,10 +40,6 @@ func TestSkipSafeScope_TrapsNonBufferedMutations(t *testing.T) {
 		{"RemoveSigningKey", func() { trap.RemoveSigningKey("k1") }},
 		{"SetRequireSignatures", func() { trap.SetRequireSignatures(true) }},
 		{"SetMaintenanceMode", func() { trap.SetMaintenanceMode(true) }},
-		{"SetCurrentOpenChapter", func() { trap.SetCurrentOpenChapter(&commonpb.Chapter{}) }},
-		{"AddClosingChapter", func() { trap.AddClosingChapter(&commonpb.Chapter{}) }},
-		{"RemoveClosingChapter", func() { trap.RemoveClosingChapter(7) }},
-		{"UpdateChapter", func() { trap.UpdateChapter(&commonpb.Chapter{}) }},
 		{"PutNumscript", func() { trap.PutNumscript("L", &commonpb.NumscriptInfo{}) }},
 		{"SetNumscriptLatestVersion", func() { trap.SetNumscriptLatestVersion("L", "n", "1.0.0") }},
 		{"SaveQueryCheckpoint", func() { trap.SaveQueryCheckpoint(&raftcmdpb.QueryCheckpointState{}) }},
@@ -79,7 +75,6 @@ func TestSkipSafeScope_ReadsAndBufferedWritesPassThrough(t *testing.T) {
 	s := wireOverlayParent(ctrl)
 	s.parent.EXPECT().GetNextSequenceID().Return(uint64(100)).AnyTimes()
 	s.parent.EXPECT().GetNextLedgerID().Return(uint32(5)).AnyTimes()
-	s.parent.EXPECT().GetNextChapterID().Return(uint64(2)).AnyTimes()
 	s.parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).AnyTimes()
 	s.parent.EXPECT().GetNextAuditSequenceID().Return(uint64(50)).Times(1)
 
@@ -132,7 +127,6 @@ func TestSkipSafeScope_RollbackKeepsParentUntouched(t *testing.T) {
 	s := wireOverlayParent(ctrl)
 	s.parent.EXPECT().GetNextSequenceID().Return(uint64(100)).AnyTimes()
 	s.parent.EXPECT().GetNextLedgerID().Return(uint32(5)).AnyTimes()
-	s.parent.EXPECT().GetNextChapterID().Return(uint64(2)).AnyTimes()
 	s.parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).AnyTimes()
 
 	// Any Increment* / Put on the parent would fail the test — no
@@ -146,7 +140,6 @@ func TestSkipSafeScope_RollbackKeepsParentUntouched(t *testing.T) {
 	trap.PutReverted(domain.TransactionKey{LedgerName: "L", ID: 1}, true)
 	trap.IncrementNextSequenceID()
 	trap.IncrementNextLedgerID()
-	trap.IncrementNextChapterID()
 	trap.IncrementNextQueryCheckpointID()
 
 	// No Commit — overlay is dropped and every buffered mutation stays in

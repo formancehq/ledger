@@ -5,14 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -64,12 +62,9 @@ type testEngine struct {
 	reversions             map[string]*bitset.Bitset
 	numscriptContent       map[string]*commonpb.NumscriptInfo // key = NumscriptEntryKey bytes
 	numscriptLatest        map[string]string                  // key = NumscriptVersionKey bytes
-	currentOpenChapter     *commonpb.Chapter
-	closingChapters        []*commonpb.Chapter
 	nextLedgerID           uint32
 	nextAuditSequenceID    uint64
 	lastAuditHash          []byte
-	nextChapterID          uint64
 	raftIndex              uint64
 	pendingLedgerDeletions []string
 }
@@ -106,7 +101,6 @@ func newTestEngine(t *testing.T) *testEngine {
 		reversions:          make(map[string]*bitset.Bitset),
 		numscriptContent:    make(map[string]*commonpb.NumscriptInfo),
 		numscriptLatest:     make(map[string]string),
-		nextChapterID:       1,
 		nextAuditSequenceID: 1,
 		raftIndex:           1,
 	}
@@ -412,6 +406,10 @@ func (f constantCheckScopeFactory) NewProposalScope() (processing.Scope, error) 
 // ForOrder is a no-op for the test scopeImpl: the checker runs without
 // an FSM-side coverage gate, so per-order narrowing returns the same
 // scope (all keys remain admitted).
+func (s *scopeImpl) GetNextAuditSequenceID() uint64 { return 0 }
+
+func (s *scopeImpl) GetLastAuditHash() []byte { return nil }
+
 func (s *scopeImpl) ForOrder(_, _ []byte) processing.Scope { return s }
 
 // CheckCoverage is a no-op for the test scopeImpl: there is no coverage
@@ -644,82 +642,6 @@ func (s *scopeImpl) GetDate() commonpb.TimestampReader {
 	return s.date.AsReader()
 }
 
-func (s *scopeImpl) GetCurrentOpenChapter() (commonpb.ChapterReader, bool) {
-	if s.engine.currentOpenChapter != nil {
-		return s.engine.currentOpenChapter.AsReader(), true
-	}
-
-	return nil, false
-}
-
-func (s *scopeImpl) GetClosingChapters() []commonpb.ChapterReader {
-	if s.engine.closingChapters == nil {
-		return nil
-	}
-
-	out := make([]commonpb.ChapterReader, len(s.engine.closingChapters))
-	for i, c := range s.engine.closingChapters {
-		out[i] = c.AsReader()
-	}
-
-	return out
-}
-
-func (s *scopeImpl) GetClosingChapterByID(chapterID uint64) (commonpb.ChapterReader, bool) {
-	for _, p := range s.engine.closingChapters {
-		if p.GetId() == chapterID {
-			return p.AsReader(), true
-		}
-	}
-
-	return nil, false
-}
-
-func (s *scopeImpl) SetCurrentOpenChapter(chapter *commonpb.Chapter) {
-	s.engine.currentOpenChapter = chapter
-}
-
-func (s *scopeImpl) AddClosingChapter(chapter *commonpb.Chapter) {
-	s.engine.closingChapters = append(s.engine.closingChapters, chapter)
-}
-
-func (s *scopeImpl) RemoveClosingChapter(chapterID uint64) {
-	for i, p := range s.engine.closingChapters {
-		if p.GetId() == chapterID {
-			s.engine.closingChapters = append(s.engine.closingChapters[:i], s.engine.closingChapters[i+1:]...)
-
-			return
-		}
-	}
-}
-
-func (s *scopeImpl) GetNextChapterID() uint64 {
-	return s.engine.nextChapterID
-}
-
-func (s *scopeImpl) IncrementNextChapterID() uint64 {
-	id := s.engine.nextChapterID
-	s.engine.nextChapterID++
-
-	return id
-}
-
-func (s *scopeImpl) GetChapterByID(_ uint64) (commonpb.ChapterReader, bool) {
-	return nil, false
-}
-
-// The checker's test engine drives ledger orders, never chapter archival, so the
-// archived prefix stays at its genesis value.
-func (s *scopeImpl) GetArchivedThroughChapterID() uint64 { return 0 }
-
-func (s *scopeImpl) AdvanceArchivedThroughChapterID() {}
-
-func (s *scopeImpl) GetNextAuditSequenceID() uint64 { return 0 }
-
-func (s *scopeImpl) GetLastAuditHash() []byte { return nil }
-
-func (s *scopeImpl) UpdateChapter(_ *commonpb.Chapter) {}
-
 func (s *scopeImpl) GetPreparedQuery(_ string, _ string) (commonpb.PreparedQueryReader, error) {
 	return nil, nil
 }
@@ -951,7 +873,7 @@ func deleteAccountMetadataOrder(ledger, account, key string) *raftcmdpb.Order {
 func collectCheckErrors(t *testing.T, store *dal.Store, attrs *attributes.Attributes) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attrs, "test-cluster", nil, nil, nil, logging.Testing())
+	checker := NewChecker(store, attrs, "test-cluster", nil, logging.Testing())
 
 	var errors []*servicepb.CheckStoreError
 
@@ -1219,7 +1141,7 @@ func TestCheckerProgressEvents(t *testing.T) {
 		))
 	}
 
-	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, nil, nil, logging.Testing())
+	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, logging.Testing())
 
 	var progressEvents []*servicepb.CheckStoreProgress
 
@@ -1546,7 +1468,7 @@ func TestCheckerSurfacesCorruptAuditEntry(t *testing.T) {
 	require.NoError(t, batch.SetBytes(auditKey, []byte{0xFF, 0xFF, 0xFF, 0xFF}))
 	require.NoError(t, batch.Commit())
 
-	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, nil, nil, logging.Testing())
+	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, logging.Testing())
 	err := checker.Check(context.Background(), func(_ *servicepb.CheckStoreEvent) {})
 
 	// Before the fix: Check returned nil; the cursor break swallowed the
@@ -1931,7 +1853,7 @@ func indexCheckerFor(t *testing.T, stored map[domain.IndexKey]*commonpb.Index) (
 
 	ctx := logging.TestingContext()
 
-	return NewChecker(store, attrs, "test-cluster", nil, nil, nil, logging.FromContext(ctx)), store
+	return NewChecker(store, attrs, "test-cluster", nil, logging.FromContext(ctx)), store
 }
 
 // TestCompareIndexes_Identical pins the happy path: when the SubAttrIndex
@@ -2105,95 +2027,6 @@ func TestCompareIndexes_UnseededEntryFlaggedUnderArchiving(t *testing.T) {
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
 }
 
-// TestFoldBaselineIndexes_SeedSilencesArchivedEntry covers the other direction:
-// the legitimate archive case the removed tolerance used to cover. A pre-archive
-// CreateIndex whose log has been purged is still represented, because
-// foldBaselineIndexes reads it back out of the boundary-time baseline snapshot —
-// so compareIndexes stays silent without needing to excuse anything.
-//
-// It also pins the liveness filter: index rows belonging to a ledger the
-// baseline does not list as live are NOT seeded. Seeding those would expect rows
-// that the deferred purge legitimately removes later, turning a normal cleanup
-// into a phantom "registry has no matching row" event.
-func TestFoldBaselineIndexes_SeedSilencesArchivedEntry(t *testing.T) {
-	t.Parallel()
-
-	liveID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
-	liveKey := domain.IndexKey{LedgerName: "live", Canonical: indexes.Canonical(liveID)}
-
-	goneID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	goneKey := domain.IndexKey{LedgerName: "deleted", Canonical: indexes.Canonical(goneID)}
-
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
-		liveKey: {Id: liveID, Ledger: "live"},
-		goneKey: {Id: goneID, Ledger: "deleted"},
-	})
-
-	reader, err := store.NewReadHandle()
-	require.NoError(t, err)
-
-	dest, err := store.StagedBaselineDir(1)
-	require.NoError(t, err)
-	require.NoError(t, attributes.CreateBaselineSnapshot(reader, dest))
-	_ = reader.Close()
-
-	baseline, err := pebble.Open(dest, &pebble.Options{ReadOnly: true})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = baseline.Close() })
-
-	// Only "live" survives in the baseline's live-ledger set; "deleted" was
-	// removed before the boundary and its rows merely await the deferred purge.
-	knownLedgers := map[string]struct{}{"live": {}}
-	expectedIndexes := map[domain.IndexKey]*commonpb.Index{}
-	require.NoError(t, checker.foldBaselineIndexes(baseline, knownLedgers, expectedIndexes))
-
-	require.Contains(t, expectedIndexes, liveKey, "a live ledger's pre-archive entry must be seeded from the baseline")
-	require.NotContains(t, expectedIndexes, goneKey, "rows of a ledger the baseline does not list as live must not be seeded")
-	require.Equal(t, "live", expectedIndexes[liveKey].GetLedger())
-	require.True(t, indexes.Equal(liveID, expectedIndexes[liveKey].GetId()))
-
-	// The seeded expectation is what makes the live entry legitimate; the
-	// unseeded one is still reported, which is the correct verdict for a row
-	// belonging to a ledger the audit does not list as live.
-	verifyReader, err := store.NewReadHandle()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = verifyReader.Close() })
-
-	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: verifyReader, expected: expectedIndexes}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
-
-	require.Len(t, events, 1)
-	require.Equal(t, "deleted", events[0].GetError().GetLedger())
-}
-
-// TestCompareIndexes_PendingCleanupIgnored anchors the deferred-purge
-// guard: between a DeleteLedger apply and the chapter-purge that catches
-// its sequence and runs deleteLedgerData, the SubAttrIndex entries for
-// the doomed ledger are still on disk while replay has already wiped
-// them from expected. The pendingCleanupLedgers set lets the checker
-// skip the transient window instead of flagging it as tampering.
-func TestCompareIndexes_PendingCleanupIgnored(t *testing.T) {
-	t.Parallel()
-
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	key := domain.IndexKey{LedgerName: "doomed", Canonical: indexes.Canonical(id)}
-
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
-		key: {Id: id, Ledger: "doomed"},
-	})
-
-	reader, err := store.NewReadHandle()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = reader.Close() })
-
-	pending := map[string]struct{}{"doomed": {}}
-
-	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}, pendingCleanupLedgers: pending}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
-
-	require.Empty(t, events, "stored entry for a ledger awaiting deferred purge must not trigger a mismatch")
-}
-
 // TestCompareIndexes_AccountBuiltinAsset_Identical pins the happy path for the
 // account-asset builtin index: when the SubAttrIndex registry entry matches the
 // audit-derived expected set, compareIndexes must stay silent. This exercises
@@ -2305,7 +2138,7 @@ func schemaCheckerFor(t *testing.T, ledgers []*commonpb.LedgerInfo) (*Checker, *
 
 	ctx := logging.TestingContext()
 
-	return NewChecker(store, attrs, "test-cluster", nil, nil, nil, logging.FromContext(ctx)), store
+	return NewChecker(store, attrs, "test-cluster", nil, logging.FromContext(ctx)), store
 }
 
 func accountFieldSchema(key string, typ commonpb.MetadataType) *commonpb.MetadataSchema {
@@ -2397,7 +2230,7 @@ func TestCompareLedgerPresence_Present(t *testing.T) {
 
 	var events []*servicepb.CheckStoreEvent
 	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
-		map[string]struct{}{"L1": {}}, nil,
+		map[string]struct{}{"L1": {}},
 		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Empty(t, events)
@@ -2419,7 +2252,7 @@ func TestCompareLedgerPresence_MissingFromStored(t *testing.T) {
 
 	var events []*servicepb.CheckStoreEvent
 	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
-		map[string]struct{}{"L1": {}, "L2": {}}, nil,
+		map[string]struct{}{"L1": {}, "L2": {}},
 		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Len(t, events, 1)
@@ -2427,26 +2260,6 @@ func TestCompareLedgerPresence_MissingFromStored(t *testing.T) {
 		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER,
 		events[0].GetError().GetErrorType())
 	require.Equal(t, "L2", events[0].GetError().GetLedger())
-}
-
-// TestCompareLedgerPresence_PendingCleanupIgnored: a ledger mid-deletion (its
-// LedgerInfo already purged, its DeleteLedger log past the verified range) is
-// still counted live by the audit but must not be flagged.
-func TestCompareLedgerPresence_PendingCleanupIgnored(t *testing.T) {
-	t.Parallel()
-
-	checker, store := schemaCheckerFor(t, nil)
-
-	reader, err := store.NewReadHandle()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = reader.Close() })
-
-	var events []*servicepb.CheckStoreEvent
-	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
-		map[string]struct{}{"L1": {}}, map[string]struct{}{"L1": {}},
-		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
-
-	require.Empty(t, events)
 }
 
 // TestCompareLedgerPresence_SoftDeletedTreatedAsMissing: the audit knows a live
@@ -2466,7 +2279,7 @@ func TestCompareLedgerPresence_SoftDeletedTreatedAsMissing(t *testing.T) {
 
 	var events []*servicepb.CheckStoreEvent
 	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
-		map[string]struct{}{"L1": {}}, nil,
+		map[string]struct{}{"L1": {}},
 		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Len(t, events, 1)
@@ -2493,7 +2306,7 @@ func TestCompareLedgerPresence_UnauditedStored(t *testing.T) {
 
 	var events []*servicepb.CheckStoreEvent
 	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
-		map[string]struct{}{"L1": {}}, nil,
+		map[string]struct{}{"L1": {}},
 		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Len(t, events, 1)
@@ -2501,51 +2314,6 @@ func TestCompareLedgerPresence_UnauditedStored(t *testing.T) {
 		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER,
 		events[0].GetError().GetErrorType())
 	require.Equal(t, "ghost", events[0].GetError().GetLedger())
-}
-
-// TestSeedExpectedSchemasFromBaseline proves the baseline snapshot carries
-// LedgerInfo (so the schema is seeded from the boundary state, not the live
-// store) and that the checker reads it back.
-func TestSeedExpectedFromBaseline(t *testing.T) {
-	t.Parallel()
-
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
-		{
-			Name:           "L1",
-			Id:             1,
-			MetadataSchema: accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING),
-			AccountTypes:   map[string]*commonpb.AccountType{"asset": {Name: "asset", Pattern: "assets:*"}},
-		},
-	})
-
-	reader, err := store.NewReadHandle()
-	require.NoError(t, err)
-
-	dest, err := store.StagedBaselineDir(1)
-	require.NoError(t, err)
-	require.NoError(t, attributes.CreateBaselineSnapshot(reader, dest))
-	_ = reader.Close()
-
-	baseline, err := pebble.Open(dest, &pebble.Options{ReadOnly: true})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = baseline.Close() })
-
-	knownLedgers := map[string]struct{}{}
-	schemas := map[string]*commonpb.MetadataSchema{}
-	rawLedgerTypes := map[string]map[string]*commonpb.AccountType{}
-	ledgerAccountTypes := map[string][]accounttype.CompiledType{}
-	expectedBoundaries := map[string]*raftcmdpb.LedgerBoundaries{}
-	checker.seedExpectedFromBaseline(context.Background(), baseline, knownLedgers, schemas, rawLedgerTypes, ledgerAccountTypes, expectedBoundaries)
-
-	require.Contains(t, knownLedgers, "L1", "live baseline ledger should be seeded into knownLedgers")
-	require.Contains(t, schemas, "L1")
-	require.Equal(t,
-		commonpb.MetadataType_METADATA_TYPE_STRING,
-		schemas["L1"].GetAccountFields()["tier"].GetType())
-
-	require.Contains(t, rawLedgerTypes, "L1")
-	require.Equal(t, "assets:*", rawLedgerTypes["L1"]["asset"].GetPattern())
-	require.Contains(t, ledgerAccountTypes, "L1", "compiled account types should be seeded too")
 }
 
 // TestCompareAccountTypes_Identical: stored account types match the audit-derived

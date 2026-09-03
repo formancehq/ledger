@@ -46,59 +46,6 @@ func TestSaveMaintenanceMode(t *testing.T) {
 	require.False(t, enabled)
 }
 
-func TestSaveChapterSchedule(t *testing.T) {
-	t.Parallel()
-
-	s := newTestStore(t)
-
-	// Default: empty schedule
-	schedule, err := query.ReadChapterSchedule(s)
-	require.NoError(t, err)
-	require.Empty(t, schedule)
-
-	// Save a cron expression
-	batch := s.OpenWriteSession()
-	require.NoError(t, SaveChapterSchedule(batch, "*/5 * * * *"))
-	require.NoError(t, batch.Commit())
-
-	schedule, err = query.ReadChapterSchedule(s)
-	require.NoError(t, err)
-	require.Equal(t, "*/5 * * * *", schedule)
-
-	// Update schedule
-	batch = s.OpenWriteSession()
-	require.NoError(t, SaveChapterSchedule(batch, "0 * * * *"))
-	require.NoError(t, batch.Commit())
-
-	schedule, err = query.ReadChapterSchedule(s)
-	require.NoError(t, err)
-	require.Equal(t, "0 * * * *", schedule)
-}
-
-func TestBatchDeleteChapterScheduleFunc(t *testing.T) {
-	t.Parallel()
-
-	s := newTestStore(t)
-
-	// Save a schedule
-	batch := s.OpenWriteSession()
-	require.NoError(t, SaveChapterSchedule(batch, "*/10 * * * *"))
-	require.NoError(t, batch.Commit())
-
-	schedule, err := query.ReadChapterSchedule(s)
-	require.NoError(t, err)
-	require.Equal(t, "*/10 * * * *", schedule)
-
-	// Delete the schedule
-	batch = s.OpenWriteSession()
-	require.NoError(t, batchDeleteChapterSchedule(batch))
-	require.NoError(t, batch.Commit())
-
-	schedule, err = query.ReadChapterSchedule(s)
-	require.NoError(t, err)
-	require.Empty(t, schedule)
-}
-
 func TestSaveSinkConfig(t *testing.T) {
 	t.Parallel()
 
@@ -344,17 +291,17 @@ func TestFindTransactionCreationLog(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	// Find the creation log. Nil cold reader: hot-only lookup.
-	log, err := query.FindTransactionCreationLog(context.Background(), reader, nil, txAttr, "test", 1)
+	log, err := query.FindTransactionCreationLog(context.Background(), reader, txAttr, "test", 1)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	require.Equal(t, uint64(5), log.GetSequence())
 
 	// Non-existent transaction should return ErrNotFound
-	_, err = query.FindTransactionCreationLog(context.Background(), reader, nil, txAttr, "test", 999)
+	_, err = query.FindTransactionCreationLog(context.Background(), reader, txAttr, "test", 999)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Non-existent ledger should return error
-	_, err = query.FindTransactionCreationLog(context.Background(), reader, nil, txAttr, "other", 1)
+	_, err = query.FindTransactionCreationLog(context.Background(), reader, txAttr, "other", 1)
 	require.Error(t, err)
 }
 

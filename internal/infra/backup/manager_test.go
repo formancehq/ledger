@@ -130,7 +130,7 @@ func TestRunIncrementalBackup_AbortsOnSequenceReadFailure(t *testing.T) {
 
 	storage := &recordingStorage{manifestBody: body}
 
-	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, nil, storage, "bucket", 0)
+	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket", 0)
 	require.Error(t, err, "RunIncrementalBackup must fail when a sequence read fails")
 
 	require.False(t, storage.wrote(ManifestKey("bucket")),
@@ -171,7 +171,7 @@ func TestRunIncrementalBackup_AbortsOnAuditSequenceReadFailure(t *testing.T) {
 
 	storage := &recordingStorage{manifestBody: body}
 
-	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, nil, storage, "bucket", 0)
+	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket", 0)
 
 	require.Error(t, err, "RunIncrementalBackup must fail when the audit sequence read fails")
 	require.False(t, storage.wrote(ManifestKey("bucket")),
@@ -223,7 +223,7 @@ func TestRunIncrementalBackup_AbortsOnCorruptManifest(t *testing.T) {
 	store := newBackupTestStore(t)
 	storage := &recordingStorage{manifestBody: []byte("{ not valid json")}
 
-	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, nil, storage, "bucket", 0)
+	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, "bucket", 0)
 
 	require.Error(t, err, "RunIncrementalBackup must fail on a corrupt existing manifest")
 	require.False(t, storage.wrote(ManifestKey("bucket")),
@@ -257,7 +257,7 @@ func TestRunIncrementalBackup_RejectsCheckpointlessManifest(t *testing.T) {
 
 	storage := &recordingStorage{manifestBody: body}
 
-	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, nil, storage, bucketID, 0)
+	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
 
 	require.ErrorIs(t, err, ErrNoFullCheckpoint,
 		"RunIncrementalBackup must reject a manifest without a full checkpoint")
@@ -282,7 +282,7 @@ func TestRunIncrementalBackup_ProceedsOnFullCheckpoint(t *testing.T) {
 		Checkpoint: &CheckpointManifest{LastLogSequence: 0, LastAuditSequence: 0},
 	}))
 
-	result, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, nil, storage, bucketID, 0)
+	result, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
 	require.NoError(t, err, "a normal incremental on top of a full checkpoint must succeed")
 	require.NotNil(t, result)
 	require.EqualValues(t, 1, result.AuditEntriesExported)
@@ -508,7 +508,7 @@ func TestRunBackup_ClassifiesSupersededExportsAsFiles(t *testing.T) {
 	require.NoError(t, more.Commit())
 	require.NoError(t, store.Flush())
 
-	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, nil, storage, bucketID, 0)
+	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
 	require.NoError(t, err)
 
 	incManifest, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
@@ -698,7 +698,7 @@ func TestRunIncrementalBackup_FailureOnlyRange_SkipsAuditItemSegment(t *testing.
 		Checkpoint: &CheckpointManifest{LastLogSequence: 0, LastAuditSequence: 0},
 	}))
 
-	result, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, nil, storage, bucketID, 0)
+	result, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -750,7 +750,7 @@ func TestRunIncrementalBackup_MixedRange_ExportsAuditItem(t *testing.T) {
 		Checkpoint: &CheckpointManifest{LastLogSequence: 0, LastAuditSequence: 0},
 	}))
 
-	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, nil, storage, bucketID, 0)
+	_, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
 	require.NoError(t, err)
 
 	manifest, err := ReadManifest(context.Background(), storage, ManifestKey(bucketID))
@@ -788,7 +788,7 @@ func TestRunIncrementalBackup_InvokesPruneForExportsOnly(t *testing.T) {
 	// data/ must NOT be listed by the incremental path. Any other ListFiles
 	// call would fail the strict mock.
 
-	result, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, nil, storage, bucketID, 0)
+	result, err := RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Zero(t, result.OrphansDeleted)

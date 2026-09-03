@@ -155,8 +155,6 @@ func expectedRouteScopes() []routeScope {
 
 		// --- Ops read, requireOpsRead, bucket-wide /_ subtree (handler.go:147-157) ---
 		{http.MethodGet, "/v3/_/logs/{sequence}", kindGuarded, internalauth.ScopeOpsRead, false},
-		{http.MethodGet, "/v3/_/chapters", kindGuarded, internalauth.ScopeOpsRead, false},
-		{http.MethodGet, "/v3/_/chapter-schedule", kindGuarded, internalauth.ScopeOpsRead, false},
 		{http.MethodGet, "/v3/_/events-sinks", kindGuarded, internalauth.ScopeOpsRead, false},
 		{http.MethodGet, "/v3/_/signing-keys", kindGuarded, internalauth.ScopeOpsRead, false},
 		{http.MethodGet, "/v3/_/indexes", kindGuarded, internalauth.ScopeOpsRead, false},
@@ -591,8 +589,8 @@ type probeRequest struct {
 // End-to-end requests are the only sound oracle for the scope a route requires.
 // The middleware slice chi.Walk exposes is not one: `With(mw).Route(...)`
 // attaches mw to the subrouter's handler rather than to Middlewares(), so
-// /v3/_/chapters shows no RequireScope yet answers 401 tokenless — and all ten
-// RequireScope closures share a single code pointer anyway.
+// /v3/_/signing-keys shows no RequireScope yet answers 401 tokenless — and all
+// ten RequireScope closures share a single code pointer anyway.
 //
 // That same `Route` mechanic is why the pattern check is conditional. A gate
 // mounted with `With(mw).Route(prefix, ...)` runs on the SUB-mux's handler, i.e.

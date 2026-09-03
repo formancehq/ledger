@@ -140,18 +140,12 @@ func requestScopeCases() map[string]scopeCase {
 		"delete_prepared_query": {&servicepb.Request{Type: &servicepb.Request_DeletePreparedQuery{}}, ScopeQueriesWrite},
 
 		// Operator surface — no business identity, ledger:OpsWrite by design.
-		"register_signing_key":    {&servicepb.Request{Type: &servicepb.Request_RegisterSigningKey{}}, ScopeOpsWrite},
-		"revoke_signing_key":      {&servicepb.Request{Type: &servicepb.Request_RevokeSigningKey{}}, ScopeOpsWrite},
-		"set_signing_config":      {&servicepb.Request{Type: &servicepb.Request_SetSigningConfig{}}, ScopeOpsWrite},
-		"add_events_sink":         {&servicepb.Request{Type: &servicepb.Request_AddEventsSink{}}, ScopeOpsWrite},
-		"remove_events_sink":      {&servicepb.Request{Type: &servicepb.Request_RemoveEventsSink{}}, ScopeOpsWrite},
-		"close_chapter":           {&servicepb.Request{Type: &servicepb.Request_CloseChapter{}}, ScopeOpsWrite},
-		"seal_chapter":            {&servicepb.Request{Type: &servicepb.Request_SealChapter{}}, ScopeOpsWrite},
-		"archive_chapter":         {&servicepb.Request{Type: &servicepb.Request_ArchiveChapter{}}, ScopeOpsWrite},
-		"confirm_archive_chapter": {&servicepb.Request{Type: &servicepb.Request_ConfirmArchiveChapter{}}, ScopeOpsWrite},
-		"set_maintenance_mode":    {&servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{}}, ScopeOpsWrite},
-		"set_chapter_schedule":    {&servicepb.Request{Type: &servicepb.Request_SetChapterSchedule{}}, ScopeOpsWrite},
-		"delete_chapter_schedule": {&servicepb.Request{Type: &servicepb.Request_DeleteChapterSchedule{}}, ScopeOpsWrite},
+		"register_signing_key": {&servicepb.Request{Type: &servicepb.Request_RegisterSigningKey{}}, ScopeOpsWrite},
+		"revoke_signing_key":   {&servicepb.Request{Type: &servicepb.Request_RevokeSigningKey{}}, ScopeOpsWrite},
+		"set_signing_config":   {&servicepb.Request{Type: &servicepb.Request_SetSigningConfig{}}, ScopeOpsWrite},
+		"add_events_sink":      {&servicepb.Request{Type: &servicepb.Request_AddEventsSink{}}, ScopeOpsWrite},
+		"remove_events_sink":   {&servicepb.Request{Type: &servicepb.Request_RemoveEventsSink{}}, ScopeOpsWrite},
+		"set_maintenance_mode": {&servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{}}, ScopeOpsWrite},
 
 		// Batch apply — delegates to the LedgerAction classifier. A real
 		// action is required; see the doc comment above.

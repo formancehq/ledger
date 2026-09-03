@@ -25,15 +25,6 @@ func TestClassifyCheckpointOrderPosition(t *testing.T) {
 			},
 		}}
 	}
-	closeChapter := func() *raftcmdpb.Order {
-		return &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
-			SystemScoped: &raftcmdpb.SystemScopedOrder{
-				Payload: &raftcmdpb.SystemScopedOrder_CloseChapter{
-					CloseChapter: &raftcmdpb.CloseChapterOrder{},
-				},
-			},
-		}}
-	}
 
 	cases := []struct {
 		name   string
@@ -43,19 +34,14 @@ func TestClassifyCheckpointOrderPosition(t *testing.T) {
 		{"empty", nil, CheckpointOrderAbsent},
 		{"only apply", []*raftcmdpb.Order{apply(), apply()}, CheckpointOrderAbsent},
 		{"checkpoint alone", []*raftcmdpb.Order{chkpt()}, CheckpointOrderLast},
-		{"close chapter alone", []*raftcmdpb.Order{closeChapter()}, CheckpointOrderLast},
 		{"apply then checkpoint", []*raftcmdpb.Order{apply(), apply(), chkpt()}, CheckpointOrderLast},
-		{"apply then close chapter", []*raftcmdpb.Order{apply(), closeChapter()}, CheckpointOrderLast},
 		{"checkpoint then apply", []*raftcmdpb.Order{chkpt(), apply()}, CheckpointOrderInvalid},
-		{"close chapter then apply", []*raftcmdpb.Order{closeChapter(), apply()}, CheckpointOrderInvalid},
 		{"checkpoint mid-batch", []*raftcmdpb.Order{apply(), chkpt(), apply()}, CheckpointOrderInvalid},
 		// Two triggers: only the LAST slot is valid. The first trigger at
 		// position 0 already violates the invariant, regardless of what
 		// follows. (Submitting two checkpoint orders in one proposal is
 		// nonsensical anyway, but the validator must reject it cleanly.)
 		{"two checkpoints", []*raftcmdpb.Order{chkpt(), chkpt()}, CheckpointOrderInvalid},
-		{"close chapter then checkpoint", []*raftcmdpb.Order{closeChapter(), chkpt()}, CheckpointOrderInvalid},
-		{"checkpoint then close chapter", []*raftcmdpb.Order{chkpt(), closeChapter()}, CheckpointOrderInvalid},
 	}
 
 	for _, tc := range cases {

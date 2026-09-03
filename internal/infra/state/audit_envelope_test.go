@@ -147,7 +147,7 @@ func TestHashChain_Envelope_SystemCaller(t *testing.T) {
 	}
 
 	systemEntry := base()
-	systemEntry.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentChapterArchiver)
+	systemEntry.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentQueryCheckpoint)
 
 	systemHeader, err := BuildHashedHeaderPayload(systemEntry)
 	require.NoError(t, err)

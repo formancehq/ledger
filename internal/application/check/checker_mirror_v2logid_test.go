@@ -2,12 +2,9 @@ package check
 
 import (
 	"maps"
-	"path/filepath"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -36,7 +33,7 @@ func writeBoundaries(t *testing.T, store *dal.Store, attrs *attributes.Attribute
 func collectMirrorV2LogIDEvents(t *testing.T, store *dal.Store, attrs *attributes.Attributes, maxV2 map[string]uint64, deletedLedgers ...string) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attrs, "mirror-v2logid-cluster", nil, nil, nil, logging.Testing())
+	checker := NewChecker(store, attrs, "mirror-v2logid-cluster", nil, logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -157,80 +154,6 @@ func TestCompareMirrorV2LogID_CorruptToZeroFlagged(t *testing.T) {
 
 	require.Len(t, got, 1)
 	require.Equal(t, "wiped-ledger", got[0].GetLedger())
-}
-
-// TestBaselineBoundaries_SeedArchivedMirrorV2LogID pins Finding 3: the compact
-// baseline snapshot (CreateBaselineSnapshot) now includes Boundary rows, so
-// foldBaselineBoundaries can seed the archived floor for a ledger whose mirror
-// ingests live entirely in an archived chapter — and compareMirrorV2LogID then
-// sees the correct audited max and does NOT false-positive on the live stored
-// value. Before the fix, writeBaselineAttributes omitted Boundary rows, the
-// baseline floor was 0, and a healthy archived-mirror ledger was flagged.
-func TestBaselineBoundaries_SeedArchivedMirrorV2LogID(t *testing.T) {
-	t.Parallel()
-
-	logger := logging.Testing()
-	meter := noop.NewMeterProvider().Meter("test")
-	attrs := attributes.New()
-
-	// Source store carrying a mirror ledger's boundaries with an applied
-	// high-water mark of 9 (as if all its mirror ingests were archived).
-	src, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = src.Close() })
-
-	batch := src.OpenWriteSession()
-	_, err = attrs.Boundary.Set(batch, domain.LedgerKey{Name: "archived-mirror"}.Bytes(), &raftcmdpb.LedgerBoundaries{
-		NextTransactionId: 12,
-		NextLogId:         12,
-		LastMirrorV2LogId: 9,
-	})
-	require.NoError(t, err)
-	require.NoError(t, batch.Commit())
-
-	// Build the compact baseline snapshot the way archival does.
-	handle, err := src.NewReadHandle()
-	require.NoError(t, err)
-
-	baselinePath := filepath.Join(t.TempDir(), "baseline")
-	require.NoError(t, attributes.CreateBaselineSnapshot(handle, baselinePath))
-	require.NoError(t, handle.Close())
-
-	baselineDB, err := pebble.Open(baselinePath, &pebble.Options{ReadOnly: true})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = baselineDB.Close() })
-
-	// foldBaselineBoundaries must read the archived last_mirror_v2_log_id (the
-	// Finding 3 fix) — and still seed nextTxID as before (no regression).
-	checker := NewChecker(nil, attrs, "test-cluster", nil, nil, nil, logging.Testing())
-	chainBound := newChainBoundState()
-	require.NoError(t, checker.foldBaselineBoundaries(baselineDB, chainBound))
-
-	require.Equal(t, uint64(9), chainBound.maxMirrorV2LogID["archived-mirror"],
-		"baseline Boundary row must seed the archived mirror v2LogId floor")
-	require.Equal(t, uint64(12), chainBound.nextTxID["archived-mirror"],
-		"baseline NextTransactionId seeding must still work (no regression)")
-
-	// End-to-end: with the archived floor seeded, a live ledger whose stored
-	// high-water mark equals the archived max is NOT flagged.
-	live := createTestStore(t)
-	writeBoundaries(t, live, attrs, "archived-mirror", &raftcmdpb.LedgerBoundaries{
-		NextTransactionId: 12, NextLogId: 12, LastMirrorV2LogId: 9,
-	})
-
-	liveHandle, err := live.NewReadHandle()
-	require.NoError(t, err)
-
-	defer func() { _ = liveHandle.Close() }()
-
-	var got []*servicepb.CheckStoreError
-	checker.compareMirrorV2LogID(liveHandle, chainBound, nil, func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
-			got = append(got, e.Error)
-		}
-	})
-
-	require.Empty(t, got, "archived-mirror ledger with stored == archived max must not be flagged")
 }
 
 // TestCompareMirrorV2LogID_AbsentRowFlagged pins the union-driven comparison

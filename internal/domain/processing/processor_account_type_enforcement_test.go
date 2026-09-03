@@ -44,7 +44,6 @@ func TestProcessCreateTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 	now := (&commonpb.Timestamp{Data: 1_234_567_890}).AsReader()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1)).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false).AnyTimes()
 
 	request := &servicepb.Request{
 		Type: &servicepb.Request_Apply{

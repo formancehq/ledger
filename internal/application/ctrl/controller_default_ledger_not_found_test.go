@@ -73,7 +73,7 @@ func TestDefaultController_LedgerNotFound(t *testing.T) {
 				logger := logging.FromContext(logging.TestingContext())
 				meter := noop.NewMeterProvider().Meter("test")
 
-				ctrl := NewDefaultController(nil, store, logger, attrs, nil, nil, nil, nil, meter)
+				ctrl := NewDefaultController(nil, store, logger, attrs, nil, nil, nil, meter)
 
 				seedTC.seed(t, store)
 

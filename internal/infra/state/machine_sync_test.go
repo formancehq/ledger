@@ -174,13 +174,9 @@ func TestSynchronizeWithLeaderDrainsBackgroundChannels(t *testing.T) {
 
 	followerMachine, followerStore, _ := newTestMachine(t)
 
-	// Stuff every background channel with stale pre-sync work — what would
-	// happen if the follower had applied a CloseChapter / ArchiveChapter /
-	// chapter purge / cluster-config-change locally just before being told
-	// to sync.
-	require.True(t, followerMachine.sealRequestCh.TrySend(SealRequest{ChapterID: 99, CloseSequence: 999, CheckpointPath: "/tmp/stale"}, "stale-seal"))
-	require.True(t, followerMachine.archiveRequestCh.TrySend(ArchiveRequest{ChapterID: 99, StartSequence: 1, CloseSequence: 999}, "stale-archive"))
-	followerMachine.coldCompactionCh <- struct{}{}
+	// Stuff the background channel with stale pre-sync work — what would
+	// happen if the follower had applied a cluster-config change locally
+	// just before being told to sync.
 	followerMachine.bloomRebuildCh <- "stale reason"
 
 	followerRecovery := NewRecovery(followerMachine, followerStore)
@@ -190,9 +186,6 @@ func TestSynchronizeWithLeaderDrainsBackgroundChannels(t *testing.T) {
 	_, err = followerSync.SynchronizeWithLeader(ctx, &copyDirFetcher{srcDir: leaderCheckpointPath}, nil)
 	require.NoError(t, err)
 
-	// All channels must now be empty. Non-blocking receive should hit default.
-	require.Len(t, followerMachine.sealRequestCh.Receive(), 0, "sealRequestCh leaked stale entry")
-	require.Len(t, followerMachine.archiveRequestCh.Receive(), 0, "archiveRequestCh leaked stale entry")
-	require.Len(t, followerMachine.coldCompactionCh, 0, "coldCompactionCh leaked stale signal")
+	// The channel must now be empty. Non-blocking receive should hit default.
 	require.Len(t, followerMachine.bloomRebuildCh, 0, "bloomRebuildCh leaked stale reason")
 }

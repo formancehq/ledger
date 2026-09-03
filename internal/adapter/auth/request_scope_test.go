@@ -67,13 +67,7 @@ func TestRequiredScopeForRequest_OpsWrite(t *testing.T) {
 		{"SetSigningConfig", &servicepb.Request{Type: &servicepb.Request_SetSigningConfig{}}},
 		{"AddEventsSink", &servicepb.Request{Type: &servicepb.Request_AddEventsSink{}}},
 		{"RemoveEventsSink", &servicepb.Request{Type: &servicepb.Request_RemoveEventsSink{}}},
-		{"CloseChapter", &servicepb.Request{Type: &servicepb.Request_CloseChapter{}}},
-		{"SealChapter", &servicepb.Request{Type: &servicepb.Request_SealChapter{}}},
-		{"ArchiveChapter", &servicepb.Request{Type: &servicepb.Request_ArchiveChapter{}}},
-		{"ConfirmArchiveChapter", &servicepb.Request{Type: &servicepb.Request_ConfirmArchiveChapter{}}},
 		{"SetMaintenanceMode", &servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{}}},
-		{"SetChapterSchedule", &servicepb.Request{Type: &servicepb.Request_SetChapterSchedule{}}},
-		{"DeleteChapterSchedule", &servicepb.Request{Type: &servicepb.Request_DeleteChapterSchedule{}}},
 	}
 
 	for _, tc := range opsWriteRequests {

@@ -64,7 +64,6 @@ func TestResetLogForReuse_ClearsStaleData(t *testing.T) {
 	ct := apply.Apply.GetLog().GetData().GetPayload().(*commonpb.LedgerLogPayload_CreatedTransaction)
 	createdTx := ct.CreatedTransaction
 
-	assert.Equal(t, uint64(0), createdTx.GetChapterId())
 	assert.Empty(t, createdTx.GetAccountMetadata())
 
 	txn := createdTx.GetTransaction()
@@ -252,7 +251,6 @@ func buildTestLog() *commonpb.Log {
 						Data: &commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
-									ChapterId: 7,
 									Transaction: &commonpb.Transaction{
 										Id:        100,
 										Reference: "ref-001",

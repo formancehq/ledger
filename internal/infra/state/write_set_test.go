@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
@@ -285,25 +284,6 @@ func TestWriteSetSetMaintenanceMode(t *testing.T) {
 	require.True(t, buf.pendingMaintenanceModeUpdate.enabled)
 }
 
-func TestWriteSetSetDeleteChapterSchedule(t *testing.T) {
-	t.Parallel()
-	buf, _, _ := newTestBuffer(t)
-
-	require.Nil(t, buf.chapterScheduleUpdate)
-
-	buf.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_SetChapterSchedule{SetChapterSchedule: &commonpb.SetChapterScheduleLog{Cron: "*/5 * * * *"}},
-	}})
-	require.NotNil(t, buf.chapterScheduleUpdate)
-	require.Equal(t, "*/5 * * * *", *buf.chapterScheduleUpdate)
-
-	buf.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_DeleteChapterSchedule{DeleteChapterSchedule: &commonpb.DeletedChapterScheduleLog{}},
-	}})
-	require.NotNil(t, buf.chapterScheduleUpdate)
-	require.Empty(t, *buf.chapterScheduleUpdate)
-}
-
 func TestWriteSetSinkConfigOperations(t *testing.T) {
 	t.Parallel()
 	buf, _, _ := newTestBuffer(t)
@@ -352,272 +332,6 @@ func TestWriteSetDateAndHash(t *testing.T) {
 	require.Equal(t, uint64(1700000000), buf.GetDate().GetData())
 }
 
-func TestWriteSetChapterOperations(t *testing.T) {
-	t.Parallel()
-	buf, _, _ := newTestBuffer(t)
-
-	// Initially no open chapter
-	p, ok := buf.GetCurrentOpenChapter()
-	require.False(t, ok)
-	require.Nil(t, p)
-
-	// No closing chapters
-	require.Empty(t, buf.GetClosingChapters())
-
-	// Set current open chapter
-	openChapter := &commonpb.Chapter{Id: 1, Status: commonpb.ChapterStatus_CHAPTER_OPEN}
-	buf.SetCurrentOpenChapter(openChapter)
-	p, ok = buf.GetCurrentOpenChapter()
-	require.True(t, ok)
-	require.Equal(t, uint64(1), p.GetId())
-
-	// Add closing chapter
-	closingChapter := &commonpb.Chapter{Id: 2, Status: commonpb.ChapterStatus_CHAPTER_CLOSING}
-	buf.AddClosingChapter(closingChapter)
-	cp, ok := buf.GetClosingChapterByID(2)
-	require.True(t, ok)
-	require.Equal(t, uint64(2), cp.GetId())
-	require.Len(t, buf.GetClosingChapters(), 1)
-
-	// Add a second closing chapter
-	closingChapter2 := &commonpb.Chapter{Id: 3, Status: commonpb.ChapterStatus_CHAPTER_CLOSING}
-	buf.AddClosingChapter(closingChapter2)
-	require.Len(t, buf.GetClosingChapters(), 2)
-
-	// Remove first closing chapter
-	buf.RemoveClosingChapter(2)
-	_, ok = buf.GetClosingChapterByID(2)
-	require.False(t, ok)
-	require.Len(t, buf.GetClosingChapters(), 1)
-
-	// Remove second closing chapter
-	buf.RemoveClosingChapter(3)
-	require.Empty(t, buf.GetClosingChapters())
-}
-
-func TestWriteSetRemoveClosingChapterRecordsChange(t *testing.T) {
-	t.Parallel()
-	buf, _, _ := newTestBuffer(t)
-
-	closingChapter := &commonpb.Chapter{Id: 7, Status: commonpb.ChapterStatus_CHAPTER_CLOSING}
-	buf.AddClosingChapter(closingChapter)
-	initialChanges := len(buf.changedChapters)
-
-	buf.RemoveClosingChapter(7)
-
-	// RemoveClosingChapter should record the removed chapter's final state
-	require.Greater(t, len(buf.changedChapters), initialChanges)
-	found := false
-	for _, p := range buf.changedChapters {
-		if p.GetId() == 7 {
-			found = true
-
-			break
-		}
-	}
-	require.True(t, found, "removed closing chapter should be in changedChapters")
-}
-
-func TestWriteSetMultipleClosingChaptersAfterMerge(t *testing.T) {
-	t.Parallel()
-	buf, machine, dataStore := newTestBuffer(t)
-
-	// Add two closing chapters
-	p1 := &commonpb.Chapter{Id: 10, Status: commonpb.ChapterStatus_CHAPTER_CLOSING}
-	p2 := &commonpb.Chapter{Id: 11, Status: commonpb.ChapterStatus_CHAPTER_CLOSING}
-	buf.AddClosingChapter(p1)
-	buf.AddClosingChapter(p2)
-
-	// After Merge, the machine should have both closing chapters
-	batch := dataStore.OpenWriteSession()
-	err := buf.Merge(batch, nil)
-	require.NoError(t, err)
-	require.NoError(t, batch.Commit())
-
-	require.Len(t, machine.Chapters.ClosingChapters(), 2)
-	_, ok := machine.Chapters.ClosingChapterByID(10)
-	require.True(t, ok)
-	_, ok = machine.Chapters.ClosingChapterByID(11)
-	require.True(t, ok)
-}
-
-func TestWriteSetGetNextChapterIDAndIncrement(t *testing.T) {
-	t.Parallel()
-	buf, _, _ := newTestBuffer(t)
-
-	startID := buf.GetNextChapterID()
-	id := buf.IncrementNextChapterID()
-	require.Equal(t, startID, id)
-	require.Equal(t, startID+1, buf.GetNextChapterID())
-}
-
-func TestWriteSetGetChapterByID(t *testing.T) {
-	t.Parallel()
-	buf, _, _ := newTestBuffer(t)
-
-	// Non-existent chapter
-	_, ok := buf.GetChapterByID(999)
-	require.False(t, ok)
-
-	// Add via allChapters (simulating Machine state)
-	buf.chapters.PutChapter(&commonpb.Chapter{Id: 10, Status: commonpb.ChapterStatus_CHAPTER_CLOSED})
-
-	p, ok := buf.GetChapterByID(10)
-	require.True(t, ok)
-	require.Equal(t, uint64(10), p.GetId())
-
-	// Changed chapters take priority over allChapters
-	buf.changedChapters = append(buf.changedChapters, &commonpb.Chapter{Id: 10, Status: commonpb.ChapterStatus_CHAPTER_OPEN})
-	p, ok = buf.GetChapterByID(10)
-	require.True(t, ok)
-	require.Equal(t, commonpb.ChapterStatus_CHAPTER_OPEN, p.GetStatus())
-}
-
-func TestWriteSetUpdateChapter(t *testing.T) {
-	t.Parallel()
-	buf, _, _ := newTestBuffer(t)
-
-	chapter := &commonpb.Chapter{Id: 5, Status: commonpb.ChapterStatus_CHAPTER_CLOSED}
-	buf.UpdateChapter(chapter)
-	require.Len(t, buf.changedChapters, 1)
-	require.Equal(t, uint64(5), buf.changedChapters[0].GetId())
-}
-
-func confirmArchiveLog(id, startSeq, closeSeq, startAudit, closeAudit uint64) *commonpb.Log {
-	return &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_ConfirmArchiveChapter{ConfirmArchiveChapter: &commonpb.ConfirmedArchiveChapterLog{
-			Chapter: &commonpb.Chapter{
-				Id:                 id,
-				StartSequence:      startSeq,
-				CloseSequence:      closeSeq,
-				StartAuditSequence: startAudit,
-				CloseAuditSequence: closeAudit,
-			},
-		}},
-	}}
-}
-
-func archiveChapterLog(id, startSeq, closeSeq, startAudit, closeAudit uint64) *commonpb.Log {
-	return &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_ArchiveChapter{ArchiveChapter: &commonpb.ArchivedChapterLog{
-			Chapter: &commonpb.Chapter{
-				Id:                 id,
-				StartSequence:      startSeq,
-				CloseSequence:      closeSeq,
-				StartAuditSequence: startAudit,
-				CloseAuditSequence: closeAudit,
-			},
-		}},
-	}}
-}
-
-func TestWriteSetSetPurgeRange(t *testing.T) {
-	t.Parallel()
-	buf, _, _ := newTestBuffer(t)
-
-	require.Empty(t, buf.purgeRanges)
-	require.False(t, (len(buf.purgeRanges) > 0))
-
-	buf.Absorb(&raftcmdpb.Order{}, confirmArchiveLog(1, 10, 50, 5, 25))
-	require.True(t, (len(buf.purgeRanges) > 0))
-
-	buf.Absorb(&raftcmdpb.Order{}, confirmArchiveLog(2, 51, 100, 26, 50))
-	require.Len(t, buf.purgeRanges, 2)
-	require.Equal(t, uint64(10), buf.purgeRanges[0].startSequence)
-	require.Equal(t, uint64(51), buf.purgeRanges[1].startSequence)
-	require.True(t, (len(buf.purgeRanges) > 0))
-}
-
-// TestWriteSetMergePurgesConfirmedChapterRanges pins the purge surface of a
-// ConfirmArchiveChapter apply: Merge must delete every cold sub-prefix the
-// confirmed chapter covers — logs by log sequence; audit entries, audit items
-// and applied proposals by audit sequence — and leave keys outside the
-// confirmed ranges untouched.
-func TestWriteSetMergePurgesConfirmedChapterRanges(t *testing.T) {
-	t.Parallel()
-	buf, _, dataStore := newTestBuffer(t)
-
-	coldKey := func(sub byte, seq uint64) []byte {
-		return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, sub).PutUint64(seq).Build()
-	}
-	itemKey := func(seq uint64, idx uint32) []byte {
-		return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(seq).PutUint32(idx).Build()
-	}
-
-	// Chapter ranges: logs [10, 20], audit sequences [5, 8].
-	inside := map[string][]byte{
-		"log at start":            coldKey(dal.SubHistoryLog, 10),
-		"log at close":            coldKey(dal.SubHistoryLog, 20),
-		"audit at start":          coldKey(dal.SubHistoryAudit, 5),
-		"audit at close":          coldKey(dal.SubHistoryAudit, 8),
-		"item at start, order 0":  itemKey(5, 0),
-		"item at start, order 1":  itemKey(5, 1),
-		"item at close, order 3":  itemKey(8, 3),
-		"applied proposal, start": coldKey(dal.SubHistoryAppliedProposal, 5),
-		"applied proposal, close": coldKey(dal.SubHistoryAppliedProposal, 8),
-	}
-	outside := map[string][]byte{
-		"log below":              coldKey(dal.SubHistoryLog, 9),
-		"log above":              coldKey(dal.SubHistoryLog, 21),
-		"audit below":            coldKey(dal.SubHistoryAudit, 4),
-		"audit above":            coldKey(dal.SubHistoryAudit, 9),
-		"item below":             itemKey(4, 0),
-		"item above":             itemKey(9, 0),
-		"applied proposal below": coldKey(dal.SubHistoryAppliedProposal, 4),
-		"applied proposal above": coldKey(dal.SubHistoryAppliedProposal, 9),
-	}
-
-	seed := dataStore.OpenWriteSession()
-	for _, k := range inside {
-		require.NoError(t, seed.Set(k, []byte("x"), nil))
-	}
-
-	for _, k := range outside {
-		require.NoError(t, seed.Set(k, []byte("x"), nil))
-	}
-	require.NoError(t, seed.Commit())
-
-	buf.Absorb(&raftcmdpb.Order{}, confirmArchiveLog(1, 10, 20, 5, 8))
-
-	batch := dataStore.OpenWriteSession()
-	require.NoError(t, buf.Merge(batch, nil))
-	require.NoError(t, batch.Commit())
-
-	rh, err := dataStore.NewReadHandle()
-	require.NoError(t, err)
-
-	t.Cleanup(func() { _ = rh.Close() })
-
-	for name, k := range inside {
-		_, closer, err := rh.Get(k)
-		if closer != nil {
-			_ = closer.Close()
-		}
-
-		require.ErrorIs(t, err, pebble.ErrNotFound, "key inside the confirmed ranges must be purged: %s", name)
-	}
-
-	for name, k := range outside {
-		_, closer, err := rh.Get(k)
-		require.NoError(t, err, "key outside the confirmed ranges must survive: %s", name)
-		require.NoError(t, closer.Close())
-	}
-}
-
-func TestWriteSetSetPendingArchive(t *testing.T) {
-	t.Parallel()
-	buf, _, _ := newTestBuffer(t)
-
-	require.Empty(t, buf.archiveRequests)
-	buf.Absorb(&raftcmdpb.Order{}, archiveChapterLog(1, 10, 50, 5, 25))
-	require.Len(t, buf.archiveRequests, 1)
-	require.Equal(t, uint64(1), buf.archiveRequests[0].ChapterID)
-	require.Equal(t, uint64(10), buf.archiveRequests[0].StartSequence)
-	require.Equal(t, uint64(50), buf.archiveRequests[0].CloseSequence)
-	require.Equal(t, uint64(5), buf.archiveRequests[0].StartAuditSequence)
-	require.Equal(t, uint64(25), buf.archiveRequests[0].CloseAuditSequence)
-}
-
 // TestWriteSetResetIsolation verifies that data written during proposal N is
 // not visible after Reset() prepares the WriteSet for proposal N+1.
 func TestWriteSetResetIsolation(t *testing.T) {
@@ -647,20 +361,17 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	buf.SetMaintenanceMode(true)
 	buf.SetRequireSignatures(true)
 	buf.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_SetChapterSchedule{SetChapterSchedule: &commonpb.SetChapterScheduleLog{Cron: "*/5 * * * *"}},
+		Type: &commonpb.LogPayload_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &commonpb.SetQueryCheckpointScheduleLog{Cron: "*/5 * * * *"}},
 	}})
-	buf.Absorb(&raftcmdpb.Order{}, confirmArchiveLog(1, 10, 50, 5, 25))
-	buf.Absorb(&raftcmdpb.Order{}, archiveChapterLog(1, 10, 50, 5, 25))
 	buf.QueueMirrorSync(MirrorSyncWrite{LedgerName: "leaked", ClearError: true})
 
 	// Verify data is present before Reset
 	_, err := buf.Ledgers().Get(domain.LedgerKey{Name: "leaked"})
 	require.NoError(t, err, "ledger should exist before Reset")
-	require.True(t, (len(buf.purgeRanges) > 0), "purges should exist before Reset")
 	require.Len(t, buf.pendingSigningKeyUpdates, 1)
 	require.NotNil(t, buf.pendingMaintenanceModeUpdate)
 	require.NotNil(t, buf.pendingSigningConfigUpdate)
-	require.NotNil(t, buf.chapterScheduleUpdate)
+	require.NotNil(t, buf.queryCheckpointScheduleUpdate)
 	require.Len(t, buf.pendingMirrorSyncs, 1)
 
 	// --- Reset for proposal N+1 ---
@@ -688,9 +399,7 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	require.Empty(t, buf.pendingSigningKeyUpdates, "signing key updates must be cleared after Reset")
 	require.Nil(t, buf.pendingMaintenanceModeUpdate, "maintenance mode update must be nil after Reset")
 	require.Nil(t, buf.pendingSigningConfigUpdate, "signing config update must be nil after Reset")
-	require.Nil(t, buf.chapterScheduleUpdate, "chapter schedule update must be nil after Reset")
-	require.False(t, (len(buf.purgeRanges) > 0), "purges must be cleared after Reset")
-	require.Empty(t, buf.archiveRequests, "archives must be cleared after Reset")
+	require.Nil(t, buf.queryCheckpointScheduleUpdate, "query checkpoint schedule update must be nil after Reset")
 	require.Empty(t, buf.pendingMirrorSyncs, "mirror syncs must be cleared after Reset")
 
 	// Scalar state must be refreshed

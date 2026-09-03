@@ -106,3 +106,29 @@ func TestApplyExportsRejectsKeyWithTrailingBytes(t *testing.T) {
 	require.ErrorContains(t, err, "invalid key")
 	require.Zero(t, countKeysInSub(t, store, dal.SubHistoryLog), "tampered entry must not reach the store")
 }
+
+func countKeysInSub(t *testing.T, store *dal.Store, sub byte) int {
+	t.Helper()
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+
+	defer func() { _ = handle.Close() }()
+
+	iter, err := dal.NewBoundedIter(handle,
+		[]byte{dal.ZoneHistory, sub},
+		[]byte{dal.ZoneHistory, sub + 1},
+	)
+	require.NoError(t, err)
+
+	defer func() { _ = iter.Close() }()
+
+	count := 0
+	for iter.First(); iter.Valid(); iter.Next() {
+		count++
+	}
+
+	require.NoError(t, iter.Error())
+
+	return count
+}

@@ -139,12 +139,12 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 			wantErr: domain.ErrLedgerNameInvalidChar,
 		},
 		{
-			name: "valid order without ledger (CloseChapter)",
+			name: "valid order without ledger (SetMaintenanceMode)",
 			order: &raftcmdpb.Order{
 				Type: &raftcmdpb.Order_SystemScoped{
 					SystemScoped: &raftcmdpb.SystemScopedOrder{
-						Payload: &raftcmdpb.SystemScopedOrder_CloseChapter{
-							CloseChapter: &raftcmdpb.CloseChapterOrder{},
+						Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{
+							SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{},
 						},
 					},
 				},

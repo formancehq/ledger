@@ -284,27 +284,6 @@ func TestListAuditEntries(t *testing.T) {
 	})
 }
 
-// TestListChapters covers chapter listing — the cursor is the chapter id.
-func TestListChapters(t *testing.T) {
-	t.Parallel()
-
-	t.Run("peek fires → trailer is chapter id", func(t *testing.T) {
-		t.Parallel()
-
-		impl, mockCtrl := newListHandlerHarness(t)
-		mockCtrl.EXPECT().ListChapters(gomock.Any()).Return(
-			page(&commonpb.Chapter{Id: 1}, &commonpb.Chapter{Id: 2}, &commonpb.Chapter{Id: 3}),
-			nil,
-		)
-
-		stream := newFakeServerStream[commonpb.Chapter](t)
-		req := &servicepb.ListChaptersRequest{Options: &commonpb.ListOptions{PageSize: 2}}
-
-		require.NoError(t, impl.ListChapters(req, stream))
-		require.Equal(t, "2", stream.trailerCursor())
-	})
-}
-
 // TestListSigningKeys pins the signing-key trailer encoding — the cursor is
 // the key id (printable ASCII enforced at admission).
 func TestListSigningKeys(t *testing.T) {

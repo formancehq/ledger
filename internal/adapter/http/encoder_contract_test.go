@@ -67,7 +67,7 @@ func TestProtojsonRoutes_PayloadHasNoCustomMarshalJSON(t *testing.T) {
 	}
 }
 
-// TestSonicRoutes_PayloadHasCustomMarshalJSON is the converse: the three routes
+// TestSonicRoutes_PayloadHasCustomMarshalJSON is the converse: the routes
 // fixed by EN-1622 rely on their type's marshaller being the contract. If a
 // marshaller is ever deleted, sonic falls back to the protoc-gen `json:` tags,
 // which are snake_case — a silent wire regression. The handler tests assert the
@@ -77,7 +77,6 @@ func TestSonicRoutes_PayloadHasCustomMarshalJSON(t *testing.T) {
 
 	for _, msg := range []proto.Message{
 		&commonpb.Transaction{},
-		&commonpb.Chapter{},
 		&commonpb.Log{},
 	} {
 		t.Run(reflect.TypeOf(msg).Elem().Name(), func(t *testing.T) {

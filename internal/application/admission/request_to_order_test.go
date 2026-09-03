@@ -392,42 +392,6 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 			},
 		},
 		{
-			name: "close_chapter",
-			req: &servicepb.Request{Type: &servicepb.Request_CloseChapter{
-				CloseChapter: &servicepb.CloseChapterRequest{},
-			}},
-			expect: expect{
-				kind: wrapSystem,
-				payloadAssert: func(t *testing.T, o *raftcmdpb.Order) {
-					require.NotNil(t, mustSystemScoped(t, o).GetCloseChapter())
-				},
-			},
-		},
-		{
-			name: "seal_chapter",
-			req: &servicepb.Request{Type: &servicepb.Request_SealChapter{
-				SealChapter: &servicepb.SealChapterRequest{ChapterId: 1},
-			}},
-			expect: expect{
-				kind: wrapSystem,
-				payloadAssert: func(t *testing.T, o *raftcmdpb.Order) {
-					require.NotNil(t, mustSystemScoped(t, o).GetSealChapter())
-				},
-			},
-		},
-		{
-			name: "confirm_archive_chapter",
-			req: &servicepb.Request{Type: &servicepb.Request_ConfirmArchiveChapter{
-				ConfirmArchiveChapter: &servicepb.ConfirmArchiveChapterRequest{ChapterId: 1},
-			}},
-			expect: expect{
-				kind: wrapSystem,
-				payloadAssert: func(t *testing.T, o *raftcmdpb.Order) {
-					require.NotNil(t, mustSystemScoped(t, o).GetConfirmArchiveChapter())
-				},
-			},
-		},
-		{
 			name: "set_maintenance_mode",
 			req: &servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{
 				SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{Enabled: true},
@@ -436,30 +400,6 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 				kind: wrapSystem,
 				payloadAssert: func(t *testing.T, o *raftcmdpb.Order) {
 					require.NotNil(t, mustSystemScoped(t, o).GetSetMaintenanceMode())
-				},
-			},
-		},
-		{
-			name: "set_chapter_schedule",
-			req: &servicepb.Request{Type: &servicepb.Request_SetChapterSchedule{
-				SetChapterSchedule: &servicepb.SetChapterScheduleRequest{Cron: "0 0 1 * *"},
-			}},
-			expect: expect{
-				kind: wrapSystem,
-				payloadAssert: func(t *testing.T, o *raftcmdpb.Order) {
-					require.NotNil(t, mustSystemScoped(t, o).GetSetChapterSchedule())
-				},
-			},
-		},
-		{
-			name: "delete_chapter_schedule",
-			req: &servicepb.Request{Type: &servicepb.Request_DeleteChapterSchedule{
-				DeleteChapterSchedule: &servicepb.DeleteChapterScheduleRequest{},
-			}},
-			expect: expect{
-				kind: wrapSystem,
-				payloadAssert: func(t *testing.T, o *raftcmdpb.Order) {
-					require.NotNil(t, mustSystemScoped(t, o).GetDeleteChapterSchedule())
 				},
 			},
 		},

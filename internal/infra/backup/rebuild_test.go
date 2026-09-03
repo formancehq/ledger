@@ -585,14 +585,6 @@ func TestRebuildDelta_ReplaysDeleteLedger(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, boundary, "the boundary row is dropped at delete time, matching the live apply")
 
-	cleanupKey := dal.NewKeyBuilder().
-		PutZonePrefix(dal.ZonePerLedger, dal.SubPLPendingCleanup).
-		PutLedgerNameFixed("ledger").
-		Build()
-	val, closer, err := store.Get(cleanupKey)
-	require.NoError(t, err, "the pending-cleanup marker must be recorded so a covering purge executes the deferred data cleanup")
-	require.Len(t, val, 8)
-	require.NoError(t, closer.Close())
 }
 
 func TestRebuildDelta_ReplaysPromoteLedger(t *testing.T) {
@@ -1026,7 +1018,7 @@ func TestAttributeReplayWriter_DeleteLedgerRemovesReversionRows(t *testing.T) {
 	writer.ledgerInfos["doomed"] = &commonpb.LedgerInfo{Name: "doomed"}
 	writer.reversions["doomed"] = &bitset.Bitset{}
 
-	require.NoError(t, writer.deleteLedger("doomed", &commonpb.Timestamp{Data: 42}, 7))
+	require.NoError(t, writer.deleteLedger("doomed", &commonpb.Timestamp{Data: 42}))
 	require.NoError(t, writer.batch.Commit())
 
 	handle, err := store.NewReadHandle()
