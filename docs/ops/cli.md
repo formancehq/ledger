@@ -4327,8 +4327,11 @@ volumes on every member in the committed Raft configuration. That configuration
 defines the required peers, so a member missing from the gRPC connection pool is
 considered unreachable. Valid WAL and data samples are evaluated independently.
 After each leadership transition the disk verdict starts unknown and writes are
-rejected until the new leader completes one check with that full evidence set;
-an older-term check cannot reopen the gate.
+rejected until the new leader completes one cluster poll with fresh local WAL
+and data samples. Fresh remote samples can block that initial verdict, but an
+unavailable remote member does not create a permanent block without observed
+high usage. Within the leadership term, invalid evidence still cannot clear an
+observed block, and an older-term check cannot reopen the gate.
 
 #### Write-gate error semantics
 
@@ -4340,8 +4343,9 @@ When the write gate is active, write commands are rejected with a structured gRP
 | Clock skew (any peer exceeds `--health-clock-skew-threshold`) | `Unavailable` | 503 | `WRITES_BLOCKED_CLOCK_SKEW` |
 
 The post-election unknown disk verdict uses the same
-`WRITES_BLOCKED_DISK_FULL` response until complete fresh evidence is available;
-this keeps the safety change within the existing public error contract.
+`WRITES_BLOCKED_DISK_FULL` response until fresh local evidence and the first
+cluster poll are available; this keeps the safety change within the existing
+public error contract.
 
 The node remains `Ready` (gRPC health: `SERVING`) and continues to serve reads in both cases. Readiness is unaffected by disk usage and clock skew.
 

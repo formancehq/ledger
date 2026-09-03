@@ -15,8 +15,6 @@ import (
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 var _ = Describe("Leadership transfer", Ordered, func() {
@@ -154,7 +152,7 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 	})
 
 	// This test MUST be last as it stops a node
-	It("should fail writes closed after automatic transfer while a committed member is unavailable", func() {
+	It("should transfer leadership automatically when leader stops gracefully", func() {
 		lid := *leaderID
 
 		// Create a ledger and some transactions so the cluster is active
@@ -188,15 +186,21 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 			return newLeaderID != 0 && newLeaderID != oldLeaderID
 		}).Should(BeTrue(), "a new leader should be elected after the old leader stops")
 
-		// The stopped node is still in the committed Raft configuration. The new
-		// leader must not publish an open disk verdict without fresh evidence from
-		// that member, even though quorum and leader discovery are available.
+		// Leader discovery can complete just before the new leader publishes its
+		// first current-epoch disk verdict. Retry the first write across that short
+		// fail-closed window; the unavailable old leader must not block it forever.
 		Eventually(func(g Gomega) {
 			_, err := servers[newLeaderID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
-			g.Expect(status.Code(err)).To(Equal(codes.ResourceExhausted))
-			g.Expect(err).To(MatchError(ContainSubstring("writes blocked: disk usage exceeds threshold")))
+			g.Expect(err).To(Succeed())
 		}).Should(Succeed())
+
+		for i := 0; i < 2; i++ {
+			_, err := servers[newLeaderID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
+			}, nil, nil)))
+			Expect(err).To(Succeed())
+		}
 	})
 })

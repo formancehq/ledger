@@ -153,10 +153,14 @@ Read operations continue to work normally:
   the same node can still create a block independently when it crosses its
   high-water mark.
 - **Leadership change**: Every leadership transition invalidates the node-local
-  disk verdict. The new leader rejects writes until one check obtains fresh,
-  valid WAL and data samples from every member in the committed Raft
-  configuration. A slow check from an older leadership term cannot publish a
-  verdict for the new term.
+  disk verdict. The new leader rejects writes until its first cluster poll has
+  fresh, valid local WAL and data samples. Fresh remote samples can block that
+  first verdict, but an unavailable committed member does not synthesize a
+  permanent block when the new leader has no prior disk-block evidence; Raft
+  quorum still determines whether writes can commit. Within that leadership
+  term, an invalid remote sample cannot clear a block that was actually
+  observed. A slow check from an older term cannot publish a verdict for the
+  new one.
 
 ## Monitoring
 

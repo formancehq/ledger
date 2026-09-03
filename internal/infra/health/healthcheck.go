@@ -104,7 +104,7 @@ func NewHealthChecker(
 
 	// The gate pointer defaults to nil, which CheckWritesAllowed treats as an
 	// unknown disk verdict. Writes fail closed until the leader publishes its
-	// first complete, fresh cluster-wide evaluation.
+	// first current-epoch evaluation from fresh local evidence.
 	return hc
 }
 
@@ -134,8 +134,8 @@ func (hc *HealthChecker) Stop() {
 
 // CheckWritesAllowed implements WriteGate. It Loads the gate once so both block
 // reasons are read from a single consistent snapshot. A nil or previous-term
-// gate is unknown and fails closed until the leader has collected one complete
-// set of fresh samples for the current leadership epoch.
+// gate is unknown and fails closed until the leader has completed one poll with
+// fresh local samples for the current leadership epoch.
 func (hc *HealthChecker) CheckWritesAllowed() error {
 	s := hc.gate.Load()
 	if s == nil || s.leadershipEpoch != hc.leadershipEpoch.Load() {
@@ -364,10 +364,12 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 		prevDiskBlocked = prev.diskBlocked
 		hasCurrentVerdict = true
 	}
-	if !hasCurrentVerdict && !allSamplesValid(samples) {
-		// A new leader has no inherited hysteresis state. Do not publish an open
-		// gate until every committed member reports both volumes with current
-		// evidence; gate==nil remains fail-closed for this leadership epoch.
+	if !hasCurrentVerdict && (!localWalValid || !localDataValid) {
+		// A new leader has no inherited hysteresis state. Its own WAL and data
+		// evidence must be fresh before it can publish any verdict. Unavailable
+		// remote members do not synthesize a permanent disk block: Raft quorum
+		// still governs whether writes can commit, while every valid remote sample
+		// remains able to raise the disk gate.
 		hc.logDiskUsageSummary(reports)
 
 		return
@@ -375,9 +377,9 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 
 	diskBlocked := hc.thresholds.NextDiskBlocked(prevDiskBlocked, samples)
 	if !hasCurrentVerdict {
-		// With a complete first sample set there is no prior hysteresis verdict to
-		// preserve. Apply only the block threshold, so values inside the hysteresis
-		// band do not create a synthetic block on leadership acquisition.
+		// With no prior hysteresis verdict to preserve, apply only the block
+		// threshold. Invalid remote samples cannot create a synthetic block, while
+		// every fresh sample that crosses the threshold still blocks writes.
 		diskBlocked = hc.thresholds.anyAtBlock(samples)
 	}
 
