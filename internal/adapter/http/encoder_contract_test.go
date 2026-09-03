@@ -22,7 +22,7 @@ import (
 //
 // protojson works off protobuf reflection and ignores json.Marshaler, so a type
 // that has BOTH is silently rendered by the wrong one. That is the EN-1622
-// defect: Transaction, Chapter and Log each had a hand-written MarshalJSON that
+// defect: Transaction and Log each had a hand-written MarshalJSON that
 // the protojson writers bypassed, so the list routes disagreed with their
 // sibling detail routes and leaked {v0}/{data} proto wrappers.
 //

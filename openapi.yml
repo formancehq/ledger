@@ -1724,9 +1724,6 @@ paths:
         materialised asynchronously by the `usagebuilder` subsystem from the FSM audit chain and may
         lag the live FSM while the worker drains pending batches. A never-invoked template returns a
         zero-valued response (not 404), so clients handle "never used" uniformly.
-
-        On existing ledgers whose audit chain has been partially archived to cold storage, only
-        invocations still reachable in Pebble are counted.
       operationId: getNumscriptUsage
       tags:
         - Numscript Library
@@ -2253,8 +2250,7 @@ paths:
       summary: Get a single system log by bucket-wide sequence
       description: |
         Returns the system log entry with the given bucket-wide sequence number.
-        Falls back to cold storage when the log has been archived. Requires
-        `ledger:OpsRead` scope.
+        Requires `ledger:OpsRead` scope.
       operationId: getLog
       tags:
         - Logs

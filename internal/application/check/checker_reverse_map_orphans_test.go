@@ -417,11 +417,9 @@ func TestCompareReverseMapOrphans_RemovedFieldTypeResidueFlagged(t *testing.T) {
 // TestCompareReverseMapOrphans_StaleRegistryCannotMaskOrphans is the regression
 // for the masking channel found in review of EN-1458.
 //
-// Setup: the field's RemovedMetadataFieldType sits behind the archive boundary,
-// so the audit-derived schema (baseline-seeded, therefore already post-removal)
-// no longer declares the field AND removedFields carries no evidence for it —
-// but a stale or tampered SubAttrIndex row survived. Orphaned reverse-map rows
-// are live.
+// Setup: the audit-derived schema no longer declares the field AND
+// removedFields carries no evidence for it — but a stale or tampered
+// SubAttrIndex row survived. Orphaned reverse-map rows are live.
 //
 // The test asserts both halves, because the fix deliberately lands in the other
 // pass rather than in this one.
@@ -432,7 +430,7 @@ func TestCompareReverseMapOrphans_StaleRegistryCannotMaskOrphans(t *testing.T) {
 
 	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
 		// Stale registry entry for a field the replayed schema no longer
-		// declares — the archived-removal shape.
+		// declares.
 		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 		schemas:  nil,
 		rmapKeys: [][]byte{
@@ -450,9 +448,8 @@ func TestCompareReverseMapOrphans_StaleRegistryCannotMaskOrphans(t *testing.T) {
 		"the registry term still suppresses this verdict; the masking is closed in compareIndexes, not here")
 
 	// Half two — the fix. The very entry that suppressed the orphan verdict is
-	// unaccounted for in the audit-derived registry set, because under archiving
-	// that set is seeded from the baseline (foldBaselineIndexes) instead of
-	// tolerating any entry the replay never touched. Check() is therefore NOT
+	// unaccounted for in the audit-derived registry set, which tolerates no
+	// entry the replay never touched. Check() is therefore NOT
 	// clean on this store: the two corrupted projections can no longer mask each
 	// other, which is what the review required.
 	var events []*servicepb.CheckStoreEvent

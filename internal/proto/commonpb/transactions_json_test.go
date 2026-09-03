@@ -35,7 +35,6 @@ func TestCreatedTransaction_MarshalJSON_AllFields(t *testing.T) {
 	require.Greater(t, strings.Index(out, `"postCommitVolumes":`), strings.Index(out, `"transaction":`),
 		"postCommitVolumes must be nested under transaction, not a wrapper sibling")
 	require.False(t, strings.Contains(out, "previousAccountMetadata"), "previous_account_metadata is no longer emitted")
-	require.False(t, strings.Contains(out, "chapter_id"), "must use camelCase")
 }
 
 // TestRevertedTransaction_MarshalJSON_AllFields covers the same regression on

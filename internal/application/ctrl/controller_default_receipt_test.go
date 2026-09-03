@@ -113,7 +113,7 @@ func newReceiptTestController(t *testing.T, store *dal.Store, attrs *attributes.
 	logger := logging.FromContext(logging.TestingContext())
 	meter := noop.NewMeterProvider().Meter("test")
 
-	// args: admission, store, logger, attrs, readStore, usageStore, coldReader, receiptSigner, meter
+	// args: admission, store, logger, attrs, readStore, usageStore, receiptSigner, meter
 	return NewDefaultController(nil, store, logger, attrs, nil, nil, signer, meter)
 }
 

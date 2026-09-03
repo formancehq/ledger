@@ -147,10 +147,9 @@ func TestSynchronizeWithLeaderResumesBloomAfterCacheRestoreError(t *testing.T) {
 
 // TestSynchronizeWithLeaderDrainsBackgroundChannels asserts that
 // SynchronizeWithLeader empties the FSM's background-request channels before
-// installing the leader's checkpoint. Pre-sync messages reference chapter IDs,
-// sequence ranges and checkpoint paths from the follower's pre-sync state; if
-// they survived the sync, the Archiver could write an empty SST over the
-// leader's correct cold-storage archive (see #447 PR body).
+// installing the leader's checkpoint. Pre-sync messages reference sequence
+// ranges and checkpoint paths from the follower's pre-sync state that the
+// leader's checkpoint may have superseded (see #447 PR body).
 func TestSynchronizeWithLeaderDrainsBackgroundChannels(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()

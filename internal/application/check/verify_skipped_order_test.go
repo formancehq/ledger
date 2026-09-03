@@ -245,14 +245,13 @@ func TestVerifyExpectedSkipNotElided_NoExpectedEntryStaysSilent(t *testing.T) {
 	require.Empty(t, events)
 }
 
-// TestVerifyExpectedSkipNotElided_ArchiveDoesNotSuppressLiveProof pins the
-// fix for a false-negative in the inverse direction: when archived chapters
-// exist BUT the live audit range already proves the reference was claimed
-// before the skip's sequence (firstSeenSeq < seq), the elision is a
-// hash-chain-proven tamper — the archive-boundary permissiveness must NOT
-// downgrade it to a silent pass. The `!claimed || firstSeenSeq >= seq`
-// guard above already covers the genuinely archive-only case.
-func TestVerifyExpectedSkipNotElided_ArchiveDoesNotSuppressLiveProof(t *testing.T) {
+// TestVerifyExpectedSkipNotElided_FiresOnChainProvenClaim drives the
+// inverse direction through the outer dispatch: the audit range proves the
+// reference was claimed before the skip's sequence (firstSeenSeq < seq), so
+// a non-skip projection at that sequence is a hash-chain-proven elision.
+// The `!claimed || firstSeenSeq >= seq` guard stays quiet only when no such
+// proof exists.
+func TestVerifyExpectedSkipNotElided_FiresOnChainProvenClaim(t *testing.T) {
 	t.Parallel()
 
 	expected := map[uint64]*expectedSkippableOrder{
@@ -272,17 +271,15 @@ func TestVerifyExpectedSkipNotElided_ArchiveDoesNotSuppressLiveProof(t *testing.
 		},
 	}
 
-	// Dispatched via the outer elision check — the archive flag is not an
-	// input to verifyExpectedSkipNotElided anymore (see #1 fix).
+	// Dispatched via the outer elision check.
 	events := captureDispatchEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
 // TestVerifyExpectedSkipNotElided_PermissiveWhenReferenceUnknown pins the
-// legitimate archive-boundary permissiveness path: when the reference is
-// NOT in chainBoundReferences (no live proof of a prior claim), the
-// inverse check stays quiet — the prior claim may live in a purged
-// chapter we cannot re-verify, and the forward direction still catches a
+// permissiveness path: when the reference is NOT in chainBoundReferences,
+// the chain holds no proof of a prior claim, so the inverse check has no
+// elision to prove and stays quiet — the forward direction still catches a
 // forged skip.
 func TestVerifyExpectedSkipNotElided_PermissiveWhenReferenceUnknown(t *testing.T) {
 	t.Parallel()
@@ -291,7 +288,7 @@ func TestVerifyExpectedSkipNotElided_PermissiveWhenReferenceUnknown(t *testing.T
 		7: {
 			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
-			reference: "ref-archived-only",
+			reference: "ref-unclaimed",
 		},
 	}
 
@@ -706,8 +703,8 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedExistingTxID(t *test
 
 // TestVerifySkippedOrder_ReferenceConflictPermissiveWhenOwnerUnknown pins the
 // permissive fallback: when the owning tx id is not re-derivable (no entry in
-// referenceTxIDs — e.g. a live claim on an unanchored/archived-CreateLedger
-// ledger, or a purged claim with no baseline), the verifier must NOT pin
+// referenceTxIDs — e.g. a claim on an unanchored ledger, where the tx-id
+// counter is unreliable), the verifier must NOT pin
 // existingTransactionId. Pinning it there would false-positive on a
 // legitimate skip whose owner the checker genuinely cannot reconstruct.
 func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenOwnerUnknown(t *testing.T) {
@@ -746,10 +743,10 @@ func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenOwnerUnknown(t *testi
 
 // TestVerifySkippedOrder_HandlesNilExpectedMaps guards against the panic
 // path NumaryBot flagged on b6e8fd064: a corrupted store with a readable
-// baseline triggers a hash mismatch in verifyAuditHashChain, which used
-// to return nil maps; foldBaselineReferences then assigned into a nil
-// chainBoundReferences and crashed. The fix returns the partially
-// populated maps from verifyAuditHashChain — this test pins that
+// audit range triggers a hash mismatch in verifyAuditHashChain, which
+// used to return nil maps that a downstream fold then assigned into and
+// crashed. The fix returns the partially populated maps from
+// verifyAuditHashChain — this test pins that
 // verifySkippedOrder itself stays panic-safe when the expected* maps
 // are empty/nil, since Check() keeps running after a chain break and
 // may still encounter skip logs.
@@ -828,7 +825,7 @@ func TestCollectExpectedSkippable_RecordsReferencesFromChain(t *testing.T) {
 // The contract the caller depends on is positional: element i belongs to items[i],
 // nil when those bytes did not decode. A compacted or reordered slice would pair
 // orders with the wrong items, and since the signing fold applies its own filters
-// (archive boundary, fresh-log window) it cannot re-derive the pairing.
+// (fresh-log window) it cannot re-derive the pairing.
 //
 // The elements must survive this function's OWN filters — a failure-side item, a
 // legacy out-of-range reference and a duplicate sequence are all skipped for the
@@ -1001,7 +998,7 @@ func buildCreateTxWithRefAndAccountMetaItem(t *testing.T, ledger, reference, acc
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{
 						// Whitelist CONFLICT so the create is skip-tolerant: the
-						// archive-uncertain suppression only applies to conflict-
+						// skip-uncertain suppression only applies to conflict-
 						// skippable creates (a non-skippable create hard-fails on a
 						// prior claim, never reaching a success item).
 						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
@@ -1025,19 +1022,19 @@ func buildCreateTxWithRefAndAccountMetaItem(t *testing.T, ledger, reference, acc
 	return &auditpb.AuditItem{SerializedOrder: body, LogSequence: logSeq}
 }
 
-// TestRecordChainBoundMutations_ArchiveOnlyConflictDoesNotSeedAccountMetadata
+// TestRecordChainBoundMutations_UncertainConflictDoesNotSeedAccountMetadata
 // pins finding checker.go:2205: on an UNANCHORED ledger (no CreateLedger in
-// the live range, no baseline fold) a CreateTransaction whose reference
-// conflict is only provable from a purged chapter has an unprovable skip
-// status — chainBoundCreateTxSkipped returns false because the prior claim
-// is invisible. Its account_metadata must NOT be seeded as present, otherwise
+// the audit range) a conflict-skippable CreateTransaction with no visible
+// prior claim has an unprovable skip status —
+// chainBoundCreateTxApplicationUncertain reports indeterminate. Its
+// account_metadata must NOT be seeded as present, otherwise
 // a later legitimate METADATA_NOT_FOUND skip on that key is false-positived
 // as INVALID_SKIP. The create's application is unproven → the timeline stays
 // silent and the skip stays permissive.
-func TestRecordChainBoundMutations_ArchiveOnlyConflictDoesNotSeedAccountMetadata(t *testing.T) {
+func TestRecordChainBoundMutations_UncertainConflictDoesNotSeedAccountMetadata(t *testing.T) {
 	t.Parallel()
 
-	// Unanchored ledger: no CreateLedger item, no baseline seeding.
+	// Unanchored ledger: no CreateLedger item in the range.
 	items := []*auditpb.AuditItem{
 		buildCreateTxWithRefAndAccountMetaItem(t, "L", "ref-1", "alice", "role", 50),
 	}
@@ -1049,7 +1046,7 @@ func TestRecordChainBoundMutations_ArchiveOnlyConflictDoesNotSeedAccountMetadata
 	// The account metadata timeline for (alice, role) must be empty: the
 	// create's application could not be proven.
 	require.Empty(t, chainBound.metadata["L"][metadataTimelineTarget(false, "alice")]["role"],
-		"unprovable archive-only-conflict create must not seed account metadata as present")
+		"unprovable conflict-skippable create must not seed account metadata as present")
 
 	// A forged METADATA_NOT_FOUND skip at a later seq therefore stays
 	// permissive (the key is not asserted present).
@@ -2145,10 +2142,9 @@ func TestVerifySkippedOrder_LedgerMismatchAcrossReasons(t *testing.T) {
 }
 
 // TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenLiveRemoved
-// closes the archive-escape hole where a live RemoveAccountType before
-// seq is positive proof of absence — archives cannot undo a live
-// removal, so the escape must NOT apply. Live-witnessed absence is
-// authoritative.
+// pins that a witnessed RemoveAccountType before seq is positive proof of
+// absence, so an ALREADY_EXISTS skip at seq is invalid. Witnessed absence
+// is authoritative.
 func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenLiveRemoved(t *testing.T) {
 	t.Parallel()
 
@@ -2171,8 +2167,7 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenLiveRemoved(t *te
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
-	// hasArchivedChapters=true — the escape must NOT trigger because
-	// live has positive evidence of absence via the Remove at seq 5.
+	// The chain has positive evidence of absence via the Remove at seq 5.
 	events := captureEventsState(t, "L", 7, payload, expected, cb)
 	requireInvalidSkipEvent(t, events, 7)
 }
@@ -2267,15 +2262,15 @@ func buildCreateTxNonSkippableWithAccountMeta(t *testing.T, ledger, reference, a
 // pins finding checker.go:2295. A CreateTransaction that did NOT whitelist
 // TRANSACTION_REFERENCE_CONFLICT cannot be converted to an OrderSkipped — if
 // it hit a prior claim the FSM HARD-FAILS (no success item). So its presence
-// in a success item proves it applied; the archive-uncertain suppression
+// in a success item proves it applied; the skip-uncertain suppression
 // (which exists only to avoid asserting a skipped create's writes) must NOT
-// drop its account_metadata even on an unanchored, archived ledger. Otherwise
+// drop its account_metadata even on an unanchored ledger. Otherwise
 // a later forged METADATA_NOT_FOUND on that account/key would pass as
-// archive-inconclusive.
+// inconclusive.
 func TestRecordChainBoundMutations_NonConflictSkippableCreateSeedsUnconditionally(t *testing.T) {
 	t.Parallel()
 
-	// Unanchored, archive-only conditions (same as the conflict-skippable
+	// Unanchored, no visible prior claim (same as the conflict-skippable
 	// suppression test) — but this create is NOT conflict-skippable.
 	items := []*auditpb.AuditItem{
 		buildCreateTxNonSkippableWithAccountMeta(t, "L", "ref-1", "alice", "role", 50),

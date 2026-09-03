@@ -8,7 +8,7 @@ This page covers the pipeline mechanics. For the **what** of counters (definitio
 
 ## Why the audit chain, not the log stream
 
-The subsystem tails `AuditEntry + AuditItem` (`ZoneCold` / `SubColdAudit` + `SubColdAuditItem`), not `ZoneCold` / `SubColdLog`. The reason is Numscript template usage: the log's `CreatedTransaction` payload does not carry the `NumscriptReference` of the order — only the resolved postings and metadata. The reference survives on `AuditItem.SerializedOrder`, which is the deterministic serialised bytes of the original `raftcmdpb.Order`. Reading the audit chain lets the usagebuilder unmarshal the order, extract `NumscriptReference.Name` for template tracking, and decide whether the order should feed the numscript-execution counter.
+The subsystem tails `AuditEntry + AuditItem` (`ZoneHistory` / `SubHistoryAudit` + `SubHistoryAuditItem`), not `ZoneHistory` / `SubHistoryLog`. The reason is Numscript template usage: the log's `CreatedTransaction` payload does not carry the `NumscriptReference` of the order — only the resolved postings and metadata. The reference survives on `AuditItem.SerializedOrder`, which is the deterministic serialised bytes of the original `raftcmdpb.Order`. Reading the audit chain lets the usagebuilder unmarshal the order, extract `NumscriptReference.Name` for template tracking, and decide whether the order should feed the numscript-execution counter.
 
 For counters that live on the log directly (posting count, purge lists), the usagebuilder fetches the specific log at `AuditItem.LogSequence` via `query.ReadLogBySequence` — a single point read on the hot Pebble cache.
 

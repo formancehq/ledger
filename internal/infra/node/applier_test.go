@@ -922,7 +922,7 @@ func TestApplierCascadingQueryCheckpointsDuringReplay(t *testing.T) {
 // expected 230 [recovered, repanicked]".
 //
 // Root cause: applyDecodedEntriesToFSM pre-splits the committed entries slice at any
-// CreateQueryCheckpoint / CloseChapter trigger so each FSM batch contains at
+// CreateQueryCheckpoint trigger so each FSM batch contains at
 // most one trigger as its last entry. The pre-split is purely structural — it
 // does not know whether the trigger will actually fire at apply time. When
 // checkStaleProposal rejected a CreateQueryCheckpoint after a leadership

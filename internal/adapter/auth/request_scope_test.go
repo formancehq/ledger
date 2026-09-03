@@ -194,7 +194,7 @@ func TestRequiredScopeForLedgerApply_NilApply(t *testing.T) {
 // route under a business scope; before the fix they fell through to
 // ledger:OpsWrite over gRPC Apply, so an operator scope was needed to perform
 // a business action — and ledger:OpsWrite also grants maintenance mode,
-// signing-key and chapter control.
+// signing-key control.
 func TestRequiredScopeForRequest_BusinessVariantsDoNotRequireOpsWrite(t *testing.T) {
 	t.Parallel()
 

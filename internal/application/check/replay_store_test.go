@@ -402,7 +402,7 @@ func TestReplayStoreMetadataNotFound(t *testing.T) {
 // merger must defer the ops as a txOpBatch rather than collapse them into a
 // finalized snapshot — collapsing silently drops the delete, and the later
 // base-inclusive fold (UnmarshalVT overlay) cannot undo it. This pins the
-// compaction-associativity bug: seeded baseline metadata + a post-archive delete.
+// compaction-associativity bug: a finalized base + a later delete operand.
 func TestTxMergerPartialMergePreservesDelete(t *testing.T) {
 	t.Parallel()
 
@@ -430,7 +430,7 @@ func TestTxMergerPartialMergePreservesDelete(t *testing.T) {
 
 	var got commonpb.TransactionState
 	require.NoError(t, got.UnmarshalVT(result[1:]))
-	require.Empty(t, got.GetMetadata(), "the post-archive delete of k0 must survive the partial merge")
+	require.Empty(t, got.GetMetadata(), "the later delete of k0 must survive the partial merge")
 }
 
 // End-to-end counterpart: a finalized base carrying k0 followed by a later

@@ -364,7 +364,7 @@ func TestProcessRevertTransaction_NextTransactionIDNotFound(t *testing.T) {
 
 // An allocated tx id (below NextTransactionId, so it passes the boundary
 // check) whose TransactionState is absent is an inconsistent projection, not a
-// routine "not found": chapter archival never evicts TransactionState and tx
+// routine "not found": nothing evicts TransactionState and tx
 // ids have no gaps. It must surface loudly (invariant #7), never silently.
 func TestProcessRevertTransaction_StateMissingIsInconsistent(t *testing.T) {
 	t.Parallel()
