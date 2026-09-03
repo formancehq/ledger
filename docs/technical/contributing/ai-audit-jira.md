@@ -62,7 +62,9 @@ parallel coordination record.
 
 ## Input binding
 
-The challenge result is caller-owned and may live outside the worktree, so it can be edited or replaced while Jira writes are in flight. A run snapshots it once, before validation, into a private temporary directory and reads every later value from that snapshot. Replacing the external file mid-run cannot retarget publication or introduce unvalidated findings.
+The publisher parses the qualified report once, validates the complete value,
+and uses that parsed value for every candidate. It does not modify either audit
+artifact.
 
 ## Failure behavior
 

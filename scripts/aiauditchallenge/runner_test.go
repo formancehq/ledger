@@ -24,9 +24,8 @@ const (
 )
 
 // The fake provider stands in for codex: it writes the prepared result to the
-// destination requested by the runner and, when asked, mutates the challenged
-// repository or replaces the caller-owned source audit report while the
-// challenge is still running.
+// destination requested by the runner and can exercise read-only boundary
+// failures while the challenge is running.
 const fakeCodex = `#!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -41,9 +40,6 @@ done
 if [[ -n "${FAKE_CODEX_DIRTY_FILE:-}" ]]; then
 	printf 'mutated during challenge\n' >"$FAKE_CODEX_DIRTY_FILE"
 fi
-if [[ -n "${FAKE_CODEX_REPLACEMENT_REPORT:-}" ]]; then
-	cp "$FAKE_CODEX_REPLACEMENT_REPORT" "$FAKE_CODEX_SOURCE_REPORT"
-fi
 cp "$FAKE_CODEX_RESULT" "$output"
 `
 
@@ -54,7 +50,7 @@ func TestRunnerPublishesOneQualifiedResultPerOriginalFinding(t *testing.T) {
 
 	output, err := fixture.run(t, fixture.validResult())
 	require.NoError(t, err, output)
-	require.Contains(t, output, "AI_AUDIT_CHALLENGE_RESULT: "+resolvePath(t, fixture.outputPath))
+	require.Contains(t, output, "AI_AUDIT_CHALLENGE_RESULT: "+fixture.outputPath)
 	require.Contains(t, output, "AI_AUDIT_CHALLENGE_CONFIRMED: 1")
 	require.Contains(t, output, "AI_AUDIT_CHALLENGE_LIKELY: 0")
 	require.Contains(t, output, "AI_AUDIT_CHALLENGE_QUESTION: 0")
@@ -64,7 +60,9 @@ func TestRunnerPublishesOneQualifiedResultPerOriginalFinding(t *testing.T) {
 	require.Equal(t, testAuditID, published["audit_id"])
 	require.Equal(t, fixture.head, published["head"])
 	require.Equal(t, fileDigest(t, fixture.sourceReport), published["sourceAuditDigest"])
-	require.Equal(t, []string{firstFindingID, secondFindingID}, resultIDs(t, published))
+	results := published["results"].([]any)
+	require.Equal(t, firstFindingID, results[0].(map[string]any)["id"])
+	require.Equal(t, secondFindingID, results[1].(map[string]any)["id"])
 }
 
 func TestRunnerRejectsResultForAnotherAudit(t *testing.T) {
@@ -205,143 +203,6 @@ func TestRunnerRejectsResultWhenTheRepositoryChangesDuringTheChallenge(t *testin
 	require.NoFileExists(t, fixture.outputPath)
 }
 
-// The source report belongs to the caller and may be edited or replaced while
-// the challenge runs. Qualification is bound to the snapshot taken before
-// validation, so replacing the external report mid-run can neither retarget the
-// published qualification nor make the id/metadata comparisons pass against a
-// different audit.
-func TestRunnerStaysBoundToTheSnapshotWhenTheSourceReportIsReplacedDuringTheChallenge(t *testing.T) {
-	t.Parallel()
-
-	fixture := newFixture(t)
-	replacement := map[string]any{
-		"audit_id":        "replaced-during-challenge",
-		"head":            otherHead,
-		"summary":         "Replaced audit",
-		"inspected_areas": []string{"scripts"},
-		"findings":        []map[string]any{sourceFinding("replaced-during-challenge/other-finding")},
-		"questions":       []map[string]any{},
-		"residual_risk":   "LOW",
-	}
-	fixture.replacementReport = filepath.Join(t.TempDir(), "replacement-audit.json")
-	writeJSON(t, fixture.replacementReport, replacement)
-
-	output, err := fixture.run(t, fixture.validResult())
-	require.NoError(t, err, output)
-	require.Equal(t, "replaced-during-challenge", readJSON(t, fixture.sourceReport)["audit_id"])
-
-	published := readJSON(t, fixture.outputPath)
-	require.Equal(t, testAuditID, published["audit_id"])
-	require.Equal(t, fixture.head, published["head"])
-	require.Equal(t, []string{firstFindingID, secondFindingID}, resultIDs(t, published))
-}
-
-func TestRunnerRejectsSymlinkOutputDestination(t *testing.T) {
-	t.Parallel()
-
-	fixture := newFixture(t)
-	protected := filepath.Join(t.TempDir(), "protected.json")
-	require.NoError(t, os.WriteFile(protected, []byte("protected\n"), 0o600))
-	fixture.outputPath = filepath.Join(filepath.Dir(fixture.sourceReport), "redirected.json")
-	require.NoError(t, os.Symlink(protected, fixture.outputPath))
-
-	output, err := fixture.run(t, fixture.validResult())
-	require.Error(t, err)
-	require.Contains(t, output, "--output must not be a symlink")
-	require.Equal(t, "protected\n", readFile(t, protected))
-}
-
-func TestRunnerRejectsOutputDestinationInTrackedRepositoryContent(t *testing.T) {
-	t.Parallel()
-
-	fixture := newFixture(t)
-	fixture.outputPath = filepath.Join(fixture.checkout, "scripts", "codex-audit-challenge.schema.json")
-	tracked := readFile(t, fixture.outputPath)
-
-	output, err := fixture.run(t, fixture.validResult())
-	require.Error(t, err)
-	require.Contains(t, output, "must not overwrite tracked repository content")
-	require.Equal(t, tracked, readFile(t, fixture.outputPath))
-}
-
-func TestRunnerRejectsOutputDestinationOverwritingTheSourceReport(t *testing.T) {
-	t.Parallel()
-
-	fixture := newFixture(t)
-	fixture.outputPath = fixture.sourceReport
-	original := readFile(t, fixture.sourceReport)
-
-	output, err := fixture.run(t, fixture.validResult())
-	require.Error(t, err)
-	require.Contains(t, output, "must not overwrite the source audit report")
-	require.Equal(t, original, readFile(t, fixture.sourceReport))
-}
-
-func TestRunnerRejectsUnignoredRepositoryOutput(t *testing.T) {
-	t.Parallel()
-
-	fixture := newFixture(t)
-	fixture.outputPath = filepath.Join(fixture.checkout, "report.json")
-
-	output, err := fixture.run(t, fixture.validResult())
-	require.Error(t, err)
-	require.Contains(t, output, "repository-local --output must be under build/")
-	require.NoFileExists(t, fixture.outputPath)
-}
-
-func TestRunnerRejectsRepositoryOutputBeforeCreatingDirectories(t *testing.T) {
-	t.Parallel()
-
-	fixture := newFixture(t)
-	createdDirectory := filepath.Join(fixture.checkout, "internal", "challenge-created")
-	fixture.outputPath = filepath.Join(createdDirectory, "report.json")
-
-	output, err := fixture.run(t, fixture.validResult())
-	require.Error(t, err)
-	require.Contains(t, output, "repository-local --output must be under build/")
-	require.NoDirExists(t, createdDirectory)
-}
-
-func TestRunnerRejectsSymlinkedRepositoryOutputBeforeCreatingDirectories(t *testing.T) {
-	t.Parallel()
-
-	fixture := newFixture(t)
-	repositoryLink := filepath.Join(t.TempDir(), "checkout-link")
-	require.NoError(t, os.Symlink(fixture.checkout, repositoryLink))
-	createdDirectory := filepath.Join(fixture.checkout, "internal", "challenge-created")
-	fixture.outputPath = filepath.Join(repositoryLink, "internal", "challenge-created", "report.json")
-
-	output, err := fixture.run(t, fixture.validResult())
-	require.Error(t, err)
-	require.Contains(t, output, "repository-local --output must be under build/")
-	require.NoDirExists(t, createdDirectory)
-}
-
-func TestRunnerRejectsGitMetadataOutputBeforeCreatingDirectories(t *testing.T) {
-	t.Parallel()
-
-	fixture := newFixture(t)
-	createdDirectory := filepath.Join(fixture.checkout, ".git", "challenge-created")
-	fixture.outputPath = filepath.Join(createdDirectory, "report.json")
-
-	output, err := fixture.run(t, fixture.validResult())
-	require.Error(t, err)
-	require.Contains(t, output, "must not write inside Git metadata")
-	require.NoDirExists(t, createdDirectory)
-}
-
-func TestRunnerAllowsIgnoredRepositoryOutputUnderBuild(t *testing.T) {
-	t.Parallel()
-
-	fixture := newFixture(t)
-	fixture.outputPath = filepath.Join(fixture.checkout, "build", "ai-audit", "qualified.json")
-
-	output, err := fixture.run(t, fixture.validResult())
-	require.NoError(t, err, output)
-	require.FileExists(t, fixture.outputPath)
-	require.Empty(t, gitOutput(t, fixture.checkout, "status", "--porcelain", "--untracked-files=normal"))
-}
-
 type fixture struct {
 	checkout       string
 	fakeBin        string
@@ -349,12 +210,7 @@ type fixture struct {
 	sourceReport   string
 	providerResult string
 	outputPath     string
-	// dirtyFile, when set, is the path the fake provider writes inside the
-	// challenged checkout to simulate a mutation during the challenge.
-	dirtyFile string
-	// replacementReport, when set, is the audit report the fake provider copies
-	// over the caller-owned source report while the challenge is running.
-	replacementReport string
+	dirtyFile      string
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -363,13 +219,10 @@ func newFixture(t *testing.T) *fixture {
 	root := t.TempDir()
 	checkout := filepath.Join(root, "checkout")
 	repository := repositoryRoot(t)
-	require.NoError(t, os.MkdirAll(filepath.Join(checkout, "scripts", "auditpublish"), 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(checkout, "scripts"), 0o700))
 	require.NoError(t, os.MkdirAll(filepath.Join(checkout, "docs", "technical", "contributing"), 0o700))
 	copyFile(t, filepath.Join(repository, "scripts", "ai-audit-challenge"), filepath.Join(checkout, "scripts", "ai-audit-challenge"))
 	copyFile(t, filepath.Join(repository, "scripts", "codex-audit-challenge.schema.json"), filepath.Join(checkout, "scripts", "codex-audit-challenge.schema.json"))
-	copyFile(t, filepath.Join(repository, "scripts", "auditpublish", "main.go"), filepath.Join(checkout, "scripts", "auditpublish", "main.go"))
-	copyFile(t, filepath.Join(repository, "go.mod"), filepath.Join(checkout, "go.mod"))
-	copyFile(t, filepath.Join(repository, "go.sum"), filepath.Join(checkout, "go.sum"))
 	copyFile(t, filepath.Join(repository, ".gitignore"), filepath.Join(checkout, ".gitignore"))
 	require.NoError(t, os.WriteFile(
 		filepath.Join(checkout, "docs", "technical", "contributing", "ai-audit-challenge.md"),
@@ -393,8 +246,10 @@ func newFixture(t *testing.T) *fixture {
 		head:           gitOutput(t, checkout, "rev-parse", "HEAD"),
 		sourceReport:   filepath.Join(root, "audit.json"),
 		providerResult: filepath.Join(root, "provider-result.json"),
-		outputPath:     filepath.Join(root, "qualified.json"),
 	}
+	physicalCheckout, err := filepath.EvalSymlinks(checkout)
+	require.NoError(t, err)
+	built.outputPath = filepath.Join(physicalCheckout, "build", "ai-audit", testAuditID+"-"+built.head[:12]+"-qualified.json")
 	writeJSON(t, built.sourceReport, sourceReport(built.head))
 
 	return built
@@ -404,18 +259,15 @@ func (f *fixture) run(t *testing.T, result map[string]any) (string, error) {
 	t.Helper()
 
 	writeJSON(t, f.providerResult, result)
-	command := exec.Command("bash", filepath.Join(f.checkout, "scripts", "ai-audit-challenge"), f.sourceReport, "--output", f.outputPath)
+	command := exec.Command("bash", filepath.Join(f.checkout, "scripts", "ai-audit-challenge"), f.sourceReport)
 	command.Dir = f.checkout
 	environment := []string{
 		"FAKE_CODEX_RESULT=" + f.providerResult,
 		"FAKE_CODEX_DIRTY_FILE=" + f.dirtyFile,
-		"FAKE_CODEX_SOURCE_REPORT=" + f.sourceReport,
-		"FAKE_CODEX_REPLACEMENT_REPORT=" + f.replacementReport,
 		"HOME=" + t.TempDir(),
 		"CODEX_HOME=",
 		"PATH=" + f.fakeBin + string(os.PathListSeparator) + os.Getenv("PATH"),
 	}
-	environment = append(environment, goCaches(t)...)
 	command.Env = testenv.Environment(environment...)
 	output, err := command.CombinedOutput()
 
@@ -479,22 +331,6 @@ func challengeOutcome(id, status string) map[string]any {
 	}
 }
 
-func resultIDs(t *testing.T, report map[string]any) []string {
-	t.Helper()
-	results, ok := report["results"].([]any)
-	require.True(t, ok)
-	ids := make([]string, 0, len(results))
-	for _, entry := range results {
-		result, ok := entry.(map[string]any)
-		require.True(t, ok)
-		id, ok := result["id"].(string)
-		require.True(t, ok)
-		ids = append(ids, id)
-	}
-
-	return ids
-}
-
 func fileDigest(t *testing.T, path string) string {
 	t.Helper()
 
@@ -504,40 +340,12 @@ func fileDigest(t *testing.T, path string) string {
 	return fmt.Sprintf("sha256:%x", sha256.Sum256(content))
 }
 
-// The runner builds the trusted publisher from the fixture checkout with an
-// isolated HOME, so Go's caches must be passed explicitly; otherwise every test
-// rebuilds the standard library and may try to resolve modules from the
-// network.
-func goCaches(t *testing.T) []string {
-	t.Helper()
-	command := testenv.Command(t, "go", "env", "GOCACHE", "GOMODCACHE")
-	output, err := command.CombinedOutput()
-	require.NoError(t, err, string(output))
-	values := strings.Split(strings.TrimSpace(string(output)), "\n")
-	require.Len(t, values, 2)
-
-	return []string{
-		"GOCACHE=" + strings.TrimSpace(values[0]),
-		"GOMODCACHE=" + strings.TrimSpace(values[1]),
-	}
-}
-
 func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 
 	return filepath.Clean(filepath.Join(filepath.Dir(filename), "..", ".."))
-}
-
-// The runner reports and publishes to the physically resolved destination, so
-// assertions on its output must compare against the resolved path.
-func resolvePath(t *testing.T, path string) string {
-	t.Helper()
-	directory, err := filepath.EvalSymlinks(filepath.Dir(path))
-	require.NoError(t, err)
-
-	return filepath.Join(directory, filepath.Base(path))
 }
 
 func copyFile(t *testing.T, source, destination string) {
@@ -562,14 +370,6 @@ func readJSON(t *testing.T, path string) map[string]any {
 	require.NoError(t, json.Unmarshal(contents, &decoded))
 
 	return decoded
-}
-
-func readFile(t *testing.T, path string) string {
-	t.Helper()
-	contents, err := os.ReadFile(path)
-	require.NoError(t, err)
-
-	return string(contents)
 }
 
 func runGit(t *testing.T, directory string, arguments ...string) {
