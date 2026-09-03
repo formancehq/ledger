@@ -12,6 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
@@ -38,8 +39,9 @@ type WriteGate interface {
 // between separate stores during a block-reason transition (e.g. disk recovers
 // below resume while clock skew is newly detected in the same cycle).
 type gateState struct {
-	diskBlocked bool
-	skewBlocked bool
+	diskBlocked     bool
+	skewBlocked     bool
+	leadershipEpoch uint64
 }
 
 // HealthChecker periodically samples disk usage and clock skew across cluster
@@ -57,8 +59,13 @@ type HealthChecker struct {
 	thresholds         Thresholds
 	clockSkewThreshold time.Duration
 
-	gate         atomic.Pointer[gateState]
-	pollFailures metric.Int64Counter
+	gate atomic.Pointer[gateState]
+	// leadershipEpoch invalidates node-local verdicts synchronously with Raft
+	// leadership changes. A verdict from an older term can still finish its poll,
+	// but CheckWritesAllowed will reject it because its epoch no longer matches.
+	leadershipEpoch atomic.Uint64
+	pollFailures    metric.Int64Counter
+	checkNow        chan struct{}
 
 	w worker.Worker
 }
@@ -83,6 +90,7 @@ func NewHealthChecker(
 		interval:           interval,
 		thresholds:         thresholds,
 		clockSkewThreshold: clockSkewThreshold,
+		checkNow:           make(chan struct{}, 1),
 		w:                  worker.New(),
 	}
 
@@ -94,9 +102,9 @@ func NewHealthChecker(
 		metric.WithDescription("Count of failed GetDiskUsage polls to peers (failures cannot clear an existing disk write gate)"),
 	)
 
-	// The gate pointer defaults to nil, which CheckWritesAllowed treats as
-	// fail-open (writes allowed) — the correct safe default before the first
-	// leader evaluation publishes a gateState.
+	// The gate pointer defaults to nil, which CheckWritesAllowed treats as an
+	// unknown disk verdict. Writes fail closed until the leader publishes its
+	// first complete, fresh cluster-wide evaluation.
 	return hc
 }
 
@@ -104,9 +112,18 @@ func NewHealthChecker(
 func (hc *HealthChecker) Start() {
 	hc.check(make(chan struct{})) // initial check with no-op stop
 	hc.w.Run(func(stop <-chan struct{}) {
-		worker.RunTicker(stop, hc.interval, func() {
+		ticker := time.NewTicker(hc.interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+			case <-hc.checkNow:
+			}
 			hc.check(stop)
-		})
+		}
 	})
 }
 
@@ -116,15 +133,40 @@ func (hc *HealthChecker) Stop() {
 }
 
 // CheckWritesAllowed implements WriteGate. It Loads the gate once so both block
-// reasons are read from a single consistent snapshot. A nil gate (before the
-// first leader evaluation) is the safe fail-open default: writes allowed.
+// reasons are read from a single consistent snapshot. A nil or previous-term
+// gate is unknown and fails closed until the leader has collected one complete
+// set of fresh samples for the current leadership epoch.
 func (hc *HealthChecker) CheckWritesAllowed() error {
 	s := hc.gate.Load()
-	if s == nil {
-		return nil
+	if s == nil || s.leadershipEpoch != hc.leadershipEpoch.Load() {
+		return domain.ErrWritesBlockedDiskFull
 	}
 
 	return writeGateErrorForState(s.diskBlocked, s.skewBlocked)
+}
+
+// OnLeadershipChange invalidates the node-local verdict before any admission
+// can run under the new Raft leadership term. It is intentionally cheap and is
+// called synchronously from the node observer.
+func (hc *HealthChecker) OnLeadershipChange(bool) {
+	hc.leadershipEpoch.Add(1)
+	hc.gate.Store(nil)
+	// The LeadershipChangeEvent is emitted before node.IsLeader observes the
+	// new SoftState. LeaderReady triggers the first poll after that publication.
+}
+
+// OnLeaderReady schedules the first current-epoch check after Raft has
+// published leadership and caught the FSM up. The work remains serialized on
+// the health worker instead of blocking the node observer thread.
+func (hc *HealthChecker) OnLeaderReady() {
+	if hc.checkNow == nil {
+		return
+	}
+	// Coalesce repeated notifications while a check is already pending.
+	select {
+	case hc.checkNow <- struct{}{}:
+	default:
+	}
 }
 
 // nodeUsageReport holds the disk usage data for a single node, used for info logging.
@@ -152,16 +194,12 @@ type nodeUsageReport struct {
 // so that in-flight gRPC calls are interrupted promptly during shutdown.
 func (hc *HealthChecker) check(stop <-chan struct{}) {
 	if !hc.node.IsLeader() {
-		// Only the leader owns the cluster-wide write verdict (its own disk plus
-		// peer polls). A node that was leader while a volume was full and then
-		// lost leadership must not keep enforcing that stale block — otherwise it
-		// would fail-closed and spuriously reject writes (HTTP 429) until it
-		// becomes leader again. Reset to the safe default; the real verdict is
-		// always re-derived on the current leader.
-		hc.gate.Store(&gateState{})
-
+		// OnLeadershipChange invalidates the verdict synchronously. Keep the
+		// follower path side-effect free so a slow old-term poll cannot establish
+		// a current-term verdict.
 		return
 	}
+	leadershipEpoch := hc.leadershipEpoch.Load()
 
 	// Create a base context that cancels on shutdown. Each gRPC call gets
 	// its own child context with a per-call timeout (healthCheckCallTimeout).
@@ -318,14 +356,35 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	// previous state (prev.diskBlocked below) is race-free without a lock because
 	// check() runs only on the single worker goroutine — it is the sole writer of
 	// the gate. CheckWritesAllowed only ever Loads it.
-	var prevDiskBlocked bool
-	if prev := hc.gate.Load(); prev != nil {
+	var (
+		prevDiskBlocked   bool
+		hasCurrentVerdict bool
+	)
+	if prev := hc.gate.Load(); prev != nil && prev.leadershipEpoch == leadershipEpoch {
 		prevDiskBlocked = prev.diskBlocked
+		hasCurrentVerdict = true
+	}
+	if !hasCurrentVerdict && !allSamplesValid(samples) {
+		// A new leader has no inherited hysteresis state. Do not publish an open
+		// gate until every committed member reports both volumes with current
+		// evidence; gate==nil remains fail-closed for this leadership epoch.
+		hc.logDiskUsageSummary(reports)
+
+		return
+	}
+
+	diskBlocked := hc.thresholds.NextDiskBlocked(prevDiskBlocked, samples)
+	if !hasCurrentVerdict {
+		// With a complete first sample set there is no prior hysteresis verdict to
+		// preserve. Apply only the block threshold, so values inside the hysteresis
+		// band do not create a synthetic block on leadership acquisition.
+		diskBlocked = hc.thresholds.anyAtBlock(samples)
 	}
 
 	hc.gate.Store(&gateState{
-		diskBlocked: hc.thresholds.NextDiskBlocked(prevDiskBlocked, samples),
-		skewBlocked: skewExceeded,
+		diskBlocked:     diskBlocked,
+		skewBlocked:     skewExceeded,
+		leadershipEpoch: leadershipEpoch,
 	})
 
 	hc.logDiskUsageSummary(reports)
@@ -394,7 +453,12 @@ func remoteVolumeValidity(volume *clusterpb.VolumeUsage) (bool, string) {
 	if volume.GetObservedAtUs() == 0 {
 		return false, "reported observedAtUs is zero"
 	}
-	if volume.GetSampleAgeMs() > uint64(diskusage.MaximumSampleAge.Milliseconds()) {
+	if !diskusage.SampleUsable(
+		volume.GetValid(),
+		volume.GetTotalBytes() > 0,
+		volume.GetObservedAtUs() > 0,
+		volume.GetSampleAgeMs(),
+	) {
 		return false, "disk usage sample is stale"
 	}
 

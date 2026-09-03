@@ -112,10 +112,12 @@ spec:
 
 The operator can grow PVC-backed WAL and data volumes before the Ledger reaches
 its disk-full write gate. Expansion is strictly opt-in and does not require a
-Prometheus server: every five minutes a separate controller executes
+Prometheus server: every five minutes a separate controller evaluates the live
+PVC group. When the group is ready for a new capacity decision, it executes
 `ledgerctl cluster disk-usage --json` inside each Ledger pod, uses the highest
 valid utilization for the volume kind, and patches every replica's PVC to the
-same target size. Each measurement carries validity, server-computed age, last
+same target size. It skips pod exec while PVCs are converging, resizing, or in
+cooldown. Each measurement carries validity, server-computed age, last
 successful observation time, and an optional diagnostic error. The operator
 rejects the selected volume when collection failed, the sample is older than
 one minute, its observation time is missing, or total capacity is zero. The
@@ -162,7 +164,9 @@ live request. A resize already in progress and the cooldown both block further
 growth. The PVC annotations
 `ledger.formance.com/last-expansion-at` and
 `ledger.formance.com/last-expansion-target` make retries and operator restarts
-idempotent.
+idempotent. The timestamp drives cooldown; a future timestamp is rejected as
+invalid evidence rather than allowing an external annotation edit or clock skew
+to suppress expansion indefinitely. The target annotation is diagnostic only.
 
 Troubleshooting surfaces:
 
@@ -170,6 +174,7 @@ Troubleshooting surfaces:
   `VolumeExpansionMeasurementFailed`, `VolumeExpansionUnsupported`, and
   `VolumeExpansionLimitReached`.
 - Operator metrics: `ledger_operator_volume_usage_ratio`,
+  `ledger_operator_volume_usage_sample_age_seconds`,
   `ledger_operator_volume_requested_bytes`,
   `ledger_operator_volume_expansions_total`, and
   `ledger_operator_volume_expansion_errors_total`.
@@ -181,6 +186,10 @@ the operator does not assume the cluster is healthy: it emits a warning and
 retries after one minute. A reachable replica over threshold may still trigger
 the safe cluster-wide expansion. Last-known bytes from an invalid or stale
 sample are diagnostic only and never trigger a resize.
+Usage ratio and sample-age series exist only for fresh samples used by the most
+recent reconciliation; skipped or invalid measurement paths clear them. Metrics
+labelled by a Cluster are retired when expansion is disabled or the Cluster is
+deleted, and scaled-down pod labels are removed on the next reconciliation.
 
 ## Volume Deletion Protection
 

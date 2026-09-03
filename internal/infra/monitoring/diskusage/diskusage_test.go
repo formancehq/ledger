@@ -32,8 +32,6 @@ func TestCollector_StartAndStop(t *testing.T) {
 	require.False(t, walSample.ObservedAt.IsZero())
 	require.Positive(t, walSample.UsedBytes)
 	require.Positive(t, walSample.TotalBytes)
-	require.Equal(t, walSample.UsedBytes, c.WALVolume.UsedBytes())
-	require.Equal(t, walSample.TotalBytes, c.WALVolume.TotalBytes())
 
 	dataSample := c.DataVolume.Load()
 	require.True(t, dataSample.Valid)
@@ -103,6 +101,7 @@ func TestVolumeSampleUsable(t *testing.T) {
 	require.False(t, (VolumeSample{Valid: false, TotalBytes: 100, ObservedAt: now}).Usable(now))
 	require.False(t, (VolumeSample{Valid: true, TotalBytes: 0, ObservedAt: now}).Usable(now))
 	require.True(t, (VolumeSample{Valid: true, TotalBytes: 100, ObservedAt: now.Add(time.Millisecond)}).Usable(now))
+	require.False(t, SampleUsable(true, true, true, ^uint64(0)))
 }
 
 func TestCollector_RegisterMetrics(t *testing.T) {

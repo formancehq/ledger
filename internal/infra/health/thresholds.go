@@ -50,6 +50,19 @@ func (t Thresholds) allBelowResume(samples []VolumeSample) bool {
 	return true
 }
 
+func allSamplesValid(samples []VolumeSample) bool {
+	if len(samples) == 0 {
+		return false
+	}
+	for _, sample := range samples {
+		if !sample.WALValid || !sample.DataValid {
+			return false
+		}
+	}
+
+	return true
+}
+
 // NextDiskBlocked applies hysteresis: block when any volume hits its high-water
 // mark; clear only when every volume drops below its low-water mark; otherwise
 // hold the previous state (the band between resume and block).

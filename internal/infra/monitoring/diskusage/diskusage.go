@@ -47,12 +47,27 @@ type VolumeSample struct {
 // zero; local samples retain time.Time's monotonic component, so this is only a
 // defensive clock-adjustment guard.
 func (s VolumeSample) Usable(now time.Time) bool {
-	if !s.Valid || s.TotalBytes <= 0 || s.ObservedAt.IsZero() {
+	if s.TotalBytes <= 0 {
 		return false
 	}
 	age := max(now.Sub(s.ObservedAt), 0)
 
-	return age <= MaximumSampleAge
+	return SampleUsable(
+		s.Valid,
+		true,
+		!s.ObservedAt.IsZero(),
+		uint64(age.Milliseconds()),
+	)
+}
+
+// SampleUsable is the shared control-loop contract for local and remote disk
+// samples. Age is passed in milliseconds so callers can preserve the
+// server-computed age carried over the wire instead of recomputing it across
+// clocks. Keeping the comparison in uint64 also makes an untrusted, overflowing
+// wire age unambiguously stale.
+func SampleUsable(valid, hasCapacity, hasObservation bool, sampleAgeMS uint64) bool {
+	return valid && hasCapacity && hasObservation &&
+		sampleAgeMS <= uint64(MaximumSampleAge.Milliseconds())
 }
 
 func (v *VolumeUsage) storeSuccess(used, total int64, observedAt time.Time) {
@@ -80,12 +95,6 @@ func (v *VolumeUsage) Load() VolumeSample {
 
 	return *sample
 }
-
-// UsedBytes returns the last successfully computed used bytes on the filesystem.
-func (v *VolumeUsage) UsedBytes() int64 { return v.Load().UsedBytes }
-
-// TotalBytes returns the last successfully computed filesystem capacity in bytes.
-func (v *VolumeUsage) TotalBytes() int64 { return v.Load().TotalBytes }
 
 var volumeKey = attribute.Key("volume")
 

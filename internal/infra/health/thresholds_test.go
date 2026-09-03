@@ -59,6 +59,14 @@ func TestNextDiskBlockedHysteresis(t *testing.T) {
 	require.True(t, th.NextDiskBlocked(true, nil))
 }
 
+func TestAllSamplesValid(t *testing.T) {
+	t.Parallel()
+
+	require.False(t, allSamplesValid(nil))
+	require.False(t, allSamplesValid([]VolumeSample{{WALValid: true}}))
+	require.True(t, allSamplesValid([]VolumeSample{{WALValid: true, DataValid: true}}))
+}
+
 func TestWriteGateErrorForState(t *testing.T) {
 	t.Parallel()
 	require.NoError(t, writeGateErrorForState(false, false))

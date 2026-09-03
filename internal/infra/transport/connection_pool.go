@@ -399,19 +399,6 @@ func (p *ConnectionPool) GetPeerAddress(peerID uint64) string {
 	return entry.addr
 }
 
-// PeerIDs returns the IDs of all known peers.
-func (p *ConnectionPool) PeerIDs() []uint64 {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	ids := make([]uint64, 0, len(p.peers))
-	for id := range p.peers {
-		ids = append(ids, id)
-	}
-
-	return ids
-}
-
 // RemovePeer removes a peer from the pool and closes its connection.
 func (p *ConnectionPool) RemovePeer(id uint64) error {
 	p.mu.Lock()

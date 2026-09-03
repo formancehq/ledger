@@ -43,7 +43,8 @@ Key design decisions:
 - **Leader-only**: Only the leader performs health checks to avoid redundant gRPC calls across all nodes
 - **Local node**: The leader reads its own disk usage directly from the local `diskusage.Collector` (no self-RPC)
 - **Peers**: The leader polls peer nodes via the `GetDiskUsage` gRPC RPC on the `ClusterService`
-- **Atomic state**: The health state is stored as an `atomic.Bool` for lock-free reads from the admission layer
+- **Atomic state**: Disk/clock verdicts and their leadership epoch are published
+  as one atomic snapshot for lock-free reads from the admission layer
 
 ### DiskUsage Collector (`internal/infra/monitoring/diskusage/`)
 
@@ -151,7 +152,11 @@ Read operations continue to work normally:
   member missing from the pool is treated as unreachable. A valid volume from
   the same node can still create a block independently when it crosses its
   high-water mark.
-- **Leadership change**: When leadership changes, the new leader starts checking immediately on its first tick. The health state defaults to `healthy` until the first check completes.
+- **Leadership change**: Every leadership transition invalidates the node-local
+  disk verdict. The new leader rejects writes until one check obtains fresh,
+  valid WAL and data samples from every member in the committed Raft
+  configuration. A slow check from an older leadership term cannot publish a
+  verdict for the new term.
 
 ## Monitoring
 
