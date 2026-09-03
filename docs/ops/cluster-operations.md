@@ -81,10 +81,15 @@ discoverPeersFromClusterWithRetry()
     │  └─────────────────────────────────────┘
     │
     ▼
-cfg.RaftConfig.Peers = [{ID: 1, Addr: "...", ServiceAddr: "..."}]
+cfg.RaftConfig.Peers = [{ID: 1, Addr: "...", ServiceAddr: "...", InstanceID: <16 bytes>}]
 ```
 
 The retry loop allows the joining node to wait for the bootstrap node to be ready (useful when all pods start simultaneously in Kubernetes).
+
+Each `PeerInfo` includes the configured member's 16-byte `instance_id`.
+Discovery rejects an identity-less response, so `registerInitialPeers` can
+persist complete membership rows before creating the joining node's WAL
+snapshot. This includes the original bootstrap seed.
 
 **Fail-fast on a cluster-secret mismatch (EN-1080).** The retry loop treats
 transient conditions (peer not yet up, no leader) as retryable, but a
@@ -96,6 +101,14 @@ node aborts discovery immediately with a `JoinAuthError` that names the
 Learner registration (Phase 4) applies the same rule.
 
 #### Phase 2: Node Initialization
+
+Before opening Raft state, the node reads its 16-byte `INSTANCE_ID` marker. A
+new identity is generated only for a directory with no prior WAL lifecycle
+artifacts. If `INSTANCE_ID` is missing while `CLUSTER_JOINED`, the WAL creation
+marker, or an existing WAL/snapshot directory remains, startup fails closed:
+the original marker must be restored or the WAL/PVC must be reprovisioned as a
+fresh instance. This prevents a restart from retaining consensus state under a
+different identity than the one known by the other cluster members.
 
 `NewNode` detects an empty WAL and a non-empty `Peers` list:
 
@@ -143,16 +156,20 @@ On **restart** (WAL not empty), this registration step is **skipped** because th
 
 ### ConfChange Observer
 
-When a ConfChange is committed (adding a learner or promoting a voter), an observer on each node synchronously updates the transport and service pool. The ConfChange carries a `ConfChangeContext` with the new node's Raft and service addresses, so all nodes learn the addresses without external configuration.
+When a ConfChange is committed (adding a learner or promoting a voter), an observer on each node synchronously updates the transport and service pool. The ConfChange carries a `ConfChangeContext` with the new node's Raft and service addresses, so all nodes learn the addresses without external configuration. If an `UpdateNode` changes either address, the observer removes and re-adds the peer connections so Raft cannot continue dialing the stale endpoint.
 
 ### AddLearner RPC
 
 The `AddLearner` gRPC handler on the leader:
 
-1. Pre-registers the new peer in its local transport and service pool (so Raft messages can reach the new node immediately)
-2. Proposes a `ConfChangeV2` with `ConfChangeAddLearnerNode`
+1. Requires the target node's persisted 16-byte `INSTANCE_ID` in the request
+2. Pre-registers the new peer in its local transport and service pool (so Raft messages can reach the new node immediately)
+3. Proposes a `ConfChangeV2` with `ConfChangeAddLearnerNode`; its context replicates addresses and identity atomically into every peer row
 
 If the request reaches a follower, it is transparently forwarded to the leader.
+Administrative `AddLearner` and bootstrap `JoinAsLearner` are separate code
+paths. Both require an identity, but only the latter represents a fresh-WAL
+boot and therefore triggers EN-1436's strict stale-progress check.
 
 ## Synchronization
 
@@ -432,7 +449,7 @@ ledgerctl cluster status
 3. The leader proposes a `ConfChangeRemoveNode` through Raft consensus
 4. Once committed, all remaining nodes:
    - Apply the configuration change (node is removed from the Raft group)
-   - Delete the peer row and, when the member has an instance ID, atomically persist its removed-member tombstone
+   - Delete the peer row and atomically persist its mandatory removed-member tombstone
    - Close the transport connection to the removed peer
    - Remove the peer from the service connection pool
 5. The serving leader waits for the committed Raft index to become durable in the FSM; there is no fixed tombstone polling timeout
@@ -443,7 +460,7 @@ ledgerctl cluster status
 - After removal, the removed node will no longer receive Raft messages or log entries
 - The removed node should be stopped by the operator after the removal is confirmed
 - Retrying an already-committed removal returns gRPC `NotFound` with reason `RAFT_NODE_NOT_IN_CLUSTER`; verify `cluster status` and treat absence as the successful postcondition
-- If the caller stops waiting after the ConfChange commits but before its FSM batch is durable, the RPC returns `Unavailable` with reason `RAFT_NODE_REMOVAL_COMMITTED` and the committed Raft index. A removed member with an instance ID remains blocked from rejoining while apply catches up.
+- If the caller stops waiting after the ConfChange commits but before its FSM batch is durable, the RPC returns `Unavailable` with reason `RAFT_NODE_REMOVAL_COMMITTED` and the committed Raft index. The removed identity remains blocked from rejoining while apply catches up.
 - During Kubernetes scale-down, the operator checks structured `cluster status --json` before removal and again after any removal error. It continues when the node is absent and never relies on CLI error-message substrings.
 - Removing a voter reduces the cluster quorum size; ensure the remaining cluster can still form a majority
 - For a 3-node cluster, removing one voter leaves a 2-node cluster where both nodes must be available for writes
@@ -484,7 +501,7 @@ ledgerctl cluster status
 
 1. `ForceRemoveNode` directly calls `rawNode.ApplyConfChange()` on the leader, bypassing the Raft log
 2. The updated `ConfState` is persisted to the WAL snapshot immediately (before the peer row is deleted, so a crash between the two heals to "voter absent, orphan address" rather than "voter present, unreachable")
-3. `Membership.Unregister` then deletes the peer row from Pebble (`[ZoneGlobal][SubGlobPeers]`) and drops the peer from the in-memory cache + transport + service pool in lockstep
+3. After validating the required identity, `Membership.UnregisterAndBlacklist` atomically deletes the peer row from Pebble and writes its removed-member tombstone, then drops the peer from the in-memory cache + transport + service pool in lockstep
 4. The reduced voter set immediately recalculates quorum, allowing the leader to resume normal operations
 
 **When to use:**

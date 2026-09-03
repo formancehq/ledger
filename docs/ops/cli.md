@@ -2632,7 +2632,7 @@ ledgerctl cluster transfer-leader 3 --timeout 5s
 Add a non-voting (learner) node to the Raft cluster. The request is forwarded to the current leader.
 
 ```bash
-ledgerctl cluster add-learner <node-id> <raft-address> <service-address> [flags]
+ledgerctl cluster add-learner <node-id> <raft-address> <service-address> <instance-id> [flags]
 ```
 
 **Flags:**
@@ -2643,6 +2643,7 @@ ledgerctl cluster add-learner <node-id> <raft-address> <service-address> [flags]
 
 **Behavior:**
 - The request is forwarded to the current leader if sent to a follower
+- `instance-id` is the 32-character hexadecimal encoding of the target node's 16-byte persisted `INSTANCE_ID` file
 - The leader proposes a ConfChange to add the node as a learner (non-voting member)
 - Once committed, all nodes add the learner to their transport and service pool
 - The learner receives log entries and snapshots but cannot vote or become leader
@@ -2650,11 +2651,14 @@ ledgerctl cluster add-learner <node-id> <raft-address> <service-address> [flags]
 **Example:**
 
 ```bash
+# Read the target's binary INSTANCE_ID marker as hexadecimal
+INSTANCE_ID_HEX=$(od -An -tx1 /var/lib/ledger/wal/INSTANCE_ID | tr -d ' \n')
+
 # Add node 4 as a learner
-ledgerctl cluster add-learner 4 node-4:7777 node-4:8888
+ledgerctl cluster add-learner 4 node-4:7777 node-4:8888 "$INSTANCE_ID_HEX"
 
 # Add a learner using custom timeout
-ledgerctl cluster add-learner 5 node-5:7777 node-5:8888 --timeout 30s
+ledgerctl cluster add-learner 5 node-5:7777 node-5:8888 "$INSTANCE_ID_HEX" --timeout 30s
 ```
 
 #### cluster promote-learner

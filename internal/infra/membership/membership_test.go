@@ -11,6 +11,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -34,18 +35,24 @@ func (noopPool) RemovePeer(uint64) error      { return nil }
 type countingTransport struct {
 	adds    int
 	removes int
+	addrs   []string
 }
 
-func (c *countingTransport) AddPeer(uint64, string)             { c.adds++ }
+func (c *countingTransport) AddPeer(_ uint64, addr string) {
+	c.adds++
+	c.addrs = append(c.addrs, addr)
+}
 func (c *countingTransport) RemovePeer(context.Context, uint64) { c.removes++ }
 
 type countingPool struct {
 	adds    int
 	removes int
+	addrs   []string
 }
 
-func (c *countingPool) AddPeer(uint64, string) error {
+func (c *countingPool) AddPeer(_ uint64, addr string) error {
 	c.adds++
+	c.addrs = append(c.addrs, addr)
 
 	return nil
 }
@@ -90,7 +97,7 @@ const (
 func newTestMembership(t *testing.T) *Membership {
 	t.Helper()
 
-	m, err := NewMembership(newTestPeerStore(t), noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
+	m, err := NewMembership(newTestPeerStore(t), noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
 	require.NoError(t, err)
 
 	m.Start()
@@ -103,16 +110,57 @@ func TestPeerStore_PutLoadAll(t *testing.T) {
 
 	ps := newTestPeerStore(t)
 
-	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8888", nil))
-	require.NoError(t, ps.Put(2, "pod-1:7777", "pod-1:8888", nil))
-	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:8888", nil))
+	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8888", fixedInstanceID(1)))
+	require.NoError(t, ps.Put(2, "pod-1:7777", "pod-1:8888", fixedInstanceID(2)))
+	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:8888", fixedInstanceID(3)))
 
 	peers, err := ps.LoadAll()
 	require.NoError(t, err)
 	require.Len(t, peers, 3)
-	require.Equal(t, ConfChangeContext{RaftAddress: "pod-0:7777", ServiceAddress: "pod-0:8888"}, peers[1])
-	require.Equal(t, ConfChangeContext{RaftAddress: "pod-1:7777", ServiceAddress: "pod-1:8888"}, peers[2])
-	require.Equal(t, ConfChangeContext{RaftAddress: "pod-2:7777", ServiceAddress: "pod-2:8888"}, peers[3])
+	require.Equal(t, ConfChangeContext{RaftAddress: "pod-0:7777", ServiceAddress: "pod-0:8888", InstanceID: fixedInstanceID(1)}, peers[1])
+	require.Equal(t, ConfChangeContext{RaftAddress: "pod-1:7777", ServiceAddress: "pod-1:8888", InstanceID: fixedInstanceID(2)}, peers[2])
+	require.Equal(t, ConfChangeContext{RaftAddress: "pod-2:7777", ServiceAddress: "pod-2:8888", InstanceID: fixedInstanceID(3)}, peers[3])
+}
+
+func TestPeerStore_RejectsInvalidInstanceID(t *testing.T) {
+	t.Parallel()
+
+	ps := newTestPeerStore(t)
+
+	require.ErrorContains(t, ps.Put(1, "pod-0:7777", "pod-0:8888", nil), "instance_id must be 16 bytes")
+	require.ErrorContains(t, ps.Put(1, "pod-0:7777", "pod-0:8888", []byte("short")), "instance_id must be 16 bytes")
+}
+
+func TestPeerStore_LoadAllRejectsPersistedInvalidInstanceID(t *testing.T) {
+	t.Parallel()
+
+	ps := newTestPeerStore(t)
+	session := ps.store.OpenWriteSession()
+	require.NoError(t, session.SetProto(peerKey(1), &raftcmdpb.PeerAddress{
+		NodeId:         1,
+		RaftAddress:    "pod-0:7777",
+		ServiceAddress: "pod-0:8888",
+	}))
+	require.NoError(t, session.Commit())
+
+	_, err := ps.LoadAll()
+	require.ErrorContains(t, err, "persisted peer 1 has invalid identity")
+}
+
+func TestNewMembershipRejectsInvalidSelfInstanceID(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewMembership(
+		newTestPeerStore(t),
+		noopTransport{},
+		noopPool{},
+		testSelfNodeID,
+		testSelfRaftAddr,
+		testSelfServiceAddr,
+		nil,
+		logging.Testing(),
+	)
+	require.ErrorContains(t, err, "invalid self identity")
 }
 
 // TestPeerStore_PutOverwrites verifies that re-Putting the same NodeID
@@ -123,14 +171,15 @@ func TestPeerStore_PutOverwrites(t *testing.T) {
 
 	ps := newTestPeerStore(t)
 
-	require.NoError(t, ps.Put(7, "old:7777", "old:8888", nil))
-	require.NoError(t, ps.Put(7, "new:7777", "new:8888", nil))
+	require.NoError(t, ps.Put(7, "old:7777", "old:8888", fixedInstanceID(7)))
+	require.NoError(t, ps.Put(7, "new:7777", "new:8888", fixedInstanceID(8)))
 
 	peers, err := ps.LoadAll()
 	require.NoError(t, err)
 	require.Len(t, peers, 1)
 	require.Equal(t, "new:7777", peers[7].RaftAddress)
 	require.Equal(t, "new:8888", peers[7].ServiceAddress)
+	require.Equal(t, fixedInstanceID(8), peers[7].InstanceID)
 }
 
 func TestPeerStore_Delete(t *testing.T) {
@@ -138,8 +187,8 @@ func TestPeerStore_Delete(t *testing.T) {
 
 	ps := newTestPeerStore(t)
 
-	require.NoError(t, ps.Put(1, "a:1", "a:2", nil))
-	require.NoError(t, ps.Put(2, "b:1", "b:2", nil))
+	require.NoError(t, ps.Put(1, "a:1", "a:2", fixedInstanceID(1)))
+	require.NoError(t, ps.Put(2, "b:1", "b:2", fixedInstanceID(2)))
 	require.NoError(t, ps.Delete(1))
 
 	peers, err := ps.LoadAll()
@@ -216,12 +265,14 @@ func TestMembership_WriteConfChange(t *testing.T) {
 	addCtx, err := MarshalConfChangeContext(ConfChangeContext{
 		RaftAddress:    "pod-1:7777",
 		ServiceAddress: "pod-1:8888",
+		InstanceID:     fixedInstanceID(1),
 	})
 	require.NoError(t, err)
 
 	addLearnerCtx, err := MarshalConfChangeContext(ConfChangeContext{
 		RaftAddress:    "pod-2:7777",
 		ServiceAddress: "pod-2:8888",
+		InstanceID:     fixedInstanceID(2),
 	})
 	require.NoError(t, err)
 
@@ -314,9 +365,9 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	ps := newTestPeerStore(t)
 
 	// Pre-swap state: cluster A had peer 7.
-	require.NoError(t, ps.Put(7, "old:1", "old:2", nil))
+	require.NoError(t, ps.Put(7, "old:1", "old:2", fixedInstanceID(7)))
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
 	require.NoError(t, err)
 	m.Start()
 	require.Equal(t, "old:1", m.PeerAddresses()[7].RaftAddress)
@@ -324,8 +375,8 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	// Simulate a leader checkpoint restore: Pebble now has peers 1 + 3,
 	// and no peer 7 (the source cluster A has been replaced by cluster B).
 	require.NoError(t, ps.Delete(7))
-	require.NoError(t, ps.Put(1, "new:1", "new:2", nil))
-	require.NoError(t, ps.Put(3, "new:3", "new:4", nil))
+	require.NoError(t, ps.Put(1, "new:1", "new:2", fixedInstanceID(1)))
+	require.NoError(t, ps.Put(3, "new:3", "new:4", fixedInstanceID(3)))
 
 	// Hook fires: cache must catch up to the new Pebble state.
 	m.OnSnapshotInstalled()
@@ -338,6 +389,28 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	require.Equal(t, "new:3", got[3].RaftAddress)
 	require.Equal(t, testSelfRaftAddr, got[testSelfNodeID].RaftAddress, "self must be re-upserted with local truth")
 	require.NotContains(t, got, uint64(7))
+}
+
+func TestMembership_OnSnapshotInstalledPanicsOnInvalidPeerIdentity(t *testing.T) {
+	t.Parallel()
+
+	ps := newTestPeerStore(t)
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
+	require.NoError(t, err)
+
+	// Simulate a leader checkpoint that replaced Pebble with an invalid peer
+	// row after construction. Put cannot create this shape, so write through
+	// the raw session just as a checkpoint swap would.
+	session := ps.store.OpenWriteSession()
+	require.NoError(t, session.SetProto(peerKey(1), &raftcmdpb.PeerAddress{
+		NodeId:         1,
+		RaftAddress:    "peer:7777",
+		ServiceAddress: "peer:8888",
+	}))
+	require.NoError(t, session.Commit())
+
+	require.Panics(t, m.OnSnapshotInstalled,
+		"an installed checkpoint must not leave an identity-less configured member running")
 }
 
 // TestMembership_RehydrateAfterReplay covers the EN-1413 follow-up gap:
@@ -356,9 +429,9 @@ func TestMembership_RehydrateAfterReplay(t *testing.T) {
 
 	ps := newTestPeerStore(t)
 
-	require.NoError(t, ps.Put(7, "before:1", "before:2", nil))
+	require.NoError(t, ps.Put(7, "before:1", "before:2", fixedInstanceID(7)))
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
+	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
 	require.NoError(t, err)
 	m.Start()
 	require.Equal(t, "before:1", m.PeerAddresses()[7].RaftAddress)
@@ -366,8 +439,8 @@ func TestMembership_RehydrateAfterReplay(t *testing.T) {
 	// Simulate WAL replay: WriteConfChange wrote these rows directly to
 	// Pebble without touching the cache.
 	require.NoError(t, ps.Delete(7))
-	require.NoError(t, ps.Put(1, "after:1", "after:2", nil))
-	require.NoError(t, ps.Put(3, "after:3", "after:4", nil))
+	require.NoError(t, ps.Put(1, "after:1", "after:2", fixedInstanceID(1)))
+	require.NoError(t, ps.Put(3, "after:3", "after:4", fixedInstanceID(3)))
 
 	require.NoError(t, m.Rehydrate())
 
@@ -394,15 +467,15 @@ func TestMembership_StartGate(t *testing.T) {
 	pool := &countingPool{}
 	ps := newTestPeerStore(t)
 
-	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8888", nil))
+	require.NoError(t, ps.Put(1, "pod-0:7777", "pod-0:8888", fixedInstanceID(1)))
 
-	m, err := NewMembership(ps, transport, pool, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
+	m, err := NewMembership(ps, transport, pool, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
 	require.NoError(t, err)
 
 	require.Equal(t, 0, transport.adds, "no wire before Start (cache-only construction)")
 	require.Equal(t, 0, pool.adds, "no wire before Start (cache-only construction)")
 
-	m.Set(2, "pod-1:7777", "pod-1:8888", nil)
+	require.NoError(t, m.Set(2, "pod-1:7777", "pod-1:8888", fixedInstanceID(2)))
 	require.Equal(t, 0, transport.adds, "Set pre-Start must be cache-only")
 	require.Equal(t, 0, pool.adds, "Set pre-Start must be cache-only")
 	require.Len(t, m.PeerAddresses(), 2, "cache must still reflect the Set")
@@ -411,13 +484,77 @@ func TestMembership_StartGate(t *testing.T) {
 	require.Equal(t, 2, transport.adds, "Start flushes the cache to the transport")
 	require.Equal(t, 2, pool.adds, "Start flushes the cache to the service pool")
 
-	m.Set(3, "pod-2:7777", "pod-2:8888", nil)
+	require.NoError(t, m.Set(3, "pod-2:7777", "pod-2:8888", fixedInstanceID(3)))
 	require.Equal(t, 3, transport.adds, "Set post-Start wires inline")
 	require.Equal(t, 3, pool.adds, "Set post-Start wires inline")
 
 	m.Remove(1)
 	require.Equal(t, 1, transport.removes, "Remove post-Start wires inline")
 	require.Equal(t, 1, pool.removes, "Remove post-Start wires inline")
+}
+
+func TestMembership_SetRejectsInvalidInstanceID(t *testing.T) {
+	t.Parallel()
+
+	m := newTestMembership(t)
+	require.ErrorContains(t, m.Set(1, "pod-0:7777", "pod-0:8888", nil), "instance_id must be 16 bytes")
+	require.NotContains(t, m.PeerAddresses(), uint64(1))
+}
+
+func TestMembership_SetRewiresChangedAddresses(t *testing.T) {
+	t.Parallel()
+
+	transport := &countingTransport{}
+	pool := &countingPool{}
+	m, err := NewMembership(
+		newTestPeerStore(t),
+		transport,
+		pool,
+		testSelfNodeID,
+		testSelfRaftAddr,
+		testSelfServiceAddr,
+		fixedInstanceID(0x42),
+		logging.Testing(),
+	)
+	require.NoError(t, err)
+	m.Start()
+
+	require.NoError(t, m.Set(1, "old:7777", "old:8888", fixedInstanceID(1)))
+	require.Equal(t, 1, transport.adds)
+	require.Equal(t, 0, transport.removes)
+
+	require.NoError(t, m.Set(1, "new:7777", "new:8888", fixedInstanceID(2)))
+	require.Equal(t, 2, transport.adds)
+	require.Equal(t, 1, transport.removes, "changed Raft address must replace the existing transport peer")
+	require.Equal(t, []string{"old:7777", "new:7777"}, transport.addrs)
+	require.Equal(t, 2, pool.adds)
+	require.Equal(t, 1, pool.removes, "changed service address must replace the existing client connection")
+	require.Equal(t, []string{"old:8888", "new:8888"}, pool.addrs)
+	require.Equal(t, "new:7777", m.PeerAddresses()[1].RaftAddress)
+}
+
+func TestMembership_ClonesInstanceIDs(t *testing.T) {
+	t.Parallel()
+
+	m := newTestMembership(t)
+	instanceID := fixedInstanceID(1)
+	require.NoError(t, m.Set(1, "pod-0:7777", "pod-0:8888", instanceID))
+
+	instanceID[0] = 9
+	stored, ok := m.GetInstanceID(1)
+	require.True(t, ok)
+	require.Equal(t, byte(1), stored[0], "Set must not retain a caller-owned slice")
+
+	stored[0] = 8
+	again, ok := m.GetInstanceID(1)
+	require.True(t, ok)
+	require.Equal(t, byte(1), again[0], "GetInstanceID must not expose the cached slice")
+
+	view := m.PeerAddresses()
+	view[1].InstanceID[0] = 7
+	again, ok = m.GetInstanceID(1)
+	require.True(t, ok)
+	require.Equal(t, byte(1), again[0], "PeerAddresses must deep-clone instance IDs")
 }
 
 // TestMembership_ReconcileAgainstConfState pins the boot-time cleanup
@@ -432,13 +569,13 @@ func TestMembership_ReconcileAgainstConfState(t *testing.T) {
 
 	newSeeded := func(t *testing.T) *Membership {
 		ps := newTestPeerStore(t)
-		require.NoError(t, ps.Put(7, "self:1", "self:2", nil))
-		require.NoError(t, ps.Put(1, "voter1:1", "voter1:2", nil))
-		require.NoError(t, ps.Put(2, "voter2:1", "voter2:2", nil))
-		require.NoError(t, ps.Put(3, "learner:1", "learner:2", nil))
-		require.NoError(t, ps.Put(99, "stale:1", "stale:2", nil))
+		require.NoError(t, ps.Put(7, "self:1", "self:2", fixedInstanceID(7)))
+		require.NoError(t, ps.Put(1, "voter1:1", "voter1:2", fixedInstanceID(1)))
+		require.NoError(t, ps.Put(2, "voter2:1", "voter2:2", fixedInstanceID(2)))
+		require.NoError(t, ps.Put(3, "learner:1", "learner:2", fixedInstanceID(3)))
+		require.NoError(t, ps.Put(99, "stale:1", "stale:2", fixedInstanceID(99)))
 
-		m, err := NewMembership(ps, noopTransport{}, noopPool{}, 7, "self:1", "self:2", nil, logging.Testing())
+		m, err := NewMembership(ps, noopTransport{}, noopPool{}, 7, "self:1", "self:2", fixedInstanceID(7), logging.Testing())
 		require.NoError(t, err)
 		m.Start()
 
@@ -511,6 +648,7 @@ func TestWalkConfChangeContexts_MultiAddInvariant(t *testing.T) {
 	ctx, err := MarshalConfChangeContext(ConfChangeContext{
 		RaftAddress:    "pod-1:7777",
 		ServiceAddress: "pod-1:8888",
+		InstanceID:     fixedInstanceID(1),
 	})
 	require.NoError(t, err)
 

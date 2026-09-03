@@ -925,6 +925,7 @@ type AddLearnerRequest struct {
 	NodeId         uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`                        // Numeric ID for the new learner node
 	RaftAddress    string                 `protobuf:"bytes,2,opt,name=raft_address,json=raftAddress,proto3" json:"raft_address,omitempty"`          // Raft transport address of the learner
 	ServiceAddress string                 `protobuf:"bytes,3,opt,name=service_address,json=serviceAddress,proto3" json:"service_address,omitempty"` // Service API address of the learner
+	InstanceId     []byte                 `protobuf:"bytes,4,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`             // 16-byte UUID from the learner's persisted INSTANCE_ID marker; required
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -978,6 +979,13 @@ func (x *AddLearnerRequest) GetServiceAddress() string {
 		return x.ServiceAddress
 	}
 	return ""
+}
+
+func (x *AddLearnerRequest) GetInstanceId() []byte {
+	if x != nil {
+		return x.InstanceId
+	}
+	return nil
 }
 
 type AddLearnerResponse struct {
@@ -2267,11 +2275,13 @@ const file_cluster_proto_rawDesc = "" +
 	"\n" +
 	"wal_volume\x18\x01 \x01(\v2\x14.cluster.VolumeUsageR\twalVolume\x125\n" +
 	"\vdata_volume\x18\x02 \x01(\v2\x14.cluster.VolumeUsageR\n" +
-	"dataVolume\"x\n" +
+	"dataVolume\"\x99\x01\n" +
 	"\x11AddLearnerRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +
-	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\"\x14\n" +
+	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\x12\x1f\n" +
+	"\vinstance_id\x18\x04 \x01(\fR\n" +
+	"instanceId\"\x14\n" +
 	"\x12AddLearnerResponse\"0\n" +
 	"\x15PromoteLearnerRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\"\x18\n" +

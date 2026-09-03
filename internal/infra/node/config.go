@@ -169,4 +169,5 @@ type Peer struct {
 	ID             uint64
 	Address        string // Raft transport address
 	ServiceAddress string // Service API address (for request forwarding)
+	InstanceID     []byte // 16-byte WAL/PVC incarnation identity
 }
