@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,6 +12,7 @@ import (
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -109,4 +111,24 @@ func TestRoutedController_FinishLeaderFallback(t *testing.T) {
 		assert.Nil(t, barrier)
 		assert.False(t, profile.Forwarded)
 	})
+}
+
+// TestShouldForwardIndexBuilding pins the forward decision: a follower's
+// INDEX_BUILDING refusal forwards to the leader — a rewound read store
+// rebuilding through an index's retype chain refuses stale bindings as
+// building, and a converged replica can answer now — while every other error,
+// the leader itself, and explicitly-stale reads (which ask for THIS node's
+// view) do not forward.
+func TestShouldForwardIndexBuilding(t *testing.T) {
+	t.Parallel()
+
+	building := &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: "metadata[\"tier\"]"}}
+	notFound := &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: "metadata[\"tier\"]"}}
+
+	assert.True(t, shouldForwardIndexBuilding(building, false, grpcadp.ConsistencyLinearizable))
+	assert.False(t, shouldForwardIndexBuilding(building, true, grpcadp.ConsistencyLinearizable), "the leader never forwards")
+	assert.False(t, shouldForwardIndexBuilding(building, false, grpcadp.ConsistencyStale), "a stale read asks for this node's view")
+	assert.False(t, shouldForwardIndexBuilding(notFound, false, grpcadp.ConsistencyLinearizable), "only the building class forwards")
+	assert.False(t, shouldForwardIndexBuilding(nil, false, grpcadp.ConsistencyLinearizable))
+	assert.False(t, shouldForwardIndexBuilding(errors.New("boom"), false, grpcadp.ConsistencyLinearizable))
 }

@@ -499,16 +499,30 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 	// ranges over old-encoded rows — partial results (EN-1724). Old-kind
 	// conditions therefore stay valid over the complete old index for the
 	// whole window, and the new kind becomes valid atomically at the switch.
+	//
+	// The window is exactly ONE schema revision deep. A binding further
+	// behind is not a live retype window — it is a rewound read store (the
+	// read index is a WAL-less Pebble store, so a hard kill rewinds it to
+	// the last flush) re-walking the retype chain, and serving it would
+	// time-travel query semantics at a pin far past the retypes it has not
+	// re-applied yet. That state is a rebuild in progress, and it reads as
+	// exactly that: INDEX_BUILDING, the same retryable class an unbuilt
+	// index produces. The adapter forwards it to the leader (see
+	// RoutedController), so a converged replica answers instead.
 	switch {
 	case !resolved.BindingKnown:
 		// Pre-versioning resolver (test default): the live schema is all
 		// there is.
-	case !resolved.TypeDeclared:
+	case !resolved.TypeDeclared && fieldSchema.GetRevision() <= 1:
 		// The served version was built before any type was declared for this
-		// key. Field conditions on an undeclared key were rejected then, and
-		// the window keeps that behavior until the rewrite promotes the
-		// declared-type keyspace.
+		// key, and the schema is on its first declaration: the undeclared
+		// binding is that declaration's direct predecessor, and the window
+		// keeps its behavior — field conditions on an undeclared key were
+		// rejected then.
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
+	case !resolved.TypeDeclared, resolved.Revision+1 < fieldSchema.GetRevision():
+		// Two or more revisions behind the schema: a rebuild mid-chain.
+		return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
 	default:
 		fieldSchema = &commonpb.MetadataFieldSchema{Type: resolved.Type}
 	}

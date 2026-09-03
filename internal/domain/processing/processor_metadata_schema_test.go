@@ -550,3 +550,65 @@ func TestPopulateInitialSchema(t *testing.T) {
 		require.Len(t, result.GetLedgerFields(), 1)
 	})
 }
+
+// TestProcessSetMetadataFieldType_StampsRevision pins the revision counter:
+// the first declaration of a key is revision 1, each retype increments it,
+// and the minted log carries the post-apply revision — the mint-time stamp a
+// replica folding at any replay distance binds the rewrite's target version
+// to.
+func TestProcessSetMetadataFieldType_StampsRevision(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+
+	// The ledger already carries "amount" at revision 2: this retype must
+	// stamp 3, in the schema and in the log.
+	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1, MetadataSchema: &commonpb.MetadataSchema{
+		AccountFields: map[string]*commonpb.MetadataFieldSchema{
+			"amount": {Type: commonpb.MetadataType_METADATA_TYPE_STRING, Revision: 2},
+		},
+	}}
+
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+		field := info.GetMetadataSchema().GetAccountFields()["amount"]
+		require.NotNil(t, field)
+		require.Equal(t, uint32(3), field.GetRevision())
+	})
+	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "test-ledger",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
+						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "amount",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						},
+					}},
+				},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(order, mockStore)
+	require.NoError(t, err)
+
+	setLog := result.GetApply().GetLog().GetData().GetSetMetadataFieldType()
+	require.NotNil(t, setLog)
+	require.Equal(t, uint32(3), setLog.GetRevision())
+}

@@ -1619,3 +1619,42 @@ func TestHandleCreatedIndexLog_RecreateAfterDelete_ReseedsBackfill(t *testing.T)
 	require.Equal(t, uint32(0), current)
 	require.Equal(t, uint32(1), pending)
 }
+
+// TestBindingRevisionWalk pins the revision plumbing end to end on the fold
+// side: CreateIndex seeds the stamped revision, a folded retype carries its
+// own stamped revision into the pending slot, and the atomic switch promotes
+// it — the value queries measure binding convergence with.
+func TestBindingRevisionWalk(t *testing.T) {
+	t.Parallel()
+
+	const ledger = "test"
+	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score")
+	canonical := indexes.Canonical(id)
+
+	b := newTestBuilderWithStore(t)
+
+	batch := b.readStore.NewBatch()
+	b.initBatch(batch)
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
+		Id:                id,
+		Initial:           true,
+		BoundType:         commonpb.MetadataType_METADATA_TYPE_INT32,
+		BoundTypeDeclared: true,
+		BoundRevision:     1,
+	}))
+	require.NoError(t, b.wb.Flush())
+
+	st, ok := b.versionStateFor(ledger, canonical)
+	require.True(t, ok)
+	require.Equal(t, uint32(1), st.CurrentRevision, "the create seeds the stamped revision")
+
+	// Retype to revision 2: the pending slot carries the SMFT's stamp.
+	batch = b.readStore.NewBatch()
+	b.initBatch(batch)
+	require.NoError(t, b.bumpPendingVersion(ledger, id, commonpb.MetadataType_METADATA_TYPE_STRING, 2))
+	require.NoError(t, b.wb.Flush())
+
+	st, _ = b.versionStateFor(ledger, canonical)
+	require.Equal(t, uint32(1), st.CurrentRevision)
+	require.Equal(t, uint32(2), st.PendingRevision, "the bump carries the retype's stamped revision")
+}

@@ -532,6 +532,7 @@ func (m *MetadataFieldSchema) CloneVT() *MetadataFieldSchema {
 	}
 	r := new(MetadataFieldSchema)
 	r.Type = m.Type
+	r.Revision = m.Revision
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1982,6 +1983,7 @@ func (m *CreatedIndexLog) CloneVT() *CreatedIndexLog {
 	r.Initial = m.Initial
 	r.BoundType = m.BoundType
 	r.BoundTypeDeclared = m.BoundTypeDeclared
+	r.BoundRevision = m.BoundRevision
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2119,6 +2121,7 @@ func (m *SetMetadataFieldTypeLog) CloneVT() *SetMetadataFieldTypeLog {
 	r.TargetType = m.TargetType
 	r.Key = m.Key
 	r.Type = m.Type
+	r.Revision = m.Revision
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5186,6 +5189,9 @@ func (this *MetadataFieldSchema) EqualVT(that *MetadataFieldSchema) bool {
 	if this.Type != that.Type {
 		return false
 	}
+	if this.Revision != that.Revision {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -7711,6 +7717,9 @@ func (this *CreatedIndexLog) EqualVT(that *CreatedIndexLog) bool {
 	if this.BoundTypeDeclared != that.BoundTypeDeclared {
 		return false
 	}
+	if this.BoundRevision != that.BoundRevision {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -7894,6 +7903,9 @@ func (this *SetMetadataFieldTypeLog) EqualVT(that *SetMetadataFieldTypeLog) bool
 		return false
 	}
 	if this.Type != that.Type {
+		return false
+	}
+	if this.Revision != that.Revision {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -13009,6 +13021,11 @@ func (m *MetadataFieldSchema) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.Revision != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Revision))
+		i--
+		dAtA[i] = 0x10
+	}
 	if m.Type != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Type))
 		i--
@@ -16704,6 +16721,11 @@ func (m *CreatedIndexLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.BoundRevision != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BoundRevision))
+		i--
+		dAtA[i] = 0x28
+	}
 	if m.BoundTypeDeclared {
 		i--
 		if m.BoundTypeDeclared {
@@ -17082,6 +17104,11 @@ func (m *SetMetadataFieldTypeLog) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Revision != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Revision))
+		i--
+		dAtA[i] = 0x20
 	}
 	if m.Type != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Type))
@@ -22949,6 +22976,9 @@ func (m *MetadataFieldSchema) SizeVT() (n int) {
 	if m.Type != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Type))
 	}
+	if m.Revision != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Revision))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -24577,6 +24607,9 @@ func (m *CreatedIndexLog) SizeVT() (n int) {
 	if m.BoundTypeDeclared {
 		n += 2
 	}
+	if m.BoundRevision != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.BoundRevision))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -24712,6 +24745,9 @@ func (m *SetMetadataFieldTypeLog) SizeVT() (n int) {
 	}
 	if m.Type != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Type))
+	}
+	if m.Revision != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Revision))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -30133,6 +30169,25 @@ func (m *MetadataFieldSchema) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.Type |= MetadataType(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Revision", wireType)
+			}
+			m.Revision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Revision |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -39120,6 +39175,25 @@ func (m *CreatedIndexLog) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.BoundTypeDeclared = bool(v != 0)
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BoundRevision", wireType)
+			}
+			m.BoundRevision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.BoundRevision |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -40033,6 +40107,25 @@ func (m *SetMetadataFieldTypeLog) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.Type |= MetadataType(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Revision", wireType)
+			}
+			m.Revision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Revision |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

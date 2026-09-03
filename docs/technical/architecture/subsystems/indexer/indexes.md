@@ -42,6 +42,9 @@ type IndexVersionState struct {
     CurrentTypeDeclared bool                  // false = bound to no declared type; rows keep each value's natural encoding
     PendingType         commonpb.MetadataType // the retype's target: the type PendingVersion's rows are encoded under
     PendingTypeDeclared bool
+
+    CurrentRevision uint32 // schema revision CurrentType corresponds to (MetadataFieldSchema.revision)
+    PendingRevision uint32 // schema revision PendingType corresponds to
 }
 ```
 
@@ -53,12 +56,26 @@ must validate and encode its conditions under the type those rows actually
 carry. The switch promotes `PendingType` into `CurrentType` together with the
 version — binding and keyspace flip as one.
 
+The revisions bound the tolerance: the serving window is exactly ONE schema
+revision deep (`CurrentRevision == MetadataFieldSchema.revision - 1`, the
+retype every replica is mid-switch on). A binding further behind is a rewound
+read store re-walking the retype chain — the read index is a WAL-less Pebble
+store, so a hard kill rewinds it to the last flush, and the re-fold rebuilds
+the index's first version bound to the `CreatedIndexLog` stamp before walking
+each replayed retype. Queries refuse that state as `INDEX_BUILDING` (the
+compile gate in `internal/query/compile.go`) instead of serving pre-retype
+semantics at a post-retype pin, and the routing layer forwards the refusal to
+the leader (`RoutedController.retryOnStaleBinding`) so a converged replica
+answers. Revisions are stamped at FSM mint time (`SetMetadataFieldTypeLog.revision`,
+`CreatedIndexLog.bound_revision`) for the same replay-distance determinism as
+the type stamps, and reset with the incarnation on drop/recreate.
+
 ### Storage encoding
 
-Fixed 22 B header, followed by a variable-length opaque tail. The field remains encoded, but the current indexbuilder does not mutate it; both index-backfill and schema-rewrite cursors are persisted separately under `BackfillKey`.
+Fixed 30 B header, followed by a variable-length opaque tail. The field remains encoded, but the current indexbuilder does not mutate it; both index-backfill and schema-rewrite cursors are persisted separately under `BackfillKey`.
 
 ```
-[ current_version (4B BE) ][ pending_version (4B BE) ][ activation_sequence (8B BE) ][ high_water (4B BE) ][ current_type (1B) ][ pending_type (1B) ][ opaque_tail … ]
+[ current_version (4B BE) ][ pending_version (4B BE) ][ activation_sequence (8B BE) ][ high_water (4B BE) ][ current_type (1B) ][ pending_type (1B) ][ current_revision (4B BE) ][ pending_revision (4B BE) ][ opaque_tail … ]
 ```
 
 A type byte holds `0` for "no declared type bound" and `1 + MetadataType`

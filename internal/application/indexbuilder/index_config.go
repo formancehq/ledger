@@ -455,6 +455,7 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 			HighWater:           next,
 			CurrentType:         boundType,
 			CurrentTypeDeclared: declared,
+			CurrentRevision:     log.GetBoundRevision(),
 		}
 
 		if b.wb != nil && b.readStore != nil {
@@ -485,6 +486,7 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 		HighWater:           next,
 		PendingType:         boundType,
 		PendingTypeDeclared: declared,
+		PendingRevision:     log.GetBoundRevision(),
 	}
 
 	if b.wb != nil && b.readStore != nil {

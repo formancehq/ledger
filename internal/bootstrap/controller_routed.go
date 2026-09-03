@@ -11,6 +11,7 @@ import (
 
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -163,6 +164,48 @@ func (b *RoutedController) markForwardedIfRemote(ctx context.Context, selected c
 	}
 }
 
+// retryOnStaleBinding re-runs a read on the leader when the local replica
+// refused it as INDEX_BUILDING. A rewound read store (WAL-less; a hard kill
+// rewinds it to the last flush) re-walks the index's retype chain, and until
+// its bindings converge on the schema the compile gate refuses the stale
+// semantics — a rebuild in progress. The refusal is per-index and retryable,
+// but a converged replica can answer NOW, and the leader is the replica
+// least likely to be mid-rebuild: forward instead of bouncing the client.
+//
+// The leader never forwards (no loops); if the leader itself is mid-rebuild,
+// the client keeps the retryable INDEX_BUILDING. Explicitly-stale reads are
+// exempt — they ask for THIS node's view, and forwarding would silently
+// substitute another node's.
+func retryOnStaleBinding[T any](b *RoutedController, ctx context.Context, out T, err error, run func(ctrl.Controller) (T, error)) (T, error) {
+	if !shouldForwardIndexBuilding(err, b.IsLeader(), grpcadp.ConsistencyFromContext(ctx)) {
+		return out, err
+	}
+
+	leader, leaderErr := b.getLeaderCtrl()
+	if leaderErr != nil || leader == b.localController {
+		// Resolution failed, or leadership moved here after the IsLeader check
+		// (re-running locally would repeat the refusal). The local refusal is
+		// already the retryable class — surface it.
+		return out, err
+	}
+
+	query.ProfileFromContext(ctx).MarkForwarded()
+
+	return run(leader)
+}
+
+// shouldForwardIndexBuilding is retryOnStaleBinding's decision: forward only a
+// follower's INDEX_BUILDING refusal on a read that did not ask for this
+// node's own view.
+func shouldForwardIndexBuilding(err error, isLeader bool, consistency string) bool {
+	var building *domain.ErrIndexBuilding
+	if err == nil || !errors.As(err, &building) || isLeader {
+		return false
+	}
+
+	return consistency != grpcadp.ConsistencyStale
+}
+
 func (b *RoutedController) IsHealthy() bool {
 	return b.Node.IsHealthy()
 }
@@ -241,7 +284,11 @@ func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName stri
 		return nil, err
 	}
 
-	return c.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
+	out, err := c.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
+
+	return retryOnStaleBinding(b, ctx, out, err, func(leader ctrl.Controller) (cursor.Cursor[*commonpb.Transaction], error) {
+		return leader.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
+	})
 }
 
 func (b *RoutedController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
@@ -250,7 +297,11 @@ func (b *RoutedController) ListLogs(ctx context.Context, ledgerName string, afte
 		return nil, err
 	}
 
-	return c.ListLogs(ctx, ledgerName, afterSequence, pageSize, filter)
+	out, err := c.ListLogs(ctx, ledgerName, afterSequence, pageSize, filter)
+
+	return retryOnStaleBinding(b, ctx, out, err, func(leader ctrl.Controller) (cursor.Cursor[*commonpb.Log], error) {
+		return leader.ListLogs(ctx, ledgerName, afterSequence, pageSize, filter)
+	})
 }
 
 func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
@@ -318,7 +369,11 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 		}).Infof("read barrier for ListAccounts")
 	}
 
-	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
+	out, err := c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
+
+	return retryOnStaleBinding(b, ctx, out, err, func(leader ctrl.Controller) (cursor.Cursor[*commonpb.Account], error) {
+		return leader.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
+	})
 }
 
 func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
@@ -327,7 +382,11 @@ func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName stri
 		return nil, err
 	}
 
-	return c.AggregateVolumes(ctx, ledgerName, filter, opts)
+	out, err := c.AggregateVolumes(ctx, ledgerName, filter, opts)
+
+	return retryOnStaleBinding(b, ctx, out, err, func(leader ctrl.Controller) (*commonpb.AggregateResult, error) {
+		return leader.AggregateVolumes(ctx, ledgerName, filter, opts)
+	})
 }
 
 func (b *RoutedController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
@@ -381,7 +440,11 @@ func (b *RoutedController) ExecutePreparedQuery(ctx context.Context, req *servic
 		return nil, err
 	}
 
-	return c.ExecutePreparedQuery(ctx, req)
+	out, err := c.ExecutePreparedQuery(ctx, req)
+
+	return retryOnStaleBinding(b, ctx, out, err, func(leader ctrl.Controller) (*servicepb.ExecutePreparedQueryResponse, error) {
+		return leader.ExecutePreparedQuery(ctx, req)
+	})
 }
 
 func (b *RoutedController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {

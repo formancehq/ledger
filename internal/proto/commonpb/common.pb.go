@@ -2415,8 +2415,19 @@ func (*Target_Account) isTarget_Target() {}
 func (*Target_TransactionId) isTarget_Target() {}
 
 type MetadataFieldSchema struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          MetadataType           `protobuf:"varint,1,opt,name=type,proto3,enum=common.MetadataType" json:"type,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Type  MetadataType           `protobuf:"varint,1,opt,name=type,proto3,enum=common.MetadataType" json:"type,omitempty"`
+	// revision counts the field's declarations: 1 at the first
+	// SetMetadataFieldType, +1 on every retype. It is what lets a reader tell
+	// how far an index version's binding lags the schema — a binding at
+	// revision-1 is the live retype window (old view served until the atomic
+	// switch); anything older is a stale binding a rewound read store is still
+	// rebuilding through, and queries refuse it as INDEX_BUILDING instead of
+	// serving pre-retype semantics at a post-retype pin. Removal deletes the
+	// field entry; a re-declaration restarts at 1 with the cascade having
+	// dropped any attached index, so revisions never compare across
+	// incarnations.
+	Revision      uint32 `protobuf:"varint,2,opt,name=revision,proto3" json:"revision,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2456,6 +2467,13 @@ func (x *MetadataFieldSchema) GetType() MetadataType {
 		return x.Type
 	}
 	return MetadataType_METADATA_TYPE_STRING
+}
+
+func (x *MetadataFieldSchema) GetRevision() uint32 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
 }
 
 type MetadataSchema struct {
@@ -6238,8 +6256,13 @@ type CreatedIndexLog struct {
 	// Metadata indexes always carry a binding — CreateIndex validates that the
 	// field is declared in the schema.
 	BoundTypeDeclared bool `protobuf:"varint,4,opt,name=bound_type_declared,json=boundTypeDeclared,proto3" json:"bound_type_declared,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// bound_revision is the schema revision of bound_type at this log's
+	// sequence (MetadataFieldSchema.revision), stamped like bound_type. The
+	// first version's binding carries it so queries can measure how far the
+	// serving binding lags the schema.
+	BoundRevision uint32 `protobuf:"varint,5,opt,name=bound_revision,json=boundRevision,proto3" json:"bound_revision,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreatedIndexLog) Reset() {
@@ -6298,6 +6321,13 @@ func (x *CreatedIndexLog) GetBoundTypeDeclared() bool {
 		return x.BoundTypeDeclared
 	}
 	return false
+}
+
+func (x *CreatedIndexLog) GetBoundRevision() uint32 {
+	if x != nil {
+		return x.BoundRevision
+	}
+	return 0
 }
 
 // DroppedIndexLog records the removal of an index.
@@ -6599,10 +6629,15 @@ func (x *DeletedMetadata) GetKey() string {
 
 // SetMetadataFieldTypeLog records a metadata field type declaration.
 type SetMetadataFieldTypeLog struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetType    TargetType             `protobuf:"varint,1,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
-	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	Type          MetadataType           `protobuf:"varint,3,opt,name=type,proto3,enum=common.MetadataType" json:"type,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	TargetType TargetType             `protobuf:"varint,1,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
+	Key        string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	Type       MetadataType           `protobuf:"varint,3,opt,name=type,proto3,enum=common.MetadataType" json:"type,omitempty"`
+	// revision is the field's schema revision AFTER this declaration applies,
+	// stamped by the FSM at mint time so a replica folding the log at any
+	// replay distance binds the rewrite's target version to the same revision
+	// (cf. CreatedIndexLog.bound_type).
+	Revision      uint32 `protobuf:"varint,4,opt,name=revision,proto3" json:"revision,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6656,6 +6691,13 @@ func (x *SetMetadataFieldTypeLog) GetType() MetadataType {
 		return x.Type
 	}
 	return MetadataType_METADATA_TYPE_STRING
+}
+
+func (x *SetMetadataFieldTypeLog) GetRevision() uint32 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
 }
 
 // RemovedMetadataFieldTypeLog records the removal of a metadata field type declaration.
@@ -12497,9 +12539,10 @@ const file_common_proto_rawDesc = "" +
 	"\x06Target\x121\n" +
 	"\aaccount\x18\x01 \x01(\v2\x15.common.TargetAccountH\x00R\aaccount\x12'\n" +
 	"\x0etransaction_id\x18\x02 \x01(\x06H\x00R\rtransactionIdB\b\n" +
-	"\x06target\"?\n" +
+	"\x06target\"[\n" +
 	"\x13MetadataFieldSchema\x12(\n" +
-	"\x04type\x18\x01 \x01(\x0e2\x14.common.MetadataTypeR\x04type\"\xaf\x04\n" +
+	"\x04type\x18\x01 \x01(\x0e2\x14.common.MetadataTypeR\x04type\x12\x1a\n" +
+	"\brevision\x18\x02 \x01(\rR\brevision\"\xaf\x04\n" +
 	"\x0eMetadataSchema\x12P\n" +
 	"\x0eaccount_fields\x18\x01 \x03(\v2).common.MetadataSchema.AccountFieldsEntryR\raccountFields\x12\\\n" +
 	"\x12transaction_fields\x18\x02 \x03(\v2-.common.MetadataSchema.TransactionFieldsEntryR\x11transactionFields\x12M\n" +
@@ -12779,13 +12822,14 @@ const file_common_proto_rawDesc = "" +
 	"\acontext\x18\x02 \x03(\v2$.common.OrderSkippedLog.ContextEntryR\acontext\x1a:\n" +
 	"\fContextEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb1\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd8\x01\n" +
 	"\x0fCreatedIndexLog\x12\x1f\n" +
 	"\x02id\x18\x01 \x01(\v2\x0f.common.IndexIDR\x02id\x12\x18\n" +
 	"\ainitial\x18\x02 \x01(\bR\ainitial\x123\n" +
 	"\n" +
 	"bound_type\x18\x03 \x01(\x0e2\x14.common.MetadataTypeR\tboundType\x12.\n" +
-	"\x13bound_type_declared\x18\x04 \x01(\bR\x11boundTypeDeclared\"2\n" +
+	"\x13bound_type_declared\x18\x04 \x01(\bR\x11boundTypeDeclared\x12%\n" +
+	"\x0ebound_revision\x18\x05 \x01(\rR\rboundRevision\"2\n" +
 	"\x0fDroppedIndexLog\x12\x1f\n" +
 	"\x02id\x18\x01 \x01(\v2\x0f.common.IndexIDR\x02id\"/\n" +
 	"\fFilledGapLog\x12\x1f\n" +
@@ -12808,12 +12852,13 @@ const file_common_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"K\n" +
 	"\x0fDeletedMetadata\x12&\n" +
 	"\x06target\x18\x01 \x01(\v2\x0e.common.TargetR\x06target\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\x8a\x01\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xa6\x01\n" +
 	"\x17SetMetadataFieldTypeLog\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x12(\n" +
-	"\x04type\x18\x03 \x01(\x0e2\x14.common.MetadataTypeR\x04type\"\x9a\x01\n" +
+	"\x04type\x18\x03 \x01(\x0e2\x14.common.MetadataTypeR\x04type\x12\x1a\n" +
+	"\brevision\x18\x04 \x01(\rR\brevision\"\x9a\x01\n" +
 	"\x1bRemovedMetadataFieldTypeLog\x123\n" +
 	"\vtarget_type\x18\x01 \x01(\x0e2\x12.common.TargetTypeR\n" +
 	"targetType\x12\x10\n" +
