@@ -80,7 +80,7 @@ func writeCorruptColdEntry(t *testing.T, store *dal.Store, sub byte, seq uint64)
 	t.Helper()
 
 	batch := store.OpenWriteSession()
-	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, sub).PutUint64(seq).Build()
+	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, sub).PutUint64(seq).Build()
 	require.NoError(t, batch.SetBytes(key, []byte{0xff, 0xff, 0xff, 0xff}))
 	require.NoError(t, batch.Commit())
 }
@@ -95,7 +95,7 @@ func TestRunBackup_AbortsBeforeWritingManifestOnSequenceReadFailure(t *testing.T
 	store := newBackupTestStore(t)
 	// Corrupt the last log entry; the backup checkpoints the store, opens it,
 	// and query.ReadLastLog then fails to decode.
-	writeCorruptColdEntry(t, store, dal.SubColdLog, 10)
+	writeCorruptColdEntry(t, store, dal.SubHistoryLog, 10)
 
 	storage := &recordingStorage{} // no prior manifest
 
@@ -115,7 +115,7 @@ func TestRunIncrementalBackup_AbortsOnSequenceReadFailure(t *testing.T) {
 	t.Parallel()
 
 	store := newBackupTestStore(t)
-	writeCorruptColdEntry(t, store, dal.SubColdLog, 10)
+	writeCorruptColdEntry(t, store, dal.SubHistoryLog, 10)
 
 	// A prior full backup exists, so the incremental has a base.
 	manifest := &Manifest{
@@ -145,7 +145,7 @@ func TestRunBackup_AbortsOnAuditSequenceReadFailure(t *testing.T) {
 	t.Parallel()
 
 	store := newBackupTestStore(t)
-	writeCorruptColdEntry(t, store, dal.SubColdAudit, 10)
+	writeCorruptColdEntry(t, store, dal.SubHistoryAudit, 10)
 
 	storage := &recordingStorage{} // no prior manifest
 
@@ -162,7 +162,7 @@ func TestRunIncrementalBackup_AbortsOnAuditSequenceReadFailure(t *testing.T) {
 	t.Parallel()
 
 	store := newBackupTestStore(t)
-	writeCorruptColdEntry(t, store, dal.SubColdAudit, 10)
+	writeCorruptColdEntry(t, store, dal.SubHistoryAudit, 10)
 
 	// A prior full checkpoint exists so we get past the no-full-checkpoint guard
 	// and actually reach the audit sequence read this test targets.
@@ -617,7 +617,7 @@ func (s *inMemoryBackupStorage) ListFiles(_ context.Context, prefix string) ([]s
 }
 
 // writeFailureAuditEntry writes a single AuditEntry proto with a Failure
-// outcome under [ZoneCold][SubColdAudit][seq]. No AuditItem is written —
+// outcome under [ZoneHistory][SubHistoryAudit][seq]. No AuditItem is written —
 // this mirrors the FSM's failure path (state.machine.go calls
 // writeAuditEntry(failureEntry, nil, "failure"), and appendAuditItems on an
 // empty slice is a no-op), producing the "audit count > 0, auditItem
@@ -633,7 +633,7 @@ func writeFailureAuditEntry(t *testing.T, store *dal.Store, seq uint64) {
 	}
 
 	batch := store.OpenWriteSession()
-	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(seq).Build()
+	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(seq).Build()
 	require.NoError(t, batch.SetProto(key, entry))
 	require.NoError(t, batch.Commit())
 }
@@ -653,8 +653,8 @@ func writeSuccessAuditEntryWithItem(t *testing.T, store *dal.Store, seq uint64) 
 	item := &auditpb.AuditItem{OrderIndex: 0}
 
 	batch := store.OpenWriteSession()
-	entryKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(seq).Build()
-	itemKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(seq).PutUint32(0).Build()
+	entryKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(seq).Build()
+	itemKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(seq).PutUint32(0).Build()
 	require.NoError(t, batch.SetProto(entryKey, entry))
 	require.NoError(t, batch.SetProto(itemKey, item))
 	require.NoError(t, batch.Commit())
@@ -795,7 +795,7 @@ func TestRunIncrementalBackup_InvokesPruneForExportsOnly(t *testing.T) {
 }
 
 func coldAuditItemKey(seq uint64, idx uint32) []byte {
-	return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(seq).PutUint32(idx).Build()
+	return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(seq).PutUint32(idx).Build()
 }
 
 // TestExportEntries_SplitsLargeRangeAndRoundTrips is the headline coverage for
@@ -832,7 +832,7 @@ func TestExportEntries_SplitsLargeRangeAndRoundTrips(t *testing.T) {
 	t.Cleanup(func() { _ = readHandle.Close() })
 
 	segs, count, err := exportEntries(ctx, storage, readHandle,
-		dal.ZoneCold, dal.SubColdLog, 0, n, "log",
+		dal.ZoneHistory, dal.SubHistoryLog, 0, n, "log",
 		func(part int) string { return ExportLogSegmentKey("bucket", 1, n, part) },
 		capBytes,
 	)
@@ -908,7 +908,7 @@ func TestExportEntries_SplitsOnlyAtSequenceBoundaries(t *testing.T) {
 	t.Cleanup(func() { _ = readHandle.Close() })
 
 	segs, count, err := exportEntries(ctx, storage, readHandle,
-		dal.ZoneCold, dal.SubColdAuditItem, 0, seqs, "auditItem",
+		dal.ZoneHistory, dal.SubHistoryAuditItem, 0, seqs, "auditItem",
 		func(part int) string { return ExportAuditItemSegmentKey("bucket", 1, seqs, part) },
 		capBytes,
 	)
@@ -965,7 +965,7 @@ func TestExportEntries_EmptyRangeUploadsNothing(t *testing.T) {
 	t.Cleanup(func() { _ = readHandle.Close() })
 
 	segs, count, err := exportEntries(ctx, storage, readHandle,
-		dal.ZoneCold, dal.SubColdAppliedProposal, 0, 100, "appliedProposal",
+		dal.ZoneHistory, dal.SubHistoryAppliedProposal, 0, 100, "appliedProposal",
 		func(part int) string { return ExportAppliedProposalSegmentKey("bucket", 1, 100, part) },
 		maxExportSegmentBytes,
 	)

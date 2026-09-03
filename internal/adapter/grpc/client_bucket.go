@@ -147,7 +147,7 @@ func (g *BucketGrpcClient) ListLedgers(ctx context.Context) (cursor.Cursor[*comm
 	// interface does not propagate the caller's cursor to the leader, so a
 	// trailer-peek shim would only ever see the first leader page and the
 	// follower-side skip predicate would never reach later ledgers. See
-	// ListSigningKeys / ListChapters / ListNumscripts for the same pattern.
+	// ListSigningKeys / ListNumscripts for the same pattern.
 	var (
 		ledgers []*commonpb.LedgerInfo
 		nextCur string
@@ -222,46 +222,6 @@ func (g *BucketGrpcClient) GetAuditEntry(ctx context.Context, sequence uint64) (
 	return g.client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{
 		Sequence: sequence,
 	})
-}
-
-func (g *BucketGrpcClient) ListChapters(ctx context.Context) (cursor.Cursor[*commonpb.Chapter], error) {
-	// Follow x-next-cursor across pages — see ListSigningKeys for the
-	// rationale (routed leader controller caps per-call at the server
-	// default page).
-	var (
-		chapters []*commonpb.Chapter
-		nextCur  string
-	)
-
-	for {
-		stream, err := g.client.ListChapters(ctx, &servicepb.ListChaptersRequest{
-			Options: &commonpb.ListOptions{Cursor: nextCur},
-		})
-		if err != nil {
-			return nil, fmt.Errorf("gRPC ListChapters call failed: %w", err)
-		}
-
-		for {
-			chapter, recvErr := stream.Recv()
-			if errors.Is(recvErr, io.EOF) {
-				break
-			}
-
-			if recvErr != nil {
-				return nil, fmt.Errorf("receiving chapter: %w", recvErr)
-			}
-
-			chapters = append(chapters, chapter)
-		}
-
-		if next := nextCursorFromTrailer(stream.Trailer()); next != "" {
-			nextCur = next
-
-			continue
-		}
-
-		return cursor.NewSliceCursor(chapters), nil
-	}
 }
 
 func (g *BucketGrpcClient) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
@@ -477,15 +437,6 @@ func (g *BucketGrpcClient) ListNumscriptVersions(ctx context.Context, ledger, na
 	}
 
 	return resp.GetLatestVersion(), resp.GetVersions(), nil
-}
-
-func (g *BucketGrpcClient) GetChapterSchedule(ctx context.Context) (string, error) {
-	resp, err := g.client.GetChapterSchedule(ctx, &servicepb.GetChapterScheduleRequest{})
-	if err != nil {
-		return "", fmt.Errorf("gRPC GetChapterSchedule call failed: %w", err)
-	}
-
-	return resp.GetCron(), nil
 }
 
 func (g *BucketGrpcClient) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {

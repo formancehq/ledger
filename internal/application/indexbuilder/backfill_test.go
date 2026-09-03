@@ -2022,7 +2022,7 @@ func TestSchemaRewrite_SeqGate_SameBatchSwitchWhenGateMet(t *testing.T) {
 	assert.Equal(t, uint32(0), pending)
 }
 
-// writeLogToFSM persists a marshaled Log under [ZoneCold][SubColdLog][seq] so
+// writeLogToFSM persists a marshaled Log under [ZoneHistory][SubHistoryLog][seq] so
 // the backfill iterator (query.ReadLogsSinceRaw) can read it back.
 func writeLogToFSM(t *testing.T, b *Builder, log *commonpb.Log) {
 	t.Helper()
@@ -2031,7 +2031,7 @@ func writeLogToFSM(t *testing.T, b *Builder, log *commonpb.Log) {
 	require.NoError(t, err)
 
 	kb := dal.NewKeyBuilder()
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(log.GetSequence())
+	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(log.GetSequence())
 
 	session := b.pebbleStore.OpenWriteSession()
 	require.NoError(t, session.SetBytes(kb.Build(), data))
@@ -2045,7 +2045,7 @@ func writeAppliedProposalToFSM(t *testing.T, b *Builder, seq, minLog, maxLog uin
 	t.Helper()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).PutUint64(seq)
+	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal).PutUint64(seq)
 
 	session := b.pebbleStore.OpenWriteSession()
 	require.NoError(t, session.SetProto(kb.Build(), &proposalpb.AppliedProposal{

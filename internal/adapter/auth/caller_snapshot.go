@@ -49,7 +49,7 @@ func ForwardedSnapshotFromContext(ctx context.Context) *commonpb.CallerSnapshot 
 // WithSystemActor marks the context as a system/internal action attributed to
 // the named component (see commands.Component*). ResolveCallerSnapshot turns
 // it into a system CallerSnapshot, so system proposals routed through
-// admission (chapter archiver, sealer, schedulers) are attributed to that
+// admission (schedulers) are attributed to that
 // component.
 func WithSystemActor(ctx context.Context, component string) context.Context {
 	return context.WithValue(ctx, systemActorKey{}, component)
@@ -64,9 +64,9 @@ func systemActorFromContext(ctx context.Context) (string, bool) {
 }
 
 // IsSystemActor reports whether the context carries a system actor set by
-// WithSystemActor — a leader-internal proposal (chapter archiver, sealer,
-// schedulers) rather than a client request. The flag is set only by
-// server-internal code, never derived from client input.
+// WithSystemActor — a leader-internal proposal (schedulers) rather than a
+// client request. The flag is set only by server-internal code, never
+// derived from client input.
 func IsSystemActor(ctx context.Context) bool {
 	_, ok := systemActorFromContext(ctx)
 

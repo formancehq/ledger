@@ -261,7 +261,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		//
 		// The overlay is wrapped in a skipSafeScope: any mutation whose
 		// effect the overlay does NOT buffer (signing keys, maintenance
-		// mode, chapter mutations, numscript library, query-checkpoint
+		// mode, numscript library, query-checkpoint
 		// state) panics via trapUnbuffered rather than silently leaking to
 		// the parent — assert.Unreachable is layered on top so the same
 		// call surfaces as a first-class finding under Antithesis, but
@@ -328,7 +328,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		// entirely — do NOT consume a sequence id, absorb into the sink, or
 		// append a degenerate Log{Payload:nil}. The nil slot mirrors the
 		// idempotency-replay ReferenceSequence path and is skipped identically
-		// by WriteSet.Merge (GetCreatedLog()==nil) and checkCloseChapter.
+		// by WriteSet.Merge (GetCreatedLog()==nil).
 		//
 		// Any overlay staged by such an order is dropped without Commit(): a
 		// no-log outcome makes no persistent mutation, so there is nothing to
@@ -578,18 +578,6 @@ func processSystemScoped(ss *raftcmdpb.SystemScopedOrder, ctx *Context) (*common
 		return processAddEventsSink(payload.AddEventsSink, ctx)
 	case *raftcmdpb.SystemScopedOrder_RemoveEventsSink:
 		return processRemoveEventsSink(payload.RemoveEventsSink, ctx)
-	case *raftcmdpb.SystemScopedOrder_CloseChapter:
-		return processCloseChapter(payload.CloseChapter, ctx)
-	case *raftcmdpb.SystemScopedOrder_SealChapter:
-		return processSealChapter(payload.SealChapter, ctx)
-	case *raftcmdpb.SystemScopedOrder_ArchiveChapter:
-		return processArchiveChapter(payload.ArchiveChapter, ctx)
-	case *raftcmdpb.SystemScopedOrder_ConfirmArchiveChapter:
-		return processConfirmArchiveChapter(payload.ConfirmArchiveChapter, ctx)
-	case *raftcmdpb.SystemScopedOrder_SetChapterSchedule:
-		return processSetChapterSchedule(payload.SetChapterSchedule, ctx)
-	case *raftcmdpb.SystemScopedOrder_DeleteChapterSchedule:
-		return processDeleteChapterSchedule(ctx)
 	case *raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint:
 		return processCreateQueryCheckpoint(payload.CreateQueryCheckpoint, ctx)
 	case *raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint:

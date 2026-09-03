@@ -57,9 +57,6 @@ type Controller interface {
 	ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool, minLogSequence uint64) (cursor.Cursor[*auditpb.AuditEntry], error)
 	GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error)
 
-	// Chapter operations
-	ListChapters(ctx context.Context) (cursor.Cursor[*commonpb.Chapter], error)
-
 	// Signing key operations
 	ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error)
 
@@ -90,7 +87,6 @@ type Controller interface {
 	GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error)
 
 	// Cluster-wide config operations (read-only)
-	GetChapterSchedule(ctx context.Context) (string, error)
 	GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error)
 
 	// Index inspection

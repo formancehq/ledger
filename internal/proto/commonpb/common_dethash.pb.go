@@ -850,61 +850,13 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x42
 		}
-	case *LogPayload_CloseChapter:
-		if v.CloseChapter != nil {
-			size, _ := v.CloseChapter.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x4a
-		}
-	case *LogPayload_SealChapter:
-		if v.SealChapter != nil {
-			size, _ := v.SealChapter.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x52
-		}
-	case *LogPayload_ArchiveChapter:
-		if v.ArchiveChapter != nil {
-			size, _ := v.ArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x5a
-		}
-	case *LogPayload_ConfirmArchiveChapter:
-		if v.ConfirmArchiveChapter != nil {
-			size, _ := v.ConfirmArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x62
-		}
 	case *LogPayload_SetMaintenanceMode:
 		if v.SetMaintenanceMode != nil {
 			size, _ := v.SetMaintenanceMode.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x6a
-		}
-	case *LogPayload_SetChapterSchedule:
-		if v.SetChapterSchedule != nil {
-			size, _ := v.SetChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x72
-		}
-	case *LogPayload_DeleteChapterSchedule:
-		if v.DeleteChapterSchedule != nil {
-			size, _ := v.DeleteChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x7a
+			dAtA[i] = 0x4a
 		}
 	case *LogPayload_PromoteLedger:
 		if v.PromoteLedger != nil {
@@ -912,9 +864,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0x82
+			dAtA[i] = 0x52
 		}
 	case *LogPayload_CreatedPreparedQuery:
 		if v.CreatedPreparedQuery != nil {
@@ -922,9 +872,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0x8a
+			dAtA[i] = 0x5a
 		}
 	case *LogPayload_UpdatedPreparedQuery:
 		if v.UpdatedPreparedQuery != nil {
@@ -932,9 +880,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0x92
+			dAtA[i] = 0x62
 		}
 	case *LogPayload_DeletedPreparedQuery:
 		if v.DeletedPreparedQuery != nil {
@@ -942,9 +888,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0x9a
+			dAtA[i] = 0x6a
 		}
 	case *LogPayload_SavedNumscript:
 		if v.SavedNumscript != nil {
@@ -952,9 +896,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xa2
+			dAtA[i] = 0x72
 		}
 	case *LogPayload_CreatedQueryCheckpoint:
 		if v.CreatedQueryCheckpoint != nil {
@@ -962,9 +904,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xaa
+			dAtA[i] = 0x7a
 		}
 	case *LogPayload_DeletedQueryCheckpoint:
 		if v.DeletedQueryCheckpoint != nil {
@@ -974,7 +914,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xb2
+			dAtA[i] = 0x82
 		}
 	case *LogPayload_SetQueryCheckpointSchedule:
 		if v.SetQueryCheckpointSchedule != nil {
@@ -984,7 +924,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xba
+			dAtA[i] = 0x8a
 		}
 	case *LogPayload_DeleteQueryCheckpointSchedule:
 		if v.DeleteQueryCheckpointSchedule != nil {
@@ -994,7 +934,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xc2
+			dAtA[i] = 0x92
 		}
 	case *LogPayload_SavedLedgerMetadata:
 		if v.SavedLedgerMetadata != nil {
@@ -1004,7 +944,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xca
+			dAtA[i] = 0x9a
 		}
 	case *LogPayload_DeletedLedgerMetadata:
 		if v.DeletedLedgerMetadata != nil {
@@ -1014,7 +954,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xd2
+			dAtA[i] = 0xa2
 		}
 	case *LogPayload_SetClusterPolicy:
 		if v.SetClusterPolicy != nil {
@@ -1024,7 +964,7 @@ func (m *LogPayload) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xda
+			dAtA[i] = 0xaa
 		}
 	}
 	return len(dAtA) - i, nil
@@ -1163,28 +1103,6 @@ func (m *PersistedClusterState) MarshalDeterministicVT(dAtA []byte) []byte {
 }
 
 func (m *ClusterPolicy) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *SetChapterScheduleLog) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *DeletedChapterScheduleLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1938,12 +1856,6 @@ func (m *CreatedTransaction) MarshalToSizedBufferDeterministicVT(dAtA []byte) (i
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.ChapterId != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ChapterId))
-		i--
-		dAtA[i] = 0x19
-	}
 	if len(m.AccountMetadata) > 0 {
 		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoCommonpbCommonString.Get().(*[]string)
 		keys := (*keysPtr)[:0]
@@ -2097,61 +2009,6 @@ func (m *SetMetadataFieldTypeLog) MarshalDeterministicVT(dAtA []byte) []byte {
 }
 
 func (m *RemovedMetadataFieldTypeLog) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *Chapter) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *ClosedChapterLog) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *SealedChapterLog) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *ArchivedChapterLog) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *ConfirmedArchiveChapterLog) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

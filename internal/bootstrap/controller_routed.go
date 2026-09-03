@@ -187,19 +187,6 @@ func (b *RoutedController) Barrier(ctx context.Context) (uint64, error) {
 	return leaderCtrl.Barrier(ctx)
 }
 
-// --- Read operations requiring leader routing ---
-
-func (b *RoutedController) ListChapters(ctx context.Context) (cursor.Cursor[*commonpb.Chapter], error) {
-	// Chapter lifecycle operations are coordinated by the perceived leader, so
-	// keep reads on the same routing path even though the rows live in Pebble.
-	leaderCtrl, err := b.getLeaderCtrl()
-	if err != nil {
-		return nil, err
-	}
-
-	return leaderCtrl.ListChapters(ctx)
-}
-
 // --- Linearizable reads: ReadIndex + local read ---
 
 func (b *RoutedController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
@@ -440,15 +427,6 @@ func (b *RoutedController) ListNumscriptVersions(ctx context.Context, ledger, na
 	}
 
 	return c.ListNumscriptVersions(ctx, ledger, name)
-}
-
-func (b *RoutedController) GetChapterSchedule(ctx context.Context) (string, error) {
-	c, _, err := b.readCtrl(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	return c.GetChapterSchedule(ctx)
 }
 
 func (b *RoutedController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {

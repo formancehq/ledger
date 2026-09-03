@@ -440,17 +440,17 @@ func TestStore_IterateColdKVPairs(t *testing.T) {
 
 	// Write some cold-storable pairs (Log prefix)
 	batch := s.OpenWriteSession()
-	key1 := kb.PutZonePrefix(ZoneCold, SubColdLog).PutUint64(1).Build()
-	key2 := kb.PutZonePrefix(ZoneCold, SubColdLog).PutUint64(2).Build()
-	key3 := kb.PutZonePrefix(ZoneCold, SubColdLog).PutUint64(3).Build()
+	key1 := kb.PutZonePrefix(ZoneHistory, SubHistoryLog).PutUint64(1).Build()
+	key2 := kb.PutZonePrefix(ZoneHistory, SubHistoryLog).PutUint64(2).Build()
+	key3 := kb.PutZonePrefix(ZoneHistory, SubHistoryLog).PutUint64(3).Build()
 
 	require.NoError(t, batch.SetBytes(key1, []byte("log-1")))
 	require.NoError(t, batch.SetBytes(key2, []byte("log-2")))
 	require.NoError(t, batch.SetBytes(key3, []byte("log-3")))
 
 	// Write some audit pairs
-	key4 := kb.PutZonePrefix(ZoneCold, SubColdAudit).PutUint64(1).Build()
-	key5 := kb.PutZonePrefix(ZoneCold, SubColdAudit).PutUint64(2).Build()
+	key4 := kb.PutZonePrefix(ZoneHistory, SubHistoryAudit).PutUint64(1).Build()
+	key5 := kb.PutZonePrefix(ZoneHistory, SubHistoryAudit).PutUint64(2).Build()
 
 	require.NoError(t, batch.SetBytes(key4, []byte("audit-1")))
 	require.NoError(t, batch.SetBytes(key5, []byte("audit-2")))
@@ -509,23 +509,23 @@ func TestStore_IterateColdKVPairs_AuditRangeAppliedToAuditZones(t *testing.T) {
 
 	logKeys := []uint64{10, 15, 20}
 	for _, seq := range logKeys {
-		k := kb.PutZonePrefix(ZoneCold, SubColdLog).PutUint64(seq).Build()
+		k := kb.PutZonePrefix(ZoneHistory, SubHistoryLog).PutUint64(seq).Build()
 		require.NoError(t, batch.SetBytes(k, []byte("log")))
 	}
 
 	auditKeys := []uint64{3, 4, 5}
 	for _, seq := range auditKeys {
-		k := kb.PutZonePrefix(ZoneCold, SubColdAudit).PutUint64(seq).Build()
+		k := kb.PutZonePrefix(ZoneHistory, SubHistoryAudit).PutUint64(seq).Build()
 		require.NoError(t, batch.SetBytes(k, []byte("audit")))
 
-		item := kb.PutZonePrefix(ZoneCold, SubColdAuditItem).PutUint64(seq).PutUint32(0).Build()
+		item := kb.PutZonePrefix(ZoneHistory, SubHistoryAuditItem).PutUint64(seq).PutUint32(0).Build()
 		require.NoError(t, batch.SetBytes(item, []byte("audit-item")))
 	}
 
 	// A separate audit entry at seq=20 — would be picked up if the audit
 	// zone was (incorrectly) scanned with the log range.
 	straySeq := uint64(20)
-	strayKey := kb.PutZonePrefix(ZoneCold, SubColdAudit).PutUint64(straySeq).Build()
+	strayKey := kb.PutZonePrefix(ZoneHistory, SubHistoryAudit).PutUint64(straySeq).Build()
 	require.NoError(t, batch.SetBytes(strayKey, []byte("audit-stray")))
 
 	require.NoError(t, batch.Commit())
@@ -539,9 +539,9 @@ func TestStore_IterateColdKVPairs_AuditRangeAppliedToAuditZones(t *testing.T) {
 
 	err := s.IterateColdKVPairs(10, 20, 3, 5, func(key, _ []byte) error {
 		switch key[1] {
-		case SubColdLog:
+		case SubHistoryLog:
 			logs++
-		case SubColdAudit:
+		case SubHistoryAudit:
 			audits++
 			if len(key) == 10 {
 				// Check whether this is the audit entry at the stray seq.
@@ -549,7 +549,7 @@ func TestStore_IterateColdKVPairs_AuditRangeAppliedToAuditZones(t *testing.T) {
 					strayPicked = true
 				}
 			}
-		case SubColdAuditItem:
+		case SubHistoryAuditItem:
 			auditItems++
 		}
 

@@ -19,7 +19,7 @@ import (
 // TransactionStates) to return a stagedAccessor that buffers writes
 // locally. The remaining Scope methods delegate to the embedded parent via
 // interface promotion — kinds the sub-processor cannot mutate (signing,
-// chapter, numscript, query-checkpoint, sink) don't need overlay buffering
+// numscript, query-checkpoint, sink) don't need overlay buffering
 // because no skip-tolerant order writes to them today.
 //
 // Counter increments are buffered as deltas. Each Increment* call records
@@ -49,11 +49,9 @@ type orderOverlayScope struct {
 	// while the parent only learns about the increments on Commit.
 	seqIDDelta           uint64
 	ledgerIDDelta        uint32
-	chapterIDDelta       uint64
 	queryCheckpointDelta uint64
 	baseSeqID            uint64
 	baseLedgerID         uint32
-	baseChapterID        uint64
 	baseQueryCheckpoint  uint64
 	baseCaptured         bool
 }
@@ -176,20 +174,6 @@ func (o *orderOverlayScope) IncrementNextLedgerID() uint32 {
 	return next
 }
 
-func (o *orderOverlayScope) GetNextChapterID() uint64 {
-	o.captureBaseCounters()
-
-	return o.baseChapterID + o.chapterIDDelta
-}
-
-func (o *orderOverlayScope) IncrementNextChapterID() uint64 {
-	o.captureBaseCounters()
-	next := o.baseChapterID + o.chapterIDDelta
-	o.chapterIDDelta++
-
-	return next
-}
-
 func (o *orderOverlayScope) GetNextQueryCheckpointID() uint64 {
 	o.captureBaseCounters()
 
@@ -211,7 +195,6 @@ func (o *orderOverlayScope) captureBaseCounters() {
 
 	o.baseSeqID = o.Scope.GetNextSequenceID()
 	o.baseLedgerID = o.Scope.GetNextLedgerID()
-	o.baseChapterID = o.Scope.GetNextChapterID()
 	o.baseQueryCheckpoint = o.Scope.GetNextQueryCheckpointID()
 	o.baseCaptured = true
 }
@@ -259,10 +242,6 @@ func (o *orderOverlayScope) Commit() error {
 
 	for range o.ledgerIDDelta {
 		o.Scope.IncrementNextLedgerID()
-	}
-
-	for range o.chapterIDDelta {
-		o.Scope.IncrementNextChapterID()
 	}
 
 	for range o.queryCheckpointDelta {

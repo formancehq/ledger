@@ -17,7 +17,6 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
@@ -561,56 +560,12 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 	}
 
 	// Restore cache from Pebble (store is up to date, checkpoint has cache data).
-	// FSM counters (sequences, chapters, reversions, etc.) are already loaded by
+	// FSM counters (sequences, reversions, etc.) are already loaded by
 	// NewMachine → RecoverState in the constructor and Pebble has not changed
 	// since (InstallSnapshot only touches in-memory state, and the
 	// SynchronizeWithLeader path exits earlier via setOutOfSync).
 	if err := a.recovery.RestoreCacheFromStore(); err != nil {
 		return false, fmt.Errorf("restoring cache from store on restart: %w", err)
-	}
-
-	// Recovery: if chapters are in CLOSING state but no seal checkpoint exists,
-	// the node crashed after CloseChapter batch.Commit() but before checkpoint creation.
-	// Pebble state is exactly at the CloseChapter boundary right now (spool replay hasn't run).
-	for _, chapter := range a.fsm.ClosingChapters() {
-		name := state.SealCheckpointName(chapter.GetId())
-		if _, exists := a.store.TemporaryCheckpointPath(name); !exists {
-			if a.logger.Enabled(logging.DebugLevel) {
-				a.logger.Debugf("Recovering: creating seal checkpoint for closing chapter %d", chapter.GetId())
-			}
-
-			_, err := a.store.CreateTemporaryCheckpoint(name)
-			if err != nil {
-				return false, fmt.Errorf("creating recovery seal checkpoint: %w", err)
-			}
-
-			// The checkpoint is now on disk. The Sealer's recoverPendingSeal
-			// and periodic reconciliation will pick it up once started.
-
-			// A missing seal checkpoint is the proof that nothing after the close
-			// was applied — Pebble is at the close boundary, which is what makes
-			// the checkpoint above valid. The same proof makes staging the
-			// checker's baseline valid here, so the crash window between the
-			// close's commit and its staging closes too. When the checkpoint
-			// already exists that proof is gone, and a chapter whose staging
-			// failed stays unstaged: its promotion degrades rather than serves
-			// state captured at the wrong boundary.
-			if err := a.createBaselineSnapshot(chapter.GetId()); err != nil {
-				a.logger.WithFields(map[string]any{"error": err}).
-					Errorf("Failed to stage recovery baseline snapshot (checker will degrade gracefully)")
-			}
-		}
-	}
-
-	// Reconcile the checker baseline with the archived prefix. Promotion
-	// normally rides the confirm's post-commit hook, but a crash between that
-	// commit and the rename loses it, and nothing re-applies the confirm on
-	// restart. Idempotent; replayed confirms below promote through the same
-	// hook. Non-fatal: the checker refuses a baseline whose chapter does not
-	// match the boundary, so a missed promotion degrades rather than misleads.
-	if err := a.store.PromoteStagedBaseline(a.fsm.Chapters.ArchivedThroughID()); err != nil {
-		a.logger.WithFields(map[string]any{"error": err}).
-			Errorf("Failed to reconcile staged checker baselines at boot (checker will degrade gracefully)")
 	}
 
 	storeLastAppliedIndex, err := query.ReadLastAppliedIndex(a.store)
@@ -1188,7 +1143,7 @@ func (a *Applier) applyEntriesAndResolveCommands(ctx context.Context, decoded ..
 // applyReplayEntries applies a slice of entries during replay (spool or WAL),
 // splitting on checkpoint boundaries so each FSM batch contains at most one
 // trigger entry (always last). Each checkpoint is handled synchronously
-// (createReplayCheckpoint / createMainStoreCheckpoint) before continuing.
+// (createMainStoreCheckpoint) before continuing.
 // Cascading checkpoints in the same slice are handled by the loop.
 func (a *Applier) applyReplayEntries(ctx context.Context, entries []*raftpb.Entry) error {
 	decoded, err := state.DecodeEntries(entries)
@@ -1511,7 +1466,7 @@ func (a *Applier) applyDecodedEntriesToFSM(ctx context.Context, stop chan struct
 		// commit head-only, so their responses would ack tail-not-yet-
 		// applied. If a checkpoint fires here (end < len(decoded)), the
 		// tail is spooled below and we fire responses eagerly after
-		// handleCheckpointRequired returns.
+		// handleQueryCheckpointRequired returns.
 		var subResponses []*raftpb.Message
 		if end == len(decoded) {
 			subResponses = responses
@@ -1544,12 +1499,14 @@ func (a *Applier) applyDecodedEntriesToFSM(ctx context.Context, stop chan struct
 
 		headRaw := rawEntriesFromDecoded(head)
 
-		var checkpointErr error
-		if result.QueryCheckpointID > 0 {
-			checkpointErr = a.handleQueryCheckpointRequired(ctx, headRaw, result)
-		} else {
-			checkpointErr = a.handleCheckpointRequired(ctx, headRaw, result)
+		if result.QueryCheckpointID == 0 {
+			// CheckpointRequired is only ever set by CreateQueryCheckpoint
+			// (invariant #7 — no other trigger exists).
+			return fmt.Errorf("checkpoint required with no query checkpoint id (raft entries %d..%d)",
+				head[0].Entry.GetIndex(), head[len(head)-1].Entry.GetIndex())
 		}
+
+		checkpointErr := a.handleQueryCheckpointRequired(ctx, headRaw, result)
 
 		// Checkpoint returned. If end < len(decoded) then subResponses was
 		// nil (no commit above carried the responses); tail is now durable
@@ -1682,44 +1639,6 @@ func (a *Applier) gateAndLaunchMaintenance(
 	}, nil)
 
 	return nil
-}
-
-// handleCheckpointRequired enters maintenance mode to create a checkpoint off
-// the Raft hot path for CloseChapter (seal checkpoint). While the checkpoint is
-// being created, new committed entries are spooled and replayed afterward.
-func (a *Applier) handleCheckpointRequired(
-	ctx context.Context,
-	entries []*raftpb.Entry,
-	applyResult *state.ApplyEntriesResult,
-) error {
-	return a.gateAndLaunchMaintenance(ctx, entries, applyResult, gatingReasonSnapshotting,
-		func(ctx context.Context, deferredResult *state.ApplyResult, deferredFuture *futures.Future[state.ApplyResult], frozenAtIndex uint64) (maintenanceTaskResult, error) {
-			path, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("checkpoint-%d", applyResult.CheckpointChapterID))
-			if err != nil {
-				if deferredFuture != nil {
-					deferredFuture.Resolve(state.ApplyResult{}, err)
-				}
-
-				return maintenanceTaskResult{}, fmt.Errorf("creating checkpoint: %w", err)
-			}
-
-			if applyResult.OnCheckpointDone != nil {
-				applyResult.OnCheckpointDone(path)
-			}
-
-			// Stage the checker baseline for this close (non-fatal on error).
-			if err := a.createBaselineSnapshot(applyResult.CheckpointChapterID); err != nil {
-				a.logger.WithFields(map[string]any{"error": err}).
-					Errorf("Failed to create baseline snapshot (checker will degrade gracefully)")
-			}
-
-			if deferredFuture != nil {
-				deferredResult.CheckpointPath = path
-				deferredFuture.Resolve(*deferredResult, nil)
-			}
-
-			return maintenanceTaskResult{frozenAtIndex: frozenAtIndex}, nil
-		})
 }
 
 // handleQueryCheckpointRequired enters maintenance mode to create the main store
@@ -2052,47 +1971,24 @@ func (a *Applier) replaySpoolImpl(ctx context.Context, fromIndex uint64, maxInde
 }
 
 // handleCheckpointDuringReplay creates a checkpoint synchronously when a
-// checkpoint-requiring entry (CloseChapter or CreateQueryCheckpoint) is the
-// last entry of a replay batch. Unlike handleCheckpointRequired, this does
-// not enter maintenance mode — we are already off the hot path. Callers
-// (replayWAL, replaySpoolImpl) pre-split so the checkpoint trigger is always
-// the last applied entry; cascading checkpoints in the same source slice are
-// handled by the caller's outer loop.
+// checkpoint-requiring entry (CreateQueryCheckpoint) is the last entry of a
+// replay batch. Unlike handleQueryCheckpointRequired, this does not enter
+// maintenance mode — we are already off the hot path. Callers (replayWAL,
+// replaySpoolImpl) pre-split so the checkpoint trigger is always the last
+// applied entry; cascading checkpoints in the same source slice are handled
+// by the caller's outer loop.
 func (a *Applier) handleCheckpointDuringReplay(_ context.Context, applyResult *state.ApplyEntriesResult) error {
-	if applyResult.QueryCheckpointID > 0 {
-		if err := a.createMainStoreCheckpoint(applyResult.QueryCheckpointID); err != nil {
-			return fmt.Errorf("during replay: %w", err)
-		}
-
-		if lastResult, deferred := a.extractDeferredFuture(applyResult); deferred != nil {
-			deferred.Resolve(*lastResult, nil)
-		}
-
-		return nil
+	if applyResult.QueryCheckpointID == 0 {
+		// CheckpointRequired is only ever set by CreateQueryCheckpoint
+		// (invariant #7 — no other trigger exists).
+		return fmt.Errorf("checkpoint required during replay with no query checkpoint id")
 	}
 
-	return a.createReplayCheckpoint(applyResult)
-}
-
-// createReplayCheckpoint creates a checkpoint for a CloseChapter entry encountered
-// during spool replay and resolves the deferred future.
-func (a *Applier) createReplayCheckpoint(result *state.ApplyEntriesResult) error {
-	checkpointPath, err := a.store.CreateTemporaryCheckpoint(fmt.Sprintf("replay-%d", result.CheckpointChapterID))
-	if err != nil {
-		return fmt.Errorf("creating checkpoint during replay: %w", err)
+	if err := a.createMainStoreCheckpoint(applyResult.QueryCheckpointID); err != nil {
+		return fmt.Errorf("during replay: %w", err)
 	}
 
-	if result.OnCheckpointDone != nil {
-		result.OnCheckpointDone(checkpointPath)
-	}
-
-	if err := a.createBaselineSnapshot(result.CheckpointChapterID); err != nil {
-		a.logger.WithFields(map[string]any{"error": err}).
-			Errorf("Failed to stage baseline snapshot during replay (checker will degrade gracefully)")
-	}
-
-	if lastResult, deferred := a.extractDeferredFuture(result); deferred != nil {
-		lastResult.CheckpointPath = checkpointPath
+	if lastResult, deferred := a.extractDeferredFuture(applyResult); deferred != nil {
 		deferred.Resolve(*lastResult, nil)
 	}
 
@@ -2114,30 +2010,4 @@ func (a *Applier) createMainStoreCheckpoint(checkpointID uint64) error {
 	}
 
 	return nil
-}
-
-// createBaselineSnapshot stages a compact attribute-only snapshot for the
-// checker. Unlike a full Pebble checkpoint, this contains only computed
-// attribute values (volumes, metadata, transactions), making it orders of
-// magnitude smaller.
-//
-// It runs inside the seal-checkpoint maintenance gate, so what it captures is
-// the state at exactly this chapter's close. It stays staged until the
-// chapter's archival is confirmed: the checker replays everything above the
-// archived boundary and seeds the sums with the baseline, so making this live
-// at close time double-counts every transaction between the boundary and the
-// close — the FSM promotes it on the confirm instead (PromoteStagedBaseline).
-func (a *Applier) createBaselineSnapshot(chapterID uint64) error {
-	destPath, err := a.store.StagedBaselineDir(chapterID)
-	if err != nil {
-		return err
-	}
-
-	handle, handleErr := a.store.NewDirectReadHandle()
-	if handleErr != nil {
-		return fmt.Errorf("creating read handle for baseline snapshot: %w", handleErr)
-	}
-	defer func() { _ = handle.Close() }()
-
-	return attributes.CreateBaselineSnapshot(handle, destPath)
 }

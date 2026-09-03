@@ -1252,7 +1252,7 @@ func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCond
 }
 
 // compileTxIDCondition filters transactions by ID using Pebble transaction updates.
-// No index is required -- the Pebble cold zone is always present and sorted by txID.
+// No index is required -- the Pebble history zone is always present and sorted by txID.
 func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
 	bounds, err := resolveUintBounds(cond, ctx.params)
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // ReplayLedgerLog updates expected state in the writer based on a ledger log payload.
@@ -297,12 +296,10 @@ func (b *EphemeralPurgeBuffer) Add(ledger string, postings []*commonpb.Posting) 
 // Flush applies the accumulated purge decisions once per replay batch.
 // collector — when non-nil — is invoked once per purged (ledger, account,
 // asset) so the integrity checker can derive its exclusion set from the
-// hash-bound audit trail rather than the unhashed proto records. baseline is
-// forwarded to SimulateEphemeralPurge for delta-only writers (nil otherwise).
+// hash-bound audit trail rather than the unhashed proto records.
 func (b *EphemeralPurgeBuffer) Flush(
 	w Writer,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
-	baseline map[string]*raftcmdpb.VolumePair,
 	collector ExclusionCollector,
 ) error {
 	if b == nil || len(b.byLedger) == 0 {
@@ -311,7 +308,7 @@ func (b *EphemeralPurgeBuffer) Flush(
 
 	for _, ledger := range b.ledgers {
 		pending := b.byLedger[ledger]
-		if err := SimulateEphemeralPurge(ledger, pending.postings, w, ledgerAccountTypes, baseline, collector); err != nil {
+		if err := SimulateEphemeralPurge(ledger, pending.postings, w, ledgerAccountTypes, collector); err != nil {
 			return err
 		}
 	}
@@ -335,10 +332,10 @@ func replayEphemeralPurge(
 		return nil
 	}
 
-	// Single-log replay path (no buffer): no exclusion collection and no
-	// baseline — callers that need derived exclusions or baseline-aware purge
-	// go through the buffered path which flushes at proposal boundaries.
-	return SimulateEphemeralPurge(ledger, postings, w, ledgerAccountTypes, nil, nil)
+	// Single-log replay path (no buffer): no exclusion collection — callers
+	// that need derived exclusions go through the buffered path which flushes
+	// at proposal boundaries.
+	return SimulateEphemeralPurge(ledger, postings, w, ledgerAccountTypes, nil)
 }
 
 // ProposalBoundaryTracker filters audit log ranges down to newly-created log
@@ -349,8 +346,7 @@ type ProposalBoundaryTracker struct {
 }
 
 // NewProposalBoundaryTracker creates a tracker seeded with the highest log
-// sequence already covered by the replay base, such as an archived chapter or a
-// backup checkpoint.
+// sequence already covered by the replay base, such as a backup checkpoint.
 func NewProposalBoundaryTracker(replayedThrough uint64) *ProposalBoundaryTracker {
 	return &ProposalBoundaryTracker{lastLogSequence: replayedThrough}
 }
@@ -413,21 +409,11 @@ func ApplyPostings(
 // (ledger, account, asset) tuple is reported to it — the integrity checker
 // uses this to build its exclusion set independently of the unhashed
 // AppliedProposal / LedgerLog proto records.
-//
-// baseline (keyed by canonical VolumeKey bytes) supplies the pre-archive volume
-// for callers whose Writer holds only post-archive deltas — the integrity
-// checker's delta-only replay store. The zero-balance test runs on the true
-// cumulative volume (baseline + delta), so an ephemeral account funded before an
-// archive boundary and drained after it is correctly detected as purged. Pass
-// nil when the Writer already holds cumulative volumes (e.g. the backup rebuild
-// pipeline, whose writer is seeded from the checkpoint); the test then reduces
-// to the delta the Writer reports.
 func SimulateEphemeralPurge(
 	ledger string,
 	postings []*commonpb.Posting,
 	w Writer,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
-	baseline map[string]*raftcmdpb.VolumePair,
 	collector ExclusionCollector,
 ) error {
 	compiled := ledgerAccountTypes[ledger]
@@ -476,17 +462,9 @@ func SimulateEphemeralPurge(
 					continue
 				}
 
-				// Test the true cumulative balance: pre-archive baseline (if the
-				// caller supplied one) plus the replayed delta. Checking the delta
-				// alone would miss the zero-crossing of an account funded before
-				// the archive boundary.
+				// Test the cumulative balance the Writer holds.
 				inBig := pair.GetInput().ToBigInt()
 				outBig := pair.GetOutput().ToBigInt()
-
-				if base := baseline[string(keyBytes)]; base != nil {
-					inBig.Add(inBig, base.GetInput().ToBigInt())
-					outBig.Add(outBig, base.GetOutput().ToBigInt())
-				}
 
 				if inBig.Cmp(outBig) == 0 {
 					if err := w.DeleteVolume(keyBytes); err != nil {

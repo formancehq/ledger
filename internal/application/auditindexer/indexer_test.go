@@ -27,7 +27,7 @@ func writeAuditEntry(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry) 
 	require.NoError(t, err)
 
 	require.NoError(t, batch.SetBytes(
-		kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(entry.GetSequence()).Build(),
+		kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(entry.GetSequence()).Build(),
 		val,
 	))
 	require.NoError(t, batch.Commit())

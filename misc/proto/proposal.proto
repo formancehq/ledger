@@ -11,7 +11,7 @@ import "common.proto";
 // ============================================================================
 
 // AppliedProposal records batch-level side effects produced by a successful
-// FSM proposal apply. Stored under [ZoneCold][SubColdAppliedProposal][sequence BE 8].
+// FSM proposal apply. Stored under [ZoneHistory][SubHistoryAppliedProposal][sequence BE 8].
 //
 // Carries only the information needed by the index builder to decide which
 // (account, asset) volumes to exclude from account->transaction mappings. The

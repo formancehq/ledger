@@ -16,7 +16,7 @@ import (
 func AppendLogs(b *dal.WriteSession, logs []*commonpb.Log) error {
 	for _, log := range logs {
 		b.KeyBuilder.
-			PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
+			PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).
 			PutUint64(log.GetSequence())
 
 		key := b.KeyBuilder.Consume()
@@ -80,7 +80,7 @@ func saveNextLedgerID(b *dal.WriteSession, nextID uint32) error {
 func appendAuditEntries(b *dal.WriteSession, entries ...*auditpb.AuditEntry) error {
 	for _, entry := range entries {
 		b.KeyBuilder.
-			PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
+			PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).
 			PutUint64(entry.GetSequence())
 
 		if err := b.SetProtoDeterministic(b.KeyBuilder.Consume(), entry); err != nil {
@@ -92,7 +92,7 @@ func appendAuditEntries(b *dal.WriteSession, entries ...*auditpb.AuditEntry) err
 }
 
 // appendAppliedProposal writes a Proposal side-effect record to the batch.
-// Key format: [ZoneCold][SubColdAppliedProposal][sequence BE 8]. Called only
+// Key format: [ZoneHistory][SubHistoryAppliedProposal][sequence BE 8]. Called only
 // on the success path; failed proposals do not emit one so the index builder
 // can rely on a 1:1 mapping with AuditEntry on the success path.
 //
@@ -107,7 +107,7 @@ func appendAuditEntries(b *dal.WriteSession, entries ...*auditpb.AuditEntry) err
 // other Cold-zone writes stay non-deterministic.
 func appendAppliedProposal(b *dal.WriteSession, applied *proposalpb.AppliedProposal) error {
 	b.KeyBuilder.
-		PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal).
 		PutUint64(applied.GetSequence())
 
 	if err := b.SetProto(b.KeyBuilder.Consume(), applied); err != nil {
@@ -118,11 +118,11 @@ func appendAppliedProposal(b *dal.WriteSession, applied *proposalpb.AppliedPropo
 }
 
 // AppendAuditItems appends per-order audit items to the batch.
-// Key format: [ZoneCold][SubColdAuditItem][audit_sequence BE 8][order_index BE 4].
+// Key format: [ZoneHistory][SubHistoryAuditItem][audit_sequence BE 8][order_index BE 4].
 func appendAuditItems(b *dal.WriteSession, auditSequence uint64, items ...*auditpb.AuditItem) error {
 	for _, item := range items {
 		b.KeyBuilder.
-			PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
+			PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).
 			PutUint64(auditSequence).
 			PutUint32(item.GetOrderIndex())
 
@@ -210,26 +210,6 @@ func saveClusterState(b *dal.WriteSession, state *commonpb.PersistedClusterState
 // SaveClusterPolicy stores the replicated cluster policy in the batch.
 func SaveClusterPolicy(b *dal.WriteSession, policy *commonpb.ClusterPolicy) error {
 	return b.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobClusterPolicy}, policy)
-}
-
-// SaveChapterSchedule stores the chapter schedule cron expression in the batch.
-func SaveChapterSchedule(b *dal.WriteSession, cron string) error {
-	err := b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobChapterSchedule}, []byte(cron))
-	if err != nil {
-		return fmt.Errorf("saving chapter schedule: %w", err)
-	}
-
-	return nil
-}
-
-// BatchDeleteChapterSchedule removes the chapter schedule from the batch.
-func batchDeleteChapterSchedule(b *dal.WriteSession) error {
-	err := b.DeleteKey([]byte{dal.ZoneGlobal, dal.SubGlobChapterSchedule})
-	if err != nil {
-		return fmt.Errorf("deleting chapter schedule: %w", err)
-	}
-
-	return nil
 }
 
 // SaveQueryCheckpointSchedule stores the query checkpoint schedule cron expression in the batch.
@@ -396,33 +376,6 @@ func ClearSinkStatus(b *dal.WriteSession, sinkName string) error {
 	return nil
 }
 
-// StoreChapter marshals and writes a single chapter keyed by its ID.
-func StoreChapter(b *dal.WriteSession, chapter *commonpb.Chapter) error {
-	b.KeyBuilder.
-		PutZonePrefix(dal.ZoneGlobal, dal.SubGlobChapters).
-		PutUint64(chapter.GetId())
-
-	err := b.SetProto(b.KeyBuilder.Consume(), chapter)
-	if err != nil {
-		return fmt.Errorf("storing chapter: %w", err)
-	}
-
-	return nil
-}
-
-// StoreNextChapterID writes the next chapter ID as 8-byte big-endian uint64.
-func StoreNextChapterID(b *dal.WriteSession, id uint64) error {
-	value := make([]byte, 8)
-	binary.BigEndian.PutUint64(value, id)
-
-	err := b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobNextChapterID}, value)
-	if err != nil {
-		return fmt.Errorf("storing next chapter ID: %w", err)
-	}
-
-	return nil
-}
-
 // SetMirrorSourceHead writes the latest known v2 source log count to the batch (Raft-replicated).
 func SetMirrorSourceHead(b *dal.WriteSession, ledgerName string, count uint64) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLMirrorSourceHead).
@@ -513,11 +466,10 @@ var ledgerScopedAttrTypes = []byte{
 //   - Prepared queries: range delete for [zone][sub][ledgerName padded 64B]
 //   - Reversions: range delete for [zone][sub][ledgerName padded 64B]
 //   - Point deletes: mirror source head, mirror status
-//   - Point delete: pending ledger cleanup
 //
 // LedgerInfo and Boundaries are NOT deleted here — LedgerInfo is kept for "ledger deleted"
 // responses, and Boundaries are handled separately via Attribute.Delete.
-func deleteLedgerData(b *dal.WriteSession, ledgerName string) error {
+func DeleteLedgerData(b *dal.WriteSession, ledgerName string) error {
 	// Per-type range deletes: [0xF1][attrType][ledgerName padded] -> successor.
 	for _, attrType := range ledgerScopedAttrTypes {
 		start := buildLedgerScopedPrefix(dal.ZoneAttributes, attrType, ledgerName)
@@ -539,44 +491,12 @@ func deleteLedgerData(b *dal.WriteSession, ledgerName string) error {
 	}
 
 	// Point deletes for per-ledger keys (keyed by [zone][sub][ledgerName padded]).
-	for _, sub := range []byte{dal.SubPLMirrorSourceHead, dal.SubPLMirrorStatus, dal.SubPLPendingCleanup} {
+	for _, sub := range []byte{dal.SubPLMirrorSourceHead, dal.SubPLMirrorStatus} {
 		key := buildLedgerScopedPrefix(dal.ZonePerLedger, sub, ledgerName)
 
 		if err := b.DeleteKey(key); err != nil {
 			return fmt.Errorf("deleting key sub=0x%02x for ledger %q: %w", sub, ledgerName, err)
 		}
-	}
-
-	return nil
-}
-
-// SavePendingLedgerCleanup records a deferred ledger data cleanup keyed by ledger name.
-// The value is the sequence number of the DeleteLedger log.
-func SavePendingLedgerCleanup(b *dal.WriteSession, ledgerName string, deleteSequence uint64) error {
-	b.KeyBuilder.
-		PutZonePrefix(dal.ZonePerLedger, dal.SubPLPendingCleanup).
-		PutLedgerNameFixed(ledgerName)
-
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], deleteSequence)
-
-	err := b.SetBytes(b.KeyBuilder.Consume(), buf[:])
-	if err != nil {
-		return fmt.Errorf("saving pending ledger cleanup for ledger %q: %w", ledgerName, err)
-	}
-
-	return nil
-}
-
-// DeletePendingLedgerCleanup removes a pending ledger cleanup entry after data has been purged.
-func deletePendingLedgerCleanup(b *dal.WriteSession, ledgerName string) error {
-	b.KeyBuilder.
-		PutZonePrefix(dal.ZonePerLedger, dal.SubPLPendingCleanup).
-		PutLedgerNameFixed(ledgerName)
-
-	err := b.DeleteKey(b.KeyBuilder.Consume())
-	if err != nil {
-		return fmt.Errorf("deleting pending ledger cleanup for ledger %q: %w", ledgerName, err)
 	}
 
 	return nil

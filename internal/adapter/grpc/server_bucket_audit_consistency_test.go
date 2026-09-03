@@ -60,7 +60,7 @@ func writeMainAuditEntry(t *testing.T, store *dal.Store, seq uint64) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.SetBytes(
-		kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(seq).Build(),
+		kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(seq).Build(),
 		val,
 	))
 	require.NoError(t, batch.Commit())

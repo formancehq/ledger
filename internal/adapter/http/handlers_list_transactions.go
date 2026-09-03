@@ -33,7 +33,7 @@ import (
 // that need a consistency-bounded / checkpoint-pinned read must use gRPC. This
 // mirrors the same carve-out already made for the audit reads (EN-1481) and
 // keeps EN-1472 scoped to "expose the reads over HTTP", not "full read-options
-// parity". Same applies to the bucket reads (chapters, signing keys) below.
+// parity". Same applies to the bucket reads (signing keys) below.
 func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) {
 	// The profile clock started in withQueryProfile, outside the scope guard, so
 	// authentication as well as query-parameter parsing and filter compilation

@@ -42,14 +42,14 @@ func newRebuildTestStore(t *testing.T) *dal.Store {
 
 func coldLogKey(seq uint64) []byte {
 	return dal.NewKeyBuilder().
-		PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).
 		PutUint64(seq).
 		Build()
 }
 
 func coldAuditKey(seq uint64) []byte {
 	return dal.NewKeyBuilder().
-		PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).
 		PutUint64(seq).
 		Build()
 }

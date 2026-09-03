@@ -29,7 +29,14 @@ import (
 // also retroactively gates the EN-1550 last_mirror_v2_log_id field itself:
 // v2 predates it, and compareMirrorV2LogID requires it with no backfill
 // leniency.
-const CurrentStorageSchemaVersion uint32 = 3
+//
+// v4: chapter/cold-storage removal (EN-1945). The chapter registry rows and
+// several proto payloads are gone, the ZoneGlobal and ZonePerLedger
+// sub-prefix bytes were renumbered, and the LogPayload / Order / Request
+// field tags were realigned. A v3 store's global rows and any un-applied
+// Raft WAL entry are unreadable under the new layout, so opening one is
+// refused.
+const CurrentStorageSchemaVersion uint32 = 4
 
 // SchemaVersionError is returned when the persisted storage schema version is
 // incompatible with the running binary. This is NOT bypassable with

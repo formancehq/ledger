@@ -1153,7 +1153,6 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 				node.leaderReady.Store(&pending)
 
 				node.applier.Drain(stop)
-				node.recovery.OnLeadershipAcquired(stop)
 
 				go func() {
 					if err := node.fsm.WaitForApplied(ctx, target); err != nil {
@@ -1596,12 +1595,12 @@ func isStopping(stop chan struct{}) bool {
 // rawNode.Tick() for the given applier status.
 //
 // Tick MUST keep firing during statusGated. The applier enters statusGated
-// for CloseChapter seal checkpoints and query checkpoints — on the leader
-// AND on followers. Suppressing Tick on the leader means no MsgHeartbeat
-// is emitted for the entire duration of a checkpoint, and any checkpoint
-// longer than the election timeout (default 1s) lets followers depose the
-// leader on every chapter close. Tick only needs to be suppressed when the
-// node is genuinely behind raft state (#316).
+// for query checkpoints — on the leader AND on followers. Suppressing Tick
+// on the leader means no MsgHeartbeat is emitted for the entire duration of
+// a checkpoint, and any checkpoint longer than the election timeout
+// (default 1s) lets followers depose the leader on every checkpoint. Tick
+// only needs to be suppressed when the node is genuinely behind raft state
+// (#316).
 func shouldTickRaft(status int32) bool {
 	switch status {
 	case statusOutOfSync, statusInstallingSnapshot:

@@ -269,11 +269,6 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 		}
 	}
 
-	var chapterID uint64
-	if p, ok := s.GetCurrentOpenChapter(); ok {
-		chapterID = p.GetId()
-	}
-
 	// Post-commit volumes are part of every persisted transaction, mirrored
 	// ones included: compute them from the volume state after the mirrored
 	// postings applied.
@@ -296,7 +291,6 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 					PostCommitVolumes: postCommitVolumes,
 				},
 				AccountMetadata: accountMetadata,
-				ChapterId:       chapterID,
 			},
 		},
 	}, nil

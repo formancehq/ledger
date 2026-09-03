@@ -18,17 +18,17 @@ import (
 func exportKeyShape(segmentType string) ([]byte, int, error) {
 	switch segmentType {
 	case "log":
-		// [ZoneCold][SubColdLog][log_seq BE 8]
-		return []byte{dal.ZoneCold, dal.SubColdLog}, 10, nil
+		// [ZoneHistory][SubHistoryLog][log_seq BE 8]
+		return []byte{dal.ZoneHistory, dal.SubHistoryLog}, 10, nil
 	case "audit":
-		// [ZoneCold][SubColdAudit][audit_seq BE 8]
-		return []byte{dal.ZoneCold, dal.SubColdAudit}, 10, nil
+		// [ZoneHistory][SubHistoryAudit][audit_seq BE 8]
+		return []byte{dal.ZoneHistory, dal.SubHistoryAudit}, 10, nil
 	case "auditItem":
-		// [ZoneCold][SubColdAuditItem][audit_seq BE 8][order_idx BE 4]
-		return []byte{dal.ZoneCold, dal.SubColdAuditItem}, 14, nil
+		// [ZoneHistory][SubHistoryAuditItem][audit_seq BE 8][order_idx BE 4]
+		return []byte{dal.ZoneHistory, dal.SubHistoryAuditItem}, 14, nil
 	case "appliedProposal":
-		// [ZoneCold][SubColdAppliedProposal][applied_proposal_seq BE 8]
-		return []byte{dal.ZoneCold, dal.SubColdAppliedProposal}, 10, nil
+		// [ZoneHistory][SubHistoryAppliedProposal][applied_proposal_seq BE 8]
+		return []byte{dal.ZoneHistory, dal.SubHistoryAppliedProposal}, 10, nil
 	default:
 		return nil, 0, fmt.Errorf("unsupported export segment type %q", segmentType)
 	}
@@ -193,12 +193,6 @@ func ApplyExportsAndRebuild(ctx context.Context, logger logging.Logger, storage 
 
 	if err := RebuildDelta(ctx, logger, store, fromLogSeq, fromAuditSeq); err != nil {
 		return fmt.Errorf("rebuilding derived state: %w", err)
-	}
-
-	// The rebuild is the last consumer of the archived ranges the export carried;
-	// past it they belong in cold storage alone, as they did on the source.
-	if err := purgeArchivedRanges(ctx, logger, store); err != nil {
-		return fmt.Errorf("purging archived ranges: %w", err)
 	}
 
 	return nil

@@ -307,13 +307,13 @@ func (e *testEngine) appendAuditEntry(batch *dal.WriteSession, proposal *raftcmd
 	entry.Hash = auditHash
 
 	batch.KeyBuilder.
-		PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).
 		PutUint64(entry.GetSequence())
 	require.NoError(e.t, batch.SetProto(batch.KeyBuilder.Consume(), entry))
 
 	for _, item := range items {
 		batch.KeyBuilder.
-			PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
+			PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).
 			PutUint64(entry.GetSequence()).
 			PutUint32(item.GetOrderIndex())
 		require.NoError(e.t, batch.SetProto(batch.KeyBuilder.Consume(), item))
@@ -1540,7 +1540,7 @@ func TestCheckerSurfacesCorruptAuditEntry(t *testing.T) {
 	// UnmarshalVT these bytes, returning a non-EOF error.
 	batch := engine.store.OpenWriteSession()
 	auditKey := dal.NewKeyBuilder().
-		PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).
 		PutUint64(1).
 		Build()
 	require.NoError(t, batch.SetBytes(auditKey, []byte{0xFF, 0xFF, 0xFF, 0xFF}))

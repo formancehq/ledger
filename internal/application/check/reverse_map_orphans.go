@@ -96,9 +96,8 @@ type reverseMapOrphanScope struct {
 	lastSequence uint64
 	// Every oracle term below is frozen at lastSequence, which is why the pass
 	// only reaches a verdict on an exactly aligned peer view.
-	liveLedgers           map[string]struct{}
-	pendingCleanupLedgers map[string]struct{}
-	replayedSchemas       map[string]*commonpb.MetadataSchema
+	liveLedgers     map[string]struct{}
+	replayedSchemas map[string]*commonpb.MetadataSchema
 }
 
 // compareReverseMapOrphans reports reverse-map (rmap, prefix 0x03) rows in the
@@ -146,15 +145,11 @@ type reverseMapOrphanScope struct {
 // `indexed == true` entry can suppress an orphan verdict, so a stale or
 // tampered registry row is a masking channel: orphaned rmap rows plus a
 // lingering registry row would pass Check() together. compareIndexes closes it
-// — under archiving `expectedIndexes` is seeded from the baseline snapshot
-// (foldBaselineIndexes) instead of tolerating any entry the replay never
-// touched, so the lingering row is reported as INDEX_MISMATCH in its own
-// right. Keep that seeding in place: reinstating an archive-orphan tolerance
-// in compareIndexes silently re-opens this suppression path, and the orphan
-// verdict here would go quiet with no other pass covering it. Deriving the
-// liveness set from the audit replay directly, rather than through the stored
-// registry, would remove that coupling; it is deliberately left as a separate
-// change so its behavioral diff can be reviewed on its own.
+// — every entry the replay never touched is reported as INDEX_MISMATCH in its
+// own right. Deriving the liveness set from the audit replay directly, rather
+// than through the stored registry, would remove that coupling; it is
+// deliberately left as a separate change so its behavioral diff can be
+// reviewed on its own.
 //
 // Version is deliberately ignored. Current and pending forward-encoding
 // versions legitimately coexist while a per-replica schema rewrite runs, and
@@ -201,9 +196,6 @@ type reverseMapOrphanScope struct {
 //
 // This is why the pass needs no cross-store atomicity: an ordering that can only
 // leave the peer behind is sufficient, because behind is already a skip.
-//
-// Rows belonging to a ledger in pendingCleanupLedgers are skipped: like the
-// other passes, the deferred-purge window is tolerated rather than flagged.
 func (c *Checker) compareReverseMapOrphans(
 	scope reverseMapOrphanScope,
 	callback func(*servicepb.CheckStoreEvent),
@@ -308,10 +300,6 @@ func (c *Checker) compareReverseMapOrphans(
 			observeReverseMapRow(malformed, bestEffortReverseMapLedger(key),
 				fmt.Sprintf("key %s: %v", renderReverseMapKeyPrefix(key), err))
 
-			continue
-		}
-
-		if _, awaiting := scope.pendingCleanupLedgers[parsed.Ledger]; awaiting {
 			continue
 		}
 

@@ -275,7 +275,7 @@ func (b *Builder) dispatchOrder(
 ) error {
 	scoped := order.GetLedgerScoped()
 	if scoped == nil {
-		// System-scoped orders (cluster config, chapter close, …) do not
+		// System-scoped orders (cluster config, signing, …) do not
 		// contribute to per-ledger usage counters. Skip.
 		return nil
 	}

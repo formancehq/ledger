@@ -173,7 +173,7 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			// Ops read scope — bucket-wide reads not tied to a single ledger.
 			//
 			// These live under the reserved `_` path segment (`/v3/_/logs`,
-			// `/v3/_/chapters`, `/v3/_/indexes`, …) so they cannot collide with
+			// `/v3/_/indexes`, …) so they cannot collide with
 			// `/v3/{ledgerName}` routes: the ledger name `_` is reserved
 			// (admission.ErrLedgerNameReservedPrefix), so the system namespace
 			// `/v3/_/…` and the ledger namespace `/v3/{ledgerName}/…` are
@@ -182,8 +182,6 @@ func NewHandler(logger logging.Logger, backend Backend, authCfg internalauth.Aut
 			// segment is the single, permanent guard.
 			r.With(requireOpsRead).Route("/_", func(r chi.Router) {
 				r.Get("/logs/{sequence}", server.handleGetLog)
-				r.Get("/chapters", server.handleListChapters)
-				r.Get("/chapter-schedule", server.handleGetChapterSchedule)
 				r.Get("/events-sinks", server.handleGetEventsSinks)
 				r.Get("/signing-keys", server.handleListSigningKeys)
 				r.Get("/indexes", server.handleListBucketIndexes)

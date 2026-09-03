@@ -27,7 +27,7 @@ func newAuditStore(t *testing.T, seqs ...uint64) *dal.Store {
 
 	batch := s.OpenWriteSession()
 	for _, seq := range seqs {
-		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(seq).Build()
+		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(seq).Build()
 		require.NoError(t, batch.SetProto(key, &auditpb.AuditEntry{Sequence: seq}))
 	}
 	require.NoError(t, batch.Commit())

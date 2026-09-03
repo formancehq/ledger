@@ -275,13 +275,13 @@ func rewriteAuditEntry(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry
 
 	batch := store.OpenWriteSession()
 	batch.KeyBuilder.
-		PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).
 		PutUint64(entry.GetSequence())
 	require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), entry))
 
 	for _, item := range items {
 		batch.KeyBuilder.
-			PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
+			PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).
 			PutUint64(entry.GetSequence()).
 			PutUint32(item.GetOrderIndex())
 		require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), item))

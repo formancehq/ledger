@@ -21,7 +21,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/analysis"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/infra/receipt"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
@@ -117,7 +116,6 @@ type DefaultController struct {
 	readStore     *readstore.Store
 	usageStore    *usagestore.Store
 	receiptSigner *receipt.Signer
-	coldReader    *coldstorage.ColdReader
 
 	// historical is true on clones produced by WithStores — reads are then
 	// served from a point-in-time checkpoint. usage counters are excluded
@@ -141,7 +139,6 @@ func NewDefaultController(
 	attrs *attributes.Attributes,
 	readStore *readstore.Store,
 	usageStore *usagestore.Store,
-	coldReader *coldstorage.ColdReader,
 	receiptSigner *receipt.Signer,
 	meter metric.Meter,
 ) *DefaultController {
@@ -164,17 +161,9 @@ func NewDefaultController(
 		attrs:         attrs,
 		readStore:     readStore,
 		usageStore:    usageStore,
-		coldReader:    coldReader,
 		receiptSigner: receiptSigner,
 		applyDuration: applyDuration,
 	}
-}
-
-// ColdReader returns the cold-storage reader, or nil when cold storage is not
-// configured. The gRPC layer passes it to the store checker so the idempotency
-// pass can re-derive frozen outcomes from archived audit entries.
-func (ctrl *DefaultController) ColdReader() *coldstorage.ColdReader {
-	return ctrl.coldReader
 }
 
 // ListLedgers returns a cursor over all active (non-deleted) ledgers.
@@ -238,26 +227,23 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName st
 	return tx, &receiptToken, nil
 }
 
-// ComputeTransactionReceipt computes a JWT receipt for an existing transaction
-// by looking up its creation log to extract the chapter ID. Ledger info and the
-// creation log are read from the supplied reader — the same store the
-// transaction was read from — so checkpoint reads stay self-consistent. It
-// returns an empty token (not an error) when the transaction legitimately has
-// no receipt: no creation log in this store (archived/purged), or a
-// non-created creation log (e.g. a reversal). The caller must have verified the
-// signer is non-nil.
+// ComputeTransactionReceipt computes a JWT receipt for an existing
+// transaction from its creation log. Ledger info and the creation log are
+// read from the supplied reader — the same store the transaction was read
+// from — so checkpoint reads stay self-consistent. It returns an empty token
+// (not an error) when the transaction legitimately has no receipt: no
+// creation log in this store, or a non-created creation log (e.g. a
+// reversal). The caller must have verified the signer is non-nil.
 func (ctrl *DefaultController) ComputeTransactionReceipt(ctx context.Context, reader dal.PebbleReader, ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
 	ledgerInfo, err := query.GetLedgerByName(ctx, reader, ledger)
 	if err != nil {
 		return "", err
 	}
 
-	log, err := query.FindTransactionCreationLog(ctx, reader, ctrl.coldReader, ctrl.attrs.Transaction, ledgerInfo.GetName(), txID)
+	log, err := query.FindTransactionCreationLog(ctx, reader, ctrl.attrs.Transaction, ledgerInfo.GetName(), txID)
 	if errors.Is(err, domain.ErrNotFound) {
-		// No creation log found in hot or cold storage — cold storage disabled,
-		// or the log genuinely absent. The transaction is still readable from its
-		// state; it just has no receipt. Not an error. (An archived transaction's
-		// log IS found via the cold fallback, so it keeps its receipt.)
+		// No creation log found — the transaction is still readable from its
+		// state; it just has no receipt. Not an error.
 		return "", nil
 	}
 
@@ -274,7 +260,7 @@ func (ctrl *DefaultController) ComputeTransactionReceipt(ctx context.Context, re
 		return "", nil
 	}
 
-	return ctrl.receiptSigner.Sign(ledger, txID, tx.GetPostings(), tx.GetTimestamp(), created.GetChapterId())
+	return ctrl.receiptSigner.Sign(ledger, txID, tx.GetPostings(), tx.GetTimestamp())
 }
 
 // WithStores returns a shallow copy of the controller whose reads are served
@@ -331,18 +317,14 @@ func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.
 		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
 	}
 
-	return assembleTransactionFromState(ctx, reader, ctrl.coldReader, transactionID, state)
+	return assembleTransactionFromState(ctx, reader, transactionID, state)
 }
 
 // assembleTransactionFromState builds a transaction from its TransactionState and the creation log.
 // Metadata values are returned verbatim — declared_type is an index hint, not
 // an API contract, so reads do not coerce.
-func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, coldReader *coldstorage.ColdReader, transactionID uint64, state *commonpb.TransactionState) (*commonpb.Transaction, error) {
-	// Cold-storage fallback so a transaction whose creation log lives in an
-	// archived-and-purged chapter is still assembled from the cold-stored log
-	// (which carries the reference / post-commit volumes the attribute-zone
-	// state does not), rather than reported NotFound.
-	log, err := query.ReadLogBySequenceWithCold(ctx, reader, coldReader, state.GetCreatedByLog())
+func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, transactionID uint64, state *commonpb.TransactionState) (*commonpb.Transaction, error) {
+	log, err := query.ReadLogBySequence(ctx, reader, state.GetCreatedByLog())
 	if err != nil {
 		return nil, fmt.Errorf("getting system log %d: %w", state.GetCreatedByLog(), err)
 	}
@@ -1731,7 +1713,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		return nil, fmt.Errorf("paginating log filter: %w", paginateErr)
 	}
 
-	c, err := query.ReadLedgerLogsCompiled(ctx, handle, ctrl.coldReader, snap, ledgerInfo.GetName(), logIDs)
+	c, err := query.ReadLedgerLogsCompiled(ctx, handle, snap, ledgerInfo.GetName(), logIDs)
 	if err != nil {
 		releaseHold()
 		_ = handle.Close()
@@ -1797,7 +1779,6 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 }
 
 // GetLog returns a single system log by sequence number.
-// Falls back to cold storage if the log has been archived.
 func (ctrl *DefaultController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
@@ -1806,7 +1787,7 @@ func (ctrl *DefaultController) GetLog(ctx context.Context, sequence uint64) (*co
 
 	defer func() { _ = handle.Close() }()
 
-	log, err := query.ReadLogBySequenceWithCold(ctx, handle, ctrl.coldReader, sequence)
+	log, err := query.ReadLogBySequence(ctx, handle, sequence)
 	if err != nil {
 		return nil, fmt.Errorf("getting log %d: %w", sequence, err)
 	}
@@ -1844,23 +1825,6 @@ func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint6
 	entry.Items = items
 
 	return entry, nil
-}
-
-// ListChapters returns a cursor over all non-purged chapters from the store.
-func (ctrl *DefaultController) ListChapters(ctx context.Context) (cursor.Cursor[*commonpb.Chapter], error) {
-	handle, err := ctrl.store.NewReadHandle()
-	if err != nil {
-		return nil, fmt.Errorf("creating read handle: %w", err)
-	}
-
-	c, err := query.ReadChapters(ctx, handle)
-	if err != nil {
-		_ = handle.Close()
-
-		return nil, err
-	}
-
-	return cursor.NewClosingCursor(c, handle), nil
 }
 
 // ListSigningKeys returns a cursor over all registered signing keys.
@@ -1921,7 +1885,7 @@ func (ctrl *DefaultController) entityEnricher() *query.EntityEnricher {
 func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
 	profile := query.ProfileFromContext(ctx)
 
-	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.coldReader, ctrl.attrs.Volume, ctrl.attrs.PreparedQuery, ctrl.attrs.Index, req, profile, ctrl.entityEnricher())
+	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, ctrl.attrs.PreparedQuery, ctrl.attrs.Index, req, profile, ctrl.entityEnricher())
 }
 
 // GetNumscript returns a numscript by ledger, name and optional version ("" = latest).
@@ -2024,17 +1988,6 @@ func (ctrl *DefaultController) ListNumscriptVersions(ctx context.Context, ledger
 	}
 
 	return query.ReadAllNumscriptVersions(ctrl.attrs.NumscriptVersion, ctrl.attrs.NumscriptContent, handle, ledgerInfo.GetName(), name)
-}
-
-func (ctrl *DefaultController) GetChapterSchedule(_ context.Context) (string, error) {
-	handle, err := ctrl.store.NewReadHandle()
-	if err != nil {
-		return "", fmt.Errorf("creating read handle: %w", err)
-	}
-
-	defer func() { _ = handle.Close() }()
-
-	return query.ReadChapterSchedule(handle)
 }
 
 func (ctrl *DefaultController) GetEventsSinks(_ context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {

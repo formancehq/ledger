@@ -29,7 +29,7 @@ type CoverageEntry struct {
 // tag on U128 collisions.
 //
 // IdempotencyKeys is lazily allocated on first AddIdempotencyKey — most
-// orders (system scoped, index management, chapter operations) carry
+// orders (system scoped, index management) carry
 // none, so paying an empty-map header per order is wasteful.
 //
 // The map-of-maps shape collapses what used to be 13 typed key fields
@@ -132,7 +132,7 @@ func (c *Coverage) TotalKeys() int {
 // Idempotency keys are excluded: a proposal with idempotency keys only
 // does not need the cache-epoch revalidation that the slow path
 // performs. The runner uses this count to gate runWithoutPreload, so
-// idempotency-only proposals (maintenance, signing, chapter schedule)
+// idempotency-only proposals (maintenance, signing, schedules)
 // take the fast path and avoid spurious ErrStaleProposal on
 // cluster-config resets.
 func (c *Coverage) AttributeKeysCount() int {

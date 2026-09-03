@@ -2296,80 +2296,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /v3/_/chapters:
-    get:
-      summary: List bucket chapters
-      description: |
-        Streams every chapter registered on the bucket, ordered by chapter id
-        ascending. Requires `ledger:OpsRead` scope.
-
-        Live, best-effort read: this route drains the full cursor and does not
-        expose the gRPC read-consistency / pagination options
-        (`checkpointId` / `minLogSequence` / bidirectional cursor). Use gRPC
-        for consistency-bounded reads. (Tracked follow-up.)
-      operationId: listChapters
-      tags:
-        - Ops
-      security:
-        - BearerAuth: []
-        - {}
-      responses:
-        '200':
-          description: Chapters retrieved successfully.
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                  - data
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Chapter'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /v3/_/chapter-schedule:
-    get:
-      summary: Get the chapter auto-rotation cron schedule
-      description: |
-        Returns the cluster-wide cron expression driving automatic chapter
-        rotation. An empty string means auto-rotation is disabled. Requires
-        `ledger:OpsRead` scope.
-      operationId: getChapterSchedule
-      tags:
-        - Ops
-      security:
-        - BearerAuth: []
-        - {}
-      responses:
-        '200':
-          description: Chapter schedule retrieved successfully.
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                  - data
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      cron:
-                        type: string
-                        description: Cron expression, or empty when disabled.
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /v3/_/events-sinks:
     get:
       summary: List configured event sinks
@@ -3684,10 +3610,6 @@ components:
               additionalProperties:
                 type: object
               description: Metadata for accounts involved in the transaction
-            chapterId:
-              type: integer
-              format: uint64
-              description: Chapter that was OPEN when this transaction was created
             previousAccountMetadata:
               type: object
               additionalProperties:
@@ -4074,52 +3996,6 @@ components:
             uncolored bucket. Always present on responses (never omitted); two
             postings on the same (account, asset) but different colors operate
             on strictly isolated balances.
-
-    Chapter:
-      type: object
-      description: |
-        A bucket chapter. Serialized by Chapter.MarshalJSON: the hash fields are
-        hex-encoded (not base64) and status is the protobuf enum name.
-      required:
-        - id
-        - status
-      properties:
-        id:
-          type: integer
-          format: int64
-        start:
-          type: string
-          format: date-time
-        end:
-          type: string
-          format: date-time
-        status:
-          type: string
-          enum: [CHAPTER_OPEN, CHAPTER_CLOSING, CHAPTER_CLOSED, CHAPTER_ARCHIVED, CHAPTER_ARCHIVING]
-        closeSequence:
-          type: integer
-          format: int64
-        startSequence:
-          type: integer
-          format: int64
-        startAuditSequence:
-          type: integer
-          format: int64
-        closeAuditSequence:
-          type: integer
-          format: int64
-        sealingHash:
-          type: string
-          pattern: '^[0-9a-f]*$'
-          description: Hex-encoded sealing hash.
-        lastAuditHash:
-          type: string
-          pattern: '^[0-9a-f]*$'
-          description: Hex-encoded audit-chain hash at chapter close.
-        stateHash:
-          type: string
-          pattern: '^[0-9a-f]*$'
-          description: Hex-encoded BLAKE3 hash of computed attributes at seal time.
 
     LedgerClusterStateResponse:
       type: object

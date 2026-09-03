@@ -430,11 +430,9 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 	}
 
 	attrs := attributes.New()
-	// No cold reader on this path: it validates a local staging store from a
-	// backup, so the idempotency pass keeps the post-archive boundary as its
-	// verification floor. nil TTL: no trusted runtime config for a foreign
-	// backup, so the pass falls back to the backup's persisted TTL.
-	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), nil, nil, nil, logger)
+	// nil readStore: this path validates a local staging store from a backup,
+	// with no peer read-index store, so the reverse-map orphan pass is skipped.
+	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), nil, logger)
 
 	pterm.Info.Println("Validating backup integrity...")
 

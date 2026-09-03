@@ -9,11 +9,11 @@ import (
 	"io"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-
-	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 )
 
 // S3Storage implements Storage using Amazon S3 (or S3-compatible stores like MinIO).
@@ -110,12 +110,43 @@ func (s *S3Storage) ListFiles(ctx context.Context, prefix string) ([]string, err
 var _ Storage = (*S3Storage)(nil)
 
 // NewS3BackupStorage creates a Storage backed by S3.
-// It reuses the S3 client factory from coldstorage.
 func NewS3BackupStorage(bucket, region, endpoint, accessKeyID, secretAccessKey string) (Storage, error) {
-	client, err := coldstorage.NewS3Client(region, endpoint, accessKeyID, secretAccessKey)
+	client, err := newS3Client(region, endpoint, accessKeyID, secretAccessKey)
 	if err != nil {
 		return nil, err
 	}
 
 	return NewS3Storage(client, bucket), nil
+}
+
+// newS3Client creates an S3 client.
+// When accessKeyID and secretAccessKey are both non-empty, static credentials are used.
+// Otherwise the default AWS credential chain is used (env vars, ~/.aws/credentials, IAM role).
+// If endpoint is non-empty, it is used as a custom S3 endpoint (e.g. for MinIO).
+func newS3Client(region, endpoint, accessKeyID, secretAccessKey string) (*s3.Client, error) {
+	var opts []func(*awsconfig.LoadOptions) error
+	if region != "" {
+		opts = append(opts, awsconfig.WithRegion(region))
+	}
+
+	if accessKeyID != "" && secretAccessKey != "" {
+		opts = append(opts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, ""),
+		))
+	}
+
+	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), opts...)
+	if err != nil {
+		return nil, fmt.Errorf("loading AWS config: %w", err)
+	}
+
+	var s3Opts []func(*s3.Options)
+	if endpoint != "" {
+		s3Opts = append(s3Opts, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(endpoint)
+			o.UsePathStyle = true
+		})
+	}
+
+	return s3.NewFromConfig(cfg, s3Opts...), nil
 }

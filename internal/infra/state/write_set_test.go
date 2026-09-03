@@ -538,33 +538,33 @@ func TestWriteSetMergePurgesConfirmedChapterRanges(t *testing.T) {
 	buf, _, dataStore := newTestBuffer(t)
 
 	coldKey := func(sub byte, seq uint64) []byte {
-		return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, sub).PutUint64(seq).Build()
+		return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, sub).PutUint64(seq).Build()
 	}
 	itemKey := func(seq uint64, idx uint32) []byte {
-		return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(seq).PutUint32(idx).Build()
+		return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(seq).PutUint32(idx).Build()
 	}
 
 	// Chapter ranges: logs [10, 20], audit sequences [5, 8].
 	inside := map[string][]byte{
-		"log at start":            coldKey(dal.SubColdLog, 10),
-		"log at close":            coldKey(dal.SubColdLog, 20),
-		"audit at start":          coldKey(dal.SubColdAudit, 5),
-		"audit at close":          coldKey(dal.SubColdAudit, 8),
+		"log at start":            coldKey(dal.SubHistoryLog, 10),
+		"log at close":            coldKey(dal.SubHistoryLog, 20),
+		"audit at start":          coldKey(dal.SubHistoryAudit, 5),
+		"audit at close":          coldKey(dal.SubHistoryAudit, 8),
 		"item at start, order 0":  itemKey(5, 0),
 		"item at start, order 1":  itemKey(5, 1),
 		"item at close, order 3":  itemKey(8, 3),
-		"applied proposal, start": coldKey(dal.SubColdAppliedProposal, 5),
-		"applied proposal, close": coldKey(dal.SubColdAppliedProposal, 8),
+		"applied proposal, start": coldKey(dal.SubHistoryAppliedProposal, 5),
+		"applied proposal, close": coldKey(dal.SubHistoryAppliedProposal, 8),
 	}
 	outside := map[string][]byte{
-		"log below":              coldKey(dal.SubColdLog, 9),
-		"log above":              coldKey(dal.SubColdLog, 21),
-		"audit below":            coldKey(dal.SubColdAudit, 4),
-		"audit above":            coldKey(dal.SubColdAudit, 9),
+		"log below":              coldKey(dal.SubHistoryLog, 9),
+		"log above":              coldKey(dal.SubHistoryLog, 21),
+		"audit below":            coldKey(dal.SubHistoryAudit, 4),
+		"audit above":            coldKey(dal.SubHistoryAudit, 9),
 		"item below":             itemKey(4, 0),
 		"item above":             itemKey(9, 0),
-		"applied proposal below": coldKey(dal.SubColdAppliedProposal, 4),
-		"applied proposal above": coldKey(dal.SubColdAppliedProposal, 9),
+		"applied proposal below": coldKey(dal.SubHistoryAppliedProposal, 4),
+		"applied proposal above": coldKey(dal.SubHistoryAppliedProposal, 9),
 	}
 
 	seed := dataStore.OpenWriteSession()

@@ -16,7 +16,7 @@ import (
 //
 // Fields that are conceptually "state of the FSM" live here. Capability
 // objects (queryCheckpoints, sentinel, cacheSnapshotter), in-memory plumbing
-// (channels, mutexes, metrics), and shared sub-trackers (Registry, Chapters,
+// (channels, mutexes, metrics), and shared sub-trackers (Registry,
 // KeyStore, SharedState, BloomFilters) remain on Machine — they are not
 // recovered from Pebble at boot and have their own lifecycles.
 type FSMState struct {
@@ -36,7 +36,6 @@ type FSMState struct {
 
 	// Pending work derived from durable state.
 	QueryCheckpointSchedule string
-	PendingLedgerCleanups   map[string]uint64
 
 	// LiveQueryCheckpointIDs is the set of query-checkpoint IDs currently live,
 	// recovered by scanning the SubGlobQueryCheckpoint rows at boot and updated
@@ -75,7 +74,6 @@ func NewFSMState(clusterID string) *FSMState {
 		NextSequenceID:         1,
 		NextAuditSequenceID:    1,
 		NextLedgerID:           1,
-		PendingLedgerCleanups:  map[string]uint64{},
 		HashGenerator:          processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID),
 		ClusterID:              clusterID,
 		ClusterPolicy:          &commonpb.ClusterPolicy{},
@@ -130,7 +128,7 @@ func (s *FSMState) AppendAuditEntry(hash []byte) uint64 {
 
 // LoadFSMStateFromStore reads every FSM-level field that lives in FSMState
 // from the main Pebble store, returning a fully-hydrated value ready to be
-// swapped into a Machine via Machine.RestoreState. Sub-trackers (Chapters,
+// swapped into a Machine via Machine.RestoreState. Sub-trackers (
 // Registry.Reversions, KeyStore, SharedState, Registry.Cache settings,
 // Registry.Idempotency) are out of scope — they have their own lifecycles
 // and are reset separately by the caller.
@@ -205,13 +203,6 @@ func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle, cl
 	}
 
 	s.NextLedgerID = nextLedgerID
-
-	pendingCleanups, err := query.ReadPendingLedgerCleanups(handle)
-	if err != nil {
-		return nil, fmt.Errorf("reading pending ledger cleanups: %w", err)
-	}
-
-	s.PendingLedgerCleanups = pendingCleanups
 
 	clusterState, err := query.ReadClusterState(reader)
 	if err != nil {

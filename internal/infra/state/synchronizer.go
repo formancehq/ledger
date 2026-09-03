@@ -47,14 +47,10 @@ func (s *Synchronizer) SynchronizeWithLeader(ctx context.Context, snapshotFetche
 	defer s.recovery.ResumeBackgroundTasks()
 
 	// Drop any background-request messages enqueued by the FSM hot path
-	// pre-sync: their payloads reference chapter IDs / sequence ranges /
-	// checkpoint paths that the leader's checkpoint may have already
-	// superseded. The Archiver consume-time guard catches most cases on its
-	// own, but a stale ArchiveRequest consumed against a post-sync Pebble
-	// whose corresponding ranges have been purged would still build (and
-	// upload) an empty cold-storage object. Drain first; reconciliation
-	// tickers + OnLeadershipAcquired re-dispatch fresh requests from durable
-	// state once the sync is over.
+	// pre-sync: their payloads reference sequence ranges / checkpoint paths
+	// that the leader's checkpoint may have already superseded. Drain first;
+	// reconciliation tickers + OnLeadershipAcquired re-dispatch fresh
+	// requests from durable state once the sync is over.
 	s.apply.DrainBackgroundChannels()
 
 	if err := s.restoreCheckpoint(ctx, snapshotFetcher, progress, s.apply.State.SnapshotIndex); err != nil {

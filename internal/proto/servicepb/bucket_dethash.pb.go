@@ -439,61 +439,13 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x42
 		}
-	case *Request_CloseChapter:
-		if v.CloseChapter != nil {
-			size, _ := v.CloseChapter.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x4a
-		}
-	case *Request_SealChapter:
-		if v.SealChapter != nil {
-			size, _ := v.SealChapter.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x52
-		}
-	case *Request_ArchiveChapter:
-		if v.ArchiveChapter != nil {
-			size, _ := v.ArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x5a
-		}
-	case *Request_ConfirmArchiveChapter:
-		if v.ConfirmArchiveChapter != nil {
-			size, _ := v.ConfirmArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x62
-		}
 	case *Request_SetMaintenanceMode:
 		if v.SetMaintenanceMode != nil {
 			size, _ := v.SetMaintenanceMode.MarshalToSizedBufferVT(dAtA[:i])
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x6a
-		}
-	case *Request_SetChapterSchedule:
-		if v.SetChapterSchedule != nil {
-			size, _ := v.SetChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x72
-		}
-	case *Request_DeleteChapterSchedule:
-		if v.DeleteChapterSchedule != nil {
-			size, _ := v.DeleteChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
-			i -= size
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			i--
-			dAtA[i] = 0x7a
+			dAtA[i] = 0x4a
 		}
 	case *Request_SetMetadataFieldType:
 		if v.SetMetadataFieldType != nil {
@@ -501,9 +453,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0x82
+			dAtA[i] = 0x52
 		}
 	case *Request_RemoveMetadataFieldType:
 		if v.RemoveMetadataFieldType != nil {
@@ -511,9 +461,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0x8a
+			dAtA[i] = 0x5a
 		}
 	case *Request_PromoteLedger:
 		if v.PromoteLedger != nil {
@@ -521,9 +469,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0x92
+			dAtA[i] = 0x62
 		}
 	case *Request_CreatePreparedQuery:
 		if v.CreatePreparedQuery != nil {
@@ -531,9 +477,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0x9a
+			dAtA[i] = 0x6a
 		}
 	case *Request_UpdatePreparedQuery:
 		if v.UpdatePreparedQuery != nil {
@@ -541,9 +485,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xa2
+			dAtA[i] = 0x72
 		}
 	case *Request_DeletePreparedQuery:
 		if v.DeletePreparedQuery != nil {
@@ -551,9 +493,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x1
-			i--
-			dAtA[i] = 0xaa
+			dAtA[i] = 0x7a
 		}
 	case *Request_CreateIndex:
 		if v.CreateIndex != nil {
@@ -563,7 +503,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xb2
+			dAtA[i] = 0x82
 		}
 	case *Request_DropIndex:
 		if v.DropIndex != nil {
@@ -573,7 +513,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xba
+			dAtA[i] = 0x8a
 		}
 	case *Request_SaveNumscript:
 		if v.SaveNumscript != nil {
@@ -583,7 +523,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xc2
+			dAtA[i] = 0x92
 		}
 	case *Request_AddAccountType:
 		if v.AddAccountType != nil {
@@ -593,7 +533,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xca
+			dAtA[i] = 0x9a
 		}
 	case *Request_RemoveAccountType:
 		if v.RemoveAccountType != nil {
@@ -603,7 +543,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xd2
+			dAtA[i] = 0xa2
 		}
 	case *Request_SetDefaultEnforcementMode:
 		if v.SetDefaultEnforcementMode != nil {
@@ -613,7 +553,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xda
+			dAtA[i] = 0xaa
 		}
 	case *Request_CreateQueryCheckpoint:
 		if v.CreateQueryCheckpoint != nil {
@@ -623,7 +563,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xe2
+			dAtA[i] = 0xb2
 		}
 	case *Request_DeleteQueryCheckpoint:
 		if v.DeleteQueryCheckpoint != nil {
@@ -633,7 +573,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xea
+			dAtA[i] = 0xba
 		}
 	case *Request_SetQueryCheckpointSchedule:
 		if v.SetQueryCheckpointSchedule != nil {
@@ -643,7 +583,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xf2
+			dAtA[i] = 0xc2
 		}
 	case *Request_DeleteQueryCheckpointSchedule:
 		if v.DeleteQueryCheckpointSchedule != nil {
@@ -653,7 +593,7 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i--
 			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0xfa
+			dAtA[i] = 0xca
 		}
 	case *Request_SaveLedgerMetadata:
 		if v.SaveLedgerMetadata != nil {
@@ -661,9 +601,9 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x2
+			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0x82
+			dAtA[i] = 0xd2
 		}
 	case *Request_DeleteLedgerMetadata:
 		if v.DeleteLedgerMetadata != nil {
@@ -671,9 +611,9 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x2
+			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0x8a
+			dAtA[i] = 0xda
 		}
 	case *Request_SetClusterPolicy:
 		if v.SetClusterPolicy != nil {
@@ -681,9 +621,9 @@ func (m *Request) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) 
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x2
+			dAtA[i] = 0x1
 			i--
-			dAtA[i] = 0x92
+			dAtA[i] = 0xe2
 		}
 	}
 	return len(dAtA) - i, nil
@@ -867,84 +807,7 @@ func (m *ListSigningKeysRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	return append(dAtA, b...)
 }
 
-func (m *CloseChapterRequest) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *SealChapterRequest) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *ArchiveChapterRequest) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *ConfirmArchiveChapterRequest) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *ListChaptersRequest) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
 func (m *SetMaintenanceModeRequest) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *SetChapterScheduleRequest) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *DeleteChapterScheduleRequest) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}
@@ -1141,28 +1004,6 @@ func (m *SetQueryCheckpointScheduleRequest) MarshalDeterministicVT(dAtA []byte) 
 }
 
 func (m *DeleteQueryCheckpointScheduleRequest) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *GetChapterScheduleRequest) MarshalDeterministicVT(dAtA []byte) []byte {
-	if m == nil {
-		return dAtA
-	}
-	b, err := m.MarshalVT()
-	if err != nil {
-		panic("MarshalDeterministicVT: " + err.Error())
-	}
-	return append(dAtA, b...)
-}
-
-func (m *GetChapterScheduleResponse) MarshalDeterministicVT(dAtA []byte) []byte {
 	if m == nil {
 		return dAtA
 	}

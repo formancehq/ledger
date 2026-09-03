@@ -7,7 +7,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
@@ -158,7 +157,6 @@ type Config struct {
 	MetricsNaming          string
 	ReceiptSigningKey      string
 	ResponseSigningKeyFile string
-	ColdStorageConfig      coldstorage.Config
 	PoolConfig             transport.PoolConfig
 	TLSConfig              TLSConfig
 	AuthConfig             AuthFlagConfig

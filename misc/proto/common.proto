@@ -322,25 +322,19 @@ message LogPayload {
     SetSigningConfigLog set_signing_config = 6;
     AddedEventsSinkLog added_events_sink = 7;
     RemovedEventsSinkLog removed_events_sink = 8;
-    ClosedChapterLog close_chapter = 9;
-    SealedChapterLog seal_chapter = 10;
-    ArchivedChapterLog archive_chapter = 11;
-    ConfirmedArchiveChapterLog confirm_archive_chapter = 12;
-    SetMaintenanceModeLog set_maintenance_mode = 13;
-    SetChapterScheduleLog set_chapter_schedule = 14;
-    DeletedChapterScheduleLog delete_chapter_schedule = 15;
-    PromotedLedgerLog promote_ledger = 16;
-    CreatedPreparedQueryLog created_prepared_query = 17;
-    UpdatedPreparedQueryLog updated_prepared_query = 18;
-    DeletedPreparedQueryLog deleted_prepared_query = 19;
-    SavedNumscriptLog saved_numscript = 20;
-    CreatedQueryCheckpointLog created_query_checkpoint = 21;
-    DeletedQueryCheckpointLog deleted_query_checkpoint = 22;
-    SetQueryCheckpointScheduleLog set_query_checkpoint_schedule = 23;
-    DeletedQueryCheckpointScheduleLog delete_query_checkpoint_schedule = 24;
-    SavedLedgerMetadataLog saved_ledger_metadata = 25;
-    DeletedLedgerMetadataLog deleted_ledger_metadata = 26;
-    SetClusterPolicyLog set_cluster_policy = 27;
+    SetMaintenanceModeLog set_maintenance_mode = 9;
+    PromotedLedgerLog promote_ledger = 10;
+    CreatedPreparedQueryLog created_prepared_query = 11;
+    UpdatedPreparedQueryLog updated_prepared_query = 12;
+    DeletedPreparedQueryLog deleted_prepared_query = 13;
+    SavedNumscriptLog saved_numscript = 14;
+    CreatedQueryCheckpointLog created_query_checkpoint = 15;
+    DeletedQueryCheckpointLog deleted_query_checkpoint = 16;
+    SetQueryCheckpointScheduleLog set_query_checkpoint_schedule = 17;
+    DeletedQueryCheckpointScheduleLog delete_query_checkpoint_schedule = 18;
+    SavedLedgerMetadataLog saved_ledger_metadata = 19;
+    DeletedLedgerMetadataLog deleted_ledger_metadata = 20;
+    SetClusterPolicyLog set_cluster_policy = 21;
   }
 }
 
@@ -444,15 +438,6 @@ message ClusterPolicy {
   fixed64 idempotency_ttl_micros = 2;  // 0 means never expires
   fixed64 query_checkpoint_limit = 3;  // must be >= 1
 }
-
-
-// SetChapterScheduleLog records a chapter schedule change.
-message SetChapterScheduleLog {
-  string cron = 1;
-}
-
-// DeletedChapterScheduleLog records the removal of the chapter schedule.
-message DeletedChapterScheduleLog {}
 
 // CreatedPreparedQueryLog records the creation of a prepared query.
 message CreatedPreparedQueryLog {
@@ -777,7 +762,6 @@ message FilledGapLog {
 message CreatedTransaction {
   Transaction transaction = 1;
   map<string, MetadataMap> account_metadata = 2;
-  fixed64 chapter_id = 3;  // Chapter that was OPEN when this transaction was created
 }
 
 message RevertedTransaction {
@@ -809,49 +793,6 @@ message RemovedMetadataFieldTypeLog {
   TargetType target_type = 1;
   string key = 2;
   IndexID dropped_index = 3;  // nil when no index was attached to the field
-}
-
-// ============================================================================
-// Chapter
-// ============================================================================
-
-enum ChapterStatus {
-  CHAPTER_OPEN = 0;
-  CHAPTER_CLOSING = 1;
-  CHAPTER_CLOSED = 2;
-  CHAPTER_ARCHIVED = 3;
-  CHAPTER_ARCHIVING = 4;
-}
-
-message Chapter {
-  fixed64 id = 1;
-  Timestamp start = 2;
-  Timestamp end = 3;
-  ChapterStatus status = 4;
-  fixed64 close_sequence = 5;
-  bytes sealing_hash = 6;
-  bytes last_audit_hash = 7;  // Audit chain hash at the time the chapter was closed (for integrity recovery)
-  fixed64 start_sequence = 8;  // First log sequence in this chapter (previous close_sequence + 1, or 1 for the first chapter)
-  bytes state_hash = 9;       // BLAKE3 hash of computed attributes (V+M+T) at seal time
-  fixed64 start_audit_sequence = 10; // First audit sequence in this chapter
-  fixed64 close_audit_sequence = 11; // Last audit sequence when chapter was closed
-}
-
-message ClosedChapterLog {
-  Chapter closed_chapter = 1;
-  Chapter new_chapter = 2;
-}
-
-message SealedChapterLog {
-  Chapter chapter = 1;
-}
-
-message ArchivedChapterLog {
-  Chapter chapter = 1;  // The chapter being archived (still CLOSED at this point)
-}
-
-message ConfirmedArchiveChapterLog {
-  Chapter chapter = 1;  // Chapter now in ARCHIVED status
 }
 
 // ============================================================================
@@ -1212,59 +1153,53 @@ enum ErrorReason {
   ERROR_REASON_SINK_ALREADY_EXISTS = 15;
   ERROR_REASON_SINK_NOT_FOUND = 16;
   ERROR_REASON_SINK_BATCH_SIZE_TOO_LARGE = 17;
-  ERROR_REASON_NO_CHAPTER_OPEN = 18;
-  ERROR_REASON_CHAPTER_NOT_FOUND = 19;
-  ERROR_REASON_CHAPTER_NOT_CLOSING = 20;
-  ERROR_REASON_CHAPTER_NOT_CLOSED = 21;
-  ERROR_REASON_CHAPTER_NOT_ARCHIVING = 22;
-  ERROR_REASON_METADATA_NOT_FOUND = 23;
-  ERROR_REASON_INVALID_RECEIPT = 24;
-  ERROR_REASON_MAINTENANCE_MODE = 25;
-  ERROR_REASON_STALE_PROPOSAL = 26;
-  ERROR_REASON_INVALID_CRON_EXPRESSION = 27;
-  ERROR_REASON_LEDGER_IN_MIRROR_MODE = 28;
-  ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE = 29;
-  ERROR_REASON_PREPARED_QUERY_ALREADY_EXISTS = 30;
-  ERROR_REASON_PREPARED_QUERY_NOT_FOUND = 31;
-  ERROR_REASON_INDEX_NOT_FOUND = 32;
-  ERROR_REASON_INDEX_BUILDING = 33;
-  ERROR_REASON_INDEX_INCONSISTENT = 34;
-  ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA = 35;
-  ERROR_REASON_NUMSCRIPT_NOT_FOUND = 36;
-  ERROR_REASON_NUMSCRIPT_VERSION_ALREADY_EXISTS = 37;
-  ERROR_REASON_NUMSCRIPT_INVALID_VERSION = 38;
-  ERROR_REASON_ACCOUNT_NOT_MATCHING_TYPE = 39;
-  ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND = 40;
-  ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS = 41;
-  ERROR_REASON_INVALID_PATTERN = 42;
-  ERROR_REASON_ACCOUNT_TYPE_HAS_ACCOUNTS = 43;
-  ERROR_REASON_ACCOUNT_TYPE_CONFLICT = 44;
-  ERROR_REASON_COLD_STORAGE_DISABLED = 45;
-  ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO = 46;
-  ERROR_REASON_FILTER_COMPILATION_ERROR = 47;
-  ERROR_REASON_INVALID_ORDER_TYPE = 48;
-  ERROR_REASON_INVALID_APPLY_TYPE = 49;
-  ERROR_REASON_INVALID_EXECUTION_PLAN = 50;
-  ERROR_REASON_EXECUTION_PLAN_TOO_LARGE = 51;
-  ERROR_REASON_COVERAGE_MISS = 52;
-  ERROR_REASON_IDEMPOTENCY_CHECK_FAILED = 53;
-  ERROR_REASON_STORAGE_OPERATION_FAILED = 54;
-  ERROR_REASON_TRANSACTION_STATE_INCONSISTENT = 55;
-  ERROR_REASON_CHECKPOINT_ID_REQUIRED = 56;
-  ERROR_REASON_NUMSCRIPT_RUNTIME = 57;
-  ERROR_REASON_VOLUME_NOT_MATERIALIZED = 58;
-  ERROR_REASON_CLUSTER_UNHEALTHY = 59;
-  ERROR_REASON_WRITES_BLOCKED_DISK_FULL = 60;
-  ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW = 61;
-  ERROR_REASON_CHECKPOINT_NOT_READY = 62;
-  ERROR_REASON_MIRROR_V2_LOG_ID_GAP = 63;
-  ERROR_REASON_MIRROR_V2_LOG_ID_INVALID = 64;
+  ERROR_REASON_METADATA_NOT_FOUND = 18;
+  ERROR_REASON_INVALID_RECEIPT = 19;
+  ERROR_REASON_MAINTENANCE_MODE = 20;
+  ERROR_REASON_STALE_PROPOSAL = 21;
+  ERROR_REASON_INVALID_CRON_EXPRESSION = 22;
+  ERROR_REASON_LEDGER_IN_MIRROR_MODE = 23;
+  ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE = 24;
+  ERROR_REASON_PREPARED_QUERY_ALREADY_EXISTS = 25;
+  ERROR_REASON_PREPARED_QUERY_NOT_FOUND = 26;
+  ERROR_REASON_INDEX_NOT_FOUND = 27;
+  ERROR_REASON_INDEX_BUILDING = 28;
+  ERROR_REASON_INDEX_INCONSISTENT = 29;
+  ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA = 30;
+  ERROR_REASON_NUMSCRIPT_NOT_FOUND = 31;
+  ERROR_REASON_NUMSCRIPT_VERSION_ALREADY_EXISTS = 32;
+  ERROR_REASON_NUMSCRIPT_INVALID_VERSION = 33;
+  ERROR_REASON_ACCOUNT_NOT_MATCHING_TYPE = 34;
+  ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND = 35;
+  ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS = 36;
+  ERROR_REASON_INVALID_PATTERN = 37;
+  ERROR_REASON_ACCOUNT_TYPE_HAS_ACCOUNTS = 38;
+  ERROR_REASON_ACCOUNT_TYPE_CONFLICT = 39;
+  ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO = 40;
+  ERROR_REASON_FILTER_COMPILATION_ERROR = 41;
+  ERROR_REASON_INVALID_ORDER_TYPE = 42;
+  ERROR_REASON_INVALID_APPLY_TYPE = 43;
+  ERROR_REASON_INVALID_EXECUTION_PLAN = 44;
+  ERROR_REASON_EXECUTION_PLAN_TOO_LARGE = 45;
+  ERROR_REASON_COVERAGE_MISS = 46;
+  ERROR_REASON_IDEMPOTENCY_CHECK_FAILED = 47;
+  ERROR_REASON_STORAGE_OPERATION_FAILED = 48;
+  ERROR_REASON_TRANSACTION_STATE_INCONSISTENT = 49;
+  ERROR_REASON_CHECKPOINT_ID_REQUIRED = 50;
+  ERROR_REASON_NUMSCRIPT_RUNTIME = 51;
+  ERROR_REASON_VOLUME_NOT_MATERIALIZED = 52;
+  ERROR_REASON_CLUSTER_UNHEALTHY = 53;
+  ERROR_REASON_WRITES_BLOCKED_DISK_FULL = 54;
+  ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW = 55;
+  ERROR_REASON_CHECKPOINT_NOT_READY = 56;
+  ERROR_REASON_MIRROR_V2_LOG_ID_GAP = 57;
+  ERROR_REASON_MIRROR_V2_LOG_ID_INVALID = 58;
   // ERROR_REASON_STALE_INPUTS_RESOLUTION: the balance/metadata values that
   // Numscript dependency resolution read at admission time changed before the
   // FSM applied the transaction, so the preloaded key set may be wrong.
   // Retryable (Kind=Unavailable) — a second admission re-resolves against the
   // new values. See EN-1406.
-  ERROR_REASON_STALE_INPUTS_RESOLUTION = 65;
+  ERROR_REASON_STALE_INPUTS_RESOLUTION = 59;
   // ERROR_REASON_PRELOAD_UNAVAILABLE: admission could not build the preload set
   // for an order (e.g. Numscript dependency discovery failed against current
   // state). When the batch carries an idempotency key, admission forwards the
@@ -1272,54 +1207,36 @@ enum ErrorReason {
   // failing fast, so the FSM can replay a frozen outcome. If no frozen outcome
   // exists the FSM emits THIS reason: retryable (Kind=Unavailable), NOT frozen —
   // a preparation gap, never an authoritative business verdict. See EN-1406.
-  ERROR_REASON_PRELOAD_UNAVAILABLE = 66;
-  ERROR_REASON_AGGREGATE_OVERFLOW = 67;
-  ERROR_REASON_BALANCE_NOT_FOUND = 68;
+  ERROR_REASON_PRELOAD_UNAVAILABLE = 60;
+  ERROR_REASON_AGGREGATE_OVERFLOW = 61;
+  ERROR_REASON_BALANCE_NOT_FOUND = 62;
   // ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP: an indexed read needs the read
   // index folded up to the main store's applied sequence and it did not get
   // there within the alignment grace. Retryable (Kind=Unavailable): the fold
   // is behind, not broken. See EN-1748.
-  ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP = 69;
-  // ERROR_REASON_CHAPTER_ARCHIVE_IDENTITY_MISMATCH: the confirm names a chapter
-  // incarnation that is not the one now in history. The sealing hash commits a
-  // chapter to its content, so a mismatch means the archive the confirm would
-  // trade hot history for belongs to a timeline this store no longer has — see
-  // docs/technical/architecture/subsystems/chapters/backup.md.
-  ERROR_REASON_CHAPTER_ARCHIVE_IDENTITY_MISMATCH = 70;
-  // ERROR_REASON_CHAPTER_ARCHIVE_OUT_OF_ORDER: the chapter is CLOSED, but it is
-  // not the one immediately after the archived prefix. Archived chapters must
-  // form a contiguous prefix of history so that "below the archive boundary"
-  // and "archived" mean the same thing — see the archival ordering rule in
-  // docs/technical/architecture/subsystems/chapters/lifecycle.md.
-  ERROR_REASON_CHAPTER_ARCHIVE_OUT_OF_ORDER = 71;
-  // ERROR_REASON_CHAPTER_ALREADY_ARCHIVED: the chapter is inside the archived
-  // prefix, so this order has already been carried out and no later archive
-  // changes that. Distinct from CHAPTER_ARCHIVE_OUT_OF_ORDER, which names a
-  // chapter that must be archived first: here there is nothing to archive
-  // first, and the metadata reports how far the prefix reaches instead.
-  ERROR_REASON_CHAPTER_ALREADY_ARCHIVED = 72;
+  ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP = 63;
   // ERROR_REASON_STALE_CLUSTER_POLICY: a cluster-policy update carried a
   // revision lower than the applied one. Deterministic rejection — a newer
   // policy already won; the leader-side reconciler re-evaluates on the next
   // tick. See EN-1827.
-  ERROR_REASON_STALE_CLUSTER_POLICY = 73;
+  ERROR_REASON_STALE_CLUSTER_POLICY = 64;
   // ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT: two cluster-policy updates
   // carried the same revision with different payloads. The control plane must
   // assign a fresh revision per distinct policy, so this is a contract
   // violation surfaced deterministically on every node. See EN-1827.
-  ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT = 74;
+  ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT = 65;
   // ERROR_REASON_CLUSTER_POLICY_INVALID: a cluster-policy update carried a
   // structurally invalid payload (missing policy, or query_checkpoint_limit
   // below 1). See EN-1827.
-  ERROR_REASON_CLUSTER_POLICY_INVALID = 75;
+  ERROR_REASON_CLUSTER_POLICY_INVALID = 66;
   // ERROR_REASON_CHECKPOINT_LIMIT_REACHED: a CreateQueryCheckpoint was rejected
   // because the live query-checkpoint count is at the replicated policy limit.
   // Creation never evicts; an existing checkpoint must be deleted first. See
   // EN-1501.
-  ERROR_REASON_CHECKPOINT_LIMIT_REACHED = 76;
+  ERROR_REASON_CHECKPOINT_LIMIT_REACHED = 67;
   // ERROR_REASON_CHECKPOINT_NOT_FOUND: a DeleteQueryCheckpoint targeted an id
   // that is not live (never created, or already deleted). See EN-1501.
-  ERROR_REASON_CHECKPOINT_NOT_FOUND = 77;
+  ERROR_REASON_CHECKPOINT_NOT_FOUND = 68;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

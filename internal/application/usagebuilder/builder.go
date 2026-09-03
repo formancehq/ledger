@@ -8,7 +8,7 @@
 // cursor=0 on demand.
 //
 // The subsystem reads from the audit chain (AuditEntry + AuditItem in
-// ZoneCold) rather than the log stream because the audit item carries the
+// ZoneHistory) rather than the log stream because the audit item carries the
 // raw serialized order — the only place where the Numscript reference
 // survives past apply (the log's CreatedTransaction payload does not).
 // For posting/revert counts, we fetch the specific log referenced by

@@ -116,7 +116,7 @@ func describeKey(key []byte) string {
 	switch key[0] {
 	case dal.ZoneIdempotency:
 		return describeIdempotencyKey(key)
-	case dal.ZoneCold:
+	case dal.ZoneHistory:
 		return describeColdKey(key)
 	case dal.ZonePerLedger:
 		return describePerLedgerKey(key)
@@ -196,16 +196,16 @@ func decodeValue(key, val []byte) string {
 		}
 
 		return tryProtoJSON(val, &commonpb.IdempotencyKeyValue{})
-	case dal.ZoneCold:
-		if len(key) >= 2 && key[1] == dal.SubColdAuditItem {
+	case dal.ZoneHistory:
+		if len(key) >= 2 && key[1] == dal.SubHistoryAuditItem {
 			return tryProtoJSON(val, &auditpb.AuditItem{})
 		}
 
-		if len(key) >= 2 && key[1] == dal.SubColdAudit {
+		if len(key) >= 2 && key[1] == dal.SubHistoryAudit {
 			return tryProtoJSON(val, &auditpb.AuditEntry{})
 		}
 
-		if len(key) >= 2 && key[1] == dal.SubColdAppliedProposal {
+		if len(key) >= 2 && key[1] == dal.SubHistoryAppliedProposal {
 			return tryProtoJSON(val, &proposalpb.AppliedProposal{})
 		}
 
@@ -234,8 +234,6 @@ func decodeGlobalValue(key, val []byte) string {
 	switch key[1] {
 	case dal.SubGlobLedgerInfo:
 		return tryProtoJSON(val, &commonpb.LedgerInfo{})
-	case dal.SubGlobChapters:
-		return tryProtoJSON(val, &commonpb.Chapter{})
 	case dal.SubGlobEventsConfig:
 		return tryProtoJSON(val, &commonpb.SinkConfig{})
 	case dal.SubGlobSinkStatus:
@@ -243,7 +241,7 @@ func decodeGlobalValue(key, val []byte) string {
 	case dal.SubGlobQueryCheckpoint:
 		return tryProtoJSON(val, &raftcmdpb.QueryCheckpointState{})
 	case dal.SubGlobLastAppliedIndex, dal.SubGlobLastAppliedTimestamp,
-		dal.SubGlobNextChapterID, dal.SubGlobNextQueryCheckpointID:
+		dal.SubGlobNextQueryCheckpointID:
 		if len(val) == 8 {
 			return fmt.Sprintf("uint64=%d", binary.BigEndian.Uint64(val))
 		}
@@ -261,7 +259,7 @@ func decodeGlobalValue(key, val []byte) string {
 		}
 
 		return hexVal(val)
-	case dal.SubGlobChapterSchedule, dal.SubGlobQueryCheckpointSchedule:
+	case dal.SubGlobQueryCheckpointSchedule:
 		return fmt.Sprintf("cron=%q", string(val))
 	case dal.SubGlobPersistedConfig:
 		return tryProtoJSON(val, &commonpb.PersistedConfig{})
@@ -346,16 +344,6 @@ func describeGlobalKey(key []byte) string {
 		return "SIGNING_KEY id=" + safeString(key[2:])
 	case dal.SubGlobSigningConfig:
 		return "SIGNING_CONFIG"
-	case dal.SubGlobChapters:
-		if len(key) >= 10 {
-			id := binary.BigEndian.Uint64(key[2:10])
-
-			return fmt.Sprintf("CHAPTER id=%d", id)
-		}
-
-		return "CHAPTER (short key)"
-	case dal.SubGlobNextChapterID:
-		return "NEXT_CHAPTER_ID"
 	case dal.SubGlobSinkCursor:
 		return "SINK_CURSOR name=" + safeString(key[2:])
 	case dal.SubGlobEventsConfig:
@@ -366,8 +354,6 @@ func describeGlobalKey(key []byte) string {
 		return "MAINTENANCE_MODE"
 	case dal.SubGlobPersistedConfig:
 		return "PERSISTED_CONFIG"
-	case dal.SubGlobChapterSchedule:
-		return "CHAPTER_SCHEDULE"
 	case dal.SubGlobQueryCheckpoint:
 		if len(key) >= 10 {
 			id := binary.BigEndian.Uint64(key[2:10])
@@ -397,8 +383,6 @@ func describePerLedgerKey(key []byte) string {
 	switch key[1] {
 	case dal.SubPLReversions:
 		return "REVERSIONS rest=" + safeString(key[2:])
-	case dal.SubPLPendingCleanup:
-		return "PENDING_CLEANUP ledger=" + safeString(stripNull(key[2:]))
 	case dal.SubPLPreparedQuery:
 		return "PREPARED_QUERY rest=" + safeString(key[2:])
 	case dal.SubPLMirrorSourceHead:
@@ -416,7 +400,7 @@ func describeColdKey(key []byte) string {
 	}
 
 	switch key[1] {
-	case dal.SubColdLog:
+	case dal.SubHistoryLog:
 		if len(key) >= 10 {
 			seq := binary.BigEndian.Uint64(key[2:10])
 
@@ -424,7 +408,7 @@ func describeColdKey(key []byte) string {
 		}
 
 		return "LOG (short key)"
-	case dal.SubColdAudit:
+	case dal.SubHistoryAudit:
 		if len(key) >= 10 {
 			seq := binary.BigEndian.Uint64(key[2:10])
 
@@ -432,7 +416,7 @@ func describeColdKey(key []byte) string {
 		}
 
 		return "AUDIT (short key)"
-	case dal.SubColdAuditItem:
+	case dal.SubHistoryAuditItem:
 		if len(key) >= 14 {
 			auditSeq := binary.BigEndian.Uint64(key[2:10])
 			orderIdx := binary.BigEndian.Uint32(key[10:14])
@@ -441,7 +425,7 @@ func describeColdKey(key []byte) string {
 		}
 
 		return "AUDIT_ITEM (short key)"
-	case dal.SubColdAppliedProposal:
+	case dal.SubHistoryAppliedProposal:
 		if len(key) >= 10 {
 			seq := binary.BigEndian.Uint64(key[2:10])
 

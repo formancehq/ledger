@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 
@@ -12,7 +11,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -21,7 +19,7 @@ import (
 
 // ReadLastLog returns the full last log entry from the given reader. Returns nil if no logs exist.
 func ReadLastLog(reader dal.PebbleReader) (*commonpb.Log, error) {
-	log, err := dal.ReadLastEntry[*commonpb.Log](reader, dal.ZoneCold, dal.SubColdLog)
+	log, err := dal.ReadLastEntry[*commonpb.Log](reader, dal.ZoneHistory, dal.SubHistoryLog)
 	if err != nil {
 		return nil, fmt.Errorf("reading last log: %w", err)
 	}
@@ -51,7 +49,7 @@ func ReadLogBySequence(ctx context.Context, reader dal.PebbleGetter, sequence ui
 	defer span.End()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
+	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).
 		PutUint64(sequence)
 
 	log, err := dal.ReadProto[*commonpb.Log](reader, kb.Build())
@@ -65,14 +63,10 @@ func ReadLogBySequence(ctx context.Context, reader dal.PebbleGetter, sequence ui
 // ledgerLogCursor iterates over pre-fetched global sequences and fetches full
 // Log entries from Pebble on demand. It holds no long-lived resources.
 type ledgerLogCursor struct {
-	// ctx is the request context, carried because Cursor.Next is ctx-less: the
-	// cold-storage fallback below does slow S3 fetch/ingest that must honor
-	// request cancellation and deadlines.
-	ctx        context.Context
-	pebble     dal.PebbleReader
-	coldReader *coldstorage.ColdReader
-	seqs       []uint64
-	pos        int
+	ctx    context.Context
+	pebble dal.PebbleReader
+	seqs   []uint64
+	pos    int
 }
 
 func (c *ledgerLogCursor) Next() (*commonpb.Log, error) {
@@ -83,10 +77,9 @@ func (c *ledgerLogCursor) Next() (*commonpb.Log, error) {
 	seq := c.seqs[c.pos]
 	c.pos++
 
-	// Cold-storage fallback: a listed sequence may belong to a chapter that has
-	// been archived and purged from hot storage, so fall back to cold (like
-	// GetLog) instead of failing the whole listing.
-	log, err := ReadLogBySequenceWithCold(c.ctx, c.pebble, c.coldReader, seq)
+	// Log history is permanent: an indexed sequence missing from the log
+	// zone is a consistency failure, never a legitimate miss.
+	log, err := ReadLogBySequence(c.ctx, c.pebble, seq)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +105,6 @@ func (c *ledgerLogCursor) Close() error { return nil }
 func ReadLedgerLogsCompiled(
 	ctx context.Context,
 	pebbleReader dal.PebbleReader,
-	coldReader *coldstorage.ColdReader,
 	indexReader dal.PebbleGetter,
 	ledgerName string,
 	logIDs [][]byte,
@@ -163,7 +155,7 @@ func ReadLedgerLogsCompiled(
 		_ = closer.Close()
 	}
 
-	return &ledgerLogCursor{ctx: ctx, pebble: pebbleReader, coldReader: coldReader, seqs: seqs}, nil
+	return &ledgerLogCursor{ctx: ctx, pebble: pebbleReader, seqs: seqs}, nil
 }
 
 // ReadLogsSinceRaw returns a raw Pebble iterator for logs after the given
@@ -172,7 +164,7 @@ func ReadLedgerLogsCompiled(
 // The iterator is already positioned at the first valid entry (via First()).
 func ReadLogsSinceRaw(_ context.Context, reader dal.PebbleReader, afterSequence uint64) (*pebble.Iterator, error) {
 	kb := dal.NewKeyBuilder()
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog)
+	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog)
 
 	if afterSequence > 0 {
 		kb.PutUint64(afterSequence + 1)
@@ -181,7 +173,7 @@ func ReadLogsSinceRaw(_ context.Context, reader dal.PebbleReader, afterSequence 
 	lowerBound := kb.Build()
 
 	kb2 := dal.NewKeyBuilder()
-	kb2.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
+	kb2.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).
 		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb2.Build()
 
@@ -200,7 +192,7 @@ func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence u
 	defer span.End()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdLog)
+	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog)
 
 	if afterSequence > 0 {
 		kb.PutUint64(afterSequence + 1)
@@ -209,7 +201,7 @@ func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence u
 	lowerBound := kb.Build()
 
 	kb2 := dal.NewKeyBuilder()
-	kb2.PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
+	kb2.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).
 		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb2.Build()
 
@@ -219,77 +211,4 @@ func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence u
 	}
 
 	return dal.NewProtoCursor[*commonpb.Log](iter, opts...), nil
-}
-
-// ReadLogBySequenceWithCold tries hot storage first, then falls back to cold storage
-// by finding the archived chapter that contains the given sequence.
-func ReadLogBySequenceWithCold(
-	ctx context.Context,
-	hotReader dal.PebbleReader,
-	coldReader *coldstorage.ColdReader,
-	sequence uint64,
-) (*commonpb.Log, error) {
-	// Try hot storage first
-	log, err := ReadLogBySequence(ctx, hotReader, sequence)
-	if err != nil {
-		return nil, err
-	}
-
-	if log != nil {
-		return log, nil
-	}
-
-	// Hot miss — if no cold reader, return nil
-	if coldReader == nil {
-		return nil, nil
-	}
-
-	// Find the archived chapter containing this sequence
-	chapterID, err := findArchivedChapterForSequence(ctx, hotReader, sequence)
-	if err != nil {
-		return nil, fmt.Errorf("finding archived chapter for sequence %d: %w", sequence, err)
-	}
-
-	if chapterID == 0 {
-		return nil, nil // not in any archived chapter
-	}
-
-	// Read from cold storage
-	coldPebble, err := coldReader.GetReader(ctx, chapterID)
-	if err != nil {
-		return nil, fmt.Errorf("getting cold reader for chapter %d: %w", chapterID, err)
-	}
-
-	return ReadLogBySequence(ctx, coldPebble, sequence)
-}
-
-// findArchivedChapterForSequence iterates chapters to find an archived one containing the given sequence.
-func findArchivedChapterForSequence(ctx context.Context, reader dal.PebbleReader, sequence uint64) (uint64, error) {
-	cursor, err := ReadChapters(ctx, reader)
-	if err != nil {
-		return 0, err
-	}
-
-	defer func() { _ = cursor.Close() }()
-
-	for {
-		chapter, err := cursor.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			return 0, err
-		}
-
-		if chapter.GetStatus() != commonpb.ChapterStatus_CHAPTER_ARCHIVED {
-			continue
-		}
-
-		if sequence >= chapter.GetStartSequence() && sequence <= chapter.GetCloseSequence() {
-			return chapter.GetId(), nil
-		}
-	}
-
-	return 0, nil
 }

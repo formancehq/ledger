@@ -234,7 +234,7 @@ func (*AuditEntry_Success) isAuditEntry_Outcome() {}
 func (*AuditEntry_Failure) isAuditEntry_Outcome() {}
 
 // AuditItem represents one order within a proposal, stored separately from the
-// AuditEntry header. Pebble key: [ZoneCold][SubColdAuditItem][audit_seq BE 8][order_idx BE 4].
+// AuditEntry header. Pebble key: [ZoneHistory][SubHistoryAuditItem][audit_seq BE 8][order_idx BE 4].
 type AuditItem struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Zero-based position of this order within the proposal.

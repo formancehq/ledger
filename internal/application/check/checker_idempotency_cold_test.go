@@ -375,7 +375,7 @@ func TestReDeriveArchivedIdempotency_Bounds(t *testing.T) {
 
 		// SST holds only a (non-audit) log key, so ReadLastAuditEntry returns
 		// nil and the chapter is skipped without error.
-		logKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(1).Build()
+		logKey := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(1).Build()
 		sst := writeSSTBytes(t, [][2][]byte{{logKey, []byte("x")}})
 
 		reader := coldReaderWithChapters(t, bucketID, map[uint64][]byte{40: sst})
@@ -503,7 +503,7 @@ func buildColdAuditSST(t *testing.T, entries []*auditpb.AuditEntry, items map[ui
 	var kvs [][2][]byte
 
 	for _, e := range entries {
-		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(e.GetSequence()).Build()
+		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(e.GetSequence()).Build()
 
 		val, err := e.MarshalVT()
 		require.NoError(t, err)
@@ -513,7 +513,7 @@ func buildColdAuditSST(t *testing.T, entries []*auditpb.AuditEntry, items map[ui
 
 	for seq, list := range items {
 		for _, it := range list {
-			key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(seq).PutUint32(it.GetOrderIndex()).Build()
+			key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(seq).PutUint32(it.GetOrderIndex()).Build()
 
 			val, err := it.MarshalVT()
 			require.NoError(t, err)

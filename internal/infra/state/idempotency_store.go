@@ -313,8 +313,7 @@ func SaveIdempotencyKey(batch *dal.WriteSession, key string, value *commonpb.Ide
 	copy(mainKey[2:], keyHash[:])
 
 	// Marshal order need not match across replicas: these Pebble bytes are
-	// local durability (read back via UnmarshalVT), and the cross-node state
-	// hash re-marshals deterministically in the sealer.
+	// local durability (read back via UnmarshalVT).
 	data, err := value.MarshalVT()
 	if err != nil {
 		return fmt.Errorf("marshaling idempotency value: %w", err)

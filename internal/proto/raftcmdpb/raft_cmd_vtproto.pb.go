@@ -275,66 +275,12 @@ func (m *SystemScopedOrder_RemoveEventsSink) CloneVT() isSystemScopedOrder_Paylo
 	return r
 }
 
-func (m *SystemScopedOrder_CloseChapter) CloneVT() isSystemScopedOrder_Payload {
-	if m == nil {
-		return (*SystemScopedOrder_CloseChapter)(nil)
-	}
-	r := new(SystemScopedOrder_CloseChapter)
-	r.CloseChapter = m.CloseChapter.CloneVT()
-	return r
-}
-
-func (m *SystemScopedOrder_SealChapter) CloneVT() isSystemScopedOrder_Payload {
-	if m == nil {
-		return (*SystemScopedOrder_SealChapter)(nil)
-	}
-	r := new(SystemScopedOrder_SealChapter)
-	r.SealChapter = m.SealChapter.CloneVT()
-	return r
-}
-
-func (m *SystemScopedOrder_ArchiveChapter) CloneVT() isSystemScopedOrder_Payload {
-	if m == nil {
-		return (*SystemScopedOrder_ArchiveChapter)(nil)
-	}
-	r := new(SystemScopedOrder_ArchiveChapter)
-	r.ArchiveChapter = m.ArchiveChapter.CloneVT()
-	return r
-}
-
-func (m *SystemScopedOrder_ConfirmArchiveChapter) CloneVT() isSystemScopedOrder_Payload {
-	if m == nil {
-		return (*SystemScopedOrder_ConfirmArchiveChapter)(nil)
-	}
-	r := new(SystemScopedOrder_ConfirmArchiveChapter)
-	r.ConfirmArchiveChapter = m.ConfirmArchiveChapter.CloneVT()
-	return r
-}
-
 func (m *SystemScopedOrder_SetMaintenanceMode) CloneVT() isSystemScopedOrder_Payload {
 	if m == nil {
 		return (*SystemScopedOrder_SetMaintenanceMode)(nil)
 	}
 	r := new(SystemScopedOrder_SetMaintenanceMode)
 	r.SetMaintenanceMode = m.SetMaintenanceMode.CloneVT()
-	return r
-}
-
-func (m *SystemScopedOrder_SetChapterSchedule) CloneVT() isSystemScopedOrder_Payload {
-	if m == nil {
-		return (*SystemScopedOrder_SetChapterSchedule)(nil)
-	}
-	r := new(SystemScopedOrder_SetChapterSchedule)
-	r.SetChapterSchedule = m.SetChapterSchedule.CloneVT()
-	return r
-}
-
-func (m *SystemScopedOrder_DeleteChapterSchedule) CloneVT() isSystemScopedOrder_Payload {
-	if m == nil {
-		return (*SystemScopedOrder_DeleteChapterSchedule)(nil)
-	}
-	r := new(SystemScopedOrder_DeleteChapterSchedule)
-	r.DeleteChapterSchedule = m.DeleteChapterSchedule.CloneVT()
 	return r
 }
 
@@ -527,88 +473,6 @@ func (m *SetSigningConfigOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *CloseChapterOrder) CloneVT() *CloseChapterOrder {
-	if m == nil {
-		return (*CloseChapterOrder)(nil)
-	}
-	r := new(CloseChapterOrder)
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *CloseChapterOrder) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *SealChapterOrder) CloneVT() *SealChapterOrder {
-	if m == nil {
-		return (*SealChapterOrder)(nil)
-	}
-	r := new(SealChapterOrder)
-	r.ChapterId = m.ChapterId
-	if rhs := m.SealingHash; rhs != nil {
-		tmpBytes := make([]byte, len(rhs))
-		copy(tmpBytes, rhs)
-		r.SealingHash = tmpBytes
-	}
-	if rhs := m.StateHash; rhs != nil {
-		tmpBytes := make([]byte, len(rhs))
-		copy(tmpBytes, rhs)
-		r.StateHash = tmpBytes
-	}
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *SealChapterOrder) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *ArchiveChapterOrder) CloneVT() *ArchiveChapterOrder {
-	if m == nil {
-		return (*ArchiveChapterOrder)(nil)
-	}
-	r := new(ArchiveChapterOrder)
-	r.ChapterId = m.ChapterId
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *ArchiveChapterOrder) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *ConfirmArchiveChapterOrder) CloneVT() *ConfirmArchiveChapterOrder {
-	if m == nil {
-		return (*ConfirmArchiveChapterOrder)(nil)
-	}
-	r := new(ConfirmArchiveChapterOrder)
-	r.ChapterId = m.ChapterId
-	if rhs := m.SealingHash; rhs != nil {
-		tmpBytes := make([]byte, len(rhs))
-		copy(tmpBytes, rhs)
-		r.SealingHash = tmpBytes
-	}
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *ConfirmArchiveChapterOrder) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
 func (m *SetMaintenanceModeOrder) CloneVT() *SetMaintenanceModeOrder {
 	if m == nil {
 		return (*SetMaintenanceModeOrder)(nil)
@@ -640,39 +504,6 @@ func (m *SetClusterPolicyOrder) CloneVT() *SetClusterPolicyOrder {
 }
 
 func (m *SetClusterPolicyOrder) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *SetChapterScheduleOrder) CloneVT() *SetChapterScheduleOrder {
-	if m == nil {
-		return (*SetChapterScheduleOrder)(nil)
-	}
-	r := new(SetChapterScheduleOrder)
-	r.Cron = m.Cron
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *SetChapterScheduleOrder) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *DeleteChapterScheduleOrder) CloneVT() *DeleteChapterScheduleOrder {
-	if m == nil {
-		return (*DeleteChapterScheduleOrder)(nil)
-	}
-	r := new(DeleteChapterScheduleOrder)
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *DeleteChapterScheduleOrder) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -2771,106 +2602,6 @@ func (this *SystemScopedOrder_RemoveEventsSink) EqualVT(thatIface isSystemScoped
 	return true
 }
 
-func (this *SystemScopedOrder_CloseChapter) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
-	that, ok := thatIface.(*SystemScopedOrder_CloseChapter)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.CloseChapter, that.CloseChapter; p != q {
-		if p == nil {
-			p = &CloseChapterOrder{}
-		}
-		if q == nil {
-			q = &CloseChapterOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *SystemScopedOrder_SealChapter) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
-	that, ok := thatIface.(*SystemScopedOrder_SealChapter)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.SealChapter, that.SealChapter; p != q {
-		if p == nil {
-			p = &SealChapterOrder{}
-		}
-		if q == nil {
-			q = &SealChapterOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *SystemScopedOrder_ArchiveChapter) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
-	that, ok := thatIface.(*SystemScopedOrder_ArchiveChapter)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.ArchiveChapter, that.ArchiveChapter; p != q {
-		if p == nil {
-			p = &ArchiveChapterOrder{}
-		}
-		if q == nil {
-			q = &ArchiveChapterOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *SystemScopedOrder_ConfirmArchiveChapter) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
-	that, ok := thatIface.(*SystemScopedOrder_ConfirmArchiveChapter)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.ConfirmArchiveChapter, that.ConfirmArchiveChapter; p != q {
-		if p == nil {
-			p = &ConfirmArchiveChapterOrder{}
-		}
-		if q == nil {
-			q = &ConfirmArchiveChapterOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
 func (this *SystemScopedOrder_SetMaintenanceMode) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
 	that, ok := thatIface.(*SystemScopedOrder_SetMaintenanceMode)
 	if !ok {
@@ -2888,56 +2619,6 @@ func (this *SystemScopedOrder_SetMaintenanceMode) EqualVT(thatIface isSystemScop
 		}
 		if q == nil {
 			q = &SetMaintenanceModeOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *SystemScopedOrder_SetChapterSchedule) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
-	that, ok := thatIface.(*SystemScopedOrder_SetChapterSchedule)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.SetChapterSchedule, that.SetChapterSchedule; p != q {
-		if p == nil {
-			p = &SetChapterScheduleOrder{}
-		}
-		if q == nil {
-			q = &SetChapterScheduleOrder{}
-		}
-		if !p.EqualVT(q) {
-			return false
-		}
-	}
-	return true
-}
-
-func (this *SystemScopedOrder_DeleteChapterSchedule) EqualVT(thatIface isSystemScopedOrder_Payload) bool {
-	that, ok := thatIface.(*SystemScopedOrder_DeleteChapterSchedule)
-	if !ok {
-		return false
-	}
-	if this == that {
-		return true
-	}
-	if this == nil && that != nil || this != nil && that == nil {
-		return false
-	}
-	if p, q := this.DeleteChapterSchedule, that.DeleteChapterSchedule; p != q {
-		if p == nil {
-			p = &DeleteChapterScheduleOrder{}
-		}
-		if q == nil {
-			q = &DeleteChapterScheduleOrder{}
 		}
 		if !p.EqualVT(q) {
 			return false
@@ -3235,88 +2916,6 @@ func (this *SetSigningConfigOrder) EqualMessageVT(thatMsg proto.Message) bool {
 	}
 	return this.EqualVT(that)
 }
-func (this *CloseChapterOrder) EqualVT(that *CloseChapterOrder) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *CloseChapterOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*CloseChapterOrder)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *SealChapterOrder) EqualVT(that *SealChapterOrder) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.ChapterId != that.ChapterId {
-		return false
-	}
-	if string(this.SealingHash) != string(that.SealingHash) {
-		return false
-	}
-	if string(this.StateHash) != string(that.StateHash) {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *SealChapterOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SealChapterOrder)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *ArchiveChapterOrder) EqualVT(that *ArchiveChapterOrder) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.ChapterId != that.ChapterId {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *ArchiveChapterOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ArchiveChapterOrder)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *ConfirmArchiveChapterOrder) EqualVT(that *ConfirmArchiveChapterOrder) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.ChapterId != that.ChapterId {
-		return false
-	}
-	if string(this.SealingHash) != string(that.SealingHash) {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *ConfirmArchiveChapterOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*ConfirmArchiveChapterOrder)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
 func (this *SetMaintenanceModeOrder) EqualVT(that *SetMaintenanceModeOrder) bool {
 	if this == that {
 		return true
@@ -3350,41 +2949,6 @@ func (this *SetClusterPolicyOrder) EqualVT(that *SetClusterPolicyOrder) bool {
 
 func (this *SetClusterPolicyOrder) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*SetClusterPolicyOrder)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *SetChapterScheduleOrder) EqualVT(that *SetChapterScheduleOrder) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Cron != that.Cron {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *SetChapterScheduleOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SetChapterScheduleOrder)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *DeleteChapterScheduleOrder) EqualVT(that *DeleteChapterScheduleOrder) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *DeleteChapterScheduleOrder) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*DeleteChapterScheduleOrder)
 	if !ok {
 		return false
 	}
@@ -6462,82 +6026,6 @@ func (m *SystemScopedOrder_RemoveEventsSink) MarshalToSizedBufferVT(dAtA []byte)
 	}
 	return len(dAtA) - i, nil
 }
-func (m *SystemScopedOrder_CloseChapter) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *SystemScopedOrder_CloseChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.CloseChapter != nil {
-		size, err := m.CloseChapter.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x32
-	}
-	return len(dAtA) - i, nil
-}
-func (m *SystemScopedOrder_SealChapter) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *SystemScopedOrder_SealChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.SealChapter != nil {
-		size, err := m.SealChapter.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x3a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *SystemScopedOrder_ArchiveChapter) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *SystemScopedOrder_ArchiveChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.ArchiveChapter != nil {
-		size, err := m.ArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x42
-	}
-	return len(dAtA) - i, nil
-}
-func (m *SystemScopedOrder_ConfirmArchiveChapter) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *SystemScopedOrder_ConfirmArchiveChapter) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.ConfirmArchiveChapter != nil {
-		size, err := m.ConfirmArchiveChapter.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x4a
-	}
-	return len(dAtA) - i, nil
-}
 func (m *SystemScopedOrder_SetMaintenanceMode) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
@@ -6553,45 +6041,7 @@ func (m *SystemScopedOrder_SetMaintenanceMode) MarshalToSizedBufferVT(dAtA []byt
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x52
-	}
-	return len(dAtA) - i, nil
-}
-func (m *SystemScopedOrder_SetChapterSchedule) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *SystemScopedOrder_SetChapterSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.SetChapterSchedule != nil {
-		size, err := m.SetChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x5a
-	}
-	return len(dAtA) - i, nil
-}
-func (m *SystemScopedOrder_DeleteChapterSchedule) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *SystemScopedOrder_DeleteChapterSchedule) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.DeleteChapterSchedule != nil {
-		size, err := m.DeleteChapterSchedule.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x62
+		dAtA[i] = 0x32
 	}
 	return len(dAtA) - i, nil
 }
@@ -6610,7 +6060,7 @@ func (m *SystemScopedOrder_CreateQueryCheckpoint) MarshalToSizedBufferVT(dAtA []
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x6a
+		dAtA[i] = 0x3a
 	}
 	return len(dAtA) - i, nil
 }
@@ -6629,7 +6079,7 @@ func (m *SystemScopedOrder_DeleteQueryCheckpoint) MarshalToSizedBufferVT(dAtA []
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x72
+		dAtA[i] = 0x42
 	}
 	return len(dAtA) - i, nil
 }
@@ -6648,7 +6098,7 @@ func (m *SystemScopedOrder_SetQueryCheckpointSchedule) MarshalToSizedBufferVT(dA
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x7a
+		dAtA[i] = 0x4a
 	}
 	return len(dAtA) - i, nil
 }
@@ -6667,9 +6117,7 @@ func (m *SystemScopedOrder_DeleteQueryCheckpointSchedule) MarshalToSizedBufferVT
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0x82
+		dAtA[i] = 0x52
 	}
 	return len(dAtA) - i, nil
 }
@@ -6688,9 +6136,7 @@ func (m *SystemScopedOrder_SetClusterPolicy) MarshalToSizedBufferVT(dAtA []byte)
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0x8a
+		dAtA[i] = 0x5a
 	}
 	return len(dAtA) - i, nil
 }
@@ -7057,177 +6503,6 @@ func (m *SetSigningConfigOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
-func (m *CloseChapterOrder) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *CloseChapterOrder) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *CloseChapterOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *SealChapterOrder) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *SealChapterOrder) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *SealChapterOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if len(m.StateHash) > 0 {
-		i -= len(m.StateHash)
-		copy(dAtA[i:], m.StateHash)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.StateHash)))
-		i--
-		dAtA[i] = 0x1a
-	}
-	if len(m.SealingHash) > 0 {
-		i -= len(m.SealingHash)
-		copy(dAtA[i:], m.SealingHash)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SealingHash)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.ChapterId != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ChapterId))
-		i--
-		dAtA[i] = 0x9
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *ArchiveChapterOrder) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *ArchiveChapterOrder) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *ArchiveChapterOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.ChapterId != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ChapterId))
-		i--
-		dAtA[i] = 0x9
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *ConfirmArchiveChapterOrder) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *ConfirmArchiveChapterOrder) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *ConfirmArchiveChapterOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if len(m.SealingHash) > 0 {
-		i -= len(m.SealingHash)
-		copy(dAtA[i:], m.SealingHash)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SealingHash)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.ChapterId != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ChapterId))
-		i--
-		dAtA[i] = 0x9
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *SetMaintenanceModeOrder) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -7310,79 +6585,6 @@ func (m *SetClusterPolicyOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error)
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *SetChapterScheduleOrder) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *SetChapterScheduleOrder) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *SetChapterScheduleOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if len(m.Cron) > 0 {
-		i -= len(m.Cron)
-		copy(dAtA[i:], m.Cron)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Cron)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *DeleteChapterScheduleOrder) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *DeleteChapterScheduleOrder) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *DeleteChapterScheduleOrder) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
 	}
 	return len(dAtA) - i, nil
 }
@@ -11657,54 +10859,6 @@ func (m *SystemScopedOrder_RemoveEventsSink) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *SystemScopedOrder_CloseChapter) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.CloseChapter != nil {
-		l = m.CloseChapter.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *SystemScopedOrder_SealChapter) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.SealChapter != nil {
-		l = m.SealChapter.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *SystemScopedOrder_ArchiveChapter) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.ArchiveChapter != nil {
-		l = m.ArchiveChapter.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *SystemScopedOrder_ConfirmArchiveChapter) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.ConfirmArchiveChapter != nil {
-		l = m.ConfirmArchiveChapter.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
 func (m *SystemScopedOrder_SetMaintenanceMode) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -11713,30 +10867,6 @@ func (m *SystemScopedOrder_SetMaintenanceMode) SizeVT() (n int) {
 	_ = l
 	if m.SetMaintenanceMode != nil {
 		l = m.SetMaintenanceMode.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *SystemScopedOrder_SetChapterSchedule) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.SetChapterSchedule != nil {
-		l = m.SetChapterSchedule.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	return n
-}
-func (m *SystemScopedOrder_DeleteChapterSchedule) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.DeleteChapterSchedule != nil {
-		l = m.DeleteChapterSchedule.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
@@ -11785,7 +10915,7 @@ func (m *SystemScopedOrder_DeleteQueryCheckpointSchedule) SizeVT() (n int) {
 	_ = l
 	if m.DeleteQueryCheckpointSchedule != nil {
 		l = m.DeleteQueryCheckpointSchedule.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
@@ -11797,7 +10927,7 @@ func (m *SystemScopedOrder_SetClusterPolicy) SizeVT() (n int) {
 	_ = l
 	if m.SetClusterPolicy != nil {
 		l = m.SetClusterPolicy.SizeVT()
-		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	return n
 }
@@ -11927,67 +11057,6 @@ func (m *SetSigningConfigOrder) SizeVT() (n int) {
 	return n
 }
 
-func (m *CloseChapterOrder) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *SealChapterOrder) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.ChapterId != 0 {
-		n += 9
-	}
-	l = len(m.SealingHash)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	l = len(m.StateHash)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *ArchiveChapterOrder) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.ChapterId != 0 {
-		n += 9
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *ConfirmArchiveChapterOrder) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.ChapterId != 0 {
-		n += 9
-	}
-	l = len(m.SealingHash)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
 func (m *SetMaintenanceModeOrder) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -12011,30 +11080,6 @@ func (m *SetClusterPolicyOrder) SizeVT() (n int) {
 		l = m.Policy.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *SetChapterScheduleOrder) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.Cron)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *DeleteChapterScheduleOrder) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
 	n += len(m.unknownFields)
 	return n
 }
@@ -14727,170 +13772,6 @@ func (m *SystemScopedOrder) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 6:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CloseChapter", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Payload.(*SystemScopedOrder_CloseChapter); ok {
-				if err := oneof.CloseChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &CloseChapterOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Payload = &SystemScopedOrder_CloseChapter{CloseChapter: v}
-			}
-			iNdEx = postIndex
-		case 7:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SealChapter", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Payload.(*SystemScopedOrder_SealChapter); ok {
-				if err := oneof.SealChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SealChapterOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Payload = &SystemScopedOrder_SealChapter{SealChapter: v}
-			}
-			iNdEx = postIndex
-		case 8:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ArchiveChapter", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Payload.(*SystemScopedOrder_ArchiveChapter); ok {
-				if err := oneof.ArchiveChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &ArchiveChapterOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Payload = &SystemScopedOrder_ArchiveChapter{ArchiveChapter: v}
-			}
-			iNdEx = postIndex
-		case 9:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ConfirmArchiveChapter", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Payload.(*SystemScopedOrder_ConfirmArchiveChapter); ok {
-				if err := oneof.ConfirmArchiveChapter.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &ConfirmArchiveChapterOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Payload = &SystemScopedOrder_ConfirmArchiveChapter{ConfirmArchiveChapter: v}
-			}
-			iNdEx = postIndex
-		case 10:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SetMaintenanceMode", wireType)
 			}
 			var msglen int
@@ -14930,89 +13811,7 @@ func (m *SystemScopedOrder) UnmarshalVT(dAtA []byte) error {
 				m.Payload = &SystemScopedOrder_SetMaintenanceMode{SetMaintenanceMode: v}
 			}
 			iNdEx = postIndex
-		case 11:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SetChapterSchedule", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Payload.(*SystemScopedOrder_SetChapterSchedule); ok {
-				if err := oneof.SetChapterSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &SetChapterScheduleOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Payload = &SystemScopedOrder_SetChapterSchedule{SetChapterSchedule: v}
-			}
-			iNdEx = postIndex
-		case 12:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DeleteChapterSchedule", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if oneof, ok := m.Payload.(*SystemScopedOrder_DeleteChapterSchedule); ok {
-				if err := oneof.DeleteChapterSchedule.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-			} else {
-				v := &DeleteChapterScheduleOrder{}
-				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-					return err
-				}
-				m.Payload = &SystemScopedOrder_DeleteChapterSchedule{DeleteChapterSchedule: v}
-			}
-			iNdEx = postIndex
-		case 13:
+		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreateQueryCheckpoint", wireType)
 			}
@@ -15053,7 +13852,7 @@ func (m *SystemScopedOrder) UnmarshalVT(dAtA []byte) error {
 				m.Payload = &SystemScopedOrder_CreateQueryCheckpoint{CreateQueryCheckpoint: v}
 			}
 			iNdEx = postIndex
-		case 14:
+		case 8:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DeleteQueryCheckpoint", wireType)
 			}
@@ -15094,7 +13893,7 @@ func (m *SystemScopedOrder) UnmarshalVT(dAtA []byte) error {
 				m.Payload = &SystemScopedOrder_DeleteQueryCheckpoint{DeleteQueryCheckpoint: v}
 			}
 			iNdEx = postIndex
-		case 15:
+		case 9:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SetQueryCheckpointSchedule", wireType)
 			}
@@ -15135,7 +13934,7 @@ func (m *SystemScopedOrder) UnmarshalVT(dAtA []byte) error {
 				m.Payload = &SystemScopedOrder_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: v}
 			}
 			iNdEx = postIndex
-		case 16:
+		case 10:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DeleteQueryCheckpointSchedule", wireType)
 			}
@@ -15176,7 +13975,7 @@ func (m *SystemScopedOrder) UnmarshalVT(dAtA []byte) error {
 				m.Payload = &SystemScopedOrder_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: v}
 			}
 			iNdEx = postIndex
-		case 17:
+		case 11:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field SetClusterPolicy", wireType)
 			}
@@ -16021,342 +14820,6 @@ func (m *SetSigningConfigOrder) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CloseChapterOrder) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: CloseChapterOrder: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CloseChapterOrder: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *SealChapterOrder) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: SealChapterOrder: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SealChapterOrder: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ChapterId", wireType)
-			}
-			m.ChapterId = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.ChapterId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SealingHash", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.SealingHash = append(m.SealingHash[:0], dAtA[iNdEx:postIndex]...)
-			if m.SealingHash == nil {
-				m.SealingHash = []byte{}
-			}
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field StateHash", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.StateHash = append(m.StateHash[:0], dAtA[iNdEx:postIndex]...)
-			if m.StateHash == nil {
-				m.StateHash = []byte{}
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *ArchiveChapterOrder) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: ArchiveChapterOrder: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ArchiveChapterOrder: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ChapterId", wireType)
-			}
-			m.ChapterId = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.ChapterId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *ConfirmArchiveChapterOrder) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: ConfirmArchiveChapterOrder: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ConfirmArchiveChapterOrder: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ChapterId", wireType)
-			}
-			m.ChapterId = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.ChapterId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SealingHash", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.SealingHash = append(m.SealingHash[:0], dAtA[iNdEx:postIndex]...)
-			if m.SealingHash == nil {
-				m.SealingHash = []byte{}
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
 func (m *SetMaintenanceModeOrder) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -16493,140 +14956,6 @@ func (m *SetClusterPolicyOrder) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *SetChapterScheduleOrder) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: SetChapterScheduleOrder: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SetChapterScheduleOrder: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Cron", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Cron = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *DeleteChapterScheduleOrder) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: DeleteChapterScheduleOrder: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DeleteChapterScheduleOrder: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

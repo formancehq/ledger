@@ -141,7 +141,7 @@ func (p *Builder) Run(
 	// (technical updates whose handlers only write — EventsSink,
 	// IdempotencyEviction, ClusterConfig — as well as orders that
 	// only touch the IdempotencyStore such as maintenance, signing,
-	// chapter-schedule operations), the generation revalidation under
+	// schedule operations), the generation revalidation under
 	// AcquireProposalGuard has nothing to revalidate. Skip the guard
 	// and only hold the tracker mutex long enough to inject
 	// PredictedIndex and push into Raft's queue.

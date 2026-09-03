@@ -31,7 +31,7 @@ func ReadLastAppliedProposalSequence(reader dal.PebbleReader) (uint64, error) {
 // ReadLastAppliedProposal returns the most recently written AppliedProposal
 // entry, or nil if none exist.
 func ReadLastAppliedProposal(reader dal.PebbleReader) (*proposalpb.AppliedProposal, error) {
-	entry, err := dal.ReadLastEntry[*proposalpb.AppliedProposal](reader, dal.ZoneCold, dal.SubColdAppliedProposal)
+	entry, err := dal.ReadLastEntry[*proposalpb.AppliedProposal](reader, dal.ZoneHistory, dal.SubHistoryAppliedProposal)
 	if err != nil {
 		return nil, fmt.Errorf("reading last applied proposal: %w", err)
 	}
@@ -48,7 +48,7 @@ func ReadAppliedProposals(ctx context.Context, reader dal.PebbleReader, afterSeq
 	defer span.End()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal)
+	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal)
 
 	if afterSequence != nil {
 		kb.PutUint64(*afterSequence + 1)
@@ -57,7 +57,7 @@ func ReadAppliedProposals(ctx context.Context, reader dal.PebbleReader, afterSeq
 	lowerBound := kb.Build()
 
 	kb2 := dal.NewKeyBuilder()
-	kb2.PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).
+	kb2.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal).
 		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb2.Build()
 
@@ -78,7 +78,7 @@ func ReadAppliedProposal(ctx context.Context, reader dal.PebbleGetter, sequence 
 	defer span.End()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).PutUint64(sequence)
+	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal).PutUint64(sequence)
 
 	entry, err := dal.ReadProto[*proposalpb.AppliedProposal](reader, kb.Build())
 	if err != nil {

@@ -25,7 +25,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
@@ -53,20 +52,18 @@ type Proposer interface {
 // Admission handles the admission of orders into the Raft cluster.
 // It is responsible for preloading volumes and proposing commands.
 type Admission struct {
-	store              *dal.Store
-	logger             logging.Logger
-	proposer           Proposer
-	writeGate          health.WriteGate
-	keyStore           *keystore.KeyStore
-	sharedState        *state.SharedState
-	receiptSigner      *receipt.Signer
-	builder            *plan.Builder
-	attrs              *attributes.Attributes
-	numscriptCache     *numscript.NumscriptCache
-	coldStorageEnabled bool
-	coldReader         *coldstorage.ColdReader
-	authEnabled        bool
-	waitLeaderReady    func(context.Context) error
+	store           *dal.Store
+	logger          logging.Logger
+	proposer        Proposer
+	writeGate       health.WriteGate
+	keyStore        *keystore.KeyStore
+	sharedState     *state.SharedState
+	receiptSigner   *receipt.Signer
+	builder         *plan.Builder
+	attrs           *attributes.Attributes
+	numscriptCache  *numscript.NumscriptCache
+	authEnabled     bool
+	waitLeaderReady func(context.Context) error
 
 	// clusterPolicyCommitted latches once the replicated cluster policy is
 	// observed committed (revision > 0). The steady-state write path then skips
@@ -132,22 +129,6 @@ func WithMetrics() func(*Admission) {
 func WithReceiptSigner(signer *receipt.Signer) func(*Admission) {
 	return func(a *Admission) {
 		a.receiptSigner = signer
-	}
-}
-
-// WithColdStorageEnabled marks cold storage as available, allowing archive operations.
-func WithColdStorageEnabled() func(*Admission) {
-	return func(a *Admission) {
-		a.coldStorageEnabled = true
-	}
-}
-
-// WithColdReader wires the cold-storage reader so an idempotent-replay response
-// can resolve a referenced log whose chapter has been archived and purged from
-// hot storage. Nil (cold storage disabled) leaves resolution hot-only.
-func WithColdReader(cr *coldstorage.ColdReader) func(*Admission) {
-	return func(a *Admission) {
-		a.coldReader = cr
 	}
 }
 
@@ -834,11 +815,9 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 
 	logs = make([]*commonpb.Log, len(result.Logs))
 
-	// A referenced log may live in a chapter that has been archived and purged
-	// from hot storage, so resolve it with a cold-storage fallback (mirroring
-	// GetLog) — otherwise a replay of that key returns an empty log. The cold
-	// read needs a read handle (its archived-chapter lookup iterates), which the
-	// raw store is not; open one lazily, only on the replay path.
+	// A referenced log is resolved from the permanent log history. The read
+	// needs a read handle, which the raw store is not; open one lazily, only
+	// on the replay path.
 	var handle *dal.ReadHandle
 	defer func() {
 		if handle != nil {
@@ -865,7 +844,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 			}
 		}
 
-		log, fetchErr := query.ReadLogBySequenceWithCold(ctx, handle, a.coldReader, refSeq)
+		log, fetchErr := query.ReadLogBySequence(ctx, handle, refSeq)
 		if fetchErr != nil {
 			return nil, fmt.Errorf("fetching referenced log %d for idempotent response: %w", refSeq, fetchErr)
 		}
@@ -1009,8 +988,8 @@ func (a *Admission) resolveBatch(ctx context.Context, req *servicepb.ApplyReques
 //   - all other signing-management requests require a signature once keys exist
 //   - regular requests check the requireSignatures flag
 func (a *Admission) authorizeUnsignedBatch(ctx context.Context, reqs []*servicepb.Request) error {
-	// Leader-internal proposals (chapter archiver, sealer, schedulers, the
-	// query-checkpoint scheduler) travel through admission unsigned under a system
+	// Leader-internal proposals (the query-checkpoint scheduler) travel
+	// through admission unsigned under a system
 	// actor set only by server-internal code. RequireSignatures authenticates
 	// client writes; the leader's own audited proposals are inside the trust
 	// boundary and would otherwise be permanently rejected on a signed cluster.
@@ -1111,14 +1090,14 @@ var ErrIdempotencyKeyInvalidUTF8 domain.Describable = errIdempotencyKeyInvalidUT
 var ErrMaintenanceMode = domain.ErrMaintenanceMode
 
 // ErrCheckpointOrderNotLast is returned when a bulk request mixes a checkpoint
-// trigger (CreateQueryCheckpoint or CloseChapter) with any non-trigger order
+// trigger (CreateQueryCheckpoint) with any non-trigger order
 // AND the trigger does not occupy the last slot. The FSM commits the batch as
 // a single atomic unit, so a trigger order must always be last — otherwise it
 // would force a mid-batch commit that races the pipelined committer.
 type errCheckpointOrderNotLast struct{}
 
 func (errCheckpointOrderNotLast) Error() string {
-	return "checkpoint trigger (CreateQueryCheckpoint or CloseChapter) must be the last order in a bulk request"
+	return "checkpoint trigger (CreateQueryCheckpoint) must be the last order in a bulk request"
 }
 func (errCheckpointOrderNotLast) Reason() string              { return domain.ErrReasonValidation }
 func (errCheckpointOrderNotLast) Metadata() map[string]string { return nil }
@@ -1530,12 +1509,6 @@ func extractSystemScopedNeeds(p *plan.Coverage, ss *raftcmdpb.SystemScopedOrder)
 		*raftcmdpb.SystemScopedOrder_RevokeSigningKey,
 		*raftcmdpb.SystemScopedOrder_SetSigningConfig,
 		*raftcmdpb.SystemScopedOrder_SetMaintenanceMode,
-		*raftcmdpb.SystemScopedOrder_CloseChapter,
-		*raftcmdpb.SystemScopedOrder_SealChapter,
-		*raftcmdpb.SystemScopedOrder_ArchiveChapter,
-		*raftcmdpb.SystemScopedOrder_ConfirmArchiveChapter,
-		*raftcmdpb.SystemScopedOrder_SetChapterSchedule,
-		*raftcmdpb.SystemScopedOrder_DeleteChapterSchedule,
 		*raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint,
 		*raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint,
 		*raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule,
@@ -2158,43 +2131,6 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 		})
 
 		overlay.sinks.Delete(reqType.RemoveEventsSink.GetName())
-	case *servicepb.Request_CloseChapter:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_CloseChapter{
-				CloseChapter: &raftcmdpb.CloseChapterOrder{},
-			},
-		})
-	case *servicepb.Request_SealChapter:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_SealChapter{
-				SealChapter: &raftcmdpb.SealChapterOrder{
-					ChapterId:   reqType.SealChapter.GetChapterId(),
-					SealingHash: reqType.SealChapter.GetSealingHash(),
-					StateHash:   reqType.SealChapter.GetStateHash(),
-				},
-			},
-		})
-	case *servicepb.Request_ArchiveChapter:
-		if !a.coldStorageEnabled {
-			return nil, domain.ErrColdStorageDisabled
-		}
-
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_ArchiveChapter{
-				ArchiveChapter: &raftcmdpb.ArchiveChapterOrder{
-					ChapterId: reqType.ArchiveChapter.GetChapterId(),
-				},
-			},
-		})
-	case *servicepb.Request_ConfirmArchiveChapter:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_ConfirmArchiveChapter{
-				ConfirmArchiveChapter: &raftcmdpb.ConfirmArchiveChapterOrder{
-					ChapterId:   reqType.ConfirmArchiveChapter.GetChapterId(),
-					SealingHash: reqType.ConfirmArchiveChapter.GetSealingHash(),
-				},
-			},
-		})
 	case *servicepb.Request_SetMaintenanceMode:
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{
@@ -2209,20 +2145,6 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 				SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{
 					Policy: reqType.SetClusterPolicy.GetPolicy(),
 				},
-			},
-		})
-	case *servicepb.Request_SetChapterSchedule:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_SetChapterSchedule{
-				SetChapterSchedule: &raftcmdpb.SetChapterScheduleOrder{
-					Cron: reqType.SetChapterSchedule.GetCron(),
-				},
-			},
-		})
-	case *servicepb.Request_DeleteChapterSchedule:
-		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_DeleteChapterSchedule{
-				DeleteChapterSchedule: &raftcmdpb.DeleteChapterScheduleOrder{},
 			},
 		})
 	case *servicepb.Request_PromoteLedger:

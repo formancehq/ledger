@@ -103,18 +103,12 @@ message SystemScopedOrder {
     SetSigningConfigOrder set_signing_config = 3;
     AddEventsSinkOrder add_events_sink = 4;
     RemoveEventsSinkOrder remove_events_sink = 5;
-    CloseChapterOrder close_chapter = 6;
-    SealChapterOrder seal_chapter = 7;
-    ArchiveChapterOrder archive_chapter = 8;
-    ConfirmArchiveChapterOrder confirm_archive_chapter = 9;
-    SetMaintenanceModeOrder set_maintenance_mode = 10;
-    SetChapterScheduleOrder set_chapter_schedule = 11;
-    DeleteChapterScheduleOrder delete_chapter_schedule = 12;
-    CreateQueryCheckpointOrder create_query_checkpoint = 13;
-    DeleteQueryCheckpointOrder delete_query_checkpoint = 14;
-    SetQueryCheckpointScheduleOrder set_query_checkpoint_schedule = 15;
-    DeleteQueryCheckpointScheduleOrder delete_query_checkpoint_schedule = 16;
-    SetClusterPolicyOrder set_cluster_policy = 17;
+    SetMaintenanceModeOrder set_maintenance_mode = 6;
+    CreateQueryCheckpointOrder create_query_checkpoint = 7;
+    DeleteQueryCheckpointOrder delete_query_checkpoint = 8;
+    SetQueryCheckpointScheduleOrder set_query_checkpoint_schedule = 9;
+    DeleteQueryCheckpointScheduleOrder delete_query_checkpoint_schedule = 10;
+    SetClusterPolicyOrder set_cluster_policy = 11;
   }
 }
 
@@ -155,25 +149,6 @@ message SetSigningConfigOrder {
   bool require_signatures = 1;
 }
 
-message CloseChapterOrder {}
-
-message SealChapterOrder {
-  fixed64 chapter_id = 1;
-  bytes sealing_hash = 2;
-  bytes state_hash = 3;
-}
-
-message ArchiveChapterOrder {
-  fixed64 chapter_id = 1;
-}
-
-message ConfirmArchiveChapterOrder {
-  fixed64 chapter_id = 1;
-  // sealing_hash is the chapter incarnation the archive belongs to; the handler
-  // refuses the confirm unless it matches the chapter's own.
-  bytes sealing_hash = 2;
-}
-
 message SetMaintenanceModeOrder {
   bool enabled = 1;
 }
@@ -183,12 +158,6 @@ message SetMaintenanceModeOrder {
 message SetClusterPolicyOrder {
   common.ClusterPolicy policy = 1;
 }
-
-message SetChapterScheduleOrder {
-  string cron = 1;
-}
-
-message DeleteChapterScheduleOrder {}
 
 // SaveNumscriptOrder appends an immutable version to the library. version must
 // be an explicit full semver.
@@ -319,7 +288,7 @@ message LedgerApplyOrder {
   //
   // Located on LedgerApplyOrder (not Order) because only Apply
   // variants can be idempotent-skipped today — CreateLedger,
-  // SystemScoped signing key operations, chapter management, etc.
+  // SystemScoped signing key operations, etc.
   // have no business error that maps to a legitimate skip semantic.
   repeated common.ErrorReason skippable_reasons = 12;
 }

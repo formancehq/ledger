@@ -2,7 +2,6 @@ package check
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -13,10 +12,8 @@ import (
 	"math/bits"
 	"slices"
 	"strconv"
-	"time"
 
 	"github.com/cockroachdb/pebble/v2"
-	"github.com/zeebo/blake3"
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -27,7 +24,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -49,19 +45,6 @@ type Checker struct {
 	attrs     *attributes.Attributes
 	logger    logging.Logger
 	clusterID string
-	// coldReader gives the idempotency pass read access to archived audit
-	// entries so a still-live frozen outcome whose freezing entry has been
-	// archived can be re-derived rather than skipped. nil when cold storage
-	// is not configured (e.g. the CLI / restore call sites) — the pass then
-	// keeps the post-archive boundary as its verification floor.
-	coldReader *coldstorage.ColdReader
-	// idempotencyTTL is the boot-validated runtime idempotency TTL, used to
-	// size the cold re-derivation window. It is preferred over the persisted
-	// projection because it lives in process memory (not on the audited disk),
-	// so a disk-tampered PersistedConfig cannot shrink the window. nil where no
-	// trusted runtime config exists (CLI / restore backup validation) — the
-	// pass then falls back to the persisted TTL.
-	idempotencyTTL *time.Duration
 	// readStore gives the reverse-map orphan pass read access to the peer
 	// read-index store. nil at the restore / CLI call sites, where no peer
 	// readstore exists for the staged store being validated — the pass then
@@ -74,20 +57,16 @@ type Checker struct {
 // NewChecker creates a new Checker. clusterID is used to derive the
 // per-cluster key for verifying audit-hash chain entries — it must match
 // the value the FSM used when writing those entries (enforced via
-// PersistedConfig immutability). coldReader may be nil when cold storage is
-// not configured. idempotencyTTL may be nil when no trusted runtime config is
-// available (the pass then falls back to the persisted TTL). readStore may
-// be nil when no peer read-index store is available (restore / CLI backup
-// validation); the reverse-map orphan pass is then skipped.
-func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string, coldReader *coldstorage.ColdReader, idempotencyTTL *time.Duration, readStore *readstore.Store, logger logging.Logger) *Checker {
+// PersistedConfig immutability). readStore may be nil when no peer
+// read-index store is available (restore / CLI backup validation); the
+// reverse-map orphan pass is then skipped.
+func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string, readStore *readstore.Store, logger logging.Logger) *Checker {
 	return &Checker{
-		store:          store,
-		attrs:          attrs,
-		logger:         logger,
-		clusterID:      clusterID,
-		coldReader:     coldReader,
-		idempotencyTTL: idempotencyTTL,
-		readStore:      readStore,
+		store:     store,
+		attrs:     attrs,
+		logger:    logger,
+		clusterID: clusterID,
+		readStore: readStore,
 	}
 }
 
@@ -99,8 +78,6 @@ func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string
 // 4. Volume consistency (input/output per account/asset)
 // 5. Account metadata consistency
 // 6. Transaction update consistency
-// 7. Archived chapter sealing hash decomposition
-// 8. Archived state via baseline checkpoint + 3-way merge comparison.
 func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStoreEvent)) error {
 	// Pin the peer read-index snapshot FIRST — strictly BEFORE the primary one.
 	// The order is load-bearing for compareReverseMapOrphans, which compares the
@@ -149,26 +126,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("getting last sequence: %w", err)
 	}
 
-	// Read archived chapters to adjust the starting point for log replay. Read
-	// BEFORE the empty-audit fast path below, which needs them too: the signing
-	// fold consults the archived set to decide whether its coverage is complete.
-	chaptersCursor, err := query.ReadChapters(ctx, snap)
-	if err != nil {
-		return fmt.Errorf("reading chapters: %w", err)
-	}
-
-	chapters, err := cursor.Collect(chaptersCursor)
-	if err != nil {
-		return fmt.Errorf("collecting chapters: %w", err)
-	}
-
-	// Runs before the zero-log fast path: the pass needs only the registry
-	// rows and the snapshot, and a store with no logs can still hold ARCHIVED
-	// chapter rows with residue in their purge ranges.
-	if err := verifyArchivedChapterResidency(snap, chapters, callback); err != nil {
-		return fmt.Errorf("verifying archived chapter residency: %w", err)
-	}
-
 	if lastSequence == 0 {
 		// An empty audit does not make the peer store trustworthy: the read
 		// index folds FROM the log stream, so any reverse-map row over a
@@ -188,19 +145,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// expectation is therefore legitimately empty and every stored row is
 		// unaudited: returning clean here would hide exactly the injected-key class
 		// this pass exists to report.
-		//
-		// foldArchived still runs rather than hardcoding complete coverage. Archived
-		// chapters are unreachable with lastSequence == 0 today — archiving emits its
-		// own logs above the range it purges, so at least one log always survives —
-		// but that is a property of the archive flow's log emission, not an invariant
-		// of this pass. Folding cold storage keeps a fully-archived store honest, one
-		// INCOMPLETE finding instead of a spurious mismatch per legitimate key, if
-		// that ever stops holding.
 		signing := newSigningVerifier()
-		if err := signing.foldArchived(ctx, chapters, c.coldReader, c.logger); err != nil {
-			return fmt.Errorf("folding archived signing orders: %w", err)
-		}
-
 		if err := signing.compare(snap, callback); err != nil {
 			return fmt.Errorf("comparing signing projections: %w", err)
 		}
@@ -208,10 +153,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// The cluster policy is cluster-global too: a zero-log store proves no
 		// SetClusterPolicy order was audited, so a stored policy row is unaudited.
 		policy := newClusterPolicyVerifier()
-		if err := policy.foldArchived(ctx, chapters, c.coldReader, c.logger); err != nil {
-			return fmt.Errorf("folding archived cluster policy orders: %w", err)
-		}
-
 		if err := policy.compare(snap, callback); err != nil {
 			return fmt.Errorf("comparing cluster policy projection: %w", err)
 		}
@@ -237,36 +178,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return nil
 	}
 
-	var (
-		hasArchivedChapters  bool
-		archiveEndSeq        uint64 // max close_sequence among archived chapters
-		archivedMaxID        uint64 // max chapter id among archived chapters
-		archiveLastAuditHash []byte // last_audit_hash from the latest archived chapter
-	)
-
-	for _, p := range chapters {
-		if p.GetStatus() == commonpb.ChapterStatus_CHAPTER_ARCHIVED {
-			hasArchivedChapters = true
-
-			if len(p.GetSealingHash()) == 0 {
-				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
-					fmt.Sprintf("archived chapter %d has no sealing hash (unsealed before archive)", p.GetId()),
-					p.GetCloseSequence(), "", "", ""))
-			} else {
-				verifySealingHash(p, callback)
-			}
-
-			if p.GetCloseSequence() > archiveEndSeq {
-				archiveEndSeq = p.GetCloseSequence()
-				archiveLastAuditHash = p.GetLastAuditHash()
-			}
-
-			if p.GetId() > archivedMaxID {
-				archivedMaxID = p.GetId()
-			}
-		}
-	}
-
 	// Create replay store (replaces in-memory maps + txStateStore)
 	replay, err := newReplayStore()
 	if err != nil {
@@ -275,115 +186,29 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	defer func() { _ = replay.Close() }()
 
-	// Idempotency TTL, in microseconds, used by the hash-chain pass to bound the
-	// cold re-derivation window. Prefer the boot-validated runtime config (in
-	// process memory, off the audited disk) over the persisted projection, so a
-	// disk-tampered PersistedConfig cannot shrink the window; fall back to the
-	// persisted value where no runtime config exists (CLI / restore). nil (no
-	// runtime config and no persisted config) means the window is unknown, so
-	// the cold pass is skipped rather than guessed.
-	//
-	// "now" for the window is NOT a projection either — it is the highest
-	// timestamp the hash chain verifies in this same run (see
-	// verifyAuditHashChain), so a tampered lastAppliedTimestamp cannot shift it.
-	persisted, err := query.ReadPersistedConfig(snap)
-	if err != nil {
-		return fmt.Errorf("reading persisted config: %w", err)
-	}
-
-	idempotencyTTLMicros := resolveIdempotencyTTLMicros(c.idempotencyTTL, persisted)
-
-	// Open the baseline checkpoint FIRST — its state must be folded into
-	// chainBound BEFORE verifyAuditHashChain replays live audit items,
-	// so live CreateTransaction / RevertTransaction attribute their
-	// tx-scoped metadata to the correct tx-id targets (the FSM counter
-	// is seeded from LedgerBoundaries.NextTransactionId, which only the
-	// baseline holds for ledgers whose CreateLedger sits in an archived
-	// chapter).
-	var baselineDB *pebble.DB
-
-	if hasArchivedChapters {
-		baselinePath, baselineChapterID, exists := c.store.BaselineCheckpointPath()
-
-		// The arithmetic below assumes the baseline is the state at exactly the
-		// archived boundary: expected = baseline + replay(boundary..now). A
-		// baseline from any other close double-counts or drops the difference and
-		// reports a healthy store as corrupt, so a mismatched one — a promotion
-		// racing this snapshot, or one lost to a crash — is refused the same way
-		// a missing one is: entry-by-entry verification degrades honestly.
-		if exists && baselineChapterID != archivedMaxID {
-			c.logger.Infof("baseline checkpoint is for chapter %d but the snapshot's archived boundary is chapter %d (skipping entry-by-entry comparison)",
-				baselineChapterID, archivedMaxID)
-
-			exists = false
-		}
-
-		if exists {
-			db, openErr := pebble.Open(baselinePath, &pebble.Options{
-				Logger:   dal.NewPebbleLogger(c.logger),
-				ReadOnly: true,
-			})
-			if openErr != nil {
-				c.logger.Infof("failed to open baseline checkpoint: %v (skipping entry-by-entry comparison)", openErr)
-			} else {
-				baselineDB = db
-
-				defer func() { _ = baselineDB.Close() }()
-			}
-		}
-	}
-
 	// chainBound aggregates the audit-derived state feeding
 	// verifySkippedOrder: references, reverted, metadata timeline,
 	// account-type timeline, per-ledger nextTxID counter, and the set
-	// of ledgers whose CreateLedger was observed in the live range.
-	// Seeded from baseline first, then verifyAuditHashChain layers the
-	// live audit-chain mutations on top.
+	// of ledgers whose CreateLedger was observed.
 	chainBound := newChainBoundState()
 
 	// Signing key/config expectations, re-derived from chain-bound signing orders
-	// (invariant #8). Archived history is folded FIRST, oldest-first, so the live
-	// chain layer below sees the pre-archive keys a later revoke may target.
-	// Never seeded from the live projection or the baseline checkpoint — see
-	// signingVerifier.
+	// (invariant #8). Never seeded from the live projection — see signingVerifier.
 	signing := newSigningVerifier()
-	if err := signing.foldArchived(ctx, chapters, c.coldReader, c.logger); err != nil {
-		return fmt.Errorf("folding archived signing orders: %w", err)
-	}
 
-	// Cluster policy: re-derived from chain-bound SetClusterPolicy orders, archived
-	// history folded first from cold storage (see clusterPolicyVerifier).
+	// Cluster policy: re-derived from chain-bound SetClusterPolicy orders.
 	policy := newClusterPolicyVerifier()
-	if err := policy.foldArchived(ctx, chapters, c.coldReader, c.logger); err != nil {
-		return fmt.Errorf("folding archived cluster policy orders: %w", err)
-	}
 
-	baselineReferencesAvailable, err := c.foldBaselineReferences(baselineDB, chainBound.references, chainBound.referenceTxIDs)
-	if err != nil {
-		return fmt.Errorf("loading baseline references: %w", err)
-	}
-
-	// Sibling folds for the non-CONFLICT skip reasons: seed reverted /
-	// metadata / accountTypes / ledgerCreationSeen / nextTxID from the
-	// baseline. Every entry lands at sentinel seq=0 so the backward
-	// walk in mutationStateWithWitness picks up baseline claims below any
-	// live log seq.
-	baselineChainStateAvailable, err := c.foldBaselineChainState(baselineDB, chainBound)
-	if err != nil {
-		return fmt.Errorf("loading baseline skip-replay state: %w", err)
-	}
-
-	// Verify the audit hash chain before log replay. This iterates
-	// every non-archived audit entry and recomputes each hash from the
-	// stored orders, chaining from archiveLastAuditHash. Populates
-	// expectedSkippable + layers live mutations onto chainBound and the
-	// live-range signing orders onto `signing`.
-	expectedSkippable, err := c.verifyAuditHashChain(ctx, snap, chapters, archiveLastAuditHash, chainBound, idempotencyTTLMicros, signing, policy, callback)
+	// Verify the audit hash chain before log replay. This iterates every
+	// audit entry and recomputes each hash from the stored orders. Populates
+	// expectedSkippable + layers the audit-chain mutations onto chainBound
+	// and the signing orders onto `signing`.
+	expectedSkippable, err := c.verifyAuditHashChain(ctx, snap, chainBound, signing, policy, callback)
 	if err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
 
-	proposalBoundaries, err := c.newProposalBoundaryReader(ctx, snap, chapters, archiveEndSeq)
+	proposalBoundaries, err := c.newProposalBoundaryReader(ctx, snap)
 	if err != nil {
 		return fmt.Errorf("reading proposal log boundaries: %w", err)
 	}
@@ -392,32 +217,27 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// State tracked during log replay
 	var (
 		// Audit-derived set of live ledgers (CreateLedger seen, no later
-		// DeleteLedger), seeded from the baseline under archiving. Verified
-		// against the stored LedgerInfo entries by compareLedgerPresence.
+		// DeleteLedger). Verified against the stored LedgerInfo entries by
+		// compareLedgerPresence.
 		knownLedgers = make(map[string]struct{})
 		// Per-ledger reversion tracking using bitsets (1 bit per tx ID)
 		ledgerKnownTxIDs    = make(map[string]*bitset.Bitset)
 		ledgerRevertedTxIDs = make(map[string]*bitset.Bitset)
-		// Per-ledger account types, seeded from the baseline under archiving and
-		// updated as AddAccountType/RemoveAccountType logs replay. Drives the
+		// Per-ledger account types, updated as AddAccountType/RemoveAccountType
+		// logs replay. Drives the
 		// ephemeral-purge simulation and is verified against the stored
 		// LedgerInfo.AccountTypes in compareAccountTypes.
 		rawLedgerTypes     = make(map[string]map[string]*commonpb.AccountType)
 		ledgerAccountTypes = make(map[string][]accounttype.CompiledType)
-		// Expected SubAttrIndex registry state: seeded from the baseline
-		// snapshot under archiving (foldBaselineIndexes) then advanced by the
-		// replayed CreateIndex / DropIndex / RemovedMetadataFieldType /
-		// DeleteLedger logs. The checker compares this against the stored
-		// projection in compareIndexes. Because the pre-archive state comes
-		// from the baseline rather than from a blanket skip, compareIndexes
-		// needs no archive-orphan tolerance and a stale registry row cannot
-		// legitimise orphaned reverse-map rows. Presence + identity
-		// (Ledger, Id) are the fields we can re-derive.
+		// Expected SubAttrIndex registry state: advanced by the replayed
+		// CreateIndex / DropIndex / RemovedMetadataFieldType / DeleteLedger
+		// logs. The checker compares this against the stored projection in
+		// compareIndexes. Presence + identity (Ledger, Id) are the fields we
+		// can re-derive.
 		expectedIndexes = make(map[domain.IndexKey]*commonpb.Index)
 		// Ledgers that had a DeleteLedger log replayed in the verified
 		// range. Lets compareIndexes / compareNumscripts / compareMirrorV2LogID
-		// name the cause when a stored row survives a replayed deletion whose
-		// deferred Pebble purge has already run (not in pendingCleanupLedgers).
+		// name the cause when a stored row survives a replayed deletion.
 		deletedInReplay = make(map[string]struct{})
 		// Expected metadata schema per ledger, derived from
 		// CreateLedger.initial_schema + SetMetadataFieldType /
@@ -425,10 +245,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// LedgerInfo.MetadataSchema in compareSchema.
 		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
 		// Expected LedgerBoundaries per ledger: id fields and replay-derivable
-		// counters, seeded from the baseline under archiving, advanced per
-		// replayed log, then topped up with the chain-bound audit-order
-		// effects (mirror fill-gap advances, numscript executions). Verified
-		// against the stored rows by compareBoundaries.
+		// counters, advanced per replayed log, then topped up with the
+		// chain-bound audit-order effects (mirror fill-gap advances, numscript
+		// executions). Verified against the stored rows by compareBoundaries.
 		expectedBoundaries = make(map[string]*raftcmdpb.LedgerBoundaries)
 		// Expected numscript library projections derived from SavedNumscript /
 		// DeleteLedger logs. compareNumscripts diffs these against the stored
@@ -440,10 +259,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// derivedLiveCheckpoints is the audit-derived set of live query checkpoints
 		// (cluster-global), keyed by id with the CreatedQueryCheckpoint log as the
 		// value so max_sequence / created_at can be verified. A create sets the
-		// entry, a later delete removes it. Seeded from the baseline under archiving
-		// (the create logs are purged with the chapter), then advanced by the
-		// replayed create/delete logs. compareQueryCheckpoints diffs it against the
-		// stored rows both ways, contents included.
+		// entry, a later delete removes it. compareQueryCheckpoints diffs it
+		// against the stored rows both ways, contents included.
 		derivedLiveCheckpoints = make(map[uint64]*commonpb.CreatedQueryCheckpointLog)
 	)
 
@@ -490,87 +307,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		ephemeralPurgeBuffer = domainreplay.NewEphemeralPurgeBuffer()
 	}
 
-	// Under archiving the baseline is the checker's ONLY source of pre-archive
-	// state — the CreateLedger and declaration logs have been purged — so
-	// knownLedgers, schemas, account types, and reversion tracking are all
-	// seeded from it, never from the live store, keeping every check
-	// independent of the data it verifies. The handle was opened above and is
-	// shared with the audit-hash-chain baseline fold.
-	if hasArchivedChapters {
-		// Without the baseline there is no independent pre-archive state: the
-		// projection comparisons and the replay's UNKNOWN_LEDGER gate (which needs
-		// knownLedgers) would both run on a partial view, and we refuse to backfill
-		// from the live store. The audit hash chain — the real integrity guarantee
-		// — was already verified above. Expected after a checkpoint-only restore;
-		// warn and skip the entry-by-entry verification.
-		if baselineDB == nil {
-			c.logger.Error("no baseline checkpoint available for archived state comparison; skipping entry-by-entry verification")
-
-			return nil
-		}
-
-		// The pre-archive live ledger set, schema, and account types were declared
-		// in now-purged logs; seed them from the boundary-time baseline so the
-		// post-archive replay applies its delta on top.
-		c.seedExpectedFromBaseline(ctx, baselineDB, knownLedgers, expectedSchemas, rawLedgerTypes, ledgerAccountTypes, expectedBoundaries)
-
-		// Seed the index registry from the baseline so compareIndexes needs no
-		// archive-orphan tolerance — a stale registry entry can then no longer
-		// legitimise orphaned reverse-map rows. MUST run after
-		// seedExpectedFromBaseline: it filters on the live-ledger set that call
-		// populates.
-		if err := c.foldBaselineIndexes(baselineDB, knownLedgers, expectedIndexes); err != nil {
-			return err
-		}
-
-		// Seed the numscript projections (immutable content + greatest-semver
-		// latest pointer) from the baseline so a post-archive out-of-order save
-		// does not make the checker expect a lower latest than the store holds,
-		// and archived immutable content stays verified.
-		if err := c.foldBaselineNumscripts(baselineDB, expectedNumscriptContent, expectedNumscriptLatest); err != nil {
-			return err
-		}
-
-		// Pre-populate the reversion tracking from the baseline's transaction
-		// states so reversion invariant checks cover pre-archive transactions.
-		if err := c.seedTxTrackingFromBaseline(baselineDB, ledgerKnownTxIDs, ledgerRevertedTxIDs); err != nil {
-			return err
-		}
-
-		// Seed the live query-checkpoint set from the baseline: pre-archive
-		// CreatedQueryCheckpoint logs are purged with the archived chapter, so
-		// replay alone would under-derive the set and false-flag live rows.
-		if err := c.foldBaselineQueryCheckpoints(baselineDB, derivedLiveCheckpoints); err != nil {
-			return err
-		}
-	}
-
-	// Under archiving, seed each touched transaction's baseline state lazily on
-	// its first post-archive delta, so the delta merges onto the full pre-archive
-	// state whose create log is purged. Only touched transactions are materialized
-	// (keeping the replay store O(touched)); untouched ones fall back to the
-	// baseline in compareTransactions.
 	var replayWriter domainreplay.Writer = replay
-	if hasArchivedChapters {
-		replayWriter = newLazyTxSeedWriter(replay, func(canonicalKey []byte) (*commonpb.TransactionState, error) {
-			return c.attrs.Transaction.Get(baselineDB, canonicalKey)
-		})
-	}
-
-	// Pre-load baseline volumes so compareTransactionPostCommitVolumes can add
-	// pre-archive state to the replayed post-archive delta (expected = baseline +
-	// delta), matching compareVolumes. Empty on a non-archived run (baselineDB
-	// nil); when chapters are archived baselineDB is guaranteed non-nil here — the
-	// baselineDB == nil case returned early above.
-	baselineVolumes, err := c.loadBaselineVolumes(baselineDB)
-	if err != nil {
-		return err
-	}
 
 	// Pass 1: Single forward iterator over all logs.
 	logIter, err := snap.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{dal.ZoneCold, dal.SubColdLog},
-		UpperBound: []byte{dal.ZoneCold, dal.SubColdLog, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+		LowerBound: []byte{dal.ZoneHistory, dal.SubHistoryLog},
+		UpperBound: []byte{dal.ZoneHistory, dal.SubHistoryLog, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
 	})
 	if err != nil {
 		return fmt.Errorf("creating log iterator: %w", err)
@@ -578,30 +320,18 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	defer func() { _ = logIter.Close() }()
 
-	// Start after archived sequences (archived logs are purged from Pebble).
-	expectedSeq := archiveEndSeq + 1
+	expectedSeq := uint64(1)
 
 	for logIter.First(); logIter.Valid(); logIter.Next() {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		// Extract sequence from key: [ZoneCold(1)][SubColdLog(1)][sequence(8)]
+		// Extract sequence from key: [ZoneHistory(1)][SubHistoryLog(1)][sequence(8)]
 		seq := binary.BigEndian.Uint64(logIter.Key()[2:10])
 
-		// At or below the archive boundary the baseline checkpoint and the audit
-		// hash chain are authoritative, not replay. Such logs are normally purged,
-		// but out-of-order archiving (an un-archived chapter below the max archived
-		// close-sequence) can leave them retained — replaying one would fold a
-		// partial pre-boundary log onto a seeded transaction row, and would drop the
-		// gap counter below the archive floor. The audit-order pass applies the same
-		// boundary (collectAuditOrderBoundaryEffects).
-		if seq <= archiveEndSeq {
-			continue
-		}
-
 		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
-			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, baselineVolumes, exclusionCollector); err != nil {
+			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at missing log boundary %d: %w", nextProposalEnd, err)
 			}
 
@@ -658,9 +388,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					deletedInReplay[name] = struct{}{}
 
 					// DeleteLedger purges every SubAttrIndex entry scoped to
-					// this ledger via the deferred Pebble range delete
-					// queued by MarkLedgerForCleanup (see processor_ledger.go
-					// + batch.deleteLedgerData). Mirror the cascade on the
+					// this ledger via the same-apply Pebble range delete
+					// (batch.deleteLedgerData). Mirror the cascade on the
 					// expected projection so a stored entry that survives a
 					// ledger deletion still surfaces as a mismatch.
 					for key := range expectedIndexes {
@@ -732,7 +461,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						// non-nil buffer); the guard keeps the single-log inline-purge
 						// fallback (post-purge state) from producing false mismatches.
 						if ephemeralPurgeBuffer != nil {
-							if err := compareTransactionPostCommitVolumes(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, baselineVolumes, excluded, callback); err != nil {
+							if err := compareTransactionPostCommitVolumes(ledgerName, seq, payload.Apply.GetLog().GetData(), replay, callback); err != nil {
 								return fmt.Errorf("verifying post-commit volumes for log %d: %w", seq, err)
 							}
 						}
@@ -793,7 +522,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
 
-						verifySkippedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), expectedSkippable, chainBound, hasArchivedChapters, baselineReferencesAvailable, baselineChainStateAvailable, callback)
+						verifySkippedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), expectedSkippable, chainBound, callback)
 
 						// Accumulate the LedgerLog eviction lists (draining
 						// = PurgedVolumes, pure ephemeral = EphemeralVolumes)
@@ -818,10 +547,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// it also fires for tampered projections that never reach the
 		// well-formed Apply branch above — non-Apply payloads, nil
 		// Apply.Log, or nil Data — where verifySkippedOrder is unreachable.
-		dispatchElisionCheck(seq, log, expectedSkippable, chainBound, hasArchivedChapters, baselineChainStateAvailable, callback)
+		dispatchElisionCheck(seq, log, expectedSkippable, chainBound, callback)
 
 		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {
-			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, baselineVolumes, exclusionCollector); err != nil {
+			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at log %d: %w", seq, err)
 			}
 
@@ -849,7 +578,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	if ephemeralPurgeBuffer != nil {
-		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, baselineVolumes, exclusionCollector); err != nil {
+		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
 			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)
 		}
 	}
@@ -880,35 +609,23 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// audit hash chain and would let a tampered store hide live mutations
 	// on otherwise-purged accounts).
 
-	// Comparison passes: 3-way merge (baseline + replay + live).
-	// When no archived chapters exist, baseline is nil and expected = replay delta only.
-	c.compareVolumes(ctx, snap, baselineDB, replay, excluded, callback)
-	c.compareMetadata(ctx, snap, baselineDB, replay, excluded, callback)
-	c.compareTransactions(ctx, snap, baselineDB, replay, callback)
-	pendingCleanups, err := query.ReadPendingLedgerCleanups(snap)
-	if err != nil {
-		return fmt.Errorf("reading pending ledger cleanups for index registry verification: %w", err)
-	}
-
-	pendingCleanupLedgers := make(map[string]struct{}, len(pendingCleanups))
-	for name := range pendingCleanups {
-		pendingCleanupLedgers[name] = struct{}{}
-	}
+	// Comparison passes: expected = replayed state.
+	c.compareVolumes(ctx, snap, replay, excluded, callback)
+	c.compareMetadata(ctx, snap, replay, excluded, callback)
+	c.compareTransactions(ctx, snap, replay, callback)
 
 	c.compareIndexes(compareIndexesScope{
-		reader:                snap,
-		expected:              expectedIndexes,
-		deletedInReplay:       deletedInReplay,
-		pendingCleanupLedgers: pendingCleanupLedgers,
+		reader:          snap,
+		expected:        expectedIndexes,
+		deletedInReplay: deletedInReplay,
 	}, callback)
 
 	c.compareReverseMapOrphans(reverseMapOrphanScope{
-		reader:                snap,
-		peer:                  peerSnap,
-		lastSequence:          lastSequence,
-		liveLedgers:           knownLedgers,
-		pendingCleanupLedgers: pendingCleanupLedgers,
-		replayedSchemas:       expectedSchemas,
+		reader:          snap,
+		peer:            peerSnap,
+		lastSequence:    lastSequence,
+		liveLedgers:     knownLedgers,
+		replayedSchemas: expectedSchemas,
 	}, callback)
 
 	c.compareMirrorV2LogID(snap, chainBound, deletedInReplay, callback)
@@ -917,7 +634,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return err
 	}
 
-	if err := c.compareLedgerPresence(ctx, snap, knownLedgers, pendingCleanupLedgers, callback); err != nil {
+	if err := c.compareLedgerPresence(ctx, snap, knownLedgers, callback); err != nil {
 		return err
 	}
 
@@ -927,9 +644,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	// Mirror fill-gap advances and numscript execution counts live on the
 	// orders, not the ledger-log stream — fold them in from the chain-bound
-	// AuditItem rows before comparing boundaries (pre-archive effects are
-	// inside the baseline-seeded values; archived audit items are purged).
-	if err := c.collectAuditOrderBoundaryEffects(snap, archiveEndSeq, expectedBoundaries); err != nil {
+	// AuditItem rows before comparing boundaries.
+	if err := c.collectAuditOrderBoundaryEffects(snap, expectedBoundaries); err != nil {
 		return fmt.Errorf("collecting audit order boundary effects: %w", err)
 	}
 
@@ -937,7 +653,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return err
 	}
 
-	if err := c.compareReferences(ctx, snap, baselineDB, replay, knownLedgers, pendingCleanupLedgers, callback); err != nil {
+	if err := c.compareReferences(ctx, snap, replay, knownLedgers, callback); err != nil {
 		return err
 	}
 
@@ -953,7 +669,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return err
 	}
 
-	c.compareNumscripts(snap, expectedNumscriptContent, expectedNumscriptLatest, deletedInReplay, pendingCleanupLedgers, callback)
+	c.compareNumscripts(snap, expectedNumscriptContent, expectedNumscriptLatest, deletedInReplay, callback)
 
 	if err := c.compareQueryCheckpoints(snap, derivedLiveCheckpoints, callback); err != nil {
 		return err
@@ -1048,17 +764,13 @@ func compareExclusionProjections(stored, derived excludedVolumesSet, callback fu
 type compareIndexesScope struct {
 	// reader is the primary-store snapshot the registry is read from.
 	reader dal.PebbleReader
-	// expected is the audit-derived registry state: the baseline seed under
-	// archiving (foldBaselineIndexes) plus the replayed CreateIndex / DropIndex /
-	// RemovedMetadataFieldType / DeleteLedger delta.
+	// expected is the audit-derived registry state: the replayed CreateIndex /
+	// DropIndex / RemovedMetadataFieldType / DeleteLedger delta.
 	expected map[domain.IndexKey]*commonpb.Index
 	// deletedInReplay names ledgers whose DeleteLedger log was replayed in the
 	// verified range. Only used to give a surviving entry a more precise message
 	// than the generic unmatched one.
 	deletedInReplay map[string]struct{}
-	// pendingCleanupLedgers names ledgers whose deferred Pebble purge has not
-	// run yet, so their stored entries legitimately linger.
-	pendingCleanupLedgers map[string]struct{}
 }
 
 // compareIndexes emits INDEX_MISMATCH events when the stored SubAttrIndex
@@ -1078,35 +790,17 @@ type compareIndexesScope struct {
 // Drift on those is invisible to this pass until the bucket-scoped producer
 // lands and threads an audit-bound order through the same machinery.
 //
-// There is NO archive-orphan tolerance. Under archiving the pre-archive
-// registry state is seeded from the boundary-time baseline snapshot by
-// foldBaselineIndexes, so `expected` covers archived CreateIndex logs the same
-// way compareSchema / compareAccountTypes / compareNumscripts cover their own
-// archived declarations: expected = baseline + replay delta. An unmatched stored
-// entry is therefore a hard mismatch whether or not chapters are archived.
-//
-// That matters beyond this pass. The tolerance this replaced skipped any stored
-// entry the replay never touched, which silently accepted a stale or tampered
-// registry row — and a lingering metadata entry is exactly what makes
+// There is no unmatched-row tolerance: an unmatched stored entry is a hard
+// mismatch. A tolerated stale or tampered registry row is exactly what makes
 // compareReverseMapOrphans' registry term treat orphaned reverse-map rows as
-// legitimate. Two corrupted projections could mask each other and leave Check()
-// clean; deriving the expected set instead of excusing the gap closes that
-// channel for every index kind, not just the metadata ones (EN-1458 review).
-//
-// One replay-boundary case is still skipped without mismatch:
-//
-//   - pendingCleanupLedgers — the deferred Pebble range delete queued by
-//     MarkLedgerForCleanup only runs when a chapter-purge range catches the
-//     DeleteLedger sequence. Between apply and that purge, the stored
-//     SubAttrIndex entries are still on disk while the DeleteLedger log has
-//     already wiped them from expected. Skip those instead of flagging the
-//     transient window.
+// legitimate — two corrupted projections could mask each other and leave
+// Check() clean (EN-1458 review).
 func (c *Checker) compareIndexes(
 	scope compareIndexesScope,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	reader, expected := scope.reader, scope.expected
-	deletedInReplay, pendingCleanupLedgers := scope.deletedInReplay, scope.pendingCleanupLedgers
+	deletedInReplay := scope.deletedInReplay
 
 	iter, err := c.attrs.Index.NewStreamingIter(reader, nil)
 	if err != nil {
@@ -1149,40 +843,24 @@ func (c *Checker) compareIndexes(
 			continue
 		}
 
-		// Deferred-purge window: DeleteLedger's apply already wiped the
-		// expected entry but the Pebble range delete queued by
-		// MarkLedgerForCleanup runs only when a chapter-purge range
-		// catches the delete sequence. Until then the stored entry is
-		// legitimate, not corruption.
-		if _, awaiting := pendingCleanupLedgers[key.LedgerName]; awaiting {
-			continue
-		}
-
 		seen[key] = struct{}{}
 
 		exp, ok := expected[key]
 		if !ok {
-			// Ledger was deleted in the verified replay range AND its
-			// deferred Pebble purge has already run (otherwise it would
-			// still appear in pendingCleanupLedgers above), so any stored
-			// SubAttrIndex row for it is tampering. Reported separately
-			// from the generic unmatched case only to name the cause —
-			// both are mismatches.
+			// Ledger was deleted in the verified replay range and DeleteLedger
+			// removes its rows in the same apply, so any stored SubAttrIndex
+			// row for it is tampering. Reported separately from the generic
+			// unmatched case only to name the cause — both are mismatches.
 			if _, deleted := deletedInReplay[key.LedgerName]; deleted {
 				callback(errorEvent(
 					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
-					fmt.Sprintf("registry has Index entry for ledger %q with id %q surviving a replayed DeleteLedger + completed cleanup", key.LedgerName, key.Canonical),
+					fmt.Sprintf("registry has Index entry for ledger %q with id %q surviving a replayed DeleteLedger", key.LedgerName, key.Canonical),
 					0, key.LedgerName, "", "",
 				))
 
 				continue
 			}
 
-			// No archive-boundary escape: under archiving `expected` was
-			// seeded from the baseline snapshot (foldBaselineIndexes), so a
-			// pre-archive CreateIndex is represented even though its log is
-			// purged. An unmatched stored entry is a hard mismatch here
-			// regardless of archiving.
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 				fmt.Sprintf("registry has Index entry for ledger %q with id %q that has no matching CreateIndex in the audit chain", key.LedgerName, key.Canonical),
@@ -1235,9 +913,8 @@ func (c *Checker) compareIndexes(
 
 // compareMirrorV2LogID verifies each ledger's stored
 // LedgerBoundaries.last_mirror_v2_log_id EQUALS the maximum audited
-// MirrorIngest.v2_log_id for that ledger (chainBound.maxMirrorV2LogID, seeded
-// from the baseline floor and layered with the live audit chain). This is a full
-// invariant-#8 equality check, not a one-sided bound.
+// MirrorIngest.v2_log_id for that ledger (chainBound.maxMirrorV2LogID). This
+// is a full invariant-#8 equality check, not a one-sided bound.
 //
 // Because the FSM enforces a contiguous applied prefix (processMirrorIngest
 // rejects any gap), at rest the persisted high-water mark must be exactly the max
@@ -1359,8 +1036,8 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 
 // compareQueryCheckpoints verifies the live query-checkpoint rows stored in the
 // primary store (ZoneGlobal/SubGlobQueryCheckpoint) against `derived`, the live
-// set re-derived from the CreatedQueryCheckpoint / DeletedQueryCheckpoint logs
-// (baseline-seeded under archiving). It emits
+// set re-derived from the CreatedQueryCheckpoint / DeletedQueryCheckpoint
+// logs. It emits
 // CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH on:
 //   - a stored row absent from the audit set (never created, or later deleted) —
 //     a phantom or stale row;
@@ -1424,31 +1101,6 @@ func (c *Checker) compareQueryCheckpoints(reader dal.PebbleReader, derived map[u
 	return nil
 }
 
-// foldBaselineQueryCheckpoints seeds the audit-derived live-checkpoint set from
-// the boundary-time baseline, whose SubGlobQueryCheckpoint rows (with their
-// max_sequence / created_at) stand in for the pre-archive CreatedQueryCheckpoint
-// logs purged with the archived chapter.
-func (c *Checker) foldBaselineQueryCheckpoints(baselineDB *pebble.DB, into map[uint64]*commonpb.CreatedQueryCheckpointLog) error {
-	if baselineDB == nil {
-		return nil
-	}
-
-	rows, err := query.ReadQueryCheckpointRows(baselineDB)
-	if err != nil {
-		return fmt.Errorf("folding baseline query checkpoints: %w", err)
-	}
-
-	for id, cp := range rows {
-		into[id] = &commonpb.CreatedQueryCheckpointLog{
-			CheckpointId: id,
-			MaxSequence:  cp.GetMaxSequence(),
-			CreatedAt:    cp.GetCreatedAt(),
-		}
-	}
-
-	return nil
-}
-
 // numscriptVersionGreater reports whether a is a strictly greater full semver
 // than b. A non-semver b is treated as smaller so a valid version always wins.
 func numscriptVersionGreater(a, b string) bool {
@@ -1471,17 +1123,13 @@ func numscriptVersionGreater(a, b string) bool {
 // latest pointer (the greatest stored semver). Both are load-bearing for reads,
 // listing, version history, and admission-side reference resolution, so a
 // stored content row with no matching SavedNumscript, an altered content, or a
-// latest pointer that is not the greatest saved semver is tampering. Under
-// archiving the expected state is baseline-seeded (foldBaselineNumscripts), so —
-// unlike compareIndexes — there is no archive-orphan tolerance: a stored row
-// absent from both the baseline and the replay is a surplus/injected row and is
-// flagged. Only the deferred-cleanup tolerance remains.
+// latest pointer that is not the greatest saved semver is tampering: a stored
+// row the replay never produced is a surplus/injected row and is flagged.
 func (c *Checker) compareNumscripts(
 	reader dal.PebbleReader,
 	expectedContent map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo,
 	expectedLatest map[domain.NumscriptVersionKey]string,
 	deletedInReplay map[string]struct{},
-	pendingCleanupLedgers map[string]struct{},
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	mismatch := func(msg, ledger string) {
@@ -1508,10 +1156,6 @@ func (c *Checker) compareNumscripts(
 		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
 			mismatch(fmt.Sprintf("stored numscript content has unparsable canonical key %x: %v", entry.CanonicalKey, err), "")
 
-			continue
-		}
-
-		if _, awaiting := pendingCleanupLedgers[key.LedgerName]; awaiting {
 			continue
 		}
 
@@ -1545,12 +1189,6 @@ func (c *Checker) compareNumscripts(
 	_ = contentIter.Close()
 
 	for key := range expectedContent {
-		// A baseline-seeded entry for a ledger mid-purge legitimately lingers
-		// on neither side in lockstep — the stored loop skips it too.
-		if _, awaiting := pendingCleanupLedgers[key.LedgerName]; awaiting {
-			continue
-		}
-
 		if _, ok := seenContent[key]; !ok {
 			mismatch(fmt.Sprintf("audit chain expects numscript content %q@%q for ledger %q but the store has no matching entry", key.Name, key.Version, key.LedgerName), key.LedgerName)
 		}
@@ -1577,10 +1215,6 @@ func (c *Checker) compareNumscripts(
 		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
 			mismatch(fmt.Sprintf("stored numscript version pointer has unparsable canonical key %x: %v", entry.CanonicalKey, err), "")
 
-			continue
-		}
-
-		if _, awaiting := pendingCleanupLedgers[key.LedgerName]; awaiting {
 			continue
 		}
 
@@ -1611,10 +1245,6 @@ func (c *Checker) compareNumscripts(
 	_ = versionIter.Close()
 
 	for key := range expectedLatest {
-		if _, awaiting := pendingCleanupLedgers[key.LedgerName]; awaiting {
-			continue
-		}
-
 		if _, ok := seenLatest[key]; !ok {
 			mismatch(fmt.Sprintf("audit chain expects a numscript latest pointer for %q on ledger %q but the store has no matching entry", key.Name, key.LedgerName), key.LedgerName)
 		}
@@ -1662,11 +1292,10 @@ func (e excludedVolumesSet) containsAccount(ledgerName, account string) bool {
 	return false
 }
 
-// compareVolumes performs a 3-way merge comparison for volumes.
-// expected = baseline + replay delta; compare with live (actual).
+// compareVolumes compares the replayed volumes with the live rows.
 // `excluded` lists per-ledger accounts whose volumes legitimately diverge
 // (transient + purged ephemeral, sourced from the audit log).
-func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect live volumes
@@ -1697,38 +1326,6 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 			fmt.Sprintf("live volume iterator error: %v", err), 0, "", "", ""))
 
 		return 1
-	}
-
-	// Collect baseline volumes (if available)
-	baselineVolumes := make(map[string]*raftcmdpb.VolumePair)
-
-	if baselineDB != nil {
-		baselineIter, err := c.attrs.Volume.NewStreamingIter(baselineDB, nil)
-		if err != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-				fmt.Sprintf("failed to create baseline volume iterator: %v", err), 0, "", "", ""))
-
-			return 1
-		}
-
-		for baselineIter.Next() {
-			e := baselineIter.Entry()
-			baselineVolumes[string(e.CanonicalKey)] = e.Value
-		}
-
-		if err := baselineIter.Close(); err != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-				fmt.Sprintf("closing baseline volume iterator: %v", err), 0, "", "", ""))
-
-			return 1
-		}
-
-		if err := baselineIter.Err(); err != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
-				fmt.Sprintf("baseline volume iterator error: %v", err), 0, "", "", ""))
-
-			return 1
-		}
 	}
 
 	// Collect replay volume deltas
@@ -1781,15 +1378,11 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 		allKeys[k] = struct{}{}
 	}
 
-	for k := range baselineVolumes {
-		allKeys[k] = struct{}{}
-	}
-
 	for k := range replayDeltas {
 		allKeys[k] = struct{}{}
 	}
 
-	// Compare: expected = baseline + delta
+	// Compare: expected = replayed state
 	for key := range allKeys {
 		if ctx.Err() != nil {
 			return errorCount
@@ -1816,14 +1409,9 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, b
 		expectedInput := big.NewInt(0)
 		expectedOutput := big.NewInt(0)
 
-		if base := baselineVolumes[key]; base != nil {
-			expectedInput = base.GetInput().ToBigInt()
-			expectedOutput = base.GetOutput().ToBigInt()
-		}
-
 		if delta := replayDeltas[key]; delta != nil {
-			expectedInput.Add(expectedInput, delta.GetInput().ToBigInt())
-			expectedOutput.Add(expectedOutput, delta.GetOutput().ToBigInt())
+			expectedInput = delta.GetInput().ToBigInt()
+			expectedOutput = delta.GetOutput().ToBigInt()
 		}
 
 		// Get actual
@@ -1898,17 +1486,16 @@ func metaValueDisplay(v *commonpb.MetadataValue) string {
 	return fmt.Sprintf("%q (%s)", commonpb.MetadataValueToString(v), kind)
 }
 
-// compareMetadata performs a 3-way merge comparison for account metadata.
+// compareMetadata compares replayed account metadata against the live rows.
 // Replay entries encode SET (flag 0x00 + marshaled MetadataValue) or DELETED
-// (flag 0x01). expected = replay override if present, else baseline; compare
-// with live. Values are compared as typed protos, not string renderings — the
+// (flag 0x01). Values are compared as typed protos, not string renderings — the
 // FSM stores the order's MetadataValue verbatim, so a live row whose type
 // diverges from the log (bool false vs string "false") is a projection
 // mismatch even when the renderings agree.
 // `excluded` lists per-ledger accounts whose state legitimately diverges
 // (transient + purged ephemeral, sourced from the audit log) — metadata on
 // such accounts is skipped to avoid false positives.
-func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect live metadata
@@ -1939,38 +1526,6 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 			fmt.Sprintf("live metadata iterator error: %v", err), 0, "", "", ""))
 
 		return 1
-	}
-
-	// Collect baseline metadata (if available)
-	baselineMetadata := make(map[string]*commonpb.MetadataValue)
-
-	if baselineDB != nil {
-		baselineIter, err := c.attrs.Metadata.NewStreamingIter(baselineDB, nil)
-		if err != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-				fmt.Sprintf("failed to create baseline metadata iterator: %v", err), 0, "", "", ""))
-
-			return 1
-		}
-
-		for baselineIter.Next() {
-			e := baselineIter.Entry()
-			baselineMetadata[string(e.CanonicalKey)] = e.Value
-		}
-
-		if err := baselineIter.Close(); err != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-				fmt.Sprintf("closing baseline metadata iterator: %v", err), 0, "", "", ""))
-
-			return 1
-		}
-
-		if err := baselineIter.Err(); err != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
-				fmt.Sprintf("baseline metadata iterator error: %v", err), 0, "", "", ""))
-
-			return 1
-		}
 	}
 
 	// Collect replay metadata state
@@ -2036,10 +1591,6 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		allKeys[k] = struct{}{}
 	}
 
-	for k := range baselineMetadata {
-		allKeys[k] = struct{}{}
-	}
-
 	for k := range replayEntries {
 		allKeys[k] = struct{}{}
 	}
@@ -2067,14 +1618,8 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		var expectedValue *commonpb.MetadataValue
 		expectedExists := false
 
-		if rm, hasReplay := replayEntries[key]; hasReplay {
-			if !rm.deleted {
-				expectedValue = rm.value
-				expectedExists = true
-			}
-			// If deleted by replay, expectedExists stays false
-		} else if baseVal, hasBase := baselineMetadata[key]; hasBase {
-			expectedValue = baseVal
+		if rm, hasReplay := replayEntries[key]; hasReplay && !rm.deleted {
+			expectedValue = rm.value
 			expectedExists = true
 		}
 
@@ -2108,16 +1653,16 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 	return errorCount
 }
 
-// compareTransactions performs a 3-way merge comparison for transaction states.
-// expected = replay override if present, else baseline; compare with live.
+// compareTransactions compares replayed transaction states against the live
+// rows.
 //
 // Compared to compareVolumes / compareMetadata, this pass historically only
-// iterated replay ∪ baseline, so a transaction present in the live store
+// iterated the replay set, so a transaction present in the live store
 // without a matching log entry (fabricated state, corruption, FSM bug) went
 // undetected. The fix in #347 widens allKeys to the union with live and
 // instruments every abort path with an error event so that swallowed
 // iterator/unmarshal failures cannot make the check look clean.
-func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleReader, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	emitErr := func(msg string) {
@@ -2125,7 +1670,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 	}
 
 	// Collect live transaction states up-front so that fabricated entries
-	// (live without replay/baseline) are part of allKeys.
+	// (live without replay) are part of allKeys.
 	liveTx := make(map[string]*commonpb.TransactionState)
 
 	liveIter, err := c.attrs.Transaction.NewStreamingIter(reader, nil)
@@ -2198,42 +1743,9 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 		return 1
 	}
 
-	// Collect baseline transaction states (if available)
-	baselineTx := make(map[string]*commonpb.TransactionState)
-
-	if baselineDB != nil {
-		baselineIter, err := c.attrs.Transaction.NewStreamingIter(baselineDB, nil)
-		if err != nil {
-			emitErr(fmt.Sprintf("failed to create baseline transaction iterator: %v", err))
-
-			return 1
-		}
-
-		for baselineIter.Next() {
-			e := baselineIter.Entry()
-			baselineTx[string(e.CanonicalKey)] = e.Value
-		}
-
-		if err := baselineIter.Close(); err != nil {
-			emitErr(fmt.Sprintf("closing baseline transaction iterator: %v", err))
-
-			return 1
-		}
-
-		if baselineIter.Err() != nil {
-			emitErr(fmt.Sprintf("baseline transaction iterator error: %v", baselineIter.Err()))
-
-			return 1
-		}
-	}
-
-	// Collect all keys to check: replay ∪ baseline ∪ live.
+	// Collect all keys to check: replay ∪ live.
 	allKeys := make(map[string]struct{})
 	for k := range replayTx {
-		allKeys[k] = struct{}{}
-	}
-
-	for k := range baselineTx {
 		allKeys[k] = struct{}{}
 	}
 
@@ -2251,15 +1763,11 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 			continue
 		}
 
-		// Expected: a replay entry (a tx touched by a post-archive delta, seeded
-		// from its baseline on first touch) overrides the baseline; an untouched
-		// pre-archive tx has no replay entry and falls back to its baseline state.
-		// Stays nil when only the live store has the entry (fabricated state).
+		// Expected: the replayed state. Stays nil when only the live store has
+		// the entry (fabricated state).
 		var expected *commonpb.TransactionState
 		if rs, ok := replayTx[key]; ok {
 			expected = rs
-		} else if bs, ok := baselineTx[key]; ok {
-			expected = bs
 		}
 
 		actualState := liveTx[key]
@@ -2267,7 +1775,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 		if expected == nil {
 			if actualState != nil {
 				callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
-					fmt.Sprintf("unexpected transaction in live store for tx %d (no matching log or baseline)", tk.ID),
+					fmt.Sprintf("unexpected transaction in live store for tx %d (no matching log)", tk.ID),
 					tk.LedgerName, tk.ID))
 
 				errorCount++
@@ -2305,38 +1813,6 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 	return errorCount
 }
 
-// loadBaselineVolumes reads every volume row from the baseline checkpoint into
-// a map keyed by canonical volume key, for compareTransactionPostCommitVolumes
-// to add pre-archive state to the replayed post-archive delta. Returns an empty
-// map when there is no baseline (non-archived run), so callers need no nil
-// guard.
-func (c *Checker) loadBaselineVolumes(baselineDB *pebble.DB) (map[string]*raftcmdpb.VolumePair, error) {
-	baselineVolumes := make(map[string]*raftcmdpb.VolumePair)
-	if baselineDB == nil {
-		return baselineVolumes, nil
-	}
-
-	iter, err := c.attrs.Volume.NewStreamingIter(baselineDB, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating baseline volume iterator: %w", err)
-	}
-
-	for iter.Next() {
-		e := iter.Entry()
-		baselineVolumes[string(e.CanonicalKey)] = e.Value
-	}
-
-	if err := iter.Close(); err != nil {
-		return nil, fmt.Errorf("closing baseline volume iterator: %w", err)
-	}
-
-	if err := iter.Err(); err != nil {
-		return nil, fmt.Errorf("baseline volume iterator error: %w", err)
-	}
-
-	return baselineVolumes, nil
-}
-
 // compareTransactionPostCommitVolumes verifies the immutable post-commit
 // volume snapshot stored on a created or reverted Transaction (invariant #8:
 // the Transaction is a projection of the audited order, so the checker must
@@ -2345,18 +1821,8 @@ func (c *Checker) loadBaselineVolumes(baselineDB *pebble.DB) (map[string]*raftcm
 // the replay state at this call site (the buffered purge has not yet flushed).
 //
 // The snapshot must hold exactly one row per unique (account, asset, color)
-// tuple the postings touch, each equal to the cumulative volume at this
-// sequence: baseline (pre-archive state from the checkpoint) + the replayed
-// post-archive delta, mirroring compareVolumes. On a non-archived run
-// baselineVolumes is empty and the expectation reduces to the replayed delta.
-//
-// excluded carries the (ledger, account, asset, color) tuples the replay-time
-// ephemeral purge has already deleted at this point in the loop. A baseline row
-// for such a tuple is stale: the FSM deleted the volume when it hit zero and any
-// later re-touch restarts from zero, so the baseline must NOT be added on top of
-// the post-purge replayed delta (mirrors compareVolumes' exclusion handling).
-// The stored snapshot is still verified against the delta, so tampering is not
-// masked.
+// tuple the postings touch, each equal to the replayed cumulative volume at
+// this sequence, mirroring compareVolumes.
 //
 // A missing, extra, duplicated, unparsable, or divergent row is tampering (or
 // an FSM projection bug) and emits CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH.
@@ -2367,8 +1833,6 @@ func compareTransactionPostCommitVolumes(
 	seq uint64,
 	data *commonpb.LedgerLogPayload,
 	replay *replayStore,
-	baselineVolumes map[string]*raftcmdpb.VolumePair,
-	excluded excludedVolumesSet,
 	callback func(*servicepb.CheckStoreEvent),
 ) error {
 	var tx *commonpb.Transaction
@@ -2429,25 +1893,11 @@ func compareTransactionPostCommitVolumes(
 				return fmt.Errorf("reading replay volume for post-commit check tx %d: %w", tx.GetId(), err)
 			}
 
-			// Expected = baseline (pre-archive state carried in the checkpoint) +
-			// replayed delta. After archiving the replay store holds only
-			// post-archive deltas, so the baseline supplies the volume accumulated
-			// before the boundary; without archiving baselineVolumes is empty and a
-			// missing replay entry is the zero volume, matching the FSM's
-			// readVolumeOrZero when it built the snapshot.
-			//
-			// Skip the baseline when the tuple has already been ephemeral-purged
-			// during replay: the FSM deleted that volume and the re-touch restarts
-			// from zero, so its post-purge snapshot is the delta alone. Adding the
-			// stale pre-purge baseline would over-count and false-positive.
+			// Expected = the replayed cumulative volume. A missing replay
+			// entry is the zero volume, matching the FSM's readVolumeOrZero
+			// when it built the snapshot.
 			wantInput := big.NewInt(0)
 			wantOutput := big.NewInt(0)
-
-			if base := baselineVolumes[string(keyBytes)]; base != nil &&
-				!excluded.contains(ledgerName, account, posting.GetAsset(), posting.GetColor()) {
-				wantInput = base.GetInput().ToBigInt()
-				wantOutput = base.GetOutput().ToBigInt()
-			}
 
 			if pair != nil {
 				wantInput.Add(wantInput, pair.GetInput().ToBigInt())
@@ -2489,26 +1939,19 @@ func compareTransactionPostCommitVolumes(
 	return nil
 }
 
-// verifyAuditHashChain iterates all non-archived audit entries, recomputes
-// each hash from the stored orders, and verifies the chain starting from
-// archiveLastAuditHash. Reports CHECK_STORE_ERROR_TYPE_HASH_MISMATCH on
-// the first mismatch.
+// verifyAuditHashChain iterates all audit entries, recomputes each hash
+// from the stored orders, and verifies the chain from genesis. Reports
+// CHECK_STORE_ERROR_TYPE_HASH_MISMATCH on the first mismatch.
 //
-// Archived audit entries have been purged from Pebble, so the chain starts
-// at archiveLastAuditHash (from the latest archived chapter) or nil if no
-// chapters have been archived.
-//
-// chainBound is passed in by the caller (already seeded from the baseline
-// checkpoint); this function layers the live audit-chain mutations onto it:
-// per-ledger references, reverted tx-ids, metadata / account-type timelines,
-// nextTxID counters, and ledgerCreationSeen. It is built from chain-bound
+// chainBound is populated with the audit-chain mutations: per-ledger
+// references, reverted tx-ids, metadata / account-type timelines, nextTxID
+// counters, and ledgerCreationSeen. It is built from chain-bound
 // `serialized_order` so a tampered LedgerLog projection cannot forge a
 // "prior claim" for a fake skip.
 //
-// signing is layered the same way: the caller has already folded the archived
-// range into it from cold storage, and this function adds the signing orders of
-// every chain-verified entry above that archive boundary. The comparison against
-// the stored keys / config runs at the Check() call site.
+// signing collects the signing orders of every chain-verified entry the same
+// way. The comparison against the stored keys / config runs at the Check()
+// call site.
 //
 // Returns expectedSkippable: the per-log-seq skippable_reasons whitelist +
 // reason correlator re-derived from the chain-bound Orders, consumed by
@@ -2520,34 +1963,12 @@ func compareTransactionPostCommitVolumes(
 func (c *Checker) verifyAuditHashChain(
 	ctx context.Context,
 	reader dal.PebbleReader,
-	chapters []*commonpb.Chapter,
-	archiveLastAuditHash []byte,
 	chainBound *chainBoundState,
-	idempotencyTTLMicros *uint64,
 	signing *signingVerifier,
 	policy *clusterPolicyVerifier,
 	callback func(*servicepb.CheckStoreEvent),
 ) (map[uint64]*expectedSkippableOrder, error) {
-	// Find the last archived audit sequence to start iteration after it.
-	//
-	// CloseAuditSequence is the last audit entry written BEFORE the CloseChapter
-	// proposal. Purging deletes entries [start, CloseAuditSequence], so the
-	// CloseChapter entry at CloseAuditSequence + 1 survives and is the first
-	// entry we verify. chapter.LastAuditHash is the hash of the predecessor
-	// (entry at CloseAuditSequence), which is the chain input for verifying
-	// the surviving entry.
-	var afterAuditSeq *uint64
-
-	for _, p := range chapters {
-		if p.GetStatus() == commonpb.ChapterStatus_CHAPTER_ARCHIVED {
-			closeAuditSeq := p.GetCloseAuditSequence()
-			if afterAuditSeq == nil || closeAuditSeq > *afterAuditSeq {
-				afterAuditSeq = &closeAuditSeq
-			}
-		}
-	}
-
-	auditCursor, err := query.ReadAuditEntries(ctx, reader, afterAuditSeq)
+	auditCursor, err := query.ReadAuditEntries(ctx, reader, nil)
 	if err != nil {
 		return nil, fmt.Errorf("reading audit entries: %w", err)
 	}
@@ -2555,7 +1976,7 @@ func (c *Checker) verifyAuditHashChain(
 	defer func() { _ = auditCursor.Close() }()
 
 	var (
-		lastHash   = archiveLastAuditHash
+		lastHash   []byte
 		hashBuf    []byte
 		checked    uint64
 		generators = make(map[uint32]processing.HashGenerator, 2)
@@ -2567,22 +1988,13 @@ func (c *Checker) verifyAuditHashChain(
 		// re-derived from the chain-bound Order. Consumed by
 		// verifySkippedOrder during the log iteration loop.
 		expectedSkippable = make(map[uint64]*expectedSkippableOrder)
-		// chainBound is passed in by the caller — Check() pre-folds the
-		// baseline snapshot into it so ledgers whose CreateLedger sits
-		// in an archived chapter have their nextTxID counter and
-		// ledgerCreationSeen anchor set BEFORE live replay attributes
-		// metadata to tx-id targets.
-		//
 		// hasVerifiedRange records whether any entry was verified; a dedicated
 		// bool rather than a 0-sentinel, since HLC timestamp 0 is a legitimate
 		// value (mirrors the *uint64 idemReportFloor tri-state below).
 		hasVerifiedRange bool
-		// Timestamps of the first (lowest-sequence) and last (highest-sequence)
-		// verified entries. HLC timestamps are monotonic with sequence, so the
-		// first is the archive boundary (default idempotency report floor) and
-		// the last is the hash-chain-verified "now" used to size the TTL window.
+		// Timestamp of the first (lowest-sequence) verified entry — the
+		// idempotency report floor.
 		verifiedRangeStartTs uint64
-		verifiedRangeEndTs   uint64
 	)
 
 	for {
@@ -2604,10 +2016,6 @@ func (c *Checker) verifyAuditHashChain(
 			verifiedRangeStartTs = entry.GetTimestamp().GetData()
 		}
 
-		// Entries arrive in ascending sequence (hence ascending HLC), so the
-		// last one seen carries the highest verified timestamp.
-		verifiedRangeEndTs = entry.GetTimestamp().GetData()
-
 		// `items` on the stored AuditEntry value is reserved for
 		// GetAuditEntry response shaping — the apply path forces it
 		// nil. A non-empty list here is a tampering attempt: items
@@ -2623,8 +2031,6 @@ func (c *Checker) verifyAuditHashChain(
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
 
-			// Return the partially populated maps (not nil) so
-			// foldBaselineReferences does not panic on a nil-map write.
 			// Check() keeps running after a chain break to surface
 			// other projection errors.
 			//
@@ -2665,8 +2071,6 @@ func (c *Checker) verifyAuditHashChain(
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
 
-			// Return the partially populated maps (not nil) so
-			// foldBaselineReferences does not panic on a nil-map write.
 			// Check() keeps running after a chain break to surface
 			// other projection errors.
 			//
@@ -2712,8 +2116,6 @@ func (c *Checker) verifyAuditHashChain(
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
 
-			// Return the partially populated maps (not nil) so
-			// foldBaselineReferences does not panic on a nil-map write.
 			// Check() keeps running after a chain break to surface
 			// other projection errors.
 			//
@@ -2778,11 +2180,6 @@ func (c *Checker) verifyAuditHashChain(
 			// store. Idempotence does not save it — the orders are individually
 			// idempotent, but replaying one out of order is not.
 			//
-			// The archive-boundary skip stays as well. It is redundant while log
-			// sequences are monotonic (a live entry's fresh logs always sit above
-			// archiveEndSeq), but it is the guard that states the archived range was
-			// already folded from cold storage, and it costs one comparison.
-			//
 			// Duplicate-sequence items need no dedup here, unlike the nextTxID fold:
 			// two items sharing a LogSequence inside [Min,Max] carry the same order,
 			// and register (upsert), revoke (delete) and setConfig (assign) all reach
@@ -2794,7 +2191,7 @@ func (c *Checker) verifyAuditHashChain(
 
 			for i, item := range items {
 				logSeq := item.GetLogSequence()
-				if logSeq == 0 || logSeq <= signing.archiveEndSeq {
+				if logSeq == 0 {
 					continue
 				}
 
@@ -2825,37 +2222,14 @@ func (c *Checker) verifyAuditHashChain(
 	}
 
 	// idemReportFloor is the lowest created_at at/above which `expectedIdem` is
-	// complete, so an unmatched stored entry there is tampering rather than an
-	// un-re-derivable archived freeze. It is a pointer so a floor of 0 ("the TTL
-	// window is unbounded — report every entry") is distinct from "no verified
-	// range at all" (nil — report nothing).
-	//
-	// The post-archive (verified) range always covers [verifiedRangeStartTs, ∞).
-	// When the TTL window reaches before that boundary, the still-live archived
-	// freezes in [cutoff, boundary) are re-derived from cold storage; if that
-	// succeeds the floor drops to cutoff. If cold storage is unavailable the
-	// floor stays at the boundary — the residual gap, not a false positive.
-	//
-	// "now" is verifiedRangeEndTs — the highest hash-chain-verified timestamp —
-	// not a Pebble projection, so a tampered lastAppliedTimestamp cannot shrink
-	// the window. The TTL itself is still a projection (see idempotencyTTLMicros).
+	// complete, so an unmatched stored entry there is tampering. It is a
+	// pointer so a floor of 0 ("report every entry") is distinct from "no
+	// verified range at all" (nil — report nothing). The verified range covers
+	// the whole history, so the floor is the first verified timestamp.
 	var idemReportFloor *uint64
 
 	if hasVerifiedRange {
 		idemReportFloor = &verifiedRangeStartTs
-
-		if idempotencyTTLMicros == nil {
-			// PersistedConfig absent: the window is unknown. Skip the cold pass
-			// rather than treat it as never-expire — distinct from a genuine
-			// cold-storage read failure below.
-			c.logger.Debug("persisted idempotency TTL unavailable; verifying only the post-archive idempotency range")
-		} else if cutoff := idempotencyWindowCutoff(verifiedRangeEndTs, *idempotencyTTLMicros); cutoff < verifiedRangeStartTs {
-			if c.reDeriveArchivedIdempotency(ctx, chapters, cutoff, expectedIdem) {
-				idemReportFloor = &cutoff
-			} else {
-				c.logger.Info("idempotency TTL window extends before the archive boundary but archived audit entries are not readable; verifying only the post-archive range")
-			}
-		}
 	}
 
 	if err := c.compareIdempotencyOutcomes(reader, expectedIdem, idemReportFloor, callback); err != nil {
@@ -2896,14 +2270,12 @@ type chainBoundState struct {
 	// transaction id) with the SAME first-claim-wins semantic, so the
 	// verifier can re-derive and pin OrderSkipped.context["existingTransactionId"]
 	// against audit-bound data. Every reference-claim source carries the
-	// owning tx id: a live CreateTransaction gets it from the chain-bound
+	// owning tx id: a CreateTransaction gets it from the chain-bound
 	// counter (allocateChainBoundTxID), a mirror ingest from
-	// MirrorCreatedTransaction.transaction_id, and the baseline archive
-	// fold from TransactionReferenceValue.transaction_id. An id of 0 means
-	// "claim seen but owning tx id not derivable" (e.g. a live claim whose
-	// CreateTransaction sits behind an unanchored counter) — the verifier
-	// stays permissive in that case, matching the archive-escape philosophy
-	// of the seq map. See finding EN-1356 existingTransactionId (invariant #8).
+	// MirrorCreatedTransaction.transaction_id. An id of 0 means "claim seen
+	// but owning tx id not derivable" (an unanchored counter) — the verifier
+	// stays permissive in that case. See finding EN-1356
+	// existingTransactionId (invariant #8).
 	referenceTxIDs map[string]map[string]uint64
 	reverted       map[string]map[uint64]uint64
 	metadata       map[string]map[string]map[string][]chainBoundMutation
@@ -2915,41 +2287,23 @@ type chainBoundState struct {
 	// (CreateTransaction.metadata, RevertTransaction.metadata) actually
 	// targeted, so a later DeleteMetadata(target=<that tx id>) skip
 	// check can see the presence. Only anchored when the ledger's
-	// CreateLedger order was observed in live (see ledgerCreationSeen);
-	// for ledgers whose CreateLedger sits in an archived chapter, the
-	// counter is UNRELIABLE and tx-scoped metadata is not recorded.
+	// CreateLedger order was observed in the chain (see ledgerCreationSeen).
 	nextTxID map[string]uint64
 	// ledgerCreationSeen names ledgers whose CreateLedger order was
-	// witnessed in the live audit range — the guarantee that nextTxID
-	// is anchored to the FSM's true counter. For ledgers absent from
-	// this set, tx-scoped metadata mutations (CreateTransaction.metadata,
+	// witnessed in the audit range — the guarantee that nextTxID is
+	// anchored to the FSM's true counter. For ledgers absent from this
+	// set, tx-scoped metadata mutations (CreateTransaction.metadata,
 	// RevertTransaction.metadata) are NOT recorded (a fake tx id would
 	// mismatch the client's DeleteMetadata target and either false-
-	// positive or false-negative the skip check). The verifier consults
-	// this set to stay permissive on tx-id-scoped METADATA_NOT_FOUND
-	// skips for archived-history ledgers.
-	//
-	// NOTE: this set is populated from BOTH the live CreateLedger order
-	// and foldBaselineLedgers (a ledger whose LedgerInfo is in the
-	// baseline snapshot). Do NOT use it to decide whether an archive
-	// escape may fire — use ledgerCreationSeenLive for that.
+	// positive or false-negative the skip check). History is permanent, so
+	// every well-formed store has its ledgers in this set; a miss can only
+	// come from a corrupt or truncated chain.
 	ledgerCreationSeen map[string]struct{}
-	// ledgerCreationSeenLive names ledgers whose CreateLedger order was
-	// witnessed specifically in the LIVE audit range (never seeded by a
-	// baseline fold). A live-created ledger has its ENTIRE history in the
-	// live range — nothing precedes its CreateLedger in an archived
-	// chapter — so the archive escapes (which stay permissive when a
-	// precondition's evidence might live in a purged chapter) MUST NOT
-	// fire for it: a missing claim/mutation on a live-created ledger is a
-	// forged skip, not an archive limitation (finding 2adbf685cc).
-	ledgerCreationSeenLive map[string]struct{}
 	// maxMirrorV2LogID is the audit-derived EXPECTED value of
 	// LedgerBoundaries.last_mirror_v2_log_id per ledger: the highest audited
 	// MirrorIngest.v2_log_id, from the live audit chain
-	// (recordMirrorIngestMutations) plus a baseline floor (foldBaselineBoundaries
-	// seeds it from the archived LedgerBoundaries.last_mirror_v2_log_id, so
-	// ledgers whose mirror ingests live in an archived chapter are not
-	// undercounted). compareMirrorV2LogID checks the stored last_mirror_v2_log_id
+	// (recordMirrorIngestMutations). compareMirrorV2LogID checks the stored
+	// last_mirror_v2_log_id
 	// for EQUALITY against this value and flags ANY divergence (both stored > and
 	// stored <): the FSM enforces a contiguous applied prefix, so at rest the two
 	// must be exactly equal. There is no at-or-below exemption (EN-1550).
@@ -2970,26 +2324,20 @@ type chainBoundMutation struct {
 // observes each ledger.
 func newChainBoundState() *chainBoundState {
 	return &chainBoundState{
-		references:             make(map[string]map[string]uint64),
-		referenceTxIDs:         make(map[string]map[string]uint64),
-		reverted:               make(map[string]map[uint64]uint64),
-		metadata:               make(map[string]map[string]map[string][]chainBoundMutation),
-		accountTypes:           make(map[string]map[string][]chainBoundMutation),
-		nextTxID:               make(map[string]uint64),
-		ledgerCreationSeen:     make(map[string]struct{}),
-		ledgerCreationSeenLive: make(map[string]struct{}),
-		maxMirrorV2LogID:       make(map[string]uint64),
+		references:         make(map[string]map[string]uint64),
+		referenceTxIDs:     make(map[string]map[string]uint64),
+		reverted:           make(map[string]map[uint64]uint64),
+		metadata:           make(map[string]map[string]map[string][]chainBoundMutation),
+		accountTypes:       make(map[string]map[string][]chainBoundMutation),
+		nextTxID:           make(map[string]uint64),
+		ledgerCreationSeen: make(map[string]struct{}),
+		maxMirrorV2LogID:   make(map[string]uint64),
 	}
 }
 
-// mutationStateWithWitness returns both the state at seq AND whether
-// the live audit range witnessed any mutation before seq. The witness
-// flag lets callers distinguish "positive evidence of absence" (a
-// live Delete before seq) from "no live evidence at all" (empty
-// timeline may still be a Set-in-archive). The forward verifier
-// treats a positive presence witness as authoritative (archives
-// cannot undo a live Set). The inverse verifier is more
-// conservative: empty-live + archives = ambiguous → permissive.
+// mutationStateWithWitness returns both the state at seq AND whether the
+// audit range witnessed any mutation before seq. An empty timeline is
+// authoritative absence: the audit chain covers the whole history.
 func mutationStateWithWitness(muts []chainBoundMutation, seq uint64) (state, witnessed bool) {
 	for _, v := range slices.Backward(muts) {
 		if v.seq < seq {
@@ -2998,57 +2346,6 @@ func mutationStateWithWitness(muts []chainBoundMutation, seq uint64) (state, wit
 	}
 
 	return false, false
-}
-
-// archiveInconclusive is the single decision point for the witness-based skip
-// reasons (METADATA_NOT_FOUND on account- and tx-id targets, and the
-// ACCOUNT_TYPE_* reasons). It answers: "the live/baseline timeline shows the
-// key/name ABSENT and there is no witness — is that absence genuinely
-// unprovable (so we must stay permissive) or authoritative (so a mismatching
-// skip is forged)?"
-//
-// Absence is UNPROVABLE — and the caller must stay permissive — exactly when
-// ALL of the following hold:
-//   - !witnessed: the live audit range recorded no mutation for this
-//     (target,key)/name before seq (a live Set/Delete/Add/Remove would be a
-//     positive fact the caller already acted on before calling here);
-//   - hasArchivedChapters: prior state may live in a purged chapter;
-//   - !baselineForTargetAvailable: the baseline fold that seeds THIS target's
-//     timeline did not run, so the purged state was never folded in. This flag
-//     is per-target on purpose — foldBaselineReferences and foldBaselineChainState
-//     are independent folds — so the caller passes the flag matching the map it
-//     consulted (metadata/accountTypes → baselineChainStateAvailable);
-//   - the ledger was NOT created live: a live CreateLedger means the ledger's
-//     ENTIRE history is in the live range, so an empty timeline is proof the
-//     key/name never existed. (Baseline-anchored ledgers are covered by the
-//     baseline flag: when the fold ran, an empty timeline is authoritative.)
-//
-// When it returns false, absence IS established and the caller must reject a
-// mismatching skip (invariant #8). Reuses the existing ledgerCreationSeenLive
-// signal — no new chain-bound marker.
-//
-// NOTE: TRANSACTION_REFERENCE_CONFLICT and TRANSACTION_ALREADY_REVERTED are
-// deliberately OUT of scope. They verify presence via a claim / first-seen-seq
-// map (chainBound.references / chainBound.reverted) that has no per-key
-// "witness" concept — a claim either exists strictly before seq or it does
-// not — so they keep their own `!claimed || firstSeenSeq >= seq` structure
-// gated on their own baseline flag (baselineReferencesAvailable /
-// baselineChainStateAvailable) and !ledgerCreationSeenLive. This is a
-// conscious scoping choice, not an omission.
-func archiveInconclusive(
-	chainBound *chainBoundState,
-	ledger string,
-	hasArchivedChapters bool,
-	baselineForTargetAvailable bool,
-	witnessed bool,
-) bool {
-	if witnessed || !hasArchivedChapters || baselineForTargetAvailable {
-		return false
-	}
-
-	_, createdLive := chainBound.ledgerCreationSeenLive[ledger]
-
-	return !createdLive
 }
 
 // expectedSkippableOrder captures the chain-verified fields the checker
@@ -3362,19 +2659,13 @@ func recordChainBoundMutations(
 		// a rebuild that replays chain items in-order sees CreateLedger
 		// once per ledger. Also mark the ledger as "creation seen" so
 		// downstream tx-scoped metadata recording knows the counter is
-		// anchored (without this flag, defaulting nextTxID=1 for a
-		// ledger whose CreateLedger lives in archive would produce
+		// anchored (without this flag, a defaulted nextTxID=1 could produce
 		// wrong tx-id attribution — see finding cf7f890b).
 		if _, seen := chainBound.nextTxID[ledger]; !seen {
 			chainBound.nextTxID[ledger] = 1
 		}
 
 		chainBound.ledgerCreationSeen[ledger] = struct{}{}
-		// Live-only marker: recorded here (live audit replay) but never in
-		// foldBaselineLedgers, so the archive escapes can tell a
-		// live-created ledger (no possible archived prior state) apart from
-		// one whose CreateLedger predates the archive boundary.
-		chainBound.ledgerCreationSeenLive[ledger] = struct{}{}
 
 		for name := range cl.GetAccountTypes() {
 			if name != "" {
@@ -3421,15 +2712,15 @@ func recordChainBoundMutations(
 		// DeleteMetadata(METADATA_NOT_FOUND) skip on the same key. Both
 		// records are therefore gated on the same skip predicate.
 		//
-		// The skip / archive-uncertain gate ONLY applies when the order
+		// The skip-uncertain gate ONLY applies when the order
 		// actually whitelisted TRANSACTION_REFERENCE_CONFLICT. A create that
 		// did NOT whitelist conflict can never be converted to an
 		// OrderSkipped — if it hit a prior claim the FSM HARD-FAILS
 		// (ErrTransactionReferenceConflict), producing a failure audit entry
 		// with no success item (LogSequence=0), which never reaches this
 		// seeding code. So a non-conflict-whitelisted create present in a
-		// success item PROVABLY applied; suppressing its account_metadata as
-		// archive-uncertain would drop a real presence and let a later forged
+		// success item PROVABLY applied; suppressing its account_metadata
+		// would drop a real presence and let a later forged
 		// METADATA_NOT_FOUND slip through (finding checker.go:2295). Gate the
 		// suppression on conflict-whitelist membership.
 		conflictSkippable := slices.Contains(apply.GetSkippableReasons(), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
@@ -3440,14 +2731,10 @@ func recordChainBoundMutations(
 			// account_metadata targets are known independently of the
 			// FSM-allocated tx id, so they don't need the anchored-ledger
 			// gate the tx-scoped block below applies — but they DO require
-			// the order to have PROVABLY applied. chainBoundCreateTxSkipped
-			// only proves the negative (skip visible in live/baseline);
-			// chainBoundCreateTxApplicationUncertain rejects the archive-only
-			// case where a prior claim could sit in a purged chapter we
-			// cannot see, so we neither assert nor deny presence there
-			// (finding checker.go:2205 — seeding an unconfirmed create's
-			// account_metadata as present would false-positive a later
-			// legitimate METADATA_NOT_FOUND skip on that key).
+			// the order to have PROVABLY applied (finding checker.go:2205 —
+			// seeding an unconfirmed create's account_metadata as present
+			// would false-positive a later legitimate METADATA_NOT_FOUND
+			// skip on that key).
 			for account, mm := range ct.GetAccountMetadata() {
 				if account == "" {
 					continue
@@ -3463,10 +2750,10 @@ func recordChainBoundMutations(
 			// The successful CreateTransaction owns its reference — record
 			// the (ref → txID) binding so a later conflicting order's skip
 			// can have its context["existingTransactionId"] pinned. Only
-			// anchored ledgers get a reliable counter; on unanchored
-			// (archived-CreateLedger) ledgers allocateChainBoundTxID
-			// defaults the counter and the id would be mis-attributed, so
-			// leave the binding absent and let the verifier stay permissive.
+			// anchored ledgers get a reliable counter; on an unanchored
+			// ledger allocateChainBoundTxID defaults the counter and the id
+			// would be mis-attributed, so leave the binding absent and let
+			// the verifier stay permissive.
 			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
 				if ref := ct.GetReference(); ref != "" {
 					rememberReferenceTxID(chainBound.referenceTxIDs, ledger, ref, txID)
@@ -3525,8 +2812,7 @@ func recordChainBoundMutations(
 // allocateChainBoundTxID mirrors the FSM's boundary bump: returns the
 // current nextTxID for the ledger, then increments. Auto-initialises to
 // 1 (matching CreateLedger's initial value) when the ledger's counter
-// has not been seeded yet — this covers ledgers whose CreateLedger
-// order lives in an archived chapter beyond our live scan window.
+// has not been seeded yet.
 func allocateChainBoundTxID(ledger string, chainBound *chainBoundState) uint64 {
 	current, seen := chainBound.nextTxID[ledger]
 	if !seen {
@@ -3570,26 +2856,17 @@ func chainBoundCreateTxSkipped(
 
 // chainBoundCreateTxApplicationUncertain reports whether we CANNOT prove a
 // CreateTransactionOrder actually applied (vs. having been skipped by an
-// earlier TRANSACTION_REFERENCE_CONFLICT). chainBoundCreateTxSkipped only
-// proves the SKIP when the prior claim is visible in the live range or the
-// baseline fold; it returns false both for "provably applied" and for
-// "prior claim lives in a purged chapter we cannot see". This helper
-// isolates that second, indeterminate case so callers do not assert the
-// create's metadata as present when its application is unproven.
+// earlier TRANSACTION_REFERENCE_CONFLICT). It isolates the indeterminate
+// case so callers do not assert the create's metadata as present when its
+// application is unproven.
 //
 // The case is indeterminate exactly when the order declares a reference, NO
 // claim is visible STRICTLY BEFORE this order's own log sequence (the
 // collectExpectedSkippable caller records the create's own claim at logSeq
 // before this runs, so we compare against logSeq exactly as
 // chainBoundCreateTxSkipped does), AND the ledger is unanchored — its
-// CreateLedger was seen neither live nor in the baseline (ledgerCreationSeen
-// is set by BOTH the live CreateLedger replay and foldBaselineLedgers, and a
-// non-nil baseline also runs foldBaselineReferences, so an anchored ledger's
-// absent earlier claim is authoritative "never claimed before"). For an
-// unanchored ledger a prior claim may sit in a purged chapter, so the create
-// might have been skipped — treat presence as unprovable rather than
-// fabricating it (finding checker.go:2205, mirrors the CONFLICT archive
-// escape in verifySkippedOrder).
+// CreateLedger was never witnessed on the chain, which on a well-formed
+// store cannot happen (finding checker.go:2205).
 func chainBoundCreateTxApplicationUncertain(
 	ledger string,
 	ct *raftcmdpb.CreateTransactionOrder,
@@ -3616,8 +2893,7 @@ func chainBoundCreateTxApplicationUncertain(
 	}
 
 	// No earlier visible claim. Authoritative "never claimed before →
-	// applied" only when the ledger is anchored (full history available);
-	// otherwise a purged-chapter claim could have skipped this create.
+	// applied" only when the ledger is anchored (full history available).
 	_, anchored := chainBound.ledgerCreationSeen[ledger]
 
 	return !anchored
@@ -3674,7 +2950,7 @@ func chainBoundRevertSkipped(
 //     Unlike a live CreateTransaction, the tx id is carried on the entry
 //     (MirrorCreatedTransaction.transaction_id) rather than allocated from
 //     the chain-bound counter, so the tx-scoped target is reliable even on
-//     an unanchored (archived-CreateLedger) ledger — no anchoring gate.
+//     an unanchored ledger — no anchoring gate.
 func recordMirrorIngestMutations(
 	entry *raftcmdpb.MirrorLogEntry,
 	ledger string,
@@ -3943,540 +3219,6 @@ func rememberReferenceTxID(
 	perLedger[reference] = txID
 }
 
-// foldBaselineReferences merges the TransactionReference attribute from
-// the baseline checkpoint into chainBoundReferences with a sentinel
-// sequence of 0 (always precedes any live log seq). The baseline is the
-// pre-archive Pebble snapshot the checker already consults for
-// volumes/metadata/transactions; without this fold, references claimed
-// in purged chapters would be invisible to verifySkippedOrder and the
-// archive escape hatch would have to ignore the entire live skip range.
-//
-// Returns true when baseline references were successfully loaded. The
-// caller scopes the archive escape to (hasArchivedChapters && !baselineLoaded)
-// so a fabricated skip on a fresh live reference still surfaces as
-// INVALID_SKIP whenever a baseline is available.
-//
-// baselineDB=nil short-circuits the load (no archived data, or baseline
-// unavailable — the caller already paid for the open if applicable).
-func (c *Checker) foldBaselineReferences(
-	baselineDB *pebble.DB,
-	chainBoundReferences map[string]map[string]uint64,
-	chainBoundReferenceTxIDs map[string]map[string]uint64,
-) (bool, error) {
-	if baselineDB == nil {
-		return false, nil
-	}
-
-	iter, err := c.attrs.References.NewStreamingIter(baselineDB, nil)
-	if err != nil {
-		return false, fmt.Errorf("iterating baseline references: %w", err)
-	}
-
-	for iter.Next() {
-		entry := iter.Entry()
-
-		var trk domain.TransactionReferenceKey
-		if err := trk.Unmarshal(entry.CanonicalKey); err != nil {
-			continue
-		}
-
-		if trk.LedgerName == "" || trk.Reference == "" {
-			continue
-		}
-
-		// The baseline TransactionReferenceValue carries the owning tx id
-		// of the archived claim — fold it so a live conflicting skip that
-		// resolves against an archived reference can still pin its
-		// context["existingTransactionId"]. First-claim-wins inside the map;
-		// the baseline is the earliest claim by construction (sentinel 0).
-		rememberReferenceTxID(chainBoundReferenceTxIDs, trk.LedgerName, trk.Reference, entry.Value.GetTransactionId())
-
-		perLedger := chainBoundReferences[trk.LedgerName]
-		if perLedger == nil {
-			perLedger = make(map[string]uint64)
-			chainBoundReferences[trk.LedgerName] = perLedger
-		}
-
-		// Baseline references always win over any live-audit entry for the
-		// same reference. Two cases motivate the override:
-		//
-		//   1. A skipped order's OWN reference is recorded by
-		//      collectExpectedSkippable at its skip-log seq (AuditItem.
-		//      LogSequence carries the skip log's seq, not 0). Without the
-		//      override, verifySkippedOrder sees firstSeenSeq >= seq and
-		//      false-positives INVALID_SKIP on a legitimate archive-scoped
-		//      skip that a live baseline could otherwise confirm.
-		//   2. If the reference conflict enforcement is correct, only ONE
-		//      successful claim of a given reference can exist across the
-		//      ledger's lifetime. So a baseline entry ⇒ no successful live
-		//      claim ⇒ any live-audit record for this reference is either
-		//      the skipped order itself (case 1) or a mirror-ingest replay
-		//      of the archived source claim — both cases want the archived
-		//      claim (sentinel 0) as the effective firstSeenSeq.
-		//
-		// The check verifySkippedOrder runs is `firstSeenSeq < seq`, so 0 is
-		// the safest value: it always beats any live seq without changing
-		// the truth of the comparison.
-		perLedger[trk.Reference] = 0 // sentinel: precedes every live log seq
-	}
-
-	if err := iter.Close(); err != nil {
-		return false, fmt.Errorf("closing baseline references iterator: %w", err)
-	}
-
-	if err := iter.Err(); err != nil {
-		return false, fmt.Errorf("baseline references iterator error: %w", err)
-	}
-
-	return true, nil
-}
-
-// foldBaselineNumscripts seeds the expected numscript projections from the
-// boundary-time baseline snapshot: the immutable per-version content entries
-// (SubAttrNumscriptContent) and the per-name latest pointer
-// (SubAttrNumscriptVersion, the greatest stored semver). Under archiving the
-// SavedNumscript logs that produced pre-archive versions are purged, so without
-// this seed the post-archive replay would rebuild the expected state from the
-// delta alone: an out-of-order save (e.g. a delta 1.0.0 on top of an archived
-// 2.0.0) would make the checker expect a lower latest than the store correctly
-// holds — a false NUMSCRIPT_MISMATCH — and an archived immutable content entry
-// would go unverified. The delta replay layers on top with the same
-// greatest-wins rule the FSM uses.
-//
-// baselineDB=nil short-circuits (no archived data).
-func (c *Checker) foldBaselineNumscripts(
-	baselineDB *pebble.DB,
-	expectedContent map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo,
-	expectedLatest map[domain.NumscriptVersionKey]string,
-) error {
-	if baselineDB == nil {
-		return nil
-	}
-
-	contentIter, err := c.attrs.NumscriptContent.NewStreamingIter(baselineDB, nil)
-	if err != nil {
-		return fmt.Errorf("iterating baseline numscript content: %w", err)
-	}
-
-	for contentIter.Next() {
-		entry := contentIter.Entry()
-		if entry.Value == nil {
-			continue
-		}
-
-		var key domain.NumscriptEntryKey
-		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			continue
-		}
-
-		expectedContent[key] = entry.Value
-
-		// Derive the latest pointer from the content rows — the greatest stored
-		// semver — rather than trusting the baseline's stored pointer, which
-		// could itself have drifted before the archive boundary. Mirrors the
-		// live FSM, which always advances latest to the greatest content; the
-		// delta replay then advances it further with the same greatest-wins rule.
-		vk := domain.NumscriptVersionKey{LedgerName: key.LedgerName, Name: key.Name}
-		if cur, ok := expectedLatest[vk]; !ok || numscriptVersionGreater(key.Version, cur) {
-			expectedLatest[vk] = key.Version
-		}
-	}
-
-	if err := contentIter.Close(); err != nil {
-		return fmt.Errorf("closing baseline numscript content iterator: %w", err)
-	}
-
-	if err := contentIter.Err(); err != nil {
-		return fmt.Errorf("baseline numscript content iterator error: %w", err)
-	}
-
-	return nil
-}
-
-// foldBaselineIndexes seeds the expected SubAttrIndex registry state from the
-// boundary-time baseline snapshot. Under archiving the CreateIndex logs that
-// registered pre-archive indexes are purged, so without this seed the
-// post-archive replay would rebuild `expectedIndexes` from its delta alone and
-// every surviving pre-archive entry would look unmatched.
-//
-// compareIndexes used to absorb that by skipping any stored entry the replay
-// never touched whenever archives existed. That tolerance was a hole: it
-// swallowed a stale or tampered entry just as readily as a legitimately
-// archived one, and a lingering *metadata* entry is precisely what lets
-// compareReverseMapOrphans' registry term legitimise orphaned reverse-map rows
-// — the two corrupted projections masked each other and Check() stayed clean
-// (EN-1458 review). The rows are already in the baseline (CreateBaselineSnapshot
-// copies the whole attribute zone verbatim), so the expected set is derived
-// rather than excused, and an unmatched stored entry is now a hard mismatch with
-// or without archives.
-//
-// The delta replay layers on top unchanged: a post-archive DropIndex,
-// RemovedMetadataFieldType cascade or DeleteLedger sweep removes a seeded key
-// exactly as it would one the replay itself created.
-//
-// Only ledgers the baseline lists as live are seeded. A ledger deleted before
-// the boundary whose deferred Pebble purge had not yet run still has its index
-// rows in the snapshot; seeding those would expect rows that the purge
-// legitimately removes later — a false MISSING-row event either way, since
-// compareIndexes skips pending-cleanup ledgers before marking them seen. Their
-// absence from the expected set keeps them reportable if they do survive, which
-// is the correct verdict for a non-live ledger.
-//
-// Identity is taken from the baseline value but the ledger name comes from the
-// canonical key, which is what the registry is keyed by; the two always agree on
-// a healthy store, and deriving the one that is derivable costs nothing.
-//
-// baselineDB=nil short-circuits (no archived data).
-func (c *Checker) foldBaselineIndexes(
-	baselineDB *pebble.DB,
-	knownLedgers map[string]struct{},
-	expectedIndexes map[domain.IndexKey]*commonpb.Index,
-) error {
-	if baselineDB == nil {
-		return nil
-	}
-
-	iter, err := c.attrs.Index.NewStreamingIter(baselineDB, nil)
-	if err != nil {
-		return fmt.Errorf("iterating baseline indexes: %w", err)
-	}
-
-	for iter.Next() {
-		entry := iter.Entry()
-		if entry.Value == nil || entry.Value.GetId() == nil {
-			continue
-		}
-
-		var key domain.IndexKey
-		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			// Seeding an unparsable key would only manufacture an expectation
-			// no stored row can ever match. compareIndexes reports the live
-			// store's own unparsable keys, which is where the signal belongs.
-			continue
-		}
-
-		// Bucket-scoped entries (#436) are skipped on the stored side too, so
-		// an expectation for one would be unmatchable by construction.
-		if key.LedgerName == "" {
-			continue
-		}
-
-		if _, live := knownLedgers[key.LedgerName]; !live {
-			continue
-		}
-
-		expectedIndexes[key] = &commonpb.Index{Id: entry.Value.GetId(), Ledger: key.LedgerName}
-	}
-
-	if err := iter.Close(); err != nil {
-		return fmt.Errorf("closing baseline index iterator: %w", err)
-	}
-
-	if err := iter.Err(); err != nil {
-		return fmt.Errorf("baseline index iterator error: %w", err)
-	}
-
-	return nil
-}
-
-// foldBaselineChainState seeds chainBound.reverted / metadata /
-// accountTypes / ledgerCreationSeen / nextTxID from the baseline
-// snapshot. Sibling of foldBaselineReferences — closes the archive-
-// boundary integrity gap for non-CONFLICT skip reasons on ledgers whose
-// relevant history predates the archive boundary.
-//
-// Returns (true, nil) when the baseline was actually loaded — the
-// caller (verifySkippedOrder via a plumbed flag) uses this to scope
-// its archive escape: with baseline chain state available, an "empty
-// live evidence" no longer excuses a forged skip because the baseline
-// carries the missing evidence.
-//
-// baselineDB=nil short-circuits every fold and returns (false, nil).
-//
-// Every seeded entry uses sentinel seq=0 so mutationStateWithWitness's
-// backward walk finds it below any live log seq — baseline claims
-// win on empty live but never override a live mutation.
-func (c *Checker) foldBaselineChainState(
-	baselineDB *pebble.DB,
-	chainBound *chainBoundState,
-) (bool, error) {
-	if baselineDB == nil {
-		return false, nil
-	}
-
-	if err := c.foldBaselineLedgers(baselineDB, chainBound); err != nil {
-		return false, err
-	}
-
-	if err := c.foldBaselineBoundaries(baselineDB, chainBound); err != nil {
-		return false, err
-	}
-
-	if err := c.foldBaselineReverted(baselineDB, chainBound); err != nil {
-		return false, err
-	}
-
-	if err := c.foldBaselineMetadata(baselineDB, chainBound); err != nil {
-		return false, err
-	}
-
-	if err := c.foldBaselineTxMetadata(baselineDB, chainBound); err != nil {
-		return false, err
-	}
-
-	return true, nil
-}
-
-// foldBaselineTxMetadata seeds transaction-scoped metadata from the
-// baseline's TransactionState.Metadata field. Closes the gap where a
-// live DeleteMetadata(target=<archived tx id>, key=X) skip falsely
-// passes because the tx-scoped metadata's Set lived in an archived
-// chapter's CreateTransaction / RevertTransaction order.
-func (c *Checker) foldBaselineTxMetadata(
-	baselineDB *pebble.DB,
-	chainBound *chainBoundState,
-) error {
-	iter, err := c.attrs.Transaction.NewStreamingIter(baselineDB, nil)
-	if err != nil {
-		return fmt.Errorf("iterating baseline transactions for tx metadata: %w", err)
-	}
-
-	for iter.Next() {
-		entry := iter.Entry()
-
-		var tk domain.TransactionKey
-		if err := tk.Unmarshal(entry.CanonicalKey); err != nil {
-			continue
-		}
-
-		if tk.LedgerName == "" || entry.Value == nil {
-			continue
-		}
-
-		md := entry.Value.GetMetadata()
-		if len(md) == 0 {
-			continue
-		}
-
-		target := strconv.FormatUint(tk.ID, 10)
-		for key := range md {
-			if key == "" {
-				continue
-			}
-
-			appendMetadataMutation(chainBound.metadata, tk.LedgerName, metadataTimelineTarget(true, target), key, 0, true)
-		}
-	}
-
-	if err := iter.Close(); err != nil {
-		return fmt.Errorf("closing baseline transactions iterator for tx metadata: %w", err)
-	}
-
-	return iter.Err()
-}
-
-// foldBaselineLedgers marks every ledger present in the baseline as
-// creation-seen and seeds its account-type set from LedgerInfo.
-// account_types. Fixes two false-negatives on archived-history ledgers:
-//
-//   - The archive-inconclusive metadata permissive fallback (the
-//     METADATA_NOT_FOUND !witnessed escape) no longer applies for ledgers
-//     whose CreateLedger sits in an archive but whose LedgerInfo IS in the
-//     baseline: they become anchored (ledgerCreationSeen) so the escape's
-//     !anchored gate is false, and the counter is seeded via
-//     foldBaselineBoundaries.
-//
-//   - A later skippable AddAccountType of a type present at ledger
-//     creation (but archived away) is legitimately valid; the checker
-//     would previously flag it INVALID_SKIP.
-func (c *Checker) foldBaselineLedgers(
-	baselineDB *pebble.DB,
-	chainBound *chainBoundState,
-) error {
-	iter, err := c.attrs.Ledger.NewStreamingIter(baselineDB, nil)
-	if err != nil {
-		return fmt.Errorf("iterating baseline ledgers: %w", err)
-	}
-
-	for iter.Next() {
-		entry := iter.Entry()
-
-		var lk domain.LedgerKey
-		if err := lk.Unmarshal(entry.CanonicalKey); err != nil {
-			continue
-		}
-
-		if lk.Name == "" || entry.Value == nil {
-			continue
-		}
-
-		chainBound.ledgerCreationSeen[lk.Name] = struct{}{}
-
-		for name := range entry.Value.GetAccountTypes() {
-			if name == "" {
-				continue
-			}
-
-			appendAccountTypeMutation(chainBound.accountTypes, lk.Name, name, 0, true)
-		}
-	}
-
-	if err := iter.Close(); err != nil {
-		return fmt.Errorf("closing baseline ledgers iterator: %w", err)
-	}
-
-	return iter.Err()
-}
-
-// foldBaselineBoundaries seeds nextTxID per ledger from the baseline's
-// LedgerBoundaries.NextTransactionId. Without this, ledgers whose
-// CreateLedger sits in an archive default nextTxID to 1 and mislabel
-// live CreateTransaction / RevertTransaction metadata under wrong
-// tx-id targets (see finding cf7f890b).
-func (c *Checker) foldBaselineBoundaries(
-	baselineDB *pebble.DB,
-	chainBound *chainBoundState,
-) error {
-	iter, err := c.attrs.Boundary.NewStreamingIter(baselineDB, nil)
-	if err != nil {
-		return fmt.Errorf("iterating baseline boundaries: %w", err)
-	}
-
-	for iter.Next() {
-		entry := iter.Entry()
-
-		var lk domain.LedgerKey
-		if err := lk.Unmarshal(entry.CanonicalKey); err != nil {
-			continue
-		}
-
-		if lk.Name == "" || entry.Value == nil {
-			continue
-		}
-
-		// Baseline floor for the mirror v2LogId high-water mark: at the archive
-		// boundary, LedgerBoundaries.last_mirror_v2_log_id equals the max
-		// MirrorIngest.v2_log_id applied up to that point, so it is a valid lower
-		// bound for the archived audited max. Without this, a ledger whose mirror
-		// ingests all live in an archived chapter would have live-only max 0 and
-		// compareMirrorV2LogID would false-positive on its legitimate stored
-		// value. Fold as a max so live ingests after the boundary still win.
-		if v2 := entry.Value.GetLastMirrorV2LogId(); v2 > chainBound.maxMirrorV2LogID[lk.Name] {
-			chainBound.maxMirrorV2LogID[lk.Name] = v2
-		}
-
-		next := entry.Value.GetNextTransactionId()
-		if next == 0 {
-			continue
-		}
-
-		// Existing seed (from live CreateLedger) wins if it was already
-		// observed — live is authoritative on the current counter.
-		if existing, seen := chainBound.nextTxID[lk.Name]; !seen || existing < next {
-			chainBound.nextTxID[lk.Name] = next
-		}
-	}
-
-	if err := iter.Close(); err != nil {
-		return fmt.Errorf("closing baseline boundaries iterator: %w", err)
-	}
-
-	return iter.Err()
-}
-
-// foldBaselineReverted seeds chainBound.reverted from the baseline's
-// TransactionState.RevertedByTransaction markers. Every tx already
-// reverted at the archive boundary lands with sentinel seq=0 so a
-// later legitimate skippable RevertTransaction targeting that tx sees
-// the prior revert regardless of whether it lives in an archived
-// chapter.
-func (c *Checker) foldBaselineReverted(
-	baselineDB *pebble.DB,
-	chainBound *chainBoundState,
-) error {
-	iter, err := c.attrs.Transaction.NewStreamingIter(baselineDB, nil)
-	if err != nil {
-		return fmt.Errorf("iterating baseline transactions: %w", err)
-	}
-
-	for iter.Next() {
-		entry := iter.Entry()
-
-		var tk domain.TransactionKey
-		if err := tk.Unmarshal(entry.CanonicalKey); err != nil {
-			continue
-		}
-
-		if tk.LedgerName == "" || entry.Value == nil {
-			continue
-		}
-
-		if entry.Value.GetRevertedByTransaction() == 0 {
-			continue
-		}
-
-		// First-revert-wins semantic: sentinel 0 beats any live seq.
-		perLedger, ok := chainBound.reverted[tk.LedgerName]
-		if !ok {
-			perLedger = make(map[uint64]uint64)
-			chainBound.reverted[tk.LedgerName] = perLedger
-		}
-
-		if _, seen := perLedger[tk.ID]; seen {
-			continue
-		}
-
-		perLedger[tk.ID] = 0
-	}
-
-	if err := iter.Close(); err != nil {
-		return fmt.Errorf("closing baseline transactions iterator: %w", err)
-	}
-
-	return iter.Err()
-}
-
-// foldBaselineMetadata seeds chainBound.metadata (exists=true, seq=0)
-// for every account-metadata entry present in the baseline. Closes
-// the log-only tampering vector where a live DeleteMetadata skip
-// falsely passes because the metadata's Set lived in an archived
-// chapter — the baseline still holds the key.
-//
-// Only account-metadata targets are folded here; transaction-scoped
-// metadata is not persisted as a separate attribute in the baseline
-// (it lives on TransactionState). Tx-scoped metadata verification
-// stays under the ledgerCreationSeen / nextTxID anchoring path.
-func (c *Checker) foldBaselineMetadata(
-	baselineDB *pebble.DB,
-	chainBound *chainBoundState,
-) error {
-	iter, err := c.attrs.Metadata.NewStreamingIter(baselineDB, nil)
-	if err != nil {
-		return fmt.Errorf("iterating baseline metadata: %w", err)
-	}
-
-	for iter.Next() {
-		entry := iter.Entry()
-
-		var mk domain.MetadataKey
-		if err := mk.Unmarshal(entry.CanonicalKey); err != nil {
-			continue
-		}
-
-		if mk.LedgerName == "" || mk.Account == "" || mk.Key == "" {
-			continue
-		}
-
-		appendMetadataMutation(chainBound.metadata, mk.LedgerName, metadataTimelineTarget(false, mk.Account), mk.Key, 0, true)
-	}
-
-	if err := iter.Close(); err != nil {
-		return fmt.Errorf("closing baseline metadata iterator: %w", err)
-	}
-
-	return iter.Err()
-}
-
 // verifySkippedOrder flags an OrderSkippedLog projection whose reason was
 // not authorised by the chain-bound Order.skippable_reasons whitelist (or
 // is a structural KindInternal reason — defense in depth mirroring the
@@ -4487,22 +3229,13 @@ func (c *Checker) foldBaselineMetadata(
 // chainBoundReferences was built in verifyAuditHashChain from
 // chain-verified `serialized_order` payloads, so any reference appearing
 // in it was the subject of a real audit-bound write at the recorded
-// sequence. hasArchivedChapters acts as a presence escape hatch:
-// references claimed in archived chapters have their audit entries purged
-// and therefore are NOT in chainBoundReferences. To avoid false positives
-// on legitimate skips against archived references, the per-reason
-// presence check is downgraded to a silent pass when archived chapters
-// exist. This trade-off matches the same archive boundary
-// compareIdempotencyOutcomes uses.
+// sequence.
 func verifySkippedOrder(
 	ledger string,
 	seq uint64,
 	payload *commonpb.LedgerLogPayload,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
-	hasArchivedChapters bool,
-	baselineReferencesAvailable bool,
-	baselineChainStateAvailable bool,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	skipped, ok := payload.GetPayload().(*commonpb.LedgerLogPayload_OrderSkipped)
@@ -4619,10 +3352,8 @@ func verifySkippedOrder(
 		// Verify the persisted OrderSkipped.context fields against the
 		// chain-bound order BEFORE the reference-claim lookup. Both
 		// `reference` and `ledger` come from expected (chain-bound), so
-		// their check is independent of whether the prior claim lives in
-		// the live audit range or an archived chapter — running them
-		// before the archive escape below closes a tampering vector where
-		// the context alone is edited on a legitimate archive-scoped skip.
+		// their check is independent of the claim lookup below — a
+		// tampered context is caught even when the claim check passes.
 		//
 		// The context surfaces to clients via the REST response and gRPC
 		// log payload, so tampering only the context (without flipping
@@ -4663,15 +3394,10 @@ func verifySkippedOrder(
 
 		// Pin context["existingTransactionId"] against the owning tx id the
 		// checker recorded for the first successful claim of this reference
-		// (chainBound.referenceTxIDs, populated from the live CreateTransaction
-		// counter, mirror ingestion, or the baseline archive fold). A
-		// tamperer who rewrites this field to misattribute the conflicting
-		// transaction is caught here. Stays permissive only when the owning
-		// id is not derivable (ownerTxID==0): a live claim on an unanchored
-		// (archived-CreateLedger) ledger, or a claim whose CreateTransaction
-		// lives entirely in a purged chapter with no baseline. In that case
-		// the field cannot be re-derived, so pinning it would false-positive;
-		// this matches the archive-escape philosophy of the seq lookup below.
+		// (chainBound.referenceTxIDs, populated from the CreateTransaction
+		// counter or mirror ingestion). A tamperer who rewrites this field to
+		// misattribute the conflicting transaction is caught here. Stays
+		// permissive only when the owning id is not derivable (ownerTxID==0).
 		if ownerTxID := chainBound.referenceTxIDs[ledger][expected.reference]; ownerTxID != 0 {
 			want := strconv.FormatUint(ownerTxID, 10)
 			// Only enforce when the projection actually carries the field —
@@ -4707,24 +3433,8 @@ func verifySkippedOrder(
 		// not move it).
 		firstSeenSeq, claimed := chainBound.references[ledger][expected.reference]
 		if !claimed || firstSeenSeq >= seq {
-			// No earlier claim visible in the live audit range. If the
-			// baseline TransactionReference attribute did NOT cover the
-			// archived range (baselineReferencesAvailable=false), the
-			// claim may live in a purged chapter we cannot re-verify.
-			// Stay permissive under that specific condition; when the
-			// baseline IS available (foldBaselineReferences folded
-			// archived refs into chainBound.references with sentinel
-			// seq=0), the missing claim proves fabrication.
-			//
-			// The escape only applies when the ledger's CreateLedger was
-			// NOT observed in the live audit range: a live-created ledger
-			// has its ENTIRE history in live (nothing precedes CreateLedger
-			// in an archived chapter), so a missing claim there proves
-			// fabrication regardless of archived chapters existing for
-			// OTHER ledgers (see finding 2adbf685cc).
-			if _, createdLive := chainBound.ledgerCreationSeenLive[ledger]; hasArchivedChapters && !baselineReferencesAvailable && !createdLive {
-				return
-			}
+			// No earlier claim in the audit range: the audit chain covers the
+			// whole history, so a missing claim proves fabrication.
 
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
@@ -4774,22 +3484,8 @@ func verifySkippedOrder(
 
 		firstRevertSeq, seen := chainBound.reverted[ledger][expected.transactionID]
 		if !seen || firstRevertSeq >= seq {
-			// No earlier successful revert visible in the live audit
-			// range. If archived chapters exist AND the baseline chain
-			// state fold did NOT succeed (foldBaselineReverted couldn't
-			// seed reverted-tx claims from LedgerBoundaries), the prior
-			// revert may live in a purged range we cannot re-verify.
-			// Stay permissive under that specific condition; when the
-			// baseline IS available, foldBaselineReverted already
-			// folded any archived reverts as sentinel seq=0 entries, so
-			// a missing claim proves fabrication.
-			//
-			// Never escape for a live-created ledger: its whole history is
-			// live, so a missing prior revert is a forged skip, not an
-			// archive limitation (finding 2adbf685cc).
-			if _, createdLive := chainBound.ledgerCreationSeenLive[ledger]; hasArchivedChapters && !baselineChainStateAvailable && !createdLive {
-				return
-			}
+			// No earlier successful revert in the audit range: the chain
+			// covers the whole history, so the skip is fabricated.
 
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
@@ -4845,47 +3541,22 @@ func verifySkippedOrder(
 			return
 		}
 
-		// Consult the live metadata timeline FIRST. mutationStateWithWitness
-		// tells us both the state just before seq AND whether the live audit
-		// range positively witnessed any mutation for this (target, key). A
-		// live SetMetadata / SaveMetadata order records a presence witness
-		// directly from formatTargetForSkipContext(order.Target) — it does
-		// NOT depend on the archived nextTxID counter — so it is trustworthy
-		// even for a tx-id target on an unanchored ledger.
-		present, witnessed := mutationStateWithWitness(chainBound.metadata[ledger][metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget)][expected.metadataKey], seq)
+		// Consult the chain-bound metadata timeline. A SetMetadata /
+		// SaveMetadata order records a presence witness directly from
+		// formatTargetForSkipContext(order.Target). present==false is
+		// authoritative absence: the audit chain covers the whole history.
+		present, _ := mutationStateWithWitness(chainBound.metadata[ledger][metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget)][expected.metadataKey], seq)
 
 		if present {
 			// Chain-bound state says the key was PRESENT just before
 			// seq — a DeleteMetadata that ran on that state would have
-			// succeeded, not skipped. Live-audit evidence of presence
-			// is authoritative: archived chapters live BEFORE the
-			// current audit range, so they cannot undo a live Set.
-			// Unlike CONFLICT (where "no live claim" leaves the archive
-			// as a plausible source), a live Set at some earlier seq
-			// is a positive fact — no archive escape applies.
+			// succeeded, not skipped.
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records METADATA_NOT_FOUND skip on (target=%q, key=%q) but the audit chain shows the key was present at this sequence on ledger %q", seq, expected.metadataTarget, expected.metadataKey, ledger),
 				seq, ledger, "", "",
 			))
 
-			return
-		}
-
-		// present==false at this point. The forgery guard is the `present`
-		// check above: a live SetMetadata/SaveMetadata, a mirror-ingested
-		// metadata, a CreateTransaction account_metadata, or a baseline fold
-		// all seed chainBound.metadata, so any witnessed/baseline presence
-		// makes `present` true and already failed a forged METADATA_NOT_FOUND.
-		// This applies uniformly to BOTH account-address and tx-id targets.
-		//
-		// What remains is the archive-inconclusive case (finding checker.go:3466):
-		// present==false with no live witness on an unanchored, archived ledger
-		// whose baseline metadata was not folded — the key's Set may live only
-		// in a purged chapter, so absence is UNPROVABLE and we stay permissive.
-		// The metadata timeline is seeded by foldBaselineChainState, so pass
-		// baselineChainStateAvailable. Uniform for account- and tx-id targets.
-		if archiveInconclusive(chainBound, ledger, hasArchivedChapters, baselineChainStateAvailable, witnessed) {
 			return
 		}
 
@@ -4933,41 +3604,13 @@ func verifySkippedOrder(
 			return
 		}
 
-		present, witnessed := mutationStateWithWitness(chainBound.accountTypes[ledger][expected.accountTypeName], seq)
-
-		// An unwitnessed empty live timeline is only INCONCLUSIVE when the
-		// account-type set could live in an archived chapter we did not fold —
-		// the shared archiveInconclusive helper decides (account types are
-		// seeded by foldBaselineChainState/foldBaselineLedgers, so pass
-		// baselineChainStateAvailable). A live-created ledger's empty timeline
-		// is authoritative absence (finding 2adbf685cc), which the helper
-		// encodes via ledgerCreationSeenLive.
-		inconclusive := archiveInconclusive(chainBound, ledger, hasArchivedChapters, baselineChainStateAvailable, witnessed)
+		present, _ := mutationStateWithWitness(chainBound.accountTypes[ledger][expected.accountTypeName], seq)
 
 		mustBePresent := reason == commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 		if present != mustBePresent {
-			// live evidence contradicts the skipped reason. Escape only
-			// when the contradiction rests on an inconclusive empty
-			// timeline:
-			//
-			//   - ALREADY_EXISTS + live shows ABSENT + inconclusive:
-			//     archives may contain an AddAccountType never Removed in
-			//     live — permissive. But if the ledger was created live,
-			//     an absent timeline is proof the name never existed, so a
-			//     legitimate Add would have SUCCEEDED — the skip is forged
-			//     and must be caught (inconclusive is false).
-			//
-			//   - ALREADY_EXISTS + live shows ABSENT + witnessed
-			//     (a live RemoveAccountType before seq): positive proof of
-			//     absence regardless of archives — no escape.
-			//
-			//   - NOT_FOUND + live shows PRESENT: archives lie BEFORE the
-			//     current live range and cannot undo a live AddAccountType.
-			//     Live-presence is authoritative — no escape.
-			if mustBePresent && inconclusive {
-				return
-			}
-
+			// The chain-bound timeline contradicts the skipped reason: the
+			// audit chain covers the whole history, so the timeline is
+			// authoritative in both directions.
 			condition := "absent"
 			if mustBePresent {
 				condition = "present"
@@ -4982,22 +3625,6 @@ func verifySkippedOrder(
 			return
 		}
 
-		// present == mustBePresent: the live timeline AGREES with the
-		// skipped reason. For NOT_FOUND this means present==false. An empty
-		// unwitnessed timeline is only sound proof-of-absence when absence
-		// is genuinely established (witnessed live delete, live-created
-		// ledger, no archive, or baseline folded the account types). When
-		// it is archive-inconclusive, an absent live timeline does NOT
-		// prove the name was absent — the name could exist only in an
-		// archived chapter we could not fold, where a RemoveAccountType
-		// would have SUCCEEDED rather than skipping NOT_FOUND (finding
-		// checker.go:3364). Treat that specifically as inconclusive: we
-		// cannot prove the skip forged without the baseline, so stay
-		// permissive rather than validating the absence as positive proof.
-		if !mustBePresent && !present && inconclusive {
-			return
-		}
-
 	default:
 		// Fail-loud fallback: the whitelist admitted this reason but no
 		// verification branch replayed it against the audit chain. Any new
@@ -5009,40 +3636,6 @@ func verifySkippedOrder(
 			seq, ledger, "", "",
 		))
 	}
-}
-
-// resolveIdempotencyTTLMicros picks the TTL (in microseconds) that bounds the
-// cold re-derivation window. The boot-validated runtime config is preferred
-// because it is not read from the audited store; the persisted projection is
-// the fallback for paths with no runtime config (CLI / restore backup
-// validation). Returns nil when neither is available — the window is then
-// unknown and the cold pass is skipped.
-func resolveIdempotencyTTLMicros(runtime *time.Duration, persisted *commonpb.PersistedConfig) *uint64 {
-	if runtime != nil {
-		micros := uint64(runtime.Microseconds())
-
-		return &micros
-	}
-
-	if persisted != nil {
-		micros := persisted.GetIdempotencyTtlSeconds() * 1_000_000
-
-		return &micros
-	}
-
-	return nil
-}
-
-// idempotencyWindowCutoff returns the lower bound of the idempotency TTL window
-// given the hash-chain-verified "now" and the configured TTL. A ttlMicros of 0
-// (idempotency-ttl=0, never expire) or a ledger younger than its TTL yields 0 —
-// an unbounded window that re-derives the whole archived history.
-func idempotencyWindowCutoff(now, ttlMicros uint64) uint64 {
-	if ttlMicros != 0 && now > ttlMicros {
-		return now - ttlMicros
-	}
-
-	return 0
 }
 
 // dispatchElisionCheck runs the elision guard at every seq where the audit
@@ -5064,8 +3657,6 @@ func dispatchElisionCheck(
 	log *commonpb.Log,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
-	hasArchivedChapters bool,
-	baselineChainStateAvailable bool,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	expected, isExpected := expectedSkippable[seq]
@@ -5085,7 +3676,7 @@ func dispatchElisionCheck(
 		}
 	}
 
-	verifyExpectedSkipNotElided(expected.ledger, seq, expectedSkippable, chainBound, hasArchivedChapters, baselineChainStateAvailable, callback)
+	verifyExpectedSkipNotElided(expected.ledger, seq, expectedSkippable, chainBound, callback)
 }
 
 // verifyExpectedSkipNotElided is the inverse-direction sibling of
@@ -5098,20 +3689,13 @@ func dispatchElisionCheck(
 // readers a transaction landed when the FSM actually rolled it back: the
 // LedgerLog is a projection of the audit chain, not hash-bound itself.
 //
-// The `!claimed || firstSeenSeq >= seq` guard below already covers the
-// archive-boundary case: references claimed in purged chapters legitimately
-// fail to appear in chainBoundReferences (so `claimed=false`), and the
-// verifier stays permissive without any archive-flag branch. Once we DO see
-// a prior live claim (`firstSeenSeq < seq`), the elision is positively
-// proven by the hash-chained audit range — we must NOT downgrade this to a
-// silent pass just because archived chapters exist elsewhere in the log.
+// Once we see a prior claim (`firstSeenSeq < seq`), the elision is
+// positively proven by the hash-chained audit range.
 func verifyExpectedSkipNotElided(
 	ledger string,
 	seq uint64,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
-	hasArchivedChapters bool,
-	baselineChainStateAvailable bool,
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	expected, ok := expectedSkippable[seq]
@@ -5163,21 +3747,10 @@ func verifyExpectedSkipNotElided(
 		))
 
 	case slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND) && expected.metadataKey != "":
-		present, witnessed := mutationStateWithWitness(chainBound.metadata[ledger][metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget)][expected.metadataKey], seq)
+		present, _ := mutationStateWithWitness(chainBound.metadata[ledger][metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget)][expected.metadataKey], seq)
 		if present {
-			// Live shows PRESENT → a Delete would have succeeded, not
+			// Chain shows PRESENT → a Delete would have succeeded, not
 			// skipped. Any non-skip projection is a legitimate landing.
-			return
-		}
-
-		if archiveInconclusive(chainBound, ledger, hasArchivedChapters, baselineChainStateAvailable, witnessed) {
-			// Empty live timeline under archives with no baseline fold and no
-			// live creation is ambiguous — an archived Set could make the
-			// delete succeed, so the projection may legitimately be a non-skip.
-			// Be permissive. When absence IS established (baseline folded, or
-			// the ledger was created live), archiveInconclusive returns false
-			// and we fall through to fire the elision error — matching the
-			// forward METADATA_NOT_FOUND branch.
 			return
 		}
 
@@ -5189,22 +3762,12 @@ func verifyExpectedSkipNotElided(
 
 	case (slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS) ||
 		slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND)) && expected.isAccountTypeOrder:
-		present, witnessed := mutationStateWithWitness(chainBound.accountTypes[ledger][expected.accountTypeName], seq)
+		present, _ := mutationStateWithWitness(chainBound.accountTypes[ledger][expected.accountTypeName], seq)
 
 		mustBePresent := slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS)
 		if present != mustBePresent {
 			// Chain-bound state contradicts the reason that would
 			// have been skipped: no elision to prove.
-			return
-		}
-
-		if archiveInconclusive(chainBound, ledger, hasArchivedChapters, baselineChainStateAvailable, witnessed) {
-			// Empty live timeline under archives with no baseline fold and no
-			// live creation is ambiguous — the archived history could make
-			// either outcome legitimate, so be permissive. When absence IS
-			// established (baseline folded the accountTypes, or the ledger was
-			// created live), archiveInconclusive returns false and we fall
-			// through to fire the elision error.
 			return
 		}
 
@@ -5277,161 +3840,6 @@ func expectedIdempotencyOutcome(entry *auditpb.AuditEntry, items []*auditpb.Audi
 	return exp, true
 }
 
-// reDeriveArchivedIdempotency extends `expected` with the frozen idempotency
-// outcomes re-derived from ARCHIVED audit entries whose timestamp is within the
-// TTL window [ttlCutoff, ∞) — the only archived freezes that can still be live.
-// It returns true when every archived chapter that could hold such a freeze was
-// read, so the caller may lower its report floor to ttlCutoff; false when cold
-// storage is unavailable or a read failed, in which case the caller keeps the
-// post-archive boundary and leaves the residual gap rather than risk a false
-// positive.
-//
-// Unlike the post-archive range, these cold entries are NOT re-verified against
-// the hash chain here. Cold storage sits outside the follower-disk threat model
-// this pass targets (see compareIdempotencyOutcomes), so the archived entry is
-// taken as the trusted source and only the live SubIdempKeys projection is
-// checked against it. Widening the threat model to cover cold-storage tampering
-// would require re-walking the chain over this same bounded window.
-//
-// The read is bounded by the TTL window, not by history: chapters are visited
-// newest-first and the scan stops at the first one whose newest entry predates
-// ttlCutoff.
-func (c *Checker) reDeriveArchivedIdempotency(
-	ctx context.Context,
-	chapters []*commonpb.Chapter,
-	ttlCutoff uint64,
-	expected map[idemExpectedKey]expectedIdempotency,
-) bool {
-	archived := make([]*commonpb.Chapter, 0, len(chapters))
-
-	for _, ch := range chapters {
-		if ch.GetStatus() == commonpb.ChapterStatus_CHAPTER_ARCHIVED {
-			archived = append(archived, ch)
-		}
-	}
-
-	// No archived data: the verified (hot) range already spans the whole audit
-	// history, so coverage extends down to ttlCutoff without any cold read.
-	if len(archived) == 0 {
-		return true
-	}
-
-	if c.coldReader == nil {
-		return false
-	}
-
-	// ttlCutoff == 0 means an unbounded window (idempotency-ttl=0 never-expire,
-	// or a ledger younger than its TTL): the whole archived history is read.
-	// Flag it — the O(history) read is by configuration, not a bug.
-	if ttlCutoff == 0 {
-		c.logger.Infof("idempotency TTL window is unbounded; scanning all %d archived chapters to verify frozen outcomes", len(archived))
-	}
-
-	// Newest first, so the scan can stop at the first chapter whose newest entry
-	// predates the cutoff.
-	slices.SortFunc(archived, func(a, b *commonpb.Chapter) int {
-		return cmp.Compare(b.GetCloseAuditSequence(), a.GetCloseAuditSequence())
-	})
-
-	for _, ch := range archived {
-		coldPebble, err := c.coldReader.GetReader(ctx, ch.GetId())
-		if err != nil {
-			c.logger.Infof("reading archived chapter %d for idempotency window failed: %v", ch.GetId(), err)
-
-			return false
-		}
-
-		last, err := query.ReadLastAuditEntry(coldPebble)
-		if err != nil {
-			c.logger.Infof("reading last audit entry of archived chapter %d failed: %v", ch.GetId(), err)
-
-			return false
-		}
-
-		// This chapter (and, by audit-sequence order, every older one) is
-		// entirely below the TTL window — nothing here can still be live.
-		if last == nil || last.GetTimestamp().GetData() < ttlCutoff {
-			break
-		}
-
-		windowStartsHere, err := c.collectChapterIdempotency(ctx, coldPebble, ttlCutoff, expected)
-		if err != nil {
-			c.logger.Infof("re-deriving idempotency from archived chapter %d failed: %v", ch.GetId(), err)
-
-			return false
-		}
-
-		if windowStartsHere {
-			break
-		}
-	}
-
-	return true
-}
-
-// collectChapterIdempotency scans one archived chapter's audit entries (read
-// from cold storage), re-derives the frozen idempotency outcome for every keyed
-// entry at/after ttlCutoff, and merges it into expected. It returns true when
-// the chapter's oldest entry predates ttlCutoff — the window starts inside this
-// chapter, so older chapters need not be read.
-//
-// Scan order does not matter here: every in-window keyed entry is added
-// regardless of direction, and windowStartsHere only needs to observe whether
-// any entry predates the cutoff — so this is correct even if ReadAuditEntries'
-// ordering ever changes.
-func (c *Checker) collectChapterIdempotency(
-	ctx context.Context,
-	coldPebble dal.PebbleReader,
-	ttlCutoff uint64,
-	expected map[idemExpectedKey]expectedIdempotency,
-) (bool, error) {
-	cur, err := query.ReadAuditEntries(ctx, coldPebble, nil)
-	if err != nil {
-		return false, fmt.Errorf("reading archived audit entries: %w", err)
-	}
-
-	defer func() { _ = cur.Close() }()
-
-	windowStartsHere := false
-
-	for {
-		entry, err := cur.Next()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-
-			return false, fmt.Errorf("reading archived audit entry: %w", err)
-		}
-
-		ts := entry.GetTimestamp().GetData()
-		if ts < ttlCutoff {
-			windowStartsHere = true
-
-			continue
-		}
-
-		key := entry.GetIdempotency().GetKey()
-		if key == "" {
-			continue
-		}
-
-		items, err := query.ReadAuditItems(ctx, coldPebble, entry.GetSequence())
-		if err != nil {
-			return false, fmt.Errorf("reading archived audit items for sequence %d: %w", entry.GetSequence(), err)
-		}
-
-		if exp, ok := expectedIdempotencyOutcome(entry, items); ok {
-			expected[idemExpectedKey{
-				keyHash:   state.HashIdempotencyKey(key),
-				createdAt: ts,
-			}] = exp
-		}
-	}
-
-	return windowStartsHere, nil
-}
-
 // compareIdempotencyOutcomes scans the frozen idempotency entries
 // (SubIdempKeys) and verifies each against the outcome re-derived from the
 // hash-chained audit entry that wrote it. A divergence is a tampered replay
@@ -5439,16 +3847,11 @@ func (c *Checker) collectChapterIdempotency(
 // wrong log range while Check() passed.
 //
 // Entries are matched by (key hash, created_at). `expected` is built to be
-// complete at/above idemReportFloor: the post-archive range is always
-// re-derived, and the still-live slice frozen by archived entries within the
-// idempotency TTL window ([ttlCutoff, boundary)) is re-derived from cold storage
-// when available (see reDeriveArchivedIdempotency). A stored entry whose
-// created_at is at/above the floor but matches no freeze is therefore a tampered
-// created_at or a fabricated entry and is reported. Below the floor the freezing
-// audit entry is older than the TTL window — no longer live, and not
-// re-derived — so the entry is skipped. A nil floor means nothing was
-// re-derivable (no verified range), so all entries are skipped; a non-nil floor
-// of 0 means the window is unbounded (never-expire), so every entry is checked.
+// complete at/above idemReportFloor: the whole audit range is re-derived. A
+// stored entry whose created_at is at/above the floor but matches no freeze is
+// therefore a tampered created_at or a fabricated entry and is reported. A nil
+// floor means nothing was re-derivable (no verified range), so all entries are
+// skipped.
 //
 // This pass verifies the INTEGRITY of the entries that are stored — it does not
 // detect a DELETED entry. A frozen outcome that is simply absent cannot be
@@ -5459,22 +3862,8 @@ func (c *Checker) collectChapterIdempotency(
 // separate concern out of scope here.
 //
 // Threat model: the check targets an actor with direct disk/Pebble write access
-// to a follower's store, which is where SubIdempKeys lives. The post-archive
-// audit entries that anchor the live range are hash-chain-verified above; the
-// archived entries used for the TTL window are trusted as-is because cold
-// storage is outside that follower-disk reach (see reDeriveArchivedIdempotency).
-//
-// Coverage frontier — the report floor depends on two inputs beyond the audit
-// chain:
-//   - "now" (verifiedRangeEndTs) is the highest hash-chain-verified timestamp,
-//     NOT a projection — a tampered lastAppliedTimestamp cannot move the floor.
-//   - the idempotency TTL is taken from the boot-validated runtime config when
-//     available (in process memory, off the audited disk), falling back to the
-//     PersistedConfig projection only where no runtime config exists (CLI /
-//     restore backup validation). On those fallback paths a disk-tampered TTL
-//     could move the floor up until the next boot revalidates config; the TTL
-//     is boot config, not an audit projection, so the checker cannot re-derive
-//     it from the chain.
+// to a follower's store, which is where SubIdempKeys lives. The audit entries
+// that anchor the expectation are hash-chain-verified above.
 func (c *Checker) compareIdempotencyOutcomes(
 	reader dal.PebbleReader,
 	expected map[idemExpectedKey]expectedIdempotency,
@@ -5509,9 +3898,7 @@ func (c *Checker) compareIdempotencyOutcomes(
 		if !ok {
 			// No matching freeze. `expected` is complete at/above the report
 			// floor, so a miss there is a tampered created_at or a fabricated
-			// entry. Below the floor the freezing entry is older than the TTL
-			// window (or pre-archive when cold storage was unavailable) and is
-			// not re-derived, so the entry is skipped rather than flagged.
+			// entry.
 			if idemReportFloor != nil && stored.GetCreatedAt() >= *idemReportFloor {
 				callback(errorEvent(
 					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH,
@@ -5596,28 +3983,15 @@ type proposalBoundaryReader struct {
 func (c *Checker) newProposalBoundaryReader(
 	ctx context.Context,
 	reader dal.PebbleReader,
-	chapters []*commonpb.Chapter,
-	archiveEndSeq uint64,
 ) (*proposalBoundaryReader, error) {
-	var afterAuditSeq *uint64
-
-	for _, p := range chapters {
-		if p.GetStatus() == commonpb.ChapterStatus_CHAPTER_ARCHIVED {
-			closeAuditSeq := p.GetCloseAuditSequence()
-			if afterAuditSeq == nil || closeAuditSeq > *afterAuditSeq {
-				afterAuditSeq = &closeAuditSeq
-			}
-		}
-	}
-
-	auditCursor, err := query.ReadAuditEntries(ctx, reader, afterAuditSeq)
+	auditCursor, err := query.ReadAuditEntries(ctx, reader, nil)
 	if err != nil {
 		return nil, fmt.Errorf("reading audit entries: %w", err)
 	}
 
 	return &proposalBoundaryReader{
 		auditCursor: auditCursor,
-		tracker:     domainreplay.NewProposalBoundaryTracker(archiveEndSeq),
+		tracker:     domainreplay.NewProposalBoundaryTracker(0),
 	}, nil
 }
 
@@ -5661,33 +4035,6 @@ func logSequenceFromAuditEntry(entry *auditpb.AuditEntry) uint64 {
 	return 0
 }
 
-// verifySealingHash checks that the sealing hash of an archived chapter matches
-// the expected decomposition: BLAKE3(chapter_id || close_sequence || last_log_hash || state_hash).
-func verifySealingHash(p *commonpb.Chapter, callback func(*servicepb.CheckStoreEvent)) {
-	hasher := blake3.New()
-	buf := make([]byte, 8)
-
-	binary.BigEndian.PutUint64(buf, p.GetId())
-	_, _ = hasher.Write(buf)
-
-	binary.BigEndian.PutUint64(buf, p.GetCloseSequence())
-	_, _ = hasher.Write(buf)
-
-	if len(p.GetLastAuditHash()) > 0 {
-		_, _ = hasher.Write(p.GetLastAuditHash())
-	}
-
-	_, _ = hasher.Write(p.GetStateHash())
-
-	expected := hasher.Sum(nil)
-	if !bytes.Equal(expected, p.GetSealingHash()) {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
-			fmt.Sprintf("sealing hash mismatch for archived chapter %d: expected %x, got %x",
-				p.GetId(), expected, p.GetSealingHash()),
-			p.GetCloseSequence(), "", "", ""))
-	}
-}
-
 // compareSchema verifies each ledger's stored metadata schema
 // (LedgerInfo.MetadataSchema) against the field-type declarations re-derived
 // from the audit. The schema is a projection of CreateLedger.initial_schema +
@@ -5719,96 +4066,6 @@ func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, ex
 				0, name, "", "",
 			))
 		}
-	}
-
-	return nil
-}
-
-// seedExpectedFromBaseline loads the boundary-time live ledger set, metadata
-// schema, and account types for each ledger from the already-open baseline
-// checkpoint, so the post-archive replay applies its delta on top. The baseline
-// is the independent (non-live) source the checker needs when the pre-archive
-// declaration and CreateLedger logs have been purged.
-func (c *Checker) seedExpectedFromBaseline(ctx context.Context, baseline *pebble.DB, knownLedgers map[string]struct{}, schemas map[string]*commonpb.MetadataSchema, rawLedgerTypes map[string]map[string]*commonpb.AccountType, ledgerAccountTypes map[string][]accounttype.CompiledType, boundaries map[string]*raftcmdpb.LedgerBoundaries) {
-	ledgerCursor, err := query.ReadLedgers(ctx, baseline)
-	if err != nil {
-		c.logger.Infof("failed to read baseline ledgers for seeding: %v", err)
-
-		return
-	}
-
-	ledgers, err := cursor.Collect(ledgerCursor)
-	if err != nil {
-		c.logger.Infof("failed to collect baseline ledgers for seeding: %v", err)
-
-		return
-	}
-
-	for _, info := range ledgers {
-		// A soft-deleted baseline ledger is a tombstone, not part of the live
-		// projection; skip it so the post-archive replay doesn't treat it as an
-		// expected live ledger.
-		if info.GetDeletedAt() != nil {
-			continue
-		}
-
-		knownLedgers[info.GetName()] = struct{}{}
-
-		if schema := info.GetMetadataSchema(); schema != nil {
-			schemas[info.GetName()] = schema.CloneVT()
-		}
-
-		seedAccountTypes(rawLedgerTypes, ledgerAccountTypes, info.GetName(), info.GetAccountTypes())
-
-		// The boundary-time LedgerBoundaries carry the pre-archive id fields
-		// and counters; the post-archive replay advances on top. A live
-		// baseline ledger with no boundary row starts at genesis.
-		b, err := c.attrs.Boundary.Get(baseline, domain.LedgerKey{Name: info.GetName()}.Bytes())
-		if err != nil {
-			c.logger.Infof("failed to read baseline boundaries for ledger %q: %v", info.GetName(), err)
-
-			continue
-		}
-
-		if b == nil {
-			b = &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-		}
-
-		boundaries[info.GetName()] = b.CloneVT()
-	}
-}
-
-// seedTxTrackingFromBaseline pre-populates the known / reverted transaction-ID
-// bitsets from the baseline's boundary-time transaction states, so reversion
-// invariant checks cover pre-archive transactions whose logs have been purged.
-// Reads the baseline, never the live store.
-func (c *Checker) seedTxTrackingFromBaseline(baseline *pebble.DB, ledgerKnownTxIDs, ledgerRevertedTxIDs map[string]*bitset.Bitset) error {
-	txIter, err := c.attrs.Transaction.NewStreamingIter(baseline, nil)
-	if err != nil {
-		return fmt.Errorf("creating tx streaming iter for archive recovery: %w", err)
-	}
-
-	for txIter.Next() {
-		entry := txIter.Entry()
-
-		var tk domain.TransactionKey
-		if err := tk.Unmarshal(entry.CanonicalKey); err != nil {
-			continue // skip unparsable keys
-		}
-
-		trackTxID(ledgerKnownTxIDs, tk.LedgerName, tk.ID)
-
-		if entry.Value.GetRevertedByTransaction() != 0 {
-			trackTxID(ledgerRevertedTxIDs, tk.LedgerName, tk.ID)
-		}
-	}
-
-	if err := txIter.Close(); err != nil {
-		return fmt.Errorf("closing tx streaming iter: %w", err)
-	}
-
-	if err := txIter.Err(); err != nil {
-		return fmt.Errorf("pre-populating knownTxIDs: %w", err)
 	}
 
 	return nil
@@ -5871,10 +4128,10 @@ func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleRead
 // deleted outright / tampered to a tombstone (a ledger with only schema /
 // account-type declarations and no volumes leaves nothing else to compare) nor an
 // unaudited row injected into the store would surface — the projection passes see
-// nothing on one side. knownLedgers is the audit-derived set (replay, or the
-// baseline under archiving), never seeded from the live store, so both checks are
-// honest. This is the store-side counterpart of the replay's UNKNOWN_LEDGER gate.
-func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleReader, knownLedgers, pendingCleanup map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
+// nothing on one side. knownLedgers is the audit-derived set (replay), never
+// seeded from the live store, so both checks are honest. This is the
+// store-side counterpart of the replay's UNKNOWN_LEDGER gate.
+func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleReader, knownLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
 	ledgerCursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
 		return fmt.Errorf("reading ledgers for presence verification: %w", err)
@@ -5888,7 +4145,7 @@ func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleRe
 	// Only a live LedgerInfo counts. A ledger the audit still counts live but
 	// whose stored entry is soft-deleted is tampering, and it cannot false-
 	// positive: a legitimately deleted ledger is absent from knownLedgers
-	// (DeleteLedger replay removes it; the baseline seed skips tombstones).
+	// (DeleteLedger replay removes it).
 	live := make(map[string]struct{}, len(ledgers))
 	for _, info := range ledgers {
 		if info.GetDeletedAt() != nil {
@@ -5898,17 +4155,9 @@ func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleRe
 		live[info.GetName()] = struct{}{}
 	}
 
-	// A ledger mid-deletion has had its LedgerInfo purged (or is about to) while
-	// its DeleteLedger log sits past the verified range, so the two sides can
-	// legitimately disagree on it. Not tampering, in either direction.
-
 	// audit says live → the store must hold a live LedgerInfo.
 	for name := range knownLedgers {
 		if _, ok := live[name]; ok {
-			continue
-		}
-
-		if _, ok := pendingCleanup[name]; ok {
 			continue
 		}
 
@@ -5922,10 +4171,6 @@ func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleRe
 	// store holds a live LedgerInfo → the audit must have created it.
 	for name := range live {
 		if _, ok := knownLedgers[name]; ok {
-			continue
-		}
-
-		if _, ok := pendingCleanup[name]; ok {
 			continue
 		}
 
@@ -6062,10 +4307,9 @@ func errorEventWithTx(errorType servicepb.CheckStoreErrorType, message, ledger s
 
 // compareReversions verifies the persisted reversion bitsets
 // (ZonePerLedger/SubPLReversions) — the projection the FSM's already-reverted
-// gate reads — against the reverted-transaction set derived from the audit:
-// baseline tx-row markers (seedTxTrackingFromBaseline) plus the replayed
-// RevertedTransaction logs. That derivation is complete across archived
-// chapters, so the comparison is exact equality both ways: a bit the audit
+// gate reads — against the reverted-transaction set derived from the audit's
+// replayed RevertedTransaction logs. That derivation is complete over the
+// whole history, so the comparison is exact equality both ways: a bit the audit
 // set but the store lost re-admits a double revert (double refund) past the
 // gate, and a stored bit the audit never set silently blocks a legitimate
 // revert.
@@ -6248,19 +4492,18 @@ func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, 
 	}
 }
 
-// collectAuditOrderBoundaryEffects iterates the post-archive AuditItem rows
-// and folds the order-level boundary effects (mirror fill-gap advances) into
-// the expected boundaries. backup.RebuildDelta folds the same order effects on
-// restore, but not the same SET: the mirror high-water mark it also derives
-// here comes from recordMirrorIngestMutations instead, so the two are not
-// interchangeable. Items with log_sequence 0 (failed proposals, idempotent replays) or
-// at/below the archive boundary contribute nothing; effects for ledgers
-// without an expectation (deleted, or flagged UNKNOWN_LEDGER during replay)
-// are skipped.
-func (c *Checker) collectAuditOrderBoundaryEffects(reader dal.PebbleReader, archiveEndSeq uint64, expected map[string]*raftcmdpb.LedgerBoundaries) error {
+// collectAuditOrderBoundaryEffects iterates the AuditItem rows and folds the
+// order-level boundary effects (mirror fill-gap advances) into the expected
+// boundaries. backup.RebuildDelta folds the same order effects on restore,
+// but not the same SET: the mirror high-water mark it also derives here comes
+// from recordMirrorIngestMutations instead, so the two are not
+// interchangeable. Items with log_sequence 0 (failed proposals, idempotent
+// replays) contribute nothing; effects for ledgers without an expectation
+// (deleted, or flagged UNKNOWN_LEDGER during replay) are skipped.
+func (c *Checker) collectAuditOrderBoundaryEffects(reader dal.PebbleReader, expected map[string]*raftcmdpb.LedgerBoundaries) error {
 	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{dal.ZoneCold, dal.SubColdAuditItem},
-		UpperBound: []byte{dal.ZoneCold, dal.SubColdAuditItem + 1},
+		LowerBound: []byte{dal.ZoneHistory, dal.SubHistoryAuditItem},
+		UpperBound: []byte{dal.ZoneHistory, dal.SubHistoryAuditItem + 1},
 	})
 	if err != nil {
 		return fmt.Errorf("creating audit item iter: %w", err)
@@ -6279,7 +4522,7 @@ func (c *Checker) collectAuditOrderBoundaryEffects(reader dal.PebbleReader, arch
 			return fmt.Errorf("unmarshaling audit item %x: %w", iter.Key(), err)
 		}
 
-		if item.GetLogSequence() == 0 || item.GetLogSequence() <= archiveEndSeq {
+		if item.GetLogSequence() == 0 {
 			continue
 		}
 
@@ -6399,7 +4642,7 @@ func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader
 // under archiving. Rows for ledgers outside the audit-derived live set, or
 // whose deferred delete cleanup is still pending, are skipped — those rows
 // legitimately linger until a covering purge runs deleteLedgerData.
-func (c *Checker) compareReferences(ctx context.Context, reader dal.PebbleReader, baselineDB *pebble.DB, replay *replayStore, knownLedgers, pendingCleanup map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareReferences(ctx context.Context, reader dal.PebbleReader, replay *replayStore, knownLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
 	skipKey := func(canonicalKey []byte) (domain.TransactionReferenceKey, bool) {
 		var rk domain.TransactionReferenceKey
 		if err := rk.Unmarshal(canonicalKey); err != nil {
@@ -6413,36 +4656,11 @@ func (c *Checker) compareReferences(ctx context.Context, reader dal.PebbleReader
 			return rk, true
 		}
 
-		if _, pending := pendingCleanup[rk.LedgerName]; pending {
-			return rk, true
-		}
-
 		return rk, false
 	}
 
-	// expected = baseline overlaid by the replay. References are set-once, so
-	// the overlay never changes a txID — it only adds post-archive entries.
+	// expected = the replayed reference set.
 	expected := make(map[string]uint64)
-
-	if baselineDB != nil {
-		baselineIter, err := c.attrs.References.NewStreamingIter(baselineDB, nil)
-		if err != nil {
-			return fmt.Errorf("creating baseline reference iter: %w", err)
-		}
-
-		for baselineIter.Next() {
-			entry := baselineIter.Entry()
-			expected[string(entry.CanonicalKey)] = entry.Value.GetTransactionId()
-		}
-
-		if err := baselineIter.Close(); err != nil {
-			return fmt.Errorf("closing baseline reference iter: %w", err)
-		}
-
-		if err := baselineIter.Err(); err != nil {
-			return fmt.Errorf("baseline reference iter error: %w", err)
-		}
-	}
 
 	replayIter, err := replay.newPrefixIter(replayPrefixReference)
 	if err != nil {
