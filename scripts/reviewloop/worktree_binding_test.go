@@ -471,7 +471,7 @@ case "${TEST_ROOT_MUTATION:-}" in
         ;;
     guard-read) git -C "$TRUSTED_ROOT_CHECKOUT" status --short >/dev/null ;;
 esac
-printf '{"decision":"APPROVE","head":"%s","worktree_fingerprint":"%s","previous_findings":[],"findings":[],"residual_risk":"LOW","human_decision_context":""}\n' \
+printf '{"decision":"APPROVE","head":"%s","worktree_fingerprint":"%s","previous_findings":[],"known_findings":[],"findings":[],"residual_risk":"LOW","human_decision_context":""}\n' \
     "$AI_REVIEW_HEAD" "$AI_REVIEW_WORKTREE_FINGERPRINT" > "$AI_REVIEW_RESULT"
 `), 0o755))
 

@@ -46,11 +46,18 @@ type previousFinding struct {
 	Reason string `json:"reason"`
 }
 
+type knownFinding struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+	Reason string `json:"reason"`
+}
+
 type reviewResult struct {
 	Decision             string            `json:"decision"`
 	Head                 string            `json:"head"`
 	WorktreeFingerprint  string            `json:"worktree_fingerprint"`
 	PreviousFindings     []previousFinding `json:"previous_findings"`
+	KnownFindings        []knownFinding    `json:"known_findings"`
 	Findings             []finding         `json:"findings"`
 	ResidualRisk         string            `json:"residual_risk"`
 	HumanDecisionContext *string           `json:"human_decision_context"`
@@ -367,6 +374,9 @@ func loadReviewResult(path string) (reviewResult, error) {
 	if result.PreviousFindings == nil {
 		return reviewResult{}, errors.New("review result must include the previous_findings array")
 	}
+	if result.KnownFindings == nil {
+		return reviewResult{}, errors.New("review result must include the known_findings array")
+	}
 	if result.HumanDecisionContext == nil {
 		return reviewResult{}, errors.New("review result must include human_decision_context")
 	}
@@ -376,7 +386,7 @@ func loadReviewResult(path string) (reviewResult, error) {
 	if !oneOf(result.ResidualRisk, "LOW", "MEDIUM", "HIGH") {
 		return reviewResult{}, fmt.Errorf("invalid residual_risk %q", result.ResidualRisk)
 	}
-	findingIDs := make(map[string]struct{}, len(result.Findings))
+	findingIDs := make(map[string]finding, len(result.Findings))
 	for index, item := range result.Findings {
 		if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.Title) == "" || strings.TrimSpace(item.Evidence) == "" || strings.TrimSpace(item.Impact) == "" || strings.TrimSpace(item.Resolution) == "" {
 			return reviewResult{}, fmt.Errorf("finding %d is missing required fields", index+1)
@@ -393,7 +403,7 @@ func loadReviewResult(path string) (reviewResult, error) {
 		if _, exists := findingIDs[item.ID]; exists {
 			return reviewResult{}, fmt.Errorf("duplicate finding id %q", item.ID)
 		}
-		findingIDs[item.ID] = struct{}{}
+		findingIDs[item.ID] = item
 	}
 	previousIDs := make(map[string]struct{}, len(result.PreviousFindings))
 	for index, item := range result.PreviousFindings {
@@ -407,6 +417,39 @@ func loadReviewResult(path string) (reviewResult, error) {
 			return reviewResult{}, fmt.Errorf("duplicate previous finding id %q", item.ID)
 		}
 		previousIDs[item.ID] = struct{}{}
+	}
+	knownIDs := make(map[string]struct{}, len(result.KnownFindings))
+	for index, item := range result.KnownFindings {
+		if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.Reason) == "" {
+			return reviewResult{}, fmt.Errorf("known finding %d is missing required fields", index+1)
+		}
+		if !oneOf(item.Status, "FIXED", "STILL_VALID", "OUTDATED", "HUMAN_DECISION_REQUIRED") {
+			return reviewResult{}, fmt.Errorf("known finding %d has invalid status %q", index+1, item.Status)
+		}
+		if _, exists := knownIDs[item.ID]; exists {
+			return reviewResult{}, fmt.Errorf("duplicate known finding id %q", item.ID)
+		}
+		knownIDs[item.ID] = struct{}{}
+		reportedFinding, reported := findingIDs[item.ID]
+		switch item.Status {
+		case "STILL_VALID":
+			if !reported {
+				return reviewResult{}, fmt.Errorf("known finding %q is STILL_VALID but is absent from current findings", item.ID)
+			}
+			if reportedFinding.Blocking == nil || !*reportedFinding.Blocking {
+				return reviewResult{}, fmt.Errorf("known finding %q is STILL_VALID but is not blocking", item.ID)
+			}
+		case "FIXED", "OUTDATED", "HUMAN_DECISION_REQUIRED":
+			if reported {
+				return reviewResult{}, fmt.Errorf("known finding %q is %s but is still present in current findings", item.ID, item.Status)
+			}
+		}
+	}
+	knownNeedsHuman := slices.ContainsFunc(result.KnownFindings, func(item knownFinding) bool {
+		return item.Status == "HUMAN_DECISION_REQUIRED"
+	})
+	if knownNeedsHuman && result.Decision != "HUMAN_DECISION_REQUIRED" {
+		return reviewResult{}, errors.New("known finding requires HUMAN_DECISION_REQUIRED")
 	}
 	if result.Decision == "HUMAN_DECISION_REQUIRED" && strings.TrimSpace(*result.HumanDecisionContext) == "" {
 		return reviewResult{}, errors.New("HUMAN_DECISION_REQUIRED must include human_decision_context")

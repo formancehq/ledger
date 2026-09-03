@@ -235,9 +235,6 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 	guard, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-git-guard"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-git-guard"), guard, 0o755))
-	preconditions, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-pr-publication-preconditions"))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-publication-preconditions"), preconditions, 0o755))
 	bugfixGate, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-bugfix-gate"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-bugfix-gate"), bugfixGate, 0o755))
@@ -285,7 +282,6 @@ exec "$@"
 		directToolMode = 0o644
 	}
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-review-codex"), []byte("#!/usr/bin/env bash\nexit 0\n"), directToolMode))
-	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-known-findings"), "#!/usr/bin/env bash\nexit 0\n")
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-fix-claude"), []byte("#!/usr/bin/env bash\nexit 0\n"), publicationToolMode))
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-known-findings"), []byte(`#!/usr/bin/env bash
 set -euo pipefail
@@ -309,25 +305,7 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 [[ -n "$head" && -n "$output" ]]
-printf '{"version":1,"pr_number":%s,"head":"%s","findings":[]}\n' "$pr" "$head" > "$output"
-`), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-triage"), []byte(`#!/usr/bin/env bash
-set -euo pipefail
-output=""
-while [[ $# -gt 0 ]]; do
-	case "$1" in
-		--output)
-			output=$2
-			shift 2
-			;;
-		*)
-			shift
-			;;
-	esac
-done
-[[ -n "$output" ]]
-printf '{"decision":"KEEP","base_sha":"%s","head":"%s"}\n' \
-	"$AI_PR_TRIAGE_EXPECT_BASE_SHA" "$AI_PR_TRIAGE_EXPECT_HEAD_SHA" > "$output"
+printf '{"version":1,"pr_number":%s,"head":"%s","review_decision":"REVIEW_REQUIRED","findings":[]}\n' "$pr" "$head" > "$output"
 `), 0o644))
 	writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), `#!/usr/bin/env bash
 set -euo pipefail
@@ -354,12 +332,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 case "$review_cmd" in
-    *trusted-tools/scripts/ai-review-known-findings) ;;
+    *trusted-tools/scripts/ai-review-codex) ;;
     *) exit 95 ;;
 esac
 eval "review_script=${review_cmd#bash }"
 trusted_root=$(git -C "$(dirname "$review_script")" rev-parse --show-toplevel)
-grep -qx 'trusted known-findings contract' "$trusted_root/docs/technical/contributing/ai-pr-known-findings.md" || exit 91
 [[ -n "${AI_REVIEW_KNOWN_FINDINGS:-}" && -f "$AI_REVIEW_KNOWN_FINDINGS" ]] || exit 92
 if [[ -n "$fix_cmd" ]]; then
     case "$fix_cmd" in
@@ -429,15 +406,13 @@ exit 0
 	if options.tamperTargetToolchain {
 		writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), "#!/usr/bin/env bash\nexit 97\n")
 		writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 97\n")
-		writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-known-findings"), "#!/usr/bin/env bash\nexit 97\n")
 		writeExecutable(t, filepath.Join(seed, "scripts", "ai-pr-known-findings"), "#!/usr/bin/env bash\nexit 97\n")
 		writeExecutable(t, filepath.Join(seed, "scripts", "ai-fix-claude"), "#!/usr/bin/env bash\nexit 97\n")
 		writeExecutable(t, filepath.Join(seed, "scripts", "agent-check-pr"), "#!/usr/bin/env bash\nexit 97\n")
-		require.NoError(t, os.WriteFile(filepath.Join(seed, "docs", "technical", "contributing", "ai-pr-known-findings.md"), []byte("target-controlled contract\n"), 0o644))
 	}
 	runGit(t, seed, "add", "feature.txt")
 	if options.tamperTargetToolchain {
-		runGit(t, seed, "add", "scripts/review-loop", "scripts/ai-review-codex", "scripts/ai-review-known-findings", "scripts/ai-pr-known-findings", "scripts/ai-fix-claude", "scripts/agent-check-pr", "docs/technical/contributing/ai-pr-known-findings.md")
+		runGit(t, seed, "add", "scripts/review-loop", "scripts/ai-review-codex", "scripts/ai-pr-known-findings", "scripts/ai-fix-claude", "scripts/agent-check-pr")
 	}
 	runGit(t, seed, "commit", "-m", "feature")
 	headSHA := runGitOutput(t, seed, "rev-parse", "HEAD")
@@ -455,7 +430,7 @@ case "$1 $2" in
         printf 'owner/repo\n'
         ;;
     "pr view")
-        printf '{"number":123,"url":"https://github.com/owner/repo/pull/123","state":"OPEN","isDraft":false,"baseRefName":"release/v3.0","baseRefOid":"%s","headRefName":"feature","headRefOid":"%s","headRepositoryOwner":{"login":"owner"},"headRepository":{"name":"repo"}}\n' "$TEST_BASE_SHA" "$TEST_HEAD_SHA"
+        printf '{"number":123,"url":"https://github.com/owner/repo/pull/123","state":"OPEN","isDraft":false,"title":"chore: tooling","body":"","labels":[],"baseRefName":"release/v3.0","baseRefOid":"%s","headRefName":"feature","headRefOid":"%s","headRepositoryOwner":{"login":"owner"},"headRepository":{"name":"repo"}}\n' "$TEST_BASE_SHA" "$TEST_HEAD_SHA"
         ;;
     *)
         exit 98

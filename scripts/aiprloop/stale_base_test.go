@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLauncherReportsBaseUpdateRequiredBeforeTriage(t *testing.T) {
+func TestLauncherReportsBaseUpdateRequiredBeforeReview(t *testing.T) {
 	fixture := newLauncherFixture(t)
 
 	updater := filepath.Join(fixture.root, "updater")
@@ -23,7 +23,7 @@ func TestLauncherReportsBaseUpdateRequiredBeforeTriage(t *testing.T) {
 	runGit(t, updater, "push", "origin", "release/v3.0")
 
 	capture := filepath.Join(fixture.root, "review-args")
-	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"})
+	output, err := runLauncher(t, fixture, capture)
 	require.Error(t, err, output)
 	var exitError *exec.ExitError
 	require.ErrorAs(t, err, &exitError)
@@ -53,7 +53,7 @@ func TestLauncherDeepensShallowCloneBeforeClassifyingBaseAdvance(t *testing.T) {
 	fixture.checkout = shallowCheckout
 
 	capture := filepath.Join(fixture.root, "review-args")
-	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"})
+	output, err := runLauncher(t, fixture, capture)
 	require.Error(t, err, output)
 	var exitError *exec.ExitError
 	require.ErrorAs(t, err, &exitError)
@@ -77,7 +77,7 @@ func TestLauncherTreatsRewrittenTargetAsError(t *testing.T) {
 	runGit(t, rewriter, "push", "--force", "origin", "HEAD:release/v3.0")
 
 	capture := filepath.Join(fixture.root, "review-args")
-	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"})
+	output, err := runLauncher(t, fixture, capture)
 	require.Error(t, err, output)
 	var exitError *exec.ExitError
 	require.ErrorAs(t, err, &exitError)
@@ -86,10 +86,10 @@ func TestLauncherTreatsRewrittenTargetAsError(t *testing.T) {
 	require.NoFileExists(t, capture, "technical review must not run")
 }
 
-func TestLauncherDoesNotEmitReadinessWhenTargetAdvancesAfterTriage(t *testing.T) {
+func TestLauncherDoesNotEmitReadinessWhenTargetAdvancesAfterReview(t *testing.T) {
 	fixture := newLauncherFixture(t)
 	capture := filepath.Join(fixture.root, "review-args")
-	output, err := runLauncher(t, fixture, capture, triageResult{decision: "KEEP"}, "TEST_ADVANCE_TARGET_AFTER_REVIEW=true")
+	output, err := runLauncher(t, fixture, capture, "TEST_ADVANCE_TARGET_AFTER_REVIEW=true")
 
 	require.Error(t, err, output)
 	var exitError *exec.ExitError
