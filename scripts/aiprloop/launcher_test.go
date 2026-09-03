@@ -174,6 +174,10 @@ func TestOrdinaryToolingAndBugfixReachReviewWithoutTriage(t *testing.T) {
 			"TEST_PR_TITLE=fix: repair tooling",
 			"TEST_PR_BODY=DISCOVERY: NO_EXISTING_WORK\nBEFORE_FIX: BUG_REPRODUCED\nAFTER_FIX: PASS",
 		}},
+		{name: "scoped-bugfix", env: []string{
+			"TEST_PR_TITLE=fix(wal): repair tooling",
+			"TEST_PR_BODY=DISCOVERY: NO_EXISTING_WORK\nBEFORE_FIX: BUG_REPRODUCED\nAFTER_FIX: PASS",
+		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newLauncherFixture(t)
@@ -183,6 +187,17 @@ func TestOrdinaryToolingAndBugfixReachReviewWithoutTriage(t *testing.T) {
 			require.FileExists(t, capture)
 		})
 	}
+}
+
+func TestScopedFixRequiresBugfixEvidence(t *testing.T) {
+	t.Parallel()
+
+	fixture := newLauncherFixture(t)
+	capture := filepath.Join(fixture.root, "review-args")
+	output, err := runLauncher(t, fixture, capture, "TEST_PR_TITLE=fix(wal): repair tooling")
+	require.Error(t, err, output)
+	require.NoFileExists(t, capture, "a scoped bugfix without evidence must not reach review")
+	require.Contains(t, output, "AI_PR_LOOP_RESULT: ERROR (bugfix evidence rejected)")
 }
 
 func TestLauncherRemovesTheRunDirectoryOfACleanRun(t *testing.T) {

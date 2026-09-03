@@ -243,7 +243,7 @@ intent=non-bugfix
 pr_title=$(jq -r '.title // ""' "$metadata_file")
 pr_body=$(jq -r '.body // ""' "$metadata_file")
 if jq -e '.labels[]?.name | ascii_downcase == "bugfix" or ascii_downcase == "bug-fix"' "$metadata_file" >/dev/null || \
-   [[ "$pr_title" == fix:* || "$pr_title" == Fix:* ]] || \
+   [[ "$pr_title" == fix:* || "$pr_title" == Fix:* || "$pr_title" == fix\(*\):* || "$pr_title" == Fix\(*\):* ]] || \
    grep -Eiq '(^|[[:space:]])(fixes|fix|resolves)[[:space:]]+EN-[0-9]+' <<<"$pr_body"; then
     intent=bugfix
 fi
