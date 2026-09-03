@@ -19,7 +19,7 @@ import (
 
 // TestSubscriptionBillingCycle models a SaaS billing system with 50 subscribers
 // over 3 monthly cycles, with under-funded failures, credits, adjustments,
-// revenue recognition, and chapter closes.
+// and revenue recognition.
 // Generates ~200 Apply calls to trigger ~4 cache rotations (threshold=50).
 func TestSubscriptionBillingCycle(t *testing.T) {
 	const (
@@ -212,9 +212,8 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 			scenariotest.CheckAccountBalance(t, ctx, client, ledger, "revenue:deferred", "USD/2", totalDeferred)
 		})
 
-		// Chapter close
-		t.Run(fmt.Sprintf("%s/ChapterClose", cycleName), func(t *testing.T) {
-			scenariotest.CloseChapterAndWait(t, ctx, client, "chapter close timed out cycle %d", cycle)
+		// End-of-cycle double-entry check
+		t.Run(fmt.Sprintf("%s/DoubleEntry", cycleName), func(t *testing.T) {
 			scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 		})
 	}

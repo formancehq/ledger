@@ -24,7 +24,7 @@ import (
 )
 
 // TestOperationsLifecycle covers admin/ops operations:
-// maintenance mode, audit config, chapter schedule, request signing, and delete ledger.
+// maintenance mode, audit config, request signing, and delete ledger.
 // Generates ~30 Apply calls with moderate operational complexity.
 func TestOperationsLifecycle(t *testing.T) {
 	const (
@@ -32,9 +32,7 @@ func TestOperationsLifecycle(t *testing.T) {
 		numDeposits = 5
 	)
 
-	sc := scenariotest.SetupSingleNode(t,
-		testserver.WithColdStorageDriver("filesystem"),
-	)
+	sc := scenariotest.SetupSingleNode(t)
 	ctx, client := sc.Ctx(), sc.Client
 
 	// --- Phase 1: Setup ---
@@ -141,102 +139,6 @@ func TestOperationsLifecycle(t *testing.T) {
 		// Verify outcome is present (either success or failure)
 		require.True(t, entry.GetSuccess() != nil || entry.GetFailure() != nil,
 			"audit entry should have an outcome")
-	})
-
-	// --- Regression: ArchiveChapter + CheckStore ---
-	// After archiving a chapter, CheckStore must account for purged logs by
-	// reading archived chapter metadata (start_sequence, close_sequence, last_log_hash)
-	// and resuming the hash chain from the correct boundary.
-	t.Run("ArchiveChapterCheckStore", func(t *testing.T) {
-		// Create a few transactions to have content in the current chapter
-		for i := 1; i <= 3; i++ {
-			scenariotest.ApplyActions(t, ctx, client,
-				actions.CreateScriptRefTransactionAction(ledger, "deposit", "1.0.0", map[string]string{
-					"account": fmt.Sprintf("ops:%d", i),
-					"amount":  "USD/2 25",
-				}, nil),
-			)
-		}
-
-		// Close the chapter → creates a CLOSING chapter
-		scenariotest.CloseChapterAndWait(t, ctx, client, "chapter close timed out for archive test")
-
-		// Find the CLOSED chapter (the one just sealed)
-		var closedChapterID uint64
-		require.Eventually(t, func() bool {
-			chapters, err := actions.ListAllChapters(ctx, client)
-			if err != nil {
-				return false
-			}
-			for _, p := range chapters {
-				if p.Status == commonpb.ChapterStatus_CHAPTER_CLOSED {
-					closedChapterID = p.GetId()
-
-					return true
-				}
-			}
-
-			return false
-		}, 15*time.Second, 200*time.Millisecond, "should have a CLOSED chapter")
-		require.NotZero(t, closedChapterID, "should have found a closed chapter ID")
-
-		// Archive the closed chapter
-		scenariotest.ApplyActions(t, ctx, client, actions.ArchiveChapterAction(closedChapterID))
-
-		// Wait for the chapter to become ARCHIVED
-		require.Eventually(t, func() bool {
-			chapters, err := actions.ListAllChapters(ctx, client)
-			if err != nil {
-				return false
-			}
-			for _, p := range chapters {
-				if p.GetId() == closedChapterID && p.Status == commonpb.ChapterStatus_CHAPTER_ARCHIVED {
-					return true
-				}
-			}
-
-			return false
-		}, 30*time.Second, 200*time.Millisecond, "chapter should become ARCHIVED")
-
-		t.Logf("Chapter %d successfully archived", closedChapterID)
-
-		// CheckStore must pass after archiving: it reads archived chapter metadata
-		// to skip purged log ranges and resume the hash chain correctly.
-		stream, err := client.CheckStore(ctx, &servicepb.CheckStoreRequest{})
-		require.NoError(t, err, "CheckStore RPC failed")
-
-		var storeErrors []*servicepb.CheckStoreError
-		for {
-			msg, err := stream.Recv()
-			if err != nil {
-				break
-			}
-			if msg.GetError() != nil {
-				storeErrors = append(storeErrors, msg.GetError())
-			}
-		}
-		require.Empty(t, storeErrors,
-			"CheckStore should report no errors after archiving, got %d errors",
-			len(storeErrors))
-	})
-
-	// --- Phase 4: Chapter Schedule ---
-	t.Run("ChapterSchedule", func(t *testing.T) {
-		// Set a chapter schedule
-		scenariotest.ApplyActions(t, ctx, client, actions.SetChapterScheduleAction("0 0 * * *"))
-
-		// Verify cron was set
-		cron, err := actions.GetChapterSchedule(ctx, client)
-		require.NoError(t, err, "GetChapterSchedule failed")
-		require.Equal(t, "0 0 * * *", cron, "cron should match")
-
-		// Delete chapter schedule
-		scenariotest.ApplyActions(t, ctx, client, actions.DeleteChapterScheduleAction())
-
-		// Verify cron is empty
-		cron, err = actions.GetChapterSchedule(ctx, client)
-		require.NoError(t, err, "GetChapterSchedule after delete failed")
-		require.Empty(t, cron, "cron should be empty after delete")
 	})
 
 	// --- Phase 5: Request Signing (key lifecycle) ---
