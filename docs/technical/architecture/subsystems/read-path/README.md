@@ -1,6 +1,15 @@
 # Read Path
 
-The CQRS read side (`internal/application/ctrl` reads, `internal/query`, `internal/storage/readstore`). Default live reads go through a `ReadIndex` quorum check (linearizability barrier). Indexed entity-list reads then iterate over the inverted index in the read store, enriching candidate entity IDs with volumes and metadata from the main store. Point reads and main-store-only queries use the same barrier but their own main-store read path; they do not iterate the inverted index. Explicit stale and checkpoint reads have the exceptions documented in the pipeline pages.
+The CQRS read side (`internal/application/ctrl` reads, `internal/query`,
+`internal/storage/readstore`). Default live reads routed through `readCtrl` use
+a `ReadIndex` quorum barrier to establish an applied-state horizon. Point reads
+and unfiltered account/transaction queries then use the main store only.
+Filtered account/transaction queries and every log query additionally wait for
+the read index to align with that horizon before iterating it. `stale` removes
+only the Raft barrier, checkpoint pairs are already frozen, and leader-local,
+chapter, audit-index, and usagestore exceptions are documented in the
+[consensus matrix](../consensus/raft-consensus.md#linearizable-reads-via-readindex)
+and the pipeline pages.
 
 ## Documents
 

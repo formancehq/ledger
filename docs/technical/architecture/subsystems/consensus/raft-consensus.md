@@ -27,7 +27,6 @@ stateDiagram-v2
     Candidate --> Leader: Majority Votes
     Candidate --> Follower: Another Leader Elected
     Leader --> Follower: Higher Term Detected
-    Leader --> Follower: Network Partition
 ```
 
 ## Single Raft Architecture
@@ -251,9 +250,107 @@ If two nodes become candidates simultaneously, neither can obtain a majority. Th
 
 ### Consistency Guarantees
 
-- **Linearizability**: All operations are seen in the same order by all nodes
+- **Linearizability**: Committed mutations are seen in the same order by all
+  nodes; default live reads routed through `RoutedController.readCtrl` use the
+  quorum-backed `ReadIndex` barrier described below
 - **Durability**: Once committed, an entry is guaranteed to be persisted
 - **Consistency**: All nodes see the same data once synchronized
+
+## Safety and Availability During Partitions
+
+Under normal Raft consensus operations, Ledger v3 is **CP rather than AP** in
+the CAP sense. During a network partition, only a partition containing a
+majority of the configured voters can elect a leader, commit writes, or
+complete the quorum barrier required by a default live read routed through
+`RoutedController.readCtrl`. A minority partition does not accept a divergent
+committed history; requests that require consensus wait or fail instead.
+Availability is therefore preserved on the majority side and deliberately
+sacrificed on every side that cannot form a quorum. Endpoint-specific reads
+that bypass that controller path are exceptions described below.
+
+The emergency [`remove-node --force`](../../../../ops/cluster-operations.md#force-removing-a-down-node)
+path is deliberately outside that guarantee: it changes one node's membership
+locally without consensus. Use it only when every removed member is permanently
+unreachable and its old state cannot run or rejoin. If an isolated former
+leader force-removes voters that remain live, the reduced local configuration
+and the original majority can both commit, creating divergent histories.
+
+For normal consensus operations, the guarantee applies to committed state,
+which is the boundary visible to a successful write response. A request that
+times out while consensus is being lost has an unknown outcome from the
+client's perspective. Retrying without duplication is safe only when the
+original request carried an idempotency key, the retry uses the same key and
+content, and the key has not passed its configured TTL (`0` means no
+expiration). Without those preconditions, a retry is a new operation and may
+duplicate the original; the client must determine the original outcome before
+resubmitting. See [Idempotency Keys](../admission/idempotency.md).
+
+### Why a Partition Cannot Commit Two Histories
+
+A voter grants at most one vote per term, a candidate needs a majority to
+become leader, and a log entry needs majority replication to commit. Any two
+majorities intersect in at least one voter. Raft's voting and log-matching rules
+therefore prevent two conflicting entries at the same log position from both
+becoming committed, even if nodes on different sides of a partition temporarily
+disagree about who the leader is.
+
+Ledger v3 enables Raft `PreVote` but does not enable `CheckQuorum`. Consequently,
+an isolated former leader may continue to report its local role as leader until
+it hears from a higher term. It still cannot commit or acknowledge new writes,
+and a `ReadOnlySafe` `ReadIndex` cannot complete without quorum confirmation.
+That temporary role disagreement is not a split brain at the committed-state
+level. Explicit `stale` reads intentionally bypass the quorum barrier and may
+return an older local view. An explicit `leader` read can do the same when it
+reaches a node that still considers itself leader: the local-leader routing
+shortcut serves local state without `ReadIndex`. Neither mode should be used
+when quorum-confirmed freshness is required during a partition.
+
+### Quorum and Failure Tolerance
+
+For `N` voters, quorum is `floor(N/2) + 1` and the cluster tolerates at most
+`floor((N-1)/2)` unavailable voters while continuing to write:
+
+| Voters | Quorum | Unavailable voters tolerated |
+|--------|--------|------------------------------|
+| 1 | 1 | 0 |
+| 2 | 2 | 0 |
+| 3 | 2 | 1 |
+| 4 | 3 | 1 |
+| 5 | 3 | 2 |
+
+An odd voter count is recommended because adding a voter to move from an odd to
+the next even number does not increase failure tolerance. A two-voter cluster
+does not create split brain; it simply loses write availability as soon as
+either voter is unavailable.
+
+Learners replicate the log but do not vote and cannot become leader. Nodes join
+as learners and, by default, are promoted automatically once caught up. A
+topology with one voter and two permanent learners can be maintained only by
+disabling automatic promotion; it has a fixed writer in practice, but no write
+availability after that voter fails. The normal three-node steady state is one
+leader plus two follower voters, any caught-up voter being eligible to replace
+the leader after a failure.
+
+### Implementation Evidence
+
+- The independent protocol references are the
+  [Raft paper](https://raft.github.io/raft.pdf), which defines election safety,
+  leader completeness, and state-machine safety, and its
+  [TLA+ specification](https://github.com/ongardie/raft.tla).
+- Ledger v3 uses [`go.etcd.io/raft/v3`](https://github.com/etcd-io/raft/tree/v3.7.0),
+  with its safety properties and deterministic state-machine contract described
+  in the [library README](https://github.com/etcd-io/raft/blob/v3.7.0/README.md).
+- The [routed controller](../../../../../internal/bootstrap/controller_routed.go)
+  sends writes to the current leader. The
+  [Raft node configuration](../../../../../internal/infra/node/node.go) enables
+  `PreVote` and leaves `CheckQuorum` disabled.
+- Default live reads routed through `RoutedController.readCtrl` use
+  `ReadOnlySafe` `ReadIndex`, wait for the returned commit index to be applied
+  locally, and only then read Pebble. See
+  [Linearizable Reads via ReadIndex](#linearizable-reads-via-readindex).
+- Cluster bootstrap, learner registration, automatic voter promotion, and the
+  safeguards preventing a syncing node from becoming leader are detailed in
+  [Cluster Lifecycle](../../../../ops/cluster-operations.md).
 
 ## Snapshots
 
@@ -418,9 +515,12 @@ See [Follower Synchronization](../../data-flows.md#follower-synchronization) for
 #### Network Partition
 
 If the cluster is partitioned:
-- The partition with the majority continues to function
-- The minority partition cannot elect a leader
+- Under normal consensus membership, the partition with the majority continues to function
+- Under normal consensus membership, the minority partition cannot elect a leader
 - When the partition is resolved, nodes synchronize
+
+Emergency force-removal bypasses this model; see
+[Safety and Availability During Partitions](#safety-and-availability-during-partitions).
 
 ### Recovery
 
@@ -446,27 +546,76 @@ The system can pipeline requests:
 
 ### Linearizable Reads via ReadIndex
 
-All reads use the etcd/raft **ReadIndex** mechanism to provide linearizable consistency on every node:
+Default live reads routed through `RoutedController.readCtrl` use the etcd/raft
+**ReadIndex** mechanism to establish a linearizable applied-state horizon on any
+node that can reach a quorum. Reads served directly from the FSM-backed Pebble
+state are linearizable at that horizon; independently asynchronous secondary
+indexes need their own progress barrier:
 
 1. The caller invokes `Node.ReadIndexAndWait(ctx)`.
 2. `ReadIndex` sends a `ReadIndex` request through the Raft orchestrate loop. The leader confirms it is still the leader by exchanging heartbeats with a quorum of peers (the `ReadOnlySafe` mode, which is the default).
 3. The leader responds with the current **commit index** via `rd.ReadStates`.
 4. `WaitForApplied` blocks until the local FSM has applied entries up to that commit index (using a `sync.Cond` that broadcasts after each `lastPersistedIndex.Store()`).
-5. The caller reads from the local Pebble store, which is now guaranteed to reflect all writes committed before the ReadIndex call.
+5. The caller reads from the local Pebble store, which is now guaranteed to
+   reflect all writes committed before the ReadIndex call. This does not by
+   itself advance independently asynchronous secondary indexes.
 
 **Benefits**:
-- **Linearizable reads on all nodes** (leader and followers)
-- **Read load distributed** across the cluster instead of concentrated on the leader
-- **No gRPC forwarding** for reads (lower latency than routing to the leader)
-- **No stale reads** (unlike plain local reads which could return outdated data)
+- **Linearizable reads on leaders, followers, and caught-up learners** that can reach quorum
+- **Read load distributed** across the cluster in the normal local path
+- **No gRPC forwarding in the normal local path** (lower latency than routing to the leader)
+- **No stale FSM-backed results in linearizable mode** for reads whose serving
+  data and indexes are aligned with the applied-state horizon
 
-**Exceptions**:
-- `Apply` (writes) are still forwarded to the leader via gRPC, since writes must go through Raft consensus.
-- `ListChapters` is forwarded to the leader because chapter state is kept in-memory only on the leader.
+**Consistency and routing exceptions**:
+- `x-consistency: stale` bypasses `ReadIndex` and reads the local store directly;
+  it may return an older view.
+- `x-consistency: leader` routes the read to the node currently considered
+  leader. A call forwarded to a remote node does not propagate the consistency
+  metadata, so the remote call defaults to linearizable mode and performs its
+  quorum barrier. However, if the receiving node already considers itself
+  leader, `getLeaderCtrl` returns the local controller directly and skips
+  `ReadIndex`. Because `CheckQuorum` is disabled, an isolated former leader can
+  therefore serve stale local state in this mode.
+- If a non-leader node is syncing or cannot complete its local barrier,
+  `RoutedController` can transparently retry the read against the leader. The
+  forwarded attempt can still fail when the leader is unavailable. If
+  leadership moves local between the failed barrier and leader resolution, the
+  router returns the barrier failure rather than serving the newly local
+  controller without a successful `ReadIndex`.
+- A `ListAuditEntries` filter that contains any field other than `seq` resolves
+  through the independently asynchronous audit index. With the default
+  `minLogSequence = 0`, its handler does not wait for audit-index progress, so
+  it can temporarily omit entries that are already committed even though the
+  ReadIndex barrier completed. A non-zero `minLogSequence` makes each gRPC node
+  that receives the live request wait for that log sequence, sample its live
+  audit head, and wait for its own audit index to reach that head. The bound is
+  propagated when routing selects another node, so the node that actually
+  serves the indexed query repeats the wait against its own independently
+  maintained index. Unfiltered listings and conjunctions made only of `seq`
+  bounds scan the audit zone directly and do not have this secondary-index lag;
+  they still honor a non-zero log-sequence wait. Checkpoint reads ignore the
+  bound, and an index-backed checkpoint filter can retain audit-index lag frozen
+  at checkpoint creation.
+- `GetLedgerStats` has mixed provenance. `transactionCount` and `logCount` are
+  FSM-backed, while `postingCount`, `revertCount`,
+  `numscriptExecutionCount`, `referenceCount`, `ephemeralEvictedCount`,
+  `transientUsedCount`, and `volumeCount` come from the per-replica asynchronous
+  usagestore. `GetTemplateUsage` is entirely usagestore-backed. A completed
+  ReadIndex does not advance either usage projection, so those values may lag;
+  see the [usagebuilder pipeline](../usage/usagebuilder.md).
+- `ListChapters` bypasses `readCtrl` and the consistency selector. It is routed
+  to the node currently considered leader, where it reads persisted chapter
+  rows without a ReadIndex barrier. An isolated former leader can therefore
+  return an older chapter view even for a request using the default consistency
+  setting.
+- `Apply` is a write rather than a read and is always routed to the node
+  currently considered leader; successful completion still requires Raft
+  consensus.
 
 **Fallback during sync**:
 - If the node is still syncing (restoring a snapshot or replaying spool), `ReadIndexAndWait` returns `ErrNodeSyncing`.
-- The `RoutedController` catches this and transparently forwards the read to the leader via gRPC, so the client always gets an answer without having to retry.
+- The `RoutedController` catches this and transparently forwards the read to the leader via gRPC; if the leader cannot be reached, the request returns an error.
 
 **Error handling**:
 - On leadership loss, all pending ReadIndex requests are failed immediately.

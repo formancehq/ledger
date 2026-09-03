@@ -80,18 +80,38 @@ repeated on every invocation.
 
 ### Read Consistency
 
-By default, all read operations use **linearizable** consistency: the node performs a ReadIndex barrier to ensure it has applied all committed entries before reading from the local store. This guarantees that reads always reflect the latest committed state, but it can block during maintenance windows (e.g. mirror sync, snapshot creation) when the FSM is frozen.
+Most live business reads default to **linearizable** consistency: reads routed
+through `RoutedController.readCtrl` perform a ReadIndex barrier before reading
+from the local store. This establishes a quorum-confirmed applied-state horizon
+for FSM-backed data and secondary indexes aligned to that horizon. It does not
+make independently asynchronous projections linearizable; endpoint sections
+document those exceptions. The barrier can block during maintenance windows
+(e.g. mirror sync or snapshot creation) when the FSM is frozen.
 
 Two alternative consistency levels are available:
 
-- **`stale`** — Skip the ReadIndex barrier and read directly from the local store. Data may lag behind the latest committed index, but reads never block. Useful for monitoring, dashboards, and non-critical queries.
-- **`leader`** — Forward the read to the leader node. The leader always has the most up-to-date data and its ReadIndex barrier is fast (no round-trip needed). Useful when you need fresh data but the local node may be lagging.
+- **`stale`** — Skip the Raft ReadIndex barrier and read from local state, which
+  may lag behind the latest committed index. A read can still wait for an
+  explicitly requested `--min-log-sequence` or for mandatory secondary-index
+  alignment. Useful for monitoring, dashboards, and non-critical queries where
+  quorum-confirmed freshness is unnecessary.
+- **`leader`** — Route the read to the node currently considered leader. When
+  the request is forwarded, the remote node applies its default ReadIndex
+  barrier. When the receiving node already considers itself leader, it serves
+  the read locally without a barrier. Because `CheckQuorum` is disabled, an
+  isolated former leader can therefore return stale state in this mode; use the
+  default `linearizable` mode when quorum-confirmed freshness is required.
+
+`chapters list` is leader-routed independently of this selector and does not
+perform a ReadIndex barrier. If it reaches an isolated node that still considers
+itself leader, it can return stale chapter rows. Filtered `audit list` also has
+an endpoint-specific asynchronous-index caveat; see its consistency note below.
 
 ```bash
-# Stale read (instant, may lag)
+# Stale read (no Raft barrier; may lag)
 ledgerctl --consistency stale ledgers get my-ledger
 
-# Leader read (fresh, forwarded to leader)
+# Leader-routed read (may be stale from an isolated former leader)
 ledgerctl --consistency leader ledgers list
 
 # Default linearizable read
@@ -419,7 +439,18 @@ ledgerctl ledgers promote
 
 #### ledgers stats
 
-Get aggregate statistics (account count, transaction count) for a ledger.
+Get FSM-backed transaction/log counts and asynchronous usage counters for a
+ledger.
+
+On a default live read, `transactionCount` and `logCount` come from FSM-backed
+ledger boundaries and share the request's applied-state horizon. Other
+consistency modes follow the global contract above. `postingCount`, `revertCount`,
+`numscriptExecutionCount`, `referenceCount`, `ephemeralEvictedCount`,
+`transientUsedCount`, and `volumeCount` come from the per-node asynchronous
+usagestore projection. Those seven fields can lag committed state even after a
+default ReadIndex barrier; they are a mutually consistent usagestore snapshot,
+not a projection aligned to the barrier. See the
+[usagebuilder pipeline](../technical/architecture/subsystems/usage/usagebuilder.md).
 
 **Aliases:** `st`
 
@@ -2328,20 +2359,25 @@ reads first-class with every other list endpoint while never degrading to a
 full-chain scan.
 
 > **Consistency note.** The audit secondary index is maintained by an
-> asynchronous per-node worker, so any *filtered* audit read (including an
-> `ledger` or `outcome` filter) is eventually consistent — a
-> just-applied entry may take up to ~200 ms to appear. `--min-log-sequence`
-> gates the read-side log index, not the audit index. An *unfiltered* read
-> (plain `audit list`, optionally with `--reverse` / `seq` bounds) reads
-> the audit zone directly and is strongly consistent.
+> asynchronous per-node worker, so a filter that contains any field other than
+> `seq` (for example `ledger` or `outcome`) is eventually consistent when
+> `--min-log-sequence` is zero. With a non-zero bound, every node that receives
+> or forwards the live request first waits for its log index to reach that
+> sequence, samples its live audit head, and waits for its own audit index to
+> reach that head. This preserves the bound when the request is routed to
+> another node. An unfiltered live read, or a conjunction made only of `seq`
+> bounds, scans the audit zone directly. With a non-zero bound, every gRPC node
+> traversed by the routed request waits for its own log-index progress before
+> routing or serving, but does not wait for audit-index progress.
 >
-> **Checkpoint + filter caveat.** A query checkpoint snapshots the audit index
+> **Checkpoint + indexed-filter caveat.** A query checkpoint snapshots the audit index
 > at creation time; checkpoint creation waits for the log index but not yet for
-> the audit indexer, so a *filtered* read against `--checkpoint-id` may omit
-> entries whose audit-zone rows exist in the checkpoint but were not indexed
-> when it was taken (a frozen checkpoint never catches up). Unfiltered checkpoint
-> reads scan the zone directly and are unaffected. Making the audit indexer catch
-> up before the checkpoint snapshot is a tracked follow-up.
+> the audit indexer, so a read whose filter contains a field other than `seq`
+> may omit entries whose audit-zone rows exist in the checkpoint but were not
+> indexed when it was taken (a frozen checkpoint never catches up). Unfiltered
+> and `seq`-only checkpoint reads scan the zone directly and are unaffected.
+> Making the audit indexer catch up before the checkpoint snapshot is a tracked
+> follow-up.
 
 **Behavior:**
 - Streams audit entries from the server, oldest first by default / chronological (`--reverse` for newest first)
@@ -4087,7 +4123,17 @@ ledger run --read-index-dir /ssd/read-indexes [other flags...]
 ledger run --read-index-cache-size 128Mi [other flags...]
 ```
 
-The index builder runs on ALL nodes (not just the leader), so follower nodes can also serve prepared query reads. Listings are eventually consistent (the read index may lag behind the latest Raft commits).
+The index builder runs on ALL nodes (not just the leader), so follower nodes can
+also serve prepared-query and indexed-list reads. The builder itself is
+asynchronous. A live query waits for its read-index snapshot to cover the
+request's pinned main-store horizon only when it actually consults an index
+leaf: filtered account/transaction lists, every log list, and prepared queries
+with a non-nil filter or a LOGS target. Unfiltered account/transaction lists and
+matching unfiltered prepared queries use one main-store handle without an index
+catch-up wait; point reads do not use the read index. Frozen checkpoint pairs do
+not catch up, while `stale` skips only the Raft barrier and can still wait for
+alignment on an indexed shape. The separately maintained audit index has the
+filtered-read contract documented under `audit list`.
 
 Offline read-index rebuild is not available in Ledger v3.0. A generic projection-rebuild mechanism is planned for a later release.
 

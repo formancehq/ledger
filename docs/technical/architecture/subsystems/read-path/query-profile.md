@@ -110,10 +110,12 @@ which:
   routing — so `--consistency leader --min-log-sequence N` yields a non-zero
   barrier on a perfectly healthy cluster, with no failed attempt anywhere.
 - **A failed `ReadIndex` attempt.** The syncing-follower fallback in
-  `RoutedController.readCtrl` records the attempt and *then* forwards. Magnitude
-  differs sharply by cause: `ErrNodeSyncing` returns before any wait, so it costs
-  nanoseconds, whereas leadership lost mid-`ReadIndex` resolves a pending future
-  and can account for the whole quorum attempt.
+  `RoutedController.readCtrl` records the attempt and may then forward after it
+  resolves a remote leader. If leadership moved local in the meantime, the
+  router returns the failed barrier rather than serving locally. Magnitude
+  differs sharply by cause: `ErrNodeSyncing` returns before any wait, so it
+  costs nanoseconds, whereas leadership lost mid-`ReadIndex` resolves a pending
+  future and can account for the whole quorum attempt.
 
 So do not read cluster health off a non-zero forwarded barrier — the common cause
 is a caller asking for read-your-writes.

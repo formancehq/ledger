@@ -653,8 +653,13 @@ List audit trail entries (success and failure):
 
 ```go
 stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-    Ledger:       "my-ledger",      // Optional: filter by ledger
-    FailuresOnly: true,              // Optional: only failures
+	Options: &commonpb.ListOptions{
+		PageSize: 100,
+		Filter: auditFilter, // Bare audit fields, e.g. ledger/outcome.
+		Read: &commonpb.ReadOptions{
+			MinLogSequence: lastWrittenSequence,
+		},
+	},
 })
 if err != nil {
     return err
@@ -671,6 +676,14 @@ for {
     fmt.Printf("Audit #%d: proposal=%d\n", entry.Sequence, entry.ProposalId)
 }
 ```
+
+For a live request whose filter contains any field other than `seq`, a non-zero
+`MinLogSequence` makes every gRPC node that receives or serves the routed
+request wait for its log index to reach the bound and for its local audit index
+to reach the live audit head sampled afterward. With a zero bound, those
+index-backed results are best-effort. Unfiltered and `seq`-only conjunctions
+scan the audit zone directly and need only the log-sequence wait. Checkpoint
+reads ignore the bound.
 
 ## Store Metrics
 

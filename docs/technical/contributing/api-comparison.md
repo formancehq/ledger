@@ -397,7 +397,7 @@ When referencing a numscript from a transaction (`scriptReference` on `POST /v3/
 
 **Usage tracking (`GET /v3/{ledgerName}/numscripts/{name}/usage`):**
 
-Returns per-template invocation counters and the timestamp of the most recent invocation. Populated asynchronously by the `usagebuilder` subsystem, which tails the FSM audit chain and writes to a dedicated secondary Pebble store (`<data-dir>/usage/`). Values are eventually consistent with the FSM and may lag by up to one usagebuilder tick interval (~100 ms).
+Returns per-template invocation counters and the timestamp of the most recent invocation. Populated asynchronously by the `usagebuilder` subsystem, which tails the FSM audit chain and writes to a dedicated secondary Pebble store (`<data-dir>/usage/`). Values are eventually consistent with the FSM and may lag while the worker drains pending batches.
 
 A never-invoked template returns a zero-valued response (not 404), so clients handle "never used" uniformly:
 - `count` (uint64): Number of times the template has been invoked. `0` means not yet invoked (or the usagebuilder has not caught up).

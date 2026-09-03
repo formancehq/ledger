@@ -292,6 +292,11 @@ paths:
         Returns aggregate usage statistics (transaction, volume, reference, posting, log, revert
         and Numscript-execution counts, plus ephemeral-evicted and transient-used volume tallies)
         for a ledger. Requires `ledger:read` scope.
+        On live reads, `transactionCount` and `logCount` are FSM-backed. The seven
+        usage-derived counters (`postingCount`, `revertCount`, `numscriptExecutionCount`,
+        `referenceCount`, `ephemeralEvictedCount`, `transientUsedCount`, `volumeCount`)
+        are materialised asynchronously in the serving replica's usagestore and may lag
+        committed state even after the request's ReadIndex barrier.
         Note: for checkpoint-scoped (historical) reads, only `transactionCount` and `logCount` are
         checkpoint-consistent; the usage-derived counters (`postingCount`, `revertCount`,
         `numscriptExecutionCount`, `referenceCount`, `ephemeralEvictedCount`, `transientUsedCount`,
@@ -426,10 +431,12 @@ paths:
         This endpoint always performs a live, best-effort read. Unlike the gRPC
         `ListAuditEntries` surface, it does not expose the read-consistency
         options (pinned checkpoint reads, or a consistency-bound wait on the
-        audit index): filtered reads are served by an asynchronous secondary
-        index and may transiently omit very recent entries that are not yet
-        indexed. A client that needs a pinned or consistency-bounded audit read
-        must use the gRPC surface.
+        audit index): filters containing a field other than `seq` are served by
+        an asynchronous secondary index and may transiently omit very recent
+        entries that are not yet indexed. Unfiltered reads and conjunctions
+        made only of `seq` bounds scan the audit zone directly. A client that
+        needs a pinned or consistency-bounded audit read must use the gRPC
+        surface.
 
         Requires `ledger:AuditRead` scope.
       operationId: listAuditEntries
@@ -1714,9 +1721,9 @@ paths:
       summary: Get template usage
       description: |
         Returns the invocation counter and last-used timestamp for a Numscript template. Values are
-        materialised asynchronously by the `usagebuilder` subsystem from the FSM audit chain — expect
-        up to one usagebuilder tick interval (~100 ms) of lag behind the live FSM. A never-invoked
-        template returns a zero-valued response (not 404), so clients handle "never used" uniformly.
+        materialised asynchronously by the `usagebuilder` subsystem from the FSM audit chain and may
+        lag the live FSM while the worker drains pending batches. A never-invoked template returns a
+        zero-valued response (not 404), so clients handle "never used" uniformly.
 
         On existing ledgers whose audit chain has been partially archived to cold storage, only
         invocations still reachable in Pebble are counted.
