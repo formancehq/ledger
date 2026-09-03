@@ -134,7 +134,7 @@ func TestHealthChecker_LeaderUsesFreshLocalAndRemoteSamples(t *testing.T) {
 	require.False(t, hc.gate.Load().diskBlocked)
 }
 
-func TestHealthChecker_NewLeaderRequiresCompleteClusterSample(t *testing.T) {
+func TestHealthChecker_NewLeaderCanOpenWithUnavailablePeer(t *testing.T) {
 	t.Parallel()
 
 	collector := newFreshCollector(t)
@@ -157,10 +157,10 @@ func TestHealthChecker_NewLeaderRequiresCompleteClusterSample(t *testing.T) {
 		logger:       logging.Testing(),
 		pollFailures: pollFailures,
 		thresholds: Thresholds{
-			WALBlock:   0.8,
-			WALResume:  0.75,
-			DataBlock:  0.8,
-			DataResume: 0.75,
+			WALBlock:   1.1,
+			WALResume:  1,
+			DataBlock:  1.1,
+			DataResume: 1,
 		},
 	}
 
@@ -168,7 +168,36 @@ func TestHealthChecker_NewLeaderRequiresCompleteClusterSample(t *testing.T) {
 	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
 	hc.check(make(chan struct{}))
 
-	require.Nil(t, hc.gate.Load(), "an incomplete first sample set must keep the new leadership epoch unknown")
+	require.NotNil(t, hc.gate.Load())
+	require.NoError(t, hc.CheckWritesAllowed(), "an unavailable peer must not synthesize a permanent block for a new leader")
+}
+
+func TestHealthChecker_NewLeaderRequiresFreshLocalSample(t *testing.T) {
+	t.Parallel()
+
+	collector := &diskusage.Collector{}
+	ns := NewMocknodeState(gomock.NewController(t))
+	ns.EXPECT().IsLeader().Return(true)
+	ns.EXPECT().GetNodeID().Return(uint64(7))
+	ns.EXPECT().MemberIDs().Return([]uint64{7})
+	hc := &HealthChecker{
+		node:        ns,
+		collector:   collector,
+		servicePool: transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{}),
+		logger:      logging.Testing(),
+		thresholds: Thresholds{
+			WALBlock:   0.8,
+			WALResume:  0.75,
+			DataBlock:  0.8,
+			DataResume: 0.75,
+		},
+	}
+	t.Cleanup(func() { require.NoError(t, hc.servicePool.Close()) })
+
+	hc.OnLeadershipChange(true)
+	hc.check(make(chan struct{}))
+
+	require.Nil(t, hc.gate.Load())
 	require.ErrorIs(t, hc.CheckWritesAllowed(), domain.ErrWritesBlockedDiskFull)
 }
 
