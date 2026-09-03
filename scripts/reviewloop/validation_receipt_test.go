@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -123,6 +124,13 @@ func TestDirectoryFingerprintTracksContentsWithoutFollowingSymlinks(t *testing.T
 	third, err := directoryFingerprint(directory)
 	require.NoError(t, err)
 	require.NotEqual(t, second, third)
+
+	metadataOnlyPath := filepath.Join(directory, "nested", "input")
+	metadataOnlyTime := time.Unix(946684800, 123)
+	require.NoError(t, os.Chtimes(metadataOnlyPath, metadataOnlyTime, metadataOnlyTime))
+	afterMetadataMutation, err := directoryFingerprint(directory)
+	require.NoError(t, err)
+	require.NotEqual(t, third, afterMetadataMutation, "metadata-only changes must invalidate the fingerprint")
 
 	outsideFile := filepath.Join(outside, "outside")
 	require.NoError(t, os.WriteFile(outsideFile, []byte("outside-one\n"), 0o600))

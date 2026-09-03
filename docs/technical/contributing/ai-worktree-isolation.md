@@ -19,9 +19,10 @@ The workflow keeps three directory roles separate:
 - `VALIDATION_RUN_DIR` is a unique non-worktree directory for `HOME`, Go caches,
   `TMPDIR`, the golangci-lint cache, and the Git guard wrapper. It must neither
   equal nor contain either checkout, and neither checkout may contain it.
-  Same-run validation reuse fingerprints its complete contents through a
-  root-scoped filesystem handle after successful validation and again before
-  reuse; a content change forces validation to execute again.
+  Same-run validation reuse fingerprints its complete contents and relevant
+  filesystem metadata (modes, sizes, and nanosecond modification times) through
+  a root-scoped filesystem handle after successful validation and again before
+  reuse; a content or metadata change forces validation to execute again.
 
 The PR launchers also place each `review-loop` state directory in their
 workflow-owned run directory, outside `CANDIDATE_WORKTREE`. This lets exact-state

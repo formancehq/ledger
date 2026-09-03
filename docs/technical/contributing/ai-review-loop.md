@@ -269,8 +269,9 @@ the canonical base-pinned validation-tool worktree, its HEAD SHA, and complete
 rootguard snapshot; the exact validator and gate-selector commands; the exact
 selected-gate output; the full effective child environment (including build
 tags and options); the isolated validation and review-state directories; the
-complete root-scoped content fingerprint of the mutable validation-run
-directory; the immutable worktree binding; and the installed Git guard. The command,
+complete root-scoped content and filesystem-metadata fingerprint of the mutable
+validation-run directory (including modes, sizes, and nanosecond modification
+times); the immutable worktree binding; and the installed Git guard. The command,
 environment, candidate snapshot, and trusted-tool snapshot together bind the
 effective pinned Nix/toolchain configuration. Any missing identity input,
 capture error, or mismatch emits `VALIDATION_RECEIPT_MISMATCH` and executes

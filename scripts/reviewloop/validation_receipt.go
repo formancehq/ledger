@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/formancehq/ledger/v3/scripts/internal/rootguard"
@@ -446,6 +447,11 @@ func directoryFingerprint(directory string) (string, error) {
 
 	hasher := sha256.New()
 	writeHashField(hasher, []byte("ledger-validation-directory-v1"))
+	rootInfo, err := root.Lstat(".")
+	if err != nil {
+		return "", fmt.Errorf("reading validation directory metadata: %w", err)
+	}
+	writeDirectoryMetadata(hasher, rootInfo)
 	if err := hashDirectoryEntries(hasher, root, "."); err != nil {
 		return "", err
 	}
@@ -486,7 +492,7 @@ func hashDirectoryEntries(hasher hash.Hash, root *os.Root, directory string) err
 			return fmt.Errorf("reading directory entry metadata %q: %w", path, err)
 		}
 		writeHashField(hasher, []byte(path))
-		writeHashField(hasher, []byte(info.Mode().String()))
+		writeDirectoryMetadata(hasher, info)
 
 		switch {
 		case info.Mode()&os.ModeSymlink != 0:
@@ -515,8 +521,12 @@ func hashDirectoryEntries(hasher hash.Hash, root *os.Root, directory string) err
 			if closeErr != nil {
 				return fmt.Errorf("closing directory file %q: %w", path, closeErr)
 			}
-			if !openedInfo.Mode().IsRegular() || !os.SameFile(info, openedInfo) || openedInfo.Mode() != info.Mode() || openedInfo.Size() != logicalBytes {
-				return fmt.Errorf("directory file %q changed type or identity while being read", path)
+			if !openedInfo.Mode().IsRegular() ||
+				!os.SameFile(info, openedInfo) ||
+				openedInfo.Mode() != info.Mode() ||
+				openedInfo.Size() != logicalBytes ||
+				!openedInfo.ModTime().Equal(info.ModTime()) {
+				return fmt.Errorf("directory file %q changed metadata, type, or identity while being read", path)
 			}
 			writeHashField(hasher, contentHasher.Sum(nil))
 		case info.IsDir():
@@ -530,4 +540,10 @@ func hashDirectoryEntries(hasher hash.Hash, root *os.Root, directory string) err
 	}
 
 	return nil
+}
+
+func writeDirectoryMetadata(hasher hash.Hash, info os.FileInfo) {
+	writeHashField(hasher, []byte(info.Mode().String()))
+	writeHashField(hasher, []byte(strconv.FormatInt(info.Size(), 10)))
+	writeHashField(hasher, []byte(strconv.FormatInt(info.ModTime().UnixNano(), 10)))
 }
