@@ -840,12 +840,14 @@ func NewServiceServer(host string, port int, logger logging.Logger, debug bool, 
 	// proper gRPC status code instead of "Unknown" for domain errors.
 	unaryInterceptors := []ggrpc.UnaryServerInterceptor{
 		recoveryInterceptor(logger),
+		loggerInterceptor(logger),
 		consistencyInterceptor(),
 		loggingInterceptor(logger, slowThreshold),
 		errorConversionInterceptor(logger),
 	}
 	streamInterceptors := []ggrpc.StreamServerInterceptor{
 		recoveryStreamInterceptor(logger),
+		loggerStreamInterceptor(logger),
 		consistencyStreamInterceptor(),
 		loggingStreamInterceptor(logger, slowThreshold),
 		errorConversionStreamInterceptor(logger),

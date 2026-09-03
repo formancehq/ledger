@@ -294,9 +294,10 @@ func Module() fx.Option {
 					}),
 				})
 			},
-			func(cfg Config, transport *node.DefaultTransport) state.SnapshotFetcherProvider {
+			func(cfg Config, transport *node.DefaultTransport, logger logging.Logger) state.SnapshotFetcherProvider {
 				return ctrl.GRPCSnapshotFetcherProvider(
 					transport,
+					logger,
 					cfg.SnapshotSyncConfig.Parallelism,
 					cfg.SnapshotSyncConfig.RetryCount,
 					cfg.SnapshotSyncConfig.FileRetryCount,
