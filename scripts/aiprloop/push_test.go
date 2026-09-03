@@ -26,6 +26,10 @@ func TestPushReviewsCandidateCommitBeforePublishing(t *testing.T) {
 	countBytes, err := os.ReadFile(fixture.reviewCountFile)
 	require.NoError(t, err)
 	require.Equal(t, "2", strings.TrimSpace(string(countBytes)))
+	precommitCountBytes, err := os.ReadFile(fixture.precommitCountFile)
+	require.NoError(t, err)
+	require.Equal(t, "2", strings.TrimSpace(string(precommitCountBytes)),
+		"normalization reaches its own fixpoint; only the independent last-mile gate reruns")
 }
 
 func TestPushRefusesWhenRemoteHeadMoves(t *testing.T) {
@@ -195,16 +199,17 @@ type pushFixtureOptions struct {
 }
 
 type pushFixture struct {
-	root            string
-	remote          string
-	checkout        string
-	fakeBin         string
-	baseSHA         string
-	headSHA         string
-	advancedBaseSHA string
-	divergedBaseSHA string
-	reviewCountFile string
-	options         pushFixtureOptions
+	root               string
+	remote             string
+	checkout           string
+	fakeBin            string
+	baseSHA            string
+	headSHA            string
+	advancedBaseSHA    string
+	divergedBaseSHA    string
+	reviewCountFile    string
+	precommitCountFile string
+	options            pushFixtureOptions
 }
 
 func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
@@ -262,6 +267,11 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 		}
 		require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "agent-just"), []byte(`#!/usr/bin/env bash
 set -euo pipefail
+count=0
+if [[ -f "$TEST_PRECOMMIT_COUNT_FILE" ]]; then
+    count=$(<"$TEST_PRECOMMIT_COUNT_FILE")
+fi
+printf '%s' "$((count + 1))" > "$TEST_PRECOMMIT_COUNT_FILE"
 if [[ "${TEST_TARGET_MUTATION:-}" == "before-exact-review" && ! -e "$TEST_TARGET_MUTATION_MARKER" ]]; then
     git --git-dir="$TEST_REMOTE" update-ref refs/heads/release/v3.0 "$TEST_ADVANCED_BASE_SHA"
     : > "$TEST_TARGET_MUTATION_MARKER"
@@ -486,16 +496,17 @@ chmod 755 "$output"
 `)
 
 	return pushFixture{
-		root:            root,
-		remote:          remote,
-		checkout:        checkout,
-		fakeBin:         fakeBin,
-		baseSHA:         baseSHA,
-		headSHA:         headSHA,
-		advancedBaseSHA: advancedBaseSHA,
-		divergedBaseSHA: divergedBaseSHA,
-		reviewCountFile: filepath.Join(root, "review-count"),
-		options:         options,
+		root:               root,
+		remote:             remote,
+		checkout:           checkout,
+		fakeBin:            fakeBin,
+		baseSHA:            baseSHA,
+		headSHA:            headSHA,
+		advancedBaseSHA:    advancedBaseSHA,
+		divergedBaseSHA:    divergedBaseSHA,
+		reviewCountFile:    filepath.Join(root, "review-count"),
+		precommitCountFile: filepath.Join(root, "precommit-count"),
+		options:            options,
 	}
 }
 
@@ -509,6 +520,7 @@ func (fixture pushFixture) run(t *testing.T) (string, int) {
 		"TEST_BASE_SHA="+fixture.baseSHA,
 		"TEST_HEAD_SHA="+fixture.headSHA,
 		"TEST_REVIEW_COUNT_FILE="+fixture.reviewCountFile,
+		"TEST_PRECOMMIT_COUNT_FILE="+fixture.precommitCountFile,
 		"TEST_MOVE_REMOTE="+strconv.FormatBool(fixture.options.moveRemote),
 		"TEST_MOVE_LOCAL_HEAD="+strconv.FormatBool(fixture.options.moveLocalHead),
 		"TEST_REMOTE="+fixture.remote,

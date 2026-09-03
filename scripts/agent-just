@@ -9,6 +9,14 @@ WORKTREE_ROOT="$(git rev-parse --show-toplevel)"
 # against a PR worktree. Pin recipe definitions to the wrapper's repository,
 # disable target-controlled dotenv loading, and keep the reviewed tree as cwd.
 case "${1:-}" in
+    pre-commit)
+        trusted_tool_sha=$(git -C "$TOOL_ROOT" rev-parse --verify 'HEAD^{commit}')
+        exec env PRECOMMIT_TRUSTED_TOOL_SHA="$trusted_tool_sha" just \
+            --no-dotenv \
+            --justfile "$TOOL_ROOT/justfile" \
+            --working-directory "$WORKTREE_ROOT" \
+            "$@"
+        ;;
     test-model)
         shift
         exec env \

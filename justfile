@@ -1,6 +1,7 @@
 set dotenv-load
 
-pre-commit: fuzz-inventory-check generate generate-proto operator-generate test-dashboards tidy lint
+pre-commit:
+    go -C "{{justfile_directory()}}" run ./scripts/precommit --repo "$PWD" --tool-root "{{justfile_directory()}}"
 pc: pre-commit
 
 # Regenerate the Grafana dashboards (otel + prom variants) from Jsonnet
@@ -23,23 +24,39 @@ generate-dashboards:
 test-dashboards: generate-dashboards
     cd misc/devenv/monitoring-dashboards && go test ./...
 
-lint:
+lint: lint-root lint-operator
+
+lint-root:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> golangci-lint (.)"
     golangci-lint run --fix --build-tags it,local,{{all_tags}} --timeout 5m
+
+lint-operator:
+    #!/usr/bin/env bash
+    set -euo pipefail
     echo "==> golangci-lint (operator)"
     cd misc/operator && golangci-lint run --fix --timeout 5m
 
-tidy:
+tidy: tidy-root tidy-operator tidy-model-workload
+
+tidy-root:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> go mod tidy (.)"
     go mod tidy
+
+tidy-operator:
+    #!/usr/bin/env bash
+    set -euo pipefail
     echo "==> go mod tidy (operator)"
-    (cd misc/operator && go mod tidy)
+    cd misc/operator && go mod tidy
+
+tidy-model-workload:
+    #!/usr/bin/env bash
+    set -euo pipefail
     echo "==> go mod tidy (model workload)"
-    (cd tests/antithesis/workload && go mod tidy)
+    cd tests/antithesis/workload && go mod tidy
 
 # All optional feature build tags
 all_tags := "kafka,nats,clickhouse,databricks,s3,azure,pyroscope"

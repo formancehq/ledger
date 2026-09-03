@@ -86,10 +86,11 @@ Before completing any task:
 direnv allow && eval "$(direnv export bash)" && GOROOT= just pre-commit
 ```
 
-This runs:
-1. `go generate ./...` - regenerate mocks and protobuf files
-2. `go mod tidy` - clean up dependencies
-3. `golangci-lint run --fix` - lint and auto-fix
+Without a trusted exact-base binding this runs the full component set. PR
+automation may use the fail-closed
+[input-sensitive pre-commit contract](./pre-commit.md); changed Go source still
+runs the applicable lint component, and changed generated output always runs
+its producer.
 
 ## Mock Generation
 

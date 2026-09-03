@@ -416,7 +416,10 @@ fixes or a failed removal — keeps its run directory and its caches.
 Candidate publication normalizes the candidate before assigning its final SHA.
 The trusted base-pinned `just pre-commit` recipe runs in the isolated validation
 environment; any resulting tree changes are logged, checked with `git diff
---check`, committed as normalization, and rechecked. This repeats to a bounded
-fixpoint (three passes by default). Only the converged SHA is reviewed and
-published. A candidate supplied to `ai-pr-adopt-candidate` is immutable: if it
-needs normalization, adoption refuses rather than silently changing the SHA.
+--check`, and committed as normalization. The trusted
+[input-sensitive runner](./pre-commit.md) reaches a bounded component-level
+fixpoint in that invocation and reruns only components invalidated by a later
+normalizer. A clean pass is recorded immediately instead of replaying the full
+recipe. Only the converged SHA is reviewed and published. A candidate supplied
+to `ai-pr-adopt-candidate` is immutable: if it needs normalization, adoption
+refuses rather than silently changing the SHA.

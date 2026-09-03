@@ -42,8 +42,24 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
-      - run: >
-          nix develop --command just pre-commit
+      - name: Run trusted input-sensitive pre-commit
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        shell: bash
+        run: |
+          if [[ -z "$PR_BASE_SHA" ]]; then
+            nix develop --command just pre-commit
+            exit
+          fi
+          trusted_tools=$(mktemp -d -t ledger-precommit-tools.XXXXXX)
+          cleanup() {
+            git worktree remove --force "$trusted_tools" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          git worktree add --detach "$trusted_tools" "$PR_BASE_SHA"
+          PRECOMMIT_BASE_SHA="$PR_BASE_SHA" \
+            nix develop "path:$trusted_tools" --command \
+            bash "$trusted_tools/scripts/agent-just" pre-commit
       - name: Get changed files
         id: changed-files
         shell: bash

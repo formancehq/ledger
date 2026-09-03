@@ -21,8 +21,11 @@ if ! grep -Eq '(^|/)[^/]+_test\.go$' <<<"$tracked_module_files"; then
 fi
 
 pre_commit_recipe=$(cd "$repository_root" && just --show pre-commit)
-if ! grep -Eq "^pre-commit:.*[[:space:]]${dashboard_recipe}([[:space:]]|$)" <<<"$pre_commit_recipe"; then
-    fail "pre-commit does not depend on $dashboard_recipe"
+if ! grep -Fq 'run ./scripts/precommit' <<<"$pre_commit_recipe"; then
+    fail "pre-commit does not invoke the trusted component selector"
+fi
+if ! grep -Eq 'Recipe:[[:space:]]+"test-dashboards"' "$repository_root/scripts/precommit/components.go"; then
+    fail "pre-commit component map does not reach $dashboard_recipe"
 fi
 
 dashboard_test_recipe=$(cd "$repository_root" && just --show "$dashboard_recipe")

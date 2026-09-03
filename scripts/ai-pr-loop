@@ -324,13 +324,14 @@ printf -v quoted_go_path %q "$validation_run_dir/go-path"
 printf -v quoted_tmp_dir %q "$validation_run_dir/tmp"
 printf -v quoted_cache_home %q "$validation_run_dir/cache"
 printf -v quoted_golangci_cache %q "$validation_run_dir/cache/golangci-lint"
+printf -v quoted_precommit_base %q "$base_sha"
 printf -v quoted_validation_tool %q "$trusted_tool_worktree/scripts/agent-check-pr"
 printf -v quoted_agent_just %q "$trusted_tool_worktree/scripts/agent-just"
 printf -v normalization_program \
-    'mkdir -p %s %s %s %s %s %s && env HOME=%s GOCACHE=%s GOMODCACHE=%s GOPATH=%s TMPDIR=%s XDG_CACHE_HOME=%s GOLANGCI_LINT_CACHE=%s VALIDATION_RUN_ID=%s VALIDATION_RUN_DIR=%s bash %s pre-commit' \
+    'mkdir -p %s %s %s %s %s %s && env HOME=%s GOCACHE=%s GOMODCACHE=%s GOPATH=%s TMPDIR=%s XDG_CACHE_HOME=%s GOLANGCI_LINT_CACHE=%s VALIDATION_RUN_ID=%s VALIDATION_RUN_DIR=%s PRECOMMIT_BASE_SHA=%s bash %s pre-commit' \
     "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_golangci_cache" \
     "$quoted_home" "$quoted_go_cache" "$quoted_go_mod_cache" "$quoted_go_path" "$quoted_tmp_dir" "$quoted_cache_home" \
-    "$quoted_golangci_cache" "$quoted_run_id" "$quoted_run_dir" "$quoted_agent_just"
+    "$quoted_golangci_cache" "$quoted_run_id" "$quoted_run_dir" "$quoted_precommit_base" "$quoted_agent_just"
 printf -v normalization_cmd 'env -u GOROOT nix develop %q --command bash -c %q' \
     "path:$trusted_tool_worktree" "$normalization_program"
 validation_cmd="mkdir -p $quoted_home $quoted_go_cache $quoted_go_mod_cache $quoted_go_path $quoted_tmp_dir $quoted_golangci_cache && env HOME=$quoted_home GOCACHE=$quoted_go_cache GOMODCACHE=$quoted_go_mod_cache GOPATH=$quoted_go_path TMPDIR=$quoted_tmp_dir XDG_CACHE_HOME=$quoted_cache_home GOLANGCI_LINT_CACHE=$quoted_golangci_cache VALIDATION_RUN_ID=$quoted_run_id VALIDATION_RUN_DIR=$quoted_run_dir bash $quoted_validation_tool"
@@ -523,31 +524,9 @@ expected_worktree_head=$candidate_sha
 write_candidate_binding "$expected_worktree_head"
 printf '==> ai-pr-loop: candidate commit %s\n' "$candidate_sha"
 
-normalization_pass=1
-while [[ "$normalization_pass" -le 3 ]]; do
-    bash -c "$normalization_cmd"
-    if [[ -z "$(git status --porcelain)" ]]; then
-        echo "PRECOMMIT_FIXPOINT: PASS"
-        break
-    fi
-    echo "PRECOMMIT_NORMALIZATION: CHANGES_COMMITTED (pass $normalization_pass)"
-    git add -A
-    git diff --cached --check
-    git commit -m "chore: normalize candidate"
-    candidate_sha=$(git rev-parse HEAD)
-    expected_worktree_head=$candidate_sha
-    write_candidate_binding "$expected_worktree_head"
-    normalization_pass=$((normalization_pass + 1))
-done
-# Always perform a final read of the trusted recipe after the last allowed
-# normalization commit. This proves the reviewed SHA is actually converged.
-bash -c "$normalization_cmd"
-if [[ -n "$(git status --porcelain)" ]]; then
-    echo "PRECOMMIT_NON_DETERMINISTIC: refusing candidate publication" >&2
-    keep_worktree=true
-    exit 1
-fi
-echo "PRECOMMIT_FIXPOINT: PASS"
+# The trusted pre-commit runner reaches a bounded component-level fixpoint in
+# one invocation. Its in-memory fingerprints prove which components later
+# normalizers invalidated, so replaying the complete recipe here is redundant.
 
 # Do not spend or trust an exact candidate review against a target that moved
 # during normalization. The synchronized candidate must start a fresh run.
@@ -587,7 +566,7 @@ fi
     # Last-mile publication gate: use only the base-pinned recipe wrapper. The
     # candidate worktree is merely its working directory; generated output is
     # never reset or hidden.
-bash "$trusted_tool_worktree/scripts/agent-just" pre-commit
+PRECOMMIT_BASE_SHA="$base_sha" bash "$trusted_tool_worktree/scripts/agent-just" pre-commit
 if [[ -n "$(git status --porcelain)" ]]; then
     echo "ai-pr-loop: pre-commit left the candidate worktree dirty; refusing push" >&2
     echo "Candidate worktree preserved for inspection: $worktree"

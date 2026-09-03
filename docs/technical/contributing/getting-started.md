@@ -88,9 +88,10 @@ just test-e2e
 3. Verify compilation: `go build ./...`
 4. Run tests: `just test`
 
-The pre-commit command runs `go generate ./...` (mocks + proto), `go mod tidy`
-for the root, operator, and Antithesis model-workload modules, and
-`golangci-lint run --fix`.
+Without a trusted exact-base binding, the pre-commit command runs the complete
+generator, dashboard, tidy, and lint set. Trusted PR automation uses the
+[input-sensitive pre-commit contract](./pre-commit.md) to skip only components
+whose complete input/output identity proves them irrelevant.
 
 ## Dependency Injection with fx
 
