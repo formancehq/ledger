@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 const (
@@ -402,7 +404,7 @@ func (fixture adapterFixture) run(t *testing.T, extra map[string]string) (string
 
 	command := exec.Command("bash", fixture.adapter)
 	command.Dir = fixture.repository
-	command.Env = replaceEnvironment(os.Environ(), environment)
+	command.Env = testenv.EnvironmentMap(environment)
 	output, err := command.CombinedOutput()
 
 	return string(output), err
@@ -547,33 +549,11 @@ func readFile(t *testing.T, path string) string {
 }
 
 func runCommand(t *testing.T, directory, name string, arguments ...string) string {
-	if t != nil {
-		t.Helper()
-	}
-	command := exec.Command(name, arguments...)
+	t.Helper()
+	command := testenv.Command(t, name, arguments...)
 	command.Dir = directory
 	output, err := command.CombinedOutput()
-	if t != nil {
-		require.NoError(t, err, string(output))
-	} else if err != nil {
-		panic(string(output))
-	}
+	require.NoError(t, err, string(output))
 
 	return string(output)
-}
-
-func replaceEnvironment(current []string, replacements map[string]string) []string {
-	result := make([]string, 0, len(current)+len(replacements))
-	for _, item := range current {
-		key, _, found := strings.Cut(item, "=")
-		if _, replaced := replacements[key]; found && replaced {
-			continue
-		}
-		result = append(result, item)
-	}
-	for key, value := range replacements {
-		result = append(result, key+"="+value)
-	}
-
-	return result
 }
