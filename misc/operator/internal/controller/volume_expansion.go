@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +31,7 @@ import (
 const (
 	volumeExpansionRequeueInterval = 5 * time.Minute
 	volumeExpansionRetryInterval   = time.Minute
+	maximumDiskUsageSampleAge      = time.Minute
 
 	annotationLastExpansionAt     = "ledger.formance.com/last-expansion-at"
 	annotationLastExpansionTarget = "ledger.formance.com/last-expansion-target"
@@ -71,6 +73,10 @@ type podDiskUsage struct {
 type measuredVolume struct {
 	UsedBytes  uint64
 	TotalBytes uint64
+	ObservedAt time.Time
+	SampleAge  time.Duration
+	Valid      bool
+	Error      string
 }
 
 type readPodDiskUsageFunc func(ctx context.Context, ledger *ledgerv1alpha1.Cluster, pod, tlsMode string) (podDiskUsage, error)
@@ -311,12 +317,19 @@ func (r *VolumeExpansionReconciler) loadVolumePVCs(
 	volume string,
 	replicas int32,
 ) ([]*corev1.PersistentVolumeClaim, []volumePVCState, error) {
+	if r.APIReader == nil {
+		return nil, nil, errors.New("invariant: APIReader is required for direct PVC reads")
+	}
+
 	pvcs := make([]*corev1.PersistentVolumeClaim, 0, replicas)
 	states := make([]volumePVCState, 0, replicas)
 	for ordinal := range replicas {
 		name := fmt.Sprintf("%s-%s-%d", volume, resourceName(ledger.Name), ordinal)
 		var pvc corev1.PersistentVolumeClaim
-		if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: name}, &pvc); err != nil {
+		// PVCs are intentionally read through the uncached APIReader. The
+		// controller only has get/list/patch RBAC for PVCs (no watch), so the
+		// manager cache cannot establish an informer for this resource.
+		if err := r.APIReader.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: name}, &pvc); err != nil {
 			return nil, nil, fmt.Errorf("getting PVC %s: %w", name, err)
 		}
 
@@ -389,18 +402,19 @@ func (r *VolumeExpansionReconciler) collectMeasurements(
 		usage, err := read(ctx, ledger, pod, tlsMode)
 		measurement := podVolumeMeasurement{Pod: pod, Err: err}
 		if err == nil {
+			var selected measuredVolume
 			switch volume {
 			case "wal":
-				measurement.UsedBytes = usage.WAL.UsedBytes
-				measurement.TotalBytes = usage.WAL.TotalBytes
+				selected = usage.WAL
 			case "data":
-				measurement.UsedBytes = usage.Data.UsedBytes
-				measurement.TotalBytes = usage.Data.TotalBytes
+				selected = usage.Data
 			default:
 				measurement.Err = fmt.Errorf("invariant: unsupported volume kind %q", volume)
 			}
-			if measurement.TotalBytes == 0 {
-				measurement.Err = errors.New("reported totalBytes is zero")
+			if measurement.Err == nil {
+				measurement.Err = validateMeasuredVolume(selected)
+				measurement.UsedBytes = selected.UsedBytes
+				measurement.TotalBytes = selected.TotalBytes
 			}
 		}
 		if measurement.Err != nil {
@@ -545,32 +559,78 @@ func (value *protoJSONUint64) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type podDiskUsageVolumeJSON struct {
+	UsedBytes   protoJSONUint64 `json:"usedBytes"`
+	TotalBytes  protoJSONUint64 `json:"totalBytes"`
+	ObservedAt  protoJSONUint64 `json:"observedAtUs"`
+	SampleAgeMS protoJSONUint64 `json:"sampleAgeMs"`
+	Valid       bool            `json:"valid"`
+	Error       string          `json:"error"`
+}
+
+func measuredVolumeFromJSON(volume podDiskUsageVolumeJSON) (measuredVolume, error) {
+	if uint64(volume.ObservedAt) > math.MaxInt64 {
+		return measuredVolume{}, errors.New("reported observedAtUs exceeds int64")
+	}
+	if uint64(volume.SampleAgeMS) > uint64(math.MaxInt64/int64(time.Millisecond)) {
+		return measuredVolume{}, errors.New("reported sampleAgeMs exceeds time.Duration")
+	}
+
+	var observedAt time.Time
+	if volume.ObservedAt > 0 {
+		observedAt = time.UnixMicro(int64(volume.ObservedAt)).UTC()
+	}
+
+	return measuredVolume{
+		UsedBytes:  uint64(volume.UsedBytes),
+		TotalBytes: uint64(volume.TotalBytes),
+		ObservedAt: observedAt,
+		SampleAge:  time.Duration(volume.SampleAgeMS) * time.Millisecond,
+		Valid:      volume.Valid,
+		Error:      volume.Error,
+	}, nil
+}
+
+func validateMeasuredVolume(volume measuredVolume) error {
+	if !volume.Valid {
+		if volume.Error != "" {
+			return fmt.Errorf("latest collection attempt failed: %s", volume.Error)
+		}
+
+		return errors.New("latest collection attempt failed")
+	}
+	if volume.TotalBytes == 0 {
+		return errors.New("reported totalBytes is zero")
+	}
+	if volume.ObservedAt.IsZero() {
+		return errors.New("reported observedAtUs is zero")
+	}
+	if volume.SampleAge > maximumDiskUsageSampleAge {
+		return fmt.Errorf("disk usage sample is stale: age %s exceeds %s", volume.SampleAge, maximumDiskUsageSampleAge)
+	}
+
+	return nil
+}
+
 func parsePodDiskUsage(data []byte) (podDiskUsage, error) {
 	var payload struct {
-		WALVolume struct {
-			UsedBytes  protoJSONUint64 `json:"usedBytes"`
-			TotalBytes protoJSONUint64 `json:"totalBytes"`
-		} `json:"walVolume"`
-		DataVolume struct {
-			UsedBytes  protoJSONUint64 `json:"usedBytes"`
-			TotalBytes protoJSONUint64 `json:"totalBytes"`
-		} `json:"dataVolume"`
+		WALVolume  podDiskUsageVolumeJSON `json:"walVolume"`
+		DataVolume podDiskUsageVolumeJSON `json:"dataVolume"`
 	}
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return podDiskUsage{}, err
 	}
-	if payload.WALVolume.TotalBytes == 0 || payload.DataVolume.TotalBytes == 0 {
-		return podDiskUsage{}, errors.New("disk usage payload contains a zero totalBytes value")
+	wal, err := measuredVolumeFromJSON(payload.WALVolume)
+	if err != nil {
+		return podDiskUsage{}, fmt.Errorf("parsing WAL volume: %w", err)
+	}
+	dataVolume, err := measuredVolumeFromJSON(payload.DataVolume)
+	if err != nil {
+		return podDiskUsage{}, fmt.Errorf("parsing data volume: %w", err)
 	}
 
 	return podDiskUsage{
-		WAL: measuredVolume{
-			UsedBytes:  uint64(payload.WALVolume.UsedBytes),
-			TotalBytes: uint64(payload.WALVolume.TotalBytes),
-		},
-		Data: measuredVolume{
-			UsedBytes:  uint64(payload.DataVolume.UsedBytes),
-			TotalBytes: uint64(payload.DataVolume.TotalBytes),
-		},
+		WAL:  wal,
+		Data: dataVolume,
 	}, nil
 }

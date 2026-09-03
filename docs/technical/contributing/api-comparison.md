@@ -116,6 +116,7 @@ for client setup, restore behavior, failure limitations, and revision changes.
 | Store metrics | ✅ | ❌ | Pebble storage metrics |
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
 | Store backup | ✅ | ❌ | Point-in-time Pebble backup as tar archive |
+| Filesystem disk usage | ✅ | ❌ | Node-local gRPC/CLI diagnostic with per-volume validity, server-computed sample age, last observation time, and diagnostic error |
 | Index status | ✅ | ❌ | Read index builder progress (lag, file size) |
 | Store restore | ✅ | ❌ | Upload backup, validate, preview, finalize (--restore mode) |
 | **Prepared Queries** |

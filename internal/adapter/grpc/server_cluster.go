@@ -261,16 +261,34 @@ func (impl *ClusterServiceServerImpl) GetDiskUsage(ctx context.Context, _ *clust
 	walUsed, walTotal := impl.collector.WALVolume.Load()
 	dataUsed, dataTotal := impl.collector.DataVolume.Load()
 
+	now := time.Now()
+
 	return &clusterpb.DiskUsage{
-		WalVolume: &clusterpb.VolumeUsage{
-			UsedBytes:  uint64(walUsed),
-			TotalBytes: uint64(walTotal),
-		},
-		DataVolume: &clusterpb.VolumeUsage{
-			UsedBytes:  uint64(dataUsed),
-			TotalBytes: uint64(dataTotal),
-		},
+		WalVolume:  volumeUsageResponse(impl.collector.WALVolume.Load(), now),
+		DataVolume: volumeUsageResponse(impl.collector.DataVolume.Load(), now),
 	}, nil
+}
+
+func volumeUsageResponse(sample diskusage.VolumeSample, now time.Time) *clusterpb.VolumeUsage {
+	var (
+		observedAtUS uint64
+		sampleAgeMS  uint64
+	)
+	if !sample.ObservedAt.IsZero() {
+		observedAtUS = uint64(sample.ObservedAt.UnixMicro())
+		if age := now.Sub(sample.ObservedAt); age > 0 {
+			sampleAgeMS = uint64(age.Milliseconds())
+		}
+	}
+
+	return &clusterpb.VolumeUsage{
+		UsedBytes:    uint64(sample.UsedBytes),
+		TotalBytes:   uint64(sample.TotalBytes),
+		ObservedAtUs: observedAtUS,
+		SampleAgeMs:  sampleAgeMS,
+		Valid:        sample.Valid,
+		Error:        sample.Error,
+	}
 }
 
 func (impl *ClusterServiceServerImpl) GetNodeTime(ctx context.Context, _ *clusterpb.GetNodeTimeRequest) (*clusterpb.NodeTime, error) {

@@ -51,9 +51,12 @@ Each node runs a `diskusage.Collector` that periodically samples the disk usage 
 - **WAL volume**: The Raft write-ahead log directory
 - **Data volume**: The application data directory (Pebble storage)
 
-The collector publishes used bytes and total capacity together as one coherent
-sample for each volume. Health checks and peer RPCs therefore cannot combine
-values from different collection cycles while a filesystem capacity changes.
+The collector exposes one atomic sample per volume: last known used and total
+bytes, the last successful observation time, the age of that observation, and
+the outcome of the latest collection attempt. A failed `Statfs` keeps the last
+successful values for diagnostics but marks the sample invalid.
+Health checks and peer RPCs use the same sample, so they cannot combine values
+from different collection cycles while filesystem capacity changes.
 
 ### Admission Gate (`internal/application/admission/`)
 
@@ -117,7 +120,8 @@ config:
    ```
 2. The health state is set to `unhealthy`
 3. All subsequent write requests are rejected with `ErrUnhealthy`
-4. When usage drops below the threshold on the next check cycle, writes resume automatically
+4. Writes resume only after every volume has a valid, at-most-one-minute-old
+   sample below its resume threshold
 
 ### What Gets Rejected
 
@@ -141,7 +145,11 @@ Read operations continue to work normally:
 
 ### Failure Modes
 
-- **Peer unreachable**: If the leader cannot reach a peer to check its disk usage, the peer is skipped and a warning is logged. The cluster remains healthy unless other checks fail.
+- **Invalid, stale, or unreachable measurement**: A missing measurement does
+  not create a new disk block by itself. It cannot clear an existing disk block,
+  however; recovery requires fresh valid measurements for every WAL and data
+  volume. A valid volume from the same node can still create a block
+  independently when it crosses its high-water mark.
 - **Leadership change**: When leadership changes, the new leader starts checking immediately on its first tick. The health state defaults to `healthy` until the first check completes.
 
 ## Monitoring
@@ -149,7 +157,7 @@ Read operations continue to work normally:
 ### Metrics
 
 Disk usage metrics are exposed via OpenTelemetry:
-- `storage.disk.volume.bytes` - Disk space used on a storage volume (with `volume` attribute: `wal` or `data`). Only used bytes are emitted.
+- `storage.disk.volume.bytes` - Disk space used on a storage volume (with `volume` attribute: `wal` or `data`). Only valid samples are emitted.
 
 ### Grafana Dashboard
 

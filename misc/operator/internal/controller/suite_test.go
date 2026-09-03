@@ -104,8 +104,8 @@ func TestMain(m *testing.M) {
 			dataTotal := uint64(dataQuantity.Value())
 
 			return podDiskUsage{
-				WAL:  measuredVolume{UsedBytes: walTotal / 10, TotalBytes: walTotal},
-				Data: measuredVolume{UsedBytes: dataTotal * 8 / 10, TotalBytes: dataTotal},
+				WAL:  freshMeasuredVolume(walTotal/10, walTotal, time.Now()),
+				Data: freshMeasuredVolume(dataTotal*8/10, dataTotal, time.Now()),
 			}, nil
 		},
 	}).SetupWithManager(mgr); err != nil {
