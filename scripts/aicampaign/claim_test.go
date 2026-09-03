@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -15,12 +14,21 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 const (
 	testClaimantA = "agent@machine#session-a"
 	testClaimantB = "agent@machine#session-b"
 )
+
+func TestMain(testingMain *testing.M) {
+	if err := testenv.SanitizeProcess(); err != nil {
+		panic(err)
+	}
+	os.Exit(testingMain.Run())
+}
 
 func TestClaimRefIsDeterministicAndDigestIndependent(t *testing.T) {
 	t.Parallel()
@@ -529,7 +537,7 @@ func inspectAgainstRemoteTarget(
 
 func remoteRefSHA(t *testing.T, remote, ref string) string {
 	t.Helper()
-	command := exec.Command("git", "ls-remote", "--heads", remote, ref)
+	command := testenv.Command(t, "git", "ls-remote", "--heads", remote, ref)
 	output, err := command.Output()
 	require.NoError(t, err)
 	fields := strings.Fields(string(output))
@@ -570,9 +578,9 @@ func runGit(t *testing.T, directory string, arguments ...string) string {
 
 func runGitInput(t *testing.T, input []byte, directory string, arguments ...string) string {
 	t.Helper()
-	command := exec.Command("git", arguments...)
+	command := testenv.Command(t, "git", arguments...)
 	command.Dir = directory
-	command.Env = append(os.Environ(),
+	command.Env = testenv.Environment(
 		"GIT_AUTHOR_NAME=Test", "GIT_AUTHOR_EMAIL=test@example.invalid",
 		"GIT_COMMITTER_NAME=Test", "GIT_COMMITTER_EMAIL=test@example.invalid",
 	)

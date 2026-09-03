@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 const (
@@ -125,7 +127,7 @@ cp "$FAKE_CODEX_RESULT" "$output"
 	outputPath := filepath.Join(t.TempDir(), "report.json")
 	command := exec.Command("bash", filepath.Join(checkout, "scripts", "ai-audit"), testAuditID, "--output", outputPath)
 	command.Dir = checkout
-	command.Env = append(os.Environ(),
+	command.Env = testenv.Environment(
 		"FAKE_CODEX_RESULT="+resultPath,
 		"HOME="+t.TempDir(),
 		"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
@@ -179,7 +181,7 @@ func copyFile(t *testing.T, source, destination string) {
 
 func runGit(t *testing.T, directory string, args ...string) {
 	t.Helper()
-	command := exec.Command("git", args...)
+	command := testenv.Command(t, "git", args...)
 	command.Dir = directory
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, string(output))
@@ -187,7 +189,7 @@ func runGit(t *testing.T, directory string, args ...string) {
 
 func gitOutput(t *testing.T, directory string, args ...string) string {
 	t.Helper()
-	command := exec.Command("git", args...)
+	command := testenv.Command(t, "git", args...)
 	command.Dir = directory
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, string(output))

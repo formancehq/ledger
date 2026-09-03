@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 func TestAdoptCandidateAcceptsLegitimateNonBugfix(t *testing.T) {
@@ -511,7 +513,7 @@ func (fixture adoptionFixture) run(t *testing.T, options adoptionRun) (string, i
 	}
 	command := exec.Command("bash", arguments...)
 	command.Dir = fixture.checkout
-	command.Env = append(os.Environ(),
+	command.Env = testenv.Environment(
 		"PATH="+fixture.fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"TEST_PR_JSON="+string(metadataJSON),
 		"TEST_TRIAGE_DECISION="+options.triageDecision,
@@ -523,7 +525,7 @@ func (fixture adoptionFixture) run(t *testing.T, options adoptionRun) (string, i
 		"TEST_TARGET_MUTATION="+options.targetMutation,
 	)
 	if options.validationFailure {
-		command.Env = append(command.Env, "VALIDATION_FAILURE=1")
+		command.Env = testenv.Environment(append(command.Env, "VALIDATION_FAILURE=1")...)
 	}
 	output, runErr := command.CombinedOutput()
 	if runErr == nil {
@@ -597,7 +599,7 @@ func runGit(t *testing.T, directory string, arguments ...string) {
 func runGitOutput(t *testing.T, directory string, arguments ...string) string {
 	t.Helper()
 
-	command := exec.Command("git", arguments...)
+	command := testenv.Command(t, "git", arguments...)
 	command.Dir = directory
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, fmt.Sprintf("git %s:\n%s", strings.Join(arguments, " "), output))

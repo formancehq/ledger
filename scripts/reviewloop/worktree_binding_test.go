@@ -1,15 +1,20 @@
 package main
 
 import (
-	"bytes"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 type worktreeBindingFixture struct {
@@ -22,6 +27,8 @@ type worktreeBindingFixture struct {
 	reviewer      string
 	guard         string
 }
+
+const reviewLoopFixtureTimeout = 45 * time.Second
 
 func TestReviewOnlyFlowBindsAgentToDedicatedCandidate(t *testing.T) {
 	fixture := newWorktreeBindingFixture(t)
@@ -237,8 +244,7 @@ func TestGuardDoesNotExposeUnguardedGitEnvironment(t *testing.T) {
 
 func TestDirectGitBypassStillTriggersRootMutationDetection(t *testing.T) {
 	fixture := newWorktreeBindingFixture(t)
-	unguardedGit, err := exec.LookPath("git")
-	require.NoError(t, err)
+	unguardedGit := testenv.Command(t, "git").Path
 	execPathOutput, execPathErr := exec.Command(unguardedGit, "--exec-path").Output()
 	if execPathErr == nil {
 		gitBesideExecPath := filepath.Join(filepath.Dir(filepath.Dir(strings.TrimSpace(string(execPathOutput)))), "bin", "git")
@@ -272,14 +278,13 @@ func TestGitMutationGuardRunsWithoutTempfilesUnderSystemBash(t *testing.T) {
 	guardContent, err := os.ReadFile(fixture.guard)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(guardCopy, guardContent, 0o700))
-	realGit, err := exec.LookPath("git")
-	require.NoError(t, err)
+	realGit := testenv.Command(t, "git").Path
 	readOnlyTemp := filepath.Join(fixture.validationDir, "read-only-tmp")
 	require.NoError(t, os.Mkdir(readOnlyTemp, 0o500))
 
 	command := exec.Command("/bin/bash", guardCopy, "status", "--short")
 	command.Dir = fixture.candidate
-	command.Env = replaceEnvironment(os.Environ(), map[string]string{
+	command.Env = testenv.EnvironmentMap(map[string]string{
 		"PATH":                  filepath.Dir(guardCopy) + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"TMPDIR":                readOnlyTemp,
 		"TRUSTED_ROOT_CHECKOUT": fixture.root,
@@ -289,6 +294,34 @@ func TestGitMutationGuardRunsWithoutTempfilesUnderSystemBash(t *testing.T) {
 }
 
 func TestConcurrentPRRunsUseDistinctWorktreesAndValidationDirs(t *testing.T) {
+	outerGuardDirectory := filepath.Join(t.TempDir(), "git-guard-bin")
+	require.NoError(t, os.Mkdir(outerGuardDirectory, 0o755))
+	outerGuardMarker := filepath.Join(t.TempDir(), "outer-guard-used")
+	require.NoError(t, os.WriteFile(filepath.Join(outerGuardDirectory, "git"), fmt.Appendf(nil,
+		"#!/bin/sh\nprintf 'outer guard used\\n' >> %s\nexit 99\n",
+		shellQuote(outerGuardMarker),
+	), 0o755))
+	t.Setenv("PATH", outerGuardDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	for name, value := range map[string]string{
+		"EXPECTED_PR_NUMBER":         "999999",
+		"EXPECTED_WORKTREE":          "/inherited/outer/candidate",
+		"EXPECTED_HEAD":              strings.Repeat("f", 40),
+		"EXPECTED_FUTURE_BINDING":    "must-not-leak",
+		"AI_WORKTREE_PR":             "999999",
+		"AI_WORKTREE_PATH":           "/inherited/outer/candidate",
+		"AI_WORKTREE_EXPECTED_HEAD":  strings.Repeat("e", 40),
+		"AI_WORKTREE_BINDING_FILE":   "/inherited/outer/binding.json",
+		"AI_WORKTREE_FUTURE_BINDING": "must-not-leak",
+		"TRUSTED_ROOT_CHECKOUT":      "/inherited/outer/root",
+		"AI_GIT_REAL_PATH":           "/inherited/outer/git",
+		"AI_GIT_ORIGINAL_PATH":       "/inherited/outer/original-git",
+		"AI_REVIEW_HEAD":             strings.Repeat("d", 40),
+		"VALIDATION_RUN_DIR":         "/inherited/outer/validation",
+		"VALIDATION_RUN_ID":          "inherited-outer-run",
+	} {
+		t.Setenv(name, value)
+	}
+
 	fixture := newWorktreeBindingFixture(t)
 	parent := filepath.Dir(fixture.candidate)
 	secondCandidate := filepath.Join(parent, "candidate-456")
@@ -298,27 +331,21 @@ func TestConcurrentPRRunsUseDistinctWorktreesAndValidationDirs(t *testing.T) {
 	secondBinding := filepath.Join(parent, "binding-456.json")
 	writeBindingFile(t, secondBinding, 456, secondCandidate, fixture.head, fixture.root)
 
-	firstReady := filepath.Join(parent, "ready-123")
-	secondReady := filepath.Join(parent, "ready-456")
 	firstCWD := filepath.Join(parent, "cwd-123")
 	secondCWD := filepath.Join(parent, "cwd-456")
 	first := fixture.command(123, fixture.candidate, fixture.validationDir, fixture.bindingFile, map[string]string{
-		"TEST_AGENT_CWD":   firstCWD,
-		"TEST_READY":       firstReady,
-		"TEST_OTHER_READY": secondReady,
+		"TEST_AGENT_CWD": firstCWD,
+		"TEST_SYNC_FDS":  "1",
 	})
 	second := fixture.command(456, secondCandidate, secondValidation, secondBinding, map[string]string{
-		"TEST_AGENT_CWD":   secondCWD,
-		"TEST_READY":       secondReady,
-		"TEST_OTHER_READY": firstReady,
+		"TEST_AGENT_CWD": secondCWD,
+		"TEST_SYNC_FDS":  "1",
 	})
-	var firstOutput, secondOutput bytes.Buffer
-	first.Stdout, first.Stderr = &firstOutput, &firstOutput
-	second.Stdout, second.Stderr = &secondOutput, &secondOutput
-	require.NoError(t, first.Start())
-	require.NoError(t, second.Start())
-	require.NoError(t, first.Wait(), firstOutput.String())
-	require.NoError(t, second.Wait(), secondOutput.String())
+	result, err := testenv.RunSynchronized(t, reviewLoopFixtureTimeout,
+		testenv.SynchronizedCommand{Name: "PR 123", Command: first},
+		testenv.SynchronizedCommand{Name: "PR 456", Command: second},
+	)
+	require.NoError(t, err)
 
 	require.NotEqual(t, fixture.candidate, secondCandidate)
 	require.NotEqual(t, fixture.validationDir, secondValidation)
@@ -326,24 +353,50 @@ func TestConcurrentPRRunsUseDistinctWorktreesAndValidationDirs(t *testing.T) {
 	require.NotEqual(t, secondCandidate, secondValidation)
 	require.Equal(t, canonicalTestPath(t, fixture.candidate), strings.TrimSpace(readTestFile(t, firstCWD)))
 	require.Equal(t, canonicalTestPath(t, secondCandidate), strings.TrimSpace(readTestFile(t, secondCWD)))
-	require.Contains(t, firstOutput.String(), "VALIDATION_EXECUTED reason=no_successful_receipt")
-	require.Contains(t, secondOutput.String(), "VALIDATION_EXECUTED reason=no_successful_receipt")
-	require.NotContains(t, firstOutput.String(), "VALIDATION_REUSED_EXACT_STATE")
-	require.NotContains(t, secondOutput.String(), "VALIDATION_REUSED_EXACT_STATE")
+	require.Contains(t, result.Output["PR 123"], "VALIDATION_EXECUTED reason=no_successful_receipt")
+	require.Contains(t, result.Output["PR 456"], "VALIDATION_EXECUTED reason=no_successful_receipt")
+	require.NotContains(t, result.Output["PR 123"], "VALIDATION_REUSED_EXACT_STATE")
+	require.NotContains(t, result.Output["PR 456"], "VALIDATION_REUSED_EXACT_STATE")
+	require.NoFileExists(t, outerGuardMarker, "the enclosing AI run's Git guard must never execute")
 }
 
-func TestWithoutOuterGitGuard(t *testing.T) {
-	t.Parallel()
+func TestConcurrentPRRunAbortsSiblingWhenPeerFailsBeforeReady(t *testing.T) {
+	fixture := newWorktreeBindingFixture(t)
+	parent := filepath.Dir(fixture.candidate)
+	secondCandidate := filepath.Join(parent, "candidate-456")
+	runGit(t, fixture.root, "worktree", "add", "--detach", secondCandidate, fixture.head)
+	secondValidation := filepath.Join(parent, "validation-456")
+	require.NoError(t, os.MkdirAll(secondValidation, 0o755))
+	secondBinding := filepath.Join(parent, "binding-456.json")
+	writeBindingFile(t, secondBinding, 456, secondCandidate, fixture.head, fixture.root)
+	firstPID := filepath.Join(parent, "reviewer-123.pid")
+	secondPID := filepath.Join(parent, "reviewer-456.pid")
 
-	environment := []string{
-		"PATH=" + strings.Join([]string{"/usr/bin", "/tmp/git-guard-bin", "/bin"}, string(os.PathListSeparator)),
-		"OTHER=value",
-	}
-
-	require.Equal(t, []string{
-		"PATH=" + strings.Join([]string{"/usr/bin", "/bin"}, string(os.PathListSeparator)),
-		"OTHER=value",
-	}, withoutOuterGitGuard(environment))
+	first := fixture.command(123, fixture.candidate, fixture.validationDir, fixture.bindingFile, map[string]string{
+		"TEST_REVIEWER_PID": firstPID,
+		"TEST_SYNC_FDS":     "1",
+	})
+	second := fixture.command(456, secondCandidate, secondValidation, secondBinding, map[string]string{
+		"TEST_FAIL_BEFORE_READY": "forced peer failure before ready",
+		"TEST_REVIEWER_PID":      secondPID,
+		"TEST_SYNC_FDS":          "1",
+	})
+	result, err := testenv.RunSynchronized(t, reviewLoopFixtureTimeout,
+		testenv.SynchronizedCommand{Name: "waiting peer", Command: first},
+		testenv.SynchronizedCommand{Name: "failed peer", Command: second},
+	)
+	require.Error(t, err)
+	require.Less(t, result.Duration, 30*time.Second, err.Error())
+	t.Logf("bounded peer failure completed in %s", result.Duration)
+	require.Error(t, result.Exit["waiting peer"])
+	_, failedPeerExited := result.Exit["failed peer"]
+	require.True(t, failedPeerExited, "the failed review-loop process must be reaped: %v", err)
+	require.Contains(t, err.Error(), "failed peer failed before all peers were ready")
+	require.Contains(t, err.Error(), "forced peer failure before ready")
+	require.Contains(t, err.Error(), "waiting peer stdout/stderr:")
+	require.Contains(t, err.Error(), "failed peer stdout/stderr:")
+	requireProcessGone(t, firstPID)
+	requireProcessGone(t, secondPID)
 }
 
 func newWorktreeBindingFixture(t *testing.T) worktreeBindingFixture {
@@ -369,9 +422,16 @@ func newWorktreeBindingFixture(t *testing.T) worktreeBindingFixture {
 	reviewer := filepath.Join(parent, "reviewer.sh")
 	require.NoError(t, os.WriteFile(reviewer, []byte(`#!/usr/bin/env bash
 set -euo pipefail
-if [[ -n "${TEST_READY:-}" ]]; then
-    : > "$TEST_READY"
-    while [[ ! -e "$TEST_OTHER_READY" ]]; do :; done
+if [[ -n "${TEST_REVIEWER_PID:-}" ]]; then
+    printf '%s\n' "$$" > "$TEST_REVIEWER_PID"
+fi
+if [[ -n "${TEST_FAIL_BEFORE_READY:-}" ]]; then
+    printf '%s\n' "$TEST_FAIL_BEFORE_READY" >&2
+    exit 77
+fi
+if [[ "${TEST_SYNC_FDS:-}" == 1 ]]; then
+    printf 'ready\n' >&3
+    IFS= read -r _ <&4
 fi
 if [[ -n "${TEST_AGENT_CWD:-}" ]]; then pwd > "$TEST_AGENT_CWD"; fi
 case "${TEST_ROOT_MUTATION:-}" in
@@ -416,7 +476,7 @@ printf '{"decision":"APPROVE","head":"%s","worktree_fingerprint":"%s","previous_
 `), 0o755))
 
 	binary := filepath.Join(parent, "review-loop")
-	build := exec.Command("go", "build", "-o", binary, ".")
+	build := testenv.Command(t, "go", "build", "-o", binary, ".")
 	build.Dir = filepath.Join(repositoryRootForTests(t), "scripts", "reviewloop")
 	output, err := build.CombinedOutput()
 	require.NoError(t, err, string(output))
@@ -472,35 +532,33 @@ func (fixture worktreeBindingFixture) command(
 	}
 	command := exec.Command(fixture.binary, arguments...)
 	command.Dir = candidate
-	// These commands exercise nested review loops in synthetic repositories.
-	// An outer ai-pr-loop puts a Git guard bound to the real candidate first in
-	// PATH; inheriting it makes the nested setup fail before its reviewer can
-	// signal readiness, leaving the paired concurrent fixture waiting forever.
-	command.Env = replaceEnvironment(withoutOuterGitGuard(os.Environ()), extraEnvironment)
+	command.Env = testenv.EnvironmentMap(extraEnvironment)
 
 	return command
 }
 
-func withoutOuterGitGuard(environment []string) []string {
-	filtered := append([]string(nil), environment...)
-	for idx, entry := range filtered {
-		name, value, ok := strings.Cut(entry, "=")
-		if !ok || name != "PATH" {
-			continue
+func requireProcessGone(t *testing.T, pidFile string) {
+	t.Helper()
+	pidText := strings.TrimSpace(readTestFile(t, pidFile))
+	pid, err := strconv.Atoi(pidText)
+	require.NoError(t, err)
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		err = syscall.Kill(pid, 0)
+		if errors.Is(err, syscall.ESRCH) {
+			return
 		}
+		select {
+		case <-deadline.C:
+			require.ErrorIs(t, err, syscall.ESRCH, "reviewer process %d is still alive", pid)
 
-		paths := filepath.SplitList(value)
-		withoutGuard := paths[:0]
-		for _, path := range paths {
-			if filepath.Base(filepath.Clean(path)) == "git-guard-bin" {
-				continue
-			}
-			withoutGuard = append(withoutGuard, path)
+			return
+		case <-ticker.C:
 		}
-		filtered[idx] = "PATH=" + strings.Join(withoutGuard, string(os.PathListSeparator))
 	}
-
-	return filtered
 }
 
 func readTestFile(t *testing.T, path string) string {

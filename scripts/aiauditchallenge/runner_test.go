@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 const (
@@ -404,16 +406,17 @@ func (f *fixture) run(t *testing.T, result map[string]any) (string, error) {
 	writeJSON(t, f.providerResult, result)
 	command := exec.Command("bash", filepath.Join(f.checkout, "scripts", "ai-audit-challenge"), f.sourceReport, "--output", f.outputPath)
 	command.Dir = f.checkout
-	command.Env = append(os.Environ(),
-		"FAKE_CODEX_RESULT="+f.providerResult,
-		"FAKE_CODEX_DIRTY_FILE="+f.dirtyFile,
-		"FAKE_CODEX_SOURCE_REPORT="+f.sourceReport,
-		"FAKE_CODEX_REPLACEMENT_REPORT="+f.replacementReport,
-		"HOME="+t.TempDir(),
+	environment := []string{
+		"FAKE_CODEX_RESULT=" + f.providerResult,
+		"FAKE_CODEX_DIRTY_FILE=" + f.dirtyFile,
+		"FAKE_CODEX_SOURCE_REPORT=" + f.sourceReport,
+		"FAKE_CODEX_REPLACEMENT_REPORT=" + f.replacementReport,
+		"HOME=" + t.TempDir(),
 		"CODEX_HOME=",
-		"PATH="+f.fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
-	)
-	command.Env = append(command.Env, goCaches(t)...)
+		"PATH=" + f.fakeBin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+	environment = append(environment, goCaches(t)...)
+	command.Env = testenv.Environment(environment...)
 	output, err := command.CombinedOutput()
 
 	return string(output), err
@@ -507,7 +510,7 @@ func fileDigest(t *testing.T, path string) string {
 // network.
 func goCaches(t *testing.T) []string {
 	t.Helper()
-	command := exec.Command("go", "env", "GOCACHE", "GOMODCACHE")
+	command := testenv.Command(t, "go", "env", "GOCACHE", "GOMODCACHE")
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, string(output))
 	values := strings.Split(strings.TrimSpace(string(output)), "\n")
@@ -576,7 +579,7 @@ func runGit(t *testing.T, directory string, arguments ...string) {
 
 func gitOutput(t *testing.T, directory string, arguments ...string) string {
 	t.Helper()
-	command := exec.Command("git", arguments...)
+	command := testenv.Command(t, "git", arguments...)
 	command.Dir = directory
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, string(output))

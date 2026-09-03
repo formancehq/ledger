@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 const (
@@ -262,26 +264,10 @@ func runAdapter(t *testing.T, fixture adapterFixture, extraEnvironment map[strin
 
 	cmd := exec.Command("bash", fixture.adapterPath)
 	cmd.Dir = fixture.repositoryRoot
-	cmd.Env = replaceEnvironment(os.Environ(), environment)
+	cmd.Env = testenv.EnvironmentMap(environment)
 	output, err := cmd.CombinedOutput()
 
 	return string(output), err
-}
-
-func replaceEnvironment(current []string, replacements map[string]string) []string {
-	result := make([]string, 0, len(current)+len(replacements))
-	for _, item := range current {
-		key, _, found := strings.Cut(item, "=")
-		if _, replaced := replacements[key]; found && replaced {
-			continue
-		}
-		result = append(result, item)
-	}
-	for key, value := range replacements {
-		result = append(result, key+"="+value)
-	}
-
-	return result
 }
 
 func writeFile(t *testing.T, path, content string, mode os.FileMode) {
@@ -299,7 +285,7 @@ func readFile(t *testing.T, path string) string {
 
 func runCommand(t *testing.T, directory, name string, arguments ...string) string {
 	t.Helper()
-	cmd := exec.Command(name, arguments...)
+	cmd := testenv.Command(t, name, arguments...)
 	if directory != "" {
 		cmd.Dir = directory
 	}

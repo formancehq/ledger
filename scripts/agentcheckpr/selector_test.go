@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 func TestSelectorEnvironmentDropsParentReviewBinding(t *testing.T) {
@@ -32,7 +34,7 @@ func TestSelectorEnvironmentDropsParentReviewBinding(t *testing.T) {
 	}
 
 	environment := map[string]string{}
-	for _, value := range selectorEnvironment() {
+	for _, value := range testenv.Environment() {
 		name, contents, _ := strings.Cut(value, "=")
 		environment[name] = contents
 	}
@@ -123,7 +125,7 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 				runGit(t, repository, "-c", "user.name=Agent Check PR Test", "-c", "user.email=agent-check-pr@example.com", "commit", "-m", "changes")
 			}
 
-			stdout, _ := runSelectorList(t, repository, selectorEnvironment("AI_REVIEW_BASE_SHA="+baseSHA))
+			stdout, _ := runSelectorList(t, repository, testenv.Environment("AI_REVIEW_BASE_SHA="+baseSHA))
 			require.Equal(t, testCase.expected, strings.Fields(stdout))
 		})
 	}
@@ -152,7 +154,7 @@ func TestSelectorListKeepsDiagnosticsOutOfStructuredStdout(t *testing.T) {
 		"XDG_CACHE_HOME":      "cache",
 		"GOLANGCI_LINT_CACHE": "cache/golangci-lint",
 	}
-	environment := selectorEnvironment(
+	environment := testenv.Environment(
 		"AI_REVIEW_BASE_SHA="+baseSHA,
 		"VALIDATION_RUN_DIR="+runDirectory,
 		"VALIDATION_RUN_ID=selector-test",
@@ -166,46 +168,6 @@ func TestSelectorListKeepsDiagnosticsOutOfStructuredStdout(t *testing.T) {
 	stdout, stderr := runSelectorList(t, repository, environment)
 	require.Equal(t, "agent-check-full\ntest-operator\n", stdout, "stdout must contain structured gates only")
 	require.Contains(t, stderr, "LINT_ISOLATION_GATE=PASS (", "stderr may contain validation diagnostics")
-}
-
-// The selector runs against a synthetic repository in these tests. A parent
-// review loop may bind its own candidate worktree through these variables and
-// prepend a Git guard that depends on that binding. Carrying either into the
-// child process would reject the synthetic repository before exercising the
-// test case.
-func selectorEnvironment(overrides ...string) []string {
-	parentGitGuard := ""
-	if validationRunDirectory := os.Getenv("VALIDATION_RUN_DIR"); validationRunDirectory != "" {
-		parentGitGuard = filepath.Join(validationRunDirectory, "git-guard-bin")
-	}
-
-	environment := make([]string, 0, len(os.Environ())+len(overrides))
-	for _, value := range os.Environ() {
-		name, contents, _ := strings.Cut(value, "=")
-		switch name {
-		case "EXPECTED_PR_NUMBER",
-			"EXPECTED_WORKTREE",
-			"EXPECTED_HEAD",
-			"AI_WORKTREE_PR",
-			"AI_WORKTREE_PATH",
-			"AI_WORKTREE_EXPECTED_HEAD",
-			"TRUSTED_ROOT_CHECKOUT":
-			continue
-		case "PATH":
-			paths := strings.Split(contents, string(os.PathListSeparator))
-			filteredPaths := paths[:0]
-			for _, path := range paths {
-				if parentGitGuard != "" && filepath.Clean(path) == filepath.Clean(parentGitGuard) {
-					continue
-				}
-				filteredPaths = append(filteredPaths, path)
-			}
-			value = name + "=" + strings.Join(filteredPaths, string(os.PathListSeparator))
-		}
-		environment = append(environment, value)
-	}
-
-	return append(environment, overrides...)
 }
 
 func runSelectorList(t *testing.T, repository string, environment []string) (string, string) {
@@ -301,7 +263,7 @@ func runGit(t *testing.T, directory string, arguments ...string) {
 func runGitOutput(t *testing.T, directory string, arguments ...string) string {
 	t.Helper()
 
-	command := exec.Command("git", arguments...)
+	command := testenv.Command(t, "git", arguments...)
 	command.Dir = directory
 	var stderr bytes.Buffer
 	command.Stderr = &stderr

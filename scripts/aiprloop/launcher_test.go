@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 func TestHelpDoesNotRequirePRMetadata(t *testing.T) {
@@ -19,7 +21,7 @@ func TestHelpDoesNotRequirePRMetadata(t *testing.T) {
 	writeExecutable(t, filepath.Join(fakeBin, "gh"), "#!/usr/bin/env bash\nexit 97\n")
 
 	command := exec.Command("bash", launcherPath(t), "--help")
-	command.Env = append(os.Environ(), "PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	command.Env = testenv.Environment("PATH=" + fakeBin + string(os.PathListSeparator) + os.Getenv("PATH"))
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, string(output))
 	require.Contains(t, string(output), "Usage: bash scripts/ai-pr-loop")
@@ -461,19 +463,20 @@ func runLauncherWithFlags(
 	arguments := append([]string{filepath.Join(fixture.checkout, "scripts", "ai-pr-loop"), "123"}, flags...)
 	command := exec.Command("bash", arguments...)
 	command.Dir = fixture.checkout
-	command.Env = append(os.Environ(),
-		"PATH="+fixture.fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"TEST_BASE_SHA="+fixture.baseSHA,
-		"TEST_HEAD_SHA="+fixture.headSHA,
-		"TEST_REMOTE="+fixture.remote,
-		"TEST_ADVANCED_BASE_SHA="+fixture.advancedBaseSHA,
-		"TEST_CAPTURE_FILE="+capturePath,
-		"TEST_TRIAGE_DECISION="+triage.decision,
-		"TEST_TRIAGE_BASE_SHA="+triage.baseSHA,
-		"TEST_TRIAGE_HEAD_SHA="+triage.headSHA,
+	environment := []string{
+		"PATH=" + fixture.fakeBin + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"TEST_BASE_SHA=" + fixture.baseSHA,
+		"TEST_HEAD_SHA=" + fixture.headSHA,
+		"TEST_REMOTE=" + fixture.remote,
+		"TEST_ADVANCED_BASE_SHA=" + fixture.advancedBaseSHA,
+		"TEST_CAPTURE_FILE=" + capturePath,
+		"TEST_TRIAGE_DECISION=" + triage.decision,
+		"TEST_TRIAGE_BASE_SHA=" + triage.baseSHA,
+		"TEST_TRIAGE_HEAD_SHA=" + triage.headSHA,
 		fmt.Sprintf("TEST_TRIAGE_EXIT_CODE=%d", triage.exitCode),
-	)
-	command.Env = append(command.Env, extraEnv...)
+	}
+	environment = append(environment, extraEnv...)
+	command.Env = testenv.Environment(environment...)
 	output, err := command.CombinedOutput()
 
 	return string(output), err
@@ -534,7 +537,7 @@ func runGit(t *testing.T, directory string, arguments ...string) {
 
 func runGitOutput(t *testing.T, directory string, arguments ...string) string {
 	t.Helper()
-	command := exec.Command("git", arguments...)
+	command := testenv.Command(t, "git", arguments...)
 	command.Dir = directory
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, fmt.Sprintf("git %s:\n%s", strings.Join(arguments, " "), output))

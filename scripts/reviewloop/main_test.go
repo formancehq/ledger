@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/scripts/internal/testenv"
 )
 
 func TestDecideApprove(t *testing.T) {
@@ -453,7 +455,7 @@ func TestStageCandidateAgentInputsRejectsSymlinkEscape(t *testing.T) {
 
 func TestValidationReceiptReviewLoopFlows(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "review-loop")
-	build := exec.Command("go", "build", "-o", binary, ".")
+	build := testenv.Command(t, "go", "build", "-o", binary, ".")
 	build.Dir = "."
 	output, err := build.CombinedOutput()
 	require.NoError(t, err, string(output))
@@ -673,7 +675,7 @@ fi
 		"--state-dir", filepath.Join(fixtureRoot, "review-state"),
 	)
 	command.Dir = candidate
-	command.Env = append(os.Environ(),
+	command.Env = testenv.Environment(
 		"TEST_REVIEW_MUTATION="+options.reviewMutation,
 		"TEST_SECOND_FIX="+strconv.FormatBool(options.secondFix),
 		"TEST_VALIDATION_EXIT="+options.validationExit,
@@ -722,7 +724,7 @@ exit 42
 `), 0o755))
 
 	binary := filepath.Join(t.TempDir(), "review-loop")
-	build := exec.Command("go", "build", "-o", binary, ".")
+	build := testenv.Command(t, "go", "build", "-o", binary, ".")
 	build.Dir = "."
 	output, err := build.CombinedOutput()
 	require.NoError(t, err, string(output))
@@ -741,7 +743,7 @@ exit 42
 		"--state-dir", filepath.Join(candidate, ".review-state"),
 	)
 	command.Dir = candidate
-	command.Env = append(os.Environ(), "TEST_VALIDATION_BASE="+validationBase)
+	command.Env = testenv.Environment("TEST_VALIDATION_BASE=" + validationBase)
 	output, err = command.CombinedOutput()
 	require.Error(t, err, string(output))
 	require.Contains(t, string(output), "local validation before readiness")
@@ -768,6 +770,7 @@ printf 'changed by validation\n' > base.txt
 		"--state-dir", filepath.Join(candidate, ".review-state"),
 	)
 	command.Dir = candidate
+	command.Env = testenv.Environment()
 	output, err = command.CombinedOutput()
 	require.Error(t, err, string(output))
 	require.Contains(t, string(output), "local validation changed the approved workspace")
@@ -785,7 +788,7 @@ func writeReviewResult(t *testing.T, content string) string {
 func runGit(t *testing.T, directory string, arguments ...string) {
 	t.Helper()
 
-	cmd := exec.Command("git", arguments...)
+	cmd := testenv.Command(t, "git", arguments...)
 	cmd.Dir = directory
 	output, err := cmd.CombinedOutput()
 	require.NoError(t, err, string(output))
@@ -794,7 +797,7 @@ func runGit(t *testing.T, directory string, arguments ...string) {
 func runGitOutput(t *testing.T, directory string, arguments ...string) string {
 	t.Helper()
 
-	cmd := exec.Command("git", arguments...)
+	cmd := testenv.Command(t, "git", arguments...)
 	cmd.Dir = directory
 	output, err := cmd.CombinedOutput()
 	require.NoError(t, err, string(output))
