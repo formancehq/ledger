@@ -150,11 +150,11 @@ Follow these repository sources as authoritative instructions:
 - docs/technical/agent-context.md
 - docs/technical/contributing/ai-audit.md
 
-Read the audit domain manifest path supplied below. Treat that manifest as the explicit scope, invariant set, and adversarial checklist for this campaign.
+Read the audit domain manifest path supplied below. Treat that manifest as the explicit scope, invariant set, and adversarial checklist for this audit.
 
 Audit the exact committed HEAD supplied below. The worktree is clean. Do not modify files. Do not create commits, issues, comments, patches, or suggested edits. Your job is defect discovery and evidence collection only.
 
-Review the implementation, tests, call paths, persistence boundaries, error handling, concurrency assumptions, and relevant technical documentation needed to establish or challenge each invariant. Follow important calls outside the manifest's path globs when required to understand a concrete failure path, but keep findings relevant to the campaign purpose.
+Review the implementation, tests, call paths, persistence boundaries, error handling, concurrency assumptions, and relevant technical documentation needed to establish or challenge each invariant. Follow important calls outside the manifest's path globs when required to understand a concrete failure path, but keep findings relevant to the audit purpose.
 
 Act adversarially. Ask what happens on crash, retry, interruption, partial failure, stale state, reordered events, duplicate execution, corrupted input, leadership change, and concurrent operations when relevant.
 

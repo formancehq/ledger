@@ -43,7 +43,6 @@ When current code and authoritative documentation disagree, stop treating the do
 | `internal/bootstrap/**` | `docs/technical/architecture/overview.md`, relevant subsystem docs, and `docs/ops/deployment.md` for persisted/config behavior |
 | tests only | `docs/technical/contributing/testing.md` plus the subsystem documentation for the behavior under test |
 | contributor/build tooling | `docs/technical/contributing/getting-started.md`, `docs/technical/contributing/development.md`, `docs/technical/contributing/conventions.md`, `docs/technical/contributing/local-validation.md` as relevant |
-| `scripts/aicampaign/**`, `scripts/ai-campaign*` | `docs/technical/contributing/ai-campaign.md`, `docs/technical/contributing/testing.md`; also `docs/technical/contributing/product-technical-traceability.md` for distributed coordination semantics |
 
 If a touched production area has no matching row, do not assume that no subsystem rules apply. Identify its callers/callees or owning subsystem first, then load that subsystem's documentation before editing.
 
@@ -121,13 +120,13 @@ Decide explicitly whether the value only gates proposal admission or changes the
 Use the native deep-audit workflow when the request seeks latent correctness defects across an immutable repository state in a reusable domain, such as persistence/restore/replay, Raft membership/leadership, accounting invariants, idempotency/partial failures, read consistency, or concurrency/lifecycle.
 
 1. Check `docs/technical/audits/` for a matching domain manifest.
-2. If a manifest exists, read `docs/technical/contributing/ai-audit.md` and run `bash scripts/ai-audit <domain>`. Keep the manifest as the campaign scope instead of replacing it with an ad-hoc audit prompt.
+2. If a manifest exists, read `docs/technical/contributing/ai-audit.md` and run `bash scripts/ai-audit <domain>`. Keep the manifest as the audit scope instead of replacing it with an ad-hoc audit prompt.
 3. Qualify the structured result with `bash scripts/ai-audit-challenge <audit-result>` after reading `docs/technical/contributing/ai-audit-challenge.md`. The challenge pass independently tries to disprove every finding; a first-pass finding is not a confirmed engineering defect.
 4. Treat Jira publication as a separate, later step. `scripts/ai-audit-jira` consumes a qualified report, and publication requires explicit authorization; neither the audit nor challenge pass creates issues.
-5. For cross-session coordination, read
-   `docs/technical/contributing/ai-campaign.md` and use
-   `scripts/ai-campaign`. Campaign state is a local projection; it never
-   replaces GitHub, Jira, Git, or native audit provenance.
+5. For a confirmed finding, use Jira as the durable backlog and assignment
+   mechanism. Before starting work, check its Jira assignment and existing Git
+   branches or pull requests, then use the ordinary branch/worktree/PR workflow.
+   Do not create a parallel coordination record.
 
 If no manifest matches, first decide whether the requested correctness scope is durable and reusable. If it is, create and review a manifest before running the native audit. If it is not, keep the work as a task-specific investigation rather than mechanically creating a new audit domain.
 
