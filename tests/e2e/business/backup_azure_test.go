@@ -30,8 +30,8 @@ const (
 	azuriteAccountKey  = "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
 
 	backupAzureContainer = "backup-e2e"
-	azureManifestKey     = "test-cluster/backups/manifest.json"
-	azureBackupDataPfx   = "test-cluster/backups/data/"
+	azureManifestKey     = "test-cluster/manifest.json"
+	azureBackupDataPfx   = "test-cluster/data/"
 )
 
 // readAzureBackupManifest fetches and parses the backup manifest from Azure Blob.
