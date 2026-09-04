@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -29,6 +30,51 @@ import (
 // ErrStoreClosed is returned when a store operation is attempted after the
 // Pebble database has been closed. This prevents panics during shutdown races.
 var ErrStoreClosed = errors.New("store closed")
+
+const (
+	pebbleOpenMaxRetries        = 10
+	pebbleOpenInitialRetryDelay = 100 * time.Millisecond
+	pebbleOpenMaxRetryDelay     = 5 * time.Second
+)
+
+type pebbleOpenFunc func(string, *pebble.Options) (*pebble.DB, error)
+
+func isRetryablePebbleOpenError(err error) bool {
+	return errors.Is(err, syscall.EAGAIN)
+}
+
+// openPebbleWithRetry absorbs the short lock-handoff window after a hard-killed
+// process exits. Ten capped waits total 26.3 seconds; every error except EAGAIN
+// still fails on the first attempt.
+func openPebbleWithRetry(
+	path string,
+	opts *pebble.Options,
+	logger logging.Logger,
+	open pebbleOpenFunc,
+	sleep func(time.Duration),
+) (*pebble.DB, error) {
+	delay := pebbleOpenInitialRetryDelay
+
+	for retry := 0; ; retry++ {
+		db, err := open(path, opts)
+		if err == nil {
+			return db, nil
+		}
+
+		if !isRetryablePebbleOpenError(err) || retry >= pebbleOpenMaxRetries {
+			return nil, err
+		}
+
+		logger.WithFields(map[string]any{
+			"retry": retry + 1,
+			"delay": delay.String(),
+			"error": err,
+		}).Infof("Pebble database lock is temporarily unavailable; retrying open")
+		sleep(delay)
+
+		delay = min(delay*2, pebbleOpenMaxRetryDelay)
+	}
+}
 
 const (
 	liveDir = "live"
@@ -518,7 +564,7 @@ func NewStore(
 
 	openStart := time.Now()
 
-	db, err = pebble.Open(liveDir, opts)
+	db, err = openPebbleWithRetry(liveDir, opts, logger, pebble.Open, time.Sleep)
 	if err != nil {
 		return nil, fmt.Errorf("opening pebble database: %w", err)
 	}
