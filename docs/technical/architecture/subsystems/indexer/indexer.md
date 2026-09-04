@@ -25,6 +25,14 @@ flowchart LR
 
 The ticker is intentional: an indexer that wakes only on signal would stall on signal-channel loss or under heavy GC pressure. The 100 ms cap bounds query-staleness even in the worst case.
 
+Event-history GC uses the same wakes but is edge-triggered rather than periodic.
+Each metadata (`0x01`) and entity-exists (`0x02`) zone records the stable
+`(lease-bounded watermark, committed write epoch)` tuple covered by its last
+complete traversal. Once both zones complete, idle ticks perform no event-zone
+iteration until the watermark advances or a successfully committed batch adds
+an event to the affected zone. The write epochs are per-zone, so a
+metadata-only event does not rescan entity existence.
+
 ### Goroutine ownership
 
 `Builder.Start()` wraps `Builder.loop(ctx)` in a `worker.New().RunCtx(...)` (`internal/pkg/worker`). The worker owns goroutine lifetime; `Builder.Stop()` cancels the worker's context and waits for the loop to drain. There is **no panic recovery** inside the loop — an indexer panic is a non-recoverable invariant violation (see `feedback_no_soft_wall_crash_on_invariant`).
@@ -74,6 +82,11 @@ flowchart TB
 - If the batch is non-empty (or a checkpoint action is pending), the progress cursor is **written into the same batch** and the batch is committed in one `batch.Commit()`. This makes "index writes" and "indexer progress" atomic — a crash mid-pass cannot leave the progress ahead of the data.
 - If the batch is **empty** (no log type in the range produced index writes), the Pebble batch is skipped entirely and the progress cursor is persisted lazily on the next non-empty batch (or via a small dedicated batch at loop exit). This reduces fsyncs to `O(1)` per active batch instead of `O(1)` per tick.
 - Query-checkpoint create/delete operations force a batch boundary so the checkpoint state is never persisted across two passes.
+- `WriteBatch` records which event zones actually received an event-key put.
+  The builder snapshots that mask before commit and advances the corresponding
+  in-memory GC write epochs only after `Flush` succeeds. Failed, cancelled,
+  no-op, progress-only, range-delete-only and switch-only batches therefore do
+  not publish event work that was not committed.
 
 A retype mutates its pending-version cache and task cursor optimistically so
 later logs in the same fold batch see the new version and reset. Those specific

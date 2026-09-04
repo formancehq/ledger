@@ -67,9 +67,12 @@ type Builder struct {
 	// Max time budget per tick for backfill processing (default 50ms).
 	backfillBudget time.Duration
 
-	// Per-zone resume cursors for the incremental event GC (see
-	// runEventGC); nil resumes from the zone start.
-	eventGCResume map[byte][]byte
+	// Event GC scheduling is local and rebuildable. Each zone tracks the stable
+	// tuple covered by its active/completed cycle, while eventGCWriteEpoch moves
+	// only after a batch that appended events to that zone commits successfully.
+	eventGCCycles     map[byte]*eventGCCycleState
+	eventGCWriteEpoch map[byte]uint64
+	eventGCZone       eventGCZoneFunc
 
 	// Round-robin index for fair scheduling across backfill tasks.
 	nextBackfillIdx int

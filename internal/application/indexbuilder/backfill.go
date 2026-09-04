@@ -919,7 +919,7 @@ scan:
 		}
 	}
 
-	if err := b.wb.Flush(); err != nil {
+	if err := b.flushWriteBatch(); err != nil {
 		return false, fmt.Errorf("committing schema rewrite batch: %w", err)
 	}
 
@@ -996,7 +996,7 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 		return false, fmt.Errorf("gc v_old keyspace: %w", err)
 	}
 
-	if err := b.wb.Flush(); err != nil {
+	if err := b.flushWriteBatch(); err != nil {
 		return false, fmt.Errorf("committing deferred schema-rewrite switch: %w", err)
 	}
 
@@ -1416,7 +1416,7 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 				return err
 			}
 
-			if err := b.wb.Flush(); err != nil {
+			if err := b.flushWriteBatch(); err != nil {
 				return err
 			}
 		} else {

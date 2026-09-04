@@ -50,7 +50,13 @@ func (wb *WriteBatch) appendMetadataIndexEvent(
 		return err
 	}
 
-	return wb.put(MetadataIndexEventKeyV(kb, ledgerName, ns, metadataKey, version, encodedValue, entityID, seq, op), nil)
+	if err := wb.put(MetadataIndexEventKeyV(kb, ledgerName, ns, metadataKey, version, encodedValue, entityID, seq, op), nil); err != nil {
+		return err
+	}
+
+	wb.eventZones |= eventZoneMetadataIndex
+
+	return nil
 }
 
 func (wb *WriteBatch) appendEntityExistsEvent(
@@ -67,5 +73,11 @@ func (wb *WriteBatch) appendEntityExistsEvent(
 		return err
 	}
 
-	return wb.put(EntityExistsEventKeyV(kb, ledgerName, ns, metaKey, version, isNull, entityID, seq, op), nil)
+	if err := wb.put(EntityExistsEventKeyV(kb, ledgerName, ns, metaKey, version, isNull, entityID, seq, op), nil); err != nil {
+		return err
+	}
+
+	wb.eventZones |= eventZoneEntityExists
+
+	return nil
 }

@@ -76,6 +76,35 @@ A reader racing a pass therefore either registers first (and is covered by the
 watermark the pass sweeps with) or arrives after (and is refused). Publishing
 the floor after the walk would reopen exactly that gap.
 
+### Edge-triggered cycles
+
+The indexbuilder keeps an in-memory cycle state independently for `0x01` and
+`0x02`. An inactive zone starts a full traversal only when it has never
+completed one, its effective lease-bounded watermark advanced, or its local
+committed write epoch advanced. A traversal remains budgeted to 4,096 keys per
+wake and captures one stable `(watermark, write epoch)` tuple at its start.
+Changes observed while that traversal is active schedule another full pass;
+they never widen the watermark of a prefix that was already scanned. This is
+what makes a historical event written behind the resume key visible to the
+follow-up pass.
+
+`WriteBatch` marks a zone only after an event-key put succeeds. The builder
+captures those marks before `Flush`, commits, and only then increments the
+affected zone epochs. A failed or cancelled commit advances no epoch. Normal
+live-fold and rewrite events are generally stamped at or above the current
+watermark, so an epoch-triggered full pass is deliberately conservative; it
+principally protects historical and late writers such as index backfills
+without coupling GC correctness to producer-specific sequence assumptions.
+
+Cycle state and epochs are not persisted because the read store is a
+rebuildable per-replica projection. After restart, the first positive watermark
+therefore performs a conservative full traversal. Watermark zero keeps the
+existing fast path and performs no scan. A failed slice retains its exact
+resume key and captured tuple for retry, while the other zone continues and
+may complete independently. Iterator failures abort before the current group is
+settled or the pending delete batch is committed, so a partial traversal can
+never be recorded as completed coverage.
+
 ## Version activation
 
 A schema rewrite builds a new version's keyspace and stamps **every** event it

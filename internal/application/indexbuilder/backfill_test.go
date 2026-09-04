@@ -1402,6 +1402,8 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	assert.True(t, done)
 	assert.Equal(t, uint64(1), task.processedCount)
 	assert.Equal(t, matchingKey, task.rmapCursor)
+	assert.Positive(t, b.eventGCWriteEpoch[readstore.PrefixMetadataIndex], "schema rewrite commit dirties metadata events")
+	assert.Positive(t, b.eventGCWriteEpoch[readstore.PrefixEntityExists], "fresh pending row dirties exists events")
 
 	// Atomic switch GCs v_old in the same batch: the v=1 forward
 	// entry and the v=1 rmap row are gone; v=2 forward and rmap are
@@ -2123,6 +2125,8 @@ func TestAccountAssetBackfillLifecycle(t *testing.T) {
 	}
 
 	require.Empty(t, b.backfillTasks, "backfill task must be retired after catch-up")
+	assert.Zero(t, b.eventGCWriteEpoch[readstore.PrefixMetadataIndex], "postings-only backfill emits no metadata events")
+	assert.Zero(t, b.eventGCWriteEpoch[readstore.PrefixEntityExists], "postings-only backfill emits no exists events")
 
 	// Built: the atomic switch promoted current ← pending.
 	current, pending = b.versionFor(ledger, canonical)
@@ -2459,6 +2463,8 @@ func TestMetadataBackfillSkipsForeignLedgerLogs(t *testing.T) {
 	// passing vacuously on a backfill that indexed nothing at all.
 	taskRmap := readstore.ReverseMapPrefix(dal.NewKeyBuilder(), taskLedger, readstore.NamespaceAccount)
 	assert.NotZero(t, countKeysWithPrefix(t, b.readStore, taskRmap), "task ledger's rmap rows must be backfilled")
+	assert.Positive(t, b.eventGCWriteEpoch[readstore.PrefixMetadataIndex], "metadata backfill commit dirties metadata events")
+	assert.Positive(t, b.eventGCWriteEpoch[readstore.PrefixEntityExists], "fresh metadata backfill row dirties exists events")
 
 	// The foreign ledger's keyspace stayed untouched: it never indexed
 	// anything, so any row here is an orphan.

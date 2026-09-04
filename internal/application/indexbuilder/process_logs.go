@@ -230,7 +230,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				return cursor, err
 			}
 
-			if err := b.wb.Flush(); err != nil {
+			if err := b.flushWriteBatch(); err != nil {
 				b.logger.WithFields(map[string]any{
 					"batchSize": batchCount,
 					"lastSeq":   lastSeq,
