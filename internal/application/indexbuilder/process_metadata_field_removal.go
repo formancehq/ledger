@@ -60,7 +60,7 @@ func (b *Builder) handleRemovedMetadataFieldType(
 		// surface it loudly per CLAUDE.md invariant #7, exactly as
 		// bumpPendingVersion does. Returning nil would report success while
 		// skipping all three limbs at once: the forward-index range delete,
-		// the entity-exists range delete and the reverse-map point deletes.
+		// the entity-exists range delete and the reverse-map range tombstone.
 		return fmt.Errorf(
 			"invariant: no readstore write batch bound during RemovedMetadataFieldType for ledger %q field %q",
 			ledgerName, key)

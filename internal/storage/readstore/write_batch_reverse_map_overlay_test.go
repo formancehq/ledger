@@ -31,7 +31,10 @@ func TestWriteBatchReverseMapRangeOverlayHonorsOperationOrder(t *testing.T) {
 	wb := NewWriteBatch()
 	session := store.NewBatch()
 	wb.Init(session)
-	t.Cleanup(func() { _ = session.Cancel() })
+	t.Cleanup(func() {
+		// Best-effort teardown; assertion failures remain the primary signal.
+		_ = session.Cancel()
+	})
 
 	start := ReverseMapFieldPrefix(dal.NewKeyBuilder(), ledger, NamespaceAccount, field)
 	require.NoError(t, wb.DeleteReverseMapRange(start, IncrementBytes(start)))
