@@ -28,11 +28,14 @@ import (
 //   - Fold logs and buffer their index mutations into WriteBatch. Metadata
 //     replacements and deletes resolve their old encoding through the reverse
 //     map; known-absent transaction inserts skip that lookup.
-//   - If the batch produced writes, append progress to the same Pebble batch
-//     and Flush it atomically.
+//   - Persist the native cursor in the same Pebble batch. Only the batch that
+//     reaches the fixed source snapshot's final native sequence also publishes
+//     that snapshot's Raft applied-index certificate, atomically with its final
+//     projection writes.
 //
-// When a batch produces no index writes, the Pebble batch is skipped
-// entirely. Progress is persisted once at the end, reducing fsyncs to O(1).
+// Native progress for runs that produce no projection writes is coalesced until
+// the end. Raft progress can still advance without native movement when the
+// fixed source snapshot contains only no-op, failed, or technical Raft entries.
 func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.Time) (uint64, error) {
 	defer b.rollbackFoldBatch()
 
@@ -42,6 +45,23 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 	}
 
 	defer func() { _ = handle.Close() }()
+
+	if !b.projectionTargetActive {
+		targetAppliedIndex, err := query.ReadLastAppliedIndex(handle)
+		if err != nil {
+			return cursor, fmt.Errorf("reading target applied index: %w", err)
+		}
+		targetSequence, err := query.ReadLastSequence(handle)
+		if err != nil {
+			return cursor, fmt.Errorf("reading target log sequence: %w", err)
+		}
+
+		b.projectionTargetAppliedIndex = targetAppliedIndex
+		b.projectionTargetSequence = targetSequence
+		b.projectionTargetActive = true
+	}
+	targetAppliedIndex := b.projectionTargetAppliedIndex
+	targetSequence := b.projectionTargetSequence
 
 	// Per-batch schema resolver: memoizes LedgerInfo lookups for the
 	// duration of this processLogs call. Hot-path encode sites read from
@@ -89,21 +109,30 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		return nil
 	}
 
-	for {
+	for cursor < targetSequence {
 		var (
-			batchCount              int
-			lastSeq                 uint64
-			eof                     bool
-			pendingCheckpointCreate uint64
-			pendingCheckpointDelete uint64
+			batchCount               int
+			lastSeq                  uint64
+			eof                      bool
+			pendingCheckpointCreate  uint64
+			pendingCheckpointHorizon uint64
+			pendingCheckpointDelete  uint64
 		)
 
 		// Create a batch up front so write methods have a valid target.
 		batch := b.readStore.NewBatch()
 		b.initFoldBatch(batch)
 
+		// Native log sequences are contiguous. Bound this batch to the fixed
+		// target so later commits visible through a newly-opened continuation
+		// snapshot cannot pull the target forward between deadline-driven calls.
+		batchLimit := b.batchSize
+		if remaining := targetSequence - cursor; remaining < uint64(batchLimit) {
+			batchLimit = int(remaining)
+		}
+
 		// Iterate logs from Pebble and buffer index writes into the batch.
-		for batchCount < b.batchSize {
+		for batchCount < batchLimit {
 			log, err := logsCursor.Next()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -150,6 +179,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			// read index at this exact point.
 			if cqc, ok := log.GetPayload().GetType().(*commonpb.LogPayload_CreatedQueryCheckpoint); ok {
 				pendingCheckpointCreate = cqc.CreatedQueryCheckpoint.GetCheckpointId()
+				pendingCheckpointHorizon = cqc.CreatedQueryCheckpoint.GetAppliedIndex()
 
 				break
 			}
@@ -215,7 +245,8 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 		// Commit the batch if there are index writes or a checkpoint action pending.
 		hasCheckpointAction := pendingCheckpointCreate > 0 || pendingCheckpointDelete > 0
-		if !b.wb.Empty() || hasCheckpointAction {
+		completesTarget := lastSeq >= targetSequence
+		if !b.wb.Empty() || hasCheckpointAction || completesTarget {
 			// Write progress into the same batch before Flush commits it.
 			if err := b.readStore.WriteProgress(batch, lastSeq); err != nil {
 				_ = batch.Cancel()
@@ -228,6 +259,20 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				_ = batch.Cancel()
 
 				return cursor, err
+			}
+
+			certifiedHorizon := uint64(0)
+			if completesTarget {
+				certifiedHorizon = targetAppliedIndex
+			} else if pendingCheckpointHorizon > 0 {
+				certifiedHorizon = pendingCheckpointHorizon
+			}
+			if certifiedHorizon > 0 {
+				if err := b.readStore.WriteRaftProgress(batch, certifiedHorizon); err != nil {
+					_ = batch.Cancel()
+
+					return cursor, fmt.Errorf("writing read projection Raft progress: %w", err)
+				}
 			}
 
 			if err := b.flushWriteBatch(); err != nil {
@@ -251,9 +296,11 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		}
 
 		// Materialize a query checkpoint inline, at the exact moment the builder
-		// crosses the CreatedQueryCheckpoint log — so the live read index
+		// crosses the CreatedQueryCheckpoint log — so the normal read projection
 		// reflects precisely MaxSequence (the checkpoint's point-in-time). The
-		// materialization is atomic (temp dir + fsync + rename + .ready marker
+		// independently maintained audit projection may already be ahead; audit
+		// queries trim its candidates to the main checkpoint's audit sequence.
+		// The materialization is atomic (temp dir + fsync + rename + .ready marker
 		// last), so a reader never observes a partial checkpoint. There is no
 		// reconciler: this inline point is already exactly point-in-time. A
 		// node that crashes between rename and marker will never have a marker
@@ -261,8 +308,42 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		// return the retryable ErrCheckpointNotReady (Unavailable) until the
 		// client deletes and recreates it (see openCheckpointStores).
 		if cpID := pendingCheckpointCreate; cpID > 0 {
-			if err := b.createReadIndexCheckpoint(cpID); err != nil {
-				return cursor, err
+			disabled, rebuilding := b.readStore.AuditProjectionState()
+			if disabled || rebuilding {
+				state := "disabled"
+				if rebuilding {
+					state = "rebuilding"
+				}
+				b.logger.WithFields(map[string]any{
+					"checkpointID": cpID,
+					"horizon":      pendingCheckpointHorizon,
+					"auditState":   state,
+				}).Infof("Query checkpoint remains unavailable because the audit projection is not ready")
+			} else if err := b.readStore.WaitForAuditRaftProgress(ctx, pendingCheckpointHorizon); errors.Is(err, readstore.ErrAuditProjectionUnavailable) {
+				disabled, rebuilding := b.readStore.AuditProjectionState()
+				state := "unavailable"
+				if disabled {
+					state = "disabled"
+				} else if rebuilding {
+					state = "rebuilding"
+				}
+				b.logger.WithFields(map[string]any{
+					"checkpointID": cpID,
+					"horizon":      pendingCheckpointHorizon,
+					"auditState":   state,
+				}).Infof("Query checkpoint remains unavailable because the audit projection changed state while waiting")
+			} else if err != nil {
+				return cursor, fmt.Errorf("waiting for audit projection before query checkpoint %d: %w", cpID, err)
+			} else {
+				_, _, auditGeneration := b.readStore.AuditProjectionStateWithGeneration()
+				if err := b.createReadIndexCheckpoint(cpID, auditGeneration); errors.Is(err, readstore.ErrAuditProjectionUnavailable) {
+					b.logger.WithFields(map[string]any{
+						"checkpointID": cpID,
+						"horizon":      pendingCheckpointHorizon,
+					}).Infof("Query checkpoint remains unavailable because the audit projection changed during materialization")
+				} else if err != nil {
+					return cursor, err
+				}
 			}
 		}
 
@@ -296,6 +377,9 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		if eof {
 			break
 		}
+		if cursor >= targetSequence {
+			break
+		}
 
 		// Yield to backfills when a deadline is set.
 		if !deadline.IsZero() && time.Now().After(deadline) {
@@ -319,11 +403,42 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			return cursor, fmt.Errorf("writing applied proposal progress: %w", err)
 		}
 
+		if cursor >= targetSequence {
+			if err := b.readStore.WriteRaftProgress(batch, targetAppliedIndex); err != nil {
+				_ = batch.Cancel()
+
+				return cursor, fmt.Errorf("writing read projection Raft progress: %w", err)
+			}
+		}
+
 		if err := batch.Commit(); err != nil {
 			_ = batch.Cancel()
 
 			return cursor, fmt.Errorf("committing progress: %w", err)
 		}
+	}
+
+	// Raft can advance without producing a system log (no-op, rejected, or
+	// technical-only entries). Publish that fixed snapshot horizon even when
+	// there was no native cursor movement.
+	if cursor >= targetSequence {
+		progress, err := b.readStore.ReadRaftProgress()
+		if err != nil {
+			return cursor, fmt.Errorf("reading read projection Raft progress: %w", err)
+		}
+		if progress < targetAppliedIndex {
+			batch := b.readStore.NewBatch()
+			defer func() { _ = batch.Cancel() }()
+			if err := b.readStore.WriteRaftProgress(batch, targetAppliedIndex); err != nil {
+				return cursor, fmt.Errorf("writing read projection Raft progress: %w", err)
+			}
+			if err := batch.Commit(); err != nil {
+				return cursor, fmt.Errorf("committing read projection Raft progress: %w", err)
+			}
+			b.readStore.NotifyProgress()
+		}
+
+		b.projectionTargetActive = false
 	}
 
 	return cursor, nil
@@ -386,7 +501,7 @@ const checkpointLinkRetries = 5
 // under the final path. Called only from the inline indexing path, at the moment
 // the builder crosses the CreatedQueryCheckpoint log (so the snapshot is exactly
 // MaxSequence). There is no background reconciler.
-func (b *Builder) createReadIndexCheckpoint(checkpointID uint64) (err error) {
+func (b *Builder) createReadIndexCheckpoint(checkpointID, auditGeneration uint64) (err error) {
 	finalDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
 
 	// Already materialized on this replica (redundant call). Nothing to do.
@@ -471,8 +586,12 @@ func (b *Builder) createReadIndexCheckpoint(checkpointID uint64) (err error) {
 	// atomically-renamed directory. (tmpDir is already renamed away, so the
 	// deferred cleanup is a no-op if this fails; the markerless finalDir is then
 	// treated as not-ready and rebuilt on the next attempt.)
-	if err = readstore.MarkCheckpointReady(finalDir); err != nil {
+	ready, err := b.readStore.MarkCheckpointReadyAtAuditGeneration(finalDir, auditGeneration)
+	if err != nil {
 		return fmt.Errorf("marking read index checkpoint %d ready: %w", checkpointID, err)
+	}
+	if !ready {
+		return readstore.ErrAuditProjectionUnavailable
 	}
 
 	b.logger.WithFields(map[string]any{

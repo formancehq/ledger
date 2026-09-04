@@ -185,6 +185,7 @@ message QueryCheckpointState {
   fixed64 checkpoint_id = 1;
   fixed64 max_sequence = 2;            // next_sequence - 1 at creation
   common.Timestamp created_at = 3;    // Creation timestamp (from proposal date)
+  fixed64 applied_index = 4;           // Raft horizon of the checkpoint snapshot
 }
 
 message SetQueryCheckpointScheduleOrder {

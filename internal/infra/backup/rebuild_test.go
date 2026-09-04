@@ -509,17 +509,17 @@ func TestRebuildDelta_ReplaysQueryCheckpoint(t *testing.T) {
 
 	store := newRebuildTestStore(t)
 
-	created := func(seq, id, maxSeq, createdAt uint64) *commonpb.Log {
+	created := func(seq, id, maxSeq, createdAt, appliedIndex uint64) *commonpb.Log {
 		return &commonpb.Log{Sequence: seq, Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
-				CheckpointId: id, MaxSequence: maxSeq, CreatedAt: &commonpb.Timestamp{Data: createdAt},
+				CheckpointId: id, MaxSequence: maxSeq, CreatedAt: &commonpb.Timestamp{Data: createdAt}, AppliedIndex: appliedIndex,
 			}},
 		}}
 	}
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, batch.SetProto(coldLogKey(1), created(1, 1, 10, 100)))
-	require.NoError(t, batch.SetProto(coldLogKey(2), created(2, 2, 20, 200)))
+	require.NoError(t, batch.SetProto(coldLogKey(1), created(1, 1, 10, 100, 1000)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), created(2, 2, 20, 200, 2000)))
 	require.NoError(t, batch.SetProto(coldLogKey(3), &commonpb.Log{Sequence: 3, Payload: &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: 1}},
 	}}))
@@ -537,6 +537,7 @@ func TestRebuildDelta_ReplaysQueryCheckpoint(t *testing.T) {
 	require.Contains(t, rows, uint64(2))
 	require.Equal(t, uint64(20), rows[2].GetMaxSequence())
 	require.Equal(t, uint64(200), rows[2].GetCreatedAt().GetData())
+	require.Equal(t, uint64(2000), rows[2].GetAppliedIndex())
 
 	// The counter never rewinds: it advances above the highest replayed id (2),
 	// the deleted one included.

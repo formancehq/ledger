@@ -4700,6 +4700,7 @@ type CreatedQueryCheckpointLog struct {
 	CheckpointId  uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	MaxSequence   uint64                 `protobuf:"fixed64,2,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"`
 	CreatedAt     *Timestamp             `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	AppliedIndex  uint64                 `protobuf:"fixed64,4,opt,name=applied_index,json=appliedIndex,proto3" json:"applied_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4753,6 +4754,13 @@ func (x *CreatedQueryCheckpointLog) GetCreatedAt() *Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *CreatedQueryCheckpointLog) GetAppliedIndex() uint64 {
+	if x != nil {
+		return x.AppliedIndex
+	}
+	return 0
 }
 
 // DeletedQueryCheckpointLog records a query checkpoint being deleted.
@@ -12659,12 +12667,13 @@ const file_common_proto_rawDesc = "" +
 	"\tlast_used\x18\x02 \x01(\v2\x11.common.TimestampR\blastUsed\"3\n" +
 	"\x1dSetQueryCheckpointScheduleLog\x12\x12\n" +
 	"\x04cron\x18\x01 \x01(\tR\x04cron\"#\n" +
-	"!DeletedQueryCheckpointScheduleLog\"\x95\x01\n" +
+	"!DeletedQueryCheckpointScheduleLog\"\xba\x01\n" +
 	"\x19CreatedQueryCheckpointLog\x12#\n" +
 	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\x12!\n" +
 	"\fmax_sequence\x18\x02 \x01(\x06R\vmaxSequence\x120\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt\"@\n" +
+	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt\x12#\n" +
+	"\rapplied_index\x18\x04 \x01(\x06R\fappliedIndex\"@\n" +
 	"\x19DeletedQueryCheckpointLog\x12#\n" +
 	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"\xc6\x03\n" +
 	"\n" +

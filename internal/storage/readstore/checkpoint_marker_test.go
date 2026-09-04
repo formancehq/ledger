@@ -47,6 +47,28 @@ func TestCreateCheckpointThenMarkIsOpenable(t *testing.T) {
 	require.NoError(t, ro.Close())
 }
 
+func TestCheckpointMarkerRequiresStableAuditGeneration(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	dir := t.TempDir()
+	_, _, generation := s.AuditProjectionStateWithGeneration()
+
+	s.SetAuditProjectionState(false, true)
+	ready, err := s.MarkCheckpointReadyAtAuditGeneration(dir, generation)
+	require.NoError(t, err)
+	require.False(t, ready)
+	require.False(t, CheckpointDirReady(dir),
+		"a rebuild that starts during materialization must keep the checkpoint unavailable")
+
+	s.SetAuditProjectionState(false, false)
+	_, _, generation = s.AuditProjectionStateWithGeneration()
+	ready, err = s.MarkCheckpointReadyAtAuditGeneration(dir, generation)
+	require.NoError(t, err)
+	require.True(t, ready)
+	require.True(t, CheckpointDirReady(dir))
+}
+
 // TestCreateCheckpointFailsIfDirExists documents the pebble contract the index
 // builder relies on: CreateCheckpoint errors when the destination already
 // exists, so the atomic materialization builds into a temp dir and renames.

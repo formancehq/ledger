@@ -591,6 +591,44 @@ func (c *MockScopeGetNumscriptLatestVersionCall) DoAndReturn(f func(string, stri
 	return c
 }
 
+// GetRaftIndex mocks base method.
+func (m *MockScope) GetRaftIndex() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRaftIndex")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// GetRaftIndex indicates an expected call of GetRaftIndex.
+func (mr *MockScopeMockRecorder) GetRaftIndex() *MockScopeGetRaftIndexCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRaftIndex", reflect.TypeOf((*MockScope)(nil).GetRaftIndex))
+	return &MockScopeGetRaftIndexCall{Call: call}
+}
+
+// MockScopeGetRaftIndexCall wrap *gomock.Call
+type MockScopeGetRaftIndexCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockScopeGetRaftIndexCall) Return(arg0 uint64) *MockScopeGetRaftIndexCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockScopeGetRaftIndexCall) Do(f func() uint64) *MockScopeGetRaftIndexCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockScopeGetRaftIndexCall) DoAndReturn(f func() uint64) *MockScopeGetRaftIndexCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetReverted mocks base method.
 func (m *MockScope) GetReverted(key domain.TransactionKey) (bool, error) {
 	m.ctrl.T.Helper()

@@ -100,11 +100,13 @@ var _ = Describe("Restore", Ordered, func() {
 	ports := lease.Ports()
 
 	var (
-		ctx            context.Context
-		restoreWalDir  string
-		restoreDataDir string
-		minioEndpoint  string
-		s3Client       *s3.Client
+		ctx                        context.Context
+		restoreWalDir              string
+		restoreDataDir             string
+		minioEndpoint              string
+		s3Client                   *s3.Client
+		deltaCheckpointID          uint64
+		deltaCheckpointMaxSequence uint64
 	)
 
 	BeforeAll(func() {
@@ -331,6 +333,15 @@ var _ = Describe("Restore", Ordered, func() {
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category", commonpb.MetadataType_METADATA_TYPE_INT64)))
 			Expect(err).To(Succeed())
 
+			// This checkpoint is created only after the full backup. Its metadata
+			// row — including applied_index — must therefore be rebuilt from the
+			// incremental log export rather than copied from checkpoint files.
+			checkpoint, err := clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+			Expect(err).To(Succeed())
+			deltaCheckpointID = checkpoint.GetCheckpointId()
+			deltaCheckpointMaxSequence = checkpoint.GetMaxSequence()
+			Expect(deltaCheckpointID).NotTo(BeZero())
+
 			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
 				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
 					Bucket:   restoreS3Bucket,
@@ -349,14 +360,21 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			logSegments := 0
+			checkpointLogExported := false
+			checkpointLogSequence := deltaCheckpointMaxSequence + 1
 			for _, seg := range manifest.Exports {
 				if seg.Type == "log" {
 					logSegments++
+					if seg.StartSeq <= checkpointLogSequence && seg.EndSeq >= checkpointLogSequence {
+						checkpointLogExported = true
+					}
 				}
 			}
 
 			Expect(logSegments).To(BeNumerically(">", 1),
 				"a 1-byte segment cap must split the multi-sequence log export into multiple segments")
+			Expect(checkpointLogExported).To(BeTrue(),
+				"the manifest must export the post-checkpoint query-checkpoint creation log")
 		})
 
 		It("should write more data and take a SECOND incremental backup", func() {
@@ -699,6 +717,21 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(erinResp.FindVolume("USD", "").Input).To(Equal("2500"),
 				"transaction written in the second incremental must be restored from the full + multi-incremental chain")
+		})
+
+		It("should rebuild the post-checkpoint query checkpoint and pass CheckStore", func() {
+			info, err := clusterClient.GetQueryCheckpointInfo(ctx, &clusterpb.GetQueryCheckpointInfoRequest{
+				CheckpointId: deltaCheckpointID,
+			})
+			Expect(err).To(Succeed())
+			Expect(info.GetCheckpointId()).To(Equal(deltaCheckpointID))
+			Expect(info.GetMaxSequence()).To(Equal(deltaCheckpointMaxSequence),
+				"the restored logical projection must match the live source row")
+
+			result, err := actions.CollectCheckStoreEvents(ctx, client)
+			Expect(err).To(Succeed())
+			Expect(result.Errors).To(BeEmpty(),
+				"CheckStore must validate the rebuilt applied_index against the exported audit chain")
 		})
 
 		It("should account for a post-checkpoint balance on the apply path after restore", func() {

@@ -51,6 +51,7 @@ func TestProcessCreateQueryCheckpoint_UnderLimit(t *testing.T) {
 	mockStore.EXPECT().IncrementNextQueryCheckpointID().Return(uint64(7))
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100))
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetRaftIndex().Return(uint64(123))
 	mockStore.EXPECT().SaveQueryCheckpoint(gomock.Any())
 
 	result, procErr := processor.ProcessOrder(createQueryCheckpointOrder(), mockStore)
@@ -61,6 +62,7 @@ func TestProcessCreateQueryCheckpoint_UnderLimit(t *testing.T) {
 	require.Equal(t, uint64(7), createdLog.GetCheckpointId())
 	require.Equal(t, uint64(99), createdLog.GetMaxSequence())
 	require.Equal(t, uint64(42), createdLog.GetCreatedAt().GetData())
+	require.Equal(t, uint64(123), createdLog.GetAppliedIndex())
 }
 
 // At the cap a create is rejected with the typed error carrying the limit; no id
@@ -99,6 +101,7 @@ func TestProcessCreateQueryCheckpoint_UncappedWhenLimitZero(t *testing.T) {
 	mockStore.EXPECT().IncrementNextQueryCheckpointID().Return(uint64(1))
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	mockStore.EXPECT().GetRaftIndex().Return(uint64(123))
 	mockStore.EXPECT().SaveQueryCheckpoint(gomock.Any())
 
 	result, procErr := processor.ProcessOrder(createQueryCheckpointOrder(), mockStore)
