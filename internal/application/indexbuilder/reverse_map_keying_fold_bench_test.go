@@ -351,6 +351,7 @@ func commitReverseMapFoldBenchmarkBatch(b *testing.B, builder *Builder, lastSequ
 		b.Fatal("benchmark write batch is not initialized")
 	}
 	if err := builder.readStore.WriteProgress(batch, lastSequence); err != nil {
+		// Best-effort cleanup; the WriteProgress failure is the primary error.
 		_ = batch.Cancel()
 		b.Fatal(err)
 	}

@@ -50,8 +50,8 @@ type reverseMapFieldKey struct {
 // orphans, and — when they are — which lifecycle path best labels the finding's
 // diagnostics.
 type reverseMapVerdict struct {
-	orphan   bool
-	missedBy string
+	orphan         bool
+	lifecycleLabel string
 }
 
 type reverseMapAggregate struct {
@@ -288,7 +288,7 @@ func (c *Checker) compareReverseMapOrphans(
 	// to the number of distinct fields. Bounded by the same set of triples the
 	// aggregates are.
 	verdicts := make(map[reverseMapFieldKey]reverseMapVerdict)
-	orphanMissedBy := make(map[reverseMapFieldKey]string)
+	orphanLifecycleLabels := make(map[reverseMapFieldKey]string)
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
@@ -367,9 +367,9 @@ func (c *Checker) compareReverseMapOrphans(
 					// liveness oracle.
 					_, declared := commonpb.SchemaFieldForTarget(scope.replayedSchemas[parsed.Ledger], target, parsed.MetadataKey)
 					if declared != nil {
-						verdict.missedBy = "DropIndex purge"
+						verdict.lifecycleLabel = "DropIndex purge"
 					} else {
-						verdict.missedBy = "RemovedMetadataFieldType purge"
+						verdict.lifecycleLabel = "RemovedMetadataFieldType purge"
 					}
 				}
 			}
@@ -382,7 +382,7 @@ func (c *Checker) compareReverseMapOrphans(
 		}
 
 		observeReverseMapRow(orphaned, field, renderReverseMapEntity(parsed))
-		orphanMissedBy[field] = verdict.missedBy
+		orphanLifecycleLabels[field] = verdict.lifecycleLabel
 	}
 
 	if err := iter.Error(); err != nil {
@@ -393,7 +393,7 @@ func (c *Checker) compareReverseMapOrphans(
 		))
 	}
 
-	emitReverseMapFindings(orphaned, orphanMissedBy, unknownLedgers, malformed, callback)
+	emitReverseMapFindings(orphaned, orphanLifecycleLabels, unknownLedgers, malformed, callback)
 }
 
 // collectIndexedFields builds the oracle: every index key present in the
@@ -472,7 +472,7 @@ func (c *Checker) collectIndexedFields(
 // emits them in a deterministic order.
 func emitReverseMapFindings(
 	orphaned map[reverseMapFieldKey]*reverseMapAggregate,
-	orphanMissedBy map[reverseMapFieldKey]string,
+	orphanLifecycleLabels map[reverseMapFieldKey]string,
 	unknownLedgers map[string]*reverseMapAggregate,
 	malformed map[string]*reverseMapAggregate,
 	callback func(*servicepb.CheckStoreEvent),
@@ -485,7 +485,7 @@ func emitReverseMapFindings(
 			ledger: key.ledger,
 			message: fmt.Sprintf(
 				"reverse-map rows survive for metadata field %q (namespace %q) on ledger %q with no registered index — classified against the %s lifecycle: rows=%d, sample %s",
-				key.metaKey, key.namespace, key.ledger, orphanMissedBy[key], agg.rows, agg.sample),
+				key.metaKey, key.namespace, key.ledger, orphanLifecycleLabels[key], agg.rows, agg.sample),
 		})
 	}
 
