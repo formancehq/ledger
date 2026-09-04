@@ -367,7 +367,7 @@ func TestCompareReverseMapOrphans_PurgeMissFlaggedAndLabelled(t *testing.T) {
 	require.Contains(t, events[0].GetError().GetMessage(), "DropIndex purge")
 	require.Contains(t, events[0].GetError().GetMessage(), "rows=2")
 
-	// Schema gone ⇒ the removal's point-delete scan missed them.
+	// Schema gone ⇒ classify the lifecycle violation against field removal.
 	removed := newReverseMapFixture(t, reverseMapFixtureInput{
 		rmapKeys: rows,
 		progress: 3,
@@ -380,10 +380,9 @@ func TestCompareReverseMapOrphans_PurgeMissFlaggedAndLabelled(t *testing.T) {
 
 // TestCompareReverseMapOrphans_RemovedFieldTypeResidueFlagged is EN-1458's
 // target case. RemovedMetadataFieldType is the single log that both removes the
-// schema field type and runs purgeReverseMapForKey's point-delete scan, so a
-// row whose field is absent from the replayed schema is precisely a row that
-// scan missed — the permanent orphan the reverse map's non-range-deletable key
-// shape makes possible.
+// schema field type and runs purgeReverseMapForKey's field-bounded DeleteRange,
+// so a residual row whose field is absent from the replayed schema is a
+// lifecycle violation (or read-store corruption) the checker must still flag.
 func TestCompareReverseMapOrphans_RemovedFieldTypeResidueFlagged(t *testing.T) {
 	t.Parallel()
 
@@ -510,7 +509,7 @@ func TestCompareReverseMapOrphans_MalformedKeys(t *testing.T) {
 			// shifts bytes into the version/entity suffix. The account entity
 			// shape check turns that silent mis-decode into a surfaced error.
 			name:           "nul in metadata key",
-			key:            readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "ro\x00le", 1),
+			key:            readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "ro\x00le", 0x01010101),
 			expectedLedger: "L1",
 			expectedCause:  readstore.ErrReverseMapKeyEntityID.Error(),
 		},
@@ -760,11 +759,11 @@ func TestCompareReverseMapOrphans_RecreatedLedgerStaysSilent(t *testing.T) {
 }
 
 // TestCompareReverseMapOrphans_RedeclaredWithoutIndexStillOrphan pins the case
-// the schema term used to hide: a removal's point-delete scan misses rows, and
-// the field is later RE-DECLARED (without a new index). Under the old rule the
+// the schema term used to hide: stale rows survive a field removal and the
+// field is later RE-DECLARED (without a new index). Under the old rule the
 // re-declaration legitimised the leftovers through the schema; under the
-// registry-only rule they stay what they are — a scan miss. The sensitivity
-// twin: once an index is registered again, the rows are legitimate.
+// registry-only rule they remain a lifecycle violation. The sensitivity twin:
+// once an index is registered again, the rows are legitimate.
 func TestCompareReverseMapOrphans_RedeclaredWithoutIndexStillOrphan(t *testing.T) {
 	t.Parallel()
 
@@ -938,8 +937,8 @@ func setMetadataFieldTypeOrder(ledger string, target commonpb.TargetType, key st
 // mirroring the shape admission.go produces for
 // servicepb.Request_RemoveMetadataFieldType. This is the log EN-1458 targets:
 // processRemoveMetadataFieldType both drops the schema field AND (in
-// production) triggers the indexbuilder's purgeReverseMapForKey point-delete
-// scan of the reverse map.
+// production) triggers the indexbuilder's field-bounded
+// purgeReverseMapForKey DeleteRange over the reverse map.
 func removeMetadataFieldTypeOrder(ledger string, target commonpb.TargetType, key string) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -967,12 +966,11 @@ func removeMetadataFieldTypeOrder(ledger string, target commonpb.TargetType, key
 // not hand-constructed maps.
 //
 // RemovedMetadataFieldType is the exact log EN-1458 is about: in production it
-// both drops the schema field AND runs purgeReverseMapForKey's point-delete
-// scan of the reverse map. This test harness has no indexbuilder wired in (its
-// testEngine never folds reverse-map rows), so the "scan missed the row" half
-// of the bug is reproduced the same way the pass's own unit tests do it: the
-// orphaned row is seeded directly into a real peer readstore via its public
-// key/write API, standing in for a row the purge scan failed to reach.
+// both drops the schema field AND runs purgeReverseMapForKey's field-bounded
+// DeleteRange over the reverse map. This test harness has no indexbuilder wired
+// in (its testEngine never folds reverse-map rows), so the corrupted peer state
+// is reproduced the same way the pass's own unit tests do it: the orphaned row
+// is seeded directly into a real peer readstore via its public key/write API.
 //
 // Both sides of the alignment gate are pinned here, because that gate is the one
 // thing the unit tests drive through a hand-built scope rather than through the

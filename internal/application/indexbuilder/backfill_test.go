@@ -1370,9 +1370,9 @@ func TestProcessSchemaRewriteIsFieldVersionBoundedAndPersistsCursor(t *testing.T
 	// gates the atomic switch on the read store having indexed up to it.
 	seedRewriteSequence(t, b, 2)
 
-	// Seed the FSM-side canonical stored value for acct-003.status. The schema
-	// rewrite reads from here, not from the rmap, so re-encoding is a pure
-	// function of immutable stored state.
+	// Seed the FSM-side canonical stored values for acct-003.status and
+	// acct-004.status. The schema rewrite reads from here, not from the rmap, so
+	// re-encoding is a pure function of immutable stored state.
 	fsmBatch := b.pebbleStore.OpenWriteSession()
 	for _, account := range []string{"acct-003", "acct-004"} {
 		canonicalKey := domain.MetadataKey{
