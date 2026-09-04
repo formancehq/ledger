@@ -238,7 +238,8 @@ func TestParseReverseMapKey_Rejects(t *testing.T) {
 		// wantErrContains pins the distinguishing context wrapped around a
 		// shared sentinel — set only where two subtests would otherwise be
 		// indistinguishable via errors.Is alone (e.g. an empty metadata key
-		// vs. one containing a NUL byte both return ErrReverseMapKeyMetadataKey).
+		// vs. one outside the production alphabet both return
+		// ErrReverseMapKeyMetadataKey).
 		wantErrContains string
 	}{
 		"nil key must be rejected": {
