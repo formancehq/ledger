@@ -3815,6 +3815,7 @@ type idemExpectedKey struct {
 // audit outcome.
 type expectedIdempotency struct {
 	proposalHash []byte
+	expiresAt    uint64
 	failure      bool
 	reason       commonpb.ErrorReason
 	message      string
@@ -3838,6 +3839,7 @@ func expectedIdempotencyOutcome(entry *auditpb.AuditEntry, items []*auditpb.Audi
 
 	exp := expectedIdempotency{
 		proposalHash: value.GetHash(),
+		expiresAt:    value.GetExpiresAt(),
 		firstLog:     value.GetFirstLogSequence(),
 		logCount:     value.GetLogCount(),
 	}
@@ -3941,6 +3943,10 @@ func (c *Checker) compareIdempotencyOutcomes(
 func idempotencyMismatch(stored *commonpb.IdempotencyKeyValue, exp expectedIdempotency) string {
 	if !bytes.Equal(stored.GetHash(), exp.proposalHash) {
 		return fmt.Sprintf("proposal hash %x does not match audit-derived %x", stored.GetHash(), exp.proposalHash)
+	}
+
+	if stored.GetExpiresAt() != exp.expiresAt {
+		return fmt.Sprintf("expires_at %d does not match audit-derived %d", stored.GetExpiresAt(), exp.expiresAt)
 	}
 
 	if exp.failure {

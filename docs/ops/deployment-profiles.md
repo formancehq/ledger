@@ -418,8 +418,8 @@ Before go-live, verify:
   leader after one node is stopped;
 - PVC retention, backup retention, encryption, and restore procedures match the
   customer's RPO/RTO;
-- `node-id`, `cluster-id`, advertised address, data paths, and idempotency TTL are
-  stable across restarts;
+- `node-id`, `cluster-id`, advertised address, and data paths are stable across
+  restarts;
 - TLS and authentication are enabled, and the Raft port is not publicly exposed;
 - memory estimates fit below `GOMEMLIMIT` and the container limit;
 - steady-state and peak disk usage stay below alert thresholds;

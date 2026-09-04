@@ -53,8 +53,8 @@ type StateRegistry struct {
 }
 
 // NewStateRegistry creates a StateRegistry with all CacheAwareEntries backed
-// by the given cache. idempotencyTTLMicros is the TTL in HLC microseconds (0 = no expiration).
-func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes, idempotencyTTLMicros uint64) *StateRegistry {
+// by the given cache.
+func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes) *StateRegistry {
 	return &StateRegistry{
 		Cache: c,
 		Attrs: attrs,
@@ -68,7 +68,7 @@ func NewStateRegistry(c *cache.Cache, attrs *attributes.Attributes, idempotencyT
 			attrs.Metadata,
 			dal.SubAttrMetadata,
 		),
-		Idempotency: NewIdempotencyStore(idempotencyTTLMicros),
+		Idempotency: NewIdempotencyStore(),
 		References: NewCacheAwareEntry(
 			attributes.NewKeyStore[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue](c.References),
 			attrs.References,

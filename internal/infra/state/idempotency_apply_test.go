@@ -130,6 +130,143 @@ func TestApplyProposal_AuditEntryCarriesIdentity(t *testing.T) {
 	require.Equal(t, "batch-key", keyed, "batch key bound into the AuditEntry hash chain")
 }
 
+// TestApplyProposal_FreezesExpiryFromClusterPolicy asserts the FSM stamps each
+// idempotency outcome's absolute expires_at from the committed cluster-policy
+// TTL at apply time — on both the stored projection and the chain-bound audit
+// entry — never re-freezes a replayed outcome, and reads the current committed
+// policy for a fresh outcome. This is the EN-1797 determinism boundary: the
+// expiry is frozen from committed state, so no node-local TTL read can diverge a
+// committed outcome's lifetime.
+func TestApplyProposal_FreezesExpiryFromClusterPolicy(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, _ := newTestMachine(t)
+	ctx := context.Background()
+
+	const (
+		ledgerName = "idem-ttl"
+		ttlMicros  = uint64(60_000_000)
+	)
+
+	loadKey := func(key string) *commonpb.IdempotencyKeyValue {
+		handle, err := dataStore.NewDirectReadHandle()
+		require.NoError(t, err)
+
+		defer func() { _ = handle.Close() }()
+
+		v, err := LoadIdempotencyKey(handle, key)
+		require.NoError(t, err)
+
+		return v
+	}
+
+	machine.State.ClusterPolicy = &commonpb.ClusterPolicy{Revision: 1, IdempotencyTtlMicros: ttlMicros}
+
+	r, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))))
+	require.NoError(t, err)
+	require.NoError(t, r.Results[0].Error)
+
+	withKey := func(id uint64, key string, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
+		p := makeProposal(id, orders...)
+		p.Idempotency = &commonpb.Idempotency{Key: key}
+
+		return p
+	}
+	fundAlice := func() *raftcmdpb.Order {
+		return createTransactionOrder(ledgerName, true, newPosting("world", "alice", "EUR", 100))
+	}
+
+	// Keyed success: expires_at = created_at + policy TTL, and the audit entry
+	// chain-binds the same value.
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, withKey(2, "k1", fundAlice())))
+	require.NoError(t, err)
+	require.NoError(t, r.Results[0].Error)
+
+	stored := loadKey("k1")
+	require.NotNil(t, stored)
+	require.NotZero(t, stored.GetCreatedAt())
+	require.Equal(t, stored.GetCreatedAt()+ttlMicros, stored.GetExpiresAt(),
+		"the success outcome's expiry must be created_at + the committed policy TTL")
+
+	var auditExpiry uint64
+	for _, e := range listAuditEntries(t, dataStore, 0) {
+		if e.GetIdempotency().GetKey() == "k1" {
+			auditExpiry = e.GetIdempotency().GetExpiresAt()
+		}
+	}
+	require.Equal(t, stored.GetExpiresAt(), auditExpiry,
+		"the audit entry must chain-bind the same expiry the projection stored")
+
+	// Keyed failure freezes under the same policy-derived expiry.
+	badRevert := func() *raftcmdpb.Order { return revertTransactionOrder(ledgerName, 9999) }
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 3, withKey(3, "k2", badRevert())))
+	require.NoError(t, err)
+	require.Error(t, r.Results[0].Error)
+
+	failStored := loadKey("k2")
+	require.NotNil(t, failStored.GetFailure())
+	require.Equal(t, failStored.GetCreatedAt()+ttlMicros, failStored.GetExpiresAt(),
+		"a frozen failure expires under the same policy TTL as a success")
+
+	// Raising the TTL does not retroactively change an already-frozen outcome: a
+	// duplicate replays the stored value, keeping its original expiry.
+	machine.State.ClusterPolicy = &commonpb.ClusterPolicy{Revision: 2, IdempotencyTtlMicros: 5 * ttlMicros}
+
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 4, withKey(4, "k1", fundAlice())))
+	require.NoError(t, err)
+	require.NoError(t, r.Results[0].Error)
+	require.Equal(t, stored.GetExpiresAt(), loadKey("k1").GetExpiresAt(),
+		"a replay must not re-freeze the expiry under a newer policy")
+
+	// A fresh key freezes under the currently committed (raised) policy TTL.
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 5, withKey(5, "k3",
+		createTransactionOrder(ledgerName, true, newPosting("world", "carol", "EUR", 7)))))
+	require.NoError(t, err)
+	require.NoError(t, r.Results[0].Error)
+
+	freshStored := loadKey("k3")
+	require.Equal(t, freshStored.GetCreatedAt()+5*ttlMicros, freshStored.GetExpiresAt(),
+		"a fresh outcome freezes under the currently committed policy TTL")
+}
+
+// TestApplyProposal_ZeroTTLNeverExpires asserts an idempotency-ttl of 0 in the
+// committed policy freezes a zero expires_at (never expires) and writes no
+// eviction time-index entry, so the leader eviction scan never reaches it.
+func TestApplyProposal_ZeroTTLNeverExpires(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, _ := newTestMachine(t)
+	ctx := context.Background()
+
+	const ledgerName = "idem-ttl0"
+
+	machine.State.ClusterPolicy = &commonpb.ClusterPolicy{Revision: 1, IdempotencyTtlMicros: 0}
+
+	r, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))))
+	require.NoError(t, err)
+	require.NoError(t, r.Results[0].Error)
+
+	p := makeProposal(2, createTransactionOrder(ledgerName, true, newPosting("world", "alice", "EUR", 100)))
+	p.Idempotency = &commonpb.Idempotency{Key: "k1"}
+
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, p))
+	require.NoError(t, err)
+	require.NoError(t, r.Results[0].Error)
+
+	handle, err := dataStore.NewDirectReadHandle()
+	require.NoError(t, err)
+
+	defer func() { _ = handle.Close() }()
+
+	stored, err := LoadIdempotencyKey(handle, "k1")
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), stored.GetExpiresAt(), "a zero policy TTL freezes a never-expiring outcome")
+
+	hashes, _, err := machine.Registry.Idempotency.ScanExpiredKeyHashes(handle, ^uint64(0), 100)
+	require.NoError(t, err)
+	require.Empty(t, hashes, "a never-expiring outcome must not appear in the eviction time index")
+}
+
 func readAppliedProposals(t *testing.T, ctx context.Context, store *dal.Store) []*proposalpb.AppliedProposal {
 	t.Helper()
 

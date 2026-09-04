@@ -341,11 +341,17 @@ rather than a proven guarantee.
 
 ## Idempotency Eviction
 
-Idempotency outcomes are business-visible during their configured retention
-window and must be checked against the audited success/failure reason that froze
-them. Eviction after TTL is technical policy: the leader scans expired keys,
-embeds the cutoff and key hashes in the proposal, and the FSM applies that
-proposal deterministically.
+Idempotency outcomes are business-visible during their retention window and must
+be checked against the audited success/failure reason that froze them. Each
+outcome's retention deadline is a per-outcome absolute `expires_at`, frozen at
+apply time from the committed cluster-policy TTL and chain-bound in the audit
+header — so the checker (`compareIdempotencyOutcomes`) re-derives and verifies it
+directly from the chain, not from any node-local TTL. Eviction after that
+deadline is technical policy: the leader takes a wall-clock cutoff, scans the
+`expires_at` time index for keys at or before it, embeds the cutoff and key
+hashes in the proposal, and the FSM applies that proposal deterministically.
+Eviction writes no audit record, so the checker verifies the outcomes that are
+present and never treats an absent (evicted) one as a defect.
 
 If product semantics ever change to "idempotency forever", eviction stops being
 purely technical and must be redesigned as business-impacting state.

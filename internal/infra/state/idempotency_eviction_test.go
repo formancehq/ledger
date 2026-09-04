@@ -21,10 +21,10 @@ import (
 // TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned is the
 // regression coverage for the batch-boundary bug flagged on PR #208.
 //
-// The time index key is [zone(1)][sub(1)][created_at(8)][hash(16)].
-// Multiple entries can share the same created_at. Before the fix, the
+// The time index key is [zone(1)][sub(1)][expires_at(8)][hash(16)].
+// Multiple entries can share the same expires_at. Before the fix, the
 // FSM's DeleteRange upper bound was derived from the timestamp alone:
-// rangeEnd = [zone][sub][created_at+1]. If the leader scan stopped at
+// rangeEnd = [zone][sub][expires_at+1]. If the leader scan stopped at
 // maxKeys in the middle of a group of siblings sharing a timestamp,
 // the range delete would purge their time-index entries even though
 // only the first N hashes were in the proposal. The unscanned main
@@ -40,7 +40,7 @@ func TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned(t *testing.T) {
 
 	store := newTestStore(t)
 
-	// Insert 5 entries that all share the same created_at and 1 entry at an
+	// Insert 5 entries that all share the same expires_at and 1 entry at an
 	// earlier timestamp (so we can verify it is also evicted).
 	const sharedTs uint64 = 1_000_000
 	const earlierTs uint64 = sharedTs - 1
@@ -54,7 +54,7 @@ func TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned(t *testing.T) {
 		"key-earlier", // earlier timestamp
 	}
 
-	idemp := NewIdempotencyStore(60_000_000)
+	idemp := NewIdempotencyStore()
 	batch := store.OpenWriteSession()
 
 	for _, k := range keys {
@@ -63,7 +63,7 @@ func TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned(t *testing.T) {
 			ts = earlierTs
 		}
 
-		value := &commonpb.IdempotencyKeyValue{CreatedAt: ts}
+		value := &commonpb.IdempotencyKeyValue{ExpiresAt: ts}
 		require.NoError(t, SaveIdempotencyKey(batch, k, value))
 		// Mirror the in-memory map: production paths always Put alongside
 		// the Pebble write, and RestoreFromStore rebuilds the map from
@@ -152,12 +152,12 @@ func TestIdempotencyEviction_LastScannedKeyExcludesSiblingsLexically(t *testing.
 	store := newTestStore(t)
 
 	const ts uint64 = 42
-	idemp := NewIdempotencyStore(0)
+	idemp := NewIdempotencyStore()
 	batch := store.OpenWriteSession()
 
 	for i := range 4 {
 		key := []byte{byte('a' + i)}
-		value := &commonpb.IdempotencyKeyValue{CreatedAt: ts}
+		value := &commonpb.IdempotencyKeyValue{ExpiresAt: ts}
 		require.NoError(t, SaveIdempotencyKey(batch, string(key), value))
 		idemp.Put(string(key), value)
 	}
@@ -218,11 +218,11 @@ func TestIdempotencyEviction_DoubleApplyIsNoOp(t *testing.T) {
 	const ts uint64 = 1_000_000
 
 	keys := []string{"a", "b", "c"}
-	idemp := NewIdempotencyStore(0)
+	idemp := NewIdempotencyStore()
 
 	batch := store.OpenWriteSession()
 	for _, k := range keys {
-		value := &commonpb.IdempotencyKeyValue{CreatedAt: ts}
+		value := &commonpb.IdempotencyKeyValue{ExpiresAt: ts}
 		require.NoError(t, SaveIdempotencyKey(batch, k, value))
 		idemp.Put(k, value)
 	}
@@ -277,14 +277,14 @@ func TestIdempotencyEviction_MultiBatchConvergence(t *testing.T) {
 
 	const ts uint64 = 100
 
-	idemp := NewIdempotencyStore(0)
+	idemp := NewIdempotencyStore()
 	batch := store.OpenWriteSession()
 
 	// Use distinct timestamps per key to make the time-index ordering
 	// (and the bounded scan) deterministic.
 	for i := range 4 {
 		key := []byte{byte('a' + i)}
-		value := &commonpb.IdempotencyKeyValue{CreatedAt: ts + uint64(i)}
+		value := &commonpb.IdempotencyKeyValue{ExpiresAt: ts + uint64(i)}
 		require.NoError(t, SaveIdempotencyKey(batch, string(key), value))
 		idemp.Put(string(key), value)
 	}
@@ -388,9 +388,9 @@ func TestIdempotencyEvictionScheduler_StopCancelsProposeFn(t *testing.T) {
 	// to propose (otherwise proposeFn is never invoked).
 	const expiredTs uint64 = 1
 
-	idemp := NewIdempotencyStore(0)
+	idemp := NewIdempotencyStore()
 	batch := store.OpenWriteSession()
-	value := &commonpb.IdempotencyKeyValue{CreatedAt: expiredTs}
+	value := &commonpb.IdempotencyKeyValue{ExpiresAt: expiredTs}
 	require.NoError(t, SaveIdempotencyKey(batch, "stop-test", value))
 	idemp.Put("stop-test", value)
 	require.NoError(t, batch.Commit())
@@ -420,7 +420,6 @@ func TestIdempotencyEvictionScheduler_StopCancelsProposeFn(t *testing.T) {
 		store,
 		idemp,
 		10*time.Millisecond,
-		0, // ttl=0 ⇒ every entry counts as expired given expiredTs above
 	)
 
 	scheduler.Start()

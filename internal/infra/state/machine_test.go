@@ -42,7 +42,7 @@ func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Mac
 	c, err := cache.New(generationThreshold, meter)
 	require.NoError(t, err)
 
-	registry := NewStateRegistry(c, attrs, 0)
+	registry := NewStateRegistry(c, attrs)
 	snapshotter := NewCacheSnapshotter(logger, registry, nil)
 
 	machine, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler)
@@ -728,7 +728,7 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create first machine and 3 ledgers.
-	reg1 := NewStateRegistry(c, attrs, 0)
+	reg1 := NewStateRegistry(c, attrs)
 	snap1 := NewCacheSnapshotter(logger, reg1, nil)
 	machine1, err := NewMachine(logger, reg1, snap1, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler)
 	require.NoError(t, err)
@@ -764,7 +764,7 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 
 	attrs2 := attributes.New()
 
-	reg2 := NewStateRegistry(c2, attrs2, 0)
+	reg2 := NewStateRegistry(c2, attrs2)
 	snap2 := NewCacheSnapshotter(logger, reg2, nil)
 	machine2, err := NewMachine(logger, reg2, snap2, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler)
 	require.NoError(t, err)
@@ -823,7 +823,7 @@ func TestPrepareEntriesTraceLogPipeliningLag(t *testing.T) {
 		c, err := cache.New(1000, meter)
 		require.NoError(t, err)
 
-		registry := NewStateRegistry(c, attributes.New(), 0)
+		registry := NewStateRegistry(c, attributes.New())
 		snapshotter := NewCacheSnapshotter(logger, registry, nil)
 
 		machine, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler)

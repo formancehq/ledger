@@ -14,7 +14,7 @@ Idempotency keys are stored under the dedicated `ZoneIdempotency` zone (`0x05`) 
 | **Uniqueness** | Keys must be globally unique across all ledgers |
 | **Hash verification** | Content is hashed (BLAKE3) to detect conflicts |
 | **Persistence** | Stored under `{0x05, 0x01}` (`ZoneIdempotency` + `SubIdempKeys`) with a time index at `{0x05, 0x02}` (`ZoneIdempotency` + `SubIdempTimeIdx`) |
-| **TTL** | Configurable time-to-live (default: 24h, 0 = no expiration) |
+| **TTL** | Set by the Raft-replicated cluster policy (default: 24h, 0 = no expiration); frozen per outcome as an absolute `expires_at` at write time |
 | **Eviction** | Deterministic cleanup via Raft `IdempotencyEviction` commands |
 
 ## How It Works
@@ -25,7 +25,7 @@ Idempotency keys are stored under the dedicated `ZoneIdempotency` zone (`0x05`) 
 flowchart TD
     REQ[Request with Idempotency Key] --> CHECK{Key exists?}
     CHECK -->|No| PROCESS[Process request normally]
-    PROCESS --> STORE[Store key + hash + sequence + created_at]
+    PROCESS --> STORE[Store key + hash + sequence + created_at + expires_at]
     STORE --> RETURN[Return response]
     
     CHECK -->|Yes| EXPIRED{TTL expired?}
@@ -44,12 +44,14 @@ When processing a request with an idempotency key:
    - `LogSequence`: The global log sequence number of the original response
    - `Hash`: BLAKE3 hash of the request content
    - `CreatedAt`: HLC microsecond timestamp from the Raft entry
+   - `ExpiresAt`: absolute HLC-microsecond expiry, frozen from the committed policy TTL (`created_at + ttl`; 0 = never)
 
 ```go
 type IdempotencyKeyValue struct {
     LogSequence uint64  // Global sequence number of the original log
     Hash        []byte  // BLAKE3 hash of the request content
     CreatedAt   uint64  // HLC microseconds (from Raft entry timestamp)
+    ExpiresAt   uint64  // absolute HLC-microsecond expiry (0 = never)
 }
 ```
 
@@ -109,18 +111,18 @@ When no mutable read was attempted, only a `latest` selector keeps the same forw
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--idempotency-ttl` | `24h` | Time-to-live for idempotency keys (0 = no expiration) |
+| `--idempotency-ttl` | `24h` | Seeds the *desired* idempotency TTL in the cluster policy (0 = no expiration) |
 | `--idempotency-eviction-interval` | `60s` | How often the leader proposes eviction |
 
-The TTL is persisted in `PersistedConfig` to ensure all Raft nodes use identical TTL values (FSM determinism requirement). Changing the TTL after first boot requires `--unsafe-skip-config-validation`.
+`--idempotency-ttl` is node-local admission-side configuration: it names the desired TTL that the reconciler proposes into the Raft-replicated [cluster policy](../fsm/deterministic-fsm.md#35-raft-replicated-cluster-policy). The FSM never reads the flag during apply. Instead, each apply freezes the outcome's absolute `expires_at` once, from the TTL in the committed policy (`FSMState.ClusterPolicy.IdempotencyTtlMicros`), as `created_at + ttl` (0 = never; overflow saturates). Because the expiry is stamped from committed state and stored on the outcome, every node computes the same value and the expiry decision (`IsExpired`) reads no node-local configuration — the FSM-determinism requirement. Changing the TTL is a cluster-policy revision bump, not a boot-config change, so it needs no `--unsafe-skip-config-validation`.
 
 ### Eviction Mechanism
 
 Expired idempotency keys are cleaned up via a dedicated Raft command (`IdempotencyEviction`):
 
-1. The leader periodically computes `cutoff = now - TTL` and proposes an eviction
-2. All nodes apply the eviction deterministically: scan in-memory map + Pebble, delete entries with `created_at <= cutoff`
-3. The cutoff is embedded in the Raft proposal, so all nodes agree on exactly what to evict
+1. The leader periodically takes `cutoff = now` (wall-clock) and scans the time index — keyed by `expires_at` — for entries whose `expires_at <= cutoff`, embedding their key hashes in the proposal
+2. All nodes apply the eviction deterministically: delete exactly the pre-scanned hashes from the in-memory map + Pebble, guarding against evicting a still-live or never-expiring entry named by a stale scan
+3. The cutoff and hashes are embedded in the Raft proposal, so all nodes agree on exactly what to evict and the apply path performs no Pebble reads
 4. No race conditions: eviction is serialized with business proposals in the FSM
 
 ### Memory Bounds
@@ -135,7 +137,7 @@ The in-memory map grows between eviction commands and shrinks on each eviction:
 
 ```
 [0x05][0x01][key_hash 16 bytes]                -> IdempotencyKeyValue protobuf
-[0x05][0x02][created_at BE 8 bytes][key_hash 16 bytes]  -> empty (time index for eviction scan)
+[0x05][0x02][expires_at BE 8 bytes][key_hash 16 bytes]  -> empty (time index for eviction scan; never-expiring outcomes are omitted)
 ```
 
 The key hash is a 16-byte BLAKE3 truncation of the idempotency key string.
