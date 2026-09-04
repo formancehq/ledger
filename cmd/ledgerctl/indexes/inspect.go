@@ -107,14 +107,20 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// Render with the binding that actually served the scan: during the legal
-	// one-revision retype window the served encoding is the predecessor's, and
-	// the live declared type would mistype every value.
-	servedType := resp.GetServedType()
-
 	pterm.Println()
 	pterm.Printf("Index: %s on %s (ledger: %s)\n", pterm.Cyan(key), pterm.Cyan(target), pterm.Cyan(ledgerName))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
+
+	renderInspectResult(resp)
+
+	return nil
+}
+
+// renderInspectResult renders the scan with the binding that actually served
+// it: during the legal one-revision retype window the served encoding is the
+// predecessor's, and the live declared type would mistype every value.
+func renderInspectResult(resp *servicepb.InspectIndexResponse) {
+	servedType := resp.GetServedType()
 
 	switch result := resp.GetResult().(type) {
 	case *servicepb.InspectIndexResponse_Summary:
@@ -124,22 +130,20 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 	case *servicepb.InspectIndexResponse_Facets:
 		printFacets(result.Facets, servedType)
 	}
-
-	return nil
 }
 
-func printSummary(s *servicepb.InspectSummary, declaredType commonpb.MetadataType) {
+func printSummary(s *servicepb.InspectSummary, servedType commonpb.MetadataType) {
 	pterm.Printf("Cardinality:       %d\n", s.GetCardinality())
-	pterm.Printf("Min:               %s\n", formatMetadataValue(s.GetMin(), declaredType))
-	pterm.Printf("Max:               %s\n", formatMetadataValue(s.GetMax(), declaredType))
+	pterm.Printf("Min:               %s\n", formatMetadataValue(s.GetMin(), servedType))
+	pterm.Printf("Max:               %s\n", formatMetadataValue(s.GetMax(), servedType))
 	pterm.Printf("Entities with key: %d\n", s.GetEntitiesWithKey())
 	pterm.Printf("Entities null:     %d\n", s.GetEntitiesWithNull())
 }
 
-func printDistinctValues(dv *servicepb.InspectDistinctValues, declaredType commonpb.MetadataType) {
+func printDistinctValues(dv *servicepb.InspectDistinctValues, servedType commonpb.MetadataType) {
 	table := pterm.TableData{{"VALUE"}}
 	for _, v := range dv.GetValues() {
-		table = append(table, []string{formatMetadataValue(v, declaredType)})
+		table = append(table, []string{formatMetadataValue(v, servedType)})
 	}
 
 	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
@@ -150,7 +154,7 @@ func printDistinctValues(dv *servicepb.InspectDistinctValues, declaredType commo
 	}
 }
 
-func printFacets(f *servicepb.InspectFacets, declaredType commonpb.MetadataType) {
+func printFacets(f *servicepb.InspectFacets, servedType commonpb.MetadataType) {
 	facets := make([]*servicepb.InspectFacet, len(f.GetFacets()))
 	copy(facets, f.GetFacets())
 
@@ -161,7 +165,7 @@ func printFacets(f *servicepb.InspectFacets, declaredType commonpb.MetadataType)
 	table := pterm.TableData{{"VALUE", "COUNT"}}
 	for _, fv := range facets {
 		table = append(table, []string{
-			formatMetadataValue(fv.GetValue(), declaredType),
+			formatMetadataValue(fv.GetValue(), servedType),
 			strconv.FormatUint(fv.GetCount(), 10),
 		})
 	}
@@ -174,7 +178,7 @@ func printFacets(f *servicepb.InspectFacets, declaredType commonpb.MetadataType)
 	}
 }
 
-func formatMetadataValue(v *commonpb.MetadataValue, declaredType commonpb.MetadataType) string {
+func formatMetadataValue(v *commonpb.MetadataValue, servedType commonpb.MetadataType) string {
 	if v == nil {
 		return pterm.Gray("(none)")
 	}
@@ -184,8 +188,9 @@ func formatMetadataValue(v *commonpb.MetadataValue, declaredType commonpb.Metada
 		return fmt.Sprintf("%q", t.StringValue)
 	case *commonpb.MetadataValue_IntValue:
 		// Datetime index keys share the int64 encoding, so the server returns an
-		// int_value for them; render as RFC3339 when the field is declared datetime.
-		if commonpb.IsDatetimeType(declaredType) {
+		// int_value for them; render as RFC3339 when the serving binding is a
+		// datetime type.
+		if commonpb.IsDatetimeType(servedType) {
 			return time.UnixMicro(t.IntValue).UTC().Format(time.RFC3339Nano)
 		}
 
