@@ -556,9 +556,12 @@ indexes need their own progress barrier:
 2. `ReadIndex` sends a `ReadIndex` request through the Raft orchestrate loop. The leader confirms it is still the leader by exchanging heartbeats with a quorum of peers (the `ReadOnlySafe` mode, which is the default).
 3. The leader responds with the current **commit index** via `rd.ReadStates`.
 4. `WaitForApplied` blocks until the local FSM has applied entries up to that commit index (using a `sync.Cond` that broadcasts after each `lastPersistedIndex.Store()`).
-5. The caller reads from the local Pebble store, which is now guaranteed to
-   reflect all writes committed before the ReadIndex call. This does not by
-   itself advance independently asynchronous secondary indexes.
+5. The caller opens a local main-store snapshot, reads its durable applied
+   index `H`, and verifies that `H` covers the returned commit index `R`.
+6. If the query uses an asynchronous projection, it waits for that projection's
+   independent Raft certificate to cover fixed `H`.
+7. The certificate is re-read from the projection snapshot used by the query;
+   the wait never follows the moving store head.
 
 **Benefits**:
 - **Linearizable reads on leaders, followers, and caught-up learners** that can reach quorum
@@ -569,14 +572,17 @@ indexes need their own progress barrier:
 
 **Consistency and routing exceptions**:
 - `x-consistency: stale` bypasses `ReadIndex` and reads the local store directly;
-  it may return an older view.
+  it may return an older view, but any projection it uses is still aligned to
+  the fixed applied index of that local main-store snapshot.
 - `x-consistency: leader` routes the read to the node currently considered
   leader. A call forwarded to a remote node does not propagate the consistency
   metadata, so the remote call defaults to linearizable mode and performs its
   quorum barrier. However, if the receiving node already considers itself
   leader, `getLeaderCtrl` returns the local controller directly and skips
   `ReadIndex`. Because `CheckQuorum` is disabled, an isolated former leader can
-  therefore serve stale local state in this mode.
+  therefore serve stale local state in this mode. Projection-backed reads still
+  align to that local main-store snapshot even though no quorum horizon `R` is
+  available.
 - If a non-leader node is syncing or cannot complete its local barrier,
   `RoutedController` can transparently retry the read against the leader. The
   forwarded attempt can still fail when the leader is unavailable. If
@@ -584,19 +590,14 @@ indexes need their own progress barrier:
   router returns the barrier failure rather than serving the newly local
   controller without a successful `ReadIndex`.
 - A `ListAuditEntries` filter that contains any field other than `seq` resolves
-  through the independently asynchronous audit index. With the default
-  `minLogSequence = 0`, its handler does not wait for audit-index progress, so
-  it can temporarily omit entries that are already committed even though the
-  ReadIndex barrier completed. A non-zero `minLogSequence` makes each gRPC node
-  that receives the live request wait for that log sequence, sample its live
-  audit head, and wait for its own audit index to reach that head. The bound is
-  propagated when routing selects another node, so the node that actually
-  serves the indexed query repeats the wait against its own independently
-  maintained index. Unfiltered listings and conjunctions made only of `seq`
-  bounds scan the audit zone directly and do not have this secondary-index lag;
-  they still honor a non-zero log-sequence wait. Checkpoint reads ignore the
-  bound, and an index-backed checkpoint filter can retain audit-index lag frozen
-  at checkpoint creation.
+  through the independently asynchronous audit index. It waits for the audit
+  projection's Raft certificate to cover the fixed main-store horizon and
+  compiles the filter from that verified audit snapshot. Unfiltered listings
+  and conjunctions made only of `seq` bounds scan the authoritative audit zone
+  directly and do not wait for the projection. The temporary
+  `minLogSequence` field remains an additional native-sequence floor for live
+  requests, but is no longer the causal alignment proof. Checkpoint creation
+  waits for both read and audit certificates before publishing readiness.
 - `GetLedgerStats` has mixed provenance. `transactionCount` and `logCount` are
   FSM-backed, while `postingCount`, `revertCount`,
   `numscriptExecutionCount`, `referenceCount`, `ephemeralEvictedCount`,

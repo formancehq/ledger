@@ -93,6 +93,15 @@ func TestAuditFilterNeedsIndex(t *testing.T) {
 			outcome,
 		}}},
 	}
+	mixedOr := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{
+			seqLower,
+			outcome,
+		}}},
+	}
+	indexedNot := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{Filter: outcome}},
+	}
 
 	tooDeep := seqLower
 	for range MaxFilterDepth {
@@ -111,6 +120,8 @@ func TestAuditFilterNeedsIndex(t *testing.T) {
 		{name: "and of sequence bounds", input: seqAnd, want: false},
 		{name: "indexed field", input: outcome, want: true},
 		{name: "sequence and indexed field", input: mixedAnd, want: true},
+		{name: "sequence or indexed field", input: mixedOr, want: true},
+		{name: "not indexed field", input: indexedNot, want: true},
 		{name: "malformed sequence condition", input: auditString(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, "bad"), want: true},
 		{name: "missing filter arm", input: &commonpb.QueryFilter{}, want: true},
 		{name: "over depth", input: tooDeep, want: true},
@@ -123,6 +134,24 @@ func TestAuditFilterNeedsIndex(t *testing.T) {
 			require.Equal(t, tt.want, AuditFilterNeedsIndex(tt.input))
 		})
 	}
+}
+
+func TestValidateAuditFilterExercisesIndexBackedGrammarWithoutIndexReads(t *testing.T) {
+	t.Parallel()
+
+	minimum := uint64(3)
+	for name, filter := range map[string]*commonpb.QueryFilter{
+		"string":  auditString(commonpb.AuditField_AUDIT_FIELD_LEDGER, "main"),
+		"outcome": auditString(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "success"),
+		"numeric": auditUint(commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, &minimum, nil),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			require.NoError(t, ValidateAuditFilter(filter))
+		})
+	}
+
+	require.Error(t, ValidateAuditFilter(&commonpb.QueryFilter{}))
 }
 
 func TestCompileAuditFilter_Outcome(t *testing.T) {

@@ -74,7 +74,8 @@ A compile error at FSM time is hash-bound as an `AuditFailure`, so a checker run
 3. Enters the standard read route. Default live consistency establishes a
    `ReadIndexAndWait` horizon; `stale`, leader-local, and checkpoint reads have
    the documented exceptions. The executor waits for read-index alignment only
-   when `AlignmentOwed` is true — a non-nil filter or a LOGS target — then calls
+   when `AlignmentOwed` is true — the filter tree contains a read-index leaf or
+   the target is LOGS — then calls
    `Compile(indexSnap, kb, pq.GetFilter(), ...)` and executes the iterator.
 4. For `LIST`, streams the matching entities through the standard cursor pipeline (see [query-pipeline.md](query-pipeline.md)).
 5. For `AGGREGATE_VOLUMES`, loops over the candidate account set and sums per-asset volumes from the main store. The aggregation is **computed at request time** — there is no materialised aggregate table.

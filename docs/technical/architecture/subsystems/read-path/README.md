@@ -15,7 +15,7 @@ and the pipeline pages.
 
 | Document | Description |
 |----------|-------------|
-| [query-pipeline.md](query-pipeline.md) | End-to-end read flow: ReadIndex barrier, min_log_sequence, Pebble snapshot, iterator algebra, pagination, streaming. |
+| [query-pipeline.md](query-pipeline.md) | End-to-end read flow: ReadIndex barrier, fixed Raft projection horizon, Pebble snapshots, iterator algebra, pagination, streaming. |
 | [iterator-seek-contract.md](iterator-seek-contract.md) | Absolute SeekGE/SeekLE semantics across the iterator algebra, and the seekFloor/seekCeil exhaustion-proof cache. |
 | [read-snapshot-consistency.md](read-snapshot-consistency.md) | Single-snapshot rule for controller reads that stitch LedgerInfo with attribute data. |
 | [readstore-event-keys.md](readstore-event-keys.md) | Append-only metadata/existence event resolution, lease-bounded reclamation, and edge-triggered GC cycles. |
@@ -29,4 +29,4 @@ and the pipeline pages.
 
 - [Indexer](../indexer/) — populates the read store the query path consumes.
 - [Consensus](../consensus/) — `ReadIndex` quorum that gates default live reads (with stale/checkpoint exceptions).
-- [FSM](../fsm/) — what the read path waits to catch up to via `min_log_sequence`.
+- [FSM](../fsm/) — durable applied index used as the common projection horizon.

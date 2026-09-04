@@ -110,3 +110,23 @@ func TestRoutedController_FinishLeaderFallback(t *testing.T) {
 		assert.False(t, profile.Forwarded)
 	})
 }
+
+func TestRoutedController_WithLocalBarrierHorizon(t *testing.T) {
+	t.Parallel()
+
+	mockCtrl := gomock.NewController(t)
+	local := ctrlmock.NewMockController(mockCtrl)
+	remote := ctrlmock.NewMockController(mockCtrl)
+	routed := &RoutedController{localController: local}
+
+	ctx := routed.withLocalBarrierHorizon(context.Background(), local, &node.ReadBarrierInfo{CommitIndex: 42})
+	horizon, ok := query.ReadBarrierHorizon(ctx)
+	require.True(t, ok)
+	require.Equal(t, uint64(42), horizon)
+
+	_, ok = query.ReadBarrierHorizon(routed.withLocalBarrierHorizon(context.Background(), remote, &node.ReadBarrierInfo{CommitIndex: 42}))
+	require.False(t, ok, "the remote hop establishes and checks its own barrier")
+
+	_, ok = query.ReadBarrierHorizon(routed.withLocalBarrierHorizon(context.Background(), local, nil))
+	require.False(t, ok, "stale and explicit leader reads deliberately carry no linearizable horizon")
+}
