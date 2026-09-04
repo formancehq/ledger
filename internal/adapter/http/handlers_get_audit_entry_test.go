@@ -111,8 +111,8 @@ func TestAuditRoutes_FullRouteIntegration(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
-	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), uint64(0)).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool, _ uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
 			return cursor.NewSliceCursor([]*auditpb.AuditEntry{{Sequence: 1}}), nil
 		}).AnyTimes()
 	backend.EXPECT().GetAuditEntry(gomock.Any(), uint64(1)).DoAndReturn(

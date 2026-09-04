@@ -43,9 +43,9 @@ func toTemplateUsageJSON(usage *commonpb.TemplateUsage) *templateUsageJSON {
 // handleGetNumscriptUsage handles GET /{ledgerName}/numscripts/{name}/usage.
 // Returns the invocation counter + last-used timestamp populated by the
 // usagebuilder subsystem. Values are eventually consistent with the FSM
-// (may lag by up to one usagebuilder tick). A never-invoked template on
-// an existing ledger returns a zero-valued response, not a 404 — clients
-// treat 0 uniformly. Unknown / soft-deleted ledgers surface a 404 (via
+// (may lag while the usagebuilder drains pending batches). A never-invoked
+// template on an existing ledger returns a zero-valued response, not a 404 —
+// clients treat 0 uniformly. Unknown / soft-deleted ledgers surface a 404 (via
 // the underlying controller).
 func (s *Server) handleGetNumscriptUsage(w http.ResponseWriter, r *http.Request) {
 	ledgerName, ok := requireLedgerName(w, r)

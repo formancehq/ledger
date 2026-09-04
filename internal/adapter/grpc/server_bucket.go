@@ -1045,13 +1045,11 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 	} else {
 		minLogSeq := opts.GetRead().GetMinLogSequence()
 
-		// A filtered live read resolves through the async audit secondary index,
-		// which lags the audit zone independently of the log index. Gate it on the
-		// audit-index progress so the requested consistency bound actually covers
-		// the index this read consults. An unfiltered read scans the Cold/Audit
-		// zone directly and is always current, so it keeps the plain log-index wait
-		// (its fast path is unchanged).
-		if opts.GetFilter() != nil {
+		// Filters that consult the async audit secondary index need its independent
+		// progress gate. Nil filters and conjunctions made only of seq bounds scan
+		// the Cold/Audit zone directly, so coupling them to audit-index progress
+		// would make an authoritative read wait for a projection it never uses.
+		if query.AuditFilterNeedsIndex(opts.GetFilter()) {
 			if waitErr := impl.waitFilteredAuditConsistency(ctx, minLogSeq); waitErr != nil {
 				return waitErr
 			}
@@ -1059,7 +1057,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 			return waitErr
 		}
 
-		c, err = impl.ctrl.ListAuditEntries(ctx, fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
+		c, err = impl.ctrl.ListAuditEntries(ctx, fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse(), minLogSeq)
 	}
 
 	if err != nil {

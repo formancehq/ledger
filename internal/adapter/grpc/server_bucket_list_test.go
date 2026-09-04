@@ -268,8 +268,8 @@ func TestListAuditEntries(t *testing.T) {
 		t.Parallel()
 
 		impl, mockCtrl := newListHandlerHarness(t)
-		// ListAuditEntries(ctx, pageSize, afterSequence, filter, reverse)
-		mockCtrl.EXPECT().ListAuditEntries(gomock.Any(), uint32(3), uint64(0), nil, false).
+		// ListAuditEntries(ctx, pageSize, afterSequence, filter, reverse, minLogSequence)
+		mockCtrl.EXPECT().ListAuditEntries(gomock.Any(), uint32(3), uint64(0), nil, false, uint64(0)).
 			Return(page(
 				&auditpb.AuditEntry{Sequence: 1},
 				&auditpb.AuditEntry{Sequence: 2},

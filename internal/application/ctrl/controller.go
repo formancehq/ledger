@@ -52,7 +52,9 @@ type Controller interface {
 	GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error)
 
 	// Audit operations
-	ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error)
+	// minLogSequence is carried across routed controller hops so the serving
+	// gRPC handler can enforce audit-index freshness on its own replica.
+	ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool, minLogSequence uint64) (cursor.Cursor[*auditpb.AuditEntry], error)
 	GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error)
 
 	// Chapter operations
@@ -82,9 +84,9 @@ type Controller interface {
 
 	// GetTemplateUsage returns the invocation counter and last-used timestamp
 	// for a Numscript template. Reads from the usagebuilder side-store, so
-	// values may lag the live FSM by up to one tick interval. Returns a
-	// zero-valued TemplateUsage when the template has never been invoked (or
-	// the usagebuilder has not caught up to any of its invocations yet).
+	// values may lag the live FSM while the worker drains pending batches.
+	// Returns a zero-valued TemplateUsage when the template has never been
+	// invoked (or the usagebuilder has not caught up to any invocation yet).
 	GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error)
 
 	// Cluster-wide config operations (read-only)
