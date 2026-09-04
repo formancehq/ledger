@@ -484,7 +484,7 @@ func emitReverseMapFindings(
 			class:  reverseMapClassOrphan,
 			ledger: key.ledger,
 			message: fmt.Sprintf(
-				"reverse-map rows survive for metadata field %q (namespace %q) on ledger %q with no registered index — missed by the %s: rows=%d, sample %s",
+				"reverse-map rows survive for metadata field %q (namespace %q) on ledger %q with no registered index — classified against the %s lifecycle: rows=%d, sample %s",
 				key.metaKey, key.namespace, key.ledger, orphanMissedBy[key], agg.rows, agg.sample),
 		})
 	}

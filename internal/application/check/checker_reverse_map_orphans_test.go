@@ -340,12 +340,11 @@ func TestCompareReverseMapOrphans_IdentityIncludesTarget(t *testing.T) {
 	require.Contains(t, events[0].GetError().GetMessage(), "sample transaction 9")
 }
 
-// TestCompareReverseMapOrphans_PurgeMissFlaggedAndLabelled: a live rmap row
-// with no registered index is a purge miss, full stop — handleDroppedIndexLog
-// purges on DropIndex exactly as RemovedMetadataFieldType always has, so
-// neither lifecycle leaves residue on a healthy store. The replayed schema no
-// longer legitimises anything; it only names which purge path missed.
-func TestCompareReverseMapOrphans_PurgeMissFlaggedAndLabelled(t *testing.T) {
+// TestCompareReverseMapOrphans_LifecycleViolationFlaggedAndClassified: a live
+// rmap row with no registered index violates the lifecycle invariant or
+// reflects read-store corruption. The replayed schema no longer legitimises
+// anything; it only classifies the finding against a lifecycle path.
+func TestCompareReverseMapOrphans_LifecycleViolationFlaggedAndClassified(t *testing.T) {
 	t.Parallel()
 
 	kb := dal.NewKeyBuilder()
@@ -363,8 +362,8 @@ func TestCompareReverseMapOrphans_PurgeMissFlaggedAndLabelled(t *testing.T) {
 
 	events := dropped.run(3, ledgerNameSet("L1"))
 	require.Len(t, events, 1,
-		"rows surviving a DropIndex are a purge miss and must be flagged")
-	require.Contains(t, events[0].GetError().GetMessage(), "DropIndex purge")
+		"rows without a registered index violate the lifecycle invariant and must be flagged")
+	require.Contains(t, events[0].GetError().GetMessage(), "classified against the DropIndex purge lifecycle")
 	require.Contains(t, events[0].GetError().GetMessage(), "rows=2")
 
 	// Schema gone ⇒ classify the lifecycle violation against field removal.
@@ -375,7 +374,7 @@ func TestCompareReverseMapOrphans_PurgeMissFlaggedAndLabelled(t *testing.T) {
 
 	events = removed.run(3, ledgerNameSet("L1"))
 	require.Len(t, events, 1)
-	require.Contains(t, events[0].GetError().GetMessage(), "RemovedMetadataFieldType purge")
+	require.Contains(t, events[0].GetError().GetMessage(), "classified against the RemovedMetadataFieldType purge lifecycle")
 }
 
 // TestCompareReverseMapOrphans_RemovedFieldTypeResidueFlagged is EN-1458's

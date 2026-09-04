@@ -235,8 +235,8 @@ var (
 // A non-nil error means the key is not well-formed:
 //
 //   - ErrReverseMapKeyPrefix — wrong or missing discriminator byte
-//   - ErrReverseMapKeyTruncated — too short at any point (header, metadata-key
-//     terminator, version block, or entity id)
+//   - ErrReverseMapKeyTruncated — too short to contain the fixed header or the
+//     4-byte version block
 //   - ErrReverseMapKeyNamespace — neither NamespaceAccount nor NamespaceTransaction
 //   - ErrReverseMapKeyLedgerName — an embedded NUL surviving the fixed-width
 //     block's zero-padding trim, or an empty ledger name
