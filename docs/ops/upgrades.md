@@ -12,7 +12,7 @@ Every target revision must explicitly identify one of these upgrade classes:
 | Class | When it applies | Procedure |
 |-------|-----------------|-----------|
 | Rolling | The target revision explicitly supports mixed binaries and the existing storage schema. | Restart followers one at a time, wait for each to catch up, transfer leadership to an upgraded voter, then restart the old leader. |
-| Coordinated restart | The storage schema is compatible, but mixed binaries can apply a committed entry differently. | Enable maintenance mode, stop every node, replace all binaries, then restart the cluster without a mixed-version window. |
+| Coordinated restart | The storage schema is compatible, but mixed binaries can apply a committed entry differently. | Enable maintenance mode, wait for every voter to apply the maintenance barrier durably, stop every node, replace all binaries, then restart the cluster without a mixed-version window. |
 | Rebuild or restore | Persisted or backup formats are incompatible. | Follow the revision-specific reset instructions and rebuild from the declared source of truth or a backup explicitly supported by the target revision. |
 
 If the target revision does not declare its class, stop and obtain a release
@@ -67,10 +67,20 @@ When persisted storage is compatible but mixed binaries are not:
 
 1. Enable [maintenance mode](./maintenance-mode.md) and verify writes are
    rejected.
-2. Stop all nodes before starting any target binary.
-3. Replace every server binary or image.
-4. Start enough voters to form quorum, then start the remaining members.
-5. Verify cluster health and integrity before disabling maintenance mode.
+2. Query the leader with `ledgerctl cluster status --json` and record its
+   `raftStatus.commit` index after maintenance mode is visible. Call this
+   barrier `C`.
+3. Query every voter with
+   `ledgerctl cluster status --node-id <id> --json`. Before stopping any node,
+   require its sync status to be normal and
+   `raftStatus.lastPersistedIndex >= C`. This proves that every voter has
+   durably applied all entries through the maintenance barrier under the old
+   binary. Stop or finish any cluster-internal job that can still propose work,
+   then repeat the check if the leader's commit index advanced.
+4. Stop all nodes before starting any target binary.
+5. Replace every server binary or image.
+6. Start enough voters to form quorum, then start the remaining members.
+7. Verify cluster health and integrity before disabling maintenance mode.
 
 `ledgerctl upgrade` upgrades the `ledgerctl` client binary only. It does not
 upgrade Ledger servers or decide whether a server revision is storage- or

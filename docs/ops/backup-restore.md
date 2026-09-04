@@ -70,6 +70,13 @@ Test restoring every retention class. Retaining only a manifest, or only the
 checkpoint objects without all incremental segments referenced by that
 manifest, is not a usable backup.
 
+Ledger backups also do not copy cold storage wholesale. Chapters archived
+before the full checkpoint remain in their cold-storage objects, and the
+restored cluster needs those objects for historical reads. Protect cold storage
+outside the cluster and region failure domain, retain its configuration and
+credentials, and include archived-history reads in restore exercises. See
+[Relationship with Chapters and Cold Storage](#relationship-with-chapters-and-cold-storage).
+
 ### End-to-End Flow
 
 ```
