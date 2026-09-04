@@ -330,7 +330,9 @@ func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, 
 	}
 
 	if log == nil {
-		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
+		// Log history is permanent: a transaction whose state exists but whose
+		// creation log is missing is a corrupt store, never a routine miss.
+		return nil, fmt.Errorf("invariant: transaction %d has state but its creation log %d is missing", transactionID, state.GetCreatedByLog())
 	}
 
 	applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
