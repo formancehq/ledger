@@ -87,6 +87,7 @@ require (
 require (
 	github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager v0.3.16
 	github.com/benbjohnson/immutable v0.4.3
+	github.com/dustin/go-humanize v1.0.1
 	go.uber.org/goleak v1.3.0
 )
 

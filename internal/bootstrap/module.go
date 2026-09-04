@@ -281,9 +281,7 @@ func Module() fx.Option {
 				return dal.NewSmartCompactor(store, logger, machine.ColdCompactionCh())
 			},
 			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
-				return wal.New(cfg.RaftConfig.WalDir, logger.WithFields(map[string]any{
-					"cmp": "wal",
-				}), meterProvider.Meter("wal"))
+				return wal.New(cfg.RaftConfig.WalDir, logger, meterProvider.Meter("wal"))
 			},
 			func(cfg Config, logger logging.Logger) (*spool.Default, error) {
 				return spool.NewDefault(spool.DefaultSpoolConfig{

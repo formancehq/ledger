@@ -2,10 +2,12 @@ package health
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/dustin/go-humanize"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
@@ -294,13 +296,13 @@ func (hc *HealthChecker) logDiskUsageSummary(reports []nodeUsageReport) {
 			continue
 		}
 
-		fields["wal_used"] = r.walUsed
-		fields["wal_total"] = r.walTotal
-		fields["wal_percent"] = r.walPercent
-		fields["data_used"] = r.dataUsed
-		fields["data_total"] = r.dataTotal
-		fields["data_percent"] = r.dataPercent
-		hc.logger.WithFields(fields).Infof("Disk usage check: wal=%.1f%% data=%.1f%%", r.walPercent, r.dataPercent)
+		fields["wal_used"] = humanize.IBytes(r.walUsed)
+		fields["wal_total"] = humanize.IBytes(r.walTotal)
+		fields["wal_percent"] = fmt.Sprintf("%.2f%%", r.walPercent)
+		fields["data_used"] = humanize.IBytes(r.dataUsed)
+		fields["data_total"] = humanize.IBytes(r.dataTotal)
+		fields["data_percent"] = fmt.Sprintf("%.2f%%", r.dataPercent)
+		hc.logger.WithFields(fields).Infof("Disk usage check")
 	}
 }
 
