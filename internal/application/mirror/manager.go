@@ -40,9 +40,14 @@ type Manager struct {
 	meterProvider metric.MeterProvider
 	maxBatchSize  int
 
-	mu       sync.Mutex
-	isLeader bool
-	workers  map[string]*Worker
+	mu                  sync.Mutex
+	workers             map[string]*Worker
+	resourcesGeneration uint64
+
+	leadershipMu         sync.Mutex
+	leadershipGeneration uint64
+	isLeader             bool
+	stopped              bool
 
 	w worker.Worker
 }
@@ -70,6 +75,18 @@ func (m *Manager) Start() {
 
 // Stop gracefully stops the Manager and tears down any active workers.
 func (m *Manager) Stop() {
+	m.leadershipMu.Lock()
+	if m.stopped {
+		m.leadershipMu.Unlock()
+
+		return
+	}
+
+	m.leadershipGeneration++
+	m.isLeader = false
+	m.stopped = true
+	m.leadershipMu.Unlock()
+
 	m.w.Stop()
 
 	m.mu.Lock()
@@ -78,13 +95,24 @@ func (m *Manager) Stop() {
 	m.teardown()
 }
 
-// OnLeadershipChange is called when the node's leadership status changes.
+// OnLeadershipChange records the latest leadership generation and wakes the
+// lifecycle-owned reconciliation loop. It deliberately does not reconcile on
+// the caller: bootstrap invokes it synchronously from the Raft observer so
+// transitions are recorded in order without blocking the Raft processing loop
+// on Pebble reads or worker startup.
 func (m *Manager) OnLeadershipChange(isLeader bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.leadershipMu.Lock()
+	if m.stopped {
+		m.leadershipMu.Unlock()
 
+		return
+	}
+
+	m.leadershipGeneration++
 	m.isLeader = isLeader
-	m.reconcile()
+	m.leadershipMu.Unlock()
+
+	m.notifications.NotifyConfigChanged()
 }
 
 func (m *Manager) loop(stop <-chan struct{}) {
@@ -101,17 +129,53 @@ func (m *Manager) loop(stop <-chan struct{}) {
 			m.mu.Lock()
 			defer m.mu.Unlock()
 
-			if m.isLeader {
-				m.reconcile()
-			}
+			m.reconcile()
 		},
 	)
+}
+
+func (m *Manager) leadershipSnapshot() (uint64, bool, bool) {
+	m.leadershipMu.Lock()
+	defer m.leadershipMu.Unlock()
+
+	return m.leadershipGeneration, m.isLeader, m.stopped
+}
+
+func (m *Manager) isCurrentLeader(generation uint64) bool {
+	m.leadershipMu.Lock()
+	defer m.leadershipMu.Unlock()
+
+	return !m.stopped && m.isLeader && m.leadershipGeneration == generation
+}
+
+func (m *Manager) isCurrentGeneration(generation uint64) bool {
+	m.leadershipMu.Lock()
+	defer m.leadershipMu.Unlock()
+
+	return m.leadershipGeneration == generation
 }
 
 // reconcile reads the current mirror ledger configurations from the store and
 // starts or stops workers as needed. Must be called under lock.
 func (m *Manager) reconcile() {
-	if !m.isLeader {
+	generation, isLeader, stopped := m.leadershipSnapshot()
+	m.reconcileGeneration(generation, isLeader, stopped)
+}
+
+// reconcileGeneration applies one captured leadership generation. A transition
+// can arrive after the loop wakes but before it acquires m.mu, so reject a
+// superseded generation before either teardown or startup mutates ownership.
+// Must be called under lock.
+func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool) {
+	if !m.isCurrentGeneration(generation) {
+		return
+	}
+	if m.resourcesGeneration != generation {
+		m.teardown()
+		m.resourcesGeneration = generation
+	}
+
+	if stopped || !isLeader {
 		m.teardown()
 
 		return
@@ -133,6 +197,10 @@ func (m *Manager) reconcile() {
 		return
 	}
 
+	if !m.isCurrentLeader(generation) {
+		return
+	}
+
 	// Build desired state as a set of ledger names
 	desired := make(map[string]*commonpb.LedgerInfo, len(mirrorLedgers))
 	for _, info := range mirrorLedgers {
@@ -141,6 +209,10 @@ func (m *Manager) reconcile() {
 
 	// Remove workers for ledgers that are no longer mirrors
 	for name, w := range m.workers {
+		if !m.isCurrentLeader(generation) {
+			return
+		}
+
 		if _, stillDesired := desired[name]; !stillDesired {
 			w.Stop()
 			delete(m.workers, name)
@@ -149,6 +221,10 @@ func (m *Manager) reconcile() {
 
 	// Start workers for new mirror ledgers
 	for name, info := range desired {
+		if !m.isCurrentLeader(generation) {
+			return
+		}
+
 		if _, exists := m.workers[name]; exists {
 			continue // already running
 		}
@@ -182,6 +258,12 @@ func (m *Manager) reconcile() {
 
 		w := NewWorker(name, batchSize, source, rewriter, m.store, m.proposer, m.builder, m.logger, m.meterProvider)
 		w.Start()
+		if !m.isCurrentLeader(generation) {
+			w.Stop()
+
+			return
+		}
+
 		m.workers[name] = w
 	}
 
