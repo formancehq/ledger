@@ -480,6 +480,18 @@ ledgerctl cluster remove-node 3 --force
 ledgerctl cluster status
 ```
 
+For a three-voter cluster that has permanently lost both followers, the same
+leader-only command may be run once for each lost voter. This restores a
+single-voter configuration without copying or re-bootstrapping the leader's
+data directory.
+
+This recovery is available only when the surviving node still considers itself
+leader. If the sole survivor is a follower or candidate, it
+cannot elect itself under the old three-voter membership and the force path
+rejects the request because it is leader-only. Restore a fresh cluster from an
+off-cluster backup instead. See
+[Availability and Disaster Recovery](./availability-and-recovery.md#failure-scenarios).
+
 **How it works:**
 
 1. `ForceRemoveNode` directly calls `rawNode.ApplyConfChange()` on the leader, bypassing the Raft log
@@ -498,6 +510,9 @@ ledgerctl cluster status
 - Only use for nodes that will **never rejoin** with their old state (e.g., PVCs will be deleted)
 - The force-removed node is not notified — if it somehow recovers, it will have stale cluster membership
 - Cannot force-remove the leader itself
+- Before force-removing any voter, permanently fence every removed member. If
+  another partition can still commit, force-removal can create divergent
+  histories.
 
 ## Cluster Configuration Updates
 
@@ -590,3 +605,4 @@ After the reset, the preloader falls back to Pebble reads (0xF1 zone) for all ca
 - [Deployment](./deployment.md) - Helm chart configuration, CLI flags
 - [CLI Reference](./cli.md) - `cluster add-learner`, `cluster promote-learner` commands
 - [Memory Management](./memory.md) - Cache rotation threshold memory impact
+- [Availability and Disaster Recovery](./availability-and-recovery.md) - Failure-domain placement and quorum-loss recovery

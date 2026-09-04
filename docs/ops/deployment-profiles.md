@@ -207,6 +207,9 @@ See [Backup and Restore](./backup-restore.md) for the supported backup and resto
 flows. Cold storage retention and backups solve different problems and need
 separate schedules.
 
+See [Availability and Disaster Recovery](./availability-and-recovery.md) for
+multi-region topology trade-offs and the supported responses to quorum loss.
+
 ## Tune by Workload Signal
 
 | Customer need or observed signal | Parameter or action | Trade-off / guardrail |
@@ -477,5 +480,7 @@ Before go-live, verify:
 - [Performance Guidelines](./performance-tuning.md) — client and hot-path tuning
 - [Monitoring](./monitoring.md) — metrics, dashboards, and alerts
 - [Backup and Restore](./backup-restore.md) — RPO/RTO implementation
+- [Availability and Disaster Recovery](./availability-and-recovery.md) — multi-region placement and failure recovery
+- [Server Binary Upgrades](./upgrades.md) — pre-GA compatibility boundary and upgrade classes
 - [Authentication](./authentication.md) and [TLS Migration](./tls-migration.md)
 - [CLI Reference](./cli.md) — exhaustive server flag reference
