@@ -51,15 +51,6 @@ type Checker struct {
 	// in-flight set onto.
 	modelState oracle.GlobalState
 
-	// receiptByRef maps a committed transaction's reference to the signed receipt
-	// the server returned for it, so generateRevert can exercise the
-	// receipt-carried revert path. Guarded by its own leaf mutex (receiptsMu, never
-	// held together with anything else) so lock-free generation can look receipts
-	// up without touching mu. Populated at commit (captureReceipts), read through
-	// receiptFor.
-	receiptsMu   sync.Mutex
-	receiptByRef map[string]string
-
 	// replayable holds committed bulks that carried a tracked idempotency key —
 	// the originals runReplay re-sends to exercise the server's idempotency
 	// replay. Populated at commit (rememberReplayable), capped at
@@ -126,15 +117,5 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		reads:        map[uint64]struct{}{},
 		incoming:     make(chan observation, incomingBuffer),
 		modelState:   modelState,
-		receiptByRef: map[string]string{},
 	}
-}
-
-// receiptFor returns the captured receipt for ref ("" when none). Safe without
-// c.mu — see receiptByRef.
-func (c *Checker) receiptFor(ref string) string {
-	c.receiptsMu.Lock()
-	defer c.receiptsMu.Unlock()
-
-	return c.receiptByRef[ref]
 }

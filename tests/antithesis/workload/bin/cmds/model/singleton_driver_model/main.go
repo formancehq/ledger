@@ -201,7 +201,7 @@ func runWorker(
 		state := c.modelState
 		c.mu.Unlock()
 
-		bulk := generateBulk(state, c.ledgerNames, c.receiptFor)
+		bulk := generateBulk(state, c.ledgerNames)
 		if len(bulk.Requests) == 0 {
 			continue
 		}
