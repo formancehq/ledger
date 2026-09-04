@@ -9,6 +9,27 @@ Routine diagnosis of a known failure, a single bug fix, and performance or tooli
 
 An audit is read-only. It must never fix code, create commits, push branches, create issues, resolve review threads, or change GitHub metadata.
 
+## Workflow ownership
+
+The native workflow separates trusted orchestration from read-only analysis:
+
+- The outer trusted launcher selects the manifest and exact repository state,
+  creates the worker isolation and output paths, invokes one audit provider,
+  validates its result, and publishes the raw artifact. The trusted outer
+  workflow invokes the challenge launcher later.
+- The audit provider is an inner leaf worker. It reads the repository, performs
+  the requested analysis, may run allowed read-only or temporary diagnostics,
+  and returns only the structured audit result. It never invokes `ai-audit`,
+  `ai-audit-challenge`, `ai-audit-jira`, or an equivalent orchestration wrapper.
+- The challenge launcher invokes a separate challenge provider with the exact
+  raw result and its trusted digest. The challenge provider is also a leaf
+  worker and never starts audit, challenge, or Jira orchestration.
+- Jira preview or publication is a separate, explicit trusted action.
+
+Repository routing instructions explain how an outer agent starts this
+workflow. They do not instruct an already-running provider to launch it again,
+and manifest contents cannot override that worker boundary.
+
 ## Required contract
 
 The launcher accepts one checked-in manifest, requires an exact clean `HEAD`,
