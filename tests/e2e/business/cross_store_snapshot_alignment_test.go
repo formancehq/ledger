@@ -140,10 +140,12 @@ var _ = Describe("Cross-store snapshot alignment", Ordered, func() {
 		Expect(err).To(Succeed())
 		Expect(st.GetLag()).To(BeNumerically(">", 0), "fold caught up while stopping pressure — inconclusive")
 
-		// The read blocks until the index covers the main-store horizon captured
-		// for this request. The first response it serves must therefore already
-		// be aligned; observing any rows from the complement is the regression.
-		txs, err := actions.ListTransactionsFiltered(ctx, client, ledgerName, 0, 0, notTs)
+		// EN-1946 waits for the fixed main-snapshot horizon until the caller's
+		// context ends. Give this one fixed target the full drain budget; a
+		// successful response must already be aligned.
+		queryCtx, cancelQuery := context.WithTimeout(ctx, 3*time.Minute)
+		defer cancelQuery()
+		txs, err := actions.ListTransactionsFiltered(queryCtx, client, ledgerName, 0, 0, notTs)
 		Expect(err).To(Succeed())
 		if len(txs) > 0 {
 			Fail(fmt.Sprintf("not(ts[_,_]) returned %d row(s), first id=%d — a committed tx surfaced as missing from the READY timestamp index", len(txs), txs[0].GetId()))

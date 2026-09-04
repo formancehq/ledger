@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -56,6 +57,17 @@ const (
 type releasingCloser struct {
 	handle  io.Closer
 	release func()
+}
+
+type joinedCloser []io.Closer
+
+func (c joinedCloser) Close() error {
+	var err error
+	for _, closer := range c {
+		err = errors.Join(err, closer.Close())
+	}
+
+	return err
 }
 
 func (c releasingCloser) Close() error {
@@ -976,26 +988,50 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
-	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle, releaseHold)
-	if err != nil {
-		return nil, err
-	}
+	var (
+		indexReader     dal.PebbleReader
+		indexVersionFor readstore.IndexVersionResolver
+		mainSeq         uint64
+		horizonKeep     func([]byte) (bool, error)
+	)
 
-	defer releaseLease()
-	defer func() { _ = snap.Close() }()
+	if query.AlignmentOwed(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS) {
+		snap, alignedMainSeq, releaseLease, alignErr := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle, releaseHold)
+		if alignErr != nil {
+			return nil, alignErr
+		}
+
+		defer releaseLease()
+		defer func() { _ = snap.Close() }()
+
+		indexReader = snap
+		mainSeq = alignedMainSeq
+		indexVersionFor = readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq)
+		horizonKeep = query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, handle, snap, ledgerInfo.GetName(), mainSeq)
+	} else {
+		// Main-store-only filters still go through Compile for validation and
+		// boolean semantics, but must not wait for or lease the read projection.
+		releaseHold()
+
+		snap := ctrl.readStore.NewSnapshot()
+		defer func() { _ = snap.Close() }()
+
+		indexReader = snap
+		indexVersionFor = readstore.SnapshotVersionResolver(snap, ledgerInfo.GetName())
+	}
 
 	kb := dal.NewKeyBuilder()
 
 	indexStart := time.Now()
 
-	compiled, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), profile, handle, mainSeq)
+	compiled, err := query.Compile(indexReader, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), indexVersionFor, profile, handle, mainSeq)
 	if err != nil {
 		return nil, domain.WrapCompileError(err)
 	}
 
 	var iter = compiled
-	if keep := query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, handle, snap, ledgerInfo.GetName(), mainSeq); keep != nil {
-		iter = readstore.NewFilterIterator(compiled, keep)
+	if horizonKeep != nil {
+		iter = readstore.NewFilterIterator(compiled, horizonKeep)
 	}
 	defer iter.Close()
 
@@ -1772,13 +1808,73 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 		}
 	}()
 
+	mainAppliedIndex, err := query.ReadLastAppliedIndex(handle)
+	if err != nil {
+		return nil, fmt.Errorf("reading main-store applied index: %w", err)
+	}
+	if barrier, ok := query.ReadBarrierHorizon(ctx); ok && mainAppliedIndex < barrier {
+		return nil, fmt.Errorf("main-store snapshot applied index %d is behind ReadIndex horizon %d", mainAppliedIndex, barrier)
+	}
 	mainAuditSequence, err := query.ReadLastAuditSequence(handle)
 	if err != nil {
 		return nil, fmt.Errorf("reading main-store audit horizon: %w", err)
 	}
+	if err := query.ValidateAuditFilter(filter); err != nil {
+		return nil, err
+	}
 
-	seqs, loSeq, hiSeq, narrowed, err := query.CompileAuditFilter(rs, filter)
+	var auditSnap *pebble.Snapshot
+	indexReader := query.AuditIndexReader(rs)
+	if query.AuditFilterNeedsIndex(filter) {
+		disabled, rebuilding := rs.AuditProjectionState()
+		if disabled || rebuilding {
+			state := "disabled"
+			if rebuilding {
+				state = "rebuilding"
+			}
+
+			return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: "audit (" + state + ")"}}
+		}
+
+		for {
+			auditSnap = rs.NewSnapshot()
+			progress, err := rs.ReadAuditRaftProgressFrom(auditSnap)
+			if err != nil {
+				_ = auditSnap.Close()
+
+				return nil, fmt.Errorf("reading audit projection progress: %w", err)
+			}
+			if progress >= mainAppliedIndex {
+				indexReader = readstore.NewAuditIndexSnapshot(auditSnap)
+
+				break
+			}
+			_ = auditSnap.Close()
+			if rs.Frozen() {
+				return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: "audit checkpoint"}}
+			}
+			if err := rs.WaitForAuditRaftProgress(ctx, mainAppliedIndex); errors.Is(err, readstore.ErrAuditProjectionUnavailable) {
+				disabled, rebuilding := rs.AuditProjectionState()
+				state := "unavailable"
+				if disabled {
+					state = "disabled"
+				} else if rebuilding {
+					state = "rebuilding"
+				}
+
+				return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: "audit (" + state + ")"}}
+			} else if err != nil {
+				return nil, fmt.Errorf("waiting for audit projection alignment at Raft index %d: %w", mainAppliedIndex, err)
+			}
+		}
+	}
+
+	seqs, loSeq, hiSeq, narrowed, err := query.CompileAuditFilter(indexReader, filter)
 	if err != nil {
+		if auditSnap != nil {
+			_ = auditSnap.Close()
+		}
+
 		return nil, err
 	}
 	if hiSeq > mainAuditSequence {
@@ -1789,10 +1885,17 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 	// reverse=false as ascending, so pass reverse through directly.
 	c, err := query.ReadAuditEntriesPage(ctx, handle, seqs, narrowed, loSeq, hiSeq, afterSequence, reverse, pageSize)
 	if err != nil {
+		if auditSnap != nil {
+			_ = auditSnap.Close()
+		}
+
 		return nil, fmt.Errorf("listing audit entries: %w", err)
 	}
 
 	closeHandle = false
+	if auditSnap != nil {
+		return cursor.NewClosingCursor(c, joinedCloser{auditSnap, handle}), nil
+	}
 
 	return cursor.NewClosingCursor(c, handle), nil
 }

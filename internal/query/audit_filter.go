@@ -21,6 +21,20 @@ type AuditIndexReader interface {
 	AuditSeqsByUint64Range(field byte, lo, hi uint64) ([]uint64, error)
 }
 
+type auditValidationIndex struct{}
+
+func (auditValidationIndex) AuditSeqsByString(byte, string) ([]uint64, error) {
+	return nil, nil
+}
+
+func (auditValidationIndex) AuditSeqsByOutcome(bool) ([]uint64, error) {
+	return nil, nil
+}
+
+func (auditValidationIndex) AuditSeqsByUint64Range(byte, uint64, uint64) ([]uint64, error) {
+	return nil, nil
+}
+
 // auditSeqUniverse is the sentinel returned by leaf compilation when a
 // condition does not narrow the candidate set to an index-backed sequence
 // list — specifically AUDIT_FIELD_SEQUENCE, which is served by bounding the
@@ -56,6 +70,16 @@ type auditCompiled struct {
 // candidates before the barrier intended to make them fresh.
 func AuditFilterNeedsIndex(filter *commonpb.QueryFilter) bool {
 	return auditFilterNeedsIndex(filter, 0)
+}
+
+// ValidateAuditFilter checks the complete audit-filter grammar and leaf values
+// without consulting the asynchronous audit index. Callers use it before a
+// readiness gate so malformed input keeps its InvalidArgument contract even
+// while the projection is disabled or rebuilding.
+func ValidateAuditFilter(filter *commonpb.QueryFilter) error {
+	_, _, _, _, err := CompileAuditFilter(auditValidationIndex{}, filter)
+
+	return err
 }
 
 func auditFilterNeedsIndex(filter *commonpb.QueryFilter, depth int) bool {

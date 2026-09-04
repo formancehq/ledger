@@ -15,6 +15,8 @@ import (
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Cross-store value skew (EN-1748, metadata-flip half): a row selected by a
@@ -131,10 +133,30 @@ var _ = Describe("Cross-store value skew", Ordered, func() {
 		for time.Now().Before(deadline) {
 			probes++
 
-			accs, err := actions.ListAccountsFiltered(ctx, client, ledgerName, 0, "", gold)
-			// Alignment waits out a lagging fold rather than rejecting, so an
-			// error here is a real failure, not a freshness condition.
-			Expect(err).To(Succeed())
+			// EN-1946 waits for the fixed main-snapshot horizon until the caller's
+			// context ends. Bound each probe so sustained pressure cannot keep the
+			// producers alive while this read waits for its fixed target.
+			probeCtx, cancelProbe := context.WithTimeout(ctx, 250*time.Millisecond)
+			accs, err := actions.ListAccountsFiltered(probeCtx, client, ledgerName, 0, "", gold)
+			cancelProbe()
+			if err != nil {
+				// A lagging fold may reach the client deadline directly, or the
+				// server may wrap that same expired alignment wait as Unavailable.
+				// Keep the latter narrow so unrelated availability failures remain
+				// test failures.
+				switch status.Code(err) {
+				case codes.DeadlineExceeded:
+				case codes.Unavailable:
+					Expect(err.Error()).To(ContainSubstring("waiting for read projection alignment"))
+					Expect(err.Error()).To(Or(
+						ContainSubstring("context deadline exceeded"),
+						ContainSubstring("context canceled"),
+					))
+				default:
+					Fail(fmt.Sprintf("probe %d returned unexpected error: %v", probes, err))
+				}
+				continue
+			}
 
 			served++
 

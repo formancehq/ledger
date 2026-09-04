@@ -163,6 +163,14 @@ func (b *RoutedController) markForwardedIfRemote(ctx context.Context, selected c
 	}
 }
 
+func (b *RoutedController) withLocalBarrierHorizon(ctx context.Context, selected ctrl.Controller, barrier *node.ReadBarrierInfo) context.Context {
+	if selected == b.localController && barrier != nil {
+		return query.WithReadBarrierHorizon(ctx, barrier.CommitIndex)
+	}
+
+	return ctx
+}
+
 func (b *RoutedController) IsHealthy() bool {
 	return b.Node.IsHealthy()
 }
@@ -236,21 +244,21 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string
 }
 
 func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
+	return c.ListTransactions(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, pageSize, afterTxID, filter, reverse)
 }
 
 func (b *RoutedController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ListLogs(ctx, ledgerName, afterSequence, pageSize, filter)
+	return c.ListLogs(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, afterSequence, pageSize, filter)
 }
 
 func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
@@ -263,12 +271,12 @@ func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*common
 }
 
 func (b *RoutedController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool, minLogSequence uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ListAuditEntries(ctx, pageSize, afterSequence, filter, reverse, minLogSequence)
+	return c.ListAuditEntries(b.withLocalBarrierHorizon(ctx, c, barrier), pageSize, afterSequence, filter, reverse, minLogSequence)
 }
 
 func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
@@ -318,16 +326,16 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 		}).Infof("read barrier for ListAccounts")
 	}
 
-	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
+	return c.ListAccounts(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, pageSize, afterAddress, filter, reverse)
 }
 
 func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.AggregateVolumes(ctx, ledgerName, filter, opts)
+	return c.AggregateVolumes(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, filter, opts)
 }
 
 func (b *RoutedController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
@@ -376,12 +384,12 @@ func (b *RoutedController) ListPreparedQueries(ctx context.Context, ledger strin
 }
 
 func (b *RoutedController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ExecutePreparedQuery(ctx, req)
+	return c.ExecutePreparedQuery(b.withLocalBarrierHorizon(ctx, c, barrier), req)
 }
 
 func (b *RoutedController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {

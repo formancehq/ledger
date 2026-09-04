@@ -121,19 +121,19 @@ state ever produced.
 index snapshot through `query.AlignedIndexSnapshot`, and wraps the compiled
 iterator with `query.MainHorizonKeep`.**
 
-`AlignedIndexSnapshot` returns a read-index snapshot whose fold cursor covers
-the handle's last applied sequence (verified through the snapshot itself, so
-the check cannot race it), waiting for the fold for as long as the caller's
-context allows. There is deliberately no server-side cap: alignment is not
-optional for a filtered read, so how much latency to spend on it belongs to
-the caller, and a cap would diverge rather than converge — the pin is fixed
-for the life of the handle, so waiting makes progress, while a retry opens a
-new handle at a higher sequence and leaves the fold further behind than the
-attempt that gave up. It also
-registers the handle's sequence as a *read lease*, bounding the event GC (see
-below); the caller releases it with the returned closure when iteration ends.
-Because the fold is ordered, such a snapshot holds every index event at or
-below the handle's sequence. That sequence is the query's **pin**:
+For linearizable reads, routing first obtains the Raft `ReadIndex` horizon `R`.
+`AlignedIndexSnapshot` then reads the durable `LastAppliedIndex` `H` from the
+already-open main handle and verifies `H >= R`. For `stale`, there is no `R`,
+but the local main handle still supplies the fixed `H`. The function waits for
+the read projection's independent Raft certificate to reach `H`, opens a
+projection snapshot, and re-reads the certificate through that snapshot so the
+proof cannot race the view it vouches for. There is no server-side timeout: the
+caller context owns the deadline, and the wait targets fixed `H`, never the
+moving store head.
+
+The native log sequence remains the query's **pin** for event resolution,
+reclamation leases and ahead-of-main trimming. It is deliberately not used as
+the causal cross-projection certificate:
 
 - main-store leaves and enrichment reflect the pin exactly;
 - metadata and exists index leaves resolve their append-only event groups at
@@ -154,6 +154,14 @@ the reverse LOGS arm, whose unfiltered scan also iterates the read index),
 `AggregateVolumes`, and the prepared-query executor. Index-introspection
 endpoints (GetIndexStatus, InspectIndex, GetIndexEntryStatus) read only the
 index snapshot and need no alignment.
+
+Audit follows the same rule independently. Unfiltered audit reads and filters
+made only of audit `sequence` bounds scan the authoritative main snapshot and
+do not wait for the audit projection. Other supported audit filters wait for
+the audit Raft certificate, compile against that verified audit snapshot, and
+load `AuditEntry` values from the original main snapshot. Candidates ahead of
+the main audit sequence are trimmed. A disabled/rebuilding audit index fails a
+dependent query explicitly; it does not affect independent audit reads.
 
 **Version activation**: a rewrite stamps every event it writes with the one
 FSM sequence it read from, so a promoted version resolves as EMPTY at any pin
