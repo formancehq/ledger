@@ -5,7 +5,11 @@ The CQRS read side (`internal/application/ctrl` reads, `internal/query`,
 a `ReadIndex` quorum barrier to establish an applied-state horizon. Point reads
 and unfiltered account/transaction queries then use the main store only.
 Filtered account/transaction queries and every log query additionally wait for
-the read index to align with that horizon before iterating it. `stale` removes
+the read index to align with that horizon before iterating it; `InspectIndex`
+aligns the same way. A metadata-index binding more than one schema revision
+behind the declared schema refuses as retryable `INDEX_BUILDING`
+([serving window](../indexer/indexes.md)), and a follower's local refusal is
+forwarded to the leader ([query pipeline](query-pipeline.md)). `stale` removes
 only the Raft barrier, checkpoint pairs are already frozen, and leader-local,
 audit-index, and usagestore exceptions are documented in the
 [consensus matrix](../consensus/raft-consensus.md#linearizable-reads-via-readindex)

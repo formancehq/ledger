@@ -6,7 +6,7 @@ The replication and ordering layer (`internal/infra/node`, `internal/infra/trans
 
 | Document | Description |
 |----------|-------------|
-| [raft-consensus.md](raft-consensus.md) | Raft consensus implementation, CP failure model, quorum sizing, leader election, retained-log catch-up, and snapshot transfer. |
+| [raft-consensus.md](raft-consensus.md) | Raft consensus implementation, CP failure model, quorum sizing, leader election, retained-log catch-up, snapshot transfer, and read routing — including the post-barrier forward of a follower's local `INDEX_BUILDING` refusal to the leader. |
 | [global-log.md](global-log.md) | Two-level log architecture enabling system-level atomic bulk operations. |
 | [hybrid-logical-clock.md](hybrid-logical-clock.md) | Monotonic HLC timestamps across leader changes and clock skew. |
 | [removed-member-registry.md](removed-member-registry.md) | Replicated `(nodeID, instanceID)` set that prevents a removed member from silently rejoining and being auto-promoted. |
