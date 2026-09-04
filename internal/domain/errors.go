@@ -196,7 +196,6 @@ const (
 	ErrReasonPreparedQueryNotFound         = "PREPARED_QUERY_NOT_FOUND"
 	ErrReasonIndexNotFound                 = "INDEX_NOT_FOUND"
 	ErrReasonIndexBuilding                 = "INDEX_BUILDING"
-	ErrReasonReadIndexNotCaughtUp          = "READ_INDEX_NOT_CAUGHT_UP"
 	ErrReasonIndexInconsistent             = "INDEX_INCONSISTENT"
 	ErrReasonMetadataFieldNotInSchema      = "METADATA_FIELD_NOT_IN_SCHEMA"
 	ErrReasonNumscriptNotFound             = "NUMSCRIPT_NOT_FOUND"

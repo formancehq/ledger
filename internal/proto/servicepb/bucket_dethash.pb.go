@@ -2170,13 +2170,7 @@ func (m *ExecutePreparedQueryRequest) MarshalToSizedBufferDeterministicVT(dAtA [
 	if m.Mode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Mode))
 		i--
-		dAtA[i] = 0x38
-	}
-	if m.MinLogSequence != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MinLogSequence))
-		i--
-		dAtA[i] = 0x31
+		dAtA[i] = 0x30
 	}
 	if len(m.Cursor) > 0 {
 		i -= len(m.Cursor)

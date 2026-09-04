@@ -428,15 +428,12 @@ paths:
         ledgers — so ledger scope, outcome and other dimensions are expressed
         through the `filter` query parameter.
 
-        This endpoint always performs a live, best-effort read. Unlike the gRPC
-        `ListAuditEntries` surface, it does not expose the read-consistency
-        options (pinned checkpoint reads, or a consistency-bound wait on the
-        audit index): filters containing a field other than `seq` are served by
-        an asynchronous secondary index and may transiently omit very recent
-        entries that are not yet indexed. Unfiltered reads and conjunctions
-        made only of `seq` bounds scan the audit zone directly. A client that
-        needs a pinned or consistency-bounded audit read must use the gRPC
-        surface.
+        This endpoint always performs a live read and does not expose pinned
+        checkpoint reads. Filters containing indexed audit conditions wait for
+        the audit projection to certify the request's fixed main-store horizon;
+        matching entries are loaded from that same main snapshot. Unfiltered
+        reads and sequence-only bounds scan the audit zone directly without
+        waiting for the audit projection.
 
         Requires `ledger:AuditRead` scope.
       operationId: listAuditEntries
@@ -678,10 +675,10 @@ paths:
         `filter={"$match":{"reference":"..."}}`, URL-encoded). Requires
         `ledger:TransactionRead` scope.
 
-        This is a live, best-effort read of the current committed state.
-        Unlike the gRPC API, it does not accept read-consistency options
-        (`checkpointId` / `minLogSequence`) to pin the read to a specific
-        applied index — use gRPC for consistency-bounded / checkpoint-pinned
+        This is a live linearizable read of the current committed state, with
+        automatic alignment of every projection used by the filter. Unlike the
+        gRPC API, it does not accept the `checkpointId` option to pin the read
+        to a specific historical snapshot — use gRPC for checkpoint-pinned
         reads. (Tracked follow-up, same carve-out as the audit reads.)
       operationId: listLedgerTransactions
       tags:
@@ -2346,10 +2343,9 @@ paths:
         Streams every Ed25519 signing key registered on the cluster. Requires
         `ledger:OpsRead` scope.
 
-        Live, best-effort read: this route drains the full cursor and does not
-        expose the gRPC read-consistency / pagination options
-        (`checkpointId` / `minLogSequence` / bidirectional cursor). Use gRPC
-        for consistency-bounded reads. (Tracked follow-up.)
+        This route performs a live linearizable read and drains the full
+        cursor. It does not expose the gRPC bidirectional cursor; signing-key
+        reads are live-only on both transports.
       operationId: listSigningKeys
       tags:
         - Ops
@@ -2965,9 +2961,8 @@ components:
             execution are then folded into `executeDurationUs`, so the breakdown
             describes the local hop only. `barrierDurationUs` then covers the
             local waits only: 0 means none happened (not "no barrier was
-            needed"), non-zero means one did — a `minLogSequence` catch-up, or a
-            `ReadIndex` attempt that failed and caused the forward. The value
-            does not say which, so do not read cluster health off it.
+            needed"), non-zero means a `ReadIndex` attempt failed and caused
+            the forward. Do not infer the remote node's health from it.
 
         For a latency objective, pick a total and state which: `serverDurationUs`
         is client-independent but omits serialization, while
@@ -5049,10 +5044,6 @@ components:
         cursor:
           type: string
           description: Cursor for pagination (from previous response)
-        minLogSequence:
-          type: integer
-          format: uint64
-          description: Minimum log sequence the read index must have processed (freshness guarantee)
         mode:
           type: string
           enum:

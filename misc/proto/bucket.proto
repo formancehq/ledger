@@ -1114,8 +1114,7 @@ message ExecutePreparedQueryRequest {
   map<string, common.ParameterValue> parameters = 3;
   uint32 page_size = 4;
   string cursor = 5;
-  fixed64 min_log_sequence = 6;
-  common.QueryMode mode = 7;
+  common.QueryMode mode = 6;
 }
 
 message ExecutePreparedQueryResponse {
@@ -1218,19 +1217,18 @@ message GetLedgerStatsRequest {
 message AggregateVolumesRequest {
   string ledger = 1;
   common.QueryFilter filter = 2;
-  fixed64 min_log_sequence = 3;
   // When true, assets sharing the same base (e.g. USD/2, USD/4) are merged
   // under the highest precision observed, with lower-precision amounts rescaled.
-  bool use_max_precision = 4;
+  bool use_max_precision = 3;
   // When set, results are grouped by account prefix. Each account is assigned
   // to the first matching prefix. Accounts not matching any prefix are excluded.
-  repeated string group_by_prefixes = 5;
+  repeated string group_by_prefixes = 4;
   // checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-  fixed64 checkpoint_id = 6;
+  fixed64 checkpoint_id = 5;
   // When true, amounts in colored buckets are summed into the uncolored bucket
   // ("" color). Result entries are produced with color = "". By default each
   // (asset, color) bucket yields its own AggregatedVolume entry.
-  bool collapse_colors = 7;
+  bool collapse_colors = 6;
 }
 
 // ============================================================================
@@ -1301,26 +1299,24 @@ message QueryProfile {
   // the cursor.
   int64 execute_duration_us = 10;
 
-  // Time blocked on a read-consistency barrier the CALLER asked for: the Raft
-  // ReadIndex quorum round-trip and the ReadOptions.min_log_sequence read-index
-  // catch-up wait. Deliberately EXCLUDED from server_duration_us — it is a wait
+  // Time blocked on the read-consistency barrier the caller asked for: the Raft
+  // ReadIndex quorum round-trip. Deliberately EXCLUDED from server_duration_us — it is a wait
   // the request opted into, not server cost.
   //
-  // Only LOCAL waits are measured, and every local wait is measured: a
-  // min_log_sequence catch-up and a ReadIndex attempt are both counted, whether
-  // or not the attempt succeeds and whether or not the read is then forwarded.
+  // Only LOCAL waits are measured, whether or not the attempt succeeds and
+  // whether or not the read is then forwarded.
   // Always read this field together with `forwarded`:
   //
   //   - forwarded=false: the whole barrier this read paid.
   //   - forwarded=true, 0: no local wait happened. The remote node's barrier is
   //     folded into its execution and arrives inside execute_duration_us — 0
   //     does NOT mean "no barrier was needed".
-  //   - forwarded=true, non-zero: a local wait happened before the read left
-  //     this node, and the remote node's barrier is on top of it inside
-  //     execute_duration_us. The value does NOT identify which wait: a
-  //     min_log_sequence catch-up does not prevent forwarding, and a failed
-  //     ReadIndex attempt (syncing follower, leadership lost mid-quorum) is
-  //     what triggers the fallback. Do not read cluster health off it.
+  //   - forwarded=true, non-zero: a local barrier attempt failed before the
+  //     read left this node, either at the syncing precheck or because a
+  //     pending ReadIndex was invalidated by a leadership change. The remote
+  //     node's barrier is on top of the local attempt inside
+  //     execute_duration_us. The value does not identify the fallback trigger;
+  //     do not read cluster health off this timing.
   //
   // A failed or superseded wait is still excluded from server_duration_us: the
   // caller waited for it, and an abandoned quorum round-trip is no more server

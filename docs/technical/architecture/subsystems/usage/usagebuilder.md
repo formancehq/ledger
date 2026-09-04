@@ -103,6 +103,13 @@ stats.PostingCount, _ = snap.GetCounter(ledger, usagestore.CounterPosting)
 
 `Snapshot` wraps `*pebble.Snapshot` and re-exposes the read helpers. Writes stay batched atomically on the usagebuilder side; reads see a consistent point-in-time view.
 
+This snapshot is intentionally not aligned with the separate main-store
+snapshot used for the ID-generator counters in `GetLedgerStats`. The usage
+projection remains eventual consistency: writes concurrent with a live stats
+request can put the two groups of response fields at different horizons. The
+Raft-horizon alignment introduced for read and audit indexes by EN-1946 does
+not include usagestore.
+
 ## Failure semantics
 
 | Failure mode | What survives | What replays |

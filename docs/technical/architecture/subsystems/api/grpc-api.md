@@ -656,9 +656,6 @@ stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
 	Options: &commonpb.ListOptions{
 		PageSize: 100,
 		Filter: auditFilter, // Bare audit fields, e.g. ledger/outcome.
-		Read: &commonpb.ReadOptions{
-			MinLogSequence: lastWrittenSequence,
-		},
 	},
 })
 if err != nil {
@@ -677,13 +674,13 @@ for {
 }
 ```
 
-For a live request whose filter contains any field other than `seq`, a non-zero
-`MinLogSequence` makes every gRPC node that receives or serves the routed
-request wait for its log index to reach the bound and for its local audit index
-to reach the live audit head sampled afterward. With a zero bound, those
-index-backed results are best-effort. Unfiltered and `seq`-only conjunctions
-scan the audit zone directly and need only the log-sequence wait. Checkpoint
-reads ignore the bound.
+Live requests first linearize through Raft and capture one fixed main-store
+snapshot horizon. A filter containing any field other than `seq` then waits for
+the audit projection to certify that horizon before compiling candidates from
+its aligned snapshot; the matching `AuditEntry` values are loaded from the same
+main-store snapshot. Unfiltered requests and `seq`-only conjunctions scan the
+audit zone directly and do not wait for the audit projection. Checkpoint reads
+use the projection snapshots frozen with the checkpoint.
 
 ## Store Metrics
 

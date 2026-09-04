@@ -282,9 +282,9 @@ func (i *Indexer) processBatch(
 
 	i.lastIndexed.Store(cursor)
 
-	// Wake any live filtered-audit reader blocked in WaitForAuditSequence so it
-	// picks up the just-committed cursor immediately, instead of waiting for an
-	// unrelated log-index NotifyProgress or the next tick.
+	// Wake audit-projection waiters after committing the native cursor and, on a
+	// target-completing batch, its Raft certificate. Otherwise a waiter could
+	// miss this progress until an unrelated log-index notification or next tick.
 	i.readStore.NotifyProgress()
 
 	return cursor, true, nil

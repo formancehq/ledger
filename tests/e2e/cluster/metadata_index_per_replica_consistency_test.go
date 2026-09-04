@@ -30,9 +30,8 @@ import (
 //
 // We pin the eventual-consistency endpoint here: after the retype,
 // every replica eventually serves the same entity under the new
-// encoding. Strict mid-rewrite ordering needs a stronger primitive
-// than min_log_sequence (which only gates on log application, not on
-// rewrite completion); actions.WaitForMetadataIndexRewrite provides it
+// encoding. The Raft progress certificate proves causal fold catch-up, not
+// rewrite completion; actions.WaitForMetadataIndexRewrite provides the latter
 // client-side by capturing the pre-retype version and waiting for the
 // advancement past it.
 var _ = Describe("MetadataIndexPerReplicaConsistency", Ordered, func() {

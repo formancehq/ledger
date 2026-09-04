@@ -52,9 +52,7 @@ type Controller interface {
 	GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error)
 
 	// Audit operations
-	// minLogSequence is carried across routed controller hops so the serving
-	// gRPC handler can enforce audit-index freshness on its own replica.
-	ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool, minLogSequence uint64) (cursor.Cursor[*auditpb.AuditEntry], error)
+	ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error)
 	GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error)
 
 	// Signing key operations

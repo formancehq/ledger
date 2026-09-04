@@ -35,11 +35,10 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 	}
 
 	var body struct {
-		Parameters     map[string]json.RawMessage `json:"parameters"`
-		PageSize       uint32                     `json:"pageSize"`
-		Cursor         string                     `json:"cursor"`
-		MinLogSequence uint64                     `json:"minLogSequence"`
-		Mode           string                     `json:"mode"`
+		Parameters map[string]json.RawMessage `json:"parameters"`
+		PageSize   uint32                     `json:"pageSize"`
+		Cursor     string                     `json:"cursor"`
+		Mode       string                     `json:"mode"`
 	}
 	// Decode the body whenever one is present. Don't gate on ContentLength
 	// because chunked / unknown-length requests report ContentLength == -1;
@@ -85,13 +84,12 @@ func (s *Server) handleExecutePreparedQuery(w http.ResponseWriter, r *http.Reque
 	}
 
 	req := &servicepb.ExecutePreparedQueryRequest{
-		Ledger:         ledgerName,
-		QueryName:      queryName,
-		Parameters:     params,
-		PageSize:       body.PageSize,
-		Cursor:         body.Cursor,
-		MinLogSequence: body.MinLogSequence,
-		Mode:           mode,
+		Ledger:     ledgerName,
+		QueryName:  queryName,
+		Parameters: params,
+		PageSize:   body.PageSize,
+		Cursor:     body.Cursor,
+		Mode:       mode,
 	}
 
 	profile.EnterExecute()

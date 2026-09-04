@@ -30,11 +30,12 @@ func (s *Store) LastIndexedAuditSequence() (uint64, error) {
 	return s.ReadAuditProgress()
 }
 
-// WaitForAuditSequence blocks until LastIndexedAuditSequence >= minSeq or the
-// context is cancelled. It shares the progressMu/progressCond mechanism with
-// WaitForSequence / WaitForCheckpoint: the audit indexer calls NotifyProgress
-// after committing each audit-index batch, waking waiters to re-check the
-// cursor.
+// WaitForAuditSequence blocks until the native audit-index cursor reaches
+// minSeq or the context is cancelled. Query consistency uses
+// WaitForAuditRaftProgress instead; this primitive remains available for
+// native-cursor lifecycle checks and tests. It shares progressMu/progressCond
+// with the certified-progress and checkpoint waiters, and the audit indexer
+// calls NotifyProgress after committing each audit-index batch.
 //
 // The cancellation broadcast is issued while holding progressMu (mirroring
 // WaitForCheckpoint): the wait loop holds progressMu across both the ctx.Err()

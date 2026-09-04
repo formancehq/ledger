@@ -730,7 +730,7 @@ func TestAppliedProposalSyncFailsLoudlyOnEmptyStream(t *testing.T) {
 
 // TestAppliedProposalSyncFailsLoudlyWhenLogPrecedesCurrentRange asserts
 // the second branch of the coverage invariant: if a logSeq lands in a
-// gap *before* the current proposal's minLogSequence (after
+// gap *before* the current proposal's native minimum log sequence (after
 // advanceBefore), it means the log has no covering proposal, which
 // every successful proposal is supposed to provide. Fail loudly.
 func TestAppliedProposalSyncFailsLoudlyWhenLogPrecedesCurrentRange(t *testing.T) {
@@ -1908,8 +1908,7 @@ func TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel(t *testing.T) {
 // reached yet, the atomic switch must be DEFERRED until
 // LastIndexedSequence catches up. Without this gate, the post-switch
 // v_new keyspace would serve rows derived from FSM log seq > cursor,
-// breaking the contiguous-prefix invariant min_log_sequence-gated
-// queries rely on.
+// breaking the contiguous-prefix invariant aligned queries rely on.
 //
 // Setup short-circuits the scan via scanComplete=true so the test
 // exercises only the gate logic; the scan path's sampling of

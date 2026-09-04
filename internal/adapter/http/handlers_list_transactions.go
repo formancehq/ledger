@@ -26,14 +26,15 @@ import (
 // default (reverse=false) returns newest-first (descending transaction id);
 // reverse=true returns oldest-first (ascending).
 //
-// Read-consistency options gap (tracked follow-up): the gRPC ListTransactions
-// honours ReadOptions.checkpointId / minLogSequence to pin a read to a
-// specific applied index; this HTTP route deliberately does NOT expose them
-// and serves a live, best-effort read of the current committed state. Clients
-// that need a consistency-bounded / checkpoint-pinned read must use gRPC. This
-// mirrors the same carve-out already made for the audit reads (EN-1481) and
-// keeps EN-1472 scoped to "expose the reads over HTTP", not "full read-options
-// parity". Same applies to the bucket reads (signing keys) below.
+// Read-consistency options gap (tracked follow-up): gRPC ListTransactions
+// honours ReadOptions.checkpointId to pin a read to a specific applied index;
+// this HTTP route deliberately does NOT expose checkpoint selection and always
+// performs a live linearizable read, including automatic alignment of any
+// projection used by the filter. Clients that need a checkpoint-pinned read
+// must use gRPC. This mirrors the same carve-out already made for the audit
+// reads (EN-1481) and keeps EN-1472 scoped to "expose the reads over HTTP", not
+// "full read-options parity". Same applies to the bucket reads (signing keys)
+// below.
 func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) {
 	// The profile clock started in withQueryProfile, outside the scope guard, so
 	// authentication as well as query-parameter parsing and filter compilation

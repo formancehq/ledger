@@ -137,8 +137,8 @@ func TestListLogs_RequiresLedgersReadScope(t *testing.T) {
 	}
 
 	// A minimal valid request: with no options the checkpoint id is 0 (live
-	// read) and min_log_sequence is 0, so the authorized path reaches the
-	// controller without touching the read store.
+	// read), so the authorized path reaches the controller without touching the
+	// read store.
 	newReq := func() *servicepb.ListLogsRequest { return &servicepb.ListLogsRequest{Ledger: "main"} }
 
 	t.Run("allows caller with ScopeLedgersRead", func(t *testing.T) {

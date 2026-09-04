@@ -2539,7 +2539,6 @@ func (m *ExecutePreparedQueryRequest) CloneVT() *ExecutePreparedQueryRequest {
 	r.QueryName = m.QueryName
 	r.PageSize = m.PageSize
 	r.Cursor = m.Cursor
-	r.MinLogSequence = m.MinLogSequence
 	r.Mode = m.Mode
 	if rhs := m.Parameters; rhs != nil {
 		tmpContainer := make(map[string]*commonpb.ParameterValue, len(rhs))
@@ -2742,7 +2741,6 @@ func (m *AggregateVolumesRequest) CloneVT() *AggregateVolumesRequest {
 	r := new(AggregateVolumesRequest)
 	r.Ledger = m.Ledger
 	r.Filter = m.Filter.CloneVT()
-	r.MinLogSequence = m.MinLogSequence
 	r.UseMaxPrecision = m.UseMaxPrecision
 	r.CheckpointId = m.CheckpointId
 	r.CollapseColors = m.CollapseColors
@@ -7036,9 +7034,6 @@ func (this *ExecutePreparedQueryRequest) EqualVT(that *ExecutePreparedQueryReque
 	if this.Cursor != that.Cursor {
 		return false
 	}
-	if this.MinLogSequence != that.MinLogSequence {
-		return false
-	}
 	if this.Mode != that.Mode {
 		return false
 	}
@@ -7323,9 +7318,6 @@ func (this *AggregateVolumesRequest) EqualVT(that *AggregateVolumesRequest) bool
 		return false
 	}
 	if !this.Filter.EqualVT(that.Filter) {
-		return false
-	}
-	if this.MinLogSequence != that.MinLogSequence {
 		return false
 	}
 	if this.UseMaxPrecision != that.UseMaxPrecision {
@@ -14215,13 +14207,7 @@ func (m *ExecutePreparedQueryRequest) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	if m.Mode != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Mode))
 		i--
-		dAtA[i] = 0x38
-	}
-	if m.MinLogSequence != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MinLogSequence))
-		i--
-		dAtA[i] = 0x31
+		dAtA[i] = 0x30
 	}
 	if len(m.Cursor) > 0 {
 		i -= len(m.Cursor)
@@ -14758,13 +14744,13 @@ func (m *AggregateVolumesRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 			dAtA[i] = 0
 		}
 		i--
-		dAtA[i] = 0x38
+		dAtA[i] = 0x30
 	}
 	if m.CheckpointId != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CheckpointId))
 		i--
-		dAtA[i] = 0x31
+		dAtA[i] = 0x29
 	}
 	if len(m.GroupByPrefixes) > 0 {
 		for iNdEx := len(m.GroupByPrefixes) - 1; iNdEx >= 0; iNdEx-- {
@@ -14772,7 +14758,7 @@ func (m *AggregateVolumesRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 			copy(dAtA[i:], m.GroupByPrefixes[iNdEx])
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.GroupByPrefixes[iNdEx])))
 			i--
-			dAtA[i] = 0x2a
+			dAtA[i] = 0x22
 		}
 	}
 	if m.UseMaxPrecision {
@@ -14783,13 +14769,7 @@ func (m *AggregateVolumesRequest) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 			dAtA[i] = 0
 		}
 		i--
-		dAtA[i] = 0x20
-	}
-	if m.MinLogSequence != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MinLogSequence))
-		i--
-		dAtA[i] = 0x19
+		dAtA[i] = 0x18
 	}
 	if m.Filter != nil {
 		size, err := m.Filter.MarshalToSizedBufferVT(dAtA[:i])
@@ -18179,9 +18159,6 @@ func (m *ExecutePreparedQueryRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	if m.MinLogSequence != 0 {
-		n += 9
-	}
 	if m.Mode != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Mode))
 	}
@@ -18378,9 +18355,6 @@ func (m *AggregateVolumesRequest) SizeVT() (n int) {
 	if m.Filter != nil {
 		l = m.Filter.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.MinLogSequence != 0 {
-		n += 9
 	}
 	if m.UseMaxPrecision {
 		n += 2
@@ -33657,16 +33631,6 @@ func (m *ExecutePreparedQueryRequest) UnmarshalVT(dAtA []byte) error {
 			m.Cursor = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 6:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MinLogSequence", wireType)
-			}
-			m.MinLogSequence = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.MinLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 7:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Mode", wireType)
 			}
@@ -34746,16 +34710,6 @@ func (m *AggregateVolumesRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 3:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MinLogSequence", wireType)
-			}
-			m.MinLogSequence = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.MinLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field UseMaxPrecision", wireType)
 			}
@@ -34775,7 +34729,7 @@ func (m *AggregateVolumesRequest) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.UseMaxPrecision = bool(v != 0)
-		case 5:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field GroupByPrefixes", wireType)
 			}
@@ -34807,7 +34761,7 @@ func (m *AggregateVolumesRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.GroupByPrefixes = append(m.GroupByPrefixes, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
-		case 6:
+		case 5:
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CheckpointId", wireType)
 			}
@@ -34817,7 +34771,7 @@ func (m *AggregateVolumesRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
-		case 7:
+		case 6:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CollapseColors", wireType)
 			}
