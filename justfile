@@ -183,6 +183,23 @@ test-e2e-coverage packages="./tests/e2e/business/... ./tests/e2e/cluster/..." pr
     GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags "e2e,{{all_tags}}" -p 1 -coverprofile={{coverage_dir}}/{{profile}} -coverpkg={{coverage_pkgs}} {{packages}} -timeout 20m
     echo "Coverage profile: {{coverage_dir}}/{{profile}}"
 
+# Run the s3-tagged internal unit tests (internal/infra/backup,
+# internal/infra/coldstorage) with coverage. These need a MinIO
+# testcontainer (Docker) but are not e2e tests and don't live under
+# tests/e2e, so test-e2e-coverage's `./tests/e2e/...` target never runs
+# them even though it compiles with the s3 tag -- `go test` only executes
+# _test.go files in the packages it's pointed at, `-coverpkg` only affects
+# coverage instrumentation. Kept as its own target rather than folded into
+# test-e2e-coverage so a MinIO-only failure doesn't block/conflate with the
+# e2e suite.
+test-s3-coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p {{coverage_dir}}
+    echo "==> S3-tagged internal unit tests with coverage..."
+    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags s3 -coverprofile={{coverage_dir}}/s3.out -coverpkg={{coverage_pkgs}} ./internal/infra/backup/... ./internal/infra/coldstorage/... -timeout 20m
+    echo "Coverage profile: {{coverage_dir}}/s3.out"
+
 # Run scenario tests with coverage
 test-scenarios-coverage:
     #!/usr/bin/env bash
@@ -217,7 +234,7 @@ coverage-merge:
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     profiles=()
-    for f in {{coverage_dir}}/unit.out {{coverage_dir}}/e2e.out {{coverage_dir}}/scenario.out {{coverage_dir}}/fuzz.out; do
+    for f in {{coverage_dir}}/unit.out {{coverage_dir}}/e2e.out {{coverage_dir}}/s3.out {{coverage_dir}}/scenario.out {{coverage_dir}}/fuzz.out; do
         [ -f "$f" ] && profiles+=("$f")
     done
     if [ ${#profiles[@]} -eq 0 ]; then
@@ -241,7 +258,7 @@ coverage-html: coverage-merge
     echo "HTML report: {{coverage_dir}}/coverage.html"
 
 # Run all tests with coverage and merge
-coverage-all: test-coverage test-e2e-coverage test-scenarios-coverage fuzz-check-coverage coverage-merge
+coverage-all: test-coverage test-e2e-coverage test-s3-coverage test-scenarios-coverage fuzz-check-coverage coverage-merge
 
 # Run Schemathesis API conformity and fuzzing tests
 test-schemathesis:

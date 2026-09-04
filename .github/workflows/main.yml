@@ -141,6 +141,29 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  Tests-S3:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    env:
+      GOPATH: /tmp/go
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
+        with:
+          fetch-depth: 0
+          dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Run s3-tagged internal unit tests with coverage
+        run: >
+          nix develop --command just test-s3-coverage
+      - name: Upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-s3
+          path: build/coverage/s3.out
+          retention-days: 7
+          if-no-files-found: ignore
+
   Tests-Scenarios:
     runs-on: namespace-profile-linux-amd64-4vcpu
     env:
@@ -196,7 +219,7 @@ jobs:
 
   Coverage:
     if: always()
-    needs: [Tests, Tests-E2E-Business, Tests-E2E-Cluster, Tests-Scenarios]
+    needs: [Tests, Tests-E2E-Business, Tests-E2E-Cluster, Tests-S3, Tests-Scenarios]
     runs-on: namespace-profile-linux-amd64-4vcpu
     env:
       GOPATH: /tmp/go
@@ -244,7 +267,7 @@ jobs:
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: build/coverage/merged.out
-          flags: unit,e2e,scenario
+          flags: unit,e2e,s3,scenario
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

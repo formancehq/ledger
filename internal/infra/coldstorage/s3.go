@@ -54,6 +54,24 @@ func NewS3Client(region, endpoint, accessKeyID, secretAccessKey string) (*s3.Cli
 	return s3.NewFromConfig(cfg, s3Opts...), nil
 }
 
+// s3UploadPartSize is the multipart part size for cold-storage archive
+// uploads. Archives are always uploaded from a seekable *os.File (see
+// Archiver.buildSSTArchive / os.Open in archiver.go), so transfermanager
+// auto-upsizes the part size rather than hitting the 10,000-part cap
+// (initSize in aws-sdk-go-v2/feature/s3/transfermanager) — there is no hard
+// object-size ceiling either way. transfermanager defaults to 8 MiB; 32 MiB
+// instead raises the archive size at which that upsizing first kicks in,
+// keeping part count (and per-part failure surface) lower for typical
+// multi-GB chapters.
+//
+// It pools Concurrency+1 part-sized buffers per active multipart upload
+// (api_op_UploadObject.go) — at the default Concurrency of 5 that's ~192
+// MiB steady-state per upload. Archive acquires AcquireS3UploadSlot to cap
+// how many of these can be active across the whole process at once (shared
+// with backup destination uploads) — see that function for the
+// memory-budget sizing.
+const s3UploadPartSize = 32 << 20 // 32 MiB
+
 // S3Storage implements ColdStorage using Amazon S3 (or S3-compatible stores like MinIO).
 type S3Storage struct {
 	client   *s3.Client
@@ -61,9 +79,22 @@ type S3Storage struct {
 	bucket   string
 }
 
+// newUploader builds the transfermanager client with the production part
+// size. Shared with tests so they exercise the exact configuration
+// NewS3Storage uses instead of re-deriving it inline.
+func newUploader(client transfermanager.S3APIClient) *transfermanager.Client {
+	return transfermanager.New(client, func(o *transfermanager.Options) {
+		o.PartSizeBytes = s3UploadPartSize
+	})
+}
+
 // NewS3Storage creates a new S3Storage backed by the given S3 client and bucket.
 func NewS3Storage(client *s3.Client, bucket string) *S3Storage {
-	return &S3Storage{client: client, uploader: transfermanager.New(client), bucket: bucket}
+	return &S3Storage{
+		client:   client,
+		uploader: newUploader(client),
+		bucket:   bucket,
+	}
 }
 
 func (s *S3Storage) archiveKey(bucketID string, chapterID uint64) string {
@@ -75,11 +106,17 @@ func (s *S3Storage) Archive(ctx context.Context, bucketID string, chapterID uint
 		return fmt.Errorf("archive: invalid checksum length %d, expected %d", len(sha256), ChecksumLength)
 	}
 
+	release, err := AcquireS3UploadSlot(ctx)
+	if err != nil {
+		return fmt.Errorf("acquiring S3 upload slot: %w", err)
+	}
+	defer release()
+
 	key := s.archiveKey(bucketID, chapterID)
 
 	// Multipart upload: streams the archive in bounded parts, lifting the 5 GB
 	// single-PutObject limit so multi-GB chapter SSTs upload without buffering.
-	_, err := s.uploader.UploadObject(ctx, &transfermanager.UploadObjectInput{
+	_, err = s.uploader.UploadObject(ctx, &transfermanager.UploadObjectInput{
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(key),
 		Body:        data,
