@@ -268,17 +268,17 @@ const (
 
 // Global sub-prefixes (zone 0x06), ordered by hot-path write frequency.
 const (
-	SubGlobLastAppliedIndex        byte = 0x01
-	SubGlobLastAppliedTimestamp    byte = 0x02
-	SubGlobLedgerInfo              byte = 0x03
-	SubGlobSigningKey              byte = 0x04
-	SubGlobSigningConfig           byte = 0x05
-	SubGlobSinkCursor              byte = 0x06
-	SubGlobEventsConfig            byte = 0x07
-	SubGlobSinkStatus              byte = 0x08
-	SubGlobMaintenanceMode         byte = 0x09
-	SubGlobQueryCheckpoint         byte = 0x0A
-	SubGlobNextQueryCheckpointID   byte = 0x0B
+	SubGlobLastAppliedIndex      byte = 0x01
+	SubGlobLastAppliedTimestamp  byte = 0x02
+	SubGlobLedgerInfo            byte = 0x03
+	SubGlobSigningKey            byte = 0x04
+	SubGlobSigningConfig         byte = 0x05
+	SubGlobSinkCursor            byte = 0x06
+	SubGlobEventsConfig          byte = 0x07
+	SubGlobSinkStatus            byte = 0x08
+	SubGlobMaintenanceMode       byte = 0x09
+	SubGlobQueryCheckpoint       byte = 0x0A
+	SubGlobNextQueryCheckpointID byte = 0x0B
 	// SubGlobPersistedConfig is the boot-validation anchor: the loader reads
 	// it to compare the store's storage_schema_version against the running
 	// binary BEFORE any other key is interpreted. Its byte is pinned across
