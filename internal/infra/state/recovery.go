@@ -1,11 +1,8 @@
 package state
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -41,7 +38,7 @@ func NewRecovery(apply *Machine, reader dal.RecoveryReader) *Recovery {
 //     RestoreState, preserving SnapshotIndex (in-memory only, carried from
 //     the previous value — set by InstallSnapshot on followers, zero at
 //     boot).
-//  3. Reset sub-trackers: Chapters, Registry.Reversions, KeyStore,
+//  3. Reset sub-trackers: Registry.Reversions, KeyStore,
 //     SharedState, Registry.Cache settings, Registry.Idempotency. These
 //     are not part of FSMState; they are reset from the same handle so the
 //     Machine ends up coherent.
@@ -78,47 +75,6 @@ func (r *Recovery) RecoverState() error {
 	r.apply.publishApplied(newState.LastAppliedIndex)
 
 	// Phase 3: rebuild sub-trackers (not part of FSMState).
-	chaptersCursor, err := query.ReadChapters(context.Background(), handle)
-	if err != nil {
-		return fmt.Errorf("recovering chapters: %w", err)
-	}
-
-	chaptersFromStore, err := cursor.Collect(chaptersCursor)
-	if err != nil {
-		return fmt.Errorf("collecting chapters: %w", err)
-	}
-
-	allChapters := make(map[uint64]*commonpb.Chapter, len(chaptersFromStore))
-
-	var currentOpenChapter *commonpb.Chapter
-
-	var closingChapters []*commonpb.Chapter
-
-	for _, p := range chaptersFromStore {
-		allChapters[p.GetId()] = p
-
-		switch p.GetStatus() {
-		case commonpb.ChapterStatus_CHAPTER_OPEN:
-			currentOpenChapter = p
-		case commonpb.ChapterStatus_CHAPTER_CLOSING:
-			closingChapters = append(closingChapters, p)
-		}
-	}
-
-	nextChapterID, err := query.ReadNextChapterID(r.reader)
-	if err != nil {
-		return fmt.Errorf("recovering next chapter ID: %w", err)
-	}
-
-	r.apply.Chapters.Reset(allChapters, currentOpenChapter, closingChapters, nextChapterID)
-
-	chapterSchedule, err := query.ReadChapterSchedule(r.reader)
-	if err != nil {
-		return fmt.Errorf("recovering chapter schedule: %w", err)
-	}
-
-	r.apply.Chapters.SetSchedule(chapterSchedule)
-
 	reversions, malformedReversions, err := query.ReadReversions(handle)
 	if err != nil {
 		return fmt.Errorf("recovering reversions: %w", err)
@@ -210,9 +166,7 @@ func (r *Recovery) RecoverState() error {
 		"nextAuditSequenceID":   newState.NextAuditSequenceID,
 		"nextQueryCheckpointID": newState.NextQueryCheckpointID,
 		"hasAuditHash":          len(newState.LastAuditHash) > 0,
-		"chapterCount":          len(allChapters),
 		"reversionLedgers":      len(reversions),
-		"pendingCleanups":       len(newState.PendingLedgerCleanups),
 	}).Infof("Recovered FSM state from store")
 
 	return nil
@@ -238,14 +192,6 @@ func (r *Recovery) RestoreCacheFromStore() error {
 // that RestoreCacheFromStore deferred while the snapshotter was paused.
 func (r *Recovery) ResumeBackgroundTasks() {
 	r.apply.cacheSnapshotter.Resume(r.reader)
-}
-
-// OnLeadershipAcquired is called when this node becomes the Raft leader. It
-// re-dispatches archive requests from durable state, allowing the new leader
-// to retry work that may have been in flight when the previous leader
-// crashed.
-func (r *Recovery) OnLeadershipAcquired(stop <-chan struct{}) {
-	go r.apply.DispatchArchiveRequests(stop)
 }
 
 // DispatchBloomRebuilds consumes the Machine's bloom-rebuild signal channel

@@ -395,10 +395,7 @@ func listKeySet(ctx context.Context, storage Storage, prefix string) (map[string
 
 // RunIncrementalBackup exports new log and audit entries since the last backup.
 // It reads the manifest to determine the starting sequences, streams new entries
-// as KV stream segments to S3, and updates the manifest. Ranges that chapter
-// archival purged from the hot store are backfilled from cold storage through
-// coldReader (nil when cold storage is disabled; the run then fails if an
-// export window overlaps an archived chapter — see backfillArchivedRanges).
+// as KV stream segments to S3, and updates the manifest.
 //
 // maxSegmentBytes caps the on-storage size of each export segment; a range
 // larger than that splits into multiple segments. 0 selects the default
@@ -407,7 +404,6 @@ func RunIncrementalBackup(
 	ctx context.Context,
 	logger logging.Logger,
 	store *dal.Store,
-	coldReader ColdChapterReader,
 	storage Storage,
 	bucketID string,
 	maxSegmentBytes int64,
@@ -467,7 +463,7 @@ func RunIncrementalBackup(
 	}
 
 	// Ensure monotonicity: after a RestoreCheckpoint (leadership change +
-	// snapshot from new leader), Pebble may have a lower cold-zone sequence
+	// snapshot from new leader), Pebble may have a lower history-zone sequence
 	// than what the manifest already recorded from a previous export.
 	// Never regress below the manifest.
 	currentLogSeq = max(currentLogSeq, afterLogSeq)
@@ -495,30 +491,11 @@ func RunIncrementalBackup(
 		segmentsUploaded     int
 	)
 
-	// 6. Backfill window ranges that chapter archival purged from the hot
-	// store. These segments go into the manifest BEFORE the hot ones:
-	// LastExportLogSequence / LastExportAuditSequence take the last segment of
-	// each type as the next run's floor, and the hot tail always carries the
-	// highest sequences.
-	coldSegs, coldLogCount, coldAuditCount, err := backfillArchivedRanges(
-		ctx, logger, storage, readHandle, coldReader, bucketID,
-		afterLogSeq, currentLogSeq, afterAuditSeq, currentAuditSeq,
-		maxSegmentBytes,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("backfilling archived ranges from cold storage: %w", err)
-	}
-
-	manifest.Exports = append(manifest.Exports, coldSegs...)
-	segmentsUploaded += len(coldSegs)
-	logEntriesExported += coldLogCount
-	auditEntriesExported += coldAuditCount
-
-	// 7. Export new log entries
+	// 6. Export new log entries
 	if currentLogSeq > afterLogSeq {
 		segs, count, err := exportEntries(
 			ctx, storage, readHandle,
-			dal.ZoneCold, dal.SubColdLog, afterLogSeq, currentLogSeq, "log",
+			dal.ZoneHistory, dal.SubHistoryLog, afterLogSeq, currentLogSeq, "log",
 			func(part int) string { return ExportLogSegmentKey(bucketID, afterLogSeq+1, currentLogSeq, part) },
 			maxSegmentBytes,
 		)
@@ -531,11 +508,11 @@ func RunIncrementalBackup(
 		segmentsUploaded += len(segs)
 	}
 
-	// 8. Export new audit entries
+	// 7. Export new audit entries
 	if currentAuditSeq > afterAuditSeq {
 		segs, count, err := exportEntries(
 			ctx, storage, readHandle,
-			dal.ZoneCold, dal.SubColdAudit, afterAuditSeq, currentAuditSeq, "audit",
+			dal.ZoneHistory, dal.SubHistoryAudit, afterAuditSeq, currentAuditSeq, "audit",
 			func(part int) string { return ExportAuditSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq, part) },
 			maxSegmentBytes,
 		)
@@ -561,7 +538,7 @@ func RunIncrementalBackup(
 		// guard as the appliedProposal branch below.
 		itemSegs, _, err := exportEntries(
 			ctx, storage, readHandle,
-			dal.ZoneCold, dal.SubColdAuditItem, afterAuditSeq, currentAuditSeq, "auditItem",
+			dal.ZoneHistory, dal.SubHistoryAuditItem, afterAuditSeq, currentAuditSeq, "auditItem",
 			func(part int) string {
 				return ExportAuditItemSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq, part)
 			},
@@ -582,7 +559,7 @@ func RunIncrementalBackup(
 		// ApplyExports will fail on GetFile.
 		appliedSegs, _, err := exportEntries(
 			ctx, storage, readHandle,
-			dal.ZoneCold, dal.SubColdAppliedProposal, afterAuditSeq, currentAuditSeq, "appliedProposal",
+			dal.ZoneHistory, dal.SubHistoryAppliedProposal, afterAuditSeq, currentAuditSeq, "appliedProposal",
 			func(part int) string {
 				return ExportAppliedProposalSegmentKey(bucketID, afterAuditSeq+1, currentAuditSeq, part)
 			},
@@ -596,7 +573,7 @@ func RunIncrementalBackup(
 		segmentsUploaded += len(appliedSegs)
 	}
 
-	// 9. Write updated manifest
+	// 8. Write updated manifest
 	if err := WriteManifest(ctx, storage, manifestKey, manifest); err != nil {
 		return nil, fmt.Errorf("writing manifest: %w", err)
 	}

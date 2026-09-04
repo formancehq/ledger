@@ -109,11 +109,11 @@ func TestResolveCallerSnapshot_ForwardedShortCircuitsClaims(t *testing.T) {
 func TestResolveCallerSnapshot_SystemActor(t *testing.T) {
 	t.Parallel()
 
-	ctx := WithSystemActor(context.Background(), commands.ComponentChapterArchiver)
+	ctx := WithSystemActor(context.Background(), commands.ComponentQueryCheckpoint)
 
 	got := ResolveCallerSnapshot(ctx)
 	require.NotNil(t, got)
-	require.Equal(t, commands.ComponentChapterArchiver, got.GetIdentity().GetSystemComponent())
+	require.Equal(t, commands.ComponentQueryCheckpoint, got.GetIdentity().GetSystemComponent())
 	require.Empty(t, got.GetIdentity().GetSubject())
 	require.Empty(t, got.GetScopes())
 	require.False(t, got.GetGod())

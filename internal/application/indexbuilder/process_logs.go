@@ -255,13 +255,11 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		// reflects precisely MaxSequence (the checkpoint's point-in-time). The
 		// materialization is atomic (temp dir + fsync + rename + .ready marker
 		// last), so a reader never observes a partial checkpoint. There is no
-		// reconciler: historical reconstruction to a past MaxSequence is
-		// infeasible (chapter log purge) and unnecessary (this inline point is
-		// already exactly point-in-time). A node that crashes between rename and
-		// marker, or that purged the logs before reaching this point, will never
-		// have a marker for this checkpoint; the checkpoint stays registered, so
-		// reads there return the retryable ErrCheckpointNotReady (Unavailable)
-		// until the client deletes and recreates it (see openCheckpointStores).
+		// reconciler: this inline point is already exactly point-in-time. A
+		// node that crashes between rename and marker will never have a marker
+		// for this checkpoint; the checkpoint stays registered, so reads there
+		// return the retryable ErrCheckpointNotReady (Unavailable) until the
+		// client deletes and recreates it (see openCheckpointStores).
 		if cpID := pendingCheckpointCreate; cpID > 0 {
 			if err := b.createReadIndexCheckpoint(cpID); err != nil {
 				return cursor, err

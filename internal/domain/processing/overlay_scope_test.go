@@ -240,7 +240,6 @@ func TestOrderOverlayScope_RollbackOnNoCommit(t *testing.T) {
 	s := wireOverlayParent(ctrl)
 	s.parent.EXPECT().GetNextSequenceID().Return(uint64(100)).AnyTimes()
 	s.parent.EXPECT().GetNextLedgerID().Return(uint32(5)).AnyTimes()
-	s.parent.EXPECT().GetNextChapterID().Return(uint64(2)).AnyTimes()
 	s.parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).AnyTimes()
 
 	// Any write that reaches the parent before Commit is a rollback leak.
@@ -268,12 +267,10 @@ func TestOrderOverlayScope_CommitFlushesEveryCategory(t *testing.T) {
 	s := wireOverlayParent(ctrl)
 	s.parent.EXPECT().GetNextSequenceID().Return(uint64(100)).AnyTimes()
 	s.parent.EXPECT().GetNextLedgerID().Return(uint32(5)).AnyTimes()
-	s.parent.EXPECT().GetNextChapterID().Return(uint64(2)).AnyTimes()
 	s.parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).AnyTimes()
 	s.parent.EXPECT().PutReverted(gomock.Any(), true)
 	s.parent.EXPECT().IncrementNextSequenceID().Return(uint64(101)).Times(2)
 	s.parent.EXPECT().IncrementNextLedgerID().Return(uint32(6))
-	s.parent.EXPECT().IncrementNextChapterID().Return(uint64(3))
 	s.parent.EXPECT().IncrementNextQueryCheckpointID().Return(uint64(1))
 
 	lk := domain.LedgerKey{Name: "L"}
@@ -310,7 +307,6 @@ func TestOrderOverlayScope_CommitFlushesEveryCategory(t *testing.T) {
 	overlay.IncrementNextSequenceID()
 	overlay.IncrementNextSequenceID()
 	overlay.IncrementNextLedgerID()
-	overlay.IncrementNextChapterID()
 	overlay.IncrementNextQueryCheckpointID()
 
 	require.NoError(t, overlay.Commit())
@@ -328,7 +324,6 @@ func TestOrderOverlayScope_CounterDeltasMonotonicWithinOrder(t *testing.T) {
 	s := wireOverlayParent(ctrl)
 	s.parent.EXPECT().GetNextSequenceID().Return(uint64(100)).Times(1)
 	s.parent.EXPECT().GetNextLedgerID().Return(uint32(5)).Times(1)
-	s.parent.EXPECT().GetNextChapterID().Return(uint64(2)).Times(1)
 	s.parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).Times(1)
 
 	overlay := newOrderOverlayScope(s.parent)
@@ -351,7 +346,6 @@ func TestOrderOverlayScope_DeleteOverridesPriorPut(t *testing.T) {
 	s := wireOverlayParent(ctrl)
 	s.parent.EXPECT().GetNextSequenceID().Return(uint64(100)).AnyTimes()
 	s.parent.EXPECT().GetNextLedgerID().Return(uint32(5)).AnyTimes()
-	s.parent.EXPECT().GetNextChapterID().Return(uint64(2)).AnyTimes()
 	s.parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).AnyTimes()
 
 	mk := domain.MetadataKey{AccountKey: domain.AccountKey{LedgerName: "L", Account: "alice"}, Key: "k"}

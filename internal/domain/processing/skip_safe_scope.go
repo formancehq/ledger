@@ -26,7 +26,7 @@ import (
 //     buffered-write-passthrough, or non-buffered-write-trap. There is no
 //     silent-delegation escape hatch.
 //   - A sub-processor that mutates a non-buffered surface (signing keys,
-//     maintenance mode, chapter mutations, numscript library, query
+//     maintenance mode, numscript library, query
 //     checkpoint state) trips trapUnbuffered — the mutation never reaches
 //     the parent, so a subsequent skip cannot leak. Under Antithesis the
 //     assert.Unreachable surfaces as a first-class finding; outside
@@ -178,54 +178,6 @@ func (s *skipSafeScope) GetLastAuditHash() []byte          { return s.inner.GetL
 func (s *skipSafeScope) GetNextLedgerID() uint32           { return s.inner.GetNextLedgerID() }
 func (s *skipSafeScope) IncrementNextLedgerID() uint32     { return s.inner.IncrementNextLedgerID() }
 func (s *skipSafeScope) GetDate() commonpb.TimestampReader { return s.inner.GetDate() }
-
-// ──────────────────────────────────────────────────────────────────────────
-// Chapters — reads and buffered counters pass through; the write mutators
-// (Set/Add/Remove/Update) are NOT buffered.
-// ──────────────────────────────────────────────────────────────────────────
-
-func (s *skipSafeScope) GetCurrentOpenChapter() (commonpb.ChapterReader, bool) {
-	return s.inner.GetCurrentOpenChapter()
-}
-
-func (s *skipSafeScope) GetClosingChapters() []commonpb.ChapterReader {
-	return s.inner.GetClosingChapters()
-}
-
-func (s *skipSafeScope) GetClosingChapterByID(chapterID uint64) (commonpb.ChapterReader, bool) {
-	return s.inner.GetClosingChapterByID(chapterID)
-}
-
-func (s *skipSafeScope) SetCurrentOpenChapter(chapter *commonpb.Chapter) {
-	trapUnbuffered("SetCurrentOpenChapter", nil)
-}
-
-func (s *skipSafeScope) AddClosingChapter(chapter *commonpb.Chapter) {
-	trapUnbuffered("AddClosingChapter", nil)
-}
-
-func (s *skipSafeScope) RemoveClosingChapter(chapterID uint64) {
-	trapUnbuffered("RemoveClosingChapter", map[string]any{"chapterID": chapterID})
-}
-
-func (s *skipSafeScope) GetNextChapterID() uint64       { return s.inner.GetNextChapterID() }
-func (s *skipSafeScope) IncrementNextChapterID() uint64 { return s.inner.IncrementNextChapterID() }
-
-func (s *skipSafeScope) GetArchivedThroughChapterID() uint64 {
-	return s.inner.GetArchivedThroughChapterID()
-}
-
-func (s *skipSafeScope) AdvanceArchivedThroughChapterID() {
-	trapUnbuffered("AdvanceArchivedThroughChapterID", nil)
-}
-
-func (s *skipSafeScope) GetChapterByID(chapterID uint64) (commonpb.ChapterReader, bool) {
-	return s.inner.GetChapterByID(chapterID)
-}
-
-func (s *skipSafeScope) UpdateChapter(chapter *commonpb.Chapter) {
-	trapUnbuffered("UpdateChapter", nil)
-}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Numscript library — reads pass through; Put/Set are NOT buffered.

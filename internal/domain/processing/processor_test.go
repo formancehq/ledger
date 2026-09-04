@@ -319,8 +319,6 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 		storedBoundaries = b
 	})
 
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
-
 	// Volume operations: keyed by ledger name ("myled" — the ledger created above).
 	srcKey := domain.NewVolumeKey("myled", "world", "USD", "")
 	dstKey := domain.NewVolumeKey("myled", "users:bob", "USD", "")

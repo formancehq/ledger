@@ -69,8 +69,6 @@ export function createEngine(): EngineHandle {
   scheduler.register(new NotifierNode());
   scheduler.register(new WorkerNode(NODE.workerIndex));
   scheduler.register(new WorkerNode(NODE.workerSinks));
-  scheduler.register(new WorkerNode(NODE.workerArch));
-  scheduler.register(new WorkerNode(NODE.workerSealer));
   scheduler.register(new WalNode(NODE.walLeader, NODE.leader));
   scheduler.register(new WalNode(NODE.walF1,     NODE.followerF1));
   scheduler.register(new WalNode(NODE.walF2,     NODE.followerF2));

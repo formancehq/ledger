@@ -7,7 +7,6 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -50,8 +49,7 @@ type WriteSet struct {
 	NextSequenceID      uint64
 	NextAuditSequenceID uint64
 	// LastAuditHash is the audit chain head as this proposal began — the
-	// predecessor of the entry this proposal writes. A chapter closing here
-	// records it as the chain input for the first entry that survives its purge.
+	// predecessor of the entry this proposal writes.
 	LastAuditHash         []byte
 	NextLedgerID          uint32
 	NextQueryCheckpointID uint64
@@ -61,19 +59,8 @@ type WriteSet struct {
 	pendingSigningConfigUpdate    *signingConfigUpdate
 	pendingMaintenanceModeUpdate  *maintenanceModeUpdate
 	pendingClusterPolicyUpdate    *clusterPolicyUpdate
-	chapterScheduleUpdate         *string
 	queryCheckpointScheduleUpdate *string
 	sinkConfigChanged             bool
-	// chapters is a lazy clone of fsm.Chapters, created on first chapter access.
-	// Nil means no chapter method was called — Merge() skips chapter propagation.
-	// Chapter orders (CloseChapter, SealChapter, etc.) read chapter protos and mutate
-	// them in-place, so the clone must happen before any read to avoid corrupting
-	// the FSM's state. CreateTransaction never touches chapters, so the clone is
-	// avoided on the hot path.
-	chapters        *ChapterTracker
-	changedChapters []*commonpb.Chapter
-	purgeRanges     []purgeRange
-	archiveRequests []ArchiveRequest
 
 	// pendingMirrorSyncs queues mirror source-head / status writes
 	// produced by applyMirrorSyncUpdate. The ingestion position is not
@@ -184,16 +171,6 @@ type WriteSet struct {
 	indexes               *rawAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 }
 
-// purgeRange identifies a chapter's sequence ranges to delete from Pebble during Merge().
-// Log and audit entries have independent sequence counters, so separate ranges are needed.
-type purgeRange struct {
-	chapterID          uint64
-	startSequence      uint64 // log sequence range start
-	closeSequence      uint64 // log sequence range end
-	startAuditSequence uint64 // audit sequence range start
-	closeAuditSequence uint64 // audit sequence range end
-}
-
 // MirrorSyncWrite captures one queued mirror-sync update. applyMirrorSyncUpdate
 // builds it from a TechnicalUpdate_MirrorSync; Merge drains the queue into
 // the Pebble batch via SetMirrorSourceHead / SetMirrorStatus /
@@ -235,7 +212,7 @@ func (b *WriteSet) QueueMirrorSync(w MirrorSyncWrite) {
 //     Boundaries.
 //  2. Cross-zone in-memory side effects — invariant checks, transient volume
 //     collection, in-memory bitset mutation (SetReverted), purged-by-log
-//     computation and per-log PurgedVolumes injection, deleteSequences map.
+//     computation and per-log PurgedVolumes injection.
 //  3. Pebble flush in zone+sub-prefix monotone order:
 //     ZoneAttributes (0x01) + ZoneCache (0x02), sub-prefix monotone:
 //     SubAttrVolume (01) → Metadata (02) → Transaction (03) → Ledger (04)
@@ -245,15 +222,15 @@ func (b *WriteSet) QueueMirrorSync(w MirrorSyncWrite) {
 //     mergeSimpleWithCache so the marshaled value bytes are shared.
 //     ZonePerLedger (0x03): SubPLReversions (01) → MirrorSourceHead (04) →
 //     MirrorStatus (06). Sub-prefix 05 is reserved and unused (EN-1513).
-//     ZoneCold (0x04): SubColdLog (01) via AppendLogs. SubColdAudit (02),
+//     ZoneHistory (0x04): SubHistoryLog (01) via AppendLogs. SubHistoryAudit (02),
 //     AuditItem (03) and AppliedProposal (04) are written by applyProposal
-//     after Merge returns, preserving the global Cold ordering.
+//     after Merge returns, preserving the global History ordering.
 //     ZoneIdempotency (0x05).
 //     ZoneGlobal (0x06): LedgerInfo (03) → SigningKey (04) → SigningConfig
-//     (05) → Chapters (06) → NextChapterID (07) → MaintenanceMode (0B) →
-//     ChapterSchedule (0D) → QueryCheckpoint (0E) → NextQueryCheckpointID
-//     (0F) → QueryCheckpointSchedule (10) → NextLedgerID (13).
-//  4. Range purges and in-memory FSM state finalisation — executePurge and
+//     (05) → MaintenanceMode (09) → QueryCheckpoint (0B) →
+//     NextQueryCheckpointID (0C) → QueryCheckpointSchedule (0D) →
+//     NextLedgerID (10).
+//  4. Deleted-ledger range deletes and in-memory FSM state finalisation —
 //     deletedLedgers use DeleteRange (range tombstones live in a
 //     separate skiplist and do not affect point-write monotonicity).
 //
@@ -499,20 +476,6 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		createdLogs = append(createdLogs, log)
 	}
 
-	// Resolve the delete sequence for each ledger marked for cleanup. The
-	// actual PerLedger writes happen in phase 4 (after the Global drain)
-	// because they require createdLogs to be finalised first.
-	var deleteSequences map[string]uint64
-	if len(b.deletedLedgers) > 0 {
-		deleteSequences = make(map[string]uint64, len(b.deletedLedgers))
-
-		for _, log := range createdLogs {
-			if dl := log.GetPayload().GetDeleteLedger(); dl != nil {
-				deleteSequences[dl.GetName()] = log.GetSequence()
-			}
-		}
-	}
-
 	// === Phase 3: Pebble flush in monotone zone+sub order =====================
 	//
 	// Within each (zone, sub) bucket, paired attribute (0x01) + cache (0x02)
@@ -640,9 +603,9 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 	}
 
-	// ZoneCold (0x04), SubColdLog (0x01) only. The higher Cold sub-prefixes
-	// (SubColdAudit, SubColdAuditItem, SubColdAppliedProposal) are written by
-	// applyProposal AFTER Merge returns, preserving the global Cold
+	// ZoneHistory (0x04), SubHistoryLog (0x01) only. The higher History sub-prefixes
+	// (SubHistoryAudit, SubHistoryAuditItem, SubHistoryAppliedProposal) are written by
+	// applyProposal AFTER Merge returns, preserving the global History
 	// sub-prefix monotonicity established by PR #542.
 	if err := AppendLogs(batch, createdLogs); err != nil {
 		return fmt.Errorf("failed appending pending logs: %w", err)
@@ -702,22 +665,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		b.fsm.sharedState.SetRequireSignatures(b.pendingSigningConfigUpdate.requireSignatures)
 	}
 
-	// SubGlobChapters (0x06)
-	for _, p := range b.changedChapters {
-		err := StoreChapter(batch, p)
-		if err != nil {
-			return fmt.Errorf("storing chapter %d: %w", p.GetId(), err)
-		}
-	}
-
-	// SubGlobNextChapterID (0x07) — persist only if chapters were touched.
-	if b.chapters != nil {
-		if err := StoreNextChapterID(batch, b.chapters.NextChapterID()); err != nil {
-			return fmt.Errorf("storing next chapter ID: %w", err)
-		}
-	}
-
-	// SubGlobMaintenanceMode (0x0B)
+	// SubGlobMaintenanceMode (0x09)
 	if b.pendingMaintenanceModeUpdate != nil {
 		err := SaveMaintenanceMode(batch, b.pendingMaintenanceModeUpdate.enabled)
 		if err != nil {
@@ -727,7 +675,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		b.fsm.sharedState.SetMaintenanceMode(b.pendingMaintenanceModeUpdate.enabled)
 	}
 
-	// SubGlobClusterPolicy (0x16)
+	// SubGlobClusterPolicy (0x13)
 	if b.pendingClusterPolicyUpdate != nil {
 		err := SaveClusterPolicy(batch, b.pendingClusterPolicyUpdate.policy)
 		if err != nil {
@@ -737,24 +685,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		b.fsm.State.UpdateClusterPolicy(b.pendingClusterPolicyUpdate.policy)
 	}
 
-	// SubGlobChapterSchedule (0x0D)
-	if b.chapterScheduleUpdate != nil {
-		if *b.chapterScheduleUpdate == "" {
-			err := batchDeleteChapterSchedule(batch)
-			if err != nil {
-				return fmt.Errorf("deleting chapter schedule: %w", err)
-			}
-		} else {
-			err := SaveChapterSchedule(batch, *b.chapterScheduleUpdate)
-			if err != nil {
-				return fmt.Errorf("saving chapter schedule: %w", err)
-			}
-		}
-
-		b.fsm.Chapters.SetSchedule(*b.chapterScheduleUpdate)
-	}
-
-	// SubGlobQueryCheckpoint (0x0E) — saves then deletes, both on the same
+	// SubGlobQueryCheckpoint (0x0B) — saves then deletes, both on the same
 	// sub-prefix. The (checkpoint_id BE 8) tail keeps per-call ordering
 	// deterministic; the contract is at zone+sub only.
 	for _, cp := range b.pendingQueryCheckpointSaves {
@@ -803,55 +734,42 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		b.fsm.setQueryCheckpointSchedule(*b.queryCheckpointScheduleUpdate)
 	}
 
-	// SubGlobNextLedgerID (0x13)
+	// SubGlobNextLedgerID (0x10)
 	if b.NextLedgerID != b.fsm.State.NextLedgerID {
 		if err := saveNextLedgerID(batch, b.NextLedgerID); err != nil {
 			return fmt.Errorf("storing next ledger ID: %w", err)
 		}
 	}
 
-	// === Phase 4: range purges + FSM state finalisation =======================
+	// === Phase 4: deleted-ledger range deletes + FSM state finalisation ======
 	//
-	// executePurge and the deletedLedgers block emit DeleteRange calls
-	// (range tombstones) on ZoneCold and ZonePerLedger, plus a handful of
-	// point writes/deletes (SavePendingLedgerCleanup,
-	// deletePendingLedgerCleanup, deleteLedgerData). Range tombstones live in
-	// a dedicated skiplist, separate from the point-write skiplist, so they
-	// do not break the monotonicity invariant established in phase 3. The
-	// trailing point writes are bounded by the number of pending cleanups /
-	// purge ranges (not the hot-path order count) so any residual back-step
-	// they introduce is amortised across batches.
+	// The deletedLedgers block emits DeleteRange calls (range tombstones) on
+	// ZoneAttributes and ZonePerLedger, plus a handful of point deletes
+	// (deleteLedgerData). Range tombstones live in a dedicated skiplist,
+	// separate from the point-write skiplist, so they do not break the
+	// monotonicity invariant established in phase 3. The trailing point
+	// deletes are bounded by the number of deleted ledgers (not the hot-path
+	// order count) so any residual back-step they introduce is amortised
+	// across batches.
 
-	// Purge archived chapter data (logs + audit entries) if requested.
-	for i := range b.purgeRanges {
-		err := b.executePurge(batch, &b.purgeRanges[i])
-		if err != nil {
-			return fmt.Errorf("purging archived chapter %d data: %w", b.purgeRanges[i].chapterID, err)
-		}
-	}
-
-	// Register pending ledger data cleanups (deferred to purge time). The
-	// Boundary deletion itself was already queued by processDeleteLedger
-	// through the gated Scope (Derived.Boundaries overlay, flushed in
-	// phase 3 above); this block only records the deferred data-purge
-	// bookkeeping.
+	// Physically remove ledger-owned projections in the same apply that
+	// records the deletion. The Boundary deletion itself was already queued
+	// by processDeleteLedger through the gated Scope (Derived.Boundaries
+	// overlay, flushed in phase 3 above); the global log/audit history for
+	// the ledger stays.
 	for _, ledgerName := range b.deletedLedgers {
-		seq := deleteSequences[ledgerName]
-
 		if _, err := b.getLedgerData(ledgerName); err != nil {
 			// The ledger name comes from a DeleteLedger order the
 			// processor already validated against b.GetLedger — a
 			// miss here means the WriteSet's view of ledgers became
 			// inconsistent between order processing and Merge. Fail
-			// loudly instead of skipping the cleanup write.
+			// loudly instead of skipping the cleanup.
 			return fmt.Errorf("invariant: pending ledger deletion for %q but ledger not in WriteSet view", ledgerName)
 		}
 
-		if err := SavePendingLedgerCleanup(batch, ledgerName, seq); err != nil {
-			return fmt.Errorf("saving pending ledger cleanup for %q: %w", ledgerName, err)
+		if err := DeleteLedgerData(batch, ledgerName); err != nil {
+			return fmt.Errorf("deleting ledger data for %q: %w", ledgerName, err)
 		}
-
-		b.fsm.State.PendingLedgerCleanups[ledgerName] = seq
 
 		// Clean in-memory reversion bitset and Pebble words — not needed after deletion.
 		delete(b.fsm.Registry.Reversions, ledgerName)
@@ -865,26 +783,6 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	b.fsm.State.NextSequenceID = b.NextSequenceID
 	b.fsm.State.NextLedgerID = b.NextLedgerID
 	b.fsm.State.NextQueryCheckpointID = b.NextQueryCheckpointID
-
-	// Apply changed chapters to Machine's Chapters tracker.
-	for _, p := range b.changedChapters {
-		b.fsm.Chapters.PutChapter(p)
-	}
-
-	// Remove purged chapters from memory.
-	for _, pr := range b.purgeRanges {
-		b.fsm.Chapters.DeleteChapter(pr.chapterID)
-	}
-
-	// Propagate chapter tracker state only if chapters were touched (lazy clone occurred).
-	// On the hot transaction path (CreateTransaction, etc.), b.chapters stays nil
-	// and the FSM's tracker is already correct.
-	if b.chapters != nil {
-		b.fsm.Chapters.SetCurrentOpenChapter(b.chapters.CurrentOpenChapter())
-		b.fsm.Chapters.SetClosingChapters(b.chapters.ClosingChapters())
-		b.fsm.Chapters.SetNextChapterID(b.chapters.NextChapterID())
-		b.fsm.Chapters.SetArchivedThroughID(b.chapters.ArchivedThroughID())
-	}
 
 	return nil
 }
@@ -928,13 +826,8 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.pendingSigningConfigUpdate = nil
 	b.pendingMaintenanceModeUpdate = nil
 	b.pendingClusterPolicyUpdate = nil
-	b.chapterScheduleUpdate = nil
 	b.queryCheckpointScheduleUpdate = nil
 	b.sinkConfigChanged = false
-	b.chapters = nil
-	b.changedChapters = b.changedChapters[:0]
-	b.purgeRanges = b.purgeRanges[:0]
-	b.archiveRequests = b.archiveRequests[:0]
 	b.pendingMirrorSyncs = b.pendingMirrorSyncs[:0]
 	b.deletedLedgers = b.deletedLedgers[:0]
 	b.allVolumeUpdates = b.allVolumeUpdates[:0]
@@ -956,38 +849,18 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 
 // Absorb implements processing.SignalSink. It maps the log payload a
 // processor just produced onto the WriteSet's cross-order accumulators
-// (archive queue, purge ranges, sink-config tracking, lifecycle flags,
-// schedule updates, ledger cleanup). Called by ProcessOrders right
-// after each (order, log) pair is produced; the log IS the source of
-// truth for what the framework should signal — there is no second
-// vocabulary to keep in sync. Payload types not listed here have no
-// cross-order signal (Apply, SaveLedgerMetadata, SealChapter, signing,
-// maintenance, …) — their state changes flow through the Scope
+// (sink-config tracking, lifecycle flags, schedule updates, ledger
+// cleanup). Called by ProcessOrders right after each (order, log) pair
+// is produced; the log IS the source of truth for what the framework
+// should signal — there is no second vocabulary to keep in sync.
+// Payload types not listed here have no cross-order signal (Apply,
+// SaveLedgerMetadata, signing, maintenance, …) — their state changes flow through the Scope
 // mutations the processor already did.
 //
 // Hot-path note: zero allocation per signal; the (order, log) pointers
 // already exist and the dispatch is a single type switch.
 func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 	switch p := log.GetPayload().GetType().(type) {
-	case *commonpb.LogPayload_ArchiveChapter:
-		c := p.ArchiveChapter.GetChapter()
-		b.archiveRequests = append(b.archiveRequests, ArchiveRequest{
-			ChapterID:          c.GetId(),
-			StartSequence:      c.GetStartSequence(),
-			CloseSequence:      c.GetCloseSequence(),
-			StartAuditSequence: c.GetStartAuditSequence(),
-			CloseAuditSequence: c.GetCloseAuditSequence(),
-			SealingHash:        c.GetSealingHash(),
-		})
-	case *commonpb.LogPayload_ConfirmArchiveChapter:
-		c := p.ConfirmArchiveChapter.GetChapter()
-		b.purgeRanges = append(b.purgeRanges, purgeRange{
-			chapterID:          c.GetId(),
-			startSequence:      c.GetStartSequence(),
-			closeSequence:      c.GetCloseSequence(),
-			startAuditSequence: c.GetStartAuditSequence(),
-			closeAuditSequence: c.GetCloseAuditSequence(),
-		})
 	case *commonpb.LogPayload_AddedEventsSink:
 		cfg := p.AddedEventsSink.GetConfig()
 		b.Derived.SinkConfigs.Put(domain.SinkConfigKey{Name: cfg.GetName()}, cfg)
@@ -995,12 +868,6 @@ func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 	case *commonpb.LogPayload_RemovedEventsSink:
 		b.Derived.SinkConfigs.Delete(domain.SinkConfigKey{Name: p.RemovedEventsSink.GetName()})
 		b.sinkConfigChanged = true
-	case *commonpb.LogPayload_SetChapterSchedule:
-		cron := p.SetChapterSchedule.GetCron()
-		b.chapterScheduleUpdate = &cron
-	case *commonpb.LogPayload_DeleteChapterSchedule:
-		empty := ""
-		b.chapterScheduleUpdate = &empty
 	case *commonpb.LogPayload_SetQueryCheckpointSchedule:
 		cron := p.SetQueryCheckpointSchedule.GetCron()
 		b.queryCheckpointScheduleUpdate = &cron
@@ -1008,9 +875,8 @@ func (b *WriteSet) Absorb(order *raftcmdpb.Order, log *commonpb.Log) {
 		empty := ""
 		b.queryCheckpointScheduleUpdate = &empty
 	case *commonpb.LogPayload_DeleteLedger:
-		// Only the cleanup signal is recorded here (drives
-		// SavePendingLedgerCleanup + the deferred range delete at purge
-		// time). The Boundary deletion now happens in processDeleteLedger
+		// Only the cleanup signal is recorded here (drives the phase-4
+		// range deletes). The Boundary deletion happens in processDeleteLedger
 		// through the gated Scope with the command-envelope key, so the
 		// SubAttrBoundary coverage is consumed on the gated path instead
 		// of via this raw, ungated overlay delete (invariant #9).
@@ -1077,7 +943,7 @@ func (b *WriteSet) QueryCheckpointDeleted() uint64 {
 }
 
 // Engine surface: the per-kind Accessor methods, plus the hetero counter,
-// chapter, signing-key and bool-state methods. The Accessor methods are
+// signing-key and bool-state methods. The Accessor methods are
 // overridden on gatedScope to layer the coverage gate; the hetero methods
 // pass through *WriteSet directly via embedding. The coverage gate
 // method (CheckCoverage) is deliberately absent here — it lives on
@@ -1587,215 +1453,6 @@ func checkDoubleEntryInvariant(
 		return &ErrDoubleEntryInvariantViolated{
 			InputSum:  inputSum.Dec(),
 			OutputSum: outputSum.Dec(),
-		}
-	}
-
-	return nil
-}
-
-// Chapter operations
-
-// ensureChapters clones the FSM's ChapterTracker on first access.
-// Chapter orders (CloseChapter, SealChapter, etc.) read chapter protos and mutate
-// them in-place, so the clone must happen before any read to protect the FSM.
-// CreateTransaction never calls chapter methods, so this is never triggered on
-// the hot transaction path.
-func (b *WriteSet) ensureChapters() {
-	if b.chapters == nil {
-		b.chapters = b.fsm.Chapters.Clone()
-	}
-}
-
-func (b *WriteSet) GetCurrentOpenChapter() (commonpb.ChapterReader, bool) {
-	b.ensureChapters()
-
-	p := b.chapters.CurrentOpenChapter()
-	if p != nil {
-		return p.AsReader(), true
-	}
-
-	return nil, false
-}
-
-func (b *WriteSet) GetClosingChapters() []commonpb.ChapterReader {
-	b.ensureChapters()
-
-	closing := b.chapters.ClosingChapters()
-	if closing == nil {
-		return nil
-	}
-
-	out := make([]commonpb.ChapterReader, len(closing))
-	for i, c := range closing {
-		out[i] = c.AsReader()
-	}
-
-	return out
-}
-
-func (b *WriteSet) GetClosingChapterByID(chapterID uint64) (commonpb.ChapterReader, bool) {
-	b.ensureChapters()
-
-	c, ok := b.chapters.ClosingChapterByID(chapterID)
-	if !ok {
-		return nil, false
-	}
-
-	return c.AsReader(), true
-}
-
-func (b *WriteSet) SetCurrentOpenChapter(chapter *commonpb.Chapter) {
-	b.ensureChapters()
-	b.chapters.SetCurrentOpenChapter(chapter)
-	b.changedChapters = append(b.changedChapters, chapter)
-}
-
-func (b *WriteSet) AddClosingChapter(chapter *commonpb.Chapter) {
-	b.ensureChapters()
-	b.chapters.AddClosingChapter(chapter)
-	b.changedChapters = append(b.changedChapters, chapter)
-}
-
-// RemoveClosingChapter persists the closing chapter's final state and removes it from in-memory tracking.
-func (b *WriteSet) RemoveClosingChapter(chapterID uint64) {
-	b.ensureChapters()
-
-	if closing, ok := b.chapters.ClosingChapterByID(chapterID); ok {
-		b.changedChapters = append(b.changedChapters, closing)
-	}
-
-	b.chapters.RemoveClosingChapter(chapterID)
-}
-
-func (b *WriteSet) GetNextChapterID() uint64 {
-	b.ensureChapters()
-
-	return b.chapters.NextChapterID()
-}
-
-func (b *WriteSet) IncrementNextChapterID() uint64 {
-	b.ensureChapters()
-
-	id := b.chapters.NextChapterID()
-	b.chapters.SetNextChapterID(id + 1)
-
-	return id
-}
-
-func (b *WriteSet) GetArchivedThroughChapterID() uint64 {
-	b.ensureChapters()
-
-	return b.chapters.ArchivedThroughID()
-}
-
-// AdvanceArchivedThroughChapterID extends the archived prefix by one on the
-// buffer, so a later order in the SAME proposal (a batched ApplyRequest can
-// carry ConfirmArchiveChapter for N and ArchiveChapter for N+1) observes it.
-// Merge propagates the value to the FSM tracker.
-func (b *WriteSet) AdvanceArchivedThroughChapterID() {
-	b.ensureChapters()
-	b.chapters.SetArchivedThroughID(b.chapters.ArchivedThroughID() + 1)
-}
-
-// GetChapterByID looks up a chapter by ID from in-memory state only.
-// It checks changedChapters first (most recent modifications), then the chapters tracker.
-func (b *WriteSet) GetChapterByID(chapterID uint64) (commonpb.ChapterReader, bool) {
-	// Check changedChapters (most recently changed first)
-	for _, v := range slices.Backward(b.changedChapters) {
-		if v.GetId() == chapterID {
-			return v.AsReader(), true
-		}
-	}
-
-	b.ensureChapters()
-
-	c, ok := b.chapters.GetChapterByID(chapterID)
-	if !ok {
-		return nil, false
-	}
-
-	return c.AsReader(), true
-}
-
-// UpdateChapter records a chapter modification to be persisted in Merge()
-// and rebinds the buffer's in-memory tracker to the caller's pointer. Handlers
-// that mutate a chapter via Reader.Mutate() pass the resulting clone here so
-// subsequent reads in the same proposal (and the Merge that follows) observe
-// the mutation instead of the original cached pointer.
-func (b *WriteSet) UpdateChapter(chapter *commonpb.Chapter) {
-	b.ensureChapters()
-	b.chapters.UpdateChapter(chapter)
-	b.changedChapters = append(b.changedChapters, chapter)
-}
-
-// executePurge deletes cold-storable data for a single purge range.
-// It also cleans up per-ledger data for any deleted ledgers whose
-// DeleteLedger log falls within the purge range.
-func (b *WriteSet) executePurge(batch *dal.WriteSession, pr *purgeRange) error {
-	// Logs: purge using log sequence range.
-	logStart := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(pr.startSequence).Build()
-	logEnd := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(pr.closeSequence + 1).Build()
-
-	if err := batch.DeleteRange(logStart, logEnd, nil); err != nil {
-		return fmt.Errorf("purging logs [%d, %d]: %w", pr.startSequence, pr.closeSequence, err)
-	}
-
-	// Audit: purge using audit sequence range (independent counter, advances slower).
-	if pr.closeAuditSequence >= pr.startAuditSequence {
-		auditStart := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(pr.startAuditSequence).Build()
-		auditEnd := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(pr.closeAuditSequence + 1).Build()
-
-		if err := batch.DeleteRange(auditStart, auditEnd, nil); err != nil {
-			return fmt.Errorf("purging audit [%d, %d]: %w", pr.startAuditSequence, pr.closeAuditSequence, err)
-		}
-
-		// AuditItem keys carry a 4-byte order-index suffix after the audit
-		// sequence, so the suffix-free bounds cover every item of every
-		// sequence in the range.
-		itemStart := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(pr.startAuditSequence).Build()
-		itemEnd := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(pr.closeAuditSequence + 1).Build()
-
-		if err := batch.DeleteRange(itemStart, itemEnd, nil); err != nil {
-			return fmt.Errorf("purging audit items [%d, %d]: %w", pr.startAuditSequence, pr.closeAuditSequence, err)
-		}
-
-		// AppliedProposal entries share the audit sequence counter (1:1 with
-		// AuditEntry on the success path). Failed proposals leave gaps but
-		// DeleteRange tolerates them.
-		proposalStart := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).PutUint64(pr.startAuditSequence).Build()
-		proposalEnd := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).PutUint64(pr.closeAuditSequence + 1).Build()
-
-		if err := batch.DeleteRange(proposalStart, proposalEnd, nil); err != nil {
-			return fmt.Errorf("purging applied proposals [%d, %d]: %w", pr.startAuditSequence, pr.closeAuditSequence, err)
-		}
-	}
-
-	// Clean up per-ledger data for deleted ledgers whose delete log
-	// falls within this purge range.
-	for ledgerName, deleteSeq := range b.fsm.State.PendingLedgerCleanups {
-		if deleteSeq >= pr.startSequence && deleteSeq <= pr.closeSequence {
-			if err := deleteLedgerData(batch, ledgerName); err != nil {
-				return fmt.Errorf("purging ledger data for ledger %q: %w", ledgerName, err)
-			}
-
-			if err := deletePendingLedgerCleanup(batch, ledgerName); err != nil {
-				return fmt.Errorf("removing pending cleanup entry for ledger %q: %w", ledgerName, err)
-			}
-
-			delete(b.fsm.State.PendingLedgerCleanups, ledgerName)
-
-			// Liveness anchor for deleted-ledger-data-isolation-and-eventual-purge:
-			// the deferred cleanup recorded at DeleteLedger apply time is only
-			// consumed here, when a covering purge range (chapter archival
-			// confirmation) reaches the delete sequence. The chapter-close
-			// singleton driver closes/archives/confirms chapters continuously
-			// and ledger-delete drivers run in parallel, so this branch is
-			// expected to be exercised in every full run.
-			assert.Reachable("deleted ledger deferred cleanup executed by covering purge", map[string]any{
-				"ledger":    ledgerName,
-				"deleteSeq": deleteSeq,
-				"chapterId": pr.chapterID,
-			})
 		}
 	}
 

@@ -70,7 +70,6 @@ spec:
         args:
         - |
           until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done
-          mc mb --ignore-existing local/archives
           mc mb --ignore-existing local/backups
         resources:
           requests:

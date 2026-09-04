@@ -70,7 +70,6 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_SINK_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND,
-		commonpb.ErrorReason_ERROR_REASON_CHAPTER_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_PREPARED_QUERY_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,
@@ -89,7 +88,6 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_LEDGER_IN_MIRROR_MODE,
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_HAS_ACCOUNTS,
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_CONFLICT,
-		commonpb.ErrorReason_ERROR_REASON_CHAPTER_ALREADY_ARCHIVED,
 		commonpb.ErrorReason_ERROR_REASON_STALE_CLUSTER_POLICY:
 		return KindConflict
 	case commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
@@ -97,17 +95,10 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_AGGREGATE_OVERFLOW,
 		commonpb.ErrorReason_ERROR_REASON_BALANCE_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_AUDIT_DISABLED,
-		commonpb.ErrorReason_ERROR_REASON_NO_CHAPTER_OPEN,
-		commonpb.ErrorReason_ERROR_REASON_CHAPTER_NOT_CLOSING,
-		commonpb.ErrorReason_ERROR_REASON_CHAPTER_NOT_CLOSED,
-		commonpb.ErrorReason_ERROR_REASON_CHAPTER_NOT_ARCHIVING,
-		commonpb.ErrorReason_ERROR_REASON_CHAPTER_ARCHIVE_IDENTITY_MISMATCH,
-		commonpb.ErrorReason_ERROR_REASON_CHAPTER_ARCHIVE_OUT_OF_ORDER,
 		commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE,
 		commonpb.ErrorReason_ERROR_REASON_INDEX_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA,
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_NOT_MATCHING_TYPE,
-		commonpb.ErrorReason_ERROR_REASON_COLD_STORAGE_DISABLED,
 		commonpb.ErrorReason_ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO,
 		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_LIMIT_REACHED:
 		return KindPrecondition

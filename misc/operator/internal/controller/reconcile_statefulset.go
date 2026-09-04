@@ -320,7 +320,6 @@ func buildPodTemplate(ledger *ledgerv1alpha1.Cluster, specHash string, credentia
 	volumeDefs := []volumeDef{
 		{"wal", spec.WalDir, &ledger.Spec.Persistence.WAL},
 		{"data", spec.DataDir, &ledger.Spec.Persistence.Data},
-		{"cold-cache", "/data/cold-cache", &ledger.Spec.Persistence.ColdCache},
 	}
 
 	var volumeMounts []corev1.VolumeMount
@@ -668,7 +667,6 @@ func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.Cluster) []corev1.Persiste
 	defs := []vctDef{
 		{"wal", &ledger.Spec.Persistence.WAL, "5Gi"},
 		{"data", &ledger.Spec.Persistence.Data, "10Gi"},
-		{"cold-cache", &ledger.Spec.Persistence.ColdCache, "10Gi"},
 	}
 
 	var templates []corev1.PersistentVolumeClaim
@@ -738,9 +736,6 @@ func pvcVolumeNames(persistence *ledgerv1alpha1.PersistenceSpec) []string {
 	}
 	if persistence.Data.IsPVC() {
 		names = append(names, "data")
-	}
-	if persistence.ColdCache.IsPVC() {
-		names = append(names, "cold-cache")
 	}
 
 	return names

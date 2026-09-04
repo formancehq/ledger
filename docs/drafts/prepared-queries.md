@@ -1,5 +1,10 @@
 # Draft — Prepared Queries
 
+> **Note (EN-1945):** chapters and cold storage were removed before release —
+> log/audit history is permanent in the primary store. References to chapters,
+> archival, or cold storage below reflect the design landscape when this draft
+> was written, not current behavior.
+
 **Status**: Draft for team review
 **Author**: Geoffrey + Claude
 **Date**: 2026-02-24

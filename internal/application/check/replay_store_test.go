@@ -402,7 +402,7 @@ func TestReplayStoreMetadataNotFound(t *testing.T) {
 // merger must defer the ops as a txOpBatch rather than collapse them into a
 // finalized snapshot — collapsing silently drops the delete, and the later
 // base-inclusive fold (UnmarshalVT overlay) cannot undo it. This pins the
-// compaction-associativity bug: seeded baseline metadata + a post-archive delete.
+// compaction-associativity bug: a finalized base + a later delete operand.
 func TestTxMergerPartialMergePreservesDelete(t *testing.T) {
 	t.Parallel()
 
@@ -430,10 +430,10 @@ func TestTxMergerPartialMergePreservesDelete(t *testing.T) {
 
 	var got commonpb.TransactionState
 	require.NoError(t, got.UnmarshalVT(result[1:]))
-	require.Empty(t, got.GetMetadata(), "the post-archive delete of k0 must survive the partial merge")
+	require.Empty(t, got.GetMetadata(), "the later delete of k0 must survive the partial merge")
 }
 
-// End-to-end counterpart: a baseline seed carrying k0 followed by a post-archive
+// End-to-end counterpart: a finalized base carrying k0 followed by a later
 // delete of k0 must read back with k0 gone across a flush + compaction cycle.
 func TestReplayStoreDeleteSurvivesCompaction(t *testing.T) {
 	t.Parallel()
@@ -441,10 +441,11 @@ func TestReplayStoreDeleteSurvivesCompaction(t *testing.T) {
 	rs := newTestReplayStore(t)
 	txKey := []byte("ledger\x00tx1")
 
-	require.NoError(t, rs.SeedTransaction(txKey, &commonpb.TransactionState{
-		CreatedByLog: 5,
-		Metadata:     strMetaMap("k0", "v0"),
-	}))
+	base := &commonpb.TransactionState{CreatedByLog: 5, Metadata: strMetaMap("k0", "v0")}
+	baseData, err := base.MarshalVT()
+	require.NoError(t, err)
+	require.NoError(t, rs.db.Merge(replayKey(replayPrefixTransaction, txKey),
+		append([]byte{txOpFinalized}, baseData...), pebble.NoSync))
 	require.NoError(t, rs.db.Flush())
 
 	require.NoError(t, rs.DeleteTxMetadata(txKey, "k0"))

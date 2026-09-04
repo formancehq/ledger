@@ -31,7 +31,6 @@ ledger/
 │   │   ├── backup/        # Backup support
 │   │   ├── bloom/         # Bloom filter
 │   │   ├── cache/         # FSM attribute cache (generation-based)
-│   │   ├── coldstorage/   # Cold storage (S3)
 │   │   ├── health/        # Health checks
 │   │   ├── monitoring/    # Observability (OTLP, Pyroscope, tracing, diskusage)
 │   │   ├── node/          # Raft node lifecycle and transport
@@ -126,7 +125,6 @@ cmd/ledgerctl/
   ledgers/        # Ledger commands
   logs/           # Log commands
   numscripts/     # Numscript commands
-  chapters/        # Chapter commands
   profile/        # Profile commands
   provision/      # Provisioning commands
   queries/        # Prepared query commands

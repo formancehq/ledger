@@ -124,8 +124,6 @@ func TestGamingWalletLifecycle(t *testing.T) {
 			promoTotal.Add(promoTotal, big.NewInt(promoCoins))
 		}
 		scenariotest.ApplyActions(t, ctx, client, reqs...)
-
-		scenariotest.CloseChapterAndWait(t, ctx, client, "post-promotion chapter close")
 	})
 
 	// --- Phase 4: Item Purchases ---
@@ -179,8 +177,6 @@ func TestGamingWalletLifecycle(t *testing.T) {
 				}
 			}
 		}
-
-		scenariotest.CloseChapterAndWait(t, ctx, client, "post-purchases chapter close")
 	})
 
 	// --- Phase 5: Peer-to-Peer Trades ---
@@ -302,8 +298,6 @@ func TestGamingWalletLifecycle(t *testing.T) {
 		if len(reqs) > 0 {
 			scenariotest.ApplyActions(t, ctx, client, reqs...)
 		}
-
-		scenariotest.CloseChapterAndWait(t, ctx, client, "post-clawback chapter close")
 	})
 
 	// --- Phase 9: Metadata Lifecycle ---

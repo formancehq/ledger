@@ -21,16 +21,10 @@ history. If one advances, deletes, or creates a durable projection and the other
 does not, the restored store can contain business data that disagrees with the
 state used to admit or apply the next order.
 
-Residency is part of that state, not an implementation detail below it. An
-incremental export whose window overlaps an archived chapter is backfilled from
-cold storage, so the delta carries entries the source had already purged from hot
-storage; `RebuildDelta` needs them to fold the chapter lifecycle. Once it has run
-they must go, because the restored store has to hold the split the source held: a
-chapter the registry calls `ARCHIVED` is served from its cold object, and reads
-try hot storage first (`ReadLogBySequenceWithCold`). Leaving them resident answers
-reads from history the registry calls archived, keeps a second copy of it on disk,
-and leaves purge receipts the checker's replay cannot derive — a healthy store
-reported as corrupt.
+Residency is part of that state, not an implementation detail below it: log,
+audit, audit-item, and applied-proposal history is permanent in the primary
+store, so a restored store must hold exactly the rows the source held — no
+export may be skipped, and no restored row may be dropped afterwards.
 
 ## Restore evidence and responsibilities
 
@@ -101,7 +95,6 @@ regression fail; this falsifies a vacuous test that never reached the delta path
 - Live apply and restore use the same authoritative evidence but are compared by an independent oracle.
 - Checkpoint seeding and delta folding are both exercised.
 - Create, update, delete, and lifecycle transitions relevant to the projection are covered.
-- Archived-baseline behavior is considered when the projection survives log purging.
 - `CheckStore` verifies the restored primary-store projection, or the documented exemption remains valid.
 - Tests assert business values and future gate behavior, not only row presence or cardinality.
 - The subsystem documentation and code comments describe any new non-obvious restore rule.

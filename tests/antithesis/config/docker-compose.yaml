@@ -37,12 +37,7 @@ x-ledger-common: &ledger-common
     # Runtime consistency checks (valuable under chaos)
     SENTINEL_MODE: "true"
 
-    # Cold storage (S3/MinIO)
-    COLD_CACHE_DIR: "/data/cold-cache"
-    COLD_STORAGE_DRIVER: "s3"
-    COLD_STORAGE_S3_BUCKET: "archives"
-    COLD_STORAGE_S3_REGION: "us-east-1"
-    COLD_STORAGE_S3_ENDPOINT: "http://minio:9000"
+    # S3 credentials for the backup workloads (MinIO)
     AWS_ACCESS_KEY_ID: "minioadmin"
     AWS_SECRET_ACCESS_KEY: "minioadmin"
 
@@ -120,7 +115,6 @@ services:
     command:
       - |
         until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done
-        until mc mb --ignore-existing local/archives; do sleep 1; done
         until mc mb --ignore-existing local/backups; do sleep 1; done
 
   ledger-0:
@@ -146,7 +140,6 @@ services:
     volumes:
       - ledger-0-wal:/data/raft
       - ledger-0-data:/data/app
-      - ledger-0-cold-cache:/data/cold-cache
 
   ledger-1:
     <<: *ledger-common
@@ -171,7 +164,6 @@ services:
     volumes:
       - ledger-1-wal:/data/raft
       - ledger-1-data:/data/app
-      - ledger-1-cold-cache:/data/cold-cache
 
   ledger-2:
     <<: *ledger-common
@@ -196,7 +188,6 @@ services:
     volumes:
       - ledger-2-wal:/data/raft
       - ledger-2-data:/data/app
-      - ledger-2-cold-cache:/data/cold-cache
 
   workload:
     image: us-central1-docker.pkg.dev/molten-verve-216720/formance-repository/workload-ledger-v3:__TAG__
@@ -224,10 +215,7 @@ volumes:
   etcd-2-data:
   ledger-0-wal:
   ledger-0-data:
-  ledger-0-cold-cache:
   ledger-1-wal:
   ledger-1-data:
-  ledger-1-cold-cache:
   ledger-2-wal:
   ledger-2-data:
-  ledger-2-cold-cache:

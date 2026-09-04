@@ -17,7 +17,7 @@ spec:
               metadata:
                 name: ledger-hp-test
 
-    - name: Verify StatefulSet has only 2 VolumeClaimTemplates (wal, cold-cache)
+    - name: Verify StatefulSet has only 1 VolumeClaimTemplate (wal)
       try:
         - assert:
             resource:
@@ -29,8 +29,6 @@ spec:
                 volumeClaimTemplates:
                   - metadata:
                       name: wal
-                  - metadata:
-                      name: cold-cache
 
     - name: Verify ConfigValid condition is True
       try:

@@ -52,19 +52,19 @@ func TestValidateExportKeyRequiresExactKeyShape(t *testing.T) {
 	t.Parallel()
 
 	seqKey := func(sub byte) []byte {
-		return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, sub).PutUint64(1).Build()
+		return dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, sub).PutUint64(1).Build()
 	}
 
 	for _, tc := range []struct {
 		segType string
 		valid   []byte
 	}{
-		{segType: "log", valid: seqKey(dal.SubColdLog)},
-		{segType: "audit", valid: seqKey(dal.SubColdAudit)},
-		{segType: "appliedProposal", valid: seqKey(dal.SubColdAppliedProposal)},
+		{segType: "log", valid: seqKey(dal.SubHistoryLog)},
+		{segType: "audit", valid: seqKey(dal.SubHistoryAudit)},
+		{segType: "appliedProposal", valid: seqKey(dal.SubHistoryAppliedProposal)},
 		{
 			segType: "auditItem",
-			valid:   dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(1).PutUint32(0).Build(),
+			valid:   dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(1).PutUint32(0).Build(),
 		},
 	} {
 		t.Run(tc.segType, func(t *testing.T) {
@@ -88,7 +88,7 @@ func TestValidateExportKeyRequiresExactKeyShape(t *testing.T) {
 func TestApplyExportsRejectsKeyWithTrailingBytes(t *testing.T) {
 	t.Parallel()
 
-	tampered := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdLog).PutUint64(1).Build()
+	tampered := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(1).Build()
 	tampered = append(tampered, 'x')
 
 	var stream bytes.Buffer
@@ -104,5 +104,31 @@ func TestApplyExportsRejectsKeyWithTrailingBytes(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "invalid key")
-	require.Zero(t, countKeysInSub(t, store, dal.SubColdLog), "tampered entry must not reach the store")
+	require.Zero(t, countKeysInSub(t, store, dal.SubHistoryLog), "tampered entry must not reach the store")
+}
+
+func countKeysInSub(t *testing.T, store *dal.Store, sub byte) int {
+	t.Helper()
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+
+	defer func() { _ = handle.Close() }()
+
+	iter, err := dal.NewBoundedIter(handle,
+		[]byte{dal.ZoneHistory, sub},
+		[]byte{dal.ZoneHistory, sub + 1},
+	)
+	require.NoError(t, err)
+
+	defer func() { _ = iter.Close() }()
+
+	count := 0
+	for iter.First(); iter.Valid(); iter.Next() {
+		count++
+	}
+
+	require.NoError(t, iter.Error())
+
+	return count
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -257,6 +258,42 @@ func TestHealthThresholdsHysteresisValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestValidateOrPersistConfig_AnchorKeyPhysicallyPinned seeds a schema-v3
+// config at the raw anchor bytes {ZoneGlobal, 0x0C} — the physical location
+// every layout stores PersistedConfig at — and expects SchemaVersionError.
+// If SubGlobPersistedConfig is ever renumbered, the loader misses this row,
+// classifies the boot as first boot, and accepts the incompatible store;
+// this test then fails.
+func TestValidateOrPersistConfig_AnchorKeyPhysicallyPinned(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	logger := logging.Testing()
+
+	raw, err := proto.Marshal(&commonpb.PersistedConfig{
+		NodeId:               1,
+		ClusterId:            "test",
+		StorageSchemaVersion: 3,
+	})
+	require.NoError(t, err)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, 0x0C}, raw))
+	require.NoError(t, batch.Commit())
+
+	cfg := Config{
+		RaftConfig: node.NodeConfig{NodeID: 1},
+		ClusterID:  "test",
+	}
+
+	err = ValidateOrPersistConfig(store, cfg, logger, false)
+
+	var schemaErr *SchemaVersionError
+	require.ErrorAs(t, err, &schemaErr)
+	require.Equal(t, uint32(3), schemaErr.Persisted)
+	require.Equal(t, CurrentStorageSchemaVersion, schemaErr.Current)
 }
 
 func TestValidateOrPersistConfig_SchemaVersionTooOld(t *testing.T) {

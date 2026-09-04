@@ -222,53 +222,11 @@ func TestAuditOrderType(t *testing.T) {
 			want: "remove_events_sink",
 		},
 		{
-			name: "close chapter",
-			order: &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
-				SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_CloseChapter{}},
-			}},
-			want: "close_chapter",
-		},
-		{
-			name: "seal chapter",
-			order: &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
-				SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SealChapter{}},
-			}},
-			want: "seal_chapter",
-		},
-		{
-			name: "archive chapter",
-			order: &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
-				SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_ArchiveChapter{}},
-			}},
-			want: "archive_chapter",
-		},
-		{
-			name: "confirm archive chapter",
-			order: &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
-				SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_ConfirmArchiveChapter{}},
-			}},
-			want: "confirm_archive_chapter",
-		},
-		{
 			name: "set maintenance mode",
 			order: &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
 				SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{}},
 			}},
 			want: "set_maintenance_mode",
-		},
-		{
-			name: "set chapter schedule",
-			order: &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
-				SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetChapterSchedule{}},
-			}},
-			want: "set_chapter_schedule",
-		},
-		{
-			name: "delete chapter schedule",
-			order: &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{
-				SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_DeleteChapterSchedule{}},
-			}},
-			want: "delete_chapter_schedule",
 		},
 		{
 			name: "create query checkpoint",

@@ -1,5 +1,10 @@
 # Draft — Advanced Read Queries
 
+> **Note (EN-1945):** chapters and cold storage were removed before release —
+> log/audit history is permanent in the primary store. References to chapters,
+> archival, or cold storage below reflect the design landscape when this draft
+> was written, not current behavior.
+
 **Status**: Outdated — superseded by [Prepared Queries](./prepared-queries.md)
 **Author**: Geoffrey + Claude
 **Date**: 2026-02-13, updated 2026-02-24

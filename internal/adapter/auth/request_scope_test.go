@@ -67,13 +67,7 @@ func TestRequiredScopeForRequest_OpsWrite(t *testing.T) {
 		{"SetSigningConfig", &servicepb.Request{Type: &servicepb.Request_SetSigningConfig{}}},
 		{"AddEventsSink", &servicepb.Request{Type: &servicepb.Request_AddEventsSink{}}},
 		{"RemoveEventsSink", &servicepb.Request{Type: &servicepb.Request_RemoveEventsSink{}}},
-		{"CloseChapter", &servicepb.Request{Type: &servicepb.Request_CloseChapter{}}},
-		{"SealChapter", &servicepb.Request{Type: &servicepb.Request_SealChapter{}}},
-		{"ArchiveChapter", &servicepb.Request{Type: &servicepb.Request_ArchiveChapter{}}},
-		{"ConfirmArchiveChapter", &servicepb.Request{Type: &servicepb.Request_ConfirmArchiveChapter{}}},
 		{"SetMaintenanceMode", &servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{}}},
-		{"SetChapterSchedule", &servicepb.Request{Type: &servicepb.Request_SetChapterSchedule{}}},
-		{"DeleteChapterSchedule", &servicepb.Request{Type: &servicepb.Request_DeleteChapterSchedule{}}},
 	}
 
 	for _, tc := range opsWriteRequests {
@@ -200,7 +194,7 @@ func TestRequiredScopeForLedgerApply_NilApply(t *testing.T) {
 // route under a business scope; before the fix they fell through to
 // ledger:OpsWrite over gRPC Apply, so an operator scope was needed to perform
 // a business action — and ledger:OpsWrite also grants maintenance mode,
-// signing-key and chapter control.
+// signing-key control.
 func TestRequiredScopeForRequest_BusinessVariantsDoNotRequireOpsWrite(t *testing.T) {
 	t.Parallel()
 

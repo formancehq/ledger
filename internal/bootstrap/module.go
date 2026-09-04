@@ -2,7 +2,6 @@ package bootstrap
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -45,10 +44,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	infrabackup "github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
-	"github.com/formancehq/ledger/v3/internal/infra/coldstorage"
 	clusterhealth "github.com/formancehq/ledger/v3/internal/infra/health"
 	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
@@ -90,118 +87,6 @@ type nodeProvideResult struct {
 
 	Node       *node.Node
 	FreshStart walFreshStart
-}
-
-// ColdStorageModule conditionally provides ColdStorage, ColdReader, and Archiver
-// when cold storage is enabled (driver != "none"). When disabled, these components
-// are not added to the fx graph and archiving is rejected at the admission layer.
-//
-// Restore mode never gets the module: the Archiver consumes the runtime graph
-// (*dal.Store, *state.Machine, ctrl.Admission, *node.Node) that RestoreModule
-// deliberately does not provide — including it makes the whole fx graph
-// unbuildable and the server exits at boot. A restoring server has no use for
-// it either: it neither archives nor reads cold data, and backup downloads
-// carry their own storage configuration per request.
-func ColdStorageModule(coldStorageDriver string, restore bool) fx.Option {
-	if coldStorageDriver == "none" || restore {
-		return fx.Options()
-	}
-
-	return fx.Options(
-		fx.Provide(
-			func(cfg Config, logger logging.Logger) (coldstorage.ColdStorage, error) {
-				switch cfg.ColdStorageConfig.Driver {
-				case "s3":
-					if cfg.ColdStorageConfig.S3Bucket == "" {
-						return nil, errors.New("--cold-storage-s3-bucket is required when driver=s3")
-					}
-
-					logger.WithFields(map[string]any{
-						"bucket":   cfg.ColdStorageConfig.S3Bucket,
-						"region":   cfg.ColdStorageConfig.S3Region,
-						"endpoint": cfg.ColdStorageConfig.S3Endpoint,
-					}).Infof("Using S3 cold storage")
-
-					return coldstorage.NewS3ColdStorage(
-						cfg.ColdStorageConfig.S3Bucket,
-						cfg.ColdStorageConfig.S3Region,
-						cfg.ColdStorageConfig.S3Endpoint,
-					)
-				case "filesystem", "":
-					basePath := cfg.ColdStorageConfig.BasePath
-					if basePath == "" {
-						basePath = filepath.Join(cfg.DataDir, "cold-storage")
-					}
-
-					return coldstorage.NewFilesystemStorage(basePath), nil
-				default:
-					return nil, fmt.Errorf("unknown cold storage driver: %s", cfg.ColdStorageConfig.Driver)
-				}
-			},
-			func(cfg Config, cold coldstorage.ColdStorage, logger logging.Logger) *coldstorage.ColdReader {
-				bucketID := cfg.ColdStorageConfig.BucketID
-				if bucketID == "" {
-					bucketID = cfg.ClusterID
-				}
-
-				cacheDir := cfg.ColdStorageConfig.CacheDir
-				if cacheDir == "" {
-					cacheDir = filepath.Join(cfg.DataDir, "cold-cache")
-				}
-
-				return coldstorage.NewColdReader(cold, bucketID, cacheDir, 8, 10*time.Minute, logger)
-			},
-			func(
-				cfg Config,
-				logger logging.Logger,
-				store *dal.Store,
-				cold coldstorage.ColdStorage,
-				machine *state.Machine,
-				admissionHandler ctrl.Admission,
-				raftNode *node.Node,
-			) *state.Archiver {
-				bucketID := cfg.ColdStorageConfig.BucketID
-				if bucketID == "" {
-					bucketID = cfg.ClusterID
-				}
-
-				return state.NewArchiver(
-					logger,
-					store,
-					cold,
-					machine.ArchiveRequestCh(),
-					func(chapterID uint64, sealingHash []byte) error {
-						_, err := admissionHandler.Admit(internalauth.WithSystemActor(context.Background(), commands.ComponentChapterArchiver), servicepb.UnsignedApplyRequest("", &servicepb.Request{
-							Type: &servicepb.Request_ConfirmArchiveChapter{
-								ConfirmArchiveChapter: &servicepb.ConfirmArchiveChapterRequest{
-									ChapterId:   chapterID,
-									SealingHash: sealingHash,
-								},
-							},
-						}))
-
-						return err
-					},
-					raftNode.IsLeader,
-					machine,
-					bucketID,
-					machine.DispatchArchiveRequests,
-				)
-			},
-		),
-		fx.Invoke(
-			func(lc fx.Lifecycle, coldReader *coldstorage.ColdReader) {
-				lc.Append(fx.Hook{
-					OnStop: func(_ context.Context) error {
-						return coldReader.Close()
-					},
-				})
-			},
-			func(lc fx.Lifecycle, archiver *state.Archiver) {
-				lc.Append(worker.FxHook(archiver))
-			},
-		),
-	)
 }
 
 func Module() fx.Option {
@@ -276,9 +161,6 @@ func Module() fx.Option {
 				}
 
 				return store, nil
-			},
-			func(store *dal.Store, logger logging.Logger, machine *state.Machine) *dal.SmartCompactor {
-				return dal.NewSmartCompactor(store, logger, machine.ColdCompactionCh())
 			},
 			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
 				return wal.New(cfg.RaftConfig.WalDir, logger, meterProvider.Meter("wal"))
@@ -582,7 +464,7 @@ func Module() fx.Option {
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
 			fx.Annotate(buildAuthConfig, fx.ParamTags(``, ``, `optional:"true"`)),
 			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
-				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, signer, respSigner, authCfg, cfg.QueryProfileThreshold, cfg.ClusterID, cfg.IdempotencyTTL, meterProvider, n, servicePool, info)
+				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, signer, respSigner, authCfg, cfg.QueryProfileThreshold, cfg.ClusterID, meterProvider, n, servicePool, info)
 			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`, ``)),
 			func(cfg Config, logger logging.Logger, s *dal.Store, fsm *state.Machine) snapshotpb.SnapshotServiceServer {
 				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, fsm.WaitForApplied)
@@ -602,16 +484,9 @@ func Module() fx.Option {
 					cfg.ServiceAdvertiseAddr(),
 				)
 			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
-			fx.Annotate(func(builder *plan.Builder, n *node.Node, store *dal.Store, coldReader *coldstorage.ColdReader, cfg Config, logger logging.Logger) *backupapp.Orchestrator {
-				// Assign only a non-nil pointer: a typed-nil interface would
-				// pass the backfill's nil check and be dereferenced.
-				var cold infrabackup.ColdChapterReader
-				if coldReader != nil {
-					cold = coldReader
-				}
-
-				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, cold, logger, n.GetNodeID(), backupapp.NewExecutorRegistry(), cfg.BackupMaxSegmentBytes)
-			}, fx.ParamTags(``, ``, ``, `optional:"true"`, ``, ``)),
+			func(builder *plan.Builder, n *node.Node, store *dal.Store, cfg Config, logger logging.Logger) *backupapp.Orchestrator {
+				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, logger, n.GetNodeID(), backupapp.NewExecutorRegistry(), cfg.BackupMaxSegmentBytes)
+			},
 			func(builder *plan.Builder, n *node.Node, fsm *state.Machine, orchestrator *backupapp.Orchestrator, logger logging.Logger) *backupapp.Cleanup {
 				return backupapp.NewCleanup(fsm.Registry.BackupJobs, newBackupProposer(builder, n), n, orchestrator.Registry(), logger)
 			},
@@ -722,7 +597,6 @@ func Module() fx.Option {
 				receiptSigner *receipt.Signer,
 				attrs *attributes.Attributes,
 				authCfg internalauth.AuthConfig,
-				coldReader *coldstorage.ColdReader,
 			) ctrl.Admission {
 				var opts []func(*admission.Admission)
 				if cfg.AdmissionMetrics {
@@ -732,14 +606,6 @@ func Module() fx.Option {
 				if receiptSigner != nil {
 					opts = append(opts, admission.WithReceiptSigner(receiptSigner))
 				}
-
-				if cfg.ColdStorageConfig.Driver != "none" {
-					opts = append(opts, admission.WithColdStorageEnabled())
-				}
-
-				// nil when cold storage is disabled (optional fx dependency) —
-				// idempotent-replay log resolution then stays hot-only.
-				opts = append(opts, admission.WithColdReader(coldReader))
 
 				if authCfg.Enabled {
 					opts = append(opts, admission.WithAuthEnabled())
@@ -760,50 +626,6 @@ func Module() fx.Option {
 					opts...,
 				)
 			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `optional:"true"`)),
-			func(
-				logger logging.Logger,
-				store *dal.Store,
-				attrs *attributes.Attributes,
-				machine *state.Machine,
-				admissionHandler ctrl.Admission,
-				raftNode *node.Node,
-			) *state.Sealer {
-				return state.NewSealer(logger, store, attrs, machine.SealRequestCh(), func(chapterID uint64, sealingHash, stateHash []byte) error {
-					_, err := admissionHandler.Admit(internalauth.WithSystemActor(context.Background(), commands.ComponentChapterSealer), servicepb.UnsignedApplyRequest("", &servicepb.Request{
-						Type: &servicepb.Request_SealChapter{
-							SealChapter: &servicepb.SealChapterRequest{
-								ChapterId:   chapterID,
-								SealingHash: sealingHash,
-								StateHash:   stateHash,
-							},
-						},
-					}))
-
-					return err
-				}, raftNode.IsLeader, machine)
-			},
-			func(
-				logger logging.Logger,
-				machine *state.Machine,
-				admissionHandler ctrl.Admission,
-				raftNode *node.Node,
-			) *state.ChapterScheduler {
-				return state.NewChapterScheduler(
-					logger,
-					raftNode.IsLeader,
-					machine.ChapterSchedule,
-					func() error {
-						_, err := admissionHandler.Admit(internalauth.WithSystemActor(context.Background(), commands.ComponentChapterScheduler), servicepb.UnsignedApplyRequest("", &servicepb.Request{
-							Type: &servicepb.Request_CloseChapter{
-								CloseChapter: &servicepb.CloseChapterRequest{},
-							},
-						}))
-
-						return err
-					},
-					machine.ScheduleChanged(),
-				)
-			},
 			func(
 				logger logging.Logger,
 				machine *state.Machine,
@@ -835,11 +657,10 @@ func Module() fx.Option {
 				attrs *attributes.Attributes,
 				rs *readstore.Store,
 				us *usagestore.Store,
-				coldReader *coldstorage.ColdReader,
 				receiptSigner *receipt.Signer,
 				meterProvider metric.MeterProvider,
 			) (ctrl.Controller, *ctrl.DefaultController) {
-				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, us, coldReader, receiptSigner, meterProvider.Meter("ctrl"))
+				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, us, receiptSigner, meterProvider.Meter("ctrl"))
 
 				return NewRoutedController(
 					defaultCtrl,
@@ -932,8 +753,7 @@ func Module() fx.Option {
 			// Recovery (which owns the Pebble reader) consumes that signal and
 			// invokes StartAsyncBloomPopulate. Without this dispatcher, the
 			// Machine would have to hold a reader itself, which would
-			// re-introduce the I1 hot-path read leak. Registered here in the
-			// main Module so it is wired regardless of cold-storage driver.
+			// re-introduce the I1 hot-path read leak.
 			func(lc fx.Lifecycle, recovery *state.Recovery) {
 				stop := make(chan struct{})
 				lc.Append(fx.Hook{
@@ -1245,9 +1065,6 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, collector *diskusage.Collector) {
 				lc.Append(worker.FxHook(collector))
 			},
-			func(lc fx.Lifecycle, compactor *dal.SmartCompactor) {
-				lc.Append(worker.FxHook(compactor))
-			},
 			func(lc fx.Lifecycle, hc *clusterhealth.HealthChecker) {
 				lc.Append(worker.FxHook(hc))
 			},
@@ -1260,14 +1077,8 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, manager *mirror.Manager) {
 				lc.Append(worker.FxHook(manager))
 			},
-			func(lc fx.Lifecycle, sealer *state.Sealer) {
-				lc.Append(worker.FxHook(sealer))
-			},
 			func(lc fx.Lifecycle, reconciler *ClusterPolicyReconciler) {
 				lc.Append(worker.FxHook(reconciler))
-			},
-			func(lc fx.Lifecycle, scheduler *state.ChapterScheduler) {
-				lc.Append(worker.FxHook(scheduler))
 			},
 			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node, store *dal.Store, machine *state.Machine, builder *plan.Builder) {
 				if cfg.IdempotencyTTL > 0 && cfg.IdempotencyEvictionInterval > 0 {

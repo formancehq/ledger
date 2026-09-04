@@ -23,10 +23,10 @@ import (
 // Fixture-seeding harness
 //
 // processAuditEntries reads, per audit sequence, from the PRIMARY pebble store:
-//   - the auditpb.AuditEntry             ([ZoneCold][SubColdAudit][seq BE8])
-//   - its auditpb.AuditItem(s)           ([ZoneCold][SubColdAuditItem][seq BE8][idx BE4])
-//   - the proposalpb.AppliedProposal     ([ZoneCold][SubColdAppliedProposal][seq BE8])
-//   - the commonpb.LedgerLog per item    ([ZoneCold][SubColdLog][logSeq BE8]) via readLog
+//   - the auditpb.AuditEntry             ([ZoneHistory][SubHistoryAudit][seq BE8])
+//   - its auditpb.AuditItem(s)           ([ZoneHistory][SubHistoryAuditItem][seq BE8][idx BE4])
+//   - the proposalpb.AppliedProposal     ([ZoneHistory][SubHistoryAppliedProposal][seq BE8])
+//   - the commonpb.LedgerLog per item    ([ZoneHistory][SubHistoryLog][logSeq BE8]) via readLog
 //
 // The FSM write helpers that produce these rows (state.batch.go) are
 // unexported, so we mirror their key layouts here with the DAL key builder —
@@ -61,14 +61,14 @@ func newUsageTestStores(t *testing.T) (*dal.Store, *usagestore.Store) {
 
 func usageColdAuditKey(seq uint64) []byte {
 	return dal.NewKeyBuilder().
-		PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).
 		PutUint64(seq).
 		Build()
 }
 
 func usageColdAuditItemKey(seq uint64, idx uint32) []byte {
 	return dal.NewKeyBuilder().
-		PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).
 		PutUint64(seq).
 		PutUint32(idx).
 		Build()
@@ -76,14 +76,14 @@ func usageColdAuditItemKey(seq uint64, idx uint32) []byte {
 
 func usageColdAppliedProposalKey(seq uint64) []byte {
 	return dal.NewKeyBuilder().
-		PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal).
 		PutUint64(seq).
 		Build()
 }
 
 func usageColdLogKey(seq uint64) []byte {
 	return dal.NewKeyBuilder().
-		PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).
 		PutUint64(seq).
 		Build()
 }

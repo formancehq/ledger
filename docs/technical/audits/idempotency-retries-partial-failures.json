@@ -22,7 +22,7 @@
     "pkg/actions/**",
     "tests/**"
   ],
-  "related_docs": ["AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/admission/", "docs/technical/architecture/subsystems/api/", "docs/technical/architecture/subsystems/chapters/incremental-restore-contract.md", "docs/technical/architecture/subsystems/consensus/", "docs/technical/architecture/subsystems/fsm/", "docs/technical/contributing/ai-audit.md", "docs/ops/cli.md", "docs/ops/deployment.md"],
+  "related_docs": ["AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/admission/", "docs/technical/architecture/subsystems/api/", "docs/technical/architecture/subsystems/backup/incremental-restore-contract.md", "docs/technical/architecture/subsystems/consensus/", "docs/technical/architecture/subsystems/fsm/", "docs/technical/contributing/ai-audit.md", "docs/ops/cli.md", "docs/ops/deployment.md"],
   "invariants": [
     "Retrying one logical mutation must not create duplicate committed business effects when the API promises or relies on idempotence.",
     "A timeout or cancelled response must not be interpreted internally as proof that the mutation did not commit.",

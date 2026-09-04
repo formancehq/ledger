@@ -33,10 +33,10 @@ func newReceiptTestStore(t *testing.T) *dal.Store {
 }
 
 // seedCreatedTransaction writes a ledger, the transaction-state attribute, and
-// the transaction's CreatedTransaction creation log (carrying chapterID), so
+// the transaction's CreatedTransaction creation log, so
 // GetTransactionFrom can assemble the transaction and ComputeTransactionReceipt
 // can resolve a receipt by reading only this store.
-func seedCreatedTransaction(t *testing.T, store *dal.Store, attrs *attributes.Attributes, ledger string, txID, logSeq, chapterID uint64, tx *commonpb.Transaction) {
+func seedCreatedTransaction(t *testing.T, store *dal.Store, attrs *attributes.Attributes, ledger string, txID, logSeq uint64, tx *commonpb.Transaction) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
@@ -58,7 +58,6 @@ func seedCreatedTransaction(t *testing.T, store *dal.Store, attrs *attributes.At
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
 									Transaction: tx,
-									ChapterId:   chapterID,
 								},
 							},
 						},
@@ -114,8 +113,8 @@ func newReceiptTestController(t *testing.T, store *dal.Store, attrs *attributes.
 	logger := logging.FromContext(logging.TestingContext())
 	meter := noop.NewMeterProvider().Meter("test")
 
-	// args: admission, store, logger, attrs, readStore, usageStore, coldReader, receiptSigner, meter
-	return NewDefaultController(nil, store, logger, attrs, nil, nil, nil, signer, meter)
+	// args: admission, store, logger, attrs, readStore, usageStore, receiptSigner, meter
+	return NewDefaultController(nil, store, logger, attrs, nil, nil, signer, meter)
 }
 
 // GetTransaction on the local path must return a NON-EMPTY receipt when a signer
@@ -126,10 +125,9 @@ func TestDefaultController_GetTransaction_LocalPath_SignsReceipt(t *testing.T) {
 	t.Parallel()
 
 	const (
-		ledger    = "L"
-		txID      = uint64(1)
-		logSeq    = uint64(1)
-		chapterID = uint64(7)
+		ledger = "L"
+		txID   = uint64(1)
+		logSeq = uint64(1)
 	)
 
 	attrs := attributes.New()
@@ -140,7 +138,7 @@ func TestDefaultController_GetTransaction_LocalPath_SignsReceipt(t *testing.T) {
 	}
 
 	store := newReceiptTestStore(t)
-	seedCreatedTransaction(t, store, attrs, ledger, txID, logSeq, chapterID, tx)
+	seedCreatedTransaction(t, store, attrs, ledger, txID, logSeq, tx)
 
 	signer := receipt.NewSigner([]byte(testReceiptKey))
 	ctrl := newReceiptTestController(t, store, attrs, signer)
@@ -155,7 +153,8 @@ func TestDefaultController_GetTransaction_LocalPath_SignsReceipt(t *testing.T) {
 
 	claims, err := signer.Verify(*receiptToken)
 	require.NoError(t, err)
-	require.Equal(t, chapterID, claims.ChapterID)
+	require.Equal(t, ledger, claims.Ledger)
+	require.Equal(t, txID, claims.TxID)
 }
 
 // With no signer configured, GetTransaction returns a nil receipt (the historical
@@ -164,17 +163,16 @@ func TestDefaultController_GetTransaction_NoSigner_NilReceipt(t *testing.T) {
 	t.Parallel()
 
 	const (
-		ledger    = "L"
-		txID      = uint64(1)
-		logSeq    = uint64(1)
-		chapterID = uint64(7)
+		ledger = "L"
+		txID   = uint64(1)
+		logSeq = uint64(1)
 	)
 
 	attrs := attributes.New()
 	tx := &commonpb.Transaction{Id: txID, Timestamp: &commonpb.Timestamp{Data: 1700000000}}
 
 	store := newReceiptTestStore(t)
-	seedCreatedTransaction(t, store, attrs, ledger, txID, logSeq, chapterID, tx)
+	seedCreatedTransaction(t, store, attrs, ledger, txID, logSeq, tx)
 
 	ctrl := newReceiptTestController(t, store, attrs, nil)
 
@@ -212,18 +210,17 @@ func TestDefaultController_GetTransaction_Reversal_EmptyReceipt(t *testing.T) {
 	require.Empty(t, *receiptToken, "reversal transactions have no receipt")
 }
 
-// ComputeTransactionReceipt must resolve the chapter from the supplied reader,
-// not from the controller's live store. This is what keeps a checkpoint read
-// self-consistent when the gRPC adapter passes the checkpoint store as reader.
+// ComputeTransactionReceipt must resolve the creation log from the supplied
+// reader, not from the controller's live store. This is what keeps a
+// checkpoint read self-consistent when the gRPC adapter passes the checkpoint
+// store as reader.
 func TestComputeTransactionReceipt_UsesProvidedReaderNotLiveStore(t *testing.T) {
 	t.Parallel()
 
 	const (
-		ledger              = "L"
-		txID                = uint64(1)
-		logSeq              = uint64(1)
-		checkpointChapterID = uint64(7)
-		liveStoreChapterID  = uint64(99)
+		ledger = "L"
+		txID   = uint64(1)
+		logSeq = uint64(1)
 	)
 
 	attrs := attributes.New()
@@ -233,12 +230,14 @@ func TestComputeTransactionReceipt_UsesProvidedReaderNotLiveStore(t *testing.T) 
 	}
 
 	checkpointStore := newReceiptTestStore(t)
-	seedCreatedTransaction(t, checkpointStore, attrs, ledger, txID, logSeq, checkpointChapterID, tx)
+	seedCreatedTransaction(t, checkpointStore, attrs, ledger, txID, logSeq, tx)
 
-	// The controller's live store holds the same transaction under a different
-	// chapter; the receipt must reflect the reader (checkpoint) chapter.
+	// The controller's live store holds the same transaction as a REVERSAL
+	// (RevertedTransaction creation log), which yields an empty receipt. A
+	// non-empty token therefore proves the creation log was read from the
+	// reader (checkpoint), not the live store.
 	liveStore := newReceiptTestStore(t)
-	seedCreatedTransaction(t, liveStore, attrs, ledger, txID, logSeq, liveStoreChapterID, tx)
+	seedRevertedTransaction(t, liveStore, attrs, ledger, txID, logSeq, tx)
 
 	signer := receipt.NewSigner([]byte(testReceiptKey))
 	ctrl := newReceiptTestController(t, liveStore, attrs, signer)
@@ -249,12 +248,45 @@ func TestComputeTransactionReceipt_UsesProvidedReaderNotLiveStore(t *testing.T) 
 
 	token, err := ctrl.ComputeTransactionReceipt(context.Background(), reader, ledger, txID, tx)
 	require.NoError(t, err)
-	require.NotEmpty(t, token)
+	require.NotEmpty(t, token,
+		"receipt must use the creation log from the reader (checkpoint), not the live store")
 
 	claims, err := signer.Verify(token)
 	require.NoError(t, err)
-	require.Equal(t, checkpointChapterID, claims.ChapterID,
-		"receipt must use the chapter from the reader (checkpoint), not the live store")
+	require.Equal(t, txID, claims.TxID)
+}
+
+// Log history is permanent, so a transaction whose state exists but whose
+// creation log is absent is a corrupt store: the receipt path must fail
+// loudly, matching assembleTransactionFromState.
+func TestComputeTransactionReceipt_MissingCreationLogIsInvariantError(t *testing.T) {
+	t.Parallel()
+
+	const (
+		ledger = "L"
+		txID   = uint64(1)
+	)
+
+	attrs := attributes.New()
+	store := newReceiptTestStore(t)
+
+	// Transaction state points at log 7, but no log is written.
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
+	txKey := domain.TransactionKey{LedgerName: ledger, ID: txID}
+	_, err := attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{CreatedByLog: 7})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	ctrl := newReceiptTestController(t, store, attrs, receipt.NewSigner([]byte(testReceiptKey)))
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	tx := &commonpb.Transaction{Postings: []*commonpb.Posting{{Source: "world", Destination: "bank", Asset: "USD"}}}
+	_, err = ctrl.ComputeTransactionReceipt(context.Background(), reader, ledger, txID, tx)
+	require.ErrorContains(t, err, "creation log is missing")
 }
 
 // A genuine reader/lookup error (here: the ledger is absent from the reader)

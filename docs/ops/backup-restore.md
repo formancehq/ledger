@@ -199,11 +199,10 @@ The backup is a complete Pebble database that contains:
 | Attributes | `0x01` | Volumes, account metadata, ledger metadata, references, ledger info, boundaries |
 | Cache | `0x02` | Derived/cached state |
 | Per-Ledger | `0x03` | Per-ledger data (reversion bitset words, pending cleanups, mirror state) |
-| Cold | `0x04` | Transaction logs (`{0x04, 0x01}`), audit entries (`{0x04, 0x02}`) |
+| History | `0x04` | Transaction logs (`{0x04, 0x01}`), audit entries (`{0x04, 0x02}`) |
 | Idempotency | `0x05` | Idempotency keys |
-| Global | `0x06` | Last applied index (preserved on restore as the genesis boundary), last applied timestamp, signing keys, signing config, chapters, sink configs, sink cursors, sink statuses |
+| Global | `0x06` | Last applied index (preserved on restore as the genesis boundary), last applied timestamp, signing keys, signing config, sink configs, sink cursors, sink statuses |
 
-> **Note**: If chapters have been archived before the **full** backup, the archived logs and audit entries are not in the checkpoint (they have been purged to cold storage). Attributes remain. An **incremental** backup, however, backfills from cold storage any part of its export window that archival purged, so the log/audit chain since the last full checkpoint is always complete in the backup — see [Relationship with Chapters and Cold Storage](#relationship-with-chapters-and-cold-storage).
 
 ### Sequence Diagram
 
@@ -379,7 +378,7 @@ The server-side job:
 3. Reads the manifest from S3 and downloads the checkpoint files in parallel
    through an `errgroup` worker pool. The pool size is set by the server flag
    `--restore-download-parallelism` (default 16, clamped to `[1, 64]`).
-4. Applies any incremental export segments on top of the checkpoint and rebuilds derived state (volumes, metadata, transactions, reversion bitsets, the chapter registry, the index registry) from the exported logs, starting at the checkpoint's last log sequence. This is the same `ApplyExports` + `RebuildDelta` path used by the offline `ledgerctl store bootstrap` command, so a manifest with incremental backups restores all data written after the last full checkpoint. The index registry fold covers the full lifecycle — create, retype version bump, drop, and the removal cascade — see [Restore Lifecycle](../technical/architecture/subsystems/indexer/indexes.md#restore-lifecycle); per-replica read indexes are deliberately NOT restored and are rebuilt by each node's indexbuilder from the restored registry.
+4. Applies any incremental export segments on top of the checkpoint and rebuilds derived state (volumes, metadata, transactions, reversion bitsets, the index registry) from the exported logs, starting at the checkpoint's last log sequence. This is the same `ApplyExports` + `RebuildDelta` path used by the offline `ledgerctl store bootstrap` command, so a manifest with incremental backups restores all data written after the last full checkpoint. The index registry fold covers the full lifecycle — create, retype version bump, drop, and the removal cascade — see [Restore Lifecycle](../technical/architecture/subsystems/indexer/indexes.md#restore-lifecycle); per-replica read indexes are deliberately NOT restored and are rebuilt by each node's indexbuilder from the restored registry.
 5. On success, marks the staging as ready.
 
 If the job fails or is cancelled, the staging directory is wiped so the
@@ -633,21 +632,6 @@ ledgerctl --server localhost:9999 restore finalize --yes
 # Stop restore server, then restart normally:
 ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data --bootstrap --wal-dir ./fresh-wal --grpc-port 9999
 ```
-
----
-
-## Relationship with Chapters and Cold Storage
-
-Chapters partition the ledger's history into sealed segments. Each chapter covers a contiguous range of log sequences and, once archived, its logs and audit entries are purged from Pebble and exported to cold storage (S3 or filesystem).
-
-**Impact on backups**:
-
-- A **full** backup contains the **current hot storage state**. If chapters have been archived before it, the archived logs and audit entries are not in the checkpoint — they live in cold storage.
-- An **incremental** backup stays complete across archival: if a chapter covering part of its export window was archived (and therefore purged from hot storage) since the previous backup, the incremental reads that range back from the chapter's cold SST and exports it like any hot range. The backup chain since the last full checkpoint is therefore self-contained — a restore never depends on cold storage being reachable. If the window overlaps an archived chapter and no cold storage is configured (or the archive is truncated), the incremental backup **fails loudly** rather than advancing its cursor past entries it did not export.
-- **Attributes are never purged**: volumes, metadata, reversions, idempotency keys, and references remain in Pebble permanently (and therefore in every backup), regardless of chapter archival.
-- To obtain a complete historical record older than the last full checkpoint, you need both the backup and the cold storage archives (archived chapters).
-
-See [Chapters](../technical/architecture/subsystems/chapters/lifecycle.md) for the full chapter lifecycle and cold storage documentation.
 
 ---
 

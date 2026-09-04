@@ -5,9 +5,6 @@ import "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 // System component identifiers recorded as CallerIdentity.system_component on
 // system/internal proposals, so their audit entries name the acting subsystem.
 const (
-	ComponentChapterArchiver  = "chapter-archiver"
-	ComponentChapterSealer    = "chapter-sealer"
-	ComponentChapterScheduler = "chapter-scheduler"
 	ComponentQueryCheckpoint  = "query-checkpoint-scheduler"
 	ComponentMirror           = "mirror"
 	ComponentEventsSink       = "events-sink"

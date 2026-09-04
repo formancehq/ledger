@@ -64,7 +64,6 @@ func TestProcessCreateTransaction_NumscriptReference_ResolvesContent(t *testing.
 			setupNumscriptVolumeMocks(mockStore)
 			mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 			mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
-			mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 			expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: ledger, ID: 1}, nil)
 
 			payload, processErr := processCreateTransaction(ledger, &raftcmdpb.CreateTransactionOrder{

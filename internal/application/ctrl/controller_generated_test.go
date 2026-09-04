@@ -163,21 +163,6 @@ func (mr *MockControllerMockRecorder) GetAuditEntry(ctx, sequence any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAuditEntry", reflect.TypeOf((*MockController)(nil).GetAuditEntry), ctx, sequence)
 }
 
-// GetChapterSchedule mocks base method.
-func (m *MockController) GetChapterSchedule(ctx context.Context) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChapterSchedule", ctx)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetChapterSchedule indicates an expected call of GetChapterSchedule.
-func (mr *MockControllerMockRecorder) GetChapterSchedule(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChapterSchedule", reflect.TypeOf((*MockController)(nil).GetChapterSchedule), ctx)
-}
-
 // GetEventsSinks mocks base method.
 func (m *MockController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
 	m.ctrl.T.Helper()
@@ -388,21 +373,6 @@ func (m *MockController) ListAuditEntries(ctx context.Context, pageSize uint32, 
 func (mr *MockControllerMockRecorder) ListAuditEntries(ctx, pageSize, afterSequence, filter, reverse, minLogSequence any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuditEntries", reflect.TypeOf((*MockController)(nil).ListAuditEntries), ctx, pageSize, afterSequence, filter, reverse, minLogSequence)
-}
-
-// ListChapters mocks base method.
-func (m *MockController) ListChapters(ctx context.Context) (cursor.Cursor[*commonpb.Chapter], error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListChapters", ctx)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Chapter])
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListChapters indicates an expected call of ListChapters.
-func (mr *MockControllerMockRecorder) ListChapters(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListChapters", reflect.TypeOf((*MockController)(nil).ListChapters), ctx)
 }
 
 // ListIndexes mocks base method.

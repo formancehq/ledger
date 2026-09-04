@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 
@@ -32,7 +31,7 @@ func ReadLastAuditSequence(reader dal.PebbleReader) (uint64, error) {
 
 // ReadLastAuditEntry returns the last audit entry from the given reader, or nil if none exist.
 func ReadLastAuditEntry(reader dal.PebbleReader) (*auditpb.AuditEntry, error) {
-	entry, err := dal.ReadLastEntry[*auditpb.AuditEntry](reader, dal.ZoneCold, dal.SubColdAudit)
+	entry, err := dal.ReadLastEntry[*auditpb.AuditEntry](reader, dal.ZoneHistory, dal.SubHistoryAudit)
 	if err != nil {
 		return nil, fmt.Errorf("reading last audit entry: %w", err)
 	}
@@ -47,7 +46,7 @@ func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequenc
 	defer span.End()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit)
+	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit)
 
 	if afterSequence != nil {
 		kb.PutUint64(*afterSequence + 1)
@@ -56,7 +55,7 @@ func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequenc
 	lowerBound := kb.Build()
 
 	kb2 := dal.NewKeyBuilder()
-	kb2.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
+	kb2.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).
 		PutBytes(dal.MaxUint64Bytes)
 	upperBound := kb2.Build()
 
@@ -87,9 +86,6 @@ func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequenc
 //   - reverse: false streams ascending by sequence (oldest first); true streams
 //     descending (newest first).
 //   - pageSize: maximum entries to return.
-//
-// Entries whose sequence is indexed but no longer present in the zone (chapter
-// purge, per EN-1339) are skipped rather than erroring.
 func ReadAuditEntriesPage(
 	ctx context.Context,
 	reader dal.PebbleReader,
@@ -118,16 +114,7 @@ func ReadAuditEntriesPage(
 // readAuditPageFromSeqSet materializes a page from an explicit, ascending set
 // of candidate sequences. The window ([loSeq, hiSeq]), reverse ordering and the
 // exclusive cursor are applied on the sequence slice first; then entries are
-// materialized in order and the page is capped at pageSize *valid* entries.
-//
-// Truncation happens AFTER the purged-sequence skip, not before: a candidate
-// that is indexed but no longer in the audit zone (chapter purge, EN-1339)
-// must not consume a page slot, otherwise a page could return fewer than
-// pageSize entries while more valid entries exist further down the candidate
-// set — which also breaks the handler's peek-ahead (it fetches pageSize+1 to
-// decide whether to emit an x-next-cursor trailer, and a purge inside that
-// slack would drop the "more pages" signal). We therefore keep consuming
-// candidates until we have pageSize valid entries (or exhaust the set).
+// materialized in order and the page is capped at pageSize entries.
 func readAuditPageFromSeqSet(
 	reader dal.PebbleReader,
 	seqs []uint64,
@@ -165,20 +152,15 @@ func readAuditPageFromSeqSet(
 
 	entries := make([]*auditpb.AuditEntry, 0, min(len(filtered), pageCap(pageSize)))
 	for _, s := range filtered {
+		// Audit history is permanent: an indexed sequence missing from the
+		// zone is a consistency failure, never a legitimate miss.
 		entry, err := ReadAuditEntry(context.Background(), reader, s)
-		if errors.Is(err, domain.ErrNotFound) {
-			// Indexed but purged from the zone — skip WITHOUT consuming a page
-			// slot (EN-1339 tolerates dangling index entries; drop+rebuild
-			// reclaims them).
-			continue
-		}
 		if err != nil {
 			return nil, fmt.Errorf("reading audit entry %d: %w", s, err)
 		}
 
 		entries = append(entries, entry)
 
-		// Cap on valid entries, after the purge skip above.
 		if pageSize > 0 && uint32(len(entries)) >= pageSize {
 			break
 		}
@@ -220,15 +202,15 @@ func readAuditPageFromZone(
 	}
 
 	kb := dal.NewKeyBuilder()
-	lowerBound := kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(lo).Build()
+	lowerBound := kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(lo).Build()
 
 	kb2 := dal.NewKeyBuilder()
 	var upperBound []byte
 	if hi == ^uint64(0) {
-		upperBound = kb2.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutBytes(dal.MaxUint64Bytes).Build()
+		upperBound = kb2.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutBytes(dal.MaxUint64Bytes).Build()
 	} else {
 		// Upper bound is exclusive, so hi+1 includes hi.
-		upperBound = kb2.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(hi + 1).Build()
+		upperBound = kb2.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(hi + 1).Build()
 	}
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
@@ -284,11 +266,11 @@ func ReadAuditItems(ctx context.Context, reader dal.PebbleReader, auditSequence 
 	defer span.End()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(auditSequence)
+	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(auditSequence)
 	lowerBound := kb.Snapshot()
 	kb.Reset()
 
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).PutUint64(auditSequence + 1)
+	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(auditSequence + 1)
 	upperBound := kb.Build()
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
@@ -325,7 +307,7 @@ func ReadAuditEntry(ctx context.Context, reader dal.PebbleGetter, sequence uint6
 	defer span.End()
 
 	kb := dal.NewKeyBuilder()
-	kb.PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(sequence)
+	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(sequence)
 
 	entry, err := dal.ReadProto[*auditpb.AuditEntry](reader, kb.Build())
 	if err != nil {

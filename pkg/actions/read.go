@@ -261,42 +261,6 @@ func listLogsPageWithTrailer(ctx context.Context, client servicepb.BucketService
 // termination signal.
 const listAllPageSize uint32 = 1000
 
-// ListAllChapters collects every chapter across the cluster, following the
-// x-next-cursor trailer chain so installations with more chapters than the
-// server's default page still surface them all.
-func ListAllChapters(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.Chapter, error) {
-	var (
-		chapters []*commonpb.Chapter
-		nextCur  string
-	)
-
-	for {
-		stream, err := client.ListChapters(ctx, &servicepb.ListChaptersRequest{
-			Options: &commonpb.ListOptions{PageSize: listAllPageSize, Cursor: nextCur},
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		for {
-			chapter, recvErr := stream.Recv()
-			if errors.Is(recvErr, io.EOF) {
-				break
-			}
-			if recvErr != nil {
-				return nil, recvErr
-			}
-			chapters = append(chapters, chapter)
-		}
-
-		next := nextCursorFromTrailer(stream.Trailer())
-		if next == "" {
-			return chapters, nil
-		}
-		nextCur = next
-	}
-}
-
 // GetAccount retrieves a single account by address.
 func GetAccount(ctx context.Context, client servicepb.BucketServiceClient, ledgerName, address string) (*commonpb.Account, error) {
 	return client.GetAccount(ctx, &servicepb.GetAccountRequest{
@@ -477,16 +441,6 @@ func GetMetadataSchemaStatus(ctx context.Context, client servicepb.BucketService
 	return client.GetMetadataSchemaStatus(ctx, &servicepb.GetMetadataSchemaStatusRequest{
 		Ledger: ledgerName,
 	})
-}
-
-// GetChapterSchedule retrieves the current chapter schedule cron expression.
-func GetChapterSchedule(ctx context.Context, client servicepb.BucketServiceClient) (string, error) {
-	resp, err := client.GetChapterSchedule(ctx, &servicepb.GetChapterScheduleRequest{})
-	if err != nil {
-		return "", err
-	}
-
-	return resp.GetCron(), nil
 }
 
 // AnalyzeAccounts runs the AnalyzeAccounts streaming RPC and returns the final result.

@@ -362,44 +362,6 @@ func TestBusinessErrorToGRPCStatus_MetadataFieldNotInSchema(t *testing.T) {
 	require.Equal(t, "idx-key-33", info.GetMetadata()["key"])
 }
 
-func TestBusinessErrorToGRPCStatus_NoChapterOpen(t *testing.T) {
-	t.Parallel()
-
-	bizErr := &domain.BusinessError{Err: domain.ErrNoChapterOpen}
-	st := businessErrorToGRPCStatus(bizErr)
-
-	require.Equal(t, codes.FailedPrecondition, st.Code())
-
-	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonNoChapterOpen, info.GetReason())
-}
-
-func TestBusinessErrorToGRPCStatus_ChapterNotFound(t *testing.T) {
-	t.Parallel()
-
-	bizErr := &domain.BusinessError{Err: &domain.ErrChapterNotFound{ChapterID: 7}}
-	st := businessErrorToGRPCStatus(bizErr)
-
-	require.Equal(t, codes.NotFound, st.Code())
-
-	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonChapterNotFound, info.GetReason())
-	require.Equal(t, "7", info.GetMetadata()["chapterId"])
-}
-
-func TestBusinessErrorToGRPCStatus_ChapterNotClosing(t *testing.T) {
-	t.Parallel()
-
-	bizErr := &domain.BusinessError{Err: &domain.ErrChapterNotClosing{ChapterID: 3}}
-	st := businessErrorToGRPCStatus(bizErr)
-
-	require.Equal(t, codes.FailedPrecondition, st.Code())
-
-	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonChapterNotClosing, info.GetReason())
-	require.Equal(t, "3", info.GetMetadata()["chapterId"])
-}
-
 func TestBusinessErrorToGRPCStatus_InvalidReceipt(t *testing.T) {
 	t.Parallel()
 
@@ -729,33 +691,6 @@ func TestConvertToGRPCError_AuditDisabled(t *testing.T) {
 	t.Parallel()
 
 	grpcErr := convertToGRPCError(domain.ErrAuditDisabled, testLogger())
-	st, ok := status.FromError(grpcErr)
-	require.True(t, ok)
-	require.Equal(t, codes.FailedPrecondition, st.Code())
-}
-
-func TestConvertToGRPCError_ChapterNotClosed(t *testing.T) {
-	t.Parallel()
-
-	grpcErr := convertToGRPCError(&domain.ErrChapterNotClosed{ChapterID: 5}, testLogger())
-	st, ok := status.FromError(grpcErr)
-	require.True(t, ok)
-	require.Equal(t, codes.FailedPrecondition, st.Code())
-}
-
-func TestConvertToGRPCError_ChapterNotArchiving(t *testing.T) {
-	t.Parallel()
-
-	grpcErr := convertToGRPCError(&domain.ErrChapterNotArchiving{ChapterID: 3}, testLogger())
-	st, ok := status.FromError(grpcErr)
-	require.True(t, ok)
-	require.Equal(t, codes.FailedPrecondition, st.Code())
-}
-
-func TestConvertToGRPCError_ColdStorageDisabled(t *testing.T) {
-	t.Parallel()
-
-	grpcErr := convertToGRPCError(domain.ErrColdStorageDisabled, testLogger())
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
 	require.Equal(t, codes.FailedPrecondition, st.Code())

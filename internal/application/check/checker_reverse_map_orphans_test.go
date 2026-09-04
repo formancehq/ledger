@@ -49,11 +49,10 @@ type reverseMapFixture struct {
 // run drives the pass on the absence-based oracle only — no replayed
 // RemovedMetadataFieldType or DeleteLedger evidence — and collects every emitted
 // event, preserving order.
-func (f reverseMapFixture) run(lastSequence uint64, live, pendingCleanup map[string]struct{}) []*servicepb.CheckStoreEvent {
+func (f reverseMapFixture) run(lastSequence uint64, live map[string]struct{}) []*servicepb.CheckStoreEvent {
 	return f.runScope(reverseMapOrphanScope{
-		lastSequence:          lastSequence,
-		liveLedgers:           live,
-		pendingCleanupLedgers: pendingCleanup,
+		lastSequence: lastSequence,
+		liveLedgers:  live,
 	})
 }
 
@@ -121,7 +120,7 @@ func newReverseMapFixture(t *testing.T, in reverseMapFixtureInput) reverseMapFix
 	t.Cleanup(func() { _ = reader.Close() })
 
 	return reverseMapFixture{
-		checker: NewChecker(store, attrs, "test-cluster", nil, nil, peer, logger),
+		checker: NewChecker(store, attrs, "test-cluster", peer, logger),
 		reader:  reader,
 		schemas: in.schemas,
 	}
@@ -194,7 +193,7 @@ func TestCompareReverseMapOrphans_IndexedFieldsStaySilent(t *testing.T) {
 		progress: 10,
 	})
 
-	require.Empty(t, full.run(10, ledgerNameSet("L1"), nil),
+	require.Empty(t, full.run(10, ledgerNameSet("L1")),
 		"every row's field is indexed: the pass must stay silent")
 
 	bare := newReverseMapFixture(t, reverseMapFixtureInput{
@@ -202,7 +201,7 @@ func TestCompareReverseMapOrphans_IndexedFieldsStaySilent(t *testing.T) {
 		progress: 10,
 	})
 
-	require.Len(t, bare.run(10, ledgerNameSet("L1"), nil), 2,
+	require.Len(t, bare.run(10, ledgerNameSet("L1")), 2,
 		"the same rows with an empty registry must be flagged, proving the scan reached them")
 }
 
@@ -234,7 +233,7 @@ func TestCompareReverseMapOrphans_IgnoresVersion(t *testing.T) {
 		progress: 4,
 	})
 
-	require.Empty(t, fixture.run(4, ledgerNameSet("L1"), nil),
+	require.Empty(t, fixture.run(4, ledgerNameSet("L1")),
 		"a row at any version whose field is still indexed is not an orphan")
 }
 
@@ -254,7 +253,7 @@ func TestCompareReverseMapOrphans_AccountOrphan(t *testing.T) {
 		progress: 3,
 	})
 
-	events := fixture.run(3, ledgerNameSet("L1"), nil)
+	events := fixture.run(3, ledgerNameSet("L1"))
 
 	require.Len(t, events, 1)
 	err := events[0].GetError()
@@ -282,7 +281,7 @@ func TestCompareReverseMapOrphans_TransactionOrphan(t *testing.T) {
 		progress: 3,
 	})
 
-	events := fixture.run(3, ledgerNameSet("L1"), nil)
+	events := fixture.run(3, ledgerNameSet("L1"))
 
 	require.Len(t, events, 1)
 	require.Contains(t, events[0].GetError().GetMessage(), `namespace "t:"`)
@@ -307,7 +306,7 @@ func TestCompareReverseMapOrphans_AggregatesPerField(t *testing.T) {
 		progress: 3,
 	})
 
-	events := fixture.run(3, ledgerNameSet("L1"), nil)
+	events := fixture.run(3, ledgerNameSet("L1"))
 
 	require.Len(t, events, 1, "five stranded rows for one field must produce exactly one event")
 	require.Contains(t, events[0].GetError().GetMessage(), "rows=5")
@@ -334,7 +333,7 @@ func TestCompareReverseMapOrphans_IdentityIncludesTarget(t *testing.T) {
 		},
 	}
 
-	events := newReverseMapFixture(t, input).run(3, ledgerNameSet("L1"), nil)
+	events := newReverseMapFixture(t, input).run(3, ledgerNameSet("L1"))
 
 	require.Len(t, events, 1)
 	require.Contains(t, events[0].GetError().GetMessage(), `namespace "t:"`)
@@ -362,7 +361,7 @@ func TestCompareReverseMapOrphans_PurgeMissFlaggedAndLabelled(t *testing.T) {
 		progress: 3,
 	})
 
-	events := dropped.run(3, ledgerNameSet("L1"), nil)
+	events := dropped.run(3, ledgerNameSet("L1"))
 	require.Len(t, events, 1,
 		"rows surviving a DropIndex are a purge miss and must be flagged")
 	require.Contains(t, events[0].GetError().GetMessage(), "DropIndex purge")
@@ -374,7 +373,7 @@ func TestCompareReverseMapOrphans_PurgeMissFlaggedAndLabelled(t *testing.T) {
 		progress: 3,
 	})
 
-	events = removed.run(3, ledgerNameSet("L1"), nil)
+	events = removed.run(3, ledgerNameSet("L1"))
 	require.Len(t, events, 1)
 	require.Contains(t, events[0].GetError().GetMessage(), "RemovedMetadataFieldType scan")
 }
@@ -403,7 +402,7 @@ func TestCompareReverseMapOrphans_RemovedFieldTypeResidueFlagged(t *testing.T) {
 		progress: 3,
 	})
 
-	events := fixture.run(3, ledgerNameSet("L1"), nil)
+	events := fixture.run(3, ledgerNameSet("L1"))
 
 	require.Len(t, events, 1)
 	err := events[0].GetError()
@@ -418,11 +417,9 @@ func TestCompareReverseMapOrphans_RemovedFieldTypeResidueFlagged(t *testing.T) {
 // TestCompareReverseMapOrphans_StaleRegistryCannotMaskOrphans is the regression
 // for the masking channel found in review of EN-1458.
 //
-// Setup: the field's RemovedMetadataFieldType sits behind the archive boundary,
-// so the audit-derived schema (baseline-seeded, therefore already post-removal)
-// no longer declares the field AND removedFields carries no evidence for it —
-// but a stale or tampered SubAttrIndex row survived. Orphaned reverse-map rows
-// are live.
+// Setup: the audit-derived schema no longer declares the field AND
+// removedFields carries no evidence for it — but a stale or tampered
+// SubAttrIndex row survived. Orphaned reverse-map rows are live.
 //
 // The test asserts both halves, because the fix deliberately lands in the other
 // pass rather than in this one.
@@ -433,7 +430,7 @@ func TestCompareReverseMapOrphans_StaleRegistryCannotMaskOrphans(t *testing.T) {
 
 	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
 		// Stale registry entry for a field the replayed schema no longer
-		// declares — the archived-removal shape.
+		// declares.
 		registry: metadataRegistry("L1", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role"),
 		schemas:  nil,
 		rmapKeys: [][]byte{
@@ -447,13 +444,12 @@ func TestCompareReverseMapOrphans_StaleRegistryCannotMaskOrphans(t *testing.T) {
 	// healthy rows if validateIndexTarget's indexed-implies-declared guarantee
 	// ever broke. Suppression here is only safe because the registry it trusts is
 	// itself verified, which is half two.
-	require.Empty(t, fixture.run(10, ledgerNameSet("L1"), nil),
+	require.Empty(t, fixture.run(10, ledgerNameSet("L1")),
 		"the registry term still suppresses this verdict; the masking is closed in compareIndexes, not here")
 
 	// Half two — the fix. The very entry that suppressed the orphan verdict is
-	// unaccounted for in the audit-derived registry set, because under archiving
-	// that set is seeded from the baseline (foldBaselineIndexes) instead of
-	// tolerating any entry the replay never touched. Check() is therefore NOT
+	// unaccounted for in the audit-derived registry set, which tolerates no
+	// entry the replay never touched. Check() is therefore NOT
 	// clean on this store: the two corrupted projections can no longer mask each
 	// other, which is what the review required.
 	var events []*servicepb.CheckStoreEvent
@@ -487,31 +483,12 @@ func TestCompareReverseMapOrphans_UnknownLedger(t *testing.T) {
 		progress: 3,
 	})
 
-	events := fixture.run(3, ledgerNameSet("L1"), nil)
+	events := fixture.run(3, ledgerNameSet("L1"))
 
 	require.Len(t, events, 1, "rows for an unknown ledger aggregate into one per-ledger event")
 	require.Equal(t, "gone", events[0].GetError().GetLedger())
 	require.Contains(t, events[0].GetError().GetMessage(), "absent from the live ledger set")
 	require.Contains(t, events[0].GetError().GetMessage(), "rows=2")
-}
-
-// TestCompareReverseMapOrphans_PendingCleanupSkipped covers the deferred-purge
-// window: a deleted ledger's rows legitimately linger until a chapter purge
-// catches the DeleteLedger sequence, exactly as the sibling passes tolerate.
-func TestCompareReverseMapOrphans_PendingCleanupSkipped(t *testing.T) {
-	t.Parallel()
-
-	kb := dal.NewKeyBuilder()
-
-	fixture := newReverseMapFixture(t, reverseMapFixtureInput{
-		rmapKeys: [][]byte{
-			readstore.AccountReverseMapKeyV(kb, "draining", "users:1", "role", 1),
-		},
-		progress: 3,
-	})
-
-	require.Empty(t, fixture.run(3, ledgerNameSet("L1"), ledgerNameSet("draining")),
-		"rows of a cleanup-pending ledger must not be flagged")
 }
 
 // TestCompareReverseMapOrphans_MalformedKeys pins that a key the chokepoint
@@ -556,7 +533,7 @@ func TestCompareReverseMapOrphans_MalformedKeys(t *testing.T) {
 				progress: 3,
 			})
 
-			events := fixture.run(3, ledgerNameSet("L1"), nil)
+			events := fixture.run(3, ledgerNameSet("L1"))
 
 			require.Len(t, events, 1)
 			err := events[0].GetError()
@@ -590,7 +567,7 @@ func TestCompareReverseMapOrphans_BucketScopedRegistryIgnored(t *testing.T) {
 		progress: 3,
 	})
 
-	events := fixture.run(3, ledgerNameSet("L1"), nil)
+	events := fixture.run(3, ledgerNameSet("L1"))
 
 	require.Len(t, events, 1, "a bucket-scoped registry row must not cover a ledger-scoped rmap row")
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
@@ -604,7 +581,7 @@ func TestCompareReverseMapOrphans_NoReadStore(t *testing.T) {
 
 	fixture := newReverseMapFixture(t, reverseMapFixtureInput{withoutReadStore: true})
 
-	require.Empty(t, fixture.run(3, ledgerNameSet("L1"), nil),
+	require.Empty(t, fixture.run(3, ledgerNameSet("L1")),
 		"with no peer read index the pass must emit nothing")
 }
 
@@ -626,7 +603,7 @@ func TestCompareReverseMapOrphans_LagGate(t *testing.T) {
 		progress: 9,
 	})
 
-	require.Empty(t, lagging.run(10, ledgerNameSet("L1"), nil),
+	require.Empty(t, lagging.run(10, ledgerNameSet("L1")),
 		"a read index behind the verified range must not be judged")
 
 	caughtUp := newReverseMapFixture(t, reverseMapFixtureInput{
@@ -634,7 +611,7 @@ func TestCompareReverseMapOrphans_LagGate(t *testing.T) {
 		progress: 10,
 	})
 
-	require.Len(t, caughtUp.run(10, ledgerNameSet("L1"), nil), 1,
+	require.Len(t, caughtUp.run(10, ledgerNameSet("L1")), 1,
 		"the same rows must be flagged once the read index has caught up")
 
 	// A lagging peer must still have its keys decoded: a malformed key is
@@ -644,7 +621,7 @@ func TestCompareReverseMapOrphans_LagGate(t *testing.T) {
 		progress: 9,
 	})
 
-	require.Len(t, laggingMalformed.run(10, ledgerNameSet("L1"), nil), 1,
+	require.Len(t, laggingMalformed.run(10, ledgerNameSet("L1")), 1,
 		"a malformed key needs no oracle, so the lag gate must not suppress it")
 }
 
@@ -696,7 +673,7 @@ func TestCompareReverseMapOrphans_CursorAhead(t *testing.T) {
 		progress: 12,
 	})
 
-	require.Empty(t, withoutAheadDiagnostic(t, newField.run(10, ledgerNameSet("L1"), nil)),
+	require.Empty(t, withoutAheadDiagnostic(t, newField.run(10, ledgerNameSet("L1"))),
 		"a field created after the pinned oracle must not be reported as an orphan")
 
 	// A ledger created after the snapshot: same shape, unknown-ledger class.
@@ -705,7 +682,7 @@ func TestCompareReverseMapOrphans_CursorAhead(t *testing.T) {
 		progress: 12,
 	})
 
-	require.Empty(t, withoutAheadDiagnostic(t, newLedger.run(10, ledgerNameSet("L1"), nil)),
+	require.Empty(t, withoutAheadDiagnostic(t, newLedger.run(10, ledgerNameSet("L1"))),
 		"a ledger created after the pinned oracle must not be reported as absent from the live set")
 
 	// A field whose index was re-created after the pin is the sharp case: the
@@ -743,7 +720,7 @@ func TestCompareReverseMapOrphans_CursorAhead(t *testing.T) {
 		progress: 12,
 	})
 
-	require.Empty(t, withoutAheadDiagnostic(t, deleted.run(10, ledgerNameSet("L1"), nil)),
+	require.Empty(t, withoutAheadDiagnostic(t, deleted.run(10, ledgerNameSet("L1"))),
 		"rows for a ledger absent from the pinned live set must not be reported on an ahead cursor")
 
 	// Malformed keys need no oracle, so the ahead position must not suppress them
@@ -753,7 +730,7 @@ func TestCompareReverseMapOrphans_CursorAhead(t *testing.T) {
 		progress: 12,
 	})
 
-	require.Len(t, withoutAheadDiagnostic(t, malformed.run(10, ledgerNameSet("L1"), nil)), 1,
+	require.Len(t, withoutAheadDiagnostic(t, malformed.run(10, ledgerNameSet("L1"))), 1,
 		"a malformed key needs no oracle, so an ahead cursor must not suppress it")
 }
 
@@ -778,7 +755,7 @@ func TestCompareReverseMapOrphans_RecreatedLedgerStaysSilent(t *testing.T) {
 
 	// L1 is live: the replay saw DeleteLedger and then CreateLedger of the same
 	// name, and the second put the name back into knownLedgers.
-	require.Empty(t, fixture.run(10, ledgerNameSet("L1"), nil),
+	require.Empty(t, fixture.run(10, ledgerNameSet("L1")),
 		"rows of a recreated ledger must not be reported as absent from the live set")
 }
 
@@ -801,7 +778,7 @@ func TestCompareReverseMapOrphans_RedeclaredWithoutIndexStillOrphan(t *testing.T
 		progress: 10,
 	})
 
-	events := redeclared.run(10, ledgerNameSet("L1"), nil)
+	events := redeclared.run(10, ledgerNameSet("L1"))
 	require.Len(t, events, 1,
 		"re-declaring a field must not legitimise rows an earlier purge missed")
 
@@ -812,7 +789,7 @@ func TestCompareReverseMapOrphans_RedeclaredWithoutIndexStillOrphan(t *testing.T
 		progress: 10,
 	})
 
-	require.Empty(t, reindexed.run(10, ledgerNameSet("L1"), nil),
+	require.Empty(t, reindexed.run(10, ledgerNameSet("L1")),
 		"a registered index is the one thing that legitimises rmap rows")
 }
 
@@ -834,7 +811,7 @@ func TestCompareReverseMapOrphans_EmptyAudit(t *testing.T) {
 		progress: 0,
 	})
 
-	events := fixture.run(0, nil, nil)
+	events := fixture.run(0, nil)
 	require.Len(t, events, 2, "an unaudited row and a malformed key must both be reported over an empty audit")
 
 	messages := []string{events[0].GetError().GetMessage(), events[1].GetError().GetMessage()}
@@ -864,7 +841,7 @@ func TestCheck_ReverseMapOrphans_EmptyAuditWiring(t *testing.T) {
 			require.NoError(t, batch.Commit())
 		}
 
-		checker := NewChecker(createTestStore(t), attributes.New(), "test-cluster", nil, nil, peer, logger)
+		checker := NewChecker(createTestStore(t), attributes.New(), "test-cluster", peer, logger)
 
 		var events []*servicepb.CheckStoreEvent
 		require.NoError(t, checker.Check(context.Background(), func(e *servicepb.CheckStoreEvent) {
@@ -912,7 +889,7 @@ func TestCompareReverseMapOrphans_DeterministicOrdering(t *testing.T) {
 
 	live := ledgerNameSet("La", "Lb", "Lc")
 
-	first := fixture.run(3, live, nil)
+	first := fixture.run(3, live)
 	require.Len(t, first, 4)
 
 	ledgers := make([]string, 0, len(first))
@@ -925,7 +902,7 @@ func TestCompareReverseMapOrphans_DeterministicOrdering(t *testing.T) {
 
 	require.Equal(t, []string{"La", "La", "Lb", "Lc"}, ledgers)
 
-	second := fixture.run(3, live, nil)
+	second := fixture.run(3, live)
 	require.Len(t, second, 4)
 
 	replayed := make([]string, 0, len(second))
@@ -1042,7 +1019,7 @@ func TestCheck_ReverseMapOrphans_EndToEnd(t *testing.T) {
 		require.NoError(t, peer.WriteProgress(batch, lastSequence+aheadBy))
 		require.NoError(t, batch.Commit())
 
-		checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, nil, peer, logger)
+		checker := NewChecker(engine.store, engine.attrs, engine.clusterID, peer, logger)
 
 		var events []*servicepb.CheckStoreEvent
 		require.NoError(t, checker.Check(context.Background(), func(e *servicepb.CheckStoreEvent) {

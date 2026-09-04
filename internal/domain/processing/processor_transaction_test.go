@@ -118,7 +118,6 @@ func TestProcessCreateTransaction(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4) // Called for: ledger log date, timestamp fallback, InsertedAt, UpdatedAt
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, persisted *raftcmdpb.LedgerBoundaries) {
 		require.Equal(t, uint64(2), persisted.GetNextTransactionId())
 	})
@@ -247,7 +246,6 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetVolume(mockStore, worldKey, worldVolume.AsReader(), nil)
 	expectPutVolume(t, mockStore, worldKey, nil)
@@ -353,7 +351,6 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -414,7 +411,6 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -482,7 +478,6 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -550,7 +545,6 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	// Bank starts with 0 balance but can go negative with unbounded overdraft
 	setupNumscriptVolumeMocks(mockStore)
@@ -733,7 +727,6 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -800,7 +793,6 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -872,7 +864,6 @@ func TestProcessCreateTransaction_Numscript_DoesNotMutateOrderMetadata(t *testin
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -950,7 +941,6 @@ func TestProcessCreateTransaction_Numscript_RejectsEmptyMetadataKey(t *testing.T
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil).AnyTimes()
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false).AnyTimes()
 	setupNumscriptVolumeMocks(mockStore)
 
 	request := &servicepb.Request{
@@ -1032,7 +1022,6 @@ func TestProcessCreateTransaction_Numscript_RejectsNullByteMetadataValue(t *test
 			expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil).AnyTimes()
 			expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 			mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
-			mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false).AnyTimes()
 			setupNumscriptVolumeMocks(mockStore)
 
 			request := &servicepb.Request{
@@ -1076,7 +1065,6 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -1164,7 +1152,6 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
@@ -1240,7 +1227,6 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetVolume(mockStore, sourceKey, sourceVolume.AsReader(), nil)
 	// With force=true, balance check is skipped and output is updated
@@ -1315,7 +1301,6 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetVolume(mockStore, sourceKey, zeroVol.AsReader(), nil)
 	expectPutVolume(t, mockStore, sourceKey, nil, func(key domain.VolumeKey, value *raftcmdpb.VolumePair) {
@@ -1371,7 +1356,6 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	// Note: GetVolume might be called for volume updates but not for balance queries
 	// when force=true (store adapter returns unlimited balance)
@@ -1517,139 +1501,6 @@ func TestProcessCreateTransaction_Numscript_NegativeAmount(t *testing.T) {
 	require.Nil(t, result)
 }
 
-func TestProcessCreateTransaction_ChapterIdInCreatedTransaction(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
-
-	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-
-	sourceKey := domain.NewVolumeKey("test-ledger", "world", "USD", "")
-	destKey := domain.NewVolumeKey("test-ledger", "users:alice", "USD", "")
-
-	zeroVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
-	}
-
-	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-	expectGetVolume(mockStore, sourceKey, zeroVol.AsReader(), nil)
-	expectPutVolume(t, mockStore, sourceKey, nil)
-	expectGetVolume(mockStore, destKey, zeroVol.AsReader(), nil)
-	expectPutVolume(t, mockStore, destKey, nil)
-	mockStore.EXPECT().GetNextSequenceID().Return(uint64(10))
-	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
-	mockStore.EXPECT().GetCurrentOpenChapter().Return((&commonpb.Chapter{Id: 5, Status: commonpb.ChapterStatus_CHAPTER_OPEN}).AsReader(), true)
-	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
-
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
-				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{
-							{
-								Source:      "world",
-								Destination: "users:alice",
-								Amount:      commonpb.NewUint256FromUint64(uint64(100)),
-								Asset:       "USD",
-							},
-						},
-						Force: true,
-					},
-				}},
-			},
-		},
-	}
-
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	applyLog := result.GetApply()
-	require.NotNil(t, applyLog)
-
-	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
-	require.NotNil(t, createdTx)
-	require.Equal(t, uint64(5), createdTx.GetChapterId(), "ChapterId should match the open chapter")
-	require.Equal(t, uint64(1), createdTx.GetTransaction().GetId())
-}
-
-func TestProcessCreateTransaction_ChapterIdZeroWhenNoChapter(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := NewMockScope(ctrl)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
-
-	now := &commonpb.Timestamp{Data: 1234567890}
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-
-	sourceKey := domain.NewVolumeKey("test-ledger", "world", "USD", "")
-	destKey := domain.NewVolumeKey("test-ledger", "users:bob", "USD", "")
-
-	zeroVol := &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
-	}
-
-	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-	expectGetVolume(mockStore, sourceKey, zeroVol.AsReader(), nil)
-	expectPutVolume(t, mockStore, sourceKey, nil)
-	expectGetVolume(mockStore, destKey, zeroVol.AsReader(), nil)
-	expectPutVolume(t, mockStore, destKey, nil)
-	mockStore.EXPECT().GetNextSequenceID().Return(uint64(10))
-	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
-	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
-	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
-
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
-				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{
-							{
-								Source:      "world",
-								Destination: "users:bob",
-								Amount:      commonpb.NewUint256FromUint64(uint64(50)),
-								Asset:       "USD",
-							},
-						},
-						Force: true,
-					},
-				}},
-			},
-		},
-	}
-
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	applyLog := result.GetApply()
-	require.NotNil(t, applyLog)
-
-	createdTx := applyLog.GetLog().GetData().GetCreatedTransaction()
-	require.NotNil(t, createdTx)
-	require.Equal(t, uint64(0), createdTx.GetChapterId(), "ChapterId should be 0 when no open chapter exists")
-}
-
 // TestProcessCreateTransaction_StoresAccountMetadataVerbatim pins the
 // no-coerce-on-write invariant for the create-transaction path: even when
 // a declared type (INT64) differs from the client-sent type (STRING), the
@@ -1692,7 +1543,6 @@ func TestProcessCreateTransaction_StoresAccountMetadataVerbatim(t *testing.T) {
 	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).Times(4)
-	mockStore.EXPECT().GetCurrentOpenChapter().Return(nil, false)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectGetVolume(mockStore, worldKey, zero.AsReader(), nil)
 	expectPutVolume(t, mockStore, worldKey, nil)

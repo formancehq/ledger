@@ -27,8 +27,6 @@ const NODE_LABELS: Record<NodeId, string> = {
   [NODE.compactor]:     "Compactor",
   [NODE.workerIndex]:   "IndexBuilder",
   [NODE.workerSinks]:   "EventSinks",
-  [NODE.workerArch]:    "ColdStorage",
-  [NODE.workerSealer]:  "Sealer",
 };
 
 export function labelFor(id: NodeId): string {
@@ -404,7 +402,7 @@ export function describeMsgLong(node: NodeId, msg: Msg): { title: string; desc: 
     case "NotifyLogs":
       return {
         title: `${at} — NotifyLogsCommitted`,
-        desc:  `Leader's FSM signals the notifier that entries up through ${msg.batch.upTo} are now committed. The notifier fans out to all subscribers — Index Builder, Event Sinks, Cold Storage, Sealer — each of which does its own thing on its own schedule.`,
+        desc:  `Leader's FSM signals the notifier that entries up through ${msg.batch.upTo} are now committed. The notifier fans out to all subscribers — Index Builder, Event Sinks — each of which does its own thing on its own schedule.`,
       };
 
     case "Compact":

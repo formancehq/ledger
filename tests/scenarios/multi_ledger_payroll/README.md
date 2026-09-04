@@ -87,8 +87,6 @@ payroll:pool  --[USD/2 500,000]--> employee:{1..N}
 
 Metadata: `month={N}`, `type=salary`.
 
-Chapter close after each monthly cycle.
-
 ### Phase 3: Bonuses (Engineering only)
 
 10% bonus (50,000 per employee) for engineering department:

@@ -598,7 +598,6 @@ func validateSpec(ledger *ledgerv1alpha1.Cluster) error {
 	}{
 		{"persistence.wal", &ledger.Spec.Persistence.WAL},
 		{"persistence.data", &ledger.Spec.Persistence.Data},
-		{"persistence.coldCache", &ledger.Spec.Persistence.ColdCache},
 	}
 	for _, v := range volumes {
 		if err := validateVolumeSpec(v.name, v.spec); err != nil {
@@ -694,6 +693,5 @@ func validateVolumeSpec(field string, spec *ledgerv1alpha1.VolumeSpec) error {
 // hasHostPathVolume returns true if any volume uses hostPath.
 func hasHostPathVolume(ledger *ledgerv1alpha1.Cluster) bool {
 	return ledger.Spec.Persistence.WAL.HostPath != nil ||
-		ledger.Spec.Persistence.Data.HostPath != nil ||
-		ledger.Spec.Persistence.ColdCache.HostPath != nil
+		ledger.Spec.Persistence.Data.HostPath != nil
 }

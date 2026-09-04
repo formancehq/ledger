@@ -73,7 +73,7 @@ func TestExecute_UnfilteredQueryDoesNotWaitForTheFold(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 			defer cancel()
 
-			_, err := query.Execute(ctx, rs, store, nil, attrs.Volume, attrs.PreparedQuery, attrs.Index, req, nil, nil)
+			_, err := query.Execute(ctx, rs, store, attrs.Volume, attrs.PreparedQuery, attrs.Index, req, nil, nil)
 
 			if tc.blocked {
 				require.ErrorIs(t, err, context.DeadlineExceeded, "a read that consults the index is owed alignment")

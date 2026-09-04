@@ -108,8 +108,8 @@ func TestPredictedIndexFieldIsFixed64(t *testing.T) {
 //
 // The panic arm is the one worth pinning: it fires only if predicted_index is
 // dropped from raft_cmd.proto, and a guard that never runs in any test is a
-// guard whose message and reachability are unverified. CloseChapterOrder is an
-// empty message, so it cannot drift into carrying the field.
+// guard whose message and reachability are unverified. CreateQueryCheckpointOrder
+// is an empty message, so it cannot drift into carrying the field.
 func TestLookupPredictedIndexField(t *testing.T) {
 	t.Parallel()
 
@@ -124,7 +124,7 @@ func TestLookupPredictedIndexField(t *testing.T) {
 	t.Run("field absent panics", func(t *testing.T) {
 		t.Parallel()
 
-		md := (&raftcmdpb.CloseChapterOrder{}).ProtoReflect().Descriptor()
+		md := (&raftcmdpb.CreateQueryCheckpointOrder{}).ProtoReflect().Descriptor()
 		require.Nil(t, md.Fields().ByName("predicted_index"),
 			"fixture must be a message without the field, otherwise the guard is not exercised")
 

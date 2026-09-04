@@ -408,8 +408,6 @@ export default function EngineDiagram(_: EngineDiagramProps) {
 
       <Box box={BOXES.workerIndex}    highlights={activeNodes}/>
       <Box box={BOXES.workerSinks}    highlights={activeNodes}/>
-      <Box box={BOXES.workerArchiver} highlights={activeNodes}/>
-      <Box box={BOXES.workerSealer}   highlights={activeNodes}/>
 
       <path id="e-client-grpc"  className="edge" d="M300,180 L300,230"/>
       <path id="e-grpc-ctrl"    className="edge" d="M300,290 L300,310"/>
@@ -458,8 +456,6 @@ export default function EngineDiagram(_: EngineDiagramProps) {
       <path id="e-fsm-notifier"        className="edge" d="M755,388 C760,355 940,348 958,315"/>
       <path id="e-notifier-w-index"    className="edge" d="M986,315 C993,315 993,145 1000,145"/>
       <path id="e-notifier-w-sinks"    className="edge" d="M986,315 C993,315 993,225 1000,225"/>
-      <path id="e-notifier-w-archiver" className="edge" d="M986,315 C993,315 993,305 1000,305"/>
-      <path id="e-notifier-w-sealer"   className="edge" d="M986,315 C993,315 993,405 1000,405"/>
       <path id="e-wal-leader" className="consult-edge" d="M580,480 L580,495" stroke="#ff6b6b" opacity={0.55}/>
       <path id="e-wal-f1"     className="consult-edge" d="M650,330 L650,345" stroke="#ff6b6b" opacity={0.55}/>
       <path id="e-wal-f2"     className="consult-edge" d="M650,200 L650,215" stroke="#ff6b6b" opacity={0.55}/>

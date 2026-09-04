@@ -67,7 +67,7 @@ message AuditEntry {
 }
 
 // AuditItem represents one order within a proposal, stored separately from the
-// AuditEntry header. Pebble key: [ZoneCold][SubColdAuditItem][audit_seq BE 8][order_idx BE 4].
+// AuditEntry header. Pebble key: [ZoneHistory][SubHistoryAuditItem][audit_seq BE 8][order_idx BE 4].
 message AuditItem {
   // Zero-based position of this order within the proposal.
   uint32 order_index = 1;

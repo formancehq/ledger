@@ -90,14 +90,8 @@ This document compares the POC's API with the original Formance ledger API and d
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
 | Store backup | ✅ | ❌ | Point-in-time Pebble backup as tar archive |
 | Index status | ✅ | ❌ | Read index builder progress (lag, file size) |
-| **Chapters** |
-| Close chapter | ✅ | ❌ | Two-step close: CloseChapter → SealChapter |
-| Seal chapter (background) | ✅ | ❌ | Background sealer computes BLAKE3 sealing hash |
-| List chapters | ✅ | ❌ | gRPC streaming |
-| Transaction receipts (JWT) | ✅ | ✅ | HMAC-SHA256 JWT receipts with chapter ID; surfaced on GetTransaction over both transports (`data.receipt`, empty when none) |
+| Transaction receipts (JWT) | ✅ | ✅ | HMAC-SHA256 JWT receipts; surfaced on GetTransaction over both transports (`data.receipt`, empty when none) |
 | Receipt-based revert | ✅ | ❌ | Revert using JWT receipt (avoids server-side lookup) |
-| Chapter crash recovery | ✅ | ❌ | Automatic recovery for both crash windows |
-| Archive chapter | ✅ | ❌ | Two-step archive: ArchiveChapter → ConfirmArchiveChapter with cold storage export |
 | Store restore | ✅ | ❌ | Upload backup, validate, preview, finalize (--restore mode) |
 | **Prepared Queries** |
 | Create prepared query | ✅ | ❌ | Reusable parameterized filter queries |
@@ -282,48 +276,6 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 ledgerctl transactions get --ledger <ledger-name> --id <transaction-id>
 ```
 
-### 7. Chapters
-
-Chapters partition a ledger's transaction history into discrete, sealed segments. See [Chapters Architecture](../architecture/subsystems/chapters/lifecycle.md) for full documentation.
-
-**gRPC Methods:**
-- `Apply(CloseChapterRequest)` - Close the current open chapter (write, leader-only)
-- `Apply(SetChapterScheduleRequest)` - Set automatic chapter rotation schedule (write, leader-only)
-- `Apply(DeleteChapterScheduleRequest)` - Delete automatic chapter rotation schedule (write, leader-only)
-- `Apply(ArchiveChapterRequest)` - Archive a closed chapter to cold storage (write, leader-only)
-- `GetChapterSchedule(GetChapterScheduleRequest)` - Get the current chapter rotation schedule (read, any node)
-- `ListChapters(ListChaptersRequest)` - Stream all chapters (read, any node)
-
-**Features:**
-- ✅ Close current chapter (OPEN → CLOSING → CLOSED lifecycle)
-- ✅ Background sealing with BLAKE3 hash (off Raft critical path)
-- ✅ Automatic crash recovery for both crash windows
-- ✅ Transaction receipts (HMAC-SHA256 JWT with chapter ID)
-- ✅ List all chapters with status, timestamps, and sealing hashes
-- ✅ Archive chapter (CLOSED → ARCHIVED with cold storage export and hot purge)
-- ✅ Scheduled automatic chapter rotation (cron-based, leader-only, runtime-configurable)
-
-**CLI commands:**
-```bash
-# Close the current open chapter
-ledgerctl chapters close
-
-# Set automatic chapter rotation (every day at midnight)
-ledgerctl chapters set-schedule "0 0 * * *"
-
-# Disable automatic rotation
-ledgerctl chapters delete-schedule
-
-# Show current schedule
-ledgerctl chapters get-schedule
-
-# Archive a closed chapter to cold storage
-ledgerctl chapters archive 1
-
-# List all chapters
-ledgerctl chapters list
-```
-
 ### 8. Mirror Ledgers
 
 Mirror mode enables one-way synchronization from an existing v2 ledger into a v3 ledger. The mirror ledger is read-only until promoted to normal mode.
@@ -403,7 +355,7 @@ A never-invoked template returns a zero-valued response (not 404), so clients ha
 - `count` (uint64): Number of times the template has been invoked. `0` means not yet invoked (or the usagebuilder has not caught up).
 - `lastUsed` (string, date-time, nullable): Timestamp of the most recent invocation. Absent when count is 0.
 
-On a fresh ledger the counter builds up organically from cursor=0. On an existing ledger whose audit chain has been partially archived to cold storage, only invocations still present in the primary Pebble store are counted.
+On a fresh ledger the counter builds up organically from cursor=0.
 ### Filter input formats (dual-format contract, EN-1511)
 
 Every filtered surface accepts one `filter` in either the textual `filterexpr`
@@ -721,8 +673,6 @@ Read endpoints comparison with the original ledger:
 | `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT). Requires `ledger:MetadataWrite` on both the dedicated route and gRPC `Apply` |
 | `GET /v3/{ledgerName}/transactions` | ✅ | ❌ | List transactions: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (reference selection via `filter={"$match":{"reference":"..."}}`) |
 | `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence. No ledger identity → requires `ledger` ops-read (granular `ledger:OpsRead`) |
-| `GET /v3/_/chapters` | ✅ | ❌ | Stream chapters (audit-chain segments) |
-| `GET /v3/_/chapter-schedule` | ✅ | ❌ | Get the auto-rotation cron for chapters |
 | `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink status (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`) |
 | `GET /v3/_/signing-keys` | ✅ | ❌ | List registered Ed25519 signing keys |
 | `GET /v3/{ledgerName}/indexes` | ✅ | ❌ | List indexes registered on a ledger |
@@ -787,7 +737,6 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `GetSecondaryMetrics` | Get secondary (read index) Pebble store metrics | ✅ |
 | `CheckStore` | Verify store integrity (hash chain + derived data) | ✅ |
 | `GetEventsSinks` | Get per-sink configurations and statuses | ✅ |
-| `GetChapterSchedule` | Get current chapter rotation schedule | ✅ |
 | `GetMetadataSchemaStatus` | Get the declared metadata schema for a ledger | ✅ |
 | `AnalyzeTransactions` | Discover transaction flow patterns | ✅ |
 | `CreatePreparedQuery` | Create a named prepared query | ✅ |
@@ -803,8 +752,6 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `GetNumscript` | Get a numscript by name and version selector | ✅ |
 | `ListNumscripts` | List the greatest version of each saved numscript | ✅ |
 | `ListNumscriptVersions` | List the latest pointer and every stored version | ✅ |
-| `Apply(CloseChapter)` | Close the current open chapter | ✅ |
-| `ListChapters` | Stream all chapters | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure). Request is `{ options }` only — no dedicated filter fields. Follows the shared `ListOptions` contract: cursor/page_size/reverse/checkpoint_id plus a bare-audit-field `QueryFilter` (outcome, ledger, caller_subject, order_type, seq, proposal_id, timestamp, log_seq — bare fields resolved against the audit query target, EN-1549 replacing the old `audit[...]` syntax) resolved through the audit secondary index. Ledger scope and outcome selection are expressed as filter conditions | ✅ |
 | `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
 | `ListLogs` | Stream system logs for a ledger (requires `ledger` field; supports `log_id` and date filters for pagination). Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`), same as the HTTP `GET /v3/{ledgerName}/logs` route | ✅ |
@@ -858,7 +805,7 @@ The governing rule: **a batched operation requires the same scope as its dedicat
 | `save_ledger_metadata`, `delete_ledger_metadata`, `add_account_type`, `remove_account_type`, `set_default_enforcement_mode`, `set_metadata_field_type`, `remove_metadata_field_type` | `ledger:MetadataWrite` | the `requireMetadataWrite` route group |
 | `create_prepared_query`, `update_prepared_query`, `delete_prepared_query` | `ledger:QueryWrite` | the `requireQueriesWrite` route group |
 | `create_query_checkpoint`, `delete_query_checkpoint`, `set_query_checkpoint_schedule`, `delete_query_checkpoint_schedule` | `ledger:ClusterWrite` | `ClusterService.CreateQueryCheckpoint` / `DeleteQueryCheckpoint` |
-| signing keys, events sinks, chapters, maintenance mode | `ledger:OpsWrite` | operator surface, no dedicated business route |
+| signing keys, events sinks, maintenance mode | `ledger:OpsWrite` | operator surface, no dedicated business route |
 | unknown / malformed / unset variant | `ledger:OpsWrite` | fail-closed default |
 
 Two properties are enforced by tests rather than convention:
@@ -914,15 +861,6 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Raft node removal committed; durable FSM apply still pending | `UNAVAILABLE` | `RAFT_NODE_REMOVAL_COMMITTED` | `nodeId`, `committedIndex` |
 | Writes blocked — disk full | `RESOURCE_EXHAUSTED` | `WRITES_BLOCKED_DISK_FULL` | *(none)* |
 | Writes blocked — clock skew | `UNAVAILABLE` | `WRITES_BLOCKED_CLOCK_SKEW` | *(none)* |
-| Cold storage disabled | `FAILED_PRECONDITION` | `COLD_STORAGE_DISABLED` | *(none)* |
-| No chapter open | `FAILED_PRECONDITION` | `NO_CHAPTER_OPEN` | *(none)* |
-| Chapter not found | `NOT_FOUND` | `CHAPTER_NOT_FOUND` | `chapterId` |
-| Chapter not closing | `FAILED_PRECONDITION` | `CHAPTER_NOT_CLOSING` | `chapterId` |
-| Chapter not closed | `FAILED_PRECONDITION` | `CHAPTER_NOT_CLOSED` | `chapterId` |
-| Chapter not archiving | `FAILED_PRECONDITION` | `CHAPTER_NOT_ARCHIVING` | `chapterId` |
-| Chapter archive out of order | `FAILED_PRECONDITION` | `CHAPTER_ARCHIVE_OUT_OF_ORDER` | `chapterId`, `blockingChapterId` |
-| Chapter already archived | `FAILED_PRECONDITION` | `CHAPTER_ALREADY_ARCHIVED` | `chapterId`, `archivedThroughChapterId` |
-| Chapter archive incarnation mismatch | `FAILED_PRECONDITION` | `CHAPTER_ARCHIVE_IDENTITY_MISMATCH` | `chapterId`, `expectedSealingHash`, `gotSealingHash` |
 | Metadata not found | `NOT_FOUND` | `METADATA_NOT_FOUND` | `target`, `key` |
 | Metadata field not in schema | `FAILED_PRECONDITION` | `METADATA_FIELD_NOT_IN_SCHEMA` | `target`, `key` |
 | Invalid receipt | `INVALID_ARGUMENT` | `INVALID_RECEIPT` | `reason` |

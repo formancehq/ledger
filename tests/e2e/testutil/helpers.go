@@ -30,10 +30,7 @@ var (
 	SetSigningConfigAction             = actions.SetSigningConfigAction
 	FindSigningKey                     = actions.FindSigningKey
 	FindMetadataValue                  = actions.FindMetadataValue
-	CloseChapterAction                 = actions.CloseChapterAction
 	SetMaintenanceModeAction           = actions.SetMaintenanceModeAction
-	SetChapterScheduleAction           = actions.SetChapterScheduleAction
-	DeleteChapterScheduleAction        = actions.DeleteChapterScheduleAction
 	SetMetadataFieldTypeAction         = actions.SetMetadataFieldTypeAction
 	RemoveMetadataFieldTypeAction      = actions.RemoveMetadataFieldTypeAction
 	CreateLedgerWithSchemaAction       = actions.CreateLedgerWithSchemaAction
@@ -45,7 +42,6 @@ var (
 	DropBuiltinTxIndexAction           = actions.DropBuiltinTxIndexAction
 	CreateAccountMetadataIndexAction   = actions.CreateAccountMetadataIndexAction
 	DropAccountMetadataIndexAction     = actions.DropAccountMetadataIndexAction
-	ArchiveChapterAction               = actions.ArchiveChapterAction
 	GetCreatedTransactionID            = actions.GetCreatedTransactionID
 
 	// Filter builders.
@@ -75,7 +71,6 @@ var (
 	ListAllAccounts                = actions.ListAllAccounts
 	ListAllTransactions            = actions.ListAllTransactions
 	ListAllLogs                    = actions.ListAllLogs
-	ListAllChapters                = actions.ListAllChapters
 	GetAccount                     = actions.GetAccount
 	GetTransaction                 = actions.GetTransaction
 	GetLedger                      = actions.GetLedger
@@ -84,7 +79,6 @@ var (
 	AggregateVolumes               = actions.AggregateVolumes
 	ListAuditEntries               = actions.ListAuditEntries
 	GetMetadataSchemaStatus        = actions.GetMetadataSchemaStatus
-	GetChapterSchedule             = actions.GetChapterSchedule
 	AnalyzeAccounts                = actions.AnalyzeAccounts
 	AnalyzeTransactions            = actions.AnalyzeTransactions
 	GetLog                         = actions.GetLog

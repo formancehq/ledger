@@ -22,7 +22,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
@@ -51,12 +50,11 @@ type Machine struct {
 	// WriteSessionFactory as a parameter to PrepareEntries / ApplyEntries, not
 	// as a field.
 
-	// fileArtifacts lets the FSM drive the node-local file lifecycles bound to
+	// fileArtifacts lets the FSM drive the node-local file lifecycle bound to
 	// applied orders: deleting query-checkpoint files when an order removes
-	// their metadata, and promoting the checker's staged baseline when an
-	// archival confirm advances the archived prefix. The surface is not a read
-	// capability and does not give access to Pebble contents.
-	fileArtifacts dal.FSMFileArtifacts
+	// their metadata. The surface is not a read capability and does not give
+	// access to Pebble contents.
+	fileArtifacts dal.QueryCheckpoints
 
 	// sentinel runs scoped post-commit reader-based checks in debug mode.
 	// The Reader never escapes the callback, so even in sentinelMode the
@@ -66,8 +64,7 @@ type Machine struct {
 	mu sync.Mutex
 
 	// Composed subsystems
-	Registry *StateRegistry  // KeyStores + Cache + Attrs
-	Chapters *ChapterTracker // Chapter lifecycle
+	Registry *StateRegistry // KeyStores + Cache + Attrs
 
 	// State groups the FSM-level mutable state (counters, timestamps, audit
 	// chain, cluster config, pending ledger cleanups). It is the explicit
@@ -87,24 +84,12 @@ type Machine struct {
 	// RequestProcessor handles business logic
 	processor *processing.RequestProcessor
 
-	// sealRequestCh receives seal requests when a CloseChapter log is applied.
-	// The Sealer reads from this channel to perform background sealing.
-	sealRequestCh *worker.Channel[SealRequest]
-
-	// archiveRequestCh receives archive requests when an ArchiveChapter order is applied.
-	// The Archiver reads from this channel to perform background archival to cold storage.
-	archiveRequestCh *worker.Channel[ArchiveRequest]
-
-	// coldCompactionCh signals the SmartCompactor that a chapter purge has been applied,
-	// meaning the cold zone [0x01, 0xF1) contains fresh tombstones that benefit from compaction.
-	coldCompactionCh chan struct{}
-
 	// bloomRebuildCh signals an external consumer (Recovery) that the bloom
 	// filters must be rebuilt asynchronously. The hot path cannot trigger the
 	// rebuild directly because StartAsyncBloomPopulate needs a Pebble reader
 	// and the Machine deliberately does not hold one — the Recovery consumer
 	// runs StartAsyncBloomPopulate with its own reader. Capacity 1 + TrySend
-	// gives "coalesce: keep latest reason" semantics, matching coldCompactionCh.
+	// gives "coalesce: keep latest reason" semantics.
 	bloomRebuildCh chan string
 
 	// cacheSnapshotter handles persisting/restoring cache, reversions, and bloom
@@ -185,7 +170,7 @@ type Machine struct {
 // confChangeHandler is invoked from PrepareEntries for every
 // EntryConfChange* in the in-flight batch (see the field comment on
 // Machine). Must be non-nil.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.FSMFileArtifacts, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
 	sentinelMode := sentinel.IsEnabled()
 	// raft.* metrics describe the consensus engine and follow the
 	// upstream etcd-raft naming convention; numscript.* metrics are
@@ -255,12 +240,8 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		keyStore:                       ks,
 		sharedState:                    sharedState,
 		Registry:                       registry,
-		Chapters:                       NewChapterTracker(nil, nil, nil, 0, ""),
 		State:                          NewFSMState(clusterID),
 		queryCheckpointScheduleChanged: signal.New(),
-		sealRequestCh:                  worker.NewChannel[SealRequest](logger, "seal request", 10),
-		archiveRequestCh:               worker.NewChannel[ArchiveRequest](logger, "archive request", 1),
-		coldCompactionCh:               make(chan struct{}, 1),
 		bloomRebuildCh:                 make(chan string, 1),
 		auditHashBuf:                   make([]byte, 0, 4096),
 		confChangeHandler:              confChangeHandler,
@@ -314,7 +295,7 @@ func (fsm *Machine) LastAppliedIndex() uint64 {
 // RestoreState atomically replaces the FSM-level state. The intended callers
 // are Recovery (at boot) and Synchronizer (after install-snapshot), which
 // build a fresh FSMState from Pebble via LoadFSMStateFromStore and swap it
-// in here. Sub-trackers (Chapters, Registry.Reversions, KeyStore,
+// in here. Sub-trackers (Registry.Reversions, KeyStore,
 // SharedState, Registry.Cache settings, Registry.Idempotency) are NOT
 // touched by this method — they have their own lifecycles and the caller
 // is responsible for resetting them in the same critical section.
@@ -507,8 +488,6 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 	}
 	sinkConfigChanged := false
 	mirrorConfigChanged := false
-	needsArchiveDispatch := false
-	needsColdCompaction := false
 
 	for i := range decoded {
 		entry := decoded[i].Entry
@@ -677,14 +656,6 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 			mirrorConfigChanged = true
 		}
 
-		if result.ArchiveRequested {
-			needsArchiveDispatch = true
-		}
-
-		if result.ChaptersPurged {
-			needsColdCompaction = true
-		}
-
 		ret.Results = append(ret.Results, *result)
 
 		// Checkpoint-trigger detection. The applier is responsible for pre-
@@ -701,10 +672,9 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		// place because reaching it would mean either the upfront validator and
 		// this dynamic detection disagree, or applyProposal produced a trigger
 		// effect from a proposal whose orders did not carry a trigger.
-		sealReqBase := fsm.checkCloseChapter(result)
 		queryCheckpointCreated := result.QueryCheckpointCreated > 0
 
-		if (sealReqBase != nil || queryCheckpointCreated) && i != len(decoded)-1 {
+		if queryCheckpointCreated && i != len(decoded)-1 {
 			assert.Unreachable("checkpoint trigger entry not last in PrepareDecodedEntries batch", map[string]any{
 				"raftIndex":  entryIndex,
 				"proposalID": cmd.GetId(),
@@ -718,15 +688,6 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 				"checkpoint trigger entry at position %d/%d in PrepareDecodedEntries batch (raft index %d) — applier must pre-split",
 				i, len(decoded), entryIndex,
 			)
-		}
-
-		if sealReqBase != nil {
-			ret.CheckpointRequired = true
-			ret.CheckpointChapterID = sealReqBase.ChapterID
-			ret.OnCheckpointDone = func(checkpointPath string) {
-				sealReqBase.CheckpointPath = checkpointPath
-				fsm.sealRequestCh.TrySend(*sealReqBase, fmt.Sprintf("chapter %d", sealReqBase.ChapterID))
-			}
 		}
 
 		if queryCheckpointCreated {
@@ -752,16 +713,13 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 	// Capture all post-commit data now, so CommitPreparedBatch does not
 	// need to read mutable fsm fields.
 	pb := &PreparedBatch{
-		batch:                batch,
-		Result:               ret,
-		lastAppliedIndex:     fsm.State.LastAppliedIndex,
-		lastSequenceID:       fsm.State.NextSequenceID - 1,
-		needsArchiveDispatch: needsArchiveDispatch,
-		needsColdCompaction:  needsColdCompaction,
-		archivedThrough:      fsm.Chapters.ArchivedThroughID(),
-		sinkConfigChanged:    sinkConfigChanged,
-		mirrorConfigChanged:  mirrorConfigChanged,
-		entryCount:           len(decoded),
+		batch:               batch,
+		Result:              ret,
+		lastAppliedIndex:    fsm.State.LastAppliedIndex,
+		lastSequenceID:      fsm.State.NextSequenceID - 1,
+		sinkConfigChanged:   sinkConfigChanged,
+		mirrorConfigChanged: mirrorConfigChanged,
+		entryCount:          len(decoded),
 	}
 
 	// Capture sentinel data before releasing the lock.
@@ -770,22 +728,6 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		pb.sentinelUpdates = deduplicateVolumeUpdates(ret.Results)
 		pb.sentinelLedgerNames = collectLedgerNamesFromResults(ret.Results)
 		pb.sentinelTracer = fsm.sentinelTracer
-	}
-
-	// Capture archive requests from current chapter state.
-	if needsArchiveDispatch {
-		for _, p := range fsm.Chapters.AllChapters() {
-			if p.GetStatus() == commonpb.ChapterStatus_CHAPTER_ARCHIVING {
-				pb.archiveRequests = append(pb.archiveRequests, ArchiveRequest{
-					ChapterID:          p.GetId(),
-					StartSequence:      p.GetStartSequence(),
-					CloseSequence:      p.GetCloseSequence(),
-					StartAuditSequence: p.GetStartAuditSequence(),
-					CloseAuditSequence: p.GetCloseAuditSequence(),
-					SealingHash:        p.GetSealingHash(),
-				})
-			}
-		}
 	}
 
 	// Capture query checkpoint deletions.
@@ -885,31 +827,8 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 	}
 
 	// Dispatch post-commit side effects using captured data.
-	for _, req := range pb.archiveRequests {
-		fsm.archiveRequestCh.TrySend(req, fmt.Sprintf("chapter %d", req.ChapterID))
-	}
-
 	for _, cpID := range pb.checkpointDeletes {
 		fsm.deleteQueryCheckpointFiles(cpID)
-	}
-
-	if pb.needsColdCompaction {
-		select {
-		case fsm.coldCompactionCh <- struct{}{}:
-		default:
-			// Coalescent signal — safe to drop, next purge will re-signal.
-		}
-
-		// A purge means an archival confirm advanced the archived prefix, so the
-		// staged baseline of the newly archived close becomes the checker's live
-		// one. Node-local file bookkeeping like the query-checkpoint deletes
-		// above; non-fatal, because the checker degrades honestly without a
-		// baseline while a stale one makes it report a healthy store as corrupt —
-		// which is also why promotion happens here and not when a chapter closes.
-		if err := fsm.fileArtifacts.PromoteStagedBaseline(pb.archivedThrough); err != nil {
-			fsm.logger.WithFields(map[string]any{"error": err}).
-				Errorf("Failed to promote staged checker baseline (checker will degrade gracefully)")
-		}
 	}
 
 	fsm.notifier.NotifyLogsCommitted(pb.lastSequenceID)
@@ -1160,7 +1079,7 @@ func planInvariantDescribable(err error) domain.Describable {
 
 func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.WriteSession, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
 	// FSM-level safety net mirroring the admission check: a checkpoint trigger
-	// (CreateQueryCheckpoint or CloseChapter) must be the last order. The
+	// (CreateQueryCheckpoint) must be the last order. The
 	// applier relies on this so it can place a Pebble-batch boundary at this
 	// proposal — a trigger that is not last would force a mid-batch commit
 	// and race the pipelined committer. Any violation here means the
@@ -1294,10 +1213,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Compute the effective date using the HLC to guarantee monotonicity
 	effectiveDate := &commonpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.GetDate().GetData())}
 
-	if err := fsm.ensureChapterBootstrapped(effectiveDate, batch); err != nil {
-		return nil, err
-	}
-
 	// Re-point the WriteSet at the HLC-advanced effective date. The overlay
 	// (Derived) populated by the technical-update phase is preserved — only
 	// the timestamp field is rewired so order handlers see the monotonic
@@ -1384,8 +1299,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// Process the proposal unless the dedup gate rejected it as a conflict
 	// (err set). Handlers see the gated Scope facade for state reads/writes;
-	// cross-order signals (purge, archive, schedule, sink config, cleanup,
-	// chapter closing, ...) are derived from the per-order log payloads via
+	// cross-order signals (schedule, sink config, cleanup, ...) are derived
+	// from the per-order log payloads via
 	// WriteSet.Absorb. OrdersResult carries the per-order log slice plus the
 	// derivations (createdLogs filter, min/max sequence) so applyProposal
 	// never re-walks `logs` to rebuild them.
@@ -1478,7 +1393,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return fmt.Errorf("audit sequence race for %s: peeked %d, got %d", label, entry.GetSequence(), committedSeq)
 		}
 
-		// Items live under their own Pebble keys (SubColdAuditItem). The
+		// Items live under their own Pebble keys (SubHistoryAuditItem). The
 		// AuditEntry value must never carry an embedded items list: the
 		// chain does not hash entry.Items (each item is hashed via its
 		// per-item payload from the separate keys), so a non-empty
@@ -1573,8 +1488,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	sinkConfigChanged := buffer.SinkConfigChanged()
 	mirrorConfigChanged := buffer.MirrorConfigChanged()
-	archiveRequested := len(buffer.archiveRequests) > 0
-	chaptersPurged := len(buffer.purgeRanges) > 0
 
 	// Merge consumes the per-order log slice (CreatedLog or ReferenceSequence)
 	// so it can inject Log.purged_volumes using per-order tracking before
@@ -1634,8 +1547,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 	// SUCCESS: write the audit entry first (advances State + writes audit
 	// + audit items to the batch), then write the AppliedProposal record
-	// (SubColdAppliedProposal = 0x04, after the audit entries at 0x02 /
-	// 0x03 so the ZoneCold Pebble writes stay monotonically increasing
+	// (SubHistoryAppliedProposal = 0x04, after the audit entries at 0x02 /
+	// 0x03 so the ZoneHistory Pebble writes stay monotonically increasing
 	// on the sub-prefix dimension — preferred by the memtable skiplist).
 	//
 	// `auditEntry.GetSequence()` is set by writeAuditEntry to the
@@ -1689,8 +1602,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		AuditEntryWritten:      true,
 		SinkConfigChanged:      sinkConfigChanged,
 		MirrorConfigChanged:    mirrorConfigChanged,
-		ArchiveRequested:       archiveRequested,
-		ChaptersPurged:         chaptersPurged,
 		QueryCheckpointCreated: queryCheckpointCreated,
 		QueryCheckpointDeleted: queryCheckpointDeleted,
 		volumeUpdates:          buffer.KeptVolumeUpdates(),
@@ -1762,13 +1673,6 @@ func (fsm *Machine) Close() {
 	fsm.cacheSnapshotter.Stop()
 }
 
-// SealRequestCh returns the channel used to communicate seal requests between
-// the Machine (writer, on CloseChapter) and the Sealer (reader).
-// Both sides need send access (Machine for normal flow, Sealer/Node for recovery).
-func (fsm *Machine) SealRequestCh() *worker.Channel[SealRequest] {
-	return fsm.sealRequestCh
-}
-
 // StopBackgroundTasks interrupts background tasks (bloom restore) that may hold
 // Pebble iterators. Must be called during shutdown, after the Raft node tasks
 // are stopped and before the Pebble store is closed.
@@ -1785,19 +1689,14 @@ func (fsm *Machine) PauseBackgroundTasks() {
 // DrainBackgroundChannels empties every background-request channel without
 // blocking. Called by Synchronizer.SynchronizeWithLeader before the leader's
 // checkpoint is installed: messages enqueued by the FSM hot path pre-sync
-// reference chapter IDs, sequence ranges and checkpoint paths that may no
-// longer line up with the post-sync FSMState. Fresh requests are re-pushed
-// from durable state by Recovery.DispatchArchiveRequests when leadership
-// is (re)acquired, and by the per-worker reconciliation tickers in the
-// meantime.
+// reference sequence ranges and checkpoint paths that may no longer line up
+// with the post-sync FSMState. Fresh requests are re-pushed by the
+// per-worker reconciliation tickers once the sync is over.
 func (fsm *Machine) DrainBackgroundChannels() {
-	fsm.sealRequestCh.Drain()
-	fsm.archiveRequestCh.Drain()
-	drainSignalChan(fsm.coldCompactionCh)
 	drainSignalChan(fsm.bloomRebuildCh)
 }
 
-// drainSignalChan is the plain-channel counterpart of worker.Channel.Drain.
+// drainSignalChan drains a plain signal channel without blocking.
 func drainSignalChan[T any](ch chan T) {
 	for {
 		select {
@@ -1808,121 +1707,12 @@ func drainSignalChan[T any](ch chan T) {
 	}
 }
 
-// ArchiveRequestCh returns the channel used to dispatch archive requests to the Archiver.
-func (fsm *Machine) ArchiveRequestCh() *worker.Channel[ArchiveRequest] {
-	return fsm.archiveRequestCh
-}
-
-// ColdCompactionCh returns the channel that signals the SmartCompactor when
-// cold zone compaction is needed (after chapter purges).
-func (fsm *Machine) ColdCompactionCh() <-chan struct{} {
-	return fsm.coldCompactionCh
-}
-
 // BloomRebuildCh returns the channel signalled when a bloom rebuild is
 // required (e.g. cluster config change). The consumer (Recovery) owns the
 // Pebble reader and invokes StartAsyncBloomPopulate; the Machine itself
 // holds no reader and cannot trigger the rebuild directly.
 func (fsm *Machine) BloomRebuildCh() <-chan string {
 	return fsm.bloomRebuildCh
-}
-
-// dispatchArchiveRequests sends archive requests for all ARCHIVING chapters
-// to the archiver channel.
-//
-// When stop is non-nil (recovery/reconciliation paths), sends block until
-// the worker drains or stop is closed.
-// When stop is nil (FSM apply path), sends are non-blocking with drop logging.
-func (fsm *Machine) DispatchArchiveRequests(stop <-chan struct{}) {
-	for _, p := range fsm.Chapters.AllChapters() {
-		if p.GetStatus() == commonpb.ChapterStatus_CHAPTER_ARCHIVING {
-			req := ArchiveRequest{
-				ChapterID:          p.GetId(),
-				StartSequence:      p.GetStartSequence(),
-				CloseSequence:      p.GetCloseSequence(),
-				StartAuditSequence: p.GetStartAuditSequence(),
-				CloseAuditSequence: p.GetCloseAuditSequence(),
-				SealingHash:        p.GetSealingHash(),
-			}
-
-			if stop != nil {
-				if !fsm.archiveRequestCh.Send(req, stop) {
-					return
-				}
-			} else {
-				fsm.archiveRequestCh.TrySend(req, fmt.Sprintf("chapter %d", req.ChapterID))
-			}
-		}
-	}
-}
-
-// ensureChapterBootstrapped creates the first chapter deterministically at the
-// first proposal. The chapter start timestamp is derived from the proposal's
-// effective date so that all nodes produce the same deterministic state.
-func (fsm *Machine) ensureChapterBootstrapped(effectiveDate *commonpb.Timestamp, batch *dal.WriteSession) error {
-	if fsm.Chapters.CurrentOpenChapter() != nil {
-		return nil
-	}
-
-	p := &commonpb.Chapter{
-		Id:            1,
-		Start:         effectiveDate,
-		Status:        commonpb.ChapterStatus_CHAPTER_OPEN,
-		StartSequence: 1,
-	}
-	fsm.Chapters.SetCurrentOpenChapter(p)
-	fsm.Chapters.SetNextChapterID(2)
-
-	if err := StoreChapter(batch, p); err != nil {
-		return fmt.Errorf("storing bootstrapped chapter: %w", err)
-	}
-
-	if err := StoreNextChapterID(batch, fsm.Chapters.NextChapterID()); err != nil {
-		return fmt.Errorf("storing next chapter ID: %w", err)
-	}
-
-	return nil
-}
-
-// AllChapters returns all non-purged chapters kept in memory.
-func (fsm *Machine) AllChapters() []*commonpb.Chapter {
-	return fsm.Chapters.AllChapters()
-}
-
-// ClosingChapters returns all chapters currently in CLOSING state.
-// Used for crash recovery on startup.
-func (fsm *Machine) ClosingChapters() []*commonpb.Chapter {
-	return fsm.Chapters.ClosingChapters()
-}
-
-// ClosingChapterByID returns the closing chapter with the given ID, if any.
-func (fsm *Machine) ClosingChapterByID(id uint64) (*commonpb.Chapter, bool) {
-	return fsm.Chapters.ClosingChapterByID(id)
-}
-
-// ArchivingChapterByID returns the chapter with the given ID if it is currently
-// in ARCHIVING status. Used by the Archiver to gate consumption of stale
-// requests after a follower sync: if the leader has already advanced the
-// chapter to ARCHIVED (or further), the request must not produce a cold-storage
-// write — the data ranges it carries no longer exist in the restored Pebble.
-func (fsm *Machine) ArchivingChapterByID(id uint64) (*commonpb.Chapter, bool) {
-	p, ok := fsm.Chapters.GetChapterByID(id)
-	if !ok || p.GetStatus() != commonpb.ChapterStatus_CHAPTER_ARCHIVING {
-		return nil, false
-	}
-
-	return p, true
-}
-
-// ChapterSchedule returns the current chapter schedule cron expression.
-// Empty string means the schedule is disabled.
-func (fsm *Machine) ChapterSchedule() string {
-	return fsm.Chapters.Schedule()
-}
-
-// ScheduleChanged returns the Signal that fires when the chapter schedule changes.
-func (fsm *Machine) ScheduleChanged() signal.Signal {
-	return fsm.Chapters.ScheduleChanged()
 }
 
 // QueryCheckpointSchedule returns the current query checkpoint schedule cron expression.
@@ -1955,40 +1745,6 @@ func (fsm *Machine) QueryCheckpointScheduleChanged() signal.Signal {
 	return fsm.queryCheckpointScheduleChanged
 }
 
-// checkCloseChapter checks if the apply result contains a CloseChapter log
-// and returns a SealRequest if the sealer should be triggered.
-// Only created logs are checked since reference sequences are idempotent
-// responses that already triggered sealing when first applied.
-//
-// Reads the FSM state's closing chapter so the request carries the same fields
-// the row holds, including the audit anchor the sealing hash commits to.
-func (fsm *Machine) checkCloseChapter(result *ApplyResult) *SealRequest {
-	if result == nil {
-		return nil
-	}
-
-	for _, logOrRef := range result.Logs {
-		if created := logOrRef.GetCreatedLog(); created != nil {
-			if created.GetPayload().GetCloseChapter() != nil {
-				closingChapter := fsm.Chapters.LatestClosingChapter()
-				if closingChapter != nil {
-					return SealRequestFromChapter(closingChapter)
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-func SealRequestFromChapter(chapter *commonpb.Chapter) *SealRequest {
-	return &SealRequest{
-		ChapterID:     chapter.GetId(),
-		CloseSequence: chapter.GetCloseSequence(),
-		LastAuditHash: chapter.GetLastAuditHash(),
-	}
-}
-
 // PreparedBatch holds an uncommitted Pebble batch and all data needed for
 // the post-commit phase. Created by PrepareEntries, consumed by CommitPreparedBatch.
 // This separation enables pipelining: the applier can process batch N+1 while
@@ -1999,16 +1755,8 @@ type PreparedBatch struct {
 	Result *ApplyEntriesResult
 
 	// State captured during prepare for post-commit use.
-	lastAppliedIndex     uint64
-	lastSequenceID       uint64
-	needsArchiveDispatch bool
-	needsColdCompaction  bool
-	// archivedThrough is the archived boundary as THIS batch's confirms left it,
-	// captured at prepare like every other post-commit input: preparation is
-	// pipelined, so by the time this batch's post-commit hook runs the live
-	// tracker may already carry a later batch's advance, and promoting to that
-	// boundary would consume a staged baseline whose confirm is not yet durable.
-	archivedThrough     uint64
+	lastAppliedIndex    uint64
+	lastSequenceID      uint64
 	sinkConfigChanged   bool
 	mirrorConfigChanged bool
 	checkpointDeletes   []uint64
@@ -2018,10 +1766,6 @@ type PreparedBatch struct {
 	sentinelUpdates     []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 	sentinelLedgerNames []string
 	sentinelTracer      *SentinelTracer
-
-	// archiveRequests is captured during prepare so CommitPreparedBatch
-	// does not need to read fsm.Chapters (which may be mutated by the next prepare).
-	archiveRequests []ArchiveRequest
 
 	entryCount int
 }
@@ -2046,11 +1790,8 @@ type ApplyResult struct {
 	// for idempotency replays, stale proposals, and pre-commit rejections,
 	// which write no entry.
 	AuditEntryWritten   bool
-	CheckpointPath      string // Set by Node after checkpoint creation (CloseChapter proposals)
-	SinkConfigChanged   bool   // True when events sink configuration changed
-	MirrorConfigChanged bool   // True when mirror ledger configuration changed
-	ArchiveRequested    bool   // True when at least one chapter archive was requested
-	ChaptersPurged      bool   // True when cold zone data was purged (triggers cold compaction)
+	SinkConfigChanged   bool // True when events sink configuration changed
+	MirrorConfigChanged bool // True when mirror ledger configuration changed
 
 	// QueryCheckpointCreated holds the checkpoint ID when a CreateQueryCheckpoint
 	// order was processed. Signals ApplyEntries to split the batch and create
@@ -2074,23 +1815,15 @@ type ApplyEntriesResult struct {
 	Results []ApplyResult
 
 	// CheckpointRequired is true when the caller must create a Pebble checkpoint
-	// before resuming entry processing (e.g. after a CloseChapter or
-	// CreateQueryCheckpoint). The triggering entry is always the last in the
-	// slice that produced this result — callers must pre-split to maintain that
-	// invariant (see state.ClassifyCheckpointOrderPosition).
+	// before resuming entry processing (after a CreateQueryCheckpoint). The
+	// triggering entry is always the last in the slice that produced this
+	// result — callers must pre-split to maintain that invariant (see
+	// state.ClassifyCheckpointOrderPosition).
 	CheckpointRequired bool
 
-	// CheckpointChapterID is the chapter ID that triggered the checkpoint.
-	// Used by the Applier to name the checkpoint uniquely per chapter.
-	CheckpointChapterID uint64
-
-	// OnCheckpointDone is called by Node once the Pebble checkpoint has been created.
-	// It forges a SealRequest and sends it to the sealer.  Nil when CheckpointRequired is false.
-	OnCheckpointDone func(checkpointPath string)
-
 	// QueryCheckpointID is set when the checkpoint was triggered by a
-	// CreateQueryCheckpointOrder (not a CloseChapter). The Applier uses this
-	// to create the main store checkpoint. The read index checkpoint is
-	// created separately by the index builder when it processes the log.
+	// CreateQueryCheckpointOrder. The Applier uses this to create the main
+	// store checkpoint. The read index checkpoint is created separately by
+	// the index builder when it processes the log.
 	QueryCheckpointID uint64
 }

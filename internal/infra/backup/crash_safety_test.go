@@ -414,7 +414,7 @@ func TestRunIncrementalBackup_SegmentUploadFailureLeavesManifestUntouched(t *tes
 	require.NoError(t, err)
 	_ = manifestBefore.Close()
 
-	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, nil, storage, bucketID, 0)
+	_, err = RunIncrementalBackup(context.Background(), logging.Testing(), store, storage, bucketID, 0)
 	require.Error(t, err, "a failed segment upload must fail the incremental backup")
 
 	// The manifest on storage is unchanged: the run never got to WriteManifest.
@@ -473,7 +473,7 @@ func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
 		incrementalLedgers = append(incrementalLedgers, name)
 		writeLedgerLog(name)
 
-		incResult, err := RunIncrementalBackup(ctx, logging.Testing(), src, nil, storage, bucketID, 0)
+		incResult, err := RunIncrementalBackup(ctx, logging.Testing(), src, storage, bucketID, 0)
 		require.NoError(t, err)
 		require.Positive(t, incResult.LogEntriesExported, "round %d must export the new log", round)
 	}

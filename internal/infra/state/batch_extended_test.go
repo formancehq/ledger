@@ -17,6 +17,42 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+// TestDeleteLedgerData_RemovesLedgerMetadata pins the deletion cascade's
+// coverage of SubAttrLedgerMetadata: business metadata for a deleted ledger
+// must be physically removed in the same batch, and another ledger's rows
+// must survive untouched.
+func TestDeleteLedgerData_RemovesLedgerMetadata(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	attrs := attributes.New()
+
+	batch := s.OpenWriteSession()
+	for _, ledger := range []string{"doomed", "kept"} {
+		_, err := attrs.LedgerMetadata.Set(batch,
+			domain.LedgerMetadataKey{LedgerName: ledger, Key: "team"}.Bytes(),
+			commonpb.NewStringValue("payments"))
+		require.NoError(t, err)
+	}
+	require.NoError(t, batch.Commit())
+
+	batch = s.OpenWriteSession()
+	require.NoError(t, DeleteLedgerData(batch, "doomed"))
+	require.NoError(t, batch.Commit())
+
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	gone, err := attrs.LedgerMetadata.Get(handle, domain.LedgerMetadataKey{LedgerName: "doomed", Key: "team"}.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, gone, "deleted ledger's metadata must be physically removed by the cascade")
+
+	survives, err := attrs.LedgerMetadata.Get(handle, domain.LedgerMetadataKey{LedgerName: "kept", Key: "team"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, survives, "another ledger's metadata must survive the cascade")
+}
+
 func TestSaveMaintenanceMode(t *testing.T) {
 	t.Parallel()
 
@@ -44,59 +80,6 @@ func TestSaveMaintenanceMode(t *testing.T) {
 	enabled, err = query.ReadMaintenanceMode(s)
 	require.NoError(t, err)
 	require.False(t, enabled)
-}
-
-func TestSaveChapterSchedule(t *testing.T) {
-	t.Parallel()
-
-	s := newTestStore(t)
-
-	// Default: empty schedule
-	schedule, err := query.ReadChapterSchedule(s)
-	require.NoError(t, err)
-	require.Empty(t, schedule)
-
-	// Save a cron expression
-	batch := s.OpenWriteSession()
-	require.NoError(t, SaveChapterSchedule(batch, "*/5 * * * *"))
-	require.NoError(t, batch.Commit())
-
-	schedule, err = query.ReadChapterSchedule(s)
-	require.NoError(t, err)
-	require.Equal(t, "*/5 * * * *", schedule)
-
-	// Update schedule
-	batch = s.OpenWriteSession()
-	require.NoError(t, SaveChapterSchedule(batch, "0 * * * *"))
-	require.NoError(t, batch.Commit())
-
-	schedule, err = query.ReadChapterSchedule(s)
-	require.NoError(t, err)
-	require.Equal(t, "0 * * * *", schedule)
-}
-
-func TestBatchDeleteChapterScheduleFunc(t *testing.T) {
-	t.Parallel()
-
-	s := newTestStore(t)
-
-	// Save a schedule
-	batch := s.OpenWriteSession()
-	require.NoError(t, SaveChapterSchedule(batch, "*/10 * * * *"))
-	require.NoError(t, batch.Commit())
-
-	schedule, err := query.ReadChapterSchedule(s)
-	require.NoError(t, err)
-	require.Equal(t, "*/10 * * * *", schedule)
-
-	// Delete the schedule
-	batch = s.OpenWriteSession()
-	require.NoError(t, batchDeleteChapterSchedule(batch))
-	require.NoError(t, batch.Commit())
-
-	schedule, err = query.ReadChapterSchedule(s)
-	require.NoError(t, err)
-	require.Empty(t, schedule)
 }
 
 func TestSaveSinkConfig(t *testing.T) {
@@ -344,17 +327,17 @@ func TestFindTransactionCreationLog(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	// Find the creation log. Nil cold reader: hot-only lookup.
-	log, err := query.FindTransactionCreationLog(context.Background(), reader, nil, txAttr, "test", 1)
+	log, err := query.FindTransactionCreationLog(context.Background(), reader, txAttr, "test", 1)
 	require.NoError(t, err)
 	require.NotNil(t, log)
 	require.Equal(t, uint64(5), log.GetSequence())
 
 	// Non-existent transaction should return ErrNotFound
-	_, err = query.FindTransactionCreationLog(context.Background(), reader, nil, txAttr, "test", 999)
+	_, err = query.FindTransactionCreationLog(context.Background(), reader, txAttr, "test", 999)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	// Non-existent ledger should return error
-	_, err = query.FindTransactionCreationLog(context.Background(), reader, nil, txAttr, "other", 1)
+	_, err = query.FindTransactionCreationLog(context.Background(), reader, txAttr, "other", 1)
 	require.Error(t, err)
 }
 

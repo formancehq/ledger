@@ -86,20 +86,8 @@ func systemScopedOrderType(o *raftcmdpb.SystemScopedOrder) string {
 		return "add_events_sink"
 	case *raftcmdpb.SystemScopedOrder_RemoveEventsSink:
 		return "remove_events_sink"
-	case *raftcmdpb.SystemScopedOrder_CloseChapter:
-		return "close_chapter"
-	case *raftcmdpb.SystemScopedOrder_SealChapter:
-		return "seal_chapter"
-	case *raftcmdpb.SystemScopedOrder_ArchiveChapter:
-		return "archive_chapter"
-	case *raftcmdpb.SystemScopedOrder_ConfirmArchiveChapter:
-		return "confirm_archive_chapter"
 	case *raftcmdpb.SystemScopedOrder_SetMaintenanceMode:
 		return "set_maintenance_mode"
-	case *raftcmdpb.SystemScopedOrder_SetChapterSchedule:
-		return "set_chapter_schedule"
-	case *raftcmdpb.SystemScopedOrder_DeleteChapterSchedule:
-		return "delete_chapter_schedule"
 	case *raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint:
 		return "create_query_checkpoint"
 	case *raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint:

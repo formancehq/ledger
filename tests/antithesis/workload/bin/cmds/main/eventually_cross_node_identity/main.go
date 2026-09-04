@@ -364,10 +364,10 @@ func volumesString(acc *commonpb.Account) string {
 	return out.String()
 }
 
-// compareAuditHashes picks a recent audit sequence present in the live (non
-// archived) window and asserts every ready node returns the same hash and
-// hash_version for it. Sequences that NotFound on any node (applied-index skew
-// or archival) are skipped, never failed.
+// compareAuditHashes picks a recent audit sequence and asserts every ready
+// node returns the same hash and
+// hash_version for it. Sequences that NotFound on any node (applied-index
+// skew) are skipped, never failed.
 func compareAuditHashes(ctx context.Context, nodes []readyNode, driver servicepb.BucketServiceClient, index uint64) {
 	seq, ok := pickRecentAuditSequence(ctx, driver)
 	if !ok {
@@ -387,7 +387,7 @@ func compareAuditHashes(ctx context.Context, nodes []readyNode, driver servicepb
 		staleCtx := internal.WithStaleConsistency(ctx)
 		entry, err := n.conn.Bucket.GetAuditEntry(staleCtx, &servicepb.GetAuditEntryRequest{Sequence: seq})
 		if err != nil {
-			// NotFound on a node = applied-index skew or archival purge; skip.
+			// NotFound on a node = applied-index skew; skip.
 			if !internal.IsTransient(err) && !internal.IsLedgerNotFound(err) {
 				log.Printf("composer: GetAuditEntry(seq=%d) on %s: %s", seq, n.conn.Addr, err)
 			}

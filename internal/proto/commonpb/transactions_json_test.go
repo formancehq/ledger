@@ -21,7 +21,6 @@ func TestCreatedTransaction_MarshalJSON_AllFields(t *testing.T) {
 				"vip": NewStringValue("yes"),
 			}},
 		},
-		ChapterId: 7,
 	}
 
 	data, err := ct.MarshalJSON()
@@ -30,14 +29,12 @@ func TestCreatedTransaction_MarshalJSON_AllFields(t *testing.T) {
 	out := string(data)
 	require.Contains(t, out, `"transaction":`)
 	require.Contains(t, out, `"accountMetadata":`)
-	require.Contains(t, out, `"chapterId":7`)
 	// postCommitVolumes rides on the transaction, so it appears after the
 	// "transaction": key, not as a top-level sibling.
 	require.Contains(t, out, `"postCommitVolumes":`)
 	require.Greater(t, strings.Index(out, `"postCommitVolumes":`), strings.Index(out, `"transaction":`),
 		"postCommitVolumes must be nested under transaction, not a wrapper sibling")
 	require.False(t, strings.Contains(out, "previousAccountMetadata"), "previous_account_metadata is no longer emitted")
-	require.False(t, strings.Contains(out, "chapter_id"), "must use camelCase")
 }
 
 // TestRevertedTransaction_MarshalJSON_AllFields covers the same regression on

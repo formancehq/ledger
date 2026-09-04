@@ -114,7 +114,7 @@ func TestKeyStoreUndecodableRowsResetWithKeys(t *testing.T) {
 // TestAuthorizeUnsignedBatch_ExemptsSystemActor pins that a leader-internal
 // proposal (system actor) is admitted unsigned even under RequireSignatures,
 // while the same unsigned batch from a client is rejected. Without the exemption
-// the chapter workers and schedulers can never propose on a signed cluster.
+// the leader-internal schedulers can never propose on a signed cluster.
 func TestAuthorizeUnsignedBatch_ExemptsSystemActor(t *testing.T) {
 	t.Parallel()
 
@@ -130,7 +130,7 @@ func TestAuthorizeUnsignedBatch_ExemptsSystemActor(t *testing.T) {
 	require.ErrorIs(t, a.authorizeUnsignedBatch(context.Background(), businessReq), signing.ErrMissingSignature,
 		"a client's unsigned business write is rejected under RequireSignatures")
 
-	sysCtx := internalauth.WithSystemActor(context.Background(), commands.ComponentChapterArchiver)
+	sysCtx := internalauth.WithSystemActor(context.Background(), commands.ComponentQueryCheckpoint)
 	require.NoError(t, a.authorizeUnsignedBatch(sysCtx, businessReq),
 		"a leader-internal system proposal is admitted unsigned")
 }

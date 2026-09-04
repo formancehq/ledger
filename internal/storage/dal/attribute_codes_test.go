@@ -40,7 +40,7 @@ func TestZonePrefixesUnique(t *testing.T) {
 		dal.ZoneAttributes:  "Attributes",
 		dal.ZoneCache:       "Cache",
 		dal.ZonePerLedger:   "PerLedger",
-		dal.ZoneCold:        "Cold",
+		dal.ZoneHistory:     "Cold",
 		dal.ZoneIdempotency: "Idempotency",
 		dal.ZoneGlobal:      "Global",
 	}

@@ -1,10 +1,17 @@
 package processing
 
 import (
+	"github.com/robfig/cron/v3"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+// CronParser accepts both the standard 5-field format (minute-level) and the
+// extended 6-field format with an optional leading seconds field.
+// It is exported so the QueryCheckpointScheduler can reuse the same parser.
+var CronParser = cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 
 // processSetQueryCheckpointSchedule handles the SetQueryCheckpointSchedule order.
 // It validates the cron expression; the schedule-set signal is derived

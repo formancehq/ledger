@@ -1,12 +1,9 @@
 package check
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -62,7 +59,6 @@ func TestClusterPolicyVerifier_Consistent(t *testing.T) {
 	writeClusterPolicyRow(t, store, policy)
 
 	v := newClusterPolicyVerifier()
-	require.NoError(t, v.foldArchived(context.Background(), nil, nil, logging.Testing()))
 	v.applyOrder(setClusterPolicyOrder(policy))
 
 	require.Empty(t, collectClusterPolicyEvents(t, store, v))
@@ -75,7 +71,6 @@ func TestClusterPolicyVerifier_BothAbsent(t *testing.T) {
 	store := createTestStore(t)
 
 	v := newClusterPolicyVerifier()
-	require.NoError(t, v.foldArchived(context.Background(), nil, nil, logging.Testing()))
 
 	require.Empty(t, collectClusterPolicyEvents(t, store, v))
 }
@@ -88,7 +83,6 @@ func TestClusterPolicyVerifier_InjectedFlagged(t *testing.T) {
 	writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 3})
 
 	v := newClusterPolicyVerifier()
-	require.NoError(t, v.foldArchived(context.Background(), nil, nil, logging.Testing()))
 
 	events := collectClusterPolicyEvents(t, store, v)
 	require.Len(t, events, 1)
@@ -102,7 +96,6 @@ func TestClusterPolicyVerifier_MissingFlagged(t *testing.T) {
 	store := createTestStore(t)
 
 	v := newClusterPolicyVerifier()
-	require.NoError(t, v.foldArchived(context.Background(), nil, nil, logging.Testing()))
 	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 4, QueryCheckpointLimit: 1}))
 
 	events := collectClusterPolicyEvents(t, store, v)
@@ -118,7 +111,6 @@ func TestClusterPolicyVerifier_ContentMismatch(t *testing.T) {
 	writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 9})
 
 	v := newClusterPolicyVerifier()
-	require.NoError(t, v.foldArchived(context.Background(), nil, nil, logging.Testing()))
 	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 5}))
 
 	events := collectClusterPolicyEvents(t, store, v)
@@ -135,7 +127,6 @@ func TestClusterPolicyVerifier_MaxRevisionWins(t *testing.T) {
 	writeClusterPolicyRow(t, store, latest)
 
 	v := newClusterPolicyVerifier()
-	require.NoError(t, v.foldArchived(context.Background(), nil, nil, logging.Testing()))
 	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 1}))
 	v.applyOrder(setClusterPolicyOrder(latest))
 	v.applyOrder(setClusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1}))
@@ -143,15 +134,16 @@ func TestClusterPolicyVerifier_MaxRevisionWins(t *testing.T) {
 	require.Empty(t, collectClusterPolicyEvents(t, store, v))
 }
 
-// Without a completed fold the comparison is skipped and coverage is reported.
+// A truncated fold (audit chain break) skips the comparison and reports
+// coverage instead of mismatches it cannot substantiate.
 func TestClusterPolicyVerifier_IncompleteReported(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
 	writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 5})
 
-	// coldComplete stays false (foldArchived not run): incomplete coverage.
 	v := newClusterPolicyVerifier()
+	v.markLiveTruncated()
 
 	events := collectClusterPolicyEvents(t, store, v)
 	require.Len(t, events, 1)

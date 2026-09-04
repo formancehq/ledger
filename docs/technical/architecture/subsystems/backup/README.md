@@ -2,14 +2,7 @@
 
 ## Overview
 
-A **backup** is a snapshot of the **entire Pebble database**, exported to durable storage for disaster recovery. This is distinct from [cold storage](cold-storage.md), which only exports archived *chapters* of logs. Two different access patterns, two different code paths, two different concerns:
-
-| | Cold storage | Backup |
-|-|-|-|
-| Scope | A sealed chapter's logs + audit entries | The whole Pebble database |
-| Granularity | One file per chapter | A manifest + many SST segments |
-| Trigger | Per-chapter Raft order (`ArchiveChapter`) | Per-destination Raft order (`Backup`), often scheduled |
-| Recovery target | Selective revert via [receipts](receipts.md) | Whole-cluster reconstruction |
+A **backup** is a snapshot of the **entire Pebble database**, exported to durable storage for disaster recovery: a manifest plus many SST segments, taken per destination via a Raft order (`Backup`), often scheduled.
 
 Backups are Raft-coordinated so the cluster can't double-write to the same destination and so a failure mid-upload is recoverable.
 
@@ -22,7 +15,7 @@ Source: `internal/infra/backup/` (lower-level storage + manifest) and `internal/
 | S3 | `s3` | `internal/infra/backup/s3.go` (stub at `s3_disabled.go` without the tag) |
 | Azure Blob | `azure` | `internal/infra/backup/azure.go` (stub at `azure_disabled.go` without the tag) |
 
-`internal/infra/backup/storage.go:51-57` dispatches on the `kind` field of `StorageConfig`: only `"s3"` and `"azure"` are recognised. **There is no filesystem driver for backup** (filesystem is supported for [cold storage](cold-storage.md), but backups must go to a real object store). The default light binary therefore has no functional backup target — operators who need backup build with `just build-full` or the matching `-tags` flag.
+`internal/infra/backup/storage.go:51-57` dispatches on the `kind` field of `StorageConfig`: only `"s3"` and `"azure"` are recognised. **There is no filesystem driver for backup** — backups must go to a real object store. The default light binary therefore has no functional backup target — operators who need backup build with `just build-full` or the matching `-tags` flag.
 
 ## How a backup is taken
 
@@ -99,26 +92,7 @@ This FSM-managed per-destination slot is what closes the manifest-atomicity race
 
 ### Manifest + incremental segments
 
-A full backup diffs the current checkpoint's SST file set against the previous manifest and uploads only the new/changed files, but always writes a fresh checkpoint manifest with an empty export set. An **incremental** backup (`IncrementalBackupOrder`) does not take a new checkpoint at all: it streams the log/audit/audit-item/applied-proposal entries written since the last recorded sequence into size-bounded export *segments* and appends them to the manifest's export list. Files that are no longer referenced by the newly written manifest are pruned from the destination *after* the manifest is committed (see "Crash-safe write ordering" above).
-
-### Interplay with chapter archival (cold backfill)
-
-Chapter archival purges a confirmed chapter's log/audit entries from hot Pebble, so an export window can span ranges that are no longer in the hot store. A hot-only export would silently skip them while still advancing the manifest floor past them — dropping them from the backup chain permanently and corrupting the eventual restore (EN-1598). `RunIncrementalBackup` therefore **backfills** those ranges from cold storage (`backfillArchivedRanges` in `internal/infra/backup/cold_backfill.go`):
-
-- The chapter registry (`ZoneGlobal/SubGlobChapters`, never purged) is read from the *same snapshot* as the hot export, so a chapter is `ARCHIVED` in that snapshot exactly when its purge is applied in it — cold and hot segments can never overlap.
-- For each archived chapter intersecting the window, the chapter's cold SST (via `coldstorage.ColdReader`) is exported through the same `exportEntries` pipeline, producing ordinary export segments that `ApplyExports` restores unchanged. Only the intersection with the window is exported, and the floor then moves past it, so an archived range enters the backup chain **at most once**.
-- Log and audit streams are gap-free (one entry per sequence; the audit is a hash chain), so the backfill checks the exported count against the range width and fails on a truncated archive. If the window overlaps an archived chapter and no cold reader is configured, the run fails loudly instead of publishing a lossy manifest.
-- Backfilled segments precede the hot segments in the manifest's export list: `LastExportLogSequence`/`LastExportAuditSequence` read the *last* segment of each type as the next run's floor, and the hot tail always carries the highest sequences (the `ConfirmArchiveChapter` log itself lands above the chapter it archives).
-
-The result is a **self-contained backup chain**: a restore needs only the backup destination, never cold-storage access, and later corruption or lifecycle changes in cold storage cannot retroactively invalidate an already-taken backup. The restore ingests the backfilled rows because `RebuildDelta` folds the chapter lifecycle out of them, then purges them once it has: a chapter the rebuilt registry calls `ARCHIVED` gets the same hot/cold split it had on the source, so reads route to the cold object and the checker's exclusion pass finds no purge receipts its replay cannot derive.
-
-### Chapter identity across restore (EN-1750)
-
-Three guarantees keep chapter archival safe against a restored store:
-
-- **The chapter registry is a rebuilt projection.** `RebuildDelta` folds the chapter lifecycle logs (`ClosedChapterLog` carries both the closed and the newly opened chapter; seal/archive/confirm carry the accumulated state) into `ZoneGlobal/SubGlobChapters` rows and advances `SubGlobNextChapterID`, exactly as the live apply persists them. For a chapter closed but not yet sealed at backup time, the close log is the only lifecycle log in the delta, and the `last_audit_hash` it carries is the hash the checker chains from across the chapter's eventual purge; a close log without it is refused rather than rebuilt, because the resulting registry could not be verified. Without this rebuild, a restored node's registry is frozen at checkpoint time and the boot genesis path re-creates "chapter 1" spanning already-archived history.
-- **The Archiver never confirms an archive it cannot prove matches the request.** Cold storage is keyed by chapter id alone, so the crash-recovery path (archive already exists) validates the object's checksum *and* decodes the SST's embedded `chapterMetadata`, comparing every sequence range against the `ArchiveRequest`. A mismatch means the stored object is a different chapter incarnation: confirming would purge the request's ranges with only the old object's ranges archived, destroying everything outside their intersection. The archiver fails loudly and never confirms, whatever produced the identity confusion.
-- **A chapter's identity is its sealing hash, not its ranges.** Ranges alone cannot separate two incarnations: restoring an older backup over a surviving cold-storage namespace can reuse a chapter id and reach the same log and audit counts over different operations, so the stored object's metadata tuple matches while its contents belong to a history the store no longer has, and its checksum validates it against itself. The sealing hash commits a chapter to its content (`chapter_id`, `close_sequence`, `last_audit_hash`, attribute `state_hash`), so it travels in three places: into the archive's `chapterMetadata`, into the archiver's comparison above, and into `ConfirmArchiveChapter` itself. The handler compares the carried hash against the chapter it holds and rejects a mismatch with `CHAPTER_ARCHIVE_IDENTITY_MISMATCH` — in apply, in the same step as the purge it authorises, so nothing can change between the check and the deletion. It also means a hand-sent confirm cannot purge a chapter: the caller would have to know the incarnation the FSM holds.
+A full backup diffs the current checkpoint's SST file set against the previous manifest and uploads only the new/changed files, but always writes a fresh checkpoint manifest with an empty export set. An **incremental** backup (`IncrementalBackupOrder`) does not take a new checkpoint at all: it streams the log/audit/audit-item/applied-proposal entries written since the last recorded sequence into size-bounded export *segments* and appends them to the manifest's export list. Log and audit history is permanent in the primary store, so every export window is served from the hot store directly. Files that are no longer referenced by the newly written manifest are pruned from the destination *after* the manifest is committed (see "Crash-safe write ordering" above).
 
 The manifest itself (`internal/infra/backup/manifest.go`) records:
 
@@ -146,6 +120,10 @@ state that can change after the checkpoint must therefore follow the
 [incremental restore contract](incremental-restore-contract.md). A restore test
 that has no post-checkpoint export does not exercise this path.
 
+`RebuildDelta` also mirrors the DeleteLedger cascade: the live apply removes a
+deleted ledger's projections in the same apply, and the replay issues the same
+range deletes so the restored store does not resurrect them.
+
 After the restore, the node rejoins (or initialises) the Raft cluster as a fresh peer. The standard config validation (`internal/bootstrap/config_validation.go`) verifies that the restored `cluster-id` matches the cluster the node is supposed to be joining.
 
 A restore is **a node-level disaster-recovery operation**, not an in-cluster operation — it is not driven by a Raft order. Operators script it (or invoke it via the Operator) when a cluster needs to be rebuilt from cold.
@@ -165,7 +143,6 @@ The Operator's `Backup` CRD (`misc/operator/api/v1alpha1/`) wraps backups behind
 
 ## What backup doesn't do
 
-- **It does not back up cold storage wholesale.** Cold storage is durable by the driver's own guarantees. A full checkpoint reconstructs only the hot Pebble database; chapters archived before it stay in their cold-storage location and the restored cluster reads them through the same `coldstorage.Reader` interface. (Ranges archived *inside an incremental export window* are the exception — those are backfilled into the backup chain, see above.)
 - **It does not provide point-in-time queries.** A backup is a *Pebble* snapshot, not a logical "as of this transaction" snapshot. For point-in-time logical reads, use [query checkpoints](../read-path/query-checkpoints.md) instead.
 - **It does not retain by policy.** Retention (how many manifests to keep, how long incremental segments live) is operator-driven. The system will happily back up to the same destination forever.
 
@@ -177,8 +154,7 @@ The Operator's `Backup` CRD (`misc/operator/api/v1alpha1/`) wraps backups behind
 | FSM-side orchestration | `internal/application/backup/orchestrator.go` |
 | Backup manager (Pebble checkpoint, diff, upload) | `internal/infra/backup/manager.go:40-180` |
 | Manifest | `internal/infra/backup/manifest.go` |
-| Cold backfill of archival-purged ranges | `internal/infra/backup/cold_backfill.go` |
-| Storage abstraction (filesystem / S3 / Azure) | `internal/infra/backup/storage*.go` |
+| Storage abstraction (S3 / Azure) | `internal/infra/backup/storage*.go` |
 | Restore orchestration | `internal/infra/backup/restore.go` |
 | Delta projection rebuild | `internal/infra/backup/rebuild.go`, `internal/domain/replay/` |
 | `Backup` / `BackupRun` CRDs | `misc/operator/api/v1alpha1/` |

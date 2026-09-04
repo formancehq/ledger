@@ -140,12 +140,9 @@ func (r *ExecutorRegistry) IsAlive(jobID uint64) bool {
 type Orchestrator struct {
 	proposer Proposer
 	store    *dal.Store
-	// coldReader backfills archival-purged ranges during incremental backups;
-	// nil when cold storage is disabled.
-	coldReader backup.ColdChapterReader
-	logger     logging.Logger
-	nodeID     uint64
-	registry   *ExecutorRegistry
+	logger   logging.Logger
+	nodeID   uint64
+	registry *ExecutorRegistry
 
 	// maxSegmentBytes caps each incremental export segment before it splits.
 	// 0 lets RunIncrementalBackup pick its default.
@@ -170,14 +167,13 @@ type Orchestrator struct {
 // cancellation error. Bootstrap calls OnLeadershipChange on startup
 // (and on every transition thereafter) so the orchestrator's state
 // tracks the node's actual leadership.
-func NewOrchestrator(proposer Proposer, store *dal.Store, coldReader backup.ColdChapterReader, logger logging.Logger, nodeID uint64, registry *ExecutorRegistry, maxSegmentBytes int64) *Orchestrator {
+func NewOrchestrator(proposer Proposer, store *dal.Store, logger logging.Logger, nodeID uint64, registry *ExecutorRegistry, maxSegmentBytes int64) *Orchestrator {
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
 
 	return &Orchestrator{
 		proposer:        proposer,
 		store:           store,
-		coldReader:      coldReader,
 		logger:          logger.WithField("cmp", "backup-orchestrator"),
 		nodeID:          nodeID,
 		registry:        registry,
@@ -327,7 +323,7 @@ func (o *Orchestrator) RunIncremental(ctx context.Context, dst *raftcmdpb.Backup
 		return nil, fmt.Errorf("propose incremental start: %w", err)
 	}
 
-	result, runErr := backup.RunIncrementalBackup(runCtx, o.logger, o.store, o.coldReader, storage, dst.GetBucketId(), o.maxSegmentBytes)
+	result, runErr := backup.RunIncrementalBackup(runCtx, o.logger, o.store, storage, dst.GetBucketId(), o.maxSegmentBytes)
 	if runErr != nil {
 		o.proposeTerminal(incrementalFail(jobID, runErr.Error()), jobID, "incremental fail")
 

@@ -466,38 +466,6 @@ func TestGetAuditEntry_Error(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestListChapters_Success(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	mock := NewMockBucketServiceClient(ctrl)
-	stream := newRecvStream[commonpb.Chapter](ctrl, []*commonpb.Chapter{
-		{Id: 1},
-	}, nil)
-	mock.EXPECT().ListChapters(gomock.Any(), gomock.Any()).Return(stream, nil)
-
-	client := NewLedgerGrpcClient(mock)
-	cursor, err := client.ListChapters(context.Background())
-	require.NoError(t, err)
-
-	chapter, err := cursor.Next()
-	require.NoError(t, err)
-	require.Equal(t, uint64(1), chapter.GetId())
-}
-
-func TestListChapters_StreamError(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	mock := NewMockBucketServiceClient(ctrl)
-	mock.EXPECT().ListChapters(gomock.Any(), gomock.Any()).Return(nil, errors.New("chapters error"))
-
-	client := NewLedgerGrpcClient(mock)
-	_, err := client.ListChapters(context.Background())
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "gRPC ListChapters call failed")
-}
-
 func TestListSigningKeys_Success(t *testing.T) {
 	t.Parallel()
 

@@ -77,7 +77,7 @@ func writeCreated(w http.ResponseWriter, data any) {
 // genuinely fail (e.g. invalid UTF-8) and MUST propagate as an error rather than
 // a valid-looking truncated record (invariant #7).
 //
-// The transactions list, chapters and single-log routes are the second
+// The transactions list and single-log routes are the second
 // legitimate caller (EN-1622): their payload types carry a hand-written
 // MarshalJSON that marshals a metadata map and can genuinely fail, so the
 // streaming writeOK would append an error object to an already-committed 200.

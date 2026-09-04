@@ -14,7 +14,6 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -179,23 +178,6 @@ func RunPostTestPhases(t *testing.T, sc *ScenarioCluster, verifyFn func(t *testi
 }
 
 // ---------------------------------------------------------------------------
-// Chapter close helper
-// ---------------------------------------------------------------------------
-
-// CloseChapterAndWait closes the current chapter and waits for a new OPEN chapter to appear.
-func CloseChapterAndWait(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, msgAndArgs ...interface{}) {
-	t.Helper()
-
-	ApplyActions(t, ctx, client, actions.CloseChapterAction())
-	require.Eventually(t, func() bool {
-		chapters, err := actions.ListAllChapters(ctx, client)
-		if err != nil {
-			return false
-		}
-		return len(chapters) >= 2 && chapters[len(chapters)-1].Status == commonpb.ChapterStatus_CHAPTER_OPEN
-	}, 10*time.Second, 200*time.Millisecond, msgAndArgs...)
-}
-
 // ---------------------------------------------------------------------------
 // Invariant checks (Antithesis-ready)
 // ---------------------------------------------------------------------------

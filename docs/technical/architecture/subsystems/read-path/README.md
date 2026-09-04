@@ -7,7 +7,7 @@ and unfiltered account/transaction queries then use the main store only.
 Filtered account/transaction queries and every log query additionally wait for
 the read index to align with that horizon before iterating it. `stale` removes
 only the Raft barrier, checkpoint pairs are already frozen, and leader-local,
-chapter, audit-index, and usagestore exceptions are documented in the
+audit-index, and usagestore exceptions are documented in the
 [consensus matrix](../consensus/raft-consensus.md#linearizable-reads-via-readindex)
 and the pipeline pages.
 

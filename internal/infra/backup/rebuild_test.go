@@ -42,14 +42,14 @@ func newRebuildTestStore(t *testing.T) *dal.Store {
 
 func coldLogKey(seq uint64) []byte {
 	return dal.NewKeyBuilder().
-		PutZonePrefix(dal.ZoneCold, dal.SubColdLog).
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).
 		PutUint64(seq).
 		Build()
 }
 
 func coldAuditKey(seq uint64) []byte {
 	return dal.NewKeyBuilder().
-		PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).
 		PutUint64(seq).
 		Build()
 }
@@ -558,6 +558,17 @@ func TestRebuildDelta_ReplaysDeleteLedger(t *testing.T) {
 	require.NoError(t, batch.SetProto(coldLogKey(3), &commonpb.Log{
 		Sequence: 3,
 		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_SavedLedgerMetadata{
+				SavedLedgerMetadata: &commonpb.SavedLedgerMetadataLog{
+					Ledger:   "ledger",
+					Metadata: map[string]*commonpb.MetadataValue{"team": commonpb.NewStringValue("payments")},
+				},
+			},
+		},
+	}))
+	require.NoError(t, batch.SetProto(coldLogKey(4), &commonpb.Log{
+		Sequence: 4,
+		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_DeleteLedger{
 				DeleteLedger: &commonpb.DeletedLedgerLog{Name: "ledger", DeletedAt: &commonpb.Timestamp{Data: 999}},
 			},
@@ -585,14 +596,9 @@ func TestRebuildDelta_ReplaysDeleteLedger(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, boundary, "the boundary row is dropped at delete time, matching the live apply")
 
-	cleanupKey := dal.NewKeyBuilder().
-		PutZonePrefix(dal.ZonePerLedger, dal.SubPLPendingCleanup).
-		PutLedgerNameFixed("ledger").
-		Build()
-	val, closer, err := store.Get(cleanupKey)
-	require.NoError(t, err, "the pending-cleanup marker must be recorded so a covering purge executes the deferred data cleanup")
-	require.Len(t, val, 8)
-	require.NoError(t, closer.Close())
+	meta, err := attrs.LedgerMetadata.Get(handle, domain.LedgerMetadataKey{LedgerName: "ledger", Key: "team"}.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, meta, "ledger metadata written by the delta must not survive the replayed DeleteLedger")
 }
 
 func TestRebuildDelta_ReplaysPromoteLedger(t *testing.T) {
@@ -1026,7 +1032,7 @@ func TestAttributeReplayWriter_DeleteLedgerRemovesReversionRows(t *testing.T) {
 	writer.ledgerInfos["doomed"] = &commonpb.LedgerInfo{Name: "doomed"}
 	writer.reversions["doomed"] = &bitset.Bitset{}
 
-	require.NoError(t, writer.deleteLedger("doomed", &commonpb.Timestamp{Data: 42}, 7))
+	require.NoError(t, writer.deleteLedger("doomed", &commonpb.Timestamp{Data: 42}))
 	require.NoError(t, writer.batch.Commit())
 
 	handle, err := store.NewReadHandle()

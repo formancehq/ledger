@@ -1192,32 +1192,6 @@ spec:
                 x-kubernetes-validations:
                 - message: clusterID is immutable once set
                   rule: oldSelf == '' || self == oldSelf
-              coldStorage:
-                description: ColdStorage configuration for chapter archival.
-                properties:
-                  bucketId:
-                    description: BucketID is the shared namespace prefix for archives.
-                    type: string
-                  driver:
-                    description: 'Driver is the storage driver: "filesystem" or "s3".'
-                    type: string
-                  path:
-                    description: Path is the base path for filesystem driver.
-                    type: string
-                  s3:
-                    description: S3 configuration.
-                    properties:
-                      bucket:
-                        description: Bucket is the S3 bucket name.
-                        type: string
-                      endpoint:
-                        description: Endpoint is a custom S3 endpoint (for MinIO).
-                        type: string
-                      region:
-                        description: Region is the AWS region.
-                        type: string
-                    type: object
-                type: object
               dataDir:
                 default: /data/app
                 description: DataDir is the application data directory.
@@ -2406,60 +2380,6 @@ spec:
               persistence:
                 description: Persistence configuration for WAL and data volumes.
                 properties:
-                  coldCache:
-                    description: |-
-                      ColdCache persistence configuration for cold storage read cache.
-                      Uses a separate volume to avoid filling the data disk when reading archived chapters.
-                    properties:
-                      accessMode:
-                        default: ReadWriteOnce
-                        description: |-
-                          AccessMode for the PVC.
-                          Mutually exclusive with hostPath.
-                        type: string
-                      hostPath:
-                        description: |-
-                          HostPath configures a host-local volume instead of a PVC.
-                          When set, no PersistentVolumeClaim is created for this volume.
-                          The pod uses a hostPath volume mounted from the specified path on the node.
-                          Each pod gets an isolated subdirectory named after its ordinal index.
-                          This is intended for NVMe instance stores where Raft replication provides durability.
-                          Mutually exclusive with storageClass, accessMode, and volumeAttributesClassName.
-                        properties:
-                          path:
-                            description: |-
-                              Path on the host node (e.g. "/mnt/nvme0/data").
-                              Each pod gets an isolated subdirectory: <path>/<pod-ordinal>.
-                            type: string
-                          type:
-                            default: DirectoryOrCreate
-                            description: Type is the hostPath type.
-                            enum:
-                            - Directory
-                            - DirectoryOrCreate
-                            type: string
-                        required:
-                        - path
-                        type: object
-                      size:
-                        anyOf:
-                        - type: integer
-                        - type: string
-                        description: Size of the volume.
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                        x-kubernetes-int-or-string: true
-                      storageClass:
-                        description: |-
-                          StorageClass for the PVC.
-                          Mutually exclusive with hostPath.
-                        type: string
-                      volumeAttributesClassName:
-                        description: |-
-                          VolumeAttributesClassName is the name of the VolumeAttributesClass to use for the PVC.
-                          Requires the VolumeAttributesClass feature gate to be enabled (beta in K8s 1.31+).
-                          Mutually exclusive with hostPath.
-                        type: string
-                    type: object
                   data:
                     description: Data persistence configuration.
                     properties:

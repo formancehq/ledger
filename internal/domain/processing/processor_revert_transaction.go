@@ -38,8 +38,7 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	// through the coverage gate — never off the order, which carries only
 	// caller intent (invariant #8). A genuinely non-existent tx is already
 	// rejected by the boundary check above; a miss here means an allocated
-	// tx with no state (chapter archival does not evict TransactionState,
-	// and IDs have no gaps), i.e. a cache/Pebble desync — surface loudly
+	// tx with no state (IDs have no gaps), i.e. a cache/Pebble desync — surface loudly
 	// with the invariant-violation error class (invariant #7).
 	origStateReader, err := s.TransactionStates().Get(txKey)
 	if errors.Is(err, domain.ErrNotFound) {

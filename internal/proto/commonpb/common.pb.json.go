@@ -1,7 +1,6 @@
 package commonpb
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -67,7 +66,7 @@ func (x *LogPayload) MarshalJSON() ([]byte, error) {
 			Apply *ApplyLedgerLog `json:"apply,omitempty"`
 		}{Apply: p.Apply})
 	default:
-		// Other variants (signing, sinks, chapters, etc.) — use protojson for camelCase
+		// Other variants (signing, sinks, etc.) — use protojson for camelCase
 		return protojson.Marshal(x)
 	}
 }
@@ -282,11 +281,9 @@ func (x *CreatedTransaction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Transaction     *Transaction              `json:"transaction,omitempty"`
 		AccountMetadata map[string]map[string]any `json:"accountMetadata,omitempty"`
-		ChapterID       uint64                    `json:"chapterId,omitempty"`
 	}{
 		Transaction:     x.GetTransaction(),
 		AccountMetadata: AccountMetadataToAnyMap(x.GetAccountMetadata()),
-		ChapterID:       x.GetChapterId(),
 	})
 }
 
@@ -597,56 +594,6 @@ func (x *NumscriptInfo) MarshalJSON() ([]byte, error) {
 		CreatedAt: x.GetCreatedAt(),
 		Ledger:    x.GetLedger(),
 	})
-}
-
-// MarshalJSON implements json.Marshaler for Chapter.
-func (x *Chapter) MarshalJSON() ([]byte, error) {
-	type Aux struct {
-		ID                 uint64     `json:"id,omitempty"`
-		Start              *time.Time `json:"start,omitempty"`
-		End                *time.Time `json:"end,omitempty"`
-		Status             string     `json:"status,omitempty"`
-		CloseSequence      uint64     `json:"closeSequence,omitempty"`
-		SealingHash        string     `json:"sealingHash,omitempty"`
-		LastAuditHash      string     `json:"lastAuditHash,omitempty"`
-		StartSequence      uint64     `json:"startSequence,omitempty"`
-		StateHash          string     `json:"stateHash,omitempty"`
-		StartAuditSequence uint64     `json:"startAuditSequence,omitempty"`
-		CloseAuditSequence uint64     `json:"closeAuditSequence,omitempty"`
-	}
-
-	aux := Aux{
-		ID:                 x.GetId(),
-		Status:             x.GetStatus().String(),
-		CloseSequence:      x.GetCloseSequence(),
-		StartSequence:      x.GetStartSequence(),
-		StartAuditSequence: x.GetStartAuditSequence(),
-		CloseAuditSequence: x.GetCloseAuditSequence(),
-	}
-
-	if x.GetStart() != nil {
-		t := x.GetStart().AsTime()
-		aux.Start = &t
-	}
-
-	if x.GetEnd() != nil {
-		t := x.GetEnd().AsTime()
-		aux.End = &t
-	}
-
-	if len(x.GetSealingHash()) > 0 {
-		aux.SealingHash = hex.EncodeToString(x.GetSealingHash())
-	}
-
-	if len(x.GetLastAuditHash()) > 0 {
-		aux.LastAuditHash = hex.EncodeToString(x.GetLastAuditHash())
-	}
-
-	if len(x.GetStateHash()) > 0 {
-		aux.StateHash = hex.EncodeToString(x.GetStateHash())
-	}
-
-	return json.Marshal(aux)
 }
 
 // ParseTarget parses targetType and targetId/targetReference into a Target.

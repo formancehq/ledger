@@ -128,11 +128,11 @@ teardown_cluster() {
 		k wait --for=delete "pod/$POD_PREFIX-$i" --timeout=120s 2>/dev/null || true
 	done
 	for i in $(seq 0 $(( REPLICAS - 1 ))); do
-		k delete pvc "wal-$POD_PREFIX-$i" "data-$POD_PREFIX-$i" "cold-cache-$POD_PREFIX-$i" \
+		k delete pvc "wal-$POD_PREFIX-$i" "data-$POD_PREFIX-$i" \
 			--ignore-not-found --wait=true --timeout=120s || return 1
 	done
 	for i in $(seq 0 $(( REPLICAS - 1 ))); do
-		[ -z "$(k get pvc "wal-$POD_PREFIX-$i" "data-$POD_PREFIX-$i" "cold-cache-$POD_PREFIX-$i" \
+		[ -z "$(k get pvc "wal-$POD_PREFIX-$i" "data-$POD_PREFIX-$i" \
 			--ignore-not-found -o name 2>/dev/null)" ] || return 1
 	done
 }

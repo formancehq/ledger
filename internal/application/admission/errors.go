@@ -31,7 +31,7 @@ var (
 
 	// ErrLedgerNameReservedPrefix rejects the ledger name "_". That single
 	// segment is reserved for system / non-ledger HTTP routes, which all live
-	// under /v3/_/… (e.g. GET /v3/_/audit-entries, /v3/_/chapters, /v3/_/indexes,
+	// under /v3/_/… (e.g. GET /v3/_/audit-entries, /v3/_/indexes,
 	// /v3/_/events-sinks, /v3/_/signing-keys) and share the /v3/{ledgerName} path
 	// namespace. A ledger named "_" would be shadowed by that fixed segment.
 	// Reserving the one segment "_" — rather than an ever-growing list of

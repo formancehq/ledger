@@ -317,14 +317,43 @@ All Pebble keys start with a zone byte that groups data by access pattern:
 
 | Zone | Byte | Purpose | Lifecycle |
 |------|------|---------|-----------|
-| **Attributes** | `0x01` | Volumes, metadata, boundaries, tx state, references, sink configs, numscript | Hot storage, hashed during seal |
+| **Attributes** | `0x01` | Volumes, metadata, boundaries, tx state, references, sink configs, numscript | Hot storage |
 | **Cache** | `0x02` | Generation-based 0xFF cache for fast restart | Rotated per generation |
-| **Per-Ledger** | `0x03` | Reversions, pending cleanups, mirror state | Per-ledger lifecycle |
-| **Cold** | `0x04` | Logs + audit entries | Archived to cold storage then purged per chapter |
+| **Per-Ledger** | `0x03` | Reversions, prepared queries, mirror state | Per-ledger lifecycle |
+| **History** | `0x04` | Logs + audit entries/items + applied proposals | Permanent |
 | **Idempotency** | `0x05` | Deduplication keys + time index | TTL-based eviction |
-| **Global** | `0x06` | Applied index/timestamp, ledger info, signing, chapters, cluster config, bloom | Lives forever |
+| **Global** | `0x06` | Applied index/timestamp, ledger info, signing, cluster config, bloom | Lives forever |
 
 See [Storage Drivers](storage-drivers.md) for the complete key schema.
+
+### Decision record — permanent history (EN-1945)
+
+History is permanent: every log, audit entry/item, and applied proposal stays
+in the main store for the life of the bucket. An earlier design segmented
+history into **chapters** that could be closed, sealed, archived to S3 cold
+storage, and purged from Pebble.
+
+- **Need.** Chapters existed to bound main-store growth. In practice the
+  archiver/sealer/restore/checker interplay was the largest source of
+  correctness findings (e.g. EN-1940: archived chapters vanished from the
+  read index on restart) while no deployment needed the retention boundary
+  yet.
+- **Decision.** Remove the subsystem entirely rather than gate it off: wire
+  arms, storage zones, runtime workers, operator configuration, and every
+  archive-conditional checker branch. The checker replays the full history
+  from genesis with no escape hatches; deleted-ledger cleanup happens in the
+  same apply that records the deletion.
+- **Trade-off accepted.** Main-store size grows monotonically with history.
+  Pebble compaction still reclaims overwritten and deleted keys, and live
+  query checkpoints are capped (EN-1501), but there is no retention
+  mechanism.
+- **Operational consequences.** Disk sizing must assume permanent history;
+  the storage schema bump (3 → 4) makes pre-removal stores refuse to boot.
+- **Revisit criteria.** Reintroduce a retention mechanism when a deployment's
+  main store approaches its disk budget on realistic volume, or when a
+  compliance requirement demands provable off-store archival. Any successor
+  must keep the checker free of partial-history escape hatches — that
+  permissiveness is what made chapters expensive.
 
 ### Attribute Loading Coordination
 
@@ -356,14 +385,11 @@ data/
 │   ├── raft-state.pb              # Snapshot state (protobuf)
 │   └── WAL_CREATION_COMPLETED     # WAL creation marker
 ├── spool                          # Spool file for sync
-├── seal/                          # Temporary seal checkpoint (chapter closing)
 └── runtime/                       # All ledgers data (Pebble)
     ├── live/                      # Active database
     ├── checkpoints/               # Checkpoint directories for snapshots
     └── CURRENT_CHECKPOINT         # Current checkpoint ID file
 ```
-
-The `seal/` directory contains a temporary Pebble checkpoint created when a chapter is being closed. It is used by the background Sealer to compute the sealing hash and is removed after the hash is computed. See [Chapters](../chapters/lifecycle.md) for details on the sealing process.
 
 ## Durability and Guarantees
 

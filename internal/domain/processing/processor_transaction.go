@@ -224,12 +224,6 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		return nil, pcvErr
 	}
 
-	// Get the current open chapter ID for the receipt
-	var chapterID uint64
-	if p, ok := s.GetCurrentOpenChapter(); ok {
-		chapterID = p.GetId()
-	}
-
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 			CreatedTransaction: &commonpb.CreatedTransaction{
@@ -244,7 +238,6 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 					PostCommitVolumes: postCommitVolumes,
 				},
 				AccountMetadata: accountMetadata,
-				ChapterId:       chapterID,
 			},
 		},
 	}, nil

@@ -27,7 +27,7 @@ func newAuditStore(t *testing.T, seqs ...uint64) *dal.Store {
 
 	batch := s.OpenWriteSession()
 	for _, seq := range seqs {
-		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).PutUint64(seq).Build()
+		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(seq).Build()
 		require.NoError(t, batch.SetProto(key, &auditpb.AuditEntry{Sequence: seq}))
 	}
 	require.NoError(t, batch.Commit())
@@ -145,18 +145,19 @@ func TestReadAuditEntriesPage_SeqSetReverseCursor(t *testing.T) {
 	require.Equal(t, []uint64{2, 1}, collectSeqs(t, c))
 }
 
-func TestReadAuditEntriesPage_SeqSetSkipsPurged(t *testing.T) {
+func TestReadAuditEntriesPage_SeqSetMissingEntryErrors(t *testing.T) {
 	t.Parallel()
 
-	// Zone only has 1 and 5; index references a purged seq 3.
+	// Zone only has 1 and 5; the index references seq 3, which is absent.
+	// Audit history is permanent, so an indexed sequence missing from the
+	// zone is a consistency failure, never a legitimate miss.
 	s := newAuditStore(t, 1, 5)
 	handle, err := s.NewReadHandle()
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	c, err := query.ReadAuditEntriesPage(logging.TestingContext(), handle, []uint64{1, 3, 5}, true, 0, ^uint64(0), 0, false, 10)
-	require.NoError(t, err)
-	require.Equal(t, []uint64{1, 5}, collectSeqs(t, c), "purged seq 3 is skipped")
+	_, err = query.ReadAuditEntriesPage(logging.TestingContext(), handle, []uint64{1, 3, 5}, true, 0, ^uint64(0), 0, false, 10)
+	require.ErrorContains(t, err, "reading audit entry 3")
 }
 
 func TestReadAuditEntriesPage_ZeroPageSizeReturnsAll(t *testing.T) {
@@ -190,22 +191,6 @@ func TestReadAuditEntriesPage_ZoneScanEmptyWindow(t *testing.T) {
 	c, err := query.ReadAuditEntriesPage(logging.TestingContext(), handle, nil, false, 5, 2, 0, false, 10)
 	require.NoError(t, err)
 	require.Empty(t, collectSeqs(t, c))
-}
-
-func TestReadAuditEntriesPage_SeqSetPurgeDoesNotShortenPage(t *testing.T) {
-	t.Parallel()
-
-	// Zone has 1,2,4,5 (seq 3 purged). Index references {1,2,3,4,5}, pageSize=3.
-	// Truncating candidates to [1,2,3] before the purge skip would return only
-	// {1,2}; the fix must fill the page with 4 -> {1,2,4}.
-	s := newAuditStore(t, 1, 2, 4, 5)
-	handle, err := s.NewReadHandle()
-	require.NoError(t, err)
-	defer func() { _ = handle.Close() }()
-
-	c, err := query.ReadAuditEntriesPage(logging.TestingContext(), handle, []uint64{1, 2, 3, 4, 5}, true, 0, ^uint64(0), 0, false, 3)
-	require.NoError(t, err)
-	require.Equal(t, []uint64{1, 2, 4}, collectSeqs(t, c), "purged seq 3 must not consume a page slot")
 }
 
 func TestReadAuditEntriesPage_SeqSetWindowFilter(t *testing.T) {

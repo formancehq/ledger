@@ -106,6 +106,32 @@ func (s *replayStore) deleteKey(key []byte) error {
 	return s.db.Delete(key, pebble.NoSync)
 }
 
+// deleteLedgerData removes every replay row scoped to the ledger, mirroring
+// the live apply's same-apply purge (state.DeleteLedgerData): after a
+// replayed DeleteLedger the expected projections must be as empty as the
+// store. All four prefixes use ledger-scoped canonical keys that start with
+// the fixed-size padded name block. Range tombstones are safe over the
+// transaction MERGE keys: operands below are shadowed, and any post-recreate
+// write starts with the absolute txOpCreate operand, so no fold ever needs a
+// base from beneath the tombstone.
+func (s *replayStore) deleteLedgerData(ledgerName string) error {
+	var pad [dal.LedgerNameFixedSize]byte
+
+	copy(pad[:], ledgerName)
+
+	for _, prefix := range []byte{replayPrefixVolume, replayPrefixMetadata, replayPrefixTransaction, replayPrefixReference} {
+		start := replayKey(prefix, pad[:])
+		end := replayKey(prefix, pad[:])
+		end[len(end)-1]++
+
+		if err := s.db.DeleteRange(start, end, pebble.NoSync); err != nil {
+			return fmt.Errorf("deleting replay rows (prefix=%c) for ledger %q: %w", prefix, ledgerName, err)
+		}
+	}
+
+	return nil
+}
+
 // addVolumeDelta merges a volume delta without reading existing state.
 func (s *replayStore) AddVolumeDelta(canonicalKey []byte, inputDelta, outputDelta *big.Int) error {
 	key := replayKey(replayPrefixVolume, canonicalKey)
@@ -288,26 +314,6 @@ func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timesta
 	copy(buf[off:], postingsBytes)
 
 	return s.db.Merge(key, buf, pebble.NoSync)
-}
-
-// SeedTransaction pre-loads a finalized transaction state (from the baseline
-// checkpoint) as the merge base for a key, so that post-archive delta operands
-// (SaveTxMetadata / DeleteTxMetadata / SetRevertedBy) combine on top of the full
-// pre-archive state. Under archiving the create log is purged, so without this
-// the replay would hold only the delta and compareTransactions would flag the
-// correct live state as tampered. Must be called before any delta operand for
-// the key so the merger sees the base first.
-func (s *replayStore) SeedTransaction(canonicalKey []byte, state *commonpb.TransactionState) error {
-	data, err := state.MarshalVT()
-	if err != nil {
-		return fmt.Errorf("marshaling seeded tx state: %w", err)
-	}
-
-	buf := make([]byte, 1+len(data))
-	buf[0] = txOpFinalized
-	copy(buf[1:], data)
-
-	return s.db.Merge(replayKey(replayPrefixTransaction, canonicalKey), buf, pebble.NoSync)
 }
 
 // SetTransactionReference records an expected reference→txID assignment.

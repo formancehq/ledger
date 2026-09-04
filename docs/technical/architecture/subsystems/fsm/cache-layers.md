@@ -45,7 +45,7 @@ These invariants are upheld by a layered stack between the order processor and t
  │       miss → return *ErrCoverageMiss                                  │
  │       hit  → forward to embedded *WriteSet.GetXxx                     │
  │                                                                       │
- │   Writes, counters, chapter ops, signing, etc. forward implicitly      │
+ │   Writes, counters, signing, etc. forward implicitly                   │
  │   via the embedded *WriteSet — no gate logic.                         │
  └─────────────────────────────────┬────────────────────────────────────┘
                                    │ inner.GetXxx / inner.PutXxx
@@ -143,7 +143,7 @@ The cache and Pebble are mutated by two paths during apply, both honoring the sa
  │ falls back Gen0→Gen1 │    │    Gen1-hit lazy-fabricates Gen0         │
  │ and Del lazy-        │    │    tombstone with Gen1's tag) →          │
  │ fabricates the       │    │    writeCacheTombstone → 0xFF gen0Byte   │
- │ Gen0 tombstone.      │    │ • SaveLedger / chapter writes / …         │
+ │ Gen0 tombstone.      │    │ • SaveLedger / signing writes / …         │
  │                      │    │                                          │
  │                      │    │ One Merge drains BOTH tech-update writes │
  │                      │    │ AND order writes — single atomic batch.  │
@@ -166,7 +166,7 @@ Each layer enforces exactly one invariant that the layer above doesn't have to t
 |-------|----------------------|
 | `processing.Scope` (interface) | Single handler-facing API. Hides the engine — a handler can call only what the interface exposes, never reach into `Derived`/`view` directly. |
 | `state.gatedScope` (decorator) | Coverage enforcement. `CheckCoverage(kind, canonical)` runs once at the top of every cache-attribute read, against a dense `coverageSlots` array selected by the `coverageSlotIndex` sub-attribute-byte lookup; an undeclared read returns `*ErrCoverageMiss`. The engine below stays ignorant of the gate. |
-| `state.WriteSet` (engine) | One proposal = one read/write context. Overlay/Merge mechanics, counters, chapter ops. No gate logic — pure engine. |
+| `state.WriteSet` (engine) | One proposal = one read/write context. Overlay/Merge mechanics, counters. No gate logic — pure engine. |
 | `DerivedKeyStore` | Same-batch read-your-own-writes. Handler *N* sees what handler *N-1* wrote without going through the view. |
 | `KeyStore` | Collision safety + tombstone visibility. `Entry.Tag` distinguishes U128 collisions; `Entry.Deleted` propagates deletes. |
 | `AttributeCache` | Generation isolation. Gen0 = current epoch, Gen1 = previous epoch retained for in-flight proposals. |

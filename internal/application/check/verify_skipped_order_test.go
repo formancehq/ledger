@@ -37,7 +37,7 @@ func TestVerifySkippedOrder_AllowedReasonEmitsNothing(t *testing.T) {
 		},
 	}
 
-	events := captureEvents(t, "L", 7, payload, expected, refs, false)
+	events := captureEvents(t, "L", 7, payload, expected, refs)
 	require.Empty(t, events, "an authorised skip with a satisfied correlator must emit nothing")
 }
 
@@ -63,7 +63,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsStrippedContext(t *testing.T
 
 	// Context entirely missing.
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
-	events := captureEvents(t, "L", 7, payload, expected, refs, false)
+	events := captureEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
 
 	// Only one field stripped.
@@ -76,7 +76,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsStrippedContext(t *testing.T
 		},
 	}
 
-	events = captureEvents(t, "L", 7, payload, expected, refs, false)
+	events = captureEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -89,7 +89,7 @@ func TestVerifySkippedOrder_RejectsKindInternal(t *testing.T) {
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_INVALID_EXECUTION_PLAN)
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -102,7 +102,7 @@ func TestVerifySkippedOrder_RejectsUnspecified(t *testing.T) {
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -115,7 +115,7 @@ func TestVerifySkippedOrder_RejectsReasonOutsideWhitelist(t *testing.T) {
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS)
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -143,7 +143,7 @@ func TestVerifySkippedOrder_RejectsWhitelistedReasonWithoutReplayBranch(t *testi
 	}
 
 	payload := skippedPayload(reason)
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -152,7 +152,7 @@ func TestVerifySkippedOrder_RejectsMissingExpectedEntry(t *testing.T) {
 	t.Parallel()
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
-	events := captureEvents(t, "L", 7, payload, nil, nil, false)
+	events := captureEvents(t, "L", 7, payload, nil, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -165,7 +165,7 @@ func TestVerifySkippedOrder_IgnoresNonSkipPayloads(t *testing.T) {
 			CreatedTransaction: &commonpb.CreatedTransaction{},
 		},
 	}
-	events := captureEvents(t, "L", 7, payload, nil, nil, false)
+	events := captureEvents(t, "L", 7, payload, nil, nil)
 	require.Empty(t, events)
 }
 
@@ -245,14 +245,13 @@ func TestVerifyExpectedSkipNotElided_NoExpectedEntryStaysSilent(t *testing.T) {
 	require.Empty(t, events)
 }
 
-// TestVerifyExpectedSkipNotElided_ArchiveDoesNotSuppressLiveProof pins the
-// fix for a false-negative in the inverse direction: when archived chapters
-// exist BUT the live audit range already proves the reference was claimed
-// before the skip's sequence (firstSeenSeq < seq), the elision is a
-// hash-chain-proven tamper — the archive-boundary permissiveness must NOT
-// downgrade it to a silent pass. The `!claimed || firstSeenSeq >= seq`
-// guard above already covers the genuinely archive-only case.
-func TestVerifyExpectedSkipNotElided_ArchiveDoesNotSuppressLiveProof(t *testing.T) {
+// TestVerifyExpectedSkipNotElided_FiresOnChainProvenClaim drives the
+// inverse direction through the outer dispatch: the audit range proves the
+// reference was claimed before the skip's sequence (firstSeenSeq < seq), so
+// a non-skip projection at that sequence is a hash-chain-proven elision.
+// The `!claimed || firstSeenSeq >= seq` guard stays quiet only when no such
+// proof exists.
+func TestVerifyExpectedSkipNotElided_FiresOnChainProvenClaim(t *testing.T) {
 	t.Parallel()
 
 	expected := map[uint64]*expectedSkippableOrder{
@@ -272,17 +271,15 @@ func TestVerifyExpectedSkipNotElided_ArchiveDoesNotSuppressLiveProof(t *testing.
 		},
 	}
 
-	// Dispatched via the outer elision check — the archive flag is not an
-	// input to verifyExpectedSkipNotElided anymore (see #1 fix).
+	// Dispatched via the outer elision check.
 	events := captureDispatchEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
 // TestVerifyExpectedSkipNotElided_PermissiveWhenReferenceUnknown pins the
-// legitimate archive-boundary permissiveness path: when the reference is
-// NOT in chainBoundReferences (no live proof of a prior claim), the
-// inverse check stays quiet — the prior claim may live in a purged
-// chapter we cannot re-verify, and the forward direction still catches a
+// permissiveness path: when the reference is NOT in chainBoundReferences,
+// the chain holds no proof of a prior claim, so the inverse check has no
+// elision to prove and stays quiet — the forward direction still catches a
 // forged skip.
 func TestVerifyExpectedSkipNotElided_PermissiveWhenReferenceUnknown(t *testing.T) {
 	t.Parallel()
@@ -291,7 +288,7 @@ func TestVerifyExpectedSkipNotElided_PermissiveWhenReferenceUnknown(t *testing.T
 		7: {
 			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
 			ledger:    "L",
-			reference: "ref-archived-only",
+			reference: "ref-unclaimed",
 		},
 	}
 
@@ -305,13 +302,11 @@ func TestVerifyExpectedSkipNotElided_PermissiveWhenReferenceUnknown(t *testing.T
 	require.Empty(t, events, "the inverse check must stay permissive when the reference is not visible in the live chain")
 }
 
-// TestVerifyExpectedSkipNotElided_MetadataBaselineCoveredAbsenceIsDefinitive
-// pins the #12 fix: for METADATA_NOT_FOUND, an empty LIVE metadata timeline
-// under archived chapters is ambiguous ONLY when the baseline fold could not
-// cover the archived range. When the baseline IS available it already covers
-// the archive, so an empty live timeline is definitive proof of absence — a
-// non-skip projection at that seq is a proven elision and must be flagged.
-func TestVerifyExpectedSkipNotElided_MetadataBaselineCoveredAbsenceIsDefinitive(t *testing.T) {
+// TestVerifyExpectedSkipNotElided_MetadataAbsenceIsDefinitive pins that for
+// METADATA_NOT_FOUND an empty metadata timeline is definitive proof of
+// absence — the audit chain covers the whole history — so a non-skip
+// projection at that seq is a proven elision and must be flagged.
+func TestVerifyExpectedSkipNotElided_MetadataAbsenceIsDefinitive(t *testing.T) {
 	t.Parallel()
 
 	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
@@ -324,35 +319,21 @@ func TestVerifyExpectedSkipNotElided_MetadataBaselineCoveredAbsenceIsDefinitive(
 		},
 	}
 
-	// Empty live metadata timeline: the key was never Set/Deleted in the
-	// live audit range (mutationStateWithWitness → present=false,
-	// witnessed=false).
+	// Empty metadata timeline: the key was never Set/Deleted in the audit
+	// range (mutationStateWithWitness → present=false).
 	chainBound := newChainBoundState()
 
-	const hasArchivedChapters = true
-
-	// Baseline UNAVAILABLE → ambiguous, stay permissive (an archived Set we
-	// cannot see could have made the delete succeed).
-	var permissive []*servicepb.CheckStoreEvent
-	verifyExpectedSkipNotElided("L", 7, expected, chainBound, hasArchivedChapters, false, func(e *servicepb.CheckStoreEvent) {
-		permissive = append(permissive, e)
-	})
-	require.Empty(t, permissive, "baseline unavailable: empty-live-under-archives must stay permissive")
-
-	// Baseline AVAILABLE → the baseline covers the archive; empty-live is
-	// definitive absence, so the elision must be flagged.
 	var strict []*servicepb.CheckStoreEvent
-	verifyExpectedSkipNotElided("L", 7, expected, chainBound, hasArchivedChapters, true, func(e *servicepb.CheckStoreEvent) {
+	verifyExpectedSkipNotElided("L", 7, expected, chainBound, func(e *servicepb.CheckStoreEvent) {
 		strict = append(strict, e)
 	})
 	requireInvalidSkipEvent(t, strict, 7)
 }
 
-// TestVerifyExpectedSkipNotElided_AccountTypeBaselineCoveredAbsenceIsDefinitive
-// is the account-type sibling of the metadata test above (ACCOUNT_TYPE_NOT_FOUND):
-// empty live account-type timeline under archives is ambiguous without a
-// baseline but definitive once the baseline covers the archived range.
-func TestVerifyExpectedSkipNotElided_AccountTypeBaselineCoveredAbsenceIsDefinitive(t *testing.T) {
+// TestVerifyExpectedSkipNotElided_AccountTypeAbsenceIsDefinitive is the
+// account-type sibling of the metadata test above (ACCOUNT_TYPE_NOT_FOUND):
+// an empty account-type timeline is definitive absence.
+func TestVerifyExpectedSkipNotElided_AccountTypeAbsenceIsDefinitive(t *testing.T) {
 	t.Parallel()
 
 	reason := commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
@@ -365,20 +346,12 @@ func TestVerifyExpectedSkipNotElided_AccountTypeBaselineCoveredAbsenceIsDefiniti
 		},
 	}
 
-	// Empty live account-type timeline: ACCOUNT_TYPE_NOT_FOUND expects the
-	// type absent (mustBePresent=false), which the empty timeline satisfies.
+	// Empty account-type timeline: ACCOUNT_TYPE_NOT_FOUND expects the type
+	// absent (mustBePresent=false), which the empty timeline satisfies.
 	chainBound := newChainBoundState()
 
-	const hasArchivedChapters = true
-
-	var permissive []*servicepb.CheckStoreEvent
-	verifyExpectedSkipNotElided("L", 7, expected, chainBound, hasArchivedChapters, false, func(e *servicepb.CheckStoreEvent) {
-		permissive = append(permissive, e)
-	})
-	require.Empty(t, permissive, "baseline unavailable: empty-live-under-archives must stay permissive")
-
 	var strict []*servicepb.CheckStoreEvent
-	verifyExpectedSkipNotElided("L", 7, expected, chainBound, hasArchivedChapters, true, func(e *servicepb.CheckStoreEvent) {
+	verifyExpectedSkipNotElided("L", 7, expected, chainBound, func(e *servicepb.CheckStoreEvent) {
 		strict = append(strict, e)
 	})
 	requireInvalidSkipEvent(t, strict, 7)
@@ -400,7 +373,7 @@ func TestVerifySkippedOrder_RejectsNilInnerOrderSkipped(t *testing.T) {
 
 	// Fires regardless of whether the seq is expected — a nil inner message
 	// is always an invalid projection, not just when a skip was authorised.
-	events := captureEvents(t, "L", 7, payload, nil, nil, false)
+	events := captureEvents(t, "L", 7, payload, nil, nil)
 	requireInvalidSkipEvent(t, events, 7)
 
 	expected := map[uint64]*expectedSkippableOrder{
@@ -411,7 +384,7 @@ func TestVerifySkippedOrder_RejectsNilInnerOrderSkipped(t *testing.T) {
 		},
 	}
 
-	events = captureEvents(t, "L", 7, payload, expected, nil, false)
+	events = captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -438,7 +411,7 @@ func TestDispatchElisionCheck_FiresOnMalformedPayloadShapes(t *testing.T) {
 
 	dispatchWithLog := func(log *commonpb.Log) []*servicepb.CheckStoreEvent {
 		events := []*servicepb.CheckStoreEvent{}
-		dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), false, false, func(e *servicepb.CheckStoreEvent) {
+		dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), func(e *servicepb.CheckStoreEvent) {
 			events = append(events, e)
 		})
 
@@ -500,7 +473,7 @@ func TestDispatchElisionCheck_SilentOnValidSkip(t *testing.T) {
 	}
 
 	events := []*servicepb.CheckStoreEvent{}
-	dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), false, false, func(e *servicepb.CheckStoreEvent) {
+	dispatchElisionCheck(7, log, expected, chainBoundStateFromRefs(refs), func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -524,7 +497,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsUnclaimedReference(t *testin
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -546,7 +519,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsLaterClaim(t *testing.T) {
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
-	events := captureEvents(t, "L", 7, payload, expected, refs, false)
+	events := captureEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -564,7 +537,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsEmptyReference(t *testing.T)
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -586,7 +559,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsLedgerMismatch(t *testing.T)
 	}
 
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
-	events := captureEvents(t, "L-projection", 7, payload, expected, refs, false)
+	events := captureEvents(t, "L-projection", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -618,7 +591,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextReference(t *
 		},
 	}
 
-	events := captureEvents(t, "L", 7, payload, expected, refs, false)
+	events := captureEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -647,7 +620,7 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedContextLedger(t *tes
 		},
 	}
 
-	events := captureEvents(t, "L", 7, payload, expected, refs, false)
+	events := captureEvents(t, "L", 7, payload, expected, refs)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -685,7 +658,7 @@ func TestVerifySkippedOrder_ReferenceConflictAcceptsMatchingContext(t *testing.T
 		},
 	}
 
-	events := captureEventsState(t, "L", 7, payload, expected, cb, false)
+	events := captureEventsState(t, "L", 7, payload, expected, cb)
 	require.Empty(t, events, "matching context (including existingTransactionId) must round-trip")
 }
 
@@ -724,14 +697,14 @@ func TestVerifySkippedOrder_ReferenceConflictRejectsTamperedExistingTxID(t *test
 		},
 	}
 
-	events := captureEventsState(t, "L", 7, payload, expected, cb, false)
+	events := captureEventsState(t, "L", 7, payload, expected, cb)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
 // TestVerifySkippedOrder_ReferenceConflictPermissiveWhenOwnerUnknown pins the
 // permissive fallback: when the owning tx id is not re-derivable (no entry in
-// referenceTxIDs — e.g. a live claim on an unanchored/archived-CreateLedger
-// ledger, or a purged claim with no baseline), the verifier must NOT pin
+// referenceTxIDs — e.g. a claim on an unanchored ledger, where the tx-id
+// counter is unreliable), the verifier must NOT pin
 // existingTransactionId. Pinning it there would false-positive on a
 // legitimate skip whose owner the checker genuinely cannot reconstruct.
 func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenOwnerUnknown(t *testing.T) {
@@ -764,155 +737,16 @@ func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenOwnerUnknown(t *testi
 		},
 	}
 
-	events := captureEventsState(t, "L", 7, payload, expected, cb, false)
+	events := captureEventsState(t, "L", 7, payload, expected, cb)
 	require.Empty(t, events, "must stay permissive on existingTransactionId when the owner is not re-derivable")
-}
-
-// TestVerifySkippedOrder_ReferenceConflictPermissiveWhenArchived pins the
-// archive boundary escape hatch: when archived chapters exist AND the
-// baseline references could not be loaded, a missing claim cannot be
-// distinguished from a purged one — the verifier stays permissive.
-// Conversely, when a baseline is available (callers pass
-// archivedWithoutBaseline=false), the fold has already injected
-// archived references into chainBoundReferences, so a missing reference
-// IS fabrication and must fail loud.
-//
-// The payload provides matching context fields so the check exercises
-// the reference-claim lookup path, not the (independently verified)
-// context-field validation.
-func TestVerifySkippedOrder_ReferenceConflictPermissiveWhenArchived(t *testing.T) {
-	t.Parallel()
-
-	expected := map[uint64]*expectedSkippableOrder{
-		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
-			ledger:    "L",
-			reference: "ref-archived",
-		},
-	}
-
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-				Context: map[string]string{
-					"ledger":    "L",
-					"reference": "ref-archived",
-				},
-			},
-		},
-	}
-
-	// archivedWithoutBaseline=false (no archive OR baseline available) →
-	// strict: missing claim is fabrication.
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
-	requireInvalidSkipEvent(t, events, 7)
-
-	// archivedWithoutBaseline=true (archive AND no baseline) → permissive:
-	// the claim may live in a purged chapter we cannot verify.
-	events = captureEvents(t, "L", 7, payload, expected, nil, true)
-	require.Empty(t, events, "missing-claim skips must pass only when archived chapters AND no baseline")
-}
-
-// TestVerifySkippedOrder_ContextTamperingCaughtEvenUnderArchiveEscape pins
-// the fix for a tampering vector where the archive-escape (missing claim
-// + archived chapters) would suppress the context-field checks. The
-// expected `ledger` and `reference` are chain-bound and re-derivable
-// regardless of whether the prior claim is visible in the live chain,
-// so their validation must run BEFORE the archive escape.
-func TestVerifySkippedOrder_ContextTamperingCaughtEvenUnderArchiveEscape(t *testing.T) {
-	t.Parallel()
-
-	expected := map[uint64]*expectedSkippableOrder{
-		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
-			ledger:    "L",
-			reference: "ref-archived",
-		},
-	}
-
-	// Context "reference" is tampered — should be "ref-archived" per the
-	// chain-bound order. archivedWithoutBaseline=true would previously
-	// early-return before the context check.
-	tamperedReference := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-				Context: map[string]string{
-					"ledger":    "L",
-					"reference": "ref-forged",
-				},
-			},
-		},
-	}
-
-	events := captureEvents(t, "L", 7, tamperedReference, expected, nil, true)
-	requireInvalidSkipEvent(t, events, 7)
-
-	// Same for a tampered ledger field.
-	tamperedLedger := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-				Context: map[string]string{
-					"ledger":    "L-forged",
-					"reference": "ref-archived",
-				},
-			},
-		},
-	}
-
-	// Note: expected.ledger != log's ledger triggers the top-level ledger
-	// cross-check first (line ~2002). To isolate the context-field path,
-	// keep expected.ledger==log ledger and only forge the context slot.
-	events = captureEvents(t, "L", 7, tamperedLedger, expected, nil, true)
-	requireInvalidSkipEvent(t, events, 7)
-}
-
-// TestVerifySkippedOrder_ReferenceConflictBaselineSeededReference pins the
-// fold semantic: when foldBaselineReferences seeds an archived reference
-// with sentinel sequence 0, verifySkippedOrder accepts the live skip
-// against it — sentinel 0 always precedes the skip's live seq, so the
-// firstSeenSeq < seq guard passes.
-func TestVerifySkippedOrder_ReferenceConflictBaselineSeededReference(t *testing.T) {
-	t.Parallel()
-
-	expected := map[uint64]*expectedSkippableOrder{
-		7: {
-			reasons:   []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
-			ledger:    "L",
-			reference: "ref-from-baseline",
-		},
-	}
-	// Sentinel 0 represents a reference folded from baseline (archive).
-	refs := map[string]map[string]uint64{
-		"L": {"ref-from-baseline": 0},
-	}
-
-	payload := &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_OrderSkipped{
-			OrderSkipped: &commonpb.OrderSkippedLog{
-				Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-				Context: map[string]string{
-					"ledger":    "L",
-					"reference": "ref-from-baseline",
-				},
-			},
-		},
-	}
-
-	// archivedWithoutBaseline=false (baseline was available and folded):
-	// the sentinel-seeded reference is enough to satisfy the check.
-	events := captureEvents(t, "L", 7, payload, expected, refs, false)
-	require.Empty(t, events)
 }
 
 // TestVerifySkippedOrder_HandlesNilExpectedMaps guards against the panic
 // path NumaryBot flagged on b6e8fd064: a corrupted store with a readable
-// baseline triggers a hash mismatch in verifyAuditHashChain, which used
-// to return nil maps; foldBaselineReferences then assigned into a nil
-// chainBoundReferences and crashed. The fix returns the partially
-// populated maps from verifyAuditHashChain — this test pins that
+// audit range triggers a hash mismatch in verifyAuditHashChain, which
+// used to return nil maps that a downstream fold then assigned into and
+// crashed. The fix returns the partially populated maps from
+// verifyAuditHashChain — this test pins that
 // verifySkippedOrder itself stays panic-safe when the expected* maps
 // are empty/nil, since Check() keeps running after a chain break and
 // may still encounter skip logs.
@@ -922,7 +756,7 @@ func TestVerifySkippedOrder_HandlesNilExpectedMaps(t *testing.T) {
 	payload := skippedPayload(commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 
 	require.NotPanics(t, func() {
-		captureEvents(t, "L", 7, payload, nil, nil, false)
+		captureEvents(t, "L", 7, payload, nil, nil)
 	})
 }
 
@@ -991,7 +825,7 @@ func TestCollectExpectedSkippable_RecordsReferencesFromChain(t *testing.T) {
 // The contract the caller depends on is positional: element i belongs to items[i],
 // nil when those bytes did not decode. A compacted or reordered slice would pair
 // orders with the wrong items, and since the signing fold applies its own filters
-// (archive boundary, fresh-log window) it cannot re-derive the pairing.
+// (fresh-log window) it cannot re-derive the pairing.
 //
 // The elements must survive this function's OWN filters — a failure-side item, a
 // legacy out-of-range reference and a duplicate sequence are all skipped for the
@@ -1144,7 +978,7 @@ func TestCollectExpectedSkippable_RemoveAccountTypeEmptyNameFlagsKind(t *testing
 	// a different verdict from the presence check, but never the
 	// misclassification error.)
 	payload := skippedPayloadWithContext(reason, map[string]string{"name": ""})
-	events := captureEventsState(t, "L", 7, payload, expectedSkip, chainBound, false)
+	events := captureEventsState(t, "L", 7, payload, expectedSkip, chainBound)
 	for _, e := range events {
 		require.NotContains(t, e.GetError().GetMessage(), "is not an AccountType order",
 			"empty-name RemoveAccountType must not be misclassified as a non-AccountType order")
@@ -1164,7 +998,7 @@ func buildCreateTxWithRefAndAccountMetaItem(t *testing.T, ledger, reference, acc
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{
 						// Whitelist CONFLICT so the create is skip-tolerant: the
-						// archive-uncertain suppression only applies to conflict-
+						// skip-uncertain suppression only applies to conflict-
 						// skippable creates (a non-skippable create hard-fails on a
 						// prior claim, never reaching a success item).
 						SkippableReasons: []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
@@ -1188,19 +1022,19 @@ func buildCreateTxWithRefAndAccountMetaItem(t *testing.T, ledger, reference, acc
 	return &auditpb.AuditItem{SerializedOrder: body, LogSequence: logSeq}
 }
 
-// TestRecordChainBoundMutations_ArchiveOnlyConflictDoesNotSeedAccountMetadata
+// TestRecordChainBoundMutations_UncertainConflictDoesNotSeedAccountMetadata
 // pins finding checker.go:2205: on an UNANCHORED ledger (no CreateLedger in
-// the live range, no baseline fold) a CreateTransaction whose reference
-// conflict is only provable from a purged chapter has an unprovable skip
-// status — chainBoundCreateTxSkipped returns false because the prior claim
-// is invisible. Its account_metadata must NOT be seeded as present, otherwise
+// the audit range) a conflict-skippable CreateTransaction with no visible
+// prior claim has an unprovable skip status —
+// chainBoundCreateTxApplicationUncertain reports indeterminate. Its
+// account_metadata must NOT be seeded as present, otherwise
 // a later legitimate METADATA_NOT_FOUND skip on that key is false-positived
 // as INVALID_SKIP. The create's application is unproven → the timeline stays
 // silent and the skip stays permissive.
-func TestRecordChainBoundMutations_ArchiveOnlyConflictDoesNotSeedAccountMetadata(t *testing.T) {
+func TestRecordChainBoundMutations_UncertainConflictDoesNotSeedAccountMetadata(t *testing.T) {
 	t.Parallel()
 
-	// Unanchored ledger: no CreateLedger item, no baseline seeding.
+	// Unanchored ledger: no CreateLedger item in the range.
 	items := []*auditpb.AuditItem{
 		buildCreateTxWithRefAndAccountMetaItem(t, "L", "ref-1", "alice", "role", 50),
 	}
@@ -1212,7 +1046,7 @@ func TestRecordChainBoundMutations_ArchiveOnlyConflictDoesNotSeedAccountMetadata
 	// The account metadata timeline for (alice, role) must be empty: the
 	// create's application could not be proven.
 	require.Empty(t, chainBound.metadata["L"][metadataTimelineTarget(false, "alice")]["role"],
-		"unprovable archive-only-conflict create must not seed account metadata as present")
+		"unprovable conflict-skippable create must not seed account metadata as present")
 
 	// A forged METADATA_NOT_FOUND skip at a later seq therefore stays
 	// permissive (the key is not asserted present).
@@ -1226,7 +1060,7 @@ func TestRecordChainBoundMutations_ArchiveOnlyConflictDoesNotSeedAccountMetadata
 		},
 	}
 	payload := skippedPayloadWithContext(reason, map[string]string{"target": "alice", "key": "role"})
-	events := captureEventsState(t, "L", 60, payload, expected, chainBound, false)
+	events := captureEventsState(t, "L", 60, payload, expected, chainBound)
 	require.Empty(t, events, "no false INVALID_SKIP when the create's application is unproven")
 }
 
@@ -1271,7 +1105,7 @@ func TestRecordChainBoundMutations_AnchoredCreateSeedsAccountMetadata(t *testing
 		},
 	}
 	payload := skippedPayloadWithContext(reason, map[string]string{"target": "alice", "key": "role"})
-	events := captureEventsState(t, "L", 60, payload, expected, chainBound, false)
+	events := captureEventsState(t, "L", 60, payload, expected, chainBound)
 	requireInvalidSkipEvent(t, events, 60)
 }
 
@@ -1365,7 +1199,7 @@ func TestVerifySkippedOrder_MirrorCreatedTxMetadataSeedsTimeline(t *testing.T) {
 				"key":    tc.key,
 			})
 
-			events := captureEventsState(t, "L", 60, payload, expected, chainBound, false)
+			events := captureEventsState(t, "L", 60, payload, expected, chainBound)
 			requireInvalidSkipEvent(t, events, 60)
 		})
 	}
@@ -1408,7 +1242,7 @@ func TestVerifySkippedOrder_MirrorCreatedTxUnrelatedKeyStillSkippable(t *testing
 		"key":    "other",
 	})
 
-	events := captureEventsState(t, "L", 60, payload, expected, chainBound, false)
+	events := captureEventsState(t, "L", 60, payload, expected, chainBound)
 	require.Empty(t, events, "a key the mirror tx never carried is genuinely absent → legitimate skip")
 }
 
@@ -1547,7 +1381,7 @@ func TestRecordChainBoundMutations_LiveCreateTxSeedsTxMetadataNamespace(t *testi
 		},
 	}
 	payload := skippedPayloadWithContext(reason, map[string]string{"target": "1", "key": "txkey"})
-	events := captureEventsState(t, "L", 60, payload, expected, chainBound, false)
+	events := captureEventsState(t, "L", 60, payload, expected, chainBound)
 	requireInvalidSkipEvent(t, events, 60)
 }
 
@@ -1608,7 +1442,7 @@ func TestCollectExpectedSkippable_DedupesFoldOfLegacyDupKeyReplay(t *testing.T) 
 		},
 	}
 	payload := skippedPayloadWithContext(reason, map[string]string{"target": "1", "key": "txkey"})
-	events := captureEventsState(t, "L", 60, payload, expected, chainBound, false)
+	events := captureEventsState(t, "L", 60, payload, expected, chainBound)
 	requireInvalidSkipEvent(t, events, 60)
 }
 
@@ -1627,11 +1461,10 @@ func captureEvents(
 	payload *commonpb.LedgerLogPayload,
 	expected map[uint64]*expectedSkippableOrder,
 	refs map[string]map[string]uint64,
-	hasArchivedChapters bool,
 ) []*servicepb.CheckStoreEvent {
 	t.Helper()
 
-	return captureEventsState(t, ledger, seq, payload, expected, chainBoundStateFromRefs(refs), hasArchivedChapters)
+	return captureEventsState(t, ledger, seq, payload, expected, chainBoundStateFromRefs(refs))
 }
 
 // captureEventsState is captureEvents' extended variant: tests that need
@@ -1645,17 +1478,12 @@ func captureEventsState(
 	payload *commonpb.LedgerLogPayload,
 	expected map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
-	hasArchivedChapters bool,
 ) []*servicepb.CheckStoreEvent {
 	t.Helper()
 
 	events := []*servicepb.CheckStoreEvent{}
 
-	// Baseline default: assume neither the baseline reference set nor
-	// the baseline chain-state fold ran. Tests that need to exercise
-	// the baseline-covered paths build the state directly and call
-	// verifySkippedOrder inline with the appropriate flags.
-	verifySkippedOrder(ledger, seq, payload, expected, chainBound, hasArchivedChapters, false, false, func(e *servicepb.CheckStoreEvent) {
+	verifySkippedOrder(ledger, seq, payload, expected, chainBound, func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -1723,7 +1551,7 @@ func captureDispatchEvents(
 
 	events := []*servicepb.CheckStoreEvent{}
 
-	dispatchElisionCheck(seq, log, expected, chainBoundStateFromRefs(refs), false, false, func(e *servicepb.CheckStoreEvent) {
+	dispatchElisionCheck(seq, log, expected, chainBoundStateFromRefs(refs), func(e *servicepb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -1776,7 +1604,7 @@ func TestVerifySkippedOrder_RevertAlreadyRevertedAcceptsMatchingContext(t *testi
 	chainBound.reverted["L"] = map[uint64]uint64{42: 3} // reverted at seq 3, well before 7
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"transactionId": "42"})
-	events := captureEventsState(t, "L", 7, payload, expected, chainBound, false)
+	events := captureEventsState(t, "L", 7, payload, expected, chainBound)
 	require.Empty(t, events, "matching correlator + earlier revert must not emit any INVALID_SKIP")
 }
 
@@ -1797,7 +1625,7 @@ func TestVerifySkippedOrder_RevertAlreadyRevertedRejectsWithoutEarlierRevert(t *
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"transactionId": "42"})
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -1814,7 +1642,7 @@ func TestVerifySkippedOrder_RevertAlreadyRevertedRejectsMissingCorrelator(t *tes
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"transactionId": "42"})
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -1834,7 +1662,7 @@ func TestVerifySkippedOrder_RevertAlreadyRevertedRejectsTamperedTxID(t *testing.
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"transactionId": "13"})
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -1861,7 +1689,7 @@ func TestVerifySkippedOrder_MetadataNotFoundAcceptsMatchingContext(t *testing.T)
 		"target": "alice",
 		"key":    "role",
 	})
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	require.Empty(t, events)
 }
 
@@ -1892,7 +1720,7 @@ func TestVerifySkippedOrder_MetadataNotFoundRejectsWhenKeyWasPresent(t *testing.
 		"target": "alice",
 		"key":    "role",
 	})
-	events := captureEventsState(t, "L", 7, payload, expected, chainBound, false)
+	events := captureEventsState(t, "L", 7, payload, expected, chainBound)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -1917,7 +1745,7 @@ func TestVerifySkippedOrder_MetadataNotFoundRejectsTamperedKey(t *testing.T) {
 		"target": "alice",
 		"key":    "team",
 	})
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -1941,7 +1769,7 @@ func TestVerifySkippedOrder_MetadataNotFoundRejectsTamperedTarget(t *testing.T) 
 		"target": "bob",
 		"key":    "role",
 	})
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -1957,7 +1785,7 @@ func TestVerifySkippedOrder_MetadataNotFoundRejectsMissingCorrelator(t *testing.
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"target": "alice", "key": "role"})
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -1983,7 +1811,7 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsAcceptsMatchingContext(t *te
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
-	events := captureEventsState(t, "L", 7, payload, expected, chainBound, false)
+	events := captureEventsState(t, "L", 7, payload, expected, chainBound)
 	require.Empty(t, events)
 }
 
@@ -2004,7 +1832,7 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenAbsent(t *testing
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -2024,7 +1852,7 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsTamperedName(t *testi
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"name": "vendor"})
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -2047,7 +1875,7 @@ func TestVerifySkippedOrder_AccountTypeNotFoundAcceptsMatchingContext(t *testing
 
 	// Empty accountTypes timeline → absent by default.
 	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	require.Empty(t, events)
 }
 
@@ -2074,7 +1902,7 @@ func TestVerifySkippedOrder_AccountTypeNotFoundRejectsWhenPresent(t *testing.T) 
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
-	events := captureEventsState(t, "L", 7, payload, expected, chainBound, false)
+	events := captureEventsState(t, "L", 7, payload, expected, chainBound)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -2089,7 +1917,7 @@ func TestVerifySkippedOrder_AccountTypeNotFoundRejectsMissingCorrelator(t *testi
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
-	events := captureEvents(t, "L", 7, payload, expected, nil, false)
+	events := captureEvents(t, "L", 7, payload, expected, nil)
 	requireInvalidSkipEvent(t, events, 7)
 }
 
@@ -2307,17 +2135,16 @@ func TestVerifySkippedOrder_LedgerMismatchAcrossReasons(t *testing.T) {
 			// Projection claims "tampered-L" while the chain-bound
 			// order targets "audit-L". Every reason must fire.
 			payload := skippedPayloadWithContext(tc.reason, tc.context)
-			events := captureEventsState(t, "tampered-L", 7, payload, expected, cb, false)
+			events := captureEventsState(t, "tampered-L", 7, payload, expected, cb)
 			requireInvalidSkipEvent(t, events, 7)
 		})
 	}
 }
 
 // TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenLiveRemoved
-// closes the archive-escape hole where a live RemoveAccountType before
-// seq is positive proof of absence — archives cannot undo a live
-// removal, so the escape must NOT apply. Live-witnessed absence is
-// authoritative.
+// pins that a witnessed RemoveAccountType before seq is positive proof of
+// absence, so an ALREADY_EXISTS skip at seq is invalid. Witnessed absence
+// is authoritative.
 func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenLiveRemoved(t *testing.T) {
 	t.Parallel()
 
@@ -2340,52 +2167,9 @@ func TestVerifySkippedOrder_AccountTypeAlreadyExistsRejectsWhenLiveRemoved(t *te
 	}
 
 	payload := skippedPayloadWithContext(reason, map[string]string{"name": "customer"})
-	// hasArchivedChapters=true — the escape must NOT trigger because
-	// live has positive evidence of absence via the Remove at seq 5.
-	events := captureEventsState(t, "L", 7, payload, expected, cb, true)
+	// The chain has positive evidence of absence via the Remove at seq 5.
+	events := captureEventsState(t, "L", 7, payload, expected, cb)
 	requireInvalidSkipEvent(t, events, 7)
-}
-
-// TestVerifySkippedOrder_MetadataNotFoundPermissiveOnArchivedTxIDLedger
-// pins the "archived-history ledger + tx-id target" safety net: when
-// the ledger's CreateLedger was NOT observed in live (chain scan opened
-// past the ledger's history), the nextTxID counter is defaulted and
-// tx-scoped metadata was NOT recorded. The verifier stays permissive
-// for tx-id-scoped METADATA_NOT_FOUND skips under archives on such
-// ledgers — a strict check would produce a false-positive INVALID_SKIP
-// on legitimate skips. Account-address targets remain strictly
-// verified because their recording bypasses the counter.
-func TestVerifySkippedOrder_MetadataNotFoundPermissiveOnArchivedTxIDLedger(t *testing.T) {
-	t.Parallel()
-
-	reason := commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
-	expected := map[uint64]*expectedSkippableOrder{
-		7: {
-			reasons:            []commonpb.ErrorReason{reason},
-			ledger:             "L",
-			metadataTarget:     "101", // tx-id-shaped target
-			metadataKey:        "foo",
-			metadataTargetIsTx: true,
-		},
-	}
-
-	// Bare state: ledgerCreationSeen is empty (archived history), no
-	// metadata recorded for target="101". Under archives the tx-id
-	// verification should stay permissive.
-	cb := newChainBoundState()
-
-	payload := skippedPayloadWithContext(reason, map[string]string{"target": "101", "key": "foo"})
-	events := captureEventsState(t, "L", 7, payload, expected, cb, true)
-	require.Empty(t, events, "tx-id target on archived-history ledger must be permissive")
-
-	// Contrast: same setup WITHOUT archives should NOT stay permissive
-	// — my check would otherwise silently hide real forgeries on
-	// live-only ledgers.
-	events = captureEventsState(t, "L", 7, payload, expected, cb, false)
-	// present=false, no fire on "was present". Falls through with no
-	// error. Non-archives behavior is unchanged from the pre-fix
-	// baseline for empty timelines.
-	require.Empty(t, events)
 }
 
 // TestCollectExpectedSkippable_LegacyReplayReferenceFoldedOnce pins the
@@ -2412,7 +2196,6 @@ func TestCollectExpectedSkippable_LegacyReplayReferenceFoldedOnce(t *testing.T) 
 	// deterministically. Seed nextTxID=1 as CreateLedger would.
 	chainBound := newChainBoundState()
 	chainBound.ledgerCreationSeen["L"] = struct{}{}
-	chainBound.ledgerCreationSeenLive["L"] = struct{}{}
 	chainBound.nextTxID["L"] = 1
 
 	expectedSkip := make(map[uint64]*expectedSkippableOrder)
@@ -2436,7 +2219,7 @@ func TestCollectExpectedSkippable_LegacyReplayReferenceFoldedOnce(t *testing.T) 
 		20: {reasons: []commonpb.ErrorReason{reason}, ledger: "L", metadataTarget: "alice", metadataKey: "role"},
 	}
 	payload := skippedPayloadWithContext(reason, map[string]string{"target": "alice", "key": "role"})
-	events := captureEventsState(t, "L", 20, payload, expected, chainBound, false)
+	events := captureEventsState(t, "L", 20, payload, expected, chainBound)
 	requireInvalidSkipEvent(t, events, 20)
 }
 
@@ -2479,15 +2262,15 @@ func buildCreateTxNonSkippableWithAccountMeta(t *testing.T, ledger, reference, a
 // pins finding checker.go:2295. A CreateTransaction that did NOT whitelist
 // TRANSACTION_REFERENCE_CONFLICT cannot be converted to an OrderSkipped — if
 // it hit a prior claim the FSM HARD-FAILS (no success item). So its presence
-// in a success item proves it applied; the archive-uncertain suppression
+// in a success item proves it applied; the skip-uncertain suppression
 // (which exists only to avoid asserting a skipped create's writes) must NOT
-// drop its account_metadata even on an unanchored, archived ledger. Otherwise
+// drop its account_metadata even on an unanchored ledger. Otherwise
 // a later forged METADATA_NOT_FOUND on that account/key would pass as
-// archive-inconclusive.
+// inconclusive.
 func TestRecordChainBoundMutations_NonConflictSkippableCreateSeedsUnconditionally(t *testing.T) {
 	t.Parallel()
 
-	// Unanchored, archive-only conditions (same as the conflict-skippable
+	// Unanchored, no visible prior claim (same as the conflict-skippable
 	// suppression test) — but this create is NOT conflict-skippable.
 	items := []*auditpb.AuditItem{
 		buildCreateTxNonSkippableWithAccountMeta(t, "L", "ref-1", "alice", "role", 50),
@@ -2507,6 +2290,6 @@ func TestRecordChainBoundMutations_NonConflictSkippableCreateSeedsUnconditionall
 		60: {reasons: []commonpb.ErrorReason{reason}, ledger: "L", metadataTarget: "alice", metadataKey: "role"},
 	}
 	payload := skippedPayloadWithContext(reason, map[string]string{"target": "alice", "key": "role"})
-	events := captureEventsState(t, "L", 60, payload, expected, chainBound, false)
+	events := captureEventsState(t, "L", 60, payload, expected, chainBound)
 	requireInvalidSkipEvent(t, events, 60)
 }

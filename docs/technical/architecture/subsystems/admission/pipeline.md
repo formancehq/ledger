@@ -67,7 +67,7 @@ If the cluster is in maintenance mode, only `SetMaintenanceMode` requests are al
 
 `resolveBatch()` looks up the signing key by ID, calls `signing.Verify(pubkey, payload, sig)` (`internal/domain/crypto/signing/signing.go`), and unwraps the opaque payload into an `ApplyBatch`. The verifier is fed the **exact bytes the client signed** — the server never re-serializes the batch before verification, which is what makes cross-language clients work. See [signing.md](signing.md) for the full signing model.
 
-If `RequireSignatures()` is true cluster-wide, an unsigned batch is rejected here. If signing is not required, an unsigned batch follows `authorizeUnsignedBatch()` and continues. Leader-internal proposals (a system actor set by `WithSystemActor` — chapter archiver, sealer, schedulers, query-checkpoint scheduler) are exempt even when signing is mandatory: they originate in server-internal code, never carry client-supplied identity, and are audited under a `system_component` source. See [signing.md](signing.md#leader-internal-proposals).
+If `RequireSignatures()` is true cluster-wide, an unsigned batch is rejected here. If signing is not required, an unsigned batch follows `authorizeUnsignedBatch()` and continues. Leader-internal proposals (a system actor set by `WithSystemActor` — the query-checkpoint scheduler and other schedulers) are exempt even when signing is mandatory: they originate in server-internal code, never carry client-supplied identity, and are audited under a `system_component` source. See [signing.md](signing.md#leader-internal-proposals).
 
 ### 4. Order conversion
 

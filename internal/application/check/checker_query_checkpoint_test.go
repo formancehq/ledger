@@ -55,7 +55,7 @@ func derivedLog(id uint64) *commonpb.CreatedQueryCheckpointLog {
 func collectQueryCheckpointEvents(t *testing.T, store *dal.Store, derived map[uint64]*commonpb.CreatedQueryCheckpointLog) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attributes.New(), "query-checkpoint-cluster", nil, nil, nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), "query-checkpoint-cluster", nil, logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestCheck_QueryCheckpointProjection_EmptyAuditWiring(t *testing.T) {
 	store := createTestStore(t)
 	writeQueryCheckpointRow(t, store, 1)
 
-	checker := NewChecker(store, attributes.New(), "test-cluster", nil, nil, nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), "test-cluster", nil, logging.Testing())
 
 	var got []*servicepb.CheckStoreError
 	require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {

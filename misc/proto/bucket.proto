@@ -62,14 +62,10 @@ service BucketService {
   rpc GetAuditEntry(GetAuditEntryRequest) returns (audit.AuditEntry);
   // GetEventsSinks returns the current per-sink configurations and statuses
   rpc GetEventsSinks(GetEventsSinksRequest) returns (GetEventsSinksResponse);
-  // ListChapters streams all chapters
-  rpc ListChapters(ListChaptersRequest) returns (stream common.Chapter);
   // ListLogs streams system logs; when ledger is set, streams only logs for that ledger
   rpc ListLogs(ListLogsRequest) returns (stream common.Log);
   // GetLog returns a single system log by sequence number
   rpc GetLog(GetLogRequest) returns (common.Log);
-  // GetChapterSchedule returns the current automatic chapter rotation schedule
-  rpc GetChapterSchedule(GetChapterScheduleRequest) returns (GetChapterScheduleResponse);
   // ListSigningKeys streams all registered signing keys
   rpc ListSigningKeys(ListSigningKeysRequest) returns (stream common.SigningKey);
   // Discovery returns server capabilities and configuration for clients
@@ -238,32 +234,26 @@ message Request {
     SetSigningConfigRequest set_signing_config = 6;
     AddEventsSinkRequest add_events_sink = 7;
     RemoveEventsSinkRequest remove_events_sink = 8;
-    CloseChapterRequest close_chapter = 9;
-    SealChapterRequest seal_chapter = 10;
-    ArchiveChapterRequest archive_chapter = 11;
-    ConfirmArchiveChapterRequest confirm_archive_chapter = 12;
-    SetMaintenanceModeRequest set_maintenance_mode = 13;
-    SetChapterScheduleRequest set_chapter_schedule = 14;
-    DeleteChapterScheduleRequest delete_chapter_schedule = 15;
-    SetMetadataFieldTypeRequest set_metadata_field_type = 16;
-    RemoveMetadataFieldTypeRequest remove_metadata_field_type = 17;
-    PromoteLedgerRequest promote_ledger = 18;
-    CreatePreparedQueryRequest create_prepared_query = 19;
-    UpdatePreparedQueryRequest update_prepared_query = 20;
-    DeletePreparedQueryRequest delete_prepared_query = 21;
-    CreateIndexRequest create_index = 22;
-    DropIndexRequest drop_index = 23;
-    SaveNumscriptRequest save_numscript = 24;
-    AddAccountTypeLedgerRequest add_account_type = 25;
-    RemoveAccountTypeLedgerRequest remove_account_type = 26;
-    SetDefaultEnforcementModeLedgerRequest set_default_enforcement_mode = 27;
-    CreateQueryCheckpointRequest create_query_checkpoint = 28;
-    DeleteQueryCheckpointRequest delete_query_checkpoint = 29;
-    SetQueryCheckpointScheduleRequest set_query_checkpoint_schedule = 30;
-    DeleteQueryCheckpointScheduleRequest delete_query_checkpoint_schedule = 31;
-    SaveLedgerMetadataRequest save_ledger_metadata = 32;
-    DeleteLedgerMetadataRequest delete_ledger_metadata = 33;
-    SetClusterPolicyRequest set_cluster_policy = 34;
+    SetMaintenanceModeRequest set_maintenance_mode = 9;
+    SetMetadataFieldTypeRequest set_metadata_field_type = 10;
+    RemoveMetadataFieldTypeRequest remove_metadata_field_type = 11;
+    PromoteLedgerRequest promote_ledger = 12;
+    CreatePreparedQueryRequest create_prepared_query = 13;
+    UpdatePreparedQueryRequest update_prepared_query = 14;
+    DeletePreparedQueryRequest delete_prepared_query = 15;
+    CreateIndexRequest create_index = 16;
+    DropIndexRequest drop_index = 17;
+    SaveNumscriptRequest save_numscript = 18;
+    AddAccountTypeLedgerRequest add_account_type = 19;
+    RemoveAccountTypeLedgerRequest remove_account_type = 20;
+    SetDefaultEnforcementModeLedgerRequest set_default_enforcement_mode = 21;
+    CreateQueryCheckpointRequest create_query_checkpoint = 22;
+    DeleteQueryCheckpointRequest delete_query_checkpoint = 23;
+    SetQueryCheckpointScheduleRequest set_query_checkpoint_schedule = 24;
+    DeleteQueryCheckpointScheduleRequest delete_query_checkpoint_schedule = 25;
+    SaveLedgerMetadataRequest save_ledger_metadata = 26;
+    DeleteLedgerMetadataRequest delete_ledger_metadata = 27;
+    SetClusterPolicyRequest set_cluster_policy = 28;
   }
   // Signing happens at the batch level, never per request: a signed
   // ApplyRequest carries an opaque SignedApplyBatch whose payload is the
@@ -341,45 +331,11 @@ message ListSigningKeysRequest {
   common.ListOptions options = 1;
 }
 
-message CloseChapterRequest {}
-
-message SealChapterRequest {
-  fixed64 chapter_id = 1;
-  bytes sealing_hash = 2;
-  bytes state_hash = 3;
-}
-
-message ArchiveChapterRequest {
-  fixed64 chapter_id = 1;
-}
-
-message ConfirmArchiveChapterRequest {
-  fixed64 chapter_id = 1;
-  // sealing_hash commits the confirm to one chapter incarnation. The FSM
-  // compares it against the chapter's own sealing hash immediately before the
-  // purge, so a confirm carrying a stale identity — an archiver holding a
-  // request from a timeline a restore replaced — cannot delete hot history whose
-  // archive belongs to a different incarnation.
-  bytes sealing_hash = 2;
-}
-
-message ListChaptersRequest {
-  common.ListOptions options = 1;
-}
-
 // SetMaintenanceModeRequest enables or disables maintenance mode.
 // When enabled, all write operations are blocked except maintenance mode toggle.
 message SetMaintenanceModeRequest {
   bool enabled = 1;   // Whether maintenance mode is active
 }
-
-// SetChapterScheduleRequest sets the automatic chapter rotation schedule.
-message SetChapterScheduleRequest {
-  string cron = 1;   // Cron expression (standard 5-field)
-}
-
-// DeleteChapterScheduleRequest disables the automatic chapter rotation schedule.
-message DeleteChapterScheduleRequest {}
 
 // SetMetadataFieldTypeRequest declares or changes the type of a single metadata key.
 // Existing primary metadata values remain unchanged; attached indexes are rewritten.
@@ -477,12 +433,6 @@ message SetQueryCheckpointScheduleRequest {
 
 // DeleteQueryCheckpointScheduleRequest disables the automatic query checkpoint schedule.
 message DeleteQueryCheckpointScheduleRequest {}
-
-message GetChapterScheduleRequest {}
-
-message GetChapterScheduleResponse {
-  string cron = 1;   // Current cron expression, empty if disabled
-}
 
 // ============================================================================
 // Discovery Messages
@@ -820,24 +770,21 @@ enum CheckStoreErrorType {
   // those audit-bound orders.
   CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH = 14;
   // Emitted when the audit says a ledger is live (a CreateLedger event with no
-  // later DeleteLedger, or a non-deleted ledger in the baseline checkpoint under
-  // archiving) but the store has no live LedgerInfo for it — the entry is either
+  // later DeleteLedger) but the store has no live LedgerInfo for it — the entry is either
   // absent or tampered to a soft-deleted tombstone. The stored-ledger loops in
   // compareSchema / compareAccountTypes only visit live ledgers Pebble returns,
   // so both shapes would otherwise escape every projection check. This is the
   // reverse of UNKNOWN_LEDGER.
   CHECK_STORE_ERROR_TYPE_MISSING_LEDGER = 15;
   // Emitted when the store holds a live LedgerInfo for a ledger the audit never
-  // created (no CreateLedger event, and — under archiving — not present in the
-  // baseline). Such a row exposes an unaudited ledger through ListLedgers while
+  // created (no CreateLedger event). Such a row exposes an unaudited ledger through ListLedgers while
   // carrying no schema/account types the projection passes could otherwise flag.
   // The audit-derived ledger set is never seeded from the live store, so this
   // comparison stays honest.
   CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER = 16;
   // Emitted when the reference→txID uniqueness index (SubAttrReference)
   // diverges from the references the checker re-derived by replaying
-  // CreatedTransaction / RevertedTransaction log payloads (baseline-seeded
-  // under archiving): a stored reference the audit never assigned, a missing
+  // CreatedTransaction / RevertedTransaction log payloads: a stored reference the audit never assigned, a missing
   // reference the audit did assign, or a reference pointing at a different
   // transaction. The index enforces reference idempotency, so a tampered row
   // silently changes which duplicates get rejected.
@@ -845,8 +792,7 @@ enum CheckStoreErrorType {
   // Emitted when a ledger's stored LedgerBoundaries diverge from the checker's
   // re-derivation: NextTransactionId / NextLogId / PostingCount / RevertCount
   // from the replayed logs (mirror fill-gap advances and NumscriptExecutionCount
-  // decoded from the chain-bound AuditItem orders; baseline-seeded under
-  // archiving), and VolumeCount / MetadataCount / ReferenceCount against a
+  // decoded from the chain-bound AuditItem orders), and VolumeCount / MetadataCount / ReferenceCount against a
   // recount of the stored attribute rows those counters summarize — the rows
   // themselves are verified entry-by-entry by their own passes.
   // EphemeralEvictedCount / TransientUsedCount are informational and excluded.
@@ -890,14 +836,12 @@ enum CheckStoreErrorType {
   // flipping it silently disables request authenticity. An absent row decodes as
   // false, which is also the checker's initial expected value.
   CHECK_STORE_ERROR_TYPE_SIGNING_CONFIG_MISMATCH = 22;
-  // Emitted when signing verification could not cover the whole history:
-  // signing state has no TTL, so keys registered before an archive boundary stay
-  // authoritative forever and must be re-derived from archived audit entries via
-  // cold storage. When cold storage is unavailable or a chapter cannot be read,
-  // the pass reports this rather than presenting a partial replay as a clean
-  // comparison. Unlike the baseline-seeded passes, signing expectations are
-  // never seeded from the live projection -- that would verify old,
-  // never-touched keys against a copy of themselves.
+  // Emitted when signing verification could not cover the whole history: the
+  // live audit range was cut short by a hash chain break, so every signing
+  // order recorded after the break is unread. The pass reports this rather
+  // than presenting a partial replay as a clean comparison. Signing
+  // expectations are never seeded from the live projection -- that would
+  // verify old, never-touched keys against a copy of themselves.
   CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE = 23;
   // Emitted when the persisted cluster policy (SubGlobClusterPolicy) differs
   // from the policy re-derived from chain-bound SetClusterPolicy orders. The
@@ -906,10 +850,9 @@ enum CheckStoreErrorType {
   // checkpoint behavior. The audit chain is the source of truth.
   CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH = 24;
   // Emitted when the cluster policy could not be verified over the whole audit
-  // history: the policy has no TTL, so a policy set before an archive boundary
-  // stays authoritative and must be re-derived from archived audit entries via
-  // cold storage. When cold storage is unavailable or a chapter cannot be read,
-  // the pass reports this rather than presenting a partial replay as clean.
+  // history: the live audit range was cut short by a hash chain break, so any
+  // policy update recorded after the break is unread. The pass reports this
+  // rather than presenting a partial replay as clean.
   CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE = 25;
   // Emitted when the persisted query-checkpoint rows (SubGlobQueryCheckpoint)
   // diverge from the set the checker re-derived from chain-bound
@@ -919,16 +862,6 @@ enum CheckStoreErrorType {
   // back point-in-time query reads and the FSM's live-count cap, so a tampered
   // row changes which checkpoints exist. See EN-1501.
   CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH = 26;
-  // Emitted when hot storage still holds keys inside an ARCHIVED chapter's
-  // purge ranges: logs by log sequence, audit entries / audit items / applied
-  // proposals by audit sequence. ConfirmArchiveChapter's apply deletes those
-  // ranges in the same proposal that marks the chapter ARCHIVED, so resident
-  // data under an ARCHIVED registry row means a lost purge or a path that
-  // re-ingested archived history without purging it (e.g. a restore rebuilt
-  // from a cold-backfilled delta). The canonical copy lives in the chapter's
-  // cold-storage object; the hot residue shadows it on read paths that try
-  // hot storage first and grows the store without bound.
-  CHECK_STORE_ERROR_TYPE_UNPURGED_ARCHIVED_DATA = 27;
 }
 
 message CheckStoreError {

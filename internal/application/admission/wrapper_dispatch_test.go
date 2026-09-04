@@ -494,12 +494,6 @@ func TestExtractSystemScopedNeeds_OnlySinkConfigsContribute(t *testing.T) {
 		{"revoke_signing_key", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_RevokeSigningKey{RevokeSigningKey: &raftcmdpb.RevokeSigningKeyOrder{}}}},
 		{"set_signing_config", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetSigningConfig{SetSigningConfig: &raftcmdpb.SetSigningConfigOrder{}}}},
 		{"set_maintenance_mode", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{}}}},
-		{"close_chapter", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_CloseChapter{CloseChapter: &raftcmdpb.CloseChapterOrder{}}}},
-		{"seal_chapter", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SealChapter{SealChapter: &raftcmdpb.SealChapterOrder{}}}},
-		{"archive_chapter", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_ArchiveChapter{ArchiveChapter: &raftcmdpb.ArchiveChapterOrder{}}}},
-		{"confirm_archive_chapter", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_ConfirmArchiveChapter{ConfirmArchiveChapter: &raftcmdpb.ConfirmArchiveChapterOrder{}}}},
-		{"set_chapter_schedule", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetChapterSchedule{SetChapterSchedule: &raftcmdpb.SetChapterScheduleOrder{}}}},
-		{"delete_chapter_schedule", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_DeleteChapterSchedule{DeleteChapterSchedule: &raftcmdpb.DeleteChapterScheduleOrder{}}}},
 		{"create_query_checkpoint", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}}},
 		{"delete_query_checkpoint", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &raftcmdpb.DeleteQueryCheckpointOrder{}}}},
 		{"set_query_checkpoint_schedule", &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &raftcmdpb.SetQueryCheckpointScheduleOrder{}}}},
@@ -539,7 +533,7 @@ func TestWrapHelpers_SetEnvelopeOnOrder(t *testing.T) {
 		t.Parallel()
 		order := &raftcmdpb.Order{}
 		ss := &raftcmdpb.SystemScopedOrder{
-			Payload: &raftcmdpb.SystemScopedOrder_CloseChapter{CloseChapter: &raftcmdpb.CloseChapterOrder{}},
+			Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{}},
 		}
 		wrapSystemScoped(order, ss)
 		require.Same(t, ss, order.GetSystemScoped())

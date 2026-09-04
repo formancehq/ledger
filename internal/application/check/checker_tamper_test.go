@@ -29,7 +29,7 @@ import (
 // AuditEntry + 2 AuditItems persisted via the production builders, then
 // exactly one field is mutated and the entry/item is rewritten in place.
 // We invoke `verifyAuditHashChain` directly (package-private access) so
-// other Check() phases (replay, balances, chapters) cannot mask the
+// other Check() phases (replay, balances) cannot mask the
 // mismatch event we are looking for.
 func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 	t.Parallel()
@@ -275,13 +275,13 @@ func rewriteAuditEntry(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry
 
 	batch := store.OpenWriteSession()
 	batch.KeyBuilder.
-		PutZonePrefix(dal.ZoneCold, dal.SubColdAudit).
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).
 		PutUint64(entry.GetSequence())
 	require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), entry))
 
 	for _, item := range items {
 		batch.KeyBuilder.
-			PutZonePrefix(dal.ZoneCold, dal.SubColdAuditItem).
+			PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).
 			PutUint64(entry.GetSequence()).
 			PutUint32(item.GetOrderIndex())
 		require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), item))
@@ -306,7 +306,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 	collectIdempotencyMismatches := func(store *dal.Store) []*servicepb.CheckStoreError {
 		attrs := attributes.New()
-		checker := NewChecker(store, attrs, clusterID, nil, nil, nil, logging.Testing())
+		checker := NewChecker(store, attrs, clusterID, nil, logging.Testing())
 
 		handle, err := store.NewReadHandle()
 		require.NoError(t, err)
@@ -315,10 +315,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 		var got []*servicepb.CheckStoreError
 
-		// A nil TTL (PersistedConfig absent) skips the cold extension entirely,
-		// keeping the report floor at the archive boundary and isolating the
-		// post-boundary guard this test exercises.
-		_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, newChainBoundState(), nil, newSigningVerifier(), newClusterPolicyVerifier(), func(event *servicepb.CheckStoreEvent) {
+		_, err = checker.verifyAuditHashChain(context.Background(), handle, newChainBoundState(), newSigningVerifier(), newClusterPolicyVerifier(), func(event *servicepb.CheckStoreEvent) {
 			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
 				e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
 				got = append(got, e.Error)
@@ -387,22 +384,22 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 	require.NotEmpty(t, collectIdempotencyMismatches(store),
 		"a tampered proposal hash must be flagged")
 
-	// Tampering created_at to another post-boundary value would otherwise dodge
-	// the (keyHash, created_at) lookup and skip verification; the archive-boundary
-	// guard reports it (no audit entry froze the key at this timestamp).
+	// Tampering created_at would otherwise dodge the (keyHash, created_at)
+	// lookup and skip verification; the completeness guard reports it (no
+	// audit entry froze the key at this timestamp).
 	tampered = faithful.CloneVT()
 	tampered.CreatedAt = createdAt + 5
 	writeIdempotencyEntry(t, store, idemKey, tampered)
 	require.NotEmpty(t, collectIdempotencyMismatches(store),
 		"a live entry whose created_at matches no audit entry must be flagged")
 
-	// A created_at before the verified range looks like an archived freeze
-	// (not re-derivable here) and is skipped rather than falsely flagged.
+	// The audit range covers the whole history, so a created_at below every
+	// audit entry's timestamp is just as fabricated as any other miss.
 	tampered = faithful.CloneVT()
 	tampered.CreatedAt = 1
 	writeIdempotencyEntry(t, store, idemKey, tampered)
-	require.Empty(t, collectIdempotencyMismatches(store),
-		"an entry created before the verified range must be skipped, not flagged")
+	require.NotEmpty(t, collectIdempotencyMismatches(store),
+		"an entry whose created_at precedes every audit entry must be flagged")
 }
 
 // writeIdempotencyEntry persists a frozen idempotency value at its canonical
@@ -447,7 +444,7 @@ func runChainVerifierWithSigning(
 	t.Helper()
 
 	attrs := attributes.New()
-	checker := NewChecker(store, attrs, clusterID, nil, nil, nil, logging.Testing())
+	checker := NewChecker(store, attrs, clusterID, nil, logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -458,7 +455,7 @@ func runChainVerifierWithSigning(
 	signing := newSigningVerifier()
 
 	// This test isolates HASH_MISMATCH; the idempotency TTL is irrelevant.
-	_, err = checker.verifyAuditHashChain(context.Background(), handle, nil, nil, newChainBoundState(), nil, signing, newClusterPolicyVerifier(), func(event *servicepb.CheckStoreEvent) {
+	_, err = checker.verifyAuditHashChain(context.Background(), handle, newChainBoundState(), signing, newClusterPolicyVerifier(), func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok && e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH {
 			mismatches = append(mismatches, e.Error)
 		}

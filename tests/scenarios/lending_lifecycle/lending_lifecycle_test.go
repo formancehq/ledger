@@ -24,7 +24,6 @@ import (
 // - 1 early full repayment
 // - Interest accrual to a revenue account
 // - Provisions for doubtful debts
-// - Chapter closes per cycle
 //
 // Account structure:
 //
@@ -215,9 +214,6 @@ func TestLendingLifecycle(t *testing.T) {
 				if len(reqs) > 0 {
 					scenariotest.ApplyActions(t, ctx, client, reqs...)
 				}
-
-				// Close chapter each month
-				scenariotest.CloseChapterAndWait(t, ctx, client, "chapter close month %d", month)
 			})
 		}
 	})

@@ -54,8 +54,6 @@ export const NODE = {
   compactor:     "compactor",
   workerIndex:   "box-worker-index",
   workerSinks:   "box-worker-sinks",
-  workerArch:    "box-worker-archiver",
-  workerSealer:  "box-worker-sealer",
 } as const satisfies Record<string, NodeId>;
 
 // Stable edge ids for the queue edges. Producers and the diagram use
@@ -236,8 +234,6 @@ export function makeEdges(): Map<string, Edge> {
     // Notifier fan-out to workers
     send(`${NODE.notifier}→${NODE.workerIndex}`,  "e-notifier-w-index"),
     send(`${NODE.notifier}→${NODE.workerSinks}`,  "e-notifier-w-sinks"),
-    send(`${NODE.notifier}→${NODE.workerArch}`,   "e-notifier-w-archiver"),
-    send(`${NODE.notifier}→${NODE.workerSealer}`, "e-notifier-w-sealer"),
     // Compactor — both reads are synchronous (function calls).
     call(`${NODE.compactor}→${NODE.pebble}`,    "e-compactor-pebble"),
     call(`${NODE.compactor}→${NODE.walLeader}`, "e-compactor-wal"),

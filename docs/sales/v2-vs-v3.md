@@ -95,12 +95,11 @@ See [Admission](../technical/architecture/subsystems/admission/) and [FSM](../te
 
 Ledger v3 owns recovery at the application level. The system combines Raft WAL/snapshot state, Pebble checkpoints, synchronization with peers, and spool/replay mechanisms to restore and catch up a node.
 
-The exact lifecycle is intentionally documented outside this sales comparison because it evolves with the storage and chapter-management implementation.
+The exact lifecycle is intentionally documented outside this sales comparison because it evolves with the storage implementation.
 
 See:
 
 - [Storage and Persistence](../technical/architecture/subsystems/storage/)
-- [Chapters](../technical/architecture/subsystems/chapters/)
 - [Consensus](../technical/architecture/subsystems/consensus/)
 
 ---

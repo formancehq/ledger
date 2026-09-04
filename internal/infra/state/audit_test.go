@@ -345,7 +345,6 @@ func TestExtractLedgers_SystemScopedPayloadsAreNotAttributed(t *testing.T) {
 	wraps := []*raftcmdpb.SystemScopedOrder{
 		{Payload: &raftcmdpb.SystemScopedOrder_RegisterSigningKey{RegisterSigningKey: &raftcmdpb.RegisterSigningKeyOrder{}}},
 		{Payload: &raftcmdpb.SystemScopedOrder_SetMaintenanceMode{SetMaintenanceMode: &raftcmdpb.SetMaintenanceModeOrder{}}},
-		{Payload: &raftcmdpb.SystemScopedOrder_CloseChapter{CloseChapter: &raftcmdpb.CloseChapterOrder{}}},
 		{Payload: &raftcmdpb.SystemScopedOrder_CreateQueryCheckpoint{CreateQueryCheckpoint: &raftcmdpb.CreateQueryCheckpointOrder{}}},
 	}
 

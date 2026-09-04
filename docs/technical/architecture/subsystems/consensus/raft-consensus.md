@@ -53,7 +53,7 @@ Machine state (conceptual):
     .LastAppliedIndex       uint64       // Last Raft entry applied
     .LastAppliedTimestamp   uint64       // HLC timestamp of last applied entry
     // ... and the other recoverable scalars (NextAuditSequenceID,
-    // NextLedgerID, LastAuditHash, PendingLedgerCleanups, LastClusterConfig, ...)
+    // NextLedgerID, LastAuditHash, LastClusterConfig, ...)
 
   Registry.Ledgers        KeyStore      // Per-ledger LedgerInfo
   Registry.Boundaries     KeyStore      // Per-ledger LedgerBoundaries (next log/tx IDs, counters)
@@ -64,7 +64,7 @@ Machine state (conceptual):
   // ... and other attribute KeyStores (Transactions, SinkConfigs, etc.)
 ```
 
-The recoverable scalars live on `FSMState` (`internal/infra/state/fsmstate.go`); sub-trackers (`Registry`, `Chapters`, `KeyStore`, …) stay on `Machine` directly with their own lifecycles.
+The recoverable scalars live on `FSMState` (`internal/infra/state/fsmstate.go`); sub-trackers (`Registry`, `KeyStore`, …) stay on `Machine` directly with their own lifecycles.
 
 ### Advantages of Single Raft
 
@@ -604,11 +604,6 @@ indexes need their own progress barrier:
   usagestore. `GetTemplateUsage` is entirely usagestore-backed. A completed
   ReadIndex does not advance either usage projection, so those values may lag;
   see the [usagebuilder pipeline](../usage/usagebuilder.md).
-- `ListChapters` bypasses `readCtrl` and the consistency selector. It is routed
-  to the node currently considered leader, where it reads persisted chapter
-  rows without a ReadIndex barrier. An isolated former leader can therefore
-  return an older chapter view even for a request using the default consistency
-  setting.
 - `Apply` is a write rather than a read and is always routed to the node
   currently considered leader; successful completion still requires Raft
   consensus.

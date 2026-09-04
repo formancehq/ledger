@@ -158,36 +158,6 @@ As a complementary safety mechanism, the `HealthChecker` periodically queries ea
 
 See [Clock Skew Check](../technical/architecture/subsystems/consensus/hybrid-logical-clock.md#clock-skew-check) for details.
 
-## Cold Archive Integrity
-
-When a chapter is closed, its logs are exported as a Pebble SST to cold storage (filesystem or S3) and the leader proposes `ConfirmArchiveChapter`. Confirming an archive eventually leads to purging the source data, so the leader **must not propose** until it has cryptographic evidence that the archived bytes are intact.
-
-### What is persisted
-
-Every archive carries an attached SHA-256 checksum, written atomically with the data:
-
-| Backend | Data | Checksum |
-|---|---|---|
-| Filesystem | `<bucketID>/chapters/<chapterID>/archive.sst` | sidecar `archive.sst.sha256` (32 bytes) |
-| S3 | object body | user metadata key `sha256` (hex-encoded) |
-
-The filesystem backend writes each file via a `<name>.tmp` → fsync → atomic rename → fsync directory sequence, with the data file fully committed before the sidecar is touched. The S3 backend relies on `PutObject` to apply the body and the `Metadata` map atomically.
-
-### Verification flow
-
-After upload (`Archive` returns), the leader recomputes the remote SHA-256 and compares it with the local checksum. Mismatch aborts the upload — no `ConfirmArchiveChapter` is proposed.
-
-On boot, the archiver retry loop re-evaluates every still-open archive request:
-
-- **Archive missing or checksum sidecar/metadata missing** (`Exists` returns false): treated as "not yet committed". The leader rebuilds and re-uploads. Pre-PR archives that never had a sidecar end up here too — they are silently re-uploaded on first contact with the new binary.
-- **Archive complete**: the leader reads the persisted `ExpectedChecksum`, recomputes `Checksum` over the current bytes, and proposes `ConfirmArchiveChapter` only on equality. A mismatch is reported as a hard error with both hex digests in the log; the chapter stays unconfirmed so no purge runs.
-
-The crash-recovery path is what catches truncation or post-upload bit rot: an SST that is "readable" still produces a digest, but only the comparison against the reference value detects that the bytes diverge from what was originally committed.
-
-### Determinism of archive content
-
-The SST produced by `buildSSTArchive` is a deterministic function of the chapter being archived: identical chapters produce byte-identical SSTs. `chapterMetadata` carries only `chapterId`, `startSequence`, `closeSequence`, `startAuditSequence`, and `closeAuditSequence` — no timestamps, no nonces. The two audit-sequence fields were added in #312 so the SST is scoped to BOTH the log range AND the (independent) audit-sequence range; otherwise audit entries would silently miss the archive and then be purged. This contract is enforced by `TestArchiver_BuildSSTIsDeterministic`. Adding a non-deterministic field would invalidate the checksum reference on re-upload and is treated as a regression.
-
 ## Integrity Guarantees
 
 1. **Tamper detection**: With BLAKE3 (default), modifying any historical audit entry or its covered logs invalidates all subsequent hashes and an attacker cannot forge a valid chain. With XXH3, corruption is detected but a motivated attacker with direct storage access could theoretically construct collisions
@@ -197,4 +167,3 @@ The SST produced by `buildSSTArchive` is a deterministic function of the chapter
 5. **Double-entry balance**: Every merge verifies that the sum of inputs equals the sum of outputs, catching any accounting inconsistency before it is persisted
 6. **Full store verification**: The `store check` command validates the entire log sequence and all derived data (volumes, metadata) against the source of truth (logs)
 7. **Timestamp monotonicity**: The Hybrid Logical Clock guarantees that every log has a strictly increasing timestamp, even across leader changes and clock skew
-8. **Archive integrity at confirm time**: A cold archive is only confirmed after its SHA-256 matches the value persisted alongside the data. Truncated or bit-rotted archives surface as integrity errors and never trigger source-data purge

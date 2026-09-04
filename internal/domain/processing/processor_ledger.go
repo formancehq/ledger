@@ -131,16 +131,16 @@ func processDeleteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, dom
 	if err := s.Boundaries().Delete(domain.LedgerKey{Name: ledger}); err != nil {
 		return nil, domain.StoreFailure("deleting ledger boundary", err)
 	}
-	// The LedgerCleanup signal (cleanup queue + deferred data purge) is
-	// derived from DeletedLedgerLog by deriveSignals / WriteSet.Absorb.
+	// The physical data purge is derived from DeletedLedgerLog by
+	// WriteSet.Absorb and runs in the same Merge (batch.DeleteLedgerData).
 
 	// Index registry entries scoped to this ledger are NOT cleared here:
 	//   - processApply rejects every same-batch Apply order with
 	//     ErrLedgerDeleted (info.DeletedAt != nil), so no later order in
 	//     this proposal will read a stale Index row.
-	//   - MarkLedgerForCleanup queues a Pebble range delete on
-	//     [SubAttrIndex][ledgerName padded] (see batch.deleteLedgerData)
-	//     which purges every entry — cache-resident or not.
+	//   - WriteSet.Merge runs a Pebble range delete on
+	//     [SubAttrIndex][ledgerName padded] (see batch.DeleteLedgerData)
+	//     in this same apply, purging every entry — cache-resident or not.
 	//   - All read paths (query.Compile, BucketService.ListIndexes) gate on
 	//     LedgerInfo.DeletedAt and surface NotFound before reaching the
 	//     registry, so orphan cache entries are unreachable.

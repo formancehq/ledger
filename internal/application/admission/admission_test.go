@@ -1322,13 +1322,6 @@ func TestRequestsToOrders_CheckpointOrderPosition(t *testing.T) {
 			},
 		}
 	}
-	closeChapterReq := func() *servicepb.Request {
-		return &servicepb.Request{
-			Type: &servicepb.Request_CloseChapter{
-				CloseChapter: &servicepb.CloseChapterRequest{},
-			},
-		}
-	}
 
 	cases := []struct {
 		name    string
@@ -1338,11 +1331,8 @@ func TestRequestsToOrders_CheckpointOrderPosition(t *testing.T) {
 		{"empty batch", nil, nil},
 		{"single apply", []*servicepb.Request{applyReq()}, nil},
 		{"checkpoint alone", []*servicepb.Request{checkpointReq()}, nil},
-		{"close chapter alone", []*servicepb.Request{closeChapterReq()}, nil},
 		{"apply then checkpoint", []*servicepb.Request{applyReq(), checkpointReq()}, nil},
-		{"apply then close chapter", []*servicepb.Request{applyReq(), closeChapterReq()}, nil},
 		{"checkpoint then apply", []*servicepb.Request{checkpointReq(), applyReq()}, ErrCheckpointOrderNotLast},
-		{"close chapter then apply", []*servicepb.Request{closeChapterReq(), applyReq()}, ErrCheckpointOrderNotLast},
 		{"checkpoint mid-batch", []*servicepb.Request{applyReq(), checkpointReq(), applyReq()}, ErrCheckpointOrderNotLast},
 	}
 

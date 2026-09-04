@@ -24,11 +24,8 @@
 //     owned helper ledger: the floor defeats read staleness (#398 class)
 //     without polluting the primary ledger's audit stream with marker
 //     Success entries.
-//   - Audit "at least one Failure entry" is only a Sometimes: chapter
-//     archival confirmation purges audit ranges, so an Always would
-//     false-positive when the purge wins the race. The Success-entry bound
-//     (<= 1, the CreateLedger entry) is purge-proof: purges only remove
-//     entries, never add them.
+//   - Audit history is permanent, so a failed atomic bulk must always
+//     leave its Failure entry readable.
 package main
 
 import (
@@ -324,9 +321,7 @@ func main() {
 			"audit failure entries are unique per proposal",
 			auditDetails)
 
-		// Coverage only: audit purge (chapter archival confirmation) can
-		// legitimately remove the failure entry before this read.
-		assert.Sometimes(failureCount >= 1,
+		assert.Always(failureCount >= 1,
 			"failure audit entry observed for failed atomic bulk",
 			auditDetails)
 	})

@@ -21,7 +21,7 @@ Collect these inputs before sizing the cluster:
 | Read load | Query rate, filters, result sizes, and freshness requirement? | Main Pebble and read-index caches, indexes, and read routing. |
 | Working set | How many accounts and assets are active in a short time window? | FSM cache rotation threshold and preload rate. |
 | Data shape | Number of postings and metadata fields per transaction? | CPU, execution-plan size, Raft payload size, and disk growth. |
-| Retention | How long must logs remain in hot storage? | Data volume, chapter schedule, and cold storage. |
+| Retention | Log and audit history is permanent in the primary store. | Disk sizing and the compression profile. |
 | Recovery | Required RPO and RTO? How quickly must a new node join? | Backup cadence, restore drills, snapshot parallelism, and network capacity. |
 | Security | Public network, private network, or regulated environment? | TLS, authentication, request/response signing, and BLAKE3. |
 | Idempotency | How long may a client retry with the same key? | `--idempotency-ttl`; `0` retains keys forever. |
@@ -143,7 +143,6 @@ Use distinct paths and, for demanding workloads, distinct devices:
 | `--wal-dir` | Synchronous Raft WAL writes on the write critical path | Lowest-latency durable SSD/NVMe. Never use ephemeral storage in production. |
 | `--data-dir` | Primary Pebble store, checkpoints, and projections | High-IOPS persistent SSD with compaction headroom. |
 | `--read-index-dir` | Rebuildable query indexes | Fast persistent storage; isolation can protect the primary store from read-index I/O. Directory isolation is currently available only for CLI/VM deployments; the Operator keeps the read index on the data volume. |
-| `--cold-cache-dir` | Cache for archived chapter reads | A separate volume prevents archived reads from filling the primary data disk. |
 | `--pebble-wal-failover-dir` | Secondary Pebble WAL path | A different physical volume; using the same device does not provide useful failover. This extra volume is currently available only for CLI/VM deployments. |
 
 Measure disk growth during a representative test, including compactions and
@@ -151,47 +150,6 @@ indexes, then extrapolate it over the hot-retention period. Keep projected peak
 usage below the warning level and enough free space for compaction. By default,
 Ledger blocks writes at 80% usage and resumes below 75%; alert before the block
 threshold. See [Disk Space Limiting](./disk-space.md).
-
-For long retention, configure S3 cold storage and rotate chapters on a schedule.
-The S3 backend requires the full image or a binary built with the `s3` tag (for
-example, `just build-full`) and AWS credentials available through the standard
-AWS credential chain:
-
-```bash
-ledger run \
-  --cold-storage-driver s3 \
-  --cold-storage-s3-bucket customer-ledger-archive \
-  --cold-storage-s3-region eu-west-1 \
-  --cold-cache-dir /data/cold-cache \
-  [other flags...]
-
-ledgerctl chapters set-schedule "0 0 * * *"
-```
-
-With the Kubernetes operator, the cold cache path is fixed to
-`/data/cold-cache`; size its separate volume through
-`spec.persistence.coldCache`:
-
-```yaml
-spec:
-  coldStorage:
-    driver: s3
-    s3:
-      bucket: customer-ledger-archive
-      region: eu-west-1
-  persistence:
-    coldCache:
-      size: 50Gi
-```
-
-The `--cold-cache-dir` path is configurable only outside the operator. Set
-`spec.coldStorage.s3.endpoint` as well when using an S3-compatible service such
-as MinIO.
-
-Closing a chapter does not archive it by itself. Verify the close, seal, archive,
-and purge lifecycle, and remember that current attributes such as balances and
-metadata remain in the primary store. Cold storage also does not replace
-backups; define and test both separately.
 
 ## Recovery Objectives
 
@@ -204,8 +162,7 @@ Translate the customer's recovery promise into an operating procedure:
 | Disaster readiness | Retain the credentials, encryption keys, manifests, and versioned binary needed to restore into a fresh environment. | Run a restore exercise after material storage, version, credential, or topology changes, and at a regular customer-approved cadence. |
 
 See [Backup and Restore](./backup-restore.md) for the supported backup and restore
-flows. Cold storage retention and backups solve different problems and need
-separate schedules.
+flows.
 
 See [Availability and Disaster Recovery](./availability-and-recovery.md) for
 multi-region topology trade-offs and the supported responses to quorum loss.

@@ -10,7 +10,6 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -51,7 +50,6 @@ const (
 	liveDiscardDir          = "live.discard"
 	checkpointsDir          = "checkpoints"
 	temporaryCheckpointsDir = "tmp"
-	baselineCheckpointsDir  = "baseline"
 	// incomingCheckpointDir sits at the dataDir top level (sibling of
 	// checkpointsDir) so that checkpointsDir contains only numbered
 	// checkpoint dirs. Same filesystem → ActivateIncomingRestore's
@@ -155,7 +153,7 @@ type Store struct {
 }
 
 // getDB returns the current pebble.DB.
-// Callers that create iterators (NewIter, IterateColdKVPairs) must hold
+// Callers that create iterators (NewIter) must hold
 // dbMu.RLock to prevent RestoreCheckpoint/Close from closing the DB
 // between the read and the iterator creation.
 func (s *Store) getDB() *pebble.DB {
@@ -191,12 +189,12 @@ func (s *Store) IsWriteStalled() bool {
 //
 // Zone bytes (first byte of every key):
 //
-//	0x01  Attributes   — derived data hashed during seal (volumes, metadata, transactions, ...).
+//	0x01  Attributes   — derived data (volumes, metadata, transactions, ...).
 //	0x02  Cache        — in-memory cache snapshot persisted before checkpoints.
 //	0x03  Per-ledger   — per-ledger config/state (prepared queries, reversions, mirror).
-//	0x04  Cold               — data archived to cold storage then purged per chapter (logs, audit).
-//	0x05  Idempotency        — TTL-managed idempotency keys (evicted by Raft command, not chapter archival).
-//	0x06  Global             — cluster-wide metadata persisted forever (applied index, signing, chapters, sinks, ...).
+//	0x04  History            — permanent history (logs, audit entries/items, applied proposals).
+//	0x05  Idempotency        — TTL-managed idempotency keys (evicted by Raft command).
+//	0x06  Global             — cluster-wide metadata persisted forever (applied index, signing, sinks, ...).
 //	0x07  ClusterTransient   — FSM-tracked state that has no meaning after restore (backup jobs, future ephemeral state).
 //	0x08..0xFF                — reserved for future zones.
 
@@ -205,7 +203,7 @@ const (
 	ZoneAttributes  byte = 0x01
 	ZoneCache       byte = 0x02
 	ZonePerLedger   byte = 0x03
-	ZoneCold        byte = 0x04
+	ZoneHistory     byte = 0x04
 	ZoneIdempotency byte = 0x05
 	ZoneGlobal      byte = 0x06
 	// ZoneClusterTransient holds FSM state that is meaningful only inside
@@ -218,7 +216,7 @@ const (
 	//
 	// New writers in this zone must accept that their data does not
 	// survive a cross-cluster restore. Everything operator-facing
-	// (cluster config, signing keys, chapter state, …) stays in
+	// (cluster config, signing keys, …) stays in
 	// ZoneGlobal.
 	ZoneClusterTransient byte = 0x07
 )
@@ -249,22 +247,17 @@ const (
 // Per-ledger sub-prefixes (zone 0x03).
 const (
 	SubPLReversions       byte = 0x01
-	SubPLPendingCleanup   byte = 0x02
-	SubPLPreparedQuery    byte = 0x03
-	SubPLMirrorSourceHead byte = 0x04
-	// 0x05 reserved — formerly SubPLMirrorCursor (EN-1513). Never reassign:
-	// existing stores may still carry orphan rows under this sub-prefix, and
-	// the applied mirror position now lives solely in
-	// LedgerBoundaries.last_mirror_v2_log_id.
-	SubPLMirrorStatus byte = 0x06
+	SubPLPreparedQuery    byte = 0x02
+	SubPLMirrorSourceHead byte = 0x03
+	SubPLMirrorStatus     byte = 0x04
 )
 
-// Cold sub-prefixes (zone 0x04).
+// History sub-prefixes (zone 0x04).
 const (
-	SubColdLog             byte = 0x01
-	SubColdAudit           byte = 0x02
-	SubColdAuditItem       byte = 0x03 // [ZoneCold][SubColdAuditItem][audit_seq BE 8][order_idx BE 4] → AuditItem
-	SubColdAppliedProposal byte = 0x04 // [ZoneCold][SubColdAppliedProposal][applied_proposal_seq BE 8] → AppliedProposal
+	SubHistoryLog             byte = 0x01
+	SubHistoryAudit           byte = 0x02
+	SubHistoryAuditItem       byte = 0x03 // [ZoneHistory][SubHistoryAuditItem][audit_seq BE 8][order_idx BE 4] → AuditItem
+	SubHistoryAppliedProposal byte = 0x04 // [ZoneHistory][SubHistoryAppliedProposal][applied_proposal_seq BE 8] → AppliedProposal
 )
 
 // Idempotency sub-prefixes (zone 0x05).
@@ -275,32 +268,34 @@ const (
 
 // Global sub-prefixes (zone 0x06), ordered by hot-path write frequency.
 const (
-	SubGlobLastAppliedIndex        byte = 0x01
-	SubGlobLastAppliedTimestamp    byte = 0x02
-	SubGlobLedgerInfo              byte = 0x03
-	SubGlobSigningKey              byte = 0x04
-	SubGlobSigningConfig           byte = 0x05
-	SubGlobChapters                byte = 0x06
-	SubGlobNextChapterID           byte = 0x07
-	SubGlobSinkCursor              byte = 0x08
-	SubGlobEventsConfig            byte = 0x09
-	SubGlobSinkStatus              byte = 0x0A
-	SubGlobMaintenanceMode         byte = 0x0B
+	SubGlobLastAppliedIndex      byte = 0x01
+	SubGlobLastAppliedTimestamp  byte = 0x02
+	SubGlobLedgerInfo            byte = 0x03
+	SubGlobSigningKey            byte = 0x04
+	SubGlobSigningConfig         byte = 0x05
+	SubGlobSinkCursor            byte = 0x06
+	SubGlobEventsConfig          byte = 0x07
+	SubGlobSinkStatus            byte = 0x08
+	SubGlobMaintenanceMode       byte = 0x09
+	SubGlobQueryCheckpoint       byte = 0x0A
+	SubGlobNextQueryCheckpointID byte = 0x0B
+	// SubGlobPersistedConfig is the boot-validation anchor: the loader reads
+	// it to compare the store's storage_schema_version against the running
+	// binary BEFORE any other key is interpreted. Its byte is pinned across
+	// schema versions — renumbering it would hide an old store's version row
+	// from the very check meant to reject that store.
 	SubGlobPersistedConfig         byte = 0x0C
-	SubGlobChapterSchedule         byte = 0x0D
-	SubGlobQueryCheckpoint         byte = 0x0E
-	SubGlobNextQueryCheckpointID   byte = 0x0F
-	SubGlobQueryCheckpointSchedule byte = 0x10
-	SubGlobClusterConfig           byte = 0x11
-	SubGlobBloom                   byte = 0x12
-	SubGlobNextLedgerID            byte = 0x13
+	SubGlobQueryCheckpointSchedule byte = 0x0D
+	SubGlobClusterConfig           byte = 0x0E
+	SubGlobBloom                   byte = 0x0F
+	SubGlobNextLedgerID            byte = 0x10
 	// SubGlobPeers stores Raft cluster membership (one entry per voter or
 	// learner): [ZoneGlobal][SubGlobPeers][node_id BE 8] → raftcmdpb.PeerAddress.
 	// Mutations are driven by the Raft ConfChange apply path; the node
 	// reloads from this prefix at boot so the bootstrap voter and every
 	// other peer survive restarts without relying on the WAL snapshot
 	// payload (EN-1413).
-	SubGlobPeers byte = 0x14
+	SubGlobPeers byte = 0x11
 	// SubGlobRemovedMembers stores the removed-member registry (EN-1045):
 	// [ZoneGlobal][SubGlobRemovedMembers][node_id BE 8][instance_id 16] →
 	// raftcmdpb.RemovedMemberEntry. Written atomically with the peer row
@@ -308,11 +303,11 @@ const (
 	// JoinAsLearner admission and checkAndPromoteLearners to prevent a
 	// still-alive removed pod from rejoining and being auto-promoted. See
 	// docs/technical/architecture/subsystems/consensus/removed-member-registry.md.
-	SubGlobRemovedMembers byte = 0x15
+	SubGlobRemovedMembers byte = 0x12
 	// SubGlobClusterPolicy stores the Raft-replicated cluster policy (EN-1827):
 	// [ZoneGlobal][SubGlobClusterPolicy] → common.ClusterPolicy. A single global
 	// row; revision monotonicity is validated in the FSM apply path.
-	SubGlobClusterPolicy byte = 0x16
+	SubGlobClusterPolicy byte = 0x13
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).
@@ -363,17 +358,6 @@ const LedgerNameFixedSize = invariants.LedgerNameMaxLength
 // MaxUint64Bytes is the big-endian representation of math.MaxUint64,
 // used as an upper bound sentinel for sequence-keyed iterations.
 var MaxUint64Bytes = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-
-var (
-	// ColdSequencePrefixes lists cold-storable zone+sub pairs keyed by sequence number.
-	// These support efficient range scan and range delete by [zone][sub][startSeq]..[zone][sub][endSeq].
-	ColdSequencePrefixes = [][2]byte{
-		{ZoneCold, SubColdLog},
-		{ZoneCold, SubColdAudit},
-		{ZoneCold, SubColdAuditItem},
-		{ZoneCold, SubColdAppliedProposal},
-	}
-)
 
 // NewStore creates a new Store instance.
 func NewStore(
@@ -499,12 +483,6 @@ func NewStore(
 			checkpointPath := filepath.Join(dataDir, checkpointsDir, strconv.FormatUint(latestCheckpointID, 10))
 
 			logger.Infof("No live directory found, restoring from checkpoint %d", latestCheckpointID)
-
-			// The adopted checkpoint did not produce whatever baselines sit in
-			// this data directory.
-			if err = clearBaselines(dataDir); err != nil {
-				return nil, err
-			}
 
 			if err = HardLink(checkpointPath, liveDir); err != nil {
 				return nil, fmt.Errorf("hard linking checkpoint to live directory: %w", err)
@@ -982,182 +960,8 @@ func (s *Store) QueryCheckpointMainDir(id uint64) string {
 	return filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10), "main")
 }
 
-// StagedBaselineDir returns the path where the baseline attribute snapshot for
-// one closing chapter should be written, and ensures its parent directory
-// exists. Callers (the applier) use this path with
-// attributes.CreateBaselineSnapshot at the seal-checkpoint boundary, so the
-// staged snapshot is the state at exactly that chapter's close.
-//
-// The snapshot stays staged until the chapter's archival is confirmed —
-// PromoteStagedBaseline then makes it the checker's live baseline. Promotion is
-// what the checker's arithmetic depends on: it seeds expected volumes with the
-// baseline and replays everything above the archived boundary, so a baseline
-// from any other close double-counts or drops the difference.
-func (s *Store) StagedBaselineDir(chapterID uint64) (string, error) {
-	path := filepath.Join(s.dataDir, baselineCheckpointsDir, fmt.Sprintf("staged-%020d", chapterID))
-
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return "", fmt.Errorf("creating baseline snapshot directory: %w", err)
-	}
-
-	return path, nil
-}
-
-// PromoteStagedBaseline aligns the checker's live baseline with the archived
-// prefix: the staged snapshot of the newest archived close becomes
-// checker-<id>, consuming it, and staged snapshots at or below the boundary are
-// deleted. Idempotent, and safe to call again after a crash anywhere in the
-// sequence — every step is an atomic rename or a remove of something already
-// consumed.
-//
-// A live baseline that no staged snapshot can bring up to the boundary is
-// removed rather than kept: the checker degrades honestly on a missing baseline
-// (it skips entry-by-entry verification), while a stale one makes it report a
-// healthy store as corrupt.
-func (s *Store) PromoteStagedBaseline(archivedThrough uint64) error {
-	dir := filepath.Join(s.dataDir, baselineCheckpointsDir)
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-
-		return fmt.Errorf("reading baseline snapshot directory: %w", err)
-	}
-
-	var (
-		bestStaged  uint64
-		currentID   uint64
-		currentPath string
-		stagedBelow []string
-	)
-
-	for _, entry := range entries {
-		if id, ok := parseBaselineName(entry.Name(), "staged-"); ok {
-			if id <= archivedThrough {
-				stagedBelow = append(stagedBelow, entry.Name())
-				if id > bestStaged {
-					bestStaged = id
-				}
-			}
-
-			continue
-		}
-
-		if id, ok := parseBaselineName(entry.Name(), "checker-"); ok {
-			currentID = id
-			currentPath = filepath.Join(dir, entry.Name())
-
-			continue
-		}
-
-		// CreateBaselineSnapshot writes through a sibling ".tmp-<pid>-<ns>"
-		// directory, so a hard crash mid-write leaves one here. It is not a
-		// snapshot — sweep it. Nothing else writes into this directory.
-		if strings.Contains(entry.Name(), ".tmp-") {
-			if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
-				return fmt.Errorf("removing interrupted baseline write %s: %w", entry.Name(), err)
-			}
-		}
-	}
-
-	switch {
-	case bestStaged == archivedThrough && bestStaged > 0 && bestStaged != currentID:
-		// The staged snapshot of the boundary close exists: make it live.
-		if currentPath != "" {
-			if err := os.RemoveAll(currentPath); err != nil {
-				return fmt.Errorf("removing superseded baseline: %w", err)
-			}
-		}
-
-		from := filepath.Join(dir, fmt.Sprintf("staged-%020d", bestStaged))
-		to := filepath.Join(dir, fmt.Sprintf("checker-%020d", bestStaged))
-
-		if err := os.Rename(from, to); err != nil {
-			return fmt.Errorf("promoting staged baseline %d: %w", bestStaged, err)
-		}
-
-	case currentID != archivedThrough && currentPath != "":
-		// The boundary moved past the live baseline and no staged snapshot of the
-		// boundary close exists (its staging failed at close time, which is
-		// non-fatal there). A lower staged snapshot would be just as stale, so
-		// nothing is promoted and the live baseline is removed.
-		if err := os.RemoveAll(currentPath); err != nil {
-			return fmt.Errorf("removing stale baseline: %w", err)
-		}
-	}
-
-	for _, name := range stagedBelow {
-		if err := os.RemoveAll(filepath.Join(dir, name)); err != nil {
-			return fmt.Errorf("removing consumed staged baseline: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// BaselineCheckpointPath returns the path to the checker's live baseline, the
-// chapter whose close it captures, and whether one exists. The chapter id lets
-// the checker refuse a baseline that does not match the archived boundary of
-// the snapshot it is verifying.
-func (s *Store) BaselineCheckpointPath() (string, uint64, bool) {
-	dir := filepath.Join(s.dataDir, baselineCheckpointsDir)
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return "", 0, false
-	}
-
-	for _, entry := range entries {
-		if id, ok := parseBaselineName(entry.Name(), "checker-"); ok {
-			return filepath.Join(dir, entry.Name()), id, true
-		}
-	}
-
-	return "", 0, false
-}
-
-// ClearBaselines removes every baseline artifact — the live checker baseline
-// and all staged snapshots. Called whenever live/ is replaced with content that
-// did not produce them (a checkpoint restore, follower sync's publish, boot
-// adoption of a checkpoint): a baseline describes the store it was captured
-// from, and a previous incarnation's snapshot can share a chapter id with the
-// installed store's boundary while holding different state — the id-guard
-// cannot tell them apart, so the artifacts must go. The checker degrades until
-// the next close/confirm cycle mints a baseline from the installed store.
-// A function variable so the failure branch is reachable from a test:
-// os.RemoveAll cannot be made to fail deterministically across environments
-// (permission tricks do not bind as root).
-var clearBaselines = func(dataDir string) error {
-	if err := os.RemoveAll(filepath.Join(dataDir, baselineCheckpointsDir)); err != nil {
-		return fmt.Errorf("clearing baseline snapshots: %w", err)
-	}
-
-	return nil
-}
-
-// parseBaselineName reads a baseline directory name of the form
-// <prefix><zero-padded id>, refusing anything with a remainder — an interrupted
-// write's ".tmp-<pid>-<ns>" sibling must never pass as the snapshot it was
-// meant to become (fmt.Sscanf would accept it: %d stops at the first non-digit
-// and trailing input is ignored).
-func parseBaselineName(name, prefix string) (uint64, bool) {
-	rest, found := strings.CutPrefix(name, prefix)
-	if !found {
-		return 0, false
-	}
-
-	id, err := strconv.ParseUint(rest, 10, 64)
-	if err != nil {
-		return 0, false
-	}
-
-	return id, true
-}
-
 // cleanupTemporaryCheckpoints removes the entire tmp/ directory on startup.
-// Temporary checkpoints are ephemeral (backups, seal hashing);
+// Temporary checkpoints are ephemeral (backups);
 // any leftovers are from a previous crash and can be safely deleted.
 func (s *Store) cleanupTemporaryCheckpoints() {
 	path := filepath.Join(s.dataDir, temporaryCheckpointsDir)
@@ -1392,7 +1196,7 @@ func reconcileLiveAfterRestore(dataDir string, logger logging.Logger) error {
 //   - rename live.discard/ back to live/ (atomic),
 //   - reopen the original DB.
 //
-// Holds dbMu exclusively so concurrent NewIter/IterateColdKVPairs calls
+// Holds dbMu exclusively so concurrent NewIter calls
 // block until the new DB is ready.
 //
 // Crash recovery: if the process dies anywhere between steps 3 and 7,
@@ -1574,14 +1378,6 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 
 	s.db = nil
 
-	// Before the publish rename, so every crash window is safe: before this,
-	// the rollback restores the original live/ whose baselines still match it;
-	// between this and the rename, the rollback comes back with no baselines and
-	// the checker degrades honestly; after, the foreign live/ starts clean.
-	if err := clearBaselines(s.dataDir); err != nil {
-		return rollback(fmt.Errorf("clearing baselines before publish: %w", err))
-	}
-
 	if err := os.Rename(stagingDirectory, liveDirectory); err != nil {
 		return rollback(fmt.Errorf("publishing live.staging to live: %w", err))
 	}
@@ -1620,83 +1416,6 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	}).Infof("Database restored from checkpoint")
 
 	return nil
-}
-
-// IterateColdKVPairs iterates every cold-storable KV pair belonging to a
-// chapter via efficient prefixed range scans.
-//
-// Logs and audit entries advance on independent sequence counters, so the
-// caller must supply both ranges. SubColdLog is scanned with the log range;
-// SubColdAudit, SubColdAuditItem and SubColdAppliedProposal are scanned with
-// the audit range (AppliedProposal sequences are 1:1 with AuditEntry on the
-// success path). Mixing them (#312) drops every audit entry that happens to
-// fall outside the log window — and the matching purge still removes it from
-// Pebble, permanently losing the audit trail.
-//
-// Transaction updates are not archived: they are redundant with log entries
-// which already contain all creation, revert, and metadata information.
-func (s *Store) IterateColdKVPairs(logStart, logClose, auditStart, auditClose uint64, fn func(key, value []byte) error) error {
-	s.dbMu.RLock()
-	defer s.dbMu.RUnlock()
-
-	db := s.getDB()
-	if db == nil {
-		return ErrStoreClosed
-	}
-
-	rangeFor := func(sub byte) (low, high uint64) {
-		if sub == SubColdLog {
-			return logStart, logClose
-		}
-
-		return auditStart, auditClose
-	}
-
-	for _, zp := range ColdSequencePrefixes {
-		low, high := rangeFor(zp[1])
-
-		// Audit range may legitimately be empty (high < low) when no audit
-		// entries were produced in the chapter. Skip the scan in that case.
-		if high < low {
-			continue
-		}
-
-		lowerBound := NewKeyBuilder().PutZonePrefix(zp[0], zp[1]).PutUint64(low).Build()
-		upperBound := NewKeyBuilder().PutZonePrefix(zp[0], zp[1]).PutUint64(high + 1).Build()
-
-		err := iterateRawRange(db, lowerBound, upperBound, fn)
-		if err != nil {
-			return fmt.Errorf("iterating zone 0x%02x sub 0x%02x: %w", zp[0], zp[1], err)
-		}
-	}
-
-	return nil
-}
-
-// iterateRawRange iterates all keys in [lowerBound, upperBound) and calls fn for each.
-func iterateRawRange(db *pebble.DB, lowerBound, upperBound []byte, fn func(key, value []byte) error) error {
-	iter, err := db.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
-	if err != nil {
-		return err
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		value, err := iter.ValueAndErr()
-		if err != nil {
-			return fmt.Errorf("reading value: %w", err)
-		}
-
-		if err := fn(iter.Key(), value); err != nil {
-			return err
-		}
-	}
-
-	return iter.Error()
 }
 
 // vtUnmarshaler is implemented by vtprotobuf-generated messages.

@@ -374,15 +374,6 @@ func FindMetadataValue(m map[string]*commonpb.MetadataValue, key string) *common
 	return m[key]
 }
 
-// CloseChapterAction creates a request to close the current accounting chapter.
-func CloseChapterAction() *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_CloseChapter{
-			CloseChapter: &servicepb.CloseChapterRequest{},
-		},
-	}
-}
-
 // SetMaintenanceModeAction creates a request to enable or disable maintenance mode.
 func SetMaintenanceModeAction(enabled bool) *servicepb.Request {
 	return &servicepb.Request{
@@ -390,26 +381,6 @@ func SetMaintenanceModeAction(enabled bool) *servicepb.Request {
 			SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{
 				Enabled: enabled,
 			},
-		},
-	}
-}
-
-// SetChapterScheduleAction creates a request to set the chapter schedule cron expression.
-func SetChapterScheduleAction(cron string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_SetChapterSchedule{
-			SetChapterSchedule: &servicepb.SetChapterScheduleRequest{
-				Cron: cron,
-			},
-		},
-	}
-}
-
-// DeleteChapterScheduleAction creates a request to remove the chapter schedule.
-func DeleteChapterScheduleAction() *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_DeleteChapterSchedule{
-			DeleteChapterSchedule: &servicepb.DeleteChapterScheduleRequest{},
 		},
 	}
 }
@@ -633,17 +604,6 @@ func CreatePreparedQueryAction(name, ledger string, target commonpb.QueryTarget,
 					Target: target,
 					Filter: filter,
 				},
-			},
-		},
-	}
-}
-
-// ArchiveChapterAction creates an action for archiving a closed chapter.
-func ArchiveChapterAction(chapterID uint64) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_ArchiveChapter{
-			ArchiveChapter: &servicepb.ArchiveChapterRequest{
-				ChapterId: chapterID,
 			},
 		},
 	}

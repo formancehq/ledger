@@ -63,13 +63,12 @@ type BucketServiceServerImpl struct {
 	authCfg               internalauth.AuthConfig
 	queryProfileThreshold time.Duration
 	clusterID             string
-	idempotencyTTL        time.Duration
 	info                  version.Info
 	applyDuration         metric.Int64Histogram
 	forwarder             nodeForwarder
 }
 
-func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, clusterID string, idempotencyTTL time.Duration, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
 	meter := meterProvider.Meter("grpc")
 	applyDuration, _ := meter.Int64Histogram("grpc.apply.duration",
 		metric.WithUnit("us"),
@@ -92,7 +91,6 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 		authCfg:               authCfg,
 		queryProfileThreshold: queryProfileThreshold,
 		clusterID:             clusterID,
-		idempotencyTTL:        idempotencyTTL,
 		info:                  info,
 		applyDuration:         applyDuration,
 		forwarder:             nodeForwarder{node: n, servicePool: servicePool},
@@ -250,7 +248,6 @@ func (impl *BucketServiceServerImpl) signReceiptIfNeeded(log *commonpb.Log) {
 		tx.GetId(),
 		tx.GetPostings(),
 		tx.GetTimestamp(),
-		created.GetChapterId(),
 	)
 	if err != nil {
 		impl.logger.Errorf("Failed to sign receipt for tx %d: %v", tx.GetId(), err)
@@ -259,53 +256,6 @@ func (impl *BucketServiceServerImpl) signReceiptIfNeeded(log *commonpb.Log) {
 	}
 
 	log.Receipt = receiptToken
-}
-
-func (impl *BucketServiceServerImpl) ListChapters(req *servicepb.ListChaptersRequest, stream servicepb.BucketService_ListChaptersServer) error {
-	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListChapters")
-	defer span.End()
-
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
-		return err
-	}
-
-	opts := req.GetOptions()
-
-	// Chapters are raft-state-backed; filter and checkpoint_id are not
-	// applicable. Reverse is honored at the handler layer (drain + reverse).
-	if err := ValidateListOptions(opts, ListOptionsSupport{Reverse: true}); err != nil {
-		return err
-	}
-
-	if err := impl.waitMinLogSequence(ctx, opts.GetRead().GetMinLogSequence()); err != nil {
-		return err
-	}
-
-	c, err := impl.ctrl.ListChapters(ctx)
-	if err != nil {
-		return fmt.Errorf("listing chapters: %w", err)
-	}
-
-	cursorKey, err := parseUint64Cursor(opts.GetCursor())
-	if err != nil {
-		return err
-	}
-
-	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
-	reverse := opts.GetReverse()
-
-	c, err = ApplyHandlerPagination(
-		c,
-		skipByUint64Key(cursorKey, reverse, func(item *commonpb.Chapter) uint64 { return item.GetId() }),
-		reverse,
-	)
-	if err != nil {
-		return fmt.Errorf("paginating chapters: %w", err)
-	}
-
-	return sendPagedToStream(ctx, c, stream, "chapter", pageSize, func(p *commonpb.Chapter) string {
-		return strconv.FormatUint(p.GetId(), 10)
-	})
 }
 
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
@@ -349,9 +299,7 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 		if impl.receiptSigner != nil {
 			// Checkpoint read: sign from the checkpoint's fixed store so the
 			// receipt's ledger + creation-log reads stay self-consistent with the
-			// transaction, which was read from that same store. A read handle (not
-			// the raw store) so the creation-log lookup's cold-storage fallback can
-			// scan chapters.
+			// transaction, which was read from that same store.
 			receiptHandle, hErr := mainStore.NewReadHandle()
 			if hErr != nil {
 				return nil, fmt.Errorf("opening checkpoint receipt read handle: %w", hErr)
@@ -561,7 +509,7 @@ func (impl *BucketServiceServerImpl) waitMinLogSequence(ctx context.Context, min
 // new min_audit_sequence API. A minLogSeq of 0 means "no consistency bound
 // requested", so this is a no-op.
 //
-// Only the LIVE filtered path calls this. Unfiltered reads scan the Cold/Audit
+// Only the LIVE filtered path calls this. Unfiltered reads scan the audit
 // zone directly and are always current, so they keep the direct fast path.
 // Checkpoint reads are frozen snapshots and are handled (and documented) at the
 // checkpoint-creation boundary, out of scope here.
@@ -979,7 +927,7 @@ func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, 
 		return err
 	}
 
-	checker := check.NewChecker(impl.store, impl.attrs, impl.clusterID, impl.localCtrl.ColdReader(), &impl.idempotencyTTL, impl.readStore, impl.logger)
+	checker := check.NewChecker(impl.store, impl.attrs, impl.clusterID, impl.readStore, impl.logger)
 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		_ = stream.Send(event)
@@ -1047,7 +995,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 
 		// Filters that consult the async audit secondary index need its independent
 		// progress gate. Nil filters and conjunctions made only of seq bounds scan
-		// the Cold/Audit zone directly, so coupling them to audit-index progress
+		// the audit zone directly, so coupling them to audit-index progress
 		// would make an authoritative read wait for a projection it never uses.
 		if query.AuditFilterNeedsIndex(opts.GetFilter()) {
 			if waitErr := impl.waitFilteredAuditConsistency(ctx, minLogSeq); waitErr != nil {
@@ -1168,19 +1116,6 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 		Sinks:        sinks,
 		SinkStatuses: statuses,
 	}, nil
-}
-
-func (impl *BucketServiceServerImpl) GetChapterSchedule(ctx context.Context, _ *servicepb.GetChapterScheduleRequest) (*servicepb.GetChapterScheduleResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
-		return nil, err
-	}
-
-	cronExpr, err := impl.ctrl.GetChapterSchedule(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("loading chapter schedule: %w", err)
-	}
-
-	return &servicepb.GetChapterScheduleResponse{Cron: cronExpr}, nil
 }
 
 func (impl *BucketServiceServerImpl) ListSigningKeys(req *servicepb.ListSigningKeysRequest, stream servicepb.BucketService_ListSigningKeysServer) error {
