@@ -28,7 +28,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/health"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
-	"github.com/formancehq/ledger/v3/internal/infra/receipt"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
@@ -58,7 +57,6 @@ type Admission struct {
 	writeGate       health.WriteGate
 	keyStore        *keystore.KeyStore
 	sharedState     *state.SharedState
-	receiptSigner   *receipt.Signer
 	builder         *plan.Builder
 	attrs           *attributes.Attributes
 	numscriptCache  *numscript.NumscriptCache
@@ -122,13 +120,6 @@ var phaseBucketBoundaries = []float64{
 func WithMetrics() func(*Admission) {
 	return func(a *Admission) {
 		a.metricsEnabled = true
-	}
-}
-
-// WithReceiptSigner enables receipt-based revert by providing a receipt signer.
-func WithReceiptSigner(signer *receipt.Signer) func(*Admission) {
-	return func(a *Admission) {
-		a.receiptSigner = signer
 	}
 }
 
@@ -2444,35 +2435,14 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 		// re-derives them from the coverage-gated TransactionState, so the
 		// audit-bound order carries only caller intent.
 		//
-		// A receipt-signed revert trusts the signed claims and skips the
-		// store fetch. On the non-receipt path a fetch miss (missing ledger
-		// or missing tx) yields nil postings and the proposal still enters
-		// Raft; the FSM apply is the audit authority for the resulting
-		// business rejection (invariant #8) — processApply.loadBoundaries
-		// audits missing ledgers, processRevertTransaction's boundary check
-		// audits missing txs.
-		var originalPostings []*commonpb.Posting
-
-		if data.RevertTransaction.GetReceipt() != "" && a.receiptSigner != nil {
-			claims, err := a.receiptSigner.Verify(data.RevertTransaction.GetReceipt())
-			if err != nil {
-				return nil, fmt.Errorf("invalid receipt: %w", err)
-			}
-
-			if claims.Ledger != apply.GetLedger() {
-				return nil, fmt.Errorf("receipt ledger %q does not match request ledger %q", claims.Ledger, apply.GetLedger())
-			}
-
-			if claims.TxID != txID {
-				return nil, fmt.Errorf("receipt txID %d does not match resolved txID %d", claims.TxID, txID)
-			}
-
-			originalPostings = receipt.ClaimsToPostings(claims.Postings)
-		} else {
-			originalPostings, err = a.getTransactionPostings(apply.GetLedger(), txID)
-			if err != nil {
-				return nil, fmt.Errorf("getting original transaction postings: %w", err)
-			}
+		// A fetch miss (missing ledger or missing tx) yields nil postings
+		// and the proposal still enters Raft; the FSM apply is the audit
+		// authority for the resulting business rejection (invariant #8) —
+		// processApply.loadBoundaries audits missing ledgers,
+		// processRevertTransaction's boundary check audits missing txs.
+		originalPostings, err := a.getTransactionPostings(apply.GetLedger(), txID)
+		if err != nil {
+			return nil, fmt.Errorf("getting original transaction postings: %w", err)
 		}
 
 		overlay.recordRevertOriginalPostings(

@@ -19,10 +19,8 @@ const errorReasonPrefix = "ERROR_REASON_"
 func (x *GetTransactionResponse) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Transaction *commonpb.Transaction `json:"transaction,omitempty"`
-		Receipt     string                `json:"receipt,omitempty"`
 	}{
 		Transaction: x.GetTransaction(),
-		Receipt:     x.GetReceipt(),
 	})
 }
 
@@ -137,13 +135,11 @@ func (x *RevertTransactionPayload) MarshalJSON() ([]byte, error) {
 		Force           bool           `json:"force,omitempty"`
 		AtEffectiveDate bool           `json:"atEffectiveDate,omitempty"`
 		Metadata        map[string]any `json:"metadata,omitempty"`
-		Receipt         string         `json:"receipt,omitempty"`
 	}{
 		TransactionId:   x.GetTransactionId(),
 		Force:           x.GetForce(),
 		AtEffectiveDate: x.GetAtEffectiveDate(),
 		Metadata:        commonpb.MetadataToAnyMap(x.GetMetadata()),
-		Receipt:         x.GetReceipt(),
 	})
 }
 

@@ -21,7 +21,7 @@ message SignedApplyBatch {
 }
 
 // SignedLog is the opaque envelope for a server-signed response Log.
-// The server clears any nested SignedLog and receipt fields on a
+// The server clears any nested SignedLog field on a
 // candidate Log, serializes it, signs the bytes, and ships
 // (key_id, signature, payload). Clients verify with the server's
 // public key (obtained via Discovery RPC).

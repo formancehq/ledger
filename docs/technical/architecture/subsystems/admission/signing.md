@@ -23,7 +23,7 @@ Two consequences:
 
 ### Response signature: per log
 
-For every log that ends up in the response, the server signs an `ApplyLog` derived from it (with the `receipt` and `response_signature` fields cleared so the signed bytes are deterministic). The signature is then attached back on `log.response_signature` as a `SignedLog`. Clients verifying receipts on disk re-clear the same fields, recompute the bytes, and `ed25519.Verify` against the server's known public key.
+For every log that ends up in the response, the server signs an `ApplyLog` derived from it (with the `response_signature` field cleared so the signed bytes are deterministic). The signature is then attached back on `log.response_signature` as a `SignedLog`. Clients verifying signatures on disk re-clear the same field, recompute the bytes, and `ed25519.Verify` against the server's known public key.
 
 ## Verification
 

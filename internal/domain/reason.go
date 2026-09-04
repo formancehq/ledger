@@ -56,7 +56,6 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 	case commonpb.ErrorReason_ERROR_REASON_VALIDATION,
 		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_PARSE_ERROR,
 		commonpb.ErrorReason_ERROR_REASON_SINK_BATCH_SIZE_TOO_LARGE,
-		commonpb.ErrorReason_ERROR_REASON_INVALID_RECEIPT,
 		commonpb.ErrorReason_ERROR_REASON_INVALID_CRON_EXPRESSION,
 		commonpb.ErrorReason_ERROR_REASON_NUMSCRIPT_INVALID_VERSION,
 		commonpb.ErrorReason_ERROR_REASON_INVALID_PATTERN,

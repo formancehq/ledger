@@ -68,12 +68,12 @@ func TestDefaultController_LedgerNotFound(t *testing.T) {
 			t.Run(method+"/"+seedTC.name, func(t *testing.T) {
 				t.Parallel()
 
-				store := newReceiptTestStore(t)
+				store := newCtrlTestStore(t)
 				attrs := attributes.New()
 				logger := logging.FromContext(logging.TestingContext())
 				meter := noop.NewMeterProvider().Meter("test")
 
-				ctrl := NewDefaultController(nil, store, logger, attrs, nil, nil, nil, meter)
+				ctrl := NewDefaultController(nil, store, logger, attrs, nil, nil, meter)
 
 				seedTC.seed(t, store)
 
@@ -86,4 +86,17 @@ func TestDefaultController_LedgerNotFound(t *testing.T) {
 			})
 		}
 	}
+}
+
+func newCtrlTestStore(t *testing.T) *dal.Store {
+	t.Helper()
+
+	logger := logging.FromContext(logging.TestingContext())
+	meter := noop.NewMeterProvider().Meter("test")
+
+	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	return store
 }

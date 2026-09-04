@@ -176,9 +176,6 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	// never touched by this flag.
 	runCmd.Flags().String("metrics-naming", "otel", "Application metrics naming convention (otel|prom)")
 
-	// Receipt signing key for JWT transaction receipts
-	runCmd.Flags().String("receipt-signing-key", "", "HMAC key for signing JWT transaction receipts (empty = disabled)")
-
 	// Response signing key for Ed25519 response signatures
 	runCmd.Flags().String("response-signing-key", "", "Path to Ed25519 seed file for response signing (empty = disabled)")
 
@@ -590,9 +587,6 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 
 	// Metrics naming convention
 	cfg.MetricsNaming = getString("metrics-naming", "otel")
-
-	// Receipt signing key
-	cfg.ReceiptSigningKey = getString("receipt-signing-key", "")
 
 	// Response signing key
 	cfg.ResponseSigningKeyFile = getString("response-signing-key", "")

@@ -54,7 +54,6 @@ Available flags for `run`:
 - `--health-check-interval`: Interval between disk usage health checks (default: `30s`)
 - `--health-wal-threshold`: WAL volume usage threshold, 0.0-1.0 (default: `0.8`)
 - `--health-data-threshold`: Data volume usage threshold, 0.0-1.0 (default: `0.8`)
-- `--receipt-signing-key`: HMAC-SHA256 key for JWT transaction receipts (env: `RECEIPT_SIGNING_KEY`)
 
 ### Configuration
 

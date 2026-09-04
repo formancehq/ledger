@@ -362,19 +362,6 @@ func TestBusinessErrorToGRPCStatus_MetadataFieldNotInSchema(t *testing.T) {
 	require.Equal(t, "idx-key-33", info.GetMetadata()["key"])
 }
 
-func TestBusinessErrorToGRPCStatus_InvalidReceipt(t *testing.T) {
-	t.Parallel()
-
-	bizErr := &domain.BusinessError{Err: &domain.ErrInvalidReceipt{Detail: "bad signature"}}
-	st := businessErrorToGRPCStatus(bizErr)
-
-	require.Equal(t, codes.InvalidArgument, st.Code())
-
-	info := extractErrorInfo(t, st)
-	require.Equal(t, domain.ErrReasonInvalidReceipt, info.GetReason())
-	require.Equal(t, "bad signature", info.GetMetadata()["reason"])
-}
-
 func TestBusinessErrorToGRPCStatus_MaintenanceMode(t *testing.T) {
 	t.Parallel()
 

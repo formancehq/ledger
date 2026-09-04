@@ -21,7 +21,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/analysis"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/infra/receipt"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -115,7 +114,6 @@ type DefaultController struct {
 	attrs         *attributes.Attributes
 	readStore     *readstore.Store
 	usageStore    *usagestore.Store
-	receiptSigner *receipt.Signer
 
 	// historical is true on clones produced by WithStores — reads are then
 	// served from a point-in-time checkpoint. usage counters are excluded
@@ -128,10 +126,6 @@ type DefaultController struct {
 }
 
 // NewDefaultController creates a new default controller.
-//
-// receiptSigner is nil when the node has no receipt signing key configured; in
-// that case locally-served GetTransaction reads return a nil receipt, matching
-// the historical behaviour of an unconfigured node.
 func NewDefaultController(
 	admission Admission,
 	store *dal.Store,
@@ -139,7 +133,6 @@ func NewDefaultController(
 	attrs *attributes.Attributes,
 	readStore *readstore.Store,
 	usageStore *usagestore.Store,
-	receiptSigner *receipt.Signer,
 	meter metric.Meter,
 ) *DefaultController {
 	applyDuration, err := meter.Int64Histogram(
@@ -161,7 +154,6 @@ func NewDefaultController(
 		attrs:         attrs,
 		readStore:     readStore,
 		usageStore:    usageStore,
-		receiptSigner: receiptSigner,
 		applyDuration: applyDuration,
 	}
 }
@@ -194,76 +186,8 @@ func (ctrl *DefaultController) ListLedgers(ctx context.Context) (cursor.Cursor[*
 	return cursor.NewClosingCursor(filtered, handle), nil
 }
 
-func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, *string, error) {
-	tx, err := ctrl.GetTransactionFrom(ctx, ctrl.store, ledgerName, transactionID)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// No signing key on this node: no receipt to produce. Return a nil receipt so
-	// the (unchanged) contract — nil means "this layer produced none" — holds, and
-	// callers render an empty string.
-	if ctrl.receiptSigner == nil {
-		return tx, nil, nil
-	}
-
-	// Freshness barrier: open the receipt snapshot NOW, after GetTransactionFrom
-	// closed its own read handle, so the receipt's ledger + creation-log reads
-	// share a committed state at least as fresh as the transaction read. Signing
-	// from a snapshot that could predate the transaction read would let the
-	// receipt reference a ledger/creation-log state older than the returned tx.
-	handle, err := ctrl.store.NewReadHandle()
-	if err != nil {
-		return nil, nil, fmt.Errorf("creating receipt read handle: %w", err)
-	}
-
-	defer func() { _ = handle.Close() }()
-
-	receiptToken, err := ctrl.ComputeTransactionReceipt(ctx, handle, ledgerName, transactionID, tx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("computing transaction receipt: %w", err)
-	}
-
-	return tx, &receiptToken, nil
-}
-
-// ComputeTransactionReceipt computes a JWT receipt for an existing
-// transaction from its creation log. Ledger info and the creation log are
-// read from the supplied reader — the same store the transaction was read
-// from — so checkpoint reads stay self-consistent. An empty token is
-// reserved for the one legitimately receiptless case: a present creation
-// log that is not a CreatedTransaction (e.g. a reversal). A missing
-// transaction state or creation log is an invariant failure — log history
-// is permanent, so the miss is store corruption. The caller must have
-// verified the signer is non-nil.
-func (ctrl *DefaultController) ComputeTransactionReceipt(ctx context.Context, reader dal.PebbleReader, ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
-	ledgerInfo, err := query.GetLedgerByName(ctx, reader, ledger)
-	if err != nil {
-		return "", err
-	}
-
-	log, err := query.FindTransactionCreationLog(ctx, reader, ctrl.attrs.Transaction, ledgerInfo.GetName(), txID)
-	if errors.Is(err, domain.ErrNotFound) {
-		// Log history is permanent: a transaction whose state exists but
-		// whose creation log is missing is a corrupt store, never a routine
-		// miss (same contract as assembleTransactionFromState).
-		return "", fmt.Errorf("invariant: transaction %d exists but its creation log is missing", txID)
-	}
-
-	if err != nil {
-		return "", err
-	}
-
-	// Receipts are only issued for created transactions, matching the Apply path
-	// (signReceiptIfNeeded skips non-created logs). A reversal transaction's
-	// creation log is a RevertedTransaction log, so it legitimately has no
-	// receipt — return empty rather than erroring.
-	created := log.GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction()
-	if created == nil {
-		return "", nil
-	}
-
-	return ctrl.receiptSigner.Sign(ledger, txID, tx.GetPostings(), tx.GetTimestamp())
+func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+	return ctrl.GetTransactionFrom(ctx, ctrl.store, ledgerName, transactionID)
 }
 
 // WithStores returns a shallow copy of the controller whose reads are served

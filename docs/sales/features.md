@@ -59,7 +59,6 @@
 | Store integrity check | ✅ | Hash chain + derived data verification |
 | Point-in-time backup | ✅ | Pebble snapshot as tar archive |
 | Restore pipeline | ✅ | Upload, validate, preview, finalize |
-| Transaction receipts | ✅ | HMAC-signed JWT receipts |
 | Cluster management | ✅ | Transfer leader, add/promote learner |
 | Disk space monitoring | ✅ | Auto-reject writes when storage full |
 

@@ -26,16 +26,7 @@ type Controller interface {
 	GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error)
 
 	// Read operations
-	// GetTransaction returns the transaction and the receipt the serving node
-	// signed. On a locally-served read the receipt is signed by the controller
-	// from a snapshot opened after the transaction read (its freshness barrier):
-	// non-nil when a signer is configured — possibly an empty string, e.g. a
-	// reversal — and nil when the node has no signer. When the read is forwarded
-	// to a signing node the returned receipt is that node's authoritative token
-	// (again possibly empty), relayed as-is rather than recomputed against a
-	// possibly-stale local snapshot. Adapters surface the token verbatim and must
-	// not re-sign it.
-	GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, *string, error)
+	GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error)
 	ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error)
 	GetAccount(ctx context.Context, ledgerName string, address string, opts GetAccountOptions) (*commonpb.Account, error)
 	ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error)

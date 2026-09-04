@@ -445,7 +445,7 @@ for i, log := range resp.Logs {
 
 ### Skip Response
 
-For high-throughput ingestion scenarios where the client does not need the full response payload, set `skip_response: true`. The server returns one log per request containing only the `sequence` number, skipping receipt signing, response signing, and payload serialization:
+For high-throughput ingestion scenarios where the client does not need the full response payload, set `skip_response: true`. The server returns one log per request containing only the `sequence` number, skipping response signing and payload serialization:
 
 ```go
 resp, err := client.Apply(ctx, &servicepb.ApplyRequest{

@@ -293,54 +293,6 @@ func TestReadTransactionState(t *testing.T) {
 	require.Nil(t, state)
 }
 
-func TestFindTransactionCreationLog(t *testing.T) {
-	t.Parallel()
-
-	s := newTestStore(t)
-	txAttr := attributes.NewAttribute[*commonpb.TransactionState](dal.SubAttrTransaction)
-
-	// Register a ledger
-	registerLedger(t, s, "find-tx-ledger")
-
-	// Store a transaction state via the attribute system
-	batch := s.OpenWriteSession()
-	_, err := txAttr.Set(batch,
-		domain.TransactionKey{LedgerName: "test", ID: 1}.Bytes(),
-		&commonpb.TransactionState{CreatedByLog: 5},
-	)
-	require.NoError(t, err)
-	require.NoError(t, batch.Commit())
-
-	// Store a log at sequence 5
-	logs := []*commonpb.Log{{
-		Sequence: 5,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
-				LedgerName: "find-tx-ledger",
-			},
-		}},
-	}}
-	appendLogs(t, s, 1, logs...)
-
-	reader, err := s.NewReadHandle()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = reader.Close() })
-
-	// Find the creation log. Nil cold reader: hot-only lookup.
-	log, err := query.FindTransactionCreationLog(context.Background(), reader, txAttr, "test", 1)
-	require.NoError(t, err)
-	require.NotNil(t, log)
-	require.Equal(t, uint64(5), log.GetSequence())
-
-	// Non-existent transaction should return ErrNotFound
-	_, err = query.FindTransactionCreationLog(context.Background(), reader, txAttr, "test", 999)
-	require.ErrorIs(t, err, domain.ErrNotFound)
-
-	// Non-existent ledger should return error
-	_, err = query.FindTransactionCreationLog(context.Background(), reader, txAttr, "other", 1)
-	require.Error(t, err)
-}
-
 func TestReadLastAuditSequence(t *testing.T) {
 	t.Parallel()
 

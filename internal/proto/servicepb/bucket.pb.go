@@ -603,7 +603,6 @@ func (x *GetTransactionRequest) GetCheckpointId() uint64 {
 type GetTransactionResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Transaction   *commonpb.Transaction  `protobuf:"bytes,1,opt,name=transaction,proto3" json:"transaction,omitempty"`
-	Receipt       string                 `protobuf:"bytes,2,opt,name=receipt,proto3" json:"receipt,omitempty"` // JWT receipt (empty if signing key not configured)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -643,13 +642,6 @@ func (x *GetTransactionResponse) GetTransaction() *commonpb.Transaction {
 		return x.Transaction
 	}
 	return nil
-}
-
-func (x *GetTransactionResponse) GetReceipt() string {
-	if x != nil {
-		return x.Receipt
-	}
-	return ""
 }
 
 type ListTransactionsRequest struct {
@@ -3412,7 +3404,6 @@ type RevertTransactionPayload struct {
 	Force           bool                               `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"`
 	AtEffectiveDate bool                               `protobuf:"varint,3,opt,name=at_effective_date,json=atEffectiveDate,proto3" json:"at_effective_date,omitempty"`
 	Metadata        map[string]*commonpb.MetadataValue `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Receipt         string                             `protobuf:"bytes,5,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -3473,13 +3464,6 @@ func (x *RevertTransactionPayload) GetMetadata() map[string]*commonpb.MetadataVa
 		return x.Metadata
 	}
 	return nil
-}
-
-func (x *RevertTransactionPayload) GetReceipt() string {
-	if x != nil {
-		return x.Receipt
-	}
-	return ""
 }
 
 // LedgerAction represents a single ledger action.
@@ -8853,10 +8837,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x15GetTransactionRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12%\n" +
 	"\x0etransaction_id\x18\x02 \x01(\x06R\rtransactionId\x12#\n" +
-	"\rcheckpoint_id\x18\x03 \x01(\x06R\fcheckpointId\"i\n" +
+	"\rcheckpoint_id\x18\x03 \x01(\x06R\fcheckpointId\"O\n" +
 	"\x16GetTransactionResponse\x125\n" +
-	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\x12\x18\n" +
-	"\areceipt\x18\x02 \x01(\tR\areceipt\"`\n" +
+	"\vtransaction\x18\x01 \x01(\v2\x13.common.TransactionR\vtransaction\"`\n" +
 	"\x17ListTransactionsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12-\n" +
 	"\aoptions\x18\x02 \x01(\v2\x13.common.ListOptionsR\aoptions\"\\\n" +
@@ -9039,13 +9022,12 @@ const file_bucket_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\x1aW\n" +
 	"\x14AccountMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
-	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xbd\x02\n" +
+	"\x05value\x18\x02 \x01(\v2\x13.common.MetadataMapR\x05value:\x028\x01\"\xa3\x02\n" +
 	"\x18RevertTransactionPayload\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\x06R\rtransactionId\x12\x14\n" +
 	"\x05force\x18\x02 \x01(\bR\x05force\x12*\n" +
 	"\x11at_effective_date\x18\x03 \x01(\bR\x0fatEffectiveDate\x12J\n" +
-	"\bmetadata\x18\x04 \x03(\v2..ledger.RevertTransactionPayload.MetadataEntryR\bmetadata\x12\x18\n" +
-	"\areceipt\x18\x05 \x01(\tR\areceipt\x1aR\n" +
+	"\bmetadata\x18\x04 \x03(\v2..ledger.RevertTransactionPayload.MetadataEntryR\bmetadata\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
 	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\xf7\x04\n" +
@@ -9054,8 +9036,8 @@ const file_bucket_proto_rawDesc = "" +
 	"\fadd_metadata\x18\x02 \x01(\v2\x1b.common.SaveMetadataCommandH\x00R\vaddMetadata\x12X\n" +
 	"\x12revert_transaction\x18\x03 \x01(\v2 .ledger.RevertTransactionPayloadB\x05\xca\xd5\"\x01\bH\x00R\x11revertTransaction\x12O\n" +
 	"\x0fdelete_metadata\x18\x04 \x01(\v2\x1d.common.DeleteMetadataCommandB\x05\xca\xd5\"\x01\x12H\x00R\x0edeleteMetadata\x12P\n" +
-	"\x10add_account_type\x18\x05 \x01(\v2\x1d.ledger.AddAccountTypeRequestB\x05\xca\xd5\"\x01$H\x00R\x0eaddAccountType\x12Y\n" +
-	"\x13remove_account_type\x18\x06 \x01(\v2 .ledger.RemoveAccountTypeRequestB\x05\xca\xd5\"\x01#H\x00R\x11removeAccountType\x12k\n" +
+	"\x10add_account_type\x18\x05 \x01(\v2\x1d.ledger.AddAccountTypeRequestB\x05\xca\xd5\"\x01#H\x00R\x0eaddAccountType\x12Y\n" +
+	"\x13remove_account_type\x18\x06 \x01(\v2 .ledger.RemoveAccountTypeRequestB\x05\xca\xd5\"\x01\"H\x00R\x11removeAccountType\x12k\n" +
 	"\x1cset_default_enforcement_mode\x18\a \x01(\v2(.ledger.SetDefaultEnforcementModeRequestH\x00R\x19setDefaultEnforcementModeB\x06\n" +
 	"\x04data\"\x9c\x01\n" +
 	"\x12LedgerApplyRequest\x12\x16\n" +

@@ -251,7 +251,7 @@ func TestApply_RequiresBusinessScopes(t *testing.T) {
 	//
 	// applyDuration must be non-nil: Apply records it unconditionally on the
 	// success path (server_bucket.go:191) and a zero-value Int64Histogram
-	// panics. receiptSigner and responseSigner stay nil — both are nil-guarded.
+	// panics. responseSigner stays nil — it is nil-guarded.
 	newImpl := func(t *testing.T, cfg internalauth.AuthConfig, expectApply bool) *BucketServiceServerImpl {
 		t.Helper()
 

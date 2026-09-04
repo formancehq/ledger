@@ -741,13 +741,6 @@ func (m *Log) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error) {
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
-		dAtA[i] = 0x22
-	}
-	if len(m.Receipt) > 0 {
-		i -= len(m.Receipt)
-		copy(dAtA[i:], m.Receipt)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Receipt)))
-		i--
 		dAtA[i] = 0x1a
 	}
 	if m.Payload != nil {

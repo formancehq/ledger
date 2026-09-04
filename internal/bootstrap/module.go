@@ -54,7 +54,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/otlplogs"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
-	"github.com/formancehq/ledger/v3/internal/infra/receipt"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
@@ -377,13 +376,6 @@ func Module() fx.Option {
 
 				return nodeProvideResult{Node: n, FreshStart: freshStart}, nil
 			},
-			func(cfg Config) *receipt.Signer {
-				if cfg.ReceiptSigningKey == "" {
-					return nil
-				}
-
-				return receipt.NewSigner([]byte(cfg.ReceiptSigningKey))
-			},
 			buildResponseSigner,
 			func(cfg Config) (node.NodeConfig, error) {
 				cfg.RaftConfig.DataDir = cfg.DataDir
@@ -463,9 +455,9 @@ func Module() fx.Option {
 			},
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
 			fx.Annotate(buildAuthConfig, fx.ParamTags(``, ``, `optional:"true"`)),
-			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, signer *receipt.Signer, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
-				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, signer, respSigner, authCfg, cfg.QueryProfileThreshold, cfg.ClusterID, meterProvider, n, servicePool, info)
-			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`, ``)),
+			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, respSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
+				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, respSigner, authCfg, cfg.QueryProfileThreshold, cfg.ClusterID, meterProvider, n, servicePool, info)
+			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`, ``)),
 			func(cfg Config, logger logging.Logger, s *dal.Store, fsm *state.Machine) snapshotpb.SnapshotServiceServer {
 				return grpcadp.NewSnapshotServiceServer(logger, s, cfg.SnapshotSyncConfig.SessionTTL, fsm.WaitForApplied)
 			},
@@ -584,7 +576,7 @@ func Module() fx.Option {
 			func(node *node.Node, ctrl ctrl.Controller) httpcompat.Backend {
 				return httpcompat.NewDefaultBackend(node, ctrl)
 			},
-			fx.Annotate(func(
+			func(
 				cfg Config,
 				node *node.Node,
 				store *dal.Store,
@@ -594,17 +586,12 @@ func Module() fx.Option {
 				hc *clusterhealth.HealthChecker,
 				ks *keystore.KeyStore,
 				ss *state.SharedState,
-				receiptSigner *receipt.Signer,
 				attrs *attributes.Attributes,
 				authCfg internalauth.AuthConfig,
 			) ctrl.Admission {
 				var opts []func(*admission.Admission)
 				if cfg.AdmissionMetrics {
 					opts = append(opts, admission.WithMetrics())
-				}
-
-				if receiptSigner != nil {
-					opts = append(opts, admission.WithReceiptSigner(receiptSigner))
 				}
 
 				if authCfg.Enabled {
@@ -625,7 +612,7 @@ func Module() fx.Option {
 					node.WaitLeaderReady,
 					opts...,
 				)
-			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `optional:"true"`)),
+			},
 			func(
 				logger logging.Logger,
 				machine *state.Machine,
@@ -657,17 +644,16 @@ func Module() fx.Option {
 				attrs *attributes.Attributes,
 				rs *readstore.Store,
 				us *usagestore.Store,
-				receiptSigner *receipt.Signer,
 				meterProvider metric.MeterProvider,
 			) (ctrl.Controller, *ctrl.DefaultController) {
-				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, us, receiptSigner, meterProvider.Meter("ctrl"))
+				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, us, meterProvider.Meter("ctrl"))
 
 				return NewRoutedController(
 					defaultCtrl,
 					raftNode,
 					servicePool,
 				), defaultCtrl
-			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``, `optional:"true"`, ``, ``)),
+			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``)),
 			func(serviceServer *grpcadp.ServiceServer, n *node.Node, store *dal.Store) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
