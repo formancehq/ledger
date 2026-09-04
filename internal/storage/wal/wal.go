@@ -8,6 +8,9 @@ import (
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source wal.go -destination wal_generated.go -typed -package wal . WAL
 type WAL interface {
 	raft.Storage
+	// CreateSnapshot, UpdateSnapshotConfState and ApplySnapshot persist a
+	// snapshot file, so each can return ErrWALDirectoryMissing. That one is
+	// terminal: the caller must stop the node rather than retry.
 	CreateSnapshot(i uint64, r *raftpb.ConfState, data []byte) error
 	UpdateSnapshotConfState(cs *raftpb.ConfState) error
 	Compact(u uint64) error

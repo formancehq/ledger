@@ -753,25 +753,29 @@ func (node *Node) runBackgroundMaintenance(ctx context.Context, stop chan struct
 		case <-stop:
 			return nil
 		case <-ticker.C:
-			node.doMaintenance()
+			if err := node.doMaintenance(); err != nil {
+				return err
+			}
 		}
 	}
 }
 
-func (node *Node) doMaintenance() {
+// doMaintenance logs and absorbs the failures it can retry on the next tick. It
+// returns only what makes retrying pointless.
+func (node *Node) doMaintenance() error {
 	store := node.applier.Store()
 
 	lastSnap, err := node.wal.Snapshot()
 	if err != nil {
 		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to read WAL snapshot")
 
-		return
+		return nil
 	}
 
 	// Early skip: nothing new since the previous tick. Avoids paying for an
 	// fsync on idle clusters.
 	if node.fsm.LastPersistedIndex() <= lastSnap.GetMetadata().GetIndex() {
-		return
+		return nil
 	}
 
 	// Capture lastPersistedIndex BEFORE calling SyncWAL. Reading first then
@@ -785,7 +789,7 @@ func (node *Node) doMaintenance() {
 	if err := store.SyncWAL(); err != nil {
 		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to sync Pebble WAL, skipping snapshot and checkpoint")
 
-		return
+		return nil
 	}
 	// Post-condition: every FSM batch with Raft index <= capturedIndex is
 	// durable on disk. It is now safe to advance the Raft WAL snapshot and
@@ -794,6 +798,12 @@ func (node *Node) doMaintenance() {
 
 	// 1. WAL snapshot + compact.
 	if err := node.wal.CreateSnapshot(capturedIndex, node.confState.Load(), nil); err != nil {
+		// The WAL directory is gone: every later acknowledgement is unrecoverable,
+		// so the next tick has nothing to retry.
+		if errors.Is(err, wal.ErrWALDirectoryMissing) {
+			return fmt.Errorf("background maintenance: %w", err)
+		}
+
 		if !errors.Is(err, raft.ErrSnapOutOfDate) {
 			node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create WAL snapshot")
 		}
@@ -808,16 +818,18 @@ func (node *Node) doMaintenance() {
 	// Independent of step 1: failures in the WAL snapshot/compact path must not
 	// prevent the Pebble checkpoint from being attempted, and vice versa.
 	if capturedIndex <= node.lastCheckpointPersistedIndex {
-		return
+		return nil
 	}
 
 	if _, err := store.CreateSnapshot(); err != nil {
 		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create Pebble checkpoint")
 
-		return
+		return nil
 	}
 
 	node.lastCheckpointPersistedIndex = capturedIndex
+
+	return nil
 }
 
 func (node *Node) Run(ctx context.Context, ready chan struct{}) error {

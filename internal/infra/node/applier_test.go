@@ -78,6 +78,7 @@ type testApplierSetup struct {
 	applier      *Applier
 	store        *dal.Store
 	wal          wal.WAL
+	walDir       string
 	spool        *spool.Default
 	fsm          *state.Machine
 	stop         chan struct{}
@@ -160,6 +161,7 @@ func newTestApplierSetupWithSink(t *testing.T, sink LocalResponses) *testApplier
 		applier:      applier,
 		store:        pebbleStore,
 		wal:          w,
+		walDir:       walDir,
 		spool:        defaultSpool,
 		fsm:          fsm,
 		stop:         stop,

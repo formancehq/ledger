@@ -184,7 +184,7 @@ func walDirPopulated(walDir string) (bool, error) {
 
 // New creates a new DefaultWAL instance.
 func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Option) (*DefaultWAL, error) {
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := mkdirAllSynced(dataDir); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
 	}
 
