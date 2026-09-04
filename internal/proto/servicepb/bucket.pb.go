@@ -127,16 +127,15 @@ const (
 	// A reverse-map (0x03) row in the peer read-index store references a
 	// metadata field that has no entry in the stored SubAttrIndex registry, or
 	// belongs to a ledger the audit chain does not list as live, or is not a
-	// well-formed reverse-map key at all. The reverse map is the only read-index
-	// limb that cannot be range-deleted by field — its metadata key sits after a
-	// fixed-width version block — so field removal must scan and point-delete,
-	// and a row missed by that scan is a permanent divergence no other pass can
-	// see. Reported per (ledger, namespace, metadata key) with a row count and a
-	// sample entity rather than per row: a field dropped on a large ledger can
-	// strand millions of rows. The encoding version block is deliberately NOT
-	// validated here — current and pending versions legitimately coexist during
-	// a per-replica rewrite, and stale versions are reclaimed at boot by
-	// purgeOrphanVersions.
+	// well-formed reverse-map key at all. Reverse-map keys use the
+	// field/version/entity layout, so removing a field across every version is a
+	// field-bounded DeleteRange. The checker remains as defense against
+	// read-store corruption or a broken index lifecycle even though correct
+	// field purges are atomic. Reported per (ledger, namespace, metadata key)
+	// with a row count and a sample entity rather than per row. The encoding
+	// version block is deliberately NOT validated here — current and pending
+	// versions legitimately coexist during a per-replica rewrite, and stale
+	// versions are reclaimed at boot by purgeOrphanVersions.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN CheckStoreErrorType = 20
 	// Emitted when the persisted signing-key projection (SubGlobSigningKey)
 	// diverges from the key set the checker re-derived from chain-bound
