@@ -103,20 +103,50 @@ On the leader serving `RemoveNode`, `ProposalID` — together with the expected 
 
 This path is intentionally leader-local: `rawNode.ApplyConfChange` mutates only the leader's raft state; followers (if any survive) will learn about it via the next snapshot they receive to catch up. The design extends the existing two-write sequence to atomically embed the blacklist write in the second one:
 
-1. `wal.UpdateSnapshotConfState(cs)` — WAL write, ordered first per EN-1413 (unchanged).
-2. **Extended** `membership.Unregister(nodeID)` — Pebble batch, atomic between:
+1. `rawNode.ApplyConfChange(cc)` — irreversible live tracker mutation; returns the new `ConfState`.
+2. `wal.UpdateSnapshotConfState(cs)` — WAL write, ordered before Pebble per EN-1413.
+3. When the peer has a valid instance identity, `membership.UnregisterAndBlacklist(nodeID, instanceID, removedAt)` performs a Pebble batch atomic between:
    - Delete of the peer row.
    - Put of `RemovedMembers[nodeID, instanceID]`.
 
+   A phantom learner or bootstrap peer without an instance identity instead
+   uses `membership.Unregister(nodeID)` because there is no identity to
+   blacklist.
+
 The `instanceID` is read from the peer's Membership row just before the delete, so no explicit parameter needs to travel on the ledgerctl RPC. `membership.Unregister` reads from its own in-memory cache (populated at boot from Pebble), which is outside the FSM hot path and therefore not subject to invariants #3/#6/#9.
 
-`internal/infra/node/` and `internal/infra/membership/` are added to the `forbidigo` exception list of [invariant #4](../../../../../CLAUDE.md#invariants), justified as *"cluster-topology lifecycle path: force-remove writes ConfState (WAL) + peer tombstone (Pebble) outside the FSM hot path by necessity — see docs/technical/architecture/subsystems/consensus/removed-member-registry.md"*. The node/membership exception already exists de facto for the WAL/peer-row writes; the new Pebble mutation reuses the same exception scope.
+The file-scoped `forbidigo` exceptions for the membership peer-store lifecycle
+are justified as *"cluster-topology lifecycle path: force-remove writes
+ConfState (WAL) + peer tombstone (Pebble) outside the FSM hot path by necessity
+— see docs/technical/architecture/subsystems/consensus/removed-member-registry.md"*.
+
+`ApplyConfChange` replaces etcd/raft's active tracker and deletes the removed
+member's `Progress`; etcd/raft exposes no rollback operation that restores that
+tracker state. If `UpdateSnapshotConfState` fails, Ledger therefore marks the
+node terminal before returning the persistence error, rejects subsequent Raft
+commands and proposals, fails work queued while the persistence call was in
+flight, and stops the orchestrate task. Once a force-removal command is admitted,
+caller cancellation cannot release it before that definitive result is known.
+`Node.Run` propagates the task failure to the bootstrap runner, which terminates
+the process. The Pebble batch is not attempted. Applying an inverse add change
+is deliberately not used: it would create new progress, not restore the removed
+member's prior replication state.
+
+`UpdateSnapshotConfState` has two durable writes. It atomically replaces the
+snapshot file, then appends the matching etcd WAL snapshot record. Because a
+ConfState-only update retains the same snapshot term/index, a failure before the
+file replacement restarts with the old ConfState, while a failure after the
+replacement can restart with the new ConfState even if the following record
+write reports an error. Restart makes that durable snapshot authoritative. The
+running node is terminated for either error outcome, so neither residual state
+can serve concurrently with a contradictory live tracker.
 
 #### Crash windows (force path only)
 
 | Crash between... | Resulting state on reboot | Impact |
 |---|---|---|
-| in-memory `ApplyConfChange` and WAL write | ConfState unchanged; peer still voter. | Statu quo, no harm. |
+| in-memory `ApplyConfChange` and atomic snapshot-file replacement | ConfState unchanged; peer still voter. A returned persistence error fail-stops the running node and fails queued work. | Restart reconstructs the old membership; the reduced live quorum is never used by a continuing node. |
+| snapshot-file replacement and WAL snapshot-record write | The replacement file contains the reduced ConfState at the snapshot's existing term/index. A record-write error still fail-stops the node and skips peer cleanup. | Restart may reconstruct the new membership from the durable replacement file; no contradictory process continues serving. |
 | WAL write and Pebble batch | ConfState says "removed"; peer row still present (harmless per EN-1413); `RemovedMembers` empty. | Peer is out of quorum but not blacklisted. If the pod is still alive and rejoins **within this window**, EN-1045 loop briefly possible until the operator retries `remove-node`. |
 | After Pebble batch | Nominal. | — |
 
