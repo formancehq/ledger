@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -103,4 +104,52 @@ func TestHTTPDriverReusesConnections(t *testing.T) {
 	// Each push must drain and close the response body, otherwise the keep-alive
 	// connection cannot be reused and every push opens (and leaks) a new socket.
 	require.EqualValues(t, 1, newConns.Load(), "expected a single reused connection for %d pushes", pushes)
+}
+
+func TestHTTPDriverBoundsResponseDrain(t *testing.T) {
+	t.Parallel()
+
+	// The exporter streams an endless body; Accept must still return promptly and the
+	// driver must keep working for the next push.
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusAccepted)
+		chunk := make([]byte, 32<<10)
+		for {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			select {
+			case <-r.Context().Done():
+				return
+			default:
+			}
+		}
+	}))
+	t.Cleanup(func() {
+		// Force the streaming handler to stop even if a client is still reading.
+		testServer.CloseClientConnections()
+		testServer.Close()
+	})
+
+	driver, err := NewDriver(Config{URL: testServer.URL}, logging.Testing())
+	require.NoError(t, err)
+	log := drivers.NewLogWithLedger("module", ledger.NewLog(ledger.CreatedTransaction{Transaction: ledger.NewTransaction()}))
+
+	for i := 0; i < 2; i++ {
+		done := make(chan error, 1)
+		go func() {
+			_, err := driver.Accept(context.TODO(), log)
+			done <- err
+		}()
+		select {
+		case err := <-done:
+			require.NoError(t, err)
+		case <-time.After(10 * time.Second):
+			require.Fail(t, "Accept did not return: response body draining is not bounded")
+		}
+	}
 }
