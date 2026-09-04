@@ -162,9 +162,10 @@ The 2026-09-04 PR-tooling measurement used a primary checkout containing
 integrity guard took more than 65.662 seconds for one snapshot, took seven
 snapshots per straight run, and launched 63 Git processes. Its measured lower
 bound exceeded 7 minutes 40 seconds. The cooperative guard does not enumerate
-ignored entries: warm snapshots of the same checkout took 118-122 ms, so the
-two-snapshot outer boundary took about 240 ms and launched exactly 10 Git
-processes. The Git interceptor was removed.
+ignored entries: a warm six-process benchmark of the same checkout took 235
+ms, while one complete boundary measured 181 ms before and 229 ms after (410
+ms of snapshot compute and 0.63 seconds wall time). The two snapshots launch 12
+Git processes. The Git interceptor was removed.
 
 The proportional validation for that tooling change completed in about 90
 seconds on a warm cache, including the single affected race suite. The guard

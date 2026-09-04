@@ -52,6 +52,10 @@ func TestSnapshotDetectsProtectedStateChanges(t *testing.T) {
 		{name: "non-ignored untracked content", mutate: func(t *testing.T, root string) {
 			require.NoError(t, os.WriteFile(filepath.Join(root, "untracked.txt"), []byte("untracked\n"), 0o644))
 		}},
+		{name: "intent-to-add index entry", mutate: func(t *testing.T, root string) {
+			require.NoError(t, os.WriteFile(filepath.Join(root, "intent-to-add"), nil, 0o644))
+			runGit(t, root, "add", "--intent-to-add", "intent-to-add")
+		}},
 	}
 
 	for _, test := range tests {
@@ -118,7 +122,7 @@ func TestSnapshotFailsClosedOnUntrackedEnumerationAndReadErrors(t *testing.T) {
 	}
 }
 
-func TestSnapshotUsesFiveGitProcessesAndSkipsIgnoredEntries(t *testing.T) {
+func TestSnapshotUsesSixGitProcessesAndSkipsIgnoredEntries(t *testing.T) {
 	t.Parallel()
 
 	root := newTestRepository(t)
@@ -133,7 +137,7 @@ func TestSnapshotUsesFiveGitProcessesAndSkipsIgnoredEntries(t *testing.T) {
 	require.Equal(t, 1, snapshot.Metrics.UntrackedRegularFiles)
 	require.Equal(t, int64(7), snapshot.Metrics.UntrackedLogicalBytes)
 	require.Equal(t, GitProcessesPerSnapshot(), snapshot.Metrics.GitProcesses)
-	require.Equal(t, 5, snapshot.Metrics.GitProcesses)
+	require.Equal(t, 6, snapshot.Metrics.GitProcesses)
 }
 
 func BenchmarkCapture(b *testing.B) {

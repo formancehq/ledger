@@ -17,7 +17,7 @@ import (
 	"strings"
 )
 
-const gitProcessesPerSnapshot = 5
+const gitProcessesPerSnapshot = 6
 
 // Metrics describes the non-ignored untracked content captured in a snapshot.
 type Metrics struct {
@@ -128,6 +128,10 @@ func (worker *snapshotter) capture(root string) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("capturing ROOT_BRANCH: %w", err)
 	}
+	status, err := worker.runGit(root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("capturing root status: %w", err)
+	}
 	stagedDiff, err := worker.runGit(root, "diff", "--cached", "--binary", "--full-index", "HEAD", "--")
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("reading staged root diff: %w", err)
@@ -143,6 +147,7 @@ func (worker *snapshotter) capture(root string) (Snapshot, error) {
 
 	hasher := sha256.New()
 	writeHashField(hasher, []byte("ledger-rootguard-v2"))
+	writeHashField(hasher, status)
 	writeHashField(hasher, stagedDiff)
 	writeHashField(hasher, unstagedDiff)
 	if err := worker.hashUntrackedPaths(hasher, rootFS, untracked); err != nil {

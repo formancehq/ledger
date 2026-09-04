@@ -318,12 +318,12 @@ exit "${TEST_REVIEW_LOOP_EXIT:-0}"
 set -euo pipefail
 [[ "$1" == --root && "$3" == -- ]]
 shift 3
-echo "ROOT_PROTECTION_ARMED gitProcesses=5 ignoredEntries=0"
+echo "ROOT_PROTECTION_ARMED gitProcesses=6 ignoredEntries=0"
 set +e
 "$@"
 status=$?
 set -e
-echo "ROOT_SNAPSHOT_CAPTURED position=after gitProcesses=5 ignoredEntries=0"
+echo "ROOT_SNAPSHOT_CAPTURED position=after gitProcesses=6 ignoredEntries=0"
 echo "ROOT_UNCHANGED=PASS"
 exit "$status"
 `)

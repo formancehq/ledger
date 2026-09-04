@@ -48,7 +48,7 @@ func TestRunnerAlwaysTakesTwoSnapshots(t *testing.T) {
 			require.Equal(t, 1, strings.Count(output.String(), "ROOT_PROTECTION_ARMED"))
 			require.Equal(t, 1, strings.Count(output.String(), "ROOT_SNAPSHOT_CAPTURED position=after"))
 			require.Equal(t, 1, strings.Count(output.String(), "ROOT_UNCHANGED=PASS"))
-			require.Contains(t, output.String(), "gitProcesses=5")
+			require.Contains(t, output.String(), "gitProcesses=6")
 			require.Contains(t, output.String(), "ignoredEntries=0")
 		})
 	}
@@ -100,7 +100,7 @@ func TestRunnerComparesRootAfterCancellation(t *testing.T) {
 	require.NoError(t, err, string(output))
 
 	ready := filepath.Join(t.TempDir(), "ready")
-	command := exec.Command(binary, "--root", root, "--", "/bin/sh", "-c", "printf ready > "+shellQuote(ready)+"; while :; do sleep 1; done")
+	command := exec.Command(binary, "--root", root, "--", "/bin/sh", "-c", "trap '' TERM INT; printf ready > "+shellQuote(ready)+"; while :; do sleep 1; done")
 	command.Dir = root
 	command.Env = testenv.Environment()
 	var combined bytes.Buffer

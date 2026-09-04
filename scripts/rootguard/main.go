@@ -17,6 +17,8 @@ import (
 
 const exitError = 1
 
+const cancellationGracePeriod = 2 * time.Second
+
 type options struct {
 	root string
 }
@@ -146,7 +148,23 @@ func runChild(command *exec.Cmd) error {
 		} else {
 			_ = command.Process.Signal(forwarded) // Best effort cancellation forwarding.
 		}
+		grace := time.NewTimer(cancellationGracePeriod)
+		defer grace.Stop()
+		select {
+		case err := <-done:
+			return err
+		case <-received:
+			terminateProcessGroup(command)
+		case <-grace.C:
+			terminateProcessGroup(command)
+		}
 
 		return <-done
+	}
+}
+
+func terminateProcessGroup(command *exec.Cmd) {
+	if err := syscall.Kill(-command.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+		_ = command.Process.Kill() // Fall back when process-group termination is unavailable.
 	}
 }

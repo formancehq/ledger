@@ -49,9 +49,10 @@ and review child with one before snapshot and one after snapshot. The after
 snapshot runs after every normal child result, including validation failure,
 review failure, malformed output, and `FINDINGS`.
 
-Each snapshot records the primary checkout's HEAD and branch, hashes staged and
-unstaged tracked diffs, and hashes the paths, modes, and contents of non-ignored
-untracked files reported by Git. It uses five Git processes. Ignored paths,
+Each snapshot records the primary checkout's HEAD and branch, hashes porcelain
+status plus staged and unstaged tracked diffs, and hashes the paths, modes, and
+contents of non-ignored untracked files reported by Git. It uses six Git
+processes. Ignored paths,
 ignored build artifacts, shared caches, and ignore configuration are not
 enumerated or hashed.
 
