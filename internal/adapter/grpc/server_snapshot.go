@@ -48,7 +48,8 @@ func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL ti
 	}
 }
 
-// StopSnapshotService stops the session reaper and cleans up all active sessions.
+// StopSnapshotService stops the session reaper and retires all sessions.
+// Checkpoints still in use are removed when their last FetchFile completes.
 func StopSnapshotService(server snapshotpb.SnapshotServiceServer) {
 	if impl, ok := server.(*SnapshotServiceServerImpl); ok {
 		impl.sessions.stop()
@@ -131,10 +132,11 @@ func (s *SnapshotServiceServerImpl) PrepareSnapshot(ctx context.Context, req *sn
 
 // FetchFile streams a single file from a prepared snapshot session.
 func (s *SnapshotServiceServerImpl) FetchFile(req *snapshotpb.FetchFileRequest, stream ggrpc.ServerStreamingServer[snapshotpb.FetchFileResponse]) error {
-	session, ok := s.sessions.get(req.GetSessionId())
+	session, ok := s.sessions.acquire(req.GetSessionId())
 	if !ok {
 		return status.Errorf(codes.NotFound, "session %s not found or expired", req.GetSessionId())
 	}
+	defer s.sessions.release(session)
 
 	// Validate the path stays within the checkpoint directory.
 	relPath := req.GetPath()
@@ -149,7 +151,8 @@ func (s *SnapshotServiceServerImpl) FetchFile(req *snapshotpb.FetchFileRequest, 
 	})
 }
 
-// CloseSession releases the snapshot session and its temporary checkpoint.
+// CloseSession retires the snapshot session. Its temporary checkpoint is
+// removed immediately unless an acquired FetchFile is still using it.
 func (s *SnapshotServiceServerImpl) CloseSession(_ context.Context, req *snapshotpb.CloseSessionRequest) (*snapshotpb.CloseSessionResponse, error) {
 	s.sessions.remove(req.GetSessionId())
 

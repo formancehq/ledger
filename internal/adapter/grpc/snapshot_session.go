@@ -3,7 +3,7 @@ package grpc
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"maps"
+	"errors"
 	"sync"
 	"time"
 
@@ -22,6 +22,8 @@ type snapshotSession struct {
 	syncName       string
 	checkpointPath string
 	lastAccess     time.Time
+	activeUsers    int
+	retired        bool
 }
 
 // snapshotSessionStore manages snapshot sessions with TTL-based expiry.
@@ -33,6 +35,8 @@ type snapshotSessionStore struct {
 	logger   logging.Logger
 	ttl      time.Duration
 	stopCh   chan struct{}
+	stopOnce sync.Once
+	stopped  bool
 }
 
 func newSnapshotSessionStore(store *dal.Store, logger logging.Logger, ttl time.Duration) *snapshotSessionStore {
@@ -56,26 +60,50 @@ func (ss *snapshotSessionStore) create(syncName, checkpointPath string) (string,
 	}
 
 	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	if ss.stopped {
+		return "", errors.New("snapshot session store stopped")
+	}
+
 	ss.sessions[id] = &snapshotSession{
 		syncName:       syncName,
 		checkpointPath: checkpointPath,
 		lastAccess:     time.Now(),
 	}
-	ss.mu.Unlock()
 
 	return id, nil
 }
 
-func (ss *snapshotSessionStore) get(sessionID string) (*snapshotSession, bool) {
+// acquire pins a session's checkpoint until release is called. A retired
+// session cannot be acquired again, but its active users may finish.
+func (ss *snapshotSessionStore) acquire(sessionID string) (*snapshotSession, bool) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
 
 	s, ok := ss.sessions[sessionID]
 	if ok {
+		s.activeUsers++
 		s.lastAccess = time.Now()
 	}
 
 	return s, ok
+}
+
+func (ss *snapshotSessionStore) release(s *snapshotSession) {
+	ss.mu.Lock()
+	if s.activeUsers == 0 {
+		ss.mu.Unlock()
+		panic("releasing snapshot session without an active user")
+	}
+
+	s.activeUsers--
+	cleanup := s.retired && s.activeUsers == 0
+	ss.mu.Unlock()
+
+	if cleanup {
+		ss.cleanupCheckpoint(s.syncName)
+	}
 }
 
 func (ss *snapshotSessionStore) remove(sessionID string) {
@@ -83,10 +111,12 @@ func (ss *snapshotSessionStore) remove(sessionID string) {
 	s, ok := ss.sessions[sessionID]
 	if ok {
 		delete(ss.sessions, sessionID)
+		s.retired = true
 	}
+	cleanup := ok && s.activeUsers == 0
 	ss.mu.Unlock()
 
-	if ok {
+	if cleanup {
 		ss.cleanupCheckpoint(s.syncName)
 	}
 }
@@ -120,8 +150,13 @@ func (ss *snapshotSessionStore) reapExpired() {
 	expiredSessions := make([]*snapshotSession, 0, len(expired))
 
 	for _, id := range expired {
-		expiredSessions = append(expiredSessions, ss.sessions[id])
+		s := ss.sessions[id]
 		delete(ss.sessions, id)
+		s.retired = true
+
+		if s.activeUsers == 0 {
+			expiredSessions = append(expiredSessions, s)
+		}
 	}
 
 	ss.mu.Unlock()
@@ -143,23 +178,35 @@ func (ss *snapshotSessionStore) cleanupCheckpoint(syncName string) {
 		ss.logger.WithFields(map[string]any{
 			"error":    err,
 			"syncName": syncName,
-		}).Errorf("Failed to remove temporary checkpoint for expired session")
+		}).Errorf("Failed to remove temporary checkpoint for snapshot session")
 	}
 }
 
 func (ss *snapshotSessionStore) stop() {
-	close(ss.stopCh)
+	ss.stopOnce.Do(func() {
+		close(ss.stopCh)
 
-	// Clean up all remaining sessions.
-	ss.mu.Lock()
-	remaining := make(map[string]*snapshotSession, len(ss.sessions))
-	maps.Copy(remaining, ss.sessions)
-	ss.sessions = make(map[string]*snapshotSession)
-	ss.mu.Unlock()
+		// Retire all remaining sessions. Checkpoints with active users are
+		// cleaned up by the last release.
+		ss.mu.Lock()
+		ss.stopped = true
+		remaining := make([]*snapshotSession, 0, len(ss.sessions))
 
-	for _, s := range remaining {
-		ss.cleanupCheckpoint(s.syncName)
-	}
+		for id, s := range ss.sessions {
+			delete(ss.sessions, id)
+			s.retired = true
+
+			if s.activeUsers == 0 {
+				remaining = append(remaining, s)
+			}
+		}
+
+		ss.mu.Unlock()
+
+		for _, s := range remaining {
+			ss.cleanupCheckpoint(s.syncName)
+		}
+	})
 }
 
 func generateSessionID() (string, error) {

@@ -16,8 +16,11 @@ in parallel.
 3. The follower writes chunks to a `.tmp` file while computing the same digest.
    It requires the exact manifest byte count and a valid, matching SHA-256
    digest before atomically renaming the temporary file.
-4. `CloseSession` removes the temporary checkpoint. Session expiry provides a
-   backstop when the caller disappears.
+4. `CloseSession` retires the session. Session expiry provides a backstop when
+   the caller disappears. Either event rejects new `FetchFile` calls
+   immediately, but an acquired `FetchFile` pins the temporary checkpoint until
+   that operation finishes. Service shutdown follows the same rule: it retires
+   every session immediately and the last active user removes the checkpoint.
 
 Manifest construction never reads file contents. Its cost therefore scales
 with the number of checkpoint files rather than the checkpoint size. The file
