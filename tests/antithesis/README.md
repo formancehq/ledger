@@ -52,8 +52,7 @@ swallows a stream truncation will silently report "all green" on a real bug.
 The workload uses a layered predicate set (`internal/client.go`):
 
 - `IsTransient(err)` — retry-safe set, what the retry interceptor handles.
-  Covers `Unavailable | DeadlineExceeded | ReadIndexNotCaughtUp |
-  ExternalServiceError`.
+  Covers `Unavailable | DeadlineExceeded | ExternalServiceError`.
 - `IsCanceled(err)` — local ctx is dead (driver shutting down). Not a
   finding; the driver just exits.
 - `IsTolerated(err)` — `nil | IsTransient | IsCanceled`. **This is what
@@ -86,7 +85,7 @@ finding worth triaging.
 
 `IsUnavailable(err)` is deliberately narrow — it backs the gRPC service
 config's retryable-codes list. Using it as a Sometimes tolerance predicate
-masks `DeadlineExceeded` / `ReadIndexNotCaughtUp` / `ExternalServiceError`
+masks `DeadlineExceeded` / `ExternalServiceError`
 and silently shorts the driver — exactly the bug the audit in
 `refactor(antithesis): chaos error classification + workload cleanup`
 caught across ~21 drivers.

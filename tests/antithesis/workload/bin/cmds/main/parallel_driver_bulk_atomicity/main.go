@@ -20,8 +20,8 @@
 //     count).
 //   - Effects checks run only after a definitive (FailedPrecondition-class)
 //     rejection; ambiguous outcomes are skipped.
-//   - Reads use a MinLogSequence floor from a marker write in a SEPARATE
-//     owned helper ledger: the floor defeats read staleness (#398 class)
+//   - Reads happen after a marker write in a SEPARATE owned helper ledger:
+//     the default linearizable path defeats read staleness (#398 class)
 //     without polluting the primary ledger's audit stream with marker
 //     Success entries.
 //   - Audit history is permanent, so a failed atomic bulk must always
@@ -67,7 +67,7 @@ func isDefinitiveBulkRejection(err error) bool {
 }
 
 // listIsEmpty returns (empty, foundIDs, conclusive) for transactions matching
-// the filter at the MinLogSequence floor. Read errors are inconclusive.
+// the filter after the marker. Read errors are inconclusive.
 func listIsEmpty(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
@@ -80,7 +80,6 @@ func listIsEmpty(
 		Options: &commonpb.ListOptions{
 			PageSize: 10,
 			Filter:   filter,
-			Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
 		},
 	})
 	if err != nil {
@@ -246,7 +245,6 @@ func main() {
 		// exactly one Failure entry by design, machine.go:1163-1204).
 		auditStream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
 			Options: &commonpb.ListOptions{
-				Read: &commonpb.ReadOptions{MinLogSequence: minLogSeq},
 				// Audit has no dedicated ledger field — scope via the generic filter.
 				Filter: &commonpb.QueryFilter{
 					Filter: &commonpb.QueryFilter_Audit{

@@ -15,9 +15,9 @@
 //     explicit ack; the isolation check runs BEFORE the reference-reuse
 //     write, so an old reference found through the new incarnation can only
 //     be predecessor data.
-//   - All isolation reads go through ListTransactions with a MinLogSequence
-//     floor taken from a marker write in the NEW incarnation. The floor
-//     guarantees the serving store has applied past the delete+recreate, so
+//   - All isolation reads happen after a marker write in the NEW incarnation.
+//     The default linearizable read and projection alignment guarantee the
+//     serving store has applied past the delete+recreate, so
 //     name→ID resolution yields the new LedgerID — without it, a legitimately
 //     stale (prefix-consistent) read could resolve the name to the OLD ID and
 //     "see" old data, a false positive. GetAccount has no freshness floor and
@@ -71,8 +71,8 @@ func createTx(
 	}))
 }
 
-// listMatches lists transactions matching the filter at the MinLogSequence
-// floor and returns (foundIDs, conclusive). Read errors are inconclusive.
+// listMatches lists transactions matching the filter after the marker and
+// returns (foundIDs, conclusive). Read errors are inconclusive.
 func listMatches(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
@@ -85,7 +85,6 @@ func listMatches(
 		Options: &commonpb.ListOptions{
 			PageSize: 10,
 			Filter:   filter,
-			Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
 		},
 	})
 	if err != nil {

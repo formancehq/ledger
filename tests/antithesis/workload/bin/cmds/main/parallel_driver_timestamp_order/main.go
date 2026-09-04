@@ -145,7 +145,6 @@ func main() {
 				Options: &commonpb.ListOptions{
 					PageSize: pageSize,
 					Cursor:   cursor,
-					Read:     &commonpb.ReadOptions{MinLogSequence: maxSeq},
 				},
 			})
 			if err != nil {

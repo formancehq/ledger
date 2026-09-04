@@ -153,7 +153,7 @@ type readyNode struct {
 // Retries on any IsTransient error (not just IsUnavailable): Barrier
 // proposes through Raft, and under a clog/restore fault window Raft
 // transients can surface as DeadlineExceeded, Aborted, or
-// FailedPrecondition + READ_INDEX_NOT_CAUGHT_UP — all legitimately
+// deadline/cancellation errors — all legitimately
 // retryable. Narrow IsUnavailable matching would trip the assertion
 // below on fault-window noise and undermine the cross-node identity
 // oracle's reliability.
