@@ -360,9 +360,14 @@ func IsReadIndexNotCaughtUp(err error) bool {
 // the write before consensus, so the bulk definitively did not commit and a
 // retry is sound; under fault injection disk pressure comes and goes, so the
 // workload treats it as transient. The clock-skew twin is Unavailable and
-// already lands in the transient set through IsUnavailable.
+// already lands in the transient set through IsUnavailable. The documented
+// pre-consensus guarantee is the full code/reason tuple, so both are
+// required: the reason under any other code is an unexpected response, not
+// a transient.
 func IsWritesBlockedDiskFull(err error) bool {
-	return HasErrorReason(err, "WRITES_BLOCKED_DISK_FULL")
+	st, ok := status.FromError(err)
+
+	return ok && st.Code() == codes.ResourceExhausted && HasErrorReason(err, "WRITES_BLOCKED_DISK_FULL")
 }
 
 // HasErrorReason returns true if the error is a gRPC status with an
