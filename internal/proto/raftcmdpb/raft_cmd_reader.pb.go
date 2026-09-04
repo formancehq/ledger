@@ -1218,6 +1218,7 @@ type QueryCheckpointStateReader interface {
 	GetCheckpointId() uint64
 	GetMaxSequence() uint64
 	GetCreatedAt() commonpb.TimestampReader
+	GetAppliedIndex() uint64
 	Mutate() *QueryCheckpointState
 }
 
@@ -1237,6 +1238,10 @@ func (r *queryCheckpointStateReadonly) GetCreatedAt() commonpb.TimestampReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *queryCheckpointStateReadonly) GetAppliedIndex() uint64 {
+	return (*QueryCheckpointState)(r).GetAppliedIndex()
 }
 
 func (r *queryCheckpointStateReadonly) Mutate() *QueryCheckpointState {

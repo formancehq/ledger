@@ -1399,6 +1399,10 @@ func (b *WriteSet) GetDate() commonpb.TimestampReader {
 	return b.Date.AsReader()
 }
 
+// GetRaftIndex returns zero for bare recovery/test scopes. Production apply
+// uses gatedScope, which overrides this with the committed entry index.
+func (b *WriteSet) GetRaftIndex() uint64 { return 0 }
+
 // SetDate updates the proposal date late in the apply cycle. The technical-
 // update phase runs with `proposal.GetDate()` (raw, no HLC advance); when
 // orders follow, applyProposal computes the HLC-advanced effective date and

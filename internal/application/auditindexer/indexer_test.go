@@ -11,6 +11,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -30,6 +31,14 @@ func writeAuditEntry(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry) 
 		kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(entry.GetSequence()).Build(),
 		val,
 	))
+	require.NoError(t, batch.Commit())
+}
+
+func setAppliedIndex(t *testing.T, store *dal.Store, appliedIndex uint64) {
+	t.Helper()
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SetAppliedIndex(batch, appliedIndex))
 	require.NoError(t, batch.Commit())
 }
 
@@ -87,6 +96,87 @@ func TestRebuildYieldsIdenticalIndex(t *testing.T) {
 	cursor, err := rs.ReadAuditProgress()
 	require.NoError(t, err)
 	require.Equal(t, uint64(5), cursor)
+	disabled, rebuilding := rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.False(t, rebuilding)
+}
+
+func TestFailedRebuildRemainsNotReady(t *testing.T) {
+	t.Parallel()
+
+	idx, _, rs := newIndexerForTest(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	require.ErrorIs(t, idx.Rebuild(ctx), context.Canceled)
+	disabled, rebuilding := rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.True(t, rebuilding)
+}
+
+func TestBootKeepsProjectionUnavailableUntilInitialCatchUp(t *testing.T) {
+	t.Parallel()
+
+	idx, mainStore, rs := newIndexerForTest(t)
+	disabled, rebuilding := rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.True(t, rebuilding, "an enabled projection must start conservatively unavailable")
+
+	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+		Sequence: 1, ProposalId: 1, Timestamp: &commonpb.Timestamp{Data: 1_000_000},
+		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Ledgers: []string{"main"},
+	})
+	setAppliedIndex(t, mainStore, 7)
+
+	require.NoError(t, idx.boot(context.Background()))
+	disabled, rebuilding = rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.False(t, rebuilding, "successful boot rebuild/catch-up may publish readiness")
+	progress, err := rs.ReadAuditRaftProgress()
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), progress)
+}
+
+func TestDisabledIndexerKeepsProjectionUnavailableWithoutFolding(t *testing.T) {
+	t.Parallel()
+
+	idx, mainStore, rs := newIndexerForTest(t)
+	disabledIndexer := New(Config{Disabled: true}, mainStore, rs, idx.logger, idx.meter)
+	disabled, rebuilding := rs.AuditProjectionState()
+	require.True(t, disabled)
+	require.False(t, rebuilding)
+
+	batch := rs.NewBatch()
+	require.NoError(t, rs.WriteAuditProgress(batch, 7))
+	require.NoError(t, batch.Commit())
+
+	cursor, err := disabledIndexer.ProcessOnce(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), cursor)
+
+	disabledIndexer.Start()
+	disabledIndexer.Stop()
+}
+
+func TestBootMarksAlreadyCaughtUpProjectionReady(t *testing.T) {
+	t.Parallel()
+
+	idx, mainStore, rs := newIndexerForTest(t)
+	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+		Sequence: 1, ProposalId: 1, Timestamp: &commonpb.Timestamp{Data: 1_000_000},
+		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Ledgers: []string{"main"},
+	})
+	setAppliedIndex(t, mainStore, 7)
+	_, err := idx.ProcessOnce(context.Background())
+	require.NoError(t, err)
+
+	rs.SetAuditProjectionState(false, true)
+	require.NoError(t, idx.boot(context.Background()))
+	disabled, rebuilding := rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.False(t, rebuilding, "boot must publish readiness after validating an already caught-up cursor")
 }
 
 // TestShouldRebuildOnBoot covers the sole retained rebuild trigger: a missing
@@ -156,6 +246,68 @@ func TestIndexerCatchUpAndResume(t *testing.T) {
 	seqs, err = rs.AuditSeqsByString(readstore.AuditFieldLedger, "main")
 	require.NoError(t, err)
 	require.Equal(t, []uint64{1, 2}, seqs)
+}
+
+func TestProcessOncePublishesFixedRaftHorizonOnlyWithTerminalBatch(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	idx, mainStore, rs := newIndexerForTest(t)
+	idx.batchSize = 1
+
+	for sequence := uint64(1); sequence <= 3; sequence++ {
+		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+			Sequence: sequence, ProposalId: sequence,
+			Timestamp: &commonpb.Timestamp{Data: sequence * 1_000_000},
+			Outcome:   &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+			Ledgers:   []string{"main"},
+		})
+	}
+	setAppliedIndex(t, mainStore, 11)
+
+	handle, err := mainStore.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	cursor, advanced, err := idx.processBatch(ctx, handle, 0, 3, 11)
+	require.NoError(t, err)
+	require.True(t, advanced)
+	require.Equal(t, uint64(1), cursor)
+	progress, err := rs.ReadAuditRaftProgress()
+	require.NoError(t, err)
+	require.Zero(t, progress, "an intermediate native batch must not certify the target")
+
+	cursor, advanced, err = idx.processBatch(ctx, handle, cursor, 3, 11)
+	require.NoError(t, err)
+	require.True(t, advanced)
+	require.Equal(t, uint64(2), cursor)
+	progress, err = rs.ReadAuditRaftProgress()
+	require.NoError(t, err)
+	require.Zero(t, progress, "a crash between batches must leave the Raft target unpublished")
+
+	cursor, advanced, err = idx.processBatch(ctx, handle, cursor, 3, 11)
+	require.NoError(t, err)
+	require.True(t, advanced)
+	require.Equal(t, uint64(3), cursor)
+	progress, err = rs.ReadAuditRaftProgress()
+	require.NoError(t, err)
+	require.Equal(t, uint64(11), progress, "the final index writes and certificate commit atomically")
+}
+
+func TestProcessOnceCertifiesAppliedEntryWithoutAuditMovement(t *testing.T) {
+	t.Parallel()
+
+	idx, mainStore, rs := newIndexerForTest(t)
+	setAppliedIndex(t, mainStore, 17)
+
+	cursor, err := idx.ProcessOnce(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, cursor)
+
+	progress, err := rs.ReadAuditRaftProgress()
+	require.NoError(t, err)
+	require.Equal(t, uint64(17), progress,
+		"a Raft entry that emits no audit item must still advance the causal certificate")
 }
 
 // TestProcessOnceWakesAuditWaiters verifies the indexer wakes readers blocked in

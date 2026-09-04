@@ -77,6 +77,7 @@ func TestSkipSafeScope_ReadsAndBufferedWritesPassThrough(t *testing.T) {
 	s.parent.EXPECT().GetNextLedgerID().Return(uint32(5)).AnyTimes()
 	s.parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).AnyTimes()
 	s.parent.EXPECT().GetNextAuditSequenceID().Return(uint64(50)).Times(1)
+	s.parent.EXPECT().GetRaftIndex().Return(uint64(123)).Times(1)
 
 	overlay := newOrderOverlayScope(s.parent)
 	trap := newSkipSafeScope(overlay)
@@ -98,6 +99,7 @@ func TestSkipSafeScope_ReadsAndBufferedWritesPassThrough(t *testing.T) {
 	// Non-buffered counter reads (audit seq is monotonic, read-only via
 	// Scope) pass through.
 	require.Equal(t, uint64(50), trap.GetNextAuditSequenceID())
+	require.Equal(t, uint64(123), trap.GetRaftIndex())
 
 	// GetClusterPolicy is a read and passes through.
 	s.parent.EXPECT().GetClusterPolicy().Return(&commonpb.ClusterPolicy{Revision: 3}).Times(1)

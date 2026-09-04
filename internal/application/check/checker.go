@@ -1050,10 +1050,11 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 //   - a stored row absent from the audit set (never created, or later deleted) —
 //     a phantom or stale row;
 //   - an audit-live checkpoint with no stored row — a lost or dropped projection;
-//   - a row whose key id, max_sequence, or created_at diverges from the
+//   - a row whose key id, max_sequence, applied_index, or created_at diverges from the
 //     audit-derived value — content corruption.
 //
-// The audit-rebuild path recreates the rows (and their max_sequence / created_at)
+// The audit-rebuild path recreates the rows (including max_sequence,
+// created_at, and applied_index)
 // from the logs, so a missing row is corruption, never a legitimate restore
 // artifact. Stored rows are keyed by the Pebble key id, not the payload.
 func (c *Checker) compareQueryCheckpoints(reader dal.PebbleReader, derived map[uint64]*commonpb.CreatedQueryCheckpointLog, callback func(*servicepb.CheckStoreEvent)) error {
@@ -1102,6 +1103,10 @@ func (c *Checker) compareQueryCheckpoints(reader dal.PebbleReader, derived map[u
 
 			if row.GetCreatedAt().GetData() != want.GetCreatedAt().GetData() {
 				emit(fmt.Sprintf("query checkpoint %d created_at %d does not match the audit chain %d", id, row.GetCreatedAt().GetData(), want.GetCreatedAt().GetData()))
+			}
+
+			if row.GetAppliedIndex() != want.GetAppliedIndex() {
+				emit(fmt.Sprintf("query checkpoint %d applied_index %d does not match the audit chain %d", id, row.GetAppliedIndex(), want.GetAppliedIndex()))
 			}
 		}
 	}

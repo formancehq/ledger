@@ -64,6 +64,9 @@ type Admission struct {
 	numscriptCache  *numscript.NumscriptCache
 	authEnabled     bool
 	waitLeaderReady func(context.Context) error
+	// auditProjectionState is node-local admission state. It may reject a
+	// checkpoint proposal before Raft, but never affects deterministic apply.
+	auditProjectionState func() (disabled, rebuilding bool)
 
 	// clusterPolicyCommitted latches once the replicated cluster policy is
 	// observed committed (revision > 0). The steady-state write path then skips
@@ -138,6 +141,15 @@ func WithReceiptSigner(signer *receipt.Signer) func(*Admission) {
 func WithAuthEnabled() func(*Admission) {
 	return func(a *Admission) {
 		a.authEnabled = true
+	}
+}
+
+// WithAuditProjectionState prevents every admission trigger (public Apply,
+// ClusterService and the automatic scheduler) from committing a query
+// checkpoint whose audit projection cannot be materialized on this node.
+func WithAuditProjectionState(state func() (disabled, rebuilding bool)) func(*Admission) {
+	return func(a *Admission) {
+		a.auditProjectionState = state
 	}
 }
 
@@ -543,6 +555,10 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 		return nil, ErrMaintenanceMode
 	}
 
+	if err := a.checkQueryCheckpointProjectionReady(batch.requests); err != nil {
+		return nil, err
+	}
+
 	// Hold business writes until the replicated cluster policy is committed. The
 	// policy is the cluster-wide configuration a business write applies against —
 	// it carries the query-checkpoint limit and idempotency TTL — so a write
@@ -853,6 +869,32 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 	}
 
 	return logs, err
+}
+
+func (a *Admission) checkQueryCheckpointProjectionReady(reqs []*servicepb.Request) error {
+	if a.auditProjectionState == nil {
+		return nil
+	}
+
+	for _, req := range reqs {
+		if req.GetCreateQueryCheckpoint() == nil {
+			continue
+		}
+
+		disabled, rebuilding := a.auditProjectionState()
+		if !disabled && !rebuilding {
+			return nil
+		}
+
+		state := "disabled"
+		if rebuilding {
+			state = "rebuilding"
+		}
+
+		return &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: "audit (" + state + ")"}}
+	}
+
+	return nil
 }
 
 // Barrier proposes a no-op command through Raft and waits for it to be applied.

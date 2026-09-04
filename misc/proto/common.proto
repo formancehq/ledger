@@ -538,6 +538,7 @@ message CreatedQueryCheckpointLog {
   fixed64 checkpoint_id = 1;
   fixed64 max_sequence = 2;
   Timestamp created_at = 3;
+  fixed64 applied_index = 4;
 }
 
 // DeletedQueryCheckpointLog records a query checkpoint being deleted.

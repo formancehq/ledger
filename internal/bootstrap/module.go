@@ -596,6 +596,7 @@ func Module() fx.Option {
 				ss *state.SharedState,
 				receiptSigner *receipt.Signer,
 				attrs *attributes.Attributes,
+				rs *readstore.Store,
 				authCfg internalauth.AuthConfig,
 			) ctrl.Admission {
 				var opts []func(*admission.Admission)
@@ -610,6 +611,7 @@ func Module() fx.Option {
 				if authCfg.Enabled {
 					opts = append(opts, admission.WithAuthEnabled())
 				}
+				opts = append(opts, admission.WithAuditProjectionState(rs.AuditProjectionState))
 
 				return admission.NewAdmission(
 					store,
@@ -625,7 +627,7 @@ func Module() fx.Option {
 					node.WaitLeaderReady,
 					opts...,
 				)
-			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `optional:"true"`)),
+			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `optional:"true"`)),
 			func(
 				logger logging.Logger,
 				machine *state.Machine,

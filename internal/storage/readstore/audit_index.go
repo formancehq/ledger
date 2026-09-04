@@ -3,6 +3,7 @@ package readstore
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -10,6 +11,11 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+// ErrAuditProjectionUnavailable reports that an audit progress wait was
+// interrupted because the local projection became disabled or entered a
+// rebuild. Callers must not treat its previous certificate as ready.
+var ErrAuditProjectionUnavailable = errors.New("audit projection unavailable")
 
 // ReadAuditProgress returns the last indexed audit sequence (0 if unset).
 func (s *Store) ReadAuditProgress() (uint64, error) {
@@ -84,6 +90,59 @@ func (s *Store) WriteAuditProgress(batch *dal.WriteSession, sequence uint64) err
 	return auditCursor.Write(batch, sequence)
 }
 
+// ReadAuditRaftProgress returns the fixed Raft horizon certified by the audit
+// projection. It does not replace the native audit cursor used for folding.
+func (s *Store) ReadAuditRaftProgress() (uint64, error) {
+	return auditRaftCursor.Read(s.db)
+}
+
+// ReadAuditRaftProgressFrom is the snapshot-aware certificate read.
+func (s *Store) ReadAuditRaftProgressFrom(reader dal.PebbleGetter) (uint64, error) {
+	return auditRaftCursor.Read(reader)
+}
+
+// WriteAuditRaftProgress publishes the audit causal certificate atomically
+// with the final native batch for the target horizon.
+func (s *Store) WriteAuditRaftProgress(batch *dal.WriteSession, appliedIndex uint64) error {
+	return auditRaftCursor.Write(batch, appliedIndex)
+}
+
+// WaitForAuditRaftProgress blocks until the audit projection has certified H.
+func (s *Store) WaitForAuditRaftProgress(ctx context.Context, horizon uint64) error {
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-ctx.Done():
+			s.progressMu.Lock()
+			s.progressCond.Broadcast()
+			s.progressMu.Unlock()
+		case <-done:
+		}
+	}()
+
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if s.auditDisabled || s.auditRebuilding {
+			return ErrAuditProjectionUnavailable
+		}
+
+		progress, err := s.ReadAuditRaftProgress()
+		if err != nil {
+			return fmt.Errorf("reading audit projection Raft progress: %w", err)
+		}
+		if progress >= horizon {
+			return nil
+		}
+
+		s.progressCond.Wait()
+	}
+}
+
 // DropAuditIndexInBatch stages deletion of every audit-index key (but NOT the
 // cursor) into batch so a rebuild can repopulate from scratch. The caller owns
 // the commit, allowing the drop to be made atomic with a cursor reset.
@@ -142,8 +201,8 @@ func prefixUpperBound(prefix []byte) []byte {
 // for "alice" would also match a value indexed as "alice\x00evil" (whose key
 // shares the prefix). Fixed-width fields (uint64, byte) pass exactLen=0 since
 // their value segment cannot be a prefix of a longer value.
-func (s *Store) auditSeqsForPrefix(lower, upper []byte, exactLen int) ([]uint64, error) {
-	iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+func auditSeqsForPrefix(reader dal.PebbleReader, lower, upper []byte, exactLen int) ([]uint64, error) {
+	iter, err := reader.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		return nil, fmt.Errorf("creating audit index iterator: %w", err)
 	}
@@ -179,6 +238,15 @@ func (s *Store) auditSeqsForPrefix(lower, upper []byte, exactLen int) ([]uint64,
 	return seqs, nil
 }
 
+// AuditIndexSnapshot binds audit lookups to one readstore snapshot. Filter
+// compilation and its Raft certificate must use the same instance.
+type AuditIndexSnapshot struct{ reader dal.PebbleReader }
+
+// NewAuditIndexSnapshot returns the audit lookup surface for a pinned reader.
+func NewAuditIndexSnapshot(reader dal.PebbleReader) *AuditIndexSnapshot {
+	return &AuditIndexSnapshot{reader: reader}
+}
+
 // AuditSeqsByString returns audit sequences indexed under a string field for an
 // exact value (equality match).
 //
@@ -189,6 +257,14 @@ func (s *Store) auditSeqsForPrefix(lower, upper []byte, exactLen int) ([]uint64,
 // rejects any key longer than a single [prefix][seq] entry, so only the true
 // equality matches survive.
 func (s *Store) AuditSeqsByString(field byte, value string) ([]uint64, error) {
+	return auditSeqsByString(s.db, field, value)
+}
+
+func (s *AuditIndexSnapshot) AuditSeqsByString(field byte, value string) ([]uint64, error) {
+	return auditSeqsByString(s.reader, field, value)
+}
+
+func auditSeqsByString(reader dal.PebbleReader, field byte, value string) ([]uint64, error) {
 	kb := dal.NewKeyBuilder()
 	lower := kb.Reset().
 		PutByte(PrefixInternal).
@@ -197,11 +273,19 @@ func (s *Store) AuditSeqsByString(field byte, value string) ([]uint64, error) {
 		PutStringNull(value).
 		Build()
 
-	return s.auditSeqsForPrefix(lower, prefixUpperBound(lower), len(lower)+8)
+	return auditSeqsForPrefix(reader, lower, prefixUpperBound(lower), len(lower)+8)
 }
 
 // AuditSeqsByOutcome returns audit sequences for success (true) or failure (false).
 func (s *Store) AuditSeqsByOutcome(success bool) ([]uint64, error) {
+	return auditSeqsByOutcome(s.db, success)
+}
+
+func (s *AuditIndexSnapshot) AuditSeqsByOutcome(success bool) ([]uint64, error) {
+	return auditSeqsByOutcome(s.reader, success)
+}
+
+func auditSeqsByOutcome(reader dal.PebbleReader, success bool) ([]uint64, error) {
 	var b byte
 	if success {
 		b = 1
@@ -214,12 +298,20 @@ func (s *Store) AuditSeqsByOutcome(success bool) ([]uint64, error) {
 		PutByte(b).
 		Build()
 
-	return s.auditSeqsForPrefix(lower, prefixUpperBound(lower), 0)
+	return auditSeqsForPrefix(reader, lower, prefixUpperBound(lower), 0)
 }
 
 // AuditSeqsByUint64Range returns audit sequences for a numeric field whose value
 // falls in [lo, hi] inclusive.
 func (s *Store) AuditSeqsByUint64Range(field byte, lo, hi uint64) ([]uint64, error) {
+	return auditSeqsByUint64Range(s.db, field, lo, hi)
+}
+
+func (s *AuditIndexSnapshot) AuditSeqsByUint64Range(field byte, lo, hi uint64) ([]uint64, error) {
+	return auditSeqsByUint64Range(s.reader, field, lo, hi)
+}
+
+func auditSeqsByUint64Range(reader dal.PebbleReader, field byte, lo, hi uint64) ([]uint64, error) {
 	kb := dal.NewKeyBuilder()
 	lower := kb.Reset().
 		PutByte(PrefixInternal).
@@ -246,5 +338,5 @@ func (s *Store) AuditSeqsByUint64Range(field byte, lo, hi uint64) ([]uint64, err
 			Build()
 	}
 
-	return s.auditSeqsForPrefix(lower, upper, 0)
+	return auditSeqsForPrefix(reader, lower, upper, 0)
 }

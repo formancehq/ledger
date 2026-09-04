@@ -460,6 +460,8 @@ func (s *scopeImpl) GetLastAuditHash() []byte { return nil }
 
 func (s *scopeImpl) ForOrder(_, _ []byte) processing.Scope { return s }
 
+func (s *scopeImpl) GetRaftIndex() uint64 { return 0 }
+
 // CheckCoverage is a no-op for the test scopeImpl: there is no coverage
 // to enforce, every read is admitted.
 func (s *scopeImpl) CheckCoverage(_ byte, _ processing.CoverageKey) error { return nil }

@@ -330,6 +330,7 @@ func TestWriteSetDateAndHash(t *testing.T) {
 	buf, _, _ := newTestBuffer(t)
 
 	require.Equal(t, uint64(1700000000), buf.GetDate().GetData())
+	require.Zero(t, buf.GetRaftIndex(), "a bare recovery scope has no committed Raft entry")
 }
 
 // TestWriteSetResetIsolation verifies that data written during proposal N is

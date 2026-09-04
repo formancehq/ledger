@@ -178,6 +178,7 @@ func (s *skipSafeScope) GetLastAuditHash() []byte          { return s.inner.GetL
 func (s *skipSafeScope) GetNextLedgerID() uint32           { return s.inner.GetNextLedgerID() }
 func (s *skipSafeScope) IncrementNextLedgerID() uint32     { return s.inner.IncrementNextLedgerID() }
 func (s *skipSafeScope) GetDate() commonpb.TimestampReader { return s.inner.GetDate() }
+func (s *skipSafeScope) GetRaftIndex() uint64              { return s.inner.GetRaftIndex() }
 
 // ──────────────────────────────────────────────────────────────────────────
 // Numscript library — reads pass through; Put/Set are NOT buffered.
