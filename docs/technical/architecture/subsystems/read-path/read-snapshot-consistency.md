@@ -151,9 +151,14 @@ the causal cross-projection certificate:
 
 Consumers: `listEntities` (ListTransactions/ListAccounts/ListLogs — including
 the reverse LOGS arm, whose unfiltered scan also iterates the read index),
-`AggregateVolumes`, and the prepared-query executor. Index-introspection
-endpoints (GetIndexStatus, InspectIndex, GetIndexEntryStatus) read only the
-index snapshot and need no alignment.
+`AggregateVolumes`, and the prepared-query executor. `InspectIndex` is a
+projection consumer too: it waits for a read-index Raft certificate covering
+the fixed main snapshot, pins that snapshot's native sequence, resolves the
+servable index version at the pin, and ignores later membership events while
+scanning distinct values, facets, and summaries. The reservation-to-lease
+handoff protects the event history needed by that trimming. Operational status
+endpoints (`GetIndexStatus`, `GetIndexEntryStatus`) report the projection's
+current local state and do not make that data-read freshness promise.
 
 Audit follows the same rule independently. Unfiltered audit reads and filters
 made only of audit `sequence` bounds scan the authoritative main snapshot and

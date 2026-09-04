@@ -2,6 +2,7 @@ package readstore
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -28,14 +29,18 @@ type InspectParams struct {
 	LedgerName  string
 	Namespace   string // "a:" or "t:"
 	MetadataKey string
-	// Version is the per-replica forward-encoding version to scan
-	// (IndexVersionState.CurrentVersion). 0 is an invariant — callers
-	// must resolve a non-zero current_version before calling Inspect
-	// (or short-circuit and return "index not built locally").
-	Version     uint32
-	Mode        InspectMode
-	PageSize    uint32
-	CursorBytes []byte // decoded opaque cursor (nil = start)
+	// Version is the per-replica forward-encoding version resolved at the
+	// caller's horizon. 0 is an invariant — callers must resolve a non-zero
+	// version before calling Inspect (or short-circuit and return "index not
+	// built locally").
+	Version uint32
+	// HorizonSequence resolves append-only membership events at the fixed main
+	// snapshot's native sequence. Zero preserves the latest-view behavior for
+	// callers that have no cross-store horizon.
+	HorizonSequence uint64
+	Mode            InspectMode
+	PageSize        uint32
+	CursorBytes     []byte // decoded opaque cursor (nil = start)
 }
 
 // InspectResult holds the scan results.
@@ -65,7 +70,7 @@ type InspectFacetEntry struct {
 // A key it cannot read is an error, not a skipped row: statistics derived from
 // the events around it would be plausible and wrong, hiding the corruption
 // they were computed over.
-func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen int, fn func(group []byte) bool) error {
+func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen int, horizon uint64, fn func(group []byte) bool) error {
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
@@ -100,10 +105,14 @@ func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen in
 
 			group = append(group[:0], g...)
 			started = true
+			live = false
 		}
 
 		if !validEventOp(key[tpos+9]) {
 			return fmt.Errorf("malformed metadata event key %x", key)
+		}
+		if horizon > 0 && binary.BigEndian.Uint64(key[tpos+1:tpos+9]) > horizon {
+			continue
 		}
 
 		// Events are seq-ascending within a group: the last op wins.
@@ -118,10 +127,10 @@ func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen in
 }
 
 // countLiveGroups counts current members under an event prefix.
-func countLiveGroups(reader dal.PebbleReader, prefix []byte) (uint64, error) {
+func countLiveGroups(reader dal.PebbleReader, prefix []byte, horizon uint64) (uint64, error) {
 	var n uint64
 
-	err := forEachLiveGroup(reader, prefix, IncrementBytes(prefix), len(prefix), func([]byte) bool {
+	err := forEachLiveGroup(reader, prefix, IncrementBytes(prefix), len(prefix), horizon, func([]byte) bool {
 		n++
 
 		return true
@@ -169,7 +178,7 @@ func inspectDistinctValues(params InspectParams) (*InspectResult, error) {
 		decodeErr      error
 	)
 
-	err := forEachLiveGroup(params.Reader, lower, upper, len(prefix), func(group []byte) bool {
+	err := forEachLiveGroup(params.Reader, lower, upper, len(prefix), params.HorizonSequence, func(group []byte) bool {
 		_, consumed, decErr := DecodeValue(group)
 		if decErr != nil {
 			decodeErr = fmt.Errorf("malformed metadata event group %x: %w", group, decErr)
@@ -234,7 +243,7 @@ func inspectFacets(params InspectParams) (*InspectResult, error) {
 		decodeErr      error
 	)
 
-	err := forEachLiveGroup(params.Reader, lower, upper, len(prefix), func(group []byte) bool {
+	err := forEachLiveGroup(params.Reader, lower, upper, len(prefix), params.HorizonSequence, func(group []byte) bool {
 		_, consumed, decErr := DecodeValue(group)
 		if decErr != nil {
 			decodeErr = fmt.Errorf("malformed metadata event group %x: %w", group, decErr)
@@ -304,7 +313,7 @@ func inspectSummary(params InspectParams) (*InspectResult, error) {
 		decodeErr      error
 	)
 
-	err := forEachLiveGroup(params.Reader, prefix, upper, len(prefix), func(group []byte) bool {
+	err := forEachLiveGroup(params.Reader, prefix, upper, len(prefix), params.HorizonSequence, func(group []byte) bool {
 		_, consumed, decErr := DecodeValue(group)
 		if decErr != nil {
 			decodeErr = fmt.Errorf("malformed metadata event group %x: %w", group, decErr)
@@ -342,7 +351,7 @@ func inspectSummary(params InspectParams) (*InspectResult, error) {
 
 	// Count entities with key (non-null).
 	nonNullPrefix := EntityExistsNonNullPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
-	result.EntitiesWithKey, err = countLiveGroups(params.Reader, nonNullPrefix)
+	result.EntitiesWithKey, err = countLiveGroups(params.Reader, nonNullPrefix, params.HorizonSequence)
 
 	if err != nil {
 		return nil, fmt.Errorf("counting non-null entities: %w", err)
@@ -350,7 +359,7 @@ func inspectSummary(params InspectParams) (*InspectResult, error) {
 
 	// Count entities with null value.
 	nullPrefix := EntityExistsNullPrefixV(params.KB, params.LedgerName, params.Namespace, params.MetadataKey, params.Version)
-	result.EntitiesWithNull, err = countLiveGroups(params.Reader, nullPrefix)
+	result.EntitiesWithNull, err = countLiveGroups(params.Reader, nullPrefix, params.HorizonSequence)
 
 	if err != nil {
 		return nil, fmt.Errorf("counting null entities: %w", err)

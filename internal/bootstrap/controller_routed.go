@@ -447,12 +447,12 @@ func (b *RoutedController) GetEventsSinks(ctx context.Context) ([]*commonpb.Sink
 }
 
 func (b *RoutedController) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.InspectIndex(ctx, req)
+	return c.InspectIndex(b.withLocalBarrierHorizon(ctx, c, barrier), req)
 }
 
 func (b *RoutedController) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
