@@ -100,10 +100,11 @@ Do not add new finding ids. Produce exactly one result for every original findin
 
 Do not modify the repository. Do not implement reproducers. Do not create issues, comments, commits, or patches. Refine reproduction plans only as instructions for a later phase.
 
-Copy audit_id and head exactly. Output only JSON matching the schema.
+Copy audit_id, head, and sourceAuditDigest exactly. Output only JSON matching the schema.
 EOF
 {
-    printf '\nTRUSTED TARGET\n- audit_id: %s\n- head: %s\n- source_report: %s\n' "$audit_id" "$audited_head" "$source_report"
+    printf '\nTRUSTED TARGET\n- audit_id: %s\n- head: %s\n- sourceAuditDigest: %s\n- source_report: %s\n' \
+        "$audit_id" "$audited_head" "$source_audit_digest" "$source_report"
 } >>"$prompt"
 
 (
@@ -119,6 +120,16 @@ EOF
 jq -e --arg id "$audit_id" --arg head "$audited_head" '
   type == "object" and .audit_id == $id and .head == $head
 ' "$provider_output" >/dev/null || { echo "ai-audit-challenge: result target mismatch" >&2; exit 1; }
+if ! jq -e '
+  .sourceAuditDigest | type == "string" and test("^sha256:[0-9a-f]{64}$")
+' "$provider_output" >/dev/null; then
+    echo "ai-audit-challenge: result must contain a valid sourceAuditDigest" >&2
+    exit 1
+fi
+if ! jq -e --arg digest "$source_audit_digest" '.sourceAuditDigest == $digest' "$provider_output" >/dev/null; then
+    echo "ai-audit-challenge: result sourceAuditDigest does not match the source audit report" >&2
+    exit 1
+fi
 source_ids=$(jq -c '[.findings[].id] | sort' "$source_report")
 result_ids=$(jq -c '[.results[].id] | sort' "$provider_output")
 [[ "$source_ids" == "$result_ids" ]] || { echo "ai-audit-challenge: result ids do not match source findings" >&2; exit 1; }
@@ -142,9 +153,10 @@ current_head=$(git rev-parse HEAD)
     echo "ai-audit-challenge: repository state changed during challenge; refusing result" >&2
     exit 1
 }
-# The runner adds source identity after provider validation. The final temporary
-# file shares a directory with the destination, so rename publishes atomically.
-jq --arg digest "$source_audit_digest" '. + {sourceAuditDigest: $digest}' "$provider_output" >"$qualified_output"
+# The provider copies source identity from the trusted target and the runner
+# verifies it above. The final temporary file shares a directory with the
+# destination, so rename publishes atomically.
+cp -- "$provider_output" "$qualified_output"
 rm -f -- "$provider_output"
 provider_output=""
 mv -f -- "$qualified_output" "$output"

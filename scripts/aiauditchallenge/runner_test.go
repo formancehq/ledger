@@ -43,6 +43,25 @@ fi
 cp "$FAKE_CODEX_RESULT" "$output"
 `
 
+func TestChallengeSchemaRequiresEveryTopLevelProperty(t *testing.T) {
+	t.Parallel()
+
+	repository := repositoryRoot(t)
+	challengeSchema := readJSON(t, filepath.Join(repository, "scripts", "codex-audit-challenge.schema.json"))
+	properties := challengeSchema["properties"].(map[string]any)
+	requiredValues := challengeSchema["required"].([]any)
+	required := make([]string, 0, len(requiredValues))
+	for _, value := range requiredValues {
+		required = append(required, value.(string))
+	}
+
+	require.ElementsMatch(t, keys(properties), required)
+	require.Contains(t, required, "sourceAuditDigest")
+
+	auditSchema := readJSON(t, filepath.Join(repository, "scripts", "codex-audit.schema.json"))
+	require.NotContains(t, auditSchema["properties"].(map[string]any), "sourceAuditDigest")
+}
+
 func TestRunnerPublishesOneQualifiedResultPerOriginalFinding(t *testing.T) {
 	t.Parallel()
 
@@ -61,8 +80,72 @@ func TestRunnerPublishesOneQualifiedResultPerOriginalFinding(t *testing.T) {
 	require.Equal(t, fixture.head, published["head"])
 	require.Equal(t, fileDigest(t, fixture.sourceReport), published["sourceAuditDigest"])
 	results := published["results"].([]any)
-	require.Equal(t, firstFindingID, results[0].(map[string]any)["id"])
+	first := results[0].(map[string]any)
+	require.Equal(t, firstFindingID, first["id"])
+	require.Equal(t, "P2", first["severity"])
+	require.Equal(t, "Original title of "+firstFindingID, first["title"])
 	require.Equal(t, secondFindingID, results[1].(map[string]any)["id"])
+}
+
+func TestRunnerRejectsMissingSourceAuditDigest(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFixture(t)
+	result := fixture.validResult()
+	delete(result, "sourceAuditDigest")
+
+	output, err := fixture.run(t, result)
+	require.Error(t, err)
+	require.Contains(t, output, "result must contain a valid sourceAuditDigest")
+	require.NoFileExists(t, fixture.outputPath)
+}
+
+func TestRunnerRejectsMalformedSourceAuditDigest(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFixture(t)
+	result := fixture.validResult()
+	result["sourceAuditDigest"] = "sha256:not-a-digest"
+
+	output, err := fixture.run(t, result)
+	require.Error(t, err)
+	require.Contains(t, output, "result must contain a valid sourceAuditDigest")
+	require.NoFileExists(t, fixture.outputPath)
+}
+
+func TestRunnerRejectsSourceAuditDigestForAnotherReport(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFixture(t)
+	result := fixture.validResult()
+	result["sourceAuditDigest"] = "sha256:" + strings.Repeat("0", 64)
+
+	output, err := fixture.run(t, result)
+	require.Error(t, err)
+	require.Contains(t, output, "sourceAuditDigest does not match the source audit report")
+	require.NoFileExists(t, fixture.outputPath)
+}
+
+func TestZeroFindingAuditCanBeChallenged(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFixture(t)
+	audit := sourceReport(fixture.head)
+	audit["findings"] = []map[string]any{}
+
+	auditOutput, sourceReport, err := fixture.runAudit(t, audit)
+	require.NoError(t, err, auditOutput)
+	require.Contains(t, auditOutput, "AI_AUDIT_RESULT: "+sourceReport)
+
+	fixture.sourceReport = sourceReport
+	fixture.sourceDigest = fileDigest(t, sourceReport)
+	challengeOutput, err := fixture.run(t, fixture.result())
+	require.NoError(t, err, challengeOutput)
+	require.Contains(t, challengeOutput, "AI_AUDIT_CHALLENGE_RESULT: "+fixture.outputPath)
+
+	published := readJSON(t, fixture.outputPath)
+	require.Empty(t, published["results"])
+	require.Equal(t, fileDigest(t, sourceReport), published["sourceAuditDigest"])
 }
 
 func TestRunnerRejectsResultForAnotherAudit(t *testing.T) {
@@ -95,7 +178,7 @@ func TestRunnerRejectsOmittedFinding(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFixture(t)
-	result := challengeResult(fixture.head, challengeOutcome(firstFindingID, "CONFIRMED"))
+	result := fixture.result(challengeOutcome(firstFindingID, "CONFIRMED"))
 
 	output, err := fixture.run(t, result)
 	require.Error(t, err)
@@ -107,7 +190,7 @@ func TestRunnerRejectsInventedFindingID(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFixture(t)
-	result := challengeResult(fixture.head,
+	result := fixture.result(
 		challengeOutcome(firstFindingID, "CONFIRMED"),
 		challengeOutcome(secondFindingID, "REJECTED"),
 		challengeOutcome(testAuditID+"/invented-during-challenge", "CONFIRMED"),
@@ -126,7 +209,7 @@ func TestRunnerRejectsDuplicateFindingID(t *testing.T) {
 	t.Parallel()
 
 	fixture := newFixture(t)
-	result := challengeResult(fixture.head,
+	result := fixture.result(
 		challengeOutcome(firstFindingID, "CONFIRMED"),
 		challengeOutcome(firstFindingID, "REJECTED"),
 	)
@@ -143,7 +226,7 @@ func TestRunnerRejectsReprioritizedFinding(t *testing.T) {
 	fixture := newFixture(t)
 	reprioritized := challengeOutcome(firstFindingID, "CONFIRMED")
 	reprioritized["severity"] = "P3"
-	result := challengeResult(fixture.head, reprioritized, challengeOutcome(secondFindingID, "REJECTED"))
+	result := fixture.result(reprioritized, challengeOutcome(secondFindingID, "REJECTED"))
 
 	output, err := fixture.run(t, result)
 	require.Error(t, err)
@@ -157,7 +240,7 @@ func TestRunnerRejectsRetitledFinding(t *testing.T) {
 	fixture := newFixture(t)
 	retitled := challengeOutcome(secondFindingID, "REJECTED")
 	retitled["title"] = "A different subject for the same finding"
-	result := challengeResult(fixture.head, challengeOutcome(firstFindingID, "CONFIRMED"), retitled)
+	result := fixture.result(challengeOutcome(firstFindingID, "CONFIRMED"), retitled)
 
 	output, err := fixture.run(t, result)
 	require.Error(t, err)
@@ -208,6 +291,7 @@ type fixture struct {
 	fakeBin        string
 	head           string
 	sourceReport   string
+	sourceDigest   string
 	providerResult string
 	outputPath     string
 	dirtyFile      string
@@ -220,13 +304,36 @@ func newFixture(t *testing.T) *fixture {
 	checkout := filepath.Join(root, "checkout")
 	repository := repositoryRoot(t)
 	require.NoError(t, os.MkdirAll(filepath.Join(checkout, "scripts"), 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(checkout, "docs", "technical", "audits"), 0o700))
 	require.NoError(t, os.MkdirAll(filepath.Join(checkout, "docs", "technical", "contributing"), 0o700))
+	copyFile(t, filepath.Join(repository, "scripts", "ai-audit"), filepath.Join(checkout, "scripts", "ai-audit"))
 	copyFile(t, filepath.Join(repository, "scripts", "ai-audit-challenge"), filepath.Join(checkout, "scripts", "ai-audit-challenge"))
+	copyFile(t, filepath.Join(repository, "scripts", "codex-audit.schema.json"), filepath.Join(checkout, "scripts", "codex-audit.schema.json"))
 	copyFile(t, filepath.Join(repository, "scripts", "codex-audit-challenge.schema.json"), filepath.Join(checkout, "scripts", "codex-audit-challenge.schema.json"))
 	copyFile(t, filepath.Join(repository, ".gitignore"), filepath.Join(checkout, ".gitignore"))
 	require.NoError(t, os.WriteFile(
+		filepath.Join(checkout, "docs", "technical", "contributing", "ai-audit.md"),
+		[]byte("# Audit contract\n"),
+		0o600,
+	))
+	require.NoError(t, os.WriteFile(
 		filepath.Join(checkout, "docs", "technical", "contributing", "ai-audit-challenge.md"),
 		[]byte("# Challenge contract\n"),
+		0o600,
+	))
+	manifest := fmt.Sprintf(`{
+		"id": %q,
+		"title": "Test audit",
+		"purpose": "Test the native audit chain",
+		"paths": ["scripts/**"],
+		"related_docs": [],
+		"invariants": ["Results are validated"],
+		"adversarial_questions": [],
+		"dynamic_checks_to_consider": []
+	}`, testAuditID)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(checkout, "docs", "technical", "audits", testAuditID+".json"),
+		[]byte(manifest),
 		0o600,
 	))
 
@@ -251,6 +358,7 @@ func newFixture(t *testing.T) *fixture {
 	require.NoError(t, err)
 	built.outputPath = filepath.Join(physicalCheckout, "build", "ai-audit", testAuditID+"-"+built.head[:12]+"-qualified.json")
 	writeJSON(t, built.sourceReport, sourceReport(built.head))
+	built.sourceDigest = fileDigest(t, built.sourceReport)
 
 	return built
 }
@@ -274,11 +382,37 @@ func (f *fixture) run(t *testing.T, result map[string]any) (string, error) {
 	return string(output), err
 }
 
+func (f *fixture) runAudit(t *testing.T, result map[string]any) (string, string, error) {
+	t.Helper()
+
+	writeJSON(t, f.providerResult, result)
+	command := exec.Command("bash", filepath.Join(f.checkout, "scripts", "ai-audit"), testAuditID)
+	command.Dir = f.checkout
+	command.Env = testenv.Environment(
+		"FAKE_CODEX_RESULT="+f.providerResult,
+		"FAKE_CODEX_DIRTY_FILE=",
+		"HOME="+t.TempDir(),
+		"CODEX_HOME=",
+		"PATH="+f.fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
+	)
+	output, err := command.CombinedOutput()
+	sourceReport := filepath.Join(filepath.Dir(f.outputPath), testAuditID+"-"+f.head[:12]+".json")
+
+	return string(output), sourceReport, err
+}
+
 func (f *fixture) validResult() map[string]any {
-	return challengeResult(f.head,
+	return f.result(
 		challengeOutcome(firstFindingID, "CONFIRMED"),
 		challengeOutcome(secondFindingID, "REJECTED"),
 	)
+}
+
+func (f *fixture) result(results ...map[string]any) map[string]any {
+	result := challengeResult(f.head, results...)
+	result["sourceAuditDigest"] = f.sourceDigest
+
+	return result
 }
 
 func sourceReport(head string) map[string]any {
@@ -304,6 +438,10 @@ func sourceFinding(id string) map[string]any {
 }
 
 func challengeResult(head string, results ...map[string]any) map[string]any {
+	if results == nil {
+		results = []map[string]any{}
+	}
+
 	return map[string]any{
 		"audit_id":      testAuditID,
 		"head":          head,
@@ -370,6 +508,15 @@ func readJSON(t *testing.T, path string) map[string]any {
 	require.NoError(t, json.Unmarshal(contents, &decoded))
 
 	return decoded
+}
+
+func keys(values map[string]any) []string {
+	result := make([]string, 0, len(values))
+	for key := range values {
+		result = append(result, key)
+	}
+
+	return result
 }
 
 func runGit(t *testing.T, directory string, arguments ...string) {

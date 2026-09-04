@@ -42,8 +42,9 @@ Challenge runs are bound to the exact `head` recorded in the source audit report
 The launcher hashes the source report before the provider runs and verifies the
 same bytes remain afterward. It records that SHA-256 identity as
 `sourceAuditDigest` in the published qualified report so downstream consumers
-can verify the exact source artifact. The reasoning provider does not mint this
-provenance value.
+can verify the exact source artifact. The launcher supplies that trusted value
+to the reasoning provider and rejects the result unless it copies the value
+exactly; the provider does not determine its own provenance value.
 
 ## Mutation policy
 
@@ -67,7 +68,7 @@ A `CONFIRMED` result is suitable to become a backlog/Jira candidate after human 
 
 The qualified report is rejected unless every result reuses an original finding id exactly once and preserves that finding's severity and title. A challenge pass may change the status, not the priority or the subject of the original finding.
 
-The launcher adds the trusted source digest to a temporary file under
-`build/ai-audit/` and atomically renames the validated qualification to its final
-name. Provider failure or validation failure publishes nothing. The source
-report and tracked repository content are never written.
+The launcher validates the trusted source digest in a temporary file under
+`build/ai-audit/` and atomically renames the qualification to its final name.
+Provider failure or validation failure publishes nothing. The source report and
+tracked repository content are never written.
