@@ -301,11 +301,36 @@ nix develop --impure
 ```bash
 just build          # Build operator binary
 just test           # Run tests
-just generate       # Regenerate CRDs, RBAC, and Helm chart
+just generate       # Regenerate CRDs, JSON Schema, RBAC, and Helm chart
 just pre-commit     # Run all checks (generate + tidy + build)
 just build-plugin   # Build kubectl plugin
 just install-plugin # Install kubectl plugin to $GOPATH/bin
 ```
+
+### JSON Schema
+
+`just generate` also writes standalone JSON Schema files under `config/crd/schemas/`:
+
+| File pattern | Contents |
+|--------------|----------|
+| `v1alpha1_<kind>.json` | Full CRD resource schema (`openAPIV3Schema`) — top-level `apiVersion`/`kind`/`metadata`/`spec`/`status` |
+| `v1alpha1_<kind>.spec.json` | `spec` fields only, at the schema root — for validating a spec fragment on its own (e.g. Helm `values.yaml` shaped like a CR's `spec`) |
+
+Example for a full manifest, with VS Code / Red Hat YAML:
+
+```yaml
+# yaml-language-server: $schema=../config/crd/schemas/v1alpha1_cluster.json
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: my-ledger
+spec:
+  replicas: 3
+```
+
+Use the `.spec.json` variant only when validating a bare spec fragment (its root has no `spec` property, so pointing it at a full manifest validates nothing useful).
+
+Regenerate after changing CRD types in `api/v1alpha1/`. These files are also attached to each tagged [GitHub release](https://github.com/formancehq/ledger/releases) alongside `openapi.yml`.
 
 ### Project Structure
 
@@ -318,6 +343,7 @@ internal/controller/ # Reconciliation logic
 chart/               # Helm chart
 config/
   crd/bases/         # Generated CRD manifests
+  crd/schemas/       # Generated JSON Schema (full resource + spec-only)
   rbac/              # Generated RBAC rules
   samples/           # Example custom resources
 ```

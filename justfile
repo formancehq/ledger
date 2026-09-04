@@ -336,6 +336,7 @@ operator-generate:
     {{controller-gen}} object:headerFile="" paths=./api/... \
         crd output:crd:dir=config/crd/bases \
         rbac:roleName=ledger-operator output:rbac:dir=config/rbac paths=./...
+    go run ./scripts/generate-json-schemas
     ./scripts/sync-chart-rbac.sh
     cp config/crd/bases/*.yaml helm/crds/templates/
 
