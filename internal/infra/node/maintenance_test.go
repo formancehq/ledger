@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -166,4 +167,37 @@ func TestBackgroundMaintenance_WALDirectoryMissing_StopsTheLoop(t *testing.T) {
 		close(stop)
 		t.Fatal("maintenance loop kept ticking with the WAL directory gone")
 	}
+}
+
+// TestDoMaintenance_SnapshotSaveFailure_RetriesNextTick makes the snapshot file
+// unwritable for a reason the next tick can retry: a file occupies the snapshot
+// directory. The WAL must keep reporting the previous snapshot, so the next
+// tick is not short-circuited by the no-new-index fast path, and the retry
+// lands the snapshot once the directory is usable again.
+func TestDoMaintenance_SnapshotSaveFailure_RetriesNextTick(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	node, setup := newTestMaintenanceNode(t)
+
+	entry, _ := makeCreateLedgerEntry(t, 1, "test-ledger")
+	setup.applyEntry(t, ctx, entry)
+
+	snapDir := filepath.Join(setup.walDir, "snap")
+	require.NoError(t, os.RemoveAll(snapDir))
+	require.NoError(t, os.WriteFile(snapDir, nil, 0600))
+
+	require.NoError(t, node.doMaintenance())
+
+	snap, err := node.wal.Snapshot()
+	require.NoError(t, err)
+	require.Zero(t, snap.GetMetadata().GetIndex(), "a snapshot whose file was never written must not be published")
+
+	require.NoError(t, os.Remove(snapDir))
+
+	require.NoError(t, node.doMaintenance())
+
+	snap, err = node.wal.Snapshot()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), snap.GetMetadata().GetIndex())
 }

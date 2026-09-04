@@ -116,35 +116,36 @@ func (s *Snapshotter) ensureDir() error {
 		return fmt.Errorf("checking snapshot directory: %w", err)
 	}
 
-	// The parent holds the etcd WAL, the creation marker and the instance id.
-	// Losing it means etcd is fsyncing unlinked inodes, so the terms, votes and
-	// entries this node acknowledges as persisted are already gone: the next
-	// restart finds no marker, rebuilds an empty WAL and rejoins as a new member.
-	// Recreating on top of that would keep acknowledging unrecoverable writes.
-	parent := filepath.Dir(s.dir)
-	if _, statErr := os.Stat(parent); statErr != nil {
+	// mkdirSynced creates one level, so ErrNotExist from it means a component
+	// above s.dir is missing at the moment of the create.
+	err = mkdirSynced(s.dir)
+
+	switch {
+	case err == nil:
+		details := map[string]any{"dir": s.dir}
+
+		assert.Unreachable("snapshot directory disappeared underneath a running node", details)
+
+		s.logger.WithFields(details).Errorf("Snapshot directory was missing, recreated it")
+
+		return nil
+	case errors.Is(err, os.ErrNotExist):
+		// The parent holds the etcd WAL, the creation marker and the instance id.
+		// Losing it means etcd is fsyncing unlinked inodes, so the terms, votes and
+		// entries this node acknowledges as persisted are already gone: the next
+		// restart finds no marker, rebuilds an empty WAL and rejoins as a new member.
+		// Recreating on top of that would keep acknowledging unrecoverable writes.
+		parent := filepath.Dir(s.dir)
 		details := map[string]any{"dir": s.dir, "parent": parent}
 
 		assert.Unreachable("WAL directory disappeared underneath a running node", details)
 
 		s.logger.WithFields(details).Errorf("WAL directory is missing, consensus state cannot be recovered")
 
-		return fmt.Errorf("%w: %s is gone along with %s, so consensus state cannot be recovered: %w", ErrWALDirectoryMissing, s.dir, parent, statErr)
-	}
-
-	details := map[string]any{"dir": s.dir}
-
-	assert.Unreachable("snapshot directory disappeared underneath a running node", details)
-
-	s.logger.WithFields(details).Errorf("Snapshot directory is missing, recreating it")
-
-	// Exactly one level, which is what keeps the check above meaningful: nothing
-	// here walks up, so a parent that disappears in the meantime fails the create.
-	if err := mkdirSynced(s.dir); err != nil {
+		return fmt.Errorf("%w: %s is gone along with %s, so consensus state cannot be recovered: %w", ErrWALDirectoryMissing, s.dir, parent, err)
+	default:
 		return fmt.Errorf("recreating snapshot directory: %w", err)
 	}
-
-	return nil
 }
 
 // mkdirSynced creates dir inside an existing parent and fsyncs that parent: a
@@ -154,9 +155,7 @@ func mkdirSynced(dir string) error {
 	dir = filepath.Clean(dir)
 
 	if err := os.Mkdir(dir, 0755); err != nil {
-		// A concurrent save may have created it: CreateSnapshot and
-		// UpdateSnapshotConfState both release the WAL lock before saving.
-		// Anything else occupying the path is not a directory we can use.
+		// An existing directory is usable; anything else occupying the path is not.
 		info, statErr := os.Stat(dir)
 		if statErr != nil || !info.IsDir() {
 			return fmt.Errorf("creating %s: %w", dir, err)
