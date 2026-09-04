@@ -232,6 +232,18 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 				return err
 			},
 		},
+		{
+			name: "inspect index",
+			expect: func(local *ctrlmock.MockController) {
+				local.EXPECT().InspectIndex(barrierHorizonMatcher(42), gomock.Any()).
+					Return(&servicepb.InspectIndexResponse{}, nil)
+			},
+			call: func(ctx context.Context, routed *RoutedController) error {
+				_, err := routed.InspectIndex(ctx, &servicepb.InspectIndexRequest{})
+
+				return err
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
