@@ -40,6 +40,8 @@ On `Start()`, the builder:
 1. Reads the persisted progress cursor from `usagestore` (key `[0xFE][0x01]` — highest processed audit sequence).
 2. Samples the current audit-chain head via `query.ReadLastAuditSequence` on a short-lived read handle. The handle is closed immediately to release the `dbMu.RLock` so a concurrent `RestoreCheckpoint` is not blocked while the builder is idle.
 3. Runs an **initial catch-up pass** with a larger batch size (`max(configured, 2_000)`), split into 5-second slices so a single Pebble snapshot is not held for the full catch-up duration on large stores. Between slices the snapshot is released; between passes cache-warmed reads keep it cheap.
+4. Flushes every catch-up slice that advanced the cursor. Each completed slice
+   therefore becomes a durable replay watermark before the next slice begins.
 
 ## `processAuditEntries` — Batched Commit
 
@@ -84,11 +86,29 @@ flowchart TB
 3. `WriteProgress(batch, lastAuditSeq)` — persists the cursor in the **same batch** as the counter mutations.
 4. `batch.Commit()`.
 
-The invariant is the same as the indexer's two-pass commit: cursor and counter deltas move atomically. A crash mid-batch either commits both or neither — the loop resumes cleanly on restart.
+The batch commit makes cursor and counter deltas atomically **visible**, but the
+usagestore deliberately has no WAL. A committed mutable memtable is not durable
+until `Store.Flush()` writes it to an SST. The builder maintains that second
+boundary explicitly: every progressing boot catch-up slice is flushed, and in
+steady state the single builder goroutine flushes at most once every 30 seconds,
+only when its cursor advanced since the last successful flush. A failed flush
+does not advance the in-memory durable watermark and remains eligible for retry.
+
+At every successful flush the durable invariant is:
+
+```text
+SST state = counters and templates corresponding exactly to cursor F
+mutable memtable = contributions F+1…M
+```
+
+An abrupt stop may discard the mutable suffix, but startup reads `F` and
+replays `F+1…auditHead` from permanent primary-store history. Cursor and
+counter mutations cannot roll back to different points because they share the
+same atomic batches and the same flush.
 
 ### Batch sizing
 
-Default is 200 audit entries per commit (`DefaultBatchSize` in `builder.go`). Higher during initial catch-up (`max(configured, 2_000)`). The trade-off is Pebble fsync frequency vs snapshot lifetime — the same one the indexer solves with `catchUpBudget = 5 * time.Second`.
+Default is 200 audit entries per commit (`DefaultBatchSize` in `builder.go`). Higher during initial catch-up (`max(configured, 2_000)`). The trade-off is batch mutation overhead vs snapshot lifetime; durability is controlled separately by the explicit flush watermark.
 
 ## Snapshot on the reader side
 
@@ -107,9 +127,11 @@ stats.PostingCount, _ = snap.GetCounter(ledger, usagestore.CounterPosting)
 
 | Failure mode | What survives | What replays |
 |--------------|---------------|--------------|
-| Usagebuilder crash mid-batch | Cursor at last successful commit; committed counter deltas are durable | Loop restarts, reads persisted cursor, resumes from `cursor + 1`. |
+| Controlled shutdown / rolling restart | `Store.Close()` flushes every committed batch after the builder goroutine has stopped | Nothing when the primary head is unchanged; startup opens at the previous head. |
+| Abrupt process or pod stop | Counters, templates, and cursor through the last successful flush watermark | Only the committed mutable suffix after that watermark (at most the steady-state flush interval under a healthy store). |
+| Usagebuilder crash mid-batch | The previous atomic batch and flush watermark | The incomplete batch plus any committed mutable suffix. |
 | Ledger deletion (audit log `DeleteLedger`) | Usagestore range-deletes every counter + template row keyed on the ledger via `DeleteLedger(batch, ledgerName)` | Re-created ledgers start at zero counters; audit-chain history for the old incarnation is idempotent to re-process. |
-| Primary store rolled back beneath the persisted cursor | Nothing — `usagestore.Reset()` drops every counter + template row and clears the cursor | The next boot/tick replays from audit sequence 0 into the freshly-reset store. |
+| Primary store rolled back beneath the persisted cursor | `usagestore.Reset()` atomically drops every counter + template row, clears the cursor, and flushes that reset before cursor zero is published | The next boot/tick replays from audit sequence 0 into the durably reset store. |
 
 ## Cutover semantics
 
@@ -117,7 +139,7 @@ The migration that introduced this subsystem (EN-1420 / EN-1422) moved every non
 
 ## Snapshot / restore
 
-The usagestore is not part of Pebble snapshots or backups: it is a projection that is trivially rebuildable from the audit chain. On restore, the running usagebuilder catches up organically from wherever its persisted cursor points; if the primary store was rolled back beneath that cursor, `usagestore.Reset()` fires on the next boot/tick and the projection repopulates from audit sequence 0.
+The usagestore is not part of Pebble snapshots or backups: it is a projection that is trivially rebuildable from the audit chain. On restore, the running usagebuilder catches up organically from its last successfully flushed cursor; if the primary store was rolled back beneath that cursor, `usagestore.Reset()` durably clears the projection before the next boot/tick repopulates it from audit sequence 0.
 
 The audit chain remains the source of truth in every case.
 
@@ -137,6 +159,7 @@ One pass does read a peer store — `compareReverseMapOrphans` scans the readsto
 | Wake-up | Dedicated `name:"usage"` `Notifications` from the FSM FanOut fed into the tailworker's `Wake` channel + `TickInterval` fallback | `builder.go` |
 | Source | Audit chain (`ReadAuditEntries` + `ReadAuditItems`), not the log stream — needed for Numscript template ref survival | `process_audit.go` |
 | Atomicity | `WriteProgress` shares the same Pebble batch as counter / template mutations | `process_audit.go`, `usagestore/store.go` |
+| Durability | WAL-less explicit watermark: flush each progressing boot slice, every 30 seconds after steady-state progress, on rollback reset, and before controlled close | `builder.go`, `usagestore/store.go` |
 | Read consistency | Multi-counter reads via `usagestore.NewSnapshot()` | `usagestore/snapshot.go`, `ctrl/controller_default.go` |
 | Isolation | Dedicated Pebble instance at `<data-dir>/usage/`, own comparer, WAL disabled | `usagestore/{store,comparer,keys}.go` |
 | Metrics | `tailworker.RegisterTailGauges` — 3 shared gauges (`last_indexed_sequence`, `audit_last_sequence`, `lag`) | `builder.go`, `internal/pkg/tailworker/gauges.go` |

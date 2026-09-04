@@ -21,6 +21,7 @@ package usagebuilder
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -44,6 +45,12 @@ const DefaultBatchSize = 200
 // failures that emit no log), so a ticker is what guarantees pickup.
 const TickInterval = 100 * time.Millisecond
 
+// flushInterval bounds how much already-processed audit history an abrupt
+// stop can require the WAL-less usage store to replay. The interval is
+// deliberately internal: it is a durability/performance policy, not an
+// operator-facing consistency setting.
+const flushInterval = 30 * time.Second
+
 // catchUpBudget bounds how long a single processAuditEntries invocation
 // holds a Pebble snapshot during boot-time catch-up. Between slices the
 // snapshot is released so compactions can proceed on long-history stores.
@@ -60,6 +67,16 @@ type Builder struct {
 	meter         metric.Meter
 
 	batchSize int
+
+	// The following fields are owned by the single tailworker goroutine. A
+	// successful Flush makes every counter/template mutation through this
+	// cursor durable in the same SST state. flushStore and now are seams for
+	// deterministic lifecycle-policy tests; production uses Store.Flush and
+	// time.Now.
+	lastFlushedAuditSeq uint64
+	lastFlushAt         time.Time
+	flushStore          func() error
+	now                 func() time.Time
 
 	// lastProcessedAuditSeq mirrors usagestore.ReadProgress() and is
 	// updated on every successful commit — the atomic hint lets external
@@ -95,6 +112,8 @@ func NewBuilder(
 		logger:        logger.WithFields(map[string]any{"cmp": "usage-builder"}),
 		meter:         meter,
 		batchSize:     batchSize,
+		flushStore:    usageStore.Flush,
+		now:           time.Now,
 	}
 }
 
@@ -148,6 +167,41 @@ func (b *Builder) PebbleLastAuditSequence() uint64 {
 	return b.pebbleLastAuditSeq.Load()
 }
 
+func (b *Builder) currentTime() time.Time {
+	if b.now != nil {
+		return b.now()
+	}
+
+	return time.Now()
+}
+
+func (b *Builder) flush(cursor uint64, now time.Time) error {
+	flush := b.flushStore
+	if flush == nil {
+		flush = b.usageStore.Flush
+	}
+
+	if err := flush(); err != nil {
+		return err
+	}
+
+	b.lastFlushedAuditSeq = cursor
+	b.lastFlushAt = now
+
+	return nil
+}
+
+// flushIfDue persists steady-state progress only when the cursor advanced
+// beyond the last successful flush and the periodic interval elapsed. Failed
+// flushes leave both markers unchanged, so the next eligible tick retries.
+func (b *Builder) flushIfDue(now time.Time, cursor uint64) error {
+	if cursor <= b.lastFlushedAuditSeq || now.Sub(b.lastFlushAt) < flushInterval {
+		return nil
+	}
+
+	return b.flush(cursor, now)
+}
+
 // boot runs once before the tail loop: seed both atomics from the persisted
 // state and drain the reachable backlog with a bigger batch size so the
 // steady-state loop starts already caught up. A cursor-read error aborts the
@@ -160,6 +214,8 @@ func (b *Builder) boot(ctx context.Context) error {
 	}
 
 	b.lastProcessedAuditSeq.Store(cursor)
+	b.lastFlushedAuditSeq = cursor
+	b.lastFlushAt = b.currentTime()
 
 	pebbleLast, sampleErr := b.sampleAuditHead()
 	if sampleErr == nil {
@@ -193,9 +249,16 @@ func (b *Builder) boot(ctx context.Context) error {
 		}
 
 		before := cursor
-		deadline := time.Now().Add(catchUpBudget)
+		deadline := b.currentTime().Add(catchUpBudget)
 
 		cursor, err = b.processAuditEntries(ctx, cursor, deadline)
+		if cursor > before {
+			if flushErr := b.flush(cursor, b.currentTime()); flushErr != nil {
+				b.logger.Errorf("flushing initial catch-up progress at audit sequence %d: %v", cursor, flushErr)
+
+				break
+			}
+		}
 		if err != nil {
 			b.logger.Errorf("initial catch-up: %v", err)
 
@@ -242,9 +305,13 @@ func (b *Builder) tick(ctx context.Context) error {
 		}
 	}
 
-	_, err := b.processAuditEntries(ctx, cursor, time.Time{})
+	cursor, processErr := b.processAuditEntries(ctx, cursor, time.Time{})
+	flushErr := b.flushIfDue(b.currentTime(), cursor)
+	if flushErr != nil {
+		flushErr = fmt.Errorf("flushing periodic usage progress at audit sequence %d: %w", cursor, flushErr)
+	}
 
-	return err
+	return errors.Join(processErr, flushErr)
 }
 
 // resetIfRolledBack detects a primary-store rollback beneath the usage cursor —
@@ -253,8 +320,8 @@ func (b *Builder) tick(ctx context.Context) error {
 // the caller replays the projection from audit sequence 0. It returns the cursor
 // to resume from: 0 after a reset, or the unchanged cursor otherwise. A reset
 // also rewinds the lastProcessedAuditSeq atomic so external readers observe the
-// rewind. This is the online reconvergence path the usagebuilder relies on in
-// 3.0 (offline drop-and-rebuild is deferred to 3.1 — see usagebuilder.md).
+// rewind. This is the online reconvergence path the usagebuilder relies on;
+// permanent primary-store history makes a full replay from zero complete.
 func (b *Builder) resetIfRolledBack(cursor, auditHead uint64) (uint64, error) {
 	if cursor <= auditHead {
 		return cursor, nil
@@ -269,6 +336,12 @@ func (b *Builder) resetIfRolledBack(cursor, auditHead uint64) (uint64, error) {
 		return cursor, fmt.Errorf("resetting usage projection after rollback: %w", err)
 	}
 
+	// Store.Reset returns only after its atomic delete/cursor-clear batch has
+	// been flushed. Publish the rewind and update the durable watermark only
+	// after that point; a failed reset leaves both markers untouched and is
+	// retried on the next boot/tick.
+	b.lastFlushedAuditSeq = 0
+	b.lastFlushAt = b.currentTime()
 	b.lastProcessedAuditSeq.Store(0)
 
 	return 0, nil

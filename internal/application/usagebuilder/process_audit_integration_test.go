@@ -2,6 +2,8 @@ package usagebuilder
 
 import (
 	"context"
+	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -375,6 +377,223 @@ func TestResetIfRolledBack(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, uint64(5), got, "projection must be intact")
 	})
+}
+
+func TestFlushIfDue(t *testing.T) {
+	t.Parallel()
+
+	base := time.Unix(1_700_000_000, 0)
+	flushCalls := 0
+	failFlush := true
+	b := &Builder{
+		lastFlushedAuditSeq: 5,
+		lastFlushAt:         base,
+		flushStore: func() error {
+			flushCalls++
+			if failFlush {
+				return assert.AnError
+			}
+
+			return nil
+		},
+	}
+
+	require.NoError(t, b.flushIfDue(base.Add(flushInterval), 5))
+	assert.Zero(t, flushCalls, "time alone must not flush without cursor progress")
+
+	require.NoError(t, b.flushIfDue(base.Add(flushInterval-time.Nanosecond), 6))
+	assert.Zero(t, flushCalls, "progress before the interval must remain in the memtable")
+
+	require.ErrorIs(t, b.flushIfDue(base.Add(flushInterval), 6), assert.AnError)
+	assert.Equal(t, 1, flushCalls)
+	assert.Equal(t, uint64(5), b.lastFlushedAuditSeq, "a failed flush must not advance the watermark")
+	assert.Equal(t, base, b.lastFlushAt, "a failed flush must remain immediately eligible for retry")
+
+	failFlush = false
+	require.NoError(t, b.flushIfDue(base.Add(flushInterval), 6))
+	assert.Equal(t, 2, flushCalls, "the failed flush must be retried")
+	assert.Equal(t, uint64(6), b.lastFlushedAuditSeq)
+	assert.Equal(t, base.Add(flushInterval), b.lastFlushAt)
+
+	require.NoError(t, b.flushIfDue(base.Add(2*flushInterval), 6))
+	assert.Equal(t, 2, flushCalls, "an unchanged cursor must not trigger periodic flushes")
+}
+
+func TestBootFlushesEveryProgressingCatchUpSlice(t *testing.T) {
+	t.Parallel()
+
+	primary, usage := newUsageTestStores(t)
+	entries := make([]seedAuditEntry, 2_001)
+	for i := range entries {
+		entries[i] = seedAuditEntry{seq: uint64(i + 1), success: false}
+	}
+	seedAuditData(t, primary, entries)
+
+	b := newTestBuilder(primary, usage, 1)
+	now := time.Unix(1_700_000_000, 0)
+	b.now = func() time.Time {
+		now = now.Add(catchUpBudget + time.Second)
+
+		return now
+	}
+
+	var flushedAt []uint64
+	b.flushStore = func() error {
+		flushedAt = append(flushedAt, b.LastProcessedAuditSequence())
+
+		return nil
+	}
+
+	require.NoError(t, b.boot(context.Background()))
+	assert.Equal(t, []uint64{2_000, 2_001}, flushedAt,
+		"each completed time-bounded catch-up slice must establish a durable watermark")
+	assert.Equal(t, uint64(2_001), b.lastFlushedAuditSeq)
+}
+
+func TestBuilderRestartAtHeadThenProcessesOnlyTail(t *testing.T) {
+	t.Parallel()
+
+	primary, _ := newUsageTestStores(t)
+	const ledger = "l1"
+
+	makeEntry := func(seq, logSeq uint64) seedAuditEntry {
+		return seedAuditEntry{
+			seq:     seq,
+			success: true,
+			items: []seedAuditItem{{
+				order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{
+					Postings: []*commonpb.Posting{usagePosting("world", "acc", "USD", seq)},
+				}),
+				logSeq: logSeq,
+				log: createdTxLog(logSeq, ledger, nil,
+					[]*commonpb.Posting{usagePosting("world", "acc", "USD", seq)},
+					nil, nil, nil),
+			}},
+		}
+	}
+
+	seedAuditData(t, primary, []seedAuditEntry{makeEntry(1, 101), makeEntry(2, 102)})
+	usageDir := t.TempDir()
+
+	usage, err := usagestore.New(usageDir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+	b := newTestBuilder(primary, usage, 200)
+	require.NoError(t, b.boot(context.Background()))
+	require.NoError(t, usage.Close())
+
+	usage, err = usagestore.New(usageDir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+	b = newTestBuilder(primary, usage, 200)
+	flushCalls := 0
+	b.flushStore = func() error {
+		flushCalls++
+
+		return usage.Flush()
+	}
+	require.NoError(t, b.boot(context.Background()))
+	assert.Zero(t, flushCalls, "a restart already at the audit head must not replay or flush history")
+
+	counter, err := usage.GetCounter(ledger, usagestore.CounterPosting)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), counter)
+	require.NoError(t, usage.Close())
+
+	seedAuditData(t, primary, []seedAuditEntry{makeEntry(3, 103)})
+	usage, err = usagestore.New(usageDir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = usage.Close() })
+	b = newTestBuilder(primary, usage, 200)
+	require.NoError(t, b.boot(context.Background()))
+
+	counter, err = usage.GetCounter(ledger, usagestore.CounterPosting)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(3), counter, "the second restart must fold only the one-entry tail")
+	progress, err := usage.ReadProgress()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(3), progress)
+}
+
+func TestUsageStoreAbruptStopReplaysOnlyUnflushedTail(t *testing.T) {
+	const childDirEnv = "LEDGER_USAGESTORE_ABRUPT_STOP_DIR"
+	if usageDir := os.Getenv(childDirEnv); usageDir != "" {
+		usage, err := usagestore.New(usageDir, logging.NopZap(), usagestore.DefaultConfig())
+		require.NoError(t, err)
+
+		batch := usage.NewBatch()
+		require.NoError(t, usage.PutCounter(batch, "l1", usagestore.CounterPosting, 4))
+		require.NoError(t, usage.WriteProgress(batch, 2))
+		require.NoError(t, batch.Commit())
+
+		// Deliberately bypass deferred cleanup: this models SIGKILL after a
+		// visible WAL-less commit but before the next periodic flush.
+		os.Exit(0)
+	}
+
+	t.Parallel()
+
+	primary, _ := newUsageTestStores(t)
+	const ledger = "l1"
+	seedAuditData(t, primary, []seedAuditEntry{
+		{
+			seq:     1,
+			success: true,
+			items: []seedAuditItem{{
+				order:  createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{}),
+				logSeq: 101,
+				log: createdTxLog(101, ledger, nil,
+					[]*commonpb.Posting{usagePosting("world", "acc", "USD", 1)}, nil, nil, nil),
+			}},
+		},
+		{
+			seq:     2,
+			success: true,
+			items: []seedAuditItem{{
+				order:  createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{}),
+				logSeq: 102,
+				log: createdTxLog(102, ledger, nil, []*commonpb.Posting{
+					usagePosting("world", "acc:1", "USD", 1),
+					usagePosting("world", "acc:2", "USD", 1),
+					usagePosting("world", "acc:3", "USD", 1),
+				}, nil, nil, nil),
+			}},
+		},
+	})
+
+	usageDir := t.TempDir()
+	usage, err := usagestore.New(usageDir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+	batch := usage.NewBatch()
+	require.NoError(t, usage.PutCounter(batch, ledger, usagestore.CounterPosting, 1))
+	require.NoError(t, usage.WriteProgress(batch, 1))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, usage.Flush())
+	require.NoError(t, usage.Close())
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestUsageStoreAbruptStopReplaysOnlyUnflushedTail$")
+	cmd.Env = append(os.Environ(), childDirEnv+"="+usageDir)
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "abrupt-stop subprocess failed: %s", output)
+
+	usage, err = usagestore.New(usageDir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = usage.Close() })
+
+	progress, err := usage.ReadProgress()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), progress, "the unflushed cursor must roll back with its counters")
+	counter, err := usage.GetCounter(ledger, usagestore.CounterPosting)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), counter)
+
+	b := newTestBuilder(primary, usage, 200)
+	require.NoError(t, b.boot(context.Background()))
+	progress, err = usage.ReadProgress()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), progress)
+	counter, err = usage.GetCounter(ledger, usagestore.CounterPosting)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(4), counter,
+		"startup must replay exactly the one lost three-posting tail entry")
 }
 
 // ---------------------------------------------------------------------------

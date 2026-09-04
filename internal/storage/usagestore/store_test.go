@@ -94,6 +94,43 @@ func TestStore_TemplateUsageRoundTrip(t *testing.T) {
 	assert.Equal(t, want.GetLastUsed().GetData(), got.GetLastUsed().GetData())
 }
 
+func TestStore_ClosePersistsProgressCountersAndTemplates(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	s, err := usagestore.New(dir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+
+	wantUsage := &commonpb.TemplateUsage{
+		Count:    7,
+		LastUsed: &commonpb.Timestamp{Data: 1_700_000_000_000_000_000},
+	}
+	batch := s.NewBatch()
+	require.NoError(t, s.PutCounter(batch, "l1", usagestore.CounterPosting, 123))
+	require.NoError(t, s.PutTemplateUsage(batch, "l1", "payout", wantUsage))
+	require.NoError(t, s.WriteProgress(batch, 42))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, s.Close())
+
+	reopened, err := usagestore.New(dir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reopened.Close() })
+
+	progress, err := reopened.ReadProgress()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(42), progress)
+
+	counter, err := reopened.GetCounter("l1", usagestore.CounterPosting)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(123), counter)
+
+	usage, err := reopened.GetTemplateUsage("l1", "payout")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	assert.Equal(t, wantUsage.GetCount(), usage.GetCount())
+	assert.Equal(t, wantUsage.GetLastUsed().GetData(), usage.GetLastUsed().GetData())
+}
+
 func TestStore_DeleteLedgerCascade(t *testing.T) {
 	t.Parallel()
 
@@ -176,4 +213,41 @@ func TestStore_Reset(t *testing.T) {
 
 	// Reset on an already-empty store is a no-op, not an error.
 	require.NoError(t, s.Reset())
+}
+
+func TestStore_ResetFlushesBeforeReturn(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	s, err := usagestore.New(dir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+
+	batch := s.NewBatch()
+	require.NoError(t, s.PutCounter(batch, "l1", usagestore.CounterPosting, 10))
+	require.NoError(t, s.PutTemplateUsage(batch, "l1", "t1", &commonpb.TemplateUsage{Count: 3}))
+	require.NoError(t, s.WriteProgress(batch, 500))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, s.Flush(), "seed the old cursor in an SST before resetting")
+
+	flushesBeforeReset := s.DB().Metrics().Flush.Count
+	require.NoError(t, s.Reset())
+	assert.Greater(t, s.DB().Metrics().Flush.Count, flushesBeforeReset,
+		"Reset must establish a new durable SST watermark before returning")
+	require.NoError(t, s.Close())
+
+	reopened, err := usagestore.New(dir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reopened.Close() })
+
+	progress, err := reopened.ReadProgress()
+	require.NoError(t, err)
+	assert.Zero(t, progress)
+
+	counter, err := reopened.GetCounter("l1", usagestore.CounterPosting)
+	require.NoError(t, err)
+	assert.Zero(t, counter)
+
+	usage, err := reopened.GetTemplateUsage("l1", "t1")
+	require.NoError(t, err)
+	assert.Nil(t, usage)
 }
