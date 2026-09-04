@@ -128,7 +128,6 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-
 func printSummary(s *servicepb.InspectSummary, declaredType commonpb.MetadataType) {
 	pterm.Printf("Cardinality:       %d\n", s.GetCardinality())
 	pterm.Printf("Min:               %s\n", formatMetadataValue(s.GetMin(), declaredType))
