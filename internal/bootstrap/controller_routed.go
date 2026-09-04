@@ -27,6 +27,10 @@ type RoutedController struct {
 
 	servicePool     *transport.ConnectionPool
 	localController ctrl.Controller
+	// readIndexAndWait is the node barrier dependency. NewRoutedController
+	// binds the real Raft implementation; the field keeps production method
+	// tests deterministic without constructing a running Raft node.
+	readIndexAndWait func(context.Context) (*node.ReadBarrierInfo, error)
 }
 
 // getLeaderCtrl returns the local controller when this node considers itself
@@ -98,7 +102,11 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 	// or not the barrier succeeds — a failed attempt is still time the caller
 	// waited (see the fallback branch below).
 	barrierStart := time.Now()
-	barrier, err := b.ReadIndexAndWait(ctx)
+	readIndexAndWait := b.readIndexAndWait
+	if readIndexAndWait == nil {
+		readIndexAndWait = b.ReadIndexAndWait
+	}
+	barrier, err := readIndexAndWait(ctx)
 	query.ProfileFromContext(ctx).AddBarrierWait(time.Since(barrierStart))
 
 	if err == nil {
@@ -161,6 +169,14 @@ func (b *RoutedController) markForwardedIfRemote(ctx context.Context, selected c
 	if selected != b.localController {
 		query.ProfileFromContext(ctx).MarkForwarded()
 	}
+}
+
+func (b *RoutedController) withLocalBarrierHorizon(ctx context.Context, selected ctrl.Controller, barrier *node.ReadBarrierInfo) context.Context {
+	if selected == b.localController && barrier != nil {
+		return query.WithReadBarrierHorizon(ctx, barrier.CommitIndex)
+	}
+
+	return ctx
 }
 
 func (b *RoutedController) IsHealthy() bool {
@@ -236,21 +252,21 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string
 }
 
 func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
+	return c.ListTransactions(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, pageSize, afterTxID, filter, reverse)
 }
 
 func (b *RoutedController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ListLogs(ctx, ledgerName, afterSequence, pageSize, filter)
+	return c.ListLogs(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, afterSequence, pageSize, filter)
 }
 
 func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
@@ -263,12 +279,12 @@ func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*common
 }
 
 func (b *RoutedController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool, minLogSequence uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ListAuditEntries(ctx, pageSize, afterSequence, filter, reverse, minLogSequence)
+	return c.ListAuditEntries(b.withLocalBarrierHorizon(ctx, c, barrier), pageSize, afterSequence, filter, reverse, minLogSequence)
 }
 
 func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
@@ -307,7 +323,7 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 		return nil, err
 	}
 
-	if barrier != nil {
+	if barrier != nil && b.Node != nil && b.Logger() != nil {
 		b.Node.Logger().WithFields(map[string]any{
 			"op":             "ListAccounts",
 			"ledger":         ledgerName,
@@ -318,16 +334,16 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 		}).Infof("read barrier for ListAccounts")
 	}
 
-	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
+	return c.ListAccounts(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, pageSize, afterAddress, filter, reverse)
 }
 
 func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.AggregateVolumes(ctx, ledgerName, filter, opts)
+	return c.AggregateVolumes(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, filter, opts)
 }
 
 func (b *RoutedController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
@@ -376,12 +392,12 @@ func (b *RoutedController) ListPreparedQueries(ctx context.Context, ledger strin
 }
 
 func (b *RoutedController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ExecutePreparedQuery(ctx, req)
+	return c.ExecutePreparedQuery(b.withLocalBarrierHorizon(ctx, c, barrier), req)
 }
 
 func (b *RoutedController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
@@ -486,9 +502,14 @@ func (b *RoutedController) ListIndexes(ctx context.Context, req *servicepb.ListI
 var _ ctrl.Controller = (*RoutedController)(nil)
 
 func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool) *RoutedController {
-	return &RoutedController{
+	routed := &RoutedController{
 		Node:            node,
 		servicePool:     servicePool,
 		localController: localController,
 	}
+	if node != nil {
+		routed.readIndexAndWait = node.ReadIndexAndWait
+	}
+
+	return routed
 }

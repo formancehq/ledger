@@ -155,10 +155,11 @@ as RFC3339 strings.
 
 ### Progress and barriers
 
-`min_log_sequence` waits for the local FSM and indexer's log cursor. It does not
-wait for a schema rewrite to switch versions. `PendingVersion != 0` is the local
-rewrite signal exposed through index status; there is no field-level conversion
-status or schema-rewrite barrier.
+Indexed reads automatically wait for the projection's Raft certificate at the
+fixed main-snapshot horizon. That certificate does not wait for a schema rewrite
+to switch versions. `PendingVersion != 0` is the local rewrite signal exposed
+through index status; there is no field-level conversion status or
+schema-rewrite barrier.
 
 ## API surface
 

@@ -55,21 +55,22 @@ The read index materializes asynchronously and **per-replica** (step 5). Readine
   certified `H`, so a filtered audit query cannot be frozen against an
   incomplete audit index. Every creation trigger passes through a shared
   admission preflight, so public `Apply`, the cluster RPC and the automatic
-  scheduler all fail explicitly with `ErrIndexBuilding` while the local audit
-  projection is disabled or rebuilding. An enabled projection starts in the
-  rebuilding state and only becomes ready after boot has classified its
-   persisted cursor and completed the initial rebuild/catch-up. A failed rebuild
-   remains in rebuilding state until a later successful rebuild/catch-up; it
-   cannot advertise a false readiness window. An already-proposed create waits
+  scheduler all fail explicitly with `ErrAuditDisabled` when the projection is
+  permanently disabled and `ErrIndexBuilding` while it is rebuilding. An
+  enabled projection starts in the rebuilding state and only becomes ready
+  after boot has classified its persisted cursor and completed the initial
+  rebuild/catch-up. A failed rebuild
+  remains in rebuilding state until a later successful rebuild/catch-up; it
+  cannot advertise a false readiness window. An already-proposed create waits
   through a transient rebuild and resumes only after the replacement projection
   is ready and has certified `H`. A rebuild racing after that wait is detected
   by an audit lifecycle generation captured before the snapshot and checked
   atomically with `.ready` publication; a changed generation leaves the marker
   absent and retries materialization from a clean directory. A disabled
-   projection leaves the checkpoint unavailable. In every waiting case the
-   caller's deadline/cancellation ends its marker wait. Unfiltered or
-   sequence-only live audit reads remain independent of the audit index, but a
-   checkpoint promises the complete projection set.
+  projection leaves the checkpoint unavailable. In every waiting case the
+  caller's deadline/cancellation ends its marker wait. Unfiltered or
+  sequence-only live audit reads remain independent of the audit index, but a
+  checkpoint promises the complete projection set.
   An audit indexing failure during boot or steady state is also advertised as
   transiently rebuilding to admission, while the checkpoint already in flight
   is left unavailable and the normal builder continues past its log. The audit

@@ -27,12 +27,13 @@ func TestCheckQueryCheckpointProjectionReady(t *testing.T) {
 		reqs       []*servicepb.Request
 		disabled   bool
 		rebuilding bool
-		wantErr    bool
+		wantReason string
+		wantKind   domain.ErrorKind
 	}{
 		{name: "ready", reqs: []*servicepb.Request{checkpoint}},
-		{name: "disabled", reqs: []*servicepb.Request{checkpoint}, disabled: true, wantErr: true},
-		{name: "rebuilding", reqs: []*servicepb.Request{checkpoint}, rebuilding: true, wantErr: true},
-		{name: "mixed batch", reqs: []*servicepb.Request{nonCheckpoint, checkpoint}, disabled: true, wantErr: true},
+		{name: "disabled", reqs: []*servicepb.Request{checkpoint}, disabled: true, wantReason: domain.ErrReasonAuditDisabled, wantKind: domain.KindPrecondition},
+		{name: "rebuilding", reqs: []*servicepb.Request{checkpoint}, rebuilding: true, wantReason: domain.ErrReasonIndexBuilding, wantKind: domain.KindUnavailable},
+		{name: "mixed batch", reqs: []*servicepb.Request{nonCheckpoint, checkpoint}, disabled: true, wantReason: domain.ErrReasonAuditDisabled, wantKind: domain.KindPrecondition},
 		{name: "unrelated request", reqs: []*servicepb.Request{nonCheckpoint}, disabled: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -42,15 +43,16 @@ func TestCheckQueryCheckpointProjectionReady(t *testing.T) {
 				return tc.disabled, tc.rebuilding
 			}}
 			err := a.checkQueryCheckpointProjectionReady(tc.reqs)
-			if !tc.wantErr {
+			if tc.wantReason == "" {
 				require.NoError(t, err)
 
 				return
 			}
 
-			var building *domain.ErrIndexBuilding
-			require.ErrorAs(t, err, &building)
-			require.Contains(t, building.Index, "audit")
+			var describable domain.Describable
+			require.ErrorAs(t, err, &describable)
+			require.Equal(t, tc.wantReason, describable.Reason())
+			require.Equal(t, tc.wantKind, domain.Kind(describable))
 		})
 	}
 }

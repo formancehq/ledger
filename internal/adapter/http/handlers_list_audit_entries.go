@@ -33,16 +33,13 @@ import (
 // see commonpb/query_filter.go).
 //
 // It is NOT a full parity of the gRPC ListOptions contract: the gRPC surface
-// additionally honors the read-consistency options `checkpointId` (pinned
-// checkpoint read) and `minLogSequence` (audit-index catch-up wait for filtered
-// reads). This HTTP endpoint intentionally does not expose either — it always
-// performs a live, best-effort read. A filter containing a field other than
-// seq therefore resolves through the async audit secondary index and may
-// transiently omit very recent entries that have not yet been indexed; a client
-// needing a pinned or consistency-bounded audit read must use the gRPC surface.
-// If these options are added to HTTP later, wire them through the same
-// controller entry points the gRPC path uses (impl.openCheckpointStores /
-// minLogSequence gating).
+// additionally honors `checkpointId` and `minLogSequence`. This HTTP endpoint
+// intentionally exposes neither and always performs a live read. A filter
+// containing a field other than seq still resolves through the asynchronous
+// audit projection, but the routed controller fixes a main-store Raft horizon
+// and the controller waits for the projection to certify it before querying
+// its snapshot. If checkpoint or explicit native-sequence options are added to
+// HTTP later, wire them through the same controller entry points as gRPC.
 func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) {
 	pageSize, ok := parsePageSize(w, r)
 	if !ok {

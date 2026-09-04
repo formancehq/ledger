@@ -688,13 +688,14 @@ for {
 }
 ```
 
-For a live request whose filter contains any field other than `seq`, a non-zero
-`MinLogSequence` makes every gRPC node that receives or serves the routed
-request wait for its log index to reach the bound and for its local audit index
-to reach the live audit head sampled afterward. With a zero bound, those
-index-backed results are best-effort. Unfiltered and `seq`-only conjunctions
-scan the audit zone directly and need only the log-sequence wait. Checkpoint
-reads ignore the bound.
+For a live request whose filter contains any field other than `seq`, the server
+automatically fixes a main-store Raft horizon and waits for its local audit
+projection to certify that horizon before querying the projection snapshot. A
+non-zero `MinLogSequence` additionally waits for the native log index before
+that aligned read. Unfiltered and `seq`-only conjunctions scan the authoritative
+audit zone directly and need only the optional log-sequence wait. Checkpoint
+reads ignore the request bound because checkpoint readiness already certifies
+both frozen projections at creation time.
 
 ## Store Metrics
 

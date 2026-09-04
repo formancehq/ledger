@@ -1867,7 +1867,7 @@ ledgerctl version
 
 The **server** exposes the same build metadata over two unauthenticated channels:
 
-- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"1"}`.
+- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"2"}`.
 - **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same information, including `protocol_version`.
 
 This is useful for monitoring deployed nodes and spotting version skew across a cluster (the per-node `version` is also surfaced on each `NodeInfo` in `GetClusterState`).
@@ -2377,26 +2377,20 @@ non-audit condition (`metadata[...]`, `address`, `source`, …). This keeps audi
 reads first-class with every other list endpoint while never degrading to a
 full-chain scan.
 
-> **Consistency note.** The audit secondary index is maintained by an
-> asynchronous per-node worker, so a filter that contains any field other than
-> `seq` (for example `ledger` or `outcome`) is eventually consistent when
-> `--min-log-sequence` is zero. With a non-zero bound, every node that receives
-> or forwards the live request first waits for its log index to reach that
-> sequence, samples its live audit head, and waits for its own audit index to
-> reach that head. This preserves the bound when the request is routed to
-> another node. An unfiltered live read, or a conjunction made only of `seq`
-> bounds, scans the audit zone directly. With a non-zero bound, every gRPC node
-> traversed by the routed request waits for its own log-index progress before
-> routing or serving, but does not wait for audit-index progress.
+> **Consistency note.** For a live filter containing any field other than
+> `seq` (for example `ledger` or `outcome`), the server fixes the main-store
+> Raft horizon for the request and waits for the local audit projection to
+> certify that horizon before taking the snapshot it queries. A non-zero
+> `--min-log-sequence` additionally waits for the native log index before that
+> automatically aligned read. An unfiltered live read, or a conjunction made
+> only of `seq` bounds, scans the authoritative audit zone directly and does
+> not wait for the audit projection.
 >
-> **Checkpoint + indexed-filter caveat.** A query checkpoint snapshots the audit index
-> at creation time; checkpoint creation waits for the log index but not yet for
-> the audit indexer, so a read whose filter contains a field other than `seq`
-> may omit entries whose audit-zone rows exist in the checkpoint but were not
-> indexed when it was taken (a frozen checkpoint never catches up). Unfiltered
-> and `seq`-only checkpoint reads scan the zone directly and are unaffected.
-> Making the audit indexer catch up before the checkpoint snapshot is a tracked
-> follow-up.
+> **Checkpoint reads.** Checkpoint creation waits for both read and audit
+> projections to certify the checkpoint horizon before publishing readiness.
+> Indexed audit reads therefore use the complete frozen audit projection;
+> unfiltered and `seq`-only reads continue to scan the frozen audit zone
+> directly.
 
 **Behavior:**
 - Streams audit entries from the server, oldest first by default / chronological (`--reverse` for newest first)

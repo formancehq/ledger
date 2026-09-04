@@ -21,6 +21,20 @@ type AuditIndexReader interface {
 	AuditSeqsByUint64Range(field byte, lo, hi uint64) ([]uint64, error)
 }
 
+type auditValidationIndex struct{}
+
+func (auditValidationIndex) AuditSeqsByString(byte, string) ([]uint64, error) {
+	return nil, nil
+}
+
+func (auditValidationIndex) AuditSeqsByOutcome(bool) ([]uint64, error) {
+	return nil, nil
+}
+
+func (auditValidationIndex) AuditSeqsByUint64Range(byte, uint64, uint64) ([]uint64, error) {
+	return nil, nil
+}
+
 // auditSeqUniverse is the sentinel returned by leaf compilation when a
 // condition does not narrow the candidate set to an index-backed sequence
 // list — specifically AUDIT_FIELD_SEQUENCE, which is served by bounding the
@@ -47,8 +61,9 @@ type auditCompiled struct {
 // AuditFilterNeedsIndex reports whether answering an audit filter may require
 // the asynchronous audit secondary index. A nil filter and a conjunction made
 // exclusively of valid sequence bounds use the authoritative audit-zone scan
-// directly. Every other shape returns true conservatively, including malformed,
-// unknown, OR, or over-depth trees; validation and compilation remain
+// directly. An empty OR is also index-independent because it is the empty set.
+// Every other shape returns true conservatively, including malformed, unknown,
+// non-empty OR, or over-depth trees; validation and compilation remain
 // responsible for returning the precise client error later.
 //
 // This predicate deliberately performs no index reads. The gRPC handler uses it
@@ -56,6 +71,16 @@ type auditCompiled struct {
 // candidates before the barrier intended to make them fresh.
 func AuditFilterNeedsIndex(filter *commonpb.QueryFilter) bool {
 	return auditFilterNeedsIndex(filter, 0)
+}
+
+// ValidateAuditFilter checks the complete audit-filter grammar and leaf values
+// without consulting the asynchronous audit index. Callers use it before a
+// readiness gate so malformed input keeps its InvalidArgument contract even
+// while the projection is disabled or rebuilding.
+func ValidateAuditFilter(filter *commonpb.QueryFilter) error {
+	_, _, _, _, err := CompileAuditFilter(auditValidationIndex{}, filter)
+
+	return err
 }
 
 func auditFilterNeedsIndex(filter *commonpb.QueryFilter, depth int) bool {
@@ -87,6 +112,11 @@ func auditFilterNeedsIndex(filter *commonpb.QueryFilter, depth int) bool {
 		}
 
 		return false
+	case *commonpb.QueryFilter_Or:
+		// OR() compiles to the empty set without consulting an index. Every
+		// non-empty OR remains conservative here: validation/compilation owns
+		// the precise grammar error or index dispatch after the barrier.
+		return f.Or == nil || len(f.Or.GetFilters()) > 0
 	default:
 		return true
 	}
@@ -103,10 +133,10 @@ func auditFilterNeedsIndex(filter *commonpb.QueryFilter, depth int) bool {
 // Only AUDIT_FIELD_* conditions and And/Or over them are accepted. Every other
 // QueryFilter variant — NOT, metadata/address/ledger/log conditions, a
 // non-indexed audit field — is rejected with InvalidArgument. There is no
-// scan-time predicate fallback: the audit trail is queried exclusively through
-// its access paths, so an expression the index cannot answer is refused rather
-// than silently degrading to a full-chain scan (EN-1241 / invariant: audit is
-// the source of truth, projections are the only query surface).
+// scan-time predicate fallback: nil and sequence-only filters scan the
+// authoritative audit zone; indexed fields use the audit secondary index. An
+// expression neither access path can answer is refused rather than silently
+// degrading to a full-chain predicate scan (EN-1241).
 func CompileAuditFilter(idx AuditIndexReader, filter *commonpb.QueryFilter) (seqs []uint64, loSeq, hiSeq uint64, narrowed bool, err error) {
 	if filter == nil {
 		return nil, 0, math.MaxUint64, false, nil
