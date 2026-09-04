@@ -198,17 +198,19 @@ func TestCompile_StaleBindingReadsAsBuilding(t *testing.T) {
 
 		// Removal resets the schema revision: a re-declared field starts over
 		// at revision 1, while a read store rewound to a flush that predates
-		// the DropIndex fold still serves the dropped incarnation's binding at
+		// the DropIndex fold still holds the dropped incarnation's binding at
 		// whatever revision it had. Revision distance compares favorably
-		// across incarnations (binding 2 vs schema 1 below), so the gate
-		// serves the dead keyspace until the fold re-applies the DropIndex
-		// tombstone; only stale-consistency reads can observe the window,
-		// since aligned reads wait for the fold. A plain binding>schema
-		// refusal cannot close this: a retype's atomic switch legitimately
-		// puts the binding one revision ahead of an older schema snapshot.
-		// Closing it needs an incarnation discriminator observed consistently
-		// with the schema. This subtest pins the boundary so any change to it
-		// is deliberate.
+		// across incarnations (binding 2 vs schema 1 below), so the predicate
+		// alone would serve the dead keyspace. The gate's callers make the
+		// state unreachable instead: every read that resolves a version state
+		// does so through a fold-aligned snapshot (AlignmentOwed is true for
+		// any filtered read, and InspectIndex aligns explicitly), and by the
+		// time the fold covers the main store's sequence the DropIndex
+		// tombstone and the re-declaration have been re-applied. A plain
+		// binding>schema refusal could not replace that: a retype's atomic
+		// switch legitimately puts the binding one revision ahead of an older
+		// schema snapshot. This subtest pins the predicate's boundary so any
+		// change to it is deliberate.
 		redeclared := map[string]*commonpb.MetadataFieldSchema{
 			"tier": {Type: commonpb.MetadataType_METADATA_TYPE_STRING, Revision: 1},
 		}
