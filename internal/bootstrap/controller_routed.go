@@ -106,7 +106,7 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 	// visible but excluded from the server-cost total (EN-1859). Charged whether
 	// or not the barrier succeeds — a failed attempt is still time the caller
 	// waited (see the fallback branch below).
-	readIndexAndWait := b.Node.ReadIndexAndWait
+	readIndexAndWait := b.ReadIndexAndWait
 	if b.readBarrier != nil {
 		readIndexAndWait = b.readBarrier
 	}
