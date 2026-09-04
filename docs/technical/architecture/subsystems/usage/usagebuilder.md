@@ -127,15 +127,54 @@ stats.PostingCount, _ = snap.GetCounter(ledger, usagestore.CounterPosting)
 
 | Failure mode | What survives | What replays |
 |--------------|---------------|--------------|
-| Controlled shutdown / rolling restart | `Store.Close()` flushes every committed batch after the builder goroutine has stopped | Nothing when the primary head is unchanged; startup opens at the previous head. |
+| Controlled shutdown / rolling restart | After the builder goroutine stops, `Store.Close()` first flushes every committed batch and then closes Pebble. On success, the full cursor/counter state survives. If the flush fails, `Close` still releases the DB and returns the joined flush/close error; visible commits since the previous successful flush are no longer accessible in that process and are not guaranteed durable. | On success, nothing when the primary head is unchanged. After a failed close flush, restart opens the previous durable SST watermark and replays the missing suffix from permanent audit history. |
 | Abrupt process or pod stop | Counters, templates, and cursor through the last successful flush watermark | Only the committed mutable suffix after that watermark (at most the steady-state flush interval under a healthy store). |
 | Usagebuilder crash mid-batch | The previous atomic batch and flush watermark | The incomplete batch plus any committed mutable suffix. |
 | Ledger deletion (audit log `DeleteLedger`) | Usagestore range-deletes every counter + template row keyed on the ledger via `DeleteLedger(batch, ledgerName)` | Re-created ledgers start at zero counters; audit-chain history for the old incarnation is idempotent to re-process. |
-| Primary store rolled back beneath the persisted cursor | `usagestore.Reset()` atomically drops every counter + template row, clears the cursor, and flushes that reset before cursor zero is published | The next boot/tick replays from audit sequence 0 into the durably reset store. |
+| Primary store rolled back beneath the persisted cursor | `usagestore.Reset()` first atomically commits the visible range-delete and cursor delete, then flushes them, and only after a successful flush does the builder publish cursor zero. If the flush fails, the live store is already visibly empty but the builder retains its old published cursor and returns the error; an abrupt restart before a successful retry may reopen the previous SST state. | After success, the next boot/tick replays from audit sequence 0 into the durably reset store. After a flush failure, the next tick retries rollback detection while the process lives; after an abrupt restart, detection runs against whichever coherent pre-reset or reset SST state Pebble recovered. |
 
-## Cutover semantics
+## Reconstruction semantics
 
-The migration that introduced this subsystem (EN-1420 / EN-1422) moved every non-ID-generator counter off `LedgerBoundaries` and onto the usagestore. On production upgrade, each ledger's counters **reset to 0** and repopulate from the earliest audit entry still reachable in Pebble. Historic pre-upgrade values are lost — accepted trade-off. Fresh ledgers boot with a genesis-derived count that matches the FSM.
+Ledger v3 is unreleased and its audit history is permanent. The usagestore may
+therefore always be reconstructed completely from audit sequence 0; there is no
+lossy cutover boundary or compatibility path for an older v3 storage format.
+Fresh and rebuilt ledgers converge to the same counters derived from the full
+audit chain.
+
+## 30-second flush policy load evidence
+
+The interval is exercised by two reproducible benchmarks:
+
+- `BenchmarkStoreFlushCadence` models five minutes of steady state at 100 active
+  ledgers, updating all seven counters plus the cursor every simulated second.
+  It compares a flush every second with the production 30-second cadence and
+  reports flush count, L0 tables/bytes, and compaction count.
+- `BenchmarkUsageBuilderCatchUp30SecondWindow` models the maximum healthy suffix
+  at 100 audit entries per second: 3,000 successful two-posting transactions
+  spread across 100 ledgers. It measures the complete primary-store read,
+  projection fold, commit, and final durability flush.
+
+Run both on the pinned development toolchain with:
+
+```sh
+go test ./internal/storage/usagestore ./internal/application/usagebuilder \
+  -run '^$' -bench 'Benchmark(StoreFlushCadence|UsageBuilderCatchUp30SecondWindow)$' \
+  -benchtime=1x -count=3
+```
+
+EN-1953 baseline on Apple M5 Pro, Go 1.26.5 (`-benchtime=1x -count=3`):
+
+| Policy / workload | Result across three samples |
+|-------------------|-----------------------------|
+| Flush every simulated second | 300 flushes, 300 L0 tables, 2,917,036 L0 bytes, and 149 compactions per five-minute operation |
+| Flush every 30 simulated seconds | 10 flushes, 10 L0 tables, 97,249 L0 bytes, and 4 compactions per five-minute operation |
+| Replay a 3,000-entry / 30-second suffix | 37.9–78.2 ms (median 43.1 ms), 38,341–79,249 audit entries/s |
+
+At this representative rate, 30 seconds reduces flush/L0-table/byte churn by
+30× and observed compaction count from 149 to 4, while the bounded replay costs
+well under one second. Rerun the command when changing the interval, batch
+policy, Pebble configuration, or representative rate; absolute timings are
+machine-dependent, while the operation counts are the stable comparison.
 
 ## Snapshot / restore
 

@@ -1,6 +1,7 @@
 package usagestore_test
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
 
-func newTestStore(t *testing.T) *usagestore.Store {
+func newTestStore(t testing.TB) *usagestore.Store {
 	t.Helper()
 
 	s, err := usagestore.New(t.TempDir(), logging.NopZap(), usagestore.DefaultConfig())
@@ -22,6 +23,50 @@ func newTestStore(t *testing.T) *usagestore.Store {
 	t.Cleanup(func() { _ = s.Close() })
 
 	return s
+}
+
+// BenchmarkStoreFlushCadence compares the L0/compaction work created by
+// flushing every simulated second with the production 30-second cadence. Each
+// operation models five minutes at 100 active ledgers, updating all seven
+// counters and the progress cursor once per second.
+func BenchmarkStoreFlushCadence(b *testing.B) {
+	const (
+		simulatedSeconds = 5 * 60
+		ledgerCount      = 100
+		counterCount     = 7
+	)
+
+	for _, flushEvery := range []int{1, 30} {
+		b.Run(fmt.Sprintf("flush_every_%02ds", flushEvery), func(b *testing.B) {
+			s := newTestStore(b)
+			before := s.DB().Metrics()
+
+			b.ResetTimer()
+			for iteration := range b.N {
+				for second := 1; second <= simulatedSeconds; second++ {
+					batch := s.NewBatch()
+					for ledgerIndex := range ledgerCount {
+						ledger := fmt.Sprintf("ledger-%03d", ledgerIndex)
+						for counterID := 1; counterID <= counterCount; counterID++ {
+							require.NoError(b, s.PutCounter(batch, ledger, byte(counterID), uint64(iteration*simulatedSeconds+second)))
+						}
+					}
+					require.NoError(b, s.WriteProgress(batch, uint64(iteration*simulatedSeconds+second)))
+					require.NoError(b, batch.Commit())
+					if second%flushEvery == 0 {
+						require.NoError(b, s.Flush())
+					}
+				}
+			}
+			b.StopTimer()
+
+			after := s.DB().Metrics()
+			b.ReportMetric(float64(after.Flush.Count-before.Flush.Count)/float64(b.N), "flushes/op")
+			b.ReportMetric(float64(after.Levels[0].TablesFlushed-before.Levels[0].TablesFlushed)/float64(b.N), "l0_tables/op")
+			b.ReportMetric(float64(after.Levels[0].TableBytesFlushed-before.Levels[0].TableBytesFlushed)/float64(b.N), "l0_bytes/op")
+			b.ReportMetric(float64(after.Compact.Count-before.Compact.Count)/float64(b.N), "compactions/op")
+		})
+	}
 }
 
 func TestStore_ProgressRoundTrip(t *testing.T) {

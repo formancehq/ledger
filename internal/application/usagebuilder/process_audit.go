@@ -171,6 +171,9 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 			}
 
 			lastAuditSeq = entry.GetSequence()
+			if b.onAuditEntryAttempt != nil {
+				b.onAuditEntryAttempt(lastAuditSeq)
+			}
 			batchCount++
 
 			// Failed proposals: no state change, nothing to project. The

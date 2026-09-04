@@ -77,6 +77,9 @@ type Builder struct {
 	lastFlushAt         time.Time
 	flushStore          func() error
 	now                 func() time.Time
+	// onAuditEntryAttempt is an optional test observer invoked immediately
+	// after an audit entry is read, before any filtering or projection work.
+	onAuditEntryAttempt func(uint64)
 
 	// lastProcessedAuditSeq mirrors usagestore.ReadProgress() and is
 	// updated on every successful commit — the atomic hint lets external
@@ -254,7 +257,8 @@ func (b *Builder) boot(ctx context.Context) error {
 		cursor, err = b.processAuditEntries(ctx, cursor, deadline)
 		if cursor > before {
 			if flushErr := b.flush(cursor, b.currentTime()); flushErr != nil {
-				b.logger.Errorf("flushing initial catch-up progress at audit sequence %d: %v", cursor, flushErr)
+				flushErr = fmt.Errorf("flushing initial catch-up progress at audit sequence %d: %w", cursor, flushErr)
+				b.logger.Errorf("initial catch-up: %v", errors.Join(err, flushErr))
 
 				break
 			}
