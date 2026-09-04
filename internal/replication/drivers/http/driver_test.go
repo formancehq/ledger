@@ -153,3 +153,42 @@ func TestHTTPDriverBoundsResponseDrain(t *testing.T) {
 		}
 	}
 }
+
+func TestHTTPDriverDrainIsTimeBounded(t *testing.T) {
+	t.Parallel()
+
+	// The exporter sends headers and a few bytes, then stalls without closing. Accept
+	// must give up on the body after the drain timeout and the next push must still work.
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("{"))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		<-r.Context().Done()
+	}))
+	t.Cleanup(func() {
+		testServer.CloseClientConnections()
+		testServer.Close()
+	})
+
+	driver, err := NewDriver(Config{URL: testServer.URL}, logging.Testing())
+	require.NoError(t, err)
+	driver.drainTimeout = 200 * time.Millisecond
+	log := drivers.NewLogWithLedger("module", ledger.NewLog(ledger.CreatedTransaction{Transaction: ledger.NewTransaction()}))
+
+	for i := 0; i < 2; i++ {
+		done := make(chan error, 1)
+		go func() {
+			_, err := driver.Accept(context.TODO(), log)
+			done <- err
+		}()
+		select {
+		case err := <-done:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			require.Fail(t, "Accept did not return: response body draining is not time-bounded")
+		}
+	}
+}
