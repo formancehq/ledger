@@ -86,8 +86,9 @@ type QueryProfile struct {
 	// BarrierDuration is time blocked on caller-requested read-consistency waits,
 	// LOCAL to this node: the min_log_sequence catch-up and the Raft ReadIndex
 	// quorum. Excluded from ServerDuration. Every local wait counts, including
-	// one that fails or is superseded — a syncing follower burns a quorum wait
-	// before falling back to the leader and reports it here, with Forwarded true.
+	// one that fails or is superseded — a follower that is syncing or loses its
+	// leader mid-quorum burns a local wait before falling back to the leader and
+	// reports it here, with Forwarded true.
 	BarrierDuration time.Duration
 	// DeliverDuration is time spent serialising result rows and handing them to
 	// the transport. Excluded from ServerDuration. On a gRPC server stream it is
@@ -103,18 +104,16 @@ type QueryProfile struct {
 	// ServerDuration is the consumer-independent server cost. Computed by
 	// Finish; zero until then.
 	ServerDuration time.Duration
-	// Forwarded is true when the read was routed to another node (an explicit
-	// leader read, or the syncing-follower fallback). The remote node runs its
-	// own barrier and execution, and that whole cost lands in this profile's
-	// ExecuteDuration.
+	// Forwarded is true when a follower routed the read to the leader because it
+	// was syncing or its pending ReadIndex was invalidated by a leader change. The
+	// remote node runs its own barrier and execution, and that whole cost lands in
+	// this profile's ExecuteDuration.
 	//
 	// Forwarded does NOT imply BarrierDuration == 0, and a non-zero value does
-	// not identify which wait occurred. Two paths produce one: the
-	// syncing-follower fallback attempts a ReadIndex barrier before forwarding,
-	// and waitMinLogSequence charges its catch-up regardless of consistency
-	// level, so an explicit leader read with min_log_sequence set reports a wait
-	// on a healthy cluster. The flag's job is narrower: stop a zero from being
-	// misread as "no barrier was needed".
+	// not identify which wait occurred. A follower fallback can attempt a
+	// ReadIndex barrier before forwarding and keeps that local wait in the
+	// profile. The flag's job is narrower: stop a zero from being misread as "no
+	// barrier was needed".
 	Forwarded bool
 	// Anomaly is non-empty when the phase bookkeeping detected a state that is
 	// impossible by contract (see clampPhase). It is surfaced in the log and on
@@ -491,8 +490,7 @@ func (p *QueryProfile) LogTo(logger logging.Logger) {
 			"wallDurationUs":       p.WallDuration().Microseconds(),
 			// True means the read was served by another node, so the remote node's
 			// whole cost sits inside executeDurationUs. barrierDurationUs then
-			// covers the local attempt only: 0 for an explicit leader read, non-zero
-			// when a local barrier failed before the fallback.
+			// covers the local attempt that failed before the follower fallback.
 			"forwarded": p.Forwarded,
 		}
 		if p.Root != nil {
