@@ -2170,6 +2170,17 @@ var _ readstore.EntityIterator = (*SliceIterator)(nil)
 // onward. An undeclared binding is a valid predecessor only of a first
 // declaration; a declared binding must be at most one revision behind.
 // Anything further back is a rebuild mid-chain and reads as INDEX_BUILDING.
+//
+// CONTRACT: the version state MUST come from a snapshot fold-aligned to the
+// reader the schema came from (AlignedIndexSnapshot / OpenIndexHandle). The
+// predicate accepts a binding AHEAD of the schema — a retype's atomic switch
+// legitimately lands between an older schema read and the state read — and
+// revisions restart at 1 on a drop/re-declare, so revision distance cannot
+// distinguish a dropped incarnation's binding from a live one. Alignment is
+// what makes those states unreachable: by the time the fold covers the
+// schema reader's sequence, the DropIndex tombstone and any re-declaration
+// have been re-applied. An unaligned caller re-opens that time travel; see
+// the KNOWN GAP subtest in compile_retype_window_test.go.
 func BindingWithinServingWindow(declared bool, bindingRevision, schemaRevision uint32) bool {
 	if !declared {
 		return schemaRevision <= 1

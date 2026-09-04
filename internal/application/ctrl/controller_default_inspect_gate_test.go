@@ -176,6 +176,10 @@ func TestDefaultController_InspectIndex_WaitsForFoldAlignment(t *testing.T) {
 	_, err = c.InspectIndex(shortCtx, req)
 	require.ErrorIs(t, err, context.DeadlineExceeded,
 		"an unaligned inspect must block on fold alignment, not serve")
+	// The error wrap proves WHERE the call blocked: the deadline expired
+	// inside the alignment wait, not in some earlier read that happened to
+	// observe the canceled context.
+	require.ErrorContains(t, err, "waiting for read index alignment")
 
 	// Fold caught up: the aligned state is served (the stale binding shape
 	// here would be unreachable in production once aligned; the empty scan
