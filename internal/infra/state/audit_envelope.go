@@ -137,11 +137,12 @@ func BuildHashedHeaderPayload(entry *auditpb.AuditEntry) ([]byte, error) {
 		buf = appendLenBytes(buf, nil)
 	}
 
-	// Batch identity: the idempotency key, then the signature sub-payload
-	// (0-length when unsigned). Binding both makes the AppliedProposal
-	// idempotency projection and the batch's non-repudiation proof
-	// tamper-evident via the chain.
+	// Batch identity: the idempotency key and its server-derived expires_at, then
+	// the signature sub-payload (0-length when unsigned). Binding all three makes
+	// the AppliedProposal idempotency projection, the outcome's retention window,
+	// and the batch's non-repudiation proof tamper-evident via the chain.
 	buf = appendLenString(buf, entry.GetIdempotency().GetKey())
+	buf = appendU64(buf, entry.GetIdempotency().GetExpiresAt())
 	buf = appendLenBytes(buf, buildSignaturePayload(entry.GetSignature()))
 
 	return buf, nil

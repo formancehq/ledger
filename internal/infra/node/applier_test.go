@@ -126,7 +126,7 @@ func newTestApplierSetupWithSink(t *testing.T, sink LocalResponses) *testApplier
 
 	nodeAttrs := attributes.New()
 
-	nodeRegistry := state.NewStateRegistry(nodeCache, nodeAttrs, 0)
+	nodeRegistry := state.NewStateRegistry(nodeCache, nodeAttrs)
 	nodeSnapshotter := state.NewCacheSnapshotter(logger, nodeRegistry, nil)
 	fsm, err := state.NewMachine(
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,

@@ -384,6 +384,14 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 	require.NotEmpty(t, collectIdempotencyMismatches(store),
 		"a tampered proposal hash must be flagged")
 
+	// The audit entry froze expires_at 0 (no policy TTL), so a stored entry
+	// whose retention window was tampered to a non-zero value must be flagged.
+	tampered = faithful.CloneVT()
+	tampered.ExpiresAt = createdAt + 1_000
+	writeIdempotencyEntry(t, store, idemKey, tampered)
+	require.NotEmpty(t, collectIdempotencyMismatches(store),
+		"a tampered frozen expires_at must be flagged")
+
 	// Tampering created_at would otherwise dodge the (keyHash, created_at)
 	// lookup and skip verification; the completeness guard reports it (no
 	// audit entry froze the key at this timestamp).

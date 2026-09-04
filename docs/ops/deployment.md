@@ -648,8 +648,9 @@ The server persists critical configuration parameters in Pebble under the Global
 |-----------|----------------|---------------------|
 | `node-id` | Cluster confusion -- node becomes invisible | **Fatal error** |
 | `cluster-id` | Breaks inter-node communication | **Fatal error** |
-| `idempotency-ttl` | Idempotency window mismatch | **Fatal error** |
 | `storage-schema-version` | Data layout incompatibility | **Fatal error** (never bypassable, even with `--unsafe-skip-config-validation`) |
+
+The idempotency TTL is **not** a persisted-config parameter: it lives in the Raft-replicated cluster policy and is changed by a policy revision bump, not a restart. See [Idempotency Keys](../technical/architecture/subsystems/admission/idempotency.md).
 
 #### Edge Cases
 
@@ -660,7 +661,7 @@ The server persists critical configuration parameters in Pebble under the Global
 
 #### Override
 
-Use `--unsafe-skip-config-validation` to bypass safety checks for `node-id`, `cluster-id`, and `idempotency-ttl` mismatches and overwrite the persisted config. **Use only for intentional migrations.** Note that `storage-schema-version` mismatches are never bypassable. See [CLI Reference](./cli.md) for flag documentation.
+Use `--unsafe-skip-config-validation` to bypass safety checks for `node-id` and `cluster-id` mismatches and overwrite the persisted config. **Use only for intentional migrations.** Note that `storage-schema-version` mismatches are never bypassable. See [CLI Reference](./cli.md) for flag documentation.
 
 ### Upgrading from pre-#400 clusters
 

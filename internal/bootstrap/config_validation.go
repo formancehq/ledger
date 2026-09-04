@@ -75,10 +75,9 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 	}
 
 	current := &commonpb.PersistedConfig{
-		NodeId:                cfg.RaftConfig.NodeID,
-		ClusterId:             cfg.ClusterID,
-		IdempotencyTtlSeconds: uint64(cfg.IdempotencyTTL.Seconds()),
-		StorageSchemaVersion:  CurrentStorageSchemaVersion,
+		NodeId:               cfg.RaftConfig.NodeID,
+		ClusterId:            cfg.ClusterID,
+		StorageSchemaVersion: CurrentStorageSchemaVersion,
 	}
 
 	if persisted == nil {
@@ -97,14 +96,6 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		needsBackfill = true
 
 		logger.Infof("Backfilling storage-schema-version=1 into persisted config")
-	}
-
-	// Backfill IdempotencyTtlSeconds for configs persisted before this field existed.
-	if persisted.GetIdempotencyTtlSeconds() == 0 && current.GetIdempotencyTtlSeconds() != 0 {
-		persisted.IdempotencyTtlSeconds = current.GetIdempotencyTtlSeconds()
-		needsBackfill = true
-
-		logger.Infof("Backfilling idempotency-ttl-seconds=%d into persisted config", current.GetIdempotencyTtlSeconds())
 	}
 
 	if needsBackfill {
@@ -145,15 +136,6 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 			Field:     "cluster-id",
 			Persisted: persisted.GetClusterId(),
 			Current:   current.GetClusterId(),
-		})
-	}
-
-	// IdempotencyTtlSeconds: only validate if persisted value is non-zero (backward compat).
-	if persisted.GetIdempotencyTtlSeconds() != 0 && persisted.GetIdempotencyTtlSeconds() != current.GetIdempotencyTtlSeconds() {
-		mismatches = append(mismatches, &ConfigMismatchError{
-			Field:     "idempotency-ttl",
-			Persisted: strconv.FormatUint(persisted.GetIdempotencyTtlSeconds(), 10) + "s",
-			Current:   strconv.FormatUint(current.GetIdempotencyTtlSeconds(), 10) + "s",
 		})
 	}
 

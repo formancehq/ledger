@@ -698,6 +698,7 @@ func (m *Idempotency) CloneVT() *Idempotency {
 	}
 	r := new(Idempotency)
 	r.Key = m.Key
+	r.ExpiresAt = m.ExpiresAt
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3098,6 +3099,7 @@ func (m *IdempotencyKeyValue) CloneVT() *IdempotencyKeyValue {
 	r.CreatedAt = m.CreatedAt
 	r.Failure = m.Failure.CloneVT()
 	r.LogCount = m.LogCount
+	r.ExpiresAt = m.ExpiresAt
 	if rhs := m.Hash; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -4171,7 +4173,6 @@ func (m *PersistedConfig) CloneVT() *PersistedConfig {
 	r := new(PersistedConfig)
 	r.NodeId = m.NodeId
 	r.ClusterId = m.ClusterId
-	r.IdempotencyTtlSeconds = m.IdempotencyTtlSeconds
 	r.StorageSchemaVersion = m.StorageSchemaVersion
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -5456,6 +5457,9 @@ func (this *Idempotency) EqualVT(that *Idempotency) bool {
 		return false
 	}
 	if this.Key != that.Key {
+		return false
+	}
+	if this.ExpiresAt != that.ExpiresAt {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -9651,6 +9655,9 @@ func (this *IdempotencyKeyValue) EqualVT(that *IdempotencyKeyValue) bool {
 	if this.LogCount != that.LogCount {
 		return false
 	}
+	if this.ExpiresAt != that.ExpiresAt {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -11420,9 +11427,6 @@ func (this *PersistedConfig) EqualVT(that *PersistedConfig) bool {
 		return false
 	}
 	if this.ClusterId != that.ClusterId {
-		return false
-	}
-	if this.IdempotencyTtlSeconds != that.IdempotencyTtlSeconds {
 		return false
 	}
 	if this.StorageSchemaVersion != that.StorageSchemaVersion {
@@ -13402,6 +13406,12 @@ func (m *Idempotency) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ExpiresAt != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ExpiresAt))
+		i--
+		dAtA[i] = 0x11
 	}
 	if len(m.Key) > 0 {
 		i -= len(m.Key)
@@ -19413,6 +19423,12 @@ func (m *IdempotencyKeyValue) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.ExpiresAt != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ExpiresAt))
+		i--
+		dAtA[i] = 0x39
+	}
 	if m.LogCount != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogCount))
 		i--
@@ -21906,11 +21922,6 @@ func (m *PersistedConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.StorageSchemaVersion != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.StorageSchemaVersion))
 		i--
-		dAtA[i] = 0x20
-	}
-	if m.IdempotencyTtlSeconds != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.IdempotencyTtlSeconds))
-		i--
 		dAtA[i] = 0x18
 	}
 	if len(m.ClusterId) > 0 {
@@ -23125,6 +23136,9 @@ func (m *Idempotency) SizeVT() (n int) {
 	l = len(m.Key)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.ExpiresAt != 0 {
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -25757,6 +25771,9 @@ func (m *IdempotencyKeyValue) SizeVT() (n int) {
 	if m.LogCount != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.LogCount))
 	}
+	if m.ExpiresAt != 0 {
+		n += 9
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -26803,9 +26820,6 @@ func (m *PersistedConfig) SizeVT() (n int) {
 	l = len(m.ClusterId)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.IdempotencyTtlSeconds != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.IdempotencyTtlSeconds))
 	}
 	if m.StorageSchemaVersion != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.StorageSchemaVersion))
@@ -31207,6 +31221,16 @@ func (m *Idempotency) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Key = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 2:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ExpiresAt", wireType)
+			}
+			m.ExpiresAt = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ExpiresAt = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -45501,6 +45525,16 @@ func (m *IdempotencyKeyValue) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 7:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ExpiresAt", wireType)
+			}
+			m.ExpiresAt = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ExpiresAt = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -50671,25 +50705,6 @@ func (m *PersistedConfig) UnmarshalVT(dAtA []byte) error {
 			m.ClusterId = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IdempotencyTtlSeconds", wireType)
-			}
-			m.IdempotencyTtlSeconds = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.IdempotencyTtlSeconds |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field StorageSchemaVersion", wireType)
 			}

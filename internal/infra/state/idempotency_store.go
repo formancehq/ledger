@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
@@ -32,16 +33,13 @@ func HashIdempotencyKey(key string) attributes.U128 {
 // directly from `[0x05][0x01]` Pebble entries without needing the original
 // caller-supplied string, and keeps lookups O(1) on the hash.
 type IdempotencyStore struct {
-	entries   map[attributes.U128]*commonpb.IdempotencyKeyValue
-	ttlMicros uint64
+	entries map[attributes.U128]*commonpb.IdempotencyKeyValue
 }
 
 // NewIdempotencyStore creates a new IdempotencyStore.
-// ttlMicros is the time-to-live in HLC microseconds (0 = no expiration).
-func NewIdempotencyStore(ttlMicros uint64) *IdempotencyStore {
+func NewIdempotencyStore() *IdempotencyStore {
 	return &IdempotencyStore{
-		entries:   make(map[attributes.U128]*commonpb.IdempotencyKeyValue),
-		ttlMicros: ttlMicros,
+		entries: make(map[attributes.U128]*commonpb.IdempotencyKeyValue),
 	}
 }
 
@@ -57,17 +55,37 @@ func (s *IdempotencyStore) Put(key string, value *commonpb.IdempotencyKeyValue) 
 	s.entries[HashIdempotencyKey(key)] = value
 }
 
-// IsExpired returns true if the value's created_at is older than TTL relative to nowMicros.
-// Returns false if TTL is 0 (no expiration).
+// IsExpired reports whether the outcome has reached its frozen expiry as of
+// nowMicros. expires_at == 0 means never expires.
 func (s *IdempotencyStore) IsExpired(value *commonpb.IdempotencyKeyValue, nowMicros uint64) bool {
-	return IdempotencyExpired(value.GetCreatedAt(), nowMicros, s.ttlMicros)
+	return IdempotencyExpired(value.GetExpiresAt(), nowMicros)
 }
 
-// IdempotencyExpired reports whether an outcome frozen at createdAt has outlived
-// ttlMicros as of nowMicros. ttlMicros == 0 means never expire. Shared with the
-// backup restore path so its overwrite guard uses the same rule as the FSM.
-func IdempotencyExpired(createdAt, nowMicros, ttlMicros uint64) bool {
-	return ttlMicros != 0 && nowMicros-createdAt > ttlMicros
+// IdempotencyExpired reports whether a frozen outcome with the given absolute
+// expires_at has expired as of nowMicros. expires_at == 0 means never expire.
+// The expiry is stored per outcome — frozen from the committed policy TTL at
+// write time — so this decision reads no node-local configuration and is
+// identical on every node. Shared with the backup restore path so its overwrite
+// guard uses the same rule as the FSM.
+func IdempotencyExpired(expiresAt, nowMicros uint64) bool {
+	return expiresAt != 0 && nowMicros >= expiresAt
+}
+
+// IdempotencyExpiresAt returns the absolute expiry (HLC micros) an outcome frozen
+// at createdAt receives under a policy TTL of ttlMicros. ttlMicros == 0 yields 0
+// (never expires); an addition that would overflow uint64 saturates to the
+// maximum, keeping the value finite and deterministic on every node.
+func IdempotencyExpiresAt(createdAt, ttlMicros uint64) uint64 {
+	if ttlMicros == 0 {
+		return 0
+	}
+
+	expiresAt := createdAt + ttlMicros
+	if expiresAt < createdAt {
+		return math.MaxUint64
+	}
+
+	return expiresAt
 }
 
 // Reset clears the in-memory map (used during snapshot restore).
@@ -122,12 +140,12 @@ func (s *IdempotencyStore) RestoreFromStore(reader dal.PebbleReader) error {
 }
 
 // ScanExpiredKeyHashes reads the Pebble time index and returns up to maxKeys
-// 16-byte key hashes of entries with created_at <= cutoffMicros, plus the
+// 16-byte key hashes of entries with expires_at <= cutoffMicros, plus the
 // full Pebble time-index key of the last scanned entry.
 //
 // The full key is used as an exact upper bound by the FSM's DeleteRange (via
 // lex-next, append 0x00) — bounding only by timestamp is unsafe because
-// multiple entries can share the same created_at: if the scan stops mid-
+// multiple entries can share the same expires_at: if the scan stops mid-
 // timestamp, a timestamp-only upper bound deletes time-index entries whose
 // main keys were NOT included in the proposal, orphaning them.
 //
@@ -149,17 +167,17 @@ func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.PebbleReader, cutoffM
 		lastScannedKey []byte
 	)
 
-	// Time index key format: [0x05][0x02][created_at BE 8 bytes][key_hash 16 bytes]
+	// Time index key format: [0x05][0x02][expires_at BE 8 bytes][key_hash 16 bytes]
 	for iter.First(); iter.Valid(); iter.Next() {
 		k := iter.Key()
-		// Minimum key length: 2 (zone+sub) + 8 (created_at) + 16 (key hash)
+		// Minimum key length: 2 (zone+sub) + 8 (expires_at) + 16 (key hash)
 		if len(k) < 26 {
 			continue
 		}
 
-		createdAt := binary.BigEndian.Uint64(k[2:10])
-		if createdAt > cutoffMicros {
-			break // time index is sorted; all remaining entries are newer
+		expiresAt := binary.BigEndian.Uint64(k[2:10])
+		if expiresAt > cutoffMicros {
+			break // time index is sorted by expiry; all remaining expire later
 		}
 
 		hash := make([]byte, 16)
@@ -189,7 +207,7 @@ func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.PebbleReader, cutoffM
 // the leader scanned. It bounds the DeleteRange at the key level rather than
 // the timestamp level: bounding by timestamp + 1 alone is unsafe because if
 // the scan stops mid-timestamp, the unscanned siblings sharing that
-// created_at would have their time-index entry deleted but their main key
+// expires_at would have their time-index entry deleted but their main key
 // (not in pebbleKeyHashes) would survive — orphaning them forever. The
 // DeleteRange upper bound is lex-next(lastScannedTimeIndexKey) which is
 // lex-strictly-less than any unscanned sibling.
@@ -247,9 +265,9 @@ func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, l
 			continue
 		}
 
-		if value.GetCreatedAt() > cutoffMicros {
-			// Defensive: the leader scan returned this hash with a stale
-			// cutoff. Don't evict a still-live entry.
+		if value.GetExpiresAt() == 0 || value.GetExpiresAt() > cutoffMicros {
+			// Defensive: a never-expiring outcome must never be evicted, and a
+			// still-live entry named by a stale leader scan must be kept.
 			continue
 		}
 
@@ -323,15 +341,20 @@ func SaveIdempotencyKey(batch *dal.WriteSession, key string, value *commonpb.Ide
 		return fmt.Errorf("writing idempotency key: %w", err)
 	}
 
-	// Time index: [0x05][0x02][created_at BE 8 bytes][key_hash 16 bytes] -> empty
-	timeKey := make([]byte, 2+8+16)
-	timeKey[0] = dal.ZoneIdempotency
-	timeKey[1] = dal.SubIdempTimeIdx
-	binary.BigEndian.PutUint64(timeKey[2:10], value.GetCreatedAt())
-	copy(timeKey[10:], keyHash[:])
+	// Time index: [0x05][0x02][expires_at BE 8 bytes][key_hash 16 bytes] -> empty.
+	// A never-expiring outcome (expires_at == 0) is left out of the index so the
+	// leader eviction scan never reaches it; its main entry above is still
+	// written and stays live until product semantics change.
+	if value.GetExpiresAt() != 0 {
+		timeKey := make([]byte, 2+8+16)
+		timeKey[0] = dal.ZoneIdempotency
+		timeKey[1] = dal.SubIdempTimeIdx
+		binary.BigEndian.PutUint64(timeKey[2:10], value.GetExpiresAt())
+		copy(timeKey[10:], keyHash[:])
 
-	if err := batch.SetBytes(timeKey, nil); err != nil {
-		return fmt.Errorf("writing idempotency time index: %w", err)
+		if err := batch.SetBytes(timeKey, nil); err != nil {
+			return fmt.Errorf("writing idempotency time index: %w", err)
+		}
 	}
 
 	return nil
