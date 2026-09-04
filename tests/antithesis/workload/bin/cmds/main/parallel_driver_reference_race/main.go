@@ -18,8 +18,8 @@
 //     commits a second transaction (two IDs — the genuine violation).
 //   - Ambiguous outcomes (Unavailable after retries, Internal, ledger races)
 //     never participate in conclusive-outcome assertions.
-//   - Reads use a MinLogSequence floor from a post-hoc marker write, so a
-//     stale read store cannot hide a committed duplicate (#398 class).
+//   - Reads happen after a post-hoc marker write; the default ReadIndex and
+//     projection alignment prevent a stale read store from hiding a duplicate.
 package main
 
 import (
@@ -68,11 +68,11 @@ func createWithReference(
 }
 
 // writeMarker commits a reference-less marker transaction and returns its log
-// sequence, usable as a MinLogSequence floor: the marker is proposed after
-// every assertion-relevant response was received, so a read floored at the
-// marker covers any write those responses could correspond to. Returns
+// sequence. The marker is proposed after every assertion-relevant response was
+// received, so a subsequent linearizable read covers any write those responses
+// could correspond to. Returns
 // (0, false) when the barrier could not be established (inconclusive).
-func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledger string) (uint64, bool) {
+func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledger string) bool {
 	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -92,32 +92,30 @@ func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledg
 		},
 	}))
 	if err != nil {
-		return 0, false
+		return false
 	}
 
 	logs := resp.GetLogs()
 	if len(logs) == 0 {
-		return 0, false
+		return false
 	}
 
-	return logs[len(logs)-1].GetSequence(), true
+	return true
 }
 
-// countTransactionsWithReference lists transactions matching ref at a
-// MinLogSequence floor and returns (distinctTxIDs, conclusive). Any read
-// error makes the result inconclusive — never a violation.
+// countTransactionsWithReference lists transactions matching ref after an
+// acknowledged marker. The default linearizable read is aligned to the
+// marker's Raft horizon. Any read error makes the result inconclusive.
 func countTransactionsWithReference(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	ledger, ref string,
-	minLogSeq uint64,
 ) ([]uint64, bool) {
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
 			PageSize: 10,
 			Filter:   actions.ReferenceFilter(ref),
-			Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
 		},
 	})
 	if err != nil {
@@ -151,12 +149,11 @@ func assertReferenceUnique(
 	ledger, ref string,
 	details internal.Details,
 ) {
-	floor, ok := writeMarker(ctx, client, ledger)
-	if !ok {
+	if !writeMarker(ctx, client, ledger) {
 		return
 	}
 
-	ids, conclusive := countTransactionsWithReference(ctx, client, ledger, ref, floor)
+	ids, conclusive := countTransactionsWithReference(ctx, client, ledger, ref)
 	if !conclusive {
 		return
 	}

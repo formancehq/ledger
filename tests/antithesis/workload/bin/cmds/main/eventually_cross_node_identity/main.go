@@ -152,11 +152,11 @@ type readyNode struct {
 //
 // Retries on any IsTransient error (not just IsUnavailable): Barrier
 // proposes through Raft, and under a clog/restore fault window Raft
-// transients can surface as DeadlineExceeded, Aborted, or
-// FailedPrecondition + READ_INDEX_NOT_CAUGHT_UP — all legitimately
-// retryable. Narrow IsUnavailable matching would trip the assertion
-// below on fault-window noise and undermine the cross-node identity
-// oracle's reliability.
+// transients can surface as DeadlineExceeded or ExternalServiceError.
+// Canceled is a local lifecycle signal and Aborted is deliberately surfaced;
+// neither is part of IsTransient. Narrow IsUnavailable matching would trip
+// the assertion below on retry-safe fault-window noise and undermine the
+// cross-node identity oracle's reliability.
 func waitForQuiescence(ctx context.Context, client servicepb.BucketServiceClient) uint64 {
 	var last uint64
 	for attempt := 1; attempt <= quiescenceAttempts; attempt++ {

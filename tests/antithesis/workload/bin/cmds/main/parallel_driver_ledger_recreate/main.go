@@ -15,9 +15,9 @@
 //     explicit ack; the isolation check runs BEFORE the reference-reuse
 //     write, so an old reference found through the new incarnation can only
 //     be predecessor data.
-//   - All isolation reads go through ListTransactions with a MinLogSequence
-//     floor taken from a marker write in the NEW incarnation. The floor
-//     guarantees the serving store has applied past the delete+recreate, so
+//   - All isolation reads happen after a marker write in the NEW incarnation.
+//     The default linearizable read and projection alignment guarantee the
+//     serving store has applied past the delete+recreate, so
 //     name→ID resolution yields the new LedgerID — without it, a legitimately
 //     stale (prefix-consistent) read could resolve the name to the OLD ID and
 //     "see" old data, a false positive. GetAccount has no freshness floor and
@@ -71,21 +71,20 @@ func createTx(
 	}))
 }
 
-// listMatches lists transactions matching the filter at the MinLogSequence
-// floor and returns (foundIDs, conclusive). Read errors are inconclusive.
+// listMatches lists transactions matching the filter after an acknowledged
+// marker and returns (foundIDs, conclusive). The default linearizable read is
+// aligned to the marker's Raft horizon; read errors are inconclusive.
 func listMatches(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	ledger string,
 	filter *commonpb.QueryFilter,
-	minLogSeq uint64,
 ) ([]uint64, bool) {
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
 			PageSize: 10,
 			Filter:   filter,
-			Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
 		},
 	})
 	if err != nil {
@@ -169,27 +168,27 @@ func main() {
 			return
 		}
 
-		// 4. Marker write in the NEW incarnation: its global log sequence is
-		// the freshness floor for every isolation read below.
+		// 4. Acknowledged marker write in the NEW incarnation. Every default
+		// isolation read below is aligned to at least this Raft horizon.
 		markerResp, err := createTx(ctx, client, ledger, "", "lrec-marker")
 		if err != nil || len(markerResp.GetLogs()) == 0 {
 			return
 		}
 
-		minLogSeq := markerResp.GetLogs()[len(markerResp.GetLogs())-1].GetSequence()
-		details["minLogSeq"] = minLogSeq
+		markerSeq := markerResp.GetLogs()[len(markerResp.GetLogs())-1].GetSequence()
+		details["markerSeq"] = markerSeq
 
 		// 5. Isolation: no predecessor reference or account activity may be
 		// visible through the recreated ledger. Runs BEFORE the reuse write.
 		for i, ref := range ackedRefs {
-			ids, conclusive := listMatches(ctx, client, ledger, actions.ReferenceFilter(ref), minLogSeq)
+			ids, conclusive := listMatches(ctx, client, ledger, actions.ReferenceFilter(ref))
 			if conclusive {
 				assert.Always(len(ids) == 0,
 					"recreated ledger never exposes predecessor transactions",
 					details.With(internal.Details{"reference": ref, "txIds": fmt.Sprintf("%v", ids)}))
 			}
 
-			ids, conclusive = listMatches(ctx, client, ledger, actions.AddressExactFilter(ackedAccounts[i]), minLogSeq)
+			ids, conclusive = listMatches(ctx, client, ledger, actions.AddressExactFilter(ackedAccounts[i]))
 			if conclusive {
 				assert.Always(len(ids) == 0,
 					"recreated ledger never exposes predecessor account activity",

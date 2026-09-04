@@ -126,8 +126,7 @@ func main() {
 				Options: &commonpb.ListOptions{
 					PageSize: pageSize,
 					Cursor:   cursor,
-					Reverse:  true,                                          // oldest-first, so IDs must increase across pages
-					Read:     &commonpb.ReadOptions{MinLogSequence: maxSeq}, // freshness barrier: index must cover every acked write
+					Reverse:  true, // oldest-first, so IDs must increase across pages
 				},
 			})
 			if err != nil {

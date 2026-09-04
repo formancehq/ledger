@@ -20,8 +20,8 @@
 //     count).
 //   - Effects checks run only after a definitive (FailedPrecondition-class)
 //     rejection; ambiguous outcomes are skipped.
-//   - Reads use a MinLogSequence floor from a marker write in a SEPARATE
-//     owned helper ledger: the floor defeats read staleness (#398 class)
+//   - Reads happen after a marker write in a SEPARATE owned helper ledger:
+//     the default linearizable path defeats read staleness (#398 class)
 //     without polluting the primary ledger's audit stream with marker
 //     Success entries.
 //   - Audit history is permanent, so a failed atomic bulk must always
@@ -67,20 +67,19 @@ func isDefinitiveBulkRejection(err error) bool {
 }
 
 // listIsEmpty returns (empty, foundIDs, conclusive) for transactions matching
-// the filter at the MinLogSequence floor. Read errors are inconclusive.
+// the filter after an acknowledged marker. The default linearizable read is
+// aligned to the marker's Raft horizon; read errors are inconclusive.
 func listIsEmpty(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	ledger string,
 	filter *commonpb.QueryFilter,
-	minLogSeq uint64,
 ) (bool, []uint64, bool) {
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
 			PageSize: 10,
 			Filter:   filter,
-			Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
 		},
 	})
 	if err != nil {
@@ -218,20 +217,20 @@ func main() {
 			return
 		}
 
-		minLogSeq := markerResp.GetLogs()[len(markerResp.GetLogs())-1].GetSequence()
-		details["minLogSeq"] = minLogSeq
+		markerSeq := markerResp.GetLogs()[len(markerResp.GetLogs())-1].GetSequence()
+		details["markerSeq"] = markerSeq
 
 		// Business effects: none of the earlier orders' references or account
 		// activity may be visible — the whole proposal failed.
 		for i, ref := range refs {
-			empty, ids, conclusive := listIsEmpty(ctx, client, ledger, actions.ReferenceFilter(ref), minLogSeq)
+			empty, ids, conclusive := listIsEmpty(ctx, client, ledger, actions.ReferenceFilter(ref))
 			if conclusive {
 				assert.Always(empty,
 					"failed atomic bulk leaves no partial transaction effects",
 					details.With(internal.Details{"reference": ref, "txIds": fmt.Sprintf("%v", ids)}))
 			}
 
-			empty, ids, conclusive = listIsEmpty(ctx, client, ledger, actions.AddressExactFilter(accounts[i]), minLogSeq)
+			empty, ids, conclusive = listIsEmpty(ctx, client, ledger, actions.AddressExactFilter(accounts[i]))
 			if conclusive {
 				assert.Always(empty,
 					"failed atomic bulk leaves no partial account activity",
@@ -246,7 +245,6 @@ func main() {
 		// exactly one Failure entry by design, machine.go:1163-1204).
 		auditStream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
 			Options: &commonpb.ListOptions{
-				Read: &commonpb.ReadOptions{MinLogSequence: minLogSeq},
 				// Audit has no dedicated ledger field — scope via the generic filter.
 				Filter: &commonpb.QueryFilter{
 					Filter: &commonpb.QueryFilter_Audit{
