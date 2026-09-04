@@ -17,6 +17,10 @@ import (
 	"github.com/formancehq/ledger/internal/replication/drivers"
 )
 
+// maxResponseDrainBytes caps how much of an exporter's response body Accept reads
+// before closing it; ingest endpoints answer with a few bytes at most.
+const maxResponseDrainBytes = 64 << 10
+
 type Driver struct {
 	config     Config
 	httpClient *http.Client
@@ -48,9 +52,11 @@ func (c *Driver) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]e
 		return nil, err
 	}
 	defer func() {
-		// Drain and close so the underlying connection is released back to the
-		// transport instead of leaking one socket per push.
-		_, _ = io.Copy(io.Discard, rsp.Body)
+		// Drain (bounded) and close so the underlying connection is released back to
+		// the transport instead of leaking one socket per push. A body larger than
+		// the bound is closed unread: the transport then drops that connection, which
+		// is preferable to blocking the worker on a misbehaving exporter.
+		_, _ = io.Copy(io.Discard, io.LimitReader(rsp.Body, maxResponseDrainBytes))
 		_ = rsp.Body.Close()
 	}()
 
