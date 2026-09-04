@@ -87,7 +87,7 @@ A rewrite is driven by `indexbuilder.Builder` (`internal/application/indexbuilde
 - `completeBackfill` — when the cursor reaches the global indexer cursor, the **atomic switch** runs: `CurrentVersion ← PendingVersion`, `PendingVersion ← 0`, in one Pebble batch (`backfill.go:1197+`).
 - `handleDroppedIndexLog` — removes the index from the in-memory config, cancels in-flight work, tombstones `IndexVersionState` while preserving `HighWater`, and purges metadata forward (`0x01`), existence (`0x02`), and reverse-map (`0x03`) rows in the same fold batch (`index_config.go`).
 
-A `SetMetadataFieldType` order bumps the cluster-wide `forward_encoding_version` and triggers a **schema rewrite** — a distinct code path (`schemaRewriteTask` / `processSchemaRewrite`, see [indexer.md](indexer.md#changing-a-metadata-keys-type-setmetadatafieldtype)) that reuses the same versioning strategy: queries continue to serve `v_current` until each replica completes its local rewrite and flips its own switch. Synchronisation across nodes is client-driven through `min_log_sequence` on the read API (note: that pins **log application**, not local rewrite completion — see `api-comparison.md`).
+A `SetMetadataFieldType` order bumps the cluster-wide `forward_encoding_version` and triggers a **schema rewrite** — a distinct code path (`schemaRewriteTask` / `processSchemaRewrite`, see [indexer.md](indexer.md#changing-a-metadata-keys-type-setmetadatafieldtype)) that reuses the same versioning strategy: queries continue to serve `v_current` until each replica completes its local rewrite and flips its own switch. Read-side causal alignment is automatic through the projection's Raft progress certificate, while local rewrite readiness remains explicit in `IndexVersionState` — the certificate does not complete or promote a rewrite (see `api-comparison.md`).
 
 ```mermaid
 stateDiagram-v2
@@ -126,7 +126,18 @@ What is deliberately **not** restored: the per-replica `IndexVersionState` rows 
 
 There is **no persisted statistics structure**. The figures returned by `InspectIndex` are recomputed by scanning the live Pebble keyspace at the version the caller asks for.
 
-`readstore.InspectParams` accepts a `Version` (always `IndexVersionState.CurrentVersion` from the controller — `0` is an invariant the caller must short-circuit), a mode, and pagination parameters. Three modes are supported (`internal/storage/readstore/inspect.go`):
+For a default-consistency call, routing obtains a Raft read barrier and
+`InspectIndex` waits until the local read projection certifies the fixed main
+snapshot horizon before opening the snapshot it scans. `stale` skips the quorum
+barrier but retains the same alignment to its fixed local main horizon.
+
+The controller uses `PinnedVersionResolver` so a version activated after the
+main snapshot cannot leak into the inspection. It holds an event-history lease
+at the main snapshot's native sequence for the duration of the scan.
+`readstore.InspectParams` accepts that resolved `Version`, the native
+`HorizonSequence`, a mode, and pagination parameters. Every mode ignores later
+membership events, including the existence events used by summary counts.
+Three modes are supported (`internal/storage/readstore/inspect.go`):
 
 | Mode | Output | Cost |
 |------|--------|------|
@@ -170,7 +181,10 @@ The scan is unbuffered — each call rereads the full prefix. This is fine becau
 | HTTP | `GET /v3/{ledger}/indexes/{canonicalId}/inspect` with `?mode=distinct-values|facets|summary`. Sibling per-ledger routes: `GET /v3/{ledger}/indexes` (list), `GET /v3/{ledger}/indexes/{canonicalId}` (single entry), `.../status` (IndexEntry), `POST /v3/{ledger}/indexes` (create), `DELETE .../indexes/{canonicalId}` (drop). Bucket-wide / cluster-wide reads live under the reserved system segment `/v3/_/indexes/…`: `GET /v3/_/indexes` (list, `?scope=all\|bucket`), `GET /v3/_/indexes/status` (aggregated status), `GET /v3/_/indexes/{canonicalId}` (single bucket-scoped entry), `GET /v3/_/indexes/{canonicalId}/status`. All responses serialize the protobuf message in protobuf-JSON camelCase, wrapped in the `{data:…}` envelope. |
 | CLI | `ledgerctl indexes inspect --ledger … --key … --mode summary` — see [ops/cli.md §indexes inspect](../../../../ops/cli.md). |
 
-The controller (`internal/application/ctrl/controller_default.go`) gates the inspect call on `state.CurrentVersion != 0` — a replica that has never built the index locally returns "not built locally" rather than scanning an empty keyspace.
+The controller (`internal/application/ctrl/controller_default.go`) gates the
+inspect call on the pin-aware resolved version — a replica that has never built
+the index locally, or whose current version activates after the main snapshot,
+returns "not built locally" rather than scanning an empty or future keyspace.
 
 ## Bloom Filter Metrics (Not Index Stats)
 

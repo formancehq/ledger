@@ -1062,12 +1062,14 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		))
 	defer span.End()
 
-	// One snapshot for the schema gate and the index-registry lookup so they
-	// observe the same committed state.
-	handleForIndex, err := ctrl.store.NewReadHandle()
+	// Reserve event history before opening the main snapshot. Inspect resolves
+	// append-only membership events at that snapshot's native sequence, so the
+	// same reservation-to-lease handoff as an indexed entity query is required.
+	handleForIndex, releaseHold, err := query.OpenReservedQueryHandle(ctrl.readStore, ctrl.store)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle for index lookup: %w", err)
 	}
+	defer releaseHold()
 	defer func() { _ = handleForIndex.Close() }()
 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handleForIndex, req.GetLedger())
@@ -1115,23 +1117,37 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		}}
 	}
 
+	// Wait for a certificate covering this fixed main snapshot, then pin its
+	// native sequence while resolving version and membership history from the
+	// certified index snapshot. The projection may be ahead of the main view;
+	// the sequence returned here is the trimming horizon below.
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handleForIndex, releaseHold)
+	if err != nil {
+		return nil, err
+	}
+	defer releaseLease()
+	defer func() { _ = snap.Close() }()
+
 	// Per-replica readiness: the local replica's
 	// IndexVersionState.CurrentVersion decides whether queries can be
-	// served (EN-1323). We take the snapshot FIRST and read the version
+	// served (EN-1323). We read the version
 	// state through it so the gate and the subsequent Inspect scan
 	// observe the same point-in-time view — without this the atomic
 	// version switch could promote CurrentVersion between the gate
 	// and the iteration, leaving the scan looking at a keyspace that
 	// has already been GC'd in this snapshot.
-	snap := ctrl.readStore.NewSnapshot()
-	defer func() { _ = snap.Close() }()
-
-	state, _, err := readstore.ReadIndexVersionStateFrom(snap, ledgerInfo.GetName(), indexes.Canonical(indexID))
+	version, primed, err := readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq)(indexes.Canonical(indexID))
 	if err != nil {
 		return nil, fmt.Errorf("reading index version state: %w", err)
 	}
 
-	if state.CurrentVersion == 0 {
+	if !primed {
+		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{
+			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
+		}}
+	}
+
+	if version.Version == 0 {
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{
 			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
 		}}
@@ -1156,15 +1172,16 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 	}
 
 	inspectResult, err := readstore.InspectIndex(readstore.InspectParams{
-		Reader:      snap,
-		KB:          dal.NewKeyBuilder(),
-		LedgerName:  ledgerInfo.GetName(),
-		Namespace:   namespace,
-		MetadataKey: metaKey,
-		Version:     state.CurrentVersion,
-		Mode:        mode,
-		PageSize:    req.GetPageSize(),
-		CursorBytes: cursorBytes,
+		Reader:          snap,
+		KB:              dal.NewKeyBuilder(),
+		LedgerName:      ledgerInfo.GetName(),
+		Namespace:       namespace,
+		MetadataKey:     metaKey,
+		Version:         version.Version,
+		HorizonSequence: mainSeq,
+		Mode:            mode,
+		PageSize:        req.GetPageSize(),
+		CursorBytes:     cursorBytes,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("inspecting index: %w", err)
