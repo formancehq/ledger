@@ -37,11 +37,37 @@ while [[ $# -gt 0 ]]; do
 	fi
 	shift
 done
+if [[ -n "${FAKE_CODEX_PROMPT_CAPTURE:-}" ]]; then
+	cat >"$FAKE_CODEX_PROMPT_CAPTURE"
+fi
+if [[ -n "${FAKE_CODEX_RECURSION_ATTEMPT:-}" ]] && ! grep -Fq \
+	"Do not invoke scripts/ai-audit, scripts/ai-audit-challenge, scripts/ai-audit-jira" \
+	"$FAKE_CODEX_PROMPT_CAPTURE"; then
+	printf 'nested challenge launcher attempted\n' >"$FAKE_CODEX_RECURSION_ATTEMPT"
+fi
 if [[ -n "${FAKE_CODEX_DIRTY_FILE:-}" ]]; then
 	printf 'mutated during challenge\n' >"$FAKE_CODEX_DIRTY_FILE"
 fi
 cp "$FAKE_CODEX_RESULT" "$output"
 `
+
+func TestChallengeWorkerPromptDefinesNonRecursiveLeafRole(t *testing.T) {
+	t.Parallel()
+
+	fixture := newFixture(t)
+	output, err := fixture.run(t, fixture.validResult())
+	require.NoError(t, err, output)
+
+	prompt := readFile(t, fixture.promptCapture)
+	require.Contains(t, prompt, "You are the inner challenge worker already launched by scripts/ai-audit-challenge.")
+	require.Contains(t, prompt, "Do not invoke scripts/ai-audit, scripts/ai-audit-challenge, scripts/ai-audit-jira")
+	require.Contains(t, prompt, "The outer trusted process owns audit and challenge orchestration, artifact publication, and Jira publication.")
+	require.Less(t,
+		strings.Index(prompt, "You are the inner challenge worker already launched by scripts/ai-audit-challenge."),
+		strings.Index(prompt, "Read and follow:"),
+	)
+	require.NoFileExists(t, fixture.recursionAttempt)
+}
 
 func TestChallengeSchemaRequiresEveryTopLevelProperty(t *testing.T) {
 	t.Parallel()
@@ -136,12 +162,14 @@ func TestZeroFindingAuditCanBeChallenged(t *testing.T) {
 	auditOutput, sourceReport, err := fixture.runAudit(t, audit)
 	require.NoError(t, err, auditOutput)
 	require.Contains(t, auditOutput, "AI_AUDIT_RESULT: "+sourceReport)
+	require.NoFileExists(t, fixture.recursionAttempt)
 
 	fixture.sourceReport = sourceReport
 	fixture.sourceDigest = fileDigest(t, sourceReport)
 	challengeOutput, err := fixture.run(t, fixture.result())
 	require.NoError(t, err, challengeOutput)
 	require.Contains(t, challengeOutput, "AI_AUDIT_CHALLENGE_RESULT: "+fixture.outputPath)
+	require.NoFileExists(t, fixture.recursionAttempt)
 
 	published := readJSON(t, fixture.outputPath)
 	require.Empty(t, published["results"])
@@ -287,14 +315,16 @@ func TestRunnerRejectsResultWhenTheRepositoryChangesDuringTheChallenge(t *testin
 }
 
 type fixture struct {
-	checkout       string
-	fakeBin        string
-	head           string
-	sourceReport   string
-	sourceDigest   string
-	providerResult string
-	outputPath     string
-	dirtyFile      string
+	checkout         string
+	fakeBin          string
+	head             string
+	promptCapture    string
+	recursionAttempt string
+	sourceReport     string
+	sourceDigest     string
+	providerResult   string
+	outputPath       string
+	dirtyFile        string
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -348,11 +378,13 @@ func newFixture(t *testing.T) *fixture {
 	runGit(t, checkout, "commit", "-m", "test fixture")
 
 	built := &fixture{
-		checkout:       checkout,
-		fakeBin:        fakeBin,
-		head:           gitOutput(t, checkout, "rev-parse", "HEAD"),
-		sourceReport:   filepath.Join(root, "audit.json"),
-		providerResult: filepath.Join(root, "provider-result.json"),
+		checkout:         checkout,
+		fakeBin:          fakeBin,
+		head:             gitOutput(t, checkout, "rev-parse", "HEAD"),
+		promptCapture:    filepath.Join(root, "challenge-prompt.txt"),
+		recursionAttempt: filepath.Join(root, "challenge-recursion-attempt.txt"),
+		sourceReport:     filepath.Join(root, "audit.json"),
+		providerResult:   filepath.Join(root, "provider-result.json"),
 	}
 	physicalCheckout, err := filepath.EvalSymlinks(checkout)
 	require.NoError(t, err)
@@ -371,6 +403,8 @@ func (f *fixture) run(t *testing.T, result map[string]any) (string, error) {
 	command.Dir = f.checkout
 	environment := []string{
 		"FAKE_CODEX_RESULT=" + f.providerResult,
+		"FAKE_CODEX_PROMPT_CAPTURE=" + f.promptCapture,
+		"FAKE_CODEX_RECURSION_ATTEMPT=" + f.recursionAttempt,
 		"FAKE_CODEX_DIRTY_FILE=" + f.dirtyFile,
 		"HOME=" + t.TempDir(),
 		"CODEX_HOME=",
@@ -390,6 +424,8 @@ func (f *fixture) runAudit(t *testing.T, result map[string]any) (string, string,
 	command.Dir = f.checkout
 	command.Env = testenv.Environment(
 		"FAKE_CODEX_RESULT="+f.providerResult,
+		"FAKE_CODEX_PROMPT_CAPTURE="+f.promptCapture,
+		"FAKE_CODEX_RECURSION_ATTEMPT="+f.recursionAttempt,
 		"FAKE_CODEX_DIRTY_FILE=",
 		"HOME="+t.TempDir(),
 		"CODEX_HOME=",
@@ -508,6 +544,14 @@ func readJSON(t *testing.T, path string) map[string]any {
 	require.NoError(t, json.Unmarshal(contents, &decoded))
 
 	return decoded
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	contents, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	return string(contents)
 }
 
 func keys(values map[string]any) []string {

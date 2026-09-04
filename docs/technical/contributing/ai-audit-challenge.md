@@ -4,6 +4,12 @@ An audit finding is a hypothesis until it survives an independent challenge pass
 
 The challenger is deliberately adversarial to the finding. Its job is to try to prove the original audit wrong before the organization spends engineering time or creates backlog items.
 
+The challenge provider is the inner leaf worker already launched by the trusted
+`ai-audit-challenge` process. It performs only the independent analysis and
+returns the structured qualification. It must not invoke `ai-audit`,
+`ai-audit-challenge`, `ai-audit-jira`, or any equivalent orchestration wrapper;
+artifact and Jira publication remain owned by trusted outer processes.
+
 ## Statuses
 
 - `CONFIRMED`: repository evidence establishes the failure path or violated invariant with high confidence. A concrete reproducer can reasonably be implemented from the supplied plan.
