@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -64,4 +67,40 @@ func TestHTTPDriver(t *testing.T) {
 	default:
 		require.Fail(t, fmt.Sprintf("should have received %d messages", numberOfLogs))
 	}
+}
+
+func TestHTTPDriverReusesConnections(t *testing.T) {
+	// Not parallel: the driver uses http.DefaultClient, whose transport is shared with the
+	// other tests in this package; the assertion below is about connection reuse.
+
+	var newConns atomic.Int32
+	testServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"accepted":true}`))
+	}))
+	testServer.Config.ConnState = func(c net.Conn, state http.ConnState) {
+		t.Logf("conn %s -> %s", c.RemoteAddr(), state)
+		if state == http.StateNew {
+			newConns.Add(1)
+		}
+	}
+	testServer.Start()
+	t.Cleanup(testServer.Close)
+
+	driver, err := NewDriver(Config{URL: testServer.URL}, logging.Testing())
+	require.NoError(t, err)
+
+	const pushes = 20
+	for i := 0; i < pushes; i++ {
+		_, err := driver.Accept(context.TODO(), drivers.NewLogWithLedger(
+			"module",
+			ledger.NewLog(ledger.CreatedTransaction{Transaction: ledger.NewTransaction()}),
+		))
+		require.NoError(t, err)
+	}
+
+	// Each push must drain and close the response body, otherwise the keep-alive
+	// connection cannot be reused and every push opens (and leaks) a new socket.
+	require.EqualValues(t, 1, newConns.Load(), "expected a single reused connection for %d pushes", pushes)
 }

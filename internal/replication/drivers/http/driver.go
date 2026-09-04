@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 
@@ -46,6 +47,12 @@ func (c *Driver) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]e
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		// Drain and close so the underlying connection is released back to the
+		// transport instead of leaking one socket per push.
+		_, _ = io.Copy(io.Discard, rsp.Body)
+		_ = rsp.Body.Close()
+	}()
 
 	if rsp.StatusCode < 200 || rsp.StatusCode > 299 {
 		return nil, fmt.Errorf("invalid status code, expect something between 200 and 299, got %d", rsp.StatusCode)
