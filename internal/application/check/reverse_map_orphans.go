@@ -544,7 +544,7 @@ func targetTypeForReverseMapNamespace(ns string) (commonpb.TargetType, bool) {
 //
 // The transaction branch is safe to index unconditionally because
 // ParseReverseMapKey guarantees an exactly-8-byte big-endian EntityID for
-// NamespaceTransaction — it rejects anything shorter as truncated.
+// NamespaceTransaction — any other length returns ErrReverseMapKeyEntityID.
 func renderReverseMapEntity(parsed readstore.ParsedReverseMapKey) string {
 	if parsed.Namespace == readstore.NamespaceTransaction {
 		return "transaction " + strconv.FormatUint(binary.BigEndian.Uint64(parsed.EntityID), 10)
@@ -553,10 +553,12 @@ func renderReverseMapEntity(parsed readstore.ParsedReverseMapKey) string {
 	return "account " + string(parsed.EntityID)
 }
 
-// reverseMapKeyHexPrefixBytes bounds how much of a malformed key is rendered into
-// a finding. Enough to identify the corrupted shape (prefix byte + the
-// fixed-width ledger-name block + the start of the namespace and entity) without
-// letting key length drive the message size.
+// reverseMapKeyHexPrefixBytes bounds how much of a malformed key is rendered
+// into a finding. It is a diagnostic byte prefix, not a promise to include a
+// complete encoded component: 64 bytes do not cover the full
+// discriminator-plus-fixed-ledger header, and namespace, field, version, or
+// entity bytes may be absent. Ledger attribution is handled separately by
+// bestEffortReverseMapLedger.
 const reverseMapKeyHexPrefixBytes = 64
 
 // renderReverseMapKeyPrefix hex-renders at most reverseMapKeyHexPrefixBytes of a
