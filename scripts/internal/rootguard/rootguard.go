@@ -222,8 +222,14 @@ func (worker *snapshotter) hashPath(hasher hash.Hash, root rootedFilesystem, pat
 		writeHashField(hasher, contentHasher.Sum(nil))
 		worker.metrics.UntrackedRegularFiles++
 		worker.metrics.UntrackedLogicalBytes += logicalBytes
+	case info.IsDir():
+		// Git reports an untracked nested repository as one directory boundary.
+		// Preserve that boundary without scanning the nested repository.
+		writeHashField(hasher, []byte("directory-boundary"))
 	default:
-		return errors.New("unsupported untracked file type")
+		// Sockets, devices, and other special entries have no stable content to
+		// read. Their path and complete mode above are the protected state.
+		writeHashField(hasher, []byte("special-entry"))
 	}
 
 	return nil

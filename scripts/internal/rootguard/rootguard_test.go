@@ -82,6 +82,23 @@ func TestSnapshotIgnoresSharedCacheChurn(t *testing.T) {
 	require.NoError(t, Compare(before, after))
 }
 
+func TestSnapshotPreservesUntrackedNestedRepositoryBoundary(t *testing.T) {
+	t.Parallel()
+
+	root := newTestRepository(t)
+	nested := filepath.Join(root, "nested")
+	require.NoError(t, os.Mkdir(nested, 0o755))
+	runGit(t, nested, "init")
+	require.NoError(t, os.WriteFile(filepath.Join(nested, "content"), []byte("before"), 0o644))
+
+	before := capture(t, root)
+	require.Equal(t, 1, before.Metrics.UntrackedEntries)
+	require.Zero(t, before.Metrics.UntrackedRegularFiles)
+	require.NoError(t, os.WriteFile(filepath.Join(nested, "content"), []byte("after"), 0o644))
+	after := capture(t, root)
+	require.NoError(t, Compare(before, after), "the parent guard protects the nested repository boundary, not its contents")
+}
+
 func TestSnapshotFailsClosedOnUntrackedEnumerationAndReadErrors(t *testing.T) {
 	t.Parallel()
 

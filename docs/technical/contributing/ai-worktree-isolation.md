@@ -52,9 +52,10 @@ review failure, malformed output, and `FINDINGS`.
 Each snapshot records the primary checkout's HEAD and branch, hashes porcelain
 status plus staged and unstaged tracked diffs, and hashes the paths, modes, and
 contents of non-ignored untracked files reported by Git. It uses six Git
-processes. Ignored paths,
-ignored build artifacts, shared caches, and ignore configuration are not
-enumerated or hashed.
+processes. An untracked nested repository is hashed as the directory boundary
+reported by Git without traversing its contents. Ignored paths, ignored build
+artifacts, shared caches, and ignore configuration are not enumerated or
+hashed.
 
 This is a cooperative accidental-mistake boundary. It does not try to detect a
 primary-checkout mutation restored exactly before the final snapshot, intercept
