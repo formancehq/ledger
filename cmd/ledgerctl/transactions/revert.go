@@ -46,7 +46,6 @@ Examples:
 	cmd.Flags().Bool("force", false, "Force revert even if funds have been spent")
 	cmd.Flags().Bool("at-effective-date", false, "Use original transaction timestamp for the revert")
 	cmd.Flags().StringArray("metadata", nil, "Metadata for the revert transaction (key=value)")
-	cmd.Flags().String("receipt", "", "JWT receipt for the transaction (avoids server-side lookup)")
 	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
@@ -98,7 +97,6 @@ func runRevert(cmd *cobra.Command, args []string) error {
 	// Get flags
 	force, _ := cmd.Flags().GetBool("force")
 	atEffectiveDate, _ := cmd.Flags().GetBool("at-effective-date")
-	receiptFlag, _ := cmd.Flags().GetString("receipt")
 	metadataFlags, _ := cmd.Flags().GetStringArray("metadata")
 
 	// Parse metadata
@@ -155,7 +153,6 @@ func runRevert(cmd *cobra.Command, args []string) error {
 								Force:           force,
 								AtEffectiveDate: atEffectiveDate,
 								Metadata:        commonpb.MetadataFromGoMap(metadata),
-								Receipt:         receiptFlag,
 							},
 						},
 					},

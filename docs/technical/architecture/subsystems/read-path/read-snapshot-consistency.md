@@ -66,21 +66,6 @@ of the rule is that it holds *by construction*: a future change that starts
 embedding `LedgerInfo` content (schema, account types, metadata) next to
 attribute data cannot silently reintroduce a torn read.
 
-## Transaction receipts (forwarded reads)
-
-`GetTransaction` computes a signed receipt from the transaction's creation log.
-Two rules keep it consistent under routing (`internal/adapter/grpc/server_bucket.go`):
-
-- **Open the receipt snapshot *after* the transaction read**, never before. The
-  read may go through a ReadIndex barrier or be forwarded to the leader and thus
-  land at a later state; a snapshot opened earlier could predate the creation
-  log and yield an empty receipt for an existing transaction.
-- **Reuse a forwarded receipt as authoritative.** When the read is forwarded, the
-  serving node already signed the receipt; the contacted node relays it verbatim
-  (`Controller.GetTransaction` returns a `*string` — non-nil means authoritative,
-  possibly empty for a reversal) rather than re-deriving it from a possibly-stale
-  local snapshot. Relaying does not require a local signer.
-
 ## Exceptions
 
 These read from the live store / a direct handle deliberately; a snapshot would

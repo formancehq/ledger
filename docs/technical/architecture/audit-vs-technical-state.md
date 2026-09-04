@@ -124,8 +124,8 @@ cache the preload seeded — never from the order.
 The original postings the FSM reverses are **not** on the order: admission
 preloads the target `TransactionState` (`addTransactionTargetNeeds`) and
 `processRevertTransaction` reads `origState.GetPostings()` through the coverage
-gate. Admission still resolves the postings at order-build time — from the signed
-receipt or the `Transaction` attribute — to declare the volume-preload coverage
+gate. Admission still resolves the postings at order-build time — from the
+`Transaction` attribute — to declare the volume-preload coverage
 the reversed postings touch (invariant #9), but it holds them in an
 admission-local sidecar (`bulkOverlay.revertOriginalPostings`), never on the wire
 order. A revert reads

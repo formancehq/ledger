@@ -2173,7 +2173,6 @@ func NewIdempotencyListReader(s []*Idempotency) IdempotencyListReader {
 type LogReader interface {
 	GetSequence() uint64
 	GetPayload() LogPayloadReader
-	GetReceipt() string
 	GetResponseSignature() signaturepb.SignedLogReader
 	Mutate() *Log
 }
@@ -2190,10 +2189,6 @@ func (r *logReadonly) GetPayload() LogPayloadReader {
 		return nil
 	}
 	return v.AsReader()
-}
-
-func (r *logReadonly) GetReceipt() string {
-	return (*Log)(r).GetReceipt()
 }
 
 func (r *logReadonly) GetResponseSignature() signaturepb.SignedLogReader {

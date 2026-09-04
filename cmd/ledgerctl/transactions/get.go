@@ -137,11 +137,6 @@ func runGet(cmd *cobra.Command, args []string) error {
 		pterm.Printf("Reverted:    %s\n", pterm.Green("No"))
 	}
 
-	// Display receipt if available
-	if resp.GetReceipt() != "" {
-		pterm.Printf("Receipt:     %s\n", pterm.Gray(resp.GetReceipt()))
-	}
-
 	// Display postings
 	if len(tx.GetPostings()) > 0 {
 		pterm.Println()

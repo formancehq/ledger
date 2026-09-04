@@ -716,7 +716,6 @@ func (m *Log) CloneVT() *Log {
 	r := new(Log)
 	r.Sequence = m.Sequence
 	r.Payload = m.Payload.CloneVT()
-	r.Receipt = m.Receipt
 	r.ResponseSignature = m.ResponseSignature.CloneVT()
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
@@ -5478,9 +5477,6 @@ func (this *Log) EqualVT(that *Log) bool {
 		return false
 	}
 	if !this.Payload.EqualVT(that.Payload) {
-		return false
-	}
-	if this.Receipt != that.Receipt {
 		return false
 	}
 	if !this.ResponseSignature.EqualVT(that.ResponseSignature) {
@@ -13450,13 +13446,6 @@ func (m *Log) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x22
-	}
-	if len(m.Receipt) > 0 {
-		i -= len(m.Receipt)
-		copy(dAtA[i:], m.Receipt)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Receipt)))
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -23143,10 +23132,6 @@ func (m *Log) SizeVT() (n int) {
 		l = m.Payload.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	l = len(m.Receipt)
-	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
 	if m.ResponseSignature != nil {
 		l = m.ResponseSignature.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -31305,38 +31290,6 @@ func (m *Log) UnmarshalVT(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Receipt", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Receipt = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ResponseSignature", wireType)
 			}

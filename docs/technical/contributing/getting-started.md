@@ -35,7 +35,7 @@ ledger/
 │   ├── application/           # Use cases (admission/, ctrl/, events/, check/, indexbuilder/, mirror/)
 │   ├── bootstrap/             # Composition root (fx wiring, config, TLS)
 │   ├── domain/                # Business domain (processing/, crypto/, accounttype/, analysis/, replay/)
-│   ├── infra/                 # Infrastructure (node/, state/, cache/, attributes/, transport/, health/, monitoring/, backup/, bloom/, preload/, receipt/)
+│   ├── infra/                 # Infrastructure (node/, state/, cache/, attributes/, transport/, health/, monitoring/, backup/, bloom/, preload/)
 │   ├── pkg/                   # Internal utilities (kv/, signal/, futures/, commands/, bitset/, bytesize/, filterexpr/, semver/, tarutil/, vtmarshal/, worker/)
 │   ├── proto/                 # Generated protobuf code
 │   ├── query/                 # CQRS read-side queries

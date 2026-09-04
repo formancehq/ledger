@@ -22,15 +22,13 @@ func TestConfigRedactsSecrets(t *testing.T) {
 	t.Parallel()
 
 	const (
-		receiptKey    = "super-secret-receipt-signing-key"
 		clusterSecret = "super-secret-cluster-secret-value"
 		poolToken     = "super-secret-pool-auth-token"
 	)
 
 	cfg := Config{
-		ClusterID:         "test-cluster",
-		ReceiptSigningKey: receiptKey,
-		ClusterSecret:     clusterSecret,
+		ClusterID:     "test-cluster",
+		ClusterSecret: clusterSecret,
 	}
 	cfg.PoolConfig.AuthToken = poolToken
 
@@ -41,16 +39,14 @@ func TestConfigRedactsSecrets(t *testing.T) {
 			require.NoError(t, err, "%s marshal", name)
 			rendered := string(out)
 
-			require.NotContains(t, rendered, receiptKey, "%s: receipt signing key leaked", name)
 			require.NotContains(t, rendered, clusterSecret, "%s: cluster secret leaked", name)
 			require.NotContains(t, rendered, poolToken, "%s: pool auth token leaked", name)
-			require.Equal(t, 3, strings.Count(rendered, RedactedSecretPlaceholder),
-				"%s: all three secrets should be redacted", name)
+			require.Equal(t, 2, strings.Count(rendered, RedactedSecretPlaceholder),
+				"%s: both secrets should be redacted", name)
 		}
 	}
 
 	// The original value must be untouched (redaction happens only on the copy).
-	require.Equal(t, receiptKey, cfg.ReceiptSigningKey)
 	require.Equal(t, clusterSecret, cfg.ClusterSecret)
 	require.Equal(t, poolToken, cfg.PoolConfig.AuthToken)
 }

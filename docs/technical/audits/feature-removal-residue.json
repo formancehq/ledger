@@ -1,0 +1,24 @@
+{
+  "id": "feature-removal-residue",
+  "title": "Removed-feature residue",
+  "purpose": "Verify that a removed feature (e.g. chapters/cold storage, EN-1945; transaction receipts, EN-1952) left no residual behavior, wire surface, configuration, deployment wiring, documentation, or vestigial test/workload branches, and that surviving behavior that previously shared code with the removed feature still works from its authoritative source.",
+  "paths": ["internal/**", "cmd/**", "pkg/**", "misc/proto/**", "misc/operator/**", "misc/devenv/**", "misc/demo/**", "openapi.yml", "docs/**", "tests/**", "scripts/**", "justfile"],
+  "related_docs": ["AGENTS.md", "docs/technical/agent-context.md", "docs/technical/contributing/ai-audit.md", "docs/technical/contributing/protobuf.md", "docs/technical/contributing/api-comparison.md"],
+  "invariants": [
+    "A removed feature leaves no production code path, wire field, enum value, error reason, HTTP/OpenAPI property, CLI flag, server flag/env, operator CRD field/secret wiring, DI binding, or testserver option behind.",
+    "Surviving behavior that previously shared code with the removed feature must keep working from its authoritative source (e.g. revert planning resolves postings from TransactionState after receipt removal).",
+    "Protobuf removals realign field and enum numbering sequentially with regenerated bindings and hand-written marshal helpers in agreement; no reserved declarations are introduced (pre-release policy).",
+    "Documentation, API comparison tables, sales material, and dashboards must not describe removed behavior as current.",
+    "Tests and Antithesis workloads retain the coverage the removed feature's tests used to piggyback on (e.g. revert success/force/effective-date/already-reverted paths), and no test remains green only because its assertions became vacuous after the removal.",
+    "Unrelated uses of a removed feature's vocabulary (e.g. the English word 'receipt' meaning acknowledgement) must not be collateral-removed."
+  ],
+  "adversarial_questions": [
+    "Which call sites consumed the removed symbols, and does each replacement read from the authoritative source rather than a leftover cache/sidecar?",
+    "Did any branch, helper, option, or metric become dead or unreachable because its only consumer was the removed feature?",
+    "Do generated bindings, vtproto/dethash/reader plugins, and hand-written *.pb.json.go helpers all agree on the post-removal wire shape?",
+    "Do any comments, doc pages, README trees, or operator samples still explain the removed mechanics or advertise its flags/envs?",
+    "Did the removal silently weaken a shared code path (snapshot consistency, response signing, coverage declaration) that used to be exercised through the removed feature?",
+    "Do e2e/Antithesis configurations still set environment variables or flags the server no longer parses?"
+  ],
+  "dynamic_checks_to_consider": ["repository-wide term sweep for the removed feature's identifiers", "proto field/enum contiguity verification after regeneration", "revert coverage matrix without the removed input path", "boot with a config that previously enabled the feature (unknown flag must fail loudly)"]
+}

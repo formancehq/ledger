@@ -31,28 +31,3 @@ func ReadTransactionState(ctx context.Context, reader dal.PebbleGetter, attrs *a
 
 	return state, nil
 }
-
-// FindTransactionCreationLog returns the system log that created a transaction.
-// It reads the TransactionState to find the creation log sequence, then reads
-// that log.
-func FindTransactionCreationLog(ctx context.Context, reader dal.PebbleReader, attrs *attributes.Attribute[*commonpb.TransactionState], ledgerName string, txID uint64) (*commonpb.Log, error) {
-	state, err := ReadTransactionState(ctx, reader, attrs, ledgerName, txID)
-	if err != nil {
-		return nil, fmt.Errorf("reading transaction state for %d: %w", txID, err)
-	}
-
-	if state == nil || state.GetCreatedByLog() == 0 {
-		return nil, domain.ErrNotFound
-	}
-
-	log, err := ReadLogBySequence(ctx, reader, state.GetCreatedByLog())
-	if err != nil {
-		return nil, fmt.Errorf("getting system log %d: %w", state.GetCreatedByLog(), err)
-	}
-
-	if log == nil {
-		return nil, domain.ErrNotFound
-	}
-
-	return log, nil
-}

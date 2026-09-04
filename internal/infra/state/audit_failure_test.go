@@ -474,14 +474,6 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"checkpointId": "18"},
 		},
 		{
-			// The Go field is Detail; the wire key is "reason" (legacy contract,
-			// errors.go:1051) — a rename here would break the audited key set.
-			name:        "InvalidReceipt",
-			err:         &domain.ErrInvalidReceipt{Detail: "signature verification failed"},
-			wantReason:  domain.ErrReasonInvalidReceipt,
-			wantContext: map[string]string{"reason": "signature verification failed"},
-		},
-		{
 			// Version is gated on != "" (errors.go:1073), and Error() branches on
 			// the same field.
 			name:        "NumscriptNotFoundWithoutVersion",

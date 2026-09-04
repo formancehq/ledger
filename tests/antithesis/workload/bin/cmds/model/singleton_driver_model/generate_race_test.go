@@ -31,7 +31,7 @@ func TestGenerateBulkConcurrentWithApply(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < 200; i++ {
-				generateBulk(state, c.ledgerNames, c.receiptFor)
+				generateBulk(state, c.ledgerNames)
 			}
 		}()
 	}

@@ -210,14 +210,6 @@ func WithDebug(v bool) testservice.InstrumentationFunc {
 	}
 }
 
-func WithReceiptSigningKey(key string) testservice.InstrumentationFunc {
-	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
-		cfg.AppendArgs("--receipt-signing-key", key)
-
-		return nil
-	}
-}
-
 // WithJoin sets --join to the Raft transport address of an existing
 // cluster member. The joining node calls ClusterBootstrapService on the
 // RaftServer (not the external service gRPC port).

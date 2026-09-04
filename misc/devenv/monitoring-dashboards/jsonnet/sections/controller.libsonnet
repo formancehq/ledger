@@ -23,6 +23,6 @@ panels.row('Controller', 170, [
       { expr: 'histogram_quantile(0.95, sum(rate(grpc.apply.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (le, service.node_id))', legendFormat: 'p95 - Node {{service.node_id}}' },
       { expr: 'histogram_quantile(0.99, sum(rate(grpc.apply.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (le, service.node_id))', legendFormat: 'p99 - Node {{service.node_id}}' },
     ], unit='µs',
-    description='Total duration of the gRPC Apply handler, including auth, ctrl.Apply, receipt signing, and response signing.',
+    description='Total duration of the gRPC Apply handler, including auth, ctrl.Apply, and response signing.',
   ),
 ])

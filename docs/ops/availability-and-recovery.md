@@ -1,13 +1,11 @@
 # Availability and Disaster Recovery
 
-Ledger v3 uses three separate mechanisms for operational resilience:
+Ledger v3 uses two separate mechanisms for operational resilience:
 
 - **Raft replication** keeps active nodes consistent and provides automatic
   failover while a majority of voters remains available.
 - **Backups** provide a portable recovery source outside the cluster failure
   domain.
-- **Cold storage** retains archived history; it does not replace a backup of
-  current state.
 
 Replication is not a backup. A valid Raft operation, operator mistake, or
 application-level deletion is replicated to every member.
@@ -80,7 +78,7 @@ measured latency and failure-domain behavior satisfy the customer's SLOs.
 | A network partition leaves a majority and a minority | Only the majority side can commit writes or complete default linearizable reads. | Restore connectivity; replicas synchronize automatically. |
 | Two voters are permanently lost and the surviving node still considers itself leader | Normal consensus cannot make progress. The leader can force-remove each permanently lost voter locally and continue as a one-node cluster. | Fence the lost nodes first, connect directly to the surviving leader, then use `ledgerctl cluster remove-node <id> --force` for each lost voter. Rebuild redundancy immediately. |
 | Two voters are lost and the surviving node is not the leader | It cannot elect itself under the old three-voter membership, and force-remove is leader-only. | Restore a fresh cluster from an off-cluster backup. There is no supported "re-bootstrap this follower's data directory" procedure. |
-| The entire cluster or its storage is lost | No replica remains. | Restore a fresh cluster from an off-cluster backup. If archived chapters existed, also restore or reconnect the separately protected cold-storage objects and configuration. |
+| The entire cluster or its storage is lost | No replica remains. | Restore a fresh cluster from an off-cluster backup. |
 
 The force-remove path deliberately bypasses Raft consensus. It is safe only
 after every removed member has been permanently fenced and cannot run or
@@ -99,18 +97,13 @@ recover the existing cluster safely.
 1. Define RPO and RTO from customer requirements.
 2. Run full backups periodically and incremental backups at least as often as
    the required RPO. Store them outside the cluster and region failure domain.
-3. Place cold storage outside the same failure domain or replicate/archive it
-   separately. A Ledger backup does not include chapters archived before its
-   full checkpoint; the restored cluster still needs those cold-storage
-   objects for historical reads.
-4. Retain the credentials, encryption/signing material, cold-storage
-   configuration, and compatible Ledger binary required by the restore
-   procedure.
-5. Exercise `restore validate`, a full bootstrap of production-sized data, and
-   historical reads whose chapters live in cold storage.
-6. During an incident, fence the old cluster before force-removing members or
+3. Retain the credentials, encryption/signing material, and compatible Ledger
+   binary required by the restore procedure.
+4. Exercise `restore validate`, a full bootstrap of production-sized data, and
+   historical reads.
+5. During an incident, fence the old cluster before force-removing members or
    bringing up a replacement cluster.
-7. After recovery, add replacement nodes, wait for them to catch up, and verify
+6. After recovery, add replacement nodes, wait for them to catch up, and verify
    that the intended voter majority has been restored.
 
 See [Recovery Objectives](./deployment-profiles.md#recovery-objectives),
