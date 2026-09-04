@@ -47,7 +47,9 @@ The standalone `scripts/rootguard` runner is the single root-integrity
 implementation. `ai-pr-loop` wraps the complete linear validation, findings,
 and review child with one before snapshot and one after snapshot. The after
 snapshot runs after every normal child result, including validation failure,
-review failure, malformed output, and `FINDINGS`.
+review failure, malformed output, and `FINDINGS`. Before that final snapshot,
+the runner terminates and confirms the disappearance of the complete child
+process group, including background descendants.
 
 Each snapshot records the primary checkout's HEAD and branch, hashes porcelain
 status plus staged and unstaged tracked diffs, and hashes the paths, modes, and

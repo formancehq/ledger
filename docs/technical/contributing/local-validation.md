@@ -163,9 +163,9 @@ integrity guard took more than 65.662 seconds for one snapshot, took seven
 snapshots per straight run, and launched 63 Git processes. Its measured lower
 bound exceeded 7 minutes 40 seconds. The cooperative guard does not enumerate
 ignored entries: a warm six-process benchmark of the same checkout took 235
-ms, while one complete boundary measured 181 ms before and 229 ms after (410
-ms of snapshot compute and 0.63 seconds wall time). The two snapshots launch 12
-Git processes. The Git interceptor was removed.
+ms, while the final complete boundary measured 175 ms before and 153 ms after
+(328 ms of snapshot compute and 0.49 seconds wall time). The two snapshots
+launch 12 Git processes. The Git interceptor was removed.
 
 The proportional validation for that tooling change completed in about 90
 seconds on a warm cache, including the single affected race suite. The guard

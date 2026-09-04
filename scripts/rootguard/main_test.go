@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -93,11 +94,7 @@ func TestRunnerAllowsIgnoredSharedCacheChurn(t *testing.T) {
 
 func TestRunnerComparesRootAfterCancellation(t *testing.T) {
 	root := newRunnerTestRepository(t)
-	binary := filepath.Join(t.TempDir(), "rootguard")
-	build := testenv.Command(t, "go", "build", "-o", binary, ".")
-	build.Dir = packageRoot(t)
-	output, err := build.CombinedOutput()
-	require.NoError(t, err, string(output))
+	binary := buildRunner(t)
 
 	ready := filepath.Join(t.TempDir(), "ready")
 	command := exec.Command(binary, "--root", root, "--", "/bin/sh", "-c", "trap '' TERM INT; printf ready > "+shellQuote(ready)+"; while :; do sleep 1; done")
@@ -117,16 +114,54 @@ func TestRunnerComparesRootAfterCancellation(t *testing.T) {
 	go func() {
 		done <- command.Wait()
 	}()
+	var waitErr error
 	select {
-	case err = <-done:
+	case waitErr = <-done:
 	case <-time.After(5 * time.Second):
 		_ = command.Process.Kill() // Best effort cleanup before failing the bounded regression.
 		t.Fatal("rootguard did not finish after cancellation")
 	}
-	require.Error(t, err, combined.String())
+	require.Error(t, waitErr, combined.String())
 	require.Equal(t, exitError, command.ProcessState.ExitCode(), combined.String())
 	require.Contains(t, combined.String(), "ROOT_UNCHANGED=PASS")
 	require.Contains(t, combined.String(), "ROOT_SNAPSHOT_CAPTURED position=after")
+}
+
+func TestRunnerReapsSurvivingDescendantBeforeFinalSnapshot(t *testing.T) {
+	t.Parallel()
+
+	root := newRunnerTestRepository(t)
+	binary := buildRunner(t)
+	coordination := t.TempDir()
+	ready := filepath.Join(coordination, "ready")
+	release := filepath.Join(coordination, "release")
+	lateMutation := filepath.Join(root, "late-mutation")
+	child := "(printf ready > " + shellQuote(ready) + "; while [ ! -e " + shellQuote(release) + " ]; do :; done; printf late > " + shellQuote(lateMutation) + ") & " +
+		"while [ ! -e " + shellQuote(ready) + " ]; do :; done"
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, binary, "--root", root, "--", "/bin/sh", "-c", child)
+	command.Env = testenv.Environment()
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, string(output))
+	require.Contains(t, string(output), "ROOT_UNCHANGED=PASS")
+	require.NoError(t, os.WriteFile(release, nil, 0o644))
+	require.Never(t, func() bool {
+		_, err := os.Stat(lateMutation)
+
+		return err == nil
+	}, time.Second, 10*time.Millisecond, "a descendant survived beyond the final root comparison")
+}
+
+func buildRunner(t *testing.T) string {
+	t.Helper()
+	binary := filepath.Join(t.TempDir(), "rootguard")
+	build := testenv.Command(t, "go", "build", "-o", binary, ".")
+	build.Dir = packageRoot(t)
+	output, err := build.CombinedOutput()
+	require.NoError(t, err, string(output))
+
+	return binary
 }
 
 func newRunnerTestRepository(t *testing.T) string {

@@ -19,6 +19,8 @@ const exitError = 1
 
 const cancellationGracePeriod = 2 * time.Second
 
+const processGroupPollInterval = 10 * time.Millisecond
+
 type options struct {
 	root string
 }
@@ -141,6 +143,10 @@ func runChild(command *exec.Cmd) error {
 
 	select {
 	case err := <-done:
+		if cleanupErr := terminateProcessGroup(command); cleanupErr != nil {
+			return cleanupErr
+		}
+
 		return err
 	case forwarded := <-received:
 		if typed, ok := forwarded.(syscall.Signal); ok {
@@ -152,19 +158,49 @@ func runChild(command *exec.Cmd) error {
 		defer grace.Stop()
 		select {
 		case err := <-done:
+			if cleanupErr := terminateProcessGroup(command); cleanupErr != nil {
+				return cleanupErr
+			}
+
 			return err
 		case <-received:
-			terminateProcessGroup(command)
+			// Escalate immediately below.
 		case <-grace.C:
-			terminateProcessGroup(command)
+			// The cooperative grace period expired; escalate below.
+		}
+		cleanupErr := terminateProcessGroup(command)
+		childErr := <-done
+		if cleanupErr != nil {
+			return cleanupErr
 		}
 
-		return <-done
+		return childErr
 	}
 }
 
-func terminateProcessGroup(command *exec.Cmd) {
+func terminateProcessGroup(command *exec.Cmd) error {
 	if err := syscall.Kill(-command.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
-		_ = command.Process.Kill() // Fall back when process-group termination is unavailable.
+		if fallbackErr := command.Process.Kill(); fallbackErr != nil && !errors.Is(fallbackErr, os.ErrProcessDone) {
+			return fmt.Errorf("terminating child process group: %w", errors.Join(err, fallbackErr))
+		}
+	}
+
+	deadline := time.NewTimer(cancellationGracePeriod)
+	defer deadline.Stop()
+	poll := time.NewTicker(processGroupPollInterval)
+	defer poll.Stop()
+	for {
+		err := syscall.Kill(-command.Process.Pid, 0)
+		if errors.Is(err, syscall.ESRCH) {
+			return nil
+		}
+		if err != nil && !errors.Is(err, syscall.EPERM) {
+			return fmt.Errorf("checking child process group termination: %w", err)
+		}
+		select {
+		case <-poll.C:
+		case <-deadline.C:
+			return errors.New("child process group did not terminate within the bounded grace period")
+		}
 	}
 }
