@@ -41,13 +41,6 @@ func main() {
 		txID := createdTx.Transaction.Id
 		details := internal.Details{"ledger": ledger, "txId": txID}
 
-		// Extract the log sequence from the Apply response to guarantee
-		// read-after-write consistency on subsequent queries.
-		var minLogSeq uint64
-		if logs := resp.GetLogs(); len(logs) > 0 {
-			minLogSeq = logs[len(logs)-1].GetSequence()
-		}
-
 		// 2. Paginate through all transactions until we find the one we created.
 		var (
 			totalCount int
@@ -66,7 +59,6 @@ func main() {
 				Options: &commonpb.ListOptions{
 					PageSize: 50,
 					Cursor:   cursor,
-					Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
 				},
 			})
 			if err != nil {

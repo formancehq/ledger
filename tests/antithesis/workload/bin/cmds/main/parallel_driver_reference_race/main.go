@@ -18,8 +18,8 @@
 //     commits a second transaction (two IDs — the genuine violation).
 //   - Ambiguous outcomes (Unavailable after retries, Internal, ledger races)
 //     never participate in conclusive-outcome assertions.
-//   - Reads use a MinLogSequence floor from a post-hoc marker write, so a
-//     stale read store cannot hide a committed duplicate (#398 class).
+//   - Reads happen after a post-hoc marker write; the default ReadIndex and
+//     projection alignment prevent a stale read store from hiding a duplicate.
 package main
 
 import (
@@ -68,9 +68,9 @@ func createWithReference(
 }
 
 // writeMarker commits a reference-less marker transaction and returns its log
-// sequence, usable as a MinLogSequence floor: the marker is proposed after
-// every assertion-relevant response was received, so a read floored at the
-// marker covers any write those responses could correspond to. Returns
+// sequence. The marker is proposed after every assertion-relevant response was
+// received, so a subsequent linearizable read covers any write those responses
+// could correspond to. Returns
 // (0, false) when the barrier could not be established (inconclusive).
 func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledger string) (uint64, bool) {
 	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
@@ -104,7 +104,7 @@ func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledg
 }
 
 // countTransactionsWithReference lists transactions matching ref at a
-// MinLogSequence floor and returns (distinctTxIDs, conclusive). Any read
+// fixed causal horizon and returns (distinctTxIDs, conclusive). Any read
 // error makes the result inconclusive — never a violation.
 func countTransactionsWithReference(
 	ctx context.Context,
@@ -117,7 +117,6 @@ func countTransactionsWithReference(
 		Options: &commonpb.ListOptions{
 			PageSize: 10,
 			Filter:   actions.ReferenceFilter(ref),
-			Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
 		},
 	})
 	if err != nil {

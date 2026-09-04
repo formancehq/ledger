@@ -66,7 +66,6 @@ func referenceFilterCheck(
 		Options: &commonpb.ListOptions{
 			PageSize: 10,
 			Filter:   actions.ReferenceFilter(ref),
-			Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
 		},
 	})
 	if err != nil {
@@ -185,8 +184,8 @@ func main() {
 		// Consistency barrier with a usable read floor: a successful marker
 		// write is sequenced after any hypothetically-committed rejected
 		// write (its rejection response was received before the marker was
-		// proposed), so MinLogSequence = marker sequence forces the read
-		// store past the window where a committed-but-rejected write could
+		// proposed), so the subsequent linearizable read forces the read store
+		// past the window where a committed-but-rejected write could
 		// hide. Transparent UNAVAILABLE retries of the marker are harmless
 		// (no reference, idempotent for this purpose).
 		markerResp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{

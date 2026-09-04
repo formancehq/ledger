@@ -43,15 +43,10 @@ func main() {
 			return
 		}
 
-		// Gate on the Apply's log sequence: the audit index is built async from
-		// the log, so wait for it to process our entry before asserting.
-		minLogSeq := resp.GetLogs()[len(resp.GetLogs())-1].GetSequence()
-
-		// List audit entries and verify at least one exists.
+		// List audit entries; the default read aligns any required projection.
 		stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
 			Options: &commonpb.ListOptions{
 				PageSize: 10,
-				Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
 			},
 		})
 		if err != nil {
