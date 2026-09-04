@@ -1,7 +1,6 @@
 package indexes
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"strconv"
@@ -108,7 +107,10 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	declaredType := declaredMetadataType(ctx, client, ledgerName, targetType, key)
+	// Render with the binding that actually served the scan: during the legal
+	// one-revision retype window the served encoding is the predecessor's, and
+	// the live declared type would mistype every value.
+	servedType := resp.GetServedType()
 
 	pterm.Println()
 	pterm.Printf("Index: %s on %s (ledger: %s)\n", pterm.Cyan(key), pterm.Cyan(target), pterm.Cyan(ledgerName))
@@ -116,39 +118,16 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 
 	switch result := resp.GetResult().(type) {
 	case *servicepb.InspectIndexResponse_Summary:
-		printSummary(result.Summary, declaredType)
+		printSummary(result.Summary, servedType)
 	case *servicepb.InspectIndexResponse_DistinctValues:
-		printDistinctValues(result.DistinctValues, declaredType)
+		printDistinctValues(result.DistinctValues, servedType)
 	case *servicepb.InspectIndexResponse_Facets:
-		printFacets(result.Facets, declaredType)
+		printFacets(result.Facets, servedType)
 	}
 
 	return nil
 }
 
-// declaredMetadataType resolves the schema-declared MetadataType for
-// (ledger, targetType, key), or METADATA_TYPE_STRING when the lookup fails or
-// the key has no declaration. It is a render hint only: datetime index keys
-// share the int64 encoding, so the server returns an int_value for them, and
-// formatMetadataValue uses this type to render those values as RFC3339 instead
-// of raw microseconds (mirroring the HTTP inspect handler). A failed lookup
-// degrades to the default integer rendering rather than erroring.
-func declaredMetadataType(
-	ctx context.Context,
-	client servicepb.BucketServiceClient,
-	ledgerName string,
-	targetType commonpb.TargetType,
-	key string,
-) commonpb.MetadataType {
-	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
-	if err != nil {
-		return commonpb.MetadataType_METADATA_TYPE_STRING
-	}
-
-	_, fs := commonpb.SchemaFieldForTarget(ledger.GetMetadataSchema(), targetType, key)
-
-	return fs.GetType()
-}
 
 func printSummary(s *servicepb.InspectSummary, declaredType commonpb.MetadataType) {
 	pterm.Printf("Cardinality:       %d\n", s.GetCardinality())
