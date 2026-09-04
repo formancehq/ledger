@@ -780,7 +780,7 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 		case indexedErrNone:
 			assert.Reachable("singleton_driver_model: indexed transaction query served results", internal.Details{"ledger": ledger})
 		case indexedErrCompilation:
-			assert.Reachable("singleton_driver_model: kind-mismatched field query rejected", internal.Details{"ledger": ledger})
+			assert.Reachable("singleton_driver_model: kind-mismatched field query rejected on transactions", internal.Details{"ledger": ledger})
 		default:
 			assert.Reachable("singleton_driver_model: indexed transaction query gated", internal.Details{"ledger": ledger})
 		}
@@ -1143,7 +1143,7 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 		case indexedErrNone:
 			assert.Reachable("singleton_driver_model: indexed account query served results", internal.Details{"ledger": ledger})
 		case indexedErrCompilation:
-			assert.Reachable("singleton_driver_model: kind-mismatched field query rejected", internal.Details{"ledger": ledger})
+			assert.Reachable("singleton_driver_model: kind-mismatched field query rejected on accounts", internal.Details{"ledger": ledger})
 		default:
 			assert.Reachable("singleton_driver_model: indexed account query gated", internal.Details{"ledger": ledger})
 		}

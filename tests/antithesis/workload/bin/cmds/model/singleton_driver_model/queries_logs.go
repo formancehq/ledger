@@ -311,6 +311,9 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 		return
 	}
 
+	recheckIDs, recheckErr := recheckLogIDs(ctx, client, ledger)
+	serverKinds, kindsErr := recheckLogKinds(ctx, client, ledger)
+
 	assert.Unreachable("singleton_driver_model: log query outside model", internal.Details{
 		"ledger":      ledger,
 		"filter":      describeFilter(filter),
@@ -319,9 +322,9 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 		"rows":        len(ids),
 		"serverIds":   joinUint64(ids),
 		"modelIds":    joinUint64(c.modelLogWindow(ledger, filter, afterSeq, pageSize)),
-		"recheck":     joinUint64(recheckLogIDs(ctx, client, ledger)),
+		"recheck":     diagnosticDetail(joinUint64(recheckIDs), recheckErr),
 		"modelKinds":  strings.Join(c.modelLogKinds(ledger), ","),
-		"serverKinds": strings.Join(recheckLogKinds(ctx, client, ledger), ","),
+		"serverKinds": diagnosticDetail(strings.Join(serverKinds, ","), kindsErr),
 	})
 }
 
@@ -354,21 +357,21 @@ func equalUint64(a, b []uint64) bool {
 // finding. It separates "not yet visible at the read's pin" from "never
 // visible": if the ids the model expected show up here, the page was a
 // visibility question; if they never appear, the logs are absent.
-func recheckLogIDs(ctx context.Context, client servicepb.BucketServiceClient, ledger string) []uint64 {
+func recheckLogIDs(ctx context.Context, client servicepb.BucketServiceClient, ledger string) ([]uint64, error) {
 	stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
 		Ledger:  ledger,
 		Options: &commonpb.ListOptions{PageSize: 200},
 	})
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	logs, err := drainStream(stream)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
-	return serverLogIDs(logs)
+	return serverLogIDs(logs), nil
 }
 
 func (c *Checker) modelLogKinds(ledger string) []string {
@@ -380,18 +383,18 @@ func (c *Checker) modelLogKinds(ledger string) []string {
 
 // recheckLogKinds names the payload arm of each log the server actually holds,
 // so a surplus in the model can be attributed to a request kind.
-func recheckLogKinds(ctx context.Context, client servicepb.BucketServiceClient, ledger string) []string {
+func recheckLogKinds(ctx context.Context, client servicepb.BucketServiceClient, ledger string) ([]string, error) {
 	stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
 		Ledger:  ledger,
 		Options: &commonpb.ListOptions{PageSize: 200},
 	})
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	logs, err := drainStream(stream)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	out := make([]string, 0, len(logs))
@@ -422,5 +425,16 @@ func recheckLogKinds(ctx context.Context, client servicepb.BucketServiceClient, 
 		}
 	}
 
-	return out
+	return out, nil
+}
+
+// diagnosticDetail renders a best-effort recheck into a finding detail. A
+// failed diagnostic RPC must be distinguishable from a genuinely empty server
+// view — an empty recheck otherwise corrupts the triage of a real finding.
+func diagnosticDetail(value string, err error) string {
+	if err != nil {
+		return "recheck failed: " + err.Error()
+	}
+
+	return value
 }
