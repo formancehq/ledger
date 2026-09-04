@@ -1239,11 +1239,12 @@ func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *servicepb.AnalyzeT
 }
 
 func (impl *BucketServiceServerImpl) CreatePreparedQuery(ctx context.Context, req *servicepb.CreatePreparedQueryRequest) (*servicepb.CreatePreparedQueryResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesWrite); err != nil {
+	ctx, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesWrite)
+	if err != nil {
 		return nil, err
 	}
 
-	_, err := impl.ctrl.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+	_, err = impl.ctrl.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_CreatePreparedQuery{
 			CreatePreparedQuery: req,
 		},
@@ -1256,11 +1257,12 @@ func (impl *BucketServiceServerImpl) CreatePreparedQuery(ctx context.Context, re
 }
 
 func (impl *BucketServiceServerImpl) UpdatePreparedQuery(ctx context.Context, req *servicepb.UpdatePreparedQueryRequest) (*servicepb.UpdatePreparedQueryResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesWrite); err != nil {
+	ctx, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesWrite)
+	if err != nil {
 		return nil, err
 	}
 
-	_, err := impl.ctrl.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+	_, err = impl.ctrl.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_UpdatePreparedQuery{
 			UpdatePreparedQuery: req,
 		},
@@ -1273,11 +1275,12 @@ func (impl *BucketServiceServerImpl) UpdatePreparedQuery(ctx context.Context, re
 }
 
 func (impl *BucketServiceServerImpl) DeletePreparedQuery(ctx context.Context, req *servicepb.DeletePreparedQueryRequest) (*servicepb.DeletePreparedQueryResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesWrite); err != nil {
+	ctx, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesWrite)
+	if err != nil {
 		return nil, err
 	}
 
-	_, err := impl.ctrl.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+	_, err = impl.ctrl.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_DeletePreparedQuery{
 			DeletePreparedQuery: req,
 		},

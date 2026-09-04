@@ -439,7 +439,8 @@ func (impl *ClusterServiceServerImpl) CreateCheckpoint(ctx context.Context, _ *c
 }
 
 func (impl *ClusterServiceServerImpl) CreateQueryCheckpoint(ctx context.Context, _ *clusterpb.CreateQueryCheckpointRequest) (*clusterpb.CreateQueryCheckpointResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
+	ctx, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite)
+	if err != nil {
 		return nil, err
 	}
 
@@ -478,12 +479,13 @@ func (impl *ClusterServiceServerImpl) CreateQueryCheckpoint(ctx context.Context,
 }
 
 func (impl *ClusterServiceServerImpl) DeleteQueryCheckpoint(ctx context.Context, req *clusterpb.DeleteQueryCheckpointRequest) (*clusterpb.DeleteQueryCheckpointResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
+	ctx, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite)
+	if err != nil {
 		return nil, err
 	}
 
 	// Route through Raft so the deletion is replicated to all nodes.
-	_, err := impl.admission.Admit(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+	_, err = impl.admission.Admit(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_DeleteQueryCheckpoint{
 			DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{
 				CheckpointId: req.GetCheckpointId(),
