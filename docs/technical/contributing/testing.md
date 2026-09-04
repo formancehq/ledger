@@ -450,10 +450,12 @@ restart. It catches:
   set.
 
 It exercises the chart of accounts, transactions and reverts (with post-commit
-volumes), account/transaction/ledger metadata, the typed-metadata schema, and
+volumes), account/transaction/ledger metadata, the typed-metadata schema and
+its index lifecycle (create, retype with serving-window closure, remove), and
 the transient/ephemeral persistence classes — and reads them back: account,
-whole-ledger, transaction-by-id, and declared-schema reads are all validated
-against the model.
+whole-ledger, transaction-by-id, and declared-schema reads, plus the filtered,
+paginated list surface (ListAccounts, ListTransactions, ListLogs, indexed
+metadata-range queries) are all validated against the model.
 
 #### How it works
 
@@ -476,6 +478,9 @@ the harness around it:
 | `search.go` (driver) | `candidateBases` — enumerates the states the server could legitimately be in. |
 | `validate.go` (driver) | The conformance checks for committed bulks, failures, and reads. |
 | `actions.go` / `reads.go` (driver) | Random bulk generation; account, whole-ledger, transaction-by-id, and metadata-schema read execution. |
+| `queries.go` / `queries_logs.go` (driver) | Filtered, paginated list reads (ListAccounts, ListTransactions, ListLogs) generated against the model's committed state and validated window-by-window. |
+| `indexes.go` (driver) | Metadata-index lifecycle: create/retype/remove generation, readiness polling, retype-window bookkeeping, and indexed range-query validation. |
+| `metadata_filters.go` (driver) | Typed metadata filter generation shared by the query validators. |
 
 The key primitive is **`candidateBases`**: a committed bulk drains in
 log-sequence order, so the committed model state is its exact predecessor and
@@ -553,7 +558,7 @@ Where to make the matching change:
 | Changed business/validation rule (new rejection condition, enforcement change, volume math) | Update the matching `apply*` predictor in `tests/oracle/model.go`. |
 | New or changed response field the test should check | Update the validator in `validate.go` and the predicted effect it compares against. |
 | New rejection reason | Return the matching `domain.ErrReason*` from the right model branch so `validateFailure` can explain it. |
-| New persisted projection or read surface | Add the read in `reads.go` and a validator in `validate.go`, mirroring the account/ledger reads. |
+| New persisted projection or read surface | Point reads: add the read in `reads.go` and a validator in `validate.go`, mirroring the account/ledger reads. Filtered/paginated list surfaces: follow the `queries.go` / `queries_logs.go` pattern (generate against committed model state, validate the returned window). Index-backed reads: `indexes.go`. |
 
 To diagnose a finding deterministically, capture the run with
 `MODEL_DUMP_BATCHES=1` and feed the dump back through the model offline:
