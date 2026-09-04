@@ -108,12 +108,12 @@ type Admission interface {
 // The FSM is responsible for interpreting requests, validating, and applying changes.
 // Idempotency is handled in the FSM to ensure consistency in the Raft log.
 type DefaultController struct {
-	logger        logging.Logger
-	admission     Admission
-	store         *dal.Store
-	attrs         *attributes.Attributes
-	readStore     *readstore.Store
-	usageStore    *usagestore.Store
+	logger     logging.Logger
+	admission  Admission
+	store      *dal.Store
+	attrs      *attributes.Attributes
+	readStore  *readstore.Store
+	usageStore *usagestore.Store
 
 	// historical is true on clones produced by WithStores — reads are then
 	// served from a point-in-time checkpoint. usage counters are excluded

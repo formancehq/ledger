@@ -112,10 +112,10 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 	}
 
 	return &Checker{
-		ledgerNames:  ledgerNames,
-		inflight:     map[uint64]oracle.Bulk{},
-		reads:        map[uint64]struct{}{},
-		incoming:     make(chan observation, incomingBuffer),
-		modelState:   modelState,
+		ledgerNames: ledgerNames,
+		inflight:    map[uint64]oracle.Bulk{},
+		reads:       map[uint64]struct{}{},
+		incoming:    make(chan observation, incomingBuffer),
+		modelState:  modelState,
 	}
 }
