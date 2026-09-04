@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -26,6 +28,86 @@ func seedPreparedQuery(t *testing.T, s *dal.Store, attrs *attributes.Attributes,
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
+}
+
+type mutatingQueryHandleStore struct {
+	store     *dal.Store
+	afterOpen func()
+}
+
+type failingQueryHandleStore struct{ err error }
+
+func (s failingQueryHandleStore) NewReadHandle() (*dal.ReadHandle, error) {
+	return nil, s.err
+}
+
+func TestExecutePropagatesMainSnapshotOpenFailure(t *testing.T) {
+	t.Parallel()
+
+	rs := newTestReadStore(t)
+	attrs := attributes.New()
+	wantErr := errors.New("open main snapshot")
+
+	_, err := query.Execute(
+		t.Context(), rs, failingQueryHandleStore{err: wantErr},
+		attrs.Volume, attrs.PreparedQuery, attrs.Index,
+		&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q"}, nil, nil,
+	)
+	require.ErrorIs(t, err, wantErr)
+}
+
+func (s *mutatingQueryHandleStore) NewReadHandle() (*dal.ReadHandle, error) {
+	handle, err := s.store.NewReadHandle()
+	if err != nil {
+		return nil, err
+	}
+
+	s.afterOpen()
+
+	return handle, nil
+}
+
+func TestExecute_ReadsDefinitionAndLedgerFromMainSnapshot(t *testing.T) {
+	t.Parallel()
+
+	for _, mutation := range []string{"prepared query deleted", "ledger deleted"} {
+		t.Run(mutation, func(t *testing.T) {
+			t.Parallel()
+
+			store := newTestStore(t)
+			registerLedger(t, store, "l")
+
+			rs := newTestReadStore(t)
+			attrs := attributes.New()
+			seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
+
+			opener := &mutatingQueryHandleStore{
+				store: store,
+				afterOpen: func() {
+					batch := store.OpenWriteSession()
+					switch mutation {
+					case "prepared query deleted":
+						require.NoError(t, attrs.PreparedQuery.Delete(batch, domain.PreparedQueryKey{LedgerName: "l", Name: "q"}.Bytes()))
+					case "ledger deleted":
+						require.NoError(t, state.SaveLedger(batch, "l", &commonpb.LedgerInfo{
+							Name:      "l",
+							DeletedAt: &commonpb.Timestamp{},
+						}))
+					default:
+						t.Fatalf("unknown mutation %q", mutation)
+					}
+					require.NoError(t, batch.Commit())
+				},
+			}
+
+			_, err := query.Execute(
+				t.Context(), rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
+				&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q"}, nil, nil,
+			)
+			require.NoError(t, err,
+				"definition and schema reads must stay on the handle opened before the live mutation")
+		})
+	}
 }
 
 // A prepared query that reads no index leaf must not be gated on the fold.

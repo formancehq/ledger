@@ -144,13 +144,13 @@ func filterUsesReadIndex(filter *commonpb.QueryFilter, target commonpb.QueryTarg
 // sequence — the pin the event GC must not reclaim past (read_lease.go). The
 // caller must invoke it when iteration ends, alongside closing the snapshot.
 //
-// Callers must obtain mainReader from OpenQueryHandle, passing the same
-// filter and target, and hand its release closure here as releaseHold: it
-// reserves the reclaim floor before opening the handle, so the pin registered
-// here can never be refused. The reservation is dropped as soon as that pin
-// exists — from then on the read's own lease retains everything it needs,
-// while the reservation would only drag the GC watermark back down to the
-// fold cursor as of the request's start, for every request in flight.
+// Callers must obtain mainReader from OpenQueryHandle or
+// OpenReservedQueryHandle and hand its release closure here as releaseHold.
+// Both helpers reserve the reclaim floor before opening the handle, so the pin
+// registered here can never be refused. The reservation is dropped as soon as
+// that pin exists — from then on the read's own lease retains everything it
+// needs, while the reservation would only drag the GC watermark back down to
+// the fold cursor as of the request's start, for every request in flight.
 //
 // The wait is bounded by the caller's context and nothing else. Alignment is
 // not optional — a filtered read cannot answer correctly until the projection
@@ -179,7 +179,7 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 		if rs.Frozen() {
 			releaseLease = func() {}
 		} else if lease, ok := rs.Leases().Pin(mainSeq); !ok {
-			// OpenQueryHandle holds the floor across the handle's creation,
+			// The query-handle opener holds the floor across handle creation,
 			// so a pin beneath it means this read bypassed that helper and
 			// may resolve a group whose history is already reclaimed. There is
 			// no recovery here: the pin cannot move (the handle is a fixed
@@ -190,7 +190,7 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 			})
 
 			return nil, 0, nil, fmt.Errorf(
-				"invariant: aligned read pinned at %d, below the reclaim floor %d — the handle was not opened through OpenQueryHandle",
+				"invariant: aligned read pinned at %d, below the reclaim floor %d — the handle was not opened through a reserving query-handle helper",
 				mainSeq, rs.Leases().ReclaimFloor(),
 			)
 		} else {

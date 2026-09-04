@@ -69,7 +69,7 @@ A compile error at FSM time is hash-bound as an `AuditFailure`, so a checker run
 
 `ExecutePreparedQueryRequest` carries the ledger name, the query name, an execution mode (`LIST` or `AGGREGATE_VOLUMES`), and any runtime parameters. The executor:
 
-1. Reads the prepared query via `ReadPreparedQuery` (`internal/query/executor.go:67`).
+1. Opens the fixed main-store snapshot, then reads both the ledger schema and prepared query from that snapshot. This prevents a concurrent query/schema update or deletion from being combined with entities from a newer state. Because the stored definition determines whether an index will be used, the executor briefly reserves the event-history floor before opening the snapshot and releases it immediately when the loaded shape needs no index alignment.
 2. Verifies the requested mode is compatible with the query's `target` (e.g. `AGGREGATE_VOLUMES` only makes sense for accounts).
 3. Enters the standard read route. Default live consistency establishes a
    `ReadIndexAndWait` horizon; `stale`, leader-local, and checkpoint reads have
