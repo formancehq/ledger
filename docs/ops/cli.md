@@ -41,7 +41,7 @@ These flags are available for all commands:
 | `--signing-key` | | Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded) |
 | `--signing-key-id` | `default` | Key ID for request signatures |
 | `--response-verify-key` | | Path to Ed25519 public key file for verifying server response signatures |
-| `--consistency` | | Read consistency level: `stale`, `leader`, or `linearizable` (default) |
+| `--consistency` | | Read consistency level: `stale` or `linearizable` (default) |
 | `--auth-token` | | Bearer token for authentication (JWT string or `@path-to-file`) |
 
 ### TLS server name (verifying by name while dialing by IP)
@@ -88,29 +88,20 @@ make independently asynchronous projections linearizable; endpoint sections
 document those exceptions. The barrier can block during maintenance windows
 (e.g. mirror sync or snapshot creation) when the FSM is frozen.
 
-Two alternative consistency levels are available:
+One alternative consistency level is available:
 
 - **`stale`** — Skip the Raft ReadIndex barrier and read from local state, which
   may lag behind the latest committed index. A read can still wait for an
   explicitly requested `--min-log-sequence` or for mandatory secondary-index
   alignment. Useful for monitoring, dashboards, and non-critical queries where
   quorum-confirmed freshness is unnecessary.
-- **`leader`** — Route the read to the node currently considered leader. When
-  the request is forwarded, the remote node applies its default ReadIndex
-  barrier. When the receiving node already considers itself leader, it serves
-  the read locally without a barrier. Because `CheckQuorum` is disabled, an
-  isolated former leader can therefore return stale state in this mode; use the
-  default `linearizable` mode when quorum-confirmed freshness is required.
 
-Filtered `audit list` has
-an endpoint-specific asynchronous-index caveat; see its consistency note below.
+Filtered `audit list` has an endpoint-specific asynchronous-index caveat; see
+its consistency note below.
 
 ```bash
 # Stale read (no Raft barrier; may lag)
 ledgerctl --consistency stale ledgers get my-ledger
-
-# Leader-routed read (may be stale from an isolated former leader)
-ledgerctl --consistency leader ledgers list
 
 # Default linearizable read
 ledgerctl ledgers list

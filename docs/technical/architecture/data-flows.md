@@ -553,11 +553,10 @@ config:
 ### Overview
 
 **Write requests** (`Apply`) are always routed to the node currently
-considered leader. Live reads normally use the ReadIndex mechanism (see
-below), but callers can explicitly select `x-consistency: leader`. That mode
-routes the read to the perceived leader; if the receiving node already
-considers itself leader, the local shortcut does not perform a ReadIndex
-barrier.
+considered leader. Live reads normally use the ReadIndex mechanism (see below).
+The unreleased v3 `x-consistency: leader` selector was removed by EN-1946;
+callers choose between the default linearizable route and an explicit `stale`
+local read.
 
 ### Forwarding Flow
 
