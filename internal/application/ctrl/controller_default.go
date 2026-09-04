@@ -230,10 +230,12 @@ func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName st
 // ComputeTransactionReceipt computes a JWT receipt for an existing
 // transaction from its creation log. Ledger info and the creation log are
 // read from the supplied reader — the same store the transaction was read
-// from — so checkpoint reads stay self-consistent. It returns an empty token
-// (not an error) when the transaction legitimately has no receipt: no
-// creation log in this store, or a non-created creation log (e.g. a
-// reversal). The caller must have verified the signer is non-nil.
+// from — so checkpoint reads stay self-consistent. An empty token is
+// reserved for the one legitimately receiptless case: a present creation
+// log that is not a CreatedTransaction (e.g. a reversal). A missing
+// transaction state or creation log is an invariant failure — log history
+// is permanent, so the miss is store corruption. The caller must have
+// verified the signer is non-nil.
 func (ctrl *DefaultController) ComputeTransactionReceipt(ctx context.Context, reader dal.PebbleReader, ledger string, txID uint64, tx *commonpb.Transaction) (string, error) {
 	ledgerInfo, err := query.GetLedgerByName(ctx, reader, ledger)
 	if err != nil {
