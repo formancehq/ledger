@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -17,13 +18,19 @@ import (
 	"github.com/formancehq/ledger/internal/replication/drivers"
 )
 
-// maxResponseDrainBytes caps how much of an exporter's response body Accept reads
-// before closing it; ingest endpoints answer with a few bytes at most.
-const maxResponseDrainBytes = 64 << 10
+const (
+	// maxResponseDrainBytes caps how much of an exporter's response body Accept reads
+	// before closing it; ingest endpoints answer with a few bytes at most.
+	maxResponseDrainBytes = 64 << 10
+	// responseDrainTimeout caps how long Accept waits for those bytes. A stalled body
+	// costs the connection, not the worker.
+	responseDrainTimeout = 5 * time.Second
+)
 
 type Driver struct {
-	config     Config
-	httpClient *http.Client
+	config       Config
+	httpClient   *http.Client
+	drainTimeout time.Duration
 }
 
 func (c *Driver) Stop(_ context.Context) error {
@@ -45,6 +52,8 @@ func (c *Driver) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]e
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	req = req.WithContext(ctx)
 
 	rsp, err := c.httpClient.Do(req)
@@ -52,10 +61,13 @@ func (c *Driver) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]e
 		return nil, err
 	}
 	defer func() {
-		// Drain (bounded) and close so the underlying connection is released back to
-		// the transport instead of leaking one socket per push. A body larger than
-		// the bound is closed unread: the transport then drops that connection, which
-		// is preferable to blocking the worker on a misbehaving exporter.
+		// Drain and close so the underlying connection is released back to the
+		// transport instead of leaking one socket per push. The drain is bounded in
+		// bytes and in time: cancelling the request context interrupts a stalled body
+		// read, and the transport then drops that connection, which is preferable to
+		// blocking the worker on a misbehaving exporter.
+		stop := time.AfterFunc(c.drainTimeout, cancel)
+		defer stop.Stop()
 		_, _ = io.Copy(io.Discard, io.LimitReader(rsp.Body, maxResponseDrainBytes))
 		_ = rsp.Body.Close()
 	}()
@@ -69,8 +81,9 @@ func (c *Driver) Accept(ctx context.Context, logs ...drivers.LogWithLedger) ([]e
 
 func NewDriver(config Config, _ logging.Logger) (*Driver, error) {
 	return &Driver{
-		config:     config,
-		httpClient: http.DefaultClient,
+		config:       config,
+		httpClient:   http.DefaultClient,
+		drainTimeout: responseDrainTimeout,
 	}, nil
 }
 
