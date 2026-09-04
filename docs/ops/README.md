@@ -7,9 +7,11 @@ Everything you need to deploy, monitor, and operate a Ledger v3 cluster.
 | Goal | Document |
 |------|----------|
 | Deploy and size a cluster | [deployment-profiles.md](./deployment-profiles.md) |
+| Plan HA, multi-region placement, and disaster recovery | [availability-and-recovery.md](./availability-and-recovery.md) |
 | Use the CLI (`ledgerctl`) | [cli.md](./cli.md) |
 | Monitor my cluster | [monitoring.md](./monitoring.md) |
 | Back up and restore data | [backup-restore.md](./backup-restore.md) |
+| Upgrade Ledger server binaries | [upgrades.md](./upgrades.md) |
 | Manage request signing | [signing.md](./signing.md) |
 | Enable maintenance mode | [maintenance-mode.md](./maintenance-mode.md) |
 | Manage cluster nodes | [cluster-operations.md](./cluster-operations.md) |

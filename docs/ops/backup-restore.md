@@ -9,6 +9,10 @@ The ledger provides a two-tier backup and restore pipeline:
 
 A restore combines the latest checkpoint with any incremental exports to reconstruct the full state.
 
+For topology selection, region-loss behavior, and the distinction between a
+replica and a portable recovery source, see
+[Availability and Disaster Recovery](./availability-and-recovery.md).
+
 ### Storage Backends
 
 Backups and restores support two storage backends, selected with `--driver`:
@@ -17,6 +21,61 @@ Backups and restores support two storage backends, selected with `--driver`:
 - **`azure`** — Azure Blob Storage. Built with the `azure` build tag. Authenticates with an account key (`--azure-account-key`) or, when omitted, `DefaultAzureCredential` (managed identity, environment, etc.). Use `--azure-endpoint` to target a non-default Blob service URL — note that **Azurite requires the account name in the path** (e.g. `http://127.0.0.1:10000/devstoreaccount1`); a bare `http://127.0.0.1:10000` will yield 400/404 responses.
 
 All backup/restore commands accept the same provider flags; only the `--driver` value and the matching `--s3-*` / `--azure-*` flags differ.
+
+### Scheduling with the Kubernetes Operator
+
+The operator's `Backup` resource can schedule full and incremental S3 backups:
+
+```yaml
+apiVersion: ledger.formance.com/v1alpha1
+kind: Backup
+metadata:
+  name: production
+spec:
+  clusterRef: customer-ledger
+  destination:
+    driver: s3
+    bucketId: customer-production
+    s3:
+      bucket: customer-ledger-backups
+      region: eu-west-1
+  schedule:
+    full: "0 2 * * 0"
+    incremental: "0 * * * *"
+  successfulRunsHistoryLimit: 3
+  failedRunsHistoryLimit: 1
+```
+
+The run history limits retain Kubernetes `BackupRun` resources only. They do
+not retain historical backup artifacts or restore points in object storage.
+
+### Long-Term Retention
+
+One destination namespace -- the storage backend plus `bucket-id` -- contains
+one current restorable chain. Incremental backups append segments to that
+chain. A new full backup publishes a replacement checkpoint manifest with an
+empty incremental set, then prunes objects no longer referenced by the current
+manifest.
+
+The built-in backup pipeline does not retain multiple historical restore
+points in one namespace. For long-term retention, use a distinct `bucket-id`
+for each retained restore point and stop writing to that namespace after its
+final incremental, or implement an object-store versioning/archive procedure
+that preserves and can re-materialize the complete manifest and every object it
+references. The operator's scheduled `Backup` resource has a fixed `bucketId`,
+so rotating immutable retention points currently requires external
+orchestration.
+
+Test restoring every retention class. Retaining only a manifest, or only the
+checkpoint objects without all incremental segments referenced by that
+manifest, is not a usable backup.
+
+Ledger backups also do not copy cold storage wholesale. Chapters archived
+before the full checkpoint remain in their cold-storage objects, and the
+restored cluster needs those objects for historical reads. Protect cold storage
+outside the cluster and region failure domain, retain its configuration and
+credentials, and include archived-history reads in restore exercises. See
+[Relationship with Chapters and Cold Storage](#relationship-with-chapters-and-cold-storage).
 
 ### End-to-End Flow
 
