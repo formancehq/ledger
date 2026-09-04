@@ -27,7 +27,12 @@ func computeSpecHash(spec *ledgerv1alpha1.ClusterSpec) string {
 	cp.Ingress = nil
 	cp.IngressGrpc = nil
 	cp.NetworkPolicy = nil
+	cp.DNSEndpoint = nil //nolint:staticcheck // Hashing must ignore the deprecated field while it remains supported.
 	cp.DNSEndpoints = nil
+
+	// Event sinks are reconciled through Ledger's runtime Raft API. Changing
+	// them must not roll the StatefulSet.
+	cp.Sinks = nil
 
 	// DeletionProtection only drives PVC/PV label patches (reconcileVolumeProtection);
 	// it has no pod-template effect, so toggling it must not roll the StatefulSet.

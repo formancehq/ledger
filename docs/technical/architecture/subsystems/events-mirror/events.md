@@ -405,6 +405,38 @@ ledgerctl events list
 
 The response includes a list of `SinkConfig` entries and a list of `SinkStatus` entries showing each sink's cursor position and any active error.
 
+#### Kubernetes Operator Configuration
+
+The Ledger Operator can maintain NATS sinks declaratively through the
+`Cluster.spec.sinks.nats` list. It waits for the StatefulSet rollout to converge,
+compares the desired entries with `ledgerctl events list --json`, and applies
+changes through the same Raft-replicated add/remove operations described above.
+Changing this field does not change the pod-template hash or restart Ledger.
+This first declarative CRD surface covers NATS only. NATS URLs containing
+userinfo are rejected so credentials are not persisted in a non-secret
+Kubernetes resource.
+
+The operator records only the sink names it created in
+`Cluster.status.appliedSinks`. This ownership boundary has three consequences:
+
+- omitting `spec.sinks` leaves all runtime sink configuration unmanaged;
+- an explicitly empty `spec.sinks: {}` removes only operator-owned sinks; and
+- an existing, externally managed sink with a different configuration produces
+  a `SinksSynced=False` conflict instead of being overwritten.
+
+An operator-owned configuration change is a two-pass remove-and-recreate. The
+per-name cursor is retained by Ledger, so committed events are delayed during
+the update but remain eligible for at-least-once delivery after recreation.
+`SinksSynced=True` proves that the Raft configuration matches the CR; delivery
+progress and transport errors must still be monitored with
+`ledgerctl events list`.
+
+NATS JetStream provisioning remains external to Ledger. A stream must already
+capture `<topic>.>` (Ledger publishes to
+`<topic>.<ledger>.<event-type-lowercase>`), and any Kubernetes NetworkPolicy must permit
+egress from Ledger pods to the NATS service. Additional sink types can extend
+the CRD without changing the runtime ownership model.
+
 #### Config Persistence
 
 Each sink config is stored in PebbleDB under key `[0x01][0x08][canonical_key]` (`ZoneAttributes` + `SubAttrSinkConfig`) and replicated via Raft. Sink configs follow the same **admission preload** pattern as other attributes (volumes, ledgers, etc.): they are cached in the dual-generation `AttributeCache` and preloaded from PebbleDB on demand by the admission layer when not guaranteed in cache. This avoids PebbleDB reads on the FSM hot path. On cache generation rotation, evicted sink configs are re-preloaded when next needed.

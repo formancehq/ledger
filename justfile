@@ -378,13 +378,17 @@ operator-docker-build tag='':
             --platform linux/amd64,linux/arm64 --push misc/operator
     fi
 
+# Build and push a PR operator image under one explicit tag without moving :latest.
+operator-docker-build-pr image:
+    docker buildx build -t '{{ image }}' --platform linux/amd64,linux/arm64 --push misc/operator
+
 # Package and publish operator Helm charts to GHCR. Args are positional: version then suffix.
 operator-helm-publish version='' suffix='':
     cd misc/operator && just helm-publish '{{ version }}' '{{ suffix }}'
 
 # Build and push multi-arch Docker image
 docker-build *ARGS:
-    docker buildx build -t '{{ image_repository }}' --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,clickhouse,s3,azure,pyroscope {{ARGS}} .
+    docker buildx build -t '{{ image_repository }}' --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,nats,clickhouse,s3,azure,pyroscope {{ARGS}} .
 
 # Build and push a PR docker image under a single explicit tag (no `:latest`).
 # Used by the `Build-PR-Image` workflow job to publish
@@ -392,7 +396,7 @@ docker-build *ARGS:
 # before merge — keeps the same BUILD_TAGS set as `docker-build` so a
 # reviewer exercises the full optional-feature surface.
 docker-build-pr image:
-    docker buildx build -t '{{ image }}' --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,clickhouse,s3,azure,pyroscope .
+    docker buildx build -t '{{ image }}' --platform linux/amd64,linux/arm64 --push --build-arg BUILD_TAGS=kafka,nats,clickhouse,s3,azure,pyroscope .
 
 # Docker builds are handled via Pulumi
 

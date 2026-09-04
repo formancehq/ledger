@@ -36,6 +36,11 @@ func TestComputeSpecHash_ExcludesNonPodFields(t *testing.T) {
 	withDNS.DNSEndpoints = []ledgerv1alpha1.DNSEndpointSpec{{Name: "public", Enabled: true}}
 	assert.Equal(t, baseHash, computeSpecHash(withDNS), "DNSEndpoints change should not affect hash")
 
+	// Changing the legacy DNSEndpoint should NOT change the hash either.
+	withLegacyDNS := base.DeepCopy()
+	withLegacyDNS.DNSEndpoint = &ledgerv1alpha1.LegacyDNSEndpointSpec{Enabled: true} //nolint:staticcheck // Compatibility behavior is intentional.
+	assert.Equal(t, baseHash, computeSpecHash(withLegacyDNS), "legacy DNSEndpoint change should not affect hash")
+
 	// Changing Replicas should NOT change the hash.
 	withReplicas := base.DeepCopy()
 	replicas := int32(5)
@@ -48,6 +53,14 @@ func TestComputeSpecHash_ExcludesNonPodFields(t *testing.T) {
 	optOut := false
 	withDeletionProtection.Persistence.DeletionProtection = &optOut
 	assert.Equal(t, baseHash, computeSpecHash(withDeletionProtection), "DeletionProtection change should not affect hash")
+
+	// Changing event sinks should NOT change the hash: they are reconciled at
+	// runtime through Raft and must not roll the StatefulSet.
+	withSinks := base.DeepCopy()
+	withSinks.Sinks = &ledgerv1alpha1.EventSinksSpec{NATS: []ledgerv1alpha1.NATSEventSinkSpec{{
+		Name: "primary", URL: "nats://nats:4222", Topic: "ledger.events",
+	}}}
+	assert.Equal(t, baseHash, computeSpecHash(withSinks), "Sinks change should not affect hash")
 }
 
 func TestComputeSpecHash_IncludesPodFields(t *testing.T) {

@@ -231,6 +231,24 @@ type ClusterSpec struct {
 	// +optional
 	Auth *AuthorizationConfig `json:"auth,omitempty"`
 
+	// Sinks declares the NATS event sinks the operator maintains in the
+	// Ledger cluster's Raft-replicated runtime configuration.
+	//
+	// Ownership semantics:
+	//   - Field ABSENT (nil) => unmanaged. The operator never lists, creates,
+	//     updates, or removes event sinks. This preserves sinks configured
+	//     directly with ledgerctl before the CRD field existed.
+	//   - Field PRESENT (even empty {}) => managed. The operator creates the
+	//     declared sinks and removes only sinks it previously created (tracked
+	//     in status.appliedSinks). Externally-created sinks are never adopted or
+	//     removed. An empty object therefore means "remove the sinks previously
+	//     managed by this Cluster", not "remove every sink".
+	//
+	// Sink changes are applied at runtime through Ledger's Raft API and do not
+	// roll the StatefulSet.
+	// +optional
+	Sinks *EventSinksSpec `json:"sinks,omitempty"`
+
 	// ReadIndex configuration for the Pebble read index store.
 	// +optional
 	ReadIndex *ReadIndexConfig `json:"readIndex,omitempty"`
@@ -314,6 +332,13 @@ type ClusterSpec struct {
 	// +optional
 	NetworkPolicy *NetworkPolicySpec `json:"networkPolicy,omitempty"`
 
+	// DNSEndpoint is the legacy single ExternalDNS DNSEndpoint configuration.
+	//
+	// Deprecated: use DNSEndpoints for new configurations. When DNSEndpoints is
+	// non-empty, it takes precedence over this field.
+	// +optional
+	DNSEndpoint *LegacyDNSEndpointSpec `json:"dnsEndpoint,omitempty"`
+
 	// DNSEndpoints configures one or more ExternalDNS DNSEndpoint resources.
 	// Each entry is reconciled into its own DNSEndpoint object, so distinct
 	// endpoints (e.g. a public and a private one) can carry different
@@ -334,6 +359,62 @@ type ClusterSpec struct {
 	// StartupProbe overrides the default startup probe for the ledger container.
 	// +optional
 	StartupProbe *corev1.Probe `json:"startupProbe,omitempty"`
+}
+
+// EventSinksSpec declares the event sinks maintained by the operator. A nil
+// *EventSinksSpec means "unmanaged"; a non-nil value (including an empty
+// object) means "managed" (see ClusterSpec.Sinks).
+type EventSinksSpec struct {
+	// NATS is the set of NATS JetStream sinks to maintain. Names are unique and
+	// stable: Ledger uses them to persist each sink's delivery cursor and status.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	NATS []NATSEventSinkSpec `json:"nats,omitempty"`
+}
+
+// NATSEventSinkSpec configures one NATS JetStream event sink.
+type NATSEventSinkSpec struct {
+	// Name is the stable sink identifier.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Name string `json:"name"`
+
+	// URL is the NATS server URL, including the nats:// scheme. Credentials
+	// must not be embedded in this field because Cluster specs are not secret.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^nats://[^@]+$`
+	URL string `json:"url"`
+
+	// Topic is the subject prefix. Ledger publishes to
+	// <topic>.<ledger>.<event-type-lowercase>.
+	// +kubebuilder:validation:MinLength=1
+	Topic string `json:"topic"`
+
+	// Format is the event payload serialization format. Defaults to json.
+	// +kubebuilder:default="json"
+	// +kubebuilder:validation:Enum=json;protobuf
+	// +optional
+	Format string `json:"format,omitempty"`
+
+	// BatchSize is the maximum number of events published per batch. Zero lets
+	// Ledger use its default (64).
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=100000
+	// +optional
+	BatchSize *int32 `json:"batchSize,omitempty"`
+
+	// BatchDelayMs is the maximum delay before a partial batch is published.
+	// Zero lets Ledger use its default (10ms).
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	BatchDelayMs *int64 `json:"batchDelayMs,omitempty"`
+
+	// EventTypes filters the emitted events. Empty means all event types.
+	// +optional
+	// +listType=set
+	// +kubebuilder:validation:items:Enum=COMMITTED_TRANSACTION;REVERTED_TRANSACTION;SAVED_METADATA;DELETED_METADATA;CREATED_LEDGER;DELETED_LEDGER;SKIPPED_ORDER
+	EventTypes []string `json:"eventTypes,omitempty"`
 }
 
 // ImageSpec defines container image configuration.
@@ -1226,6 +1307,23 @@ type NetworkPolicySpec struct {
 	AdditionalEgress []networkingv1.NetworkPolicyEgressRule `json:"additionalEgress,omitempty"`
 }
 
+// LegacyDNSEndpointSpec defines the deprecated single ExternalDNS DNSEndpoint
+// configuration retained for backwards compatibility.
+// +kubebuilder:validation:XValidation:rule="!self.enabled || size(self.endpoints) > 0",message="endpoints are required when the DNSEndpoint is enabled"
+type LegacyDNSEndpointSpec struct {
+	// Enabled enables the DNSEndpoint resource.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Annotations to add to the DNSEndpoint resource.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+
+	// Endpoints is the list of DNS endpoint entries.
+	// +optional
+	Endpoints []DNSEndpointEntry `json:"endpoints,omitempty"`
+}
+
 // DNSEndpointSpec defines a single ExternalDNS DNSEndpoint configuration.
 // +kubebuilder:validation:XValidation:rule="!self.enabled || size(self.endpoints) > 0",message="endpoints are required when the DNSEndpoint is enabled"
 type DNSEndpointSpec struct {
@@ -1310,6 +1408,12 @@ type ClusterStatus struct {
 	// exposes the intermediate "optional" mode used during a toggle.
 	// +optional
 	TLSMigrationPhase string `json:"tlsMigrationPhase,omitempty"`
+
+	// AppliedSinks is the set of sink names the operator created. It scopes
+	// removals so sinks created directly through the Ledger API are preserved.
+	// +optional
+	// +listType=atomic
+	AppliedSinks []string `json:"appliedSinks,omitempty"`
 }
 
 // EndpointsStatus contains the resolved endpoints for a Cluster.

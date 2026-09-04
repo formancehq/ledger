@@ -19,37 +19,70 @@ var dnsEndpointGVK = schema.GroupVersionKind{
 	Kind:    "DNSEndpoint",
 }
 
+type desiredDNSEndpoint struct {
+	name        string
+	annotations map[string]string
+	endpoints   []any
+}
+
 // reconcileDNSEndpoint reconciles the set of ExternalDNS DNSEndpoint objects for
 // a Cluster. Each spec.dnsEndpoints entry becomes its own DNSEndpoint object so
 // that, for example, a public and a private endpoint can carry different
-// annotations. Entries that are disabled or carry no endpoints are not created,
-// and any previously-created DNSEndpoint object no longer desired is deleted.
+// annotations. The legacy spec.dnsEndpoint field remains supported when the new
+// list is empty and retains its original object name for in-place upgrades.
 func (r *ClusterReconciler) reconcileDNSEndpoint(ctx context.Context, ledger *ledgerv1alpha1.Cluster) error {
-	desired := make(map[string]struct{}, len(ledger.Spec.DNSEndpoints))
+	endpointSpecs := desiredDNSEndpoints(ledger)
+	desired := make(map[string]struct{}, len(endpointSpecs))
 
-	for i := range ledger.Spec.DNSEndpoints {
-		spec := &ledger.Spec.DNSEndpoints[i]
-		if !spec.Enabled {
-			continue
-		}
+	for _, spec := range endpointSpecs {
+		desired[spec.name] = struct{}{}
 
-		endpoints := make([]any, 0, len(spec.Endpoints))
-		for _, ep := range spec.Endpoints {
-			endpoints = append(endpoints, buildEndpointEntry(ep))
-		}
-		if len(endpoints) == 0 {
-			continue
-		}
-
-		name := dnsEndpointName(ledger.Name, spec.Name)
-		desired[name] = struct{}{}
-
-		if err := r.applyDNSEndpoint(ctx, ledger, name, spec.Annotations, endpoints); err != nil {
+		if err := r.applyDNSEndpoint(ctx, ledger, spec.name, spec.annotations, spec.endpoints); err != nil {
 			return err
 		}
 	}
 
 	return r.pruneDNSEndpoints(ctx, ledger, desired)
+}
+
+func desiredDNSEndpoints(ledger *ledgerv1alpha1.Cluster) []desiredDNSEndpoint {
+	if len(ledger.Spec.DNSEndpoints) == 0 {
+		legacy := ledger.Spec.DNSEndpoint //nolint:staticcheck // Reconcile the deprecated field for backwards compatibility.
+		if legacy == nil || !legacy.Enabled || len(legacy.Endpoints) == 0 {
+			return nil
+		}
+
+		return []desiredDNSEndpoint{{
+			name:        resourceName(ledger.Name),
+			annotations: legacy.Annotations,
+			endpoints:   buildEndpointEntries(legacy.Endpoints),
+		}}
+	}
+
+	desired := make([]desiredDNSEndpoint, 0, len(ledger.Spec.DNSEndpoints))
+	for i := range ledger.Spec.DNSEndpoints {
+		spec := &ledger.Spec.DNSEndpoints[i]
+		if !spec.Enabled || len(spec.Endpoints) == 0 {
+			continue
+		}
+
+		desired = append(desired, desiredDNSEndpoint{
+			name:        dnsEndpointName(ledger.Name, spec.Name),
+			annotations: spec.Annotations,
+			endpoints:   buildEndpointEntries(spec.Endpoints),
+		})
+	}
+
+	return desired
+}
+
+func buildEndpointEntries(entries []ledgerv1alpha1.DNSEndpointEntry) []any {
+	endpoints := make([]any, 0, len(entries))
+	for _, ep := range entries {
+		endpoints = append(endpoints, buildEndpointEntry(ep))
+	}
+
+	return endpoints
 }
 
 // applyDNSEndpoint creates or updates a single DNSEndpoint object.

@@ -382,6 +382,7 @@ jobs:
       # location while the repo rename is in flight. Default targets the
       # canonical `formancehq/ledger` published image.
       IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY || 'ghcr.io/formancehq/ledger' }}
+      OPERATOR_IMAGE_REPOSITORY: ${{ vars.OPERATOR_IMAGE_REPOSITORY || 'ghcr.io/formancehq/ledger-operator' }}
     steps:
       - uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
         with:
@@ -407,20 +408,28 @@ jobs:
           short=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
           tag="pr-${{ github.event.pull_request.number }}-${short}"
           image="${IMAGE_REPOSITORY}:${tag}"
+          operator_image="${OPERATOR_IMAGE_REPOSITORY}:${tag}"
           echo "tag=${tag}"     >> "$GITHUB_OUTPUT"
           echo "image=${image}" >> "$GITHUB_OUTPUT"
-      - name: Build and push PR image
+          echo "operator_image=${operator_image}" >> "$GITHUB_OUTPUT"
+      - name: Build and push Ledger PR image
         run: >
           nix develop --command just docker-build-pr '${{ steps.tag.outputs.image }}'
-      - name: Summarize image digest
+      - name: Build and push Ledger Operator PR image
+        run: >
+          nix develop --command just operator-docker-build-pr '${{ steps.tag.outputs.operator_image }}'
+      - name: Summarize image digests
         if: always()
         run: |
           image='${{ steps.tag.outputs.image }}'
+          operator_image='${{ steps.tag.outputs.operator_image }}'
           digest=$(docker buildx imagetools inspect "$image" --format '{{ .Manifest.Digest }}' 2>/dev/null || echo "(inspect failed)")
+          operator_digest=$(docker buildx imagetools inspect "$operator_image" --format '{{ .Manifest.Digest }}' 2>/dev/null || echo "(inspect failed)")
           {
-            echo "## PR docker image"
+            echo "## PR docker images"
             echo ""
             echo "| Image | Digest |"
             echo "|---|---|"
             echo "| \`${image}\` | \`${digest}\` |"
+            echo "| \`${operator_image}\` | \`${operator_digest}\` |"
           } >> "$GITHUB_STEP_SUMMARY"

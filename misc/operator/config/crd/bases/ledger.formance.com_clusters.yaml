@@ -1231,6 +1231,70 @@ spec:
                   LogLevel takes precedence when both are set; prefer LogLevel for new
                   manifests since it also unlocks the trace level.
                 type: boolean
+              dnsEndpoint:
+                description: |-
+                  DNSEndpoint is the legacy single ExternalDNS DNSEndpoint configuration.
+
+                  Deprecated: use DNSEndpoints for new configurations. When DNSEndpoints is
+                  non-empty, it takes precedence over this field.
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: Annotations to add to the DNSEndpoint resource.
+                    type: object
+                  enabled:
+                    description: Enabled enables the DNSEndpoint resource.
+                    type: boolean
+                  endpoints:
+                    description: Endpoints is the list of DNS endpoint entries.
+                    items:
+                      description: DNSEndpointEntry defines a single DNS endpoint.
+                      properties:
+                        dnsName:
+                          description: DNSName is the hostname for the DNS record.
+                          type: string
+                        providerSpecific:
+                          description: ProviderSpecific holds provider-specific properties.
+                          items:
+                            description: ProviderSpecificProperty defines a provider-specific
+                              key-value pair.
+                            properties:
+                              name:
+                                description: Name is the property name.
+                                type: string
+                              value:
+                                description: Value is the property value.
+                                type: string
+                            required:
+                            - name
+                            - value
+                            type: object
+                          type: array
+                        recordTTL:
+                          description: RecordTTL is the TTL in seconds for the DNS
+                            record.
+                          format: int64
+                          type: integer
+                        recordType:
+                          description: RecordType is the DNS record type (e.g., CNAME,
+                            A). Defaults to CNAME.
+                          type: string
+                        targets:
+                          description: Targets is the list of target hostnames or
+                            IPs.
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - dnsName
+                      - targets
+                      type: object
+                    type: array
+                type: object
+                x-kubernetes-validations:
+                - message: endpoints are required when the DNSEndpoint is enabled
+                  rule: '!self.enabled || size(self.endpoints) > 0'
               dnsEndpoints:
                 description: |-
                   DNSEndpoints configures one or more ExternalDNS DNSEndpoint resources.
@@ -3583,6 +3647,98 @@ spec:
                     description: Name overrides the service account name.
                     type: string
                 type: object
+              sinks:
+                description: |-
+                  Sinks declares the NATS event sinks the operator maintains in the
+                  Ledger cluster's Raft-replicated runtime configuration.
+
+                  Ownership semantics:
+                    - Field ABSENT (nil) => unmanaged. The operator never lists, creates,
+                      updates, or removes event sinks. This preserves sinks configured
+                      directly with ledgerctl before the CRD field existed.
+                    - Field PRESENT (even empty {}) => managed. The operator creates the
+                      declared sinks and removes only sinks it previously created (tracked
+                      in status.appliedSinks). Externally-created sinks are never adopted or
+                      removed. An empty object therefore means "remove the sinks previously
+                      managed by this Cluster", not "remove every sink".
+
+                  Sink changes are applied at runtime through Ledger's Raft API and do not
+                  roll the StatefulSet.
+                properties:
+                  nats:
+                    description: |-
+                      NATS is the set of NATS JetStream sinks to maintain. Names are unique and
+                      stable: Ledger uses them to persist each sink's delivery cursor and status.
+                    items:
+                      description: NATSEventSinkSpec configures one NATS JetStream
+                        event sink.
+                      properties:
+                        batchDelayMs:
+                          description: |-
+                            BatchDelayMs is the maximum delay before a partial batch is published.
+                            Zero lets Ledger use its default (10ms).
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        batchSize:
+                          description: |-
+                            BatchSize is the maximum number of events published per batch. Zero lets
+                            Ledger use its default (64).
+                          format: int32
+                          maximum: 100000
+                          minimum: 0
+                          type: integer
+                        eventTypes:
+                          description: EventTypes filters the emitted events. Empty
+                            means all event types.
+                          items:
+                            enum:
+                            - COMMITTED_TRANSACTION
+                            - REVERTED_TRANSACTION
+                            - SAVED_METADATA
+                            - DELETED_METADATA
+                            - CREATED_LEDGER
+                            - DELETED_LEDGER
+                            - SKIPPED_ORDER
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: set
+                        format:
+                          default: json
+                          description: Format is the event payload serialization format.
+                            Defaults to json.
+                          enum:
+                          - json
+                          - protobuf
+                          type: string
+                        name:
+                          description: Name is the stable sink identifier.
+                          maxLength: 253
+                          minLength: 1
+                          type: string
+                        topic:
+                          description: |-
+                            Topic is the subject prefix. Ledger publishes to
+                            <topic>.<ledger>.<event-type-lowercase>.
+                          minLength: 1
+                          type: string
+                        url:
+                          description: |-
+                            URL is the NATS server URL, including the nats:// scheme. Credentials
+                            must not be embedded in this field because Cluster specs are not secret.
+                          minLength: 1
+                          pattern: ^nats://[^@]+$
+                          type: string
+                      required:
+                      - name
+                      - topic
+                      - url
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                type: object
               snapshot:
                 description: Snapshot sync configuration for Raft snapshot transfers.
                 properties:
@@ -4009,6 +4165,14 @@ spec:
           status:
             description: ClusterStatus defines the observed state of Cluster.
             properties:
+              appliedSinks:
+                description: |-
+                  AppliedSinks is the set of sink names the operator created. It scopes
+                  removals so sinks created directly through the Ledger API are preserved.
+                items:
+                  type: string
+                type: array
+                x-kubernetes-list-type: atomic
               conditions:
                 description: Conditions represent the latest available observations.
                 items:
