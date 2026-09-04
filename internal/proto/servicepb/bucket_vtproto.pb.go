@@ -2853,6 +2853,7 @@ func (m *InspectIndexResponse) CloneVT() *InspectIndexResponse {
 		return (*InspectIndexResponse)(nil)
 	}
 	r := new(InspectIndexResponse)
+	r.ServedType = m.ServedType
 	if m.Result != nil {
 		r.Result = m.Result.(interface {
 			CloneVT() isInspectIndexResponse_Result
@@ -7531,6 +7532,9 @@ func (this *InspectIndexResponse) EqualVT(that *InspectIndexResponse) bool {
 		}).EqualVT(that.Result) {
 			return false
 		}
+	}
+	if this.ServedType != that.ServedType {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -15139,6 +15143,11 @@ func (m *InspectIndexResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 		}
 		i -= size
 	}
+	if m.ServedType != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ServedType))
+		i--
+		dAtA[i] = 0x20
+	}
 	return len(dAtA) - i, nil
 }
 
@@ -18545,6 +18554,9 @@ func (m *InspectIndexResponse) SizeVT() (n int) {
 	_ = l
 	if vtmsg, ok := m.Result.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
+	}
+	if m.ServedType != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ServedType))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -35874,6 +35886,25 @@ func (m *InspectIndexResponse) UnmarshalVT(dAtA []byte) error {
 				m.Result = &InspectIndexResponse_Summary{Summary: v}
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ServedType", wireType)
+			}
+			m.ServedType = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ServedType |= commonpb.MetadataType(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

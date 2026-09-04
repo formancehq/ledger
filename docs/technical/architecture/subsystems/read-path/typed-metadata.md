@@ -147,11 +147,17 @@ conditions are valid for every declared type.
 
 ### Index inspection
 
-`InspectIndex` pins a read-store snapshot, rejects `CurrentVersion == 0`, and
-scans only the locally served version. Distinct values, facets, and summary
-statistics therefore describe one consistent encoding. The HTTP adapter uses
-the declared type as a rendering hint so signed datetime index values are shown
-as RFC3339 strings.
+`InspectIndex` reserves the fold floor, fold-aligns its read-store snapshot to
+its main-store handle, rejects `CurrentVersion == 0`, refuses bindings behind
+the schema's one-revision serving window as `INDEX_BUILDING`
+(`BindingWithinServingWindow` — the same decision the query compile gate
+makes), and scans only the locally served version. Distinct values, facets,
+and summary statistics therefore describe one consistent encoding. The
+response carries the served binding's type, and the HTTP adapter renders with
+it — during the legal one-revision window the served encoding is the
+predecessor's, so rendering with the newer declared type would mistype every
+value (an INT64-bound window under a DATETIME schema is integers, not
+RFC3339).
 
 ### Progress and barriers
 

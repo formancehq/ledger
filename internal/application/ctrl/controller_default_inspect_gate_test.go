@@ -91,7 +91,7 @@ func TestDefaultController_InspectIndex_ServingWindowGate(t *testing.T) {
 		require.ErrorAs(t, err, &building)
 	})
 
-	t.Run("direct predecessor serves", func(t *testing.T) {
+	t.Run("direct predecessor serves, stamped with its own binding type", func(t *testing.T) {
 		t.Parallel()
 
 		c := newInspectController(t, 2)
@@ -99,6 +99,8 @@ func TestDefaultController_InspectIndex_ServingWindowGate(t *testing.T) {
 		resp, err := c.InspectIndex(context.Background(), req)
 		require.NoError(t, err)
 		require.NotNil(t, resp)
+		require.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT32, resp.GetServedType(),
+			"the response carries the binding that served the scan, not the schema's newer type")
 	})
 }
 

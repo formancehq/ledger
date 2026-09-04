@@ -9411,11 +9411,16 @@ func NewInspectIndexRequestListReader(s []*InspectIndexRequest) InspectIndexRequ
 // InspectIndexResponseReader provides read-only access to InspectIndexResponse.
 // Call Mutate() to obtain a mutable clone.
 type InspectIndexResponseReader interface {
+	GetServedType() commonpb.MetadataType
 	GetResult() isInspectIndexResponse_Result
 	Mutate() *InspectIndexResponse
 }
 
 type inspectIndexResponseReadonly InspectIndexResponse
+
+func (r *inspectIndexResponseReadonly) GetServedType() commonpb.MetadataType {
+	return (*InspectIndexResponse)(r).GetServedType()
+}
 
 func (r *inspectIndexResponseReadonly) GetResult() isInspectIndexResponse_Result {
 	return (*InspectIndexResponse)(r).GetResult()

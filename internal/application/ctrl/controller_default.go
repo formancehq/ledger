@@ -1169,7 +1169,13 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		return nil, fmt.Errorf("inspecting index: %w", err)
 	}
 
-	return toInspectIndexResponse(inspectResult), nil
+	resp := toInspectIndexResponse(inspectResult)
+	// The scan served CurrentVersion's binding; during the legal one-revision
+	// window that is the predecessor's type, not the live declared one, and
+	// rendering must follow the encoding actually scanned.
+	resp.ServedType = state.CurrentType
+
+	return resp, nil
 }
 
 func toInspectIndexResponse(r *readstore.InspectResult) *servicepb.InspectIndexResponse {
