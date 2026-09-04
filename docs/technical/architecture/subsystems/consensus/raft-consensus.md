@@ -275,6 +275,15 @@ unreachable and its old state cannot run or rejoin. If an isolated former
 leader force-removes voters that remain live, the reduced local configuration
 and the original majority can both commit, creating divergent histories.
 
+The force path applies the local etcd/raft configuration before it can persist
+the resulting ConfState. That live tracker transition has no safe rollback. If
+ConfState persistence fails, the node fail-stops and rejects further commands
+and proposals. Work queued while persistence is in flight is failed during
+terminal publication. Restart reconstructs whichever membership reached the
+latest durable snapshot: the old configuration before snapshot-file replacement,
+or the new configuration if replacement completed before a later WAL-record
+failure. It must never continue serving with the reduced, unpersisted quorum.
+
 For normal consensus operations, the guarantee applies to committed state,
 which is the boundary visible to a successful write response. A request that
 times out while consensus is being lost has an unknown outcome from the

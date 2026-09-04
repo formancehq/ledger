@@ -109,29 +109,153 @@ const StaleRaftProgressReason = "STALE_RAFT_PROGRESS"
 // clusterCommand represents an operation that must execute in the orchestrate loop
 // because rawNode is not thread-safe. Implementations return an error via errCh.
 type clusterCommand struct {
-	fn    func() error
-	errCh chan error
+	fn                func() error
+	errCh             chan error
+	waitForCompletion bool
+}
+
+// terminalNodeError marks a command failure that leaves rawNode unsafe to use.
+// The command's caller still receives the underlying error, while orchestrate
+// treats the marker as a task failure and stops the node instead of accepting
+// more work against state that cannot be recovered in place.
+type terminalNodeError struct {
+	cause error
+}
+
+func (e *terminalNodeError) Error() string {
+	return e.cause.Error()
+}
+
+func (e *terminalNodeError) Unwrap() error {
+	return e.cause
 }
 
 // execClusterCommand dispatches a function to the orchestrate loop and waits for its result.
 func (node *Node) execClusterCommand(ctx context.Context, fn func() error) error {
+	return node.execClusterCommandWithOptions(ctx, fn, false)
+}
+
+// execClusterCommandToCompletion honors cancellation until the command is
+// admitted, then waits for its definitive result. ForceRemoveNode uses this
+// because caller cancellation after the irreversible live mutation must not
+// release the caller before a terminal persistence outcome is published.
+func (node *Node) execClusterCommandToCompletion(ctx context.Context, fn func() error) error {
+	return node.execClusterCommandWithOptions(ctx, fn, true)
+}
+
+func (node *Node) execClusterCommandWithOptions(
+	ctx context.Context,
+	fn func() error,
+	waitForCompletion bool,
+) error {
+	if err := node.terminalError(); err != nil {
+		return err
+	}
+
 	cmd := &clusterCommand{
-		fn:    fn,
-		errCh: make(chan error, 1),
+		fn:                fn,
+		errCh:             make(chan error, 1),
+		waitForCompletion: waitForCompletion,
 	}
 
 	select {
 	case node.clusterCommandCh <- cmd:
+	case <-node.terminalCh:
+		return node.terminalErrorFromSignal()
 	case <-ctx.Done():
+		if err := node.terminalError(); err != nil {
+			return err
+		}
+
 		return ctx.Err()
+	}
+
+	if cmd.waitForCompletion {
+		select {
+		case err := <-cmd.errCh:
+			return err
+		case <-node.terminalCh:
+			return node.terminalErrorFromSignal()
+		}
 	}
 
 	select {
 	case err := <-cmd.errCh:
 		return err
+	case <-node.terminalCh:
+		return node.terminalErrorFromSignal()
 	case <-ctx.Done():
+		if err := node.terminalError(); err != nil {
+			return err
+		}
+
 		return ctx.Err()
 	}
+}
+
+func (node *Node) terminalError() error {
+	if failure := node.terminalFailure.Load(); failure != nil {
+		return failure
+	}
+
+	return nil
+}
+
+func (node *Node) terminalErrorFromSignal() error {
+	err := node.terminalError()
+	if err == nil {
+		return errors.New("invariant: terminal signal closed without a node failure")
+	}
+
+	return err
+}
+
+// executeClusterCommand runs on the orchestrate goroutine. A terminal marker
+// is published before the caller is released so no later command or proposal
+// can be admitted in the interval before Run observes the task failure.
+func (node *Node) executeClusterCommand(cmd *clusterCommand) error {
+	err := cmd.fn()
+
+	var terminalErr *terminalNodeError
+	if errors.As(err, &terminalErr) {
+		var rejected []*Proposal
+		node.terminalOnce.Do(func() {
+			node.terminalFailure.Store(terminalErr)
+
+			// No proposal may race the terminal close and escape the drain.
+			// Propose holds proposalAdmissionMu from its terminal check through
+			// enqueue; after terminalFailure is stored, later admissions reject.
+			node.proposalAdmissionMu.Lock()
+			close(node.terminalCh)
+			for {
+				select {
+				case proposal := <-node.proposeCh:
+					rejected = append(rejected, proposal)
+				default:
+					node.proposalAdmissionMu.Unlock()
+
+					return
+				}
+			}
+		})
+
+		for _, proposal := range rejected {
+			node.rejectQueuedProposal(proposal, terminalErr)
+		}
+
+		node.logger.WithFields(map[string]any{
+			"error":             terminalErr,
+			"rejectedProposals": len(rejected),
+		}).Errorf("Terminal Raft command failure; stopping node")
+	}
+
+	cmd.errCh <- err
+
+	if terminalErr != nil {
+		return terminalErr
+	}
+
+	return nil
 }
 
 // LocalResponses is the channel through which the Applier signals to the
@@ -233,6 +357,15 @@ type Node struct {
 	tasks           *taskSet
 	stopChannel     chan chan struct{}
 	runDone         chan struct{} // closed when Run() exits
+	// terminalCh closes when an irreversible live Raft mutation could not be
+	// durably established. New work is rejected immediately while the task
+	// failure propagates through Run and terminates the process.
+	terminalCh      chan struct{}
+	terminalOnce    sync.Once
+	terminalFailure atomic.Pointer[terminalNodeError]
+	// proposalAdmissionMu makes the terminal check plus proposeCh enqueue
+	// atomic with terminal publication and its queued-proposal drain.
+	proposalAdmissionMu sync.Mutex
 	// membership owns the Raft peer-address state (Pebble + in-memory
 	// cache) and the OnSnapshotInstalled / WriteConfChange callbacks
 	// wired into Applier and Machine. EN-1413.
@@ -530,6 +663,7 @@ func NewNode(
 		localResponseCh:  localResponses,
 		tasks:            newTaskSet(),
 		stopChannel:      make(chan chan struct{}),
+		terminalCh:       make(chan struct{}),
 		pendingReads:     &SyncMap[uint64, *readIndexRequest]{},
 		membership:       membership,
 		lastAutoPromote:  make(map[uint64]time.Time),
@@ -1755,7 +1889,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 			case p := <-node.proposeCh:
 				node.handleProposal(p)
 			case cmd := <-node.clusterCommandCh:
-				cmd.errCh <- cmd.fn()
+				if err := node.executeClusterCommand(cmd); err != nil {
+					return err
+				}
 			default:
 				select {
 				case result := <-node.readyTerminated:
@@ -1835,7 +1971,9 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 				case p := <-node.proposeCh:
 					node.handleProposal(p)
 				case cmd := <-node.clusterCommandCh:
-					cmd.errCh <- cmd.fn()
+					if err := node.executeClusterCommand(cmd); err != nil {
+						return err
+					}
 				case err := <-node.applier.TaskError():
 					return fmt.Errorf("task executor error: %w", err)
 				}
@@ -1925,6 +2063,13 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 	ctx, cancel := context.WithTimeout(ctx, proposeTimeout)
 	defer cancel()
 
+	node.proposalAdmissionMu.Lock()
+	defer node.proposalAdmissionMu.Unlock()
+
+	if err := node.terminalError(); err != nil {
+		return nil, err
+	}
+
 	// Create a separate future for Machine results.
 	// The proposal's embedded Future is for Raft consensus (resolved by rawNode.Propose).
 	// The fsmFuture is for Machine processing (resolved when entry is applied).
@@ -1954,6 +2099,16 @@ func (node *Node) Propose(ctx context.Context, proposal *Proposal) (*futures.Fut
 
 		return nil, ctx.Err()
 	}
+}
+
+// rejectQueuedProposal resolves a proposal that was admitted before a terminal
+// command failure but can no longer be handed to rawNode. The admission caller
+// has released the tracker guard before this runs, so Decrement takes the
+// regular synchronized rollback path.
+func (node *Node) rejectQueuedProposal(proposal *Proposal, err error) {
+	node.indexTracker.Decrement(1)
+	node.applier.ResolveDroppedFuture(proposal.commandID, err)
+	proposal.Resolve(nil, err)
 }
 
 // handleProposal sends a proposal to rawNode and rolls back the IndexTracker
@@ -2941,7 +3096,7 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 	node.confChangeMu.Lock()
 	defer node.confChangeMu.Unlock()
 
-	return node.execClusterCommand(ctx, func() error {
+	return node.execClusterCommandToCompletion(ctx, func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
@@ -2988,7 +3143,13 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		// EN-1413.
 		err := node.wal.UpdateSnapshotConfState(cs)
 		if err != nil {
-			return fmt.Errorf("persisting confstate after force-remove: %w", err)
+			// ApplyConfChange has already replaced etcd/raft's active tracker
+			// and removed the peer's Progress. The library has no rollback
+			// primitive; applying an AddNode would create new progress rather
+			// than restore the previous replication state. Continuing would use
+			// a quorum that restart cannot reconstruct, so fail-stop is the only
+			// safe recovery contract.
+			return &terminalNodeError{cause: fmt.Errorf("persisting confstate after force-remove: %w", err)}
 		}
 
 		// EN-1045: when we know the target's identity, land the
