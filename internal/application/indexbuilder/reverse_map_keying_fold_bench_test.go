@@ -64,6 +64,10 @@ var reverseMapFoldBenchmarkValues = []*commonpb.MetadataValue{
 // Each batch updates distinct entities, so every reverse-map lookup exercises
 // the committed Pebble path rather than the same-batch overlay. The separate
 // HotAccountOverlay benchmark below covers that branch.
+//
+// This fixture is package-local. The readstore keying benchmark models a
+// different workload and may use different entity-ID widths; only layout
+// comparisons within this suite are valid, not ratios across the two suites.
 func BenchmarkReverseMapKeyingFoldSavedMetadata(b *testing.B) {
 	for _, target := range reverseMapFoldBenchmarkTargets {
 		b.Run(target.name, func(b *testing.B) {

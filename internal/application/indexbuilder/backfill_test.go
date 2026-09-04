@@ -2476,13 +2476,13 @@ func TestMetadataBackfillSkipsForeignLedgerLogs(t *testing.T) {
 
 	// The task ledger's rows were backfilled — guards against this test
 	// passing vacuously on a backfill that indexed nothing at all.
-	taskRmap := readstore.ReverseMapPrefix(dal.NewKeyBuilder(), taskLedger, readstore.NamespaceAccount)
+	taskRmap := testReverseMapNamespacePrefix(dal.NewKeyBuilder(), taskLedger, readstore.NamespaceAccount)
 	assert.NotZero(t, countKeysWithPrefix(t, b.readStore, taskRmap), "task ledger's rmap rows must be backfilled")
 	assert.Positive(t, b.eventGCWriteEpoch[readstore.PrefixMetadataIndex], "metadata backfill commit dirties metadata events")
 	assert.Positive(t, b.eventGCWriteEpoch[readstore.PrefixEntityExists], "fresh metadata backfill row dirties exists events")
 
 	// The foreign ledger's keyspace stayed untouched: it never indexed
 	// anything, so any row here is an orphan.
-	foreignRmap := readstore.ReverseMapPrefix(dal.NewKeyBuilder(), foreignLedger, readstore.NamespaceAccount)
+	foreignRmap := testReverseMapNamespacePrefix(dal.NewKeyBuilder(), foreignLedger, readstore.NamespaceAccount)
 	assert.Zero(t, countKeysWithPrefix(t, b.readStore, foreignRmap), "foreign ledger must have no rmap rows")
 }

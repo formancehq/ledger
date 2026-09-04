@@ -8,6 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -16,7 +17,7 @@ import (
 func countReverseMapRows(t *testing.T, b *Builder, ledger, ns, metaKey string) int {
 	t.Helper()
 
-	prefix := readstore.ReverseMapPrefix(b.kb, ledger, ns)
+	prefix := testReverseMapNamespacePrefix(b.kb, ledger, ns)
 	upper := readstore.IncrementBytes(prefix)
 
 	snap := b.readStore.NewSnapshot()
@@ -40,6 +41,14 @@ func countReverseMapRows(t *testing.T, b *Builder, ledger, ns, metaKey string) i
 	}
 
 	return count
+}
+
+func testReverseMapNamespacePrefix(kb *dal.KeyBuilder, ledger, ns string) []byte {
+	return kb.Reset().
+		PutByte(readstore.PrefixReverseMap).
+		PutLedgerNameFixed(ledger).
+		PutNamespace(ns).
+		Snapshot()
 }
 
 func savedAccountMetadata(account, key string, value int64) *commonpb.SavedMetadata {

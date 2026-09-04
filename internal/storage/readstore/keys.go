@@ -574,18 +574,6 @@ func LedgerLogDateRangePrefix(kb *dal.KeyBuilder, ledgerName string) []byte {
 		Snapshot()
 }
 
-// ReverseMapPrefix returns the prefix for scanning reverse map entries
-// within a namespace.
-//
-//	[0x03][ledgerName padded 64B][ns:]
-func ReverseMapPrefix(kb *dal.KeyBuilder, ledgerName string, ns string) []byte {
-	return kb.Reset().
-		PutByte(PrefixReverseMap).
-		PutLedgerNameFixed(ledgerName).
-		PutNamespace(ns).
-		Snapshot()
-}
-
 // ReverseMapFieldPrefix returns the prefix for every reverse-map version of a
 // metadata field in one namespace.
 //

@@ -66,6 +66,10 @@ var reverseMapBenchmarkTargets = []reverseMapBenchmarkTarget{
 // rebuilding it inside the timed loop would dominate the result. It therefore
 // isolates the decision this keying change affects: namespace scan + point
 // tombstones versus one field-bounded range tombstone.
+//
+// This fixture is package-local. The indexbuilder fold benchmark models a
+// different workload and may use different entity-ID widths; only layout
+// comparisons within this suite are valid, not ratios across the two suites.
 func BenchmarkReverseMapKeying(b *testing.B) {
 	fields := reverseMapBenchmarkFieldNames()
 	versions := []uint32{reverseMapBenchmarkVersion, reverseMapBenchmarkVersion + 1}
@@ -187,7 +191,7 @@ func benchmarkReverseMapRewriteScan(
 	b.Helper()
 
 	kb := dal.NewKeyBuilder()
-	lower := ReverseMapPrefix(kb, reverseMapBenchmarkLedger, target.namespace)
+	lower := reverseMapBenchmarkNamespacePrefix(kb, target.namespace)
 	if layout.fieldFirst {
 		lower = reverseMapBenchmarkVersionPrefix(kb, target, field, reverseMapBenchmarkVersion)
 	}
@@ -247,7 +251,7 @@ func benchmarkReverseMapPurgeFieldPlan(
 	b.Helper()
 
 	kb := dal.NewKeyBuilder()
-	lower := ReverseMapPrefix(kb, reverseMapBenchmarkLedger, target.namespace)
+	lower := reverseMapBenchmarkNamespacePrefix(kb, target.namespace)
 	if layout.fieldFirst {
 		lower = reverseMapBenchmarkFieldPrefix(kb, target, field)
 	}
@@ -507,6 +511,14 @@ func reverseMapBenchmarkFieldPrefix(
 	field string,
 ) []byte {
 	return ReverseMapFieldPrefix(kb, reverseMapBenchmarkLedger, target.namespace, field)
+}
+
+func reverseMapBenchmarkNamespacePrefix(kb *dal.KeyBuilder, namespace string) []byte {
+	return kb.Reset().
+		PutByte(PrefixReverseMap).
+		PutLedgerNameFixed(reverseMapBenchmarkLedger).
+		PutNamespace(namespace).
+		Snapshot()
 }
 
 func reverseMapBenchmarkVersionPrefix(
