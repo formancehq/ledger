@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/formancehq/invariants"
+
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -215,7 +217,7 @@ var (
 	ErrReverseMapKeyTruncated   = errors.New("reverse map key: truncated")
 	ErrReverseMapKeyNamespace   = errors.New("reverse map key: unknown namespace")
 	ErrReverseMapKeyLedgerName  = errors.New("reverse map key: malformed ledger name")
-	ErrReverseMapKeyEntityID    = errors.New("reverse map key: empty entity id")
+	ErrReverseMapKeyEntityID    = errors.New("reverse map key: malformed entity id")
 	ErrReverseMapKeyMetadataKey = errors.New("reverse map key: malformed metadata key")
 )
 
@@ -238,11 +240,14 @@ var (
 //   - ErrReverseMapKeyNamespace — neither NamespaceAccount nor NamespaceTransaction
 //   - ErrReverseMapKeyLedgerName — an embedded NUL surviving the fixed-width
 //     block's zero-padding trim, or an empty ledger name
-//   - ErrReverseMapKeyEntityID — an empty account address or malformed transaction id
-//   - ErrReverseMapKeyMetadataKey — an empty metadata key, or one with no
-//     terminator. This shape check is deliberately not delegated to
-//     invariants.ValidateMetadataKey, so it cannot drift with future charset
-//     validation changes.
+//   - ErrReverseMapKeyEntityID — an invalid account address or malformed transaction id
+//   - ErrReverseMapKeyMetadataKey — an invalid metadata key or one with no
+//     terminator. Parsed strings are checked with the same production
+//     invariants as writes. This rejects re-splits whose decoded components
+//     violate those invariants, including embedded-terminator corruption with
+//     non-zero version bytes. Detection is best-effort: without an authenticated
+//     length or checksum, a byte sequence that re-splits entirely into valid
+//     field, version, and entity components remains inherently ambiguous.
 //
 // Use errors.Is to test for a specific cause. Callers must treat a non-nil
 // error as corruption, never as a silent skip.
@@ -284,6 +289,10 @@ func ParseReverseMapKey(key []byte) (ParsedReverseMapKey, error) {
 	}
 
 	parsed.MetadataKey = string(rest[:metadataEnd])
+	if err := invariants.ValidateMetadataKey(parsed.MetadataKey); err != nil {
+		return ParsedReverseMapKey{}, fmt.Errorf("%w: %w", ErrReverseMapKeyMetadataKey, err)
+	}
+
 	rest = rest[metadataEnd+1:]
 	if len(rest) < 4 {
 		return ParsedReverseMapKey{}, fmt.Errorf("%w: version block shorter than 4 bytes", ErrReverseMapKeyTruncated)
@@ -294,11 +303,8 @@ func ParseReverseMapKey(key []byte) (ParsedReverseMapKey, error) {
 
 	switch parsed.Namespace {
 	case NamespaceAccount:
-		if len(rest) == 0 {
-			return ParsedReverseMapKey{}, fmt.Errorf("%w: empty", ErrReverseMapKeyEntityID)
-		}
-		if idx := bytes.IndexByte(rest, 0x00); idx >= 0 {
-			return ParsedReverseMapKey{}, fmt.Errorf("%w: account address contains NUL at offset %d", ErrReverseMapKeyEntityID, idx)
+		if err := invariants.ValidateLedgerAccountAddress(string(rest)); err != nil {
+			return ParsedReverseMapKey{}, fmt.Errorf("%w: %w", ErrReverseMapKeyEntityID, err)
 		}
 		parsed.EntityID = bytes.Clone(rest)
 	case NamespaceTransaction:

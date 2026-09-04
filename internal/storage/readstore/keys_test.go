@@ -326,15 +326,26 @@ func TestParseReverseMapKey_Rejects(t *testing.T) {
 		"account entity id with an embedded NUL must be rejected": {
 			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "us\x00ers", "wallet_id", 1),
 			wantErr:         ErrReverseMapKeyEntityID,
-			wantErrContains: "contains NUL at offset 2",
+			wantErrContains: "ledger account address must contain only",
+		},
+		"account entity id outside the production alphabet must be rejected": {
+			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "users/alice", "wallet_id", 1),
+			wantErr:         ErrReverseMapKeyEntityID,
+			wantErrContains: "ledger account address must contain only",
 		},
 		"metadata key containing a NUL cannot form a valid account key": {
 			// The first NUL becomes the field terminator. The remaining field
-			// bytes shift into the fixed version block, leaving the real version
-			// bytes in the account suffix; its NUL check detects the corruption.
-			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "users:1", "meta\x00key", 1),
+			// bytes shift into the fixed version block. A version with no zero byte
+			// proves detection comes from validating the resulting account suffix,
+			// not accidentally finding NUL padding from a small version number.
+			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "users:1", "meta\x00key", 0x01010101),
 			wantErr:         ErrReverseMapKeyEntityID,
-			wantErrContains: "contains NUL at offset 0",
+			wantErrContains: "ledger account address must contain only",
+		},
+		"metadata key outside the production alphabet must be rejected": {
+			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "users:1", "meta key", 1),
+			wantErr:         ErrReverseMapKeyMetadataKey,
+			wantErrContains: "metadata key must match",
 		},
 		"empty metadata key must be rejected for an account entity": {
 			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "users:1", "", 1),

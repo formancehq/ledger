@@ -9,16 +9,10 @@ import (
 )
 
 // parseScopedReverseMapKey decodes k and asserts it belongs to (ledger, ns).
-// Every caller scans a Pebble prefix built from exactly (ledger, ns), so a
-// divergence between the decoded
-// key and the scope the caller iterated means the stored key is corrupt in a
-// way ParseReverseMapKey's own shape checks don't reject, not a runtime
-// condition. Per CLAUDE.md invariant #7 that gets a loud error, never a
-// silent skip. This is the single chokepoint for that assertion: callers
-// wrap the returned error with their own site-specific context and keep
-// their own soft continue/return for a legitimate metadata-key or version
-// mismatch (that check stays out of this helper — it isn't a corruption
-// signal).
+// Its sole caller scans an exact (ledger, namespace, field, version) prefix.
+// Divergence in ledger or namespace therefore means the stored key or range
+// contract is corrupt, not a runtime condition. Per invariant #7 it fails
+// loudly; the caller separately asserts the field and version before rewriting.
 func parseScopedReverseMapKey(k []byte, ledger, ns string) (readstore.ParsedReverseMapKey, error) {
 	rk, err := readstore.ParseReverseMapKey(k)
 	if err != nil {
