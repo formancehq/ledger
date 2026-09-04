@@ -1101,6 +1101,17 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		}}
 	}
 
+	// The same serving-window decision as the query compile gate: a binding
+	// more than one schema revision behind is a rebuild mid-chain (e.g. a
+	// rewound read store re-walking a retype chain), and scanning its
+	// keyspace would time-travel distinct values, facets, and summary to
+	// superseded semantics.
+	if !query.BindingWithinServingWindow(state.CurrentTypeDeclared, state.CurrentRevision, fields[metaKey].GetRevision()) {
+		return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{
+			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
+		}}
+	}
+
 	var cursorBytes []byte
 	if c := req.GetCursor(); c != "" {
 		cursorBytes, err = decodeCursor(c)

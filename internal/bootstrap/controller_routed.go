@@ -32,6 +32,10 @@ type RoutedController struct {
 	// nil means getLeaderCtrl. Tests inject a stub to drive the retry path
 	// without a raft soft state.
 	leaderResolver func() (ctrl.Controller, error)
+	// readBarrier performs the linearizable-read barrier; nil means
+	// Node.ReadIndexAndWait. Tests inject a stub to drive the wrapped read
+	// methods end to end without a raft node.
+	readBarrier func(ctx context.Context) (*node.ReadBarrierInfo, error)
 }
 
 // getLeaderCtrl returns the local controller when this node considers itself
@@ -102,8 +106,13 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 	// visible but excluded from the server-cost total (EN-1859). Charged whether
 	// or not the barrier succeeds — a failed attempt is still time the caller
 	// waited (see the fallback branch below).
+	readIndexAndWait := b.Node.ReadIndexAndWait
+	if b.readBarrier != nil {
+		readIndexAndWait = b.readBarrier
+	}
+
 	barrierStart := time.Now()
-	barrier, err := b.ReadIndexAndWait(ctx)
+	barrier, err := readIndexAndWait(ctx)
 	query.ProfileFromContext(ctx).AddBarrierWait(time.Since(barrierStart))
 
 	if err == nil {
@@ -524,7 +533,11 @@ func (b *RoutedController) InspectIndex(ctx context.Context, req *servicepb.Insp
 		return nil, err
 	}
 
-	return c.InspectIndex(ctx, req)
+	out, err := c.InspectIndex(ctx, req)
+
+	return retryOnStaleBinding(b, ctx, c, out, err, func(leader ctrl.Controller) (*servicepb.InspectIndexResponse, error) {
+		return leader.InspectIndex(ctx, req)
+	})
 }
 
 func (b *RoutedController) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {

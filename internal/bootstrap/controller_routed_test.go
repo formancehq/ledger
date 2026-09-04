@@ -14,7 +14,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -222,6 +224,108 @@ func TestRetryOnStaleBinding(t *testing.T) {
 		require.ErrorIs(t, err, error(building))
 		assert.False(t, profile.Forwarded)
 	})
+}
+
+// TestRoutedController_ListAccounts_ForwardsLocalBuildingRefusal drives a real
+// wrapped read method end to end: the local controller refuses exactly once
+// with INDEX_BUILDING, the leader serves, and the caller gets the leader's
+// page with the forward profiled. gomock's Times(1) pins the attempt counts —
+// one local attempt, one leader attempt, argument-exact.
+func TestRoutedController_ListAccounts_ForwardsLocalBuildingRefusal(t *testing.T) {
+	t.Parallel()
+
+	building := &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: `metadata["tier"]`}}
+	filter := &commonpb.QueryFilter{}
+
+	mockCtrl := gomock.NewController(t)
+	local := ctrlmock.NewMockController(mockCtrl)
+	remote := ctrlmock.NewMockController(mockCtrl)
+	leaderPage := cursor.NewSliceCursor([]*commonpb.Account{{Address: "acc:leader"}})
+
+	local.EXPECT().
+		ListAccounts(gomock.Any(), "ledger", uint32(10), "after", filter, true).
+		Return(nil, building).
+		Times(1)
+	remote.EXPECT().
+		ListAccounts(gomock.Any(), "ledger", uint32(10), "after", filter, true).
+		Return(leaderPage, nil).
+		Times(1)
+
+	routed := &RoutedController{
+		Node:            &node.Node{},
+		localController: local,
+		leaderResolver:  func() (ctrl.Controller, error) { return remote, nil },
+		readBarrier:     func(context.Context) (*node.ReadBarrierInfo, error) { return nil, nil },
+	}
+
+	ctx, profile := query.WithProfile(context.Background())
+
+	got, err := routed.ListAccounts(ctx, "ledger", 10, "after", filter, true)
+	require.NoError(t, err)
+
+	accounts, err := cursor.Collect(got)
+	require.NoError(t, err)
+	require.Len(t, accounts, 1)
+	assert.Equal(t, "acc:leader", accounts[0].GetAddress())
+	assert.True(t, profile.Forwarded)
+}
+
+// TestRoutedController_InspectIndex_ForwardsLocalBuildingRefusal pins the same
+// contract on InspectIndex — the only non-compile producer of INDEX_BUILDING —
+// which routes through retryOnStaleBinding like the list reads.
+func TestRoutedController_InspectIndex_ForwardsLocalBuildingRefusal(t *testing.T) {
+	t.Parallel()
+
+	building := &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: `metadata["tier"]`}}
+	req := &servicepb.InspectIndexRequest{Ledger: "ledger", MetadataKey: "tier"}
+	leaderResp := &servicepb.InspectIndexResponse{}
+
+	mockCtrl := gomock.NewController(t)
+	local := ctrlmock.NewMockController(mockCtrl)
+	remote := ctrlmock.NewMockController(mockCtrl)
+
+	local.EXPECT().InspectIndex(gomock.Any(), req).Return(nil, building).Times(1)
+	remote.EXPECT().InspectIndex(gomock.Any(), req).Return(leaderResp, nil).Times(1)
+
+	routed := &RoutedController{
+		Node:            &node.Node{},
+		localController: local,
+		leaderResolver:  func() (ctrl.Controller, error) { return remote, nil },
+		readBarrier:     func(context.Context) (*node.ReadBarrierInfo, error) { return nil, nil },
+	}
+
+	ctx, profile := query.WithProfile(context.Background())
+
+	got, err := routed.InspectIndex(ctx, req)
+	require.NoError(t, err)
+	assert.Same(t, leaderResp, got)
+	assert.True(t, profile.Forwarded)
+}
+
+// TestRoutedController_InspectIndex_StaleRefusalNotForwarded: under
+// explicitly-stale consistency InspectIndex keeps this node's refusal.
+func TestRoutedController_InspectIndex_StaleRefusalNotForwarded(t *testing.T) {
+	t.Parallel()
+
+	building := &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: `metadata["tier"]`}}
+	req := &servicepb.InspectIndexRequest{Ledger: "ledger", MetadataKey: "tier"}
+
+	mockCtrl := gomock.NewController(t)
+	local := ctrlmock.NewMockController(mockCtrl)
+	local.EXPECT().InspectIndex(gomock.Any(), req).Return(nil, building).Times(1)
+
+	routed := &RoutedController{Node: &node.Node{}, localController: local, leaderResolver: func() (ctrl.Controller, error) {
+		t.Error("a stale read must not resolve a forward target")
+
+		return nil, commonpb.ErrNoLeader
+	}}
+
+	ctx, profile := query.WithProfile(context.Background())
+	ctx = grpcadp.WithConsistency(ctx, grpcadp.ConsistencyStale)
+
+	_, err := routed.InspectIndex(ctx, req)
+	require.ErrorIs(t, err, error(building))
+	assert.False(t, profile.Forwarded)
 }
 
 // TestRoutedController_ListAccounts_StaleRefusalNotForwarded drives a real

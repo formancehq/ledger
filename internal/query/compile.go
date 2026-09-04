@@ -520,7 +520,7 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 		// keeps its behavior — field conditions on an undeclared key were
 		// rejected then.
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
-	case !resolved.TypeDeclared, resolved.Revision+1 < fieldSchema.GetRevision():
+	case !BindingWithinServingWindow(resolved.TypeDeclared, resolved.Revision, fieldSchema.GetRevision()):
 		// Two or more revisions behind the schema: a rebuild mid-chain.
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
 	default:
@@ -2163,3 +2163,17 @@ func (it *SliceIterator) Err() error { return nil }
 func (it *SliceIterator) Close() {}
 
 var _ readstore.EntityIterator = (*SliceIterator)(nil)
+
+// BindingWithinServingWindow is the serving-window decision shared by the
+// compile gate above and InspectIndex: a served binding may answer under a
+// schema at schemaRevision only from that revision's direct predecessor
+// onward. An undeclared binding is a valid predecessor only of a first
+// declaration; a declared binding must be at most one revision behind.
+// Anything further back is a rebuild mid-chain and reads as INDEX_BUILDING.
+func BindingWithinServingWindow(declared bool, bindingRevision, schemaRevision uint32) bool {
+	if !declared {
+		return schemaRevision <= 1
+	}
+
+	return bindingRevision+1 >= schemaRevision
+}
