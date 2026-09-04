@@ -60,7 +60,7 @@ type EntityEnricher struct {
 func Execute(
 	ctx context.Context,
 	rs *readstore.Store,
-	pebbleStore *dal.Store,
+	pebbleStore queryHandleStore,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	preparedQueryAttr *attributes.Attribute[*commonpb.PreparedQuery],
 	indexAttr *attributes.Attribute[*commonpb.Index],
@@ -75,8 +75,21 @@ func Execute(
 		))
 	defer span.End()
 
-	// Fetch ledger info for schema-based filter validation and ledger ID resolution
-	ledgerInfo, err := GetLedgerByName(ctx, pebbleStore, req.GetLedger())
+	// The prepared-query definition and ledger schema are request-local query
+	// state. Open the main snapshot before loading them so a concurrent update,
+	// deletion, or schema change cannot be combined with entities from a newer
+	// state. The query shape is not known yet, so reserve the event-history floor
+	// until the definition tells us whether index alignment is owed.
+	handle, releaseHold, err := OpenReservedQueryHandle(rs, pebbleStore)
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	defer releaseHold()
+	defer func() { _ = handle.Close() }()
+
+	// Fetch ledger info for schema-based filter validation and ledger ID resolution.
+	ledgerInfo, err := GetLedgerByName(ctx, handle, req.GetLedger())
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, &domain.ErrLedgerNotFound{Name: req.GetLedger()}
@@ -85,8 +98,9 @@ func Execute(
 		return nil, fmt.Errorf("reading ledger info: %w", err)
 	}
 
-	// Read the prepared query from Pebble
-	pq, err := ReadPreparedQuery(ctx, preparedQueryAttr, pebbleStore, ledgerInfo.GetName(), req.GetQueryName())
+	// Read the prepared query from the same main snapshot used by compilation,
+	// aggregation, and entity enrichment.
+	pq, err := ReadPreparedQuery(ctx, preparedQueryAttr, handle, ledgerInfo.GetName(), req.GetQueryName())
 	if err != nil {
 		return nil, fmt.Errorf("reading prepared query: %w", err)
 	}
@@ -104,18 +118,6 @@ func Execute(
 	}
 
 	schema := SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), pq.GetTarget())
-
-	// Always open a read handle — needed for filter compilation and entity
-	// enrichment. Opened BEFORE the index snapshot: alignment guarantees the
-	// snapshot's fold cursor covers everything the handle sees (EN-1748), and
-	// OpenQueryHandle holds reclamation still across the two steps.
-	handle, releaseHold, err := OpenQueryHandle(rs, pebbleStore, pq.GetFilter(), pq.GetTarget())
-	if err != nil {
-		return nil, fmt.Errorf("creating read handle: %w", err)
-	}
-
-	defer releaseHold()
-	defer func() { _ = handle.Close() }()
 
 	var (
 		indexSnap    *pebble.Snapshot
