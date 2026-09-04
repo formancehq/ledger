@@ -630,7 +630,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 
 	done := false
 
-	rmapPrefix := readstore.ReverseMapPrefix(kb, task.ledger, ns)
+	rmapPrefix := readstore.ReverseMapVersionPrefix(kb, task.ledger, ns, task.key, currentVersion)
 	upper := readstore.IncrementBytes(rmapPrefix)
 
 	// Pair two Pebble snapshots: one on the read store (rmap, forward
@@ -768,20 +768,16 @@ scan:
 			return false, fmt.Errorf("schema rewrite: %w", err)
 		}
 
-		if rk.MetadataKey != task.key {
-			continue
-		}
-
 		entityID, entryVersion := rk.EntityID, rk.Version
 
-		// Skip rmap rows that don't belong to v_current. The rewrite
-		// reads from v_current and writes to v_pending; without this
-		// filter the iterator would also see v_pending rows already
-		// written by us or by live dual-writes, leading to wasted
-		// re-processing in the best case and lossy overwrites in the
-		// worst.
-		if entryVersion != currentVersion {
-			continue
+		// The iterator is bounded to exactly (field, v_current). A mismatch
+		// means either the stored key or the key-range contract is corrupt;
+		// silently skipping would allow an incomplete rewrite to switch.
+		if rk.MetadataKey != task.key || entryVersion != currentVersion {
+			return false, fmt.Errorf(
+				"invariant: schema rewrite range for field %q v=%d yielded field %q v=%d",
+				task.key, currentVersion, rk.MetadataKey, entryVersion,
+			)
 		}
 
 		rawValue, lookupErr := b.fetchStoredMetadataValue(fsmHandle, task.ledger, task.targetType, task.key, entityID)

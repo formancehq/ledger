@@ -47,11 +47,11 @@ type reverseMapFieldKey struct {
 // never O(rows). Pebble iterates in key order, so "first sample" is
 // deterministic for a given store.
 // reverseMapVerdict caches one field's resolved verdict: whether its rows are
-// orphans, and — when they are — which purge path must have missed them, for
-// the finding's diagnostics.
+// orphans, and — when they are — which lifecycle path best labels the finding's
+// diagnostics.
 type reverseMapVerdict struct {
-	orphan   bool
-	missedBy string
+	orphan         bool
+	lifecycleLabel string
 }
 
 type reverseMapAggregate struct {
@@ -103,15 +103,14 @@ type reverseMapOrphanScope struct {
 // compareReverseMapOrphans reports reverse-map (rmap, prefix 0x03) rows in the
 // peer read-index store whose metadata field is no longer indexed.
 //
-// The reverse map is the one read-index limb that cannot be range-deleted per
-// field: its metadata key sits *after* a fixed-width 4-byte version block
-// ([ledger][ns][entity][version][metaKey]), so there is no prefix covering
-// "every row of this field". Removing a field therefore scans the namespace and
-// point-deletes row by row (purgeReverseMapForKey), and a row that scan misses
-// is a permanent orphan — the forward index (0x01) and entity-exists index
-// (0x02) limbs, both range-deletable by field, cannot leak this way. No pass
-// has ever looked at the rmap: compareIndexes verifies the SubAttrIndex
-// registry in the primary store, not the peer index it drives.
+// Reverse-map keys are field/version-first:
+// [ledger][ns][metadataKey\x00][version][entity]. All rows for one field are
+// therefore contiguous, and purgeReverseMapForKey removes them across every
+// version with one field-bounded DeleteRange. The reverse map remains the peer
+// projection this checker inspects: compareIndexes verifies the SubAttrIndex
+// registry in the primary store, not the read-index rows that registry drives.
+// Keeping this pass catches corruption and lifecycle-contract violations even
+// though a correct field purge no longer has a row-by-row partial-success mode.
 //
 // This is a peer-store rebuild-health check, not an invariant-#8 main-store
 // projection compare: the primary store is the oracle here, and the read index
@@ -121,19 +120,21 @@ type reverseMapOrphanScope struct {
 // target, metadata key). The registry decides alone. Both ends of the index
 // lifecycle purge the reverse map — RemovedMetadataFieldType always ran
 // purgeReverseMapForKey, and handleDroppedIndexLog now runs the same purge on
-// DropIndex — so at an aligned peer view a live row with no registry entry
-// means exactly "a purge missed rows". Evaluated only on an exactly aligned
-// peer view; the malformed-key class needs no oracle at all and always runs.
-// See ALIGNMENT below.
+// DropIndex — so at an aligned peer view a live row with no registry entry is a
+// lifecycle invariant violation. It may indicate a broken purge path or direct
+// read-store corruption. Evaluated only on an exactly aligned peer view; the
+// malformed-key class needs no oracle at all and always runs. See ALIGNMENT
+// below.
 //
 // Schema declaration legitimises NOTHING. The old rule tolerated
 // declared-but-unregistered rows as DropIndex residue (the pre-purge leak,
 // EN-1621), and that tolerance was precisely the blind spot that would have
-// hidden a regression in the drop purge — plus a subtler one it already hid: a
-// removal-scan miss on a field later re-declared read as legitimate through
-// the schema term. The replayed schema survives only as the finding's
-// diagnostic: an orphan of a still-declared field can only have been missed by
-// the DropIndex purge, an undeclared one by the RemovedMetadataFieldType scan.
+// hidden a regression in the drop purge — plus stale rows for a removed field
+// that was later re-declared. The replayed schema survives only as the
+// finding's diagnostic classification: a still-declared orphan is labelled
+// against the DropIndex lifecycle, while an undeclared one is labelled against
+// RemovedMetadataFieldType. It is not the liveness oracle and does not rule out
+// corruption outside either lifecycle path.
 //
 // The schema used for that label MUST be the audit-derived replayed schema,
 // never the stored LedgerInfo.MetadataSchema — an oracle input must never come
@@ -287,7 +288,7 @@ func (c *Checker) compareReverseMapOrphans(
 	// to the number of distinct fields. Bounded by the same set of triples the
 	// aggregates are.
 	verdicts := make(map[reverseMapFieldKey]reverseMapVerdict)
-	orphanMissedBy := make(map[reverseMapFieldKey]string)
+	orphanLifecycleLabels := make(map[reverseMapFieldKey]string)
 
 	for iter.First(); iter.Valid(); iter.Next() {
 		key := iter.Key()
@@ -348,26 +349,27 @@ func (c *Checker) compareReverseMapOrphans(
 			if aligned {
 				// The registry decides, alone: every reverse-map row must
 				// belong to a currently registered index. Both lifecycle ends
-				// purge — RemovedMetadataFieldType always did, DropIndex does
-				// now — so at an aligned view a row with no registry entry is
-				// a purge miss, full stop. Schema declaration legitimises
-				// NOTHING: tolerating declared-but-unregistered rows is
-				// exactly the blind spot that hid dropped-index leaks, and it
-				// also hid removal-scan misses on fields that were later
-				// re-declared.
+				// purge — RemovedMetadataFieldType and DropIndex both use the
+				// field-bounded purge — so at an aligned view a row with no
+				// registry entry violates the lifecycle invariant. Schema
+				// declaration legitimises NOTHING: tolerating
+				// declared-but-unregistered rows is exactly the blind spot that
+				// hid dropped-index leaks and stale rows later made plausible by
+				// re-declaring the field.
 				_, indexed := indexedFields[indexes.KeyFor(parsed.Ledger, indexes.MetadataID(target, parsed.MetadataKey))]
 				verdict.orphan = !indexed
 
 				if verdict.orphan {
-					// The schema term survives only as the diagnostic: which
-					// purge path missed. A declared field's index can only
-					// have gone away through DropIndex; an undeclared (or
-					// removal-recorded) one through RemovedMetadataFieldType.
+					// The schema term survives only as a diagnostic lifecycle
+					// classification. A declared field is labelled against
+					// DropIndex; an undeclared (or removal-recorded) one against
+					// RemovedMetadataFieldType. The registry remains the sole
+					// liveness oracle.
 					_, declared := commonpb.SchemaFieldForTarget(scope.replayedSchemas[parsed.Ledger], target, parsed.MetadataKey)
 					if declared != nil {
-						verdict.missedBy = "DropIndex purge"
+						verdict.lifecycleLabel = "DropIndex purge"
 					} else {
-						verdict.missedBy = "RemovedMetadataFieldType scan"
+						verdict.lifecycleLabel = "RemovedMetadataFieldType purge"
 					}
 				}
 			}
@@ -380,7 +382,7 @@ func (c *Checker) compareReverseMapOrphans(
 		}
 
 		observeReverseMapRow(orphaned, field, renderReverseMapEntity(parsed))
-		orphanMissedBy[field] = verdict.missedBy
+		orphanLifecycleLabels[field] = verdict.lifecycleLabel
 	}
 
 	if err := iter.Error(); err != nil {
@@ -391,7 +393,7 @@ func (c *Checker) compareReverseMapOrphans(
 		))
 	}
 
-	emitReverseMapFindings(orphaned, orphanMissedBy, unknownLedgers, malformed, callback)
+	emitReverseMapFindings(orphaned, orphanLifecycleLabels, unknownLedgers, malformed, callback)
 }
 
 // collectIndexedFields builds the oracle: every index key present in the
@@ -470,7 +472,7 @@ func (c *Checker) collectIndexedFields(
 // emits them in a deterministic order.
 func emitReverseMapFindings(
 	orphaned map[reverseMapFieldKey]*reverseMapAggregate,
-	orphanMissedBy map[reverseMapFieldKey]string,
+	orphanLifecycleLabels map[reverseMapFieldKey]string,
 	unknownLedgers map[string]*reverseMapAggregate,
 	malformed map[string]*reverseMapAggregate,
 	callback func(*servicepb.CheckStoreEvent),
@@ -482,8 +484,8 @@ func emitReverseMapFindings(
 			class:  reverseMapClassOrphan,
 			ledger: key.ledger,
 			message: fmt.Sprintf(
-				"reverse-map rows survive for metadata field %q (namespace %q) on ledger %q with no registered index — missed by the %s: rows=%d, sample %s",
-				key.metaKey, key.namespace, key.ledger, orphanMissedBy[key], agg.rows, agg.sample),
+				"reverse-map rows survive for metadata field %q (namespace %q) on ledger %q with no registered index — classified against the %s lifecycle: rows=%d, sample %s",
+				key.metaKey, key.namespace, key.ledger, orphanLifecycleLabels[key], agg.rows, agg.sample),
 		})
 	}
 
@@ -542,7 +544,7 @@ func targetTypeForReverseMapNamespace(ns string) (commonpb.TargetType, bool) {
 //
 // The transaction branch is safe to index unconditionally because
 // ParseReverseMapKey guarantees an exactly-8-byte big-endian EntityID for
-// NamespaceTransaction — it rejects anything shorter as truncated.
+// NamespaceTransaction — any other length returns ErrReverseMapKeyEntityID.
 func renderReverseMapEntity(parsed readstore.ParsedReverseMapKey) string {
 	if parsed.Namespace == readstore.NamespaceTransaction {
 		return "transaction " + strconv.FormatUint(binary.BigEndian.Uint64(parsed.EntityID), 10)
@@ -551,10 +553,12 @@ func renderReverseMapEntity(parsed readstore.ParsedReverseMapKey) string {
 	return "account " + string(parsed.EntityID)
 }
 
-// reverseMapKeyHexPrefixBytes bounds how much of a malformed key is rendered into
-// a finding. Enough to identify the corrupted shape (prefix byte + the
-// fixed-width ledger-name block + the start of the namespace and entity) without
-// letting key length drive the message size.
+// reverseMapKeyHexPrefixBytes bounds how much of a malformed key is rendered
+// into a finding. It is a diagnostic byte prefix, not a promise to include a
+// complete encoded component: 64 bytes do not cover the full
+// discriminator-plus-fixed-ledger header, and namespace, field, version, or
+// entity bytes may be absent. Ledger attribution is handled separately by
+// bestEffortReverseMapLedger.
 const reverseMapKeyHexPrefixBytes = 64
 
 // renderReverseMapKeyPrefix hex-renders at most reverseMapKeyHexPrefixBytes of a
