@@ -79,7 +79,7 @@ var _ = Describe("Index binding across a read-store rebuild", Ordered, func() {
 	lo, hi := int64(-1000), int64(0)
 	negRange := actions.Int64RangeMetadataFilter(key, &lo, &hi)
 
-	It("never serves the creation-era binding while re-walking the retype chain", func() {
+	It("converges after a read-store rewind without ever emitting a creation-era page", func() {
 		apply(actions.CreateLedgerWithSchemaAction(ledger, nil, []*commonpb.SetMetadataFieldTypeCommand{
 			{TargetType: acct, Key: key, Type: commonpb.MetadataType_METADATA_TYPE_INT32},
 		}))
@@ -141,16 +141,19 @@ var _ = Describe("Index binding across a read-store rebuild", Ordered, func() {
 		Expect(os.Rename(flushPoint, readIndexDir)).To(Succeed())
 		testutil.RestartNode(ctx, node)
 
-		// Stale reads observe the node's own view without waiting for fold
-		// alignment, so they see the walk as it happens. Errors are the walk's
-		// legal states (building, not-found before the create folds, and the
-		// UINT32 window's negative-bound compilation rejection); a page holding
-		// acc:neg is the creation-era binding leaking — the bug.
+		// Stale consistency skips only the Raft barrier; a filtered read still
+		// fold-aligns its index snapshot, so each probe returns only once the
+		// rewound node's fold covers the main store — post-alignment state, not
+		// the walk itself (the header above concedes mid-walk states are not
+		// reachable through the public API). What the loop pins is exactly the
+		// post-alignment contract: probes may refuse with the walk's legal
+		// retryable errors, and no page — ever — holds acc:neg, the
+		// creation-era binding's discriminator.
 		staleCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "stale")
 
 		Eventually(func(g Gomega) {
 			accounts, err := actions.ListAccountsFiltered(staleCtx, node.Client, ledger, 0, "", negRange)
-			g.Expect(err).To(Succeed()) // the walk's legal refusals — retry
+			g.Expect(err).To(Succeed()) // legal retryable refusals — retry
 
 			for _, a := range accounts {
 				if a.GetAddress() == "acc:neg" {
