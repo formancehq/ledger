@@ -159,8 +159,8 @@ type ListOptionsSupport struct {
 }
 
 // ValidateListOptions returns an InvalidArgument status when opts carries a
-// non-default value on a field the handler does not yet implement. min_log_sequence
-// and the opaque cursor + page_size are always considered supported (they're
+// non-default value on a field the handler does not yet implement. The opaque
+// cursor + page_size are always considered supported (they're
 // honored by every list handler).
 func ValidateListOptions(opts *commonpb.ListOptions, support ListOptionsSupport) error {
 	if opts == nil {

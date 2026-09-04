@@ -28,7 +28,6 @@ func NewListKeysCommand() *cobra.Command {
 	cmdutil.AddPaginationFlags(cmd, cmdutil.PaginationOptions{
 		SupportsReverse: true,
 	})
-	cmdutil.AddMinLogSequenceFlag(cmd)
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -47,14 +46,13 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 	defer cancel()
 
 	pgn := cmdutil.GetPaginationFlags(cmd)
-	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 
 	keys, nextCursor, err := cmdutil.FetchSinglePageOrAll(cmd, pgn.Cursor, func(cur string) ([]*commonpb.SigningKey, metadata.MD, error) {
 		page := pgn
 		page.Cursor = cur
 
 		stream, err := client.ListSigningKeys(ctx, &servicepb.ListSigningKeysRequest{
-			Options: cmdutil.BuildListOptions(page, cmdutil.ConsistencyFlags{MinLogSequence: minLogSeq}, nil),
+			Options: cmdutil.BuildListOptions(page, cmdutil.ConsistencyFlags{}, nil),
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("listing signing keys: %w", err)

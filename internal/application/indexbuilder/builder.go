@@ -766,10 +766,10 @@ func (b *Builder) loop(ctx context.Context) {
 		b.processBackgroundTasks(ctx, stop, cursor)
 		b.runEventGC(cursor)
 
-		// Always wake WaitForSequence waiters so they can re-check progress.
+		// Always wake projection-progress and checkpoint-readiness waiters.
 		// Without this, a waiter that enters Wait() between the last
-		// NotifyProgress (inside processLogs) and the next tick would miss
-		// the broadcast and block until new logs arrive.
+		// NotifyProgress (inside processLogs or a background task) and the next
+		// tick could miss the broadcast and block until new logs arrive.
 		b.readStore.NotifyProgress()
 	}
 }

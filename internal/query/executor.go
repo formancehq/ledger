@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"strconv"
 
 	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel/attribute"
@@ -22,32 +21,6 @@ import (
 )
 
 const defaultPageSize = 100
-
-// ErrReadIndexNotCaughtUp is returned when the read index has not yet processed
-// the requested minimum log sequence.
-type ErrReadIndexNotCaughtUp struct {
-	Requested uint64
-	Current   uint64
-}
-
-func (e *ErrReadIndexNotCaughtUp) Error() string {
-	return fmt.Sprintf("read index has not caught up to sequence %d (current: %d)", e.Requested, e.Current)
-}
-
-func (*ErrReadIndexNotCaughtUp) Reason() string { return domain.ErrReasonReadIndexNotCaughtUp }
-
-func (e *ErrReadIndexNotCaughtUp) Metadata() map[string]string {
-	return map[string]string{
-		"requested": strconv.FormatUint(e.Requested, 10),
-		"current":   strconv.FormatUint(e.Current, 10),
-	}
-}
-
-// Compile-time assertion that ErrReadIndexNotCaughtUp satisfies
-// domain.Describable. Without it the shared error edge cannot classify the
-// condition and every REST list endpoint renders a routine fold lag as an
-// opaque 500 rather than a retryable 503.
-var _ domain.Describable = (*ErrReadIndexNotCaughtUp)(nil)
 
 // EntityEnricher provides functions to hydrate raw entity IDs into full objects.
 type EntityEnricher struct {
@@ -149,16 +122,6 @@ func Execute(
 
 	defer releaseLease()
 	defer func() { _ = indexSnap.Close() }()
-
-	// Check min_log_sequence freshness against the handle: alignment makes
-	// the index snapshot at least as fresh, so the handle's sequence is the
-	// response's consistent state.
-	if req.GetMinLogSequence() > 0 && mainSeq < req.GetMinLogSequence() {
-		return nil, &ErrReadIndexNotCaughtUp{
-			Requested: req.GetMinLogSequence(),
-			Current:   mainSeq,
-		}
-	}
 
 	kb := dal.NewKeyBuilder()
 

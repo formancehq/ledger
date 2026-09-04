@@ -104,13 +104,12 @@ func TestBuildListOptions(t *testing.T) {
 		t.Parallel()
 		opts := cmdutil.BuildListOptions(
 			cmdutil.PaginationFlags{Cursor: "abc"},
-			cmdutil.ConsistencyFlags{CheckpointID: 7, MinLogSequence: 9},
+			cmdutil.ConsistencyFlags{CheckpointID: 7},
 			nil,
 		)
 		require.NotNil(t, opts)
 		require.Equal(t, "abc", opts.GetCursor())
 		require.Equal(t, uint64(7), opts.GetRead().GetCheckpointId())
-		require.Equal(t, uint64(9), opts.GetRead().GetMinLogSequence())
 	})
 
 	t.Run("with filter", func(t *testing.T) {
@@ -141,14 +140,12 @@ func TestAddConsistencyFlags(t *testing.T) {
 	cmdutil.AddConsistencyFlags(cmd)
 
 	require.NotNil(t, cmd.Flags().Lookup("checkpoint-id"))
-	require.NotNil(t, cmd.Flags().Lookup("min-log-sequence"))
+	require.Nil(t, cmd.Flags().Lookup("min-log-sequence"))
 
 	require.NoError(t, cmd.Flags().Set("checkpoint-id", "7"))
-	require.NoError(t, cmd.Flags().Set("min-log-sequence", "12"))
 
 	flags := cmdutil.GetConsistencyFlags(cmd)
 	require.Equal(t, uint64(7), flags.CheckpointID)
-	require.Equal(t, uint64(12), flags.MinLogSequence)
 }
 
 func TestAddFilterFlags(t *testing.T) {

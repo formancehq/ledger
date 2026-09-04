@@ -102,7 +102,7 @@ func DrainAllPages[T any](
 // Returns nil when no field is set so handlers see a clean "default
 // everything" signal on the wire.
 func BuildListOptions(pgn PaginationFlags, cns ConsistencyFlags, filter *commonpb.QueryFilter) *commonpb.ListOptions {
-	if pgn.PageSize == 0 && pgn.Cursor == "" && !pgn.Reverse && cns.CheckpointID == 0 && cns.MinLogSequence == 0 && filter == nil {
+	if pgn.PageSize == 0 && pgn.Cursor == "" && !pgn.Reverse && cns.CheckpointID == 0 && filter == nil {
 		return nil
 	}
 
@@ -116,19 +116,18 @@ func BuildListOptions(pgn PaginationFlags, cns ConsistencyFlags, filter *commonp
 }
 
 // BuildReadOptions packages just the consistency flags into a commonpb.ReadOptions
-// for Get* RPCs that do not paginate. Returns nil when both fields are zero.
+// for Get* RPCs that do not paginate. Returns nil when checkpointId is zero.
 func BuildReadOptions(cns ConsistencyFlags) *commonpb.ReadOptions {
 	return buildReadOptions(cns)
 }
 
 func buildReadOptions(cns ConsistencyFlags) *commonpb.ReadOptions {
-	if cns.CheckpointID == 0 && cns.MinLogSequence == 0 {
+	if cns.CheckpointID == 0 {
 		return nil
 	}
 
 	return &commonpb.ReadOptions{
-		CheckpointId:   cns.CheckpointID,
-		MinLogSequence: cns.MinLogSequence,
+		CheckpointId: cns.CheckpointID,
 	}
 }
 
@@ -197,38 +196,26 @@ func GetPaginationFlags(cmd *cobra.Command) PaginationFlags {
 	}
 }
 
-// AddMinLogSequenceFlag registers --min-log-sequence on cmd. Use this on
-// endpoints that gate live reads on log-sequence catch-up but do NOT support
-// checkpoint reads (audit, etc.); other callers should use
-// AddConsistencyFlags.
-func AddMinLogSequenceFlag(cmd *cobra.Command) {
-	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
-}
-
-// AddConsistencyFlags registers --checkpoint-id and --min-log-sequence on cmd.
-// Both are uint64 and default to 0 (no constraint).
+// AddConsistencyFlags registers --checkpoint-id on commands that support
+// immutable query-checkpoint reads.
 //
 // Commands whose server endpoint reads from the read store should call this;
 // raft-state-only commands (ledgers, signing, etc.) should omit it.
 func AddConsistencyFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
-	AddMinLogSequenceFlag(cmd)
 }
 
 // ConsistencyFlags carries the parsed values from AddConsistencyFlags.
 type ConsistencyFlags struct {
-	CheckpointID   uint64
-	MinLogSequence uint64
+	CheckpointID uint64
 }
 
 // GetConsistencyFlags reads the consistency flags registered by AddConsistencyFlags.
 func GetConsistencyFlags(cmd *cobra.Command) ConsistencyFlags {
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
-	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 
 	return ConsistencyFlags{
-		CheckpointID:   checkpointID,
-		MinLogSequence: minLogSeq,
+		CheckpointID: checkpointID,
 	}
 }
 

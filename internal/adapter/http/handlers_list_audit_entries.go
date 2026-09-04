@@ -33,13 +33,13 @@ import (
 // see commonpb/query_filter.go).
 //
 // It is NOT a full parity of the gRPC ListOptions contract: the gRPC surface
-// additionally honors `checkpointId` and `minLogSequence`. This HTTP endpoint
-// intentionally exposes neither and always performs a live read. A filter
-// containing a field other than seq still resolves through the asynchronous
-// audit projection, but the routed controller fixes a main-store Raft horizon
-// and the controller waits for the projection to certify it before querying
-// its snapshot. If checkpoint or explicit native-sequence options are added to
-// HTTP later, wire them through the same controller entry points as gRPC.
+// additionally honors `checkpointId` for a pinned checkpoint read. This HTTP
+// endpoint always performs a live linearizable read. For indexed filters, the
+// shared controller path automatically waits for the audit projection to
+// certify the fixed main-store horizon before serving the result; unfiltered
+// and seq-only reads do not depend on that projection. If checkpoint selection
+// is added to HTTP later, wire it through the same controller entry points the
+// gRPC path uses (impl.openCheckpointStores / Raft-horizon gating).
 func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) {
 	pageSize, ok := parsePageSize(w, r)
 	if !ok {
@@ -65,7 +65,7 @@ func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) 
 
 	reverse := queryParamBool(r, "reverse")
 
-	cursor, err := s.backend.ListAuditEntries(r.Context(), pageSize, afterSequence, filter, reverse, 0)
+	cursor, err := s.backend.ListAuditEntries(r.Context(), pageSize, afterSequence, filter, reverse)
 	if err != nil {
 		handleError(w, r, err)
 

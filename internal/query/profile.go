@@ -53,7 +53,7 @@ import (
 //     serialisation — but on a stream it also absorbs consumer back-pressure.
 //
 // BarrierDuration is excluded from both because it is a wait the caller opted
-// into (Raft ReadIndex quorum, ReadOptions.min_log_sequence catch-up), not work.
+// into the Raft ReadIndex quorum wait, not work.
 //
 // DeliverDuration is excluded from ServerDuration because on a server stream it
 // contains consumer back-pressure: folding it in would make the headline total
@@ -84,11 +84,11 @@ type QueryProfile struct {
 	// are subtracted out.
 	ExecuteDuration time.Duration
 	// BarrierDuration is time blocked on caller-requested read-consistency waits,
-	// LOCAL to this node: the min_log_sequence catch-up and the Raft ReadIndex
-	// quorum. Excluded from ServerDuration. Every local wait counts, including
-	// one that fails or is superseded — a follower that is syncing or loses its
-	// leader mid-quorum burns a local wait before falling back to the leader and
-	// reports it here, with Forwarded true.
+	// LOCAL to this node: the Raft ReadIndex quorum. Excluded from
+	// ServerDuration. Every local wait counts, including one that fails or is
+	// superseded — a follower that is syncing or loses its leader mid-quorum
+	// burns a local wait before falling back to the leader and reports it here,
+	// with Forwarded true.
 	BarrierDuration time.Duration
 	// DeliverDuration is time spent serialising result rows and handing them to
 	// the transport. Excluded from ServerDuration. On a gRPC server stream it is
@@ -109,11 +109,11 @@ type QueryProfile struct {
 	// remote node runs its own barrier and execution, and that whole cost lands in
 	// this profile's ExecuteDuration.
 	//
-	// Forwarded does NOT imply BarrierDuration == 0, and a non-zero value does
-	// not identify which wait occurred. A follower fallback can attempt a
-	// ReadIndex barrier before forwarding and keeps that local wait in the
-	// profile. The flag's job is narrower: stop a zero from being misread as "no
-	// barrier was needed".
+	// Forwarded does NOT imply BarrierDuration == 0. A non-zero value records a
+	// failed local barrier attempt before fallback: either the syncing precheck or
+	// a pending ReadIndex invalidated by a leadership change. It does not identify
+	// which trigger occurred. The flag's job is narrower: stop a zero from being
+	// misread as "no barrier was needed".
 	Forwarded bool
 	// Anomaly is non-empty when the phase bookkeeping detected a state that is
 	// impossible by contract (see clampPhase). It is surfaced in the log and on
@@ -219,7 +219,7 @@ func (p *QueryProfile) EnterExecute() {
 
 	if !p.executeEntered {
 		p.executeEntered = true
-		// Barrier waits before the executor (min_log_sequence, ReadIndex) are
+		// Barrier waits before the executor (ReadIndex) are
 		// caller-requested waiting, not preparation work.
 		p.PrepareDuration = p.clampPhase("prepare", time.Since(p.requestStart)-p.BarrierDuration)
 	}
@@ -241,8 +241,7 @@ func (p *QueryProfile) LeaveExecute() {
 }
 
 // AddBarrierWait records time blocked on a caller-requested read-consistency
-// barrier: the Raft ReadIndex quorum round-trip or the min_log_sequence
-// read-index catch-up. Nil-safe.
+// barrier: the Raft ReadIndex quorum round-trip. Nil-safe.
 func (p *QueryProfile) AddBarrierWait(d time.Duration) {
 	if p == nil {
 		return

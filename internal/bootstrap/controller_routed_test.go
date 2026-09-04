@@ -157,11 +157,11 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 		{
 			name: "list audit entries",
 			expect: func(local *ctrlmock.MockController) {
-				local.EXPECT().ListAuditEntries(barrierHorizonMatcher(42), uint32(10), uint64(0), nil, false, uint64(0)).
+				local.EXPECT().ListAuditEntries(barrierHorizonMatcher(42), uint32(10), uint64(0), nil, false).
 					Return(cursor.NewSliceCursor([]*auditpb.AuditEntry{}), nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
-				_, err := routed.ListAuditEntries(ctx, 10, 0, nil, false, 0)
+				_, err := routed.ListAuditEntries(ctx, 10, 0, nil, false)
 
 				return err
 			},

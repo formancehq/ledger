@@ -42,7 +42,6 @@ Examples:
 	cmd.Flags().Uint32("page-size", cmdutil.DefaultPageSize, "Number of results per page")
 	cmd.Flags().String("mode", "list", "Query mode: list or aggregate")
 	cmdutil.RegisterEnumCompletion(cmd, "mode", "list", "aggregate")
-	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence before reading")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 	cmdutil.AddAnalyzeFlag(cmd)
 	cmd.Flags().Bool("all", false, "Fetch all results at once (no pagination)")
@@ -71,7 +70,6 @@ func runExecute(cmd *cobra.Command, args []string) error {
 	paramFlags, _ := cmd.Flags().GetStringArray("param")
 	pageSize, _ := cmd.Flags().GetUint32("page-size")
 	modeStr, _ := cmd.Flags().GetString("mode")
-	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 	showProfile, _ := cmd.Flags().GetBool("analyze")
 	fetchAll, _ := cmd.Flags().GetBool("all")
 
@@ -102,13 +100,12 @@ func runExecute(cmd *cobra.Command, args []string) error {
 		var trailer metadata.MD
 
 		resp, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
-			Ledger:         ledgerName,
-			QueryName:      queryName,
-			Parameters:     params,
-			PageSize:       pageSize,
-			Cursor:         cursor,
-			MinLogSequence: minLogSeq,
-			Mode:           mode,
+			Ledger:     ledgerName,
+			QueryName:  queryName,
+			Parameters: params,
+			PageSize:   pageSize,
+			Cursor:     cursor,
+			Mode:       mode,
 		}, ggrpc.Trailer(&trailer))
 
 		cancel()
