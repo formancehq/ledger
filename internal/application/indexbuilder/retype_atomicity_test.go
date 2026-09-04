@@ -92,7 +92,7 @@ func TestRetypeDuringBackfill_FailedFoldRollsBackThenRetriesAndRestarts(t *testi
 	writeAppliedProposalToFSM(t, b, 1, 1, 1)
 
 	corruptProposalKey := dal.NewKeyBuilder().
-		PutZonePrefix(dal.ZoneCold, dal.SubColdAppliedProposal).
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal).
 		PutUint64(2).
 		Build()
 	corruptBatch := b.pebbleStore.OpenWriteSession()

@@ -10,7 +10,7 @@ The Ledger Operator manages `Cluster` custom resources to automate the lifecycle
 - **Persistent storage** for WAL and data volumes
 - **Observability** with OpenTelemetry traces, Prometheus metrics, and Pyroscope profiling
 - **Security** with TLS, OIDC authentication, and Ed25519 response signing
-- **Cold storage** archival to S3-compatible backends
+- **Backups** to S3-compatible backends
 - **Credentials** for application-level access control
 
 During StatefulSet scale-down, the operator queries `ledgerctl cluster status --json` before each Raft removal. An already-absent node satisfies the postcondition and is not removed again. If `remove-node` fails after its Raft change committed—even with an opaque or sanitized CLI error—the operator queries membership again and continues when the target is absent; it does not match human-readable error substrings.
