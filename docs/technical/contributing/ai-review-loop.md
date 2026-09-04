@@ -30,8 +30,8 @@ The launcher:
 7. invokes the technical reviewer once with the exact base SHA, candidate SHA,
    complete diff/worktree fingerprint, task/PR context, bugfix evidence, and
    GitHub findings as untrusted context; and
-8. after approval, revalidates target and remote head and, in `--push` mode,
-   publishes only with an exact `--force-with-lease`.
+8. after approval, performs one adjacent final target/head refresh and, in
+   `--push` mode, publishes only with an exact `--force-with-lease`.
 
 The happy path therefore has one validation call, one reviewer-provider call,
 and no fixer-provider call. A validation failure stops before collection and
@@ -69,7 +69,8 @@ reused across invocations.
 
 The candidate worktree remains distinct from the primary checkout and is bound
 to the expected PR and SHA before collector, validator, or reviewer subprocesses.
-The primary checkout is checked for accidental mutation at those boundaries.
+One outer root-integrity runner checks the primary checkout before and after the
+complete linear validation/findings/review run.
 See [AI PR worktree isolation](ai-worktree-isolation.md) for the low-level
 binding contract.
 

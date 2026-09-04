@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -173,7 +172,6 @@ func TestLinearFinalReviewFlow(t *testing.T) {
 		runGit(t, fixture.candidate, "add", "follow-up.txt")
 		runGit(t, fixture.candidate, "-c", "user.name=Review Loop Test", "-c", "user.email=review-loop@example.com", "commit", "-m", "fix finding")
 		fixture.head = strings.TrimSpace(runGitOutput(t, fixture.candidate, "rev-parse", "HEAD"))
-		writeBindingFile(t, fixture.bindingFile, 123, fixture.candidate, fixture.head, fixture.primary)
 		fixture.resetCounters(t)
 
 		second := fixture.run(t, "approve", false)
@@ -211,7 +209,6 @@ type linearFlowFixture struct {
 	primary               string
 	candidate             string
 	head                  string
-	bindingFile           string
 	validationRunDir      string
 	stateDir              string
 	knownFindingsFile     string
@@ -254,7 +251,6 @@ func newLinearFlowFixture(t *testing.T, binary string) *linearFlowFixture {
 		primary:               primary,
 		candidate:             candidate,
 		head:                  head,
-		bindingFile:           filepath.Join(fixtureRoot, "binding.json"),
 		validationRunDir:      filepath.Join(fixtureRoot, "validation"),
 		stateDir:              filepath.Join(fixtureRoot, "review-state"),
 		knownFindingsFile:     filepath.Join(fixtureRoot, "known-findings.json"),
@@ -268,7 +264,6 @@ func newLinearFlowFixture(t *testing.T, binary string) *linearFlowFixture {
 		reviewer:              filepath.Join(fixtureRoot, "reviewer.sh"),
 	}
 	require.NoError(t, os.MkdirAll(fixture.validationRunDir, 0o755))
-	writeBindingFile(t, fixture.bindingFile, 123, candidate, head, primary)
 	fixture.writeScripts(t)
 	fixture.resetCounters(t)
 
@@ -328,9 +323,7 @@ func (fixture *linearFlowFixture) run(t *testing.T, mode string, validationFails
 		"--worktree", fixture.candidate,
 		"--expected-head", fixture.head,
 		"--trusted-root", fixture.primary,
-		"--binding-file", fixture.bindingFile,
 		"--validation-run-dir", fixture.validationRunDir,
-		"--git-guard", filepath.Join(repositoryRootForTests(t), "scripts", "ai-git-guard"),
 		"--state-dir", fixture.stateDir,
 		"--validation-cmd", "bash "+shellQuote(fixture.validator),
 		"--known-findings-cmd", "bash "+shellQuote(fixture.collector),
@@ -402,19 +395,6 @@ func runGitOutput(t *testing.T, directory string, arguments ...string) string {
 	require.NoError(t, err, string(output))
 
 	return string(output)
-}
-
-func writeBindingFile(t *testing.T, path string, prNumber int, candidate, head, trustedRoot string) {
-	t.Helper()
-	content, err := json.Marshal(worktreeBindingFile{
-		Version:             1,
-		ExpectedPRNumber:    prNumber,
-		CandidateWorktree:   candidate,
-		ExpectedHead:        head,
-		TrustedRootCheckout: trustedRoot,
-	})
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(path, append(content, '\n'), 0o600))
 }
 
 func repositoryRootForTests(t *testing.T) string {

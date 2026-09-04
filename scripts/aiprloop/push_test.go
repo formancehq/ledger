@@ -130,30 +130,20 @@ func TestPushQuotesValidationPathsContainingAnApostrophe(t *testing.T) {
 	require.Contains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
 }
 
-func TestPushRevalidatesTargetAtEveryPublicationBoundary(t *testing.T) {
-	for _, test := range []struct {
-		name  string
-		stage string
-	}{
-		{name: "after initial review before readiness", stage: "after-initial-review"},
-		{name: "during exact review before authorization", stage: "after-exact-review"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			fixture := newPushFixture(t, pushFixtureOptions{targetMutation: test.stage})
-			output, exitCode := fixture.run(t)
-			require.Equal(t, 3, exitCode, output)
-			require.Contains(t, output, "BASE_REVALIDATION_CLASSIFICATION=ADVANCED")
-			require.Contains(t, output, "AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED")
-			require.NotContains(t, output, "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW")
-			require.NotContains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
-			require.Contains(t, output, "EXPECTED_BASE_SHA="+fixture.baseSHA)
-			require.Contains(t, output, "OBSERVED_BASE_SHA="+fixture.advancedBaseSHA)
-			require.Contains(t, output, "REQUIRED_NEXT_ACTION=")
-			worktree := worktreeFromOutput(t, output)
-			require.DirExists(t, worktree, "stale-base work must remain inspectable")
-			require.Equal(t, fixture.headSHA, runGitOutput(t, fixture.root, "--git-dir", fixture.remote, "rev-parse", "refs/heads/feature"))
-		})
-	}
+func TestPushRefusesWhenTargetAdvancesBeforePublication(t *testing.T) {
+	fixture := newPushFixture(t, pushFixtureOptions{targetMutation: "after-exact-review"})
+	output, exitCode := fixture.run(t)
+	require.Equal(t, 3, exitCode, output)
+	require.Contains(t, output, "BASE_REVALIDATION_CLASSIFICATION=ADVANCED")
+	require.Contains(t, output, "AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED")
+	require.NotContains(t, output, "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW")
+	require.NotContains(t, output, "AI_PR_LOOP_PUSH_RESULT: PUSHED")
+	require.Contains(t, output, "EXPECTED_BASE_SHA="+fixture.baseSHA)
+	require.Contains(t, output, "OBSERVED_BASE_SHA="+fixture.advancedBaseSHA)
+	require.Contains(t, output, "REQUIRED_NEXT_ACTION=")
+	worktree := worktreeFromOutput(t, output)
+	require.DirExists(t, worktree, "stale-base work must remain inspectable")
+	require.Equal(t, fixture.headSHA, runGitOutput(t, fixture.root, "--git-dir", fixture.remote, "rev-parse", "refs/heads/feature"))
 }
 
 func TestPushFailsClosedWhenTargetIsRewrittenMidRun(t *testing.T) {
@@ -231,9 +221,6 @@ func newPushFixture(t *testing.T, options pushFixtureOptions) pushFixture {
 	revalidator, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-target-base-revalidate"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-target-base-revalidate"), revalidator, 0o755))
-	guard, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-git-guard"))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-git-guard"), guard, 0o755))
 	bugfixGate, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-bugfix-gate"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-bugfix-gate"), bugfixGate, 0o755))
@@ -378,6 +365,19 @@ printf '{"version":1,"pr_number":%s,"head":"%s","review_decision":"REVIEW_REQUIR
 		"exit 0",
 	}, "\n") + "\n"
 	writeExecutable(t, filepath.Join(seed, "scripts", "review-loop"), reviewLoop)
+	writeExecutable(t, filepath.Join(seed, "scripts", "rootguard"), `#!/usr/bin/env bash
+set -euo pipefail
+[[ "$1" == --root && "$3" == -- ]]
+shift 3
+echo "ROOT_PROTECTION_ARMED gitProcesses=5 ignoredEntries=0"
+set +e
+"$@"
+status=$?
+set -e
+echo "ROOT_SNAPSHOT_CAPTURED position=after gitProcesses=5 ignoredEntries=0"
+echo "ROOT_UNCHANGED=PASS"
+exit "$status"
+`)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "docs", "technical", "contributing", "ai-pr-known-findings.md"), []byte("trusted known-findings contract\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "base.txt"), []byte("base\n"), 0o644))
 	runGit(t, seed, "add", ".")
@@ -432,32 +432,16 @@ esac
 `)
 	writeExecutable(t, filepath.Join(fakeBin, "nix"), `#!/usr/bin/env bash
 set -euo pipefail
-source_root=""
-output=""
-if [[ " $* " == *" --command bash -c "* ]]; then
+if [[ " $* " != *" ./scripts/reviewloop"* ]]; then
     eval "${@: -1}"
     exit $?
 fi
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -C)
-            source_root=$2
-            shift 2
-            ;;
-        -o)
-            output=$2
-            shift 2
-            ;;
-        *)
-            shift
-            ;;
-    esac
-done
-if [[ -z "$source_root" || -z "$output" ]]; then
-    exit 96
-fi
-cp "$source_root/scripts/review-loop" "$output"
-chmod 755 "$output"
+source_root=${@: -3:1}
+review_output=${@: -2:1}
+rootguard_output=${@: -1}
+cp "$source_root/scripts/review-loop" "$review_output"
+cp "$source_root/scripts/rootguard" "$rootguard_output"
+chmod 755 "$review_output" "$rootguard_output"
 `)
 
 	return pushFixture{

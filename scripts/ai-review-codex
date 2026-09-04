@@ -9,9 +9,6 @@ required=(
     EXPECTED_PR_NUMBER
     EXPECTED_WORKTREE
     EXPECTED_HEAD
-    AI_WORKTREE_PR
-    AI_WORKTREE_PATH
-    AI_WORKTREE_EXPECTED_HEAD
 )
 for name in "${required[@]}"; do
     if [[ -z "${!name:-}" ]]; then
@@ -46,16 +43,12 @@ expected_worktree=$(cd "$EXPECTED_WORKTREE" 2>/dev/null && pwd -P) || {
     echo "WORKTREE_BINDING_GATE=FAIL (invalid EXPECTED_WORKTREE)" >&2
     exit 1
 }
-if [[ "$repo_root" != "$expected_worktree" || "$AI_WORKTREE_PATH" != "$expected_worktree" ]]; then
+if [[ "$repo_root" != "$expected_worktree" ]]; then
     echo "WORKTREE_BINDING_GATE=FAIL (Codex adapter cwd/worktree mismatch)" >&2
     exit 1
 fi
-if [[ "$EXPECTED_PR_NUMBER" != "$AI_WORKTREE_PR" ]]; then
-    echo "CROSS_PR_WORKTREE_CONTAMINATION" >&2
-    exit 1
-fi
 adapter_head=$(git rev-parse HEAD)
-if [[ "$adapter_head" != "$EXPECTED_HEAD" || "$adapter_head" != "$AI_WORKTREE_EXPECTED_HEAD" ]]; then
+if [[ "$adapter_head" != "$EXPECTED_HEAD" ]]; then
     echo "WORKTREE_BINDING_GATE=FAIL (Codex adapter HEAD mismatch)" >&2
     exit 1
 fi
@@ -272,8 +265,7 @@ if [[ -n "${VALIDATION_RUN_DIR:-}" ]]; then
         echo "ai-review-codex: shared cache is inside Git worktree $cache_worktree" >&2
         exit 1
     fi
-    for protected_root in "$repo_root" "$run_dir" "${TRUSTED_ROOT_CHECKOUT:-}"; do
-        [[ -n "$protected_root" ]] || continue
+    for protected_root in "$repo_root" "$run_dir"; do
         protected_root=$(cd "$protected_root" 2>/dev/null && pwd -P) || {
             echo "ai-review-codex: invalid protected root" >&2
             exit 1

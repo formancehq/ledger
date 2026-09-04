@@ -16,18 +16,12 @@ import (
 
 func TestSelectorEnvironmentDropsParentReviewBinding(t *testing.T) {
 	validationRunDirectory := t.TempDir()
-	gitGuardDirectory := filepath.Join(validationRunDirectory, "git-guard-bin")
 	t.Setenv("VALIDATION_RUN_DIR", validationRunDirectory)
-	t.Setenv("PATH", strings.Join([]string{gitGuardDirectory, "/usr/bin"}, string(os.PathListSeparator)))
 
 	binding := map[string]string{
-		"EXPECTED_PR_NUMBER":        "1852",
-		"EXPECTED_WORKTREE":         "/parent/candidate",
-		"EXPECTED_HEAD":             "deadbeef",
-		"AI_WORKTREE_PR":            "1852",
-		"AI_WORKTREE_PATH":          "/parent/candidate",
-		"AI_WORKTREE_EXPECTED_HEAD": "deadbeef",
-		"TRUSTED_ROOT_CHECKOUT":     "/parent/root",
+		"EXPECTED_PR_NUMBER": "1852",
+		"EXPECTED_WORKTREE":  "/parent/candidate",
+		"EXPECTED_HEAD":      "deadbeef",
 	}
 	for name, value := range binding {
 		t.Setenv(name, value)
@@ -43,7 +37,6 @@ func TestSelectorEnvironmentDropsParentReviewBinding(t *testing.T) {
 		_, present := environment[name]
 		require.False(t, present, "%s must not escape into the synthetic repository", name)
 	}
-	require.Equal(t, "/usr/bin", environment["PATH"])
 }
 
 func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
@@ -164,18 +157,7 @@ func runSelectorList(t *testing.T, repository string, environment []string) (str
 
 	command := exec.Command("bash", selectorPath(t), "--list")
 	command.Dir = repository
-	// These tests exercise selector behavior in synthetic repositories. An
-	// outer ai-pr-loop invocation binds validation and its Git guard to the real
-	// candidate worktree, so do not leak either into the child process.
-	command.Env = withoutReviewLoopGitGuard(withoutEnvironmentVariables(environment,
-		"EXPECTED_PR_NUMBER",
-		"EXPECTED_WORKTREE",
-		"EXPECTED_HEAD",
-		"AI_WORKTREE_PR",
-		"AI_WORKTREE_PATH",
-		"AI_WORKTREE_EXPECTED_HEAD",
-		"TRUSTED_ROOT_CHECKOUT",
-	))
+	command.Env = environment
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 
@@ -185,46 +167,6 @@ func runSelectorList(t *testing.T, repository string, environment []string) (str
 	require.NoError(t, err, stderr.String())
 
 	return string(output), stderr.String()
-}
-
-func withoutEnvironmentVariables(environment []string, names ...string) []string {
-	excluded := make(map[string]struct{}, len(names))
-	for _, name := range names {
-		excluded[name] = struct{}{}
-	}
-
-	filtered := make([]string, 0, len(environment))
-	for _, entry := range environment {
-		name, _, _ := strings.Cut(entry, "=")
-		if _, ok := excluded[name]; ok {
-			continue
-		}
-		filtered = append(filtered, entry)
-	}
-
-	return filtered
-}
-
-func withoutReviewLoopGitGuard(environment []string) []string {
-	filtered := append([]string(nil), environment...)
-	for idx, entry := range filtered {
-		name, value, ok := strings.Cut(entry, "=")
-		if !ok || name != "PATH" {
-			continue
-		}
-
-		paths := filepath.SplitList(value)
-		withoutGuard := paths[:0]
-		for _, path := range paths {
-			if filepath.Base(filepath.Clean(path)) == "git-guard-bin" {
-				continue
-			}
-			withoutGuard = append(withoutGuard, path)
-		}
-		filtered[idx] = "PATH=" + strings.Join(withoutGuard, string(os.PathListSeparator))
-	}
-
-	return filtered
 }
 
 func writeTestFile(t *testing.T, repository, path string) {

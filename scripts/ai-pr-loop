@@ -70,12 +70,6 @@ trusted_root_checkout=$(cd "$trusted_root_checkout" && pwd -P)
 repo_root=$trusted_root_checkout
 cd "$trusted_root_checkout"
 
-base_revalidator="$repo_root/scripts/ai-target-base-revalidate"
-if [[ -L "$base_revalidator" || ! -f "$base_revalidator" || ! -r "$base_revalidator" ]]; then
-    echo "ai-pr-loop: trusted root does not provide scripts/ai-target-base-revalidate" >&2
-    exit 1
-fi
-
 repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 pr_json=$(gh pr view "$pr" --repo "$repo" --json number,url,state,isDraft,title,body,labels,baseRefName,baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
 
@@ -154,15 +148,51 @@ revalidate_target_or_exit() {
     esac
 }
 
-# Fetch the current head, then establish the immutable target-base trust anchor
-# through the same classifier used at every later publication boundary.
+# The launcher establishes the startup target directly. Later refreshes use the
+# helper from the base-pinned trusted-tools worktree created below.
 git fetch --no-tags "$remote" "+refs/heads/$head_ref:refs/remotes/$remote/$head_ref"
 fetched_head=$(git rev-parse "refs/remotes/$remote/$head_ref")
 if [[ "$fetched_head" != "$head_sha" ]]; then
     echo "ai-pr-loop: fetched head SHA does not match GitHub: got $fetched_head expected $head_sha" >&2
     exit 1
 fi
-revalidate_target_or_exit
+target_remote_ref="refs/remotes/$remote/$base_ref"
+if ! git check-ref-format --branch "$base_ref" >/dev/null 2>&1 || [[ ! "$base_sha" =~ ^[0-9a-f]{40,64}$ ]]; then
+    echo "AI_PR_LOOP_RESULT: ERROR (invalid target identity)"
+    exit 1
+fi
+if ! git fetch --no-tags "$remote" "+refs/heads/$base_ref:$target_remote_ref"; then
+    echo "AI_PR_LOOP_RESULT: ERROR (target base fetch failed)"
+    exit 1
+fi
+observed_base_sha=$(git rev-parse --verify "${target_remote_ref}^{commit}")
+printf 'EXPECTED_BASE_SHA=%s\n' "$base_sha"
+printf 'OBSERVED_BASE_SHA=%s\n' "$observed_base_sha"
+if [[ "$observed_base_sha" != "$base_sha" ]]; then
+    if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+        if ! git fetch --no-tags "$remote" "$base_sha"; then
+            echo "BASE_REVALIDATION_CLASSIFICATION=FETCH_ERROR"
+            echo "AI_PR_LOOP_RESULT: ERROR (target base fetch failed)"
+            exit 1
+        fi
+    fi
+    if ! git merge-base --is-ancestor "$base_sha" "$observed_base_sha" && [[ "$(git rev-parse --is-shallow-repository)" == "true" ]]; then
+        if ! git fetch --no-tags --unshallow "$remote" "$observed_base_sha"; then
+            echo "BASE_REVALIDATION_CLASSIFICATION=FETCH_ERROR"
+            echo "AI_PR_LOOP_RESULT: ERROR (target base fetch failed)"
+            exit 1
+        fi
+    fi
+    if git merge-base --is-ancestor "$base_sha" "$observed_base_sha"; then
+        echo "BASE_REVALIDATION_CLASSIFICATION=ADVANCED"
+        echo "AI_PR_LOOP_RESULT: BASE_UPDATE_REQUIRED"
+        exit 3
+    fi
+    echo "BASE_REVALIDATION_CLASSIFICATION=REWRITTEN_OR_DIVERGED"
+    echo "AI_PR_LOOP_RESULT: ERROR (target base rewritten or diverged)"
+    exit 1
+fi
+echo "BASE_REVALIDATION_CLASSIFICATION=UNCHANGED"
 
 repo_parent=$(dirname "$repo_root")
 repo_name=$(basename "$repo_root")
@@ -172,8 +202,8 @@ worktree_run_dir=$(mktemp -d "$worktree_parent/pr-$pr_number.XXXXXX")
 worktree="$worktree_run_dir/worktree"
 trusted_tool_worktree="$worktree_run_dir/trusted-tools"
 validation_run_dir="$worktree_run_dir/validation"
-binding_file="$worktree_run_dir/candidate-binding.json"
 review_loop_binary=""
+rootguard_binary=""
 
 cleanup() {
     exit_status=$?
@@ -185,6 +215,9 @@ cleanup() {
     if [[ -n "$review_loop_binary" ]] && [[ "$review_loop_binary" == "$worktree_run_dir/review-loop" ]]; then
         rm -f -- "$review_loop_binary"
     fi
+    if [[ -n "$rootguard_binary" ]] && [[ "$rootguard_binary" == "$worktree_run_dir/rootguard" ]]; then
+        rm -f -- "$rootguard_binary"
+    fi
     if [[ "$keep_worktree" == false ]]; then
         # The loop runs from inside the worktree that is about to be removed;
         # leave it first so removal never operates on the current directory.
@@ -194,8 +227,8 @@ cleanup() {
                 git worktree remove "$worktree" >/dev/null 2>&1 || true
             fi
         fi
-        # Validation keeps only temporary files and the Git guard inside the run
-        # directory. Shared caches live outside it and survive cleanup.
+        # Validation keeps only temporary files in the run directory. Shared
+        # caches live outside it and survive cleanup.
         if [[ ! -e "$worktree" && ! -e "$trusted_tool_worktree" ]] &&
             [[ "$worktree_run_dir" == "$worktree_parent/pr-$pr_number."?????? ]]; then
             # Cleanup warnings must not overwrite the primary validation result.
@@ -216,18 +249,12 @@ mkdir -p "$validation_run_dir"
 metadata_file="$worktree_run_dir/pr-metadata.json"
 printf '%s\n' "$pr_json" >"$metadata_file"
 
-write_candidate_binding() {
-    local expected_head=$1
-    jq -n \
-        --argjson pr "$pr_number" \
-        --arg worktree "$worktree" \
-        --arg head "$expected_head" \
-        --arg root "$trusted_root_checkout" \
-        '{version: 1, expectedPrNumber: $pr, candidateWorktree: $worktree, expectedHead: $head, trustedRootCheckout: $root}' \
-        >"$binding_file"
-}
 expected_worktree_head=$head_sha
-write_candidate_binding "$expected_worktree_head"
+base_revalidator="$trusted_tool_worktree/scripts/ai-target-base-revalidate"
+if [[ -L "$base_revalidator" || ! -f "$base_revalidator" || ! -r "$base_revalidator" ]]; then
+    echo "ai-pr-loop: trusted base does not provide scripts/ai-target-base-revalidate" >&2
+    exit 1
+fi
 bugfix_gate="$trusted_tool_worktree/scripts/ai-bugfix-gate"
 known_findings_tool="$trusted_tool_worktree/scripts/ai-pr-known-findings"
 for trusted_tool in "$bugfix_gate" "$known_findings_tool"; do
@@ -264,9 +291,10 @@ if ! command -v nix >/dev/null 2>&1; then
     exit 1
 fi
 
-# Build the orchestrator and reviewer from the verified base.
+# Build the orchestrator and outer root-integrity runner from the verified base.
 review_loop_binary="$worktree_run_dir/review-loop"
-for trusted_tool in ai-review-codex ai-git-guard; do
+rootguard_binary="$worktree_run_dir/rootguard"
+for trusted_tool in ai-review-codex; do
     trusted_tool_path="$trusted_tool_worktree/scripts/$trusted_tool"
     if [[ ! -x "$trusted_tool_path" ]]; then
         echo "ai-pr-loop: trusted base does not provide executable scripts/$trusted_tool" >&2
@@ -281,8 +309,9 @@ for trusted_tool in agent-validation-env agent-check-pr agent-just; do
     fi
 done
 nix develop "path:$trusted_tool_worktree" --command \
-    env -u GOROOT go -C "$trusted_tool_worktree" build \
-    -o "$review_loop_binary" ./scripts/reviewloop
+    env -u GOROOT bash -c \
+    'set -euo pipefail; go -C "$1" build -o "$2" ./scripts/reviewloop; go -C "$1" build -o "$3" ./scripts/rootguard' \
+    bash "$trusted_tool_worktree" "$review_loop_binary" "$rootguard_binary"
 review_loop=("$review_loop_binary")
 printf -v review_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-review-codex"
 # review-loop executes validation through `bash -c`. Quote every base-pinned
@@ -312,15 +341,13 @@ if [[ "$push_changes" == "true" ]]; then
 fi
 
 run_final_review() {
-    env -C "$worktree" "${review_loop[@]}" \
+    env -C "$worktree" "$rootguard_binary" --root "$trusted_root_checkout" -- "${review_loop[@]}" \
         --base "$base_sha" \
         --pr "$pr_number" \
         --worktree "$worktree" \
         --expected-head "$expected_worktree_head" \
         --trusted-root "$trusted_root_checkout" \
-        --binding-file "$binding_file" \
         --validation-run-dir "$validation_run_dir" \
-        --git-guard "$trusted_tool_worktree/scripts/ai-git-guard" \
         --state-dir "$worktree_run_dir/review-state" \
         --review-cmd "$review_cmd" \
         --validation-cmd "$validation_cmd" \
@@ -378,9 +405,9 @@ fi
 echo
 case "$loop_status" in
     0)
-        # A startup check cannot authorize readiness after validation and review.
-        revalidate_target_or_exit
         if [[ "$push_changes" == "false" ]]; then
+            # A startup check cannot authorize readiness after review.
+            revalidate_target_or_exit
             echo "AI_PR_LOOP_RESULT: READY_FOR_HUMAN_REVIEW"
         else
             echo "AI_PR_LOOP_REVIEW_RESULT: APPROVE"
@@ -413,10 +440,6 @@ fi
 candidate_sha=$(git rev-parse HEAD)
 printf '==> ai-pr-loop: candidate commit %s\n' "$candidate_sha"
 
-# An exact review only becomes publication-authorizing evidence while the
-# immutable target snapshot is still current.
-revalidate_target_or_exit "$candidate_sha"
-
 if [[ -n "$(git status --porcelain)" ]]; then
     echo "ai-pr-loop: candidate review left the worktree dirty; refusing push" >&2
     echo "Candidate worktree preserved for inspection: $worktree"
@@ -434,6 +457,16 @@ if [[ "$current_head" != "$candidate_sha" ]]; then
     exit 1
 fi
 
+if ! git merge-base --is-ancestor "$head_sha" "$candidate_sha"; then
+    echo "ai-pr-loop: candidate commit is not a descendant of the original PR head" >&2
+    keep_worktree=true
+    exit 1
+fi
+
+# Keep the last target fetch immediately adjacent to the guarded push. The PR
+# head lease remains the atomic guard for the independently mutable head ref.
+revalidate_target_or_exit "$candidate_sha"
+
 remote_head=""
 read -r remote_head _ < <(git ls-remote --exit-code "$remote" "refs/heads/$head_ref") || true
 if [[ -z "$remote_head" ]]; then
@@ -449,16 +482,6 @@ if [[ "$remote_head" != "$head_sha" ]]; then
     keep_worktree=true
     exit 2
 fi
-
-if ! git merge-base --is-ancestor "$head_sha" "$candidate_sha"; then
-    echo "ai-pr-loop: candidate commit is not a descendant of the original PR head" >&2
-    keep_worktree=true
-    exit 1
-fi
-
-# Keep the last target fetch immediately adjacent to the guarded push. The PR
-# head lease remains the atomic guard for the independently mutable head ref.
-revalidate_target_or_exit "$candidate_sha"
 
 if ! git push \
     --force-with-lease="refs/heads/$head_ref:$head_sha" \

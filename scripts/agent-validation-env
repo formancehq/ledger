@@ -69,14 +69,6 @@ if [[ -n "$candidate_root" ]]; then
     candidate_root=$(cd "$candidate_root" && pwd -P)
     reject_contained_cache "$candidate_root" "candidate worktree"
 fi
-if [[ -n "${TRUSTED_ROOT_CHECKOUT:-}" ]]; then
-    trusted_root=$(cd "$TRUSTED_ROOT_CHECKOUT" 2>/dev/null && pwd -P) || {
-        echo "agent-validation-env: invalid TRUSTED_ROOT_CHECKOUT" >&2
-        exit 1
-    }
-    reject_contained_cache "$trusted_root" "trusted root"
-fi
-
 cache_marker="$cache_root/.ledger-ai-cache"
 if [[ "$clean_cache" == true ]]; then
     [[ -f "$cache_marker" && "$(<"$cache_marker")" == "ledger-ai-cache-v1" ]] || {
