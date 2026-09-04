@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -26,6 +27,66 @@ func seedPreparedQuery(t *testing.T, s *dal.Store, attrs *attributes.Attributes,
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
+}
+
+type mutatingQueryHandleStore struct {
+	store      *dal.Store
+	beforeOpen func()
+}
+
+type failingQueryHandleStore struct{ err error }
+
+func (s failingQueryHandleStore) NewReadHandle() (*dal.ReadHandle, error) {
+	return nil, s.err
+}
+
+func TestExecutePropagatesMainSnapshotOpenFailure(t *testing.T) {
+	t.Parallel()
+
+	rs := newTestReadStore(t)
+	attrs := attributes.New()
+	wantErr := errors.New("open main snapshot")
+
+	_, err := query.Execute(
+		t.Context(), rs, failingQueryHandleStore{err: wantErr},
+		attrs.Volume, attrs.PreparedQuery, attrs.Index,
+		&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q"}, nil, nil,
+	)
+	require.ErrorIs(t, err, wantErr)
+}
+
+func (s *mutatingQueryHandleStore) NewReadHandle() (*dal.ReadHandle, error) {
+	s.beforeOpen()
+
+	return s.store.NewReadHandle()
+}
+
+func TestExecute_ReadsPreparedQueryFromMainSnapshot(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	registerLedger(t, store, "l")
+
+	rs := newTestReadStore(t)
+	attrs := attributes.New()
+	seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
+
+	opener := &mutatingQueryHandleStore{
+		store: store,
+		beforeOpen: func() {
+			batch := store.OpenWriteSession()
+			require.NoError(t, attrs.PreparedQuery.Delete(batch, domain.PreparedQueryKey{LedgerName: "l", Name: "q"}.Bytes()))
+			require.NoError(t, batch.Commit())
+		},
+	}
+
+	_, err := query.Execute(
+		t.Context(), rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
+		&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q"}, nil, nil,
+	)
+	var notFound *domain.ErrPreparedQueryNotFound
+	require.ErrorAs(t, err, &notFound,
+		"the prepared query must be read after opening the main snapshot")
 }
 
 // A prepared query that reads no index leaf must not be gated on the fold.
