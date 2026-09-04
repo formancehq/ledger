@@ -211,14 +211,24 @@ Two adjacent versions share the same prefix up to the `version` field, so a sing
 
 ## Progress Cursors
 
-Two cursors live under the internal prefix:
+Native fold cursors and causal certificates live under the internal prefix:
 
 | Cursor | Key | Encoding |
 |--------|-----|----------|
 | Main log progress | `[0xFE][0x01]` | `uint64` big-endian — the highest log sequence whose effects are fully written to the read store. |
 | AppliedProposal progress | `[0xFE][0x02]` | `uint64` big-endian — paired cursor used for transient-account filtering. |
+| Audit native progress | `[0xFE][0x06]` | `uint64` big-endian — highest audit sequence folded. |
+| Read projection Raft progress | `[0xFE][0x07]` | `uint64` big-endian — fixed main-store applied index fully covered by the normal read projection. |
+| Audit projection Raft progress | `[0xFE][0x08]` | `uint64` big-endian — fixed main-store applied index fully covered by the audit projection. |
 
-Both are written **inside the same Pebble batch** as the index writes they certify. `LastIndexedSequence()` reads the main cursor on boot; `NotifyProgress()` broadcasts the new value to readers waiting on a `min_log_sequence` barrier.
+Native cursors resume folds and preserve the event-history/trimming contract.
+They are not interchangeable with Raft certificates: an applied entry can emit
+zero, one, or several native records. Each indexer captures one fixed main-store
+snapshot and its applied index `H`. Intermediate batches may advance only the
+native cursor. The target-completing batch writes its final projection changes,
+native cursor, and Raft certificate `H` atomically. If the bounded snapshot has
+no native work, a standalone certificate write records `H`. `NotifyProgress()`
+wakes readers waiting for either certificate.
 
 ## Backfill — Atomic Switch
 

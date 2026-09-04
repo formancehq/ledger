@@ -80,6 +80,15 @@ type Builder struct {
 	// AppliedProposal sync for transient-account filtering.
 	lastAppliedProposalSeq uint64
 
+	// projectionTarget is the fixed main-store snapshot horizon currently being
+	// folded. It survives deadline-driven yields so a busy store cannot turn a
+	// multi-batch fold into a chase of the moving head. The target is local
+	// worker state only: after a restart the durable native cursor is resumed and
+	// a new fixed target is captured before any Raft certificate is published.
+	projectionTargetActive       bool
+	projectionTargetSequence     uint64
+	projectionTargetAppliedIndex uint64
+
 	// Reusable scratch objects to reduce allocations in the hot loop.
 	kb       *dal.KeyBuilder
 	wb       *readstore.WriteBatch
@@ -728,25 +737,23 @@ func (b *Builder) loop(ctx context.Context) {
 		case <-ticker.C:
 		}
 
-		// Fast path: skip Pebble iterator + batch commit when the FSM
-		// hasn't advanced past our cursor.
-		logsProcessed := false
-
-		if cached := b.notifications.LastSequence.Load(); cached == 0 || cached > cursor {
-			// When background tasks are active, cap normal processing so they
-			// get their fair share of each tick.
-			var logDeadline time.Time
-			if len(b.backfillTasks) > 0 || len(b.schemaRewriteTasks) > 0 {
-				logDeadline = time.Now().Add(b.backfillBudget)
-			}
-
-			prevCursor := cursor
-			if cursor, err = b.processLogs(ctx, cursor, logDeadline); err != nil {
-				b.logger.Errorf("Error processing logs: %v", err)
-			}
-
-			logsProcessed = cursor > prevCursor
+		// The Raft applied index can advance without the native log sequence
+		// moving (no-op, technical-only, or rejected proposal). processLogs must
+		// therefore sample the main snapshot on every wake/tick; its zero-log
+		// path cheaply publishes the fixed causal horizon when needed.
+		// When background tasks are active, cap normal processing so they
+		// get their fair share of each tick.
+		var logDeadline time.Time
+		if len(b.backfillTasks) > 0 || len(b.schemaRewriteTasks) > 0 {
+			logDeadline = time.Now().Add(b.backfillBudget)
 		}
+
+		prevCursor := cursor
+		if cursor, err = b.processLogs(ctx, cursor, logDeadline); err != nil {
+			b.logger.Errorf("Error processing logs: %v", err)
+		}
+
+		logsProcessed := cursor > prevCursor
 
 		// When processLogs had nothing to do (cluster idle), give backfills
 		// a much larger budget — the full tick interval instead of just 50ms.

@@ -47,7 +47,7 @@ func TestCreateReadIndexCheckpointWritesReadyMarker(t *testing.T) {
 	b := newCheckpointTestBuilder(t)
 
 	const cpID = uint64(7)
-	require.NoError(t, b.createReadIndexCheckpoint(cpID))
+	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
 
 	dir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
 	require.True(t, readstore.CheckpointDirReady(dir), "readiness marker must exist after creation")
@@ -75,7 +75,7 @@ func TestCreateReadIndexCheckpointRebuildsUnmarkedDir(t *testing.T) {
 	require.False(t, readstore.CheckpointDirReady(dir))
 
 	// Recreation must succeed and produce a ready, openable checkpoint.
-	require.NoError(t, b.createReadIndexCheckpoint(cpID))
+	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
 	require.True(t, readstore.CheckpointDirReady(dir))
 
 	// The stale file must be gone (directory was rebuilt from scratch).
@@ -96,7 +96,7 @@ func TestCreateReadIndexCheckpointLeavesNoTempDir(t *testing.T) {
 	b := newCheckpointTestBuilder(t)
 
 	const cpID = uint64(13)
-	require.NoError(t, b.createReadIndexCheckpoint(cpID))
+	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
 
 	finalDir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
 	require.True(t, readstore.CheckpointDirReady(finalDir))
@@ -113,13 +113,13 @@ func TestCreateReadIndexCheckpointNoopWhenReady(t *testing.T) {
 	b := newCheckpointTestBuilder(t)
 
 	const cpID = uint64(17)
-	require.NoError(t, b.createReadIndexCheckpoint(cpID))
+	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
 
 	dir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
 	// Drop a sentinel; a no-op second call must leave it untouched.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "sentinel"), nil, 0o640))
 
-	require.NoError(t, b.createReadIndexCheckpoint(cpID))
+	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
 
 	_, err := os.Stat(filepath.Join(dir, "sentinel"))
 	require.NoError(t, err, "ready checkpoint must not be rebuilt on a redundant call")
@@ -142,7 +142,7 @@ func TestCreateReadIndexCheckpointClearsStaleTempDir(t *testing.T) {
 	require.NoError(t, os.MkdirAll(tmpDir, 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "partial.sst"), []byte("x"), 0o640))
 
-	require.NoError(t, b.createReadIndexCheckpoint(cpID))
+	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
 	require.True(t, readstore.CheckpointDirReady(finalDir))
 
 	_, err := os.Stat(tmpDir)
@@ -157,7 +157,7 @@ func TestDeleteReadIndexCheckpoint(t *testing.T) {
 	b := newCheckpointTestBuilder(t)
 
 	const cpID = uint64(23)
-	require.NoError(t, b.createReadIndexCheckpoint(cpID))
+	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
 
 	dir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
 	require.True(t, readstore.CheckpointDirReady(dir))

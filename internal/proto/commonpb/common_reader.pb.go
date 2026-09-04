@@ -4217,6 +4217,7 @@ type CreatedQueryCheckpointLogReader interface {
 	GetCheckpointId() uint64
 	GetMaxSequence() uint64
 	GetCreatedAt() TimestampReader
+	GetAppliedIndex() uint64
 	Mutate() *CreatedQueryCheckpointLog
 }
 
@@ -4236,6 +4237,10 @@ func (r *createdQueryCheckpointLogReadonly) GetCreatedAt() TimestampReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *createdQueryCheckpointLogReadonly) GetAppliedIndex() uint64 {
+	return (*CreatedQueryCheckpointLog)(r).GetAppliedIndex()
 }
 
 func (r *createdQueryCheckpointLogReadonly) Mutate() *CreatedQueryCheckpointLog {

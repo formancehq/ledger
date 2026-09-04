@@ -426,7 +426,7 @@ func RebuildDelta(
 			}
 
 		case *commonpb.LogPayload_CreatedQueryCheckpoint:
-			// Rebuild the metadata row (id + max_sequence + created_at) from the log.
+			// Rebuild the metadata row (id + max_sequence + created_at + applied_index) from the log.
 			// The physical checkpoint files cannot be reconstructed from the audit, so a
 			// rebuilt checkpoint reads as Unavailable until an operator deletes it. The
 			// row keeps the projection audit-consistent so the cap and
@@ -436,6 +436,7 @@ func RebuildDelta(
 					CheckpointId: cp.GetCheckpointId(),
 					MaxSequence:  cp.GetMaxSequence(),
 					CreatedAt:    cp.GetCreatedAt(),
+					AppliedIndex: cp.GetAppliedIndex(),
 				}); err != nil {
 					_ = batch.Cancel()
 

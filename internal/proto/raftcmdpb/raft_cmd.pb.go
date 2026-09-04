@@ -1428,8 +1428,9 @@ func (x *DeleteQueryCheckpointOrder) GetCheckpointId() uint64 {
 type QueryCheckpointState struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CheckpointId  uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
-	MaxSequence   uint64                 `protobuf:"fixed64,2,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"` // next_sequence - 1 at creation
-	CreatedAt     *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`         // Creation timestamp (from proposal date)
+	MaxSequence   uint64                 `protobuf:"fixed64,2,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"`    // next_sequence - 1 at creation
+	CreatedAt     *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`            // Creation timestamp (from proposal date)
+	AppliedIndex  uint64                 `protobuf:"fixed64,4,opt,name=applied_index,json=appliedIndex,proto3" json:"applied_index,omitempty"` // Raft horizon of the checkpoint snapshot
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1483,6 +1484,13 @@ func (x *QueryCheckpointState) GetCreatedAt() *commonpb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *QueryCheckpointState) GetAppliedIndex() uint64 {
+	if x != nil {
+		return x.AppliedIndex
+	}
+	return 0
 }
 
 type SetQueryCheckpointScheduleOrder struct {
@@ -5384,12 +5392,13 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\aversion\x18\x03 \x01(\tR\aversion\"\x1c\n" +
 	"\x1aCreateQueryCheckpointOrder\"A\n" +
 	"\x1aDeleteQueryCheckpointOrder\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"\x90\x01\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"\xb5\x01\n" +
 	"\x14QueryCheckpointState\x12#\n" +
 	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\x12!\n" +
 	"\fmax_sequence\x18\x02 \x01(\x06R\vmaxSequence\x120\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt\"5\n" +
+	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt\x12#\n" +
+	"\rapplied_index\x18\x04 \x01(\x06R\fappliedIndex\"5\n" +
 	"\x1fSetQueryCheckpointScheduleOrder\x12\x12\n" +
 	"\x04cron\x18\x01 \x01(\tR\x04cron\"$\n" +
 	"\"DeleteQueryCheckpointScheduleOrder\"\xc6\x03\n" +

@@ -567,6 +567,7 @@ func (m *QueryCheckpointState) CloneVT() *QueryCheckpointState {
 	r.CheckpointId = m.CheckpointId
 	r.MaxSequence = m.MaxSequence
 	r.CreatedAt = m.CreatedAt.CloneVT()
+	r.AppliedIndex = m.AppliedIndex
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3027,6 +3028,9 @@ func (this *QueryCheckpointState) EqualVT(that *QueryCheckpointState) bool {
 		return false
 	}
 	if !this.CreatedAt.EqualVT(that.CreatedAt) {
+		return false
+	}
+	if this.AppliedIndex != that.AppliedIndex {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -6744,6 +6748,12 @@ func (m *QueryCheckpointState) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.AppliedIndex != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.AppliedIndex))
+		i--
+		dAtA[i] = 0x21
 	}
 	if m.CreatedAt != nil {
 		size, err := m.CreatedAt.MarshalToSizedBufferVT(dAtA[:i])
@@ -11145,6 +11155,9 @@ func (m *QueryCheckpointState) SizeVT() (n int) {
 		l = m.CreatedAt.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.AppliedIndex != 0 {
+		n += 9
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -15322,6 +15335,16 @@ func (m *QueryCheckpointState) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AppliedIndex", wireType)
+			}
+			m.AppliedIndex = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AppliedIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
