@@ -141,7 +141,7 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 	defer func() { _ = entriesCursor.Close() }()
 
 	startCursor := cursor
-	lastProgressLog := time.Now()
+	lastProgressLog := b.currentTime()
 
 	for {
 		select {
@@ -171,6 +171,9 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 			}
 
 			lastAuditSeq = entry.GetSequence()
+			if b.onAuditEntryAttempt != nil {
+				b.onAuditEntryAttempt(lastAuditSeq)
+			}
 			batchCount++
 
 			// Failed proposals: no state change, nothing to project. The
@@ -238,7 +241,7 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 		b.lastProcessedAuditSeq.Store(cursor)
 
 		// Periodic progress logging for long catch-up runs.
-		if now := time.Now(); now.Sub(lastProgressLog) >= 10*time.Second {
+		if now := b.currentTime(); now.Sub(lastProgressLog) >= 10*time.Second {
 			b.logger.WithFields(map[string]any{
 				"cursor":    cursor,
 				"from":      startCursor,
@@ -252,7 +255,7 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 			break
 		}
 
-		if !deadline.IsZero() && time.Now().After(deadline) {
+		if !deadline.IsZero() && b.currentTime().After(deadline) {
 			break
 		}
 	}

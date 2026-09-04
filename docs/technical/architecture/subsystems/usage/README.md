@@ -16,4 +16,4 @@ The projections it maintains are exposed by the API — `GET /v3/{ledger}/stats`
 - [FSM](../fsm/) — emits the `LedgerLog.new_kept_volumes` / `ephemeral_volumes` / `purged_volumes` annotations the usagebuilder consumes. Depends on the volume preload contract (see AGENTS.md invariant #6).
 - [Indexer](../indexer/) — sibling subsystem with the same audit-tailing shape, but writes to a different secondary store (`readstore`).
 - [Checker](../checker/) — verifies the projections against the audit chain (`compareExclusionProjections` for ephemeral/transient tuples).
-- [Storage](../storage/) — the usage store is a peer Pebble instance to the readstore, WAL disabled, own comparer, own Pebble tuning.
+- [Storage](../storage/) — the usage store is a peer Pebble instance to the readstore, with its WAL disabled and durability established by explicit flush watermarks.
