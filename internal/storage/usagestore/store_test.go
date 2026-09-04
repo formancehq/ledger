@@ -1,6 +1,7 @@
 package usagestore_test
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -129,6 +130,27 @@ func TestStore_ClosePersistsProgressCountersAndTemplates(t *testing.T) {
 	require.NotNil(t, usage)
 	assert.Equal(t, wantUsage.GetCount(), usage.GetCount())
 	assert.Equal(t, wantUsage.GetLastUsed().GetData(), usage.GetLastUsed().GetData())
+}
+
+func TestStore_CloseReadOnlyDoesNotFlush(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writable, err := usagestore.New(dir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+
+	batch := writable.NewBatch()
+	require.NoError(t, writable.WriteProgress(batch, 42))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, writable.Close())
+
+	readOnly, err := usagestore.OpenReadOnly(filepath.Join(dir, "usagedb"), logging.NopZap())
+	require.NoError(t, err)
+
+	progress, err := readOnly.ReadProgress()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(42), progress)
+	require.NoError(t, readOnly.Close(), "closing a read-only store must not attempt a flush")
 }
 
 func TestStore_DeleteLedgerCascade(t *testing.T) {

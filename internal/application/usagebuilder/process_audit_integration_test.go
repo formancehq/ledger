@@ -419,6 +419,47 @@ func TestFlushIfDue(t *testing.T) {
 	assert.Equal(t, 2, flushCalls, "an unchanged cursor must not trigger periodic flushes")
 }
 
+func TestBootStopsCatchUpAfterFlushFailure(t *testing.T) {
+	t.Parallel()
+
+	primary, usage := newUsageTestStores(t)
+	seedAuditData(t, primary, []seedAuditEntry{{seq: 1, success: false}})
+
+	b := newTestBuilder(primary, usage, 1)
+	base := time.Unix(1_700_000_000, 0)
+	b.now = func() time.Time { return base }
+	flushCalls := 0
+	b.flushStore = func() error {
+		flushCalls++
+
+		return assert.AnError
+	}
+
+	require.NoError(t, b.boot(context.Background()), "boot logs catch-up errors and leaves retry to steady state")
+	assert.Equal(t, 1, flushCalls)
+	assert.Equal(t, uint64(1), b.LastProcessedAuditSequence(), "the committed batch remains visible")
+	assert.Zero(t, b.lastFlushedAuditSeq, "a failed flush must not publish a durable watermark")
+}
+
+func TestTickReportsPeriodicFlushFailure(t *testing.T) {
+	t.Parallel()
+
+	primary, usage := newUsageTestStores(t)
+	seedAuditData(t, primary, []seedAuditEntry{{seq: 1, success: false}})
+
+	base := time.Unix(1_700_000_000, 0)
+	b := newTestBuilder(primary, usage, 1)
+	b.lastFlushAt = base
+	b.now = func() time.Time { return base.Add(flushInterval) }
+	b.flushStore = func() error { return assert.AnError }
+
+	err := b.tick(context.Background())
+	require.ErrorIs(t, err, assert.AnError)
+	assert.ErrorContains(t, err, "flushing periodic usage progress at audit sequence 1")
+	assert.Equal(t, uint64(1), b.LastProcessedAuditSequence())
+	assert.Zero(t, b.lastFlushedAuditSeq, "a failed periodic flush must remain retryable")
+}
+
 func TestBootFlushesEveryProgressingCatchUpSlice(t *testing.T) {
 	t.Parallel()
 
