@@ -163,3 +163,49 @@ const defaultRestoreTimeoutSecs = 180
 
 // Base restore-cycle interval (seconds) when MODEL_RESTORE_INTERVAL is unset.
 const defaultRestoreIntervalSecs = 90
+
+// --- Archival cycle -----------------------------------------------------
+
+// Base archival-cycle interval (seconds) when MODEL_ARCHIVE_INTERVAL is unset.
+// Kept shorter than the restore interval so chapters are archived before a
+// restore fires, exercising restore-from-archived-baseline.
+const defaultArchiveIntervalSecs = 20
+
+// Chapter orders the driver emits per nominal archival interval. Closes and
+// archive requests are paced separately because their costs differ by orders of
+// magnitude: a close hands the Sealer a Pebble checkpoint to fold, while an archive
+// request the ordering gate rejects costs one audited failure. Frequent attempts
+// keep the frontier busy — the archive that should be accepted once the Sealer has
+// sealed the chapter, and the rejections around it — without closing chapters
+// faster than they can be sealed and archived.
+const (
+	chapterClosesPerInterval   = 2
+	chapterArchivesPerInterval = 8
+)
+
+// Log-normal spread of the chapter-order gaps around their median, and the
+// ceiling on a single draw as a multiple of that median.
+//
+// Fixed gaps put the registry in one shape: the successor is archived seconds
+// after the Sealer seals it, so it is the only sealed chapter above the archived
+// prefix and an archive request past it can only ever be answered
+// CHAPTER_NOT_CLOSED or CHAPTER_NOT_FOUND. CHAPTER_ARCHIVE_OUT_OF_ORDER needs two
+// sealed chapters at once, which needs a stretch with no accepted archive in it.
+//
+// At sigma 0.9 about one draw in sixteen exceeds four times the median and one in
+// a hundred exceeds eight times, so those stretches happen without being staged.
+// The ceiling is run economics, not correctness: an unbounded draw can idle
+// chapter orders for most of a short run, and the archival interval is
+// deliberately shorter than the restore interval so a restore lands on an
+// archived baseline.
+const (
+	chapterGapSigma       = 0.9
+	chapterGapMaxMultiple = 12
+)
+
+// Ceiling on the chapters the driver's outstanding orders may name at once.
+// candidateBases folds each named chapter's unobserved seal as its own branch, so
+// the search grows as 2^n. The driver enforces the ceiling by withholding archive
+// orders (takeChapterOrderLocked), which is what keeps n small — outstanding orders
+// normally number one or two, but a node that stops responding lets them pile up.
+const maxChaptersInPlay = 4

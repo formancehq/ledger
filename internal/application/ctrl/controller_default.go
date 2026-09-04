@@ -1846,7 +1846,8 @@ func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint6
 	return entry, nil
 }
 
-// ListChapters returns a cursor over all non-purged chapters from the store.
+// ListChapters returns a cursor over the chapter registry. The rows survive the
+// archival purge, so an archived chapter is still listed — with its final status.
 func (ctrl *DefaultController) ListChapters(ctx context.Context) (cursor.Cursor[*commonpb.Chapter], error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {

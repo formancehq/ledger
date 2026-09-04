@@ -69,8 +69,9 @@ func bulkLedgers(b oracle.Bulk) string {
 	seen := map[string]bool{}
 	var names []string
 	for _, r := range b.Requests {
+		// Chapter orders are bucket-scoped and name no ledger.
 		l := oracle.LedgerOf(r)
-		if !seen[l] {
+		if l != "" && !seen[l] {
 			seen[l] = true
 			names = append(names, l)
 		}
@@ -110,6 +111,10 @@ func requestKinds(b oracle.Bulk) string {
 			parts[i] = "setFieldType"
 		case *servicepb.Request_RemoveMetadataFieldType:
 			parts[i] = "removeFieldType"
+		case *servicepb.Request_CloseChapter:
+			parts[i] = "closeChapter"
+		case *servicepb.Request_ArchiveChapter:
+			parts[i] = fmt.Sprintf("archiveChapter(%d)", r.GetArchiveChapter().GetChapterId())
 		default:
 			parts[i] = "other"
 		}
@@ -188,6 +193,10 @@ func (c *Checker) failureDiag(b oracle.Bulk, maxTicket uint64) (postings, modelT
 	ledgers := map[string]bool{}
 	for _, r := range b.Requests {
 		l := oracle.LedgerOf(r)
+		if l == "" {
+			// Bucket-scoped (a chapter order): no ledger to diagnose.
+			continue
+		}
 		ledgers[l] = true
 		if ct := r.GetApply().GetAction().GetCreateTransaction(); ct != nil {
 			for _, p := range ct.GetPostings() {

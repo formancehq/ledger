@@ -117,6 +117,13 @@ spec:
           value: "180"
         - name: MODEL_RESTORE_TIMEOUT
           value: "900"
+        # Online chapter-archival cycle (close -> seal -> archive -> confirm
+        # -> purge) against the cluster's s3 cold storage. Kept ~3x faster
+        # than the restore interval so restores rebuild from an
+        # archived-baseline history (EN-1598 backfill, EN-1750 registry
+        # rebuild), matching the local runner's ratio.
+        - name: MODEL_ARCHIVE_INTERVAL
+          value: "60"
         volumeMounts:
         - name: restore-rendezvous
           mountPath: /var/run/restore

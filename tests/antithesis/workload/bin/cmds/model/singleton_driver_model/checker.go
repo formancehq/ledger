@@ -3,6 +3,7 @@ package main
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -70,6 +71,21 @@ type Checker struct {
 	// resume so parked workers wake. Both guarded by mu (see restore.go).
 	paused   bool
 	resumeCh chan struct{}
+
+	// Chapter-order pacing: the median gap between orders of each kind (0 = the
+	// run emits none), the gap drawn for the current wait, and when the last of
+	// each was handed out. See takeChapterOrderLocked. Guarded by mu.
+	chapterCloseGap    time.Duration
+	chapterArchiveGap  time.Duration
+	nextCloseGap       time.Duration
+	nextArchiveGap     time.Duration
+	lastChapterClose   time.Time
+	lastChapterArchive time.Time
+
+	// chapterSlotWithheld records that the maxChaptersInPlay ceiling has held an
+	// archive request back at least once, so the run says so rather than quietly
+	// narrowing its own coverage. Guarded by mu.
+	chapterSlotWithheld bool
 }
 
 // One worker → processor message. observeTicket is the ticket high-water mark

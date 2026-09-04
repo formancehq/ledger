@@ -72,22 +72,30 @@ func (c *Checker) captureReceipts(bulk oracle.Bulk, resp *servicepb.ApplyRespons
 
 // crossCheckCommit validates a committed bulk against the forward model
 // (model.go). Bulks drain in log-sequence order, so c.modelState is this
-// bulk's exact predecessor and the prediction is deterministic: the server
-// committed the bulk, so the model must predict commit AND the identical
-// post-commit volumes. A disagreement is a finding — the server accepted
-// something the model rejects, or the volumes diverged. modelState advances
-// only on agreement. Caller holds c.mu.
+// bulk's exact predecessor: the server committed the bulk, so the model must
+// predict commit AND the identical post-commit volumes. A disagreement is a
+// finding — the server accepted something the model rejects, or the volumes
+// diverged. The one thing left open is which of the server's unasked chapter
+// transitions had already landed, and the commit itself resolves that (see
+// applyWithAutonomy). modelState advances only on agreement. Caller holds c.mu.
 func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyResponse) {
-	res := c.modelState.Apply(bulk)
+	// A chapter order's outcome can turn on a transition the server made unasked —
+	// the Sealer's seal, the Archiver's confirm — which no response announces. The
+	// server committed this bulk, so the registry that explains the commit is the
+	// one it held: adopting that result is how the model learns the step landed.
+	res, explained := applyWithAutonomy(c.modelState, bulk, applyCommitted)
 
-	if !res.OK {
+	if !explained {
+		plain := c.modelState.Apply(bulk)
+
 		dbg("MODEL FINDING: ledgers=%s server committed but model rejects (%s): kinds=%s meta=%s",
-			bulkLedgers(bulk), res.Reason, requestKinds(bulk), bulkMeta(bulk))
+			bulkLedgers(bulk), plain.Reason, requestKinds(bulk), bulkMeta(bulk))
 		assert.Unreachable("singleton_driver_model: model rejects a server-committed bulk", internal.Details{
-			"ledgers": bulkLedgers(bulk),
-			"reason":  res.Reason,
-			"kinds":   requestKinds(bulk),
-			"meta":    bulkMeta(bulk),
+			"ledgers":  bulkLedgers(bulk),
+			"reason":   plain.Reason,
+			"kinds":    requestKinds(bulk),
+			"meta":     bulkMeta(bulk),
+			"chapters": c.modelState.Chapters().String(),
 		})
 
 		return
@@ -328,7 +336,9 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		}
 	}
 
+	beforeChapters := c.modelState.Chapters()
 	c.modelState = res.State
+	noteChapterProgress(beforeChapters, res.State.Chapters())
 
 	// A committed keyed bulk is frozen in modelState; remember it (with the
 	// sequences it committed at) so runReplay can re-send it and check the server
@@ -346,7 +356,9 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 	var reason string
 
 	matched := false
-	c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
+	// The failed bulk's own chapter: the search folds the seal of a chapter an order
+	// names, and this order is no longer in the in-flight set.
+	c.candidateBases(maxTicket, archiveTargets(failedBulk), func(base oracle.GlobalState) bool {
 		res := base.Apply(failedBulk)
 		if !res.OK && internal.HasErrorReason(reqErr, res.Reason) {
 			reason = res.Reason
@@ -373,6 +385,14 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 			assert.Reachable("singleton_driver_model: validation rejection exercised", internal.Details{})
 		case domain.ErrReasonIdempotencyKeyConflict:
 			assert.Reachable("singleton_driver_model: idempotency-conflict rejection exercised", internal.Details{})
+		case domain.ErrReasonChapterArchiveOutOfOrder:
+			assert.Reachable("singleton_driver_model: out-of-order chapter archive rejection exercised", internal.Details{})
+		case domain.ErrReasonChapterAlreadyArchived:
+			assert.Reachable("singleton_driver_model: already-archived chapter archive rejection exercised", internal.Details{})
+		case domain.ErrReasonChapterNotClosed:
+			assert.Reachable("singleton_driver_model: unsealed-chapter archive rejection exercised", internal.Details{})
+		case domain.ErrReasonChapterNotFound:
+			assert.Reachable("singleton_driver_model: unknown-chapter archive rejection exercised", internal.Details{})
 		}
 
 		dbg("MODEL FAIL OK: ledgers=%s kinds=%s explained by %s", bulkLedgers(failedBulk), requestKinds(failedBulk), reason)
@@ -433,7 +453,9 @@ func (c *Checker) matchesModel(maxTicket uint64, label string, matcher func(orac
 	defer c.mu.Unlock()
 
 	matched := false
-	c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
+	// Reads name no chapter: none of them exposes a chapter's status (ListChapters
+	// validates against the model directly — see runChapterRead).
+	c.candidateBases(maxTicket, nil, func(base oracle.GlobalState) bool {
 		matched = matcher(base)
 		return matched
 	})

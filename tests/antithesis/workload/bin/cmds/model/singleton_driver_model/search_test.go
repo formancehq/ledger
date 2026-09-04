@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -17,7 +18,7 @@ func bulkOf(reqs ...*servicepb.Request) oracle.Bulk { return oracle.Bulk{Request
 func collectBases(c *Checker) []oracle.GlobalState {
 	var out []oracle.GlobalState
 	// ^uint64(0): no high-water bound — fold every in-flight/pending bulk.
-	c.candidateBases(^uint64(0), func(b oracle.GlobalState) bool {
+	c.candidateBases(^uint64(0), nil, func(b oracle.GlobalState) bool {
 		out = append(out, b)
 
 		return false
@@ -37,7 +38,7 @@ func TestCandidateBases_BoundsInflightByMaxTicket(t *testing.T) {
 
 	collect := func(maxTicket uint64) []oracle.GlobalState {
 		var out []oracle.GlobalState
-		c.candidateBases(maxTicket, func(b oracle.GlobalState) bool {
+		c.candidateBases(maxTicket, nil, func(b oracle.GlobalState) bool {
 			out = append(out, b)
 
 			return false
@@ -66,7 +67,7 @@ func TestCandidateBases_TruncatesPendingByMaxTicket(t *testing.T) {
 	var bases []oracle.GlobalState
 	// maxTicket 4: P1 (ticket 2) folds, P2 (ticket 6) is excluded — states are
 	// modelState and modelState+P1, never +P1+P2.
-	c.candidateBases(4, func(b oracle.GlobalState) bool {
+	c.candidateBases(4, nil, func(b oracle.GlobalState) bool {
 		bases = append(bases, b)
 
 		return false
@@ -105,6 +106,57 @@ func TestCandidateBases_PinsPendingOrder(t *testing.T) {
 		_, present := b.Ledger("L").Volumes().Get(oracle.VolumeKey{Address: "a:1", Asset: "USD"})
 		require.False(t, present, "a:1 must be absent in every candidate base (reordered prefix is illegal)")
 	}
+}
+
+// A committed archive buffered in the re-order queue must not stall the pending
+// prefix. The prefix advances only through Apply succeeding, and the model has not
+// been told the Sealer sealed chapter 1 — so without folding that transition, the
+// archive is refused, every later pending bulk becomes unreachable in the search,
+// and a correct server reads as a business-state divergence.
+func TestCandidateBases_BufferedArchiveDoesNotStallPending(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	c.modelState = c.modelState.WithChapters(registry(t, oracle.ChapterClosing, oracle.ChapterOpen))
+	c.pending = []*pendingObservation{
+		{minSeq: 1, obs: observation{bulk: bulkOf(actions.ArchiveChapterAction(1))}},
+		{minSeq: 2, obs: observation{bulk: bulkOf(oracletest.AddTypeReq("T"))}},
+	}
+
+	reached := false
+	for _, b := range collectBases(c) {
+		if b.Ledger("L").Types().Has("T") {
+			reached = true
+		}
+	}
+	require.True(t, reached, "the bulk behind the buffered archive must be reachable")
+}
+
+// The observation being validated is out of the in-flight set by the time a
+// failure validates, so its own chapter has to be named by the caller — otherwise
+// the search never offers the state where that chapter is sealed, and a rejection
+// whose reason turns on the seal cannot be explained.
+func TestCandidateBases_AddressedChapterIsSealable(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	c.modelState = c.modelState.WithChapters(registry(t, oracle.ChapterClosing, oracle.ChapterOpen))
+
+	sealedSomewhere := func(addressed []uint64) bool {
+		found := false
+		c.candidateBases(^uint64(0), addressed, func(b oracle.GlobalState) bool {
+			if status, ok := b.Chapters().StatusOf(1); ok && status == oracle.ChapterClosed {
+				found = true
+			}
+
+			return false
+		})
+
+		return found
+	}
+
+	require.False(t, sealedSomewhere(nil), "a chapter no order names is not worth branching on")
+	require.True(t, sealedSomewhere([]uint64{1}))
 }
 
 // The general search makes self-explanation structurally impossible: a
