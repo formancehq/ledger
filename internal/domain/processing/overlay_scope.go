@@ -152,12 +152,16 @@ func (o *orderOverlayScope) GetNextSequenceID() uint64 {
 	return o.baseSeqID + o.seqIDDelta
 }
 
-func (o *orderOverlayScope) IncrementNextSequenceID() uint64 {
+func (o *orderOverlayScope) IncrementNextSequenceID() (uint64, domain.Describable) {
 	o.captureBaseCounters()
 	next := o.baseSeqID + o.seqIDDelta
+	if _, exhausted := domain.CheckedNextSequence(next, domain.SequenceCounterLog); exhausted != nil {
+		return 0, exhausted
+	}
+
 	o.seqIDDelta++
 
-	return next
+	return next, nil
 }
 
 func (o *orderOverlayScope) GetNextLedgerID() uint32 {
@@ -237,7 +241,9 @@ func (o *orderOverlayScope) Commit() error {
 	}
 
 	for range o.seqIDDelta {
-		o.Scope.IncrementNextSequenceID()
+		if _, err := o.Scope.IncrementNextSequenceID(); err != nil {
+			return err
+		}
 	}
 
 	for range o.ledgerIDDelta {

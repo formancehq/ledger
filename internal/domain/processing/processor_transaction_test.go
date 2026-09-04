@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,6 +12,80 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
+
+func TestProcessCreateTransactionRejectsExhaustedIDBeforeWrites(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: math.MaxUint64, NextLogId: 1}
+	ledgerInfo := (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader()
+	ledgers := setupLedgersStub(mockStore)
+	ledgers.expectGet(domain.LedgerKey{Name: "test-ledger"}, ledgerInfo, nil)
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.expectGet(domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "test-ledger",
+		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{{
+					Source: "world", Destination: "users:001", Amount: commonpb.NewUint256FromUint64(1), Asset: "USD",
+				}},
+			}},
+		}},
+	}}}
+
+	result, processErr := processor.ProcessOrder(order, mockStore)
+	require.Nil(t, result)
+	var exhausted *domain.ErrSequenceExhausted
+	require.ErrorAs(t, processErr, &exhausted)
+	require.Equal(t, domain.SequenceCounterTransactionID, exhausted.Counter)
+	require.Equal(t, uint64(math.MaxUint64), boundaries.GetNextTransactionId())
+	require.Equal(t, uint64(1), boundaries.GetNextLogId())
+}
+
+func TestProcessApplyRejectsExhaustedLedgerLogBeforeTransactionWrites(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: math.MaxUint64}
+	ledgerInfo := (&commonpb.LedgerInfo{Name: "test-ledger"}).AsReader()
+	ledgers := setupLedgersStub(mockStore)
+	ledgers.expectGet(domain.LedgerKey{Name: "test-ledger"}, ledgerInfo, nil)
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.expectGet(domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "test-ledger",
+		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: &raftcmdpb.CreateTransactionOrder{
+				Postings: []*commonpb.Posting{{
+					Source: "world", Destination: "users:001", Amount: commonpb.NewUint256FromUint64(1), Asset: "USD",
+				}},
+			}},
+		}},
+	}}}
+
+	result, processErr := processor.ProcessOrder(order, mockStore)
+	require.Nil(t, result)
+	var exhausted *domain.ErrSequenceExhausted
+	require.ErrorAs(t, processErr, &exhausted)
+	require.Equal(t, domain.SequenceCounterLedgerLogID, exhausted.Counter)
+	require.Equal(t, uint64(math.MaxUint64), boundaries.GetNextLogId())
+	require.Equal(t, uint64(1), boundaries.GetNextTransactionId())
+}
 
 func TestValidatePostings(t *testing.T) {
 	t.Parallel()

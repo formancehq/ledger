@@ -115,6 +115,12 @@ func TestHandleError(t *testing.T) {
 			expectedCode:   "INSUFFICIENT_FUNDS",
 		},
 		{
+			name:           "sequence exhausted",
+			err:            &domain.ErrSequenceExhausted{Counter: domain.SequenceCounterLog},
+			expectedStatus: http.StatusTooManyRequests,
+			expectedCode:   domain.ErrReasonSequenceExhausted,
+		},
+		{
 			name:           "numscript parse error",
 			err:            &domain.ErrNumscriptParse{Details: "syntax error"},
 			expectedStatus: http.StatusBadRequest,

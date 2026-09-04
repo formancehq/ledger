@@ -292,7 +292,10 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 					return nil, err
 				}
 
-				nextSequenceID := orderScope.IncrementNextSequenceID()
+				nextSequenceID, sequenceErr := orderScope.IncrementNextSequenceID()
+				if sequenceErr != nil {
+					return nil, sequenceErr
+				}
 				skipLog := &commonpb.Log{
 					Sequence: nextSequenceID,
 					Payload:  skippedPayload,
@@ -350,7 +353,10 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 			}
 		}
 
-		nextSequenceID := orderScope.IncrementNextSequenceID()
+		nextSequenceID, sequenceErr := orderScope.IncrementNextSequenceID()
+		if sequenceErr != nil {
+			return nil, sequenceErr
+		}
 		log := &commonpb.Log{
 			Sequence: nextSequenceID,
 			Payload:  payload,

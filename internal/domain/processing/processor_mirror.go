@@ -82,11 +82,19 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 	//
 	// First-ingest case: LastMirrorV2LogId defaults to 0, so expected = 1 and the
 	// first real v2LogId (>= 1) applies.
-	switch {
-	case v2LogID <= last:
+	if v2LogID <= last {
 		return nil, nil
-	case v2LogID > last+1:
-		return nil, &domain.ErrMirrorV2LogIDGap{Name: ledger, Got: v2LogID, Expected: last + 1}
+	}
+
+	expectedV2LogID, exhausted := domain.CheckedNextSequence(last, domain.SequenceCounterMirrorV2LogID)
+	if exhausted != nil {
+		// A uint64 greater than MaxUint64 cannot reach this branch; retain the
+		// explicit guard so the contiguity check itself never relies on wrap.
+		return nil, exhausted
+	}
+
+	if v2LogID > expectedV2LogID {
+		return nil, &domain.ErrMirrorV2LogIDGap{Name: ledger, Got: v2LogID, Expected: expectedV2LogID}
 	}
 
 	// Created and reverted transactions must carry the source v2 log date.
@@ -99,10 +107,13 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 		}
 	}
 
-	// Re-touch ledger info so it enters the Merge buffer and gets propagated
-	// back to Gen0 on commit. Without this, ledger info is evicted after two
-	// cache rotations because mirror proposals bypass the admission preloader.
-	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
+	// Every fresh mirror entry emits one per-ledger log. Reject exhaustion
+	// before re-touching the ledger or dispatching a child handler.
+	nextLogID := boundaries.GetNextLogId()
+	advancedLogID, exhausted := domain.CheckedNextSequence(nextLogID, domain.SequenceCounterLedgerLogID)
+	if exhausted != nil {
+		return nil, exhausted
+	}
 
 	// Stage per-apply context fields for child handlers.
 	ctx.Boundaries = boundaries
@@ -112,7 +123,12 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 
 	switch data := entry.GetData().(type) {
 	case *raftcmdpb.MirrorLogEntry_FillGap:
-		logPayload = processMirrorFillGap(data.FillGap, entry.GetV2LogId(), ctx)
+		var err domain.Describable
+
+		logPayload, err = processMirrorFillGap(data.FillGap, entry.GetV2LogId(), ctx)
+		if err != nil {
+			return nil, err
+		}
 
 	case *raftcmdpb.MirrorLogEntry_CreatedTransaction:
 		var err domain.Describable
@@ -150,9 +166,15 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
 	}
 
+	// Re-touch ledger info so it enters the Merge buffer and gets propagated
+	// back to Gen0 on commit. Do this only after the child handler succeeds so
+	// sequence exhaustion cannot leave even a staged ledger mutation behind.
+	// Without the touch, ledger info is evicted after two cache rotations because
+	// mirror proposals bypass the admission preloader.
+	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
+
 	// Assign per-ledger log ID and advance boundaries
-	nextLogID := boundaries.GetNextLogId()
-	boundaries.NextLogId = nextLogID + 1
+	boundaries.NextLogId = advancedLogID
 	// Advance the idempotent-replay high-water mark. Set once here regardless of
 	// the inner ingest kind, because v2LogId lives on the wrapping MirrorLogEntry
 	// and applies to every kind (CreatedTransaction, SavedMetadata,
@@ -183,17 +205,24 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 // Signature deviates from the uniform `(order, ctx)` shape because the
 // v2LogID belongs to the wrapping MirrorLogEntry, not the FillGap message
 // itself — passing it as an extra arg avoids reaching back into the entry.
-func processMirrorFillGap(gap *raftcmdpb.MirrorFillGap, v2LogID uint64, ctx *Context) *commonpb.LedgerLogPayload {
+func processMirrorFillGap(gap *raftcmdpb.MirrorFillGap, v2LogID uint64, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
 	// Advance NextTransactionId past every skipped transaction id, using the id
 	// values rather than the element count. This matches the created/reverted
 	// apply paths (NextTransactionId = id + 1) and stays correct even if a
 	// dropped id is not contiguous with the current boundary — incrementing by
 	// count would leave the boundary too low.
+	advancedTransactionID := ctx.Boundaries.GetNextTransactionId()
 	for _, id := range gap.GetSkippedTransactionIds() {
-		if ctx.Boundaries.GetNextTransactionId() <= id {
-			ctx.Boundaries.NextTransactionId = id + 1
+		if advancedTransactionID <= id {
+			next, exhausted := domain.CheckedNextSequence(id, domain.SequenceCounterTransactionID)
+			if exhausted != nil {
+				return nil, exhausted
+			}
+
+			advancedTransactionID = next
 		}
 	}
+	ctx.Boundaries.NextTransactionId = advancedTransactionID
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_FillGap{
@@ -201,7 +230,7 @@ func processMirrorFillGap(gap *raftcmdpb.MirrorFillGap, v2LogID uint64, ctx *Con
 				OriginalId: v2LogID,
 			},
 		},
-	}
+	}, nil
 }
 
 // processMirrorCreatedTransaction creates a transaction from mirror data.
@@ -212,6 +241,16 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 
+	txID := ct.GetTransactionId()
+	var advancedTransactionID uint64
+	if boundaries.GetNextTransactionId() <= txID {
+		var exhausted *domain.ErrSequenceExhausted
+		advancedTransactionID, exhausted = domain.CheckedNextSequence(txID, domain.SequenceCounterTransactionID)
+		if exhausted != nil {
+			return nil, exhausted
+		}
+	}
+
 	// Apply each posting with force=true (skip balance checks, auto-init missing volumes)
 	for _, posting := range ct.GetPostings() {
 		if err := applyPosting(s, ledger, posting, true, ctx.AssetCache); err != nil {
@@ -221,10 +260,9 @@ func processMirrorCreatedTransaction(ledger string, ct *raftcmdpb.MirrorCreatedT
 		}
 	}
 
-	txID := ct.GetTransactionId()
 	// Ensure NextTransactionId is past this ID
 	if boundaries.GetNextTransactionId() <= txID {
-		boundaries.NextTransactionId = txID + 1
+		boundaries.NextTransactionId = advancedTransactionID
 	}
 
 	// posting_count is no longer maintained on LedgerBoundaries — the
@@ -399,6 +437,16 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 
+	revertTxID := rt.GetNewTransactionId()
+	var advancedTransactionID uint64
+	if boundaries.GetNextTransactionId() <= revertTxID {
+		var exhausted *domain.ErrSequenceExhausted
+		advancedTransactionID, exhausted = domain.CheckedNextSequence(revertTxID, domain.SequenceCounterTransactionID)
+		if exhausted != nil {
+			return nil, exhausted
+		}
+	}
+
 	// Apply reversed postings with force=true (auto-init missing volumes)
 	for _, posting := range rt.GetReversePostings() {
 		if err := applyPosting(s, ledger, posting, true, ctx.AssetCache); err != nil {
@@ -409,10 +457,9 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 	// Mark original transaction as reverted
 	s.PutReverted(domain.TransactionKey{LedgerName: ledger, ID: rt.GetRevertedTransactionId()}, true)
 
-	revertTxID := rt.GetNewTransactionId()
 	// Ensure NextTransactionId is past this ID
 	if boundaries.GetNextTransactionId() <= revertTxID {
-		boundaries.NextTransactionId = revertTxID + 1
+		boundaries.NextTransactionId = advancedTransactionID
 	}
 
 	// posting_count and revert_count are no longer maintained on

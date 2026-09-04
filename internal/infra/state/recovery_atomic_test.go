@@ -3,10 +3,14 @@ package state
 import (
 	"errors"
 	"io"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -67,4 +71,50 @@ func TestRecoverStateAtomicOnLoadFailure(t *testing.T) {
 	require.Equal(t, snapshot.NextLedgerID, machine.State.NextLedgerID)
 	require.Equal(t, snapshot.NextQueryCheckpointID, machine.State.NextQueryCheckpointID)
 	require.Equal(t, snapshot.CacheEpoch, machine.State.CacheEpoch)
+}
+
+func TestRecoverStateRejectsPersistedExhaustedSequencesAtomically(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		counter domain.SequenceCounter
+		seed    func(*testing.T, *dal.Store)
+	}{
+		{
+			name:    "global log",
+			counter: domain.SequenceCounterLog,
+			seed: func(t *testing.T, store *dal.Store) {
+				appendLogs(t, store, 1, &commonpb.Log{Sequence: math.MaxUint64})
+			},
+		},
+		{
+			name:    "audit",
+			counter: domain.SequenceCounterAudit,
+			seed: func(t *testing.T, store *dal.Store) {
+				batch := store.OpenWriteSession()
+				require.NoError(t, appendAuditEntries(batch, &auditpb.AuditEntry{Sequence: math.MaxUint64}))
+				require.NoError(t, batch.Commit())
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			machine, store, _ := newTestMachine(t)
+			stateBefore := machine.State
+			snapshot := *stateBefore
+			tt.seed(t, store)
+
+			err := NewRecovery(machine, store).RecoverState()
+			var exhausted *domain.ErrSequenceExhausted
+			require.ErrorAs(t, err, &exhausted)
+			require.Equal(t, tt.counter, exhausted.Counter)
+			require.Same(t, stateBefore, machine.State)
+			require.Equal(t, snapshot.NextSequenceID, machine.State.NextSequenceID)
+			require.Equal(t, snapshot.NextAuditSequenceID, machine.State.NextAuditSequenceID)
+		})
+	}
 }

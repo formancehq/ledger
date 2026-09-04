@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,6 +11,273 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+func TestMirrorIngestRejectsExhaustedTransactionIDWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{
+		NextTransactionId: math.MaxUint64,
+		NextLogId:         1,
+		LastMirrorV2LogId: 41,
+	}
+	ledgerInfo := &commonpb.LedgerInfo{
+		Name: "mirror-ledger",
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+	}
+
+	ledgerTouched := false
+	ledgers := setupLedgersStub(mockStore)
+	ledgers.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil)
+	ledgers.onPut(func(domain.LedgerKey, *commonpb.LedgerInfo) { ledgerTouched = true })
+
+	boundaryWritten := false
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
+	boundariesStub.onPut(func(domain.LedgerKey, *raftcmdpb.LedgerBoundaries) { boundaryWritten = true })
+
+	for range 2 {
+		result, processErr := processor.ProcessOrder(
+			mirrorCreatedTxOrder("mirror-ledger", 42, math.MaxUint64),
+			mockStore,
+		)
+		require.Nil(t, result)
+		var exhausted *domain.ErrSequenceExhausted
+		require.ErrorAs(t, processErr, &exhausted)
+		require.Equal(t, domain.SequenceCounterTransactionID, exhausted.Counter)
+		require.Equal(t, uint64(math.MaxUint64), boundaries.GetNextTransactionId())
+		require.Equal(t, uint64(1), boundaries.GetNextLogId())
+		require.Equal(t, uint64(41), boundaries.GetLastMirrorV2LogId())
+		require.False(t, ledgerTouched)
+		require.False(t, boundaryWritten)
+	}
+}
+
+func TestMirrorIngestRejectsExhaustedLedgerLogIDWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{
+		NextTransactionId: 1,
+		NextLogId:         math.MaxUint64,
+	}
+	ledgerInfo := &commonpb.LedgerInfo{
+		Name: "mirror-ledger",
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+	}
+
+	ledgerTouched := false
+	ledgers := setupLedgersStub(mockStore)
+	ledgers.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil)
+	ledgers.onPut(func(domain.LedgerKey, *commonpb.LedgerInfo) { ledgerTouched = true })
+
+	boundaryWritten := false
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
+	boundariesStub.onPut(func(domain.LedgerKey, *raftcmdpb.LedgerBoundaries) { boundaryWritten = true })
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "mirror-ledger",
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+						V2LogId: 1,
+						Data: &raftcmdpb.MirrorLogEntry_FillGap{
+							FillGap: &raftcmdpb.MirrorFillGap{},
+						},
+					}},
+				},
+			},
+		},
+	}
+
+	for range 2 {
+		result, processErr := processor.ProcessOrder(order, mockStore)
+		require.Nil(t, result)
+		var exhausted *domain.ErrSequenceExhausted
+		require.ErrorAs(t, processErr, &exhausted)
+		require.Equal(t, domain.SequenceCounterLedgerLogID, exhausted.Counter)
+		require.Equal(t, uint64(math.MaxUint64), boundaries.GetNextLogId())
+		require.Equal(t, uint64(1), boundaries.GetNextTransactionId())
+		require.Zero(t, boundaries.GetLastMirrorV2LogId())
+		require.False(t, ledgerTouched)
+		require.False(t, boundaryWritten)
+	}
+}
+
+func TestMirrorIngestAllowsLastTransactionAndLedgerLogIDs(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{
+		NextTransactionId: math.MaxUint64 - 1,
+		NextLogId:         math.MaxUint64 - 1,
+		LastMirrorV2LogId: 41,
+	}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
+	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1}).AsReader()).AnyTimes()
+	mockStore.EXPECT().GetNextSequenceID().Return(uint64(100))
+
+	var persisted *raftcmdpb.LedgerBoundaries
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
+	boundariesStub.onPut(func(_ domain.LedgerKey, b *raftcmdpb.LedgerBoundaries) { persisted = b })
+
+	zeroVol := (&raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}).AsReader()
+	volumes := setupVolumesStub(mockStore)
+	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "world", "USD/2", ""), zeroVol, nil)
+	volumes.expectGet(domain.NewVolumeKey("mirror-ledger", "users:001", "USD/2", ""), zeroVol, nil)
+	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "mirror-ledger", ID: math.MaxUint64 - 1}, nil)
+
+	result, processErr := processor.ProcessOrder(
+		mirrorCreatedTxOrder("mirror-ledger", 42, math.MaxUint64-1),
+		mockStore,
+	)
+	require.NoError(t, processErr)
+	require.Equal(t, uint64(math.MaxUint64-1), result.GetApply().GetLog().GetId())
+	require.Equal(t, uint64(math.MaxUint64), persisted.GetNextTransactionId())
+	require.Equal(t, uint64(math.MaxUint64), persisted.GetNextLogId())
+	require.Equal(t, uint64(42), persisted.GetLastMirrorV2LogId())
+}
+
+func TestMirrorTransactionVariantsRejectMaxIDBeforeMutation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("fill gap validates all skipped ids before advancing", func(t *testing.T) {
+		t.Parallel()
+
+		boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 7}
+		payload, err := processMirrorFillGap(
+			&raftcmdpb.MirrorFillGap{SkippedTransactionIds: []uint64{10, math.MaxUint64}},
+			42,
+			&Context{Boundaries: boundaries},
+		)
+		require.Nil(t, payload)
+		var exhausted *domain.ErrSequenceExhausted
+		require.ErrorAs(t, err, &exhausted)
+		require.Equal(t, domain.SequenceCounterTransactionID, exhausted.Counter)
+		require.Equal(t, uint64(7), boundaries.GetNextTransactionId())
+	})
+
+	t.Run("reverted transaction validates new id before applying postings", func(t *testing.T) {
+		t.Parallel()
+
+		boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 7}
+		payload, err := processMirrorRevertedTransaction(
+			"mirror-ledger",
+			&raftcmdpb.MirrorRevertedTransaction{NewTransactionId: math.MaxUint64},
+			&commonpb.Timestamp{Data: 1},
+			&Context{Boundaries: boundaries},
+		)
+		require.Nil(t, payload)
+		var exhausted *domain.ErrSequenceExhausted
+		require.ErrorAs(t, err, &exhausted)
+		require.Equal(t, domain.SequenceCounterTransactionID, exhausted.Counter)
+		require.Equal(t, uint64(7), boundaries.GetNextTransactionId())
+	})
+}
+
+func TestMirrorIngestAcceptsTerminalV2HighWaterWithoutContiguityWrap(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{
+		NextTransactionId: 1,
+		NextLogId:         1,
+		LastMirrorV2LogId: math.MaxUint64 - 1,
+	}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo)
+	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1}).AsReader())
+
+	var persisted *raftcmdpb.LedgerBoundaries
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
+	boundariesStub.onPut(func(_ domain.LedgerKey, b *raftcmdpb.LedgerBoundaries) { persisted = b })
+
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "mirror-ledger",
+		Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+			Entry: &raftcmdpb.MirrorLogEntry{
+				V2LogId: math.MaxUint64,
+				Data:    &raftcmdpb.MirrorLogEntry_FillGap{FillGap: &raftcmdpb.MirrorFillGap{}},
+			},
+		}},
+	}}}
+
+	result, processErr := processor.ProcessOrder(order, mockStore)
+	require.NoError(t, processErr)
+	require.Equal(t, uint64(1), result.GetApply().GetLog().GetId())
+	require.Equal(t, uint64(2), persisted.GetNextLogId())
+	require.Equal(t, uint64(math.MaxUint64), persisted.GetLastMirrorV2LogId())
+}
+
+func TestMirrorIngestTerminalV2HighWaterReplayIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{
+		NextTransactionId: 43,
+		NextLogId:         5,
+		LastMirrorV2LogId: math.MaxUint64,
+	}
+	ledgerInfo := &commonpb.LedgerInfo{Name: "mirror-ledger", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	boundariesStub := setupBoundariesStub(mockStore)
+	boundariesStub.expectGet(domain.LedgerKey{Name: "mirror-ledger"}, boundaries.AsReader(), nil)
+	boundariesStub.onPut(func(domain.LedgerKey, *raftcmdpb.LedgerBoundaries) {
+		t.Fatal("terminal mirror replay must not write boundaries")
+	})
+	ledgersStub := setupLedgersStub(mockStore)
+	ledgersStub.onPut(func(domain.LedgerKey, *commonpb.LedgerInfo) {
+		t.Fatal("terminal mirror replay must not touch the ledger")
+	})
+
+	result, processErr := processor.ProcessOrder(
+		mirrorCreatedTxOrder("mirror-ledger", math.MaxUint64, 42),
+		mockStore,
+	)
+	require.NoError(t, processErr)
+	require.Nil(t, result)
+	require.Equal(t, uint64(math.MaxUint64), boundaries.GetLastMirrorV2LogId())
+}
 
 func TestMirrorIngest_FillGap(t *testing.T) {
 	t.Parallel()

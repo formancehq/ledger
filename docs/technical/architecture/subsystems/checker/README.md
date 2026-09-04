@@ -42,7 +42,10 @@ position** (`LedgerBoundaries.last_mirror_v2_log_id`) is now verified by
 unverified cursor advanced beyond the source head fetching no source logs and
 reporting FOLLOWING, silently under-ingesting v2→v3) is **closed**: EN-1513
 removed that duplicate durable position, leaving the checker-verified boundary
-as the only ingestion position. The
+as the only ingestion position. Boundary reconstruction also uses the FSM's
+checked sequence transition: a transaction, ledger-log, or global-log value
+that would require `MaxUint64 + 1` makes the check fail explicitly instead of
+wrapping the expected boundary to zero (EN-1860). The
 **readstore inverted-index contents** are a peer secondary store, out of
 main-store checker scope as a rule — but that is not a claim they are
 integrity-safe: their contents are a current open integrity gap until per-replica

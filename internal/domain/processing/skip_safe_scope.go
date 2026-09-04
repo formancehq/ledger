@@ -171,8 +171,10 @@ func (s *skipSafeScope) GetSinkConfig(name string) (commonpb.SinkConfigReader, e
 // or pure reads. Pass through.
 // ──────────────────────────────────────────────────────────────────────────
 
-func (s *skipSafeScope) GetNextSequenceID() uint64         { return s.inner.GetNextSequenceID() }
-func (s *skipSafeScope) IncrementNextSequenceID() uint64   { return s.inner.IncrementNextSequenceID() }
+func (s *skipSafeScope) GetNextSequenceID() uint64 { return s.inner.GetNextSequenceID() }
+func (s *skipSafeScope) IncrementNextSequenceID() (uint64, domain.Describable) {
+	return s.inner.IncrementNextSequenceID()
+}
 func (s *skipSafeScope) GetNextAuditSequenceID() uint64    { return s.inner.GetNextAuditSequenceID() }
 func (s *skipSafeScope) GetLastAuditHash() []byte          { return s.inner.GetLastAuditHash() }
 func (s *skipSafeScope) GetNextLedgerID() uint32           { return s.inner.GetNextLedgerID() }

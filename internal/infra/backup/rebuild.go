@@ -978,11 +978,18 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 			return err
 		}
 
+		advancedTransactionID := b.GetNextTransactionId()
 		for _, id := range effects.SkippedTransactionIDs {
-			if next := id + 1; next > b.GetNextTransactionId() {
-				b.NextTransactionId = next
+			next, exhausted := domain.CheckedNextSequence(id, domain.SequenceCounterTransactionID)
+			if exhausted != nil {
+				return fmt.Errorf("advancing skipped mirror transaction id for ledger %q: %w", effects.Ledger, exhausted)
+			}
+
+			if next > advancedTransactionID {
+				advancedTransactionID = next
 			}
 		}
+		b.NextTransactionId = advancedTransactionID
 
 		// Mirror high-water mark. Only the FSM writes LastMirrorV2LogId on the
 		// live path, and the ledger-log stream does not carry the source id
@@ -1216,7 +1223,12 @@ func (w *attributeReplayWriter) advanceLogID(ledgerName string, logID uint64) er
 		return err
 	}
 
-	if next := logID + 1; next > b.GetNextLogId() {
+	next, exhausted := domain.CheckedNextSequence(logID, domain.SequenceCounterLedgerLogID)
+	if exhausted != nil {
+		return fmt.Errorf("advancing ledger-log id for ledger %q: %w", ledgerName, exhausted)
+	}
+
+	if next > b.GetNextLogId() {
 		b.NextLogId = next
 	}
 
@@ -1239,7 +1251,12 @@ func (w *attributeReplayWriter) recordTransactionBoundary(canonicalKey []byte) e
 		return err
 	}
 
-	if next := tk.ID + 1; next > b.GetNextTransactionId() {
+	next, exhausted := domain.CheckedNextSequence(tk.ID, domain.SequenceCounterTransactionID)
+	if exhausted != nil {
+		return fmt.Errorf("advancing transaction id for ledger %q: %w", tk.LedgerName, exhausted)
+	}
+
+	if next > b.GetNextTransactionId() {
 		b.NextTransactionId = next
 	}
 
