@@ -309,7 +309,10 @@ func (b *Builder) tick(ctx context.Context) error {
 		}
 	}
 
-	cursor, processErr := b.processAuditEntries(ctx, cursor, time.Time{})
+	// Bound a backlog-heavy steady-state pass at the next durability deadline.
+	// processAuditEntries checks the deadline after every committed batch, so a
+	// due flush is delayed by at most one batch rather than the entire backlog.
+	cursor, processErr := b.processAuditEntries(ctx, cursor, b.lastFlushAt.Add(flushInterval))
 	flushErr := b.flushIfDue(b.currentTime(), cursor)
 	if flushErr != nil {
 		flushErr = fmt.Errorf("flushing periodic usage progress at audit sequence %d: %w", cursor, flushErr)
