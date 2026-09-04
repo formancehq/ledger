@@ -124,6 +124,7 @@ func TestNestedPeerFailureIsBoundedAndReaped(t *testing.T) {
 		"TEST_FAIL_BEFORE_READY": "forced peer failure before ready",
 		"TEST_REVIEWER_PID":      secondPID,
 		"TEST_SYNC_FDS":          "1",
+		"TEST_WAIT_FOR_FILE":     firstPID,
 	})
 	result, err := testenv.RunSynchronized(t, reviewLoopFixtureTimeout,
 		testenv.SynchronizedCommand{Name: "waiting peer", Command: first},
@@ -154,6 +155,13 @@ func newWorktreeIdentityFixture(t *testing.T) *worktreeIdentityFixture {
 	require.NoError(t, os.WriteFile(reviewer, []byte(`#!/usr/bin/env bash
 set -euo pipefail
 if [[ -n "${TEST_REVIEWER_PID:-}" ]]; then printf '%s\n' "$$" > "$TEST_REVIEWER_PID"; fi
+if [[ -n "${TEST_WAIT_FOR_FILE:-}" ]]; then
+    deadline=$((SECONDS + 10))
+    while [[ ! -f "$TEST_WAIT_FOR_FILE" ]]; do
+        if (( SECONDS >= deadline )); then printf 'timed out waiting for %s\n' "$TEST_WAIT_FOR_FILE" >&2; exit 78; fi
+        sleep 0.01
+    done
+fi
 if [[ -n "${TEST_FAIL_BEFORE_READY:-}" ]]; then printf '%s\n' "$TEST_FAIL_BEFORE_READY" >&2; exit 77; fi
 if [[ "${TEST_SYNC_FDS:-}" == 1 ]]; then printf 'ready\n' >&3; IFS= read -r _ <&4; fi
 if [[ -n "${TEST_CAPTURE:-}" ]]; then
