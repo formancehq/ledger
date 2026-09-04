@@ -439,6 +439,24 @@ func (s IndexVersionState) Tombstoned() bool {
 	return s.CurrentVersion == 0 && s.PendingVersion == 0
 }
 
+// Promoted is the atomic switch: the pending version and its whole binding —
+// type, declaredness, revision — become the serving ones, the pending slot
+// clears, and the high-water mark records the promoted version. Every switch
+// site must promote through here; copying the fields piecemeal risks dropping
+// one (the revision, say) and silently serving a mismatched binding under the
+// serving-window gate.
+func (s IndexVersionState) Promoted(activationSequence uint64) IndexVersionState {
+	return IndexVersionState{
+		CurrentVersion:      s.PendingVersion,
+		PendingVersion:      0,
+		ActivationSequence:  activationSequence,
+		HighWater:           s.PendingVersion,
+		CurrentType:         s.PendingType,
+		CurrentTypeDeclared: s.PendingTypeDeclared,
+		CurrentRevision:     s.PendingRevision,
+	}
+}
+
 // IndexVersionStateEntry is the decoded form returned by
 // ReadAllIndexVersionStates. CanonicalKey is the [ledger||canonicalID]
 // suffix that uniquely identifies the index.

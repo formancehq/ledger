@@ -193,6 +193,50 @@ func TestCompile_StaleBindingReadsAsBuilding(t *testing.T) {
 		requireBuilding(t, err)
 	})
 
+	t.Run("KNOWN GAP: a binding ahead of the schema serves — dropped incarnations pass the gate", func(t *testing.T) {
+		t.Parallel()
+
+		// Removal resets the schema revision: a re-declared field starts over
+		// at revision 1, while a read store rewound to a flush that predates
+		// the DropIndex fold still serves the dropped incarnation's binding at
+		// whatever revision it had. Revision distance compares favorably
+		// across incarnations (binding 2 vs schema 1 below), so the gate
+		// serves the dead keyspace until the fold re-applies the DropIndex
+		// tombstone; only stale-consistency reads can observe the window,
+		// since aligned reads wait for the fold. A plain binding>schema
+		// refusal cannot close this: a retype's atomic switch legitimately
+		// puts the binding one revision ahead of an older schema snapshot.
+		// Closing it needs an incarnation discriminator observed consistently
+		// with the schema. This subtest pins the boundary so any change to it
+		// is deliberate.
+		redeclared := map[string]*commonpb.MetadataFieldSchema{
+			"tier": {Type: commonpb.MetadataType_METADATA_TYPE_STRING, Revision: 1},
+		}
+
+		staleIncarnationCond := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field: &commonpb.FieldRef{Metadata: "tier"},
+				Condition: &commonpb.FieldCondition_StringCond{StringCond: &commonpb.StringCondition{
+					Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "gold"},
+				}},
+			},
+		}}
+
+		rs, err := readstore.New(t.TempDir(), logging.NopZap(), readstore.DefaultConfig())
+		require.NoError(t, err)
+
+		t.Cleanup(func() { _ = rs.Close() })
+
+		iter, err := Compile(
+			rs.DB(), dal.NewKeyBuilder(), staleIncarnationCond,
+			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerName,
+			nil, redeclared, info, indexRegistry,
+			resolver(2, commonpb.MetadataType_METADATA_TYPE_STRING, true), nil, nil, 0)
+		require.NoError(t, err)
+
+		iter.Close()
+	})
+
 	t.Run("the direct predecessor stays the served window", func(t *testing.T) {
 		t.Parallel()
 

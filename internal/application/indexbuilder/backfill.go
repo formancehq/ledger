@@ -900,15 +900,7 @@ scan:
 			done = false
 		} else {
 			prior, _ := b.versionStateFor(task.ledger, canonical)
-			newState = readstore.IndexVersionState{
-				CurrentVersion:      pendingVersion,
-				PendingVersion:      0,
-				ActivationSequence:  task.requiredIndexedSeq,
-				HighWater:           pendingVersion,
-				CurrentType:         prior.PendingType,
-				CurrentTypeDeclared: prior.PendingTypeDeclared,
-				CurrentRevision:     prior.PendingRevision,
-			}
+			newState = prior.Promoted(task.requiredIndexedSeq)
 
 			if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
 				return false, fmt.Errorf("persisting atomic version switch: %w", err)
@@ -982,15 +974,7 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 	}()
 
 	prior, _ := b.versionStateFor(task.ledger, canonical)
-	newState := readstore.IndexVersionState{
-		CurrentVersion:      pendingVersion,
-		PendingVersion:      0,
-		ActivationSequence:  task.requiredIndexedSeq,
-		HighWater:           pendingVersion,
-		CurrentType:         prior.PendingType,
-		CurrentTypeDeclared: prior.PendingTypeDeclared,
-		CurrentRevision:     prior.PendingRevision,
-	}
+	newState := prior.Promoted(task.requiredIndexedSeq)
 
 	if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
 		return false, fmt.Errorf("persisting atomic version switch: %w", err)
@@ -1271,15 +1255,10 @@ func (b *Builder) completeBackfill(task *backfillTask) error {
 			task.ledger, canonical)
 	}
 
+	// Activation zero: a version built by an initial backfill folds real log
+	// sequences into its events, so it is resolvable at any pin.
 	prior, _ := b.versionStateFor(task.ledger, canonical)
-	newState := readstore.IndexVersionState{
-		CurrentVersion:      pending,
-		PendingVersion:      0,
-		HighWater:           pending,
-		CurrentType:         prior.PendingType,
-		CurrentTypeDeclared: prior.PendingTypeDeclared,
-		CurrentRevision:     prior.PendingRevision,
-	}
+	newState := prior.Promoted(0)
 
 	batch := b.readStore.NewBatch()
 	if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {

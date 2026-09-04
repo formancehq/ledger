@@ -583,6 +583,15 @@ indexes need their own progress barrier:
   leadership moves local between the failed barrier and leader resolution, the
   router returns the barrier failure rather than serving the newly local
   controller without a successful `ReadIndex`.
+- A second forwarding trigger fires after the barrier: when the local replica
+  refuses a read as `INDEX_BUILDING` (an index mid-build — initial backfill,
+  activation-pending, or a rewound read store re-walking a retype chain),
+  `RoutedController` re-runs the read on the leader, since a converged replica
+  can serve what this one cannot yet. The leader itself never forwards,
+  explicitly-stale reads keep the local refusal (they ask for this node's
+  view), and a read that already ran on the remote leader is not re-sent. A
+  query profile can therefore report `forwarded=true` with a successful local
+  barrier: the barrier passed, the index gate refused, and the leader served.
 - A `ListAuditEntries` filter that contains any field other than `seq` resolves
   through the independently asynchronous audit index. With the default
   `minLogSequence = 0`, its handler does not wait for audit-index progress, so
