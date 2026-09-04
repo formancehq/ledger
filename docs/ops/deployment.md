@@ -886,7 +886,7 @@ in place would rejoin the cluster as a new member.
 2. Restore the node from a backup, or drop it with `ledgerctl cluster remove-node`
    and re-join it as a fresh member (see [cluster-operations.md](cluster-operations.md))
 3. A missing `<wal-dir>/snap` alone is not this case — the node recreates it and
-   logs `Snapshot directory is missing, recreating it`
+   logs `Snapshot directory was missing, recreated it`
 
 #### Degraded Performance
 

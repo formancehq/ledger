@@ -810,19 +810,25 @@ func (s *DefaultWAL) CreateSnapshot(index uint64, cs *raftpb.ConfState, data []b
 		},
 		Data: data,
 	}
+	// Restore/empty-storage snapshots have no retained log entries. The
+	// snapshot itself is therefore the only matching point available to
+	// Raft and becomes the compacted prefix boundary.
+	becomesCompactedBoundary := len(s.entries) == 0
+	s.mu.Unlock()
+
+	// The snapshot is published once its file is durable, so a failed save
+	// leaves the previous snapshot in place and the same index can be retried.
+	if err := s.snapshotter.Save(snap); err != nil {
+		return fmt.Errorf("saving snapshot file: %w", err)
+	}
+
+	s.mu.Lock()
 	s.snapshot = snap
-	if len(s.entries) == 0 {
-		// Restore/empty-storage snapshots have no retained log entries. The
-		// snapshot itself is therefore the only matching point available to
-		// Raft and becomes the compacted prefix boundary.
+	if becomesCompactedBoundary {
 		s.compactedIndex = index
 		s.compactedTerm = term
 	}
 	s.mu.Unlock()
-
-	if err := s.snapshotter.Save(snap); err != nil {
-		return fmt.Errorf("saving snapshot file: %w", err)
-	}
 
 	// Write the WAL snapshot record BEFORE cleaning up old snap files.
 	// If a crash occurs between Save and SaveSnapshot, the old snap file

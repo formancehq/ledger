@@ -78,7 +78,7 @@ func TestSnapshotter_SaveRefusesWhenTheParentIsMissing(t *testing.T) {
 	err = s.Save(&raftpb.Snapshot{
 		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(11), Term: proto.Uint64(2)},
 	})
-	require.ErrorContains(t, err, "consensus state cannot be recovered")
+	require.ErrorIs(t, err, ErrWALDirectoryMissing)
 	require.NoDirExists(t, walDir)
 }
 
@@ -178,8 +178,7 @@ func TestSnapshotter_SaveFailsWhenThePathIsAFile(t *testing.T) {
 func TestMkdirSynced_ToleratesAnExistingDirectory(t *testing.T) {
 	t.Parallel()
 
-	// Two saves can run at once — CreateSnapshot and UpdateSnapshotConfState both
-	// release the WAL lock first — so losing the race must not be an error.
+	// A directory that appeared since the stat is usable.
 	dir := filepath.Join(t.TempDir(), snapDir)
 	require.NoError(t, os.Mkdir(dir, 0755))
 
