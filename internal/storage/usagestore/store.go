@@ -41,9 +41,10 @@ func DefaultConfig() pebblecfg.Config {
 // so a corruption of one cannot touch the other and each subsystem's
 // rebuild story is decoupled (drop the directory + restart).
 type Store struct {
-	db     *pebble.DB
-	logger logging.Logger
-	dir    string
+	db       *pebble.DB
+	logger   logging.Logger
+	dir      string
+	readOnly bool
 }
 
 // New opens or creates a Pebble database at the given directory.
@@ -74,8 +75,8 @@ func New(dir string, logger logging.Logger, cfg pebblecfg.Config) (*Store, error
 		FormatMajorVersion: pebble.FormatNewest,
 		Comparer:           UsageStoreComparer,
 		// The usage store is a derived projection rebuilt from the audit log.
-		// WAL disabled — on crash the usagebuilder simply replays from its
-		// last progress cursor.
+		// WAL disabled — on crash the usagebuilder replays from its last
+		// explicitly flushed progress cursor.
 		DisableWAL:                  true,
 		MemTableSize:                cfg.MemTableSize,
 		MemTableStopWritesThreshold: cfg.MemTableStopWritesThreshold,
@@ -128,9 +129,10 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 	}
 
 	return &Store{
-		db:     db,
-		logger: logger.WithFields(map[string]any{"cmp": "usage-store-readonly"}),
-		dir:    dirPath,
+		db:       db,
+		logger:   logger.WithFields(map[string]any{"cmp": "usage-store-readonly"}),
+		dir:      dirPath,
+		readOnly: true,
 	}, nil
 }
 
@@ -139,9 +141,27 @@ func (s *Store) CreateCheckpoint(destDir string) error {
 	return s.db.Checkpoint(destDir)
 }
 
-// Close closes the underlying Pebble database.
+// Flush makes every committed WAL-less batch durable by forcing the mutable
+// memtable to stable storage. Cursor and projection mutations share a batch,
+// so a successful flush establishes a coherent replay watermark.
+func (s *Store) Flush() error {
+	return s.db.Flush()
+}
+
+// Close flushes the mutable usage projection before closing Pebble. Pebble's
+// Close does not flush memtables: with the WAL disabled, omitting this flush
+// would lose otherwise successful batches on a controlled shutdown. Close is
+// attempted even when Flush fails so filesystem/database resources are always
+// released. Read-only handles have no mutable state and cannot be flushed.
 func (s *Store) Close() error {
-	return s.db.Close()
+	var flushErr error
+	if !s.readOnly {
+		flushErr = s.Flush()
+	}
+
+	closeErr := s.db.Close()
+
+	return errors.Join(flushErr, closeErr)
 }
 
 // DB returns the underlying Pebble database for creating batches.
@@ -159,7 +179,7 @@ func (s *Store) Path() string {
 	return s.dir
 }
 
-// ReadProgress returns the last log sequence consumed by the usagebuilder.
+// ReadProgress returns the last audit sequence consumed by the usagebuilder.
 // Returns 0 if no progress has been recorded.
 func (s *Store) ReadProgress() (uint64, error) {
 	v, closer, err := s.db.Get(ProgressKey())
@@ -190,17 +210,16 @@ func (s *Store) WriteProgress(batch *dal.WriteSession, sequence uint64) error {
 
 // Reset wipes every projection row (all per-template usage records and all
 // per-ledger counters) and clears the persisted progress cursor, so the next
-// boot replays from audit sequence 0. It is a full-rebuild primitive: the
-// projection reconverges by re-folding the audit chain from the start. The
-// builder itself never calls this for a rollback — the audit chain is
-// append-only so the persisted cursor can never sit ahead of the head; Reset
-// exists for an explicit operator-triggered rebuild of the side-store.
+// boot replays from audit sequence 0. It is a full-rebuild primitive used when
+// the primary store was restored below the usage cursor. The permanent audit
+// history is the complete reconstruction source.
 //
 // The two ledger-scoped prefixes (PrefixTemplate 0x01, PrefixCounter 0x02) are
 // contiguous, so one DeleteRange over [0x01, 0x03) covers both; the internal
 // progress key ([0xFE][0x01]) is deleted point-wise. Rows and cursor are wiped
-// in a single Pebble batch, so a crash applies all of it or none of it — the
-// rows can never survive with a stale non-zero cursor.
+// in a single Pebble batch and flushed before return. The batch commit makes
+// the reset atomically visible; the flush makes that atomic state durable
+// before the builder publishes cursor zero or begins replaying.
 func (s *Store) Reset() error {
 	batch := s.NewBatch()
 
@@ -220,6 +239,10 @@ func (s *Store) Reset() error {
 		_ = batch.Cancel()
 
 		return fmt.Errorf("committing usage store reset: %w", err)
+	}
+
+	if err := s.Flush(); err != nil {
+		return fmt.Errorf("flushing usage store reset: %w", err)
 	}
 
 	return nil

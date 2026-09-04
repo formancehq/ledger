@@ -571,10 +571,8 @@ func Module() fx.Option {
 			// arrive via the dedicated `name:"usage"` FanOut target.
 			fx.Annotate(func(store *dal.Store, us *usagestore.Store, notifications *signal.Notifications, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *usagebuilder.Builder {
 				// Final arg is batchSize; 0 selects usagebuilder.DefaultBatchSize.
-				// No rollback/catch-up guard is needed: audit entries are written
-				// only for committed Raft entries, so the audit chain is
-				// append-only and the persisted cursor can never sit ahead of the
-				// head — the builder only ever moves forward.
+				// The builder handles catch-up durability and rewinds its peer-store
+				// projection when a primary restore leaves the usage cursor ahead.
 				return usagebuilder.NewBuilder(store, us, notifications, logger, meterProvider.Meter("usage.builder"), 0)
 			}, fx.ParamTags(``, ``, `name:"usage"`, ``, ``, ``)),
 			httpcompat.NewServer,
