@@ -19,53 +19,23 @@ concurrency:
 jobs:
   PR:
     if: github.event_name == 'pull_request'
-    uses: formancehq/ci/.github/workflows/go-pr.yml@main
+    uses: formancehq/ci/.github/workflows/go-pr.yml@v1
     permissions:
       pull-requests: read
       statuses: write
 
   Dirty:
-    runs-on: namespace-profile-linux-amd64-4vcpu
-    steps:
-      - uses: namespacelabs/nscloud-checkout-action@v9
-        with:
-          fetch-depth: 0
-          dissociate: true
-
-      - uses: formancehq/ci/actions/setup-nix@main
-
-      - run: nix develop --impure --command just pre-commit
-        env:
-          SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
-
-      - name: Get changed files
-        shell: bash
-        run: |
-          hasChanged=$(git status --porcelain)
-          if (( $(echo ${#hasChanged}) != 0 )); then
-            git status
-            echo "There are changes in the repository"
-            git diff
-            exit 1
-          fi
+    uses: formancehq/ci/.github/workflows/go-dirty.yml@v1
+    secrets:
+      SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
 
   Tests:
-    runs-on: namespace-profile-linux-amd64-8vcpu
-    steps:
-      - uses: namespacelabs/nscloud-checkout-action@v9
-        with:
-          fetch-depth: 0
-          dissociate: true
-
-      - uses: formancehq/ci/actions/setup-nix@main
-
-      - run: nix develop --impure --command just tests
-        env:
-          SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
-
-      - uses: codecov/codecov-action@v7.0.0
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    uses: formancehq/ci/.github/workflows/go-test.yml@v1
+    with:
+      enable-codecov: true
+    secrets:
+      SPEAKEASY_API_KEY: ${{ secrets.SPEAKEASY_API_KEY }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   GoReleaser:
     runs-on: namespace-profile-linux-amd64-4vcpu
@@ -79,7 +49,7 @@ jobs:
           fetch-depth: 0
           dissociate: true
 
-      - uses: formancehq/ci/actions/setup-release@main
+      - uses: formancehq/ci/actions/setup-release@v1
         with:
           token: ${{ secrets.NUMARY_GITHUB_TOKEN }}
 
@@ -136,7 +106,7 @@ jobs:
       - GoReleaser
       - Tests
     steps:
-      - uses: formancehq/ci/actions/deploy-staging@main
+      - uses: formancehq/ci/actions/deploy-staging@v1
         with:
           component: ledger
           tag: ${{ github.sha }}
