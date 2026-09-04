@@ -127,13 +127,17 @@ func clampParallelism(v int) int {
 type RestoreServiceServerImpl struct {
 	restorepb.UnimplementedRestoreServiceServer
 
-	mu          sync.Mutex
-	dataDir     string
-	clusterID   string
-	parallelism int // effective per-job worker count, already clamped
-	logger      logging.Logger
-	downloading bool
-	downloaded  bool
+	mu             sync.Mutex
+	activeRequests sync.WaitGroup
+	dataDir        string
+	clusterID      string
+	parallelism    int // effective per-job worker count, already clamped
+	logger         logging.Logger
+	lifetimeCtx    context.Context
+	lifetimeCancel context.CancelFunc
+	stopping       bool
+	downloading    bool
+	downloaded     bool
 
 	// job holds the single active download (if any). Only one job runs at a
 	// time because the staging directory is a singleton. Successive Start
@@ -165,12 +169,81 @@ type RestoreServiceServerImpl struct {
 // caps concurrent S3 file downloads during the async download phase; 0 falls
 // back to the default and out-of-range values are clamped to [1, 64].
 func NewRestoreServiceServer(dataDir, clusterID string, parallelism int, logger logging.Logger) *RestoreServiceServerImpl {
+	lifetimeCtx, lifetimeCancel := context.WithCancel(context.Background())
+
 	return &RestoreServiceServerImpl{
-		dataDir:     dataDir,
-		clusterID:   clusterID,
-		parallelism: clampParallelism(parallelism),
-		logger:      logger,
+		dataDir:        dataDir,
+		clusterID:      clusterID,
+		parallelism:    clampParallelism(parallelism),
+		logger:         logger,
+		lifetimeCtx:    lifetimeCtx,
+		lifetimeCancel: lifetimeCancel,
 	}
+}
+
+// beginRequest admits a restore RPC while the service is running. The
+// stopping check and WaitGroup registration share s.mu with BeginShutdown, so
+// shutdown cannot observe zero requests and then race with a late Add.
+func (s *RestoreServiceServerImpl) beginRequest() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.stopping {
+		return status.Error(codes.Unavailable, "restore service is shutting down")
+	}
+
+	s.activeRequests.Add(1)
+
+	return nil
+}
+
+func (s *RestoreServiceServerImpl) endRequest() {
+	s.activeRequests.Done()
+}
+
+// BeginShutdown closes restore admission and cancels the application-owned
+// context used by asynchronous downloads. It is idempotent and deliberately
+// does not wait: restore mode calls it before stopping gRPC, then calls
+// Shutdown after gRPC has stopped accepting requests.
+func (s *RestoreServiceServerImpl) BeginShutdown() {
+	s.mu.Lock()
+	if s.stopping {
+		s.mu.Unlock()
+
+		return
+	}
+
+	s.stopping = true
+	cancel := s.lifetimeCancel
+	s.mu.Unlock()
+
+	cancel()
+}
+
+// Shutdown joins every request admitted before BeginShutdown and the one
+// asynchronous download job, then closes the retained staging store. Waiting
+// happens without s.mu because job completion takes that mutex in finishJob.
+//
+// The join intentionally does not stop at the Fx deadline: returning while a
+// storage client is still unwinding would let later teardown outlive and race
+// the application's restore resources. Download backends are required to
+// honor the canceled context; if one violates that contract, shutdown must
+// remain visibly stuck rather than claim that teardown completed safely.
+func (s *RestoreServiceServerImpl) Shutdown() {
+	s.BeginShutdown()
+	s.activeRequests.Wait()
+
+	s.mu.Lock()
+	job := s.job
+	s.mu.Unlock()
+
+	if job != nil {
+		<-job.done
+	}
+
+	s.mu.Lock()
+	s.closeStagingStore()
+	s.mu.Unlock()
 }
 
 func (s *RestoreServiceServerImpl) stagingDir() string {
@@ -193,6 +266,11 @@ func (s *RestoreServiceServerImpl) closeStagingStore() {
 
 // ValidateRestore runs integrity checks on the staged backup data.
 func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreRequest, stream ggrpc.ServerStreamingServer[restorepb.ValidateRestoreEvent]) error {
+	if err := s.beginRequest(); err != nil {
+		return err
+	}
+	defer s.endRequest()
+
 	s.mu.Lock()
 	downloaded := s.downloaded
 	store := s.stagingStore
@@ -250,6 +328,11 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 
 // PreviewRestore returns a summary of the staged backup data.
 func (s *RestoreServiceServerImpl) PreviewRestore(ctx context.Context, _ *restorepb.PreviewRestoreRequest) (*restorepb.PreviewRestoreResponse, error) {
+	if err := s.beginRequest(); err != nil {
+		return nil, err
+	}
+	defer s.endRequest()
+
 	s.mu.Lock()
 	downloaded := s.downloaded
 	store := s.stagingStore
@@ -313,6 +396,11 @@ func (s *RestoreServiceServerImpl) PreviewRestore(ctx context.Context, _ *restor
 
 // FinalizeRestore prepares the staged backup (Global-zone resets) and commits it as the live data.
 func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restorepb.FinalizeRestoreRequest) (*restorepb.FinalizeRestoreResponse, error) {
+	if err := s.beginRequest(); err != nil {
+		return nil, err
+	}
+	defer s.endRequest()
+
 	s.mu.Lock()
 	downloaded := s.downloaded
 	store := s.stagingStore

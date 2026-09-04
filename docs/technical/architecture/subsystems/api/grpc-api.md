@@ -8,6 +8,20 @@ The gRPC API provides a programmatic interface for interacting with the ledger c
 2. **Inter-node communication**: Request forwarding from followers to the leader
 3. **CLI tools**: The `ledgerctl` command-line tool uses gRPC
 
+### Restore-mode service lifetime
+
+`RestoreService.StartDownloadBackup` deliberately detaches the transfer from
+the initiating RPC so multi-hour downloads survive intermediary timeouts. The
+job remains a child of the restore-mode application's lifetime. On Fx shutdown,
+restore admission closes and the job context is canceled before the network
+servers stop; after gRPC stops, the service joins every admitted RPC and the
+download job before closing its retained staging Pebble store. No join waits
+while holding the service mutex used by job completion.
+
+Explicit `CancelDownload` is narrower: it cancels the selected job, performs a
+bounded wait for that job to drain, and leaves the restore-mode application
+running so another download can be attempted.
+
 ## Connection
 
 ### Default Port
