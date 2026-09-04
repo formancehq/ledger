@@ -300,10 +300,10 @@ it hears from a higher term. It still cannot commit or acknowledge new writes,
 and a `ReadOnlySafe` `ReadIndex` cannot complete without quorum confirmation.
 That temporary role disagreement is not a split brain at the committed-state
 level. Explicit `stale` reads intentionally bypass the quorum barrier and may
-return an older local view. An explicit `leader` read can do the same when it
-reaches a node that still considers itself leader: the local-leader routing
-shortcut serves local state without `ReadIndex`. Neither mode should be used
-when quorum-confirmed freshness is required during a partition.
+return an older local view. They should not be used when quorum-confirmed
+freshness is required during a partition. All non-stale reads require a
+successful `ReadIndex`, including reads served on the node that currently
+reports itself as leader.
 
 ### Quorum and Failure Tolerance
 
@@ -574,15 +574,6 @@ indexes need their own progress barrier:
 - `x-consistency: stale` bypasses `ReadIndex` and reads the local store directly;
   it may return an older view, but any projection it uses is still aligned to
   the fixed applied index of that local main-store snapshot.
-- `x-consistency: leader` routes the read to the node currently considered
-  leader. A call forwarded to a remote node does not propagate the consistency
-  metadata, so the remote call defaults to linearizable mode and performs its
-  quorum barrier. However, if the receiving node already considers itself
-  leader, `getLeaderCtrl` returns the local controller directly and skips
-  `ReadIndex`. Because `CheckQuorum` is disabled, an isolated former leader can
-  therefore serve stale local state in this mode. Projection-backed reads still
-  align to that local main-store snapshot even though no quorum horizon `R` is
-  available.
 - If a non-leader node is syncing or cannot complete its local barrier,
   `RoutedController` can transparently retry the read against the leader. The
   forwarded attempt can still fail when the leader is unavailable. If

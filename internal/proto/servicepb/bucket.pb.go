@@ -8031,13 +8031,13 @@ type QueryProfile struct {
 	// items_collected and the RPC's own status to tell them apart.
 	FirstRowDurationUs int64 `protobuf:"varint,13,opt,name=first_row_duration_us,json=firstRowDurationUs,proto3" json:"first_row_duration_us,omitempty"`
 	// True when this node did not serve the read itself but forwarded it to
-	// another node — an explicit leader-consistency read, or the fallback taken
-	// when the local replica is still catching up. The remote node's prepare,
-	// barrier and execution all arrive inside execute_duration_us, so the phase
-	// breakdown describes the local hop only. Its purpose is to stop a zero
-	// barrier_duration_us from being misread as "no barrier was needed"; see that
-	// field for the three cases the pair distinguishes — a forwarded read can
-	// report a non-zero local wait.
+	// another node — the fallback taken when the local replica is still catching
+	// up or its in-flight ReadIndex is invalidated by a leadership change. The
+	// remote node's prepare, barrier and execution all arrive inside
+	// execute_duration_us, so the phase breakdown describes the local hop only.
+	// Its purpose is to stop a zero barrier_duration_us from being misread as "no
+	// barrier was needed"; see that field for the three cases the pair
+	// distinguishes — a forwarded read can report a non-zero local wait.
 	Forwarded     bool `protobuf:"varint,14,opt,name=forwarded,proto3" json:"forwarded,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

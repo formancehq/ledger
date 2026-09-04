@@ -53,8 +53,6 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 // The consistency level is determined from the context (set by the gRPC interceptor):
 //   - linearizable (default): ReadIndex+WaitForApplied barrier on the local node
 //   - stale: skip the barrier and read from the local store directly
-//   - leader: route the read to the node currently considered leader; the local
-//     leader shortcut does not perform a ReadIndex barrier
 //
 // For linearizable reads, if the local node is still syncing the read is
 // transparently forwarded to the leader.
@@ -65,30 +63,10 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 		trace.WithAttributes(attribute.String("consistency", consistency)))
 	defer span.End()
 
-	switch consistency {
-	case grpcadp.ConsistencyStale:
+	if consistency == grpcadp.ConsistencyStale {
 		span.SetAttributes(attribute.String("route", "local_stale"))
 
 		return b.localController, nil, nil
-	case grpcadp.ConsistencyLeader:
-		span.SetAttributes(attribute.String("route", "leader"))
-
-		c, err := b.getLeaderCtrl()
-		if err != nil {
-			return nil, nil, err
-		}
-
-		// When getLeaderCtrl returns a remote controller, that node runs its own
-		// ReadIndex barrier (x-consistency is not propagated, so it defaults to
-		// linearizable there). The remote barrier and execution are invisible to
-		// this profile — the whole remote cost arrives as row-production time
-		// inside the local execute phase, and this node's barrier_duration_us stays
-		// 0. Flag it so a reader does not take that 0 to mean "no barrier was
-		// needed" (EN-1859). When this node already considers itself leader,
-		// getLeaderCtrl returns the local controller and no barrier is performed.
-		b.markForwardedIfRemote(ctx, c)
-
-		return c, nil, nil
 	}
 
 	// The ReadIndex quorum round-trip plus the local WaitForApplied catch-up is
@@ -114,9 +92,8 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 		if !b.IsLeader() {
 			span.SetAttributes(attribute.String("route", "leader_fallback"))
 
-			// Same as the explicit-leader branch: the read leaves this node, so
-			// the phase breakdown describes the local hop only. Unlike that
-			// branch, the barrier already recorded above is KEPT: the caller
+			// The read leaves this node, so the phase breakdown describes the
+			// local hop only. The barrier already recorded above is KEPT: the caller
 			// really did wait for a quorum attempt that then failed. Dropping it
 			// would not delete the time — readCtrl runs inside the caller's
 			// EnterExecute/LeaveExecute bracket, so an uncharged wait stays in
@@ -152,15 +129,6 @@ func (b *RoutedController) finishLeaderFallback(ctx context.Context, selected ct
 	query.ProfileFromContext(ctx).MarkForwarded()
 
 	return selected, nil, nil
-}
-
-// markForwardedIfRemote preserves the query-profile contract that Forwarded
-// means another node served the read. The explicit leader-consistency path can
-// resolve to the local controller when this node considers itself leader.
-func (b *RoutedController) markForwardedIfRemote(ctx context.Context, selected ctrl.Controller) {
-	if selected != b.localController {
-		query.ProfileFromContext(ctx).MarkForwarded()
-	}
 }
 
 func (b *RoutedController) withLocalBarrierHorizon(ctx context.Context, selected ctrl.Controller, barrier *node.ReadBarrierInfo) context.Context {

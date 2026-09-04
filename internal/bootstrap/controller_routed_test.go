@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -37,35 +36,6 @@ func TestRoutedController_IsHealthy_NilNode(t *testing.T) {
 	// Here we just confirm the method signature matches ctrl.Controller.
 	rc := &RoutedController{}
 	assert.NotNil(t, rc) // RoutedController can be instantiated
-}
-
-func TestRoutedController_MarkForwardedOnlyForRemoteController(t *testing.T) {
-	t.Parallel()
-
-	mockCtrl := gomock.NewController(t)
-	local := ctrlmock.NewMockController(mockCtrl)
-	remote := ctrlmock.NewMockController(mockCtrl)
-	routed := &RoutedController{localController: local}
-
-	localCtx, localProfile := query.WithProfile(context.Background())
-	routed.markForwardedIfRemote(localCtx, local)
-	assert.False(t, localProfile.Forwarded)
-
-	remoteCtx, remoteProfile := query.WithProfile(context.Background())
-	routed.markForwardedIfRemote(remoteCtx, remote)
-	assert.True(t, remoteProfile.Forwarded)
-}
-
-func TestRoutedController_LeaderRoutingErrorIsNotForwarded(t *testing.T) {
-	t.Parallel()
-
-	routed := &RoutedController{Node: &node.Node{}}
-	ctx, profile := query.WithProfile(context.Background())
-	ctx = grpcadp.WithConsistency(ctx, grpcadp.ConsistencyLeader)
-
-	_, _, err := routed.readCtrl(ctx)
-	require.ErrorIs(t, err, commonpb.ErrNoLeader)
-	assert.False(t, profile.Forwarded)
 }
 
 func TestRoutedController_FinishLeaderFallback(t *testing.T) {
@@ -128,5 +98,5 @@ func TestRoutedController_WithLocalBarrierHorizon(t *testing.T) {
 	require.False(t, ok, "the remote hop establishes and checks its own barrier")
 
 	_, ok = query.ReadBarrierHorizon(routed.withLocalBarrierHorizon(context.Background(), local, nil))
-	require.False(t, ok, "stale and explicit leader reads deliberately carry no linearizable horizon")
+	require.False(t, ok, "stale reads deliberately carry no linearizable horizon")
 }

@@ -102,20 +102,23 @@ time inside `execute_duration_us`. Always read `barrier_duration_us` together wi
 | true | `0` | no local wait happened. Not "no barrier was needed": the remote node's is inside `execute_duration_us`. |
 | true | non-zero | a local wait happened before the read left this node; the remote barrier is on top of it (see below) |
 
-Two independent things produce the last row, and the value does **not** say
-which:
+The last row always means that a non-stale read entered the syncing-follower
+fallback after its local `ReadIndex` attempt failed. `RoutedController.readCtrl`
+records that attempt before it resolves and marks the remote route. If
+leadership moved local in the meantime, the router returns the failed barrier
+rather than serving locally. Its magnitude differs sharply by cause:
+`ErrNodeSyncing` returns before any wait, so it costs nanoseconds, whereas
+leadership lost mid-`ReadIndex` resolves a pending future and can account for
+the whole quorum attempt.
 
-- **`min_log_sequence` catch-up.** `waitMinLogSequence` charges the
-  `WaitForSequence` wait regardless of consistency level, and it runs before
-  routing — so `--consistency leader --min-log-sequence N` yields a non-zero
-  barrier on a perfectly healthy cluster, with no failed attempt anywhere.
-- **A failed `ReadIndex` attempt.** The syncing-follower fallback in
-  `RoutedController.readCtrl` records the attempt and may then forward after it
-  resolves a remote leader. If leadership moved local in the meantime, the
-  router returns the failed barrier rather than serving locally. Magnitude
-  differs sharply by cause: `ErrNodeSyncing` returns before any wait, so it
-  costs nanoseconds, whereas leadership lost mid-`ReadIndex` resolves a pending
-  future and can account for the whole quorum attempt.
+For handlers that still accept `min_log_sequence`, the same profile may also
+contain an earlier `waitMinLogSequence` catch-up because that wait runs before
+routing. A representative `forwarded=true, non-zero` request therefore uses
+linearizable consistency with `min_log_sequence` on a syncing follower: the
+profile combines the explicit sequence catch-up and the failed local
+`ReadIndex` attempt, and does not attribute the total between them. In
+contrast, `--consistency stale --min-log-sequence N` stays local; any sequence
+wait it records belongs to the `forwarded=false` row.
 
 So do not read cluster health off a non-zero forwarded barrier — the common cause
 is a caller asking for read-your-writes.
@@ -245,9 +248,10 @@ locally-served one.
 
 ## Known gaps
 
-- **Leader-forwarded reads report only the local hop.** When a follower forwards
-  a read (`ConsistencyLeader`, or the syncing-node fallback in
-  `RoutedController.readCtrl`), the upstream RPC is charged to the local
+- **Leader-forwarded reads report only the local hop.** When a follower falls
+  back to the leader in `RoutedController.readCtrl` because it is syncing or its
+  pending ReadIndex was invalidated by a leader change, the upstream RPC is
+  charged to the local
   `execute` phase, so `execute` there conflates network hops, leader-side
   prepare, leader-side barrier and leader-side execution. `barrier_duration_us`
   covers only what this node attempted locally.
