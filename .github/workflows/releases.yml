@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   GoReleaser:
-    uses: formancehq/ci/.github/workflows/go-release.yml@main
+    uses: formancehq/ci/.github/workflows/go-release.yml@v1
     permissions:
       contents: write
       packages: write
