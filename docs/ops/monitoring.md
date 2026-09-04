@@ -376,6 +376,13 @@ Write stalls occur when Pebble cannot keep up with write rate due to compaction 
 
 Filesystem-level disk usage is tracked per volume via `syscall.Statfs`. A background collector samples usage at a regular interval (default 5s).
 
+Each WAL and data sample is published atomically with its last successful
+observation time and the validity of the latest collection attempt. If
+`Statfs` fails, the collector preserves the last successful byte values and
+timestamp for diagnostics, marks the sample invalid, and stops emitting that
+volume through the gauge until collection recovers. Health and automatic PVC
+expansion reject invalid or older-than-one-minute samples.
+
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `storage.disk.volume.bytes` | Gauge | By | Disk space used on a storage volume |

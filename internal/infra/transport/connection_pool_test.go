@@ -42,7 +42,7 @@ func TestNewConnectionPool(t *testing.T) {
 
 	pool := NewConnectionPool(TLSPolicy{}, PoolConfig{})
 	require.NotNil(t, pool)
-	require.Empty(t, pool.PeerIDs())
+	require.Nil(t, pool.GetConnection(1))
 }
 
 func TestConnectionPool_AddPeerAndGet(t *testing.T) {
@@ -59,10 +59,6 @@ func TestConnectionPool_AddPeerAndGet(t *testing.T) {
 	addr := pool.GetPeerAddress(1)
 	require.Equal(t, "localhost:9000", addr)
 
-	ids := pool.PeerIDs()
-	require.Len(t, ids, 1)
-	require.Contains(t, ids, uint64(1))
-
 	require.NoError(t, pool.Close())
 }
 
@@ -78,8 +74,7 @@ func TestConnectionPool_AddPeerIdempotent(t *testing.T) {
 	err = pool.AddPeer(1, "localhost:9000")
 	require.NoError(t, err)
 
-	ids := pool.PeerIDs()
-	require.Len(t, ids, 1)
+	require.Equal(t, "localhost:9000", pool.GetPeerAddress(1))
 
 	require.NoError(t, pool.Close())
 }
@@ -128,8 +123,7 @@ func TestConnectionPool_RemovePeer(t *testing.T) {
 	conn := pool.GetConnection(1)
 	require.Nil(t, conn)
 
-	ids := pool.PeerIDs()
-	require.Empty(t, ids)
+	require.Empty(t, pool.GetPeerAddress(1))
 }
 
 func TestConnectionPool_RemovePeerNotFound(t *testing.T) {
@@ -151,9 +145,6 @@ func TestConnectionPool_MultiplePeers(t *testing.T) {
 	require.NoError(t, pool.AddPeer(2, "localhost:9002"))
 	require.NoError(t, pool.AddPeer(3, "localhost:9003"))
 
-	ids := pool.PeerIDs()
-	require.Len(t, ids, 3)
-
 	require.Equal(t, "localhost:9001", pool.GetPeerAddress(1))
 	require.Equal(t, "localhost:9002", pool.GetPeerAddress(2))
 	require.Equal(t, "localhost:9003", pool.GetPeerAddress(3))
@@ -172,8 +163,7 @@ func TestConnectionPool_Close(t *testing.T) {
 	err := pool.Close()
 	require.NoError(t, err)
 
-	// After close, pool should be empty
-	require.Empty(t, pool.PeerIDs())
+	// After close, every peer lookup should be empty.
 	require.Nil(t, pool.GetConnection(1))
 	require.Nil(t, pool.GetConnection(2))
 }

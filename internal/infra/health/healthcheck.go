@@ -2,6 +2,7 @@ package health
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
@@ -37,8 +39,9 @@ type WriteGate interface {
 // between separate stores during a block-reason transition (e.g. disk recovers
 // below resume while clock skew is newly detected in the same cycle).
 type gateState struct {
-	diskBlocked bool
-	skewBlocked bool
+	diskBlocked     bool
+	skewBlocked     bool
+	leadershipEpoch uint64
 }
 
 // HealthChecker periodically samples disk usage and clock skew across cluster
@@ -56,8 +59,13 @@ type HealthChecker struct {
 	thresholds         Thresholds
 	clockSkewThreshold time.Duration
 
-	gate         atomic.Pointer[gateState]
-	pollFailures metric.Int64Counter
+	gate atomic.Pointer[gateState]
+	// leadershipEpoch invalidates node-local verdicts synchronously with Raft
+	// leadership changes. A verdict from an older term can still finish its poll,
+	// but CheckWritesAllowed will reject it because its epoch no longer matches.
+	leadershipEpoch atomic.Uint64
+	pollFailures    metric.Int64Counter
+	checkNow        chan struct{}
 
 	w worker.Worker
 }
@@ -82,6 +90,7 @@ func NewHealthChecker(
 		interval:           interval,
 		thresholds:         thresholds,
 		clockSkewThreshold: clockSkewThreshold,
+		checkNow:           make(chan struct{}, 1),
 		w:                  worker.New(),
 	}
 
@@ -90,12 +99,12 @@ func NewHealthChecker(
 	// (non-nil) instrument even on error.
 	hc.pollFailures, _ = meter.Int64Counter(
 		"health.disk.poll.failures",
-		metric.WithDescription("Count of failed GetDiskUsage polls to peers (write gate stays fail-open)"),
+		metric.WithDescription("Count of failed GetDiskUsage polls to peers (failures cannot clear an existing disk write gate)"),
 	)
 
-	// The gate pointer defaults to nil, which CheckWritesAllowed treats as
-	// fail-open (writes allowed) — the correct safe default before the first
-	// leader evaluation publishes a gateState.
+	// The gate pointer defaults to nil, which CheckWritesAllowed treats as an
+	// unknown disk verdict. Writes fail closed until the leader publishes its
+	// first current-epoch evaluation from fresh local evidence.
 	return hc
 }
 
@@ -103,9 +112,18 @@ func NewHealthChecker(
 func (hc *HealthChecker) Start() {
 	hc.check(make(chan struct{})) // initial check with no-op stop
 	hc.w.Run(func(stop <-chan struct{}) {
-		worker.RunTicker(stop, hc.interval, func() {
+		ticker := time.NewTicker(hc.interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+			case <-hc.checkNow:
+			}
 			hc.check(stop)
-		})
+		}
 	})
 }
 
@@ -115,15 +133,40 @@ func (hc *HealthChecker) Stop() {
 }
 
 // CheckWritesAllowed implements WriteGate. It Loads the gate once so both block
-// reasons are read from a single consistent snapshot. A nil gate (before the
-// first leader evaluation) is the safe fail-open default: writes allowed.
+// reasons are read from a single consistent snapshot. A nil or previous-term
+// gate is unknown and fails closed until the leader has completed one poll with
+// fresh local samples for the current leadership epoch.
 func (hc *HealthChecker) CheckWritesAllowed() error {
 	s := hc.gate.Load()
-	if s == nil {
-		return nil
+	if s == nil || s.leadershipEpoch != hc.leadershipEpoch.Load() {
+		return domain.ErrWritesBlockedDiskFull
 	}
 
 	return writeGateErrorForState(s.diskBlocked, s.skewBlocked)
+}
+
+// OnLeadershipChange invalidates the node-local verdict before any admission
+// can run under the new Raft leadership term. It is intentionally cheap and is
+// called synchronously from the node observer.
+func (hc *HealthChecker) OnLeadershipChange(bool) {
+	hc.leadershipEpoch.Add(1)
+	hc.gate.Store(nil)
+	// The LeadershipChangeEvent is emitted before node.IsLeader observes the
+	// new SoftState. LeaderReady triggers the first poll after that publication.
+}
+
+// OnLeaderReady schedules the first current-epoch check after Raft has
+// published leadership and caught the FSM up. The work remains serialized on
+// the health worker instead of blocking the node observer thread.
+func (hc *HealthChecker) OnLeaderReady() {
+	if hc.checkNow == nil {
+		return
+	}
+	// Coalesce repeated notifications while a check is already pending.
+	select {
+	case hc.checkNow <- struct{}{}:
+	default:
+	}
 }
 
 // nodeUsageReport holds the disk usage data for a single node, used for info logging.
@@ -132,9 +175,15 @@ type nodeUsageReport struct {
 	walUsed     uint64
 	walTotal    uint64
 	walPercent  float64
+	walValid    bool
+	walAge      time.Duration
+	walError    string
 	dataUsed    uint64
 	dataTotal   uint64
 	dataPercent float64
+	dataValid   bool
+	dataAge     time.Duration
+	dataError   string
 	fetchErr    error
 }
 
@@ -145,16 +194,12 @@ type nodeUsageReport struct {
 // so that in-flight gRPC calls are interrupted promptly during shutdown.
 func (hc *HealthChecker) check(stop <-chan struct{}) {
 	if !hc.node.IsLeader() {
-		// Only the leader owns the cluster-wide write verdict (its own disk plus
-		// peer polls). A node that was leader while a volume was full and then
-		// lost leadership must not keep enforcing that stale block — otherwise it
-		// would fail-closed and spuriously reject writes (HTTP 429) until it
-		// becomes leader again. Reset to the safe default; the real verdict is
-		// always re-derived on the current leader.
-		hc.gate.Store(&gateState{})
-
+		// OnLeadershipChange invalidates the verdict synchronously. Keep the
+		// follower path side-effect free so a slow old-term poll cannot establish
+		// a current-term verdict.
 		return
 	}
+	leadershipEpoch := hc.leadershipEpoch.Load()
 
 	// Create a base context that cancels on shutdown. Each gRPC call gets
 	// its own child context with a per-call timeout (healthCheckCallTimeout).
@@ -173,30 +218,50 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	var samples []VolumeSample
 	skewExceeded := false
 
-	localWalUsed := uint64(hc.collector.WALVolume.UsedBytes())
-	localWalTotal := uint64(hc.collector.WALVolume.TotalBytes())
-	localDataUsed := uint64(hc.collector.DataVolume.UsedBytes())
-	localDataTotal := uint64(hc.collector.DataVolume.TotalBytes())
+	now := time.Now()
+	localWAL := hc.collector.WALVolume.Load()
+	localData := hc.collector.DataVolume.Load()
+	localWalUsed := uint64(localWAL.UsedBytes)
+	localWalTotal := uint64(localWAL.TotalBytes)
+	localDataUsed := uint64(localData.UsedBytes)
+	localDataTotal := uint64(localData.TotalBytes)
+	localWalValid := localWAL.Usable(now)
+	localDataValid := localData.Usable(now)
 
-	hc.logIfAtBlock(hc.node.GetNodeID(), localWalUsed, localWalTotal, localDataUsed, localDataTotal)
+	localNodeID := hc.node.GetNodeID()
+	hc.logIfAtBlock(localNodeID, localWalUsed, localWalTotal, localWalValid, localDataUsed, localDataTotal, localDataValid)
 
 	samples = append(samples, VolumeSample{
 		WALFraction:  safeFraction(localWalUsed, localWalTotal),
+		WALValid:     localWalValid,
 		DataFraction: safeFraction(localDataUsed, localDataTotal),
+		DataValid:    localDataValid,
 	})
 
 	reports = append(reports, nodeUsageReport{
-		nodeID:      hc.node.GetNodeID(),
+		nodeID:      localNodeID,
 		walUsed:     localWalUsed,
 		walTotal:    localWalTotal,
 		walPercent:  safePercent(localWalUsed, localWalTotal),
+		walValid:    localWalValid,
+		walAge:      sampleAge(now, localWAL.ObservedAt),
+		walError:    localWAL.Error,
 		dataUsed:    localDataUsed,
 		dataTotal:   localDataTotal,
 		dataPercent: safePercent(localDataUsed, localDataTotal),
+		dataValid:   localDataValid,
+		dataAge:     sampleAge(now, localData.ObservedAt),
+		dataError:   localData.Error,
 	})
 
-	// Check peers dynamically from the service pool
-	for _, peerID := range hc.servicePool.PeerIDs() {
+	// Raft membership is authoritative: a committed peer that failed to enter
+	// the service pool is still an unreachable sample and cannot clear an
+	// existing disk write gate.
+	for _, peerID := range hc.node.MemberIDs() {
+		if peerID == localNodeID {
+			continue
+		}
+
 		// Abort early if shutting down.
 		select {
 		case <-baseCtx.Done():
@@ -206,6 +271,15 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 
 		conn := hc.servicePool.GetConnection(peerID)
 		if conn == nil {
+			err := errors.New("peer connection is unavailable")
+			hc.logger.WithFields(map[string]any{
+				"node_id": peerID,
+				"error":   err,
+			}).Errorf("Failed to get disk usage from peer")
+			hc.pollFailures.Add(context.Background(), 1, metric.WithAttributes(attribute.Int64("node_id", int64(peerID))))
+			reports = append(reports, nodeUsageReport{nodeID: peerID, fetchErr: err})
+			samples = append(samples, VolumeSample{})
+
 			continue
 		}
 
@@ -229,17 +303,26 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				nodeID:   peerID,
 				fetchErr: err,
 			})
+			// A missing peer sample cannot establish a new disk-full state, but it
+			// must prevent an existing state from being cleared without evidence.
+			samples = append(samples, VolumeSample{})
 		} else {
-			walUsed := resp.GetWalVolume().GetUsedBytes()
-			walTotal := resp.GetWalVolume().GetTotalBytes()
-			dataUsed := resp.GetDataVolume().GetUsedBytes()
-			dataTotal := resp.GetDataVolume().GetTotalBytes()
+			walVolume := resp.GetWalVolume()
+			dataVolume := resp.GetDataVolume()
+			walUsed := walVolume.GetUsedBytes()
+			walTotal := walVolume.GetTotalBytes()
+			dataUsed := dataVolume.GetUsedBytes()
+			dataTotal := dataVolume.GetTotalBytes()
+			walValid, walError := remoteVolumeValidity(walVolume)
+			dataValid, dataError := remoteVolumeValidity(dataVolume)
 
-			hc.logIfAtBlock(peerID, walUsed, walTotal, dataUsed, dataTotal)
+			hc.logIfAtBlock(peerID, walUsed, walTotal, walValid, dataUsed, dataTotal, dataValid)
 
 			samples = append(samples, VolumeSample{
 				WALFraction:  safeFraction(walUsed, walTotal),
+				WALValid:     walValid,
 				DataFraction: safeFraction(dataUsed, dataTotal),
+				DataValid:    dataValid,
 			})
 
 			reports = append(reports, nodeUsageReport{
@@ -247,9 +330,15 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 				walUsed:     walUsed,
 				walTotal:    walTotal,
 				walPercent:  safePercent(walUsed, walTotal),
+				walValid:    walValid,
+				walAge:      time.Duration(walVolume.GetSampleAgeMs()) * time.Millisecond,
+				walError:    walError,
 				dataUsed:    dataUsed,
 				dataTotal:   dataTotal,
 				dataPercent: safePercent(dataUsed, dataTotal),
+				dataValid:   dataValid,
+				dataAge:     time.Duration(dataVolume.GetSampleAgeMs()) * time.Millisecond,
+				dataError:   dataError,
 			})
 		}
 
@@ -267,14 +356,37 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	// previous state (prev.diskBlocked below) is race-free without a lock because
 	// check() runs only on the single worker goroutine — it is the sole writer of
 	// the gate. CheckWritesAllowed only ever Loads it.
-	var prevDiskBlocked bool
-	if prev := hc.gate.Load(); prev != nil {
+	var (
+		prevDiskBlocked   bool
+		hasCurrentVerdict bool
+	)
+	if prev := hc.gate.Load(); prev != nil && prev.leadershipEpoch == leadershipEpoch {
 		prevDiskBlocked = prev.diskBlocked
+		hasCurrentVerdict = true
+	}
+	if !hasCurrentVerdict && (!localWalValid || !localDataValid) {
+		// A new leader has no inherited hysteresis state. Its own WAL and data
+		// evidence must be fresh before it can publish any verdict. Unavailable
+		// remote members do not synthesize a permanent disk block: Raft quorum
+		// still governs whether writes can commit, while every valid remote sample
+		// remains able to raise the disk gate.
+		hc.logDiskUsageSummary(reports)
+
+		return
+	}
+
+	diskBlocked := hc.thresholds.NextDiskBlocked(prevDiskBlocked, samples)
+	if !hasCurrentVerdict {
+		// With no prior hysteresis verdict to preserve, apply only the block
+		// threshold. Invalid remote samples cannot create a synthetic block, while
+		// every fresh sample that crosses the threshold still blocks writes.
+		diskBlocked = hc.thresholds.anyAtBlock(samples)
 	}
 
 	hc.gate.Store(&gateState{
-		diskBlocked: hc.thresholds.NextDiskBlocked(prevDiskBlocked, samples),
-		skewBlocked: skewExceeded,
+		diskBlocked:     diskBlocked,
+		skewBlocked:     skewExceeded,
+		leadershipEpoch: leadershipEpoch,
 	})
 
 	hc.logDiskUsageSummary(reports)
@@ -297,11 +409,62 @@ func (hc *HealthChecker) logDiskUsageSummary(reports []nodeUsageReport) {
 		fields["wal_used"] = r.walUsed
 		fields["wal_total"] = r.walTotal
 		fields["wal_percent"] = r.walPercent
+		fields["wal_valid"] = r.walValid
+		fields["wal_sample_age"] = r.walAge.String()
+		if r.walError != "" {
+			fields["wal_error"] = r.walError
+		}
 		fields["data_used"] = r.dataUsed
 		fields["data_total"] = r.dataTotal
 		fields["data_percent"] = r.dataPercent
+		fields["data_valid"] = r.dataValid
+		fields["data_sample_age"] = r.dataAge.String()
+		if r.dataError != "" {
+			fields["data_error"] = r.dataError
+		}
 		hc.logger.WithFields(fields).Infof("Disk usage check: wal=%.1f%% data=%.1f%%", r.walPercent, r.dataPercent)
 	}
+}
+
+func sampleAge(now, observedAt time.Time) time.Duration {
+	if observedAt.IsZero() {
+		return 0
+	}
+	age := now.Sub(observedAt)
+	if age < 0 {
+		return 0
+	}
+
+	return age
+}
+
+func remoteVolumeValidity(volume *clusterpb.VolumeUsage) (bool, string) {
+	if volume == nil {
+		return false, "volume is missing from disk usage response"
+	}
+	if !volume.GetValid() {
+		if volume.GetError() != "" {
+			return false, volume.GetError()
+		}
+
+		return false, "latest collection attempt failed"
+	}
+	if volume.GetTotalBytes() == 0 {
+		return false, "reported totalBytes is zero"
+	}
+	if volume.GetObservedAtUs() == 0 {
+		return false, "reported observedAtUs is zero"
+	}
+	if !diskusage.SampleUsable(
+		volume.GetValid(),
+		volume.GetTotalBytes() > 0,
+		volume.GetObservedAtUs() > 0,
+		volume.GetSampleAgeMs(),
+	) {
+		return false, "disk usage sample is stale"
+	}
+
+	return true, ""
 }
 
 // safePercent returns the percentage of used/total as a float (0-100), or 0 if total is zero.
@@ -327,8 +490,8 @@ func safeFraction(used, total uint64) float64 {
 // block/resume verdict is owned by Thresholds.NextDiskBlocked; this method
 // exists purely to preserve the per-volume observability (loud signal when a
 // volume crosses the high-water mark).
-func (hc *HealthChecker) logIfAtBlock(nodeID uint64, walUsed, walTotal, dataUsed, dataTotal uint64) {
-	if walTotal > 0 {
+func (hc *HealthChecker) logIfAtBlock(nodeID uint64, walUsed, walTotal uint64, walValid bool, dataUsed, dataTotal uint64, dataValid bool) {
+	if walValid {
 		percent := float64(walUsed) / float64(walTotal)
 		if percent >= hc.thresholds.WALBlock {
 			details := map[string]any{
@@ -346,7 +509,7 @@ func (hc *HealthChecker) logIfAtBlock(nodeID uint64, walUsed, walTotal, dataUsed
 		}
 	}
 
-	if dataTotal > 0 {
+	if dataValid {
 		percent := float64(dataUsed) / float64(dataTotal)
 		if percent >= hc.thresholds.DataBlock {
 			details := map[string]any{

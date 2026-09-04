@@ -660,30 +660,19 @@ exec ./ledger-server run --node-id $NODE_ID $CLUSTER_FLAG`, clusterLogic)
 }
 
 func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.Cluster) []corev1.PersistentVolumeClaim {
-	type vctDef struct {
-		name string
-		spec *ledgerv1alpha1.VolumeSpec
-		dflt string // default size
-	}
-	defs := []vctDef{
-		{"wal", &ledger.Spec.Persistence.WAL, "5Gi"},
-		{"data", &ledger.Spec.Persistence.Data, "10Gi"},
-		{"cold-cache", &ledger.Spec.Persistence.ColdCache, "10Gi"},
-	}
-
 	var templates []corev1.PersistentVolumeClaim
-	for _, d := range defs {
-		if d.spec.HostPath != nil {
+	for _, definition := range persistenceVolumeDefinitions(ledger) {
+		if definition.Spec.HostPath != nil {
 			continue // hostPath volumes are handled as inline pod volumes
 		}
 
 		accessMode := corev1.ReadWriteOnce
-		if d.spec.AccessMode != "" {
-			accessMode = corev1.PersistentVolumeAccessMode(d.spec.AccessMode)
+		if definition.Spec.AccessMode != "" {
+			accessMode = corev1.PersistentVolumeAccessMode(definition.Spec.AccessMode)
 		}
-		size := d.spec.Size
+		size := definition.Spec.Size
 		if size.IsZero() {
-			size = resource.MustParse(d.dflt)
+			size = resource.MustParse(definition.DefaultSize)
 		}
 
 		// When deletion protection is on, stamp the label directly on the VCT so
@@ -708,7 +697,7 @@ func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.Cluster) []corev1.Persiste
 		}
 
 		pvc := corev1.PersistentVolumeClaim{
-			ObjectMeta: metav1.ObjectMeta{Name: d.name, Labels: labels},
+			ObjectMeta: metav1.ObjectMeta{Name: definition.Name, Labels: labels},
 			Spec: corev1.PersistentVolumeClaimSpec{
 				AccessModes: []corev1.PersistentVolumeAccessMode{accessMode},
 				Resources: corev1.VolumeResourceRequirements{
@@ -718,11 +707,11 @@ func buildVolumeClaimTemplates(ledger *ledgerv1alpha1.Cluster) []corev1.Persiste
 				},
 			},
 		}
-		if d.spec.StorageClass != "" {
-			pvc.Spec.StorageClassName = &d.spec.StorageClass
+		if definition.Spec.StorageClass != "" {
+			pvc.Spec.StorageClassName = &definition.Spec.StorageClass
 		}
-		if d.spec.VolumeAttributesClassName != "" {
-			pvc.Spec.VolumeAttributesClassName = &d.spec.VolumeAttributesClassName
+		if definition.Spec.VolumeAttributesClassName != "" {
+			pvc.Spec.VolumeAttributesClassName = &definition.Spec.VolumeAttributesClassName
 		}
 		templates = append(templates, pvc)
 	}

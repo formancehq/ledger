@@ -179,8 +179,12 @@ message NodeTime {
 
 // VolumeUsage represents the disk usage of a single filesystem volume.
 message VolumeUsage {
-  fixed64 used_bytes = 1;   // Used bytes on the filesystem
-  fixed64 total_bytes = 2;  // Total capacity of the filesystem in bytes
+  fixed64 used_bytes = 1;       // Last known used bytes on the filesystem
+  fixed64 total_bytes = 2;      // Last known total capacity of the filesystem in bytes
+  fixed64 observed_at_us = 3;   // Unix timestamp in microseconds of the last successful sample
+  fixed64 sample_age_ms = 4;    // Age of the last successful sample when this response was built
+  bool valid = 5;               // Whether the latest collection attempt succeeded
+  string error = 6;             // Diagnostic only; callers must use valid/sample_age_ms for decisions
 }
 
 // DiskUsage represents the filesystem-level disk usage on a node.

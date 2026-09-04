@@ -1,0 +1,14 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: volume-auto-invalid
+spec:
+  replicas: 1
+  image:
+    repository: alpine
+    tag: "3"
+  persistence:
+    coldCache:
+      autoExpansion:
+        enabled: true
+        maximumSize: 20Gi

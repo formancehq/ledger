@@ -2734,7 +2734,8 @@ ledgerctl cluster remove-node 3 --force
 
 #### cluster disk-usage
 
-Display disk space used by storage components on the connected node.
+Display filesystem usage and measurement freshness for the WAL and data
+volumes on the connected node.
 
 **Aliases:** `du`
 
@@ -2751,7 +2752,10 @@ ledgerctl cluster disk-usage [flags]
 
 **Behavior:**
 - Returns disk usage from the node the CLI is directly connected to (no leader forwarding)
-- Displays two sections: storage components (Spool, WAL, Data) and volumes (WAL, Data)
+- Displays the WAL and data volumes with status, used/total bytes, sample age,
+  last successful observation time, and any diagnostic collection error
+- `--json` exposes `valid` and `sampleAgeMs` for machine decisions;
+  `observedAtUs` and `error` are diagnostic fields
 
 **Example:**
 
@@ -2763,9 +2767,9 @@ ledgerctl cluster disk-usage
 ledgerctl cluster du --json
 ```
 
-**Output sections:**
-- **Storage Components**: Size of each storage component (Spool, WAL excluding spool, Data)
-- **Volumes**: Used and total capacity of each storage volume (WAL including spool, Data)
+**Output section:**
+- **Volumes**: WAL and data filesystem capacity plus collection validity and
+  freshness. Bytes shown on an invalid row are only the last successful values.
 
 #### cluster maintenance
 
@@ -4316,6 +4320,19 @@ writes resume ──────────────── resume mark (e.g.
 
 The constraint `resume < block` is validated at startup; the server refuses to start if either pair violates it.
 
+The health checker only acts on valid samples no older than one minute. An
+invalid, stale, or unreachable sample does not create a disk block by itself,
+but it cannot clear an existing block; recovery requires fresh samples for all
+volumes on every member in the committed Raft configuration. That configuration
+defines the required peers, so a member missing from the gRPC connection pool is
+considered unreachable. Valid WAL and data samples are evaluated independently.
+After each leadership transition the disk verdict starts unknown and writes are
+rejected until the new leader completes one cluster poll with fresh local WAL
+and data samples. Fresh remote samples can block that initial verdict, but an
+unavailable remote member does not create a permanent block without observed
+high usage. Within the leadership term, invalid evidence still cannot clear an
+observed block, and an older-term check cannot reopen the gate.
+
 #### Write-gate error semantics
 
 When the write gate is active, write commands are rejected with a structured gRPC/HTTP error:
@@ -4324,6 +4341,11 @@ When the write gate is active, write commands are rejected with a structured gRP
 |-----------|-------------|-------------|-------------------|
 | Disk full (WAL or data volume at or above block mark) | `ResourceExhausted` | 429 | `WRITES_BLOCKED_DISK_FULL` |
 | Clock skew (any peer exceeds `--health-clock-skew-threshold`) | `Unavailable` | 503 | `WRITES_BLOCKED_CLOCK_SKEW` |
+
+The post-election unknown disk verdict uses the same
+`WRITES_BLOCKED_DISK_FULL` response until fresh local evidence and the first
+cluster poll are available; this keeps the safety change within the existing
+public error contract.
 
 The node remains `Ready` (gRPC health: `SERVING`) and continues to serve reads in both cases. Readiness is unaffected by disk usage and clock skew.
 
