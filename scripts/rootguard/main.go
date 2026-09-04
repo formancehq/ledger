@@ -128,13 +128,12 @@ func run(arguments []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 func runChild(command *exec.Cmd) error {
-	if err := command.Start(); err != nil {
-		return err
-	}
-
 	received := make(chan os.Signal, 1)
 	signal.Notify(received, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(received)
+	if err := command.Start(); err != nil {
+		return err
+	}
 
 	done := make(chan error, 1)
 	go func() {
