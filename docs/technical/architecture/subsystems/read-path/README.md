@@ -18,6 +18,7 @@ and the pipeline pages.
 | [query-pipeline.md](query-pipeline.md) | End-to-end read flow: ReadIndex barrier, min_log_sequence, Pebble snapshot, iterator algebra, pagination, streaming. |
 | [iterator-seek-contract.md](iterator-seek-contract.md) | Absolute SeekGE/SeekLE semantics across the iterator algebra, and the seekFloor/seekCeil exhaustion-proof cache. |
 | [read-snapshot-consistency.md](read-snapshot-consistency.md) | Single-snapshot rule for controller reads that stitch LedgerInfo with attribute data. |
+| [readstore-event-keys.md](readstore-event-keys.md) | Append-only metadata/existence event resolution, lease-bounded reclamation, and edge-triggered GC cycles. |
 | [prepared-queries.md](prepared-queries.md) | Named pre-validated query templates: lifecycle, filter DSL, execution, bloom acceleration. |
 | [query-checkpoints.md](query-checkpoints.md) | Point-in-time snapshots of main store and read index for historical queries. |
 | [typed-metadata.md](typed-metadata.md) | Typed values, immutable primary metadata, declared schemas, and versioned index coercion. |

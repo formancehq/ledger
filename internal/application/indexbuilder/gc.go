@@ -237,8 +237,69 @@ func (b *Builder) purgeOrphanVersions() error {
 // times a second) while keeping each pass well under the tick interval.
 const eventGCKeyBudget = 4096
 
-// runEventGC advances the incremental reclamation of superseded metadata /
-// exists index events (readstore.GCEventZone) by one budgeted slice per zone.
+type eventGCZoneFunc func(zone byte, resume []byte, watermark uint64, budget int) (pruned int, next []byte, err error)
+
+type eventGCCycleState struct {
+	active    bool
+	completed bool
+	resume    []byte
+
+	cycleWatermark  uint64
+	cycleWriteEpoch uint64
+
+	completedWatermark  uint64
+	completedWriteEpoch uint64
+}
+
+func (b *Builder) gcEventZone(zone byte, resume []byte, watermark uint64, budget int) (int, []byte, error) {
+	if b.eventGCZone != nil {
+		return b.eventGCZone(zone, resume, watermark, budget)
+	}
+
+	return readstore.GCEventZone(b.readStore.DB(), zone, resume, watermark, budget)
+}
+
+func (b *Builder) eventGCCycle(zone byte) *eventGCCycleState {
+	if b.eventGCCycles == nil {
+		b.eventGCCycles = make(map[byte]*eventGCCycleState, 2)
+	}
+
+	state := b.eventGCCycles[zone]
+	if state == nil {
+		state = &eventGCCycleState{}
+		b.eventGCCycles[zone] = state
+	}
+
+	return state
+}
+
+// flushWriteBatch couples event-GC scheduling to the actual commit boundary:
+// zone dirtiness is captured before Flush resets the batch, but write epochs
+// advance only after that commit succeeds. Cancelled, failed and event-free
+// batches therefore cannot schedule a spurious sweep.
+func (b *Builder) flushWriteBatch() error {
+	eventZones := b.wb.EventZones()
+	if err := b.wb.Flush(); err != nil {
+		return err
+	}
+
+	if b.eventGCWriteEpoch == nil {
+		b.eventGCWriteEpoch = make(map[byte]uint64, 2)
+	}
+
+	for _, zone := range []byte{readstore.PrefixMetadataIndex, readstore.PrefixEntityExists} {
+		if eventZones.Has(zone) {
+			b.eventGCWriteEpoch[zone]++
+		}
+	}
+
+	return nil
+}
+
+// runEventGC advances edge-triggered reclamation of superseded metadata /
+// exists index events by one budgeted slice per active zone. A completed zone
+// stays idle until either the lease-bounded watermark or that zone's committed
+// write epoch advances.
 //
 // The fold cursor is only a proposal: BeginGC lowers it to the minimum live
 // pin and publishes the result as the registry's reclaim floor, under the
@@ -252,21 +313,41 @@ func (b *Builder) runEventGC(cursor uint64) {
 		return
 	}
 
-	if b.eventGCResume == nil {
-		b.eventGCResume = map[byte][]byte{}
-	}
-
 	for _, zone := range []byte{readstore.PrefixMetadataIndex, readstore.PrefixEntityExists} {
-		pruned, next, err := readstore.GCEventZone(b.readStore.DB(), zone, b.eventGCResume[zone], watermark, eventGCKeyBudget)
+		state := b.eventGCCycle(zone)
+		writeEpoch := b.eventGCWriteEpoch[zone]
+
+		if !state.active {
+			covered := state.completed &&
+				watermark <= state.completedWatermark &&
+				writeEpoch <= state.completedWriteEpoch
+			if covered {
+				continue
+			}
+
+			state.active = true
+			state.resume = nil
+			state.cycleWatermark = watermark
+			state.cycleWriteEpoch = writeEpoch
+		}
+
+		pruned, next, err := b.gcEventZone(zone, state.resume, state.cycleWatermark, eventGCKeyBudget)
 		if err != nil {
 			// One zone failing says nothing about the other; sweeping it is
-			// what keeps the surviving zone from growing without bound.
+			// what keeps the surviving zone from growing without bound. Keep
+			// this zone's exact cycle tuple and resume key for its retry.
 			b.logger.Errorf("event GC pass on zone %#x failed: %v", zone, err)
 
 			continue
 		}
 
-		b.eventGCResume[zone] = next
+		state.resume = next
+		if next == nil {
+			state.active = false
+			state.completed = true
+			state.completedWatermark = state.cycleWatermark
+			state.completedWriteEpoch = state.cycleWriteEpoch
+		}
 
 		if pruned > 0 {
 			b.logger.Debugf("event GC reclaimed %d events in zone %#x", pruned, zone)

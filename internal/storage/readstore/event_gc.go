@@ -7,6 +7,14 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 )
 
+type eventGCIterator interface {
+	First() bool
+	Valid() bool
+	Next() bool
+	Key() []byte
+	Error() error
+}
+
 // GCEventZone reclaims superseded events below the read-lease watermark
 // across one event zone (the metadata index 0x01 or the exists index 0x02),
 // walking at most budget keys from resume (nil = zone start) and stopping
@@ -43,6 +51,10 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 	}
 	defer func() { _ = iter.Close() }()
 
+	return gcEventZoneWithIterator(db, iter, watermark, budget)
+}
+
+func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint64, budget int) (pruned int, next []byte, err error) {
 	batch := db.NewBatch()
 	defer func() { _ = batch.Close() }()
 
@@ -167,6 +179,13 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 
 		pendingBelow = append(pendingBelow[:0], key...)
 		pendingIsAdd = op == MetadataEventAdd
+	}
+
+	// !Valid means either clean exhaustion or an iterator failure. Settling the
+	// group and committing here without distinguishing them would turn a partial
+	// traversal into completed coverage and permanently strand unvisited keys.
+	if iterErr := iter.Error(); iterErr != nil {
+		return 0, nil, iterErr
 	}
 
 	if next == nil {

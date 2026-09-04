@@ -12,6 +12,11 @@ type WriteBatch struct {
 	batch *dal.WriteSession
 	count int // number of operations buffered
 
+	// eventZones records which append-only event keyspaces this batch actually
+	// wrote. The indexbuilder snapshots it immediately before Flush and advances
+	// its in-memory GC write epochs only after the commit succeeds.
+	eventZones EventZoneMask
+
 	// rmapOverlay is a read-your-writes view of the reverse-map mutations made in
 	// the current (uncommitted) batch: reverseKey -> encoded value last written
 	// (nil = deleted). It is reset by Init so it always matches the bound batch,
@@ -25,6 +30,28 @@ type WriteBatch struct {
 	// the caller per folded log (SetEventSequence). Zero means unset — event
 	// writes fail loudly rather than stamping a stale or absent sequence.
 	eventSeq uint64
+}
+
+// EventZoneMask identifies append-only event keyspaces dirtied by a WriteBatch.
+// It is intentionally opaque: callers query membership by read-store prefix so
+// the bit representation cannot leak into scheduler state.
+type EventZoneMask uint8
+
+const (
+	eventZoneMetadataIndex EventZoneMask = 1 << iota
+	eventZoneEntityExists
+)
+
+// Has reports whether the batch appended an event in zone.
+func (m EventZoneMask) Has(zone byte) bool {
+	switch zone {
+	case PrefixMetadataIndex:
+		return m&eventZoneMetadataIndex != 0
+	case PrefixEntityExists:
+		return m&eventZoneEntityExists != 0
+	default:
+		return false
+	}
 }
 
 // SetEventSequence declares the raft sequence for subsequent metadata /
@@ -47,6 +74,13 @@ func (wb *WriteBatch) Init(batch *dal.WriteSession) {
 	wb.batch = batch
 	wb.rmapOverlay = make(map[string][]byte)
 	wb.eventSeq = 0
+	wb.eventZones = 0
+}
+
+// EventZones returns a read-only snapshot of the event keyspaces dirtied by
+// successful puts in the current batch.
+func (wb *WriteBatch) EventZones() EventZoneMask {
+	return wb.eventZones
 }
 
 // ReverseMapOverlay returns the encoded value this batch last wrote for
@@ -75,6 +109,7 @@ func (wb *WriteBatch) Reset() {
 	wb.count = 0
 	wb.rmapOverlay = nil
 	wb.eventSeq = 0
+	wb.eventZones = 0
 }
 
 // put sets a key-value pair in the batch.
@@ -134,6 +169,7 @@ func (wb *WriteBatch) Flush() error {
 	err := wb.batch.Commit()
 	wb.batch = nil
 	wb.count = 0
+	wb.eventZones = 0
 
 	return err
 }

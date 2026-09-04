@@ -1,10 +1,84 @@
 package readstore
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+type failingEventGCIterator struct {
+	eventGCIterator
+
+	failOnNext int
+	nextCalls  int
+	failed     bool
+	err        error
+}
+
+func (i *failingEventGCIterator) Valid() bool {
+	return !i.failed && i.eventGCIterator.Valid()
+}
+
+func (i *failingEventGCIterator) Next() bool {
+	i.nextCalls++
+	if i.nextCalls == i.failOnNext {
+		i.failed = true
+
+		return false
+	}
+
+	return i.eventGCIterator.Next()
+}
+
+func (i *failingEventGCIterator) Error() error {
+	if i.failed {
+		return i.err
+	}
+
+	return i.eventGCIterator.Error()
+}
+
+func TestGCEventZone_IteratorFailureDiscardsPendingDeletes(t *testing.T) {
+	t.Parallel()
+
+	s, _ := eventFixture(t, "v",
+		ev{"a", 10, MetadataEventAdd},
+		ev{"a", 20, MetadataEventDel},
+		ev{"b", 10, MetadataEventAdd},
+	)
+
+	iter, err := s.DB().NewIter(&pebble.IterOptions{
+		LowerBound: []byte{PrefixMetadataIndex},
+		UpperBound: IncrementBytes([]byte{PrefixMetadataIndex}),
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, iter.Close()) }()
+
+	injected := errors.New("injected iterator failure")
+	failing := &failingEventGCIterator{
+		eventGCIterator: iter,
+		failOnNext:      3,
+		err:             injected,
+	}
+	pruned, next, err := gcEventZoneWithIterator(s.DB(), failing, 30, 1<<20)
+	require.ErrorIs(t, err, injected)
+	require.Zero(t, pruned)
+	require.Nil(t, next)
+
+	kb := dal.NewKeyBuilder()
+	for _, key := range [][]byte{
+		MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a"), 10, MetadataEventAdd),
+		MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a"), 20, MetadataEventDel),
+	} {
+		_, closer, getErr := s.DB().Get(key)
+		require.NoError(t, getErr, "iterator failure must discard the whole pending delete batch")
+		require.NoError(t, closer.Close())
+	}
+}
 
 // The pruning rule: below the watermark, only a group's latest event may
 // survive, and only as an ADD. Resolution at any pin >= watermark must be

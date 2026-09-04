@@ -208,7 +208,7 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 				return err
 			}
 
-			if err := b.wb.Flush(); err != nil {
+			if err := b.flushWriteBatch(); err != nil {
 				return err
 			}
 		} else {
