@@ -2,11 +2,12 @@ package main
 
 import (
 	"bytes"
-	"fmt"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -28,108 +29,136 @@ func TestMain(testingMain *testing.M) {
 	os.Exit(testingMain.Run())
 }
 
-func TestProviderMutationWinsOverNonZeroExit(t *testing.T) {
+func TestRunnerAlwaysTakesTwoSnapshots(t *testing.T) {
+	t.Parallel()
+
+	root := newRunnerTestRepository(t)
+	for _, test := range []struct {
+		name       string
+		child      string
+		wantStatus int
+	}{
+		{name: "success", child: "exit 0", wantStatus: 0},
+		{name: "child failure", child: "exit 7", wantStatus: 7},
+		{name: "child cancellation", child: "kill -TERM $$", wantStatus: exitError},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			status := run([]string{"--root", root, "--", "/bin/sh", "-c", test.child}, strings.NewReader(""), &output, &output)
+			require.Equal(t, test.wantStatus, status, output.String())
+			require.Equal(t, 1, strings.Count(output.String(), "ROOT_PROTECTION_ARMED"))
+			require.Equal(t, 1, strings.Count(output.String(), "ROOT_SNAPSHOT_CAPTURED position=after"))
+			require.Equal(t, 1, strings.Count(output.String(), "ROOT_UNCHANGED=PASS"))
+			require.Contains(t, output.String(), "gitProcesses=6")
+			require.Contains(t, output.String(), "ignoredEntries=0")
+		})
+	}
+}
+
+func TestRunnerDetectsPersistentPrimaryMutationOnEveryChildExit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		script string
+	}{
+		{name: "tracked", script: "printf changed > base.txt"},
+		{name: "staged", script: "printf changed > base.txt; git add base.txt"},
+		{name: "untracked", script: "printf changed > untracked.txt"},
+		{name: "branch", script: "git switch -c moved"},
+		{name: "child failure", script: "printf changed > base.txt; exit 7"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := newRunnerTestRepository(t)
+			var output bytes.Buffer
+			child := "cd " + shellQuote(root) + "; " + test.script
+			status := run([]string{"--root", root, "--", "/bin/sh", "-c", child}, strings.NewReader(""), &output, &output)
+			require.Equal(t, exitError, status, output.String())
+			require.Contains(t, output.String(), "ROOT_MUTATION_DETECTED")
+			require.NotContains(t, output.String(), "ROOT_UNCHANGED=PASS")
+		})
+	}
+}
+
+func TestRunnerAllowsIgnoredSharedCacheChurn(t *testing.T) {
 	t.Parallel()
 
 	root := newRunnerTestRepository(t)
 	var output bytes.Buffer
-	status := run([]string{
-		"--root", root, "--", "/bin/sh", "-c",
-		"printf changed > " + shellQuote(filepath.Join(root, "ignored", "value")) + "; exit 7",
-	}, strings.NewReader(""), &output, &output)
-	require.Equal(t, exitError, status, output.String())
-	require.Contains(t, output.String(), "ROOT_MUTATION_DETECTED")
-	require.NotContains(t, output.String(), "ROOT_UNCHANGED=PASS")
+	child := "cd " + shellQuote(root) + "; printf changed > ignored/value"
+	status := run([]string{"--root", root, "--", "/bin/sh", "-c", child}, strings.NewReader(""), &output, &output)
+	require.Equal(t, 0, status, output.String())
+	require.Contains(t, output.String(), "ROOT_UNCHANGED=PASS")
 }
 
-func TestResidentRunnerDetectsMutationAfterItsOnDiskBinaryIsReplaced(t *testing.T) {
-	t.Parallel()
-
+func TestRunnerComparesRootAfterCancellation(t *testing.T) {
 	root := newRunnerTestRepository(t)
 	binary := buildRunner(t)
-	replacement := binary + ".replacement"
-	script := fmt.Sprintf(
-		"printf '#!/bin/sh\\nexit 0\\n' > %s; chmod 700 %s; mv %s %s; printf changed > ignored/value",
-		shellQuote(replacement),
-		shellQuote(replacement),
-		shellQuote(replacement),
-		shellQuote(binary),
-	)
-	command := exec.Command(binary, "--root", root, "--", "/bin/sh", "-c", script)
+
+	ready := filepath.Join(t.TempDir(), "ready")
+	command := exec.Command(binary, "--root", root, "--", "/bin/sh", "-c", "trap '' TERM INT; printf ready > "+shellQuote(ready)+"; while :; do sleep 1; done")
 	command.Dir = root
-	output, err := command.CombinedOutput()
-	require.Error(t, err, string(output))
-	require.Equal(t, exitError, command.ProcessState.ExitCode(), string(output))
-	require.Contains(t, string(output), "ROOT_MUTATION_DETECTED")
+	command.Env = testenv.Environment()
+	var combined bytes.Buffer
+	command.Stdout = &combined
+	command.Stderr = &combined
+	require.NoError(t, command.Start())
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(ready)
+
+		return err == nil
+	}, 5*time.Second, 10*time.Millisecond)
+	require.NoError(t, command.Process.Signal(syscall.SIGTERM))
+	done := make(chan error, 1)
+	go func() {
+		done <- command.Wait()
+	}()
+	var waitErr error
+	select {
+	case waitErr = <-done:
+	case <-time.After(5 * time.Second):
+		_ = command.Process.Kill() // Best effort cleanup before failing the bounded regression.
+		t.Fatal("rootguard did not finish after cancellation")
+	}
+	require.Error(t, waitErr, combined.String())
+	require.Equal(t, exitError, command.ProcessState.ExitCode(), combined.String())
+	require.Contains(t, combined.String(), "ROOT_UNCHANGED=PASS")
+	require.Contains(t, combined.String(), "ROOT_SNAPSHOT_CAPTURED position=after")
 }
 
-func TestConcurrentResidentRunnersProtectSameUnchangedRoot(t *testing.T) {
-	t.Parallel()
-
-	root := newRunnerTestRepository(t)
-	binary := buildRunner(t)
-	first := guardedCommand(binary, root, "printf 'ready\\n' >&3; IFS= read -r _ <&4")
-	second := guardedCommand(binary, root, "printf 'ready\\n' >&3; IFS= read -r _ <&4")
-	firstOutput, secondOutput := runConcurrently(t, first, second)
-	require.Contains(t, firstOutput, "ROOT_UNCHANGED=PASS")
-	require.Contains(t, secondOutput, "ROOT_UNCHANGED=PASS")
-}
-
-func TestConcurrentResidentRunnersBothDetectOverlappingMutation(t *testing.T) {
+func TestRunnerReapsSurvivingDescendantBeforeFinalSnapshot(t *testing.T) {
 	t.Parallel()
 
 	root := newRunnerTestRepository(t)
 	binary := buildRunner(t)
 	coordination := t.TempDir()
-	mutated := filepath.Join(coordination, "mutated")
-	first := guardedCommand(binary, root, "printf 'ready\\n' >&3; IFS= read -r _ <&4; printf changed > ignored/value; : > "+shellQuote(mutated))
-	second := guardedCommand(binary, root, fmt.Sprintf(
-		"printf 'ready\\n' >&3; IFS= read -r _ <&4; for attempt in $(seq 1 100); do [ -e %s ] && exit 0; sleep 0.01; done; echo 'mutation marker timeout' >&2; exit 78",
-		shellQuote(mutated),
-	))
-	firstOutput, secondOutput := runConcurrentlyExpectingFailure(t, first, second)
-	require.Contains(t, firstOutput, "ROOT_MUTATION_DETECTED")
-	require.Contains(t, secondOutput, "ROOT_MUTATION_DETECTED")
-}
+	ready := filepath.Join(coordination, "ready")
+	release := filepath.Join(coordination, "release")
+	lateMutation := filepath.Join(root, "late-mutation")
+	child := "(printf ready > " + shellQuote(ready) + "; while [ ! -e " + shellQuote(release) + " ]; do :; done; printf late > " + shellQuote(lateMutation) + ") & " +
+		"while [ ! -e " + shellQuote(ready) + " ]; do :; done"
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, binary, "--root", root, "--", "/bin/sh", "-c", child)
+	command.Env = testenv.Environment()
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, string(output))
+	require.Contains(t, string(output), "ROOT_UNCHANGED=PASS")
+	require.NoError(t, os.WriteFile(release, nil, 0o644))
+	require.Never(t, func() bool {
+		_, err := os.Stat(lateMutation)
 
-func guardedCommand(binary, root, script string) *exec.Cmd {
-	command := exec.Command(binary, "--root", root, "--", "/bin/sh", "-c", script)
-	command.Dir = root
-	command.Env = testenv.Environment("TEST_SYNC_FDS=1")
-
-	return command
-}
-
-func runConcurrently(t *testing.T, commands ...*exec.Cmd) (string, string) {
-	t.Helper()
-	result, err := testenv.RunSynchronized(t, 30*time.Second,
-		testenv.SynchronizedCommand{Name: "first", Command: commands[0]},
-		testenv.SynchronizedCommand{Name: "second", Command: commands[1]},
-	)
-	require.NoError(t, err)
-
-	return result.Output["first"], result.Output["second"]
-}
-
-func runConcurrentlyExpectingFailure(t *testing.T, commands ...*exec.Cmd) (string, string) {
-	t.Helper()
-	result, err := testenv.RunSynchronized(t, 30*time.Second,
-		testenv.SynchronizedCommand{Name: "first", Command: commands[0]},
-		testenv.SynchronizedCommand{Name: "second", Command: commands[1]},
-	)
-	require.Error(t, err)
-	require.Equal(t, exitError, commands[0].ProcessState.ExitCode(), result.Output["first"])
-	require.Equal(t, exitError, commands[1].ProcessState.ExitCode(), result.Output["second"])
-
-	return result.Output["first"], result.Output["second"]
+		return err == nil
+	}, time.Second, 10*time.Millisecond, "a descendant survived beyond the final root comparison")
 }
 
 func buildRunner(t *testing.T) string {
 	t.Helper()
 	binary := filepath.Join(t.TempDir(), "rootguard")
-	command := testenv.Command(t, "go", "build", "-o", binary, ".")
-	command.Dir = packageRoot(t)
-	output, err := command.CombinedOutput()
+	build := testenv.Command(t, "go", "build", "-o", binary, ".")
+	build.Dir = packageRoot(t)
+	output, err := build.CombinedOutput()
 	require.NoError(t, err, string(output))
 
 	return binary

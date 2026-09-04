@@ -1,28 +1,15 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/formancehq/ledger/v3/scripts/internal/rootguard"
 )
-
-type worktreeBindingFile struct {
-	Version             int    `json:"version"`
-	ExpectedPRNumber    int    `json:"expectedPrNumber"`
-	CandidateWorktree   string `json:"candidateWorktree"`
-	ExpectedHead        string `json:"expectedHead"`
-	TrustedRootCheckout string `json:"trustedRootCheckout"`
-}
 
 type boundCommandRunner struct {
 	prNumber            int
@@ -30,10 +17,6 @@ type boundCommandRunner struct {
 	expectedHead        string
 	trustedRootCheckout string
 	validationRunDir    string
-	bindingFile         string
-	bindingFileContent  []byte
-	gitGuardBin         string
-	rootSnapshot        rootguard.Snapshot
 }
 
 func newBoundCommandRunner(
@@ -42,23 +25,21 @@ func newBoundCommandRunner(
 	expectedHead string,
 	trustedRootCheckout string,
 	validationRunDir string,
-	bindingFile string,
-	gitGuardSource string,
 ) (*boundCommandRunner, error) {
 	if prNumber < 1 {
 		return nil, errors.New("EXPECTED_PR_NUMBER must be a positive integer")
 	}
 	if !isFullCommitSHA(expectedHead) {
-		return nil, errors.New("AI_WORKTREE_EXPECTED_HEAD must be a full commit SHA")
+		return nil, errors.New("EXPECTED_HEAD must be a full commit SHA")
 	}
 
 	candidate, err := resolveExistingDirectory(candidateWorktree)
 	if err != nil {
-		return nil, fmt.Errorf("resolving CANDIDATE_WORKTREE: %w", err)
+		return nil, fmt.Errorf("resolving candidate worktree: %w", err)
 	}
 	trustedRoot, err := resolveExistingDirectory(trustedRootCheckout)
 	if err != nil {
-		return nil, fmt.Errorf("resolving TRUSTED_ROOT_CHECKOUT: %w", err)
+		return nil, fmt.Errorf("resolving trusted root checkout: %w", err)
 	}
 	if candidate == trustedRoot {
 		return nil, errors.New("ROOT_CHECKOUT_AS_CANDIDATE_FORBIDDEN")
@@ -66,7 +47,7 @@ func newBoundCommandRunner(
 
 	validation, err := resolveExistingDirectory(validationRunDir)
 	if err != nil {
-		return nil, fmt.Errorf("resolving VALIDATION_RUN_DIR: %w", err)
+		return nil, fmt.Errorf("resolving validation run directory: %w", err)
 	}
 	for _, pair := range [][2]string{{validation, candidate}, {candidate, validation}, {validation, trustedRoot}, {trustedRoot, validation}} {
 		within, pathErr := pathWithin(pair[0], pair[1])
@@ -78,81 +59,23 @@ func newBoundCommandRunner(
 		}
 	}
 
-	resolvedBindingFile, err := resolveExistingFile(bindingFile)
-	if err != nil {
-		return nil, fmt.Errorf("resolving worktree binding file: %w", err)
-	}
-	insideCandidate, err := pathWithin(resolvedBindingFile, candidate)
-	if err != nil {
-		return nil, fmt.Errorf("checking worktree binding file location: %w", err)
-	}
-	if insideCandidate {
-		return nil, errors.New("worktree binding file must be outside the candidate worktree")
-	}
-	bindingContent, err := os.ReadFile(resolvedBindingFile)
-	if err != nil {
-		return nil, fmt.Errorf("reading worktree binding file: %w", err)
-	}
-
-	guardSource, err := resolveExistingFile(gitGuardSource)
-	if err != nil {
-		return nil, fmt.Errorf("resolving Git mutation guard: %w", err)
-	}
-	guardContent, err := os.ReadFile(guardSource)
-	if err != nil {
-		return nil, fmt.Errorf("reading Git mutation guard: %w", err)
-	}
-	guardBin := filepath.Join(validation, "git-guard-bin")
-	if err := os.MkdirAll(guardBin, 0o700); err != nil {
-		return nil, fmt.Errorf("creating Git mutation guard directory: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(guardBin, "git"), guardContent, 0o700); err != nil {
-		return nil, fmt.Errorf("installing Git mutation guard: %w", err)
-	}
-
 	runner := &boundCommandRunner{
 		prNumber:            prNumber,
 		candidateWorktree:   candidate,
 		expectedHead:        expectedHead,
 		trustedRootCheckout: trustedRoot,
 		validationRunDir:    validation,
-		bindingFile:         resolvedBindingFile,
-		bindingFileContent:  bindingContent,
-		gitGuardBin:         guardBin,
 	}
-	if err := runner.verifyWorktreeBinding(); err != nil {
+	if err := runner.verifyInitialIdentity(); err != nil {
 		return nil, err
 	}
-	runner.rootSnapshot, err = rootguard.Capture(trustedRoot)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Printf(
-		"ROOT_PROTECTION_ARMED head=%s branch=%s statusSha256=%s workspaceFingerprint=%s entries=%d regularFiles=%d logicalBytes=%d ignoredEntries=%d ignoredRegularFiles=%d ignoredLogicalBytes=%d gitProcesses=%d\n",
-		runner.rootSnapshot.Head,
-		runner.rootSnapshot.Branch,
-		runner.rootSnapshot.StatusSHA256(),
-		runner.rootSnapshot.WorkspaceFingerprint,
-		runner.rootSnapshot.Metrics.Entries,
-		runner.rootSnapshot.Metrics.RegularFiles,
-		runner.rootSnapshot.Metrics.LogicalBytes,
-		runner.rootSnapshot.Metrics.IgnoredEntries,
-		runner.rootSnapshot.Metrics.IgnoredRegularFiles,
-		runner.rootSnapshot.Metrics.IgnoredLogicalBytes,
-		runner.rootSnapshot.Metrics.GitProcesses,
-	)
 
 	return runner, nil
 }
 
 func (runner *boundCommandRunner) run(label, command string, extraEnv map[string]string) error {
-	if err := runner.verifyWorktreeBinding(); err != nil {
+	if err := runner.verifyCandidateIdentity(); err != nil {
 		fmt.Fprintf(os.Stderr, "WORKTREE_BINDING_GATE=FAIL (%v)\n", err)
-
-		return err
-	}
-	if err := runner.verifyRootUnchanged(); err != nil {
-		fmt.Fprintf(os.Stderr, "ROOT_MUTATION_DETECTED (%v)\n", err)
 
 		return err
 	}
@@ -170,89 +93,54 @@ func (runner *boundCommandRunner) run(label, command string, extraEnv map[string
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	cmd.Env = runner.environment(extraEnv)
-	commandErr := cmd.Run()
-	rootErr := runner.verifyRootUnchanged()
-	if rootErr != nil {
-		fmt.Fprintf(os.Stderr, "ROOT_MUTATION_DETECTED (%v)\n", rootErr)
-		if commandErr != nil {
-			return errors.Join(commandErr, rootErr)
-		}
 
-		return rootErr
-	}
-	fmt.Println("ROOT_UNCHANGED=PASS")
-
-	return commandErr
+	return cmd.Run()
 }
 
 func (runner *boundCommandRunner) environment(extra map[string]string) []string {
 	values := map[string]string{
-		"EXPECTED_PR_NUMBER":        strconv.Itoa(runner.prNumber),
-		"EXPECTED_WORKTREE":         runner.candidateWorktree,
-		"EXPECTED_HEAD":             runner.expectedHead,
-		"AI_WORKTREE_PR":            strconv.Itoa(runner.prNumber),
-		"AI_WORKTREE_PATH":          runner.candidateWorktree,
-		"AI_WORKTREE_EXPECTED_HEAD": runner.expectedHead,
-		"AI_WORKTREE_BINDING_FILE":  runner.bindingFile,
-		"TRUSTED_ROOT_CHECKOUT":     runner.trustedRootCheckout,
-		"CANDIDATE_WORKTREE":        runner.candidateWorktree,
-		"VALIDATION_RUN_DIR":        runner.validationRunDir,
-		"PATH":                      runner.gitGuardBin + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"EXPECTED_PR_NUMBER": strconv.Itoa(runner.prNumber),
+		"EXPECTED_WORKTREE":  runner.candidateWorktree,
+		"EXPECTED_HEAD":      runner.expectedHead,
+		"VALIDATION_RUN_DIR": runner.validationRunDir,
 	}
 	maps.Copy(values, extra)
 
-	return replaceEnvironment(
-		removeEnvironment(os.Environ(), "AI_GIT_REAL_PATH", "AI_GIT_ORIGINAL_PATH"),
-		values,
-	)
+	return replaceEnvironment(os.Environ(), values)
 }
 
-func (runner *boundCommandRunner) verifyWorktreeBinding() error {
-	currentContent, err := os.ReadFile(runner.bindingFile)
-	if err != nil {
-		return fmt.Errorf("reading worktree binding file: %w", err)
-	}
-	if !bytes.Equal(currentContent, runner.bindingFileContent) {
-		return errors.New("worktree binding file changed during the run")
-	}
-	var binding worktreeBindingFile
-	decoder := json.NewDecoder(bytes.NewReader(currentContent))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&binding); err != nil {
-		return fmt.Errorf("decoding worktree binding file: %w", err)
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return errors.New("worktree binding file contains trailing JSON")
-	}
-	if binding.Version != 1 {
-		return fmt.Errorf("unsupported worktree binding version %d", binding.Version)
-	}
-	if binding.ExpectedPRNumber != runner.prNumber {
-		return fmt.Errorf(
-			"CROSS_PR_WORKTREE_CONTAMINATION: expected PR %d, binding belongs to PR %d",
-			runner.prNumber,
-			binding.ExpectedPRNumber,
-		)
-	}
-	boundCandidate, err := resolveExistingDirectory(binding.CandidateWorktree)
-	if err != nil {
-		return fmt.Errorf("resolving bound candidate worktree: %w", err)
-	}
-	if boundCandidate != runner.candidateWorktree {
-		return errors.New("worktree binding path does not match AI_WORKTREE_PATH")
-	}
-	boundRoot, err := resolveExistingDirectory(binding.TrustedRootCheckout)
-	if err != nil {
-		return fmt.Errorf("resolving bound trusted root checkout: %w", err)
-	}
-	if boundRoot != runner.trustedRootCheckout {
-		return errors.New("worktree binding root does not match TRUSTED_ROOT_CHECKOUT")
-	}
-	if binding.ExpectedHead != runner.expectedHead {
-		return errors.New("worktree binding head does not match AI_WORKTREE_EXPECTED_HEAD")
+func (runner *boundCommandRunner) verifyInitialIdentity() error {
+	if err := runner.verifyCandidateIdentity(); err != nil {
+		return err
 	}
 
+	rootTopLevel, err := gitOutput(runner.trustedRootCheckout, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return fmt.Errorf("reading trusted root top-level: %w", err)
+	}
+	resolvedRootTopLevel, err := resolveExistingDirectory(strings.TrimSpace(string(rootTopLevel)))
+	if err != nil {
+		return fmt.Errorf("resolving trusted root top-level: %w", err)
+	}
+	if resolvedRootTopLevel != runner.trustedRootCheckout {
+		return errors.New("trusted root is not a Git worktree root")
+	}
+	candidateCommonDir, err := gitCommonDirectory(runner.candidateWorktree)
+	if err != nil {
+		return err
+	}
+	rootCommonDir, err := gitCommonDirectory(runner.trustedRootCheckout)
+	if err != nil {
+		return err
+	}
+	if candidateCommonDir != rootCommonDir {
+		return errors.New("candidate and trusted root do not belong to the same Git worktree set")
+	}
+
+	return nil
+}
+
+func (runner *boundCommandRunner) verifyCandidateIdentity() error {
 	workingDirectory, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("reading launcher cwd: %w", err)
@@ -284,39 +172,7 @@ func (runner *boundCommandRunner) verifyWorktreeBinding() error {
 		return fmt.Errorf("candidate HEAD is %s, expected %s", strings.TrimSpace(string(head)), runner.expectedHead)
 	}
 
-	rootTopLevel, err := gitOutput(runner.trustedRootCheckout, "rev-parse", "--show-toplevel")
-	if err != nil {
-		return fmt.Errorf("reading trusted root top-level: %w", err)
-	}
-	resolvedRootTopLevel, err := resolveExistingDirectory(strings.TrimSpace(string(rootTopLevel)))
-	if err != nil {
-		return fmt.Errorf("resolving trusted root top-level: %w", err)
-	}
-	if resolvedRootTopLevel != runner.trustedRootCheckout {
-		return errors.New("TRUSTED_ROOT_CHECKOUT is not a Git worktree root")
-	}
-	candidateCommonDir, err := gitCommonDirectory(runner.candidateWorktree)
-	if err != nil {
-		return err
-	}
-	rootCommonDir, err := gitCommonDirectory(runner.trustedRootCheckout)
-	if err != nil {
-		return err
-	}
-	if candidateCommonDir != rootCommonDir {
-		return errors.New("candidate and trusted root do not belong to the same Git worktree set")
-	}
-
 	return nil
-}
-
-func (runner *boundCommandRunner) verifyRootUnchanged() error {
-	current, err := rootguard.Capture(runner.trustedRootCheckout)
-	if err != nil {
-		return err
-	}
-
-	return rootguard.Compare(runner.rootSnapshot, current)
 }
 
 func gitCommonDirectory(worktree string) (string, error) {
@@ -355,25 +211,6 @@ func resolveExistingDirectory(path string) (string, error) {
 	return resolved, nil
 }
 
-func resolveExistingFile(path string) (string, error) {
-	if !filepath.IsAbs(path) {
-		return "", errors.New("path is not absolute")
-	}
-	resolved, err := filepath.EvalSymlinks(filepath.Clean(path))
-	if err != nil {
-		return "", err
-	}
-	info, err := os.Stat(resolved)
-	if err != nil {
-		return "", err
-	}
-	if !info.Mode().IsRegular() {
-		return "", errors.New("path is not a regular file")
-	}
-
-	return resolved, nil
-}
-
 func replaceEnvironment(current []string, replacements map[string]string) []string {
 	result := make([]string, 0, len(current)+len(replacements))
 	for _, item := range current {
@@ -385,23 +222,6 @@ func replaceEnvironment(current []string, replacements map[string]string) []stri
 	}
 	for key, value := range replacements {
 		result = append(result, key+"="+value)
-	}
-
-	return result
-}
-
-func removeEnvironment(current []string, removedKeys ...string) []string {
-	removed := make(map[string]struct{}, len(removedKeys))
-	for _, key := range removedKeys {
-		removed[key] = struct{}{}
-	}
-	result := make([]string, 0, len(current))
-	for _, item := range current {
-		key, _, found := strings.Cut(item, "=")
-		if _, remove := removed[key]; found && remove {
-			continue
-		}
-		result = append(result, item)
 	}
 
 	return result

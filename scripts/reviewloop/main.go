@@ -90,7 +90,7 @@ type reviewChangeTarget struct {
 
 func main() {
 	var reviewCmd, validationCmd, knownFindingsCmd, knownFindingsFile, stateDir, baseRef string
-	var candidateWorktree, expectedHead, trustedRoot, bindingFile, validationRunDir, gitGuard string
+	var candidateWorktree, expectedHead, trustedRoot, validationRunDir string
 	var prNumber int
 
 	flag.StringVar(&reviewCmd, "review-cmd", "", "command that writes the review JSON to $AI_REVIEW_RESULT")
@@ -103,9 +103,7 @@ func main() {
 	flag.StringVar(&candidateWorktree, "worktree", "", "absolute dedicated candidate worktree path")
 	flag.StringVar(&expectedHead, "expected-head", "", "full candidate HEAD expected before every subprocess")
 	flag.StringVar(&trustedRoot, "trusted-root", "", "absolute primary checkout protected from mutations")
-	flag.StringVar(&bindingFile, "binding-file", "", "immutable PR/worktree binding JSON")
 	flag.StringVar(&validationRunDir, "validation-run-dir", "", "absolute cache/temp directory distinct from both worktrees")
-	flag.StringVar(&gitGuard, "git-guard", "", "absolute trusted ai-git-guard script")
 	flag.Parse()
 
 	if strings.TrimSpace(reviewCmd) == "" {
@@ -126,8 +124,6 @@ func main() {
 		expectedHead,
 		trustedRoot,
 		validationRunDir,
-		bindingFile,
-		gitGuard,
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "WORKTREE_BINDING_GATE=FAIL (%v)\n", err)

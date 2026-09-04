@@ -9,7 +9,8 @@ Local agents are cooperative. The workflow protects against accidental stale
 cache entries, cross-worktree mistakes, the wrong toolchain, a stale target,
 the wrong candidate, flaky focused tests, generated drift, and process crashes.
 It does not isolate caches against deliberate same-user poisoning of Go or lint
-cache internals.
+cache internals, intercept Git commands, or defend against mutate-and-restore
+behavior in the primary checkout.
 
 The cooperative cache policy does not relax publication identity:
 
@@ -154,6 +155,31 @@ the explicit high-risk fallback. Tooling changes that exercise all script
 launchers are typically 3-4 minutes. Provider review time is intentionally not
 hidden inside these command measurements.
 
+### Cooperative-boundary baseline
+
+The 2026-09-04 PR-tooling measurement used a primary checkout containing
+219,330 ignored entries and 14.28 GiB of ignored logical content. The previous
+integrity guard took more than 65.662 seconds for one snapshot, took seven
+snapshots per straight run, and launched 63 Git processes. Its measured lower
+bound exceeded 7 minutes 40 seconds. The cooperative guard does not enumerate
+ignored entries: a warm six-process benchmark of the same checkout took 235
+ms, while the final complete boundary measured 175 ms before and 153 ms after
+(328 ms of snapshot compute and 0.49 seconds wall time). The two snapshots
+launch 12 Git processes. The Git interceptor was removed.
+
+The proportional validation for that tooling change completed in about 90
+seconds on a warm cache, including the single affected race suite. The guard
+was therefore below 1% of measured local compute. Use the following warm local
+objectives to identify future measured optimization work; they are diagnostic
+objectives, not validation gates:
+
+| Change class | Local compute objective | Excluded time |
+| --- | ---: | --- |
+| Documentation or small tooling | <3m | Reviewer-provider latency |
+| Focused test-only | <5m | Reviewer-provider latency |
+| Focused Go change | <5m | Intrinsically slow affected tests and reviewer-provider latency |
+| Ordinary bugfix | <10m | Reviewer-provider latency |
+
 ## CI boundary
 
 The default workflow runs clean normalization, unit coverage, operator, E2E,
@@ -162,3 +188,13 @@ The organization ruleset requires the `Dirty` and `Tests` checks on the default
 branch, and the protected-branch ruleset requires an approved pull request,
 code-owner review, resolved threads, linear history, and squash merge. Local
 success never substitutes for those controls.
+
+## Future tooling changes
+
+Correctness or safety machinery requires a reproduced recurring problem and an
+expected return on its ongoing cost. Performance, simplification, and UX work
+requires measured cost or friction, a measurable expected gain, and no net
+complexity increase unless a small increase has overwhelming measured value.
+Prefer deletion, batching, reuse, and fewer processes or network calls over new
+state, schemas, protocols, or orchestration. Hypothetical same-user sabotage is
+outside the local cooperative boundary.

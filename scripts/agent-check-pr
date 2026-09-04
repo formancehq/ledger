@@ -35,7 +35,7 @@ fi
 
 # Exact candidate/worktree identity remains a publication boundary. Cache
 # sharing changes no part of this binding contract.
-binding_names=(EXPECTED_PR_NUMBER EXPECTED_WORKTREE EXPECTED_HEAD AI_WORKTREE_PR AI_WORKTREE_PATH AI_WORKTREE_EXPECTED_HEAD TRUSTED_ROOT_CHECKOUT)
+binding_names=(EXPECTED_PR_NUMBER EXPECTED_WORKTREE EXPECTED_HEAD)
 binding_declared=false
 for name in "${binding_names[@]}"; do
     if [[ -n "${!name:-}" ]]; then
@@ -53,18 +53,12 @@ if [[ "$binding_declared" == true ]]; then
     }
     current_root=$(git rev-parse --show-toplevel)
     current_root=$(cd "$current_root" && pwd -P)
-    trusted_root=$(cd "$TRUSTED_ROOT_CHECKOUT" 2>/dev/null && pwd -P) || {
-        echo "WORKTREE_BINDING_GATE=FAIL (invalid TRUSTED_ROOT_CHECKOUT)" >&2
-        exit 1
-    }
-    [[ "$candidate_root" != "$trusted_root" ]] || { echo "ROOT_CHECKOUT_AS_CANDIDATE_FORBIDDEN" >&2; exit 1; }
-    [[ "$current_root" == "$candidate_root" && "$AI_WORKTREE_PATH" == "$candidate_root" ]] || {
+    [[ "$current_root" == "$candidate_root" ]] || {
         echo "WORKTREE_BINDING_GATE=FAIL (validator cwd/worktree mismatch)" >&2
         exit 1
     }
-    [[ "$EXPECTED_PR_NUMBER" == "$AI_WORKTREE_PR" ]] || { echo "CROSS_PR_WORKTREE_CONTAMINATION" >&2; exit 1; }
     current_head=$(git rev-parse HEAD)
-    [[ "$current_head" == "$EXPECTED_HEAD" && "$current_head" == "$AI_WORKTREE_EXPECTED_HEAD" ]] || {
+    [[ "$current_head" == "$EXPECTED_HEAD" ]] || {
         echo "WORKTREE_BINDING_GATE=FAIL (validator HEAD mismatch)" >&2
         exit 1
     }

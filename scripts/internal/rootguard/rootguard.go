@@ -1,4 +1,4 @@
-// Package rootguard captures content-aware snapshots of a trusted Git worktree.
+// Package rootguard captures the cooperative safety boundary around a Git worktree.
 package rootguard
 
 import (
@@ -17,27 +17,20 @@ import (
 	"strings"
 )
 
-const gitProcessesPerSnapshot = 9
+const gitProcessesPerSnapshot = 6
 
-// Metrics describes the full-content worktree scope captured in a snapshot.
+// Metrics describes the non-ignored untracked content captured in a snapshot.
 type Metrics struct {
 	GitProcesses          int
-	Entries               int
-	RegularFiles          int
-	LogicalBytes          int64
 	UntrackedEntries      int
 	UntrackedRegularFiles int
 	UntrackedLogicalBytes int64
-	IgnoredEntries        int
-	IgnoredRegularFiles   int
-	IgnoredLogicalBytes   int64
 }
 
-// Snapshot is the trusted state compared at guard observation boundaries.
+// Snapshot is the trusted state compared at the outer workflow boundaries.
 type Snapshot struct {
 	Head                 string
 	Branch               string
-	Status               []byte
 	WorkspaceFingerprint string
 	Metrics              Metrics
 }
@@ -83,7 +76,7 @@ type snapshotter struct {
 	metrics  Metrics
 }
 
-// Capture takes one deterministic, full-content snapshot of root.
+// Capture takes one deterministic snapshot without enumerating ignored paths.
 func Capture(root string) (Snapshot, error) {
 	worker := snapshotter{
 		git: gitOutput,
@@ -100,8 +93,7 @@ func Capture(root string) (Snapshot, error) {
 	return worker.capture(root)
 }
 
-// Compare verifies that two observation boundaries describe the same trusted
-// worktree state.
+// Compare verifies that two boundaries describe the same protected state.
 func Compare(expected, current Snapshot) error {
 	if current.Head != expected.Head {
 		return fmt.Errorf("root HEAD changed: got %s, expected %s", current.Head, expected.Head)
@@ -109,22 +101,11 @@ func Compare(expected, current Snapshot) error {
 	if current.Branch != expected.Branch {
 		return fmt.Errorf("root branch changed: got %s, expected %s", current.Branch, expected.Branch)
 	}
-	if !bytes.Equal(current.Status, expected.Status) {
-		return errors.New("root status changed")
-	}
 	if current.WorkspaceFingerprint != expected.WorkspaceFingerprint {
 		return errors.New("root workspace content changed")
 	}
 
 	return nil
-}
-
-// StatusSHA256 returns a display-safe digest of the NUL-delimited porcelain
-// status captured in the snapshot.
-func (snapshot Snapshot) StatusSHA256() string {
-	digest := sha256.Sum256(snapshot.Status)
-
-	return hex.EncodeToString(digest[:])
 }
 
 func (worker *snapshotter) capture(root string) (Snapshot, error) {
@@ -149,7 +130,7 @@ func (worker *snapshotter) capture(root string) (Snapshot, error) {
 	}
 	status, err := worker.runGit(root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
 	if err != nil {
-		return Snapshot{}, fmt.Errorf("capturing ROOT_STATUS: %w", err)
+		return Snapshot{}, fmt.Errorf("capturing root status: %w", err)
 	}
 	stagedDiff, err := worker.runGit(root, "diff", "--cached", "--binary", "--full-index", "HEAD", "--")
 	if err != nil {
@@ -163,143 +144,61 @@ func (worker *snapshotter) capture(root string) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("listing untracked root paths: %w", err)
 	}
-	ignored, err := worker.runGit(root, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("listing ignored root paths: %w", err)
-	}
-	infoExclude, err := worker.runGit(root, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude")
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("resolving repository exclude file: %w", err)
-	}
-	globalExcludes, err := worker.runOptionalGit(root, "config", "--null", "--path", "--get-all", "core.excludesFile")
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("resolving configured exclude files: %w", err)
-	}
 
 	hasher := sha256.New()
-	writeHashField(hasher, []byte("ledger-rootguard-v1"))
-	writeHashField(hasher, bytes.TrimSpace(head))
+	writeHashField(hasher, []byte("ledger-rootguard-v2"))
+	writeHashField(hasher, status)
 	writeHashField(hasher, stagedDiff)
 	writeHashField(hasher, unstagedDiff)
-	if err := worker.hashGitPaths(hasher, rootFS, "untracked", untracked); err != nil {
+	if err := worker.hashUntrackedPaths(hasher, rootFS, untracked); err != nil {
 		return Snapshot{}, err
-	}
-	if err := worker.hashGitPaths(hasher, rootFS, "ignored", ignored); err != nil {
-		return Snapshot{}, err
-	}
-	writeHashField(hasher, []byte("ignore-configuration"))
-	infoExcludePath := strings.TrimSuffix(string(infoExclude), "\n")
-	if err := worker.hashExternalPath(hasher, root, infoExcludePath); err != nil {
-		return Snapshot{}, fmt.Errorf("hashing repository exclude file: %w", err)
-	}
-	configuredPaths, err := splitNUL(globalExcludes)
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("parsing configured exclude files: %w", err)
-	}
-	slices.SortFunc(configuredPaths, bytes.Compare)
-	for _, configuredPath := range configuredPaths {
-		if err := worker.hashExternalPath(hasher, root, string(configuredPath)); err != nil {
-			return Snapshot{}, fmt.Errorf("hashing configured exclude file %q: %w", configuredPath, err)
-		}
 	}
 
 	return Snapshot{
 		Head:                 strings.TrimSpace(string(head)),
 		Branch:               strings.TrimSpace(string(branch)),
-		Status:               status,
 		WorkspaceFingerprint: hex.EncodeToString(hasher.Sum(nil)),
 		Metrics:              worker.metrics,
 	}, nil
 }
 
-func (worker *snapshotter) hashGitPaths(hasher hash.Hash, root rootedFilesystem, class string, output []byte) error {
+func (worker *snapshotter) hashUntrackedPaths(hasher hash.Hash, root rootedFilesystem, output []byte) error {
 	paths, err := splitNUL(output)
 	if err != nil {
-		return fmt.Errorf("parsing %s root paths: %w", class, err)
+		return fmt.Errorf("parsing untracked root paths: %w", err)
 	}
 	slices.SortFunc(paths, bytes.Compare)
-	writeHashField(hasher, []byte(class))
+	writeHashField(hasher, []byte("untracked"))
 	for _, rawPath := range paths {
 		path := filepath.FromSlash(string(rawPath))
 		if !filepath.IsLocal(path) || path == "." {
-			return fmt.Errorf("%s path is not local: %q", class, rawPath)
+			return fmt.Errorf("untracked path is not local: %q", rawPath)
 		}
-		if err := worker.hashPath(hasher, root, path, rawPath, class); err != nil {
-			return fmt.Errorf("hashing %s path %q: %w", class, rawPath, err)
+		if err := worker.hashPath(hasher, root, path, rawPath); err != nil {
+			return fmt.Errorf("hashing untracked path %q: %w", rawPath, err)
 		}
 	}
 
 	return nil
 }
 
-func (worker *snapshotter) hashExternalPath(hasher hash.Hash, repositoryRoot, path string) error {
-	writeHashField(hasher, []byte(path))
-	if path == "" {
-		writeHashField(hasher, []byte("missing"))
-
-		return nil
-	}
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(repositoryRoot, path)
-	}
-	directory, name := filepath.Split(filepath.Clean(path))
-	if !filepath.IsLocal(name) || name == "." {
-		return fmt.Errorf("exclude path has invalid final component: %q", path)
-	}
-	root, err := worker.openRoot(directory)
-	if errors.Is(err, os.ErrNotExist) {
-		writeHashField(hasher, []byte("missing"))
-
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = root.Close() // Hashing errors take precedence over best-effort descriptor cleanup.
-	}()
-
-	return worker.hashPath(hasher, root, name, []byte(name), "")
-}
-
-func (worker *snapshotter) hashPath(
-	hasher hash.Hash,
-	root rootedFilesystem,
-	path string,
-	rawPath []byte,
-	metricsClass string,
-) error {
+func (worker *snapshotter) hashPath(hasher hash.Hash, root rootedFilesystem, path string, rawPath []byte) error {
 	info, err := root.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) && metricsClass == "" {
-		writeHashField(hasher, []byte("missing"))
-
-		return nil
-	}
 	if err != nil {
 		return fmt.Errorf("reading path metadata: %w", err)
 	}
+	worker.metrics.UntrackedEntries++
 	writeHashField(hasher, rawPath)
 	writeHashField(hasher, []byte(info.Mode().String()))
-	if metricsClass != "" {
-		worker.metrics.Entries++
-		switch metricsClass {
-		case "untracked":
-			worker.metrics.UntrackedEntries++
-		case "ignored":
-			worker.metrics.IgnoredEntries++
-		}
-	}
 
 	switch {
 	case info.Mode()&os.ModeSymlink != 0:
-		writeHashField(hasher, []byte("symlink"))
 		target, err := root.Readlink(path)
 		if err != nil {
 			return fmt.Errorf("reading symlink target: %w", err)
 		}
 		writeHashField(hasher, []byte(target))
 	case info.Mode().IsRegular():
-		writeHashField(hasher, []byte("regular"))
 		file, err := root.Open(path)
 		if err != nil {
 			return fmt.Errorf("opening regular file: %w", err)
@@ -321,22 +220,16 @@ func (worker *snapshotter) hashPath(
 			return errors.New("regular file changed type or identity while being read")
 		}
 		writeHashField(hasher, contentHasher.Sum(nil))
-		if metricsClass != "" {
-			worker.metrics.RegularFiles++
-			worker.metrics.LogicalBytes += logicalBytes
-			switch metricsClass {
-			case "untracked":
-				worker.metrics.UntrackedRegularFiles++
-				worker.metrics.UntrackedLogicalBytes += logicalBytes
-			case "ignored":
-				worker.metrics.IgnoredRegularFiles++
-				worker.metrics.IgnoredLogicalBytes += logicalBytes
-			}
-		}
+		worker.metrics.UntrackedRegularFiles++
+		worker.metrics.UntrackedLogicalBytes += logicalBytes
 	case info.IsDir():
-		writeHashField(hasher, []byte("directory"))
+		// Git reports an untracked nested repository as one directory boundary.
+		// Preserve that boundary without scanning the nested repository.
+		writeHashField(hasher, []byte("directory-boundary"))
 	default:
-		writeHashField(hasher, []byte("special"))
+		// Sockets, devices, and other special entries have no stable content to
+		// read. Their path and complete mode above are the protected state.
+		writeHashField(hasher, []byte("special-entry"))
 	}
 
 	return nil
@@ -346,19 +239,6 @@ func (worker *snapshotter) runGit(directory string, arguments ...string) ([]byte
 	worker.metrics.GitProcesses++
 
 	return worker.git(directory, arguments...)
-}
-
-func (worker *snapshotter) runOptionalGit(directory string, arguments ...string) ([]byte, error) {
-	output, err := worker.runGit(directory, arguments...)
-	if err == nil {
-		return output, nil
-	}
-	var exitError *exec.ExitError
-	if errors.As(err, &exitError) && exitError.ExitCode() == 1 {
-		return nil, nil
-	}
-
-	return nil, err
 }
 
 func splitNUL(output []byte) ([][]byte, error) {
@@ -402,7 +282,7 @@ func gitOutput(directory string, arguments ...string) ([]byte, error) {
 	return output, nil
 }
 
-// GitProcessesPerSnapshot returns the fixed upper bound used by Capture.
+// GitProcessesPerSnapshot returns the fixed number of Git commands used by Capture.
 func GitProcessesPerSnapshot() int {
 	return gitProcessesPerSnapshot
 }

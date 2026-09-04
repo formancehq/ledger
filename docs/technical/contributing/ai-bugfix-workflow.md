@@ -28,7 +28,7 @@ Before exact review, the loop runs applicable base-pinned normalization to a
 one-replay fixpoint. Exact-state targeted validation after review must leave the
 candidate clean; the workflow never resets generated changes to hide them and
 does not replay an identical pre-commit again before push. The launcher then
-re-fetches the target and
-requires it to remain at the run's immutable base before guarded publication.
+performs one final target/head refresh and requires the target to remain at the
+run's immutable base before leased publication.
 Any target advance requires explicit synchronization and a fresh trust pipeline,
 regardless of whether the changed paths overlap the candidate.

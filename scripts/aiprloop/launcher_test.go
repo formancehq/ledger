@@ -55,6 +55,11 @@ func TestLauncherUsesUniqueWorktreesImmutableBaseAndDirectReview(t *testing.T) {
 	require.Equal(t, fixture.baseSHA, baseArgument(t, firstCapture))
 	require.Equal(t, fixture.baseSHA, baseArgument(t, secondCapture))
 	require.Contains(t, capturedArgument(t, firstCapture, "--review-cmd"), "trusted-tools/scripts/ai-review-codex")
+	require.NotContains(t, readCapturedFile(t, firstCapture), "--binding-file")
+	require.NotContains(t, readCapturedFile(t, firstCapture), "--git-guard")
+	require.Equal(t, 1, strings.Count(firstOutput, "ROOT_PROTECTION_ARMED"))
+	require.Equal(t, 1, strings.Count(firstOutput, "ROOT_SNAPSHOT_CAPTURED position=after"))
+	require.Equal(t, 1, strings.Count(firstOutput, "ROOT_UNCHANGED=PASS"))
 	launcher := readCapturedFile(t, launcherPath(t))
 	require.NotContains(t, launcher, "ai-pr-triage")
 	require.NotContains(t, launcher, "codex-pr-triage")
@@ -217,6 +222,20 @@ func TestLauncherRemovesTheRunDirectoryOfACleanRun(t *testing.T) {
 	require.NoDirExists(t, filepath.Dir(worktreeFromOutput(t, output)))
 }
 
+func TestFinalRootComparisonRunsForEveryReviewLoopOutcome(t *testing.T) {
+	for _, status := range []string{"1", "2", "4"} {
+		t.Run("exit "+status, func(t *testing.T) {
+			fixture := newLauncherFixture(t)
+			capture := filepath.Join(fixture.root, "review-args")
+			output, err := runLauncher(t, fixture, capture, "TEST_REVIEW_LOOP_EXIT="+status)
+			require.Error(t, err, output)
+			require.Equal(t, 1, strings.Count(output, "ROOT_PROTECTION_ARMED"))
+			require.Equal(t, 1, strings.Count(output, "ROOT_SNAPSHOT_CAPTURED position=after"))
+			require.Equal(t, 1, strings.Count(output, "ROOT_UNCHANGED=PASS"))
+		})
+	}
+}
+
 type launcherFixture struct {
 	root            string
 	remote          string
@@ -247,9 +266,6 @@ func newLauncherFixture(t *testing.T) launcherFixture {
 	revalidator, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-target-base-revalidate"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-target-base-revalidate"), revalidator, 0o755))
-	guard, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-git-guard"))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-git-guard"), guard, 0o755))
 	bugfixGate, err := os.ReadFile(filepath.Join(filepath.Dir(launcherPath(t)), "ai-bugfix-gate"))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-bugfix-gate"), bugfixGate, 0o755))
@@ -296,6 +312,20 @@ fi
 if [[ "${TEST_ADVANCE_TARGET_AFTER_REVIEW:-false}" == "true" ]]; then
     git --git-dir="$TEST_REMOTE" update-ref refs/heads/release/v3.0 "$TEST_ADVANCED_BASE_SHA"
 fi
+exit "${TEST_REVIEW_LOOP_EXIT:-0}"
+`)
+	writeExecutable(t, filepath.Join(seed, "scripts", "rootguard"), `#!/usr/bin/env bash
+set -euo pipefail
+[[ "$1" == --root && "$3" == -- ]]
+shift 3
+echo "ROOT_PROTECTION_ARMED gitProcesses=6 ignoredEntries=0"
+set +e
+"$@"
+status=$?
+set -e
+echo "ROOT_SNAPSHOT_CAPTURED position=after gitProcesses=6 ignoredEntries=0"
+echo "ROOT_UNCHANGED=PASS"
+exit "$status"
 `)
 	writeExecutable(t, filepath.Join(seed, "scripts", "ai-review-codex"), "#!/usr/bin/env bash\nexit 0\n")
 	require.NoError(t, os.WriteFile(filepath.Join(seed, "scripts", "ai-pr-known-findings"), []byte(`#!/usr/bin/env bash
@@ -354,30 +384,16 @@ esac
 `)
 	writeExecutable(t, filepath.Join(fakeBin, "nix"), `#!/usr/bin/env bash
 set -euo pipefail
-source_root=""
-output=""
-if [[ " $* " == *" --command bash -c "* ]]; then
+if [[ " $* " != *" ./scripts/reviewloop"* ]]; then
     eval "${@: -1}"
     exit $?
 fi
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -C)
-            source_root=$2
-            shift 2
-            ;;
-        -o)
-            output=$2
-            shift 2
-            ;;
-        *)
-            shift
-            ;;
-    esac
-done
-[[ -n "$source_root" && -n "$output" ]]
-cp "$source_root/scripts/review-loop" "$output"
-chmod 755 "$output"
+source_root=${@: -3:1}
+review_output=${@: -2:1}
+rootguard_output=${@: -1}
+cp "$source_root/scripts/review-loop" "$review_output"
+cp "$source_root/scripts/rootguard" "$rootguard_output"
+chmod 755 "$review_output" "$rootguard_output"
 `)
 
 	return launcherFixture{root: testRoot, remote: remote, checkout: checkout, fakeBin: fakeBin, baseSHA: baseSHA, advancedBaseSHA: advancedBaseSHA, headSHA: headSHA}
