@@ -150,7 +150,7 @@ conditions are valid for every declared type.
 `InspectIndex` reserves the fold floor, fold-aligns its read-store snapshot to
 its main-store handle, rejects `CurrentVersion == 0`, refuses bindings behind
 the schema's one-revision serving window as `INDEX_BUILDING`
-(`BindingWithinServingWindow` — the same decision the query compile gate
+(`ClassifyBindingWindow` — the same decision the query compile gate
 makes), and scans only the locally served version. Distinct values, facets,
 and summary statistics therefore describe one consistent encoding. The
 response carries the served binding's type, and the HTTP adapter renders with

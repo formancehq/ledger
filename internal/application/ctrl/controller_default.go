@@ -1130,7 +1130,7 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 	// rewound read store re-walking a retype chain), and scanning its
 	// keyspace would time-travel distinct values, facets, and summary to
 	// superseded semantics.
-	if !query.BindingWithinServingWindow(state.CurrentTypeDeclared, state.CurrentRevision, fields[metaKey].GetRevision()) {
+	if query.ClassifyBindingWindow(state.CurrentTypeDeclared, state.CurrentRevision, fields[metaKey].GetRevision()) == query.BindingBehindWindow {
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{
 			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
 		}}
