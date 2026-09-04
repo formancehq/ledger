@@ -48,7 +48,7 @@ const (
 func readS3Manifest(ctx context.Context, client *s3.Client) (*backup.Manifest, error) {
 	out, err := client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(restoreS3Bucket),
-		Key:    aws.String("test-cluster/backups/manifest.json"),
+		Key:    aws.String("test-cluster/manifest.json"),
 	})
 	if err != nil {
 		return nil, err
