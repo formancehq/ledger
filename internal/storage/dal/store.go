@@ -277,9 +277,14 @@ const (
 	SubGlobEventsConfig            byte = 0x07
 	SubGlobSinkStatus              byte = 0x08
 	SubGlobMaintenanceMode         byte = 0x09
-	SubGlobPersistedConfig         byte = 0x0A
-	SubGlobQueryCheckpoint         byte = 0x0B
-	SubGlobNextQueryCheckpointID   byte = 0x0C
+	SubGlobQueryCheckpoint         byte = 0x0A
+	SubGlobNextQueryCheckpointID   byte = 0x0B
+	// SubGlobPersistedConfig is the boot-validation anchor: the loader reads
+	// it to compare the store's storage_schema_version against the running
+	// binary BEFORE any other key is interpreted. Its byte is pinned across
+	// schema versions — renumbering it would hide an old store's version row
+	// from the very check meant to reject that store.
+	SubGlobPersistedConfig         byte = 0x0C
 	SubGlobQueryCheckpointSchedule byte = 0x0D
 	SubGlobClusterConfig           byte = 0x0E
 	SubGlobBloom                   byte = 0x0F

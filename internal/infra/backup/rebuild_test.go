@@ -558,6 +558,17 @@ func TestRebuildDelta_ReplaysDeleteLedger(t *testing.T) {
 	require.NoError(t, batch.SetProto(coldLogKey(3), &commonpb.Log{
 		Sequence: 3,
 		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_SavedLedgerMetadata{
+				SavedLedgerMetadata: &commonpb.SavedLedgerMetadataLog{
+					Ledger:   "ledger",
+					Metadata: map[string]*commonpb.MetadataValue{"team": commonpb.NewStringValue("payments")},
+				},
+			},
+		},
+	}))
+	require.NoError(t, batch.SetProto(coldLogKey(4), &commonpb.Log{
+		Sequence: 4,
+		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_DeleteLedger{
 				DeleteLedger: &commonpb.DeletedLedgerLog{Name: "ledger", DeletedAt: &commonpb.Timestamp{Data: 999}},
 			},
@@ -584,6 +595,10 @@ func TestRebuildDelta_ReplaysDeleteLedger(t *testing.T) {
 	boundary, err := attrs.Boundary.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
 	require.NoError(t, err)
 	require.Nil(t, boundary, "the boundary row is dropped at delete time, matching the live apply")
+
+	meta, err := attrs.LedgerMetadata.Get(handle, domain.LedgerMetadataKey{LedgerName: "ledger", Key: "team"}.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, meta, "ledger metadata written by the delta must not survive the replayed DeleteLedger")
 }
 
 func TestRebuildDelta_ReplaysPromoteLedger(t *testing.T) {

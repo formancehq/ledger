@@ -17,6 +17,42 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+// TestDeleteLedgerData_RemovesLedgerMetadata pins the deletion cascade's
+// coverage of SubAttrLedgerMetadata: business metadata for a deleted ledger
+// must be physically removed in the same batch, and another ledger's rows
+// must survive untouched.
+func TestDeleteLedgerData_RemovesLedgerMetadata(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	attrs := attributes.New()
+
+	batch := s.OpenWriteSession()
+	for _, ledger := range []string{"doomed", "kept"} {
+		_, err := attrs.LedgerMetadata.Set(batch,
+			domain.LedgerMetadataKey{LedgerName: ledger, Key: "team"}.Bytes(),
+			commonpb.NewStringValue("payments"))
+		require.NoError(t, err)
+	}
+	require.NoError(t, batch.Commit())
+
+	batch = s.OpenWriteSession()
+	require.NoError(t, DeleteLedgerData(batch, "doomed"))
+	require.NoError(t, batch.Commit())
+
+	handle, err := s.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	gone, err := attrs.LedgerMetadata.Get(handle, domain.LedgerMetadataKey{LedgerName: "doomed", Key: "team"}.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, gone, "deleted ledger's metadata must be physically removed by the cascade")
+
+	survives, err := attrs.LedgerMetadata.Get(handle, domain.LedgerMetadataKey{LedgerName: "kept", Key: "team"}.Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, survives, "another ledger's metadata must survive the cascade")
+}
+
 func TestSaveMaintenanceMode(t *testing.T) {
 	t.Parallel()
 

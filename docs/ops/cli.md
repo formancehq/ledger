@@ -102,9 +102,7 @@ Two alternative consistency levels are available:
   isolated former leader can therefore return stale state in this mode; use the
   default `linearizable` mode when quorum-confirmed freshness is required.
 
-`chapters list` is leader-routed independently of this selector and does not
-perform a ReadIndex barrier. If it reaches an isolated node that still considers
-itself leader, it can return stale chapter rows. Filtered `audit list` also has
+Filtered `audit list` has
 an endpoint-specific asynchronous-index caveat; see its consistency note below.
 
 ```bash

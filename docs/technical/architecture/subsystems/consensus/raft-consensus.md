@@ -53,7 +53,7 @@ Machine state (conceptual):
     .LastAppliedIndex       uint64       // Last Raft entry applied
     .LastAppliedTimestamp   uint64       // HLC timestamp of last applied entry
     // ... and the other recoverable scalars (NextAuditSequenceID,
-    // NextLedgerID, LastAuditHash, PendingLedgerCleanups, LastClusterConfig, ...)
+    // NextLedgerID, LastAuditHash, LastClusterConfig, ...)
 
   Registry.Ledgers        KeyStore      // Per-ledger LedgerInfo
   Registry.Boundaries     KeyStore      // Per-ledger LedgerBoundaries (next log/tx IDs, counters)

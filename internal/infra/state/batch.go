@@ -454,6 +454,7 @@ var ledgerScopedAttrTypes = []byte{
 	dal.SubAttrMetadata,
 	dal.SubAttrTransaction,
 	dal.SubAttrReference,
+	dal.SubAttrLedgerMetadata,
 	dal.SubAttrNumscriptVersion,
 	dal.SubAttrNumscriptContent,
 	dal.SubAttrPreparedQuery,
