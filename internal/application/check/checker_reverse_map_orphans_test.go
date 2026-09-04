@@ -375,7 +375,7 @@ func TestCompareReverseMapOrphans_PurgeMissFlaggedAndLabelled(t *testing.T) {
 
 	events = removed.run(3, ledgerNameSet("L1"))
 	require.Len(t, events, 1)
-	require.Contains(t, events[0].GetError().GetMessage(), "RemovedMetadataFieldType scan")
+	require.Contains(t, events[0].GetError().GetMessage(), "RemovedMetadataFieldType purge")
 }
 
 // TestCompareReverseMapOrphans_RemovedFieldTypeResidueFlagged is EN-1458's
