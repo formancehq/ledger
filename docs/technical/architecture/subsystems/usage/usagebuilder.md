@@ -89,10 +89,13 @@ flowchart TB
 The batch commit makes cursor and counter deltas atomically **visible**, but the
 usagestore deliberately has no WAL. A committed mutable memtable is not durable
 until `Store.Flush()` writes it to an SST. The builder maintains that second
-boundary explicitly: every progressing boot catch-up slice is flushed, and in
-steady state the single builder goroutine flushes at most once every 30 seconds,
-only when its cursor advanced since the last successful flush. A failed flush
-does not advance the in-memory durable watermark and remains eligible for retry.
+boundary explicitly: every progressing boot catch-up slice is flushed. In
+steady state, each processing pass is bounded by the next 30-second durability
+deadline; the deadline is checked after every committed batch, then the single
+builder goroutine flushes if its cursor advanced since the last successful
+flush. A large backlog can delay the deadline by at most one batch, not by the
+full drain. A failed flush does not advance the in-memory durable watermark and
+remains eligible for retry.
 
 At every successful flush the durable invariant is:
 

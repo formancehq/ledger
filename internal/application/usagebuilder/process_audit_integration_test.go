@@ -461,6 +461,40 @@ func TestTickReportsPeriodicFlushFailure(t *testing.T) {
 	assert.Zero(t, b.lastFlushedAuditSeq, "a failed periodic flush must remain retryable")
 }
 
+func TestTickFlushesDueProgressBeforeDrainingLongBacklog(t *testing.T) {
+	t.Parallel()
+
+	primary, usage := newUsageTestStores(t)
+	seedAuditData(t, primary, []seedAuditEntry{
+		{seq: 1, success: false},
+		{seq: 2, success: false},
+		{seq: 3, success: false},
+	})
+
+	base := time.Unix(1_700_000_000, 0)
+	b := newTestBuilder(primary, usage, 1)
+	b.lastFlushAt = base
+	b.now = func() time.Time { return base.Add(flushInterval + time.Nanosecond) }
+
+	var attemptedSequences []uint64
+	b.onAuditEntryAttempt = func(sequence uint64) {
+		attemptedSequences = append(attemptedSequences, sequence)
+	}
+	var flushedAt []uint64
+	b.flushStore = func() error {
+		flushedAt = append(flushedAt, b.LastProcessedAuditSequence())
+
+		return usage.Flush()
+	}
+
+	require.NoError(t, b.tick(context.Background()))
+	assert.Equal(t, []uint64{1}, attemptedSequences,
+		"a due steady-state pass must stop after its first committed batch")
+	assert.Equal(t, []uint64{1}, flushedAt,
+		"the committed prefix must be flushed before a later tick drains the backlog")
+	assert.Equal(t, uint64(1), b.lastFlushedAuditSeq)
+}
+
 func TestBootFlushesEveryProgressingCatchUpSlice(t *testing.T) {
 	t.Parallel()
 
