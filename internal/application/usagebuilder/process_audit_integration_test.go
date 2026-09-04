@@ -2,6 +2,7 @@ package usagebuilder
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"testing"
@@ -258,7 +259,7 @@ type seedAuditEntry struct {
 
 // seedAuditData writes the full fixture (audit entries, items, applied
 // proposals and logs) into the primary store in a single committed batch.
-func seedAuditData(t *testing.T, store *dal.Store, entries []seedAuditEntry) {
+func seedAuditData(t testing.TB, store *dal.Store, entries []seedAuditEntry) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
@@ -627,7 +628,13 @@ func TestUsageStoreAbruptStopReplaysOnlyUnflushedTail(t *testing.T) {
 	assert.Equal(t, uint64(1), counter)
 
 	b := newTestBuilder(primary, usage, 200)
+	attemptedSequences := make([]uint64, 0, 1)
+	b.onAuditEntryAttempt = func(sequence uint64) {
+		attemptedSequences = append(attemptedSequences, sequence)
+	}
 	require.NoError(t, b.boot(context.Background()))
+	assert.Equal(t, []uint64{2}, attemptedSequences,
+		"startup must attempt only the audit suffix after the durable cursor")
 	progress, err = usage.ReadProgress()
 	require.NoError(t, err)
 	assert.Equal(t, uint64(2), progress)
@@ -635,6 +642,67 @@ func TestUsageStoreAbruptStopReplaysOnlyUnflushedTail(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint64(4), counter,
 		"startup must replay exactly the one lost three-posting tail entry")
+}
+
+// BenchmarkUsageBuilderCatchUp30SecondWindow measures the maximum healthy
+// replay window established by the 30-second flush policy. The fixture models
+// 100 successful audit entries per second across 100 ledgers, each carrying a
+// two-posting transaction, for 30 seconds of audit history.
+func BenchmarkUsageBuilderCatchUp30SecondWindow(b *testing.B) {
+	const (
+		entriesPerSecond = 100
+		windowSeconds    = 30
+		ledgerCount      = 100
+	)
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meter := noop.NewMeterProvider().Meter("benchmark")
+
+	primary, err := dal.NewStore(b.TempDir(), logger, meter, dal.DefaultConfig())
+	require.NoError(b, err)
+	b.Cleanup(func() { _ = primary.Close() })
+
+	usage, err := usagestore.New(b.TempDir(), logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(b, err)
+	b.Cleanup(func() { _ = usage.Close() })
+
+	entryCount := entriesPerSecond * windowSeconds
+	entries := make([]seedAuditEntry, 0, entryCount)
+	for i := 1; i <= entryCount; i++ {
+		sequence := uint64(i)
+		ledger := fmt.Sprintf("ledger-%03d", i%ledgerCount)
+		logSequence := sequence + 10_000
+		postings := []*commonpb.Posting{
+			usagePosting("world", "account-a", "USD", 1),
+			usagePosting("account-a", "account-b", "USD", 1),
+		}
+		entries = append(entries, seedAuditEntry{
+			seq:     sequence,
+			success: true,
+			items: []seedAuditItem{{
+				order:  createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{}),
+				logSeq: logSequence,
+				log:    createdTxLog(logSequence, ledger, nil, postings, nil, nil, nil),
+			}},
+		})
+	}
+	seedAuditData(b, primary, entries)
+
+	b.ResetTimer()
+	for range b.N {
+		b.StopTimer()
+		require.NoError(b, usage.Reset())
+		builder := newTestBuilder(primary, usage, 2_000)
+		b.StartTimer()
+
+		cursor, processErr := builder.processAuditEntries(context.Background(), 0, time.Time{})
+		require.NoError(b, processErr)
+		require.Equal(b, uint64(entryCount), cursor)
+		require.NoError(b, usage.Flush())
+	}
+
+	b.ReportMetric(float64(entryCount*b.N)/b.Elapsed().Seconds(), "audit_entries/s")
 }
 
 // ---------------------------------------------------------------------------
