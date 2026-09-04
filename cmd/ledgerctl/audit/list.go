@@ -1,7 +1,6 @@
 package audit
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -82,16 +81,6 @@ func runList(cmd *cobra.Command, _ []string) error {
 	pgn := cmdutil.GetPaginationFlags(cmd)
 	flt := cmdutil.GetFilterFlags(cmd)
 	cns := cmdutil.GetConsistencyFlags(cmd)
-
-	// --expand fetches each entry's items via GetAuditEntry, which has no
-	// checkpoint parameter and always reads the live store. Combined with
-	// --checkpoint-id the list page would come from the checkpoint while the
-	// expansion came from the live store — inconsistent, and a not-found error
-	// if the entry was purged from live but still present in the checkpoint.
-	// Refuse the combination explicitly rather than silently mixing sources.
-	if expand && cns.CheckpointID != 0 {
-		return errors.New("--expand cannot be combined with --checkpoint-id: audit entry expansion always reads the live store")
-	}
 
 	filter, err := cmdutil.BuildQueryFilter(flt.Expr, flt.Prefix, commonpb.QueryTarget_QUERY_TARGET_AUDIT)
 	if err != nil {

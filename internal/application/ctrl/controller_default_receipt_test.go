@@ -256,6 +256,39 @@ func TestComputeTransactionReceipt_UsesProvidedReaderNotLiveStore(t *testing.T) 
 	require.Equal(t, txID, claims.TxID)
 }
 
+// Log history is permanent, so a transaction whose state exists but whose
+// creation log is absent is a corrupt store: the receipt path must fail
+// loudly, matching assembleTransactionFromState.
+func TestComputeTransactionReceipt_MissingCreationLogIsInvariantError(t *testing.T) {
+	t.Parallel()
+
+	const (
+		ledger = "L"
+		txID   = uint64(1)
+	)
+
+	attrs := attributes.New()
+	store := newReceiptTestStore(t)
+
+	// Transaction state points at log 7, but no log is written.
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
+	txKey := domain.TransactionKey{LedgerName: ledger, ID: txID}
+	_, err := attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{CreatedByLog: 7})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	ctrl := newReceiptTestController(t, store, attrs, receipt.NewSigner([]byte(testReceiptKey)))
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	tx := &commonpb.Transaction{Postings: []*commonpb.Posting{{Source: "world", Destination: "bank", Asset: "USD"}}}
+	_, err = ctrl.ComputeTransactionReceipt(context.Background(), reader, ledger, txID, tx)
+	require.ErrorContains(t, err, "creation log is missing")
+}
+
 // A genuine reader/lookup error (here: the ledger is absent from the reader)
 // must propagate rather than being masked into a receiptless success.
 func TestComputeTransactionReceipt_PropagatesReaderError(t *testing.T) {

@@ -242,9 +242,10 @@ func (ctrl *DefaultController) ComputeTransactionReceipt(ctx context.Context, re
 
 	log, err := query.FindTransactionCreationLog(ctx, reader, ctrl.attrs.Transaction, ledgerInfo.GetName(), txID)
 	if errors.Is(err, domain.ErrNotFound) {
-		// No creation log found — the transaction is still readable from its
-		// state; it just has no receipt. Not an error.
-		return "", nil
+		// Log history is permanent: a transaction whose state exists but
+		// whose creation log is missing is a corrupt store, never a routine
+		// miss (same contract as assembleTransactionFromState).
+		return "", fmt.Errorf("invariant: transaction %d exists but its creation log is missing", txID)
 	}
 
 	if err != nil {
