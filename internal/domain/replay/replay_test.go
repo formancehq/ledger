@@ -42,7 +42,7 @@ func (w *writerStub) SaveTxMetadata([]byte, map[string]*commonpb.MetadataValue) 
 	return nil
 }
 func (w *writerStub) DeleteTxMetadata([]byte, string) error { return nil }
-func (w *writerStub) SetMetadataFieldType(string, commonpb.TargetType, string, commonpb.MetadataType) error {
+func (w *writerStub) SetMetadataFieldType(string, commonpb.TargetType, string, commonpb.MetadataType, uint32) error {
 	return nil
 }
 

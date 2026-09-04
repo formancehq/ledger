@@ -664,7 +664,7 @@ func seedLedgerContext(
 // the ledger's in-memory LedgerInfo and re-saves it. The schema lives on
 // LedgerInfo, which the attribute zones do not cover, so without this a restore
 // loses every field type declared beyond the checkpoint.
-func (w *attributeReplayWriter) SetMetadataFieldType(ledger string, target commonpb.TargetType, key string, fieldType commonpb.MetadataType) error {
+func (w *attributeReplayWriter) SetMetadataFieldType(ledger string, target commonpb.TargetType, key string, fieldType commonpb.MetadataType, revision uint32) error {
 	// Every live ledger is seeded into ledgerInfos from the checkpoint
 	// (seedLedgerContext) or from its CreateLedger log during replay, so a schema
 	// op with no LedgerInfo means the log stream references a ledger that was
@@ -678,7 +678,7 @@ func (w *attributeReplayWriter) SetMetadataFieldType(ledger string, target commo
 		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
 
-	field := &commonpb.MetadataFieldSchema{Type: fieldType}
+	field := &commonpb.MetadataFieldSchema{Type: fieldType, Revision: revision}
 
 	switch target {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
