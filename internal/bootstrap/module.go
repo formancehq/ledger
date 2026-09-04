@@ -291,14 +291,12 @@ func Module() fx.Option {
 			) (*state.Machine, error) {
 				machineStart := time.Now()
 
-				idempotencyTTLMicros := uint64(cfg.IdempotencyTTL.Microseconds())
-
 				// Fan-out: Machine emits to a single Notifier; FanOut dispatches
 				// to the per-consumer Notifications (events, mirror, index, usage).
 				fanOut := signal.NewFanOut(eventNotifications, mirrorNotifications, indexNotifications, usageNotifications)
 
 				// Sub-objects built in-line so NewMachine receives them pre-built.
-				registry := state.NewStateRegistry(c, attrs, idempotencyTTLMicros)
+				registry := state.NewStateRegistry(c, attrs)
 				snapshotter := state.NewCacheSnapshotter(logger, registry, bloomFilters)
 
 				m, err := state.NewMachine(
@@ -1081,7 +1079,7 @@ func Module() fx.Option {
 				lc.Append(worker.FxHook(reconciler))
 			},
 			func(lc fx.Lifecycle, cfg Config, logger logging.Logger, raftNode *node.Node, store *dal.Store, machine *state.Machine, builder *plan.Builder) {
-				if cfg.IdempotencyTTL > 0 && cfg.IdempotencyEvictionInterval > 0 {
+				if cfg.IdempotencyEvictionInterval > 0 {
 					scheduler := state.NewIdempotencyEvictionScheduler(
 						logger,
 						raftNode.IsLeader,
@@ -1122,7 +1120,6 @@ func Module() fx.Option {
 						store,
 						machine.Registry.Idempotency,
 						cfg.IdempotencyEvictionInterval,
-						cfg.IdempotencyTTL,
 					)
 					lc.Append(fx.Hook{
 						OnStart: func(_ context.Context) error {

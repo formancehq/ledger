@@ -129,6 +129,8 @@ If question 3 is not unconditionally true, the configuration is on the wrong sid
 
 When a setting must influence FSM apply identically on every node — not merely gate admission — it cannot stay node-local. The **cluster policy** (`ClusterPolicy`) is the Raft-replicated home for such settings: the idempotency TTL and the query-checkpoint limit. It is a single global row (`ZoneGlobal` / `SubGlobClusterPolicy`) carried in `FSMState`, so it rides inside snapshots and cold backups and is checker-verified (`clusterPolicyVerifier`) against the audited `SetClusterPolicy` orders.
 
+The idempotency TTL is applied without ever re-reading the policy in the expiry check: each apply freezes the outcome's absolute `expires_at` once, as `created_at + IdempotencyTtlMicros` from the policy committed *before* that proposal, and stores it on the outcome (and chain-binds it in the audit header). Every later expiry decision (`IsExpired`, preload re-injection, the leader eviction scan) reads only that stored `expires_at`, so a node whose desired TTL differs — mid-rollout, or misconfigured — cannot diverge a committed outcome's lifetime. Reading the live policy TTL inside the expiry check instead would let two nodes disagree on whether the same committed outcome is still live (EN-1797).
+
 Every policy carries a monotonic `revision`. Node-local configuration still names the *desired* policy — the admission-side use the boundary permits — but the FSM alone decides whether a committed update applies, purely from committed state (`FSMState.ClusterPolicy`) and the committed order:
 
 | Committed revision vs applied | FSM outcome |

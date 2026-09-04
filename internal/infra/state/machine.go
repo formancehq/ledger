@@ -890,8 +890,15 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 		// Install any value carrying an outcome — a committed log sequence or a
 		// frozen business failure. Both must restore so a duplicate replays its
 		// stored outcome instead of re-executing.
+		//
+		// Skip a value already past its expiry as of the last applied HLC: a
+		// committed IdempotencyEviction between the leader's plan-build and this
+		// apply has already removed it from Pebble and the in-memory map, and
+		// re-injecting the stale copy would leave the map ahead of Pebble and let
+		// a later eviction double-SingleDelete the main key.
 		v := ik.GetValue()
-		if v != nil && (v.GetFirstLogSequence() > 0 || v.GetFailure() != nil) {
+		if v != nil && (v.GetFirstLogSequence() > 0 || v.GetFailure() != nil) &&
+			!IdempotencyExpired(v.GetExpiresAt(), fsm.State.LastAppliedTimestamp) {
 			fsm.Registry.Idempotency.Put(ik.GetKey(), v)
 		}
 	}
@@ -1213,6 +1220,12 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Compute the effective date using the HLC to guarantee monotonicity
 	effectiveDate := &commonpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.GetDate().GetData())}
 
+	// Freeze the retention window for any idempotency outcome this apply stores,
+	// from the policy committed before this proposal. Computed once so the audit
+	// entry (Idempotency.expires_at) and the stored value agree and neither reads
+	// a node-local TTL. 0 = never expires.
+	idempotencyExpiresAt := IdempotencyExpiresAt(effectiveDate.GetData(), fsm.State.ClusterPolicy.GetIdempotencyTtlMicros())
+
 	// Re-point the WriteSet at the HLC-advanced effective date. The overlay
 	// (Derived) populated by the technical-update phase is preserved — only
 	// the timestamp field is rewired so order handlers see the monotonic
@@ -1355,10 +1368,14 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		entry.Ledgers = extractLedgers(orders)
 		entry.HashVersion = uint32(fsm.State.HashGenerator.Algorithm())
 		entry.CallerSnapshot = proposal.GetCallerSnapshot()
-		// Batch identity, bound into the hash chain. Shared (not cloned) like
-		// CallerSnapshot: ResetVT only nils these pointers, never returns the
-		// proposal's sub-messages to a pool.
-		entry.Idempotency = proposal.GetIdempotency()
+		// Batch identity, bound into the hash chain. For a keyed batch a fresh
+		// Idempotency carries the client key plus the server-derived expires_at
+		// (the outcome's retention window), so restore and the checker read the
+		// expiry back from the chain without a node-local TTL. Signature stays
+		// shared (ResetVT only nils it).
+		if idem := proposal.GetIdempotency(); idem.GetKey() != "" {
+			entry.Idempotency = &commonpb.Idempotency{Key: idem.GetKey(), ExpiresAt: idempotencyExpiresAt}
+		}
 		entry.Signature = proposal.GetSignature()
 
 		items := buildAuditItems(serializedOrders, logs)
@@ -1427,7 +1444,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, appendErr
 		}
 
-		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData()); recErr != nil {
+		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData(), idempotencyExpiresAt); recErr != nil {
 			return nil, recErr
 		}
 
@@ -1476,7 +1493,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return nil, appendErr
 		}
 
-		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData()); recErr != nil {
+		if recErr := fsm.recordIdempotencyFailure(batch, idempotencyKey, proposalHash, err, effectiveDate.GetData(), idempotencyExpiresAt); recErr != nil {
 			return nil, recErr
 		}
 
@@ -1509,6 +1526,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			LogCount:         uint32(len(createdLogs)),
 			Hash:             proposalHash,
 			CreatedAt:        effectiveDate.GetData(),
+			ExpiresAt:        idempotencyExpiresAt,
 		}
 
 		if saveErr := SaveIdempotencyKey(batch, idempotencyKey, value); saveErr != nil {
@@ -1616,14 +1634,14 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 // change) replays the same error instead of re-executing in a changed context.
 // Written directly to the idempotency store + batch because the proposal's
 // WriteSet is rolled back on failure; the batch is still committed (it carries
-// the audit-failure entry). createdAt feeds the TTL time index so frozen
-// failures expire like successes. proposalHash is the batch dedup hash, so a
-// replay matches.
+// the audit-failure entry). expiresAt feeds the eviction time index so frozen
+// failures expire like successes; createdAt is the outcome's write time.
+// proposalHash is the batch dedup hash, so a replay matches.
 //
 // No-op when there is no key, for non-business / retryable failures, for an
-// already-replayed failure (re-recording would reset its TTL), and over a live
-// (non-expired) prior outcome.
-func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string, proposalHash []byte, bizErr error, createdAt uint64) error {
+// already-replayed failure (re-recording would reset its expiry), and over a
+// live (non-expired) prior outcome.
+func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string, proposalHash []byte, bizErr error, createdAt, expiresAt uint64) error {
 	if key == "" {
 		return nil
 	}
@@ -1652,6 +1670,7 @@ func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string
 	value := &commonpb.IdempotencyKeyValue{
 		Hash:      proposalHash,
 		CreatedAt: createdAt,
+		ExpiresAt: expiresAt,
 		Failure: &commonpb.IdempotencyFailure{
 			Reason:   reason,
 			Message:  message,

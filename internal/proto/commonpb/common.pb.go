@@ -2837,8 +2837,12 @@ func (x *Index) GetForwardEncodingVersion() uint32 {
 }
 
 type Idempotency struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Key   string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	// HLC microseconds when this frozen outcome expires; 0 = never. Server-derived
+	// (created_at + the policy TTL committed for that apply) and chain-bound in the
+	// audit header, so restore and the checker read it back without a node-local TTL.
+	ExpiresAt     uint64 `protobuf:"fixed64,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2878,6 +2882,13 @@ func (x *Idempotency) GetKey() string {
 		return x.Key
 	}
 	return ""
+}
+
+func (x *Idempotency) GetExpiresAt() uint64 {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return 0
 }
 
 type Log struct {
@@ -9042,6 +9053,7 @@ type IdempotencyKeyValue struct {
 	CreatedAt        uint64                 `protobuf:"fixed64,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`      // HLC microseconds (from Raft entry timestamp)
 	Failure          *IdempotencyFailure    `protobuf:"bytes,5,opt,name=failure,proto3" json:"failure,omitempty"`                             // set instead of the log refs when the first apply was a definitive business failure
 	LogCount         uint32                 `protobuf:"varint,6,opt,name=log_count,json=logCount,proto3" json:"log_count,omitempty"`          // number of contiguous logs the proposal committed; 0 with failure set
+	ExpiresAt        uint64                 `protobuf:"fixed64,7,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`      // HLC microseconds; 0 = never expires. Frozen at write time from the committed policy TTL (created_at + IdempotencyTtlMicros).
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -9114,6 +9126,13 @@ func (x *IdempotencyKeyValue) GetFailure() *IdempotencyFailure {
 func (x *IdempotencyKeyValue) GetLogCount() uint32 {
 	if x != nil {
 		return x.LogCount
+	}
+	return 0
+}
+
+func (x *IdempotencyKeyValue) GetExpiresAt() uint64 {
+	if x != nil {
+		return x.ExpiresAt
 	}
 	return 0
 }
@@ -11708,13 +11727,12 @@ func (x *LedgerStats) GetLogCount() uint64 {
 // between restarts with existing data. Stored at Pebble key {0x06, 0x0C}
 // (Global zone, SubGlobPersistedConfig).
 type PersistedConfig struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	NodeId                uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
-	ClusterId             string                 `protobuf:"bytes,2,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
-	IdempotencyTtlSeconds uint64                 `protobuf:"varint,3,opt,name=idempotency_ttl_seconds,json=idempotencyTtlSeconds,proto3" json:"idempotency_ttl_seconds,omitempty"`
-	StorageSchemaVersion  uint32                 `protobuf:"varint,4,opt,name=storage_schema_version,json=storageSchemaVersion,proto3" json:"storage_schema_version,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	NodeId               uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	ClusterId            string                 `protobuf:"bytes,2,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
+	StorageSchemaVersion uint32                 `protobuf:"varint,3,opt,name=storage_schema_version,json=storageSchemaVersion,proto3" json:"storage_schema_version,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *PersistedConfig) Reset() {
@@ -11759,13 +11777,6 @@ func (x *PersistedConfig) GetClusterId() string {
 		return x.ClusterId
 	}
 	return ""
-}
-
-func (x *PersistedConfig) GetIdempotencyTtlSeconds() uint64 {
-	if x != nil {
-		return x.IdempotencyTtlSeconds
-	}
-	return 0
 }
 
 func (x *PersistedConfig) GetStorageSchemaVersion() uint32 {
@@ -12534,9 +12545,11 @@ const file_common_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x02 \x01(\v2\x11.common.TimestampR\tcreatedAt\x12\x16\n" +
 	"\x06ledger\x18\x03 \x01(\tR\x06ledger\x128\n" +
-	"\x18forward_encoding_version\x18\x04 \x01(\rR\x16forwardEncodingVersion\"\x1f\n" +
+	"\x18forward_encoding_version\x18\x04 \x01(\rR\x16forwardEncodingVersion\">\n" +
 	"\vIdempotency\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\"\xae\x01\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x02 \x01(\x06R\texpiresAt\"\xae\x01\n" +
 	"\x03Log\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12,\n" +
 	"\apayload\x18\x02 \x01(\v2\x12.common.LogPayloadR\apayload\x12\x18\n" +
@@ -12980,7 +12993,7 @@ const file_common_proto_rawDesc = "" +
 	"\x13reverts_transaction\x18\a \x01(\x06R\x12revertsTransaction\x1aR\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
-	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\xec\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x15.common.MetadataValueR\x05value:\x028\x01\"\x8b\x02\n" +
 	"\x13IdempotencyKeyValue\x12,\n" +
 	"\x12first_log_sequence\x18\x01 \x01(\x06R\x10firstLogSequence\x12\x12\n" +
 	"\x04hash\x18\x02 \x01(\fR\x04hash\x12!\n" +
@@ -12988,7 +13001,9 @@ const file_common_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x04 \x01(\x06R\tcreatedAt\x124\n" +
 	"\afailure\x18\x05 \x01(\v2\x1a.common.IdempotencyFailureR\afailure\x12\x1b\n" +
-	"\tlog_count\x18\x06 \x01(\rR\blogCount\"\xde\x01\n" +
+	"\tlog_count\x18\x06 \x01(\rR\blogCount\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\a \x01(\x06R\texpiresAt\"\xde\x01\n" +
 	"\x12IdempotencyFailure\x12+\n" +
 	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12D\n" +
@@ -13150,13 +13165,12 @@ const file_common_proto_rawDesc = "" +
 	"\x14transient_used_count\x18\x06 \x01(\x06R\x12transientUsedCount\x12!\n" +
 	"\frevert_count\x18\a \x01(\x06R\vrevertCount\x12:\n" +
 	"\x19numscript_execution_count\x18\b \x01(\x06R\x17numscriptExecutionCount\x12\x1b\n" +
-	"\tlog_count\x18\t \x01(\x06R\blogCount\"\xb7\x01\n" +
+	"\tlog_count\x18\t \x01(\x06R\blogCount\"\x7f\n" +
 	"\x0fPersistedConfig\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x1d\n" +
 	"\n" +
-	"cluster_id\x18\x02 \x01(\tR\tclusterId\x126\n" +
-	"\x17idempotency_ttl_seconds\x18\x03 \x01(\x04R\x15idempotencyTtlSeconds\x124\n" +
-	"\x16storage_schema_version\x18\x04 \x01(\rR\x14storageSchemaVersion\"\x94\x01\n" +
+	"cluster_id\x18\x02 \x01(\tR\tclusterId\x124\n" +
+	"\x16storage_schema_version\x18\x03 \x01(\rR\x14storageSchemaVersion\"\x94\x01\n" +
 	"\x0eCallerIdentity\x12\x18\n" +
 	"\asubject\x18\x01 \x01(\tR\asubject\x12\x18\n" +
 	"\x06issuer\x18\x02 \x01(\tH\x00R\x06issuer\x12\x17\n" +

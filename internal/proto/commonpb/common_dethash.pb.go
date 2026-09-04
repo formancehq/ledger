@@ -2618,6 +2618,12 @@ func (m *IdempotencyKeyValue) MarshalToSizedBufferDeterministicVT(dAtA []byte) (
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.ExpiresAt != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ExpiresAt))
+		i--
+		dAtA[i] = 0x39
+	}
 	if m.LogCount != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogCount))
 		i--

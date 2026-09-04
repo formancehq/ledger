@@ -297,6 +297,10 @@ message Index {
 
 message Idempotency {
   string key = 1;
+  // HLC microseconds when this frozen outcome expires; 0 = never. Server-derived
+  // (created_at + the policy TTL committed for that apply) and chain-bound in the
+  // audit header, so restore and the checker read it back without a node-local TTL.
+  fixed64 expires_at = 2;
 }
 
 // ============================================================================
@@ -1123,6 +1127,7 @@ message IdempotencyKeyValue {
   fixed64 created_at = 4;    // HLC microseconds (from Raft entry timestamp)
   IdempotencyFailure failure = 5;  // set instead of the log refs when the first apply was a definitive business failure
   uint32 log_count = 6;  // number of contiguous logs the proposal committed; 0 with failure set
+  fixed64 expires_at = 7;  // HLC microseconds; 0 = never expires. Frozen at write time from the committed policy TTL (created_at + IdempotencyTtlMicros).
 }
 
 // ErrorReason is the typed, wire-bound form of a domain error's Reason()
@@ -1687,8 +1692,7 @@ message LedgerStats {
 message PersistedConfig {
   uint64 node_id = 1;
   string cluster_id = 2;
-  uint64 idempotency_ttl_seconds = 3;
-  uint32 storage_schema_version = 4;
+  uint32 storage_schema_version = 3;
 }
 
 // CallerIdentity uniquely identifies who initiated an action. It is

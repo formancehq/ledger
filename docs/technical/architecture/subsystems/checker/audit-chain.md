@@ -30,9 +30,10 @@ Built by `state.BuildHashedHeaderPayload(entry)` (`internal/infra/state/audit_en
 | `Outcome` | tagged Success or Failure with its payload |
 | `CallerSnapshot` | length-prefixed bytes |
 | `IdempotencyKey` | length-prefixed bytes |
+| `IdempotencyExpiresAt` | `uint64` BE |
 | `Signature` | length-prefixed bytes (Ed25519 from the originator) |
 
-Every field is hashed — none is "informational and excluded".
+Every field is hashed — none is "informational and excluded". `IdempotencyExpiresAt` is the server-derived retention deadline for the outcome this apply froze (HLC microseconds; `0` = never expires), computed once from the committed policy TTL at apply time. Binding it into the chain lets restore and the checker read the expiry back from the audit entry without consulting any node-local TTL configuration.
 
 ### `CallerSnapshot` sub-payload
 
