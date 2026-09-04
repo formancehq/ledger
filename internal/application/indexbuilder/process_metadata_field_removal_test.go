@@ -75,9 +75,9 @@ func deletedAccountMetadata(account, key string) *commonpb.DeletedMetadata {
 
 // TestHandleRemovedMetadataFieldType_PurgesReverseMap pins EN-1443: when an
 // indexed metadata field is removed, every reverse-map row for that field must
-// be purged — including PUTs written earlier in the *same* uncommitted builder
-// batch, which the committed-only snapshot scan cannot see. The "same batch"
-// and "mixed" cases fail before the read-your-writes overlay consult is added.
+// be purged — including PUTs written earlier in the same uncommitted builder
+// batch. The field-bounded range tombstone covers both committed and in-flight
+// rows.
 func TestHandleRemovedMetadataFieldType_PurgesReverseMap(t *testing.T) {
 	t.Parallel()
 
@@ -199,8 +199,8 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap(t *testing.T) {
 		cfg := newActiveCfg()
 
 		// One batch: write role, then delete it (overlay entry becomes nil),
-		// then remove the field. Exercises the overlay's already-deleted
-		// (value == nil) skip branch in purgeReverseMapForKey.
+		// then remove the field. The range tombstone remains idempotent when
+		// the exact overlay row is already deleted.
 		b.wb.Init(b.readStore.NewBatch())
 		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(acct1, removedKey, 1)))
@@ -228,8 +228,8 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap(t *testing.T) {
 
 		// Batch 2: rewrite the SAME reverse-map key in-flight (committed row +
 		// non-nil overlay entry for the same key), then remove the field. The
-		// committed scan nils the overlay entry before the overlay pass, so the
-		// row is purged exactly once.
+		// range tombstone supersedes both the committed row and its later exact
+		// overlay replacement.
 		b.wb.Init(b.readStore.NewBatch())
 		b.wb.SetEventSequence(2)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedAccountMetadata(acct1, removedKey, 2)))
@@ -242,8 +242,8 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap(t *testing.T) {
 
 // TestHandleRemovedMetadataFieldType_PurgesReverseMap_Transaction mirrors the
 // account cases for the transaction namespace, whose reverse-map key layout
-// (fixed 8-byte txID + version block) differs from the account null-scan. It
-// exercises the same-batch overlay-purge path for transactions specifically.
+// ends in a fixed 8-byte txID rather than a variable-width account address. It
+// exercises same-batch range-purge behavior for transactions specifically.
 func TestHandleRemovedMetadataFieldType_PurgesReverseMap_Transaction(t *testing.T) {
 	t.Parallel()
 
@@ -300,8 +300,7 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap_Transaction(t *testing.
 		cfg := newActiveCfg()
 
 		// One batch: uncommitted tx metadata PUT, then removal, then flush. The
-		// committed-only snapshot cannot see the in-flight PUT — the overlay
-		// pass is what purges it. Fails before EN-1443 (orphan row survives).
+		// range tombstone must cover the in-flight PUT too.
 		b.wb.Init(b.readStore.NewBatch())
 		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexSavedMetadata(b.kb, cfg, ledger, savedTransactionMetadata(tx1, removedKey, 1)))
@@ -331,6 +330,86 @@ func TestHandleRemovedMetadataFieldType_PurgesReverseMap_Transaction(t *testing.
 
 		require.Equal(t, 0, countReverseMapRows(t, b, ledger, ns, removedKey))
 	})
+}
+
+func TestPurgeReverseMapForKeyIsFieldBoundedAcrossVersions(t *testing.T) {
+	t.Parallel()
+
+	const (
+		ledger      = "test"
+		otherLedger = "other-ledger"
+		removedKey  = "status"
+		keepKey     = "team"
+	)
+	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("open"))
+
+	tests := []struct {
+		name       string
+		ns         string
+		entityID   []byte
+		key        func(*Builder, string, string, uint32) []byte
+		otherNSKey func(*Builder) []byte
+	}{
+		{
+			name:     "account",
+			ns:       readstore.NamespaceAccount,
+			entityID: []byte("users:1"),
+			key: func(b *Builder, ledgerName, field string, version uint32) []byte {
+				return cloneBytes(readstore.AccountReverseMapKeyV(b.kb, ledgerName, "users:1", field, version))
+			},
+			otherNSKey: func(b *Builder) []byte {
+				return cloneBytes(readstore.TransactionReverseMapKeyV(b.kb, ledger, 1, removedKey, 1))
+			},
+		},
+		{
+			name:     "transaction",
+			ns:       readstore.NamespaceTransaction,
+			entityID: []byte{0, 0, 0, 0, 0, 0, 0, 1},
+			key: func(b *Builder, ledgerName, field string, version uint32) []byte {
+				return cloneBytes(readstore.TransactionReverseMapKeyV(b.kb, ledgerName, 1, field, version))
+			},
+			otherNSKey: func(b *Builder) []byte {
+				return cloneBytes(readstore.AccountReverseMapKeyV(b.kb, ledger, "users:1", removedKey, 1))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			b := newTestBuilderWithStore(t)
+			removedV1 := tt.key(b, ledger, removedKey, 1)
+			removedV3 := tt.key(b, ledger, removedKey, 3)
+			removedInFlightV2 := tt.key(b, ledger, removedKey, 2)
+			keepField := tt.key(b, ledger, keepKey, 1)
+			keepLedger := tt.key(b, otherLedger, removedKey, 1)
+			keepNamespace := tt.otherNSKey(b)
+
+			seed := b.readStore.NewBatch()
+			for _, key := range [][]byte{removedV1, removedV3, keepField, keepLedger, keepNamespace} {
+				require.NoError(t, seed.SetBytes(key, encoded))
+			}
+			require.NoError(t, seed.Commit())
+
+			b.wb.Init(b.readStore.NewBatch())
+			b.wb.SetEventSequence(2)
+			require.NoError(t, b.wb.ReplaceMetadataIndexV(
+				b.kb, removedInFlightV2,
+				ledger, tt.ns, removedKey, 2,
+				encoded, nil, tt.entityID,
+			))
+			require.NoError(t, b.purgeReverseMapForKey(b.kb, ledger, tt.ns, removedKey))
+			require.NoError(t, b.wb.Flush())
+
+			for _, key := range [][]byte{removedV1, removedInFlightV2, removedV3} {
+				assertReadStoreMissing(t, b, key)
+			}
+			for _, key := range [][]byte{keepField, keepLedger, keepNamespace} {
+				assertReadStoreValue(t, b, key, encoded)
+			}
+		})
+	}
 }
 
 // TestHandleRemovedMetadataFieldType_NoBatchFailsLoudly pins invariant #7 on the

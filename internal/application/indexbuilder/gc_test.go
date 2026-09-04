@@ -380,8 +380,8 @@ func TestGCVersionAt_PurgesForwardEidxAndRmap(t *testing.T) {
 	fwdV2 := cloneBytes(readstore.MetadataIndexEventKeyV(kb, ledger, ns, key, 2, encoded, entityID, 1, readstore.MetadataEventAdd))
 	rmapV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledger, account, key, 2))
 
-	// Rmap row at v=1 for a *different* metadata key — the iter
-	// filter must not delete this.
+	// Rmap row at v=1 for a different metadata key — the version-bounded
+	// range tombstone must not delete it.
 	rmapV1OtherKey := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledger, account, "other", 1))
 
 	seed := b.readStore.NewBatch()

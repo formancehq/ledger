@@ -506,13 +506,13 @@ func TestCompareReverseMapOrphans_MalformedKeys(t *testing.T) {
 		expectedCause  string
 	}{
 		{
-			// A NUL inside the metadata key means the entity/version split
-			// landed in the wrong place — the shape check that turns a silent
-			// mis-decode into a surfaced error.
+			// A NUL inside the metadata key terminates the field early and
+			// shifts bytes into the version/entity suffix. The account entity
+			// shape check turns that silent mis-decode into a surfaced error.
 			name:           "nul in metadata key",
 			key:            readstore.AccountReverseMapKeyV(kb, "L1", "users:1", "ro\x00le", 1),
 			expectedLedger: "L1",
-			expectedCause:  readstore.ErrReverseMapKeyMetadataKey.Error(),
+			expectedCause:  readstore.ErrReverseMapKeyEntityID.Error(),
 		},
 		{
 			// Too short to even hold the fixed-width ledger name block, so the

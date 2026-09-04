@@ -163,19 +163,16 @@ func AccountReverseMapKey(kb *dal.KeyBuilder, ledgerName string, account, metada
 }
 
 // AccountReverseMapKeyV builds a reverse map key for account metadata.
-// Forward-encoding version is encoded fixed-width *before* the metadata
-// key so the metaKey suffix scan (purgeReverseMapForKey) stays
-// parseable.
 //
-//	[0x03][ledgerName padded 64B][a:][account\x00][version:4B BE][metadataKey]
+//	[0x03][ledgerName padded 64B][a:][metadataKey\x00][version:4B BE][account]
 func AccountReverseMapKeyV(kb *dal.KeyBuilder, ledgerName string, account, metadataKey string, version uint32) []byte {
 	return kb.Reset().
 		PutByte(PrefixReverseMap).
 		PutLedgerNameFixed(ledgerName).
 		PutNamespace(NamespaceAccount).
-		PutStringNull(account).
+		PutStringNull(metadataKey).
 		PutUint32(version).
-		PutString(metadataKey).
+		PutString(account).
 		Build()
 }
 
@@ -185,18 +182,18 @@ func TransactionReverseMapKey(kb *dal.KeyBuilder, ledgerName string, txID uint64
 	return TransactionReverseMapKeyV(kb, ledgerName, txID, metadataKey, 1)
 }
 
-// TransactionReverseMapKeyV — same versioning shape as
+// TransactionReverseMapKeyV uses the same field/version-first shape as
 // AccountReverseMapKeyV.
 //
-//	[0x03][ledgerName padded 64B][t:][txID(8B)][version:4B BE][metadataKey]
+//	[0x03][ledgerName padded 64B][t:][metadataKey\x00][version:4B BE][txID(8B)]
 func TransactionReverseMapKeyV(kb *dal.KeyBuilder, ledgerName string, txID uint64, metadataKey string, version uint32) []byte {
 	return kb.Reset().
 		PutByte(PrefixReverseMap).
 		PutLedgerNameFixed(ledgerName).
 		PutNamespace(NamespaceTransaction).
-		PutUint64(txID).
+		PutStringNull(metadataKey).
 		PutUint32(version).
-		PutString(metadataKey).
+		PutUint64(txID).
 		Build()
 }
 
@@ -227,8 +224,8 @@ var (
 // rmap key offset math: callers needing more than one field MUST route
 // through here rather than recomputing offsets.
 //
-//	account:     [0x03][ledgerName padded 64B][a:][account\x00][version:4B BE][metadataKey]
-//	transaction: [0x03][ledgerName padded 64B][t:][txID(8B)]   [version:4B BE][metadataKey]
+//	account:     [0x03][ledgerName padded 64B][a:][metadataKey\x00][version:4B BE][account]
+//	transaction: [0x03][ledgerName padded 64B][t:][metadataKey\x00][version:4B BE][txID(8B)]
 //
 // EntityID is a copy (via bytes.Clone), independent of key — safe for
 // callers to retain past an iterator move.
@@ -236,23 +233,16 @@ var (
 // A non-nil error means the key is not well-formed:
 //
 //   - ErrReverseMapKeyPrefix — wrong or missing discriminator byte
-//   - ErrReverseMapKeyTruncated — too short at any point (header, account
-//     terminator, transaction id, or version block)
+//   - ErrReverseMapKeyTruncated — too short at any point (header, metadata-key
+//     terminator, version block, or entity id)
 //   - ErrReverseMapKeyNamespace — neither NamespaceAccount nor NamespaceTransaction
 //   - ErrReverseMapKeyLedgerName — an embedded NUL surviving the fixed-width
 //     block's zero-padding trim, or an empty ledger name
-//   - ErrReverseMapKeyEntityID — an empty account address
-//   - ErrReverseMapKeyMetadataKey — an empty metadata key, or one containing
-//     a NUL byte. The NUL case is deliberately not delegated to
-//     invariants.ValidateMetadataKey (an encoding-shape check must not
-//     retroactively track a future charset tightening there): it exists to
-//     catch a mis-split entity ID. An account address containing a stray
-//     NUL (e.g. "us\x00ers") makes the IndexByte terminator search above
-//     stop early, so the *real* terminator and the 4-byte version block end
-//     up swallowed into what this function would otherwise decode as
-//     MetadataKey — a plausible-looking but wrong triple, not a decode
-//     failure. Rejecting any NUL in the decoded MetadataKey is what turns
-//     that silent mis-decode into a surfaced error.
+//   - ErrReverseMapKeyEntityID — an empty account address or malformed transaction id
+//   - ErrReverseMapKeyMetadataKey — an empty metadata key, or one with no
+//     terminator. This shape check is deliberately not delegated to
+//     invariants.ValidateMetadataKey, so it cannot drift with future charset
+//     validation changes.
 //
 // Use errors.Is to test for a specific cause. Callers must treat a non-nil
 // error as corruption, never as a silent skip.
@@ -281,46 +271,42 @@ func ParseReverseMapKey(key []byte) (ParsedReverseMapKey, error) {
 	}
 
 	rest := key[header:]
-
-	switch parsed.Namespace {
-	case NamespaceAccount:
-		end := bytes.IndexByte(rest, 0x00)
-		if end < 0 {
-			return ParsedReverseMapKey{}, fmt.Errorf("%w: account address missing its 0x00 terminator", ErrReverseMapKeyTruncated)
-		}
-
-		if end == 0 {
-			return ParsedReverseMapKey{}, fmt.Errorf("%w: empty", ErrReverseMapKeyEntityID)
-		}
-
-		parsed.EntityID = bytes.Clone(rest[:end])
-		rest = rest[end+1:]
-	case NamespaceTransaction:
-		if len(rest) < 8 {
-			return ParsedReverseMapKey{}, fmt.Errorf("%w: transaction id shorter than 8 bytes", ErrReverseMapKeyTruncated)
-		}
-
-		parsed.EntityID = bytes.Clone(rest[:8])
-		rest = rest[8:]
-	default:
+	if parsed.Namespace != NamespaceAccount && parsed.Namespace != NamespaceTransaction {
 		return ParsedReverseMapKey{}, fmt.Errorf("%w: %q", ErrReverseMapKeyNamespace, parsed.Namespace)
 	}
 
+	metadataEnd := bytes.IndexByte(rest, 0x00)
+	if metadataEnd < 0 {
+		return ParsedReverseMapKey{}, fmt.Errorf("%w: missing 0x00 terminator", ErrReverseMapKeyMetadataKey)
+	}
+	if metadataEnd == 0 {
+		return ParsedReverseMapKey{}, fmt.Errorf("%w: empty", ErrReverseMapKeyMetadataKey)
+	}
+
+	parsed.MetadataKey = string(rest[:metadataEnd])
+	rest = rest[metadataEnd+1:]
 	if len(rest) < 4 {
 		return ParsedReverseMapKey{}, fmt.Errorf("%w: version block shorter than 4 bytes", ErrReverseMapKeyTruncated)
 	}
 
-	metadataKey := rest[4:]
-	if len(metadataKey) == 0 {
-		return ParsedReverseMapKey{}, fmt.Errorf("%w: empty", ErrReverseMapKeyMetadataKey)
-	}
-
-	if idx := bytes.IndexByte(metadataKey, 0x00); idx >= 0 {
-		return ParsedReverseMapKey{}, fmt.Errorf("%w: contains NUL at offset %d", ErrReverseMapKeyMetadataKey, idx)
-	}
-
 	parsed.Version = binary.BigEndian.Uint32(rest[:4])
-	parsed.MetadataKey = string(metadataKey)
+	rest = rest[4:]
+
+	switch parsed.Namespace {
+	case NamespaceAccount:
+		if len(rest) == 0 {
+			return ParsedReverseMapKey{}, fmt.Errorf("%w: empty", ErrReverseMapKeyEntityID)
+		}
+		if idx := bytes.IndexByte(rest, 0x00); idx >= 0 {
+			return ParsedReverseMapKey{}, fmt.Errorf("%w: account address contains NUL at offset %d", ErrReverseMapKeyEntityID, idx)
+		}
+		parsed.EntityID = bytes.Clone(rest)
+	case NamespaceTransaction:
+		if len(rest) != 8 {
+			return ParsedReverseMapKey{}, fmt.Errorf("%w: transaction id must be exactly 8 bytes, got %d", ErrReverseMapKeyEntityID, len(rest))
+		}
+		parsed.EntityID = bytes.Clone(rest)
+	}
 
 	return parsed, nil
 }
@@ -591,6 +577,33 @@ func ReverseMapPrefix(kb *dal.KeyBuilder, ledgerName string, ns string) []byte {
 		PutByte(PrefixReverseMap).
 		PutLedgerNameFixed(ledgerName).
 		PutNamespace(ns).
+		Snapshot()
+}
+
+// ReverseMapFieldPrefix returns the prefix for every reverse-map version of a
+// metadata field in one namespace.
+//
+//	[0x03][ledgerName padded 64B][ns:][metadataKey\x00]
+func ReverseMapFieldPrefix(kb *dal.KeyBuilder, ledgerName, ns, metadataKey string) []byte {
+	return kb.Reset().
+		PutByte(PrefixReverseMap).
+		PutLedgerNameFixed(ledgerName).
+		PutNamespace(ns).
+		PutStringNull(metadataKey).
+		Snapshot()
+}
+
+// ReverseMapVersionPrefix returns the prefix for one forward-encoding version
+// of a metadata field. Every entity row for that field/version is contiguous.
+//
+//	[0x03][ledgerName padded 64B][ns:][metadataKey\x00][version:4B BE]
+func ReverseMapVersionPrefix(kb *dal.KeyBuilder, ledgerName, ns, metadataKey string, version uint32) []byte {
+	return kb.Reset().
+		PutByte(PrefixReverseMap).
+		PutLedgerNameFixed(ledgerName).
+		PutNamespace(ns).
+		PutStringNull(metadataKey).
+		PutUint32(version).
 		Snapshot()
 }
 

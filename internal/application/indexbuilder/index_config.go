@@ -529,8 +529,8 @@ func (b *Builder) handleDroppedIndexLog(kb *dal.KeyBuilder, ledger string, log *
 		b.removeSchemaRewriteTaskByField(ledger, meta.Metadata.GetTarget(), meta.Metadata.GetKey())
 
 		// The rows go with the index, in the same fold batch: all versions of
-		// the forward index and the exists index by range, the reverse map by
-		// point-delete scan — its key shape has no per-key range. The purge
+		// the forward index, exists index and reverse map by field-bounded
+		// range tombstones. The purge
 		// is what keeps a re-created index's replay from ever meeting this
 		// incarnation's permanent events; the version high-water above is the
 		// isolation that holds even if a purge misses a row.

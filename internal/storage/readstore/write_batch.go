@@ -3,6 +3,7 @@ package readstore
 import (
 	"bytes"
 	"encoding/binary"
+	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -26,10 +27,20 @@ type WriteBatch struct {
 	// (uncommitted batch) before falling back to committed state.
 	rmapOverlay map[string][]byte
 
+	// rmapDeletedRanges records reverse-map range tombstones queued in this
+	// batch. It lets point lookups observe a field purge even when the matching
+	// row exists only in committed state and therefore has no exact overlay row.
+	rmapDeletedRanges []reverseMapDeletedRange
+
 	// eventSeq is the raft sequence stamped onto midx/eidx event keys, set by
 	// the caller per folded log (SetEventSequence). Zero means unset — event
 	// writes fail loudly rather than stamping a stale or absent sequence.
 	eventSeq uint64
+}
+
+type reverseMapDeletedRange struct {
+	start []byte
+	end   []byte
 }
 
 // EventZoneMask identifies append-only event keyspaces dirtied by a WriteBatch.
@@ -73,6 +84,7 @@ func NewWriteBatch() *WriteBatch {
 func (wb *WriteBatch) Init(batch *dal.WriteSession) {
 	wb.batch = batch
 	wb.rmapOverlay = make(map[string][]byte)
+	wb.rmapDeletedRanges = nil
 	wb.eventSeq = 0
 	wb.eventZones = 0
 }
@@ -89,8 +101,18 @@ func (wb *WriteBatch) EventZones() EventZoneMask {
 // the caller should consult committed state.
 func (wb *WriteBatch) ReverseMapOverlay(reverseKey []byte) ([]byte, bool) {
 	v, ok := wb.rmapOverlay[string(reverseKey)]
+	if ok {
+		return v, true
+	}
 
-	return v, ok
+	for _, v := range slices.Backward(wb.rmapDeletedRanges) {
+		deleted := v
+		if bytes.Compare(reverseKey, deleted.start) >= 0 && bytes.Compare(reverseKey, deleted.end) < 0 {
+			return nil, true
+		}
+	}
+
+	return nil, false
 }
 
 // Batch returns the underlying dal.WriteSession for direct operations (e.g., range deletes).
@@ -108,6 +130,7 @@ func (wb *WriteBatch) Reset() {
 	wb.batch = nil
 	wb.count = 0
 	wb.rmapOverlay = nil
+	wb.rmapDeletedRanges = nil
 	wb.eventSeq = 0
 	wb.eventZones = 0
 }
@@ -134,30 +157,29 @@ func (wb *WriteBatch) del(key []byte) error {
 	return nil
 }
 
-// DeleteReverseMapKey deletes a reverse-map key in the batch and records the
-// deletion in the read-your-writes overlay (rmapOverlay[key] = nil), so a
-// subsequent same-batch ReverseMapOverlay lookup reports the key as deleted
-// rather than surfacing a stale in-flight value. Use this for every reverse-map
-// delete so the overlay never drifts from the batch it tracks.
-func (wb *WriteBatch) DeleteReverseMapKey(reverseKey []byte) error {
-	if err := wb.del(reverseKey); err != nil {
+// DeleteReverseMapRange queues a reverse-map range tombstone and mirrors it in
+// the batch overlay. Exact rows written before the tombstone become deleted;
+// rows written afterwards overwrite that exact overlay entry, matching Pebble's
+// batch sequence ordering.
+func (wb *WriteBatch) DeleteReverseMapRange(start, end []byte) error {
+	if err := wb.batch.DeleteRangeNoSync(start, end); err != nil {
 		return err
 	}
 
-	wb.rmapOverlay[string(reverseKey)] = nil
+	wb.count++
+	wb.rmapDeletedRanges = append(wb.rmapDeletedRanges, reverseMapDeletedRange{
+		start: bytes.Clone(start),
+		end:   bytes.Clone(end),
+	})
+
+	for key := range wb.rmapOverlay {
+		keyBytes := []byte(key)
+		if bytes.Compare(keyBytes, start) >= 0 && bytes.Compare(keyBytes, end) < 0 {
+			wb.rmapOverlay[key] = nil
+		}
+	}
 
 	return nil
-}
-
-// RangeReverseMapOverlay calls fn for every reverse-map mutation buffered in the
-// current (uncommitted) batch: reverseKey -> encoded value last written (nil =
-// deleted in this batch). It is a read-only view of the read-your-writes
-// overlay — callers that need to delete matching keys must collect them and
-// delete after iteration returns, to avoid mutating the overlay mid-range.
-func (wb *WriteBatch) RangeReverseMapOverlay(fn func(reverseKey []byte, value []byte)) {
-	for k, v := range wb.rmapOverlay {
-		fn([]byte(k), v)
-	}
 }
 
 // Flush commits the batch and resets state.
@@ -169,7 +191,9 @@ func (wb *WriteBatch) Flush() error {
 	err := wb.batch.Commit()
 	wb.batch = nil
 	wb.count = 0
+	wb.rmapOverlay = nil
 	wb.eventZones = 0
+	wb.rmapDeletedRanges = nil
 
 	return err
 }
