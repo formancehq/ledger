@@ -175,9 +175,12 @@ func (b *RoutedController) markForwardedIfRemote(ctx context.Context, selected c
 // The leader never forwards (no loops); if the leader itself is mid-rebuild,
 // the client keeps the retryable INDEX_BUILDING. Explicitly-stale reads are
 // exempt — they ask for THIS node's view, and forwarding would silently
-// substitute another node's.
-func retryOnStaleBinding[T any](b *RoutedController, ctx context.Context, out T, err error, run func(ctrl.Controller) (T, error)) (T, error) {
-	if !shouldForwardIndexBuilding(err, b.IsLeader(), grpcadp.ConsistencyFromContext(ctx)) {
+// substitute another node's. Only a refusal served by the LOCAL controller
+// forwards: when readCtrl already routed the read to a remote leader (explicit
+// leader consistency, or the syncing fallback), it already ran on the node a
+// forward would target, and re-sending the identical read buys nothing.
+func retryOnStaleBinding[T any](b *RoutedController, ctx context.Context, served ctrl.Controller, out T, err error, run func(ctrl.Controller) (T, error)) (T, error) {
+	if !shouldForwardIndexBuilding(err, served == b.localController, b.IsLeader(), grpcadp.ConsistencyFromContext(ctx)) {
 		return out, err
 	}
 
@@ -195,11 +198,11 @@ func retryOnStaleBinding[T any](b *RoutedController, ctx context.Context, out T,
 }
 
 // shouldForwardIndexBuilding is retryOnStaleBinding's decision: forward only a
-// follower's INDEX_BUILDING refusal on a read that did not ask for this
-// node's own view.
-func shouldForwardIndexBuilding(err error, isLeader bool, consistency string) bool {
+// follower's own local INDEX_BUILDING refusal on a read that did not ask for
+// this node's view.
+func shouldForwardIndexBuilding(err error, servedLocally, isLeader bool, consistency string) bool {
 	var building *domain.ErrIndexBuilding
-	if err == nil || !errors.As(err, &building) || isLeader {
+	if err == nil || !errors.As(err, &building) || !servedLocally || isLeader {
 		return false
 	}
 
@@ -286,7 +289,7 @@ func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName stri
 
 	out, err := c.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
 
-	return retryOnStaleBinding(b, ctx, out, err, func(leader ctrl.Controller) (cursor.Cursor[*commonpb.Transaction], error) {
+	return retryOnStaleBinding(b, ctx, c, out, err, func(leader ctrl.Controller) (cursor.Cursor[*commonpb.Transaction], error) {
 		return leader.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
 	})
 }
@@ -299,7 +302,7 @@ func (b *RoutedController) ListLogs(ctx context.Context, ledgerName string, afte
 
 	out, err := c.ListLogs(ctx, ledgerName, afterSequence, pageSize, filter)
 
-	return retryOnStaleBinding(b, ctx, out, err, func(leader ctrl.Controller) (cursor.Cursor[*commonpb.Log], error) {
+	return retryOnStaleBinding(b, ctx, c, out, err, func(leader ctrl.Controller) (cursor.Cursor[*commonpb.Log], error) {
 		return leader.ListLogs(ctx, ledgerName, afterSequence, pageSize, filter)
 	})
 }
@@ -371,7 +374,7 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 
 	out, err := c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 
-	return retryOnStaleBinding(b, ctx, out, err, func(leader ctrl.Controller) (cursor.Cursor[*commonpb.Account], error) {
+	return retryOnStaleBinding(b, ctx, c, out, err, func(leader ctrl.Controller) (cursor.Cursor[*commonpb.Account], error) {
 		return leader.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
 	})
 }
@@ -384,7 +387,7 @@ func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName stri
 
 	out, err := c.AggregateVolumes(ctx, ledgerName, filter, opts)
 
-	return retryOnStaleBinding(b, ctx, out, err, func(leader ctrl.Controller) (*commonpb.AggregateResult, error) {
+	return retryOnStaleBinding(b, ctx, c, out, err, func(leader ctrl.Controller) (*commonpb.AggregateResult, error) {
 		return leader.AggregateVolumes(ctx, ledgerName, filter, opts)
 	})
 }
@@ -442,7 +445,7 @@ func (b *RoutedController) ExecutePreparedQuery(ctx context.Context, req *servic
 
 	out, err := c.ExecutePreparedQuery(ctx, req)
 
-	return retryOnStaleBinding(b, ctx, out, err, func(leader ctrl.Controller) (*servicepb.ExecutePreparedQueryResponse, error) {
+	return retryOnStaleBinding(b, ctx, c, out, err, func(leader ctrl.Controller) (*servicepb.ExecutePreparedQueryResponse, error) {
 		return leader.ExecutePreparedQuery(ctx, req)
 	})
 }

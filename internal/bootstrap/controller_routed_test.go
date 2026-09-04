@@ -113,22 +113,23 @@ func TestRoutedController_FinishLeaderFallback(t *testing.T) {
 	})
 }
 
-// TestShouldForwardIndexBuilding pins the forward decision: a follower's
-// INDEX_BUILDING refusal forwards to the leader — a rewound read store
+// TestShouldForwardIndexBuilding pins the forward decision: a follower's own
+// local INDEX_BUILDING refusal forwards to the leader — a rewound read store
 // rebuilding through an index's retype chain refuses stale bindings as
 // building, and a converged replica can answer now — while every other error,
-// the leader itself, and explicitly-stale reads (which ask for THIS node's
-// view) do not forward.
+// the leader itself, explicitly-stale reads (which ask for THIS node's view),
+// and reads readCtrl already routed to a remote leader do not forward.
 func TestShouldForwardIndexBuilding(t *testing.T) {
 	t.Parallel()
 
 	building := &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: "metadata[\"tier\"]"}}
 	notFound := &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: "metadata[\"tier\"]"}}
 
-	assert.True(t, shouldForwardIndexBuilding(building, false, grpcadp.ConsistencyLinearizable))
-	assert.False(t, shouldForwardIndexBuilding(building, true, grpcadp.ConsistencyLinearizable), "the leader never forwards")
-	assert.False(t, shouldForwardIndexBuilding(building, false, grpcadp.ConsistencyStale), "a stale read asks for this node's view")
-	assert.False(t, shouldForwardIndexBuilding(notFound, false, grpcadp.ConsistencyLinearizable), "only the building class forwards")
-	assert.False(t, shouldForwardIndexBuilding(nil, false, grpcadp.ConsistencyLinearizable))
-	assert.False(t, shouldForwardIndexBuilding(errors.New("boom"), false, grpcadp.ConsistencyLinearizable))
+	assert.True(t, shouldForwardIndexBuilding(building, true, false, grpcadp.ConsistencyLinearizable))
+	assert.False(t, shouldForwardIndexBuilding(building, false, false, grpcadp.ConsistencyLinearizable), "a read already routed to a remote leader is not re-sent")
+	assert.False(t, shouldForwardIndexBuilding(building, true, true, grpcadp.ConsistencyLinearizable), "the leader never forwards")
+	assert.False(t, shouldForwardIndexBuilding(building, true, false, grpcadp.ConsistencyStale), "a stale read asks for this node's view")
+	assert.False(t, shouldForwardIndexBuilding(notFound, true, false, grpcadp.ConsistencyLinearizable), "only the building class forwards")
+	assert.False(t, shouldForwardIndexBuilding(nil, true, false, grpcadp.ConsistencyLinearizable))
+	assert.False(t, shouldForwardIndexBuilding(errors.New("boom"), true, false, grpcadp.ConsistencyLinearizable))
 }
