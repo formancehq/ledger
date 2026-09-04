@@ -1657,4 +1657,19 @@ func TestBindingRevisionWalk(t *testing.T) {
 	st, _ = b.versionStateFor(ledger, canonical)
 	require.Equal(t, uint32(1), st.CurrentRevision)
 	require.Equal(t, uint32(2), st.PendingRevision, "the bump carries the retype's stamped revision")
+
+	// Backfill completion is the third promotion site: the atomic switch
+	// serves the pending binding wholesale — version, type, and revision.
+	require.NoError(t, b.completeBackfill(&backfillTask{
+		ledger: ledger,
+		index:  id,
+		bbKey:  indexes.KeyFor(ledger, id).Bytes(),
+	}))
+
+	st, _ = b.versionStateFor(ledger, canonical)
+	require.Zero(t, st.PendingVersion)
+	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, st.CurrentType)
+	require.True(t, st.CurrentTypeDeclared)
+	require.Equal(t, uint32(2), st.CurrentRevision, "the switch promotes the pending revision")
+	require.Zero(t, st.PendingRevision)
 }

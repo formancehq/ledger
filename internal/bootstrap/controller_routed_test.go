@@ -133,3 +133,121 @@ func TestShouldForwardIndexBuilding(t *testing.T) {
 	assert.False(t, shouldForwardIndexBuilding(nil, true, false, grpcadp.ConsistencyLinearizable))
 	assert.False(t, shouldForwardIndexBuilding(errors.New("boom"), true, false, grpcadp.ConsistencyLinearizable))
 }
+
+// TestRetryOnStaleBinding executes the forwarding retry itself: a follower's
+// local INDEX_BUILDING refusal re-runs on the resolved leader and the profile
+// records the forward, while resolution failures, leadership moving local, and
+// refusals that already ran remotely all surface the original refusal without
+// a retry.
+func TestRetryOnStaleBinding(t *testing.T) {
+	t.Parallel()
+
+	building := &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: `metadata["tier"]`}}
+
+	mockCtrl := gomock.NewController(t)
+	local := ctrlmock.NewMockController(mockCtrl)
+	remote := ctrlmock.NewMockController(mockCtrl)
+
+	newRouted := func(resolve func() (ctrl.Controller, error)) *RoutedController {
+		return &RoutedController{Node: &node.Node{}, localController: local, leaderResolver: resolve}
+	}
+	failResolve := func() (ctrl.Controller, error) {
+		t.Error("leader resolution must not run on a non-forwarding path")
+
+		return nil, commonpb.ErrNoLeader
+	}
+	failRun := func(ctrl.Controller) (string, error) {
+		t.Error("the read must not be re-sent on a non-forwarding path")
+
+		return "", nil
+	}
+
+	t.Run("forwards a local refusal and serves the leader's result", func(t *testing.T) {
+		t.Parallel()
+
+		routed := newRouted(func() (ctrl.Controller, error) { return remote, nil })
+		ctx, profile := query.WithProfile(context.Background())
+
+		got, err := retryOnStaleBinding(routed, ctx, local, "", building, func(leader ctrl.Controller) (string, error) {
+			assert.Same(t, remote, leader)
+
+			return "leader-page", nil
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "leader-page", got)
+		assert.True(t, profile.Forwarded)
+	})
+
+	t.Run("surfaces the refusal when leader resolution fails", func(t *testing.T) {
+		t.Parallel()
+
+		routed := newRouted(func() (ctrl.Controller, error) { return nil, commonpb.ErrNoLeader })
+		ctx, profile := query.WithProfile(context.Background())
+
+		_, err := retryOnStaleBinding(routed, ctx, local, "", building, failRun)
+		require.ErrorIs(t, err, error(building))
+		assert.False(t, profile.Forwarded)
+	})
+
+	t.Run("surfaces the refusal when leadership moved to this node", func(t *testing.T) {
+		t.Parallel()
+
+		routed := newRouted(func() (ctrl.Controller, error) { return local, nil })
+		ctx, profile := query.WithProfile(context.Background())
+
+		_, err := retryOnStaleBinding(routed, ctx, local, "", building, failRun)
+		require.ErrorIs(t, err, error(building))
+		assert.False(t, profile.Forwarded)
+	})
+
+	t.Run("a refusal that already ran on the leader is not re-sent", func(t *testing.T) {
+		t.Parallel()
+
+		routed := newRouted(failResolve)
+		ctx, profile := query.WithProfile(context.Background())
+
+		_, err := retryOnStaleBinding(routed, ctx, remote, "", building, failRun)
+		require.ErrorIs(t, err, error(building))
+		assert.False(t, profile.Forwarded)
+	})
+
+	t.Run("an explicitly-stale read keeps this node's refusal", func(t *testing.T) {
+		t.Parallel()
+
+		routed := newRouted(failResolve)
+		ctx, profile := query.WithProfile(context.Background())
+		ctx = grpcadp.WithConsistency(ctx, grpcadp.ConsistencyStale)
+
+		_, err := retryOnStaleBinding(routed, ctx, local, "", building, failRun)
+		require.ErrorIs(t, err, error(building))
+		assert.False(t, profile.Forwarded)
+	})
+}
+
+// TestRoutedController_ListAccounts_StaleRefusalNotForwarded drives a real
+// wrapped read method end to end: under explicitly-stale consistency the local
+// INDEX_BUILDING refusal reaches the caller unretried.
+func TestRoutedController_ListAccounts_StaleRefusalNotForwarded(t *testing.T) {
+	t.Parallel()
+
+	building := &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: `metadata["tier"]`}}
+
+	mockCtrl := gomock.NewController(t)
+	local := ctrlmock.NewMockController(mockCtrl)
+	local.EXPECT().
+		ListAccounts(gomock.Any(), "ledger", uint32(10), "", nil, false).
+		Return(nil, building)
+
+	routed := &RoutedController{Node: &node.Node{}, localController: local, leaderResolver: func() (ctrl.Controller, error) {
+		t.Error("a stale read must not resolve a forward target")
+
+		return nil, commonpb.ErrNoLeader
+	}}
+
+	ctx, profile := query.WithProfile(context.Background())
+	ctx = grpcadp.WithConsistency(ctx, grpcadp.ConsistencyStale)
+
+	_, err := routed.ListAccounts(ctx, "ledger", 10, "", nil, false)
+	require.ErrorIs(t, err, error(building))
+	assert.False(t, profile.Forwarded)
+}

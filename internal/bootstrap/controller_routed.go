@@ -28,6 +28,10 @@ type RoutedController struct {
 
 	servicePool     *transport.ConnectionPool
 	localController ctrl.Controller
+	// leaderResolver resolves the forward target for stale-binding retries;
+	// nil means getLeaderCtrl. Tests inject a stub to drive the retry path
+	// without a raft soft state.
+	leaderResolver func() (ctrl.Controller, error)
 }
 
 // getLeaderCtrl returns the local controller when this node considers itself
@@ -172,6 +176,11 @@ func (b *RoutedController) markForwardedIfRemote(ctx context.Context, selected c
 // but a converged replica can answer NOW, and the leader is the replica
 // least likely to be mid-rebuild: forward instead of bouncing the client.
 //
+// The forward keys on the whole INDEX_BUILDING class, not just rewound
+// bindings: an initial backfill or activation-pending index refuses the same
+// way, and the same reasoning applies — a replica whose build is complete can
+// serve what this one cannot yet.
+//
 // The leader never forwards (no loops); if the leader itself is mid-rebuild,
 // the client keeps the retryable INDEX_BUILDING. Explicitly-stale reads are
 // exempt — they ask for THIS node's view, and forwarding would silently
@@ -184,7 +193,12 @@ func retryOnStaleBinding[T any](b *RoutedController, ctx context.Context, served
 		return out, err
 	}
 
-	leader, leaderErr := b.getLeaderCtrl()
+	resolve := b.getLeaderCtrl
+	if b.leaderResolver != nil {
+		resolve = b.leaderResolver
+	}
+
+	leader, leaderErr := resolve()
 	if leaderErr != nil || leader == b.localController {
 		// Resolution failed, or leadership moved here after the IsLeader check
 		// (re-running locally would repeat the refusal). The local refusal is

@@ -1402,6 +1402,7 @@ func TestRebuildDelta_BumpsCheckpointIndexOnRetype(t *testing.T) {
 				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "k0",
 				Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+				Revision:   5,
 			},
 		},
 	})))
@@ -1418,6 +1419,15 @@ func TestRebuildDelta_BumpsCheckpointIndexOnRetype(t *testing.T) {
 	require.NotNil(t, row)
 	require.Equal(t, uint32(3), row.GetForwardEncodingVersion(), "the retype must bump the checkpoint row's version")
 	require.Equal(t, uint64(111), row.GetCreatedAt().GetData(), "the bump must not touch created_at")
+
+	// The full production fold (RebuildDelta → ReplayLedgerLog → writer) must
+	// land the log's mint-time revision in the restored schema: a restored
+	// ledger that restarts at revision 0 disarms the stale-binding gate.
+	info, err := attrs.Ledger.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	field := info.GetMetadataSchema().GetAccountFields()["k0"]
+	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_UINT64, field.GetType())
+	require.Equal(t, uint32(5), field.GetRevision(), "the fold must persist the stamped revision verbatim")
 }
 
 // TestAttributeReplayWriter_SetMetadataFieldType_LedgerTarget pins the
