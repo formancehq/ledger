@@ -67,7 +67,20 @@ var errCanceled = errors.New("download canceled")
 // happens on a goroutine detached from the calling RPC context so it survives
 // any ingress / load balancer timeout. See issue #349.
 func (s *RestoreServiceServerImpl) StartDownloadBackup(_ context.Context, req *restorepb.StartDownloadBackupRequest) (*restorepb.StartDownloadBackupResponse, error) {
+	if err := s.beginRequest(); err != nil {
+		return nil, err
+	}
+	defer s.endRequest()
+
 	s.mu.Lock()
+	// beginRequest may have admitted this RPC immediately before shutdown set
+	// stopping. Recheck at the job-registration boundary so no job can be
+	// created after BeginShutdown observes the service.
+	if s.stopping {
+		s.mu.Unlock()
+
+		return nil, status.Error(codes.Unavailable, "restore service is shutting down")
+	}
 
 	if s.downloaded {
 		s.mu.Unlock()
@@ -81,7 +94,9 @@ func (s *RestoreServiceServerImpl) StartDownloadBackup(_ context.Context, req *r
 		return nil, status.Error(codes.FailedPrecondition, "another download is already in progress")
 	}
 
-	jobCtx, cancel := context.WithCancel(context.Background())
+	// The job is detached from the initiating RPC but remains a child of the
+	// restore-mode application's lifetime.
+	jobCtx, cancel := context.WithCancel(s.lifetimeCtx)
 
 	job := &downloadJob{
 		id:        uuid.NewString(),
@@ -109,6 +124,11 @@ func (s *RestoreServiceServerImpl) StartDownloadBackup(_ context.Context, req *r
 // StartDownloadBackup. Once the job reaches a terminal state (SUCCEEDED,
 // FAILED, CANCELED) the response stays stable.
 func (s *RestoreServiceServerImpl) GetDownloadStatus(_ context.Context, req *restorepb.GetDownloadStatusRequest) (*restorepb.GetDownloadStatusResponse, error) {
+	if err := s.beginRequest(); err != nil {
+		return nil, err
+	}
+	defer s.endRequest()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -140,6 +160,11 @@ func (s *RestoreServiceServerImpl) GetDownloadStatus(_ context.Context, req *res
 // directory is wiped so the operator can immediately retry without having to
 // restart the server.
 func (s *RestoreServiceServerImpl) CancelDownload(_ context.Context, req *restorepb.CancelDownloadRequest) (*restorepb.CancelDownloadResponse, error) {
+	if err := s.beginRequest(); err != nil {
+		return nil, err
+	}
+	defer s.endRequest()
+
 	s.mu.Lock()
 
 	job := s.job

@@ -3595,7 +3595,9 @@ detached from any individual RPC and therefore survives ingress / load-balancer
 idle or max-stream timeouts (1.2 TB restores routinely take several hours).
 Press `Ctrl+C` to cancel the running download cleanly — the CLI issues a
 server-side `CancelDownload` so the staging directory is wiped before the
-process exits.
+process exits. Stopping the restore-mode server also cancels and joins the
+active job before its staging resources are closed; RPC detachment never lets
+the transfer outlive the server application.
 
 The server downloads files in parallel; tune the worker count with the server
 flag `--restore-download-parallelism` (default 16, clamped to `[1, 64]`).

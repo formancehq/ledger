@@ -384,6 +384,14 @@ The server-side job:
 If the job fails or is cancelled, the staging directory is wiped so the
 operator can retry with a fresh state without restarting the server.
 
+The transfer is detached from the initiating RPC, not from the restore-mode
+application. Fx shutdown first rejects new restore RPCs and cancels any active
+download, then stops the gRPC server, joins admitted RPCs and the download job,
+and finally closes the retained staging Pebble store. Explicit
+`CancelDownload` keeps its client-facing behavior: it cancels only the selected
+job, waits for a bounded drain, and leaves the restore-mode application running
+so the operator can retry.
+
 ### Step 2: Validate
 
 ```bash
