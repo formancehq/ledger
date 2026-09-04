@@ -217,7 +217,7 @@ The pass skips — logged at INFO, never reported as a clean result — when the
 
 | Cursor position | What the pass does |
 |---|---|
-| `indexedSequence == lastSequence` | judges rows: reports any field with no registered index; the replayed schema labels the purge path that missed it |
+| `indexedSequence == lastSequence` | judges rows: reports any field with no registered index; the replayed schema classifies the finding against the owning lifecycle path |
 | `indexedSequence < lastSequence` | decodes keys only — no verdict |
 | `indexedSequence > lastSequence` | reports the position itself as `REVERSE_MAP_ORPHAN`; still no per-row verdict |
 | any position | a key that does not decode is always reported; it needs no oracle |
