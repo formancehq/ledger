@@ -1,6 +1,7 @@
 package readstore
 
 import (
+	"bytes"
 	"encoding/binary"
 	"strings"
 	"testing"
@@ -153,6 +154,49 @@ func TestParseReverseMapKey_TransactionRoundTrip(t *testing.T) {
 	require.Equal(t, "source", got.MetadataKey)
 }
 
+func TestReverseMapPrefixesBoundFieldAndVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		namespace string
+		key       func(*dal.KeyBuilder, string, uint32) []byte
+	}{
+		{
+			name:      "account",
+			namespace: NamespaceAccount,
+			key: func(kb *dal.KeyBuilder, field string, version uint32) []byte {
+				return AccountReverseMapKeyV(kb, "main", "users:42", field, version)
+			},
+		},
+		{
+			name:      "transaction",
+			namespace: NamespaceTransaction,
+			key: func(kb *dal.KeyBuilder, field string, version uint32) []byte {
+				return TransactionReverseMapKeyV(kb, "main", 42, field, version)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fieldPrefix := ReverseMapFieldPrefix(dal.NewKeyBuilder(), "main", tt.namespace, "status")
+			versionPrefix := ReverseMapVersionPrefix(dal.NewKeyBuilder(), "main", tt.namespace, "status", 2)
+			target := tt.key(dal.NewKeyBuilder(), "status", 2)
+			otherVersion := tt.key(dal.NewKeyBuilder(), "status", 3)
+			otherField := tt.key(dal.NewKeyBuilder(), "team", 2)
+
+			require.True(t, bytes.HasPrefix(target, fieldPrefix))
+			require.True(t, bytes.HasPrefix(target, versionPrefix))
+			require.True(t, bytes.HasPrefix(otherVersion, fieldPrefix))
+			require.False(t, bytes.HasPrefix(otherVersion, versionPrefix))
+			require.False(t, bytes.HasPrefix(otherField, fieldPrefix))
+		})
+	}
+}
+
 func TestParseReverseMapKey_MaxLengthLedgerNameRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -260,9 +304,9 @@ func TestParseReverseMapKey_Rejects(t *testing.T) {
 				Build(),
 			wantErr: ErrReverseMapKeyNamespace,
 		},
-		"account key without a 0x00 terminator after the address must be rejected": {
-			// Header + namespace built by hand, then the account bytes
-			// appended with no terminator at all.
+		"metadata key without its 0x00 terminator must be rejected": {
+			// Header + namespace built by hand, then metadata bytes with no
+			// terminator, version, or entity suffix.
 			key: append(
 				dal.NewKeyBuilder().
 					Reset().
@@ -272,48 +316,25 @@ func TestParseReverseMapKey_Rejects(t *testing.T) {
 					Build(),
 				[]byte("users:1")...,
 			),
-			wantErr: ErrReverseMapKeyTruncated,
+			wantErr: ErrReverseMapKeyMetadataKey,
 		},
 		"account key with an empty entity id must be rejected": {
 			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "", "wallet_id", 1),
 			wantErr:         ErrReverseMapKeyEntityID,
 			wantErrContains: "empty",
 		},
-		"account entity id with an embedded NUL must be rejected, not silently mis-decoded": {
-			// The critical regression case: an account address like
-			// "us\x00ers" makes the 0x00 terminator search above stop at the
-			// FIRST byte, so the *real* terminator and the 4-byte version
-			// block get swallowed into what would otherwise decode as
-			// MetadataKey (a corrupted-looking, NUL-containing string) —
-			// a plausible but wrong (EntityID, Version, MetadataKey) triple
-			// pointing at a different entity than the key actually encodes,
-			// rather than an outright decode failure. Must be rejected as
-			// ErrReverseMapKeyMetadataKey, never accepted as consistent.
-			// The swallowed real version bytes (0,0,0,1 for version=1) land
-			// at the front of the mis-decoded MetadataKey, so the NUL is at
-			// offset 0 — distinct from the "metadata key containing a NUL
-			// byte" case below, which pins a different offset.
+		"account entity id with an embedded NUL must be rejected": {
 			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "us\x00ers", "wallet_id", 1),
-			wantErr:         ErrReverseMapKeyMetadataKey,
-			wantErrContains: "contains NUL at offset 0",
+			wantErr:         ErrReverseMapKeyEntityID,
+			wantErrContains: "contains NUL at offset 2",
 		},
-		"metadata key containing a NUL byte must be rejected directly": {
-			// A well-formed account tail (proper terminator, proper 4-byte
-			// version) whose metadata-key tail itself contains a raw NUL —
-			// isolates the MetadataKey NUL check from the entity-id mis-split
-			// cascade covered by the case above. "meta\x00key": the NUL sits
-			// at offset 4 within the decoded MetadataKey.
-			key: dal.NewKeyBuilder().
-				Reset().
-				PutByte(PrefixReverseMap).
-				PutLedgerNameFixed("main").
-				PutNamespace(NamespaceAccount).
-				PutStringNull("users:1").
-				PutUint32(1).
-				PutString("meta\x00key").
-				Build(),
-			wantErr:         ErrReverseMapKeyMetadataKey,
-			wantErrContains: "contains NUL at offset 4",
+		"metadata key containing a NUL cannot form a valid account key": {
+			// The first NUL becomes the field terminator. The remaining field
+			// bytes shift into the fixed version block, leaving the real version
+			// bytes in the account suffix; its NUL check detects the corruption.
+			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "users:1", "meta\x00key", 1),
+			wantErr:         ErrReverseMapKeyEntityID,
+			wantErrContains: "contains NUL at offset 0",
 		},
 		"empty metadata key must be rejected for an account entity": {
 			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "users:1", "", 1),
@@ -326,30 +347,26 @@ func TestParseReverseMapKey_Rejects(t *testing.T) {
 			wantErrContains: "empty",
 		},
 		"transaction id shorter than 8 bytes must be rejected": {
-			// Header + namespace only, then 5 bytes — not enough for the
-			// 8-byte txID EntityID extraction to even begin.
-			key: append(
-				dal.NewKeyBuilder().
-					Reset().
-					PutByte(PrefixReverseMap).
-					PutLedgerNameFixed("main").
-					PutNamespace(NamespaceTransaction).
-					Build(),
-				[]byte{0x00, 0x00, 0x00, 0x00, 0x00}...,
-			),
-			wantErr: ErrReverseMapKeyTruncated,
+			key: dal.NewKeyBuilder().
+				Reset().
+				PutByte(PrefixReverseMap).
+				PutLedgerNameFixed("main").
+				PutNamespace(NamespaceTransaction).
+				PutStringNull("meta").
+				PutUint32(1).
+				PutBytes([]byte{0, 0, 0, 0, 1}).
+				Build(),
+			wantErr: ErrReverseMapKeyEntityID,
 		},
 		"transaction key truncated well inside the version block must be rejected": {
-			key: append(
-				dal.NewKeyBuilder().
-					Reset().
-					PutByte(PrefixReverseMap).
-					PutLedgerNameFixed("main").
-					PutNamespace(NamespaceTransaction).
-					PutUint64(4242).
-					Build(),
-				[]byte{0x00, 0x01}...,
-			),
+			key: dal.NewKeyBuilder().
+				Reset().
+				PutByte(PrefixReverseMap).
+				PutLedgerNameFixed("main").
+				PutNamespace(NamespaceTransaction).
+				PutStringNull("meta").
+				PutBytes([]byte{0x00, 0x01}).
+				Build(),
 			wantErr: ErrReverseMapKeyTruncated,
 		},
 		"transaction key exactly 3 bytes short of the 4-byte version minimum must be rejected": {
@@ -357,16 +374,14 @@ func TestParseReverseMapKey_Rejects(t *testing.T) {
 			// to < 3 would still fail every other truncation case in this
 			// table (they all leave 0-2 bytes), but would wrongly let this
 			// 3-byte tail through into a rest[:4] out-of-bounds read.
-			key: append(
-				dal.NewKeyBuilder().
-					Reset().
-					PutByte(PrefixReverseMap).
-					PutLedgerNameFixed("main").
-					PutNamespace(NamespaceTransaction).
-					PutUint64(4242).
-					Build(),
-				[]byte{0x00, 0x00, 0x00}...,
-			),
+			key: dal.NewKeyBuilder().
+				Reset().
+				PutByte(PrefixReverseMap).
+				PutLedgerNameFixed("main").
+				PutNamespace(NamespaceTransaction).
+				PutStringNull("meta").
+				PutBytes([]byte{0x00, 0x00, 0x00}).
+				Build(),
 			wantErr: ErrReverseMapKeyTruncated,
 		},
 	}

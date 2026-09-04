@@ -1323,7 +1323,7 @@ func TestAddSchemaRewriteTaskBackfillResetPropagatesBatchFailures(t *testing.T) 
 	})
 }
 
-func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *testing.T) {
+func TestProcessSchemaRewriteIsFieldVersionBoundedAndPersistsCursor(t *testing.T) {
 	t.Parallel()
 
 	b := newTestBuilderWithStore(t)
@@ -1339,27 +1339,32 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 		PendingVersion: 2,
 	})
 
-	firstSkippedKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-001", "other")
-	secondSkippedKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-002", "other")
-	matchingKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-003", "status")
+	otherFieldKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-001", "other")
+	otherVersionKey := readstore.AccountReverseMapKeyV(kb, ledgerName, "acct-002", "status", 2)
+	firstMatchingKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-003", "status")
+	secondMatchingKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-004", "status")
 
 	skippedEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("ignored"))
 	oldEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewStringValue("42"))
 	newEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(42))
-	entityID := []byte("acct-003")
+	firstEntityID := []byte("acct-003")
+	secondEntityID := []byte("acct-004")
 
 	// v=2 rmap entry (target of the rewrite).
-	newRmapKeyV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, "acct-003", "status", 2))
+	firstNewRmapKeyV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, "acct-003", "status", 2))
+	secondNewRmapKeyV2 := cloneBytes(readstore.AccountReverseMapKeyV(kb, ledgerName, "acct-004", "status", 2))
 
 	batch := b.readStore.NewBatch()
-	require.NoError(t, batch.SetBytes(firstSkippedKey, skippedEncoded))
-	require.NoError(t, batch.SetBytes(secondSkippedKey, skippedEncoded))
-	require.NoError(t, batch.SetBytes(matchingKey, oldEncoded))
+	require.NoError(t, batch.SetBytes(otherFieldKey, skippedEncoded))
+	require.NoError(t, batch.SetBytes(otherVersionKey, skippedEncoded))
+	require.NoError(t, batch.SetBytes(firstMatchingKey, oldEncoded))
+	require.NoError(t, batch.SetBytes(secondMatchingKey, oldEncoded))
 	require.NoError(t, batch.Commit())
 
 	// v=1 forward entry (the pre-retype state). The rewrite no longer
 	// touches v=1 (in-place mutation is gone); v=1 stays until GC.
-	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, entityID, 1, readstore.MetadataEventAdd)
+	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, firstEntityID, 1, readstore.MetadataEventAdd)
+	seedMetadataEvent(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, secondEntityID, 1, readstore.MetadataEventAdd)
 
 	// The rewrite stamps its events with the FSM log sequence it samples and
 	// gates the atomic switch on the read store having indexed up to it.
@@ -1369,12 +1374,14 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	// rewrite reads from here, not from the rmap, so re-encoding is a pure
 	// function of immutable stored state.
 	fsmBatch := b.pebbleStore.OpenWriteSession()
-	canonicalKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: "acct-003"},
-		Key:        "status",
-	}.Bytes()
-	_, err := b.attrs.Metadata.Set(fsmBatch, canonicalKey, commonpb.NewStringValue("42"))
-	require.NoError(t, err)
+	for _, account := range []string{"acct-003", "acct-004"} {
+		canonicalKey := domain.MetadataKey{
+			AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
+			Key:        "status",
+		}.Bytes()
+		_, err := b.attrs.Metadata.Set(fsmBatch, canonicalKey, commonpb.NewStringValue("42"))
+		require.NoError(t, err)
+	}
 	require.NoError(t, fsmBatch.Commit())
 
 	task := &schemaRewriteTask{
@@ -1385,33 +1392,41 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 		bbKey:      schemaRewriteBBKey(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"),
 	}
 
-	done, err := b.processSchemaRewrite(task, 2, stop, time.Now().Add(time.Hour))
+	done, err := b.processSchemaRewrite(task, 1, stop, time.Now().Add(time.Hour))
 	require.NoError(t, err)
 	assert.False(t, done)
-	assert.Equal(t, uint64(0), task.processedCount)
-	assert.Equal(t, secondSkippedKey, task.rmapCursor)
+	assert.Equal(t, uint64(1), task.processedCount)
+	assert.Equal(t, firstMatchingKey, task.rmapCursor)
 
 	cursor, ok := b.readStore.ReadBackfillCursor(task.bbKey)
 	require.True(t, ok)
-	assert.Equal(t, append([]byte{byte(task.toType)}, secondSkippedKey...), cursor)
-	requireMetadataLive(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, entityID)
-	assertReadStoreValue(t, b, matchingKey, oldEncoded)
+	assert.Equal(t, append([]byte{byte(task.toType)}, firstMatchingKey...), cursor)
+	requireMetadataLive(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, firstEntityID)
+	assertReadStoreValue(t, b, firstMatchingKey, oldEncoded)
+	assertReadStoreValue(t, b, otherFieldKey, skippedEncoded)
+	assertReadStoreValue(t, b, otherVersionKey, skippedEncoded)
 
 	done, err = b.processSchemaRewrite(task, 10, stop, time.Now().Add(time.Hour))
 	require.NoError(t, err)
 	assert.True(t, done)
-	assert.Equal(t, uint64(1), task.processedCount)
-	assert.Equal(t, matchingKey, task.rmapCursor)
+	assert.Equal(t, uint64(2), task.processedCount)
+	assert.Equal(t, secondMatchingKey, task.rmapCursor)
 	assert.Positive(t, b.eventGCWriteEpoch[readstore.PrefixMetadataIndex], "schema rewrite commit dirties metadata events")
 	assert.Positive(t, b.eventGCWriteEpoch[readstore.PrefixEntityExists], "fresh pending row dirties exists events")
 
 	// Atomic switch GCs v_old in the same batch: the v=1 forward
 	// entry and the v=1 rmap row are gone; v=2 forward and rmap are
 	// populated by the rewrite.
-	requireMetadataDead(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, entityID)
-	requireMetadataLive(t, b, ledgerName, readstore.NamespaceAccount, "status", 2, newEncoded, entityID)
-	assertReadStoreMissing(t, b, matchingKey)
-	assertReadStoreValue(t, b, newRmapKeyV2, newEncoded)
+	for _, entityID := range [][]byte{firstEntityID, secondEntityID} {
+		requireMetadataDead(t, b, ledgerName, readstore.NamespaceAccount, "status", 1, oldEncoded, entityID)
+		requireMetadataLive(t, b, ledgerName, readstore.NamespaceAccount, "status", 2, newEncoded, entityID)
+	}
+	assertReadStoreMissing(t, b, firstMatchingKey)
+	assertReadStoreMissing(t, b, secondMatchingKey)
+	assertReadStoreValue(t, b, firstNewRmapKeyV2, newEncoded)
+	assertReadStoreValue(t, b, secondNewRmapKeyV2, newEncoded)
+	assertReadStoreValue(t, b, otherFieldKey, skippedEncoded)
+	assertReadStoreValue(t, b, otherVersionKey, skippedEncoded)
 
 	// Atomic switch promoted current ← pending; queries now read v=2.
 	current, pending := b.versionFor(ledgerName, canonical)

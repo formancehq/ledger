@@ -199,7 +199,12 @@ In-flight `IndexVersionState` is NOT checked: by design it is per-replica and ma
 
 The read store is a peer secondary store, and its index **contents** stay out of the main-store checker's scope (`EN-1514` / `EN-1323`). One limb is an exception: `compareReverseMapOrphans` (`internal/application/check/reverse_map_orphans.go`, EN-1458) opens a read-only snapshot of the read store and scans the reverse map (`0x03`) for rows whose `(ledger, target, metadata key)` has no stored `SubAttrIndex` registry entry. Findings emit `CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN`, aggregated per `(ledger, namespace, metadata key)` with a row count and one sample entity. The audit-replayed `MetadataSchema` affects only the diagnostic label: it distinguishes a missed `DropIndex` purge from a missed `RemovedMetadataFieldType` purge.
 
-Why only this limb: `0x01` and `0x02` are keyed so that a whole field is covered by a prefix and can be dropped with one `DeleteRange`, which is atomic. In `0x03` the metadata key sits *after* the fixed-width version block, so no prefix covers "every row of this field" — removal has to scan the namespace and point-delete row by row (`purgeReverseMapForKey`), and a row that scan misses is a permanent divergence with no other detector.
+The reverse map remains checker-visible as a defense on the maintenance-critical
+projection. Its field/version-first keying now gives `0x03` the same atomic,
+field-bounded `DeleteRange` property as `0x01` and `0x02`; a removal no longer
+scans the namespace or emits one point tombstone per entity. The checker still
+detects orphan rows introduced by corruption or a broken lifecycle path rather
+than treating the cheaper purge as proof that divergence is impossible.
 
 What it does **not** cover:
 
