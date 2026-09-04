@@ -1461,14 +1461,14 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		}
 
 		after := node.indexTracker.Next()
-		if before != after {
+		if before != after && node.logger.Enabled(logging.DebugLevel) {
 			node.logger.WithFields(map[string]any{
 				"lastCommitted":  lastCommitted,
 				"trackerBefore":  before,
 				"trackerAfter":   after,
 				"committedCount": len(rd.CommittedEntries),
 				"isLeader":       isLeader,
-			}).Infof("IndexTracker updated in finishReady")
+			}).Debugf("IndexTracker updated in finishReady")
 		}
 	}
 
@@ -1643,7 +1643,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 
 			// Diagnostic: log messages stepped while a Ready is being processed,
 			// as they can mutate rawNode state before Advance is called.
-			if node.readyTerminated != nil && (msgType == raftpb.MsgApp || msgType == raftpb.MsgSnap) {
+			if node.readyTerminated != nil && (msgType == raftpb.MsgApp || msgType == raftpb.MsgSnap) && node.logger.Enabled(logging.DebugLevel) {
 				node.logger.WithFields(map[string]any{
 					"type":       msgType.String(),
 					"from":       msg.GetFrom(),
@@ -1652,7 +1652,7 @@ func (node *Node) orchestrate(ctx context.Context, stop chan struct{}) error {
 					"index":      msg.GetIndex(),
 					"commit":     msg.GetCommit(),
 					"entryCount": len(msg.GetEntries()),
-				}).Infof("Stepping MsgApp/MsgSnap while Ready in flight")
+				}).Debugf("Stepping MsgApp/MsgSnap while Ready in flight")
 			}
 
 			err := node.rawNode.Step(msg)
