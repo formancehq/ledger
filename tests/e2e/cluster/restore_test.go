@@ -225,6 +225,14 @@ var _ = Describe("Restore", Ordered, func() {
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "customer"})))
 			Expect(err).To(Succeed())
 
+			// grade is declared BEFORE the checkpoint (schema revision 1, carried
+			// by the raw checkpoint's LedgerInfo) and retyped after it (revision 2,
+			// replayed from the delta). The restored schema must compose both —
+			// the validate step's CheckStore compares revisions, so a restore that
+			// reseeds or refolds them wrong fails there.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "grade", commonpb.MetadataType_METADATA_TYPE_INT32)))
+			Expect(err).To(Succeed())
+
 			// eve is funded BEFORE the checkpoint (input=1000, output=0). Its 0xFF
 			// cache entry is captured in the checkpoint; the drain below (post
 			// checkpoint) makes that cache entry stale. Phase 3 exercises it via apply.
@@ -329,6 +337,13 @@ var _ = Describe("Restore", Ordered, func() {
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_LEDGER, "region", commonpb.MetadataType_METADATA_TYPE_STRING)))
 			Expect(err).To(Succeed())
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_TRANSACTION, "category", commonpb.MetadataType_METADATA_TYPE_INT64)))
+			Expect(err).To(Succeed())
+
+			// Retype the PRE-checkpoint "grade" declaration: the schema revision
+			// bumps to 2 in the delta while revision 1 sits in the checkpoint's
+			// LedgerInfo. Phase 2's CheckStore validate and Phase 3's read both
+			// require the composed result.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "grade", commonpb.MetadataType_METADATA_TYPE_UINT32)))
 			Expect(err).To(Succeed())
 
 			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
@@ -671,6 +686,10 @@ var _ = Describe("Restore", Ordered, func() {
 
 			Expect(resp.GetAccountFields()).To(HaveKey("tier"))
 			Expect(resp.GetAccountFields()["tier"].GetDeclaredType()).To(Equal(commonpb.MetadataType_METADATA_TYPE_STRING))
+			// The pre-checkpoint declaration composed with its post-checkpoint
+			// retype: the restored schema serves the delta's binding.
+			Expect(resp.GetAccountFields()).To(HaveKey("grade"))
+			Expect(resp.GetAccountFields()["grade"].GetDeclaredType()).To(Equal(commonpb.MetadataType_METADATA_TYPE_UINT32))
 			Expect(resp.GetLedgerFields()).To(HaveKey("region"))
 			Expect(resp.GetTransactionFields()).To(HaveKey("category"))
 			Expect(resp.GetTransactionFields()["category"].GetDeclaredType()).To(Equal(commonpb.MetadataType_METADATA_TYPE_INT64))

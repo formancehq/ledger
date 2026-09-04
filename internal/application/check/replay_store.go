@@ -396,7 +396,7 @@ func (s *replayStore) DeleteTxMetadata(canonicalKey []byte, metaKey string) erro
 // lives on LedgerInfo, not in this attribute merge store. The checker re-derives
 // the expected schema in the Check() replay loop (as it does for index activity)
 // and verifies it against the stored LedgerInfo in compareSchema.
-func (s *replayStore) SetMetadataFieldType(string, commonpb.TargetType, string, commonpb.MetadataType) error {
+func (s *replayStore) SetMetadataFieldType(string, commonpb.TargetType, string, commonpb.MetadataType, uint32) error {
 	return nil
 }
 

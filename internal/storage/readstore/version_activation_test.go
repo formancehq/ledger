@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // A rewrite stamps every event it writes with the single FSM sequence it read
@@ -83,10 +85,16 @@ func TestIndexVersionState_ActivationRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	want := IndexVersionState{
-		CurrentVersion:     3,
-		PendingVersion:     4,
-		ActivationSequence: 4242,
-		RewriteProgress:    []byte("cursor"),
+		CurrentVersion:      3,
+		PendingVersion:      4,
+		ActivationSequence:  4242,
+		RewriteProgress:     []byte("cursor"),
+		CurrentType:         commonpb.MetadataType_METADATA_TYPE_STRING,
+		CurrentTypeDeclared: true,
+		PendingType:         commonpb.MetadataType_METADATA_TYPE_INT64,
+		PendingTypeDeclared: true,
+		CurrentRevision:     7,
+		PendingRevision:     8,
 	}
 
 	got, ok := decodeIndexVersionState(encodeIndexVersionState(want))

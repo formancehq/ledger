@@ -139,7 +139,7 @@ type schemaField struct {
 func replayedSchemas(fields ...schemaField) map[string]*commonpb.MetadataSchema {
 	schemas := make(map[string]*commonpb.MetadataSchema)
 	for _, field := range fields {
-		setExpectedSchemaField(schemas, field.ledger, field.target, field.key, commonpb.MetadataType_METADATA_TYPE_STRING)
+		setExpectedSchemaField(schemas, field.ledger, field.target, field.key, commonpb.MetadataType_METADATA_TYPE_STRING, 1)
 	}
 
 	return schemas

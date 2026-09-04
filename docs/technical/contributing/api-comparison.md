@@ -105,7 +105,7 @@ This document compares the POC's API with the original Formance ledger API and d
 | Drop index | ✅ | ❌ | Remove an index from a ledger. HTTP: `DELETE /v3/{ledger}/indexes/{canonicalId}`; gRPC: `Apply(DropIndex)` |
 | Get index | ✅ | ❌ | Fetch a single registry entry. HTTP: `GET /v3/{ledger}/indexes/{canonicalId}`; gRPC: `GetIndex` |
 | Get index status | ✅ | ❌ | Per-index backfill cursor + per-replica IndexVersionState. HTTP: `GET /v3/{ledger}/indexes/{canonicalId}/status`; gRPC: `GetIndexEntryStatus` |
-| Inspect index | ✅ | ❌ | Explore values of a metadata index (distinct values, facets, summary). HTTP: `GET /v3/{ledger}/indexes/{canonicalId}/inspect`; gRPC: `InspectIndex` |
+| Inspect index | ✅ | ❌ | Explore values of a metadata index (distinct values, facets, summary). HTTP: `GET /v3/{ledger}/indexes/{canonicalId}/inspect`; gRPC: `InspectIndex`. Values are typed by the served binding (`served_type` on the gRPC response); a binding behind the schema's one-revision serving window refuses as retryable `INDEX_BUILDING` |
 | List indexes | ✅ | ❌ | View all indexes with build status and backfill progress. HTTP: `GET /v3/{ledger}/indexes` (per-ledger), `GET /v3/_/indexes?scope=all\|bucket` (bucket-wide); gRPC: `BucketService.ListIndexes`, scoped `ALL` / `BUCKET` / `LEDGER` |
 | Aggregated index status | ✅ | ❌ | Cluster-wide progress (LastIndexedSequence, LastLogSequence, Lag, IndexFileSize) + IndexEntry list. HTTP: `GET /v3/_/indexes/status?ledger=`; gRPC: `GetIndexStatus` |
 | **Volumes (responses)** |
@@ -678,7 +678,7 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/{ledgerName}/indexes` | ✅ | ❌ | List indexes registered on a ledger |
 | `GET /v3/{ledgerName}/indexes/{canonicalId}` | ✅ | ❌ | Get a single Index registry entry |
 | `GET /v3/{ledgerName}/indexes/{canonicalId}/status` | ✅ | ❌ | IndexEntry (backfill cursor + per-replica IndexVersionState) |
-| `GET /v3/{ledgerName}/indexes/{canonicalId}/inspect` | ✅ | ❌ | Inspect metadata index (distinct values, facets, summary) — path unified with the DELETE/create routes |
+| `GET /v3/{ledgerName}/indexes/{canonicalId}/inspect` | ✅ | ❌ | Inspect metadata index (distinct values, facets, summary) — path unified with the DELETE/create routes; values rendered under the served binding's type |
 | `POST /v3/{ledgerName}/indexes` | ✅ | ❌ | Create an index (body: `{"id": "<canonical>"}`) |
 | `DELETE /v3/{ledgerName}/indexes/{canonicalId}` | ✅ | ❌ | Drop an index |
 | `GET /v3/_/indexes?scope=all\|bucket` | ✅ | ❌ | List bucket-wide indexes (cluster-wide) |
@@ -762,7 +762,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `GetIndexStatus` | Read index builder progress (lag, file size) | ✅ |
 | `GetLedgerStats` | Get aggregate usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts) | ✅ |
 | `AggregateVolumes` | Per-asset aggregated volumes for filtered accounts | ✅ |
-| `InspectIndex` | Inspect metadata index (distinct values, facets, summary) | ✅ |
+| `InspectIndex` | Inspect metadata index (distinct values, facets, summary); response carries `served_type`, the binding of the version that served the scan | ✅ |
 
 ### Apply Method
 

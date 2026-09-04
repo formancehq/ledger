@@ -1566,6 +1566,7 @@ func NewTargetListReader(s []*Target) TargetListReader { return targetListReadon
 // Call Mutate() to obtain a mutable clone.
 type MetadataFieldSchemaReader interface {
 	GetType() MetadataType
+	GetRevision() uint32
 	Mutate() *MetadataFieldSchema
 }
 
@@ -1573,6 +1574,10 @@ type metadataFieldSchemaReadonly MetadataFieldSchema
 
 func (r *metadataFieldSchemaReadonly) GetType() MetadataType {
 	return (*MetadataFieldSchema)(r).GetType()
+}
+
+func (r *metadataFieldSchemaReadonly) GetRevision() uint32 {
+	return (*MetadataFieldSchema)(r).GetRevision()
 }
 
 func (r *metadataFieldSchemaReadonly) Mutate() *MetadataFieldSchema {
@@ -5726,6 +5731,7 @@ type CreatedIndexLogReader interface {
 	GetInitial() bool
 	GetBoundType() MetadataType
 	GetBoundTypeDeclared() bool
+	GetBoundRevision() uint32
 	Mutate() *CreatedIndexLog
 }
 
@@ -5749,6 +5755,10 @@ func (r *createdIndexLogReadonly) GetBoundType() MetadataType {
 
 func (r *createdIndexLogReadonly) GetBoundTypeDeclared() bool {
 	return (*CreatedIndexLog)(r).GetBoundTypeDeclared()
+}
+
+func (r *createdIndexLogReadonly) GetBoundRevision() uint32 {
+	return (*CreatedIndexLog)(r).GetBoundRevision()
 }
 
 func (r *createdIndexLogReadonly) Mutate() *CreatedIndexLog {
@@ -6315,6 +6325,7 @@ type SetMetadataFieldTypeLogReader interface {
 	GetTargetType() TargetType
 	GetKey() string
 	GetType() MetadataType
+	GetRevision() uint32
 	Mutate() *SetMetadataFieldTypeLog
 }
 
@@ -6330,6 +6341,10 @@ func (r *setMetadataFieldTypeLogReadonly) GetKey() string {
 
 func (r *setMetadataFieldTypeLogReadonly) GetType() MetadataType {
 	return (*SetMetadataFieldTypeLog)(r).GetType()
+}
+
+func (r *setMetadataFieldTypeLogReadonly) GetRevision() uint32 {
+	return (*SetMetadataFieldTypeLog)(r).GetRevision()
 }
 
 func (r *setMetadataFieldTypeLogReadonly) Mutate() *SetMetadataFieldTypeLog {

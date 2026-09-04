@@ -1407,6 +1407,10 @@ message InspectIndexResponse {
     InspectFacets facets = 2;
     InspectSummary summary = 3;
   }
+  // Type binding of the index version that served the scan. Rendering must
+  // use this, not the live declared type: during the legal one-revision
+  // retype window the scan serves the predecessor's encoding.
+  common.MetadataType served_type = 4;
 }
 
 message InspectDistinctValues {

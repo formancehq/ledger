@@ -1026,13 +1026,29 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		))
 	defer span.End()
 
-	// One snapshot for the schema gate and the index-registry lookup so they
-	// observe the same committed state.
-	handleForIndex, err := ctrl.store.NewReadHandle()
+	// One handle for the schema gate and the index-registry lookup so they
+	// observe the same committed state. InspectIndex is an index read by
+	// construction, so the handle reserves the fold floor: the index snapshot
+	// below must align to this handle's sequence.
+	handleForIndex, releaseHold, err := query.OpenIndexHandle(ctrl.readStore, ctrl.store)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle for index lookup: %w", err)
 	}
 	defer func() { _ = handleForIndex.Close() }()
+
+	// AlignedIndexSnapshot consumes the hold on its success paths; every
+	// earlier return (unknown ledger, undeclared field, missing index) must
+	// drop it here or the fold floor stays pinned.
+	holdConsumed := false
+	defer func() {
+		if !holdConsumed {
+			releaseHold()
+		}
+	}()
+	consumeHold := func() {
+		holdConsumed = true
+		releaseHold()
+	}
 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handleForIndex, req.GetLedger())
 	if err != nil {
@@ -1081,13 +1097,21 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 
 	// Per-replica readiness: the local replica's
 	// IndexVersionState.CurrentVersion decides whether queries can be
-	// served (EN-1323). We take the snapshot FIRST and read the version
-	// state through it so the gate and the subsequent Inspect scan
-	// observe the same point-in-time view — without this the atomic
-	// version switch could promote CurrentVersion between the gate
-	// and the iteration, leaving the scan looking at a keyspace that
-	// has already been GC'd in this snapshot.
-	snap := ctrl.readStore.NewSnapshot()
+	// served (EN-1323). The snapshot is fold-ALIGNED to the main-store
+	// handle above — the same alignment the query executor performs — so the
+	// version state reflects every drop and re-declaration the schema gate
+	// just observed; an unaligned snapshot on a rewound read store could
+	// expose a dropped incarnation's binding next to the re-declared schema,
+	// and the serving-window gate would compare revisions across
+	// incarnations and serve the dead keyspace. Gate and scan share the
+	// snapshot so the atomic version switch cannot promote CurrentVersion
+	// between them, which would leave the scan on a keyspace already GC'd
+	// in this snapshot.
+	snap, _, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handleForIndex, consumeHold)
+	if err != nil {
+		return nil, fmt.Errorf("aligning index snapshot for inspect: %w", err)
+	}
+	defer releaseLease()
 	defer func() { _ = snap.Close() }()
 
 	state, _, err := readstore.ReadIndexVersionStateFrom(snap, ledgerInfo.GetName(), indexes.Canonical(indexID))
@@ -1096,6 +1120,17 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 	}
 
 	if state.CurrentVersion == 0 {
+		return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{
+			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
+		}}
+	}
+
+	// The same serving-window decision as the query compile gate: a binding
+	// more than one schema revision behind is a rebuild mid-chain (e.g. a
+	// rewound read store re-walking a retype chain), and scanning its
+	// keyspace would time-travel distinct values, facets, and summary to
+	// superseded semantics.
+	if query.ClassifyBindingWindow(state.CurrentTypeDeclared, state.CurrentRevision, fields[metaKey].GetRevision()) == query.BindingBehindWindow {
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{
 			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
 		}}
@@ -1134,7 +1169,13 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		return nil, fmt.Errorf("inspecting index: %w", err)
 	}
 
-	return toInspectIndexResponse(inspectResult), nil
+	resp := toInspectIndexResponse(inspectResult)
+	// The scan served CurrentVersion's binding; during the legal one-revision
+	// window that is the predecessor's type, not the live declared one, and
+	// rendering must follow the encoding actually scanned.
+	resp.ServedType = state.CurrentType
+
+	return resp, nil
 }
 
 func toInspectIndexResponse(r *readstore.InspectResult) *servicepb.InspectIndexResponse {

@@ -819,6 +819,13 @@ timestamp        -            -          BUILDING (starting...)
 
 Inspect a metadata index to see distinct values, facets (value + count), or a summary (cardinality, min, max, existence counts).
 
+Values are rendered under the type binding of the index version that served
+the scan (the response's `servedType`), not the live declared type: during the
+one-revision retype window the scan serves the previous binding, so an index
+still serving its INT64 binding under a freshly retyped DATETIME schema prints
+raw integers until the rewrite completes. A binding more than one revision
+behind refuses with the retryable `INDEX_BUILDING`.
+
 **Aliases:** `i`
 
 ```bash

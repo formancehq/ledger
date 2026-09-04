@@ -499,19 +499,34 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 	// ranges over old-encoded rows — partial results (EN-1724). Old-kind
 	// conditions therefore stay valid over the complete old index for the
 	// whole window, and the new kind becomes valid atomically at the switch.
-	switch {
-	case !resolved.BindingKnown:
-		// Pre-versioning resolver (test default): the live schema is all
-		// there is.
-	case !resolved.TypeDeclared:
-		// The served version was built before any type was declared for this
-		// key. Field conditions on an undeclared key were rejected then, and
-		// the window keeps that behavior until the rewrite promotes the
-		// declared-type keyspace.
-		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
-	default:
-		fieldSchema = &commonpb.MetadataFieldSchema{Type: resolved.Type}
+	//
+	// The window is exactly ONE schema revision deep. A binding further
+	// behind is not a live retype window — it is a rewound read store (the
+	// read index is a WAL-less Pebble store, so a hard kill rewinds it to
+	// the last flush) re-walking the retype chain, and serving it would
+	// time-travel query semantics at a pin far past the retypes it has not
+	// re-applied yet. That state is a rebuild in progress, and it reads as
+	// exactly that: INDEX_BUILDING, the same retryable class an unbuilt
+	// index produces. The adapter forwards it to the leader (see
+	// RoutedController), so a converged replica answers instead.
+	if resolved.BindingKnown {
+		switch ClassifyBindingWindow(resolved.TypeDeclared, resolved.Revision, fieldSchema.GetRevision()) {
+		case BindingPredeclaration:
+			// The served version was built before any type was declared for
+			// this key, and the schema is on its first declaration: the
+			// undeclared binding is that declaration's direct predecessor,
+			// and the window keeps its behavior — field conditions on an
+			// undeclared key were rejected then.
+			return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
+		case BindingBehindWindow:
+			// Two or more revisions behind the schema: a rebuild mid-chain.
+			return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
+		case BindingServes:
+			fieldSchema = &commonpb.MetadataFieldSchema{Type: resolved.Type}
+		}
 	}
+	// !BindingKnown: pre-versioning resolver (test default) — the live
+	// schema is all there is.
 
 	fc, err = validateAndCoerceCondition(fc, fieldSchema)
 	if err != nil {
@@ -2149,3 +2164,54 @@ func (it *SliceIterator) Err() error { return nil }
 func (it *SliceIterator) Close() {}
 
 var _ readstore.EntityIterator = (*SliceIterator)(nil)
+
+// BindingWindowVerdict classifies a served binding against the schema's
+// serving window. The window is exactly one revision deep: a binding may
+// answer under a schema at schemaRevision only from that revision's direct
+// predecessor onward.
+type BindingWindowVerdict int
+
+const (
+	// BindingServes: the binding is the schema's revision or its direct
+	// predecessor — the legal retype window.
+	BindingServes BindingWindowVerdict = iota
+	// BindingPredeclaration: the undeclared binding is the direct predecessor
+	// of a first declaration. Within the window, but it keeps pre-declaration
+	// semantics — the compile gate rejects field conditions on it as
+	// INDEX_NOT_FOUND, exactly as it did before the declaration.
+	BindingPredeclaration
+	// BindingBehindWindow: more than one revision behind the schema (an
+	// undeclared binding behind a re-declared schema included) — a rebuild
+	// mid-chain, refused as retryable INDEX_BUILDING.
+	BindingBehindWindow
+)
+
+// ClassifyBindingWindow is the serving-window decision shared by the compile
+// gate above and InspectIndex; the one-revision threshold lives only here.
+//
+// CONTRACT: the version state MUST come from a snapshot fold-aligned to the
+// reader the schema came from (AlignedIndexSnapshot / OpenIndexHandle). The
+// classifier accepts a binding AHEAD of the schema — a retype's atomic switch
+// legitimately lands between an older schema read and the state read — and
+// revisions restart at 1 on a drop/re-declare, so revision distance cannot
+// distinguish a dropped incarnation's binding from a live one. Alignment is
+// what makes those states unreachable: by the time the fold covers the
+// schema reader's sequence, the DropIndex tombstone and any re-declaration
+// have been re-applied. An unaligned caller re-opens that time travel; see
+// the KNOWN GAP subtest in compile_retype_window_test.go. EN-1962 tracks
+// enforcing this in the gate itself.
+func ClassifyBindingWindow(declared bool, bindingRevision, schemaRevision uint32) BindingWindowVerdict {
+	if !declared {
+		if schemaRevision <= 1 {
+			return BindingPredeclaration
+		}
+
+		return BindingBehindWindow
+	}
+
+	if bindingRevision+1 < schemaRevision {
+		return BindingBehindWindow
+	}
+
+	return BindingServes
+}

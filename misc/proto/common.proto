@@ -206,6 +206,17 @@ enum MetadataType {
 
 message MetadataFieldSchema {
   MetadataType type = 1;
+  // revision counts the field's declarations: 1 at the first
+  // SetMetadataFieldType, +1 on every retype. It is what lets a reader tell
+  // how far an index version's binding lags the schema — a binding at
+  // revision-1 is the live retype window (old view served until the atomic
+  // switch); anything older is a stale binding a rewound read store is still
+  // rebuilding through, and queries refuse it as INDEX_BUILDING instead of
+  // serving pre-retype semantics at a post-retype pin. Removal deletes the
+  // field entry; a re-declaration restarts at 1 with the cascade having
+  // dropped any attached index, so revisions never compare across
+  // incarnations.
+  uint32 revision = 2;
 }
 
 message MetadataSchema {
@@ -747,6 +758,11 @@ message CreatedIndexLog {
   // Metadata indexes always carry a binding — CreateIndex validates that the
   // field is declared in the schema.
   bool bound_type_declared = 4;
+  // bound_revision is the schema revision of bound_type at this log's
+  // sequence (MetadataFieldSchema.revision), stamped like bound_type. The
+  // first version's binding carries it so queries can measure how far the
+  // serving binding lags the schema.
+  uint32 bound_revision = 5;
 }
 
 // DroppedIndexLog records the removal of an index.
@@ -784,6 +800,11 @@ message SetMetadataFieldTypeLog {
   TargetType target_type = 1;
   string key = 2;
   MetadataType type = 3;
+  // revision is the field's schema revision AFTER this declaration applies,
+  // stamped by the FSM at mint time so a replica folding the log at any
+  // replay distance binds the rewrite's target version to the same revision
+  // (cf. CreatedIndexLog.bound_type).
+  uint32 revision = 4;
 }
 
 // RemovedMetadataFieldTypeLog records the removal of a metadata field type declaration.

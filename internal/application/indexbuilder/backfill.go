@@ -295,7 +295,7 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 			return fmt.Errorf("resetting persisted backfill cursor on retype: %w", err)
 		}
 
-		if err := b.bumpPendingVersion(ledgerName, indexID, smft.GetType()); err != nil {
+		if err := b.bumpPendingVersion(ledgerName, indexID, smft.GetType(), smft.GetRevision()); err != nil {
 			return fmt.Errorf("bumping pending_version on retype during backfill: %w", err)
 		}
 
@@ -326,7 +326,7 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 	// current batch. The rewrite task will read pending_version from
 	// the cache at processSchemaRewrite time to know its target
 	// keyspace, and the live write path will dual-write into it.
-	if err := b.bumpPendingVersion(ledgerName, indexID, smft.GetType()); err != nil {
+	if err := b.bumpPendingVersion(ledgerName, indexID, smft.GetType(), smft.GetRevision()); err != nil {
 		return fmt.Errorf("bumping pending_version on retype: %w", err)
 	}
 
@@ -389,7 +389,7 @@ func (b *Builder) addSchemaRewriteTask(cfg *ledgerIndexConfig, ledgerName string
 // Index.ForwardEncodingVersion in processSetMetadataFieldType — each
 // replica derives its own pending the same way, so the two converge as
 // long as every log is seen.
-func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexID, toType commonpb.MetadataType) error {
+func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexID, toType commonpb.MetadataType, toRevision uint32) error {
 	canonical := indexes.Canonical(indexID)
 	prior, priorExists := b.versionStateFor(ledgerName, canonical)
 
@@ -409,8 +409,10 @@ func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexI
 		HighWater:           base + 1,
 		CurrentType:         prior.CurrentType,
 		CurrentTypeDeclared: prior.CurrentTypeDeclared,
+		CurrentRevision:     prior.CurrentRevision,
 		PendingType:         toType,
 		PendingTypeDeclared: true,
+		PendingRevision:     toRevision,
 	}
 
 	batch := b.wb.Batch()
@@ -898,14 +900,7 @@ scan:
 			done = false
 		} else {
 			prior, _ := b.versionStateFor(task.ledger, canonical)
-			newState = readstore.IndexVersionState{
-				CurrentVersion:      pendingVersion,
-				PendingVersion:      0,
-				ActivationSequence:  task.requiredIndexedSeq,
-				HighWater:           pendingVersion,
-				CurrentType:         prior.PendingType,
-				CurrentTypeDeclared: prior.PendingTypeDeclared,
-			}
+			newState = prior.Promoted(task.requiredIndexedSeq)
 
 			if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
 				return false, fmt.Errorf("persisting atomic version switch: %w", err)
@@ -979,14 +974,7 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 	}()
 
 	prior, _ := b.versionStateFor(task.ledger, canonical)
-	newState := readstore.IndexVersionState{
-		CurrentVersion:      pendingVersion,
-		PendingVersion:      0,
-		ActivationSequence:  task.requiredIndexedSeq,
-		HighWater:           pendingVersion,
-		CurrentType:         prior.PendingType,
-		CurrentTypeDeclared: prior.PendingTypeDeclared,
-	}
+	newState := prior.Promoted(task.requiredIndexedSeq)
 
 	if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
 		return false, fmt.Errorf("persisting atomic version switch: %w", err)
@@ -1267,14 +1255,10 @@ func (b *Builder) completeBackfill(task *backfillTask) error {
 			task.ledger, canonical)
 	}
 
+	// Activation zero: a version built by an initial backfill folds real log
+	// sequences into its events, so it is resolvable at any pin.
 	prior, _ := b.versionStateFor(task.ledger, canonical)
-	newState := readstore.IndexVersionState{
-		CurrentVersion:      pending,
-		PendingVersion:      0,
-		HighWater:           pending,
-		CurrentType:         prior.PendingType,
-		CurrentTypeDeclared: prior.PendingTypeDeclared,
-	}
+	newState := prior.Promoted(0)
 
 	batch := b.readStore.NewBatch()
 	if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {

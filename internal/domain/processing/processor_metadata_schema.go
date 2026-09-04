@@ -32,7 +32,11 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
 
-	field := &commonpb.MetadataFieldSchema{Type: order.GetType()}
+	// The revision counts this key's declarations; a redeclaration after a
+	// removal restarts at 1 (the removal cascade dropped any attached index,
+	// so revisions never compare across incarnations).
+	_, prior := commonpb.SchemaFieldForTarget(info.GetMetadataSchema(), order.GetTargetType(), order.GetKey())
+	field := &commonpb.MetadataFieldSchema{Type: order.GetType(), Revision: prior.GetRevision() + 1}
 
 	switch order.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
@@ -87,6 +91,7 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 				TargetType: order.GetTargetType(),
 				Key:        order.GetKey(),
 				Type:       order.GetType(),
+				Revision:   field.GetRevision(),
 			},
 		},
 	}, nil
@@ -165,7 +170,7 @@ func populateInitialSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *co
 	schema := &commonpb.MetadataSchema{}
 
 	for _, cmd := range commands {
-		field := &commonpb.MetadataFieldSchema{Type: cmd.GetType()}
+		field := &commonpb.MetadataFieldSchema{Type: cmd.GetType(), Revision: 1}
 		switch cmd.GetTargetType() {
 		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 			if schema.AccountFields == nil {

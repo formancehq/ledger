@@ -228,6 +228,24 @@ func OpenQueryHandle(rs *readstore.Store, store *dal.Store, filter *commonpb.Que
 		return handle, func() {}, err
 	}
 
+	return openReservedHandle(rs, store)
+}
+
+// OpenIndexHandle is OpenQueryHandle for reads that are index reads by
+// construction — InspectIndex scans an index keyspace directly — so alignment
+// is always owed and the floor is always reserved (checkpoint stores
+// excepted, as above).
+func OpenIndexHandle(rs *readstore.Store, store *dal.Store) (*dal.ReadHandle, func(), error) {
+	if rs.Frozen() {
+		handle, err := store.NewReadHandle()
+
+		return handle, func() {}, err
+	}
+
+	return openReservedHandle(rs, store)
+}
+
+func openReservedHandle(rs *readstore.Store, store *dal.Store) (*dal.ReadHandle, func(), error) {
 	cursor, err := rs.LastIndexedSequence()
 	if err != nil {
 		return nil, nil, fmt.Errorf("reading index progress: %w", err)

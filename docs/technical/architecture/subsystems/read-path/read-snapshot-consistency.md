@@ -151,9 +151,15 @@ below the handle's sequence. That sequence is the query's **pin**:
 
 Consumers: `listEntities` (ListTransactions/ListAccounts/ListLogs — including
 the reverse LOGS arm, whose unfiltered scan also iterates the read index),
-`AggregateVolumes`, and the prepared-query executor. Index-introspection
-endpoints (GetIndexStatus, InspectIndex, GetIndexEntryStatus) read only the
-index snapshot and need no alignment.
+`AggregateVolumes`, and the prepared-query executor. `InspectIndex` aligns
+too: it opens its main-store handle through `OpenIndexHandle` (an index read
+by construction, so the fold floor is always reserved; checkpoint stores
+excepted) and resolves the version state plus the scan through the aligned
+snapshot — an unaligned snapshot on a rewound read store could expose a
+dropped incarnation's binding beside a re-declared schema and pass the
+serving-window gate across incarnations. Only the version-state summaries
+(GetIndexStatus, GetIndexEntryStatus) read the bare index snapshot: they
+report fold progress itself, so aligning them would be circular.
 
 **Version activation**: a rewrite stamps every event it writes with the one
 FSM sequence it read from, so a promoted version resolves as EMPTY at any pin

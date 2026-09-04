@@ -1,7 +1,6 @@
 package indexes
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"strconv"
@@ -108,60 +107,43 @@ func runInspectIndex(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	declaredType := declaredMetadataType(ctx, client, ledgerName, targetType, key)
-
 	pterm.Println()
 	pterm.Printf("Index: %s on %s (ledger: %s)\n", pterm.Cyan(key), pterm.Cyan(target), pterm.Cyan(ledgerName))
 	pterm.Println(pterm.Gray("─────────────────────────────────"))
 
-	switch result := resp.GetResult().(type) {
-	case *servicepb.InspectIndexResponse_Summary:
-		printSummary(result.Summary, declaredType)
-	case *servicepb.InspectIndexResponse_DistinctValues:
-		printDistinctValues(result.DistinctValues, declaredType)
-	case *servicepb.InspectIndexResponse_Facets:
-		printFacets(result.Facets, declaredType)
-	}
+	renderInspectResult(resp)
 
 	return nil
 }
 
-// declaredMetadataType resolves the schema-declared MetadataType for
-// (ledger, targetType, key), or METADATA_TYPE_STRING when the lookup fails or
-// the key has no declaration. It is a render hint only: datetime index keys
-// share the int64 encoding, so the server returns an int_value for them, and
-// formatMetadataValue uses this type to render those values as RFC3339 instead
-// of raw microseconds (mirroring the HTTP inspect handler). A failed lookup
-// degrades to the default integer rendering rather than erroring.
-func declaredMetadataType(
-	ctx context.Context,
-	client servicepb.BucketServiceClient,
-	ledgerName string,
-	targetType commonpb.TargetType,
-	key string,
-) commonpb.MetadataType {
-	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
-	if err != nil {
-		return commonpb.MetadataType_METADATA_TYPE_STRING
+// renderInspectResult renders the scan with the binding that actually served
+// it: during the legal one-revision retype window the served encoding is the
+// predecessor's, and the live declared type would mistype every value.
+func renderInspectResult(resp *servicepb.InspectIndexResponse) {
+	servedType := resp.GetServedType()
+
+	switch result := resp.GetResult().(type) {
+	case *servicepb.InspectIndexResponse_Summary:
+		printSummary(result.Summary, servedType)
+	case *servicepb.InspectIndexResponse_DistinctValues:
+		printDistinctValues(result.DistinctValues, servedType)
+	case *servicepb.InspectIndexResponse_Facets:
+		printFacets(result.Facets, servedType)
 	}
-
-	_, fs := commonpb.SchemaFieldForTarget(ledger.GetMetadataSchema(), targetType, key)
-
-	return fs.GetType()
 }
 
-func printSummary(s *servicepb.InspectSummary, declaredType commonpb.MetadataType) {
+func printSummary(s *servicepb.InspectSummary, servedType commonpb.MetadataType) {
 	pterm.Printf("Cardinality:       %d\n", s.GetCardinality())
-	pterm.Printf("Min:               %s\n", formatMetadataValue(s.GetMin(), declaredType))
-	pterm.Printf("Max:               %s\n", formatMetadataValue(s.GetMax(), declaredType))
+	pterm.Printf("Min:               %s\n", formatMetadataValue(s.GetMin(), servedType))
+	pterm.Printf("Max:               %s\n", formatMetadataValue(s.GetMax(), servedType))
 	pterm.Printf("Entities with key: %d\n", s.GetEntitiesWithKey())
 	pterm.Printf("Entities null:     %d\n", s.GetEntitiesWithNull())
 }
 
-func printDistinctValues(dv *servicepb.InspectDistinctValues, declaredType commonpb.MetadataType) {
+func printDistinctValues(dv *servicepb.InspectDistinctValues, servedType commonpb.MetadataType) {
 	table := pterm.TableData{{"VALUE"}}
 	for _, v := range dv.GetValues() {
-		table = append(table, []string{formatMetadataValue(v, declaredType)})
+		table = append(table, []string{formatMetadataValue(v, servedType)})
 	}
 
 	_ = pterm.DefaultTable.WithHasHeader().WithData(table).Render()
@@ -172,7 +154,7 @@ func printDistinctValues(dv *servicepb.InspectDistinctValues, declaredType commo
 	}
 }
 
-func printFacets(f *servicepb.InspectFacets, declaredType commonpb.MetadataType) {
+func printFacets(f *servicepb.InspectFacets, servedType commonpb.MetadataType) {
 	facets := make([]*servicepb.InspectFacet, len(f.GetFacets()))
 	copy(facets, f.GetFacets())
 
@@ -183,7 +165,7 @@ func printFacets(f *servicepb.InspectFacets, declaredType commonpb.MetadataType)
 	table := pterm.TableData{{"VALUE", "COUNT"}}
 	for _, fv := range facets {
 		table = append(table, []string{
-			formatMetadataValue(fv.GetValue(), declaredType),
+			formatMetadataValue(fv.GetValue(), servedType),
 			strconv.FormatUint(fv.GetCount(), 10),
 		})
 	}
@@ -196,7 +178,7 @@ func printFacets(f *servicepb.InspectFacets, declaredType commonpb.MetadataType)
 	}
 }
 
-func formatMetadataValue(v *commonpb.MetadataValue, declaredType commonpb.MetadataType) string {
+func formatMetadataValue(v *commonpb.MetadataValue, servedType commonpb.MetadataType) string {
 	if v == nil {
 		return pterm.Gray("(none)")
 	}
@@ -206,8 +188,9 @@ func formatMetadataValue(v *commonpb.MetadataValue, declaredType commonpb.Metada
 		return fmt.Sprintf("%q", t.StringValue)
 	case *commonpb.MetadataValue_IntValue:
 		// Datetime index keys share the int64 encoding, so the server returns an
-		// int_value for them; render as RFC3339 when the field is declared datetime.
-		if commonpb.IsDatetimeType(declaredType) {
+		// int_value for them; render as RFC3339 when the serving binding is a
+		// datetime type.
+		if commonpb.IsDatetimeType(servedType) {
 			return time.UnixMicro(t.IntValue).UTC().Format(time.RFC3339Nano)
 		}
 

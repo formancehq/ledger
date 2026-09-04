@@ -508,7 +508,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 							}
 						case *commonpb.LedgerLogPayload_SetMetadataFieldType:
 							if l := d.SetMetadataFieldType; l != nil {
-								setExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey(), l.GetType())
+								setExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey(), l.GetType(), l.GetRevision())
 							}
 						case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
 							if l := d.RemovedMetadataFieldType; l != nil {
@@ -4183,14 +4183,14 @@ func accountTypesEqual(a, b map[string]*commonpb.AccountType) bool {
 // setExpectedSchemaField records a field-type declaration on the ledger's
 // expected schema during replay, lazily creating it. Mirrors
 // processSetMetadataFieldType.
-func setExpectedSchemaField(schemas map[string]*commonpb.MetadataSchema, ledger string, target commonpb.TargetType, key string, typ commonpb.MetadataType) {
+func setExpectedSchemaField(schemas map[string]*commonpb.MetadataSchema, ledger string, target commonpb.TargetType, key string, typ commonpb.MetadataType, revision uint32) {
 	schema := schemas[ledger]
 	if schema == nil {
 		schema = &commonpb.MetadataSchema{}
 		schemas[ledger] = schema
 	}
 
-	field := &commonpb.MetadataFieldSchema{Type: typ}
+	field := &commonpb.MetadataFieldSchema{Type: typ, Revision: revision}
 
 	switch target {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
@@ -4248,7 +4248,7 @@ func fieldTypesEqual(a, b map[string]*commonpb.MetadataFieldSchema) bool {
 
 	for k, av := range a {
 		bv, ok := b[k]
-		if !ok || av.GetType() != bv.GetType() {
+		if !ok || av.GetType() != bv.GetType() || av.GetRevision() != bv.GetRevision() {
 			return false
 		}
 	}

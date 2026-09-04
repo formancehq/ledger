@@ -997,7 +997,7 @@ func TestAttributeReplayWriter_SchemaOpForUnknownLedgerFailsLoudly(t *testing.T)
 	writer.ledgerInfos = make(map[string]*commonpb.LedgerInfo)
 
 	setErr := writer.SetMetadataFieldType("ghost", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k",
-		commonpb.MetadataType_METADATA_TYPE_STRING)
+		commonpb.MetadataType_METADATA_TYPE_STRING, 1)
 	require.ErrorContains(t, setErr, "invariant")
 
 	removeErr := writer.RemoveMetadataFieldType("ghost", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k")
@@ -1402,6 +1402,7 @@ func TestRebuildDelta_BumpsCheckpointIndexOnRetype(t *testing.T) {
 				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "k0",
 				Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+				Revision:   5,
 			},
 		},
 	})))
@@ -1418,6 +1419,15 @@ func TestRebuildDelta_BumpsCheckpointIndexOnRetype(t *testing.T) {
 	require.NotNil(t, row)
 	require.Equal(t, uint32(3), row.GetForwardEncodingVersion(), "the retype must bump the checkpoint row's version")
 	require.Equal(t, uint64(111), row.GetCreatedAt().GetData(), "the bump must not touch created_at")
+
+	// The full production fold (RebuildDelta → ReplayLedgerLog → writer) must
+	// land the log's mint-time revision in the restored schema: a restored
+	// ledger that restarts at revision 0 disarms the stale-binding gate.
+	info, err := attrs.Ledger.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
+	require.NoError(t, err)
+	field := info.GetMetadataSchema().GetAccountFields()["k0"]
+	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_UINT64, field.GetType())
+	require.Equal(t, uint32(5), field.GetRevision(), "the fold must persist the stamped revision verbatim")
 }
 
 // TestAttributeReplayWriter_SetMetadataFieldType_LedgerTarget pins the
@@ -1432,9 +1442,9 @@ func TestAttributeReplayWriter_SetMetadataFieldType_LedgerTarget(t *testing.T) {
 	writer.ledgerInfos["ledger"] = &commonpb.LedgerInfo{Name: "ledger"}
 
 	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_LEDGER, "env",
-		commonpb.MetadataType_METADATA_TYPE_STRING))
+		commonpb.MetadataType_METADATA_TYPE_STRING, 1))
 	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_TRANSACTION, "batch_id",
-		commonpb.MetadataType_METADATA_TYPE_UINT64))
+		commonpb.MetadataType_METADATA_TYPE_UINT64, 3))
 	require.NoError(t, writer.batch.Commit())
 
 	info, err := attrs.Ledger.Get(store, domain.LedgerKey{Name: "ledger"}.Bytes())
@@ -1443,6 +1453,12 @@ func TestAttributeReplayWriter_SetMetadataFieldType_LedgerTarget(t *testing.T) {
 		info.GetMetadataSchema().GetLedgerFields()["env"].GetType())
 	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_UINT64,
 		info.GetMetadataSchema().GetTransactionFields()["batch_id"].GetType())
+
+	// The restored schema must carry the log's mint-time revision stamps: the
+	// stale-binding compile gate measures revision distance against them, and a
+	// restored ledger that restarts at zero disarms the gate.
+	require.Equal(t, uint32(1), info.GetMetadataSchema().GetLedgerFields()["env"].GetRevision())
+	require.Equal(t, uint32(3), info.GetMetadataSchema().GetTransactionFields()["batch_id"].GetRevision())
 
 	row, err := attrs.Index.Get(store, indexes.KeyFor("ledger",
 		indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_LEDGER, "env")).Bytes())
@@ -1462,7 +1478,7 @@ func TestAttributeReplayWriter_RetypeCascade_MissingRowIsNoOp(t *testing.T) {
 	metaID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
 
 	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
-		commonpb.MetadataType_METADATA_TYPE_INT64))
+		commonpb.MetadataType_METADATA_TYPE_INT64, 1))
 	require.NoError(t, writer.batch.Commit())
 
 	row, err := attrs.Index.Get(store, indexes.KeyFor("ledger", metaID).Bytes())
@@ -1494,7 +1510,7 @@ func TestAttributeReplayWriter_RetypeCascade_TombstoneShadowsCheckpointRow(t *te
 
 	require.NoError(t, writer.DropIndex("ledger", metaID))
 	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
-		commonpb.MetadataType_METADATA_TYPE_UINT64))
+		commonpb.MetadataType_METADATA_TYPE_UINT64, 2))
 	require.NoError(t, writer.batch.Commit())
 
 	row, err := attrs.Index.Get(store, indexes.KeyFor("ledger", metaID).Bytes())
@@ -1516,6 +1532,6 @@ func TestAttributeReplayWriter_RetypeCascade_ReadFailureSurfaces(t *testing.T) {
 	writer.store = closed
 
 	err := writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
-		commonpb.MetadataType_METADATA_TYPE_INT64)
+		commonpb.MetadataType_METADATA_TYPE_INT64, 1)
 	require.ErrorContains(t, err, "retype cascade")
 }

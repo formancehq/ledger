@@ -2232,6 +2232,38 @@ func TestCompareSchema_MissingFromStored(t *testing.T) {
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
 }
 
+// TestCompareSchema_RevisionDiverges is the restore-gap shape: types match but
+// the stored revision differs from the audit-derived stamp (a rebuild that
+// dropped the log's revision restarts fields at zero, disarming the
+// stale-binding compile gate).
+func TestCompareSchema_RevisionDiverges(t *testing.T) {
+	t.Parallel()
+
+	stored := accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING)
+	stored.AccountFields["tier"].Revision = 0
+
+	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+		{Name: "L1", Id: 1, MetadataSchema: stored},
+	})
+
+	reader, err := store.NewReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reader.Close() })
+
+	expected := accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING)
+	expected.AccountFields["tier"].Revision = 3
+
+	var events []*servicepb.CheckStoreEvent
+	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*commonpb.MetadataSchema{
+		"L1": expected,
+	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+
+	require.Len(t, events, 1)
+	require.Equal(t,
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH,
+		events[0].GetError().GetErrorType())
+}
+
 // TestCompareSchema_ExtraInStored is the tampering shape: the store carries a
 // field type the audit never declared.
 func TestCompareSchema_ExtraInStored(t *testing.T) {
