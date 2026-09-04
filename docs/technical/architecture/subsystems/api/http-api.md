@@ -401,9 +401,12 @@ Query parameters:
   to the audit condition only on the audit target, which is why audit fields are
   valid on this endpoint alone. This is the shared `filterexpr` DSL — **not** the
   JSON `QueryFilter` DSL used by prepared queries, which cannot represent audit
-  conditions. Filtered reads are served by
-  the asynchronous audit index; the consistency guarantee matches the gRPC
-  surface.
+  conditions. A filter containing any field other than `seq` is served by the
+  asynchronous audit index; unfiltered and `seq`-only conjunctions scan the
+  audit zone directly. This HTTP endpoint exposes no `minLogSequence` bound, so
+  index-backed reads are best-effort and may omit entries not yet indexed; gRPC
+  callers can request a consistency-bound wait that is preserved across routing
+  hops.
 
 **Response**: `{ "data": [ AuditEntry, ... ] }` (list omits per-order `items`).
 

@@ -548,11 +548,18 @@ config:
 - Larger margins use more disk but allow slower followers to catch up
 - Smaller margins save disk but may force more snapshot transfers
 
-## Request Forwarding (Writes Only)
+## Request Forwarding
 
 ### Overview
 
-Only **write requests** (`Apply`) and **`ListChapters`** are forwarded to the leader. All other reads use the ReadIndex mechanism (see below).
+**Write requests** (`Apply`) and **`ListChapters`** are always routed to the
+node currently considered leader. `ListChapters` bypasses the normal read
+consistency selector and does not perform a ReadIndex barrier; a node that still
+considers itself leader serves its persisted chapter rows locally. Other live
+reads normally use the ReadIndex mechanism (see below), but callers can
+explicitly select `x-consistency: leader`. That mode also routes the read to the
+perceived leader; if the receiving node already considers itself leader, the
+local shortcut does not perform a ReadIndex barrier.
 
 ### Forwarding Flow
 
@@ -594,7 +601,12 @@ If the leader is not available:
 
 ### Overview
 
-All read operations use the Raft **ReadIndex** mechanism to provide linearizable reads on any node (leader or follower) without forwarding to the leader. This distributes read load across the cluster while guaranteeing consistency.
+Live reads routed through `RoutedController.readCtrl` in the default consistency
+mode use the Raft **ReadIndex** mechanism. For FSM-backed data and secondary
+indexes aligned to the applied-state horizon, this provides linearizable reads
+on any quorum-connected node without forwarding data to the leader. Explicit
+consistency modes and endpoint-specific paths are documented under
+[consensus exceptions](subsystems/consensus/raft-consensus.md#linearizable-reads-via-readindex).
 
 ### ReadIndex Flow
 
@@ -629,9 +641,12 @@ sequenceDiagram
 
 ### Key Properties
 
-- **Linearizable**: The read reflects all writes committed before the ReadIndex call
+- **Linearizable for aligned state**: The read reflects all writes committed
+  before the ReadIndex call when its serving data and indexes share the applied
+  horizon
 - **Distributed**: Any node can serve reads, not just the leader
-- **Efficient**: No data forwarding via gRPC, only a lightweight heartbeat round-trip
+- **Efficient normal path**: No data forwarding via gRPC, only a lightweight
+  heartbeat round-trip
 - **Context-aware**: Respects deadlines and cancellation throughout
 
 ## Bulk Operations
