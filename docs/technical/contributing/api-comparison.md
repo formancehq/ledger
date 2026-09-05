@@ -585,8 +585,8 @@ by a cluster-wide flag.
   `pending_version == 0`; a RETYPE is complete once `current_version`
   has advanced past its pre-retype value (per-replica numbers are
   allocated from a local high-water mark and are not comparable to
-  `forward_encoding_version`). `min_log_sequence` (below) enforces
-  log-application ordering.
+  `forward_encoding_version`). Projection catch-up is automatic on
+  indexed reads and is distinct from readiness.
 - `SetMetadataFieldType` (retype) bumps the cluster-wide
   `Index.forward_encoding_version`. Each replica then runs a local
   rewrite into the new versioned keyspace (`pending_version`), with
@@ -595,20 +595,15 @@ by a cluster-wide flag.
   switches. Queries served from the replica's `current_version` stay
   consistent throughout — no half-rewritten state is ever observable.
 
-**Client synchronization:** Use `ReadOptions.min_log_sequence` to
-require the read replica to have applied at least the given log
-sequence. The gate is satisfied by `LastIndexedSequence >=
-min_log_sequence` — it pins **log application** on this replica,
-not rewrite completion. After a `SetMetadataFieldType` apply,
-setting `min_log_sequence` to the retype's log sequence (returned
-in `ApplyResponse.logs[].sequence`) guarantees:
+**Client synchronization:** EN-1946 removed the unreleased v3
+`ReadOptions.min_log_sequence` surface. A linearizable indexed read now
+captures Raft `ReadIndex` result `R`, opens its main snapshot at durable applied
+index `H >= R`, and waits for only the projection it uses to certify `H`. A
+`stale` read skips `R` but still aligns used projections to its fixed local `H`.
+Native log/audit cursors remain internal fold and trimming state.
 
-  - the retype log has been processed locally,
-  - `pending_version` has been bumped, and
-  - the local schema-rewrite has been *scheduled*.
-
-It does **not** guarantee that the rewrite has completed or that
-the replica is serving the new encoding. The atomic switch
+That Raft certificate does **not** guarantee that a schema rewrite has
+completed or that the replica is serving the new encoding. The atomic switch
 (`current_version ← pending_version`) is a separate per-replica
 background event, gated internally on the read store catching up to
 the FSM seq the rewrite observed. Queries against the replica

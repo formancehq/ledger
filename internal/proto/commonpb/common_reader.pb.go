@@ -12225,7 +12225,6 @@ func NewBackupStorageListReader(s []*BackupStorage) BackupStorageListReader {
 // Call Mutate() to obtain a mutable clone.
 type ReadOptionsReader interface {
 	GetCheckpointId() uint64
-	GetMinLogSequence() uint64
 	Mutate() *ReadOptions
 }
 
@@ -12233,10 +12232,6 @@ type readOptionsReadonly ReadOptions
 
 func (r *readOptionsReadonly) GetCheckpointId() uint64 {
 	return (*ReadOptions)(r).GetCheckpointId()
-}
-
-func (r *readOptionsReadonly) GetMinLogSequence() uint64 {
-	return (*ReadOptions)(r).GetMinLogSequence()
 }
 
 func (r *readOptionsReadonly) Mutate() *ReadOptions {

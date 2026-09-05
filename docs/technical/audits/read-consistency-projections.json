@@ -20,7 +20,7 @@
     "Can an index watermark advance before all represented rows are queryable?",
     "Can rebuild expose an empty or partial index while reporting readiness?",
     "Can cursor pagination cross snapshots and duplicate/omit concurrent records?",
-    "Can a pinned main-store read handle, read-store snapshot, or request-local query state return data older than the request's ReadIndex / min_log_sequence barrier?",
+    "Can a pinned main-store read handle, projection snapshot, or request-local query state return data older than the fixed Raft applied-index horizon captured for the request?",
     "Do aggregates and list/detail endpoints disagree immediately after writes?",
     "Can follower routing serve a strong read without sufficient leadership/quorum evidence?"
   ],

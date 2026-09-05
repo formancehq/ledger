@@ -296,7 +296,7 @@ While this loop runs, new `SavedMetadata` / `DeletedMetadata` logs continue to l
 
 ### Atomic switch — and why it is gated
 
-Once the reverse-map iterator hits EOF, the rewrite *could* fire the switch. But there is a hazard introduced by step 2 above: because the rewrite reads FSM-latest values, a row in `v_pending` may correspond to a log sequence the **read store has not yet applied to its non-versioned keyspaces**. Flipping `Current = pending` early would expose `v_pending` rows whose log sequence is past `LastIndexedSequence()`, breaking the contiguous-prefix invariant that `min_log_sequence` queries rely on.
+Once the reverse-map iterator hits EOF, the rewrite *could* fire the switch. But there is a hazard introduced by step 2 above: because the rewrite reads FSM-latest values, a row in `v_pending` may correspond to a log sequence the **read store has not yet applied to its non-versioned keyspaces**. Flipping `Current = pending` early would expose `v_pending` rows whose log sequence is past `LastIndexedSequence()`, breaking the contiguous-prefix invariant aligned queries rely on.
 
 The fix is the **`requiredIndexedSeq` gate**. It is *not* the bound of the rewrite — it is a post-scan consistency gate:
 
@@ -323,14 +323,19 @@ The `0x01` and `0x02` limbs go in one `DeleteRange` each. The reverse map cannot
 
 Queries that need to know whether a rewrite is in flight can read `IndexVersionState` for the target index — `PendingVersion != 0` signals an active rewrite. There is no dedicated wire-level "rewrite progress" endpoint today.
 
-## `min_log_sequence` — Read Barrier
+## Read barrier — Raft projection horizon
 
-The query API accepts a `min_log_sequence` in the request metadata. It is enforced at the read entry point:
+EN-1946 removed client-facing `min_log_sequence`. After `ReadIndexAndWait`
+returns `R`, the query opens its main snapshot, reads durable applied index `H`
+and waits only for the projections it uses to certify `H`. The certificate is
+re-read from the projection snapshot used by the query. `stale` skips `R` but
+retains the fixed local `H` alignment.
 
-- The controller calls `node.ReadIndexAndWait()` to confirm the FSM has applied at least that sequence (Raft linearizability barrier).
-- It then waits for `readStore.LastIndexedSequence() >= min_log_sequence` so the read store has caught up too.
-
-Important nuance: `min_log_sequence` **pins log application on this replica, not local rewrite completion**. A client that needs a value to be visible *under the new type tag* after a `SetMetadataFieldType` must wait for the corresponding atomic switch to land — there is no per-rewrite barrier on the wire today. See [api-comparison.md](../../../contributing/api-comparison.md) for the contract.
+This causal certificate deliberately says nothing about initial build or schema
+rewrite readiness. `IndexVersionState.CurrentVersion/PendingVersion` remains the
+readiness/generation mechanism, and a query still returns `ErrIndexBuilding`
+until the requested local generation is servable. See
+[api-comparison.md](../../../contributing/api-comparison.md).
 
 ## No Cluster-Wide `IndexReady`
 

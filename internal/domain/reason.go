@@ -109,7 +109,6 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE,
 		commonpb.ErrorReason_ERROR_REASON_INDEX_BUILDING,
 		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_READY,
-		commonpb.ErrorReason_ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP,
 		commonpb.ErrorReason_ERROR_REASON_CLUSTER_UNHEALTHY,
 		commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW:
 		return KindUnavailable

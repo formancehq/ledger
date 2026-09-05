@@ -1793,7 +1793,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 // iterates ascending by sequence (oldest first) — this is the audit trail's
 // natural read order and is preserved from the pre-ListOptions behavior.
 // reverse=true iterates descending (newest first).
-func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool, _ uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	return ctrl.ListAuditEntriesFrom(ctx, ctrl.store, ctrl.readStore, pageSize, afterSequence, filter, reverse)
 }
 

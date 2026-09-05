@@ -65,9 +65,10 @@ type auditCompiled struct {
 // unknown, OR, or over-depth trees; validation and compilation remain
 // responsible for returning the precise client error later.
 //
-// This predicate deliberately performs no index reads. The gRPC handler uses it
-// before the consistency wait, so compiling first would capture stale index
-// candidates before the barrier intended to make them fresh.
+// This predicate deliberately performs no index reads. The controller uses it
+// to decide whether it must wait for the audit projection's Raft certificate
+// and open an aligned audit snapshot; compiling first would capture candidates
+// from an unverified projection snapshot.
 func AuditFilterNeedsIndex(filter *commonpb.QueryFilter) bool {
 	return auditFilterNeedsIndex(filter, 0)
 }

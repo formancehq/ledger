@@ -86,9 +86,8 @@ If the node is syncing or otherwise unable to confirm `ReadIndex`, the call fail
 
 ## Projection alignment — fixed Raft horizon
 
-A projection-backed read now aligns automatically against the exact main
-snapshot it will use, independently of the temporary client-facing
-`min_log_sequence` gate:
+The public `min_log_sequence` gate was removed by EN-1946. A projection-backed
+read now aligns automatically against the exact main snapshot it will use:
 
 1. A linearizable read obtains Raft horizon `R` through `ReadIndexAndWait`.
    `stale` deliberately skips this step.
@@ -117,12 +116,6 @@ index because even its unfiltered universe is projected.
 uses the local main snapshot's fixed `H` and performs the same projection waits.
 Per-index build/rewrite readiness remains explicit through
 `IndexVersionState`; a Raft certificate does not promote an unfinished build.
-
-The legacy `min_log_sequence` request field is still honored as an additional
-client-selected native-sequence floor during this staged rollout. It is no
-longer the causal proof used to align projections: the fixed Raft horizon above
-provides that proof automatically. Checkpoint reads continue to ignore the
-field because they address an immutable past snapshot.
 
 ## Pebble snapshot
 
@@ -188,8 +181,7 @@ The cursor is sent back as an `x-next-cursor` gRPC trailer.
 **Query checkpoints.** When the request carries a `checkpoint_id > 0`, the
 controller resolves the checkpoint to its frozen main-store + read-store pair
 and verifies the stored projection certificate against the checkpoint's durable
-applied index. `min_log_sequence` is ignored for that immutable snapshot. Useful
-for reconciliation and auditing. See
+applied index. Useful for reconciliation and auditing. See
 [query-checkpoints.md](query-checkpoints.md).
 
 **Aggregate volumes.** `ExecutePreparedQuery` with the `AGGREGATE_VOLUMES` mode runs the same compiled filter to obtain a candidate account set, then loops over per-account asset volumes in the main store and sums per asset. The aggregation is computed at request time — there is no precomputed aggregate table.
@@ -200,7 +192,7 @@ for reconciliation and auditing. See
 
 | Concern | Where |
 |---------|-------|
-| gRPC entry + auth + min_log_seq | `internal/adapter/grpc/server_bucket.go` |
+| gRPC entry + auth | `internal/adapter/grpc/server_bucket.go` |
 | Controller read methods | `internal/application/ctrl/controller_default.go` |
 | `ReadIndexAndWait` | `internal/infra/node/read_index.go:101` |
 | Generic list | `internal/application/ctrl/list_entities.go:57` |

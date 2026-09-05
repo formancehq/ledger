@@ -585,10 +585,8 @@ indexes need their own progress barrier:
   projection's Raft certificate to cover the fixed main-store horizon and
   compiles the filter from that verified audit snapshot. Unfiltered listings
   and conjunctions made only of `seq` bounds scan the authoritative audit zone
-  directly and do not wait for the projection. The temporary
-  `minLogSequence` field remains an additional native-sequence floor for live
-  requests, but is no longer the causal alignment proof. Checkpoint creation
-  waits for both read and audit certificates before publishing readiness.
+  directly and do not wait for the projection. Checkpoint creation waits for
+  both read and audit certificates before publishing readiness.
 - `GetLedgerStats` has mixed provenance. `transactionCount` and `logCount` are
   FSM-backed, while `postingCount`, `revertCount`,
   `numscriptExecutionCount`, `referenceCount`, `ephemeralEvictedCount`,

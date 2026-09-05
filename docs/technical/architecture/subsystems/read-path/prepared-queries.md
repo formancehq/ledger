@@ -72,10 +72,10 @@ A compile error at FSM time is hash-bound as an `AuditFailure`, so a checker run
 1. Opens the fixed main-store snapshot, then reads both the ledger schema and prepared query from that snapshot. This prevents a concurrent query/schema update or deletion from being combined with entities from a newer state. Because the stored definition determines whether an index will be used, the executor briefly reserves the event-history floor before opening the snapshot and releases it immediately when the loaded shape needs no index alignment.
 2. Verifies the requested mode is compatible with the query's `target` (e.g. `AGGREGATE_VOLUMES` only makes sense for accounts).
 3. Enters the standard read route. Default live consistency establishes a
-   `ReadIndexAndWait` horizon; `stale` and checkpoint reads have the documented
-   exceptions. The executor waits for read-index alignment only when
-   `AlignmentOwed` is true — the filter tree contains a read-index leaf or the
-   target is LOGS — then calls
+   `ReadIndexAndWait` horizon; `stale` skips the quorum barrier but keeps a fixed
+   local horizon, while checkpoint reads use their frozen horizon. The executor
+   waits for read-index alignment only when `AlignmentOwed` is true — the
+   filter tree contains a read-index leaf or the target is LOGS — then calls
    `Compile(indexSnap, kb, pq.GetFilter(), ...)` and executes the iterator.
 4. For `LIST`, streams the matching entities through the standard cursor pipeline (see [query-pipeline.md](query-pipeline.md)).
 5. For `AGGREGATE_VOLUMES`, loops over the candidate account set and sums per-asset volumes from the main store. The aggregation is **computed at request time** — there is no materialised aggregate table.

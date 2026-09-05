@@ -210,7 +210,7 @@ type schemaRewriteTask struct {
 	// guarantees that when CurrentVersion flips to v_new, every entry in
 	// the v_new keyspace corresponds to a log sequence the read index
 	// has already processed — preserving the contiguous-prefix invariant
-	// every query relies on through min_log_sequence.
+	// every aligned indexed query relies on.
 	//
 	// Sampled per batch (not per task lifetime) so it tracks the
 	// freshest FSM state any batch could have observed. Reset on a
@@ -660,8 +660,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	// switch (further down) until LastIndexedSequence catches up to
 	// this watermark — otherwise post-switch the v_new keyspace would
 	// serve rows reflecting state ahead of the read-store cursor,
-	// breaking the contiguous-prefix invariant min_log_sequence
-	// callers rely on.
+	// breaking the contiguous-prefix invariant aligned readers rely on.
 	//
 	// Sampled per batch and accumulated as a max so the gate tracks
 	// the freshest FSM state any of this task's batches could have

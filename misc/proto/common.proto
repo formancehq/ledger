@@ -284,10 +284,10 @@ message Index {
   // lives in `readstore.IndexVersionState.CurrentVersion` (internal)
   // and is exposed on the wire as `IndexEntry.current_version` on
   // `GetIndexStatusResponse`. Queries read from the replica's local
-  // current_version, not from this cluster-wide field. Synchronization
-  // is client-driven via min_log_sequence on the read API — but note
-  // that min_log_sequence pins log application on this replica, NOT
-  // local rewrite completion; see api-comparison.md for the contract.
+  // current_version, not from this cluster-wide field. The read path's Raft
+  // horizon certificate proves causal catch-up of the projection, but does
+  // NOT certify completion of a local build/rewrite; current/pending version
+  // remains the explicit readiness contract. See api-comparison.md.
   uint32 forward_encoding_version = 4;
 }
 
@@ -1133,7 +1133,10 @@ message IdempotencyKeyValue {
 // AuditFailure and IdempotencyFailure store this instead of a free string so
 // the error kind is re-derivable from the reason (domain.KindForReason) at
 // replay and check time, and a typo cannot silently decode into a known reason.
-// Do NOT renumber or remove values; append new ones. Completeness against the
+// While v3 remains unreleased and its state is wiped between revisions,
+// removing a value also realigns the remaining numbers sequentially, per the
+// repository protobuf policy. After release these persisted values become
+// append-only and must never be renumbered or removed. Completeness against
 // domain errors is enforced by TestEveryDomainErrorImplementsDescribable.
 enum ErrorReason {
   ERROR_REASON_UNSPECIFIED = 0;
@@ -1211,33 +1214,28 @@ enum ErrorReason {
   ERROR_REASON_PRELOAD_UNAVAILABLE = 60;
   ERROR_REASON_AGGREGATE_OVERFLOW = 61;
   ERROR_REASON_BALANCE_NOT_FOUND = 62;
-  // ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP: an indexed read needs the read
-  // index folded up to the main store's applied sequence and it did not get
-  // there within the alignment grace. Retryable (Kind=Unavailable): the fold
-  // is behind, not broken. See EN-1748.
-  ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP = 63;
   // ERROR_REASON_STALE_CLUSTER_POLICY: a cluster-policy update carried a
   // revision lower than the applied one. Deterministic rejection — a newer
   // policy already won; the leader-side reconciler re-evaluates on the next
   // tick. See EN-1827.
-  ERROR_REASON_STALE_CLUSTER_POLICY = 64;
+  ERROR_REASON_STALE_CLUSTER_POLICY = 63;
   // ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT: two cluster-policy updates
   // carried the same revision with different payloads. The control plane must
   // assign a fresh revision per distinct policy, so this is a contract
   // violation surfaced deterministically on every node. See EN-1827.
-  ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT = 65;
+  ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT = 64;
   // ERROR_REASON_CLUSTER_POLICY_INVALID: a cluster-policy update carried a
   // structurally invalid payload (missing policy, or query_checkpoint_limit
   // below 1). See EN-1827.
-  ERROR_REASON_CLUSTER_POLICY_INVALID = 66;
+  ERROR_REASON_CLUSTER_POLICY_INVALID = 65;
   // ERROR_REASON_CHECKPOINT_LIMIT_REACHED: a CreateQueryCheckpoint was rejected
   // because the live query-checkpoint count is at the replicated policy limit.
   // Creation never evicts; an existing checkpoint must be deleted first. See
   // EN-1501.
-  ERROR_REASON_CHECKPOINT_LIMIT_REACHED = 67;
+  ERROR_REASON_CHECKPOINT_LIMIT_REACHED = 66;
   // ERROR_REASON_CHECKPOINT_NOT_FOUND: a DeleteQueryCheckpoint targeted an id
   // that is not live (never created, or already deleted). See EN-1501.
-  ERROR_REASON_CHECKPOINT_NOT_FOUND = 68;
+  ERROR_REASON_CHECKPOINT_NOT_FOUND = 67;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key
@@ -1770,10 +1768,6 @@ message ReadOptions {
   // the live store. Endpoints that do not support checkpoint reads MUST
   // reject any non-zero value with InvalidArgument.
   fixed64 checkpoint_id = 1;
-  // min_log_sequence requires the store to have applied at least this log
-  // sequence before reading; FailedPrecondition otherwise. Ignored for
-  // checkpoint reads (a checkpoint is a fixed snapshot).
-  fixed64 min_log_sequence = 2;
 }
 
 // ListOptions carries the canonical pagination + consistency + filter

@@ -36,6 +36,8 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
    A crash before the marker never exposes a partial checkpoint.
    Link/compaction races are retried from a clean temp directory.
 7. Both stores are opened read-only when a query specifies `checkpoint_id`.
+   Reads verify the frozen projection certificate against the main checkpoint's
+   durable applied index rather than trusting `.ready` alone.
 
 ## Readiness and Error Contract
 

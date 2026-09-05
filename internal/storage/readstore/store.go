@@ -269,8 +269,9 @@ func (s *Store) LastIndexedSequenceFrom(reader dal.PebbleGetter) (uint64, error)
 	return s.ReadProgressFrom(reader)
 }
 
-// NotifyProgress wakes all goroutines waiting in WaitForSequence /
-// WaitForCheckpoint. Must be called after WriteProgress commits successfully.
+// NotifyProgress wakes goroutines waiting for native or certified projection
+// progress and for checkpoint readiness. Call it only after the corresponding
+// progress write has committed or the checkpoint marker has been materialized.
 //
 // The broadcast is issued while holding progressMu: a waiter checks its
 // condition and calls cond.Wait() under the same lock, and Wait atomically
@@ -976,8 +977,9 @@ func (s *Store) WaitForCheckpoint(ctx context.Context, dirPath string) error {
 	}
 }
 
-// WaitForSequence blocks until LastIndexedSequence >= minSeq or the context
-// is cancelled.
+// WaitForSequence blocks until the native log-index cursor reaches minSeq or
+// the context is cancelled. Query consistency uses WaitForRaftProgress instead;
+// this primitive is retained for native-cursor lifecycle checks and tests.
 func (s *Store) WaitForSequence(ctx context.Context, minSeq uint64) error {
 	// Fast path: already caught up.
 	cur, err := s.LastIndexedSequence()

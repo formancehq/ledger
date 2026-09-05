@@ -519,7 +519,10 @@ func (MirrorSyncState) EnumDescriptor() ([]byte, []int) {
 // AuditFailure and IdempotencyFailure store this instead of a free string so
 // the error kind is re-derivable from the reason (domain.KindForReason) at
 // replay and check time, and a typo cannot silently decode into a known reason.
-// Do NOT renumber or remove values; append new ones. Completeness against the
+// While v3 remains unreleased and its state is wiped between revisions,
+// removing a value also realigns the remaining numbers sequentially, per the
+// repository protobuf policy. After release these persisted values become
+// append-only and must never be renumbered or removed. Completeness against
 // domain errors is enforced by TestEveryDomainErrorImplementsDescribable.
 type ErrorReason int32
 
@@ -599,33 +602,28 @@ const (
 	ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE ErrorReason = 60
 	ErrorReason_ERROR_REASON_AGGREGATE_OVERFLOW  ErrorReason = 61
 	ErrorReason_ERROR_REASON_BALANCE_NOT_FOUND   ErrorReason = 62
-	// ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP: an indexed read needs the read
-	// index folded up to the main store's applied sequence and it did not get
-	// there within the alignment grace. Retryable (Kind=Unavailable): the fold
-	// is behind, not broken. See EN-1748.
-	ErrorReason_ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP ErrorReason = 63
 	// ERROR_REASON_STALE_CLUSTER_POLICY: a cluster-policy update carried a
 	// revision lower than the applied one. Deterministic rejection — a newer
 	// policy already won; the leader-side reconciler re-evaluates on the next
 	// tick. See EN-1827.
-	ErrorReason_ERROR_REASON_STALE_CLUSTER_POLICY ErrorReason = 64
+	ErrorReason_ERROR_REASON_STALE_CLUSTER_POLICY ErrorReason = 63
 	// ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT: two cluster-policy updates
 	// carried the same revision with different payloads. The control plane must
 	// assign a fresh revision per distinct policy, so this is a contract
 	// violation surfaced deterministically on every node. See EN-1827.
-	ErrorReason_ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT ErrorReason = 65
+	ErrorReason_ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT ErrorReason = 64
 	// ERROR_REASON_CLUSTER_POLICY_INVALID: a cluster-policy update carried a
 	// structurally invalid payload (missing policy, or query_checkpoint_limit
 	// below 1). See EN-1827.
-	ErrorReason_ERROR_REASON_CLUSTER_POLICY_INVALID ErrorReason = 66
+	ErrorReason_ERROR_REASON_CLUSTER_POLICY_INVALID ErrorReason = 65
 	// ERROR_REASON_CHECKPOINT_LIMIT_REACHED: a CreateQueryCheckpoint was rejected
 	// because the live query-checkpoint count is at the replicated policy limit.
 	// Creation never evicts; an existing checkpoint must be deleted first. See
 	// EN-1501.
-	ErrorReason_ERROR_REASON_CHECKPOINT_LIMIT_REACHED ErrorReason = 67
+	ErrorReason_ERROR_REASON_CHECKPOINT_LIMIT_REACHED ErrorReason = 66
 	// ERROR_REASON_CHECKPOINT_NOT_FOUND: a DeleteQueryCheckpoint targeted an id
 	// that is not live (never created, or already deleted). See EN-1501.
-	ErrorReason_ERROR_REASON_CHECKPOINT_NOT_FOUND ErrorReason = 68
+	ErrorReason_ERROR_REASON_CHECKPOINT_NOT_FOUND ErrorReason = 67
 )
 
 // Enum value maps for ErrorReason.
@@ -694,12 +692,11 @@ var (
 		60: "ERROR_REASON_PRELOAD_UNAVAILABLE",
 		61: "ERROR_REASON_AGGREGATE_OVERFLOW",
 		62: "ERROR_REASON_BALANCE_NOT_FOUND",
-		63: "ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP",
-		64: "ERROR_REASON_STALE_CLUSTER_POLICY",
-		65: "ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT",
-		66: "ERROR_REASON_CLUSTER_POLICY_INVALID",
-		67: "ERROR_REASON_CHECKPOINT_LIMIT_REACHED",
-		68: "ERROR_REASON_CHECKPOINT_NOT_FOUND",
+		63: "ERROR_REASON_STALE_CLUSTER_POLICY",
+		64: "ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT",
+		65: "ERROR_REASON_CLUSTER_POLICY_INVALID",
+		66: "ERROR_REASON_CHECKPOINT_LIMIT_REACHED",
+		67: "ERROR_REASON_CHECKPOINT_NOT_FOUND",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -765,12 +762,11 @@ var (
 		"ERROR_REASON_PRELOAD_UNAVAILABLE":              60,
 		"ERROR_REASON_AGGREGATE_OVERFLOW":               61,
 		"ERROR_REASON_BALANCE_NOT_FOUND":                62,
-		"ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP":         63,
-		"ERROR_REASON_STALE_CLUSTER_POLICY":             64,
-		"ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT": 65,
-		"ERROR_REASON_CLUSTER_POLICY_INVALID":           66,
-		"ERROR_REASON_CHECKPOINT_LIMIT_REACHED":         67,
-		"ERROR_REASON_CHECKPOINT_NOT_FOUND":             68,
+		"ERROR_REASON_STALE_CLUSTER_POLICY":             63,
+		"ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT": 64,
+		"ERROR_REASON_CLUSTER_POLICY_INVALID":           65,
+		"ERROR_REASON_CHECKPOINT_LIMIT_REACHED":         66,
+		"ERROR_REASON_CHECKPOINT_NOT_FOUND":             67,
 	}
 )
 
@@ -2769,10 +2765,10 @@ type Index struct {
 	// lives in `readstore.IndexVersionState.CurrentVersion` (internal)
 	// and is exposed on the wire as `IndexEntry.current_version` on
 	// `GetIndexStatusResponse`. Queries read from the replica's local
-	// current_version, not from this cluster-wide field. Synchronization
-	// is client-driven via min_log_sequence on the read API — but note
-	// that min_log_sequence pins log application on this replica, NOT
-	// local rewrite completion; see api-comparison.md for the contract.
+	// current_version, not from this cluster-wide field. The read path's Raft
+	// horizon certificate proves causal catch-up of the projection, but does
+	// NOT certify completion of a local build/rewrite; current/pending version
+	// remains the explicit readiness contract. See api-comparison.md.
 	ForwardEncodingVersion uint32 `protobuf:"varint,4,opt,name=forward_encoding_version,json=forwardEncodingVersion,proto3" json:"forward_encoding_version,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
@@ -12213,13 +12209,9 @@ type ReadOptions struct {
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of
 	// the live store. Endpoints that do not support checkpoint reads MUST
 	// reject any non-zero value with InvalidArgument.
-	CheckpointId uint64 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
-	// min_log_sequence requires the store to have applied at least this log
-	// sequence before reading; FailedPrecondition otherwise. Ignored for
-	// checkpoint reads (a checkpoint is a fixed snapshot).
-	MinLogSequence uint64 `protobuf:"fixed64,2,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	CheckpointId  uint64 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ReadOptions) Reset() {
@@ -12255,13 +12247,6 @@ func (*ReadOptions) Descriptor() ([]byte, []int) {
 func (x *ReadOptions) GetCheckpointId() uint64 {
 	if x != nil {
 		return x.CheckpointId
-	}
-	return 0
-}
-
-func (x *ReadOptions) GetMinLogSequence() uint64 {
-	if x != nil {
-		return x.MinLogSequence
 	}
 	return 0
 }
@@ -13192,10 +13177,9 @@ const file_common_proto_rawDesc = "" +
 	"\x02s3\x18\x01 \x01(\v2\x17.common.S3StorageConfigH\x00R\x02s3\x122\n" +
 	"\x05azure\x18\x02 \x01(\v2\x1a.common.AzureStorageConfigH\x00R\x05azureB\n" +
 	"\n" +
-	"\bprovider\"\\\n" +
+	"\bprovider\"2\n" +
 	"\vReadOptions\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\x12(\n" +
-	"\x10min_log_sequence\x18\x02 \x01(\x06R\x0eminLogSequence\"\xb2\x01\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"\xb2\x01\n" +
 	"\vListOptions\x12'\n" +
 	"\x04read\x18\x01 \x01(\v2\x13.common.ReadOptionsR\x04read\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\rR\bpageSize\x12\x16\n" +
@@ -13253,7 +13237,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xde\x15\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xb3\x15\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -13318,13 +13302,12 @@ const file_common_proto_rawDesc = "" +
 	"$ERROR_REASON_STALE_INPUTS_RESOLUTION\x10;\x12$\n" +
 	" ERROR_REASON_PRELOAD_UNAVAILABLE\x10<\x12#\n" +
 	"\x1fERROR_REASON_AGGREGATE_OVERFLOW\x10=\x12\"\n" +
-	"\x1eERROR_REASON_BALANCE_NOT_FOUND\x10>\x12)\n" +
-	"%ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP\x10?\x12%\n" +
-	"!ERROR_REASON_STALE_CLUSTER_POLICY\x10@\x121\n" +
-	"-ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT\x10A\x12'\n" +
-	"#ERROR_REASON_CLUSTER_POLICY_INVALID\x10B\x12)\n" +
-	"%ERROR_REASON_CHECKPOINT_LIMIT_REACHED\x10C\x12%\n" +
-	"!ERROR_REASON_CHECKPOINT_NOT_FOUND\x10D*Q\n" +
+	"\x1eERROR_REASON_BALANCE_NOT_FOUND\x10>\x12%\n" +
+	"!ERROR_REASON_STALE_CLUSTER_POLICY\x10?\x121\n" +
+	"-ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT\x10@\x12'\n" +
+	"#ERROR_REASON_CLUSTER_POLICY_INVALID\x10A\x12)\n" +
+	"%ERROR_REASON_CHECKPOINT_LIMIT_REACHED\x10B\x12%\n" +
+	"!ERROR_REASON_CHECKPOINT_NOT_FOUND\x10C*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +

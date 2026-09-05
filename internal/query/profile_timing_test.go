@@ -112,8 +112,8 @@ const (
 )
 
 // The exclusion asserted with real numbers rather than a floor: a barrier
-// recorded before the executor — waitMinLogSequence, which runs there on most
-// read paths — must be subtracted from both prepare and the server total, and
+// recorded before the executor — ReadIndex, which runs there on most read
+// paths — must be subtracted from both prepare and the server total, and
 // from nothing else.
 func TestQueryProfile_BarrierBeforeExecuteExcludedFromPrepareAndServer(t *testing.T) {
 	t.Parallel()
@@ -189,7 +189,7 @@ func TestQueryProfile_BarrierBeforeExecuteNotChargedToPrepare(t *testing.T) {
 	p.AddBarrierWait(time.Hour)
 	p.EnterExecute()
 
-	assert.Zero(t, p.PrepareDuration, "min_log_sequence wait is not preparation work")
+	assert.Zero(t, p.PrepareDuration, "the consistency wait is not preparation work")
 	assert.NotEmpty(t, p.Anomaly, "and driving a phase negative must be reported, not silently floored")
 }
 
