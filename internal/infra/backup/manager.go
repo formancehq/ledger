@@ -530,13 +530,16 @@ func RunIncrementalBackup(
 		// proposal writes one AuditItem per order too — writeAuditEntry
 		// (state/machine.go) reaches buildAuditItems(serializedOrders, nil)
 		// (state/audit.go), which only leaves LogSequence at 0 — so a
-		// failure-only range is NOT an empty auditItem range. The range can
-		// still be empty (a proposal that carried no orders), and nothing here
-		// may assume otherwise: exportEntries then returns no segments, so
-		// appending its result adds nothing and we never reference a key that
-		// does not exist on storage (a subsequent ApplyExports would fail on
-		// GetFile). The guard is structural, same as the appliedProposal
-		// branch below.
+		// failure-only range is NOT an empty auditItem range. Nor is any other
+		// range: an order-less proposal returns before the audit-entry path, so
+		// every audit_seq in this range carries at least one item. The
+		// empty-range handling is kept as defence in depth against a corrupt or
+		// partially-restored source store: exportEntries then returns no
+		// segments, so appending its result adds nothing and we never reference
+		// a key that does not exist on storage (a subsequent ApplyExports would
+		// fail on GetFile). The guard is structural, same as the
+		// appliedProposal branch below — where an empty range is the normal
+		// failure-only case rather than a corruption signal.
 		itemSegs, _, err := exportEntries(
 			ctx, storage, readHandle,
 			dal.ZoneHistory, dal.SubHistoryAuditItem, afterAuditSeq, currentAuditSeq, "auditItem",
