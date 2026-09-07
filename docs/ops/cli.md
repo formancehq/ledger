@@ -4507,7 +4507,7 @@ Continuous profiling via Pyroscope. Only available when the binary is built with
 | `--pyroscope-enabled` | bool | `false` | Enable Pyroscope continuous profiling |
 | `--pyroscope-server-address` | string | `http://localhost:4040` | Pyroscope server address |
 | `--pyroscope-application-name` | string | `""` | Application name for Pyroscope (defaults to service name) |
-| `--pyroscope-auth-token` | string | `""` | Bearer token for custom Pyroscope endpoints (complete Basic Auth credentials take precedence) |
+| `--pyroscope-auth-token` | string | `""` | Authentication token for Pyroscope (for Grafana Cloud) |
 | `--pyroscope-tenant-id` | string | `""` | Tenant ID for multi-tenant Pyroscope (for Grafana Cloud) |
 | `--pyroscope-basic-auth-user` | string | `""` | Basic auth username for Pyroscope |
 | `--pyroscope-basic-auth-password` | string | `""` | Basic auth password for Pyroscope |
@@ -4525,16 +4525,12 @@ ledger run --pyroscope-enabled --pyroscope-server-address http://pyroscope:4040 
 # Enable Pyroscope with Grafana Cloud
 ledger run --pyroscope-enabled \
   --pyroscope-server-address https://profiles-prod-001.grafana.net \
-  --pyroscope-basic-auth-user "12345" \
-  --pyroscope-basic-auth-password "glc_xxx" [other flags...]
+  --pyroscope-auth-token "glc_xxx" \
+  --pyroscope-tenant-id "12345" [other flags...]
 
 # Only CPU and allocation profiling
 ledger run --pyroscope-enabled --pyroscope-profile-types cpu,alloc_space [other flags...]
 ```
-
-Bearer tokens are sent through the SDK's supported `HTTPHeaders` option.
-Legacy `*.pyroscope.cloud` endpoints require the SDK's deprecated token field
-and are not supported; use a current Grafana Cloud endpoint with Basic Auth.
 
 ---
 

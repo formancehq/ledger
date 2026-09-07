@@ -43,34 +43,20 @@ state rather than reusable cache state.
 
 ### golangci-lint cross-worktree safety
 
-The development shell provides upstream golangci-lint v2.13.2 through the
-`nixpkgs-unstable` revision pinned in `flake.lock`, without a package override
-or source patch. Its analysis cache is location-independent:
+The development shell provides upstream golangci-lint v2.13.2 through
+`flake.lock`, without a package override or source patch. Identical packages
+share cache entries across worktrees; current-module issue positions are stored
+relative to the module and rebased to the consuming checkout on load. A
+payload-format salt excludes the unsafe v2.12.2 entries, which stored absolute
+producer paths ([upstream #6695](https://github.com/golangci/golangci-lint/issues/6695)).
 
-- package keys normalize current-module filenames and the `go.mod` salt so
-  byte-identical packages can share an entry across worktrees;
-- cached issue positions are stored relative to the current module and rebased
-  against the consuming checkout when loaded; and
-- the payload-format salt keeps unsafe v2.12.2 entries out of the new cache
-  namespace.
-
-This preserves global warm-cache reuse without letting generated-file,
-exclusion, nolint, source-reading, or fixer processing reopen the producing
-worktree. Suggested fixes retain byte offsets, not filenames; the fixer uses
-the rebased issue filename, while the content-derived package key ensures the
-offsets describe the consuming file.
-
-The requirement is that a cached result may read or modify files only through
-paths belonging to the checkout that loaded it. The previous v2.12.2 pin did
-not meet that requirement: its key was module-relative but its gob-encoded
-`token.Position.Filename` remained absolute. This is the same defect tracked by
-[golangci-lint #3502](https://github.com/golangci/golangci-lint/issues/3502),
-[#6656](https://github.com/golangci/golangci-lint/issues/6656), and
-[#6695](https://github.com/golangci/golangci-lint/issues/6695).
+Cached diagnostics must not reopen the producer's files after it is removed.
+Suggested fixes use the rebased issue filename and retain byte offsets; the
+content-derived package key ensures those offsets describe the consuming file.
 
 Go's normal content, build-option, race, tag, toolchain, and module checksum
 keys remain authoritative. There is no verified seed/copy layer and no
-run-local extracted module tree. If normal cache corruption or suspicious lint
+run-local extracted module tree. If lint-cache corruption or suspicious lint
 behavior occurs, perform one explicit clean retry:
 
 ```bash
@@ -79,12 +65,9 @@ bash scripts/agent-validation-env --clean-cache --ephemeral true
 
 Despite its historical name, `--clean-cache` now removes only
 `GOLANGCI_LINT_CACHE`. It preserves `GOCACHE`, `GOMODCACHE`, `GOPATH`, and
-`XDG_CACHE_HOME`; the cross-worktree path defect provides no reason to discard
-those caches. Cache clearing is exceptional recovery, not a cost imposed on
-every run. Because the lint cache remains globally shared, coordinate the retry
-with other local agents and do not clear it while another validation is using
-it. golangci-lint manages one shared cache instead of accumulating orphaned
-per-worktree namespaces.
+`XDG_CACHE_HOME`. Clearing is exceptional recovery, not a cost imposed on every
+run. Coordinate it with other local agents: do not clear the shared lint cache
+while another validation is using it.
 
 ### Alternatives considered
 
@@ -92,7 +75,7 @@ per-worktree namespaces.
 | --- | --- | --- | --- |
 | Stable cache directory per canonical worktree | Safe across worktrees, including symlink aliases after canonicalization | Warm only within one physical path; duplicates entries and leaves namespaces after removed worktrees | Not selected once the upstream value fix became available |
 | Absolute worktree path in the cache key | Safe because different paths cannot hit the same entry | Same hit topology as per-worktree directories, with no cross-worktree reuse | Upstream temporarily used this fallback in #6697 |
-| Relative positions rebased on load | Safe when every path-bearing cached value is normalized and old payloads are salted out | Preserves global cross-worktree hits | Selected through upstream v2.13.2, with its analyzer findings fixed in Ledger |
+| Relative positions rebased on load | Safe when every path-bearing cached value is normalized and old payloads are salted out | Preserves global cross-worktree hits | Provided by the pinned upstream v2.13.2 package |
 | Per-execution lint cache | Safe | No lint-cache warm path; repeats analysis on every validation | Rejected on performance grounds |
 | v2.12.2 global cache plus routine cleaning | Unsafe between cleans | Fast only until another checkout supplies a location-bound value | Rejected; cleaning is recovery, not isolation |
 
@@ -125,16 +108,8 @@ A 2026-09-07 comparison on a one-package positioned-diagnostic fixture measured
 the selected global/rebased cache at 31.9ms cold in worktree A and 27.2ms for a
 cross-worktree hit in B. A stable per-worktree namespace measured 45.0ms cold
 and 27.3ms warm in A, then paid another 32.3ms cold in B; a per-execution cache
-paid the cold analysis on both runs (32.7ms and 31.0ms). On the full root module,
-the initial v2.12.2 backport prototype completed a temporary-cache cold lint in
-204.7s and an unchanged warm lint in 5.3s with zero issues; the operator module
-measured 28.3s cold and 3.4s warm. These timings demonstrate hit topology, not a
-performance budget. The final implementation uses the upstream release rather
-than carrying that source patch; these prototype timings are historical
-comparison evidence. Before the Go 1.27 base synchronization, upstream v2.13.2
-with its analyzer findings fixed measured 2.3s/1.6s for unchanged warm
-root/operator lint with zero issues, using an isolated temporary cache root
-(excluding Nix shell startup).
+paid the cold analysis on both runs (32.7ms and 31.0ms). These targeted timings
+demonstrate cache reuse, not a full-module performance budget.
 
 The alternative input-sensitive pre-commit proposal added roughly 1,500 lines
 of selector and dependency machinery. A straightforward warm pre-commit at

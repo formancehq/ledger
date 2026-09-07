@@ -61,7 +61,7 @@ func addPyroscopeFlags(flags *flag.FlagSet) {
 	flags.Bool(PyroscopeEnabledFlag, false, "Enable Pyroscope continuous profiling")
 	flags.String(PyroscopeServerAddressFlag, "http://localhost:4040", "Pyroscope server address")
 	flags.String(PyroscopeApplicationNameFlag, "", "Application name for Pyroscope (defaults to service name)")
-	flags.String(PyroscopeAuthTokenFlag, "", "Bearer token for custom Pyroscope endpoints (complete Basic Auth credentials take precedence)")
+	flags.String(PyroscopeAuthTokenFlag, "", "Authentication token for Pyroscope (for Grafana Cloud)")
 	flags.String(PyroscopeTenantIDFlag, "", "Tenant ID for multi-tenant Pyroscope (for Grafana Cloud)")
 	flags.String(PyroscopeBasicAuthUserFlag, "", "Basic auth username for Pyroscope")
 	flags.String(PyroscopeBasicAuthPasswordFlag, "", "Basic auth password for Pyroscope")

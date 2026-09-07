@@ -224,10 +224,8 @@ linters:
     # race, only pterm's inherent pattern. Tracked separately rather than
     # duplicating the wrapper across the module boundary.
     #
-    # Match whether the configuration is evaluated from the repository root or
-    # the nested operator module. Cross-worktree cache hits are rebased to the
-    # consuming checkout by the pinned upstream golangci-lint release; this
-    # expression does not compensate for foreign cached paths.
+    # Match paths from the repository root or the nested operator module.
+    # Cross-worktree cache hits are rebased to the consuming checkout.
     - path: (^|/)misc/operator/
       linters: [forbidigo]
     # spinner.go is the sanctioned cmdutil.StartSpinner wrapper for EN-1781 —

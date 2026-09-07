@@ -679,16 +679,13 @@ export PYROSCOPE_ENABLED=true
 export PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040
 export PYROSCOPE_APPLICATION_NAME=ledger
 
-# Optional: Basic authentication for Grafana Cloud
-export PYROSCOPE_BASIC_AUTH_USER=your-instance-id
-export PYROSCOPE_BASIC_AUTH_PASSWORD=your-access-policy-token
+# Optional: Authentication for Grafana Cloud
+export PYROSCOPE_AUTH_TOKEN=your-grafana-cloud-token
+export PYROSCOPE_TENANT_ID=your-tenant-id
 
-# Alternative: Bearer authentication for a custom endpoint
-# (used only when a complete Basic Auth pair is not configured)
-# export PYROSCOPE_AUTH_TOKEN=your-bearer-token
-
-# Optional: Tenant ID for a multi-tenant endpoint
-# export PYROSCOPE_TENANT_ID=your-tenant-id
+# Optional: Basic auth
+export PYROSCOPE_BASIC_AUTH_USER=user
+export PYROSCOPE_BASIC_AUTH_PASSWORD=password
 
 # Optional: Additional tags (can be specified multiple times)
 export PYROSCOPE_TAGS=env=production,region=us-east-1
@@ -707,12 +704,6 @@ export PYROSCOPE_BLOCK_PROFILE_RATE=5
 export PYROSCOPE_DISABLE_GC_RUNS=false
 ```
 
-The Bearer token uses the SDK's supported `HTTPHeaders` option instead of its
-deprecated `AuthToken` field. Complete Basic Auth credentials take precedence;
-an incomplete pair does not suppress the Bearer token. Legacy
-`*.pyroscope.cloud` endpoints still require the deprecated SDK field and are
-not supported; use a current Grafana Cloud endpoint with Basic Auth.
-
 ### Command-Line Flags
 
 | Flag | Description | Default |
@@ -720,7 +711,7 @@ not supported; use a current Grafana Cloud endpoint with Basic Auth.
 | `--pyroscope-enabled` | Enable Pyroscope profiling | `false` |
 | `--pyroscope-server-address` | Pyroscope server address | `http://localhost:4040` |
 | `--pyroscope-application-name` | Application name in Pyroscope | Service name |
-| `--pyroscope-auth-token` | Bearer token for custom endpoints; complete Basic Auth credentials take precedence | - |
+| `--pyroscope-auth-token` | Auth token for Grafana Cloud | - |
 | `--pyroscope-tenant-id` | Tenant ID for multi-tenant Pyroscope | - |
 | `--pyroscope-basic-auth-user` | Basic auth username | - |
 | `--pyroscope-basic-auth-password` | Basic auth password | - |
