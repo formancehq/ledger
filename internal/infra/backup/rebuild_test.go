@@ -1148,11 +1148,13 @@ func TestRebuildDelta_IdempotencyConflictKeepsDeltaOutcome(t *testing.T) {
 	require.Equal(t, uint64(1), v.GetFirstLogSequence(), "the original success survives")
 }
 
-// TestRebuildDelta_IdempotencyExpiresAtRoundtrips proves incremental-restore
-// parity (invariant #11) for the frozen expires_at: RebuildDelta must
-// reconstruct the SubIdempKeys value's expires_at from the audit chain AND,
-// because that value is non-zero, its eviction time-index entry — so a restored
-// cluster expires and evicts the outcome on the same schedule as the source.
+// TestRebuildDelta_IdempotencyExpiresAtRoundtrips is the lowest-level check that
+// RebuildDelta reconstructs the SubIdempKeys value's expires_at from the audit
+// chain AND, because that value is non-zero, its eviction time-index entry — so a
+// restored cluster expires and evicts the outcome on the same schedule as the
+// source. The full cross-lifecycle restore parity required by invariant #11
+// (checkpoint → keyed commit in the delta → real restore → CheckStore) is proved
+// by tests/e2e/cluster/restore_idempotency_test.go.
 func TestRebuildDelta_IdempotencyExpiresAtRoundtrips(t *testing.T) {
 	t.Parallel()
 

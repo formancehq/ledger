@@ -38,6 +38,11 @@ import (
 // key is re-executed instead of replayed (a duplicate), and a reused key with a
 // different body is executed instead of rejected IDEMPOTENCY_KEY_CONFLICT — the
 // same shape as the reversion-bitset loss (see restore_reversion_test.go).
+//
+// It also proves the frozen expires_at projection survives restore: each keyed
+// outcome's retention deadline is Rebuilt from the audit chain, and CheckStore on
+// the restored node re-derives and verifies it (the cross-lifecycle half of
+// invariant #11 for the expires_at projection).
 var _ = Describe("Restore idempotency keys", Ordered, func() {
 	const (
 		ledgerName = "idem-restore-ledger"
@@ -341,6 +346,17 @@ var _ = Describe("Restore idempotency keys", Ordered, func() {
 
 		It("still dedups after the rebuild", func() {
 			expectIdempotency(client, "restored")
+		})
+
+		It("passes CheckStore on the restored store", func() {
+			// Each keyed outcome's frozen expires_at is Rebuilt from the audit chain
+			// by RebuildDelta. CheckStore re-derives that expiry from the hash chain
+			// and flags any divergence, so a clean result proves the frozen retention
+			// deadline (and its eviction time-index entry) survived restore — the
+			// cross-lifecycle half of invariant #11 for the expires_at projection.
+			result, err := actions.CollectCheckStoreEvents(ctx, client)
+			Expect(err).To(Succeed())
+			Expect(result.Errors).To(BeEmpty(), "CheckStore errors on the restored store: %v", result.Errors)
 		})
 	})
 })
