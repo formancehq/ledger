@@ -24,27 +24,31 @@ environment_gate() {
     unset GOROOT || true
 
     local go_bin go_version expected_raw expected actual actual_root
-    local expected_major expected_minor actual_major actual_minor
+    local expected_major expected_minor expected_patch actual_major actual_minor actual_patch
     go_bin=$(command -v go) || die "ENVIRONMENT_GATE=FAIL (go not found)"
     go_version=$(go version) || die "ENVIRONMENT_GATE=FAIL (go unusable)"
     expected_raw=$(awk '$1 == "go" {print $2; exit}' "$mod_file")
     [[ -n "$expected_raw" ]] || die "ENVIRONMENT_GATE=FAIL (go directive missing)"
-    [[ "$expected_raw" =~ ^([0-9]+)\.([0-9]+)(\.[0-9]+)?$ ]] || \
+    [[ "$expected_raw" =~ ^([0-9]+)\.([0-9]+)(\.([0-9]+))?$ ]] || \
         die "ENVIRONMENT_GATE=FAIL (invalid go directive: $expected_raw)"
     expected_major=${BASH_REMATCH[1]}
     expected_minor=${BASH_REMATCH[2]}
-    expected="$expected_major.$expected_minor"
-    [[ "$go_version" =~ go([0-9]+)\.([0-9]+) ]] || \
+    expected_patch=${BASH_REMATCH[4]:-0}
+    expected="$expected_major.$expected_minor.$expected_patch"
+    [[ "$go_version" =~ go([0-9]+)\.([0-9]+)(\.([0-9]+))?([[:space:]]|$) ]] || \
         die "ENVIRONMENT_GATE=FAIL (unable to parse toolchain version: $go_version)"
     actual_major=${BASH_REMATCH[1]}
     actual_minor=${BASH_REMATCH[2]}
-    actual="$actual_major.$actual_minor"
+    actual_patch=${BASH_REMATCH[4]:-0}
+    actual="$actual_major.$actual_minor.$actual_patch"
     actual_root=$(go env GOROOT)
 
     [[ "$go_bin" == /nix/store/* && "$actual_root" == /nix/store/* ]] || \
         die "ENVIRONMENT_GATE=FAIL (Go is not from the Nix store)"
     if (( 10#$actual_major < 10#$expected_major ||
-        (10#$actual_major == 10#$expected_major && 10#$actual_minor < 10#$expected_minor) )); then
+        (10#$actual_major == 10#$expected_major && 10#$actual_minor < 10#$expected_minor) ||
+        (10#$actual_major == 10#$expected_major && 10#$actual_minor == 10#$expected_minor &&
+            10#$actual_patch < 10#$expected_patch) )); then
         die "ENVIRONMENT_GATE=FAIL (module requires Go $expected or newer, got $go_version)"
     fi
 
