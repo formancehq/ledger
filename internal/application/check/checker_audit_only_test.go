@@ -392,6 +392,10 @@ func TestCheck_LogSequenceFieldMismatch(t *testing.T) {
 		{"last log claims sequence zero", lastLogSequence, 0},
 		{"last log claims a later sequence", lastLogSequence, 99},
 		{"middle log claims another sequence", 2, 3},
+		// The create_ledger row is the widest blast radius: skipping it instead
+		// of replaying it loses the ledger itself, so every later log reports an
+		// unknown ledger and the stored LedgerInfo reports as unaudited.
+		{"create_ledger log claims another sequence", 1, 7},
 	}
 
 	for _, tc := range cases {
@@ -405,6 +409,15 @@ func TestCheck_LogSequenceFieldMismatch(t *testing.T) {
 			rewriteLogSequenceField(t, engine.store, tc.keySequence, tc.valueSequence)
 
 			errs := collectCheckErrors(t, engine.store, engine.attrs)
+			// The divergent row is reported AND replayed under its key, so the
+			// tamper is the only finding. Skipping the replay instead folds a
+			// hole into the expected state and cascades 5 to 10 further events
+			// that misdescribe a store whose log is present and readable
+			// ("unexpected transaction ... (no matching log)" for a log that
+			// exists), so len(errs) is the trigger for that behaviour and not
+			// only the mismatch count.
+			require.Len(t, errs, 1,
+				"the tampered row must be the only finding, got %v", errs)
 			require.Equal(t, 1,
 				countErrorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH),
 				"exactly one LOG_SEQUENCE_MISMATCH expected, got %v", errs)
