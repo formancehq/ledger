@@ -43,7 +43,7 @@ Distributed ledger system using the Raft consensus protocol to ensure data consi
 
 ## Quick Start
 
-**Prerequisites:** Go 1.26+, [Just](https://github.com/casey/just), Nix with Flakes enabled.
+**Prerequisites:** Go 1.27+, [Just](https://github.com/casey/just), Nix with Flakes enabled.
 
 ```bash
 # Setup (first time only)

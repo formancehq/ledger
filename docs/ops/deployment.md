@@ -8,7 +8,7 @@ This document describes the different deployment methods for Ledger v3 POC, from
 
 ### Prerequisites
 
-- Go 1.26+
+- Go 1.27+
 - Just (command runner)
 - Optional: Nix with Flakes
 

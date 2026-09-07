@@ -90,7 +90,7 @@ func coerceToSchema(m map[string]any, t reflect.Type) {
 		if tag == "" || tag == "-" {
 			continue
 		}
-		jsonName := strings.Split(tag, ",")[0]
+		jsonName, _, _ := strings.Cut(tag, ",")
 		fieldTypes[jsonName] = sf
 	}
 

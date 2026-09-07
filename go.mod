@@ -16,12 +16,15 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.39
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.38
 	github.com/aws/aws-sdk-go-v2/feature/rds/auth v1.6.20
+	github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager v0.3.16
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.107.4
 	github.com/aws/aws-sdk-go-v2/service/sts v1.45.8
 	github.com/aws/smithy-go v1.27.10
+	github.com/benbjohnson/immutable v0.4.3
 	github.com/bytedance/sonic v1.15.0
 	github.com/cockroachdb/pebble/v2 v2.1.4
 	github.com/databricks/databricks-sql-go v1.10.0
+	github.com/dustin/go-humanize v1.0.1
 	github.com/formancehq/go-libs/v5 v5.7.2
 	github.com/formancehq/invariants v0.11.0
 	github.com/formancehq/numscript v0.0.25-0.20260713092057-edde2b17f0a0 // pinned to numscript main @edde2b17 (#169, ResolveDependencies); repin to v0.0.25 once tagged off main
@@ -72,6 +75,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.43.0
 	go.opentelemetry.io/otel/trace v1.44.0
 	go.uber.org/fx v1.24.0
+	go.uber.org/goleak v1.3.0
 	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.27.1
 	go.yaml.in/yaml/v3 v3.0.4
@@ -82,13 +86,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478
 	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.11
-)
-
-require (
-	github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager v0.3.16
-	github.com/benbjohnson/immutable v0.4.3
-	github.com/dustin/go-humanize v1.0.1
-	go.uber.org/goleak v1.3.0
 )
 
 require (
@@ -145,7 +142,7 @@ require (
 	github.com/cockroachdb/errors v1.11.3 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
-	github.com/cockroachdb/swiss v0.0.0-20251224182025-b0f6560f979b // indirect
+	github.com/cockroachdb/swiss v0.0.0-20260820225851-333444432258 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/containerd/console v1.0.5 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect

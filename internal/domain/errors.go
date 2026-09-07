@@ -1146,8 +1146,7 @@ func (e *ErrDependencyDiscoveryFailed) Unwrap() error {
 }
 
 func (e *ErrDependencyDiscoveryFailed) Reason() string {
-	var describable Describable
-	if errors.As(e.Cause, &describable) {
+	if describable, ok := errors.AsType[Describable](e.Cause); ok {
 		return describable.Reason()
 	}
 

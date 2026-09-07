@@ -26,7 +26,7 @@ func fieldsFromType(t reflect.Type) []Field {
 		if tag == "" || tag == "-" {
 			continue
 		}
-		jsonName := strings.Split(tag, ",")[0]
+		jsonName, _, _ := strings.Cut(tag, ",")
 		if jsonName == "" {
 			continue
 		}

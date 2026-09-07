@@ -156,8 +156,7 @@ func writeProtoListOK[T proto.Message](w http.ResponseWriter, msgs []T) {
 // If the underlying error is a MaxBytesError (body too large), it writes
 // 413 Request Entity Too Large instead.
 func writeBadRequest(w http.ResponseWriter, errorCode string, err error) {
-	var maxBytesErr *http.MaxBytesError
-	if errors.As(err, &maxBytesErr) {
+	if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 		writeErrorResponse(w, http.StatusRequestEntityTooLarge, "BODY_TOO_LARGE", err)
 
 		return

@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **Nix with Flakes enabled** (required) - provides Go 1.26+, Just, golangci-lint, protoc, Atlassian CLI (`acli`), and all other repository CLI dependencies
+- **Nix with Flakes enabled** (required) - provides Go 1.27+, Just, golangci-lint, protoc, Atlassian CLI (`acli`), and all other repository CLI dependencies
 - **direnv** - [Installation](https://direnv.net/) and [shell hook](https://direnv.net/docs/hook.html)
 
 ## Setup

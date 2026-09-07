@@ -77,6 +77,17 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 			expected: []string{"agent-check-full", "test-e2e"},
 		},
 		{
+			// Regression for a classify_path branch that ended with a bare
+			// `return` right after `[[ ... ]] && needs_e2e=true`: a
+			// dependency-only path (not under misc/proto or internal/proto)
+			// makes that conditional's left side false, so the bare return
+			// propagated exit status 1 and set -e silently aborted the whole
+			// script. go.mod exercises exactly that false branch.
+			name:     "dependency-only toolchain change",
+			paths:    []string{"go.mod"},
+			expected: []string{"agent-check-full"},
+		},
+		{
 			name:     "operator module",
 			paths:    []string{"misc/operator/internal/example.go"},
 			expected: []string{"pre-commit", "agent-check", "test-operator"},

@@ -88,7 +88,7 @@ func (c *Config) PyroscopeConfig() pyroscope.Config {
 		ProfileTypes:      c.ProfileTypes,
 		DisableGCRuns:     c.DisableGCRuns,
 		UploadRate:        c.UploadRate,
-		AuthToken:         c.AuthToken,
+		AuthToken:         c.AuthToken, //nolint:staticcheck // bearer-token auth is a distinct mechanism from BasicAuthUser/BasicAuthPassword; still required for Grafana Cloud API-key auth
 		TenantID:          c.TenantID,
 		BasicAuthUser:     c.BasicAuthUser,
 		BasicAuthPassword: c.BasicAuthPassword,

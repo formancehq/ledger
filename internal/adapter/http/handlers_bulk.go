@@ -337,8 +337,7 @@ func perElementStatus(err error) int {
 		return http.StatusServiceUnavailable
 	}
 
-	var d domain.Describable
-	if errors.As(err, &d) {
+	if d, ok := errors.AsType[domain.Describable](err); ok {
 		return kindToHTTPStatus(domain.Kind(d))
 	}
 
@@ -350,8 +349,7 @@ func perElementStatus(err error) int {
 // Domain-typed errors expose it through the Describable contract; anything else
 // keeps the generic "ERROR" fallback rather than leaking a raw string.
 func bulkErrorCode(err error) string {
-	var d domain.Describable
-	if errors.As(err, &d) {
+	if d, ok := errors.AsType[domain.Describable](err); ok {
 		return d.Reason()
 	}
 

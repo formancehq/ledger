@@ -61,8 +61,7 @@ func run() int {
 	if err != nil {
 		cmdutil.RecordSpanError(span, err)
 
-		var cliErr *cmdutil.CLIError
-		if !errors.As(err, &cliErr) {
+		if _, ok := errors.AsType[*cmdutil.CLIError](err); !ok {
 			// Error was not already displayed — print it now.
 			pterm.Error.Println(err.Error())
 		}
