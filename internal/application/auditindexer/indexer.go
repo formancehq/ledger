@@ -337,8 +337,8 @@ func (i *Indexer) Stop() {
 // the persisted cursor is missing with entries present (fresh index over a
 // populated audit zone), performs a full drop+rebuild. Otherwise it completes
 // the initial incremental catch-up. Readiness remains conservative until one
-// of those paths succeeds; a boot error aborts the worker rather than exposing
-// a projection whose persisted state has not been classified.
+// of those paths succeeds. TailWorker retries transient boot errors while the
+// projection remains unavailable, so readiness can recover without a restart.
 func (i *Indexer) boot(ctx context.Context) error {
 	cursor, err := i.readStore.ReadAuditProgress()
 	if err != nil {
