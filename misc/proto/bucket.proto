@@ -868,8 +868,11 @@ enum CheckStoreErrorType {
   // query.ReadLastSequence reads the value's field off the last row -- a
   // single edited field could previously make a populated store look empty to
   // the checker, which then returned clean without replaying anything. The
-  // checker keys every projection on the key sequence and skips replaying the
-  // divergent row. See EN-1526.
+  // checker keys every projection on the key sequence, and the divergent row is
+  // reported and still replayed under that key sequence: the value's field is
+  // not an input to replay, and skipping the row would suppress the elision
+  // check and emit a cascade of volume, boundary and transaction findings that
+  // misdescribe a store whose log is present and readable. See EN-1526.
   CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH = 27;
   // Emitted when the expected log range could not be derived over the whole
   // history, so the stored log bound cannot be compared. Two causes: the live
@@ -881,13 +884,20 @@ enum CheckStoreErrorType {
   // surviving logs above it as unaudited and every log below the break as
   // missing, both false. See EN-1526.
   CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE = 28;
-  // Emitted when the store holds Log rows above the highest log sequence any
-  // chain-verified AuditSuccess range accounts for. Log rows are not
-  // hash-bound, so nothing but the audit ranges says which positions the FSM
-  // ever allocated: a row above the audited bound was produced by no audited
-  // proposal, hence injected or forged, and every projection keyed on its
-  // sequence would fold unaudited data. Reported once for the whole unaudited
-  // range with its row count, not per row. See EN-1526.
+  // Emitted when the store holds a Log row at a position no chain-verified
+  // AuditSuccess range accounts for. Log rows are not hash-bound, so nothing
+  // but the audit ranges says which positions the FSM ever allocated: a row
+  // outside the audited interval was produced by no audited proposal, hence
+  // injected or forged, and every projection keyed on its sequence would fold
+  // unaudited data. Two shapes, one per end of the interval. Above the audited
+  // bound: reported once for the whole unaudited range with its row count, not
+  // per row, since a forged tail can be millions of rows. At sequence 0: one
+  // event, carrying log_sequence 0 rather than a range, because keys are unique
+  // and the reserved position holds at most one row -- FSMState.NextSequenceID
+  // is seeded at 1 and recovery only raises it, so the audited interval starts
+  // at 1 and nothing the FSM allocated can land there. The sequence-0 row is otherwise invisible, sitting below both
+  // the interior gap scan (seeded at 1) and the bound comparison (which bounds
+  // the interval from above only). See EN-1526.
   CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED = 29;
 }
 

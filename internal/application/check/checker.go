@@ -315,6 +315,28 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		seq := binary.BigEndian.Uint64(logIter.Key()[2:10])
 		storedMaxLogSeq = seq
 
+		// Sequence 0 is not a position the FSM can allocate: FSMState.NextSequenceID
+		// is seeded at 1 (internal/infra/state/fsmstate.go) and recovery only ever
+		// raises it, so the audited interval starts at 1 —
+		// logBoundsVerifier.observeSuccess pins the first range's minimum — and no
+		// audit success range can account for a row here.
+		//
+		// That also makes such a row invisible to every other pass: storedMaxLogSeq
+		// stays 0 and reads as an empty store, the interior gap scan below is seeded
+		// at expectedSeq 1 and never looks beneath it, and logBoundsVerifier.compare
+		// bounds the interval from above only. This is where its lower end is pinned.
+		//
+		// Reported off the KEY and unconditionally: the audit fold has not run at this
+		// point, and a row at sequence 0 is unaudited whether or not the chain later
+		// verifies. The row is still replayed, on the same grounds as a divergent
+		// `sequence` field below.
+		if seq == 0 {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED,
+				"log sequence 0 has no audited origin: audited log sequences form an interval "+
+					"starting at 1, so a log at sequence 0 was allocated by no proposal",
+				seq, "", "", ""))
+		}
+
 		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
 			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
 				return fmt.Errorf("flushing replay ephemeral purge at missing log boundary %d: %w", nextProposalEnd, err)
