@@ -1,6 +1,6 @@
 module github.com/formancehq/ledger/v3/deployments/devenv/monitoring-ledger-dashboards
 
-go 1.27.0
+go 1.26.0
 
 require (
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.24.1

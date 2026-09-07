@@ -1,6 +1,6 @@
 module github.com/formancehq/ledger/v3/tests/perf
 
-go 1.27.1
+go 1.26.1
 
 require (
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.24.1

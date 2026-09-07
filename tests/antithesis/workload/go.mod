@@ -1,6 +1,6 @@
 module github.com/formancehq/ledger/v3/tests/antithesis/workload
 
-go 1.27.0
+go 1.26.0
 
 // replace github.com/formancehq/ledger/v3/pkg/client => ../../pkg/client
 replace github.com/formancehq/ledger/v3 => ../../../
