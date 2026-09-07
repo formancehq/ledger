@@ -107,7 +107,7 @@ classify_path() {
             needs_precommit=true
             needs_full=true
             [[ "$path" == misc/proto/* || "$path" == internal/proto/* ]] && needs_e2e=true
-            return
+            return 0
             ;;
         AGENTS.md|justfile|.github/*|scripts/*)
             needs_precommit=true
