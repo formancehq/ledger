@@ -1,4 +1,4 @@
-FROM golang:1.26-alpine AS base
+FROM golang:1.27-alpine AS base
 ARG GOARCH
 ARG GOOS
 ARG BUILD_TAGS=""

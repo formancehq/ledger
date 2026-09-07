@@ -6,7 +6,7 @@ This directory contains k6 performance tests for the ledger service, deployed to
 
 - [k6](https://k6.io/docs/getting-started/installation/) (used to create test archives)
 - [Pulumi](https://www.pulumi.com/docs/install/) (deployment)
-- Go 1.26+
+- Go 1.27+
 
 ## Project Structure
 
