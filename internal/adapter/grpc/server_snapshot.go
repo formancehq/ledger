@@ -151,8 +151,10 @@ func (s *SnapshotServiceServerImpl) FetchFile(req *snapshotpb.FetchFileRequest, 
 	})
 }
 
-// CloseSession retires the snapshot session. Its temporary checkpoint is
-// removed immediately unless an acquired FetchFile is still using it.
+// CloseSession atomically retires the snapshot session, preventing new
+// FetchFile acquisitions. Already-acquired FetchFile calls may finish; the
+// final release removes the temporary checkpoint. The operation is idempotent
+// and does not wait for active calls to finish.
 func (s *SnapshotServiceServerImpl) CloseSession(_ context.Context, req *snapshotpb.CloseSessionRequest) (*snapshotpb.CloseSessionResponse, error) {
 	s.sessions.remove(req.GetSessionId())
 
