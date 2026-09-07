@@ -350,16 +350,20 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// value's `sequence` field. Nothing binds the two — Log rows are not
 		// part of the audit hash chain — and query.ReadLastSequence reads the
 		// field off the last row, so editing that one field moves the head the
-		// whole run is sized against. Report the divergence and skip the row:
-		// its self-declared identity disagrees with the position every other
-		// projection is keyed on, so replaying it would fold unverifiable data
-		// into the expected state.
+		// whole run is sized against. That is why the divergence is reported,
+		// and why logBoundsVerifier derives the stored head from the KEY.
+		//
+		// The row is still replayed, under its key sequence. The field is not an
+		// input to replay: every consumer below takes the key-derived `seq`. And
+		// no Log row is hash-bound, so a divergent `sequence` field is evidence
+		// that one field was edited, not evidence that the payload is
+		// untrustworthy — skipping the row would suppress the elision check and
+		// emit a cascade of volume, boundary and transaction findings that
+		// misdescribe a store whose log is present and readable.
 		if log.GetSequence() != seq {
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH,
 				fmt.Sprintf("log at key sequence %d carries sequence %d in its stored value", seq, log.GetSequence()),
 				seq, "", "", ""))
-
-			continue
 		}
 
 		// Hash chain verification is now done via audit entries (see audit hash pass below).
