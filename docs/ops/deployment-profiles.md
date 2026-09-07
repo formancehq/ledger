@@ -391,10 +391,9 @@ validated with the customer's load.
 ### Long client retry window
 
 Set `--idempotency-ttl` to at least the maximum retry window promised to clients.
-Treat changing it as an intentional migration, not ordinary tuning, and keep it
-consistent across nodes. Non-zero persisted values are validated at startup;
-for backward compatibility, a persisted `0` is treated as an older unset field
-and may transition to a finite value without the unsafe override. `0` means keys
+It seeds the desired TTL in the Raft-replicated cluster policy; the effective TTL
+changes through a cluster-policy revision bump, not a restart or config
+validation, so keep the desired value consistent across nodes. `0` means keys
 never expire and must be paired with a deliberate storage-growth policy.
 
 ### High-throughput ingestion

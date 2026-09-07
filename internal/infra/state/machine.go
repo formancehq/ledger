@@ -891,14 +891,16 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 		// frozen business failure. Both must restore so a duplicate replays its
 		// stored outcome instead of re-executing.
 		//
-		// Skip a value already past its expiry as of the last applied HLC: a
-		// committed IdempotencyEviction between the leader's plan-build and this
-		// apply has already removed it from Pebble and the in-memory map, and
-		// re-injecting the stale copy would leave the map ahead of Pebble and let
-		// a later eviction double-SingleDelete the main key.
+		// Skip a value a committed IdempotencyEviction already removed between the
+		// leader's plan-build and this apply: re-injecting it would leave the map
+		// ahead of Pebble and let a later eviction double-SingleDelete the main
+		// key. Eviction status is read from the replicated eviction cutoff, NOT
+		// the HLC: an eviction is a technical-only proposal that never advances
+		// LastAppliedTimestamp, so on an idle cluster the HLC lags the eviction's
+		// wall-clock cutoff and would wrongly consider the removed value live.
 		v := ik.GetValue()
 		if v != nil && (v.GetFirstLogSequence() > 0 || v.GetFailure() != nil) &&
-			!IdempotencyExpired(v.GetExpiresAt(), fsm.State.LastAppliedTimestamp) {
+			!IdempotencyEvicted(v.GetExpiresAt(), fsm.State.LastIdempotencyEvictionCutoff) {
 			fsm.Registry.Idempotency.Put(ik.GetKey(), v)
 		}
 	}

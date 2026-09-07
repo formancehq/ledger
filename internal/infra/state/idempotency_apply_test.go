@@ -267,6 +267,98 @@ func TestApplyProposal_ZeroTTLNeverExpires(t *testing.T) {
 	require.Empty(t, hashes, "a never-expiring outcome must not appear in the eviction time index")
 }
 
+// TestPreload_DoesNotResurrectEvictedOutcome is the regression for the
+// stale-preload divergence: a proposal whose ExecutionPlan was built before an
+// idempotency eviction still carries the evicted outcome, and Preload must not
+// re-inject it. The guard reads the replicated eviction cutoff (advanced by
+// applyIdempotencyEviction), NOT the HLC — which an eviction never advances — so
+// the map stays in lockstep with Pebble and no second eviction double-deletes.
+func TestPreload_DoesNotResurrectEvictedOutcome(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, _ := newTestMachine(t)
+
+	const (
+		key       = "evicted-key"
+		expiresAt = uint64(60_000_000)
+	)
+
+	// Freeze an outcome with a finite expiry into both the map and Pebble
+	// (main key + time index), exactly as the FSM success/failure path does.
+	value := &commonpb.IdempotencyKeyValue{FirstLogSequence: 7, LogCount: 1, Hash: []byte("h"), CreatedAt: 1, ExpiresAt: expiresAt}
+
+	freezeBatch := dataStore.OpenWriteSession()
+	require.NoError(t, SaveIdempotencyKey(freezeBatch, key, value))
+	require.NoError(t, freezeBatch.Commit())
+	machine.Registry.Idempotency.Put(key, value)
+
+	// Leader pre-scan for the eviction (cutoff == expires_at, so the outcome is
+	// in-window), then apply the eviction through the real FSM handler.
+	handle, err := dataStore.NewReadHandle()
+	require.NoError(t, err)
+
+	hashes, lastKey, err := machine.Registry.Idempotency.ScanExpiredKeyHashes(handle, expiresAt, 100)
+	require.NoError(t, err)
+	_ = handle.Close()
+	require.Len(t, hashes, 1)
+
+	eviction := &raftcmdpb.IdempotencyEviction{CutoffMicros: expiresAt, PebbleKeyHashes: hashes, LastScannedTimeIndexKey: lastKey}
+
+	evictBatch := dataStore.OpenWriteSession()
+	require.NoError(t, machine.applyIdempotencyEviction(evictBatch, eviction))
+	require.NoError(t, evictBatch.Commit())
+
+	// Eviction removed it from the map and Pebble and advanced the persisted cutoff.
+	_, inMap := machine.Registry.Idempotency.Get(key)
+	require.False(t, inMap, "eviction removes the key from the map")
+
+	post, err := dataStore.NewDirectReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = post.Close() })
+
+	gone, err := LoadIdempotencyKey(post, key)
+	require.NoError(t, err)
+	require.Nil(t, gone, "eviction removes the Pebble main key")
+
+	require.Equal(t, expiresAt, machine.State.LastIdempotencyEvictionCutoff, "in-memory eviction cutoff advanced")
+
+	persistedCutoff, err := query.ReadLastIdempotencyEvictionCutoff(post)
+	require.NoError(t, err)
+	require.Equal(t, expiresAt, persistedCutoff, "the eviction cutoff is persisted so replay/restore is deterministic")
+
+	// A proposal whose plan predates the eviction still carries the value.
+	// Preload must skip it: expires_at <= the eviction cutoff means evicted.
+	stalePlan := &raftcmdpb.ExecutionPlan{
+		LastPersistedIndex: machine.Registry.Cache.BaseIndex.Gen0,
+		IdempotencyKeys:    []*raftcmdpb.ReloadIdempotencyKey{{Key: key, Value: value}},
+	}
+
+	preloadBatch := dataStore.OpenWriteSession()
+	defer func() { _ = preloadBatch.Cancel() }()
+	require.NoError(t, machine.Preload(stalePlan, preloadBatch, 0))
+
+	_, inMap = machine.Registry.Idempotency.Get(key)
+	require.False(t, inMap, "an evicted outcome must not be resurrected into the map by a stale preload")
+
+	// The stale preload left the map free of the key, so a second eviction naming
+	// the same hash finds nothing in the map and emits no second SingleDelete.
+	secondBatch := dataStore.OpenWriteSession()
+	require.NoError(t, machine.applyIdempotencyEviction(secondBatch, eviction))
+	require.NoError(t, secondBatch.Commit())
+
+	// A live outcome (expires_at above the cutoff) is still re-injected.
+	liveKey := "live-key"
+	liveValue := &commonpb.IdempotencyKeyValue{FirstLogSequence: 9, LogCount: 1, Hash: []byte("h2"), CreatedAt: 1, ExpiresAt: expiresAt * 2}
+	livePlan := &raftcmdpb.ExecutionPlan{
+		LastPersistedIndex: machine.Registry.Cache.BaseIndex.Gen0,
+		IdempotencyKeys:    []*raftcmdpb.ReloadIdempotencyKey{{Key: liveKey, Value: liveValue}},
+	}
+
+	require.NoError(t, machine.Preload(livePlan, preloadBatch, 0))
+	_, inMap = machine.Registry.Idempotency.Get(liveKey)
+	require.True(t, inMap, "an outcome above the eviction cutoff is still re-injected")
+}
+
 func readAppliedProposals(t *testing.T, ctx context.Context, store *dal.Store) []*proposalpb.AppliedProposal {
 	t.Helper()
 

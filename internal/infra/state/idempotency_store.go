@@ -71,6 +71,18 @@ func IdempotencyExpired(expiresAt, nowMicros uint64) bool {
 	return expiresAt != 0 && nowMicros >= expiresAt
 }
 
+// IdempotencyEvicted reports whether an outcome with the given expires_at has
+// been removed by a committed IdempotencyEviction whose high-water cutoff is
+// cutoffMicros. It is the same frontier test as IdempotencyExpired but against
+// the replicated eviction cutoff (committed FSM state) rather than the HLC —
+// which an eviction, being a technical-only proposal, never advances. The
+// preload re-injection gate uses this so it identifies an evicted outcome from
+// the eviction that removed it, not by inferring expiry from the order clock.
+// expires_at == 0 (never-expire) is never evicted.
+func IdempotencyEvicted(expiresAt, cutoffMicros uint64) bool {
+	return IdempotencyExpired(expiresAt, cutoffMicros)
+}
+
 // IdempotencyExpiresAt returns the absolute expiry (HLC micros) an outcome frozen
 // at createdAt receives under a policy TTL of ttlMicros. ttlMicros == 0 yields 0
 // (never expires); an addition that would overflow uint64 saturates to the

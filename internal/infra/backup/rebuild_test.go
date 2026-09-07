@@ -1148,6 +1148,49 @@ func TestRebuildDelta_IdempotencyConflictKeepsDeltaOutcome(t *testing.T) {
 	require.Equal(t, uint64(1), v.GetFirstLogSequence(), "the original success survives")
 }
 
+// TestRebuildDelta_IdempotencyExpiresAtRoundtrips proves incremental-restore
+// parity (invariant #11) for the frozen expires_at: RebuildDelta must
+// reconstruct the SubIdempKeys value's expires_at from the audit chain AND,
+// because that value is non-zero, its eviction time-index entry — so a restored
+// cluster expires and evicts the outcome on the same schedule as the source.
+func TestRebuildDelta_IdempotencyExpiresAtRoundtrips(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	const (
+		key       = "idem-ttl-key"
+		createdAt = uint64(1_000_000)
+		expiresAt = uint64(61_000_000)
+	)
+
+	entry := keyedAuditSuccess(1, key, createdAt, 1, 1)
+	entry.Idempotency.ExpiresAt = expiresAt
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldAuditKey(1), entry))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 0, fillGapOrder("l", 1))))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	// The rebuilt main key carries the chain-derived expiry.
+	v, err := state.LoadIdempotencyKey(handle, key)
+	require.NoError(t, err)
+	require.NotNil(t, v)
+	require.Equal(t, expiresAt, v.GetExpiresAt(), "the frozen expires_at must be rebuilt from the audit chain")
+
+	// The eviction time index was reconstructed at that expiry, so a leader scan
+	// at/after it finds exactly this outcome — restore preserves eviction timing.
+	hashes, _, err := state.NewIdempotencyStore().ScanExpiredKeyHashes(handle, expiresAt, 100)
+	require.NoError(t, err)
+	require.Len(t, hashes, 1, "the rebuilt outcome must have a time-index entry at its expires_at")
+}
+
 // Same, but the original outcome lives in the checkpoint SSTs (present in the
 // store before the rebuild) rather than an earlier delta entry — the rebuild
 // skips the delta conflict, so nothing overwrites it.

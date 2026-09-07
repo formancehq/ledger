@@ -434,6 +434,15 @@ func setLastAppliedTimestamp(b *dal.WriteSession, timestamp uint64) error {
 	return b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedTimestamp}, value)
 }
 
+// setLastIdempotencyEvictionCutoff writes the eviction high-water cutoff to the
+// batch, atomically with the eviction's key deletions.
+func setLastIdempotencyEvictionCutoff(b *dal.WriteSession, cutoffMicros uint64) error {
+	value := make([]byte, 8)
+	binary.BigEndian.PutUint64(value, cutoffMicros)
+
+	return b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastIdempotencyEvictionCutoff}, value)
+}
+
 // ledgerScopedAttrTypes lists attribute types that use ledger-scoped canonical keys
 // (format [ledger padded 64B]...). Used by DeleteLedgerData for per-type range
 // deletes.
