@@ -40,8 +40,11 @@ consumer that coordinates rebuildable local projections against such a record
 must bind its wait and published certificate to the restored store's captured
 applied index. Query-checkpoint materialization follows this rule: the audit
 projection certifies the complete restored audit head at the new genesis
-boundary, and the normal index builder never waits for or publishes the
-checkpoint log's larger source-cluster index.
+boundary, while `PrepareForBackup` and `RebuildDelta` mark surviving checkpoint
+rows with explicit restore provenance. The normal index builder uses that marker
+rather than numeric ordering between unrelated Raft domains; it never publishes
+an intermediate source-cluster index, even when the destination domain has
+already overtaken that number.
 
 Before changing an audited order, an FSM handler, a persisted projection, or a
 delete/purge cascade, classify every affected value:

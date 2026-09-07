@@ -1059,6 +1059,11 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 //   - a row whose key id, max_sequence, applied_index, or created_at diverges from the
 //     audit-derived value — content corruption.
 //
+// restored_from_backup is technical lifecycle provenance, not business intent:
+// restore marks it because physical query-checkpoint directories are deliberately
+// absent. The checker still verifies every audit-derived field above; the marker
+// can only make the local index builder withhold an intermediate certificate.
+//
 // The audit-rebuild path recreates the rows (including max_sequence,
 // created_at, and applied_index)
 // from the logs, so a missing row is corruption, never a legitimate restore

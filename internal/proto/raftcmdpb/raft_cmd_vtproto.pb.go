@@ -568,6 +568,7 @@ func (m *QueryCheckpointState) CloneVT() *QueryCheckpointState {
 	r.MaxSequence = m.MaxSequence
 	r.CreatedAt = m.CreatedAt.CloneVT()
 	r.AppliedIndex = m.AppliedIndex
+	r.RestoredFromBackup = m.RestoredFromBackup
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -3031,6 +3032,9 @@ func (this *QueryCheckpointState) EqualVT(that *QueryCheckpointState) bool {
 		return false
 	}
 	if this.AppliedIndex != that.AppliedIndex {
+		return false
+	}
+	if this.RestoredFromBackup != that.RestoredFromBackup {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -6748,6 +6752,16 @@ func (m *QueryCheckpointState) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.RestoredFromBackup {
+		i--
+		if m.RestoredFromBackup {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x28
 	}
 	if m.AppliedIndex != 0 {
 		i -= 8
@@ -11158,6 +11172,9 @@ func (m *QueryCheckpointState) SizeVT() (n int) {
 	if m.AppliedIndex != 0 {
 		n += 9
 	}
+	if m.RestoredFromBackup {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -15345,6 +15362,26 @@ func (m *QueryCheckpointState) UnmarshalVT(dAtA []byte) error {
 			}
 			m.AppliedIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RestoredFromBackup", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.RestoredFromBackup = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

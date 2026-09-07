@@ -302,7 +302,7 @@ func (s *Store) SetAuditProjectionState(disabled, rebuilding bool) {
 	s.progressMu.Unlock()
 }
 
-// SetAuditProjectionFailed marks a steady-state indexing failure. It is
+// SetAuditProjectionFailed marks a boot or steady-state indexing failure. It is
 // exposed as transient rebuilding to admission, but progress waiters receive a
 // terminal local error so one checkpoint cannot stall the normal indexer.
 func (s *Store) SetAuditProjectionFailed() {

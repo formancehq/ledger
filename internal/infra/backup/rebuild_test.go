@@ -539,6 +539,8 @@ func TestRebuildDelta_ReplaysQueryCheckpoint(t *testing.T) {
 	require.Equal(t, uint64(20), rows[2].GetMaxSequence())
 	require.Equal(t, uint64(200), rows[2].GetCreatedAt().GetData())
 	require.Equal(t, uint64(2000), rows[2].GetAppliedIndex())
+	require.True(t, rows[2].GetRestoredFromBackup(),
+		"a delta-rebuilt checkpoint must retain explicit restore provenance")
 
 	// The counter never rewinds: it advances above the highest replayed id (2),
 	// the deleted one included.

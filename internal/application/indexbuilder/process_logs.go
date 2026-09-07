@@ -180,11 +180,24 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			// read index at this exact point.
 			if cqc, ok := log.GetPayload().GetType().(*commonpb.LogPayload_CreatedQueryCheckpoint); ok {
 				pendingCheckpointCreate = cqc.CreatedQueryCheckpoint.GetCheckpointId()
-				pendingCheckpointRestored = cqc.CreatedQueryCheckpoint.GetAppliedIndex() > targetAppliedIndex
-				pendingCheckpointHorizon = min(
-					cqc.CreatedQueryCheckpoint.GetAppliedIndex(),
-					targetAppliedIndex,
-				)
+				checkpointState, err := query.ReadQueryCheckpoint(handle, pendingCheckpointCreate)
+				if err != nil {
+					_ = batch.Cancel()
+
+					return cursor, fmt.Errorf("reading query checkpoint %d restore provenance: %w", pendingCheckpointCreate, err)
+				}
+				// The fixed target snapshot can already contain a later delete. In that
+				// case there is no live checkpoint to certify, so conservatively withhold
+				// an intermediate certificate until the complete target is folded.
+				pendingCheckpointRestored = checkpointState == nil || checkpointState.GetRestoredFromBackup()
+				if pendingCheckpointRestored {
+					// A restored checkpoint's source Raft number has no ordering in the
+					// destination domain. Wait for the fixed destination target, whose
+					// audit certificate covers the complete restored audit head.
+					pendingCheckpointHorizon = targetAppliedIndex
+				} else {
+					pendingCheckpointHorizon = cqc.CreatedQueryCheckpoint.GetAppliedIndex()
+				}
 
 				break
 			}

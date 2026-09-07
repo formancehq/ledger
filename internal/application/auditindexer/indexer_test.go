@@ -179,6 +179,34 @@ func TestBootMarksAlreadyCaughtUpProjectionReady(t *testing.T) {
 	require.False(t, rebuilding, "boot must publish readiness after validating an already caught-up cursor")
 }
 
+func TestBootPublishesFailureThenRecoversReadiness(t *testing.T) {
+	t.Parallel()
+
+	idx, mainStore, rs := newIndexerForTest(t)
+	batch := mainStore.OpenWriteSession()
+	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(1).Build()
+	require.NoError(t, batch.SetBytes(key, []byte{0xff}))
+	require.NoError(t, state.SetAppliedIndex(batch, 7))
+	require.NoError(t, batch.Commit())
+
+	require.Error(t, idx.boot(context.Background()))
+	disabled, rebuilding := rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.True(t, rebuilding, "a boot fold failure must withdraw readiness")
+	require.ErrorIs(t, rs.WaitForAuditRaftProgress(context.Background(), 7), readstore.ErrAuditProjectionFailed)
+
+	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+		Sequence: 1, ProposalId: 1, Timestamp: &commonpb.Timestamp{Data: 1_000_000},
+		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Ledgers: []string{"main"},
+	})
+	require.NoError(t, idx.boot(context.Background()))
+	disabled, rebuilding = rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.False(t, rebuilding, "a later successful boot retry must restore readiness")
+	require.NoError(t, rs.WaitForAuditRaftProgress(context.Background(), 7))
+}
+
 // TestShouldRebuildOnBoot covers the sole retained rebuild trigger: a missing
 // cursor (0) with entries present (fresh index over a populated audit zone).
 // The audit chain is append-only and monotone, so a "cursor ahead of head"

@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -28,6 +29,22 @@ func seedLogTarget(t *testing.T, b *Builder, appliedIndex uint64, count int) {
 		require.NoError(t, state.AppendLogs(batch, logs))
 	}
 	require.NoError(t, state.SetAppliedIndex(batch, appliedIndex))
+	require.NoError(t, batch.Commit())
+}
+
+func seedQueryCheckpointState(t *testing.T, b *Builder, checkpointID, appliedIndex uint64, restored bool) {
+	t.Helper()
+
+	batch := b.pebbleStore.OpenWriteSession()
+	key := dal.NewKeyBuilder().
+		PutZonePrefix(dal.ZoneGlobal, dal.SubGlobQueryCheckpoint).
+		PutUint64(checkpointID).
+		Build()
+	require.NoError(t, batch.SetProto(key, &raftcmdpb.QueryCheckpointState{
+		CheckpointId:       checkpointID,
+		AppliedIndex:       appliedIndex,
+		RestoredFromBackup: restored,
+	}))
 	require.NoError(t, batch.Commit())
 }
 
@@ -162,6 +179,7 @@ func TestProcessLogsWaitsForAuditBeforeFreezingQueryCheckpoint(t *testing.T) {
 	}}))
 	require.NoError(t, state.SetAppliedIndex(batch, horizon))
 	require.NoError(t, batch.Commit())
+	seedQueryCheckpointState(t, b, checkpointID, horizon, false)
 
 	type result struct {
 		cursor uint64
@@ -230,6 +248,7 @@ func TestProcessLogsWaitsWhenAuditStartsRebuilding(t *testing.T) {
 	}}))
 	require.NoError(t, state.SetAppliedIndex(batch, horizon))
 	require.NoError(t, batch.Commit())
+	seedQueryCheckpointState(t, b, checkpointID, horizon, false)
 
 	type result struct {
 		cursor uint64
@@ -302,6 +321,7 @@ func TestProcessLogsLeavesCheckpointUnavailableWhenAuditIsDisabled(t *testing.T)
 	}}))
 	require.NoError(t, state.SetAppliedIndex(batch, horizon))
 	require.NoError(t, batch.Commit())
+	seedQueryCheckpointState(t, b, checkpointID, horizon, false)
 
 	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
 	require.NoError(t, err)
@@ -337,6 +357,7 @@ func TestProcessLogsContinuesPastCheckpointWhenAuditFails(t *testing.T) {
 	}))
 	require.NoError(t, state.SetAppliedIndex(batch, horizon))
 	require.NoError(t, batch.Commit())
+	seedQueryCheckpointState(t, b, checkpointID, horizon, false)
 
 	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
 	require.NoError(t, err)
@@ -373,6 +394,7 @@ func TestProcessLogsCertifiesCheckpointHorizonBeforeLaterTarget(t *testing.T) {
 	}))
 	require.NoError(t, state.SetAppliedIndex(batch, targetHorizon))
 	require.NoError(t, batch.Commit())
+	seedQueryCheckpointState(t, b, checkpointID, checkpointHorizon, false)
 
 	auditBatch := b.readStore.NewBatch()
 	require.NoError(t, b.readStore.WriteAuditRaftProgress(auditBatch, checkpointHorizon))
@@ -395,7 +417,7 @@ func TestProcessLogsCertifiesCheckpointHorizonBeforeLaterTarget(t *testing.T) {
 	require.Equal(t, targetHorizon, progress)
 }
 
-func TestProcessLogsClampsRestoredCheckpointHorizonToCurrentRaftDomain(t *testing.T) {
+func TestProcessLogsUsesRestoreProvenanceAfterNewRaftOvertakesSourceCheckpoint(t *testing.T) {
 	t.Parallel()
 
 	b := newTestBuilderWithStore(t)
@@ -403,13 +425,14 @@ func TestProcessLogsClampsRestoredCheckpointHorizonToCurrentRaftDomain(t *testin
 	b.batchSize = 1
 
 	// Incremental restore rebuilds the checkpoint log with its source-cluster
-	// applied index, while the restored main store keeps the full backup's
-	// applied index as the new cluster's genesis boundary. The two numeric Raft
-	// domains are unrelated after restore.
+	// applied index, while the restored node enters a new Raft domain. The new
+	// domain may already have overtaken that numeric source index before the
+	// read-index builder catches up, so numeric ordering cannot identify restore
+	// provenance.
 	const (
 		checkpointID            = uint64(45)
-		restoredTargetHorizon   = uint64(100)
-		sourceCheckpointHorizon = uint64(10_000)
+		sourceCheckpointHorizon = uint64(110)
+		restoredTargetHorizon   = uint64(120)
 	)
 	batch := b.pebbleStore.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{
@@ -427,6 +450,7 @@ func TestProcessLogsClampsRestoredCheckpointHorizonToCurrentRaftDomain(t *testin
 	}))
 	require.NoError(t, state.SetAppliedIndex(batch, restoredTargetHorizon))
 	require.NoError(t, batch.Commit())
+	seedQueryCheckpointState(t, b, checkpointID, sourceCheckpointHorizon, true)
 
 	auditBatch := b.readStore.NewBatch()
 	require.NoError(t, b.readStore.WriteAuditRaftProgress(auditBatch, restoredTargetHorizon))

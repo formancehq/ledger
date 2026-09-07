@@ -343,9 +343,17 @@ func (i *Indexer) Stop() {
 // the persisted cursor is missing with entries present (fresh index over a
 // populated audit zone), performs a full drop+rebuild. Otherwise it completes
 // the initial incremental catch-up. Readiness remains conservative until one
-// of those paths succeeds. TailWorker retries transient boot errors while the
-// projection remains unavailable, so readiness can recover without a restart.
-func (i *Indexer) boot(ctx context.Context) error {
+// of those paths succeeds. A non-cancellation failure is published so the
+// normal index builder can leave an in-flight checkpoint unavailable and keep
+// processing; TailWorker still retries boot in the background, and a later
+// successful catch-up restores readiness without a restart.
+func (i *Indexer) boot(ctx context.Context) (retErr error) {
+	defer func() {
+		if retErr != nil && ctx.Err() == nil {
+			i.readStore.SetAuditProjectionFailed()
+		}
+	}()
+
 	cursor, err := i.readStore.ReadAuditProgress()
 	if err != nil {
 		return fmt.Errorf("read audit cursor: %w", err)

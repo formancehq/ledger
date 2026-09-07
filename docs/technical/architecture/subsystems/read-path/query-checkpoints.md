@@ -23,15 +23,16 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
    Pebble, including the entry's Raft applied index `H`.
 4. The Applier creates a physical Pebble checkpoint of the main store at `{dataDir}/query-checkpoints/{id}/main/`.
 5. The index builder detects the `CreatedQueryCheckpointLog`, publishes the
-   normal read projection certificate `H` with the batch that crosses the log,
-   and waits for the audit projection certificate to cover the same `H`.
-   After a cross-cluster incremental restore, the log still carries its
-   source-cluster `H`, while the restored store starts a new Raft index domain
-   at the full backup's genesis boundary. In that case the builder clamps the
-   projection wait and certificate to its captured restored-store applied
-   index. The audit indexer certifies that boundary only after folding the
-   complete restored audit head, so the checkpoint remains complete without
-   publishing or waiting on an unrelated source-cluster index.
+   normal read projection certificate `H` with the batch that crosses a live
+   checkpoint log, and waits for the audit projection certificate to cover the
+   same `H`. Cross-cluster restore explicitly marks every surviving
+   `QueryCheckpointState` as `restored_from_backup`: `PrepareForBackup` marks
+   rows carried by the full checkpoint and `RebuildDelta` marks rows rebuilt
+   from incremental logs. The builder consumes that durable provenance instead
+   of comparing unrelated source- and destination-cluster Raft numbers. It
+   withholds an intermediate normal certificate for a restored checkpoint and
+   only publishes the captured restored-store target after folding its complete
+   log head; the audit wait is clamped to that target as well.
 6. Only after every promised projection covers `H`, the builder flushes the
    WAL-less read store and materializes `{dataDir}/query-checkpoints/{id}/readindex/`.
    The flush is required: otherwise newly committed memtable-only rows and
@@ -69,12 +70,12 @@ The read index materializes asynchronously and **per-replica** (step 5). Readine
    caller's deadline/cancellation ends its marker wait. Unfiltered or
    sequence-only live audit reads remain independent of the audit index, but a
    checkpoint promises the complete projection set.
-  A steady-state audit indexing failure is also advertised as transiently
-  rebuilding to admission, while the checkpoint already in flight is left
-  unavailable and the normal builder continues past its log. The audit worker
-  keeps retrying and restores readiness after a successful fold; because there
-  is no checkpoint reconciler, the failed checkpoint is deleted and recreated
-  through the normal client/operator recovery path.
+  An audit indexing failure during boot or steady state is also advertised as
+  transiently rebuilding to admission, while the checkpoint already in flight
+  is left unavailable and the normal builder continues past its log. The audit
+  worker keeps retrying and restores readiness after a successful fold; because
+  there is no checkpoint reconciler, the failed checkpoint is deleted and
+  recreated through the normal client/operator recovery path.
 - **A read on a node that has not yet materialized the checkpoint returns a typed, retryable error.** Checkpoint reads are served locally on whichever node receives the request (no leader routing). On a node whose builder has not yet crossed the checkpoint log, `openCheckpointStores` finds no `.ready` marker but sees the checkpoint in the replicated `QueryCheckpointState` registry, and returns `ErrCheckpointNotReady` — reason `CHECKPOINT_NOT_READY`, mapped to gRPC `Unavailable`. This mirrors the per-replica `INDEX_BUILDING → Unavailable` pattern for metadata indexes: clients retry until that node materializes the checkpoint inline. The read never returns partial state.
 - **A read for a checkpoint id that does not exist returns `NotFound`.** If there is no `.ready` marker *and* no `QueryCheckpointState` entry for the id, `openCheckpointStores` returns `NotFound` (permanent) so clients stop retrying — distinct from the retryable `Unavailable` above.
 - **Unrecoverable checkpoints degrade to `NotFound`, not wrong data.** There is no historical reconstruction: inline materialization is already exactly point-in-time. If a node crashes between the atomic rename and the marker, that node will never have a `.ready` marker for the checkpoint. Since the checkpoint is still registered, reads there return the retryable `Unavailable` and never self-heal — the operator/client recreates the checkpoint (aligned with the existing `AcquireCheckpoint` client workaround, which deletes-and-recreates on timeout). Deleting the checkpoint then makes reads return `NotFound`.
@@ -88,7 +89,7 @@ The number of *live* query checkpoints is bounded by the Raft-replicated cluster
 - **`CreateQueryCheckpoint`** is rejected with `ErrCheckpointLimitReached` (`CHECKPOINT_LIMIT_REACHED`) when the live count is already at the limit. Creation never evicts; an operator deletes a checkpoint to free a slot. A limit of `0` (the unset default before any policy is committed) means uncapped — write readiness holds business writes until a policy is committed, so a real create sees a configured limit.
 - **`DeleteQueryCheckpoint`** is rejected with `ErrCheckpointNotFound` (`CHECKPOINT_NOT_FOUND`) for an id that is not live, and with `ErrCheckpointIDRequired` for id `0`.
 
-The live-id set is deterministic FSM state (`FSMState.LiveQueryCheckpointIDs`), rehydrated at boot by scanning the `SubGlobQueryCheckpoint` rows and updated by the create/delete handlers, so apply enforces the cap and existence without a Pebble read. The rows are a checker-verified projection: `compareQueryCheckpoints` re-derives the live set (with each row's `max_sequence` / `created_at`) from the `CreatedQueryCheckpoint` / `DeletedQueryCheckpoint` logs and diffs it against the stored rows, and the audit-rebuild path recreates the rows from those logs.
+The live-id set is deterministic FSM state (`FSMState.LiveQueryCheckpointIDs`), rehydrated at boot by scanning the `SubGlobQueryCheckpoint` rows and updated by the create/delete handlers, so apply enforces the cap and existence without a Pebble read. The rows are a checker-verified projection: `compareQueryCheckpoints` re-derives the live set (with each row's `max_sequence`, `created_at`, and `applied_index`) from the `CreatedQueryCheckpoint` / `DeletedQueryCheckpoint` logs and diffs it against the stored rows, and the audit-rebuild path recreates the rows from those logs.
 
 Because enforcement sits after the idempotency gate, a keyed retry replays the first apply's frozen outcome: a create that filled the cap replays its original success, and a create that hit the limit replays that rejection (`ErrCheckpointLimitReached` is a definitive, freezable outcome) even after a slot later frees — one outcome per idempotency key.
 
@@ -188,7 +189,7 @@ ledgerctl query-checkpoint get-schedule
 
 | Prefix | Key | Value |
 |--------|-----|-------|
-| `0xE2` | `[KeyPrefixQueryCheckpoint][checkpointID BE]` | `QueryCheckpointState` protobuf (`max_sequence`, `created_at`, `applied_index`) |
+| `0xE2` | `[KeyPrefixQueryCheckpoint][checkpointID BE]` | `QueryCheckpointState` protobuf (`max_sequence`, `created_at`, `applied_index`, plus technical `restored_from_backup` provenance) |
 | `0xE3` | `[KeyPrefixNextQueryCheckpointID]` | `uint64` — next checkpoint ID counter |
 | `0xE4` | `[KeyPrefixQueryCheckpointSchedule]` | Cron expression string (empty = disabled) |
 

@@ -174,6 +174,14 @@ func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 	require.NoError(t, setAppliedIndex(batch, 200))
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}, []byte("node+cluster")))
 	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobBloom, 0x00}, []byte("stale-block")))
+	checkpointKey := dal.NewKeyBuilder().
+		PutZonePrefix(dal.ZoneGlobal, dal.SubGlobQueryCheckpoint).
+		PutUint64(7).
+		Build()
+	require.NoError(t, batch.SetProto(checkpointKey, &raftcmdpb.QueryCheckpointState{
+		CheckpointId: 7,
+		AppliedIndex: 190,
+	}))
 	// EN-1413: a peer entry left over from the source cluster — the
 	// restore path must drop these so the booting node does not dial
 	// the wrong pods.
@@ -200,6 +208,12 @@ func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 	_, _, err = s.Get(append([]byte{dal.ZoneGlobal, dal.SubGlobPeers},
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07))
 	require.ErrorIs(t, err, pebble.ErrNotFound, "persisted Raft peers must be dropped (EN-1413)")
+
+	checkpoint, err := dal.ReadProto[*raftcmdpb.QueryCheckpointState](s, checkpointKey)
+	require.NoError(t, err)
+	require.Equal(t, uint64(190), checkpoint.GetAppliedIndex())
+	require.True(t, checkpoint.GetRestoredFromBackup(),
+		"pre-checkpoint rows must be marked because physical query-checkpoint directories are not restored")
 }
 
 // TestPrepareForBackupGenesisCheckpointFallback asserts a checkpoint taken at

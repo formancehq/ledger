@@ -1426,13 +1426,14 @@ func (x *DeleteQueryCheckpointOrder) GetCheckpointId() uint64 {
 // QueryCheckpointState stores metadata for a query checkpoint in Pebble.
 // The actual data lives in physical Pebble checkpoint directories.
 type QueryCheckpointState struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	CheckpointId  uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
-	MaxSequence   uint64                 `protobuf:"fixed64,2,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"`    // next_sequence - 1 at creation
-	CreatedAt     *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`            // Creation timestamp (from proposal date)
-	AppliedIndex  uint64                 `protobuf:"fixed64,4,opt,name=applied_index,json=appliedIndex,proto3" json:"applied_index,omitempty"` // Raft horizon of the checkpoint snapshot
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	CheckpointId       uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	MaxSequence        uint64                 `protobuf:"fixed64,2,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"`                       // next_sequence - 1 at creation
+	CreatedAt          *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                               // Creation timestamp (from proposal date)
+	AppliedIndex       uint64                 `protobuf:"fixed64,4,opt,name=applied_index,json=appliedIndex,proto3" json:"applied_index,omitempty"`                    // Raft horizon of the checkpoint snapshot
+	RestoredFromBackup bool                   `protobuf:"varint,5,opt,name=restored_from_backup,json=restoredFromBackup,proto3" json:"restored_from_backup,omitempty"` // Technical provenance: physical checkpoint files were not restored
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *QueryCheckpointState) Reset() {
@@ -1491,6 +1492,13 @@ func (x *QueryCheckpointState) GetAppliedIndex() uint64 {
 		return x.AppliedIndex
 	}
 	return 0
+}
+
+func (x *QueryCheckpointState) GetRestoredFromBackup() bool {
+	if x != nil {
+		return x.RestoredFromBackup
+	}
+	return false
 }
 
 type SetQueryCheckpointScheduleOrder struct {
@@ -5392,13 +5400,14 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\aversion\x18\x03 \x01(\tR\aversion\"\x1c\n" +
 	"\x1aCreateQueryCheckpointOrder\"A\n" +
 	"\x1aDeleteQueryCheckpointOrder\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"\xb5\x01\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"\xe7\x01\n" +
 	"\x14QueryCheckpointState\x12#\n" +
 	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\x12!\n" +
 	"\fmax_sequence\x18\x02 \x01(\x06R\vmaxSequence\x120\n" +
 	"\n" +
 	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt\x12#\n" +
-	"\rapplied_index\x18\x04 \x01(\x06R\fappliedIndex\"5\n" +
+	"\rapplied_index\x18\x04 \x01(\x06R\fappliedIndex\x120\n" +
+	"\x14restored_from_backup\x18\x05 \x01(\bR\x12restoredFromBackup\"5\n" +
 	"\x1fSetQueryCheckpointScheduleOrder\x12\x12\n" +
 	"\x04cron\x18\x01 \x01(\tR\x04cron\"$\n" +
 	"\"DeleteQueryCheckpointScheduleOrder\"\xc6\x03\n" +
