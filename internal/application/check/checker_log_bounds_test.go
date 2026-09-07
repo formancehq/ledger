@@ -607,6 +607,88 @@ func TestCheck_LogBounds_FailureOnlyHistory(t *testing.T) {
 	requireNoLogBoundFindings(t, collectCheckErrors(t, store, attributes.New()))
 }
 
+// TestCheck_LogBounds_ReservedSequenceZeroIsUnaudited pins the LOWER end of the
+// audited interval, which logBoundsVerifier.compare does not bound: it checks
+// the stored head against expectedMax, and a row at sequence 0 moves neither
+// side — on a healthy store the head stays at the real maximum, and on a store
+// where the forged row is the only one both sides read 0, indistinguishable
+// from an empty store. Every other pass misses it too: the interior gap scan is
+// seeded at expectedSeq 1 and never looks beneath it, and the row's own
+// `sequence` field can agree with its key.
+//
+// Sequence 0 is nonetheless a position no proposal can allocate
+// (FSMState.NextSequenceID is seeded at 1 and recovery only raises it, and
+// observeSuccess pins the first audited range's minimum at 1), so the row is
+// unaudited by construction. The log loop reports it off the key.
+func TestCheck_LogBounds_ReservedSequenceZeroIsUnaudited(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		setup func(t *testing.T, store *dal.Store)
+		// storedMax is the highest log KEY the store holds once set up, which is
+		// what compare() is handed — unmoved by the forged row in both shapes.
+		storedMax uint64
+		rows      int
+	}{
+		{
+			name: "alongside a healthy audited history",
+			setup: func(t *testing.T, store *dal.Store) {
+				writeRawLogRows(t, store, 1, 4)
+				persistSuccessAuditEntries(t, store, [][2]uint64{{1, 4}})
+			},
+			storedMax: 4,
+			rows:      5,
+		},
+		{
+			name: "as the store's only log row",
+			setup: func(t *testing.T, store *dal.Store) {
+				persistFailureOnlyHistory(t, store, 3, 2)
+			},
+			storedMax: 0,
+			rows:      1,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := createTestStore(t)
+			tc.setup(t, store)
+
+			// The value's sequence field matches the key, so the key/value
+			// agreement check stays silent, and the payload is nil, so replay
+			// contributes no expectation of its own. Only the reserved-position
+			// check can catch this row.
+			writeRawLogRows(t, store, 0, 0)
+
+			storedMax, rows := highestStoredLogKey(t, store)
+			require.Equal(t, tc.storedMax, storedMax,
+				"the forged row must not move the stored head compare() is handed")
+			require.Equal(t, tc.rows, rows, "the forged row must be present in the store")
+
+			errs := collectCheckErrors(t, store, attributes.New())
+
+			require.Len(t, errs, 1, "the forged row is the only divergence in either fixture, got %v", errs)
+
+			unaudited := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
+			require.Len(t, unaudited, 1,
+				"a log row at reserved sequence 0 must be reported exactly once, got %v", errs)
+			require.Zero(t, unaudited[0].GetLogSequence())
+			require.Contains(t, unaudited[0].GetMessage(), "log sequence 0 has no audited origin",
+				"the single-position message must be distinguishable from compare()'s range message")
+
+			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
+				"sequence 0 sits below the audited interval, it is not a hole inside it, got %v", errs)
+			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH),
+				"the forged row agrees with its key, so only the reserved position can catch it, got %v", errs)
+			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE),
+				"the audit chain is intact in both fixtures, got %v", errs)
+		})
+	}
+}
+
 // TestCheck_LogBounds_LogLessSuccessIsIgnored pins the one success shape that
 // carries no log range: an all-idempotent proposal reports min == max == 0. It
 // must neither advance the bound nor break the contiguity of the interval
