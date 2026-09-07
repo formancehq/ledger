@@ -41,6 +41,33 @@ configuration, while their Go and lint caches use the shared root. `TMPDIR`
 remains per run because temporary filenames and cleanup are process lifecycle
 state rather than reusable cache state.
 
+### golangci-lint cross-worktree safety
+
+The development shell pins golangci-lint v2.12.2 plus a focused backport of the
+cache representation shipped by upstream in v2.13.2. This keeps the existing
+analyzer set while making the analysis cache location-independent:
+
+- package keys normalize current-module filenames and the `go.mod` salt so
+  byte-identical packages can share an entry across worktrees;
+- cached issue positions are stored relative to the current module and rebased
+  against the consuming checkout when loaded; and
+- the payload-format salt keeps unsafe v2.12.2 entries out of the new cache
+  namespace.
+
+This preserves global warm-cache reuse without letting generated-file,
+exclusion, nolint, source-reading, or fixer processing reopen the producing
+worktree. Suggested fixes retain byte offsets, not filenames; the fixer uses
+the rebased issue filename, while the content-derived package key ensures the
+offsets describe the consuming file.
+
+The requirement is that a cached result may read or modify files only through
+paths belonging to the checkout that loaded it. The previous v2.12.2 pin did
+not meet that requirement: its key was module-relative but its gob-encoded
+`token.Position.Filename` remained absolute. This is the same defect tracked by
+[golangci-lint #3502](https://github.com/golangci/golangci-lint/issues/3502),
+[#6656](https://github.com/golangci/golangci-lint/issues/6656), and
+[#6695](https://github.com/golangci/golangci-lint/issues/6695).
+
 Go's normal content, build-option, race, tag, toolchain, and module checksum
 keys remain authoritative. There is no verified seed/copy layer and no
 run-local extracted module tree. If normal cache corruption or suspicious lint
@@ -50,9 +77,24 @@ behavior occurs, perform one explicit clean retry:
 bash scripts/agent-validation-env --clean-cache --ephemeral true
 ```
 
-Cache clearing is exceptional recovery, not a cost imposed on every run.
-Coordinate it with other local agents and do not clear a cache while another
-validation is using it.
+Despite its historical name, `--clean-cache` now removes only
+`GOLANGCI_LINT_CACHE`. It preserves `GOCACHE`, `GOMODCACHE`, `GOPATH`, and
+`XDG_CACHE_HOME`; the cross-worktree path defect provides no reason to discard
+those caches. Cache clearing is exceptional recovery, not a cost imposed on
+every run. Because the lint cache remains globally shared, coordinate the retry
+with other local agents and do not clear it while another validation is using
+it. golangci-lint manages one shared cache instead of accumulating orphaned
+per-worktree namespaces.
+
+### Alternatives considered
+
+| Design | Safety | Warm behavior | Decision |
+| --- | --- | --- | --- |
+| Stable cache directory per canonical worktree | Safe across worktrees, including symlink aliases after canonicalization | Warm only within one physical path; duplicates entries and leaves namespaces after removed worktrees | Not selected once the upstream value fix became available |
+| Absolute worktree path in the cache key | Safe because different paths cannot hit the same entry | Same hit topology as per-worktree directories, with no cross-worktree reuse | Upstream temporarily used this fallback in #6697 |
+| Relative positions rebased on load | Safe when every path-bearing cached value is normalized and old payloads are salted out | Preserves global cross-worktree hits | Selected through a focused backport from upstream v2.13.2; a full upgrade would introduce unrelated analyzer findings |
+| Per-execution lint cache | Safe | No lint-cache warm path; repeats analysis on every validation | Rejected on performance grounds |
+| v2.12.2 global cache plus routine cleaning | Unsafe between cleans | Fast only until another checkout supplies a location-bound value | Rejected; cleaning is recovery, not isolation |
 
 ## Cost map and design evidence
 
@@ -71,10 +113,23 @@ Apple workstation. They are comparative evidence, not performance budgets:
 | Repeated review/validation | Provider-dependent | No | None in the linear workflow | `REMOVE` |
 | Target/head revalidation and leased push | Seconds | Merge protection is additive | Fresh base and exact publication identity | `KEEP_LOCAL` |
 
-Two detached worktrees at the same target SHA also completed concurrent lint
-against the shared caches with zero findings in 35.97s each. Cooperative Go
-cache tests cover same-source worktrees, different source contents, race and
-non-race builds, build tags, and concurrent processes.
+The earlier 35.97s concurrent-worktree measurement used the unsafe original
+v2.12.2 value format and is no longer correctness evidence. The cache
+regression creates two identical worktrees, caches a positioned diagnostic in
+A, removes A, and proves that B obtains a cross-worktree hit while reporting
+and reopening only B's file. Companion cases cover simultaneous writers,
+same-worktree warm reuse, content changes, deterministic cold/warm diagnostics,
+preservation of the shared Go caches, and lint-only cleanup.
+
+A 2026-09-07 comparison on a one-package positioned-diagnostic fixture measured
+the selected global/rebased cache at 31.9ms cold in worktree A and 27.2ms for a
+cross-worktree hit in B. A stable per-worktree namespace measured 45.0ms cold
+and 27.3ms warm in A, then paid another 32.3ms cold in B; a per-execution cache
+paid the cold analysis on both runs (32.7ms and 31.0ms). On the full root module,
+the selected build completed a temporary-cache cold lint in 204.7s and an
+unchanged warm lint in 5.3s with zero issues; the operator module measured 28.3s
+cold and 3.4s warm. These timings demonstrate hit topology, not a performance
+budget.
 
 The alternative input-sensitive pre-commit proposal added roughly 1,500 lines
 of selector and dependency machinery. A straightforward warm pre-commit at
