@@ -412,16 +412,19 @@ func TestProcessLogsClampsRestoredCheckpointHorizonToCurrentRaftDomain(t *testin
 		sourceCheckpointHorizon = uint64(10_000)
 	)
 	batch := b.pebbleStore.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
-		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
-			CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
-				CheckpointId: checkpointID,
-				MaxSequence:  1,
-				AppliedIndex: sourceCheckpointHorizon,
+	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{
+		{
+			Sequence: 1,
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
+				CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+					CheckpointId: checkpointID,
+					MaxSequence:  1,
+					AppliedIndex: sourceCheckpointHorizon,
+				},
 			},
-		}},
-	}}))
+			}},
+		{Sequence: 2},
+	}))
 	require.NoError(t, state.SetAppliedIndex(batch, restoredTargetHorizon))
 	require.NoError(t, batch.Commit())
 
@@ -429,13 +432,22 @@ func TestProcessLogsClampsRestoredCheckpointHorizonToCurrentRaftDomain(t *testin
 	require.NoError(t, b.readStore.WriteAuditRaftProgress(auditBatch, restoredTargetHorizon))
 	require.NoError(t, auditBatch.Commit())
 
-	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
+	cursor, err := b.processLogs(context.Background(), 0, time.Unix(1, 0))
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), cursor,
-		"restored indexing must reach the tail without waiting for new-cluster writes")
+		"the restored checkpoint must not wait for new-cluster writes")
 	require.True(t, readstore.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
 
 	progress, err := b.readStore.ReadRaftProgress()
+	require.NoError(t, err)
+	require.Zero(t, progress,
+		"crossing a restored checkpoint must not certify later restored logs")
+
+	cursor, err = b.processLogs(context.Background(), cursor, time.Unix(1, 0))
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), cursor,
+		"restored indexing must reach the tail without additional writes")
+	progress, err = b.readStore.ReadRaftProgress()
 	require.NoError(t, err)
 	require.Equal(t, restoredTargetHorizon, progress,
 		"the read projection must never publish a source-cluster Raft index")

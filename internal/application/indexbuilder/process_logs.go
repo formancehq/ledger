@@ -111,12 +111,13 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 	for cursor < targetSequence {
 		var (
-			batchCount               int
-			lastSeq                  uint64
-			eof                      bool
-			pendingCheckpointCreate  uint64
-			pendingCheckpointHorizon uint64
-			pendingCheckpointDelete  uint64
+			batchCount                int
+			lastSeq                   uint64
+			eof                       bool
+			pendingCheckpointCreate   uint64
+			pendingCheckpointHorizon  uint64
+			pendingCheckpointRestored bool
+			pendingCheckpointDelete   uint64
 		)
 
 		// Create a batch up front so write methods have a valid target.
@@ -179,6 +180,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			// read index at this exact point.
 			if cqc, ok := log.GetPayload().GetType().(*commonpb.LogPayload_CreatedQueryCheckpoint); ok {
 				pendingCheckpointCreate = cqc.CreatedQueryCheckpoint.GetCheckpointId()
+				pendingCheckpointRestored = cqc.CreatedQueryCheckpoint.GetAppliedIndex() > targetAppliedIndex
 				pendingCheckpointHorizon = min(
 					cqc.CreatedQueryCheckpoint.GetAppliedIndex(),
 					targetAppliedIndex,
@@ -267,7 +269,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			certifiedHorizon := uint64(0)
 			if completesTarget {
 				certifiedHorizon = targetAppliedIndex
-			} else if pendingCheckpointHorizon > 0 {
+			} else if pendingCheckpointHorizon > 0 && !pendingCheckpointRestored {
 				certifiedHorizon = pendingCheckpointHorizon
 			}
 			if certifiedHorizon > 0 {
