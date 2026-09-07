@@ -6,6 +6,71 @@ gate="$root/scripts/ai-bugfix-gate"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
+go_version=$(go version)
+if [[ ! "$go_version" =~ go([0-9]+)\.([0-9]+)\.([0-9]+)([[:space:]]|$) ]]; then
+    echo "unable to parse test toolchain version: $go_version" >&2
+    exit 1
+fi
+actual_major=${BASH_REMATCH[1]}
+actual_minor=${BASH_REMATCH[2]}
+actual_patch=${BASH_REMATCH[3]}
+if (( actual_minor == 0 )); then
+    echo "test requires a Go toolchain with a non-zero minor version" >&2
+    exit 1
+fi
+
+write_module() {
+    local path=$1 major=$2 minor=$3 patch=$4
+    printf 'module example.com/test\n\ngo %s.%s.%s\n' "$major" "$minor" "$patch" >"$path"
+}
+
+write_module "$tmp/older-language.mod" "$actual_major" "$((actual_minor - 1))" 0
+"$gate" environment "$tmp/older-language.mod"
+
+write_module "$tmp/equal-language.mod" "$actual_major" "$actual_minor" "$actual_patch"
+"$gate" environment "$tmp/equal-language.mod"
+
+write_module "$tmp/newer-language.mod" "$actual_major" "$((actual_minor + 1))" 0
+if "$gate" environment "$tmp/newer-language.mod" >"$tmp/newer-language.out" 2>&1; then
+    echo 'expected a toolchain older than the go directive to fail' >&2
+    exit 1
+fi
+
+write_module "$tmp/newer-patch-language.mod" "$actual_major" "$actual_minor" "$((actual_patch + 1))"
+if "$gate" environment "$tmp/newer-patch-language.mod" >"$tmp/newer-patch-language.out" 2>&1; then
+    echo 'expected a toolchain below the go directive patch version to fail' >&2
+    exit 1
+fi
+grep -Fq "requires Go $actual_major.$actual_minor.$((actual_patch + 1)) or newer" "$tmp/newer-patch-language.out" || {
+    cat "$tmp/newer-patch-language.out" >&2
+    echo 'expected the patch failure to describe the minimum toolchain' >&2
+    exit 1
+}
+if grep -Fxq 'ENVIRONMENT_GATE=PASS' "$tmp/newer-patch-language.out"; then
+    echo 'failed patch environment gate reported a false pass marker' >&2
+    exit 1
+fi
+grep -Fq "requires Go $actual_major.$((actual_minor + 1)).0 or newer" "$tmp/newer-language.out" || {
+    cat "$tmp/newer-language.out" >&2
+    echo 'expected the version failure to describe the minimum toolchain' >&2
+    exit 1
+}
+if grep -Fxq 'ENVIRONMENT_GATE=PASS' "$tmp/newer-language.out"; then
+    echo 'failed environment gate reported a false pass marker' >&2
+    exit 1
+fi
+
+printf 'module example.com/test\n\ngo invalid\n' >"$tmp/invalid-language.mod"
+if "$gate" environment "$tmp/invalid-language.mod" >"$tmp/invalid-language.out" 2>&1; then
+    echo 'expected an invalid go directive to fail' >&2
+    exit 1
+fi
+grep -Fq 'invalid go directive' "$tmp/invalid-language.out" || {
+    cat "$tmp/invalid-language.out" >&2
+    echo 'expected the malformed directive to be identified' >&2
+    exit 1
+}
+
 cat >"$tmp/bugfix.ok" <<'EOF'
 DISCOVERY: NO_EXISTING_WORK
 BEFORE_FIX: BUG_REPRODUCED
@@ -31,7 +96,7 @@ fi
 mkdir -p "$tmp/fake-bin"
 cat >"$tmp/fake-bin/go" <<'EOF'
 #!/usr/bin/env bash
-case "$1 $2" in
+case "$*" in
   "version") echo 'go version go1.26.5 darwin/arm64' ;;
   "env GOROOT") echo '/tmp/fake-go-root' ;;
   "env GOTOOLCHAIN") echo 'auto' ;;
@@ -39,8 +104,17 @@ case "$1 $2" in
 esac
 EOF
 chmod +x "$tmp/fake-bin/go"
-if PATH="$tmp/fake-bin:$PATH" "$gate" environment "$root/go.mod" >/dev/null 2>&1; then
+if PATH="$tmp/fake-bin:$PATH" "$gate" environment "$root/go.mod" >"$tmp/non-nix.out" 2>&1; then
     echo 'expected non-Nix matching Go to fail' >&2
+    exit 1
+fi
+grep -Fq 'Go is not from the Nix store' "$tmp/non-nix.out" || {
+    cat "$tmp/non-nix.out" >&2
+    echo 'expected the non-Nix toolchain to be identified' >&2
+    exit 1
+}
+if grep -Fxq 'ENVIRONMENT_GATE=PASS' "$tmp/non-nix.out"; then
+    echo 'non-Nix environment gate reported a false pass marker' >&2
     exit 1
 fi
 

@@ -18,11 +18,12 @@ When a validation failure occurs, classify it as
 attributing it to the candidate. An unclassified important failure is not
 ready for publication. Non-bugfix changes may omit bug reproduction evidence.
 
-Before Go validation, `scripts/ai-bugfix-gate environment` compares the
-effective `go version` with the repository `go.mod` directive, reports the
-selected binary and `GOROOT`, and rejects a host toolchain selected outside
-the repository environment. Being inside `nix develop` alone is not evidence
-of the effective toolchain.
+Before Go validation, `scripts/ai-bugfix-gate environment` verifies that the
+effective Nix-provided `go version` is at least the minimum language version
+declared by the repository `go.mod`, then reports the selected binary and
+`GOROOT`. It rejects an older compiler or a host toolchain selected outside the
+repository environment. Being inside `nix develop` alone is not evidence of
+the effective toolchain.
 
 Before exact review, the loop runs applicable base-pinned normalization to a
 one-replay fixpoint. Exact-state targeted validation after review must leave the
