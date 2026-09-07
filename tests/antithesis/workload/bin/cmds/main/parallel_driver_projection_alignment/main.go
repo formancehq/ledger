@@ -18,6 +18,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -26,6 +27,15 @@ import (
 )
 
 const probeAccount = "minseq-probe:main"
+
+func isInconclusiveProjectionRead(err error) bool {
+	// The workload client load-balances across replicas. The readiness poll can
+	// observe one replica after its local switch while execution lands on
+	// another whose projection is still building. That is setup lag, not an
+	// alignment violation; a successful read must still satisfy the assertion
+	// below. INDEX_NOT_FOUND and every other business error remain findings.
+	return internal.IsTolerated(err) || internal.HasErrorReason(err, domain.ErrReasonIndexBuilding)
+}
 
 func main() {
 	internal.RunDriver("parallel_driver_projection_alignment", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
@@ -139,7 +149,7 @@ func main() {
 			PageSize:  100,
 		})
 		if err != nil {
-			if !internal.IsTolerated(err) {
+			if !isInconclusiveProjectionRead(err) {
 				assert.Unreachable("projection-aligned prepared query returned unexpected error",
 					details.With(internal.Details{"error": err}))
 			}

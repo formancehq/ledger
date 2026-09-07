@@ -55,7 +55,8 @@ The workload uses a layered predicate set (`internal/client.go`):
   Covers `Unavailable | DeadlineExceeded | ExternalServiceError`.
 - `IsCanceled(err)` — local ctx is dead (driver shutting down). Not a
   finding; the driver just exits.
-- `IsTolerated(err)` — `nil | IsTransient | IsCanceled`. **This is what
+- `IsTolerated(err)` — `nil | IsTransient | IsCanceled | errors.Is(context.DeadlineExceeded) | errors.Is(context.Canceled)`.
+  **This is what
   Sometimes() probes use**: `assert.Sometimes(internal.IsTolerated(err),
   "should be able to X", details)`. Using `IsTransient` directly here would
   flip the per-driver Sometimes to "never true" when ctx cancellation
