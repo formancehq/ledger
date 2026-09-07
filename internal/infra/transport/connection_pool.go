@@ -507,11 +507,9 @@ func (e *tlsHandshakeError) Unwrap() error { return e.err }
 // failure (server returned non-TLS bytes, alert, version mismatch, etc.) as
 // opposed to a network-level failure.
 func isTLSHandshakeError(err error) bool {
-	var handshakeErr *tlsHandshakeError
-	if errors.As(err, &handshakeErr) {
+	if handshakeErr, ok := errors.AsType[*tlsHandshakeError](err); ok {
 		// Inspect the underlying tls error.
-		var recordErr tls.RecordHeaderError
-		if errors.As(handshakeErr.err, &recordErr) {
+		if _, ok := errors.AsType[tls.RecordHeaderError](handshakeErr.err); ok {
 			return true
 		}
 

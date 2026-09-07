@@ -533,8 +533,7 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 	// ConfChange is committed before the async FSM batch makes the durable
 	// removed-member tombstone visible. Preserve that distinction on the wire
 	// so clients know membership already changed and can verify the postcondition.
-	var removalCommitted *node.RemoveNodeCommittedError
-	if errors.As(err, &removalCommitted) {
+	if removalCommitted, ok := errors.AsType[*node.RemoveNodeCommittedError](err); ok {
 		st := status.New(codes.Unavailable, removalCommitted.Error())
 
 		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
@@ -641,14 +640,12 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 	}
 
 	// Convert NotFoundError to NotFound
-	var notFoundErr *commonpb.NotFoundError
-	if errors.As(err, &notFoundErr) {
+	if notFoundErr, ok := errors.AsType[*commonpb.NotFoundError](err); ok {
 		return status.Error(codes.NotFound, notFoundErr.Error())
 	}
 
 	// Convert ErrReadIndexNotCaughtUp to FailedPrecondition with details
-	var notCaughtUp *query.ErrReadIndexNotCaughtUp
-	if errors.As(err, &notCaughtUp) {
+	if notCaughtUp, ok := errors.AsType[*query.ErrReadIndexNotCaughtUp](err); ok {
 		st := status.New(codes.FailedPrecondition, notCaughtUp.Error())
 
 		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
@@ -669,8 +666,7 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 	// Domain errors: any *Err* type or sentinel that implements Describable,
 	// whether wrapped in BusinessError or returned raw, flows through one
 	// exhaustive Kind switch in describableToGRPCStatus.
-	var d domain.Describable
-	if errors.As(err, &d) {
+	if d, ok := errors.AsType[domain.Describable](err); ok {
 		return describableToGRPCStatus(d).Err()
 	}
 
@@ -678,8 +674,7 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 	// can distinguish infrastructure misconfiguration from application bugs.
 	// APIError covers S3 API errors (NoSuchBucket, AccessDenied, etc.).
 	// OperationError covers transport-level failures (DNS, connection refused).
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[smithy.APIError](err); ok {
 		st := status.New(codes.FailedPrecondition, err.Error())
 
 		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
@@ -697,8 +692,7 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 		return st.Err()
 	}
 
-	var opErr *smithy.OperationError
-	if errors.As(err, &opErr) {
+	if opErr, ok := errors.AsType[*smithy.OperationError](err); ok {
 		st := status.New(codes.FailedPrecondition, err.Error())
 
 		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{

@@ -73,8 +73,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 
-	var notFoundErr *commonpb.NotFoundError
-	if errors.As(err, &notFoundErr) {
+	if _, ok := errors.AsType[*commonpb.NotFoundError](err); ok {
 		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
 
 		return
@@ -94,8 +93,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	// Domain Describables: every typed *Err* and sentinel in internal/domain
 	// (and transitively in admission/numscript) flows through this branch.
 	// Catches BusinessError too (it implements Describable transparently).
-	var d domain.Describable
-	if errors.As(err, &d) {
+	if d, ok := errors.AsType[domain.Describable](err); ok {
 		httpStatus := kindToHTTPStatus(domain.Kind(d))
 
 		// An Unavailable kind is by definition a retry-now condition (a fold

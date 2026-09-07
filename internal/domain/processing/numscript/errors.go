@@ -20,8 +20,7 @@ func convertNumscriptError(err error) domain.Describable {
 		return nil
 	}
 
-	var missingFunds numscriptlib.MissingFundsErr
-	if errors.As(err, &missingFunds) {
+	if missingFunds, ok := errors.AsType[numscriptlib.MissingFundsErr](err); ok {
 		// Interpreter limitation: numscriptlib.MissingFundsErr carries only
 		// {Asset, Needed, Available, parser.Range} — it exposes neither the
 		// failing account nor the color of the bucket that ran short (see the
@@ -67,8 +66,7 @@ func convertNumscriptError(err error) domain.Describable {
 	// QueryBalanceError / QueryMetadataError, whose WrappedError is the Store
 	// error — so a rejected scoped read (domain.ErrScopedBalanceUnsupported)
 	// surfaces here as the validation sentinel it already is.
-	var d domain.Describable
-	if errors.As(err, &d) {
+	if d, ok := errors.AsType[domain.Describable](err); ok {
 		return d
 	}
 

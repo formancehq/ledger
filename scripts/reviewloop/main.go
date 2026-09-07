@@ -649,8 +649,7 @@ func gitOutput(directory string, arguments ...string) ([]byte, error) {
 	}
 	output, err := cmd.Output()
 	if err != nil {
-		var exitError *exec.ExitError
-		if errors.As(err, &exitError) {
+		if exitError, ok := errors.AsType[*exec.ExitError](err); ok {
 			return nil, fmt.Errorf("git %s: %w: %s", strings.Join(arguments, " "), err, strings.TrimSpace(string(exitError.Stderr)))
 		}
 

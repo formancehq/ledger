@@ -388,7 +388,7 @@ const otelExecPrologue = `if [ "${OTEL_TRACES:-}" = "false" ] || [ -z "${OTEL_TR
 	`export OTEL_EXPORTER_OTLP_ENDPOINT="https://$OTEL_TRACES_EXPORTER_OTLP_ENDPOINT"; fi ;; ` +
 	`esac; ` +
 	`if [ -n "${OTEL_TRACES_EXPORTER_OTLP_MODE:-}" ]; then ` +
-	`export OTEL_EXPORTER_OTLP_PROTOCOL="$OTEL_TRACES_EXPORTER_OTLP_MODE"; fi; fi; `
+	`export OTEL_EXPORTER_OTLP_PROTOCOL="$OTEL_TRACES_EXPORTER_OTLP_MODE"; fi; `
 
 // shellSingleQuote returns s wrapped in single quotes safe for /bin/sh -c.
 // A single quote inside the string is encoded as `'\”` (close, escaped

@@ -60,7 +60,7 @@ func (a *Attributes) All() []anyAttribute {
 	for _, field := range v.Fields() {
 		// A field that does not implement anyAttribute (ok == false) is skipped;
 		// every *Attribute[V] field from New() does, so all are collected.
-		if attr, ok := field.Interface().(anyAttribute); ok {
+		if attr, ok := reflect.TypeAssert[anyAttribute](field); ok {
 			out = append(out, attr)
 		}
 	}

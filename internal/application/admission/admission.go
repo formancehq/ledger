@@ -1568,8 +1568,7 @@ func (a *Admission) markPreloadUnavailable(order *raftcmdpb.Order) bool {
 // the generic ErrDependencyDiscoveryFailed. errors.As walks through the
 // DependencyResolutionError's Unwrap to the underlying cause.
 func describableCause(cause error) (domain.Describable, bool) {
-	var d domain.Describable
-	if errors.As(cause, &d) {
+	if d, ok := errors.AsType[domain.Describable](cause); ok {
 		return d, true
 	}
 
@@ -1600,8 +1599,7 @@ func (a *Admission) classifyResolutionFailure(order *raftcmdpb.Order, cause erro
 	// and errors.As on the DependencyResolutionError wrapper would unwrap past
 	// it — hence the explicit guard here, before both checks.
 	if numscript.IsPanic(cause) {
-		var pd domain.Describable
-		if errors.As(cause, &pd) {
+		if pd, ok := errors.AsType[domain.Describable](cause); ok {
 			return false, &domain.BusinessError{Err: pd}
 		}
 
@@ -1652,8 +1650,7 @@ func (a *Admission) classifyResolutionFailure(order *raftcmdpb.Order, cause erro
 	// before failing, letting us tell a state-dependent failure from a
 	// deterministic one that the conservative KindInternal mapping can no
 	// longer distinguish on its own.
-	var dre *numscript.DependencyResolutionError
-	if errors.As(cause, &dre) {
+	if dre, ok := errors.AsType[*numscript.DependencyResolutionError](cause); ok {
 		if dre.MutableReadAttempted {
 			// State-dependent: current state made resolution fail. With an
 			// idempotency key the batch may replay a frozen outcome, so forward;

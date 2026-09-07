@@ -169,7 +169,7 @@ func marshalProtoSlice(rv reflect.Value) ([]byte, error) {
 	items := make([]any, rv.Len())
 	for i := range rv.Len() {
 		elem := rv.Index(i)
-		msg, ok := elem.Interface().(proto.Message)
+		msg, ok := reflect.TypeAssert[proto.Message](elem)
 		if !ok || isNilProto(msg) {
 			items[i] = nil
 
@@ -189,7 +189,7 @@ func marshalProtoSlice(rv reflect.Value) ([]byte, error) {
 func marshalProtoMap(rv reflect.Value) ([]byte, error) {
 	result := make(map[string]any, rv.Len())
 	for _, key := range rv.MapKeys() {
-		msg, ok := rv.MapIndex(key).Interface().(proto.Message)
+		msg, ok := reflect.TypeAssert[proto.Message](rv.MapIndex(key))
 		if !ok || isNilProto(msg) {
 			result[key.String()] = nil
 
@@ -243,7 +243,7 @@ func convertAnyValue(rv reflect.Value) (any, error) {
 	if rv.Kind() == reflect.Slice && rv.Type().Elem().Implements(protoMessageType) {
 		items := make([]any, rv.Len())
 		for i := range rv.Len() {
-			msg, ok := rv.Index(i).Interface().(proto.Message)
+			msg, ok := reflect.TypeAssert[proto.Message](rv.Index(i))
 			if !ok || isNilProto(msg) {
 				items[i] = nil
 

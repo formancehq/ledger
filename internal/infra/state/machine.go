@@ -1064,13 +1064,11 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 // apply loop; the proposal is malformed, but the FSM state is not (no
 // cache mutation lands before Merge).
 func planInvariantDescribable(err error) domain.Describable {
-	var miss *ErrCoverageMiss
-	if errors.As(err, &miss) {
+	if miss, ok := errors.AsType[*ErrCoverageMiss](err); ok {
 		return miss
 	}
 
-	var invalid *domain.ErrInvalidExecutionPlan
-	if errors.As(err, &invalid) {
+	if invalid, ok := errors.AsType[*domain.ErrInvalidExecutionPlan](err); ok {
 		return invalid
 	}
 
@@ -1628,8 +1626,7 @@ func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string
 		return nil
 	}
 
-	var replayed *domain.ReplayedFailure
-	if errors.As(bizErr, &replayed) {
+	if _, ok := errors.AsType[*domain.ReplayedFailure](bizErr); ok {
 		return nil
 	}
 
