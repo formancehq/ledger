@@ -226,7 +226,7 @@ linters:
     #
     # Match whether the configuration is evaluated from the repository root or
     # the nested operator module. Cross-worktree cache hits are rebased to the
-    # consuming checkout by the pinned golangci-lint cache backport; this
+    # consuming checkout by the pinned upstream golangci-lint release; this
     # expression does not compensate for foreign cached paths.
     - path: (^|/)misc/operator/
       linters: [forbidigo]

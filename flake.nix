@@ -43,11 +43,23 @@
     {
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         let
-          # Backport golangci-lint's cross-worktree cache fix without upgrading
-          # its analyzer set. Upstream commits: 371655d60f85 and 4ca5387e2531.
-          golangciLint = pkgs-unstable.golangci-lint.overrideAttrs (_finalAttrs: previousAttrs: {
-            patches = (previousAttrs.patches or [ ]) ++ [
-              ./misc/devenv/patches/golangci-lint-2.12.2-cross-worktree-cache.patch
+          # Use upstream's cross-worktree cache fix until the locked channel
+          # provides this release. Keep the rest of the toolchain unchanged.
+          golangciLint = pkgs-unstable.golangci-lint.overrideAttrs (_finalAttrs: _previousAttrs: {
+            version = "2.13.2";
+            src = pkgs-unstable.fetchFromGitHub {
+              owner = "golangci";
+              repo = "golangci-lint";
+              tag = "v2.13.2";
+              hash = "sha256-RbWKPIG+UK82S9W9tp/CciZ669vudh95VOfHfdQWx3M=";
+            };
+            vendorHash = "sha256-R83GeyfuZ+w30jZqFGYi0yua8E1Ey2q7/OlVmw8zDCg=";
+            ldflags = [
+              "-s"
+              "-w"
+              "-X main.version=2.13.2"
+              "-X main.commit=v2.13.2"
+              "-X main.date=1970-01-01T00:00:00Z"
             ];
           });
           stablePackages = with pkgs; [

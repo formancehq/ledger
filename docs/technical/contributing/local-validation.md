@@ -43,9 +43,8 @@ state rather than reusable cache state.
 
 ### golangci-lint cross-worktree safety
 
-The development shell pins golangci-lint v2.12.2 plus a focused backport of the
-cache representation shipped by upstream in v2.13.2. This keeps the existing
-analyzer set while making the analysis cache location-independent:
+The development shell pins the upstream golangci-lint v2.13.2 release, whose
+analysis cache is location-independent:
 
 - package keys normalize current-module filenames and the `go.mod` salt so
   byte-identical packages can share an entry across worktrees;
@@ -92,7 +91,7 @@ per-worktree namespaces.
 | --- | --- | --- | --- |
 | Stable cache directory per canonical worktree | Safe across worktrees, including symlink aliases after canonicalization | Warm only within one physical path; duplicates entries and leaves namespaces after removed worktrees | Not selected once the upstream value fix became available |
 | Absolute worktree path in the cache key | Safe because different paths cannot hit the same entry | Same hit topology as per-worktree directories, with no cross-worktree reuse | Upstream temporarily used this fallback in #6697 |
-| Relative positions rebased on load | Safe when every path-bearing cached value is normalized and old payloads are salted out | Preserves global cross-worktree hits | Selected through a focused backport from upstream v2.13.2; a full upgrade would introduce unrelated analyzer findings |
+| Relative positions rebased on load | Safe when every path-bearing cached value is normalized and old payloads are salted out | Preserves global cross-worktree hits | Selected through upstream v2.13.2, with its analyzer findings fixed in Ledger |
 | Per-execution lint cache | Safe | No lint-cache warm path; repeats analysis on every validation | Rejected on performance grounds |
 | v2.12.2 global cache plus routine cleaning | Unsafe between cleans | Fast only until another checkout supplies a location-bound value | Rejected; cleaning is recovery, not isolation |
 
@@ -126,10 +125,14 @@ the selected global/rebased cache at 31.9ms cold in worktree A and 27.2ms for a
 cross-worktree hit in B. A stable per-worktree namespace measured 45.0ms cold
 and 27.3ms warm in A, then paid another 32.3ms cold in B; a per-execution cache
 paid the cold analysis on both runs (32.7ms and 31.0ms). On the full root module,
-the selected build completed a temporary-cache cold lint in 204.7s and an
-unchanged warm lint in 5.3s with zero issues; the operator module measured 28.3s
-cold and 3.4s warm. These timings demonstrate hit topology, not a performance
-budget.
+the initial v2.12.2 backport prototype completed a temporary-cache cold lint in
+204.7s and an unchanged warm lint in 5.3s with zero issues; the operator module
+measured 28.3s cold and 3.4s warm. These timings demonstrate hit topology, not a
+performance budget. The final implementation uses the upstream release rather
+than carrying that source patch; these prototype timings are historical
+comparison evidence. With upstream v2.13.2 and its analyzer findings fixed,
+unchanged warm root/operator lint measured 2.3s/1.6s with zero issues, using an
+isolated temporary cache root (excluding Nix shell startup).
 
 The alternative input-sensitive pre-commit proposal added roughly 1,500 lines
 of selector and dependency machinery. A straightforward warm pre-commit at

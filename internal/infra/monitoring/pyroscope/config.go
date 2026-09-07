@@ -23,7 +23,8 @@ type Config struct {
 	// Tags are additional labels to attach to all profiles.
 	Tags map[string]string
 
-	// AuthToken is the authentication token for Pyroscope (used with Grafana Cloud).
+	// AuthToken is a Bearer token for custom Pyroscope endpoints.
+	// A complete BasicAuthUser/BasicAuthPassword pair takes precedence.
 	AuthToken string
 
 	// TenantID is the tenant ID for multi-tenant Pyroscope (used with Grafana Cloud).
@@ -88,10 +89,15 @@ func (c *Config) PyroscopeConfig() pyroscope.Config {
 		ProfileTypes:      c.ProfileTypes,
 		DisableGCRuns:     c.DisableGCRuns,
 		UploadRate:        c.UploadRate,
-		AuthToken:         c.AuthToken, //nolint:staticcheck // bearer-token auth is a distinct mechanism from BasicAuthUser/BasicAuthPassword; still required for Grafana Cloud API-key auth
 		TenantID:          c.TenantID,
 		BasicAuthUser:     c.BasicAuthUser,
 		BasicAuthPassword: c.BasicAuthPassword,
+	}
+	// The SDK's AuthToken field is deprecated. Its supported HTTPHeaders
+	// option preserves Bearer authentication for custom endpoints without
+	// overriding a complete Basic Auth configuration.
+	if c.AuthToken != "" && (c.BasicAuthUser == "" || c.BasicAuthPassword == "") {
+		cfg.HTTPHeaders = map[string]string{"Authorization": "Bearer " + c.AuthToken}
 	}
 
 	return cfg

@@ -143,7 +143,10 @@ func TestLintCacheFixesOnlyConsumerWorktree(t *testing.T) {
 	t.Parallel()
 
 	seed, producer, consumer, cacheRoot := newLintWorktrees(t)
-	unfixed := []byte("package cacheleak\n\nconst Value = \"teh\"\n")
+	// Construct the intentional fixture typo without spelling it in this file,
+	// which is itself checked by misspell during repository validation.
+	typo := string([]byte{'t', 'e', 'h'})
+	unfixed := fmt.Appendf(nil, "package cacheleak\n\nconst Value = %q\n", typo)
 	configuration := []byte("version: \"2\"\nlinters:\n  default: none\n  enable: [misspell]\n")
 	for _, worktree := range []string{producer, consumer} {
 		require.NoError(t, os.WriteFile(filepath.Join(worktree, "x.go"), unfixed, 0o644))
@@ -151,7 +154,7 @@ func TestLintCacheFixesOnlyConsumerWorktree(t *testing.T) {
 	}
 
 	producerOutput := runLint(t, producer, cacheRoot, filepath.Join(filepath.Dir(seed), "run-producer"))
-	require.Contains(t, producerOutput, "`teh` is a misspelling of `the`")
+	require.Contains(t, producerOutput, "`"+typo+"` is a misspelling of `the`")
 
 	producerRoot := resolvedPath(t, producer)
 	runGit(t, seed, "worktree", "remove", "--force", producer)

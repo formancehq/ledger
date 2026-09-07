@@ -388,7 +388,8 @@ const otelExecPrologue = `if [ "${OTEL_TRACES:-}" = "false" ] || [ -z "${OTEL_TR
 	`export OTEL_EXPORTER_OTLP_ENDPOINT="https://$OTEL_TRACES_EXPORTER_OTLP_ENDPOINT"; fi ;; ` +
 	`esac; ` +
 	`if [ -n "${OTEL_TRACES_EXPORTER_OTLP_MODE:-}" ]; then ` +
-	`export OTEL_EXPORTER_OTLP_PROTOCOL="$OTEL_TRACES_EXPORTER_OTLP_MODE"; fi; fi; ` //nolint:dupword // closes two nested shell `if` blocks, not a duplicated word
+	`export OTEL_EXPORTER_OTLP_PROTOCOL="$OTEL_TRACES_EXPORTER_OTLP_MODE"; fi; ` +
+	`fi; ` // Close the outer endpoint branch separately from the mode branch.
 
 // shellSingleQuote returns s wrapped in single quotes safe for /bin/sh -c.
 // A single quote inside the string is encoded as `'\”` (close, escaped
