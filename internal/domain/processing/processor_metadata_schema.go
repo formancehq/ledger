@@ -32,7 +32,25 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
 
-	field := &commonpb.MetadataFieldSchema{Type: order.GetType()}
+	// The revision counts this key's declarations within one lineage; the
+	// incarnation names the lineage. A retype carries the prior incarnation
+	// and increments the revision; a declaration with no prior — a first
+	// declaration or one after a removal deleted the entry — opens a new
+	// lineage identified by this log's own ledger-log id, and restarts the
+	// revision at 1. processApply stamps that id on the log it returns from
+	// the same boundary slot, before incrementing it.
+	_, prior := commonpb.SchemaFieldForTarget(info.GetMetadataSchema(), order.GetTargetType(), order.GetKey())
+
+	incarnation := prior.GetIncarnation()
+	if prior == nil {
+		incarnation = ctx.Boundaries.GetNextLogId()
+	}
+
+	field := &commonpb.MetadataFieldSchema{
+		Type:        order.GetType(),
+		Revision:    prior.GetRevision() + 1,
+		Incarnation: incarnation,
+	}
 
 	switch order.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
@@ -84,9 +102,11 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
 			SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
-				TargetType: order.GetTargetType(),
-				Key:        order.GetKey(),
-				Type:       order.GetType(),
+				TargetType:  order.GetTargetType(),
+				Key:         order.GetKey(),
+				Type:        order.GetType(),
+				Revision:    field.GetRevision(),
+				Incarnation: field.GetIncarnation(),
 			},
 		},
 	}, nil
@@ -157,7 +177,13 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 // populateInitialSchema builds a MetadataSchema from initial_schema commands
 // at ledger creation time. No conversion lifecycle is needed: a brand-new
 // ledger has no stored values to convert.
-func populateInitialSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *commonpb.MetadataSchema {
+//
+// These declarations open their lineages at the ledger's first log id, the
+// value a fresh LedgerBoundaries starts from — so a field declared with the
+// ledger and one declared by a later apply can never share an incarnation
+// with a re-declaration of themselves, which is the only comparison the
+// gate makes.
+func populateInitialSchema(commands []*commonpb.SetMetadataFieldTypeCommand, incarnation uint64) *commonpb.MetadataSchema {
 	if len(commands) == 0 {
 		return nil
 	}
@@ -165,7 +191,7 @@ func populateInitialSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *co
 	schema := &commonpb.MetadataSchema{}
 
 	for _, cmd := range commands {
-		field := &commonpb.MetadataFieldSchema{Type: cmd.GetType()}
+		field := &commonpb.MetadataFieldSchema{Type: cmd.GetType(), Revision: 1, Incarnation: incarnation}
 		switch cmd.GetTargetType() {
 		case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 			if schema.AccountFields == nil {

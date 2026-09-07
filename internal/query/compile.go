@@ -499,19 +499,36 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 	// ranges over old-encoded rows — partial results (EN-1724). Old-kind
 	// conditions therefore stay valid over the complete old index for the
 	// whole window, and the new kind becomes valid atomically at the switch.
-	switch {
-	case !resolved.BindingKnown:
-		// Pre-versioning resolver (test default): the live schema is all
-		// there is.
-	case !resolved.TypeDeclared:
-		// The served version was built before any type was declared for this
-		// key. Field conditions on an undeclared key were rejected then, and
-		// the window keeps that behavior until the rewrite promotes the
-		// declared-type keyspace.
-		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
-	default:
-		fieldSchema = &commonpb.MetadataFieldSchema{Type: resolved.Type}
+	//
+	// The window is exactly ONE schema revision deep. A binding further
+	// behind is not a live retype window — it is a rewound read store (the
+	// read index is a WAL-less Pebble store, so a hard kill rewinds it to
+	// the last flush) re-walking the retype chain, and serving it would
+	// time-travel query semantics at a pin far past the retypes it has not
+	// re-applied yet. That state is a rebuild in progress, and it reads as
+	// exactly that: INDEX_BUILDING, the same retryable class an unbuilt
+	// index produces. The adapter forwards it to the leader (see
+	// RoutedController), so a converged replica answers instead.
+	if resolved.BindingKnown {
+		switch ClassifyBindingWindow(resolved.TypeDeclared, resolved.Incarnation, fieldSchema.GetIncarnation(), resolved.Revision, fieldSchema.GetRevision()) {
+		case BindingPredeclaration:
+			// The served version was built before any type was declared for
+			// this key, and the schema is on its first declaration: the
+			// undeclared binding is that declaration's direct predecessor,
+			// and the window keeps its behavior — field conditions on an
+			// undeclared key were rejected then.
+			return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
+		case BindingBehindWindow, BindingForeignIncarnation:
+			// Two or more revisions behind the schema (a rebuild mid-chain),
+			// or bound to a declaration lineage the schema has since replaced
+			// (a rewound store still holding a dropped incarnation).
+			return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
+		case BindingServes:
+			fieldSchema = &commonpb.MetadataFieldSchema{Type: resolved.Type}
+		}
 	}
+	// !BindingKnown: pre-versioning resolver (test default) — the live
+	// schema is all there is.
 
 	fc, err = validateAndCoerceCondition(fc, fieldSchema)
 	if err != nil {
@@ -2149,3 +2166,74 @@ func (it *SliceIterator) Err() error { return nil }
 func (it *SliceIterator) Close() {}
 
 var _ readstore.EntityIterator = (*SliceIterator)(nil)
+
+// BindingWindowVerdict classifies a served binding against the schema's
+// declaration of the same field. Two things must hold for the binding to
+// answer: it must belong to the same declaration lineage (incarnation), and
+// within that lineage it must be at most one revision behind — a retype's old
+// view stays serveable until the atomic switch, anything older is a rebuild
+// still walking the chain.
+type BindingWindowVerdict int
+
+const (
+	// BindingServes: same incarnation, and the binding is the schema's
+	// revision or its direct predecessor — the legal retype window.
+	BindingServes BindingWindowVerdict = iota
+	// BindingPredeclaration: the undeclared binding is the direct predecessor
+	// of a first declaration. Within the window, but it keeps pre-declaration
+	// semantics — the compile gate rejects field conditions on it as
+	// INDEX_NOT_FOUND, exactly as it did before the declaration.
+	BindingPredeclaration
+	// BindingBehindWindow: same incarnation, more than one revision behind
+	// the schema (an undeclared binding behind a re-declared schema included)
+	// — a rebuild mid-chain, refused as retryable INDEX_BUILDING.
+	BindingBehindWindow
+	// BindingForeignIncarnation: the binding was built for a declaration
+	// lineage that is not the schema's — the field was removed and
+	// re-declared, and this binding belongs to the dropped incarnation whose
+	// keyspace no longer exists. Refused as INDEX_BUILDING: the local rebuild
+	// that will re-fold the removal and the new declaration is exactly what
+	// the reader is waiting for.
+	BindingForeignIncarnation
+)
+
+// ClassifyBindingWindow is the serving decision shared by the compile gate
+// above and InspectIndex; both thresholds live only here.
+//
+// Incarnation equality is checked first, and it is what makes the decision
+// self-sufficient. Revision distance alone cannot express it: a removal
+// restarts the counter, so a rewound read store still holding the dropped
+// incarnation's binding (say revision 2) compares favourably against the
+// re-declared schema (revision 1) and would serve a keyspace that was purged.
+// Refusing "binding ahead of schema" is not an option either — a retype's
+// atomic switch legitimately lands between the schema read and the state
+// read, putting a healthy binding one revision ahead.
+//
+// Comparing identities rather than distances is also fail-safe under sampling
+// skew: the schema and the binding come from two stores, and a stale read of
+// either can only make the incarnations differ, which refuses. That is why
+// this decision does not depend on the caller having fold-aligned its
+// snapshot (alignment is still required for cross-store leaf skew — see
+// AlignedIndexSnapshot — just not for this).
+func ClassifyBindingWindow(declared bool, bindingIncarnation, schemaIncarnation uint64, bindingRevision, schemaRevision uint32) BindingWindowVerdict {
+	if !declared {
+		// No declared binding to attribute to a lineage: the version was
+		// built before any type was declared for this key. It is the direct
+		// predecessor of a first declaration only.
+		if schemaRevision <= 1 {
+			return BindingPredeclaration
+		}
+
+		return BindingBehindWindow
+	}
+
+	if bindingIncarnation != schemaIncarnation {
+		return BindingForeignIncarnation
+	}
+
+	if bindingRevision+1 < schemaRevision {
+		return BindingBehindWindow
+	}
+
+	return BindingServes
+}

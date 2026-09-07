@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -37,11 +36,12 @@ type inspectSummaryJSON struct {
 	EntitiesWithNull uint64 `json:"entitiesWithNull"`
 }
 
-// metadataValueToAny renders a decoded index value for JSON output. declaredType
-// is the field's schema type for the inspected key: datetime index keys share
-// the int64 encoding (decode reconstructs an int_value), so a datetime field is
-// rendered as an RFC3339 string here rather than as a raw integer.
-func metadataValueToAny(v *commonpb.MetadataValue, declaredType commonpb.MetadataType) any {
+// metadataValueToAny renders a decoded index value for JSON output. servedType
+// is the type binding of the index version that served the scan: datetime
+// index keys share the int64 encoding (decode reconstructs an int_value), so a
+// datetime-bound value is rendered as an RFC3339 string here rather than as a
+// raw integer.
+func metadataValueToAny(v *commonpb.MetadataValue, servedType commonpb.MetadataType) any {
 	if v == nil {
 		return nil
 	}
@@ -50,7 +50,7 @@ func metadataValueToAny(v *commonpb.MetadataValue, declaredType commonpb.Metadat
 	case *commonpb.MetadataValue_StringValue:
 		return t.StringValue
 	case *commonpb.MetadataValue_IntValue:
-		if commonpb.IsDatetimeType(declaredType) {
+		if commonpb.IsDatetimeType(servedType) {
 			return time.UnixMicro(t.IntValue).UTC().Format(time.RFC3339Nano)
 		}
 
@@ -134,7 +134,10 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	declaredType := s.declaredMetadataType(r.Context(), ledgerName, targetType, metadataKey)
+	// Render with the binding that actually served the scan: during the legal
+	// one-revision retype window the served encoding is the predecessor's,
+	// and the live declared type would mistype every value.
+	servedType := resp.GetServedType()
 
 	switch result := resp.GetResult().(type) {
 	case *servicepb.InspectIndexResponse_DistinctValues:
@@ -142,7 +145,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 		values := make([]any, len(dv.GetValues()))
 
 		for i, v := range dv.GetValues() {
-			values[i] = metadataValueToAny(v, declaredType)
+			values[i] = metadataValueToAny(v, servedType)
 		}
 
 		writeOK(w, &inspectDistinctValuesJSON{
@@ -157,7 +160,7 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 
 		for i, fv := range f.GetFacets() {
 			facets[i] = inspectFacetJSON{
-				Value: metadataValueToAny(fv.GetValue(), declaredType),
+				Value: metadataValueToAny(fv.GetValue(), servedType),
 				Count: fv.GetCount(),
 			}
 		}
@@ -172,25 +175,10 @@ func (s *Server) handleInspectIndex(w http.ResponseWriter, r *http.Request) {
 		s := result.Summary
 		writeOK(w, &inspectSummaryJSON{
 			Cardinality:      s.GetCardinality(),
-			Min:              metadataValueToAny(s.GetMin(), declaredType),
-			Max:              metadataValueToAny(s.GetMax(), declaredType),
+			Min:              metadataValueToAny(s.GetMin(), servedType),
+			Max:              metadataValueToAny(s.GetMax(), servedType),
 			EntitiesWithKey:  s.GetEntitiesWithKey(),
 			EntitiesWithNull: s.GetEntitiesWithNull(),
 		})
 	}
-}
-
-// declaredMetadataType returns the schema-declared MetadataType for
-// (ledger, targetType, key), or METADATA_TYPE_STRING when the ledger lookup
-// fails or the key has no declaration. It is a render hint only: a failed
-// lookup degrades to the default (raw integer) rendering rather than erroring.
-func (s *Server) declaredMetadataType(ctx context.Context, ledgerName string, targetType commonpb.TargetType, key string) commonpb.MetadataType {
-	info, err := s.backend.GetLedgerByName(ctx, ledgerName)
-	if err != nil {
-		return commonpb.MetadataType_METADATA_TYPE_STRING
-	}
-
-	_, fs := commonpb.SchemaFieldForTarget(info.GetMetadataSchema(), targetType, key)
-
-	return fs.GetType()
 }

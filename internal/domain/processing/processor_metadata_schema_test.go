@@ -458,14 +458,14 @@ func TestPopulateInitialSchema(t *testing.T) {
 	t.Run("NilCommands", func(t *testing.T) {
 		t.Parallel()
 
-		result := populateInitialSchema(nil)
+		result := populateInitialSchema(nil, 1)
 		require.Nil(t, result)
 	})
 
 	t.Run("EmptyCommands", func(t *testing.T) {
 		t.Parallel()
 
-		result := populateInitialSchema([]*commonpb.SetMetadataFieldTypeCommand{})
+		result := populateInitialSchema([]*commonpb.SetMetadataFieldTypeCommand{}, 1)
 		require.Nil(t, result)
 	})
 
@@ -479,7 +479,7 @@ func TestPopulateInitialSchema(t *testing.T) {
 				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 			},
 		}
-		result := populateInitialSchema(commands)
+		result := populateInitialSchema(commands, 1)
 		require.NotNil(t, result)
 		require.NotNil(t, result.GetAccountFields())
 		field := result.GetAccountFields()["amount"]
@@ -497,7 +497,7 @@ func TestPopulateInitialSchema(t *testing.T) {
 				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
 			},
 		}
-		result := populateInitialSchema(commands)
+		result := populateInitialSchema(commands, 1)
 		require.NotNil(t, result)
 		require.NotNil(t, result.GetTransactionFields())
 		field := result.GetTransactionFields()["priority"]
@@ -515,7 +515,7 @@ func TestPopulateInitialSchema(t *testing.T) {
 				Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 			},
 		}
-		result := populateInitialSchema(commands)
+		result := populateInitialSchema(commands, 1)
 		require.NotNil(t, result)
 		require.NotNil(t, result.GetLedgerFields())
 		field := result.GetLedgerFields()["env"]
@@ -543,10 +543,142 @@ func TestPopulateInitialSchema(t *testing.T) {
 				Type:       commonpb.MetadataType_METADATA_TYPE_STRING,
 			},
 		}
-		result := populateInitialSchema(commands)
+		result := populateInitialSchema(commands, 1)
 		require.NotNil(t, result)
 		require.Len(t, result.GetAccountFields(), 1)
 		require.Len(t, result.GetTransactionFields(), 1)
 		require.Len(t, result.GetLedgerFields(), 1)
 	})
+}
+
+// TestProcessSetMetadataFieldType_StampsRevision pins the revision counter:
+// the first declaration of a key is revision 1, each retype increments it,
+// and the minted log carries the post-apply revision — the mint-time stamp a
+// replica folding at any replay distance binds the rewrite's target version
+// to.
+func TestProcessSetMetadataFieldType_StampsRevision(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+
+	// The ledger already carries "amount" at revision 2 in lineage 5: this
+	// retype must stamp revision 3 and CARRY lineage 5, in the schema and in
+	// the log. A retype is not a new declaration lineage.
+	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1, MetadataSchema: &commonpb.MetadataSchema{
+		AccountFields: map[string]*commonpb.MetadataFieldSchema{
+			"amount": {Type: commonpb.MetadataType_METADATA_TYPE_STRING, Revision: 2, Incarnation: 5},
+		},
+	}}
+
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+		field := info.GetMetadataSchema().GetAccountFields()["amount"]
+		require.NotNil(t, field)
+		require.Equal(t, uint32(3), field.GetRevision())
+		require.Equal(t, uint64(5), field.GetIncarnation(), "a retype stays in the field's declaration lineage")
+	})
+	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "test-ledger",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
+						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "amount",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						},
+					}},
+				},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(order, mockStore)
+	require.NoError(t, err)
+
+	setLog := result.GetApply().GetLog().GetData().GetSetMetadataFieldType()
+	require.NotNil(t, setLog)
+	require.Equal(t, uint32(3), setLog.GetRevision())
+	require.Equal(t, uint64(5), setLog.GetIncarnation())
+}
+
+// TestProcessSetMetadataFieldType_OpensLineageAfterRemoval pins the other half
+// of the stamp: a declaration with no prior entry — a first declaration, or one
+// after a removal deleted it — opens a NEW lineage identified by its own
+// ledger-log id, and restarts the revision. Without a fresh id here, a rewound
+// read store's binding from the dropped incarnation would compare favourably
+// against the re-declared schema and serve a purged keyspace.
+func TestProcessSetMetadataFieldType_OpensLineageAfterRemoval(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	processor, err := NewRequestProcessor(nil, 0)
+	require.NoError(t, err)
+
+	now := &commonpb.Timestamp{Data: 1234567890}
+	// The ledger has run for a while: the next ledger-log id is 41, so that is
+	// the id this declaration's own log gets and therefore its lineage.
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 41}
+
+	// "amount" was declared and removed earlier, so the schema holds no entry.
+	ledgerInfo := &commonpb.LedgerInfo{Name: "test-ledger", Id: 1, MetadataSchema: &commonpb.MetadataSchema{
+		AccountFields: map[string]*commonpb.MetadataFieldSchema{},
+	}}
+
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, ledgerInfo.AsReader(), nil).AnyTimes()
+	expectGetIndex(mockStore, domain.IndexKey{}, nil, domain.ErrNotFound).AnyTimes()
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+		field := info.GetMetadataSchema().GetAccountFields()["amount"]
+		require.NotNil(t, field)
+		require.Equal(t, uint32(1), field.GetRevision(), "a re-declaration restarts the revision")
+		require.Equal(t, uint64(41), field.GetIncarnation(), "and opens a lineage at its own log id")
+	})
+	mockStore.EXPECT().GetDate().Return(now.AsReader())
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
+
+	order := &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "test-ledger",
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
+						SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
+							TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+							Key:        "amount",
+							Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+						},
+					}},
+				},
+			},
+		},
+	}
+
+	result, err := processor.ProcessOrder(order, mockStore)
+	require.NoError(t, err)
+
+	setLog := result.GetApply().GetLog().GetData().GetSetMetadataFieldType()
+	require.NotNil(t, setLog)
+	require.Equal(t, uint32(1), setLog.GetRevision())
+	require.Equal(t, uint64(41), setLog.GetIncarnation(),
+		"the log carries the lineage so every replica binds the new incarnation identically")
+	require.Equal(t, uint64(41), result.GetApply().GetLog().GetId(),
+		"the lineage id IS this log's id — the value processApply stamps after the handler returns")
 }

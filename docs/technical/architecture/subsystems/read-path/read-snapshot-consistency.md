@@ -136,9 +136,18 @@ below the handle's sequence. That sequence is the query's **pin**:
 
 Consumers: `listEntities` (ListTransactions/ListAccounts/ListLogs — including
 the reverse LOGS arm, whose unfiltered scan also iterates the read index),
-`AggregateVolumes`, and the prepared-query executor. Index-introspection
-endpoints (GetIndexStatus, InspectIndex, GetIndexEntryStatus) read only the
-index snapshot and need no alignment.
+`AggregateVolumes`, and the prepared-query executor. `InspectIndex` aligns
+too, for the same reason every indexed read does — it scans read-index rows
+while resolving the field's declaration from the main store: it opens its
+main-store handle through `OpenIndexHandle` (an index read by construction, so
+the fold floor is always reserved; checkpoint stores excepted) and resolves
+the version state plus the scan through the aligned snapshot. Alignment is
+*not* what keeps the serving-window gate sound — `ClassifyBindingWindow`
+compares declaration lineages for equality, which no sampling skew can turn
+into a false serve (see [indexer / indexes.md](../indexer/indexes.md)). Only
+the version-state summaries (GetIndexStatus, GetIndexEntryStatus) read the
+bare index snapshot: they report fold progress itself, so aligning them would
+be circular.
 
 **Version activation**: a rewrite stamps every event it writes with the one
 FSM sequence it read from, so a promoted version resolves as EMPTY at any pin

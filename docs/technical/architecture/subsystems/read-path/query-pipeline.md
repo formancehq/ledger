@@ -101,6 +101,13 @@ local store without a fresh barrier. Explicit `stale` skips this barrier, an
 explicit leader-local read does not perform it, and checkpoint reads use their
 frozen snapshot instead.
 
+A read that passes the barrier can still be refused by the local index gate as
+`INDEX_BUILDING` (initial backfill, activation-pending, or a binding behind
+the schema's serving window after a read-store rewind). The router forwards
+that refusal to the leader too — see the indexer pages for the serving-window
+rule — with the same exemptions: the leader never forwards, `stale` reads keep
+the local refusal, and an already-forwarded read is not re-sent.
+
 ## Freshness — `min_log_sequence`
 
 The client can pass `min_log_sequence` in the request's `ReadOptions` to demand

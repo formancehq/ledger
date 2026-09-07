@@ -418,6 +418,29 @@ type IndexVersionState struct {
 	// bound type.
 	PendingType         commonpb.MetadataType
 	PendingTypeDeclared bool
+
+	// CurrentRevision / PendingRevision are the schema revisions the two
+	// bindings correspond to (MetadataFieldSchema.revision, stamped into the
+	// CreateIndex / SetMetadataFieldType logs). They are what queries measure
+	// binding convergence with: a CurrentRevision exactly one behind the
+	// schema's is the live retype window (old view served until the atomic
+	// switch); a larger gap is a stale binding — a rewound read store still
+	// rebuilding through the retype chain — and the query refuses it as
+	// INDEX_BUILDING rather than serve pre-retype semantics at a post-retype
+	// pin.
+	CurrentRevision uint32
+	PendingRevision uint32
+
+	// CurrentIncarnation is the declaration lineage CurrentType's revision
+	// counts within (MetadataFieldSchema.incarnation). Removal and
+	// re-declaration restart the revision, so revision distance alone cannot
+	// tell a live binding from one built for a since-dropped declaration:
+	// queries compare this for EQUALITY against the schema's incarnation
+	// before measuring distance, and a mismatch reads as INDEX_BUILDING.
+	// Equality is fail-safe under sampling skew — a stale read of either side
+	// can only produce a mismatch, which refuses.
+	CurrentIncarnation uint64
+	PendingIncarnation uint64
 }
 
 // Tombstoned reports whether the record marks a dropped index: no servable
@@ -425,6 +448,25 @@ type IndexVersionState struct {
 // incarnation cannot reuse a version number.
 func (s IndexVersionState) Tombstoned() bool {
 	return s.CurrentVersion == 0 && s.PendingVersion == 0
+}
+
+// Promoted is the atomic switch: the pending version and its whole binding —
+// type, declaredness, revision — become the serving ones, the pending slot
+// clears, and the high-water mark records the promoted version. Every switch
+// site must promote through here; copying the fields piecemeal risks dropping
+// one (the revision, say) and silently serving a mismatched binding under the
+// serving-window gate.
+func (s IndexVersionState) Promoted(activationSequence uint64) IndexVersionState {
+	return IndexVersionState{
+		CurrentVersion:      s.PendingVersion,
+		PendingVersion:      0,
+		ActivationSequence:  activationSequence,
+		HighWater:           s.PendingVersion,
+		CurrentType:         s.PendingType,
+		CurrentTypeDeclared: s.PendingTypeDeclared,
+		CurrentRevision:     s.PendingRevision,
+		CurrentIncarnation:  s.PendingIncarnation,
+	}
 }
 
 // IndexVersionStateEntry is the decoded form returned by
@@ -438,7 +480,9 @@ type IndexVersionStateEntry struct {
 
 // encodeIndexVersionState packs the state to a single byte slice.
 // Layout: [current(4B BE)][pending(4B BE)][activation(8B BE)][high_water(4B BE)]
-// [current_type(1B)][pending_type(1B)][opaque_tail…].
+// [current_type(1B)][pending_type(1B)][current_revision(4B BE)]
+// [pending_revision(4B BE)][current_incarnation(8B BE)]
+// [pending_incarnation(8B BE)][opaque_tail…].
 // A type byte holds 0 for "no declared type bound" and 1+MetadataType
 // otherwise, so undeclared stays distinct from METADATA_TYPE_STRING (0).
 func encodeIndexVersionState(s IndexVersionState) []byte {
@@ -449,12 +493,16 @@ func encodeIndexVersionState(s IndexVersionState) []byte {
 	binary.BigEndian.PutUint32(out[16:20], s.HighWater)
 	out[20] = encodeBoundType(s.CurrentType, s.CurrentTypeDeclared)
 	out[21] = encodeBoundType(s.PendingType, s.PendingTypeDeclared)
+	binary.BigEndian.PutUint32(out[22:26], s.CurrentRevision)
+	binary.BigEndian.PutUint32(out[26:30], s.PendingRevision)
+	binary.BigEndian.PutUint64(out[30:38], s.CurrentIncarnation)
+	binary.BigEndian.PutUint64(out[38:46], s.PendingIncarnation)
 	copy(out[indexVersionStateHeaderLen:], s.RewriteProgress)
 
 	return out
 }
 
-const indexVersionStateHeaderLen = 22
+const indexVersionStateHeaderLen = 46
 
 func encodeBoundType(t commonpb.MetadataType, declared bool) byte {
 	if !declared {
@@ -492,6 +540,10 @@ func decodeIndexVersionState(v []byte) (IndexVersionState, bool) {
 	}
 	st.CurrentType, st.CurrentTypeDeclared = decodeBoundType(v[20])
 	st.PendingType, st.PendingTypeDeclared = decodeBoundType(v[21])
+	st.CurrentRevision = binary.BigEndian.Uint32(v[22:26])
+	st.PendingRevision = binary.BigEndian.Uint32(v[26:30])
+	st.CurrentIncarnation = binary.BigEndian.Uint64(v[30:38])
+	st.PendingIncarnation = binary.BigEndian.Uint64(v[38:46])
 
 	return st, true
 }
@@ -570,6 +622,16 @@ type ResolvedIndexVersion struct {
 	// Version's rows carry, or "none was declared when it was built".
 	Type         commonpb.MetadataType
 	TypeDeclared bool
+	// Revision is the schema revision Type corresponds to
+	// (IndexVersionState.CurrentRevision) — what the compiler measures
+	// binding convergence with against the schema revision at the read's
+	// snapshot.
+	Revision uint32
+	// Incarnation is the declaration lineage Revision counts within
+	// (IndexVersionState.CurrentIncarnation). The compiler compares it for
+	// equality with the schema's before trusting Revision, since the
+	// revision restarts whenever a field is removed and re-declared.
+	Incarnation uint64
 	// BindingKnown is true for every resolution built from a stored version
 	// state — TypeDeclared=false is then an affirmative "built with no
 	// declared type", not missing information. Only query.Compile's
@@ -623,6 +685,8 @@ func PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint6
 			Version:      state.CurrentVersion,
 			Type:         state.CurrentType,
 			TypeDeclared: state.CurrentTypeDeclared,
+			Revision:     state.CurrentRevision,
+			Incarnation:  state.CurrentIncarnation,
 			BindingKnown: true,
 		}, true, nil
 	}

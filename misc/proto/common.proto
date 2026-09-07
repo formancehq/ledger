@@ -206,6 +206,28 @@ enum MetadataType {
 
 message MetadataFieldSchema {
   MetadataType type = 1;
+  // revision counts the field's declarations WITHIN one incarnation: 1 at the
+  // declaration that opened it, +1 on every retype. It is what lets a reader
+  // tell how far an index version's binding lags the schema — a binding at
+  // revision-1 is the live retype window (old view served until the atomic
+  // switch); anything older is a stale binding a rewound read store is still
+  // rebuilding through, and queries refuse it as INDEX_BUILDING instead of
+  // serving pre-retype semantics at a post-retype pin. Removal deletes the
+  // field entry, so the counter restarts — which is why revision distance is
+  // only meaningful alongside incarnation.
+  uint32 revision = 2;
+  // incarnation identifies the declaration lineage this field belongs to: the
+  // ledger-log id of the log that opened it (a re-declaration after a removal
+  // gets its own, strictly later id; 1 for a field declared with the ledger).
+  // Retypes carry it unchanged, so it is constant for a field's whole life and
+  // fresh after every removal. Queries compare it for EQUALITY against the
+  // binding's incarnation before measuring revision distance: the counters
+  // reset per incarnation, so a rewound read store holding a dropped
+  // incarnation's binding can otherwise compare favourably against the
+  // re-declared schema and serve a keyspace that no longer exists. Unlike a
+  // distance, an equality check is fail-safe under sampling skew — a stale
+  // sample on either side can only produce a mismatch, which refuses.
+  uint64 incarnation = 3;
 }
 
 message MetadataSchema {
@@ -746,6 +768,16 @@ message CreatedIndexLog {
   // Metadata indexes always carry a binding — CreateIndex validates that the
   // field is declared in the schema.
   bool bound_type_declared = 4;
+  // bound_revision is the schema revision of bound_type at this log's
+  // sequence (MetadataFieldSchema.revision), stamped like bound_type. The
+  // first version's binding carries it so queries can measure how far the
+  // serving binding lags the schema.
+  uint32 bound_revision = 5;
+  // bound_incarnation is the declaration lineage bound_type came from
+  // (MetadataFieldSchema.incarnation). Queries compare it for equality with
+  // the schema's before trusting bound_revision, so an index built for a
+  // since-removed declaration is refused rather than served.
+  uint64 bound_incarnation = 6;
 }
 
 // DroppedIndexLog records the removal of an index.
@@ -783,6 +815,17 @@ message SetMetadataFieldTypeLog {
   TargetType target_type = 1;
   string key = 2;
   MetadataType type = 3;
+  // revision is the field's schema revision AFTER this declaration applies,
+  // stamped by the FSM at mint time so a replica folding the log at any
+  // replay distance binds the rewrite's target version to the same revision
+  // (cf. CreatedIndexLog.bound_type).
+  uint32 revision = 4;
+  // incarnation is the declaration lineage this declaration belongs to
+  // (MetadataFieldSchema.incarnation): carried over from the prior
+  // declaration of the same key, or this log's own ledger-log id when the
+  // declaration opens a new lineage. Mint-time stamped for the same
+  // replay-distance determinism as revision.
+  uint64 incarnation = 5;
 }
 
 // RemovedMetadataFieldTypeLog records the removal of a metadata field type declaration.

@@ -1335,8 +1335,14 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	// rewrite migrates v=1 → v=2 for (account, "status").
 	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "status"))
 	b.putVersionState(ledgerName, canonical, readstore.IndexVersionState{
-		CurrentVersion: 1,
-		PendingVersion: 2,
+		CurrentVersion:      1,
+		PendingVersion:      2,
+		CurrentType:         commonpb.MetadataType_METADATA_TYPE_STRING,
+		CurrentTypeDeclared: true,
+		CurrentRevision:     1,
+		PendingType:         commonpb.MetadataType_METADATA_TYPE_INT64,
+		PendingTypeDeclared: true,
+		PendingRevision:     2,
 	})
 
 	firstSkippedKey := readstore.AccountReverseMapKey(kb, ledgerName, "acct-001", "other")
@@ -1413,10 +1419,17 @@ func TestProcessSchemaRewriteCountsScannedKeysAgainstBudgetAndPersistsCursor(t *
 	assertReadStoreMissing(t, b, matchingKey)
 	assertReadStoreValue(t, b, newRmapKeyV2, newEncoded)
 
-	// Atomic switch promoted current ← pending; queries now read v=2.
+	// Atomic switch promoted current ← pending; queries now read v=2 and
+	// the binding (type + revision) the pending slot carried.
 	current, pending := b.versionFor(ledgerName, canonical)
 	assert.Equal(t, uint32(2), current)
 	assert.Equal(t, uint32(0), pending)
+
+	switched, ok := b.versionStateFor(ledgerName, canonical)
+	require.True(t, ok)
+	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, switched.CurrentType)
+	assert.True(t, switched.CurrentTypeDeclared)
+	assert.Equal(t, uint32(2), switched.CurrentRevision)
 }
 
 func TestProcessSchemaRewriteStopsBeforeScanningWhenStopClosed(t *testing.T) {
@@ -1800,8 +1813,14 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 	// sources from the raw stored STRING "030", NOT from the uint64(30)
 	// currently in the v=2 rmap — so the leading zero is preserved.
 	b.putVersionState(ledgerName, canonical, readstore.IndexVersionState{
-		CurrentVersion: 2,
-		PendingVersion: 3,
+		CurrentVersion:      2,
+		PendingVersion:      3,
+		CurrentType:         commonpb.MetadataType_METADATA_TYPE_UINT64,
+		CurrentTypeDeclared: true,
+		CurrentRevision:     2,
+		PendingType:         commonpb.MetadataType_METADATA_TYPE_STRING,
+		PendingTypeDeclared: true,
+		PendingRevision:     3,
 	})
 
 	task2 := &schemaRewriteTask{
@@ -1827,6 +1846,14 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 	current, pending = b.versionFor(ledgerName, canonical)
 	assert.Equal(t, uint32(3), current)
 	assert.Equal(t, uint32(0), pending)
+
+	// The second switch promoted the pending binding wholesale: type,
+	// declaredness, and revision now describe v=3.
+	switched, ok := b.versionStateFor(ledgerName, canonical)
+	require.True(t, ok)
+	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, switched.CurrentType)
+	assert.True(t, switched.CurrentTypeDeclared)
+	assert.Equal(t, uint32(3), switched.CurrentRevision)
 }
 
 // TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel pins behavior for

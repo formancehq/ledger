@@ -6,8 +6,8 @@ The background worker (`internal/application/indexbuilder`) that turns committed
 
 | Document | Description |
 |----------|-------------|
-| [indexes.md](indexes.md) | Index definition (`commonpb.Index`), per-replica `IndexVersionState`, on-demand statistics, and checker coverage. |
-| [indexer.md](indexer.md) | Indexer pipeline: builder loop, two-pass commit, handlers, event-GC scheduling, read-store key layout, atomic switch, schema rewrite. |
+| [indexes.md](indexes.md) | Index definition (`commonpb.Index`), per-replica `IndexVersionState` with its schema binding (declaration lineage + revision) and the serving window, on-demand statistics, and checker coverage. |
+| [indexer.md](indexer.md) | Indexer pipeline: builder loop, two-pass commit, handlers, event-GC scheduling, read-store key layout, atomic switch, schema rewrite. A binding from a replaced declaration lineage, or more than one schema revision behind (a rewound read store mid-rebuild), reads as retryable `INDEX_BUILDING`, forwarded from followers to the leader. |
 
 ## Related
 

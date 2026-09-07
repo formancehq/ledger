@@ -59,21 +59,26 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	createdAt := s.GetDate().Mutate()
 	ledgerID := s.IncrementNextLedgerID()
 
+	boundaries := &raftcmdpb.LedgerBoundaries{
+		NextTransactionId: 1,
+		NextLogId:         1,
+	}
+	// Declarations made with the ledger open their lineages at the ledger's
+	// first log id, read from the boundaries that define it.
+	initialIncarnation := boundaries.GetNextLogId()
+
 	info := &commonpb.LedgerInfo{
 		Name:                   ledger,
 		Id:                     ledgerID,
 		CreatedAt:              createdAt,
-		MetadataSchema:         populateInitialSchema(order.GetInitialSchema()),
+		MetadataSchema:         populateInitialSchema(order.GetInitialSchema(), initialIncarnation),
 		Mode:                   order.GetMode(),
 		MirrorSource:           order.GetMirrorSource(),
 		AccountTypes:           canonicalAccountTypes,
 		DefaultEnforcementMode: order.GetDefaultEnforcementMode(),
 	}
 	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
-	s.Boundaries().Put(domain.LedgerKey{Name: ledger}, &raftcmdpb.LedgerBoundaries{
-		NextTransactionId: 1,
-		NextLogId:         1,
-	})
+	s.Boundaries().Put(domain.LedgerKey{Name: ledger}, boundaries)
 
 	// The MirrorConfigChange signal (post-commit mirror worker
 	// reconciliation) is derived from CreatedLedgerLog.Mode == MIRROR by
@@ -99,7 +104,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 				Name:                   ledger,
 				Id:                     ledgerID,
 				CreatedAt:              createdAt,
-				MetadataSchema:         populateInitialSchema(order.GetInitialSchema()),
+				MetadataSchema:         populateInitialSchema(order.GetInitialSchema(), initialIncarnation),
 				Mode:                   order.GetMode(),
 				MirrorSource:           order.GetMirrorSource(),
 				AccountTypes:           logAccountTypes,

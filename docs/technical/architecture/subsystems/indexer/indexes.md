@@ -42,6 +42,12 @@ type IndexVersionState struct {
     CurrentTypeDeclared bool                  // false = bound to no declared type; rows keep each value's natural encoding
     PendingType         commonpb.MetadataType // the retype's target: the type PendingVersion's rows are encoded under
     PendingTypeDeclared bool
+
+    CurrentRevision uint32 // schema revision CurrentType corresponds to (MetadataFieldSchema.revision)
+    PendingRevision uint32 // schema revision PendingType corresponds to
+
+    CurrentIncarnation uint64 // declaration lineage CurrentRevision counts within (MetadataFieldSchema.incarnation)
+    PendingIncarnation uint64 // declaration lineage PendingRevision counts within
 }
 ```
 
@@ -53,12 +59,49 @@ must validate and encode its conditions under the type those rows actually
 carry. The switch promotes `PendingType` into `CurrentType` together with the
 version — binding and keyspace flip as one.
 
+The bindings are judged in two steps by `query.ClassifyBindingWindow`, shared
+by the compile gate and `InspectIndex`.
+
+**Incarnation first, compared for equality.** A removal deletes the field's
+declaration, so the revision counter restarts on re-declaration: a read store
+rewound past a `RemoveMetadataFieldType` still holds the dropped incarnation's
+binding, whose revision can sit ABOVE the re-declared schema's and look
+comfortably converged. The incarnation — the ledger-log id of the declaration
+that opened the lineage, carried unchanged through retypes — makes those two
+states distinguishable, and a mismatch reads as `INDEX_BUILDING`: the local
+rebuild that will re-fold the removal and the new declaration is exactly what
+the reader is waiting for. Comparing identities rather than distances is also
+what makes the decision independent of the caller's snapshot: the schema and
+the binding come from two stores, and skew between the samples can only make
+the ids differ, which refuses.
+
+**Then revision distance, within that lineage.** The serving window is exactly
+ONE schema revision deep (`CurrentRevision == MetadataFieldSchema.revision - 1`, the
+retype every replica is mid-switch on). A binding further behind is a rewound
+read store re-walking the retype chain — the read index is a WAL-less Pebble
+store, so a hard kill rewinds it to the last flush, and the re-fold rebuilds
+the index's first version bound to the `CreatedIndexLog` stamp before walking
+each replayed retype. Queries refuse that state as `INDEX_BUILDING` (the
+compile gate in `internal/query/compile.go`) instead of serving pre-retype
+semantics at a post-retype pin, and the routing layer forwards the refusal to
+the leader (`RoutedController.retryOnStaleBinding`) so a converged replica
+answers. Both stamps are minted by the FSM (`SetMetadataFieldTypeLog.revision`
+/ `.incarnation`, `CreatedIndexLog.bound_revision` / `.bound_incarnation`) for
+the same replay-distance determinism as the type stamps. Note the asymmetry
+that motivates the pair: version generations never reuse a number
+(`HighWater`), while revisions restart per incarnation — so only the
+incarnation can express the discontinuity a removal introduces.
+
+A binding legitimately one revision AHEAD of the schema still serves: a
+retype's atomic switch can land between a reader's schema sample and its state
+sample. That is why the gate cannot simply refuse "ahead".
+
 ### Storage encoding
 
-Fixed 22 B header, followed by a variable-length opaque tail. The field remains encoded, but the current indexbuilder does not mutate it; both index-backfill and schema-rewrite cursors are persisted separately under `BackfillKey`.
+Fixed 46 B header, followed by a variable-length opaque tail. The field remains encoded, but the current indexbuilder does not mutate it; both index-backfill and schema-rewrite cursors are persisted separately under `BackfillKey`.
 
 ```
-[ current_version (4B BE) ][ pending_version (4B BE) ][ activation_sequence (8B BE) ][ high_water (4B BE) ][ current_type (1B) ][ pending_type (1B) ][ opaque_tail … ]
+[ current_version (4B BE) ][ pending_version (4B BE) ][ activation_sequence (8B BE) ][ high_water (4B BE) ][ current_type (1B) ][ pending_type (1B) ][ current_revision (4B BE) ][ pending_revision (4B BE) ][ current_incarnation (8B BE) ][ pending_incarnation (8B BE) ][ opaque_tail … ]
 ```
 
 A type byte holds `0` for "no declared type bound" and `1 + MetadataType`
@@ -170,7 +213,7 @@ The scan is unbuffered — each call rereads the full prefix. This is fine becau
 | HTTP | `GET /v3/{ledger}/indexes/{canonicalId}/inspect` with `?mode=distinct-values|facets|summary`. Sibling per-ledger routes: `GET /v3/{ledger}/indexes` (list), `GET /v3/{ledger}/indexes/{canonicalId}` (single entry), `.../status` (IndexEntry), `POST /v3/{ledger}/indexes` (create), `DELETE .../indexes/{canonicalId}` (drop). Bucket-wide / cluster-wide reads live under the reserved system segment `/v3/_/indexes/…`: `GET /v3/_/indexes` (list, `?scope=all\|bucket`), `GET /v3/_/indexes/status` (aggregated status), `GET /v3/_/indexes/{canonicalId}` (single bucket-scoped entry), `GET /v3/_/indexes/{canonicalId}/status`. All responses serialize the protobuf message in protobuf-JSON camelCase, wrapped in the `{data:…}` envelope. |
 | CLI | `ledgerctl indexes inspect --ledger … --key … --mode summary` — see [ops/cli.md §indexes inspect](../../../../ops/cli.md). |
 
-The controller (`internal/application/ctrl/controller_default.go`) gates the inspect call on `state.CurrentVersion != 0` — a replica that has never built the index locally returns "not built locally" rather than scanning an empty keyspace.
+The controller (`internal/application/ctrl/controller_default.go`) fold-aligns the inspect snapshot to its main-store handle, then gates the call twice: `state.CurrentVersion != 0` — a replica that has never built the index locally returns "not built locally" rather than scanning an empty keyspace — and `ClassifyBindingWindow`, refusing a binding from another declaration lineage or more than one schema revision behind as `INDEX_BUILDING` (the compile gate's decision, shared so the two cannot drift). The response carries the served binding's type for rendering.
 
 ## Bloom Filter Metrics (Not Index Stats)
 

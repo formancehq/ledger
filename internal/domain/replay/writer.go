@@ -24,8 +24,12 @@ type Writer interface {
 	SaveTxMetadata(canonicalKey []byte, metadata map[string]*commonpb.MetadataValue) error
 	DeleteTxMetadata(canonicalKey []byte, key string) error
 	// Schema declarations are keyed by ledger (they live on LedgerInfo), not by
-	// a canonical attribute key.
-	SetMetadataFieldType(ledger string, target commonpb.TargetType, key string, fieldType commonpb.MetadataType) error
+	// a canonical attribute key. The field carries the log's mint-time stamps
+	// (declared type, revision, incarnation) and a writer that persists
+	// schemas must store it verbatim: the serving-window gate compares the
+	// incarnation for equality and the revision for distance, so dropping
+	// either disarms it.
+	SetMetadataFieldType(ledger string, target commonpb.TargetType, key string, field *commonpb.MetadataFieldSchema) error
 	RemoveMetadataFieldType(ledger string, target commonpb.TargetType, key string) error
 	// Index registry rows live in the SubAttrIndex attribute zone, keyed by
 	// (ledger, IndexID). The removal cascade carries the dropped id on the

@@ -199,7 +199,12 @@ func ReplayLedgerLog(
 
 	case *commonpb.LedgerLogPayload_SetMetadataFieldType:
 		if l := p.SetMetadataFieldType; l != nil {
-			if err := w.SetMetadataFieldType(ledger, l.GetTargetType(), l.GetKey(), l.GetType()); err != nil {
+			field := &commonpb.MetadataFieldSchema{
+				Type:        l.GetType(),
+				Revision:    l.GetRevision(),
+				Incarnation: l.GetIncarnation(),
+			}
+			if err := w.SetMetadataFieldType(ledger, l.GetTargetType(), l.GetKey(), field); err != nil {
 				return fmt.Errorf("replaying set metadata field type: %w", err)
 			}
 		}

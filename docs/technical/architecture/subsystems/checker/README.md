@@ -9,7 +9,7 @@ Two pages cover what the checker depends on and what it does.
 | Document | Description |
 |----------|-------------|
 | [audit-chain.md](audit-chain.md) | The BLAKE3-keyed audit hash chain — the only cryptographically-bound dataset in the system. Structure, lifecycle, tampering model. |
-| [checker.md](checker.md) | The verification passes: how each persisted projection is re-derived from the audit chain and compared against what's stored. Error taxonomy. |
+| [checker.md](checker.md) | The verification passes: how each persisted projection is re-derived from the audit chain and compared against what's stored — including `compareSchema`, which verifies each ledger's metadata field declarations with their mint-time schema revisions (the serving-window gate's detective control). Error taxonomy. |
 
 ## Why a dedicated subsystem
 

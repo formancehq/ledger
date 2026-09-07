@@ -1298,8 +1298,17 @@ paths:
       description: |
         Scans a metadata index and returns distinct values, facets (value + count),
         or a summary (cardinality, min/max, existence counts). The index must be
-        in READY state. Only metadata indexes are inspectable (builtin indexes
-        return 400). Requires `ledger:read` scope.
+        in READY state, and its binding must be inside the declaration's serving
+        window: same declaration (a field that was removed and re-declared
+        invalidates bindings built for the old one) and at most one schema
+        revision behind. A replica still rebuilding refuses with 503
+        INDEX_BUILDING (retryable). Values are rendered under the type
+        binding of the index version that actually served the scan: during the
+        one-revision retype window that is the previous declared type, so an
+        index still serving its INT64 binding under a freshly retyped DATETIME
+        schema returns raw integers, and the new rendering appears atomically
+        when the rewrite completes. Only metadata indexes are inspectable
+        (builtin indexes return 400). Requires `ledger:read` scope.
       operationId: inspectIndex
       tags:
         - Indexes
@@ -4203,9 +4212,9 @@ components:
           format: uint64
           description: Number of distinct values
         min:
-          description: Minimum value (null if index is empty)
+          description: Minimum value (null if index is empty), typed by the binding that served the scan
         max:
-          description: Maximum value (null if index is empty)
+          description: Maximum value (null if index is empty), typed by the binding that served the scan
         entitiesWithKey:
           type: integer
           format: uint64

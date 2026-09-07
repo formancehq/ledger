@@ -25,7 +25,7 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 	// consistent. A duplicate CreateIndex overwrites the row; the
 	// indexbuilder's handleCreatedIndexLog guards against re-scheduling a
 	// backfill by consulting its per-replica IndexVersionState.
-	boundType, boundTypeDeclared := indexBoundType(info, id)
+	binding := indexBoundBinding(info, id)
 
 	indexes.Put(ctx.Scope.Indexes(), ledger, &commonpb.Index{
 		Id:        id,
@@ -36,7 +36,7 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 		ForwardEncodingVersion: 1,
 	})
 
-	return buildCreatedIndexLogPayload(id, ctx.isBornEmpty(ledger), boundType, boundTypeDeclared), nil
+	return buildCreatedIndexLogPayload(id, ctx.isBornEmpty(ledger), binding), nil
 }
 
 func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
@@ -85,33 +85,33 @@ func validateIndexTarget(info *commonpb.LedgerInfo, id *commonpb.IndexID) domain
 	return nil
 }
 
-// indexBoundType resolves the declared type the index's first version binds
-// to: the schema entry for the indexed metadata field at this point in the
-// order stream. The log carries the binding so replicas folding it at any
-// replay distance bind the same type (see CreatedIndexLog.bound_type).
-// Builtin indexes have no metadata field and carry no binding.
-func indexBoundType(info *commonpb.LedgerInfo, id *commonpb.IndexID) (commonpb.MetadataType, bool) {
+// indexBoundBinding resolves the schema entry the index's first version binds
+// to — declared type, revision, and the declaration lineage's incarnation —
+// at this point in the order stream. The log carries the whole binding so
+// replicas folding it at any replay distance bind identically (see
+// CreatedIndexLog.bound_type). Builtin indexes have no metadata field and
+// carry no binding, reported as a nil entry.
+func indexBoundBinding(info *commonpb.LedgerInfo, id *commonpb.IndexID) *commonpb.MetadataFieldSchema {
 	meta, ok := id.GetKind().(*commonpb.IndexID_Metadata)
 	if !ok || meta.Metadata == nil {
-		return 0, false
+		return nil
 	}
 
 	_, field := commonpb.SchemaFieldForTarget(info.GetMetadataSchema(), meta.Metadata.GetTarget(), meta.Metadata.GetKey())
-	if field == nil {
-		return 0, false
-	}
 
-	return field.GetType(), true
+	return field
 }
 
-func buildCreatedIndexLogPayload(id *commonpb.IndexID, initial bool, boundType commonpb.MetadataType, boundTypeDeclared bool) *commonpb.LedgerLogPayload {
+func buildCreatedIndexLogPayload(id *commonpb.IndexID, initial bool, binding *commonpb.MetadataFieldSchema) *commonpb.LedgerLogPayload {
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreateIndex{
 			CreateIndex: &commonpb.CreatedIndexLog{
 				Id:                id,
 				Initial:           initial,
-				BoundType:         boundType,
-				BoundTypeDeclared: boundTypeDeclared,
+				BoundType:         binding.GetType(),
+				BoundTypeDeclared: binding != nil,
+				BoundRevision:     binding.GetRevision(),
+				BoundIncarnation:  binding.GetIncarnation(),
 			},
 		},
 	}
