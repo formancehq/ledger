@@ -227,6 +227,10 @@ func (i *Indexer) processBatch(
 	count := 0
 
 	for count < i.batchSize {
+		if err := ctx.Err(); err != nil {
+			return after, false, err
+		}
+
 		entry, err := cur.Next()
 		if err != nil {
 			if errors.Is(err, io.EOF) {

@@ -391,8 +391,8 @@ func TestStartStopIndexes(t *testing.T) {
 }
 
 // TestProcessOnceHonorsContextCancellation asserts the drain loop checks the
-// context between batches: with a backlog present and an already-cancelled
-// context, ProcessOnce must abort immediately (returning context.Canceled)
+// context before entries and between batches: with a backlog present and an
+// already-cancelled context, ProcessOnce must abort immediately (returning context.Canceled)
 // instead of draining to completion, so worker.Stop() cannot hang on a large
 // backlog or sustained write stream during shutdown.
 func TestProcessOnceHonorsContextCancellation(t *testing.T) {
