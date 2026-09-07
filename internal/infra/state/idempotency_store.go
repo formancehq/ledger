@@ -229,19 +229,17 @@ func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.PebbleReader, cutoffM
 // The in-memory map (s.entries) is the source of authority for which hashes
 // have already been evicted: cache and Pebble stay in sync (entries enter via
 // Put, exit via this Evict, and RestoreFromStore rebuilds the map from
-// Pebble). The step-2 SingleDelete loop therefore skips any hash absent from
-// the map at the start of THIS apply — that hash was already deleted by a
-// previous apply, and a second SingleDelete on the same Pebble main key
-// would violate Pebble's write-once/delete-once SingleDelete contract
-// (resulting state is undefined, can resurrect the value at compaction time).
+// Pebble). The delete loop skips any hash absent from the map at the start of
+// THIS apply — that hash was already evicted by a previous apply, so its main
+// key is already tombstoned; re-deleting would be redundant and would over-count
+// `evicted`.
 //
 // This dedup matters because the leader-side scheduler bounds proposeTechnical
 // with a context timeout: if Raft accepts a proposal but the FSM apply lags
 // past that timeout, the scheduler logs the error and on the next tick
 // re-scans the same expired Pebble entries (the first proposal has not yet
 // applied), then submits a second proposal with the same hashes. Both apply
-// in series; without this dedup the second apply would re-SingleDelete every
-// main key.
+// in series; the map gate keeps the second apply a no-op.
 func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) (int, error) {
 	evicted := 0
 
@@ -254,26 +252,24 @@ func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, l
 	//     entries must stay in the map (and in Pebble) so the next tick's
 	//     scan finds them. Evicting them from the map here, while their
 	//     Pebble main keys still exist, would orphan them: the next apply
-	//     would see them absent from the map and skip the SingleDelete
+	//     would see them absent from the map and skip the delete
 	//     (see the dedup rule below).
 	//
-	//   * For each scanned hash, the SingleDelete is gated on "still
-	//     present in the map". Cache and Pebble stay in sync (entries
-	//     enter via Put, exit here, and RestoreFromStore rebuilds the map
-	//     from Pebble), so a hash absent from the map at apply time was
-	//     already evicted by a previous apply. Re-emitting SingleDelete
-	//     on that main key would violate Pebble's write-once/delete-once
-	//     SingleDelete contract (undefined result — value can resurrect
-	//     at compaction time). This shields the FSM against a scheduler
-	//     retry that re-submits the same hashes after Raft has accepted
-	//     the first proposal but its apply has not yet landed.
+	//   * For each scanned hash, the delete is gated on "still present in
+	//     the map". Cache and Pebble stay in sync (entries enter via Put,
+	//     exit here, and RestoreFromStore rebuilds the map from Pebble), so
+	//     a hash absent from the map at apply time was already evicted by a
+	//     previous apply — re-deleting is redundant and would over-count.
+	//     This keeps a scheduler retry that re-submits the same hashes
+	//     (after Raft accepted the first proposal but its apply had not yet
+	//     landed) a clean no-op.
 	for _, keyHash := range pebbleKeyHashes {
 		u128 := attributes.U128FromBytes(keyHash)
 
 		value, ok := s.entries[u128]
 		if !ok {
-			// Already evicted by a previous apply — skip SingleDelete to
-			// preserve the SingleDelete lifecycle.
+			// Already evicted by a previous apply — its main key is already
+			// tombstoned, so skip to avoid a redundant delete and an over-count.
 			continue
 		}
 
@@ -286,15 +282,21 @@ func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, l
 		delete(s.entries, u128)
 		evicted++
 
-		// Main keys ([0x05][0x01][hash]) are hash-ordered and must be
-		// deleted individually via SingleDelete (write-once / delete-once
-		// lifecycle guaranteed by the FSM).
+		// Main keys ([0x05][0x01][hash]) are deleted with a plain Delete, not
+		// SingleDelete: the key is NOT write-once. A fresh proposal that reuses an
+		// expired-but-not-yet-evicted key writes a new outcome over the old one
+		// (SaveIdempotencyKey Sets the same main key again), so by eviction time
+		// the key may carry two Sets. SingleDelete over multiple Sets is undefined
+		// — it can leave an earlier Set live and resurrect a stale outcome at
+		// compaction — whereas Delete tombstones every prior Set. The cost is
+		// ordinary tombstone accumulation until compaction, in exchange for a
+		// correct lifecycle.
 		mainKey := make([]byte, 2+16)
 		mainKey[0] = dal.ZoneIdempotency
 		mainKey[1] = dal.SubIdempKeys
 		copy(mainKey[2:], keyHash)
 
-		if err := batch.SingleDeleteKey(mainKey); err != nil {
+		if err := batch.DeleteKey(mainKey); err != nil {
 			return evicted, fmt.Errorf("deleting idempotency key: %w", err)
 		}
 	}
@@ -325,8 +327,8 @@ func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, l
 	}
 
 	// `evicted` now reflects the in-memory map deletions, which by the
-	// invariant above equal the Pebble main-key SingleDeletes emitted in
-	// step 2. A duplicate-payload apply (race with a scheduler retry)
+	// invariant above equal the Pebble main-key Deletes emitted in the loop
+	// above. A duplicate-payload apply (race with a scheduler retry)
 	// observes the map already empty for these hashes and reports 0.
 	return evicted, nil
 }

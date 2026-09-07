@@ -452,3 +452,109 @@ func TestApplyProposal_ReplayDoesNotExtendAuditChain(t *testing.T) {
 	require.Equal(t, hashAfterFailure, machine.State.LastAuditHash,
 		"a failure replay must not advance the audit hash chain")
 }
+
+// TestPreload_DoesNotOverwriteNewerOutcomeWithStalePlan pins the freshness guard:
+// the eviction-cutoff gate proves a plan-carried value was not evicted, but not
+// that it is still the newest value for the key. Two proposals can carry the same
+// expired-but-not-yet-evicted value; if the first supersedes it with a fresh
+// outcome, the second's stale preload must not clobber the live one (which would
+// let the duplicate re-execute, breaking at-most-once).
+func TestPreload_DoesNotOverwriteNewerOutcomeWithStalePlan(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, _ := newTestMachine(t)
+
+	const key = "superseded-key"
+
+	// A newer live outcome is already in the map (installed by an earlier apply).
+	live := &commonpb.IdempotencyKeyValue{FirstLogSequence: 10, LogCount: 1, CreatedAt: 2_000_000}
+	machine.Registry.Idempotency.Put(key, live)
+
+	// A concurrent proposal's plan still carries the older, superseded value.
+	stale := &commonpb.IdempotencyKeyValue{FirstLogSequence: 1, LogCount: 1, CreatedAt: 1_000_000}
+	plan := &raftcmdpb.ExecutionPlan{
+		IdempotencyKeys: []*raftcmdpb.ReloadIdempotencyKey{{Key: key, Value: stale}},
+	}
+
+	batch := dataStore.OpenWriteSession()
+	defer func() { _ = batch.Cancel() }()
+	require.NoError(t, machine.Preload(plan, batch, 0))
+
+	got, ok := machine.Registry.Idempotency.Get(key)
+	require.True(t, ok)
+	require.EqualValues(t, 2_000_000, got.GetCreatedAt(),
+		"a stale plan value must not overwrite the newer live outcome")
+	require.EqualValues(t, 10, got.GetFirstLogSequence())
+
+	// Positive control: with no value in the map, the plan value still installs —
+	// the guard blocks only OLDER values, not the bridge itself.
+	const freshKey = "fresh-key"
+	require.NoError(t, machine.Preload(&raftcmdpb.ExecutionPlan{
+		IdempotencyKeys: []*raftcmdpb.ReloadIdempotencyKey{{Key: freshKey, Value: stale}},
+	}, batch, 0))
+	installed, ok := machine.Registry.Idempotency.Get(freshKey)
+	require.True(t, ok, "the plan value must still install when the map has no value")
+	require.EqualValues(t, 1_000_000, installed.GetCreatedAt())
+}
+
+// TestEviction_ReusedKeyDeletesCleanly pins the SingleDelete-lifecycle fix: a key
+// is legitimately re-Set on reuse (a fresh proposal reusing an expired key writes
+// a new outcome over the old one), so the main key is NOT write-once. Eviction
+// uses a plain Delete, which tombstones every prior Set; a SingleDelete over the
+// two Sets is undefined and could resurrect the stale outcome at compaction.
+func TestEviction_ReusedKeyDeletesCleanly(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, _ := newTestMachine(t)
+
+	const (
+		key  = "reused-key"
+		expA = uint64(10_000_000)
+		expB = uint64(20_000_000)
+	)
+
+	// Freeze the first outcome A, then flush so its Set lands in an SST.
+	a := &commonpb.IdempotencyKeyValue{FirstLogSequence: 1, LogCount: 1, CreatedAt: 1, ExpiresAt: expA}
+	b1 := dataStore.OpenWriteSession()
+	require.NoError(t, SaveIdempotencyKey(b1, key, a))
+	require.NoError(t, b1.Commit())
+	machine.Registry.Idempotency.Put(key, a)
+	require.NoError(t, dataStore.Flush())
+
+	// A expires; a fresh proposal reuses the key and freezes B — a SECOND Set on
+	// the same main key. Flush again so the two Sets sit in separate SSTs, the
+	// shape under which a SingleDelete could resurrect A.
+	b := &commonpb.IdempotencyKeyValue{FirstLogSequence: 2, LogCount: 1, CreatedAt: 2, ExpiresAt: expB}
+	b2 := dataStore.OpenWriteSession()
+	require.NoError(t, SaveIdempotencyKey(b2, key, b))
+	require.NoError(t, b2.Commit())
+	machine.Registry.Idempotency.Put(key, b)
+	require.NoError(t, dataStore.Flush())
+
+	// Evict B through the real handler.
+	handle, err := dataStore.NewReadHandle()
+	require.NoError(t, err)
+	hashes, lastKey, err := machine.Registry.Idempotency.ScanExpiredKeyHashes(handle, expB, 100)
+	require.NoError(t, err)
+	_ = handle.Close()
+	require.NotEmpty(t, hashes)
+
+	evictBatch := dataStore.OpenWriteSession()
+	require.NoError(t, machine.applyIdempotencyEviction(evictBatch,
+		&raftcmdpb.IdempotencyEviction{CutoffMicros: expB, PebbleKeyHashes: hashes, LastScannedTimeIndexKey: lastKey}))
+	require.NoError(t, evictBatch.Commit())
+	require.NoError(t, dataStore.Flush())
+
+	// The twice-Set key is gone and does not resurrect.
+	post, err := dataStore.NewDirectReadHandle()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = post.Close() })
+
+	gone, err := LoadIdempotencyKey(post, key)
+	require.NoError(t, err)
+	require.Nil(t, gone, "a reused (twice-Set) key must be cleanly removed by eviction")
+
+	remaining, _, err := machine.Registry.Idempotency.ScanExpiredKeyHashes(post, expB, 100)
+	require.NoError(t, err)
+	require.Empty(t, remaining, "both time-index rows for the reused key must be swept")
+}

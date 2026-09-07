@@ -889,18 +889,31 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 	for _, ik := range executionPlan.GetIdempotencyKeys() {
 		// Install any value carrying an outcome — a committed log sequence or a
 		// frozen business failure. Both must restore so a duplicate replays its
-		// stored outcome instead of re-executing.
+		// stored outcome instead of re-executing. Two guards protect the map:
 		//
-		// Skip a value a committed IdempotencyEviction already removed between the
-		// leader's plan-build and this apply: re-injecting it would leave the map
-		// ahead of Pebble and let a later eviction double-SingleDelete the main
-		// key. Eviction status is read from the replicated eviction cutoff, NOT
-		// the HLC: an eviction is a technical-only proposal that never advances
+		// (1) Eviction. Skip a value a committed IdempotencyEviction already
+		// removed between the leader's plan-build and this apply: re-injecting it
+		// leaves the map ahead of Pebble, so a restart (which rebuilds the map from
+		// Pebble) diverges from a live node at the same applied index. Eviction
+		// status is read from the replicated eviction cutoff, NOT the HLC: an
+		// eviction is a technical-only proposal that never advances
 		// LastAppliedTimestamp, so on an idle cluster the HLC lags the eviction's
 		// wall-clock cutoff and would wrongly consider the removed value live.
+		//
+		// (2) Freshness. Never re-inject a value older than the one already in the
+		// map. Two proposals can carry the same expired-but-not-yet-evicted value
+		// in their plans; if the first supersedes it with a fresh outcome, the
+		// second's stale plan value must not clobber that live outcome — doing so
+		// lets the duplicate re-execute, breaking at-most-once. created_at is the
+		// apply HLC, strictly monotonic, so a newer outcome always has a strictly
+		// higher created_at.
 		v := ik.GetValue()
-		if v != nil && (v.GetFirstLogSequence() > 0 || v.GetFailure() != nil) &&
-			!IdempotencyEvicted(v.GetExpiresAt(), fsm.State.LastIdempotencyEvictionCutoff) {
+		if v == nil || (v.GetFirstLogSequence() == 0 && v.GetFailure() == nil) ||
+			IdempotencyEvicted(v.GetExpiresAt(), fsm.State.LastIdempotencyEvictionCutoff) {
+			continue
+		}
+
+		if existing, ok := fsm.Registry.Idempotency.Get(ik.GetKey()); !ok || v.GetCreatedAt() >= existing.GetCreatedAt() {
 			fsm.Registry.Idempotency.Put(ik.GetKey(), v)
 		}
 	}
