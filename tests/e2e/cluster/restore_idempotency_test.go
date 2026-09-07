@@ -39,10 +39,11 @@ import (
 // different body is executed instead of rejected IDEMPOTENCY_KEY_CONFLICT — the
 // same shape as the reversion-bitset loss (see restore_reversion_test.go).
 //
-// It also proves the frozen expires_at projection survives restore: each keyed
-// outcome's retention deadline is Rebuilt from the audit chain, and CheckStore on
-// the restored node re-derives and verifies it (the cross-lifecycle half of
-// invariant #11 for the expires_at projection).
+// It also proves the frozen expires_at projection survives restore across both
+// classifications (invariant #11): a keyed outcome frozen BEFORE the checkpoint
+// (Preserved via the raw-SST copy) and outcomes frozen AFTER it (Rebuilt from the
+// exported audit delta) both dedup after restore, and CheckStore on the restored
+// node re-derives and verifies each expires_at against the chain.
 var _ = Describe("Restore idempotency keys", Ordered, func() {
 	const (
 		ledgerName = "idem-restore-ledger"
@@ -52,6 +53,12 @@ var _ = Describe("Restore idempotency keys", Ordered, func() {
 		account     = "acc:1"
 		replayKey   = "idem-replay-key"
 		conflictKey = "idem-conflict-key"
+
+		// preservedKey is committed BEFORE the full checkpoint, so its outcome
+		// rides the raw-SST checkpoint copy (the Preserved path); preservedAccount
+		// keeps its volume separate from the delta-path keys' account.
+		preservedKey     = "idem-preserved-key"
+		preservedAccount = "acc:preserved"
 	)
 
 	// The source node is stopped and comes back in restore mode on fresh
@@ -90,6 +97,18 @@ var _ = Describe("Restore idempotency keys", Ordered, func() {
 		return actions.WithIdempotencyKey(conflictKey,
 			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", account, big.NewInt(999), "USD"),
+			}, nil, nil),
+		)
+	}
+
+	// preservedTx is a keyed commit made BEFORE the full checkpoint, so its
+	// outcome (with its frozen expires_at and eviction time-index entry) is
+	// carried in the raw-SST checkpoint copy — the Preserved path — rather than
+	// the exported delta.
+	preservedTx := func() *servicepb.ApplyRequest {
+		return actions.WithIdempotencyKey(preservedKey,
+			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", preservedAccount, big.NewInt(77), "USD"),
 			}, nil, nil),
 		)
 	}
@@ -209,9 +228,19 @@ var _ = Describe("Restore idempotency keys", Ordered, func() {
 				return state.Leader != 0
 			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(BeTrue())
 
-			// Full checkpoint on the EMPTY store: every keyed commit below lands in
-			// the incremental delta, so the restore must reconstruct the idempotency
-			// keys by replaying the exported audit rather than copying SST files.
+			// Pre-checkpoint state (invariant #11 "meaningful state before the full
+			// checkpoint"): a ledger and one keyed outcome frozen BEFORE the
+			// checkpoint, so its expires_at + eviction time-index entry ride the
+			// raw-SST checkpoint copy — the Preserved path.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+			_, err = client.Apply(ctx, preservedTx())
+			Expect(err).To(Succeed())
+
+			// Full checkpoint carries the ledger and the Preserved key; every keyed
+			// commit AFTER it lands in the incremental delta (the Rebuilt path), so
+			// the restore exercises both halves of the expires_at projection.
 			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
@@ -224,13 +253,10 @@ var _ = Describe("Restore idempotency keys", Ordered, func() {
 			Expect(sourceServer.Stop(stopCtx)).To(Succeed())
 		})
 
-		It("commits two keyed transactions", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.CreateLedgerAction(ledgerName, nil),
-			))
-			Expect(err).To(Succeed())
-
-			_, err = client.Apply(ctx, replayTx())
+		It("commits two keyed transactions after the checkpoint", func() {
+			// The ledger and the Preserved key were committed before the checkpoint
+			// (see BeforeAll); these two land in the incremental delta.
+			_, err := client.Apply(ctx, replayTx())
 			Expect(err).To(Succeed())
 
 			_, err = client.Apply(ctx, conflictSeed())
@@ -344,16 +370,32 @@ var _ = Describe("Restore idempotency keys", Ordered, func() {
 			_ = os.RemoveAll(restoreDataDir)
 		})
 
-		It("still dedups after the rebuild", func() {
+		It("still dedups the delta (Rebuilt) keys after the rebuild", func() {
 			expectIdempotency(client, "restored")
 		})
 
+		It("replays the pre-checkpoint (Preserved) key after the rebuild", func() {
+			// preservedKey's outcome rode the raw-SST checkpoint copy, not the
+			// exported delta; replaying it after restore proves the Preserved half
+			// of the expires_at projection survived (CheckStore below re-verifies
+			// its frozen expires_at against the audit chain).
+			_, err := client.Apply(ctx, preservedTx())
+			Expect(err).To(Succeed(), "restored: replaying the pre-checkpoint key must succeed")
+
+			acct, err := actions.GetAccount(ctx, client, ledgerName, preservedAccount)
+			Expect(err).To(Succeed())
+			vol := acct.FindVolume("USD", "")
+			Expect(vol).ToNot(BeNil(), "restored: %s USD volume missing", preservedAccount)
+			Expect(vol.GetInput()).To(Equal("77"), "the pre-checkpoint key must dedup (no double-apply)")
+		})
+
 		It("passes CheckStore on the restored store", func() {
-			// Each keyed outcome's frozen expires_at is Rebuilt from the audit chain
-			// by RebuildDelta. CheckStore re-derives that expiry from the hash chain
-			// and flags any divergence, so a clean result proves the frozen retention
-			// deadline (and its eviction time-index entry) survived restore — the
-			// cross-lifecycle half of invariant #11 for the expires_at projection.
+			// Each keyed outcome's frozen expires_at is re-derived from the audit
+			// chain (Rebuilt keys by RebuildDelta; Preserved keys carried in the
+			// checkpoint). CheckStore re-derives that expiry from the hash chain and
+			// flags any divergence, so a clean result proves the frozen retention
+			// deadline (and its eviction time-index entry) survived restore across
+			// both halves — the cross-lifecycle proof for invariant #11.
 			result, err := actions.CollectCheckStoreEvents(ctx, client)
 			Expect(err).To(Succeed())
 			Expect(result.Errors).To(BeEmpty(), "CheckStore errors on the restored store: %v", result.Errors)
