@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -472,13 +473,16 @@ func IsTransient(err error) bool {
 		IsExternalServiceError(err)
 }
 
-// IsTolerated returns true for any error the workload should NOT surface as
-// a finding: nil, retry-safe transient, or local-lifecycle Canceled. This is
-// the predicate the Sometimes() probes use (`assert.Sometimes(IsTolerated(err),
-// ...)`) so that a context cancellation late in the run doesn't flip a
-// per-driver Sometimes signal to "never true".
+// IsTolerated returns true for any error the workload should NOT surface as a
+// finding: nil, retry-safe transient, or a local context deadline/cancellation.
+// Local helpers can wrap context errors without converting them to gRPC status;
+// those remain inconclusive lifecycle outcomes. This is the predicate the
+// Sometimes() probes use (`assert.Sometimes(IsTolerated(err), ...)`) so that a
+// context cancellation late in the run doesn't flip a per-driver Sometimes
+// signal to "never true".
 func IsTolerated(err error) bool {
-	return err == nil || IsTransient(err) || IsCanceled(err)
+	return err == nil || IsTransient(err) || IsCanceled(err) ||
+		errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
 }
 
 // isBusinessError returns true for a definitive business answer the server
