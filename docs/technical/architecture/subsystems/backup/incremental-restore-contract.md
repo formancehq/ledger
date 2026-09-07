@@ -34,6 +34,15 @@ audit-entry, audit-item, and applied-proposal rows. `ApplyExports` restores thos
 rows, then `RebuildDelta` reconstructs the derived state that the live FSM wrote
 after the checkpoint.
 
+Raft applied indexes embedded in rebuilt business records remain source-cluster
+provenance, not certificates in the restored cluster's new Raft domain. A
+consumer that coordinates rebuildable local projections against such a record
+must bind its wait and published certificate to the restored store's captured
+applied index. Query-checkpoint materialization follows this rule: the audit
+projection certifies the complete restored audit head at the new genesis
+boundary, and the normal index builder never waits for or publishes the
+checkpoint log's larger source-cluster index.
+
 Before changing an audited order, an FSM handler, a persisted projection, or a
 delete/purge cascade, classify every affected value:
 

@@ -25,6 +25,13 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
 5. The index builder detects the `CreatedQueryCheckpointLog`, publishes the
    normal read projection certificate `H` with the batch that crosses the log,
    and waits for the audit projection certificate to cover the same `H`.
+   After a cross-cluster incremental restore, the log still carries its
+   source-cluster `H`, while the restored store starts a new Raft index domain
+   at the full backup's genesis boundary. In that case the builder clamps the
+   projection wait and certificate to its captured restored-store applied
+   index. The audit indexer certifies that boundary only after folding the
+   complete restored audit head, so the checkpoint remains complete without
+   publishing or waiting on an unrelated source-cluster index.
 6. Only after every promised projection covers `H`, the builder flushes the
    WAL-less read store and materializes `{dataDir}/query-checkpoints/{id}/readindex/`.
    The flush is required: otherwise newly committed memtable-only rows and

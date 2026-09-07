@@ -336,3 +336,49 @@ func TestProcessLogsCertifiesCheckpointHorizonBeforeLaterTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, targetHorizon, progress)
 }
+
+func TestProcessLogsClampsRestoredCheckpointHorizonToCurrentRaftDomain(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.notifications = signal.NewNotifications()
+	b.batchSize = 1
+
+	// Incremental restore rebuilds the checkpoint log with its source-cluster
+	// applied index, while the restored main store keeps the full backup's
+	// applied index as the new cluster's genesis boundary. The two numeric Raft
+	// domains are unrelated after restore.
+	const (
+		checkpointID            = uint64(45)
+		restoredTargetHorizon   = uint64(100)
+		sourceCheckpointHorizon = uint64(10_000)
+	)
+	batch := b.pebbleStore.OpenWriteSession()
+	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
+			CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+				CheckpointId: checkpointID,
+				MaxSequence:  1,
+				AppliedIndex: sourceCheckpointHorizon,
+			},
+		}},
+	}}))
+	require.NoError(t, state.SetAppliedIndex(batch, restoredTargetHorizon))
+	require.NoError(t, batch.Commit())
+
+	auditBatch := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteAuditRaftProgress(auditBatch, restoredTargetHorizon))
+	require.NoError(t, auditBatch.Commit())
+
+	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), cursor,
+		"restored indexing must reach the tail without waiting for new-cluster writes")
+	require.True(t, readstore.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
+
+	progress, err := b.readStore.ReadRaftProgress()
+	require.NoError(t, err)
+	require.Equal(t, restoredTargetHorizon, progress,
+		"the read projection must never publish a source-cluster Raft index")
+}

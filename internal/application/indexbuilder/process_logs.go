@@ -179,7 +179,10 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			// read index at this exact point.
 			if cqc, ok := log.GetPayload().GetType().(*commonpb.LogPayload_CreatedQueryCheckpoint); ok {
 				pendingCheckpointCreate = cqc.CreatedQueryCheckpoint.GetCheckpointId()
-				pendingCheckpointHorizon = cqc.CreatedQueryCheckpoint.GetAppliedIndex()
+				pendingCheckpointHorizon = min(
+					cqc.CreatedQueryCheckpoint.GetAppliedIndex(),
+					targetAppliedIndex,
+				)
 
 				break
 			}

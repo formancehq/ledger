@@ -106,7 +106,7 @@ func (i *Indexer) ProcessOnce(ctx context.Context) (uint64, error) {
 		return 0, fmt.Errorf("reading audit progress: %w", err)
 	}
 
-	handle, err := i.store.NewDirectReadHandle()
+	handle, err := i.store.NewReadHandle()
 	if err != nil {
 		return cursor, fmt.Errorf("opening audit target snapshot: %w", err)
 	}
@@ -121,7 +121,9 @@ func (i *Indexer) ProcessOnce(ctx context.Context) (uint64, error) {
 		return cursor, fmt.Errorf("reading audit target sequence: %w", err)
 	}
 
-	for {
+	// Run at least one batch even when the native cursor is already at the
+	// target: a Raft entry can advance the certificate without emitting audit.
+	for first := true; first || cursor < targetAuditSequence; first = false {
 		// Honor shutdown between batches: worker.Stop() blocks on this loop
 		// returning, so without this check draining a large backlog (or a
 		// sustained write stream, where advanced stays true) would stall

@@ -265,7 +265,7 @@ func TestProcessOncePublishesFixedRaftHorizonOnlyWithTerminalBatch(t *testing.T)
 	}
 	setAppliedIndex(t, mainStore, 11)
 
-	handle, err := mainStore.NewDirectReadHandle()
+	handle, err := mainStore.NewReadHandle()
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
@@ -276,6 +276,15 @@ func TestProcessOncePublishesFixedRaftHorizonOnlyWithTerminalBatch(t *testing.T)
 	progress, err := rs.ReadAuditRaftProgress()
 	require.NoError(t, err)
 	require.Zero(t, progress, "an intermediate native batch must not certify the target")
+
+	// A later commit must remain outside this ProcessOnce-equivalent snapshot.
+	// Otherwise sustained writes can keep boot in rebuilding indefinitely.
+	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+		Sequence: 4, ProposalId: 4, Timestamp: &commonpb.Timestamp{Data: 4_000_000},
+		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Ledgers: []string{"main"},
+	})
+	setAppliedIndex(t, mainStore, 19)
 
 	cursor, advanced, err = idx.processBatch(ctx, handle, cursor, 3, 11)
 	require.NoError(t, err)
@@ -292,6 +301,11 @@ func TestProcessOncePublishesFixedRaftHorizonOnlyWithTerminalBatch(t *testing.T)
 	progress, err = rs.ReadAuditRaftProgress()
 	require.NoError(t, err)
 	require.Equal(t, uint64(11), progress, "the final index writes and certificate commit atomically")
+
+	cursor, advanced, err = idx.processBatch(ctx, handle, cursor, 3, 11)
+	require.NoError(t, err)
+	require.False(t, advanced)
+	require.Equal(t, uint64(3), cursor, "the pinned target must exclude entries committed after capture")
 }
 
 func TestProcessOnceCertifiesAppliedEntryWithoutAuditMovement(t *testing.T) {
