@@ -96,6 +96,7 @@ func newCtrlTestStore(t *testing.T) *dal.Store {
 
 	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
+	// Best-effort test cleanup: nothing to assert on close.
 	t.Cleanup(func() { _ = store.Close() })
 
 	return store
