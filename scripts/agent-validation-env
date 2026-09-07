@@ -75,11 +75,9 @@ if [[ "$clean_cache" == true ]]; then
         echo "agent-validation-env: refusing to clear an unmarked cache root: $cache_root" >&2
         exit 1
     }
-    for name in go-build go-mod go-path golangci-lint xdg; do
-        cache_path="$cache_root/$name"
-        chmod -R u+w -- "$cache_path" >/dev/null 2>&1 || true
-        rm -rf -- "$cache_path"
-    done
+    lint_cache="$cache_root/golangci-lint"
+    chmod -R u+w -- "$lint_cache" >/dev/null 2>&1 || true
+    rm -rf -- "$lint_cache"
 fi
 printf '%s\n' "ledger-ai-cache-v1" >"$cache_marker"
 

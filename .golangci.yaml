@@ -224,12 +224,8 @@ linters:
     # race, only pterm's inherent pattern. Tracked separately rather than
     # duplicating the wrapper across the module boundary.
     #
-    # The pattern is not anchored at the start: golangci-lint reports an issue
-    # path relative to the run directory, and its analysis cache is keyed by
-    # package content, so a cache entry produced in another checkout of the
-    # same module replays with that checkout's path (../<other-worktree>/misc/
-    # operator/...). An anchored pattern misses those and the exemption
-    # silently stops applying.
+    # Match paths from the repository root or the nested operator module.
+    # Cross-worktree cache hits are rebased to the consuming checkout.
     - path: (^|/)misc/operator/
       linters: [forbidigo]
     # spinner.go is the sanctioned cmdutil.StartSpinner wrapper for EN-1781 —
