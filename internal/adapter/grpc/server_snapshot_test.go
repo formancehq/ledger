@@ -78,10 +78,11 @@ func (s *testSnapshotServer) PrepareSnapshot(ctx context.Context, _ *snapshotpb.
 }
 
 func (s *testSnapshotServer) FetchFile(req *snapshotpb.FetchFileRequest, stream ggrpc.ServerStreamingServer[snapshotpb.FetchFileResponse]) error {
-	session, ok := s.sessions.get(req.GetSessionId())
+	session, ok := s.sessions.acquire(req.GetSessionId())
 	if !ok {
 		return status.Errorf(codes.NotFound, "session not found")
 	}
+	defer s.sessions.release(session)
 
 	buf := make([]byte, defaultChunkSize)
 
