@@ -34,7 +34,6 @@ When current code and authoritative documentation disagree, stop treating the do
 | Snapshot transfer (`internal/adapter/grpc/file_streaming.go`, `internal/adapter/grpc/server_snapshot.go`, `internal/application/ctrl/file_fetcher.go`, `internal/application/ctrl/file_receiver.go`, `internal/application/ctrl/snapshot_fetcher.go`) | `docs/technical/architecture/subsystems/storage/follower-sync.md`, `docs/technical/contributing/testing.md`; also read `docs/technical/architecture/subsystems/api/auth.md` when changing the RPC trust boundary |
 | `internal/adapter/http/**`, `openapi.yml` | `docs/technical/architecture/subsystems/api/`, `docs/technical/contributing/api-comparison.md` |
 | `internal/infra/node/**`, `internal/infra/transport/**`, `internal/infra/membership/**` | `docs/technical/architecture/subsystems/consensus/` |
-| `internal/infra/receipt/**` | `docs/technical/architecture/subsystems/admission/receipts.md` |
 | `internal/infra/backup/**`, `internal/application/backup/**` | `docs/technical/architecture/subsystems/backup/`, `docs/ops/backup-restore.md` |
 | `internal/application/events/**`, `internal/application/mirror/**` | `docs/technical/architecture/subsystems/events-mirror/` |
 | Numscript runtime/library | `docs/technical/architecture/subsystems/scripting/`, `docs/technical/contributing/numscript.md` |

@@ -151,11 +151,6 @@ func TestErrorTypes(t *testing.T) {
 			expected: `invalid cron expression "bad": parse failed`,
 		},
 		{
-			name:     "ErrInvalidReceipt",
-			err:      &ErrInvalidReceipt{Detail: "expired"},
-			expected: "invalid receipt: expired",
-		},
-		{
 			name: "ErrTransientAccountNonZero",
 			err: &ErrTransientAccountNonZero{Accounts: []AccountAssetKey{
 				{Account: "staging:a", Asset: "USD"},
@@ -337,7 +332,6 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrIndexBuilding":                 &ErrIndexBuilding{},
 		"ErrCheckpointNotReady":            &ErrCheckpointNotReady{},
 		"ErrIndexInconsistent":             &ErrIndexInconsistent{},
-		"ErrInvalidReceipt":                &ErrInvalidReceipt{},
 		"ErrNumscriptNotFound":             &ErrNumscriptNotFound{},
 		"ErrNumscriptVersionAlreadyExists": &ErrNumscriptVersionAlreadyExists{},
 		"ErrNumscriptInvalidVersion":       &ErrNumscriptInvalidVersion{},

@@ -207,13 +207,13 @@ func (b *RoutedController) ListLedgers(ctx context.Context) (cursor.Cursor[*comm
 	return c.ListLedgers(ctx)
 }
 
-func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, *string, error) {
+func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	tx, receipt, err := c.GetTransaction(ctx, ledgerName, transactionID)
+	tx, err := c.GetTransaction(ctx, ledgerName, transactionID)
 	if errors.Is(err, &commonpb.NotFoundError{}) {
 		fields := map[string]any{
 			"ledger":         ledgerName,
@@ -232,7 +232,7 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string
 		b.Node.Logger().WithFields(fields).Errorf("GetTransaction returned NotFound for committed transaction")
 	}
 
-	return tx, receipt, err
+	return tx, err
 }
 
 func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {

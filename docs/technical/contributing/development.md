@@ -35,7 +35,6 @@ ledger/
 │   │   ├── monitoring/    # Observability (OTLP, Pyroscope, tracing, diskusage)
 │   │   ├── node/          # Raft node lifecycle and transport
 │   │   ├── preload/       # Preloading
-│   │   ├── receipt/       # Receipt handling
 │   │   ├── state/         # FSM state machine and snapshots
 │   │   └── transport/     # gRPC connection pool
 │   ├── pkg/               # Pure utilities (zero/low internal deps)

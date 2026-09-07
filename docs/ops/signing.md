@@ -271,7 +271,7 @@ Response signing allows clients to verify that response logs returned by the ser
                     │                                              │
                     │  1. Process request through Raft consensus   │
                     │  2. Get Log result                           │
-                    │  3. Clone Log, clear receipt + sigs          │
+                    │  3. Clone Log, clear signature fields        │
                     │  4. MarshalVT() → payload                    │
                     │  5. Ed25519.Sign(privkey, payload)           │
                     │  6. Attach SignedLog to Log.response_signature│
@@ -357,11 +357,10 @@ message SignedLog {
 }
 ```
 
-The `payload` contains the serialized `Log` message with `response_signature` and `receipt` fields cleared before signing (both are node-local and non-deterministic).
+The `payload` contains the serialized `Log` message with the `response_signature` field cleared before signing (it is node-local and non-deterministic).
 
 ### Design Decisions
 
 - **Signing happens in the gRPC handler, not the FSM**: response signing is a presentation-layer concern. The FSM produces deterministic state; signing adds a transport-level proof on top.
 - **Single server keypair**: no per-client keys needed. All clients verify using the same public key, obtained via `Discovery` or out-of-band.
 - **No changes to Raft/FSM/Pebble**: the response signature is computed after Raft consensus and is not persisted. It only appears in the gRPC response.
-- **Receipt is cleared before signing**: the `receipt` field (JWT) is node-local and not part of the signed content. This ensures signature verification is independent of receipt computation.

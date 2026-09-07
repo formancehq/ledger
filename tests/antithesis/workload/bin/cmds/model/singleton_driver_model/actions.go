@@ -106,9 +106,8 @@ func sourceAddress() string {
 // generateBulk plans the next bulk. Most bulks target a single ledger;
 // occasionally a bulk spreads its requests across a few, exercising the
 // server's atomic-across-ledgers semantics. Runs lock-free on a state
-// snapshot (a published GlobalState is never mutated — Apply forks first);
-// receiptFor resolves a reference's captured receipt under its own lock.
-func generateBulk(g oracle.GlobalState, ledgers []string, receiptFor func(string) string) oracle.Bulk {
+// snapshot (a published GlobalState is never mutated — Apply forks first).
+func generateBulk(g oracle.GlobalState, ledgers []string) oracle.Bulk {
 	picks := pickLedgers(ledgers)
 
 	// Whole-bulk transient shapes fund and drain the same cell, so they only
@@ -161,7 +160,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string, receiptFor func(string
 		}
 
 		if rollRevert() {
-			if req := generateRevert(ledger, ls, receiptFor); req != nil {
+			if req := generateRevert(ledger, ls); req != nil {
 				requests = append(requests, req)
 				continue
 			}
@@ -791,8 +790,8 @@ func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.R
 // validation. Targeting any committed reference exercises both the success path
 // and the TRANSACTION_ALREADY_REVERTED rejection (a reference picked after a
 // prior revert committed).
-func generateRevert(ledger string, ls oracle.LedgerState, receiptFor func(string) string) *servicepb.Request {
-	ref, id, ok := pickTxRef(ls)
+func generateRevert(ledger string, ls oracle.LedgerState) *servicepb.Request {
+	_, id, ok := pickTxRef(ls)
 	if !ok {
 		return nil
 	}
@@ -803,14 +802,6 @@ func generateRevert(ledger string, ls oracle.LedgerState, receiptFor func(string
 		// ~half at the original's effective date: the revert inherits the
 		// original's timestamp instead of the server's current date.
 		AtEffectiveDate: random.RandomChoice([]uint8{0, 1}) == 0,
-	}
-
-	// ~half the reverts with a captured receipt carry it, exercising admission's
-	// receipt path: it verifies the JWT and reverses the receipt's claimed
-	// postings, bypassing the transaction-state store fetch. Outcome matches the
-	// store path for a valid receipt, so the model needs no change.
-	if receipt := receiptFor(ref); receipt != "" && random.RandomChoice([]uint8{0, 1}) == 0 {
-		payload.Receipt = receipt
 	}
 
 	// ~half the reverts carry metadata on the revert transaction, echoed

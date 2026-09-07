@@ -3167,20 +3167,6 @@ spec:
                     format: int32
                     type: integer
                 type: object
-              receiptSigning:
-                description: ReceiptSigning configures HMAC signing for JWT transaction
-                  receipts.
-                properties:
-                  secretKey:
-                    default: key
-                    description: SecretKey is the key in the secret containing the
-                      HMAC key.
-                    type: string
-                  secretName:
-                    description: SecretName is the Kubernetes secret containing the
-                      HMAC key.
-                    type: string
-                type: object
               replicas:
                 default: 3
                 description: Replicas is the number of Raft nodes.

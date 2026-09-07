@@ -124,40 +124,6 @@ func TestResponseSigner(t *testing.T) {
 		err := VerifyResponseSignature(nil, signer.PublicKey())
 		require.Error(t, err)
 	})
-
-	t.Run("receipt is not part of signed content", func(t *testing.T) {
-		t.Parallel()
-
-		log1 := &commonpb.Log{
-			Sequence: 1,
-			Receipt:  "some-jwt-token",
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreatedLedgerLog{
-						Name: "test",
-					},
-				},
-			},
-		}
-
-		log2 := &commonpb.Log{
-			Sequence: 1,
-			Receipt:  "different-jwt-token",
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_CreateLedger{
-					CreateLedger: &commonpb.CreatedLedgerLog{
-						Name: "test",
-					},
-				},
-			},
-		}
-
-		sig1 := signer.SignLog(log1)
-		sig2 := signer.SignLog(log2)
-
-		// payload should be identical since receipt is cleared
-		require.Equal(t, sig1.GetPayload(), sig2.GetPayload())
-	})
 }
 
 func TestVerifyResponseSignature_EmptyPayload(t *testing.T) {

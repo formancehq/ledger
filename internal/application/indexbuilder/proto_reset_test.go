@@ -52,7 +52,6 @@ func TestResetLogForReuse_ClearsStaleData(t *testing.T) {
 
 	// Scalar fields must be zeroed (proto3 omits defaults from wire).
 	assert.Equal(t, uint64(0), log.GetSequence())
-	assert.Empty(t, log.GetReceipt())
 
 	// Optional fields must be nil'd.
 	assert.Nil(t, log.GetResponseSignature())
@@ -189,7 +188,6 @@ func TestResetLogForReuse_RoundTrip(t *testing.T) {
 
 	// Verify log2 values — no stale data from log1.
 	assert.Equal(t, uint64(99999), m.GetSequence())
-	assert.Empty(t, m.GetReceipt(), "Receipt should be empty (not stale)")
 
 	apply := m.GetPayload().GetApply()
 	assert.Equal(t, "other-ledger", apply.GetLedgerName())
@@ -240,7 +238,6 @@ func BenchmarkResetLog(b *testing.B) {
 func buildTestLog() *commonpb.Log {
 	return &commonpb.Log{
 		Sequence: 12345,
-		Receipt:  "test-receipt",
 		Payload: &commonpb.LogPayload{
 			Type: &commonpb.LogPayload_Apply{
 				Apply: &commonpb.ApplyLedgerLog{

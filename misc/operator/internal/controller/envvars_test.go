@@ -449,57 +449,6 @@ func TestBuildEnvVars_AuthReadKeySetMaxRetries(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Receipt signing (secretKeyRef)
-// ---------------------------------------------------------------------------
-
-func TestBuildEnvVars_ReceiptSigning(t *testing.T) {
-	t.Parallel()
-
-	t.Run("with explicit secret key", func(t *testing.T) {
-		t.Parallel()
-		ls := newMinimalCluster()
-		ls.Spec.ReceiptSigning = &ledgerv1alpha1.ReceiptSigningConfig{
-			SecretName: "receipt-hmac",
-			SecretKey:  "hmac-key",
-		}
-		envs := buildEnvVars(ls, "disabled", nil)
-		e := findEnv(envs, "RECEIPT_SIGNING_KEY")
-		require.NotNil(t, e, "RECEIPT_SIGNING_KEY should be present")
-		require.NotNil(t, e.ValueFrom, "should use ValueFrom")
-		require.NotNil(t, e.ValueFrom.SecretKeyRef, "should use SecretKeyRef")
-		assert.Equal(t, "receipt-hmac", e.ValueFrom.SecretKeyRef.Name)
-		assert.Equal(t, "hmac-key", e.ValueFrom.SecretKeyRef.Key)
-	})
-
-	t.Run("default secret key", func(t *testing.T) {
-		t.Parallel()
-		ls := newMinimalCluster()
-		ls.Spec.ReceiptSigning = &ledgerv1alpha1.ReceiptSigningConfig{
-			SecretName: "receipt-hmac",
-		}
-		envs := buildEnvVars(ls, "disabled", nil)
-		e := findEnv(envs, "RECEIPT_SIGNING_KEY")
-		require.NotNil(t, e)
-		assert.Equal(t, "key", e.ValueFrom.SecretKeyRef.Key)
-	})
-
-	t.Run("nil omitted", func(t *testing.T) {
-		t.Parallel()
-		ls := newMinimalCluster()
-		envs := buildEnvVars(ls, "disabled", nil)
-		assertNoEnv(t, envs, "RECEIPT_SIGNING_KEY")
-	})
-
-	t.Run("empty secret name omitted", func(t *testing.T) {
-		t.Parallel()
-		ls := newMinimalCluster()
-		ls.Spec.ReceiptSigning = &ledgerv1alpha1.ReceiptSigningConfig{}
-		envs := buildEnvVars(ls, "disabled", nil)
-		assertNoEnv(t, envs, "RECEIPT_SIGNING_KEY")
-	})
-}
-
-// ---------------------------------------------------------------------------
 // Bloom filters
 // ---------------------------------------------------------------------------
 
@@ -952,10 +901,6 @@ func TestBuildEnvVars_AllNewFields(t *testing.T) {
 	ls.Spec.GrpcSlowThreshold = "5s"
 	ls.Spec.NumscriptCacheSize = &numscriptCache
 	ls.Spec.MirrorMaxBatchSize = &mirrorBatch
-	ls.Spec.ReceiptSigning = &ledgerv1alpha1.ReceiptSigningConfig{
-		SecretName: "hmac-secret",
-		SecretKey:  "signing-key",
-	}
 	ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{
 		Compression: "zstd,zstd,zstd,zstd,zstd,zstd,zstd",
 		ValueSeparation: &ledgerv1alpha1.PebbleValueSeparationConfig{
@@ -1005,12 +950,6 @@ func TestBuildEnvVars_AllNewFields(t *testing.T) {
 	// Cache sizes
 	assertEnv(t, envs, "NUMSCRIPT_CACHE_SIZE", "4096")
 	assertEnv(t, envs, "MIRROR_MAX_BATCH_SIZE", "200")
-
-	// Receipt signing
-	e := findEnv(envs, "RECEIPT_SIGNING_KEY")
-	require.NotNil(t, e)
-	assert.Equal(t, "hmac-secret", e.ValueFrom.SecretKeyRef.Name)
-	assert.Equal(t, "signing-key", e.ValueFrom.SecretKeyRef.Key)
 
 	// Pebble compression
 	assertEnv(t, envs, "PEBBLE_COMPRESSION", "zstd,zstd,zstd,zstd,zstd,zstd,zstd")

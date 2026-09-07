@@ -28,7 +28,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/infra/receipt"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -58,7 +57,6 @@ type BucketServiceServerImpl struct {
 	readStore             *readstore.Store
 	attrs                 *attributes.Attributes
 	sharedState           *state.SharedState
-	receiptSigner         *receipt.Signer
 	responseSigner        *signing.ResponseSigner
 	authCfg               internalauth.AuthConfig
 	queryProfileThreshold time.Duration
@@ -68,7 +66,7 @@ type BucketServiceServerImpl struct {
 	forwarder             nodeForwarder
 }
 
-func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, receiptSigner *receipt.Signer, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
 	meter := meterProvider.Meter("grpc")
 	applyDuration, _ := meter.Int64Histogram("grpc.apply.duration",
 		metric.WithUnit("us"),
@@ -86,7 +84,6 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 		readStore:             rs,
 		attrs:                 attrs,
 		sharedState:           sharedState,
-		receiptSigner:         receiptSigner,
 		responseSigner:        responseSigner,
 		authCfg:               authCfg,
 		queryProfileThreshold: queryProfileThreshold,
@@ -172,14 +169,7 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	skipResponse := req.GetSkipResponse()
 
 	if !skipResponse {
-		// Sign receipts for created transactions (outside FSM to avoid Raft nondeterminism)
-		if impl.receiptSigner != nil {
-			for _, log := range logs {
-				impl.signReceiptIfNeeded(log)
-			}
-		}
-
-		// Sign response logs with server Ed25519 key (after receipt signing, since receipt is cleared before signing)
+		// Sign response logs with server Ed25519 key
 		if impl.responseSigner != nil {
 			for _, log := range logs {
 				log.ResponseSignature = impl.responseSigner.SignLog(log)
@@ -193,7 +183,6 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	if skipResponse {
 		for _, log := range logs {
 			log.Payload = nil
-			log.Receipt = ""
 			log.ResponseSignature = nil
 		}
 	}
@@ -229,35 +218,6 @@ func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context
 	return internalauth.WithForwardedSnapshot(ctx, fc), nil
 }
 
-// signReceiptIfNeeded signs a JWT receipt for logs containing created transactions.
-func (impl *BucketServiceServerImpl) signReceiptIfNeeded(log *commonpb.Log) {
-	applyLog := log.GetPayload().GetApply()
-	if applyLog == nil || applyLog.GetLog() == nil {
-		return
-	}
-
-	created := applyLog.GetLog().GetData().GetCreatedTransaction()
-	if created == nil || created.GetTransaction() == nil {
-		return
-	}
-
-	tx := created.GetTransaction()
-
-	receiptToken, err := impl.receiptSigner.Sign(
-		applyLog.GetLedgerName(),
-		tx.GetId(),
-		tx.GetPostings(),
-		tx.GetTimestamp(),
-	)
-	if err != nil {
-		impl.logger.Errorf("Failed to sign receipt for tx %d: %v", tx.GetId(), err)
-
-		return
-	}
-
-	log.Receipt = receiptToken
-}
-
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
 		return nil, err
@@ -268,15 +228,8 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 	}
 
 	var (
-		tx *commonpb.Transaction
-		// receipt is the token to relay to the client. On the live path it is the
-		// receipt the controller signed (nil when this node has no signer) or, when
-		// the read was forwarded to a signing node, the authoritative token that node
-		// produced — used as-is rather than re-derived from a possibly-stale local
-		// snapshot. On the checkpoint path it is signed here from the checkpoint's
-		// fixed store, which the live controller does not read.
-		receipt *string
-		err     error
+		tx  *commonpb.Transaction
+		err error
 	)
 
 	checkpoint := req.GetCheckpointId() > 0
@@ -295,42 +248,14 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 		if err != nil {
 			return nil, err
 		}
-
-		if impl.receiptSigner != nil {
-			// Checkpoint read: sign from the checkpoint's fixed store so the
-			// receipt's ledger + creation-log reads stay self-consistent with the
-			// transaction, which was read from that same store.
-			receiptHandle, hErr := mainStore.NewReadHandle()
-			if hErr != nil {
-				return nil, fmt.Errorf("opening checkpoint receipt read handle: %w", hErr)
-			}
-
-			receiptToken, cErr := impl.localCtrl.ComputeTransactionReceipt(ctx, receiptHandle, req.GetLedger(), req.GetTransactionId(), tx)
-			_ = receiptHandle.Close()
-			if cErr != nil {
-				return nil, fmt.Errorf("computing transaction receipt: %w", cErr)
-			}
-
-			receipt = &receiptToken
-		}
 	} else {
-		// Live path: the controller reads the transaction and, on the local branch,
-		// signs the receipt from a snapshot opened after the transaction read (its
-		// freshness barrier). When the read is forwarded to a signing node, the
-		// controller relays that node's authoritative receipt. Either way the
-		// receipt is already correct here — this adapter no longer re-signs.
-		tx, receipt, err = impl.ctrl.GetTransaction(ctx, req.GetLedger(), req.GetTransactionId())
+		tx, err = impl.ctrl.GetTransaction(ctx, req.GetLedger(), req.GetTransactionId())
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	resp := &servicepb.GetTransactionResponse{Transaction: tx}
-	if receipt != nil {
-		resp.Receipt = *receipt
-	}
-
-	return resp, nil
+	return &servicepb.GetTransactionResponse{Transaction: tx}, nil
 }
 
 // openCheckpointStores opens the checkpoint's main store and read index in read-only mode.

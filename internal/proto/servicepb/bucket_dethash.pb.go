@@ -63,13 +63,6 @@ func (m *GetTransactionResponse) MarshalToSizedBufferDeterministicVT(dAtA []byte
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if len(m.Receipt) > 0 {
-		i -= len(m.Receipt)
-		copy(dAtA[i:], m.Receipt)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Receipt)))
-		i--
-		dAtA[i] = 0x12
-	}
 	if m.Transaction != nil {
 		size, _ := m.Transaction.MarshalToSizedBufferDeterministicVT(dAtA[:i])
 		i -= size
@@ -1201,13 +1194,6 @@ func (m *RevertTransactionPayload) MarshalToSizedBufferDeterministicVT(dAtA []by
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if len(m.Receipt) > 0 {
-		i -= len(m.Receipt)
-		copy(dAtA[i:], m.Receipt)
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Receipt)))
-		i--
-		dAtA[i] = 0x2a
 	}
 	if len(m.Metadata) > 0 {
 		keysPtr := _dethashKeyPoolGithubComFormancehqLedgerV3InternalProtoServicepbBucketString.Get().(*[]string)

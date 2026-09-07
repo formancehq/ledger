@@ -54,7 +54,7 @@ func applyOrder(ledger string, data *raftcmdpb.LedgerApplyOrder) *raftcmdpb.Orde
 
 // revertOrder builds a caller-intent revert order and records its original
 // postings in the overlay sidecar (admission normally resolves them from the
-// store/receipt at order-build time), so the FSM's reversed-posting balance
+// store at order-build time), so the FSM's reversed-posting balance
 // effect is deterministic in tests.
 func revertOrder(overlay *bulkOverlay, ledger string, txID uint64, original ...*commonpb.Posting) *raftcmdpb.Order {
 	overlay.recordRevertOriginalPostings(domain.TransactionKey{LedgerName: ledger, ID: txID}, original)

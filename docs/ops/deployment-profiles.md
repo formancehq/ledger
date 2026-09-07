@@ -375,7 +375,7 @@ Use the production topology, then add:
 - OIDC or Ed25519 API authentication with least-privilege scopes;
 - `--hash-algorithm blake3` (the default) for cryptographic collision
   resistance;
-- receipt and/or response signing when clients must independently verify server
+- response signing when clients must independently verify server
   results;
 - scheduled backups, restore drills, and periodic `ledgerctl store check` runs.
 

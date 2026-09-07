@@ -203,10 +203,6 @@ type ClusterSpec struct {
 	// +optional
 	Snapshot *SnapshotConfig `json:"snapshot,omitempty"`
 
-	// ReceiptSigning configures HMAC signing for JWT transaction receipts.
-	// +optional
-	ReceiptSigning *ReceiptSigningConfig `json:"receiptSigning,omitempty"`
-
 	// Bloom filter configuration per attribute type.
 	// +optional
 	Bloom *BloomConfig `json:"bloom,omitempty"`
@@ -1294,18 +1290,6 @@ type EndpointsStatus struct {
 
 	// External is true when endpoints are externally reachable (via Ingress).
 	External bool `json:"external"`
-}
-
-// ReceiptSigningConfig holds HMAC receipt signing configuration.
-type ReceiptSigningConfig struct {
-	// SecretName is the Kubernetes secret containing the HMAC key.
-	// +optional
-	SecretName string `json:"secretName,omitempty"`
-
-	// SecretKey is the key in the secret containing the HMAC key.
-	// +kubebuilder:default="key"
-	// +optional
-	SecretKey string `json:"secretKey,omitempty"`
 }
 
 // BloomConfig holds bloom filter configuration per attribute type.

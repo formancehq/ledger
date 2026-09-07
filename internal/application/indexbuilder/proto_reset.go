@@ -29,7 +29,6 @@ func resetLogForReuse(msg proto.Message) {
 
 	// Log-level fields.
 	m.Sequence = 0
-	m.Receipt = ""
 	m.ResponseSignature = nil
 
 	// Preserve m.Payload (always present in system logs).

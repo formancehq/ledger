@@ -172,7 +172,6 @@ func NewGetTransactionRequestListReader(s []*GetTransactionRequest) GetTransacti
 // Call Mutate() to obtain a mutable clone.
 type GetTransactionResponseReader interface {
 	GetTransaction() commonpb.TransactionReader
-	GetReceipt() string
 	Mutate() *GetTransactionResponse
 }
 
@@ -184,10 +183,6 @@ func (r *getTransactionResponseReadonly) GetTransaction() commonpb.TransactionRe
 		return nil
 	}
 	return v.AsReader()
-}
-
-func (r *getTransactionResponseReadonly) GetReceipt() string {
-	return (*GetTransactionResponse)(r).GetReceipt()
 }
 
 func (r *getTransactionResponseReadonly) Mutate() *GetTransactionResponse {
@@ -3498,7 +3493,6 @@ type RevertTransactionPayloadReader interface {
 	GetForce() bool
 	GetAtEffectiveDate() bool
 	GetMetadata() RevertTransactionPayload_MetadataMapReader
-	GetReceipt() string
 	Mutate() *RevertTransactionPayload
 }
 
@@ -3518,10 +3512,6 @@ func (r *revertTransactionPayloadReadonly) GetAtEffectiveDate() bool {
 
 func (r *revertTransactionPayloadReadonly) GetMetadata() RevertTransactionPayload_MetadataMapReader {
 	return revertTransactionPayload_metadataMapReadonly((*RevertTransactionPayload)(r).GetMetadata())
-}
-
-func (r *revertTransactionPayloadReadonly) GetReceipt() string {
-	return (*RevertTransactionPayload)(r).GetReceipt()
 }
 
 func (r *revertTransactionPayloadReadonly) Mutate() *RevertTransactionPayload {

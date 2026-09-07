@@ -186,7 +186,6 @@ const (
 	ErrReasonSinkNotFound                  = "SINK_NOT_FOUND"
 	ErrReasonSinkBatchSizeTooLarge         = "SINK_BATCH_SIZE_TOO_LARGE"
 	ErrReasonMetadataNotFound              = "METADATA_NOT_FOUND"
-	ErrReasonInvalidReceipt                = "INVALID_RECEIPT"
 	ErrReasonMaintenanceMode               = "MAINTENANCE_MODE"
 	ErrReasonStaleProposal                 = "STALE_PROPOSAL"
 	ErrReasonInvalidCronExpression         = "INVALID_CRON_EXPRESSION"
@@ -967,19 +966,6 @@ func (e *ErrIndexInconsistent) Error() string {
 func (*ErrIndexInconsistent) Reason() string { return ErrReasonIndexInconsistent }
 func (e *ErrIndexInconsistent) Metadata() map[string]string {
 	return map[string]string{"index": e.Index, "detail": e.Detail}
-}
-
-// ErrInvalidReceipt — JWT receipt fails verification. The metadata field is
-// named "reason" on the wire (legacy contract); the Go field is renamed
-// Detail to free the method name Reason() for the Describable interface.
-type ErrInvalidReceipt struct {
-	Detail string
-}
-
-func (e *ErrInvalidReceipt) Error() string { return "invalid receipt: " + e.Detail }
-func (*ErrInvalidReceipt) Reason() string  { return ErrReasonInvalidReceipt }
-func (e *ErrInvalidReceipt) Metadata() map[string]string {
-	return map[string]string{"reason": e.Detail}
 }
 
 // ErrNumscriptNotFound — referenced numscript does not exist in the library.

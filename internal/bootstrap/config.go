@@ -155,7 +155,6 @@ type Config struct {
 	ClusterID              string
 	AdmissionMetrics       bool
 	MetricsNaming          string
-	ReceiptSigningKey      string
 	ResponseSigningKeyFile string
 	PoolConfig             transport.PoolConfig
 	TLSConfig              TLSConfig
@@ -229,10 +228,6 @@ const RedactedSecretPlaceholder = "***REDACTED***"
 // of truth) so both encoders stay redacted.
 func (c Config) redactedCopy() configAlias {
 	redacted := configAlias(c)
-
-	if redacted.ReceiptSigningKey != "" {
-		redacted.ReceiptSigningKey = RedactedSecretPlaceholder
-	}
 
 	if redacted.ClusterSecret != "" {
 		redacted.ClusterSecret = RedactedSecretPlaceholder

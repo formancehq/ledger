@@ -225,25 +225,6 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 		envs = appendBloomEnvVars(envs, spec.Bloom)
 	}
 
-	// Receipt signing
-	if spec.ReceiptSigning != nil && spec.ReceiptSigning.SecretName != "" {
-		secretKey := spec.ReceiptSigning.SecretKey
-		if secretKey == "" {
-			secretKey = "key"
-		}
-		envs = append(envs, corev1.EnvVar{
-			Name: "RECEIPT_SIGNING_KEY",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: spec.ReceiptSigning.SecretName,
-					},
-					Key: secretKey,
-				},
-			},
-		})
-	}
-
 	// Monitoring
 	envs = appendMonitoringEnvVars(envs, spec.Monitoring, ledger.Name)
 

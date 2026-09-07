@@ -90,8 +90,6 @@ This document compares the POC's API with the original Formance ledger API and d
 | Store integrity check | ✅ | ❌ | Hash chain + derived data verification |
 | Store backup | ✅ | ❌ | Point-in-time Pebble backup as tar archive |
 | Index status | ✅ | ❌ | Read index builder progress (lag, file size) |
-| Transaction receipts (JWT) | ✅ | ✅ | HMAC-SHA256 JWT receipts; surfaced on GetTransaction over both transports (`data.receipt`, empty when none) |
-| Receipt-based revert | ✅ | ❌ | Revert using JWT receipt (avoids server-side lookup) |
 | Store restore | ✅ | ❌ | Upload backup, validate, preview, finalize (--restore mode) |
 | **Prepared Queries** |
 | Create prepared query | ✅ | ❌ | Reusable parameterized filter queries |
@@ -863,7 +861,6 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Writes blocked — clock skew | `UNAVAILABLE` | `WRITES_BLOCKED_CLOCK_SKEW` | *(none)* |
 | Metadata not found | `NOT_FOUND` | `METADATA_NOT_FOUND` | `target`, `key` |
 | Metadata field not in schema | `FAILED_PRECONDITION` | `METADATA_FIELD_NOT_IN_SCHEMA` | `target`, `key` |
-| Invalid receipt | `INVALID_ARGUMENT` | `INVALID_RECEIPT` | `reason` |
 | Invalid cron expression | `INVALID_ARGUMENT` | `INVALID_CRON_EXPRESSION` | `expression`, `details` |
 | Prepared query already exists | `ALREADY_EXISTS` | `PREPARED_QUERY_ALREADY_EXISTS` | `ledger`, `name` |
 | Prepared query not found | `NOT_FOUND` | `PREPARED_QUERY_NOT_FOUND` | `ledger`, `name` |

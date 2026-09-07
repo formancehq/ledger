@@ -37,13 +37,12 @@ func NewResponseSigner(seed []byte) *ResponseSigner {
 }
 
 // SignLog signs a Log message and returns a SignedLog envelope.
-// It clones the log, clears response_signature and receipt (both node-local),
+// It clones the log, clears response_signature (node-local),
 // serializes it, signs the bytes, and returns the signature envelope.
 func (s *ResponseSigner) SignLog(log *commonpb.Log) *signaturepb.SignedLog {
 	// Clone and clear non-deterministic/node-local fields
 	logCopy := log.CloneVT()
 	logCopy.ResponseSignature = nil
-	logCopy.Receipt = ""
 
 	payload, err := logCopy.MarshalVT()
 	if err != nil {

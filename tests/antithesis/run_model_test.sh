@@ -107,11 +107,6 @@ MAINTENANCE_INTERVAL="${MAINTENANCE_INTERVAL:-10s}"
 # the host filesystem is already above 80% used (the guard blocks writes then).
 HEALTH_THRESHOLD="${HEALTH_THRESHOLD:-0.8}"
 CLUSTER_ID="model-test-cluster"
-# HMAC key for signed transaction receipts, so the driver can exercise the
-# receipt-carried revert path (admission verifies the receipt and reverses its
-# claimed postings, bypassing the store fetch).
-RECEIPT_SIGNING_KEY="model-test-receipt-hmac-signing-key"
-
 # Fail-fast (on by default): stop the run the moment a finding appears instead
 # of running out the clock. Set to 0/off to run the full duration, or to a
 # substring to stop only on a finding whose assertion message matches.
@@ -293,7 +288,6 @@ start_node() {
 		--advertise-addr "127.0.0.1:${RAFT_PORTS[$i]}" \
 		--grpc-port "${GRPC_PORTS[$i]}" \
 		--http-port "${HTTP_PORTS[$i]}" \
-		--receipt-signing-key "$RECEIPT_SIGNING_KEY" \
 		--wal-dir "${NODE_DIRS[$i]}/wal" \
 		--data-dir "${NODE_DIRS[$i]}/data" \
 		--raft-compaction-margin "$COMPACTION_MARGIN" \

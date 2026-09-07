@@ -112,7 +112,7 @@ Key rules:
 - **Domain**: `internal/domain/` - value objects, **business errors emitted by the FSM**, domain services (`processing/`, `accounttype/`, `analysis/`, `replay/`), and cryptographic primitives (`crypto/signing/`, `crypto/keystore/`). Errors in this package are FSM-generated business outcomes (e.g. `ErrInsufficientFund`, `ErrEmptyTransaction`, `ErrLedgerNameRequired`). Admission / integration / config validators live in `internal/application/<layer>/errors.go` and use `domain.NewValidationSentinel` to build their own sentinels — do NOT pile non-FSM errors into `internal/domain`.
 - **Bootstrap**: `internal/bootstrap/` - composition root (fx wiring, config, TLS, persisted config)
 - **Application**: `internal/application/` - use cases (`admission/`, `ctrl/`, `events/`, `check/`, `indexbuilder/`, `mirror/`)
-- **Infrastructure**: `internal/infra/` - consensus (`node/`, `state/`), caching (`cache/`, `attributes/`), transport, health, monitoring, `backup/`, `bloom/`, `coldstorage/`, `preload/`, `receipt/`
+- **Infrastructure**: `internal/infra/` - consensus (`node/`, `state/`), caching (`cache/`, `attributes/`), transport, health, monitoring, `backup/`, `bloom/`, `coldstorage/`, `preload/`
 - **Utilities**: `internal/pkg/` - zero/low-dependency utilities (`kv/`, `signal/`, `futures/`, `commands/`, `bitset/`, `bytesize/`, `filterexpr/`, `semver/`, `tarutil/`, `vtmarshal/`, `worker/`)
 - **Storage**: `internal/storage/` - Pebble DAL, WAL, spool, `readstore/`, `pebblecfg/`
 - **Query**: `internal/query/` - CQRS read-side queries

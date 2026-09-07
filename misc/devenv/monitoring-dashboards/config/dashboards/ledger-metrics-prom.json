@@ -11013,7 +11013,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Total duration of the gRPC Apply handler, including auth, ctrl.Apply, receipt signing, and response signing.",
+               "description": "Total duration of the gRPC Apply handler, including auth, ctrl.Apply, and response signing.",
                "fieldConfig": {
                   "defaults": {
                      "color": {

@@ -11,7 +11,6 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -24,8 +23,6 @@ var (
 	sharedHTTPPort      int
 )
 
-const signingKey = "test-receipt-signing-key-32bytes!"
-
 // sharedNodePorts carries the shared node's allocated ports from process 1 to
 // every other Ginkgo process. The ports are no longer constants, so they have
 // to travel with the SynchronizedBeforeSuite payload.
@@ -37,9 +34,7 @@ type sharedNodePorts struct {
 // SynchronizedBeforeSuite: process 1 starts the server, serializes port info.
 // All processes deserialize and create their gRPC clients.
 var _ = SynchronizedBeforeSuite(func() []byte {
-	ctx, node := testutil.SetupSingleNode(
-		testserver.WithReceiptSigningKey(signingKey),
-	)
+	ctx, node := testutil.SetupSingleNode()
 	sharedCtx = ctx
 	sharedClient = node.Client
 	sharedClusterClient = node.ClusterClient

@@ -76,7 +76,7 @@ type bulkOverlay struct {
 	numscriptLatest  *overlay[numscriptNameKey, string]
 	sinks            *overlay[string, *commonpb.SinkConfig]
 	// Original postings of each revert target, resolved once at order-build
-	// time (from the signed receipt or the transaction attribute) and reused
+	// time from the transaction attribute and reused
 	// by the preload and intra-bulk effect passes. They stay off the wire
 	// order: the FSM re-derives them from the coverage-gated TransactionState,
 	// and only caller intent is bound into the audit chain.
@@ -93,8 +93,7 @@ func newBulkOverlay() *bulkOverlay {
 }
 
 // recordRevertOriginalPostings stores the postings admission resolved for a
-// revert target so later passes read them without re-fetching (and without a
-// second fetch missing on the receipt path, where the store read is skipped).
+// revert target so later passes read them without re-fetching.
 func (o *bulkOverlay) recordRevertOriginalPostings(key domain.TransactionKey, postings []*commonpb.Posting) {
 	o.revertOriginalPostings[key] = postings
 }
