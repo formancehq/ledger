@@ -171,19 +171,30 @@ func TestConcurrentLintRunsSafelyShareCacheAcrossWorktrees(t *testing.T) {
 	t.Parallel()
 
 	seed, first, second, cacheRoot := newLintWorktrees(t)
-	firstCommand, firstOutput := lintCommand(t, first, cacheRoot, filepath.Join(filepath.Dir(seed), "run-first"))
-	secondCommand, secondOutput := lintCommand(t, second, cacheRoot, filepath.Join(filepath.Dir(seed), "run-second"))
-	require.NoError(t, firstCommand.Start())
-	require.NoError(t, secondCommand.Start())
-	require.NoError(t, firstCommand.Wait(), firstOutput.String())
-	require.NoError(t, secondCommand.Wait(), secondOutput.String())
+	firstCommand, _ := lintCommand(t, first, cacheRoot, filepath.Join(filepath.Dir(seed), "run-first"))
+	secondCommand, _ := lintCommand(t, second, cacheRoot, filepath.Join(filepath.Dir(seed), "run-second"))
+	for _, command := range []*exec.Cmd{firstCommand, secondCommand} {
+		// Wait after cache/environment setup, immediately before execing lint.
+		// The shared helper releases both peers together and supervises their
+		// process groups, including failures before either peer reaches ready.
+		lintArguments := command.Args[3:]
+		command.Args = append(command.Args[:3:3], "bash", "-euc",
+			`printf 'ready\n' >&3; IFS= read -r release <&4; exec 3>&- 4<&-; exec "$@"`,
+			"lint-barrier")
+		command.Args = append(command.Args, lintArguments...)
+	}
+	result, err := testenv.RunSynchronized(t, 30*time.Second,
+		testenv.SynchronizedCommand{Name: "first", Command: firstCommand},
+		testenv.SynchronizedCommand{Name: "second", Command: secondCommand},
+	)
+	require.NoError(t, err)
 
 	firstRoot := resolvedPath(t, first)
 	secondRoot := resolvedPath(t, second)
-	require.NotContains(t, firstOutput.String(), secondRoot)
-	require.NotContains(t, secondOutput.String(), firstRoot)
-	require.Contains(t, firstOutput.String(), "x.go:4:2: ineffectual assignment")
-	require.Contains(t, secondOutput.String(), "x.go:4:2: ineffectual assignment")
+	require.NotContains(t, result.Output["first"], secondRoot)
+	require.NotContains(t, result.Output["second"], firstRoot)
+	require.Contains(t, result.Output["first"], "x.go:4:2: ineffectual assignment")
+	require.Contains(t, result.Output["second"], "x.go:4:2: ineffectual assignment")
 }
 
 func TestEphemeralRunDirectoryIsRemoved(t *testing.T) {
