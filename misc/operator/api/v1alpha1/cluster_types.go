@@ -1111,7 +1111,7 @@ type VolumeSpec struct {
 	Size resource.Quantity `json:"size,omitempty"`
 
 	// AutoExpansion configures opt-in automatic growth for PVC-backed WAL and
-	// data volumes. It is unsupported for hostPath and cold-cache volumes.
+	// data volumes. It is unsupported for hostPath volumes.
 	// +optional
 	AutoExpansion *VolumeAutoExpansionSpec `json:"autoExpansion,omitempty"`
 

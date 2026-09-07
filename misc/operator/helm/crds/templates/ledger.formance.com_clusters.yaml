@@ -2392,7 +2392,7 @@ spec:
                       autoExpansion:
                         description: |-
                           AutoExpansion configures opt-in automatic growth for PVC-backed WAL and
-                          data volumes. It is unsupported for hostPath and cold-cache volumes.
+                          data volumes. It is unsupported for hostPath volumes.
                         properties:
                           cooldown:
                             default: 8h
@@ -2531,7 +2531,7 @@ spec:
                       autoExpansion:
                         description: |-
                           AutoExpansion configures opt-in automatic growth for PVC-backed WAL and
-                          data volumes. It is unsupported for hostPath and cold-cache volumes.
+                          data volumes. It is unsupported for hostPath volumes.
                         properties:
                           cooldown:
                             default: 8h

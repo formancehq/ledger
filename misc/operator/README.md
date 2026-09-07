@@ -153,8 +153,8 @@ using `ebs.csi.aws.com` or `ebs.csi.eks.amazonaws.com`.
 The operator only patches live PVC storage requests. It never changes the
 Cluster's `size`, the immutable StatefulSet `VolumeClaimTemplates`, any PV, or
 AWS resources directly. The CSI external-resizer performs the underlying EBS
-and filesystem expansion. Shrinking, hostPath expansion, and cold-cache
-expansion are intentionally unsupported.
+and filesystem expansion. Shrinking and hostPath expansion are intentionally
+unsupported.
 
 All PVCs of one kind converge to the largest requested size before another
 capacity decision is made, unless that request exceeds the current

@@ -105,8 +105,8 @@ func TestValidateVolumeSpecAutoExpansion(t *testing.T) {
 			wantErr: "mutually exclusive",
 		},
 		{
-			name:    "cold cache",
-			field:   "persistence.coldCache",
+			name:    "unsupported volume",
+			field:   "persistence.unsupported",
 			spec:    ledgerv1alpha1.VolumeSpec{AutoExpansion: &ledgerv1alpha1.VolumeAutoExpansionSpec{Enabled: true, MaximumSize: quantity("20Gi")}},
 			allowed: false,
 			wantErr: "supported only for wal and data",
