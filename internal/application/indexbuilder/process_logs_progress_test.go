@@ -10,6 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -61,6 +62,27 @@ func TestProcessLogsRejectsCorruptTargetLog(t *testing.T) {
 
 	_, err := b.processLogs(context.Background(), 0, time.Time{})
 	require.ErrorContains(t, err, "reading target log sequence")
+}
+
+func TestProjectionTargetSnapshotExcludesCommitBetweenReads(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	seedLogTarget(t, b, 9, 0)
+
+	handle, err := b.pebbleStore.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	appliedIndex, err := query.ReadLastAppliedIndex(handle)
+	require.NoError(t, err)
+	require.Equal(t, uint64(9), appliedIndex)
+
+	seedLogTarget(t, b, 10, 1)
+	sequence, err := query.ReadLastSequence(handle)
+	require.NoError(t, err)
+	require.Zero(t, sequence,
+		"the target sequence read must share the snapshot captured before the concurrent commit")
 }
 
 func TestProcessLogsPublishesRaftHorizonOnlyAfterFinalNativeBatch(t *testing.T) {
@@ -284,6 +306,42 @@ func TestProcessLogsLeavesCheckpointUnavailableWhenAuditIsDisabled(t *testing.T)
 	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), cursor)
+	require.False(t, readstore.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
+}
+
+func TestProcessLogsContinuesPastCheckpointWhenAuditFails(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.notifications = signal.NewNotifications()
+	b.batchSize = 1
+	b.readStore.SetAuditProjectionFailed()
+
+	const (
+		checkpointID = uint64(46)
+		horizon      = uint64(36)
+	)
+	batch := b.pebbleStore.OpenWriteSession()
+	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{
+		{
+			Sequence: 1,
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
+				CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+					CheckpointId: checkpointID,
+					MaxSequence:  1,
+					AppliedIndex: horizon,
+				},
+			}},
+		},
+		{Sequence: 2},
+	}))
+	require.NoError(t, state.SetAppliedIndex(batch, horizon))
+	require.NoError(t, batch.Commit())
+
+	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), cursor,
+		"a failed audit projection must not park all subsequent normal projection progress")
 	require.False(t, readstore.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
 }
 

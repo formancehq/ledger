@@ -57,18 +57,24 @@ The read index materializes asynchronously and **per-replica** (step 5). Readine
   scheduler all fail explicitly with `ErrIndexBuilding` while the local audit
   projection is disabled or rebuilding. An enabled projection starts in the
   rebuilding state and only becomes ready after boot has classified its
-  persisted cursor and completed the initial rebuild/catch-up. A failed rebuild
-  remains in rebuilding state until a later successful rebuild/catch-up; it
-  cannot advertise a false readiness window. An already-proposed create waits
+   persisted cursor and completed the initial rebuild/catch-up. A failed rebuild
+   remains in rebuilding state until a later successful rebuild/catch-up; it
+   cannot advertise a false readiness window. An already-proposed create waits
   through a transient rebuild and resumes only after the replacement projection
   is ready and has certified `H`. A rebuild racing after that wait is detected
   by an audit lifecycle generation captured before the snapshot and checked
   atomically with `.ready` publication; a changed generation leaves the marker
   absent and retries materialization from a clean directory. A disabled
-  projection leaves the checkpoint unavailable. In every waiting case the
-  caller's deadline/cancellation ends its marker wait. Unfiltered or
-  sequence-only live audit reads remain independent of the audit index, but a
-  checkpoint promises the complete projection set.
+   projection leaves the checkpoint unavailable. In every waiting case the
+   caller's deadline/cancellation ends its marker wait. Unfiltered or
+   sequence-only live audit reads remain independent of the audit index, but a
+   checkpoint promises the complete projection set.
+  A steady-state audit indexing failure is also advertised as transiently
+  rebuilding to admission, while the checkpoint already in flight is left
+  unavailable and the normal builder continues past its log. The audit worker
+  keeps retrying and restores readiness after a successful fold; because there
+  is no checkpoint reconciler, the failed checkpoint is deleted and recreated
+  through the normal client/operator recovery path.
 - **A read on a node that has not yet materialized the checkpoint returns a typed, retryable error.** Checkpoint reads are served locally on whichever node receives the request (no leader routing). On a node whose builder has not yet crossed the checkpoint log, `openCheckpointStores` finds no `.ready` marker but sees the checkpoint in the replicated `QueryCheckpointState` registry, and returns `ErrCheckpointNotReady` — reason `CHECKPOINT_NOT_READY`, mapped to gRPC `Unavailable`. This mirrors the per-replica `INDEX_BUILDING → Unavailable` pattern for metadata indexes: clients retry until that node materializes the checkpoint inline. The read never returns partial state.
 - **A read for a checkpoint id that does not exist returns `NotFound`.** If there is no `.ready` marker *and* no `QueryCheckpointState` entry for the id, `openCheckpointStores` returns `NotFound` (permanent) so clients stop retrying — distinct from the retryable `Unavailable` above.
 - **Unrecoverable checkpoints degrade to `NotFound`, not wrong data.** There is no historical reconstruction: inline materialization is already exactly point-in-time. If a node crashes between the atomic rename and the marker, that node will never have a `.ready` marker for the checkpoint. Since the checkpoint is still registered, reads there return the retryable `Unavailable` and never self-heal — the operator/client recreates the checkpoint (aligned with the existing `AcquireCheckpoint` client workaround, which deletes-and-recreates on timeout). Deleting the checkpoint then makes reads return `NotFound`.

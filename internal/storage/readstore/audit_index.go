@@ -18,6 +18,11 @@ import (
 // their horizon.
 var ErrAuditProjectionUnavailable = errors.New("audit projection unavailable")
 
+// ErrAuditProjectionFailed reports a steady-state local audit indexing error.
+// The worker keeps retrying, but an in-flight checkpoint must remain
+// unavailable and release the normal indexer rather than blocking its tail.
+var ErrAuditProjectionFailed = errors.New("audit projection failed")
+
 // ReadAuditProgress returns the last indexed audit sequence (0 if unset).
 func (s *Store) ReadAuditProgress() (uint64, error) {
 	return auditCursor.Read(s.db)
@@ -130,6 +135,9 @@ func (s *Store) WaitForAuditRaftProgress(ctx context.Context, horizon uint64) er
 		}
 		if s.auditDisabled {
 			return ErrAuditProjectionUnavailable
+		}
+		if s.auditFailed {
+			return ErrAuditProjectionFailed
 		}
 		if s.auditRebuilding {
 			s.progressCond.Wait()

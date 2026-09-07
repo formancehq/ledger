@@ -107,11 +107,19 @@ func TestAuditRaftProgressWaitsThroughRebuildAndRejectsDisabled(t *testing.T) {
 	require.NoError(t, s.WaitForAuditRaftProgress(t.Context(), 1),
 		"the waiter may consume the certificate only after the projection becomes ready")
 
+	s.SetAuditProjectionFailed()
+	disabled, rebuilding, generation = s.AuditProjectionStateWithGeneration()
+	require.False(t, disabled)
+	require.True(t, rebuilding, "admission treats a failed projection as transiently unavailable")
+	require.Equal(t, uint64(3), generation)
+	require.ErrorIs(t, s.WaitForAuditRaftProgress(context.Background(), 1), ErrAuditProjectionFailed,
+		"an in-flight checkpoint must release the normal indexer on a steady-state failure")
+
 	s.SetAuditProjectionState(true, false)
 	disabled, rebuilding, generation = s.AuditProjectionStateWithGeneration()
 	require.True(t, disabled)
 	require.False(t, rebuilding)
-	require.Equal(t, uint64(3), generation)
+	require.Equal(t, uint64(4), generation)
 	require.ErrorIs(t, s.WaitForAuditRaftProgress(context.Background(), 1), ErrAuditProjectionUnavailable)
 }
 

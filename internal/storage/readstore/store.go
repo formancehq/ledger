@@ -57,6 +57,7 @@ type Store struct {
 	progressCond    *sync.Cond
 	auditDisabled   bool
 	auditRebuilding bool
+	auditFailed     bool
 	auditGeneration uint64
 
 	// readOnly marks a store opened via OpenReadOnly — a frozen view (query
@@ -291,11 +292,26 @@ func (s *Store) NotifyProgress() {
 // disabled or being rebuilt.
 func (s *Store) SetAuditProjectionState(disabled, rebuilding bool) {
 	s.progressMu.Lock()
-	if s.auditDisabled != disabled || s.auditRebuilding != rebuilding {
+	if s.auditDisabled != disabled || s.auditRebuilding != rebuilding || s.auditFailed {
 		s.auditGeneration++
 	}
 	s.auditDisabled = disabled
 	s.auditRebuilding = rebuilding
+	s.auditFailed = false
+	s.progressCond.Broadcast()
+	s.progressMu.Unlock()
+}
+
+// SetAuditProjectionFailed marks a steady-state indexing failure. It is
+// exposed as transient rebuilding to admission, but progress waiters receive a
+// terminal local error so one checkpoint cannot stall the normal indexer.
+func (s *Store) SetAuditProjectionFailed() {
+	s.progressMu.Lock()
+	if !s.auditFailed {
+		s.auditGeneration++
+	}
+	s.auditRebuilding = false
+	s.auditFailed = true
 	s.progressCond.Broadcast()
 	s.progressMu.Unlock()
 }
@@ -305,7 +321,7 @@ func (s *Store) AuditProjectionState() (disabled, rebuilding bool) {
 	s.progressMu.Lock()
 	defer s.progressMu.Unlock()
 
-	return s.auditDisabled, s.auditRebuilding
+	return s.auditDisabled, s.auditRebuilding || s.auditFailed
 }
 
 // AuditProjectionStateWithGeneration returns lifecycle state together with a
@@ -317,7 +333,7 @@ func (s *Store) AuditProjectionStateWithGeneration() (disabled, rebuilding bool,
 	s.progressMu.Lock()
 	defer s.progressMu.Unlock()
 
-	return s.auditDisabled, s.auditRebuilding, s.auditGeneration
+	return s.auditDisabled, s.auditRebuilding || s.auditFailed, s.auditGeneration
 }
 
 // MarkCheckpointReadyAtAuditGeneration publishes the marker only if the audit
@@ -327,7 +343,7 @@ func (s *Store) AuditProjectionStateWithGeneration() (disabled, rebuilding bool,
 func (s *Store) MarkCheckpointReadyAtAuditGeneration(dir string, generation uint64) (bool, error) {
 	s.progressMu.Lock()
 	defer s.progressMu.Unlock()
-	if s.auditDisabled || s.auditRebuilding || s.auditGeneration != generation {
+	if s.auditDisabled || s.auditRebuilding || s.auditFailed || s.auditGeneration != generation {
 		return false, nil
 	}
 

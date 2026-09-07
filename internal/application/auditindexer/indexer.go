@@ -371,11 +371,20 @@ func (i *Indexer) boot(ctx context.Context) error {
 // persisted cursor never overtakes the audit head at runtime — there is no
 // rollback to detect and self-heal from here (see shouldRebuildOnBoot).
 func (i *Indexer) processTick(ctx context.Context) error {
-	if last, err := i.lastAuditSequence(); err == nil {
-		i.auditLast.Store(last)
-	}
+	last, err := i.lastAuditSequence()
+	if err != nil {
+		if ctx.Err() == nil {
+			i.readStore.SetAuditProjectionFailed()
+		}
 
-	_, err := i.ProcessOnce(ctx)
+		return err
+	}
+	i.auditLast.Store(last)
+
+	_, err = i.ProcessOnce(ctx)
+	if err != nil && ctx.Err() == nil {
+		i.readStore.SetAuditProjectionFailed()
+	}
 
 	return err
 }

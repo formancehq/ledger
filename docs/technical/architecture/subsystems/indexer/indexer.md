@@ -71,7 +71,7 @@ flowchart TB
 
 ### Pass 1 — iterate + dispatch
 
-- Opens a direct Pebble read handle on the **main store** (`query.ReadLogsSince(ctx, handle, cursor, ...)`).
+- Opens a Pebble snapshot on the **main store** (`query.ReadLogsSince(ctx, handle, cursor, ...)`) so the native sequence and Raft horizon are captured atomically.
 - Iterates committed logs starting at `cursor + 1`.
 - For each log entry, calls `b.indexPayload(kb, cfg, ledger, payload, excludedVolumes)`, which switches on the payload type and dispatches to the matching handler.
 - Handlers buffer their key/value writes into a single `readstore.WriteBatch` (`b.wb`) that wraps an underlying `dal.WriteSession`; they never `Commit()` themselves.

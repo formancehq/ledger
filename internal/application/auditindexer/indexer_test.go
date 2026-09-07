@@ -390,6 +390,34 @@ func TestStartStopIndexes(t *testing.T) {
 	}, 5*time.Second, 20*time.Millisecond)
 }
 
+func TestProcessTickPublishesFailureThenRecoversReadiness(t *testing.T) {
+	t.Parallel()
+
+	idx, mainStore, rs := newIndexerForTest(t)
+	batch := mainStore.OpenWriteSession()
+	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(1).Build()
+	require.NoError(t, batch.SetBytes(key, []byte{0xff}))
+	require.NoError(t, state.SetAppliedIndex(batch, 7))
+	require.NoError(t, batch.Commit())
+
+	require.Error(t, idx.processTick(context.Background()))
+	disabled, rebuilding := rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.True(t, rebuilding, "a steady-state fold failure must withdraw readiness")
+	require.ErrorIs(t, rs.WaitForAuditRaftProgress(context.Background(), 7), readstore.ErrAuditProjectionFailed)
+
+	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+		Sequence: 1, ProposalId: 1, Timestamp: &commonpb.Timestamp{Data: 1_000_000},
+		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Ledgers: []string{"main"},
+	})
+	require.NoError(t, idx.processTick(context.Background()))
+	disabled, rebuilding = rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.False(t, rebuilding, "the next successful fold must restore readiness without restart")
+	require.NoError(t, rs.WaitForAuditRaftProgress(context.Background(), 7))
+}
+
 // TestProcessOnceHonorsContextCancellation asserts the drain loop checks the
 // context before entries and between batches: with a backlog present and an
 // already-cancelled context, ProcessOnce must abort immediately (returning context.Canceled)

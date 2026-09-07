@@ -39,7 +39,7 @@ import (
 func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.Time) (uint64, error) {
 	defer b.rollbackFoldBatch()
 
-	handle, err := b.pebbleStore.NewDirectReadHandle()
+	handle, err := b.pebbleStore.NewReadHandle()
 	if err != nil {
 		return cursor, fmt.Errorf("creating read handle for log processing: %w", err)
 	}
@@ -315,12 +315,17 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		if cpID := pendingCheckpointCreate; cpID > 0 {
 			for {
 				err := b.readStore.WaitForAuditRaftProgress(ctx, pendingCheckpointHorizon)
-				if errors.Is(err, readstore.ErrAuditProjectionUnavailable) {
+				if errors.Is(err, readstore.ErrAuditProjectionUnavailable) ||
+					errors.Is(err, readstore.ErrAuditProjectionFailed) {
+					auditState := "disabled"
+					if errors.Is(err, readstore.ErrAuditProjectionFailed) {
+						auditState = "failed"
+					}
 					b.logger.WithFields(map[string]any{
 						"checkpointID": cpID,
 						"horizon":      pendingCheckpointHorizon,
-						"auditState":   "disabled",
-					}).Infof("Query checkpoint remains unavailable because the audit projection is disabled")
+						"auditState":   auditState,
+					}).Infof("Query checkpoint remains unavailable because the audit projection cannot certify it")
 
 					break
 				}
