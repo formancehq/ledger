@@ -176,11 +176,12 @@ func TestCompareQueryCheckpoints_PayloadIDMismatch(t *testing.T) {
 }
 
 // TestCheck_QueryCheckpointProjection_EmptyAuditWiring pins that the checkpoint
-// comparison runs on the lastSequence == 0 fast path, which returns before the
-// replay (and thus before the compare phase every other projection pass lives
-// in). A zero-log store proves no CreateQueryCheckpoint order was audited, so a
-// stored checkpoint row is unaudited by construction; reporting it clean would
-// let it be loaded into LiveQueryCheckpointIDs unchecked.
+// comparison runs when the store holds no logs. It used to sit on a dedicated
+// lastSequence == 0 branch that returned before the replay; EN-1526 removed that
+// branch, so the assertion now guards the single normal-path call site. A
+// zero-log store proves no CreateQueryCheckpoint order was audited, so a stored
+// checkpoint row is unaudited by construction; reporting it clean would let it be
+// loaded into LiveQueryCheckpointIDs unchecked.
 func TestCheck_QueryCheckpointProjection_EmptyAuditWiring(t *testing.T) {
 	t.Parallel()
 

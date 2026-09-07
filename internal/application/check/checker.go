@@ -72,12 +72,16 @@ func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string
 
 // Check verifies the store integrity and calls the callback for each event.
 // It verifies:
-// 1. Log sequence continuity (no gaps)
+// 1. Log sequence continuity (no gaps) and log key/value sequence agreement
 // 2. BLAKE3 hash chain integrity
 // 3. Reversion invariants (no double reverts, valid revert targets)
 // 4. Volume consistency (input/output per account/asset)
 // 5. Account metadata consistency
 // 6. Transaction update consistency.
+//
+// Every pass runs whatever the log count: a history made only of rejected
+// proposals holds audit entries and no logs, and its chain must still be
+// verified (EN-1526).
 func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStoreEvent)) error {
 	// Pin the peer read-index snapshot FIRST — strictly BEFORE the primary one.
 	// The order is load-bearing for compareReverseMapOrphans, which compares the
@@ -126,57 +130,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("getting last sequence: %w", err)
 	}
 
-	if lastSequence == 0 {
-		// An empty audit does not make the peer store trustworthy: the read
-		// index folds FROM the log stream, so any reverse-map row over a
-		// zero-log store is unaudited by definition. Malformed keys and rows
-		// for ledgers the audit never created are exactly the classes this pass
-		// exists to report, and returning clean here would hide them. Every
-		// oracle term is legitimately empty — there is nothing to replay.
-		c.compareReverseMapOrphans(reverseMapOrphanScope{
-			reader: snap,
-			peer:   peerSnap,
-		}, callback)
-
-		// The signing projections are cluster-global, not per-ledger, so they can
-		// hold rows over a store with no logs at all — and every successful signing
-		// order writes a log (processOrder gives each returned payload a global
-		// sequence), so a zero-log store proves the audit registered no key. The
-		// expectation is therefore legitimately empty and every stored row is
-		// unaudited: returning clean here would hide exactly the injected-key class
-		// this pass exists to report.
-		signing := newSigningVerifier()
-		if err := signing.compare(snap, callback); err != nil {
-			return fmt.Errorf("comparing signing projections: %w", err)
-		}
-
-		// The cluster policy is cluster-global too: a zero-log store proves no
-		// SetClusterPolicy order was audited, so a stored policy row is unaudited.
-		policy := newClusterPolicyVerifier()
-		if err := policy.compare(snap, callback); err != nil {
-			return fmt.Errorf("comparing cluster policy projection: %w", err)
-		}
-
-		// Query checkpoints are cluster-global too: a zero-log store proves no
-		// CreateQueryCheckpoint order was audited, so the live set is empty and
-		// every stored SubGlobQueryCheckpoint row is unaudited. Diffing against an
-		// empty derived set reports it — otherwise the injected row is loaded into
-		// LiveQueryCheckpointIDs unchecked.
-		if err := c.compareQueryCheckpoints(snap, nil, callback); err != nil {
-			return fmt.Errorf("comparing query checkpoint projection: %w", err)
-		}
-
-		callback(&servicepb.CheckStoreEvent{
-			Type: &servicepb.CheckStoreEvent_Progress{
-				Progress: &servicepb.CheckStoreProgress{
-					LogsChecked: 0,
-					TotalLogs:   0,
-				},
-			},
-		})
-
-		return nil
-	}
+	// No early return for lastSequence == 0. A store can hold a complete audit
+	// history and no logs at all — every proposal in it failed, so each one
+	// wrote an AuditEntry (plus one AuditItem per order) and no Log. Returning
+	// clean there left the hash chain of such a history unverified, since
+	// verifyAuditHashChain runs below (EN-1526). lastSequence is still used to
+	// size progress and to align the reverse-map oracle; both handle 0.
 
 	// Create replay store (replaces in-memory maps + txStateStore)
 	replay, err := newReplayStore()
@@ -322,6 +281,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	expectedSeq := uint64(1)
 
+	// Key sequence of the last log the loop consumed; 0 when there are none.
+	var lastCheckedSeq uint64
+
 	for logIter.First(); logIter.Valid(); logIter.Next() {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -359,6 +321,22 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		log := &commonpb.Log{}
 		if err := log.UnmarshalVT(value); err != nil {
 			return fmt.Errorf("unmarshaling log %d: %w", seq, err)
+		}
+
+		// A Log row states its own sequence twice: in the Pebble key and in the
+		// value's `sequence` field. Nothing binds the two — Log rows are not
+		// part of the audit hash chain — and query.ReadLastSequence reads the
+		// field off the last row, so editing that one field moves the head the
+		// whole run is sized against. Report the divergence and skip the row:
+		// its self-declared identity disagrees with the position every other
+		// projection is keyed on, so replaying it would fold unverifiable data
+		// into the expected state.
+		if log.GetSequence() != seq {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH,
+				fmt.Sprintf("log at key sequence %d carries sequence %d in its stored value", seq, log.GetSequence()),
+				seq, "", "", ""))
+
+			continue
 		}
 
 		// Hash chain verification is now done via audit entries (see audit hash pass below).
@@ -568,8 +546,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			}
 		}
 
-		// Emit progress periodically
-		if seq%progressInterval == 0 || seq == lastSequence {
+		// Emit progress periodically. The run's final position is emitted
+		// unconditionally after the loop, so there is no `seq == lastSequence`
+		// case here — it would only duplicate that event.
+		if seq%progressInterval == 0 {
 			callback(&servicepb.CheckStoreEvent{
 				Type: &servicepb.CheckStoreEvent_Progress{
 					Progress: &servicepb.CheckStoreProgress{
@@ -579,11 +559,26 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				},
 			})
 		}
+
+		lastCheckedSeq = seq
 	}
 
 	if err := logIter.Error(); err != nil {
 		return fmt.Errorf("log iterator error: %w", err)
 	}
+
+	// Final position, emitted whatever the log count. A store with no logs
+	// reports (0, 0) here: the loop body never ran, and a run that produces no
+	// progress event at all is indistinguishable from a run that never
+	// started.
+	callback(&servicepb.CheckStoreEvent{
+		Type: &servicepb.CheckStoreEvent_Progress{
+			Progress: &servicepb.CheckStoreProgress{
+				LogsChecked: lastCheckedSeq,
+				TotalLogs:   lastSequence,
+			},
+		},
+	})
 
 	if ephemeralPurgeBuffer != nil {
 		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
@@ -628,6 +623,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		deletedInReplay: deletedInReplay,
 	}, callback)
 
+	// Runs over every store, a zero-log one included: an empty log stream does
+	// not make the peer store trustworthy. The read index folds FROM the log
+	// stream, so a reverse-map row over a store with no logs is unaudited by
+	// definition, and malformed keys plus rows for ledgers the audit never
+	// created are exactly the classes this pass exists to report (EN-1458).
+	// With no logs every oracle term below is legitimately empty and
+	// lastSequence is 0, which the alignment rule in reverse_map_orphans.go
+	// already handles.
 	c.compareReverseMapOrphans(reverseMapOrphanScope{
 		reader:          snap,
 		peer:            peerSnap,
@@ -665,10 +668,20 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return err
 	}
 
+	// The signing projections are cluster-global, not per-ledger, so they can
+	// hold rows over a store with no logs at all — and every successful signing
+	// order writes a log (processOrder gives each returned payload a global
+	// sequence), so a log-less store proves the audit registered no key. The
+	// expectation is then legitimately empty and every stored row is unaudited:
+	// skipping the comparison would hide exactly the injected-key class this
+	// pass exists to report.
 	if err := signing.compare(snap, callback); err != nil {
 		return fmt.Errorf("comparing signing projections: %w", err)
 	}
 
+	// The cluster policy is cluster-global too, and verified on the same
+	// grounds: no log means no audited SetClusterPolicy order, so a stored
+	// policy row is unaudited.
 	if err := policy.compare(snap, callback); err != nil {
 		return fmt.Errorf("comparing cluster policy projection: %w", err)
 	}
@@ -679,6 +692,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	c.compareNumscripts(snap, expectedNumscriptContent, expectedNumscriptLatest, deletedInReplay, callback)
 
+	// Cluster-global too. Over a store with no logs derivedLiveCheckpoints is
+	// empty and every stored SubGlobQueryCheckpoint row is therefore unaudited;
+	// diffing against the empty derived set reports it, where skipping would
+	// load the injected row into LiveQueryCheckpointIDs unchecked (EN-1515).
 	if err := c.compareQueryCheckpoints(snap, derivedLiveCheckpoints, callback); err != nil {
 		return err
 	}

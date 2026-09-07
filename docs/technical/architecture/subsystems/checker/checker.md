@@ -23,7 +23,7 @@ message CheckStoreEvent {
 
 The request is empty (the check always runs over the entire cluster state, single-pass). The response is streamed so errors surface immediately and large clusters don't have to wait for completion to see early signal. A single hash mismatch stops the walk for that branch (the chain is irrecoverably broken from that point); all other mismatches are non-fatal and the pass continues.
 
-Entry point: `NewChecker(...).Check(ctx, callback)` (`internal/application/check/checker.go:68-546`). The checker takes a single Pebble read handle (`store.NewReadHandle()`) on the **main store**, so every pass observes a consistent point-in-time snapshot of it. One pass — `compareReverseMapOrphans` — additionally opens a read-only snapshot of the **peer readstore**; it is the single, deliberate exception to the main-store-only scope of invariant #8 and is described in the table below.
+Entry point: `NewChecker(...).Check(ctx, callback)` (`Check()` in `internal/application/check/checker.go`). The checker takes a single Pebble read handle (`store.NewReadHandle()`) on the **main store**, so every pass observes a consistent point-in-time snapshot of it. One pass — `compareReverseMapOrphans` — additionally opens a read-only snapshot of the **peer readstore**; it is the single, deliberate exception to the main-store-only scope of invariant #8 and is described in the table below.
 
 ## The verification passes
 
@@ -44,6 +44,7 @@ Each pass takes a persisted projection, re-derives the expected value by replayi
 | 11 | `compareNumscripts` | `SubAttrNumscriptContent` immutable version entries and `SubAttrNumscriptVersion` latest pointers (the greatest stored semver) match the saved versions | Replay of `SavedNumscript` / `DeleteLedger` logs | `NUMSCRIPT_MISMATCH` |
 | 12 | `compareReverseMapOrphans` | Reverse-map (`0x03`) rows in the **peer readstore** whose `(ledger, target, metadata key)` has no stored `SubAttrIndex` registry entry; also rows belonging to a ledger the audit does not list as live, and keys that do not decode | Stored index registry for the verdict; replayed schema only labels the missed purge path | `REVERSE_MAP_ORPHAN` |
 | 13 | `signingVerifier.compare` | The `SubGlobSigningKey` rows (public-key bytes + `parent_key_id`) and the `SubGlobSigningConfig` require-signatures flag, compared in both directions | Fold of the chain-bound `RegisterSigningKey` / `RevokeSigningKey` / `SetSigningConfig` orders over the audit range | `SIGNING_KEY_MISMATCH`, `SIGNING_CONFIG_MISMATCH`, `SIGNING_VERIFICATION_INCOMPLETE` |
+| 14 | log key/value sequence agreement | Each `Log` row's `sequence` field equals the sequence encoded in its Pebble key. Log rows are not hash-bound, and `query.ReadLastSequence` reads the value's field, so a single edited field could otherwise resize the whole run | The Pebble key, which every projection is keyed on | `LOG_SEQUENCE_MISMATCH` |
 
 Notes:
 
@@ -114,7 +115,7 @@ Three error types, emitted only after the findings are sorted by (class, key ID,
 
 Public-key **bytes never appear in an event message**. The key ID plus the name of the diverging field identifies the problem completely, and the material is sensitive-adjacent.
 
-**The pass also runs on the empty-audit fast path.** `Check()` returns early when the store holds no logs (`lastSequence == 0`), before the replay and therefore before the compare phase the other projection passes live in. Signing is not per-ledger, so skipping it there would be wrong: the projections are cluster-global and a zero-log store can still hold `SubGlobSigningKey` rows. Because every successful signing order writes a log — `processOrder` assigns each returned payload a global sequence — a zero-log store *proves* the audit registered no key, so the expectation is legitimately empty and every stored row is unaudited by construction. Reporting clean there would have left an injected key on a freshly bootstrapped cluster undetected, which is precisely the tamper class this pass exists to catch.
+**The pass runs whatever the log count.** There is no early return for a store that holds no logs: EN-1526 removed the `lastSequence == 0` branch that used to short-circuit `Check()` before the replay, and every pass now runs on the single normal path. Signing is not per-ledger, so skipping it over a log-less store would be wrong anyway: the projections are cluster-global and such a store can still hold `SubGlobSigningKey` rows. Because every successful signing order writes a log — `processOrder` assigns each returned payload a global sequence — a store with no logs *proves* the audit registered no key, so the expectation is legitimately empty and every stored row is unaudited by construction. Reporting clean there would leave an injected key on a freshly bootstrapped cluster undetected, which is precisely the tamper class this pass exists to catch. The same reasoning carries the cluster-policy and query-checkpoint comparisons.
 
 ## Replay machinery
 
@@ -197,6 +198,7 @@ enum CheckStoreErrorType {
   CLUSTER_POLICY_MISMATCH     = 24;
   CLUSTER_POLICY_VERIFICATION_INCOMPLETE = 25;
   QUERY_CHECKPOINT_MISMATCH   = 26;
+  LOG_SEQUENCE_MISMATCH       = 27;
 }
 ```
 

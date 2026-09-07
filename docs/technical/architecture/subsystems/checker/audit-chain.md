@@ -61,7 +61,7 @@ Items are concatenated in `OrderIndex` order before being fed into the hash. A s
 
 ### Chain link
 
-`HashGenerator.Compute(prevHash, slices...)` (`internal/domain/processing/hash.go:54-77`) feeds `prevHash || header || items` into the BLAKE3 keyed hash. The resulting `hash` is stored on the `AuditEntry`; the *next* entry then consumes this as `prevHash`. Genesis (`Sequence = 0`) hashes `nil || header || items` — no external seed is required because the cluster-specific BLAKE3 key already domain-separates two distinct clusters.
+`HashGenerator.Compute(prevHash, slices...)` (`internal/domain/processing/hash.go:54-77`) feeds `prevHash || header || items` into the BLAKE3 keyed hash. The resulting `hash` is stored on the `AuditEntry`; the *next* entry then consumes this as `prevHash`. Genesis (the first entry, `Sequence = 1`) hashes `nil || header || items` — no external seed is required because the cluster-specific BLAKE3 key already domain-separates two distinct clusters.
 
 ## `AuditEntry` proto and persistence
 
@@ -86,7 +86,7 @@ message AuditEntry {
 
 Persistence layout:
 
-- The entry itself lives under zone `History`, sub `Audit` (the `AuditEntry` row), with `items` **intentionally set to nil on disk** (`internal/infra/state/machine.go:1403`). Items live under their own keys (zone `History`, sub `AuditItem`), keyed by `(audit_sequence, order_index)`. This split prevents a `ListAuditEntries` reader from receiving items that have never been hash-checked against the chain.
+- The entry itself lives under zone `History`, sub `Audit` (the `AuditEntry` row), with `items` **intentionally set to nil on disk** (`writeAuditEntry` in `internal/infra/state/machine.go`). Items live under their own keys (zone `History`, sub `AuditItem`), keyed by `(audit_sequence, order_index)`. This split prevents a `ListAuditEntries` reader from receiving items that have never been hash-checked against the chain.
 - Reads that need item bodies join through the per-item keys; the checker uses `BuildPerItemPayload` to recompute the same byte sequence the writer used.
 
 ## When the hash is computed
@@ -181,7 +181,7 @@ The FSM writes up to four datasets per proposal, all in `ZoneHistory`, but they 
 | `SubHistoryAppliedProposal = 0x04` — `AppliedProposal` | `[seq BE 8]` | 1 | **0** | **0** |
 | `SubHistoryLog = 0x01` — `Log` | `[log_seq BE 8]` | 0..M (=`MaxLog-MinLog+1`) | 0 | 0 |
 
-**Idempotent replay is the one exception to "one AuditEntry per proposal":** when the proposal carries a previously-recorded idempotency key with a matching hash, `applyProposal` short-circuits (`internal/infra/state/machine.go:1313-1326`) and returns the recorded outcome verbatim — no new pipeline run, no new logs, no new audit entry. `audit_sequence` does **not** advance for that proposal. The first-time apply of that key is what's already recorded under the "Success" or "Failure" column; the replay is invisible to Pebble.
+**Idempotent replay is the one exception to "one AuditEntry per proposal":** when the proposal carries a previously-recorded idempotency key with a matching hash, `applyProposal` short-circuits (its `if replayed { … return }` branch, `internal/infra/state/machine.go`) and returns the recorded outcome verbatim — no new pipeline run, no new logs, no new audit entry. `audit_sequence` does **not** advance for that proposal. The first-time apply of that key is what's already recorded under the "Success" or "Failure" column; the replay is invisible to Pebble.
 
 A same-key-different-hash conflict, by contrast, is **not** a replay — it's a fresh rejection, so it takes the Failure column (1 audit entry, N items each with `LogSequence = 0`, no applied proposal, no log).
 
@@ -212,23 +212,25 @@ The `internal/infra/backup/manager.go` incremental export is the canonical examp
 | Delete entry *N* | Sequence gap on read → `CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP`. |
 | Swap entries *N* and *M* | At least one of them has a `prev_hash` link that no longer matches → mismatch at the earliest violating slot. |
 | Rewrite `hash[N]` to match a forged payload | `hash[N+1]` was computed against the original `hash[N]`. Recomputing forward from the forged value produces `computed[N+1] ≠ stored[N+1]`. The attacker must rewrite every entry from *N* to the head, but cannot regenerate hashes without the per-cluster BLAKE3 key. |
-| Smuggle items into `entry.items` on disk | The on-disk row has `items = nil` by design (`machine.go:1403`); the checker flags `len(entry.Items) > 0` as tampering (`internal/application/check/checker.go:1523-1531`). |
+| Smuggle items into `entry.items` on disk | The on-disk row has `items = nil` by design (`writeAuditEntry` in `internal/infra/state/machine.go`); the checker flags it through the `len(entry.GetItems()) > 0` check at the top of the `verifyAuditHashChain` loop. |
 
 The chain does *not* defend against an attacker who has the cluster's BLAKE3 key — that key is local to the node and is the same secret that lets the node propose. Securing the key is part of the threat model the operator-level [Security](../../../../security/) and [Request Signing](../../../../ops/signing.md) docs cover.
 
 ## Genesis
 
-The first entry (`Sequence = 0`) is computed with `lastHash = nil`. The per-cluster BLAKE3 key is the only secret needed; there is no external seed and no genesis ceremony.
+The first entry carries `Sequence = 1` and is computed with `lastHash = nil`. `NewFSMState` starts `NextAuditSequenceID` at 1 (`internal/infra/state/fsmstate.go`) and `AppendAuditEntry` hands out the value before the bump, so no entry ever carries sequence 0. The per-cluster BLAKE3 key is the only secret needed; there is no external seed and no genesis ceremony.
 
 ## Verification
 
-The chain is verified by `checker.verifyAuditHashChain` (`internal/application/check/checker.go:1449-1616`):
+The chain is verified by `checker.verifyAuditHashChain` (`internal/application/check/checker.go`):
 
 1. Iterate `AuditEntry` rows in sequence order.
 2. For each entry, rebuild the header payload + every per-item payload (joining `AuditItem` rows by `(sequence, order_index)`).
 3. `HashGenerator.Compute(lastHash, ...)` with the version pinned by `entry.hash_version`.
 4. Compare to the stored `entry.hash`. Mismatch → emit `CHECK_STORE_ERROR_TYPE_HASH_MISMATCH` and **stop** (the chain is broken from this point; downstream verifications would be meaningless).
 5. Match → advance `lastHash`, continue.
+
+The walk runs on every `Check()`, whatever the log count. A history made only of rejected proposals has audit entries and items but no `Log` rows at all, and until EN-1526 `Check()` returned early on `lastSequence == 0` — above the verifier's only call site — leaving such a chain unverified. The log stream no longer gates the walk.
 
 The walk also collects an `expectedIdempotency` map (which idempotency keys were committed under which outcome) that `compareIdempotencyOutcomes` consumes downstream.
 
