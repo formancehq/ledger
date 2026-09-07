@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ type SynchronizedResult struct {
 type synchronizedProcess struct {
 	name          string
 	command       *exec.Cmd
-	output        bytes.Buffer
+	output        synchronizedOutput
 	readyReader   *os.File
 	readyWriter   *os.File
 	releaseReader *os.File
@@ -46,12 +47,47 @@ type processEvent struct {
 	err   error
 }
 
+// synchronizationHooks let tests observe the prerequisites for a timeout and
+// trigger it without assuming how quickly the operating system schedules peers.
+// Hook functions must not block.
+type synchronizationHooks struct {
+	deadline      <-chan time.Time
+	outputWritten func(string)
+	peerReady     func(string)
+}
+
+type synchronizedOutput struct {
+	buffer bytes.Buffer
+	once   sync.Once
+	notify func()
+}
+
+// Write is intentionally the only io.Copy fast path exposed by this type.
+// Embedding bytes.Buffer would promote ReadFrom and bypass the notification.
+func (output *synchronizedOutput) Write(data []byte) (int, error) {
+	written, err := output.buffer.Write(data)
+	if written > 0 && output.notify != nil {
+		output.once.Do(output.notify)
+	}
+
+	return written, err
+}
+
+func (output *synchronizedOutput) String() string {
+	return output.buffer.String()
+}
+
 // RunSynchronized supervises a bounded fixture barrier. A process that exits
 // before ready aborts its siblings, and every error reports both subprocesses'
 // output. Each command runs in its own process group so aborting it also stops
 // reviewer or validator children.
 func RunSynchronized(t testing.TB, timeout time.Duration, commands ...SynchronizedCommand) (SynchronizedResult, error) {
 	t.Helper()
+
+	return runSynchronized(timeout, synchronizationHooks{}, commands...)
+}
+
+func runSynchronized(timeout time.Duration, hooks synchronizationHooks, commands ...SynchronizedCommand) (SynchronizedResult, error) {
 	startedAt := time.Now()
 	result := SynchronizedResult{
 		Output: make(map[string]string, len(commands)),
@@ -90,6 +126,10 @@ func RunSynchronized(t testing.TB, timeout time.Duration, commands ...Synchroniz
 			releaseReader: releaseReader,
 			releaseWriter: releaseWriter,
 		}
+		if hooks.outputWritten != nil {
+			name := item.Name
+			processes[index].output.notify = func() { hooks.outputWritten(name) }
+		}
 		processes[index].command.ExtraFiles = []*os.File{readyWriter, releaseReader}
 		processes[index].command.Stdout = &processes[index].output
 		processes[index].command.Stderr = &processes[index].output
@@ -98,8 +138,12 @@ func RunSynchronized(t testing.TB, timeout time.Duration, commands ...Synchroniz
 
 	readyEvents := make(chan processEvent, len(processes))
 	exitEvents := make(chan processEvent, len(processes))
-	deadline := time.NewTimer(timeout)
-	defer deadline.Stop()
+	deadline := hooks.deadline
+	if deadline == nil {
+		deadlineTimer := time.NewTimer(timeout)
+		defer deadlineTimer.Stop()
+		deadline = deadlineTimer.C
+	}
 
 	failure := error(nil)
 	for index := range processes {
@@ -136,6 +180,9 @@ func RunSynchronized(t testing.TB, timeout time.Duration, commands ...Synchroniz
 			default:
 				ready[event.index] = true
 				readyCount++
+				if hooks.peerReady != nil {
+					hooks.peerReady(process.name)
+				}
 			}
 		case event := <-exitEvents:
 			process := &processes[event.index]
@@ -146,7 +193,7 @@ func RunSynchronized(t testing.TB, timeout time.Duration, commands ...Synchroniz
 			} else {
 				failure = fmt.Errorf("%s failed before all peers were ready: process exit: %w", process.name, event.err)
 			}
-		case <-deadline.C:
+		case <-deadline:
 			failure = fmt.Errorf("fixture synchronization exceeded %s", timeout)
 		}
 	}
@@ -185,7 +232,7 @@ func RunSynchronized(t testing.TB, timeout time.Duration, commands ...Synchroniz
 				result.Exit[processes[event.index].name] = event.err
 				remaining--
 			}
-		case <-deadline.C:
+		case <-deadline:
 			if failure == nil {
 				failure = fmt.Errorf("fixture processes exceeded %s", timeout)
 			}
