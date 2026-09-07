@@ -20,6 +20,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -37,9 +38,34 @@ func main() {
 		}
 
 		queryName := fmt.Sprintf("projection-q-%d", run)
+		indexIdempotencyKey := fmt.Sprintf("projection-index-%d", run)
 		queryIdempotencyKey := fmt.Sprintf("projection-query-%d", run)
 		probeIdempotencyKey := fmt.Sprintf("projection-probe-%d", run)
 		details := internal.Details{"ledger": ledger, "queryName": queryName}
+
+		// AccountHasAsset requires the account asset-presence index. Create it
+		// with a stable idempotency key so a timed-out setup call can be retried
+		// safely by a later driver run, then wait for this replica to switch the
+		// freshly built keyspace before exercising projection alignment.
+		if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(
+			indexIdempotencyKey,
+			actions.CreateAccountAssetIndexAction(ledger),
+		)); err != nil {
+			if !internal.IsTolerated(err) {
+				assert.Unreachable("projection asset-index creation returned unexpected error",
+					details.With(internal.Details{"error": err}))
+			}
+
+			return
+		}
+		if err := actions.WaitForAccountAssetIndexReady(ctx, client, ledger); err != nil {
+			if !internal.IsTolerated(err) {
+				assert.Unreachable("projection asset index did not become ready",
+					details.With(internal.Details{"error": err}))
+			}
+
+			return
+		}
 
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(queryIdempotencyKey, &servicepb.Request{
 			Type: &servicepb.Request_CreatePreparedQuery{
