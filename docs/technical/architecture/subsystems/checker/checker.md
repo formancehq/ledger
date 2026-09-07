@@ -45,6 +45,7 @@ Each pass takes a persisted projection, re-derives the expected value by replayi
 | 12 | `compareReverseMapOrphans` | Reverse-map (`0x03`) rows in the **peer readstore** whose `(ledger, target, metadata key)` has no stored `SubAttrIndex` registry entry; also rows belonging to a ledger the audit does not list as live, and keys that do not decode | Stored index registry for the verdict; replayed schema only labels the missed purge path | `REVERSE_MAP_ORPHAN` |
 | 13 | `signingVerifier.compare` | The `SubGlobSigningKey` rows (public-key bytes + `parent_key_id`) and the `SubGlobSigningConfig` require-signatures flag, compared in both directions | Fold of the chain-bound `RegisterSigningKey` / `RevokeSigningKey` / `SetSigningConfig` orders over the audit range | `SIGNING_KEY_MISMATCH`, `SIGNING_CONFIG_MISMATCH`, `SIGNING_VERIFICATION_INCOMPLETE` |
 | 14 | log key/value sequence agreement | Each `Log` row's `sequence` field equals the sequence encoded in its Pebble key. Log rows are not hash-bound, and `query.ReadLastSequence` reads the value's field, so a single edited field could otherwise resize the whole run | The Pebble key, which every projection is keyed on | `LOG_SEQUENCE_MISMATCH` |
+| 15 | `logBoundsVerifier.compare` | The highest stored `Log` KEY sequence equals the highest log sequence the audit chain accounts for. Catches a deleted log **tail**, which the interior gap scan of pass 1 cannot see, and a `Log` row above everything the audit produced | Union of the chain-verified `AuditSuccess` `[min_log_sequence, max_log_sequence]` ranges | `SEQUENCE_GAP` (tail), `LOG_UNAUDITED`, `LOG_VERIFICATION_INCOMPLETE` |
 
 Notes:
 
@@ -116,6 +117,40 @@ Three error types, emitted only after the findings are sorted by (class, key ID,
 Public-key **bytes never appear in an event message**. The key ID plus the name of the diverging field identifies the problem completely, and the material is sensitive-adjacent.
 
 **The pass runs whatever the log count.** There is no early return for a store that holds no logs: EN-1526 removed the `lastSequence == 0` branch that used to short-circuit `Check()` before the replay, and every pass now runs on the single normal path. Signing is not per-ledger, so skipping it over a log-less store would be wrong anyway: the projections are cluster-global and such a store can still hold `SubGlobSigningKey` rows. Because every successful signing order writes a log — `processOrder` assigns each returned payload a global sequence — a store with no logs *proves* the audit registered no key, so the expectation is legitimately empty and every stored row is unaudited by construction. Reporting clean there would leave an injected key on a freshly bootstrapped cluster undetected, which is precisely the tamper class this pass exists to catch. The same reasoning carries the cluster-policy and query-checkpoint comparisons.
+
+### Stored log bounds
+
+The log stream is the one dataset that is neither hash-bound nor re-derivable: a `Log` row's content is a projection of the orders in its audit entry, but the *set of positions* the stream occupies is stated nowhere except in the audit success ranges. `logBoundsVerifier` (`internal/application/check/log_bounds.go`) closes that gap by comparing the highest stored log KEY sequence to the highest sequence those ranges account for.
+
+**The interior gap scan cannot see a deleted tail.** Pass 1's per-sequence scan fires when a sequence is missing *between* two surviving rows, so it needs a surviving row above the hole. Drop the top *N* rows instead and there is none. Nothing else notices either: a cross-cluster restore that loses the tail rebuilds every projection from the surviving prefix, so volumes, transaction states, boundaries and the reversion bitsets all agree with the logs that are left, and the whole run reports nothing. That is the failure mode this pass exists to catch, and it is a correctness bug in a restore path far more than a tampering scenario.
+
+**The premise: the audited log ranges are one contiguous interval from 1.** Over a chain-verified range, the union of `[success.min_log_sequence, success.max_log_sequence]` across the successes with `max > 0` is contiguous and starts at sequence 1, so its upper end is the expected highest stored key. The producer side is what makes this hold:
+
+- Log sequences have exactly **two** producing call sites, both in `RequestProcessor.ProcessOrders` (`internal/domain/processing/processor.go` — the skip-log path and the normal-log path). Both allocate through `Scope.IncrementNextSequenceID`, a plain `+1`, and both fold the allocated id into `OrdersResult.Min/MaxLogSequence` in the same statement block, so no allocation escapes the range it is reported in.
+- A **no-log outcome** (today only an idempotent mirror replay) returns *before* allocating, so it consumes no id.
+- A **failed proposal** never reaches `WriteSet.Merge`, which is the only place `FSMState.NextSequenceID` is advanced (`internal/infra/state/write_set.go`); `WriteSet.Reset` re-seeds the counter from FSM state per proposal, so the ticked ids are discarded and the next proposal reuses them. The failure entry it writes carries no success range at all.
+- An **idempotent proposal replay** returns the recorded outcome without running the pipeline: no new log, no audit entry (`internal/infra/state/machine.go`).
+- The **per-order overlay** used by skippable orders never allocates a log sequence — `ProcessOrders` allocates on the parent scope — so a dropped overlay leaks no id.
+
+A hole or an inversion in those ranges is therefore unreachable by contract. Per invariant #7 it is not swallowed: the pass emits one `LOG_VERIFICATION_INCOMPLETE` whose message starts with `invariant:` and names the offending entry, then suppresses every bound derived from the premise that just failed. `Check()` still returns without error — reporting and continuing is the checker's contract.
+
+**Incomplete coverage suppresses the comparison**, on the same grounds as the signing pass. A bound derived from a *prefix* of the history is unsound in both directions: every surviving log above the break reads as unaudited, and on a store whose tail really is missing the gap the partial bound reports is arbitrary. So a chain break (each of `verifyAuditHashChain`'s three non-error exits calls `bounds.markLiveTruncated()`, alongside the signing and cluster-policy verifiers) or a failed contiguity premise reports coverage and compares nothing. Exactly one such event is emitted, never one per sequence — the event flood is what sank the first attempt at this pass.
+
+**The stored side is read off the Pebble KEY, never `query.ReadLastSequence`.** That function reads the value's `sequence` field, which is not hash-bound and whose divergence from the key is itself a finding (`LOG_SEQUENCE_MISMATCH`, pass 14) — a bound taken from it could be moved by the same edit it is meant to catch. The tracked key position is also the run's final progress figure, so the two can never disagree, and it is recorded *before* the row's value is examined: a row skipped as `LOG_SEQUENCE_MISMATCH` still counts as a position the store occupies.
+
+Both divergences are reported as **one aggregated event with a row count**, not one per sequence: a truncated or injected tail can be millions of rows.
+
+| Error type | Emitted for |
+|------------|-------------|
+| `SEQUENCE_GAP` | The stored head is *below* the audited bound — a deleted tail. `log_sequence` is the first missing sequence; the message names the whole missing range and its row count, which distinguishes it from pass 1's single-sequence message |
+| `LOG_UNAUDITED` | The stored head is *above* the audited bound — rows no audited proposal produced |
+| `LOG_VERIFICATION_INCOMPLETE` | The bound could not be derived: a hash chain break, or an inverted or discontinuous success range |
+
+A success entry with `max_log_sequence == 0` carries no freshly created log (an all-idempotent replay, or a proposal whose orders produced none). It neither advances the bound nor interrupts the interval. A history of nothing but rejected proposals has no success range at all: expected and stored bounds are both 0, which is clean.
+
+The comparison runs after `compareMirrorV2LogID`, once the log loop has established the stored head.
+
+The chain cannot detect every truncation on its own — a *coordinated* deletion of both the top logs and the top audit entries leaves a store whose chain verifies as a valid prefix. See the [coordinated-truncation limitation](audit-chain.md#limitation--coordinated-tail-truncation-is-not-detectable) for why, and for what this pass does and does not claim.
 
 ## Replay machinery
 
@@ -199,6 +234,8 @@ enum CheckStoreErrorType {
   CLUSTER_POLICY_VERIFICATION_INCOMPLETE = 25;
   QUERY_CHECKPOINT_MISMATCH   = 26;
   LOG_SEQUENCE_MISMATCH       = 27;
+  LOG_VERIFICATION_INCOMPLETE = 28;
+  LOG_UNAUDITED               = 29;
 }
 ```
 

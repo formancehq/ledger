@@ -871,6 +871,24 @@ enum CheckStoreErrorType {
   // checker keys every projection on the key sequence and skips replaying the
   // divergent row. See EN-1526.
   CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH = 27;
+  // Emitted when the expected log range could not be derived over the whole
+  // history, so the stored log bound cannot be compared. Two causes: the live
+  // audit walk was cut short by a hash chain break, leaving every success range
+  // after it unread; or the chain-verified AuditSuccess ranges were not
+  // contiguous from sequence 1, which contradicts the premise the bound rests
+  // on. The pass reports this instead of presenting a partial bound as a clean
+  // comparison -- against a truncated store a partial bound would report the
+  // surviving logs above it as unaudited and every log below the break as
+  // missing, both false. See EN-1526.
+  CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE = 28;
+  // Emitted when the store holds Log rows above the highest log sequence any
+  // chain-verified AuditSuccess range accounts for. Log rows are not
+  // hash-bound, so nothing but the audit ranges says which positions the FSM
+  // ever allocated: a row above the audited bound was produced by no audited
+  // proposal, hence injected or forged, and every projection keyed on its
+  // sequence would fold unaudited data. Reported once for the whole unaudited
+  // range with its row count, not per row. See EN-1526.
+  CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED = 29;
 }
 
 message CheckStoreError {

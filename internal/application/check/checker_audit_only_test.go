@@ -494,8 +494,10 @@ func TestCheck_EmptyStore_EmitsSingleProgressEvent(t *testing.T) {
 		require.EqualValues(t, 4, last.GetLogsChecked())
 		require.EqualValues(t, 4, last.GetTotalLogs())
 
-		// No duplicate tail: the in-loop emit no longer fires for
-		// seq == lastSequence, so the head is reported exactly once.
+		// No duplicate tail: the post-loop emit is skipped when an in-loop
+		// event already reported the same position, so the head is reported
+		// exactly once. See TestCheck_HeadOnProgressBoundary_EmitsSingleProgressEvent
+		// for the log count where the two emit sites actually collide.
 		tail := 0
 
 		for _, p := range progress {
@@ -506,4 +508,27 @@ func TestCheck_EmptyStore_EmitsSingleProgressEvent(t *testing.T) {
 
 		require.Equal(t, 1, tail, "the final position must be emitted exactly once")
 	})
+}
+
+// TestCheck_HeadOnProgressBoundary_EmitsSingleProgressEvent pins the dedup on
+// the one log count where the two emit sites collide: a head that is itself a
+// multiple of progressInterval. The in-loop emit fires at that sequence and
+// the post-loop emit reports the same position, so a consumer saw the head
+// arrive twice. Dropping the in-loop `seq == lastSequence` case did not close
+// this, because the collision is with the interval, not with lastSequence.
+func TestCheck_HeadOnProgressBoundary_EmitsSingleProgressEvent(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+
+	// Log rows written directly, with the audit chain declaring the matching
+	// success range so no other pass has anything to report against them.
+	writeRawLogRows(t, store, 1, progressInterval)
+	persistSuccessAuditEntries(t, store, [][2]uint64{{1, progressInterval}})
+
+	progress := collectCheckProgress(t, store)
+	require.Len(t, progress, 1,
+		"a head on the progress interval must be reported once, got %v", progress)
+	require.EqualValues(t, progressInterval, progress[0].GetLogsChecked())
+	require.EqualValues(t, progressInterval, progress[0].GetTotalLogs())
 }

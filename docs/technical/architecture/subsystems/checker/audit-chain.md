@@ -209,10 +209,20 @@ The `internal/infra/backup/manager.go` incremental export is the canonical examp
 | Attack | Detected because |
 |--------|-----------------|
 | Mutate a hashed field on entry *N* | Recomputed `hash[N]` ≠ stored `hash[N]` → `CHECK_STORE_ERROR_TYPE_HASH_MISMATCH` at `N`. |
-| Delete entry *N* | Sequence gap on read → `CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP`. |
+| Delete an *interior* entry *N* | Entry *N+1*'s chain link was computed over `hash[N]`; recomputing it against `hash[N-1]` diverges → `CHECK_STORE_ERROR_TYPE_HASH_MISMATCH` at *N+1*. A deleted **tail** is a different case — see the limitation below. |
 | Swap entries *N* and *M* | At least one of them has a `prev_hash` link that no longer matches → mismatch at the earliest violating slot. |
 | Rewrite `hash[N]` to match a forged payload | `hash[N+1]` was computed against the original `hash[N]`. Recomputing forward from the forged value produces `computed[N+1] ≠ stored[N+1]`. The attacker must rewrite every entry from *N* to the head, but cannot regenerate hashes without the per-cluster BLAKE3 key. |
 | Smuggle items into `entry.items` on disk | The on-disk row has `items = nil` by design (`writeAuditEntry` in `internal/infra/state/machine.go`); the checker flags it through the `len(entry.GetItems()) > 0` check at the top of the `verifyAuditHashChain` loop. |
+
+### Limitation — coordinated tail truncation is not detectable
+
+Deleting the top *M* audit entries **and** the top *N* `Log` rows together leaves a store the chain verifies as clean. It is a valid *prefix*: every surviving entry still links to its surviving predecessor, and no entry claims a log that is gone.
+
+Nothing recovers the lost head, because both counters are re-derived from the store's own last surviving row at boot. `LoadFSMStateFromStore` reads `NextSequenceID` from `query.ReadLastSequence` and `NextAuditSequenceID` plus `LastAuditHash` from `query.ReadLastAuditEntry` (both in `internal/infra/state/fsmstate.go`). There is no independently persisted head, no external anchor, and no bijection between the two streams that a shortened pair would violate — a truncated store is indistinguishable from a younger cluster that simply never got that far.
+
+What the checker does instead is **declare what it could not authenticate**. `logBoundsVerifier` (see [checker.md → Stored log bounds](checker.md#stored-log-bounds)) catches the *uncoordinated* case: logs truncated while the audit chain survives, which is the shape a restore bug takes. Where the chain itself is cut short it reports `LOG_VERIFICATION_INCOMPLETE` rather than a bound it cannot derive. The absence of findings is therefore a statement about the range that was verified, not a promise that no entry was ever removed from the head.
+
+The threat model matters here. The chain key is derived from the `ClusterID` persisted beside the store, so an attacker with write access to the data directory has the key and can re-chain a forged history end to end — the paragraph below already says the chain does not defend against that. The bound pass is an **ops-correctness detector**, aimed at a restore or migration that silently drops tail logs, not a defence against a local adversary.
 
 The chain does *not* defend against an attacker who has the cluster's BLAKE3 key — that key is local to the node and is the same secret that lets the node propose. Securing the key is part of the threat model the operator-level [Security](../../../../security/) and [Request Signing](../../../../ops/signing.md) docs cover.
 

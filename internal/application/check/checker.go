@@ -72,7 +72,7 @@ func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string
 
 // Check verifies the store integrity and calls the callback for each event.
 // It verifies:
-// 1. Log sequence continuity (no gaps) and log key/value sequence agreement
+// 1. Log sequence continuity: no interior gaps, log key/value sequence agreement, and the stored log bound against the audited log range
 // 2. BLAKE3 hash chain integrity
 // 3. Reversion invariants (no double reverts, valid revert targets)
 // 4. Volume consistency (input/output per account/asset)
@@ -158,11 +158,17 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// Cluster policy: re-derived from chain-bound SetClusterPolicy orders.
 	policy := newClusterPolicyVerifier()
 
+	// Highest log sequence the audit chain accounts for, re-derived from the
+	// chain-verified AuditSuccess ranges. Compared against the highest stored
+	// log KEY after the log loop — see logBoundsVerifier for the premise and
+	// for why a deleted tail is invisible to every other pass.
+	bounds := newLogBoundsVerifier()
+
 	// Verify the audit hash chain before log replay. This iterates every
 	// audit entry and recomputes each hash from the stored orders. Populates
 	// expectedSkippable + layers the audit-chain mutations onto chainBound
 	// and the signing orders onto `signing`.
-	expectedSkippable, err := c.verifyAuditHashChain(ctx, snap, chainBound, signing, policy, callback)
+	expectedSkippable, err := c.verifyAuditHashChain(ctx, snap, chainBound, signing, policy, bounds, callback)
 	if err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
@@ -281,8 +287,24 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	expectedSeq := uint64(1)
 
-	// Key sequence of the last log the loop consumed; 0 when there are none.
-	var lastCheckedSeq uint64
+	// Highest log KEY sequence the loop reached; 0 when there are no logs. Read
+	// off the Pebble key and recorded BEFORE the row's value is examined, so a
+	// row skipped as LOG_SEQUENCE_MISMATCH still counts as a position the store
+	// occupies. It is both the run's final progress position and the stored side
+	// of the audit-derived log bound (logBoundsVerifier.compare below) — one variable, so
+	// the two can never disagree. The value's `sequence` field is never used for
+	// either: it is not hash-bound.
+	var storedMaxLogSeq uint64
+
+	// Position reported by the most recent in-loop progress event, and whether
+	// any fired. The final event after the loop is emitted only when it would
+	// report a position no in-loop event already reported: the highest log key
+	// can itself be a multiple of progressInterval, and then both emits carry
+	// the same LogsChecked and a consumer sees the head arrive twice.
+	var (
+		lastProgressSeq uint64
+		progressEmitted bool
+	)
 
 	for logIter.First(); logIter.Valid(); logIter.Next() {
 		if ctx.Err() != nil {
@@ -291,6 +313,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 		// Extract sequence from key: [ZoneHistory(1)][SubHistoryLog(1)][sequence(8)]
 		seq := binary.BigEndian.Uint64(logIter.Key()[2:10])
+		storedMaxLogSeq = seq
 
 		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
 			if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
@@ -546,10 +569,13 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			}
 		}
 
-		// Emit progress periodically. The run's final position is emitted
-		// unconditionally after the loop, so there is no `seq == lastSequence`
-		// case here — it would only duplicate that event.
+		// Emit progress periodically. The run's final position is emitted after
+		// the loop, so there is no `seq == lastSequence` case here — it would
+		// only duplicate that event. Record what was reported so the final
+		// emit can tell whether it still has anything to say.
 		if seq%progressInterval == 0 {
+			lastProgressSeq, progressEmitted = seq, true
+
 			callback(&servicepb.CheckStoreEvent{
 				Type: &servicepb.CheckStoreEvent_Progress{
 					Progress: &servicepb.CheckStoreProgress{
@@ -559,26 +585,32 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 				},
 			})
 		}
-
-		lastCheckedSeq = seq
 	}
 
 	if err := logIter.Error(); err != nil {
 		return fmt.Errorf("log iterator error: %w", err)
 	}
 
-	// Final position, emitted whatever the log count. A store with no logs
-	// reports (0, 0) here: the loop body never ran, and a run that produces no
-	// progress event at all is indistinguishable from a run that never
-	// started.
-	callback(&servicepb.CheckStoreEvent{
-		Type: &servicepb.CheckStoreEvent_Progress{
-			Progress: &servicepb.CheckStoreProgress{
-				LogsChecked: lastCheckedSeq,
-				TotalLogs:   lastSequence,
+	// Final position. A store with no logs reports (0, 0) here: the loop body
+	// never ran, no in-loop event fired, and a run that produces no progress
+	// event at all is indistinguishable from a run that never started.
+	//
+	// Skipped only when an in-loop event already reported this exact position,
+	// which is what happens whenever the highest log key is a multiple of
+	// progressInterval. Comparing positions rather than dropping the in-loop
+	// `seq == lastSequence` case is what makes that robust: lastSequence is
+	// read off a Log row's `sequence` field, which is not hash-bound, so it is
+	// not a reliable statement of where the loop will actually end.
+	if !progressEmitted || lastProgressSeq != storedMaxLogSeq {
+		callback(&servicepb.CheckStoreEvent{
+			Type: &servicepb.CheckStoreEvent_Progress{
+				Progress: &servicepb.CheckStoreProgress{
+					LogsChecked: storedMaxLogSeq,
+					TotalLogs:   lastSequence,
+				},
 			},
-		},
-	})
+		})
+	}
 
 	if ephemeralPurgeBuffer != nil {
 		if err := ephemeralPurgeBuffer.Flush(replay, ledgerAccountTypes, exclusionCollector); err != nil {
@@ -640,6 +672,12 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}, callback)
 
 	c.compareMirrorV2LogID(snap, chainBound, deletedInReplay, callback)
+
+	// Compare the highest stored log key against the range the audit chain
+	// accounts for. This is the only pass that can see a deleted log TAIL: the
+	// interior gap scan above needs a surviving row above the hole, and every
+	// projection rebuilt from the surviving prefix is self-consistent.
+	bounds.compare(storedMaxLogSeq, callback)
 
 	if err := c.compareSchema(ctx, snap, expectedSchemas, callback); err != nil {
 		return err
@@ -1991,6 +2029,7 @@ func (c *Checker) verifyAuditHashChain(
 	chainBound *chainBoundState,
 	signing *signingVerifier,
 	policy *clusterPolicyVerifier,
+	bounds *logBoundsVerifier,
 	callback func(*servicepb.CheckStoreEvent),
 ) (map[uint64]*expectedSkippableOrder, error) {
 	auditCursor, err := query.ReadAuditEntries(ctx, reader, nil)
@@ -2063,6 +2102,7 @@ func (c *Checker) verifyAuditHashChain(
 			// reports the gap instead of those false positives.
 			signing.markLiveTruncated()
 			policy.markLiveTruncated()
+			bounds.markLiveTruncated()
 
 			return expectedSkippable, nil
 		}
@@ -2103,6 +2143,7 @@ func (c *Checker) verifyAuditHashChain(
 			// reports the gap instead of those false positives.
 			signing.markLiveTruncated()
 			policy.markLiveTruncated()
+			bounds.markLiveTruncated()
 
 			return expectedSkippable, nil
 		}
@@ -2148,6 +2189,7 @@ func (c *Checker) verifyAuditHashChain(
 			// reports the gap instead of those false positives.
 			signing.markLiveTruncated()
 			policy.markLiveTruncated()
+			bounds.markLiveTruncated()
 
 			return expectedSkippable, nil
 		}
@@ -2178,6 +2220,11 @@ func (c *Checker) verifyAuditHashChain(
 		// the success [Min,Max] range so each referenced log is folded once.
 		// Failure-side entries get LogSequence=0 and contribute nothing.
 		if success := entry.GetSuccess(); success != nil {
+			// Widen the expected log bound with this entry's fresh-log range,
+			// before anything below can fail: the range is a property of the
+			// entry the hash just verified, not of the orders it carries.
+			bounds.observeSuccess(entry)
+
 			// The decoded orders come back so the signing fold below reuses them
 			// instead of unmarshalling the whole live audit range a second time.
 			// Parallel to `items` by index; nil where the bytes did not decode.

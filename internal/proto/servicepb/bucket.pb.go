@@ -189,6 +189,24 @@ const (
 	// checker keys every projection on the key sequence and skips replaying the
 	// divergent row. See EN-1526.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH CheckStoreErrorType = 27
+	// Emitted when the expected log range could not be derived over the whole
+	// history, so the stored log bound cannot be compared. Two causes: the live
+	// audit walk was cut short by a hash chain break, leaving every success range
+	// after it unread; or the chain-verified AuditSuccess ranges were not
+	// contiguous from sequence 1, which contradicts the premise the bound rests
+	// on. The pass reports this instead of presenting a partial bound as a clean
+	// comparison -- against a truncated store a partial bound would report the
+	// surviving logs above it as unaudited and every log below the break as
+	// missing, both false. See EN-1526.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE CheckStoreErrorType = 28
+	// Emitted when the store holds Log rows above the highest log sequence any
+	// chain-verified AuditSuccess range accounts for. Log rows are not
+	// hash-bound, so nothing but the audit ranges says which positions the FSM
+	// ever allocated: a row above the audited bound was produced by no audited
+	// proposal, hence injected or forged, and every projection keyed on its
+	// sequence would fold unaudited data. Reported once for the whole unaudited
+	// range with its row count, not per row. See EN-1526.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED CheckStoreErrorType = 29
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -222,6 +240,8 @@ var (
 		25: "CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE",
 		26: "CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH",
 		27: "CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH",
+		28: "CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE",
+		29: "CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                            0,
@@ -252,6 +272,8 @@ var (
 		"CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE": 25,
 		"CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH":              26,
 		"CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH":                  27,
+		"CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE":            28,
+		"CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED":                          29,
 	}
 )
 
@@ -9455,8 +9477,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xdb\n" +
-	"\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xbd\v\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9486,7 +9507,9 @@ const file_bucket_proto_rawDesc = "" +
 	".CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH\x10\x18\x12A\n" +
 	"=CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE\x10\x19\x124\n" +
 	"0CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH\x10\x1a\x120\n" +
-	",CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH\x10\x1b*W\n" +
+	",CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH\x10\x1b\x126\n" +
+	"2CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE\x10\x1c\x12(\n" +
+	"$CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED\x10\x1d*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +
