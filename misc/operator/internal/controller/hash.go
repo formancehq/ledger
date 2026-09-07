@@ -36,7 +36,6 @@ func computeSpecHash(spec *ledgerv1alpha1.ClusterSpec) string {
 	cp.Persistence.DeletionProtection = nil
 	cp.Persistence.WAL.AutoExpansion = nil
 	cp.Persistence.Data.AutoExpansion = nil
-	cp.Persistence.ColdCache.AutoExpansion = nil
 
 	data, _ := json.Marshal(&cp) //nolint:errchkjson // spec is always serializable
 

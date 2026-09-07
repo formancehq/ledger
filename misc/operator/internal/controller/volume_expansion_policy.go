@@ -53,13 +53,6 @@ func persistenceVolumeDefinitions(ledger *ledgerv1alpha1.Cluster) []persistenceV
 			DefaultSize:          "10Gi",
 			AutoExpansionAllowed: true,
 		},
-		{
-			Name:                 "cold-cache",
-			Field:                "persistence.coldCache",
-			Spec:                 &ledger.Spec.Persistence.ColdCache,
-			DefaultSize:          "10Gi",
-			AutoExpansionAllowed: false,
-		},
 	}
 }
 

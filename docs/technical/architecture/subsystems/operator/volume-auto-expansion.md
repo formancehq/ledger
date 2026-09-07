@@ -19,9 +19,8 @@ The policy is opt-in under a PVC-backed WAL or data `VolumeSpec`. A hard
 cooldown have safe defaults but remain configurable. The StorageClass must set
 `allowVolumeExpansion: true` and its CSI driver must support online expansion.
 
-The feature rejects hostPath and cold-cache policies. Cold cache is bounded and
-evictable rather than an authority-bearing dataset, so growing it indefinitely
-would hide a cache-retention problem.
+The feature rejects hostPath policies. Only PVC-backed WAL and data volumes
+support automatic expansion.
 
 ## Measurement path
 
