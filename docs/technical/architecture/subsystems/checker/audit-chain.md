@@ -113,7 +113,7 @@ Reference: `internal/infra/state/machine.go:1370-1384`. The hash is bound to the
 
 ## What's in the chain — orders and logs
 
-**Exactly one `AuditEntry` per Raft proposal.** The outcome is either `Success` (with `order_count` items and the resulting log range) or `Failure` (with a reason and message; zero items). Both outcomes are bound by the hash chain — a rejected proposal is just as auditable as an accepted one.
+**Exactly one `AuditEntry` per Raft proposal.** The outcome is either `Success` (with the resulting log range) or `Failure` (with a reason and message). **Both outcomes write `order_count` `AuditItem` rows** — one per order in the proposal, each carrying that order's `SerializedOrder`. The difference is `LogSequence`: a success binds each item to the log its order produced, while a failure produced no log at all and every one of its items therefore carries `LogSequence = 0` (`writeAuditEntry(failureEntry, nil, …)` in `internal/infra/state/machine.go` reaches `buildAuditItems(serializedOrders, nil)` in `internal/infra/state/audit.go`). The items enter the hash identically in both cases: `writeAuditEntry` appends `BuildPerItemPayload` for every item before computing the hash, whatever the outcome. Both outcomes are bound by the hash chain — a rejected proposal is just as auditable as an accepted one.
 
 Each successful order produces a `Log` (`internal/proto/commonpb/common.proto`, `message Log { LogPayload payload = …; }`). The audit chain binds the orders via `AuditItem.SerializedOrder` (the order's canonical vtprotobuf bytes); the resulting `Log` rows are addressable separately by `LogSequence` and bound transitively through the items.
 
@@ -177,13 +177,13 @@ The FSM writes up to four datasets per proposal, all in `ZoneHistory`, but they 
 | Sub-zone | Key | Success (N orders) | Failure | Idempotent replay (success or failure) |
 |----------|-----|--------------------|---------|----------------------------------------|
 | `SubHistoryAudit = 0x02` — `AuditEntry` | `[seq BE 8]` | 1 | 1 | **0** |
-| `SubHistoryAuditItem = 0x03` — `AuditItem` | `[seq BE 8][order_idx BE 4]` | N (≥1) | **0** | **0** |
+| `SubHistoryAuditItem = 0x03` — `AuditItem` | `[seq BE 8][order_idx BE 4]` | N | N, each with `LogSequence = 0` | **0** |
 | `SubHistoryAppliedProposal = 0x04` — `AppliedProposal` | `[seq BE 8]` | 1 | **0** | **0** |
 | `SubHistoryLog = 0x01` — `Log` | `[log_seq BE 8]` | 0..M (=`MaxLog-MinLog+1`) | 0 | 0 |
 
 **Idempotent replay is the one exception to "one AuditEntry per proposal":** when the proposal carries a previously-recorded idempotency key with a matching hash, `applyProposal` short-circuits (`internal/infra/state/machine.go:1313-1326`) and returns the recorded outcome verbatim — no new pipeline run, no new logs, no new audit entry. `audit_sequence` does **not** advance for that proposal. The first-time apply of that key is what's already recorded under the "Success" or "Failure" column; the replay is invisible to Pebble.
 
-A same-key-different-hash conflict, by contrast, is **not** a replay — it's a fresh rejection, so it takes the Failure column (1 audit entry, no items, no applied proposal, no log).
+A same-key-different-hash conflict, by contrast, is **not** a replay — it's a fresh rejection, so it takes the Failure column (1 audit entry, N items each with `LogSequence = 0`, no applied proposal, no log).
 
 Two independent monotone counters, bridged per successful non-replayed proposal:
 
@@ -193,14 +193,16 @@ Two independent monotone counters, bridged per successful non-replayed proposal:
 Gaps live on the **companion streams**, not on `audit_sequence` itself:
 
 - `SubHistoryAppliedProposal` iteration shows a gap at every failed audit_seq.
-- `SubHistoryAuditItem[seq][…]` shows no items at every failed audit_seq.
+- `SubHistoryAuditItem[seq][…]` is dense across successes and failures alike — a failed audit_seq still carries one item per order. It is empty only where the proposal carried no orders at all.
 - A `Log` reader has no visibility into failures at all.
 
 ### Implication for downstream code
 
-**`audit.count > 0` does NOT imply `auditItem.count > 0`.** An incremental range consisting of only failures has one AuditEntry per proposal (audit_seq advances) but zero AuditItems (nothing to hash into the per-item payload beyond an empty list). Anything that assumes the two rise together — a backup exporter that indexes segments by audit range, an indexer that scans AppliedProposal alongside AuditEntry, a mirror that assumes a log per audit — must guard on the companion stream's count independently, rather than deriving one count from the other.
+**Neither the `Log` count nor the `AppliedProposal` count follows from the audit count.** An incremental range consisting of only failures has one `AuditEntry` per proposal (audit_seq advances), zero `AppliedProposal` rows and zero `Log` rows. Anything that assumes those rise together — a backup exporter that indexes segments by audit range, an indexer that scans `AppliedProposal` alongside `AuditEntry`, a mirror that assumes a log per audit — must guard on the companion stream's own count rather than deriving one count from the other.
 
-The `internal/infra/backup/manager.go` incremental export is the canonical example: each of the three companion segments (`audit`, `auditItem`, `appliedProposal`) is guarded on its own count when appended to the manifest. Failure-only ranges produce an `audit` segment with `count > 0`, an `auditItem` segment with `count == 0` (skipped from the manifest), and no `appliedProposal` segment at all.
+What the outcome does **not** change is the `AuditItem` count: every non-replayed proposal writes one item per order regardless of outcome, so a range of audit entries whose proposals each carried at least one order always has `auditItem.count > 0`. The remaining way to reach an empty `AuditItem` range is a proposal that carried no orders. Nor does `LogSequence` identify the outcome: an item reads `0` on a failure, but also on a success whose order neither created a log nor resolved to a positive in-batch reference sequence. Only `AuditEntry.outcome` distinguishes the two.
+
+The `internal/infra/backup/manager.go` incremental export is the canonical example. Each companion stream (`audit`, `auditItem`, `appliedProposal`) is exported by its own `exportEntries` call, and `exportEntries` returns no segments when its range holds no rows, so an empty stream appends nothing to the manifest and the manifest never references a storage key that does not exist (a later `ApplyExports` would fail on `GetFile`). The guard is structural, so it holds whichever stream turns out to be empty. A failure-only range produces an `audit` segment with `count > 0`, an `auditItem` segment with `count > 0` (one item per order), and no `appliedProposal` segment at all.
 
 ## Tampering model — what the chain detects
 

@@ -525,17 +525,18 @@ func RunIncrementalBackup(
 		segmentsUploaded += len(segs)
 
 		// Export the audit items (per-order detail) for the same range.
-		// On success proposals the audit hash covers the per-item payloads,
-		// so a restored backup missing them cannot reconstruct the chain.
-		// Failure proposals write an AuditEntry with zero items (see
-		// state.machine.go writeAuditEntry(failureEntry, nil, ...) and
-		// state.batch.go appendAuditItems), and their hash is bound to the
-		// header alone. An incremental range consisting of only failures
-		// therefore has audit count > 0 but auditItem count == 0 —
-		// exportEntries then returns no segments, so appending its result
-		// adds nothing and we never reference a key that does not exist on
-		// storage (subsequent ApplyExports would fail on GetFile). Same
-		// guard as the appliedProposal branch below.
+		// The audit hash covers the per-item payloads on EVERY outcome, so a
+		// restored backup missing them cannot reconstruct the chain. A failure
+		// proposal writes one AuditItem per order too — writeAuditEntry
+		// (state/machine.go) reaches buildAuditItems(serializedOrders, nil)
+		// (state/audit.go), which only leaves LogSequence at 0 — so a
+		// failure-only range is NOT an empty auditItem range. The range can
+		// still be empty (a proposal that carried no orders), and nothing here
+		// may assume otherwise: exportEntries then returns no segments, so
+		// appending its result adds nothing and we never reference a key that
+		// does not exist on storage (a subsequent ApplyExports would fail on
+		// GetFile). The guard is structural, same as the appliedProposal
+		// branch below.
 		itemSegs, _, err := exportEntries(
 			ctx, storage, readHandle,
 			dal.ZoneHistory, dal.SubHistoryAuditItem, afterAuditSeq, currentAuditSeq, "auditItem",
