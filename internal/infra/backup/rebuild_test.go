@@ -1193,6 +1193,60 @@ func TestRebuildDelta_IdempotencyExpiresAtRoundtrips(t *testing.T) {
 	require.Len(t, hashes, 1, "the rebuilt outcome must have a time-index entry at its expires_at")
 }
 
+// TestRebuildDelta_PreservesCheckpointExpiresAt covers the Preserved half of the
+// expires_at restore classification (invariant #11, "Required tests" item 1): an
+// outcome frozen with a finite expiry BEFORE the checkpoint rides the raw SST
+// copy, so RebuildDelta must leave its expires_at and eviction time-index entry
+// untouched while it folds unrelated delta keys. The expected expiry is a
+// literal, so this is an oracle independent of the audit decoder the rebuild
+// writer shares with CheckStore (a shared-decoder mistake cannot make it pass).
+func TestRebuildDelta_PreservesCheckpointExpiresAt(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	const (
+		checkpointKey = "idem-checkpoint-key"
+		checkpointExp = uint64(61_000_000)
+		deltaKey      = "idem-delta-key"
+	)
+
+	batch := store.OpenWriteSession()
+	// Checkpoint-carried outcome with a finite expiry (Preserved via the SST
+	// copy); SaveIdempotencyKey also writes its eviction time-index entry.
+	require.NoError(t, state.SaveIdempotencyKey(batch, checkpointKey, &commonpb.IdempotencyKeyValue{
+		FirstLogSequence: 1, LogCount: 1, CreatedAt: 1_000_000, ExpiresAt: checkpointExp,
+	}))
+	// An unrelated keyed outcome in the exported delta, so RebuildDelta does real
+	// work (proving the fold ran) without touching the checkpoint key.
+	require.NoError(t, batch.SetProto(coldAuditKey(2), keyedAuditSuccess(2, deltaKey, 2_000_000, 2, 2)))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(2, 0), auditItem(t, 0, fillGapOrder("l", 2))))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	// The fold ran: the unrelated delta key was rebuilt.
+	dv, err := state.LoadIdempotencyKey(handle, deltaKey)
+	require.NoError(t, err)
+	require.NotNil(t, dv, "the delta key must be rebuilt (this is not a vacuous pass)")
+
+	// The checkpoint outcome's frozen expiry survives untouched.
+	v, err := state.LoadIdempotencyKey(handle, checkpointKey)
+	require.NoError(t, err)
+	require.NotNil(t, v)
+	require.Equal(t, checkpointExp, v.GetExpiresAt(), "the checkpoint-carried expires_at must survive RebuildDelta")
+
+	// Its eviction time-index entry is intact (the delta key froze no expiry, so it
+	// has none), so a leader scan still evicts the checkpoint outcome on schedule.
+	hashes, _, err := state.NewIdempotencyStore().ScanExpiredKeyHashes(handle, checkpointExp, 100)
+	require.NoError(t, err)
+	require.Len(t, hashes, 1, "the checkpoint outcome's time-index entry must survive at its expires_at")
+}
+
 // Same, but the original outcome lives in the checkpoint SSTs (present in the
 // store before the rebuild) rather than an earlier delta entry — the rebuild
 // skips the delta conflict, so nothing overwrites it.
