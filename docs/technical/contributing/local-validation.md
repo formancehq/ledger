@@ -43,8 +43,9 @@ state rather than reusable cache state.
 
 ### golangci-lint cross-worktree safety
 
-The development shell pins the upstream golangci-lint v2.13.2 release, whose
-analysis cache is location-independent:
+The development shell provides upstream golangci-lint v2.13.2 through the
+`nixpkgs-unstable` revision pinned in `flake.lock`, without a package override
+or source patch. Its analysis cache is location-independent:
 
 - package keys normalize current-module filenames and the `go.mod` salt so
   byte-identical packages can share an entry across worktrees;
@@ -130,9 +131,10 @@ the initial v2.12.2 backport prototype completed a temporary-cache cold lint in
 measured 28.3s cold and 3.4s warm. These timings demonstrate hit topology, not a
 performance budget. The final implementation uses the upstream release rather
 than carrying that source patch; these prototype timings are historical
-comparison evidence. With upstream v2.13.2 and its analyzer findings fixed,
-unchanged warm root/operator lint measured 2.3s/1.6s with zero issues, using an
-isolated temporary cache root (excluding Nix shell startup).
+comparison evidence. Before the Go 1.27 base synchronization, upstream v2.13.2
+with its analyzer findings fixed measured 2.3s/1.6s for unchanged warm
+root/operator lint with zero issues, using an isolated temporary cache root
+(excluding Nix shell startup).
 
 The alternative input-sensitive pre-commit proposal added roughly 1,500 lines
 of selector and dependency machinery. A straightforward warm pre-commit at
