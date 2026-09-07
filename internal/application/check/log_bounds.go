@@ -49,6 +49,18 @@ import (
 // type treats it as an invariant failure rather than deriving a bound from it
 // (invariant #7).
 //
+// ONLY THE UPPER END IS COMPARED HERE. The interval the premise describes is
+// [1, expectedMax], and compare() below checks the stored head against
+// expectedMax alone: sequence 0 sits below every audited range, so a Log row
+// there is invisible to this comparison — on a store whose real head is N the
+// row moves neither side, and on a store where it is the only row the stored
+// and expected heads are both 0. The interior gap scan in Check()'s log loop
+// cannot see it either: that scan is seeded at expectedSeq 1 and never looks
+// beneath it. The lower end is therefore pinned in the log loop, where the key
+// is decoded — a row at key sequence 0 is reported as LOG_UNAUDITED there, off
+// the key and before this fold runs, because FSMState.NextSequenceID is seeded
+// at 1 and observeSuccess pins the first audited range's minimum at 1.
+//
 // RECONCILIATION with replay.ProposalBoundaryTracker
 // (internal/domain/replay/replay.go), whose comment states that audit ranges
 // "may include idempotent references to older logs". That reads as a
@@ -171,7 +183,8 @@ func (v *logBoundsVerifier) observeSuccess(entry *auditpb.AuditEntry) {
 }
 
 // compare reports how the highest stored log KEY sequence relates to the
-// audit-derived bound.
+// audit-derived bound. It bounds the audited interval from ABOVE only; its
+// lower end is pinned in Check()'s log loop (see the header).
 //
 // storedMax must be read off the Pebble KEY of the last Log row, never off the
 // value's `sequence` field (query.ReadLastSequence): that field is not
