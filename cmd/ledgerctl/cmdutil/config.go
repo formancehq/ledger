@@ -31,14 +31,14 @@ type Config struct {
 }
 
 // ConfigDir returns the ledgerctl configuration directory
-// (~/.config/ledgerctl on Linux, ~/Library/Application Support/ledgerctl on macOS).
+// under the OS-native Formance application namespace.
 func ConfigDir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("determining config directory: %w", err)
 	}
 
-	return filepath.Join(base, "ledgerctl"), nil
+	return filepath.Join(base, "formance", "ledgerctl"), nil
 }
 
 // ConfigPath returns the path to the configuration file.
@@ -52,7 +52,7 @@ func ConfigPath() (string, error) {
 }
 
 // LoadConfig reads the configuration file. If the file does not exist,
-// a zero-value Config is returned (backward compatible with fresh installs).
+// a zero-value Config is returned for a fresh install.
 func LoadConfig() (Config, error) {
 	path, err := ConfigPath()
 	if err != nil {
