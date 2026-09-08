@@ -576,6 +576,17 @@ func (s *DefaultWAL) Entries(lo, hi, maxSize uint64) ([]*raftpb.Entry, error) {
 		}
 	}
 
+	// Cap the returned slice to its final length. Raft's Storage contract
+	// permits callers to append to the returned slice (e.g. unstable entries
+	// forwarded via MsgApp and serialized asynchronously). After contiguous
+	// growth retains spare append capacity, an uncapped subrange or
+	// maxSize-limited window would share writable slots with s.entries: a
+	// caller append could overwrite retained entries, and a later append
+	// could overwrite the caller's suffix. The full slice expression makes
+	// the borrowed window ownership-safe — appends reallocate instead of
+	// writing into s.entries' backing array. Matches raft.MemoryStorage.
+	ents = slices.Clip(ents)
+
 	return ents, nil
 }
 
@@ -683,7 +694,16 @@ func (s *DefaultWAL) Append(hardState *raftpb.HardState, entries []*raftpb.Entry
 				}
 
 				entries = nil
+			case entries[0].GetIndex() == offset+uint64(len(s.entries)):
+				// Contiguous append: the incoming batch starts exactly at the
+				// next index after the cached window. Grow in place so repeated
+				// batches amortize instead of copying the full retained prefix
+				// on every call (EN-1964). Entries() caps its borrowed window,
+				// so this spare capacity cannot be aliased by Raft callers.
+				s.entries = append(s.entries, entries...)
 			case entries[0].GetIndex() > offset+uint64(len(s.entries)):
+				// Gap (never produced by valid Raft, but preserved for the
+				// existing defensive behaviour).
 				s.entries = append(s.entries, entries...)
 			default:
 				truncateIndex := entries[0].GetIndex()
