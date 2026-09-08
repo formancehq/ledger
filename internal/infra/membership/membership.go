@@ -519,8 +519,7 @@ func (m *Membership) OnSnapshotInstalled() {
 	}
 
 	if err := m.Rehydrate(); err != nil {
-		var invalidIdentity *invalidPeerIdentityError
-		if errors.As(err, &invalidIdentity) {
+		if _, ok := errors.AsType[*invalidPeerIdentityError](err); ok {
 			panic(fmt.Errorf("invariant: snapshot installed invalid cluster membership: %w", err))
 		}
 
