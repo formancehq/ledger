@@ -2,6 +2,7 @@ package indexbuilder
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sync/atomic"
@@ -57,6 +58,17 @@ type Builder struct {
 
 	// Active backfill tasks for BUILDING indexes.
 	backfillTasks []*backfillTask
+
+	// ledgerHistory is the committed per-ledger EMPTY/NON_EMPTY tracker for
+	// the current ledger incarnation. historyOverlay holds only the current
+	// processLogs batch and is merged after its durable commit.
+	ledgerHistory  map[string]ledgerHistoryState
+	historyOverlay map[string]ledgerHistoryMutation
+
+	// unresolvedIndexes are registry entries whose local IndexVersionState is
+	// absent/tombstoned at boot. They remain inactive until replay reaches the
+	// corresponding CreatedIndexLog and can decide EMPTY versus NON_EMPTY.
+	unresolvedIndexes map[string]map[string]*commonpb.Index
 
 	// Active schema rewrite tasks for deferred SetMetadataFieldType processing.
 	schemaRewriteTasks []*schemaRewriteTask
@@ -204,7 +216,7 @@ func (b *Builder) putVersionState(ledgerName, canonicalID string, state readstor
 // permanent events already occupy (the same-sequence retraction such reuse
 // forces can never win — see IndexVersionState.HighWater).
 func (b *Builder) tombstoneVersionState(ledgerName, canonicalID string) error {
-	prior, _ := b.versionStateFor(ledgerName, canonicalID)
+	prior, priorExists := b.versionStateFor(ledgerName, canonicalID)
 
 	tomb := readstore.IndexVersionState{
 		HighWater: max(prior.HighWater, prior.CurrentVersion, prior.PendingVersion),
@@ -222,6 +234,19 @@ func (b *Builder) tombstoneVersionState(ledgerName, canonicalID string) error {
 	}
 
 	b.putVersionState(ledgerName, canonicalID, tomb)
+	b.recordFoldRollback(func() {
+		if priorExists {
+			b.putVersionState(ledgerName, canonicalID, prior)
+
+			return
+		}
+		if inner := b.indexVersions[ledgerName]; inner != nil {
+			delete(inner, canonicalID)
+			if len(inner) == 0 {
+				delete(b.indexVersions, ledgerName)
+			}
+		}
+	})
 
 	return nil
 }
@@ -556,6 +581,7 @@ func (b *Builder) initFoldBatch(batch *dal.WriteSession) {
 	b.initBatch(batch)
 	b.foldRollbacks = nil
 	b.foldBatchOpen = true
+	b.historyOverlay = make(map[string]ledgerHistoryMutation)
 }
 
 func (b *Builder) recordFoldRollback(rollback func()) {
@@ -574,11 +600,25 @@ func (b *Builder) rollbackFoldBatch() {
 		rollback()
 	}
 	b.foldRollbacks = nil
+	b.historyOverlay = nil
 }
 
 func (b *Builder) commitFoldBatch() {
+	if b.ledgerHistory == nil {
+		b.ledgerHistory = make(map[string]ledgerHistoryState)
+	}
+	for ledger, mutation := range b.historyOverlay {
+		if mutation.deleted {
+			delete(b.ledgerHistory, ledger)
+
+			continue
+		}
+
+		b.ledgerHistory[ledger] = mutation.state
+	}
 	b.foldBatchOpen = false
 	b.foldRollbacks = nil
+	b.historyOverlay = nil
 }
 
 // SetNotifications sets the dedicated Notifications signal for the builder.
@@ -710,6 +750,7 @@ func (b *Builder) loop(ctx context.Context) {
 	savedBatchSize := b.batchSize
 	b.batchSize = max(b.batchSize, 10_000)
 	restoreIndexes := b.stripBuildingIndexes()
+	replayValidationPending := true
 
 	for {
 		select {
@@ -737,6 +778,14 @@ func (b *Builder) loop(ctx context.Context) {
 
 	restoreIndexes()
 	b.batchSize = savedBatchSize
+	if err == nil {
+		if validationErr := b.validateHistoryReplayState(); validationErr != nil {
+			b.logger.Errorf("Indexbuilder history replay invariant failed: %v", validationErr)
+
+			return
+		}
+		replayValidationPending = false
+	}
 
 	if cursor > prevCursor {
 		b.logger.WithFields(map[string]any{
@@ -778,6 +827,14 @@ func (b *Builder) loop(ctx context.Context) {
 		}
 
 		logsProcessed := cursor > prevCursor
+		if replayValidationPending && err == nil && !logsProcessed {
+			if validationErr := b.validateHistoryReplayState(); validationErr != nil {
+				b.logger.Errorf("Indexbuilder history replay invariant failed: %v", validationErr)
+
+				return
+			}
+			replayValidationPending = false
+		}
 
 		// When processLogs had nothing to do (cluster idle), give backfills
 		// a much larger budget — the full tick interval instead of just 50ms.
@@ -807,13 +864,25 @@ func (b *Builder) loop(ctx context.Context) {
 // and query.ReadLastSequence stay best-effort (they tolerate failure today);
 // only initIndexConfig, LastIndexedSequence, and NewDirectReadHandle are fatal.
 func (b *Builder) bootInit(ctx context.Context) (cursor uint64, pebbleLast uint64, err error) {
-	if err := b.initIndexConfig(ctx); err != nil {
-		return 0, 0, fmt.Errorf("initializing index config: %w", err)
+	snapshot := b.readStore.NewSnapshot()
+	cursor, err = b.readStore.LastIndexedSequenceFrom(snapshot)
+	if err != nil {
+		_ = snapshot.Close()
+
+		return 0, 0, fmt.Errorf("reading last indexed sequence: %w", err)
+	}
+	if err := b.loadLedgerHistory(snapshot); err != nil {
+		_ = snapshot.Close()
+
+		return 0, 0, fmt.Errorf("reading ledger history state: %w", err)
+	}
+	_ = snapshot.Close()
+	if cursor == 0 && len(b.ledgerHistory) != 0 {
+		return 0, 0, errors.New("invariant: ledger history state exists while indexbuilder cursor is zero")
 	}
 
-	cursor, err = b.readStore.LastIndexedSequence()
-	if err != nil {
-		return 0, 0, fmt.Errorf("reading last indexed sequence: %w", err)
+	if err := b.initIndexConfigAfterHistory(ctx); err != nil {
+		return 0, 0, fmt.Errorf("initializing index config: %w", err)
 	}
 
 	// Recover AppliedProposal sync progress (best-effort: a corrupt cursor

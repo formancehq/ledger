@@ -1528,15 +1528,13 @@ func checkIndexed(ctx *compileCtx, id *commonpb.IndexID, label string) error {
 // ledger AND that the local replica has primed a live keyspace for it
 // (CurrentVersion > 0 in the per-replica IndexVersionState). Returns:
 //   - ErrIndexNotFound when the index isn't declared.
-//   - ErrIndexBuilding when the local replica's initial backfill /
+//   - ErrIndexBuilding when the local replica's historical backfill /
 //     rewrite hasn't yet performed an atomic switch. This holds for
 //     EVERY index kind — builtin (reference, timestamp, inserted_at,
-//     address, log_date) and metadata alike. Non-initial indexes allocate
-//     PendingVersion=HighWater+1 and completeBackfill promotes it; indexes
-//     declared on a born-empty ledger take the direct-ready fast path,
-//     the log-date builtin aside — it covers every log of the ledger, so
-//     it backfills from either classification and is refused until its
-//     switch (EN-1987).
+//     address, log_date) and metadata alike. Indexes on NON_EMPTY ledgers
+//     allocate PendingVersion=HighWater+1 and completeBackfill promotes it;
+//     indexes created while the durable ledger-history state is EMPTY take
+//     the direct-ready fast path, regardless of proposal boundaries.
 //   - A wrapped error on Pebble I/O failure (per CLAUDE.md invariant
 //     #7 the silent "treat as building" fallback is forbidden).
 //

@@ -6225,11 +6225,6 @@ func (x *OrderSkippedLog) GetContext() map[string]string {
 type CreatedIndexLog struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Id    *IndexID               `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// initial marks an index declared on a ledger that had no local history yet
-	// (same atomic apply batch as CreateLedger, before any indexable data log).
-	// The read-side indexbuilder promotes such indexes straight to live with no
-	// historical backfill; later indexes (initial=false) keep backfilling. EN-1564.
-	Initial bool `protobuf:"varint,2,opt,name=initial,proto3" json:"initial,omitempty"`
 	// bound_type is the declared type of the indexed metadata field at this
 	// log's sequence, stamped by the FSM when the log is minted. The index's
 	// first version binds to it: every replica encodes that version's rows —
@@ -6237,12 +6232,12 @@ type CreatedIndexLog struct {
 	// atomic switch rebinds. Stamping at mint time is what keeps the binding
 	// stable at any replay distance; the schema readable when a replica folds
 	// the log may already be many retypes ahead. EN-1724.
-	BoundType MetadataType `protobuf:"varint,3,opt,name=bound_type,json=boundType,proto3,enum=common.MetadataType" json:"bound_type,omitempty"`
+	BoundType MetadataType `protobuf:"varint,2,opt,name=bound_type,json=boundType,proto3,enum=common.MetadataType" json:"bound_type,omitempty"`
 	// bound_type_declared is false for builtin indexes, which have no metadata
 	// field and therefore no binding: their values keep the natural encoding.
 	// Metadata indexes always carry a binding — CreateIndex validates that the
 	// field is declared in the schema.
-	BoundTypeDeclared bool `protobuf:"varint,4,opt,name=bound_type_declared,json=boundTypeDeclared,proto3" json:"bound_type_declared,omitempty"`
+	BoundTypeDeclared bool `protobuf:"varint,3,opt,name=bound_type_declared,json=boundTypeDeclared,proto3" json:"bound_type_declared,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -6282,13 +6277,6 @@ func (x *CreatedIndexLog) GetId() *IndexID {
 		return x.Id
 	}
 	return nil
-}
-
-func (x *CreatedIndexLog) GetInitial() bool {
-	if x != nil {
-		return x.Initial
-	}
-	return false
 }
 
 func (x *CreatedIndexLog) GetBoundType() MetadataType {
@@ -12367,6 +12355,14 @@ var file_common_proto_extTypes = []protoimpl.ExtensionInfo{
 		Tag:           "varint,50124,opt,name=valid_on_no_query_target",
 		Filename:      "common.proto",
 	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         50125,
+		Name:          "common.ledger_log_is_history",
+		Tag:           "varint,50125,opt,name=ledger_log_is_history",
+		Filename:      "common.proto",
+	},
 }
 
 // Extension fields to descriptorpb.FieldOptions.
@@ -12379,6 +12375,13 @@ var (
 	//
 	// optional bool valid_on_no_query_target = 50124;
 	E_ValidOnNoQueryTarget = &file_common_proto_extTypes[1]
+	// ledger_log_is_history is mandatory on every LedgerLogPayload.payload arm.
+	// Explicit false classifies CONTROL; true classifies HISTORY. The generator
+	// rejects a missing annotation, so proto's false default cannot classify by
+	// accident.
+	//
+	// optional bool ledger_log_is_history = 50125;
+	E_LedgerLogIsHistory = &file_common_proto_extTypes[2]
 )
 
 var File_common_proto protoreflect.FileDescriptor
@@ -12750,36 +12753,35 @@ const file_common_proto_rawDesc = "" +
 	"\rTouchedVolume\x12\x18\n" +
 	"\aaccount\x18\x01 \x01(\tR\aaccount\x12\x14\n" +
 	"\x05asset\x18\x02 \x01(\tR\x05asset\x12\x14\n" +
-	"\x05color\x18\x03 \x01(\tR\x05color\"\x84\b\n" +
-	"\x10LedgerLogPayload\x12M\n" +
-	"\x13created_transaction\x18\x01 \x01(\v2\x1a.common.CreatedTransactionH\x00R\x12createdTransaction\x12P\n" +
-	"\x14reverted_transaction\x18\x02 \x01(\v2\x1b.common.RevertedTransactionH\x00R\x13revertedTransaction\x12>\n" +
-	"\x0esaved_metadata\x18\x03 \x01(\v2\x15.common.SavedMetadataH\x00R\rsavedMetadata\x12D\n" +
-	"\x10deleted_metadata\x18\x04 \x01(\v2\x17.common.DeletedMetadataH\x00R\x0fdeletedMetadata\x12X\n" +
-	"\x17set_metadata_field_type\x18\x05 \x01(\v2\x1f.common.SetMetadataFieldTypeLogH\x00R\x14setMetadataFieldType\x12d\n" +
-	"\x1bremoved_metadata_field_type\x18\x06 \x01(\v2#.common.RemovedMetadataFieldTypeLogH\x00R\x18removedMetadataFieldType\x121\n" +
-	"\bfill_gap\x18\a \x01(\v2\x14.common.FilledGapLogH\x00R\afillGap\x12<\n" +
-	"\fcreate_index\x18\b \x01(\v2\x17.common.CreatedIndexLogH\x00R\vcreateIndex\x128\n" +
+	"\x05color\x18\x03 \x01(\tR\x05color\"\xd2\b\n" +
+	"\x10LedgerLogPayload\x12S\n" +
+	"\x13created_transaction\x18\x01 \x01(\v2\x1a.common.CreatedTransactionB\x04\xe8\xbc\x18\x01H\x00R\x12createdTransaction\x12V\n" +
+	"\x14reverted_transaction\x18\x02 \x01(\v2\x1b.common.RevertedTransactionB\x04\xe8\xbc\x18\x01H\x00R\x13revertedTransaction\x12D\n" +
+	"\x0esaved_metadata\x18\x03 \x01(\v2\x15.common.SavedMetadataB\x04\xe8\xbc\x18\x01H\x00R\rsavedMetadata\x12J\n" +
+	"\x10deleted_metadata\x18\x04 \x01(\v2\x17.common.DeletedMetadataB\x04\xe8\xbc\x18\x01H\x00R\x0fdeletedMetadata\x12^\n" +
+	"\x17set_metadata_field_type\x18\x05 \x01(\v2\x1f.common.SetMetadataFieldTypeLogB\x04\xe8\xbc\x18\x00H\x00R\x14setMetadataFieldType\x12j\n" +
+	"\x1bremoved_metadata_field_type\x18\x06 \x01(\v2#.common.RemovedMetadataFieldTypeLogB\x04\xe8\xbc\x18\x00H\x00R\x18removedMetadataFieldType\x127\n" +
+	"\bfill_gap\x18\a \x01(\v2\x14.common.FilledGapLogB\x04\xe8\xbc\x18\x00H\x00R\afillGap\x12B\n" +
+	"\fcreate_index\x18\b \x01(\v2\x17.common.CreatedIndexLogB\x04\xe8\xbc\x18\x00H\x00R\vcreateIndex\x12>\n" +
 	"\n" +
-	"drop_index\x18\t \x01(\v2\x17.common.DroppedIndexLogH\x00R\tdropIndex\x12K\n" +
+	"drop_index\x18\t \x01(\v2\x17.common.DroppedIndexLogB\x04\xe8\xbc\x18\x00H\x00R\tdropIndex\x12Q\n" +
 	"\x12added_account_type\x18\n" +
-	" \x01(\v2\x1b.common.AddedAccountTypeLogH\x00R\x10addedAccountType\x12Q\n" +
-	"\x14removed_account_type\x18\v \x01(\v2\x1d.common.RemovedAccountTypeLogH\x00R\x12removedAccountType\x12s\n" +
-	" updated_default_enforcement_mode\x18\f \x01(\v2(.common.UpdatedDefaultEnforcementModeLogH\x00R\x1dupdatedDefaultEnforcementMode\x12>\n" +
-	"\rorder_skipped\x18\r \x01(\v2\x17.common.OrderSkippedLogH\x00R\forderSkippedB\t\n" +
+	" \x01(\v2\x1b.common.AddedAccountTypeLogB\x04\xe8\xbc\x18\x00H\x00R\x10addedAccountType\x12W\n" +
+	"\x14removed_account_type\x18\v \x01(\v2\x1d.common.RemovedAccountTypeLogB\x04\xe8\xbc\x18\x00H\x00R\x12removedAccountType\x12y\n" +
+	" updated_default_enforcement_mode\x18\f \x01(\v2(.common.UpdatedDefaultEnforcementModeLogB\x04\xe8\xbc\x18\x00H\x00R\x1dupdatedDefaultEnforcementMode\x12D\n" +
+	"\rorder_skipped\x18\r \x01(\v2\x17.common.OrderSkippedLogB\x04\xe8\xbc\x18\x01H\x00R\forderSkippedB\t\n" +
 	"\apayload\"\xba\x01\n" +
 	"\x0fOrderSkippedLog\x12+\n" +
 	"\x06reason\x18\x01 \x01(\x0e2\x13.common.ErrorReasonR\x06reason\x12>\n" +
 	"\acontext\x18\x02 \x03(\v2$.common.OrderSkippedLog.ContextEntryR\acontext\x1a:\n" +
 	"\fContextEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb1\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x97\x01\n" +
 	"\x0fCreatedIndexLog\x12\x1f\n" +
-	"\x02id\x18\x01 \x01(\v2\x0f.common.IndexIDR\x02id\x12\x18\n" +
-	"\ainitial\x18\x02 \x01(\bR\ainitial\x123\n" +
+	"\x02id\x18\x01 \x01(\v2\x0f.common.IndexIDR\x02id\x123\n" +
 	"\n" +
-	"bound_type\x18\x03 \x01(\x0e2\x14.common.MetadataTypeR\tboundType\x12.\n" +
-	"\x13bound_type_declared\x18\x04 \x01(\bR\x11boundTypeDeclared\"2\n" +
+	"bound_type\x18\x02 \x01(\x0e2\x14.common.MetadataTypeR\tboundType\x12.\n" +
+	"\x13bound_type_declared\x18\x03 \x01(\bR\x11boundTypeDeclared\"2\n" +
 	"\x0fDroppedIndexLog\x12\x1f\n" +
 	"\x02id\x18\x01 \x01(\v2\x0f.common.IndexIDR\x02id\"/\n" +
 	"\fFilledGapLog\x12\x1f\n" +
@@ -13340,7 +13342,8 @@ const file_common_proto_rawDesc = "" +
 	"\x0fQUERY_MODE_LIST\x10\x00\x12 \n" +
 	"\x1cQUERY_MODE_AGGREGATE_VOLUMES\x10\x01:h\n" +
 	"\x15allowed_query_targets\x12\x1d.google.protobuf.FieldOptions\x18ˇ\x03 \x03(\x0e2\x13.common.QueryTargetR\x13allowedQueryTargets:W\n" +
-	"\x18valid_on_no_query_target\x12\x1d.google.protobuf.FieldOptions\x18̇\x03 \x01(\bR\x14validOnNoQueryTargetB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
+	"\x18valid_on_no_query_target\x12\x1d.google.protobuf.FieldOptions\x18̇\x03 \x01(\bR\x14validOnNoQueryTarget:R\n" +
+	"\x15ledger_log_is_history\x12\x1d.google.protobuf.FieldOptions\x18͇\x03 \x01(\bR\x12ledgerLogIsHistoryB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
 
 var (
 	file_common_proto_rawDescOnce sync.Once
@@ -13812,11 +13815,12 @@ var file_common_proto_depIdxs = []int32{
 	128, // 259: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
 	190, // 260: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
 	190, // 261: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
-	14,  // 262: common.allowed_query_targets:type_name -> common.QueryTarget
-	263, // [263:263] is the sub-list for method output_type
-	263, // [263:263] is the sub-list for method input_type
-	262, // [262:263] is the sub-list for extension type_name
-	260, // [260:262] is the sub-list for extension extendee
+	190, // 262: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
+	14,  // 263: common.allowed_query_targets:type_name -> common.QueryTarget
+	264, // [264:264] is the sub-list for method output_type
+	264, // [264:264] is the sub-list for method input_type
+	263, // [263:264] is the sub-list for extension type_name
+	260, // [260:263] is the sub-list for extension extendee
 	0,   // [0:260] is the sub-list for field type_name
 }
 
@@ -14010,7 +14014,7 @@ func file_common_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      16,
 			NumMessages:   173,
-			NumExtensions: 2,
+			NumExtensions: 3,
 			NumServices:   0,
 		},
 		GoTypes:           file_common_proto_goTypes,

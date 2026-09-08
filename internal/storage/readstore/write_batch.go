@@ -83,10 +83,23 @@ func NewWriteBatch() *WriteBatch {
 // can never be left stale relative to the batch it tracks.
 func (wb *WriteBatch) Init(batch *dal.WriteSession) {
 	wb.batch = batch
+	wb.count = 0
 	wb.rmapOverlay = make(map[string][]byte)
 	wb.rmapDeletedRanges = nil
 	wb.eventSeq = 0
 	wb.eventZones = 0
+}
+
+// WriteLedgerHistoryState persists the indexbuilder-owned ledger history byte
+// through the counted wrapper so a tracker-only fold cannot be mistaken for an
+// empty batch and canceled.
+func (wb *WriteBatch) WriteLedgerHistoryState(kb *dal.KeyBuilder, ledgerName string, state byte) error {
+	return wb.put(LedgerHistoryStateKey(kb, ledgerName), []byte{state})
+}
+
+// DeleteLedgerHistoryState removes the current ledger incarnation's tracker.
+func (wb *WriteBatch) DeleteLedgerHistoryState(kb *dal.KeyBuilder, ledgerName string) error {
+	return wb.del(LedgerHistoryStateKey(kb, ledgerName))
 }
 
 // EventZones returns a read-only snapshot of the event keyspaces dirtied by
