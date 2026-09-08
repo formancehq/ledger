@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"strings"
 	"testing"
@@ -77,6 +78,69 @@ func TestCreateTransactionRejectsMergedAccountMetadataOverLimit(t *testing.T) {
 		Input: CreateTransaction{},
 	})
 	require.ErrorIs(t, err, ledger.ErrMetadataLimitExceeded{})
+}
+
+func TestCreateTransactionValidatesCombinedMergedMetadata(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name         string
+		metadata     metadata.Metadata
+		accountCount int
+		wantSize     int
+	}{
+		{name: "at command limit", accountCount: 4},
+		{name: "transaction metadata exceeds command limit", metadata: metadata.Metadata{"x": "y"}, accountCount: 4, wantSize: ledger.MaxCommandMetadataSize + 2},
+		{name: "account metadata exceeds command limit", accountCount: 5, wantSize: 5 * ledger.MaxMetadataSize},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			controller, store, parser, runtime := newMetadataLimitTestController(t)
+			postings := make(ledger.Postings, 0, test.accountCount-1)
+			for i := 1; i < test.accountCount; i++ {
+				postings = append(postings, ledger.NewPosting("world", fmt.Sprintf("bank:%d", i), "USD", big.NewInt(100)))
+			}
+			parser.EXPECT().Parse("").Return(runtime, nil)
+			runtime.EXPECT().Execute(gomock.Any(), store, nil).Return(&NumscriptExecutionResult{
+				Postings: postings,
+			}, nil)
+			store.EXPECT().CommitTransaction(gomock.Any(), gomock.Any()).Return(nil)
+			accountMatchers := make([]any, test.accountCount)
+			for i := range accountMatchers {
+				accountMatchers[i] = gomock.Any()
+			}
+			store.EXPECT().UpsertAccounts(gomock.Any(), accountMatchers...).DoAndReturn(
+				func(_ context.Context, accounts ...ledger.AccountWithDefaultMetadata) error {
+					require.Len(t, accounts, test.accountCount)
+					for _, account := range accounts {
+						// Existing metadata is returned by the upsert, after the input validation.
+						account.Metadata = metadata.Metadata{
+							"a": strings.Repeat("v", ledger.MaxMetadataValueSize-1),
+							"b": strings.Repeat("v", ledger.MaxMetadataValueSize-1),
+							"c": strings.Repeat("v", ledger.MaxMetadataValueSize-1),
+							"d": strings.Repeat("v", ledger.MaxMetadataValueSize-1),
+						}
+						require.NoError(t, ledger.ValidateMetadata(account.Metadata))
+					}
+					return nil
+				},
+			)
+
+			_, err := controller.createTransaction(context.Background(), store, nil, Parameters[CreateTransaction]{
+				Input: CreateTransaction{RunScript: RunScript{Metadata: test.metadata}},
+			})
+			if test.wantSize > 0 {
+				require.Equal(t, ledger.ErrMetadataLimitExceeded{
+					Constraint: "command size",
+					Maximum:    ledger.MaxCommandMetadataSize,
+					Actual:     test.wantSize,
+				}, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestRevertTransactionRejectsMetadataOverLimit(t *testing.T) {
