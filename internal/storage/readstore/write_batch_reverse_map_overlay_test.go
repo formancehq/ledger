@@ -3,6 +3,7 @@ package readstore
 import (
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -59,4 +60,69 @@ func TestWriteBatchReverseMapRangeOverlayHonorsOperationOrder(t *testing.T) {
 	got, ok = wb.ReverseMapOverlay(reverseKey)
 	require.True(t, ok)
 	require.Nil(t, got, "a later range tombstone must supersede the exact overlay write")
+}
+
+func TestWriteBatchReverseMapRangeOverlayMatchesCommittedOrder(t *testing.T) {
+	t.Parallel()
+
+	for _, ns := range []string{NamespaceAccount, NamespaceTransaction} {
+		t.Run(ns, func(t *testing.T) {
+			t.Parallel()
+
+			for _, lastOperation := range []string{"write", "delete"} {
+				t.Run(lastOperation, func(t *testing.T) {
+					t.Parallel()
+
+					store := newTestStore(t)
+					kb := dal.NewKeyBuilder()
+					entity := []byte("users:1")
+					reverseKey := AccountReverseMapKeyV(kb, "test", string(entity), "status", 1)
+					if ns == NamespaceTransaction {
+						entity = []byte{0, 0, 0, 0, 0, 0, 0, 1}
+						reverseKey = TransactionReverseMapKeyV(kb, "test", 1, "status", 1)
+					}
+					oldValue := EncodeMetadataValue(nil, commonpb.NewStringValue("old"))
+					newValue := EncodeMetadataValue(nil, commonpb.NewStringValue("new"))
+					seed := store.NewBatch()
+					require.NoError(t, seed.SetBytes(reverseKey, oldValue))
+					require.NoError(t, seed.Commit())
+
+					session := store.NewBatch()
+					wb := NewWriteBatch()
+					wb.Init(session)
+					t.Cleanup(func() {
+						// Best-effort teardown if an assertion prevents Flush.
+						_ = session.Cancel()
+					})
+					start := ReverseMapFieldPrefix(kb, "test", ns, "status")
+					require.NoError(t, wb.DeleteReverseMapRange(start, IncrementBytes(start)))
+					wb.SetEventSequence(2)
+					require.NoError(t, wb.ReplaceMetadataIndexV(kb, reverseKey, "test", ns, "status", 1, newValue, nil, entity))
+					if lastOperation == "delete" {
+						require.NoError(t, wb.DeleteReverseMapRange(start, IncrementBytes(start)))
+					}
+
+					overlay, ok := wb.ReverseMapOverlay(reverseKey)
+					require.True(t, ok)
+					if lastOperation == "delete" {
+						require.Nil(t, overlay)
+					} else {
+						require.Equal(t, newValue, overlay)
+					}
+					require.NoError(t, wb.Flush())
+
+					committed, closer, err := store.DB().Get(reverseKey)
+					if closer != nil {
+						t.Cleanup(func() { require.NoError(t, closer.Close()) })
+					}
+					if lastOperation == "delete" {
+						require.ErrorIs(t, err, pebble.ErrNotFound)
+					} else {
+						require.NoError(t, err)
+						require.Equal(t, overlay, committed, "the real batch must preserve the overlay's last operation")
+					}
+				})
+			}
+		})
+	}
 }
