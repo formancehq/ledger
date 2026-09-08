@@ -21,7 +21,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.45.8
 	github.com/aws/smithy-go v1.27.10
 	github.com/benbjohnson/immutable v0.4.3
-	github.com/bytedance/sonic v1.15.0
+	github.com/bytedance/sonic v1.15.3
 	github.com/cockroachdb/pebble/v2 v2.1.4
 	github.com/databricks/databricks-sql-go v1.10.0
 	github.com/dustin/go-humanize v1.0.1
@@ -133,7 +133,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
-	github.com/bytedance/sonic/loader v0.5.0 // indirect
+	github.com/bytedance/sonic/loader v0.5.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
