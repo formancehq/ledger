@@ -321,7 +321,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 		var got []*servicepb.CheckStoreError
 
-		_, err = checker.verifyAuditHashChain(context.Background(), handle, newChainBoundState(), newSigningVerifier(), newClusterPolicyVerifier(), newLogBoundsVerifier(), func(event *servicepb.CheckStoreEvent) {
+		_, err = checker.verifyAuditHashChain(context.Background(), handle, newChainBoundState(), newChainVerifierFolds(), func(event *servicepb.CheckStoreEvent) {
 			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
 				e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
 				got = append(got, e.Error)
@@ -439,16 +439,6 @@ func runChainVerifier(t *testing.T, store *dal.Store, clusterID string) []*servi
 	return mismatches
 }
 
-// chainVerifierFolds groups the three coverage verifiers verifyAuditHashChain
-// folds into. They share one suppression contract — a break leaves each
-// expectation a prefix of the real history — so they are asserted together
-// rather than one helper per verifier.
-type chainVerifierFolds struct {
-	signing *signingVerifier
-	policy  *clusterPolicyVerifier
-	bounds  *logBoundsVerifier
-}
-
 // runChainVerifierWithFolds is runChainVerifier plus the verifiers the walk
 // folded into, so a test can assert on the coverage state the walk left behind
 // and not only on the events it emitted.
@@ -468,14 +458,10 @@ func runChainVerifierWithFolds(
 
 	var mismatches []*servicepb.CheckStoreError
 
-	folds := chainVerifierFolds{
-		signing: newSigningVerifier(),
-		policy:  newClusterPolicyVerifier(),
-		bounds:  newLogBoundsVerifier(),
-	}
+	folds := newChainVerifierFolds()
 
 	// This test isolates HASH_MISMATCH; the idempotency TTL is irrelevant.
-	_, err = checker.verifyAuditHashChain(context.Background(), handle, newChainBoundState(), folds.signing, folds.policy, folds.bounds, func(event *servicepb.CheckStoreEvent) {
+	_, err = checker.verifyAuditHashChain(context.Background(), handle, newChainBoundState(), folds, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok && e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH {
 			mismatches = append(mismatches, e.Error)
 		}

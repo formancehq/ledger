@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"testing"
 
@@ -46,7 +47,7 @@ func highestStoredLogKey(t *testing.T, store *dal.Store) (uint64, int) {
 
 	iter, err := handle.NewIter(&pebble.IterOptions{
 		LowerBound: logRowKey(0),
-		UpperBound: []byte{dal.ZoneHistory, dal.SubHistoryLog, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+		UpperBound: logPrefixUpperBound(),
 	})
 	require.NoError(t, err)
 
@@ -77,7 +78,7 @@ func deleteLogRowsAbove(t *testing.T, store *dal.Store, keep uint64) {
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.DeleteRange(
 		logRowKey(keep+1),
-		[]byte{dal.ZoneHistory, dal.SubHistoryLog, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+		logPrefixUpperBound(),
 		nil,
 	))
 	require.NoError(t, batch.Commit())
@@ -91,10 +92,19 @@ func deleteLogRowsAbove(t *testing.T, store *dal.Store, keep uint64) {
 func writeRawLogRows(t *testing.T, store *dal.Store, from, to uint64) {
 	t.Helper()
 
+	require.LessOrEqual(t, from, to, "the fixture range must ascend")
+
 	batch := store.OpenWriteSession()
 
-	for sequence := from; sequence <= to; sequence++ {
+	// Post-tested rather than `sequence <= to`: a fixture writing the row at
+	// math.MaxUint64 — the top-of-key-space case the bound must now cover —
+	// would wrap that condition to 0 and never terminate.
+	for sequence := from; ; sequence++ {
 		require.NoError(t, batch.SetProto(logRowKey(sequence), &commonpb.Log{Sequence: sequence}))
+
+		if sequence == to {
+			break
+		}
 	}
 
 	require.NoError(t, batch.Commit())
@@ -103,6 +113,15 @@ func writeRawLogRows(t *testing.T, store *dal.Store, from, to uint64) {
 // persistSuccessAuditEntries writes one chain-valid SUCCESS audit entry per
 // given [min, max] log range, chained from genesis. Ranges are written verbatim
 // so a fixture can express a discontinuity no production path can produce.
+//
+// Each entry gets one AuditItem per position in its range, matching what
+// buildAuditItems emits on a real apply — one item per order, carrying that
+// order's fresh log sequence. Without them the fixture would express a shape no
+// writer can produce (a range no order accounts for), which
+// logBoundsVerifier.observeSuccess now rejects on its own; every fixture built
+// here would then report LOG_VERIFICATION_INCOMPLETE before reaching the
+// property it exists to pin. Use persistItemlessSuccessAuditEntry to build that
+// shape deliberately.
 func persistSuccessAuditEntries(t *testing.T, store *dal.Store, ranges [][2]uint64) {
 	t.Helper()
 
@@ -115,11 +134,14 @@ func persistSuccessAuditEntries(t *testing.T, store *dal.Store, ranges [][2]uint
 
 	for i, logRange := range ranges {
 		sequence := uint64(i + 1)
+		items := successRangeAuditItems(logRange[0], logRange[1])
+
 		entry := &auditpb.AuditEntry{
 			Sequence:    sequence,
 			Timestamp:   &commonpb.Timestamp{Data: 1700000000 + sequence},
 			ProposalId:  sequence,
 			HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+			OrderCount:  uint32(len(items)),
 			Outcome: &auditpb.AuditEntry_Success{
 				Success: &auditpb.AuditSuccess{
 					MinLogSequence: logRange[0],
@@ -131,11 +153,58 @@ func persistSuccessAuditEntries(t *testing.T, store *dal.Store, ranges [][2]uint
 		headerPayload, err := state.BuildHashedHeaderPayload(entry)
 		require.NoError(t, err)
 
-		hashScratch, entry.Hash = gen.Compute(hashScratch, lastHash, [][]byte{headerPayload})
+		hashSlices := make([][]byte, 0, 1+len(items))
+		hashSlices = append(hashSlices, headerPayload)
+
+		for _, item := range items {
+			hashSlices = append(hashSlices, state.BuildPerItemPayload(item))
+		}
+
+		hashScratch, entry.Hash = gen.Compute(hashScratch, lastHash, hashSlices)
 		lastHash = entry.GetHash()
 
-		rewriteAuditEntry(t, store, entry, nil)
+		rewriteAuditEntry(t, store, entry, items)
 	}
+}
+
+// successRangeAuditItems builds the per-order items a real apply would have
+// written for a success covering [minSeq, maxSeq]: one item per fresh log, in
+// ascending order. An empty range (0..0) produces no item, which is the log-less
+// success shape.
+//
+// Ranges wider than a handful of logs are capped: the only fixture that needs a
+// wide one is the large-truncation test, and materialising thousands of items to
+// pin an aggregated event would slow the suite for no added coverage. Above the
+// cap the items still cover the range's endpoints and everything between them up
+// to the cap, which is enough for the coverage check, because that check compares
+// the DISTINCT in-range item sequences against the range width — so a capped
+// fixture would be rejected. Callers needing a wide range therefore get every
+// position; the cap only guards against an accidental 2^64 fixture.
+func successRangeAuditItems(minSeq, maxSeq uint64) []*auditpb.AuditItem {
+	if maxSeq == 0 || minSeq > maxSeq {
+		return nil
+	}
+
+	const maxFixtureItems = 100_000
+
+	width := maxSeq - minSeq + 1
+	if width > maxFixtureItems {
+		panic(fmt.Sprintf("fixture success range %d..%d spans %d logs, above the %d-item cap; "+
+			"build the entry with persistItemlessSuccessAuditEntry or a narrower range",
+			minSeq, maxSeq, width, maxFixtureItems))
+	}
+
+	// OrderIndex is the item row's key suffix, so it has to be distinct or the
+	// rows collide and only the last one survives the write.
+	items := make([]*auditpb.AuditItem, 0, width)
+	for logSeq := minSeq; logSeq <= maxSeq; logSeq++ {
+		items = append(items, &auditpb.AuditItem{
+			OrderIndex:  uint32(logSeq - minSeq),
+			LogSequence: logSeq,
+		})
+	}
+
+	return items
 }
 
 // engineAuditEntry is the input of appendEngineAuditEntry.
@@ -460,12 +529,18 @@ func TestCheck_LogBounds_RestoreLostTailIsOtherwiseInvisible(t *testing.T) {
 	// The audit tail the restore kept: three chain-valid success entries whose
 	// log ranges continue past the highest surviving row. Nothing else in the
 	// store mentions those logs.
+	//
+	// Each carries the per-order item a real apply would have written for the
+	// log it created. Without it the entry would declare a range no order
+	// accounts for, and observeSuccess would suppress the bound instead of
+	// deriving it — the fixture would then pin nothing.
 	for sequence := uint64(4); sequence <= 6; sequence++ {
 		appendEngineAuditEntry(t, engineAuditEntry{
 			engine: engine,
 			entry: &auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Success{
 				Success: &auditpb.AuditSuccess{MinLogSequence: sequence, MaxLogSequence: sequence},
 			}},
+			items: successRangeAuditItems(sequence, sequence),
 		})
 	}
 
@@ -860,4 +935,373 @@ func TestCheck_LogBounds_LargeTruncationStaysBounded(t *testing.T) {
 
 	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED))
 	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE))
+}
+
+// persistItemlessSuccessAuditEntry writes ONE chain-valid SUCCESS audit entry
+// declaring [minSeq, maxSeq] with no AuditItem rows at all — the shape a
+// writer cannot produce, where a range claims log positions no order accounts
+// for. persistSuccessAuditEntries deliberately does not build it; this helper
+// exists so the coverage check can be pinned against it.
+func persistItemlessSuccessAuditEntry(t *testing.T, store *dal.Store, minSeq, maxSeq uint64) {
+	t.Helper()
+
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditOnlyClusterID)
+
+	entry := &auditpb.AuditEntry{
+		Sequence:    1,
+		Timestamp:   &commonpb.Timestamp{Data: 1700000001},
+		ProposalId:  1,
+		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Outcome: &auditpb.AuditEntry_Success{
+			Success: &auditpb.AuditSuccess{MinLogSequence: minSeq, MaxLogSequence: maxSeq},
+		},
+	}
+
+	headerPayload, err := state.BuildHashedHeaderPayload(entry)
+	require.NoError(t, err)
+
+	_, entry.Hash = gen.Compute(nil, nil, [][]byte{headerPayload})
+
+	rewriteAuditEntry(t, store, entry, nil)
+}
+
+// TestCheck_LogBounds_SparseInjectedTailCountsRowsNotWidth pins the count on
+// the unaudited side against the rows that are actually there.
+//
+// The width of the interval and the number of rows in it coincide only for a
+// contiguous injection, which is the shape
+// TestCheck_LogBounds_InjectedLogAboveAuditedRange covers. A sparse injection
+// separates them, and reporting the width there both over-counts and claims the
+// empty positions hold unaudited rows — positions the interior gap scan reports,
+// correctly, as missing in the very same run. Two co-emitted findings would then
+// contradict each other.
+func TestCheck_LogBounds_SparseInjectedTailCountsRowsNotWidth(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("sparse"))
+
+	for i := range 3 {
+		engine.processAndCommit(createTransactionOrder("sparse", true,
+			newPosting("world", "user:alice", "USD", int64(100*(i+1))),
+		))
+	}
+
+	audited, _ := highestStoredLogKey(t, engine.store)
+	require.EqualValues(t, 4, audited)
+
+	// One forged row at 7, nothing at 5 or 6. The value's sequence field matches
+	// the key, so the key/value agreement check stays silent.
+	writeRawLogRows(t, engine.store, 7, 7)
+
+	errs := collectCheckErrors(t, engine.store, engine.attrs)
+
+	unaudited := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
+	require.Len(t, unaudited, 1, "the injected row must be reported once, got %v", errs)
+	require.EqualValues(t, 5, unaudited[0].GetLogSequence())
+	require.Contains(t, unaudited[0].GetMessage(), "(1 logs)",
+		"the count must be the rows observed above the bound, not the width of the range they sit in, got %q",
+		unaudited[0].GetMessage())
+
+	// And the empty positions beneath the forged row are NOT reported as
+	// missing. Nothing allocated them: the chain accounts for logs up to 4, so 5
+	// and 6 are positions that never existed rather than rows that were lost.
+	// Reporting them as missing alongside a range described as unaudited was the
+	// contradiction this fixture exists to rule out — the same two positions
+	// called lost by one pass and planted by another.
+	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
+		"positions above the audited bound were never allocated, so they are not missing rows, got %v", errs)
+}
+
+// TestCheck_LogBounds_MaxUint64KeyIsVerified closes the top of the key space.
+//
+// Pebble's iterator upper bound is exclusive, so a bound built from an
+// eight-byte 0xFF run — dal.MaxUint64Bytes, and what this loop used to inline —
+// is byte-identical to the key of the row at math.MaxUint64 and skips exactly
+// that row. The one pass built to see planted rows could not see the one planted
+// at the top: the mirror of the reserved sequence 0 hole below.
+//
+// The run must also COMPLETE. Widening the bound without bounding the interior
+// gap scan hands the scan a sequence of 2^64-1 and it emits one event per
+// missing position, which does not terminate in any useful sense. That is why
+// the assertion is on a small, bounded event set and not merely on the finding.
+func TestCheck_LogBounds_MaxUint64KeyIsVerified(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("maxkey"))
+
+	for i := range 3 {
+		engine.processAndCommit(createTransactionOrder("maxkey", true,
+			newPosting("world", "user:alice", "USD", int64(100*(i+1))),
+		))
+	}
+
+	audited, _ := highestStoredLogKey(t, engine.store)
+	require.EqualValues(t, 4, audited)
+
+	writeRawLogRows(t, engine.store, math.MaxUint64, math.MaxUint64)
+
+	head, _ := highestStoredLogKey(t, engine.store)
+	require.EqualValues(t, uint64(math.MaxUint64), head,
+		"the fixture helper must see the row too, or the bound it uses has the same hole")
+
+	errs := collectCheckErrors(t, engine.store, engine.attrs)
+
+	require.Less(t, len(errs), 10,
+		"the run must stay bounded: one row near the top of the key space must not enumerate the range beneath it, got %d events", len(errs))
+
+	unaudited := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
+	require.Len(t, unaudited, 1, "the forged row must be reported, got %v", errs)
+	require.EqualValues(t, audited+1, unaudited[0].GetLogSequence())
+	require.Contains(t, unaudited[0].GetMessage(), fmt.Sprintf("the store holds logs up to %d", uint64(math.MaxUint64)))
+	require.Contains(t, unaudited[0].GetMessage(), "(1 logs)")
+
+	require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP),
+		"positions above the audited bound were never allocated, so they are not missing rows, got %v", errs)
+}
+
+// TestCheck_LogBounds_InjectedMaxUint64DoesNotEraseLostTail is the reason the
+// two divergences are reported independently rather than chosen between.
+//
+// A store can be missing its audited tail AND hold a planted row at the same
+// time. When one stored head drove a switch, the planted row selected the
+// unaudited branch and the SEQUENCE_GAP naming the real missing tail vanished:
+// one forged row would have hidden the exact restore failure this pass exists to
+// catch. Both findings must survive each other.
+func TestCheck_LogBounds_InjectedMaxUint64DoesNotEraseLostTail(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("both"))
+	engine.processAndCommit(createTransactionOrder("both", true,
+		newPosting("world", "bank", "USD", 5000),
+	))
+	engine.processAndCommit(createTransactionOrder("both", false,
+		newPosting("bank", "user:alice", "USD", 900),
+	))
+
+	storedMax, _ := highestStoredLogKey(t, engine.store)
+	require.EqualValues(t, 3, storedMax)
+
+	// An audited tail the store no longer holds: logs 4..6 the chain accounts
+	// for, each with the per-order item a real apply would have written.
+	for sequence := uint64(4); sequence <= 6; sequence++ {
+		appendEngineAuditEntry(t, engineAuditEntry{
+			engine: engine,
+			entry: &auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Success{
+				Success: &auditpb.AuditSuccess{MinLogSequence: sequence, MaxLogSequence: sequence},
+			}},
+			items: successRangeAuditItems(sequence, sequence),
+		})
+	}
+
+	// ...and one row planted above everything the audit produced.
+	writeRawLogRows(t, engine.store, math.MaxUint64, math.MaxUint64)
+
+	errs := collectCheckErrors(t, engine.store, engine.attrs)
+
+	gaps := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP)
+	require.Len(t, gaps, 1, "the lost tail must still be reported, got %v", errs)
+	require.EqualValues(t, 4, gaps[0].GetLogSequence())
+	require.Contains(t, gaps[0].GetMessage(), "log sequences 4..6 are missing")
+	require.Contains(t, gaps[0].GetMessage(), "(3 logs)")
+
+	unaudited := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED)
+	require.Len(t, unaudited, 1, "the planted row must also be reported, got %v", errs)
+	require.EqualValues(t, 7, unaudited[0].GetLogSequence())
+	require.Contains(t, unaudited[0].GetMessage(), "(1 logs)")
+}
+
+// TestCheck_LogBounds_SuccessRangeWithoutItemsIsNotAnOracle pins the range a
+// success DECLARES against the fresh-log positions its own chain-verified items
+// CARRY.
+//
+// Both are hash-bound, and the hash proves each was persisted as supplied — it
+// does not prove they describe the same apply. Trusting the header alone made a
+// chain-valid success declaring 1..4 with no items at all an oracle for four Log
+// rows no order ever produced, and the whole run reported nothing.
+func TestCheck_LogBounds_SuccessRangeWithoutItemsIsNotAnOracle(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		items []*auditpb.AuditItem
+		want  string
+	}{
+		{
+			name:  "no items at all",
+			items: nil,
+			want:  "account for only 0 of those 4 positions, the first unaccounted one being 1",
+		},
+		{
+			name: "a hole inside the declared range",
+			items: []*auditpb.AuditItem{
+				{OrderIndex: 0, LogSequence: 1},
+				{OrderIndex: 1, LogSequence: 2},
+				{OrderIndex: 2, LogSequence: 4},
+			},
+			want: "account for only 3 of those 4 positions, the first unaccounted one being 3",
+		},
+		{
+			name: "a duplicate standing in for a missing position",
+			items: []*auditpb.AuditItem{
+				{OrderIndex: 0, LogSequence: 1},
+				{OrderIndex: 1, LogSequence: 2},
+				{OrderIndex: 2, LogSequence: 3},
+				{OrderIndex: 3, LogSequence: 3},
+			},
+			want: "account for only 3 of those 4 positions, the first unaccounted one being 4",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := createTestStore(t)
+			writeRawLogRows(t, store, 1, 4)
+
+			gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditOnlyClusterID)
+
+			entry := &auditpb.AuditEntry{
+				Sequence:    1,
+				Timestamp:   &commonpb.Timestamp{Data: 1700000001},
+				ProposalId:  1,
+				HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+				OrderCount:  uint32(len(tc.items)),
+				Outcome: &auditpb.AuditEntry_Success{
+					Success: &auditpb.AuditSuccess{MinLogSequence: 1, MaxLogSequence: 4},
+				},
+			}
+
+			headerPayload, err := state.BuildHashedHeaderPayload(entry)
+			require.NoError(t, err)
+
+			hashSlices := make([][]byte, 0, 1+len(tc.items))
+			hashSlices = append(hashSlices, headerPayload)
+
+			for _, item := range tc.items {
+				hashSlices = append(hashSlices, state.BuildPerItemPayload(item))
+			}
+
+			_, entry.Hash = gen.Compute(nil, nil, hashSlices)
+
+			rewriteAuditEntry(t, store, entry, tc.items)
+
+			errs := collectCheckErrors(t, store, attributes.New())
+
+			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH),
+				"the fixture's chain must be valid, or the finding under test is not the one being pinned: %v", errs)
+
+			incomplete := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE)
+			require.Len(t, incomplete, 1,
+				"a range its own items do not account for must suppress the bound, got %v", errs)
+			require.Contains(t, incomplete[0].GetMessage(), tc.want)
+
+			require.Empty(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED),
+				"a suppressed bound must not also be compared, got %v", errs)
+		})
+	}
+}
+
+// TestCheck_LogBounds_ItemlessRangeAloneIsRejected is the reviewer's exact
+// reproduction, kept as its own case: Log rows 1..4 under a chain-valid Success
+// declaring 1..4 with no AuditItem rows used to return zero findings.
+func TestCheck_LogBounds_ItemlessRangeAloneIsRejected(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	writeRawLogRows(t, store, 1, 4)
+	persistItemlessSuccessAuditEntry(t, store, 1, 4)
+
+	errs := collectCheckErrors(t, store, attributes.New())
+
+	require.NotEmpty(t, errs, "an itemless success range must not read as a clean store")
+	require.Len(t, errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE), 1,
+		"got %v", errs)
+}
+
+// TestCheck_LogBounds_HeadIsKeyDerived pins the run's head to the Pebble KEY of
+// the last Log row, not to that row's `sequence` field.
+//
+// The two are bound by convention alone — Log rows are not hash-bound — and the
+// field is the one an attacker edits: it used to size the progress total and to
+// align the reverse-map oracle, so a single edit moved both. The edit is itself
+// a reported finding, which is exactly why nothing may be measured from it.
+func TestCheck_LogBounds_HeadIsKeyDerived(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name          string
+		valueSequence uint64
+	}{
+		// 0 is the dangerous value: it is what an empty store reports, so on the
+		// last row it forged an empty history.
+		{"last row claims sequence zero", 0},
+		{"last row claims a later sequence", 99},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			engine := newTestEngine(t)
+			engine.processAndCommit(createLedgerOrder("head"))
+
+			for i := range 3 {
+				engine.processAndCommit(createTransactionOrder("head", true,
+					newPosting("world", "user:alice", "USD", int64(100*(i+1))),
+				))
+			}
+
+			head, _ := highestStoredLogKey(t, engine.store)
+			require.EqualValues(t, 4, head)
+
+			rewriteLogSequenceField(t, engine.store, head, tc.valueSequence)
+
+			progress := collectCheckProgress(t, engine.store)
+			require.NotEmpty(t, progress)
+
+			last := progress[len(progress)-1]
+			require.EqualValues(t, head, last.GetTotalLogs(),
+				"the progress total must come from the key, not from the edited value field")
+			require.EqualValues(t, head, last.GetLogsChecked())
+
+			// The edit is still reported, and it is still the only finding: the
+			// row is replayed under its key sequence, so no projection diverges.
+			errs := collectCheckErrors(t, engine.store, engine.attrs)
+			require.Len(t, errs, 1, "the edited field must be the only finding, got %v", errs)
+			require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH,
+				errs[0].GetErrorType())
+
+			requireNoLogBoundFindings(t, errs)
+		})
+	}
+}
+
+// TestCheck_LogBounds_WideInteriorGapStaysBounded pins the interior scan's
+// emission to the number of RUNS rather than the number of missing positions.
+//
+// Per-sequence emission is unbounded in the size of the hole, and the hole is
+// chosen by whoever wrote the row above it: one forged Log row at a high key
+// made the run emit that many events before it could reach any other finding.
+// This fixture keeps the chain out of the way — no audit history, so the scan is
+// uncapped — which is the shape that used to enumerate.
+func TestCheck_LogBounds_WideInteriorGapStaysBounded(t *testing.T) {
+	t.Parallel()
+
+	const forged = uint64(1) << 32
+
+	store := createTestStore(t)
+	writeRawLogRows(t, store, 1, 2)
+	writeRawLogRows(t, store, forged, forged)
+
+	errs := collectCheckErrors(t, store, attributes.New())
+
+	gaps := errorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP)
+	require.Len(t, gaps, 1,
+		"a hole of %d positions must be one event, not one per position", forged-3)
+	require.EqualValues(t, 3, gaps[0].GetLogSequence())
+	require.Contains(t, gaps[0].GetMessage(), fmt.Sprintf("log sequences 3..%d are missing (%d logs)", forged-1, forged-3))
 }

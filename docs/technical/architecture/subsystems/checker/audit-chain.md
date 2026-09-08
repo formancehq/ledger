@@ -190,7 +190,7 @@ A same-key-different-hash conflict, by contrast, is **not** a replay — it's a 
 Two independent monotone counters, bridged per successful non-replayed proposal:
 
 - **`audit_sequence`** advances by 1 on every non-replayed proposal — success or failure alike (`AppendAuditEntry` in `internal/infra/state/fsmstate.go`). The `audit_sequence` values themselves are **dense** (no gaps in the numbering), but the proposal-to-sequence mapping is many-to-one: several replayed proposals can share the sequence number of the next non-replayed one.
-- **`log_sequence`** advances only when a log is produced. The mapping `audit_seq → [MinLog, MaxLog]` is sparse: failures contribute zero logs; a success in which every order is an in-batch idempotent reference contributes `[0, 0]`.
+- **`log_sequence`** advances only when a log is produced. The mapping `audit_seq → [MinLog, MaxLog]` is sparse: failures contribute zero logs; a success in which every order took the no-log outcome in `ProcessOrders` — today an idempotent mirror replay, or a `SetClusterPolicy` re-proposal at the applied revision — contributes `[0, 0]`. (The in-batch idempotent *reference* that used to produce this shape no longer exists: per-batch idempotency moved out of `ProcessOrders` into the FSM apply path, which short-circuits replays before the processor runs, so `ReferenceSequence` items are no longer produced — `internal/domain/processing/processor.go`.)
 
 Gaps live on the **companion streams**, not on `audit_sequence` itself:
 

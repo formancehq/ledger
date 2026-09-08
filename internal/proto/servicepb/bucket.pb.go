@@ -28,8 +28,17 @@ const (
 type CheckStoreErrorType int32
 
 const (
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNSPECIFIED                 CheckStoreErrorType = 0
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH               CheckStoreErrorType = 1
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNSPECIFIED   CheckStoreErrorType = 0
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH CheckStoreErrorType = 1
+	// Emitted when log sequences the store should hold are absent. Two
+	// emitters, both reporting a contiguous RUN as ONE event carrying the run's
+	// first sequence in log_sequence: the interior scan over the Log rows, for a
+	// hole between two surviving rows inside the audited range; and the stored
+	// log bound pass, for a deleted TAIL, which the interior scan cannot see
+	// because it has no surviving row above it. Never one event per missing
+	// position: the hole is chosen by whoever wrote the row above it, and a
+	// truncated tail can be millions of rows. A run one sequence long names that
+	// single sequence rather than a range. See EN-1526.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP                CheckStoreErrorType = 2
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH             CheckStoreErrorType = 3
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH           CheckStoreErrorType = 4
@@ -193,11 +202,13 @@ const (
 	// misdescribe a store whose log is present and readable. See EN-1526.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH CheckStoreErrorType = 27
 	// Emitted when the expected log range could not be derived over the whole
-	// history, so the stored log bound cannot be compared. Two causes: the live
+	// history, so the stored log bound cannot be compared. Three causes: the live
 	// audit walk was cut short by a hash chain break, leaving every success range
-	// after it unread; or the chain-verified AuditSuccess ranges were not
-	// contiguous from sequence 1, which contradicts the premise the bound rests
-	// on. The pass reports this instead of presenting a partial bound as a clean
+	// after it unread; the chain-verified AuditSuccess ranges were not contiguous
+	// from sequence 1, which contradicts the premise the bound rests on; or a
+	// success range is not accounted for by its own entry's chain-verified
+	// AuditItems, so the declared range is not evidence of which logs the FSM
+	// allocated and cannot serve as the oracle. The pass reports this instead of presenting a partial bound as a clean
 	// comparison -- against a truncated store a partial bound would report the
 	// surviving logs above it as unaudited and every log below the break as
 	// missing, both false. See EN-1526.
@@ -208,8 +219,13 @@ const (
 	// outside the audited interval was produced by no audited proposal, hence
 	// injected or forged, and every projection keyed on its sequence would fold
 	// unaudited data. Two shapes, one per end of the interval. Above the audited
-	// bound: reported once for the whole unaudited range with its row count, not
-	// per row, since a forged tail can be millions of rows. At sequence 0: one
+	// bound: reported once for the whole unaudited range, naming the range
+	// searched and counting the rows actually found in it -- not the width of
+	// that range, which over-counts a sparse injection and would describe its
+	// empty positions as holding unaudited rows. Never one event per row, since a
+	// forged tail can be millions of rows. This event and a tail SEQUENCE_GAP are
+	// independent and can both be emitted for one store: a planted row must not
+	// be able to erase a genuine missing tail. At sequence 0: one
 	// event, carrying log_sequence 0 rather than a range, because keys are unique
 	// and the reserved position holds at most one row -- FSMState.NextSequenceID
 	// is seeded at 1 and recovery only raises it, so the audited interval starts
