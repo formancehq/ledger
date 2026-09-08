@@ -513,10 +513,12 @@ func (ctrl *DefaultController) createTransaction(ctx context.Context, store Stor
 	if err != nil {
 		return nil, err
 	}
+	mergedAccountMetadata := make(ledger.AccountMetadata, len(accounts))
 	for _, account := range accounts {
-		if err := ledger.ValidateMetadata(account.Metadata); err != nil {
-			return nil, err
-		}
+		mergedAccountMetadata[account.Address] = account.Metadata
+	}
+	if err := ledger.ValidateCommandMetadata(finalMetadata, mergedAccountMetadata); err != nil {
+		return nil, err
 	}
 
 	return &ledger.CreatedTransaction{
