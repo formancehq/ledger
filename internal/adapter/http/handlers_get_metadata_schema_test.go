@@ -39,6 +39,13 @@ func TestHandleGetMetadataSchema_Success(t *testing.T) {
 	srv.handleGetMetadataSchema(w, r)
 
 	require.Equal(t, http.StatusOK, w.Code)
+	require.JSONEq(t, `{
+		"data": {
+			"accountFields": {"role": {"declaredType": "string"}},
+			"transactionFields": {},
+			"ledgerFields": {"env": {"declaredType": "string"}}
+		}
+	}`, w.Body.String())
 }
 
 func TestHandleGetMetadataSchema_MissingLedgerName(t *testing.T) {
