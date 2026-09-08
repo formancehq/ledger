@@ -128,6 +128,10 @@ source "$VENV_DIR/bin/activate"
 echo "==> Installing/verifying pinned Schemathesis dependencies..."
 pip3 install -q -r "$SCRIPT_DIR/requirements.txt"
 
+echo "==> Verifying Schemathesis event accounting..."
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
+    -s "$SCRIPT_DIR" -p 'test_reporting.py'
+
 echo "==> Running Schemathesis tests..."
 echo ""
 SHRINK_FLAG=""
