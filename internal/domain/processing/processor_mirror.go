@@ -106,7 +106,7 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 
 	// Stage per-apply context fields for child handlers.
 	ctx.Boundaries = boundaries
-	ctx.LedgerInfo = info
+	ctx.LedgerInfo = info.AsReader()
 
 	var logPayload *commonpb.LedgerLogPayload
 

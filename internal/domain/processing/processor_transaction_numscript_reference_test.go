@@ -75,7 +75,7 @@ func TestProcessCreateTransaction_NumscriptReference_ResolvesContent(t *testing.
 			}, &Context{
 				Scope:          mockStore,
 				Boundaries:     &raftcmdpb.LedgerBoundaries{NextTransactionId: 1},
-				LedgerInfo:     &commonpb.LedgerInfo{Name: ledger, Id: 1},
+				LedgerInfo:     (&commonpb.LedgerInfo{Name: ledger, Id: 1}).AsReader(),
 				NumscriptCache: processor.numscriptCache,
 			})
 			require.NoError(t, processErr)

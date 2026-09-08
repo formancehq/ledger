@@ -41,17 +41,16 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 		return nil, &domain.ErrLedgerInMirrorMode{Name: ledger}
 	}
 
-	// Mutate() once at the boundary so sub-processors keep receiving
-	// *LedgerInfo via the per-apply context. The clone cost is bounded
-	// (one CloneVT per apply).
-	var ledgerInfo *commonpb.LedgerInfo
+	// Stage the immutable reader on the per-apply context. Read-only child
+	// handlers consume it directly; only configuration-mutating handlers call
+	// Mutate() to acquire an owned clone. No CloneVT runs here, so a read-only
+	// order performs zero ledger clones.
 	if infoOk {
-		ledgerInfo = ledgerInfoReader.Mutate()
+		ctx.LedgerInfo = ledgerInfoReader
 	}
 
 	// Stage per-apply context fields for child handlers.
 	ctx.Boundaries = boundaries
-	ctx.LedgerInfo = ledgerInfo
 
 	var (
 		logPayload *commonpb.LedgerLogPayload

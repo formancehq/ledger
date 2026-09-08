@@ -8,7 +8,7 @@ import (
 )
 
 func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
-	info, loadErr := loadLedger(ctx.Scope, ledger)
+	info, loadErr := loadLedgerReader(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
@@ -42,7 +42,7 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
 	// The loaded projection is only needed to validate that the ledger exists
 	// and is not soft-deleted; the registry key comes from the envelope below.
-	if _, loadErr := loadLedger(ctx.Scope, ledger); loadErr != nil {
+	if _, loadErr := loadLedgerReader(ctx.Scope, ledger); loadErr != nil {
 		return nil, loadErr
 	}
 
@@ -64,7 +64,7 @@ func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Conte
 // before an Index entry is persisted. Built-in indexes are always valid by
 // virtue of the enum; metadata indexes require that the schema field has been
 // declared with SetMetadataFieldType first.
-func validateIndexTarget(info *commonpb.LedgerInfo, id *commonpb.IndexID) domain.Describable {
+func validateIndexTarget(info commonpb.LedgerInfoReader, id *commonpb.IndexID) domain.Describable {
 	if id == nil {
 		return nil
 	}
@@ -74,7 +74,7 @@ func validateIndexTarget(info *commonpb.LedgerInfo, id *commonpb.IndexID) domain
 		return nil
 	}
 
-	_, field := commonpb.SchemaFieldForTarget(info.GetMetadataSchema(), meta.Metadata.GetTarget(), meta.Metadata.GetKey())
+	field, _ := schemaFieldForTarget(info, meta.Metadata.GetTarget(), meta.Metadata.GetKey())
 	if field == nil {
 		return &domain.ErrMetadataFieldNotInSchema{
 			Target: meta.Metadata.GetTarget().String(),
@@ -85,19 +85,47 @@ func validateIndexTarget(info *commonpb.LedgerInfo, id *commonpb.IndexID) domain
 	return nil
 }
 
+// schemaFieldForTarget is the reader-based twin of
+// commonpb.SchemaFieldForTarget: it resolves the declared metadata field
+// for (targetType, key) from the immutable LedgerInfo reader without
+// cloning the schema.
+func schemaFieldForTarget(info commonpb.LedgerInfoReader, targetType commonpb.TargetType, key string) (commonpb.MetadataFieldSchemaReader, bool) {
+	if info == nil {
+		return nil, false
+	}
+
+	schema := info.GetMetadataSchema()
+	if schema == nil {
+		return nil, false
+	}
+
+	var field commonpb.MetadataFieldSchemaReader
+
+	switch targetType {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		field, _ = schema.GetAccountFields().Get(key)
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		field, _ = schema.GetTransactionFields().Get(key)
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		field, _ = schema.GetLedgerFields().Get(key)
+	}
+
+	return field, field != nil
+}
+
 // indexBoundType resolves the declared type the index's first version binds
 // to: the schema entry for the indexed metadata field at this point in the
 // order stream. The log carries the binding so replicas folding it at any
 // replay distance bind the same type (see CreatedIndexLog.bound_type).
 // Builtin indexes have no metadata field and carry no binding.
-func indexBoundType(info *commonpb.LedgerInfo, id *commonpb.IndexID) (commonpb.MetadataType, bool) {
+func indexBoundType(info commonpb.LedgerInfoReader, id *commonpb.IndexID) (commonpb.MetadataType, bool) {
 	meta, ok := id.GetKind().(*commonpb.IndexID_Metadata)
 	if !ok || meta.Metadata == nil {
 		return 0, false
 	}
 
-	_, field := commonpb.SchemaFieldForTarget(info.GetMetadataSchema(), meta.Metadata.GetTarget(), meta.Metadata.GetKey())
-	if field == nil {
+	field, ok := schemaFieldForTarget(info, meta.Metadata.GetTarget(), meta.Metadata.GetKey())
+	if !ok {
 		return 0, false
 	}
 
