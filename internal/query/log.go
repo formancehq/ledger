@@ -172,10 +172,7 @@ func ReadLogsSinceRaw(_ context.Context, reader dal.PebbleReader, afterSequence 
 
 	lowerBound := kb.Build()
 
-	kb2 := dal.NewKeyBuilder()
-	kb2.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).
-		PutBytes(dal.MaxUint64Bytes)
-	upperBound := kb2.Build()
+	upperBound := dal.ZonePrefixUpperBound(dal.ZoneHistory, dal.SubHistoryLog)
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
@@ -200,10 +197,7 @@ func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence u
 
 	lowerBound := kb.Build()
 
-	kb2 := dal.NewKeyBuilder()
-	kb2.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).
-		PutBytes(dal.MaxUint64Bytes)
-	upperBound := kb2.Build()
+	upperBound := dal.ZonePrefixUpperBound(dal.ZoneHistory, dal.SubHistoryLog)
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {

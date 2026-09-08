@@ -1016,7 +1016,7 @@ func TestCheck_LogBounds_SparseInjectedTailCountsRowsNotWidth(t *testing.T) {
 // TestCheck_LogBounds_MaxUint64KeyIsVerified closes the top of the key space.
 //
 // Pebble's iterator upper bound is exclusive, so a bound built from an
-// eight-byte 0xFF run — dal.MaxUint64Bytes, and what this loop used to inline —
+// eight-byte 0xFF run — the former dal.MaxUint64Bytes, which this loop inlined —
 // is byte-identical to the key of the row at math.MaxUint64 and skips exactly
 // that row. The one pass built to see planted rows could not see the one planted
 // at the top: the mirror of the reserved sequence 0 hole below.

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -644,9 +645,19 @@ func exportEntries(
 
 	lowerBound := kb.Build()
 
-	kb2 := dal.NewKeyBuilder()
-	kb2.PutZonePrefix(zone, sub).PutUint64(endSeq + 1)
-	upperBound := kb2.Build()
+	// endSeq+1 wraps at MaxUint64 into a bound BELOW the lower one, which Pebble
+	// reads as an empty range: the segment would export nothing and the delta
+	// would silently lose every row it was meant to carry (invariant #11). The
+	// prefix successor is the bound that includes the last addressable entry.
+	var upperBound []byte
+
+	if endSeq == math.MaxUint64 {
+		upperBound = dal.ZonePrefixUpperBound(zone, sub)
+	} else {
+		kb2 := dal.NewKeyBuilder()
+		kb2.PutZonePrefix(zone, sub).PutUint64(endSeq + 1)
+		upperBound = kb2.Build()
+	}
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
