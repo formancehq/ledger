@@ -513,7 +513,8 @@ func TestAccountsUpsert(t *testing.T) {
 	ctx := logging.TestingContext()
 
 	account1 := ledger.Account{
-		Address: "foo",
+		Address:  "foo",
+		Metadata: metadata.Metadata{"existing": "value", "other": "preserved"},
 	}
 
 	account2 := ledger.Account{
@@ -532,6 +533,18 @@ func TestAccountsUpsert(t *testing.T) {
 	require.NotEmpty(t, account2.InsertionDate)
 	require.NotEmpty(t, account2.UpdatedAt)
 
+	persistedAccount1 := account1
+	historyCount := func() int {
+		count, err := store.GetDB().NewSelect().
+			TableExpr(store.GetPrefixedRelationName("accounts_metadata")).
+			Where("ledger = ? AND accounts_address = ?", store.GetLedger().Name, account1.Address).
+			Count(ctx)
+		require.NoError(t, err)
+		return count
+	}
+	initialHistoryCount := historyCount()
+	require.Positive(t, initialHistoryCount)
+
 	now := time.Now()
 
 	// Reset the account model
@@ -547,6 +560,28 @@ func TestAccountsUpsert(t *testing.T) {
 	// Upsert with no modification
 	err = store.UpsertAccounts(ctx, ledger.AccountWithDefaultMetadata{Account: &account1})
 	require.NoError(t, err)
+	require.Equal(t, persistedAccount1, account1)
+	require.Equal(t, initialHistoryCount, historyCount())
+
+	// A mixed batch must return the stored no-op account and the final values
+	// of updated and inserted accounts, without overwriting them with old rows.
+	account1.Metadata = metadata.Metadata{"existing": "value"}
+	account2.Metadata = metadata.Metadata{"new": "value"}
+	account3 := ledger.Account{Address: "foo3", Metadata: metadata.Metadata{"created": "value"}}
+	require.NoError(t, store.UpsertAccounts(ctx,
+		ledger.AccountWithDefaultMetadata{Account: &account1},
+		ledger.AccountWithDefaultMetadata{Account: &account2},
+		ledger.AccountWithDefaultMetadata{Account: &account3},
+	))
+	require.Equal(t, persistedAccount1, account1)
+	require.Equal(t, initialHistoryCount, historyCount())
+	for _, account := range []ledger.Account{account1, account2, account3} {
+		stored, err := store.Accounts().GetOne(ctx, common.ResourceQuery[any]{
+			Builder: query.Match("address", account.Address),
+		})
+		require.NoError(t, err)
+		require.Equal(t, account, *stored)
+	}
 }
 
 // TestAccountsListAddressSegmentMatching pins the trailing-segment matching
