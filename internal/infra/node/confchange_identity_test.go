@@ -8,6 +8,7 @@ import (
 	"go.etcd.io/raft/v3/raftpb"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 )
 

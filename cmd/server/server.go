@@ -751,8 +751,7 @@ func discoverPeersFromClusterWithRetry(ctx context.Context, raftAddr string, tls
 			return peers, nil
 		}
 
-		var identityErr *invalidDiscoveredPeerIdentityError
-		if errors.As(err, &identityErr) {
+		if _, ok := errors.AsType[*invalidDiscoveredPeerIdentityError](err); ok {
 			return nil, err
 		}
 		// A cluster-secret or cluster-id mismatch is a hard configuration
