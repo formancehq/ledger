@@ -506,7 +506,11 @@ tests/antithesis/run_model_test.sh --nodes 5 300
 
 Both targets call `tests/antithesis/run_model_test.sh`, which builds the server
 and driver and runs the checker. It exits non-zero on the first finding by
-default. Common tunables (full list in the script header):
+default. A successful run also requires at least one
+`singleton_driver_model: model outcome verified` assertion hit, emitted only
+after a definitive server outcome reaches model validation. Driver liveness,
+assertion registration, and ledger-setup assertions do not satisfy that gate.
+Common tunables (full list in the script header):
 
 | Variable | Meaning |
 |----------|---------|
