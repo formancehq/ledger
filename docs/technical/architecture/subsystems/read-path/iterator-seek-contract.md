@@ -42,7 +42,7 @@ error.
 ### Bounded entity-ordered leaves
 
 A leaf whose keys place the entity at a fixed suffix and are physically
-ordered by it — `LedgerLogRangeIterator` — can honour the absolute-seek
+ordered by it — `BoundedEntityIterator` — can honour the absolute-seek
 contract *without* materializing. Its Pebble iterator is bounded by the
 half-open `[lower, upper)` range resolved from the compile-time bounds, so
 both the first `Next` and every absolute `SeekGE` observe those bounds:
@@ -52,11 +52,23 @@ The floor cache works exactly as on the prefix leaves, and reaching the range's
 last entity (a `MaxUint64` log ID) must not wrap the following `Next` back to
 the smallest ID.
 
-An absent upper bound is closed with the **successor of the ledger-log
+An absent upper bound is closed with the **successor of the namespace
 prefix** (`IncrementBytes(prefix)`), not `prefix` plus eight `0xff` bytes: the
 latter would exclude a `MaxUint64` log ID because the upper bound is exclusive.
-A singleton lower bound at `MaxUint64` is resolved by the compiler as a point
-read rather than handed to a leaf that would have to increment past it.
+The log compiler resolves a singleton lower bound at `MaxUint64` as a point
+read. The shared leaf also supports `[MaxUint64, unbounded)` directly without
+computing an exclusive successor for that ID.
+
+`NewLedgerLogRangeIterator` and `NewPebbleTxRangeIterator` are semantic
+wrappers around this shared implementation. The constructor takes the reader,
+prefix, lower/upper suffixes and entity length; the prefix length determines
+the entity offset. The keyspace must contain one key per entity: ledger logs
+use `[0x09][ledger 64B][logID_BE]`, and canonical transaction attributes use
+`[0xF1][T][ledger 64B][0x02][txID_BE]`. Transaction updates replace the value at
+the same canonical key; there are no by-log suffix entries in this namespace.
+Both leaves therefore advance with Pebble `Next`, without computing an ID
+successor or wrapping after `MaxUint64`. Multi-key entity indexes require a
+different, deduplicating iterator.
 
 The contract is enforced by unit tests per leaf (`iterator_floor_test.go`,
 `iterator_address_test.go`, `iterator_and_seek_test.go`) and end-to-end by the
