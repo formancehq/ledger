@@ -82,7 +82,6 @@ func BenchmarkReverseMapKeyingFoldSavedMetadata(b *testing.B) {
 								target,
 								fields,
 								reverseMapFoldBenchmarkSeedEntities,
-								0,
 							)
 						})
 					}
@@ -92,9 +91,9 @@ func BenchmarkReverseMapKeyingFoldSavedMetadata(b *testing.B) {
 	}
 }
 
-// BenchmarkReverseMapKeyingFoldHotAccountOverlay models a 1,000-log batch
-// repeatedly updating a small account set. The first lookup for each
-// (entity, field) reads Pebble; the remaining nine resolve from WriteBatch's
+// BenchmarkReverseMapKeyingFoldHotAccountOverlay models a DefaultBatchSize-log
+// batch repeatedly updating a small account set. The first lookup for each
+// (entity, field) reads Pebble; subsequent lookups resolve from WriteBatch's
 // read-your-writes reverse-map overlay. This makes sure the production layout
 // does not win or lose solely because the committed-read workload above omits overlay
 // traffic.
@@ -110,7 +109,6 @@ func BenchmarkReverseMapKeyingFoldHotAccountOverlay(b *testing.B) {
 				target,
 				fields,
 				reverseMapFoldBenchmarkHotEntities,
-				0.9,
 			)
 		})
 	}
@@ -141,7 +139,6 @@ func benchmarkReverseMapFoldSavedMetadata(
 	target reverseMapFoldBenchmarkTarget,
 	fields []string,
 	entityCount uint64,
-	overlayHitRatio float64,
 ) {
 	b.Helper()
 
@@ -196,7 +193,12 @@ func benchmarkReverseMapFoldSavedMetadata(
 	}
 
 	reportReverseMapFoldBenchmarkMetrics(b, len(fields), len(fields), 1+3*len(fields))
-	b.ReportMetric(overlayHitRatio, "overlay_hit_ratio")
+	// Each batch visits a cyclic entity set and every visit changes every
+	// field's value. Only the first visit to each entity reads committed state;
+	// all later visits hit the overlay. This is workload-derived, not measured.
+	committedReadsPerField := min(uint64(DefaultBatchSize), entityCount)
+	overlayHitRatio := float64(uint64(DefaultBatchSize)-committedReadsPerField) / float64(DefaultBatchSize)
+	b.ReportMetric(overlayHitRatio, "analytical_overlay_hit_ratio")
 }
 
 func benchmarkReverseMapFoldCreatedTransaction(

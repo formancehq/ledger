@@ -61,6 +61,12 @@ var reverseMapBenchmarkTargets = []reverseMapBenchmarkTarget{
 // versions so the baseline rewrite and purge paths pay their namespace scan
 // amplification.
 //
+// RewriteScan measures candidate selection: the entity-first baseline retains
+// its historical per-row decoding before filtering, while the field-first arm
+// uses the exact field/version range. It excludes decoding selected candidates
+// in the field-first arm, FSM reads and rewrite writes, so its timing ratio is
+// neither a full rewrite speedup nor an isolated comparison of key ordering.
+//
 // PurgeFieldPlan measures construction of the atomic write batch, not its
 // commit or later compaction: committing would destroy the shared fixture and
 // rebuilding it inside the timed loop would dominate the result. It therefore
@@ -433,6 +439,10 @@ type reverseMapBenchmarkParsedEntityFirst struct {
 // reverseMapBenchmarkParseEntityFirst freezes the parsing work required by
 // the former layout. Keeping it benchmark-local makes the comparison
 // independent of the production field-first parser.
+// Entity copies and metadata string allocations deliberately match the former
+// ParseReverseMapKey: processSchemaRewrite decoded every namespace row before
+// testing its field/version. Removing those copies would benchmark an optimized
+// hypothetical baseline rather than the former production candidate scan.
 func reverseMapBenchmarkParseEntityFirst(key []byte) (reverseMapBenchmarkParsedEntityFirst, bool) {
 	header := ledgerScopedPrefixLen + namespaceSize
 	if len(key) < header || key[0] != PrefixReverseMap {
