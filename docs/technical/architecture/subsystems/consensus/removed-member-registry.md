@@ -180,17 +180,17 @@ Note on directionality: the authoritative `instanceID` is generated once on each
 
 ### Universal Identity Propagation
 
-The bootstrap seed persists its own `cfg.InstanceID` before constructing the initial ConfState. `ClusterBootstrapService.GetPeers` returns that identity in every `PeerInfo`, and `discoverPeersFromCluster` carries it into `node.Peer`. `registerInitialPeers` therefore persists complete `(addresses, instanceID)` rows for all discovered voters before the joining node writes its initial WAL snapshot.
+The bootstrap seed persists its own `cfg.InstanceID` before constructing the initial ConfState. `ClusterBootstrapService.GetPeers` snapshots configured members together with their registered addresses and identities in one orchestrate command, preventing mixed incarnations or false missing-row failures during removal and re-registration. It returns that identity in every `PeerInfo`, and `discoverPeersFromCluster` carries it into `node.Peer`. `registerInitialPeers` therefore persists complete `(addresses, instanceID)` rows for all discovered voters before the joining node writes its initial WAL snapshot.
 
 Administrative `ClusterService.AddLearner` likewise requires the target's 16-byte persisted identity. Caller intent is explicit in the application/node APIs: `AddLearner` is an administrative retry, while `JoinAsLearner` means a fresh-WAL boot. Presence or absence of `instanceID` is never used as an intent sentinel.
 
 The invariant is enforced at every boundary:
 
 - `PeerStore.Put`, `Membership.Set`, `Membership.Register`, and `NewMembership` reject identities whose length is not 16 bytes.
-- `PeerStore.LoadAll` fails startup on a malformed persisted row; the same typed validation failure is fatal after a checkpoint install rather than leaving the process running with an invalid restored membership.
-- `WriteConfChange` rejects AddLearner, UpdateNode, or RemoveNode entries without a valid identity; impossible committed shapes fail loudly on every replica.
+- `PeerStore.LoadAll` fails startup on a malformed persisted row; the same typed validation failure is fatal after a checkpoint install rather than leaving the process running with an invalid restored membership. These checks validate rows that are present; they do not prove that every configured member has a row. Discovery and removal detect missing configured rows when used. A complete startup/checkpoint check needs an authoritative membership view tied to the recovered applied index: the mutable WAL snapshot ConfState can be ahead of or behind Pebble across replay and force removal, so comparing the two directly would reject valid recovery.
+- `WriteConfChange` and `finishReady` reject AddNode (including promotion), AddLearner, UpdateNode, or RemoveNode entries without a valid identity; impossible committed shapes fail loudly on every replica.
 - `Membership.Set` removes and re-adds transport connections when an `UpdateNode` changes either advertised address, so Raft and forwarded RPCs cannot remain pinned to the previous endpoint.
-- `RemoveNode`, `ForceRemoveNode`, discovery, and auto-promotion validate before acting.
+- `RemoveNode`, `ForceRemoveNode`, discovery, and promotion validate before acting. Both manual and automatic promotions capture the existing learner identity and addresses on the orchestrate goroutine and include them in the committed AddNode payload. AddNode, AddLearner, and UpdateNode require both addresses; absent or correlation-only AddNode payloads are rejected before either the FSM batch writes or RawNode membership mutates. The FSM validates only the committed payload and repeats the peer registration without reading a node-local cache or Pebble.
 
 ### Known Limitation
 
