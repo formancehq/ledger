@@ -271,8 +271,8 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 // listDescFiltered compiles the filter into a descending iterator tree and
 // paginates it with cursor lookahead. Entity-ordered leaves stream in
 // descending order directly; the materializing fallback leaves (value-ordered
-// ranges, the address→transaction union) are traversed through a reverse view
-// of their single sorted result. No complete-result drain/copy is performed
+// ranges, log-ID ranges, the address→transaction union) are traversed through
+// a reverse view of their single sorted result. No complete-result drain/copy is performed
 // solely to reverse and paginate.
 func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T], out *[][]byte) error {
 	kb := dal.NewKeyBuilder()

@@ -173,14 +173,19 @@ resolution and produces a descending tree:
 through `CompileReverse`, wraps the tree in `FilterReverseIterator` for the
 main-store horizon trim, and hands it to `PaginateReverse` — which resumes at
 the cursor and stops after the `pageSize+1` lookahead, exactly like the
-ascending path.
+ascending path. `TestListDescFilteredStopsAtLookahead` enforces this budget
+at the controller, including exclusive cursors and final pages. Compiler
+parity tests additionally compare both directions with explicit expected
+entity sets at a pin that exposes their fixture events.
 
-Two leaf classes remain materializing (they always did): value-ordered
-metadata/date ranges and the `AddressTxIterator` account→transaction union.
+Materializing leaves remain (as in the ascending compiler): value-ordered
+metadata/date ranges, log-ID ranges, and the `AddressTxIterator`
+account→transaction union. Log-ID ranges currently use `RangeIterator` and
+materialize even though their source is ordered by log ID.
 The descending path reuses each fallback's single sorted result through
 `ReverseSliceIterator` rather than building a second all-result copy solely to
-reverse. Entity-ordered leaves — equality, universe, ID, reference, exists,
-account-has-asset — stream directly in descending order.
+reverse. Equality, universe, transaction-ID ranges, reference, exists, and
+account-has-asset leaves stream directly in descending order.
 
 ## Pagination
 

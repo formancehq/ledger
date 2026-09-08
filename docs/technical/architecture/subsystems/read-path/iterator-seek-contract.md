@@ -41,7 +41,9 @@ One leaf is exempt by construction: `RangeIterator` emits rows in
 `SeekGE` is undefined on the raw scan. It only supports forward draining;
 every construction site materializes it into a sorted `SliceIterator` before
 composing, and a direct `SeekGE` call fails the query with an invariant
-error.
+error. Log-ID ranges also use this materializing path, even though the
+ledger-log prefix is already entity-ordered. Descending compilation traverses
+these materialized results through `ReverseSliceIterator`.
 
 The contract is enforced by unit tests per leaf (`iterator_floor_test.go`,
 `iterator_address_test.go`, `iterator_and_seek_test.go`) and end-to-end by the

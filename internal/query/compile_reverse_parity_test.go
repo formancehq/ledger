@@ -84,7 +84,8 @@ func TestCompileReverse_MatchesReversedForward(t *testing.T) {
 		addEvent(t, rs, kb, ledger, metaKey, readstore.EncodeUint64(nil, value), txid(id), seq, op)
 	}
 
-	// tier (string), cat (string), score (uint64) across six transactions.
+	// tier (string), cat (string), score (uint64) across four transactions.
+	// Queries pin sequence 1 so these events are visible in both directions.
 	stringEvent("tier", "gold", 1, 1, readstore.MetadataEventAdd)
 	stringEvent("tier", "silver", 2, 1, readstore.MetadataEventAdd)
 	stringEvent("tier", "gold", 5, 1, readstore.MetadataEventAdd)
@@ -164,26 +165,28 @@ func TestCompileReverse_MatchesReversedForward(t *testing.T) {
 	cases := []struct {
 		name   string
 		filter *commonpb.QueryFilter
+		want   []uint64
 	}{
-		{"string equality leaf", stringEq("tier", "gold")},
-		{"or of equality leaves", or(stringEq("tier", "gold"), stringEq("tier", "silver"))},
-		{"and of equality leaves", and(stringEq("tier", "gold"), stringEq("cat", "a"))},
-		{"value-ordered uint range fallback", uintRange("score", 15, 40)},
-		{"composition containing a fallback", and(stringEq("tier", "gold"), uintRange("score", 15, 40))},
+		{"string equality leaf", stringEq("tier", "gold"), []uint64{1, 5, 7}},
+		{"or of equality leaves", or(stringEq("tier", "gold"), stringEq("tier", "silver")), []uint64{1, 2, 5, 7}},
+		{"and of equality leaves", and(stringEq("tier", "gold"), stringEq("cat", "a")), []uint64{1, 7}},
+		{"value-ordered uint range fallback", uintRange("score", 15, 40), []uint64{2, 7}},
+		{"composition containing a fallback", and(stringEq("tier", "gold"), uintRange("score", 15, 40)), []uint64{7}},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			fwd, err := query.Compile(rs.DB(), dal.NewKeyBuilder(), tc.filter,
 				commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledger,
-				nil, schema, info, registry, res, nil, nil, 0)
+				nil, schema, info, registry, res, nil, nil, 1)
 			require.NoError(t, err)
 
 			ascending := drainForward(fwd)
+			require.Equal(t, tc.want, ascending)
 
 			rev, err := query.CompileReverse(rs.DB(), dal.NewKeyBuilder(), tc.filter,
 				commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, ledger,
-				nil, schema, info, registry, res, nil, nil, 0)
+				nil, schema, info, registry, res, nil, nil, 1)
 			require.NoError(t, err)
 
 			descending := drainReverse(rev)

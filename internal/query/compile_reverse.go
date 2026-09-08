@@ -23,7 +23,8 @@ type ReverseEntityIterator interface {
 // CompileReverse translates a QueryFilter proto into a descending iterator
 // tree. It is the counterpart of Compile for reverse (newest-first) listing:
 // entity-ordered leaves stream in descending order, and the materializing
-// fallback leaves (value-ordered ranges, the address→transaction union) expose
+// fallback leaves (value-ordered ranges, log-ID ranges, and the
+// address→transaction union) expose
 // their single sorted result through a reverse view — no second all-result
 // collection is built solely to reverse.
 //
