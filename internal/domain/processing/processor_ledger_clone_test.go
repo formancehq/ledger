@@ -155,5 +155,7 @@ func TestProcessAddAccountType_ClonesLedgerInfoOnce(t *testing.T) {
 	require.NotNil(t, payload)
 	require.Equal(t, 1, mutateCalls, "mutating apply must acquire exactly one owned clone")
 	require.NotNil(t, mutated)
+	require.Zero(t, ledgerReader.GetAccountTypes().Len(), "configuration mutation must leave the original cached reader unchanged")
+	require.Contains(t, putInfo.GetAccountTypes(), "new-type")
 	require.Same(t, mutated, putInfo, "mutating apply must write back the clone returned by Mutate(), not a redundant CloneVT() clone")
 }

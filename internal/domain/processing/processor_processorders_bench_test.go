@@ -17,7 +17,8 @@ import (
 //   - a pure read-only transaction batch (the regime where the clone was
 //     removed from processApply), and
 //   - configuration changes within a batch (the regime where the redundant
-//     `info = info.CloneVT()` after loadLedger was removed).
+//     `info = info.CloneVT()` after loadLedger was removed), and
+//   - mirror FillGap ingestion, which reads configuration without changing it.
 //
 // The benchmark drives the real RequestProcessor.ProcessOrders dispatch (real
 // handlers, real LedgerInfo CloneVT cost) against a minimal in-memory Scope
@@ -326,6 +327,58 @@ func BenchmarkProcessOrders_ConfigurationChanges(b *testing.B) {
 					if _, derr := processor.ProcessOrders(orders, factory, sink); derr != nil {
 						b.Fatal(derr)
 					}
+				}
+				if scope.info.GetAccountTypes()["new-type"] == nil || scope.baseInfo.GetAccountTypes()["new-type"] != nil {
+					b.Fatal("configuration update must change only the batch overlay")
+				}
+				if scope.currentBoundaries.GetNextLogId() != uint64(n+1) {
+					b.Fatal("configuration batch did not apply every order")
+				}
+			})
+		}
+	}
+}
+
+// BenchmarkProcessOrders_MirrorFillGap isolates mirror dispatch from transaction
+// work. Source log IDs restart at one after reset so each iteration ingests all
+// orders instead of measuring the duplicate-replay shortcut.
+func BenchmarkProcessOrders_MirrorFillGap(b *testing.B) {
+	for _, tc := range benchConfigs() {
+		for _, n := range []int{1, 100} {
+			b.Run(fmt.Sprintf("%s/n=%d", tc.name, n), func(b *testing.B) {
+				processor, err := NewRequestProcessor(nil, 0)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				scope := newBenchScope(tc.cfg)
+				scope.baseInfo.Mode = commonpb.LedgerMode_LEDGER_MODE_MIRROR
+				orders := make([]*raftcmdpb.Order, n)
+				for i := range orders {
+					orders[i] = &raftcmdpb.Order{
+						Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+							Ledger: tc.cfg.name,
+							Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+								Entry: &raftcmdpb.MirrorLogEntry{
+									V2LogId: uint64(i + 1),
+									Data:    &raftcmdpb.MirrorLogEntry_FillGap{FillGap: &raftcmdpb.MirrorFillGap{}},
+								},
+							}},
+						}},
+					}
+				}
+
+				factory := mockFactory(scope)
+				sink := noopSink{}
+				b.ReportAllocs()
+				for b.Loop() {
+					scope.reset()
+					if _, derr := processor.ProcessOrders(orders, factory, sink); derr != nil {
+						b.Fatal(derr)
+					}
+				}
+				if scope.currentBoundaries.GetLastMirrorV2LogId() != uint64(n) || scope.currentBoundaries.GetNextLogId() != uint64(n+1) {
+					b.Fatal("mirror batch did not ingest every source log")
 				}
 			})
 		}
