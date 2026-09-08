@@ -25,6 +25,8 @@ import (
 )
 
 func TestRestoreDownloadStopsWithFxApplication(t *testing.T) {
+	t.Parallel()
+
 	requestStarted := make(chan struct{})
 	requestCanceled := make(chan struct{})
 	releaseRequest := make(chan struct{})
@@ -77,7 +79,7 @@ func TestRestoreDownloadStopsWithFxApplication(t *testing.T) {
 		default:
 			close(releaseRequest)
 		}
-		_ = app.Stop(context.Background())
+		require.NoError(t, app.Stop(context.Background()))
 	})
 
 	startCtx, cancelStart := context.WithTimeout(context.Background(), 30*time.Second)
@@ -94,7 +96,11 @@ func TestRestoreDownloadStopsWithFxApplication(t *testing.T) {
 		}}},
 	})
 	require.NoError(t, err)
-	<-requestStarted
+	select {
+	case <-requestStarted:
+	case <-time.After(10 * time.Second):
+		t.Fatal("restore job did not reach the S3 backend")
+	}
 
 	stopDone := make(chan error, 1)
 	go func() { stopDone <- app.Stop(context.Background()) }()
