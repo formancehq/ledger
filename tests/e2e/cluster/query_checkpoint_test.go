@@ -524,16 +524,23 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 })
 
 // listAllTransactionsFromCheckpoint collects all transactions from a checkpoint via the streaming RPC.
-func listAllTransactionsFromCheckpoint(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64, checkpointID uint64) ([]*commonpb.Transaction, error) {
+func listAllTransactionsFromCheckpoint(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64, checkpointID uint64, filters ...*commonpb.QueryFilter) ([]*commonpb.Transaction, error) {
 	var cursor string
 	if afterTxID > 0 {
 		cursor = strconv.FormatUint(afterTxID, 10)
 	}
+
+	var filter *commonpb.QueryFilter
+	if len(filters) > 0 {
+		filter = filters[0]
+	}
+
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger: ledgerName,
 		Options: &commonpb.ListOptions{
 			PageSize: pageSize,
 			Cursor:   cursor,
+			Filter:   filter,
 			Read:     &commonpb.ReadOptions{CheckpointId: checkpointID},
 		},
 	})
