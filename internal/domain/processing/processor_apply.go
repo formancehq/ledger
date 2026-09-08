@@ -41,13 +41,14 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 		return nil, &domain.ErrLedgerInMirrorMode{Name: ledger}
 	}
 
-	// Stage the immutable reader on the per-apply context. Read-only child
-	// handlers consume it directly; only configuration-mutating handlers call
-	// Mutate() to acquire an owned clone. No CloneVT runs here, so a read-only
-	// order performs zero ledger clones.
-	if infoOk {
-		ctx.LedgerInfo = ledgerInfoReader
-	}
+	// Stage the ledger reader on the per-apply context unconditionally: a
+	// missing ledger (ErrNotFound with boundaries still available) must leave
+	// ctx.LedgerInfo nil — the Accessor returns a zero reader on ErrNotFound —
+	// rather than carrying a prior order's value into child handlers. Read-only
+	// child handlers consume the reader directly; only configuration-mutating
+	// handlers call Mutate() to acquire an owned clone. No CloneVT runs here,
+	// so a read-only order performs zero ledger clones.
+	ctx.LedgerInfo = ledgerInfoReader
 
 	// Stage per-apply context fields for child handlers.
 	ctx.Boundaries = boundaries
