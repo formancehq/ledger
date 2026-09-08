@@ -571,6 +571,36 @@ func TestCompareReverseMapOrphans_BucketScopedRegistryIgnored(t *testing.T) {
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
 }
 
+func TestCompareReverseMapOrphans_ZeroVersionCannotHideBehindRegisteredField(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name     string
+		progress uint64
+	}{{name: "behind", progress: 2}, {name: "aligned", progress: 3}} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "statu")
+			fixture := newReverseMapFixture(t, reverseMapFixtureInput{
+				registry: map[domain.IndexKey]*commonpb.Index{
+					indexes.KeyFor("L1", id): {Id: id},
+				},
+				// The embedded NUL otherwise re-splits as the registered field
+				// "statu", version 0, and the valid account "-users:1".
+				rmapKeys: [][]byte{readstore.AccountReverseMapKeyV(dal.NewKeyBuilder(), "L1", "users:1", "statu\x00", 45)},
+				progress: test.progress,
+			})
+
+			events := fixture.run(3, ledgerNameSet("L1"))
+			require.Len(t, events, 1)
+			require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN, events[0].GetError().GetErrorType())
+			require.Contains(t, events[0].GetError().GetMessage(), "do not decode")
+			require.Contains(t, events[0].GetError().GetMessage(), readstore.ErrReverseMapKeyVersion.Error())
+		})
+	}
+}
+
 // TestCompareReverseMapOrphans_NoReadStore covers the restore / CLI call sites:
 // there is no peer read index to verify, so the pass skips with a log rather
 // than reporting a clean result it never checked.

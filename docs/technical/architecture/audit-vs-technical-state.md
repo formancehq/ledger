@@ -252,8 +252,8 @@ still-declared field is labelled against the `DropIndex` path, while an
 undeclared field is labelled against the `RemovedMetadataFieldType` path. It
 does not exclude corruption outside either lifecycle path. Two further classes share the same error type — rows for a ledger the
 audit does not list as live, and malformed keys — and the 4-byte encoding version
-is deliberately not validated, since current and pending versions legitimately
-coexist during a per-replica rewrite.
+must be nonzero. Nonzero versions are not compared to the live pair, since
+current and pending versions legitimately coexist during a per-replica rewrite.
 
 The pass is skipped — loudly, via an INFO log, never reported as a clean result —
 when no readstore handle is attached (restore / CLI validating a staged main store

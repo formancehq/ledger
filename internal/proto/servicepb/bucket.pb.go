@@ -132,10 +132,11 @@ const (
 	// field-bounded DeleteRange. The checker remains as defense against
 	// read-store corruption or a broken index lifecycle even though correct
 	// field purges are atomic. Reported per (ledger, namespace, metadata key)
-	// with a row count and a sample entity rather than per row. The encoding
-	// version block is deliberately NOT validated here — current and pending
-	// versions legitimately coexist during a per-replica rewrite, and stale
-	// versions are reclaimed at boot by purgeOrphanVersions.
+	// with a row count and a sample entity rather than per row. Encoding version
+	// zero is malformed: it denotes an absent version and is never written into
+	// a reverse-map row. Nonzero versions are not compared to the live pair —
+	// current and pending versions legitimately coexist during a per-replica
+	// rewrite, and stale versions are reclaimed at boot by purgeOrphanVersions.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN CheckStoreErrorType = 20
 	// Emitted when the persisted signing-key projection (SubGlobSigningKey)
 	// diverges from the key set the checker re-derived from chain-bound

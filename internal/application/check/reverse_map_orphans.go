@@ -152,11 +152,12 @@ type reverseMapOrphanScope struct {
 // deliberately left as a separate change so its behavioral diff can be
 // reviewed on its own.
 //
-// Version is deliberately ignored. Current and pending forward-encoding
+// ParseReverseMapKey rejects version zero as malformed. Nonzero versions are
+// deliberately ignored for the orphan verdict. Current and pending forward-encoding
 // versions legitimately coexist while a per-replica schema rewrite runs, and
 // versions outside that live pair are reclaimed at boot by purgeOrphanVersions.
-// A row at ANY version whose field is still indexed is not an orphan; flagging
-// on version would report every in-flight rewrite.
+// A row at any nonzero version whose field is still indexed is not an orphan;
+// requiring a single live version would report every in-flight rewrite.
 //
 // ALIGNMENT. lastSequence is the last log sequence the checker verified, and
 // every oracle term — the index registry read off `reader`, the replayed schemas,

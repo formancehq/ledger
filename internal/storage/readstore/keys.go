@@ -219,6 +219,7 @@ var (
 	ErrReverseMapKeyLedgerName  = errors.New("reverse map key: malformed ledger name")
 	ErrReverseMapKeyEntityID    = errors.New("reverse map key: malformed entity id")
 	ErrReverseMapKeyMetadataKey = errors.New("reverse map key: malformed metadata key")
+	ErrReverseMapKeyVersion     = errors.New("reverse map key: zero encoding version")
 )
 
 // ParseReverseMapKey decodes a full reverse-map key, including the
@@ -241,6 +242,8 @@ var (
 //   - ErrReverseMapKeyLedgerName — an embedded NUL surviving the fixed-width
 //     block's zero-padding trim, or an empty ledger name
 //   - ErrReverseMapKeyEntityID — an invalid account address or malformed transaction id
+//   - ErrReverseMapKeyVersion — version zero, which denotes an absent version
+//     in IndexVersionState and is never a stored reverse-map row version
 //   - ErrReverseMapKeyMetadataKey — an invalid metadata key or one with no
 //     terminator. Parsed strings are checked with the same production
 //     invariants as writes. This rejects re-splits whose decoded components
@@ -299,6 +302,9 @@ func ParseReverseMapKey(key []byte) (ParsedReverseMapKey, error) {
 	}
 
 	parsed.Version = binary.BigEndian.Uint32(rest[:4])
+	if parsed.Version == 0 {
+		return ParsedReverseMapKey{}, ErrReverseMapKeyVersion
+	}
 	rest = rest[4:]
 
 	switch parsed.Namespace {
@@ -312,6 +318,8 @@ func ParseReverseMapKey(key []byte) (ParsedReverseMapKey, error) {
 			return ParsedReverseMapKey{}, fmt.Errorf("%w: transaction id must be exactly 8 bytes, got %d", ErrReverseMapKeyEntityID, len(rest))
 		}
 		parsed.EntityID = bytes.Clone(rest)
+	default:
+		return ParsedReverseMapKey{}, fmt.Errorf("%w: %q", ErrReverseMapKeyNamespace, parsed.Namespace)
 	}
 
 	return parsed, nil

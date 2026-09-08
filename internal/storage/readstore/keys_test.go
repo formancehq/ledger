@@ -154,6 +154,18 @@ func TestParseReverseMapKey_TransactionRoundTrip(t *testing.T) {
 	require.Equal(t, "source", got.MetadataKey)
 }
 
+// Mirrored v2 transactions can retain ID zero; only the encoding version is
+// forbidden to be zero, not the entity identifier.
+func TestParseReverseMapKey_TransactionZeroIDWithNonzeroVersion(t *testing.T) {
+	t.Parallel()
+
+	key := TransactionReverseMapKeyV(dal.NewKeyBuilder(), "main", 0, "status", 1)
+	parsed, err := ParseReverseMapKey(key)
+	require.NoError(t, err)
+	require.Equal(t, uint32(1), parsed.Version)
+	require.Equal(t, []byte{0, 0, 0, 0, 0, 0, 0, 0}, parsed.EntityID)
+}
+
 func TestReverseMapPrefixesBoundFieldAndVersion(t *testing.T) {
 	t.Parallel()
 
@@ -325,6 +337,20 @@ func TestParseReverseMapKey_Rejects(t *testing.T) {
 			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "", "wallet_id", 1),
 			wantErr:         ErrReverseMapKeyEntityID,
 			wantErrContains: "empty",
+		},
+		"account version zero must be rejected": {
+			key:     AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "users:1", "status", 0),
+			wantErr: ErrReverseMapKeyVersion,
+		},
+		"transaction version zero must be rejected": {
+			key:     TransactionReverseMapKeyV(dal.NewKeyBuilder(), "main", 0, "status", 0),
+			wantErr: ErrReverseMapKeyVersion,
+		},
+		"embedded field terminator shifting a valid account suffix into version zero": {
+			// The suffix would decode as the valid account "-users:1";
+			// only the impossible zero version distinguishes this corruption.
+			key:     AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "users:1", "statu\x00", 45),
+			wantErr: ErrReverseMapKeyVersion,
 		},
 		"account entity id with an embedded NUL must be rejected": {
 			key:             AccountReverseMapKeyV(dal.NewKeyBuilder(), "main", "us\x00ers", "wallet_id", 1),

@@ -208,7 +208,7 @@ than treating the cheaper purge as proof that divergence is impossible.
 
 What it does **not** cover:
 
-- **The encoding version.** Not validated: `v_current` and `v_pending` legitimately coexist during a rewrite, and stale versions are reclaimed at boot by `purgeOrphanVersions`.
+- **Which nonzero encoding version is live.** Version zero is rejected as malformed; other versions are not compared to the live pair: `v_current` and `v_pending` legitimately coexist during a rewrite, and stale versions are reclaimed at boot by `purgeOrphanVersions`.
 - **Row values.** Only presence is judged, never the encoded value or the entity it points at.
 
 The pass skips — logged at INFO, never reported as a clean result — when the checker has no read-store handle. An empty audit is **not** a skip: the read index folds from the log stream, so a reverse-map row over a zero-log store has nothing behind it.
