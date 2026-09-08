@@ -14,14 +14,12 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/server"
 )
 
-const en1922HelperProcess = "EN1922_HELPER_PROCESS"
+const malformedEnvironmentHelperProcess = "MALFORMED_ENVIRONMENT_HELPER_PROCESS"
 
-// TestMalformedEnvironmentFailsBeforeStartup protects the production
-// main -> service.Execute -> server command boundary reported by the native
-// process-boundary-recovery/malformed-env-falls-back-to-default audit and
-// confirmed as EN-1922.
+// TestMalformedEnvironmentFailsBeforeStartup verifies that the production
+// command rejects malformed environment configuration before service startup.
 func TestMalformedEnvironmentFailsBeforeStartup(t *testing.T) {
-	if os.Getenv(en1922HelperProcess) == "1" {
+	if os.Getenv(malformedEnvironmentHelperProcess) == "1" {
 		cmd := server.NewRootCommand()
 		cmd.SetArgs([]string{"run"})
 		service.Execute(cmd)
@@ -36,7 +34,7 @@ func TestMalformedEnvironmentFailsBeforeStartup(t *testing.T) {
 
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestMalformedEnvironmentFailsBeforeStartup$")
 	cmd.Env = []string{
-		en1922HelperProcess + "=1",
+		malformedEnvironmentHelperProcess + "=1",
 		"GRPC_PORT=not-an-integer",
 	}
 	output, err := cmd.CombinedOutput()
