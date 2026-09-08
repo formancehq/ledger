@@ -1694,7 +1694,7 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 
 	defer func() {
 		if closeHandle {
-			_ = handle.Close()
+			_ = handle.Close() // error paths only; the close error adds nothing to the one returned
 		}
 	}()
 
