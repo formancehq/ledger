@@ -865,18 +865,24 @@ func (b *Builder) loop(ctx context.Context) {
 // only initIndexConfig, LastIndexedSequence, and NewDirectReadHandle are fatal.
 func (b *Builder) bootInit(ctx context.Context) (cursor uint64, pebbleLast uint64, err error) {
 	snapshot := b.readStore.NewSnapshot()
+	closeSnapshot := func(operationErr error) error {
+		closeErr := snapshot.Close()
+		if closeErr != nil {
+			closeErr = fmt.Errorf("closing read-store boot snapshot: %w", closeErr)
+		}
+
+		return errors.Join(operationErr, closeErr)
+	}
 	cursor, err = b.readStore.LastIndexedSequenceFrom(snapshot)
 	if err != nil {
-		_ = snapshot.Close()
-
-		return 0, 0, fmt.Errorf("reading last indexed sequence: %w", err)
+		return 0, 0, closeSnapshot(fmt.Errorf("reading last indexed sequence: %w", err))
 	}
 	if err := b.loadLedgerHistory(snapshot); err != nil {
-		_ = snapshot.Close()
-
-		return 0, 0, fmt.Errorf("reading ledger history state: %w", err)
+		return 0, 0, closeSnapshot(fmt.Errorf("reading ledger history state: %w", err))
 	}
-	_ = snapshot.Close()
+	if err := closeSnapshot(nil); err != nil {
+		return 0, 0, err
+	}
 	if cursor == 0 && len(b.ledgerHistory) != 0 {
 		return 0, 0, errors.New("invariant: ledger history state exists while indexbuilder cursor is zero")
 	}

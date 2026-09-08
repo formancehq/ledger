@@ -382,6 +382,28 @@ func TestHandleCreatedIndexLogMissingHistoryFailsLoudly(t *testing.T) {
 	b.rollbackFoldBatch()
 }
 
+func TestHandleCreatedIndexLogRejectsInvalidStateAndMissingBatch(t *testing.T) {
+	t.Parallel()
+
+	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	t.Run("invalid state", func(t *testing.T) {
+		t.Parallel()
+
+		b := newTestBuilderWithStore(t)
+		seedCachedLedgerHistory(b, "ledger", ledgerHistoryUnknown)
+		err := b.handleCreatedIndexLog("ledger", &commonpb.CreatedIndexLog{Id: id})
+		require.ErrorContains(t, err, "invalid history state")
+	})
+	t.Run("missing batch", func(t *testing.T) {
+		t.Parallel()
+
+		b := newTestBuilderWithStore(t)
+		seedCachedLedgerHistory(b, "ledger", ledgerHistoryEmpty)
+		err := b.handleCreatedIndexLog("ledger", &commonpb.CreatedIndexLog{Id: id})
+		require.ErrorContains(t, err, "without an active readstore batch")
+	})
+}
+
 func TestLedgerHistoryRestartKeepsEmptyIndexLive(t *testing.T) {
 	t.Parallel()
 
@@ -477,6 +499,263 @@ func TestLoadLedgerHistoryRejectsUnknownState(t *testing.T) {
 	require.ErrorContains(t, err, "unknown value 99")
 }
 
+func TestBootInitRejectsUnknownLedgerHistoryState(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	wb := readstore.NewWriteBatch()
+	batch := b.readStore.NewBatch()
+	wb.Init(batch)
+	require.NoError(t, wb.WriteLedgerHistoryState(dal.NewKeyBuilder(), "corrupt", 99))
+	require.NoError(t, wb.Flush())
+
+	_, _, err := b.bootInit(context.Background())
+	require.ErrorContains(t, err, "unknown value 99")
+}
+
+func TestBootInitRejectsHistoryWithoutProgress(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	persistLedgerHistory(t, b, "ghost", ledgerHistoryEmpty)
+
+	_, _, err := b.bootInit(context.Background())
+	require.ErrorContains(t, err, "history state exists while indexbuilder cursor is zero")
+}
+
+func TestLedgerHistoryInvariantFailures(t *testing.T) {
+	t.Parallel()
+
+	controlPayload := func() *commonpb.LedgerLogPayload {
+		return &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_FillGap{
+			FillGap: &commonpb.FilledGapLog{},
+		}}
+	}
+	tests := []struct {
+		name  string
+		setup func(*Builder)
+		run   func(*Builder) error
+		want  string
+	}{
+		{
+			name: "create with empty name",
+			run:  func(b *Builder) error { return b.observeCreatedLedger("") },
+			want: "empty ledger name",
+		},
+		{
+			name:  "duplicate create",
+			setup: func(b *Builder) { seedCachedLedgerHistory(b, "ledger", ledgerHistoryEmpty) },
+			run:   func(b *Builder) error { return b.observeCreatedLedger("ledger") },
+			want:  "history state already exists",
+		},
+		{
+			name: "create without batch",
+			run:  func(b *Builder) error { return b.observeCreatedLedger("ledger") },
+			want: "without an active readstore batch",
+		},
+		{
+			name: "unclassified payload",
+			run: func(b *Builder) error {
+				return b.observeLedgerPayload("ledger", &commonpb.LedgerLogPayload{})
+			},
+			want: "unclassified ledger log payload",
+		},
+		{
+			name: "payload without tracker",
+			run:  func(b *Builder) error { return b.observeLedgerPayload("ledger", controlPayload()) },
+			want: "no EMPTY/NON_EMPTY history state",
+		},
+		{
+			name:  "payload with invalid tracker",
+			setup: func(b *Builder) { seedCachedLedgerHistory(b, "ledger", ledgerHistoryUnknown) },
+			run:   func(b *Builder) error { return b.observeLedgerPayload("ledger", controlPayload()) },
+			want:  "invalid history state",
+		},
+		{
+			name:  "payload without batch",
+			setup: func(b *Builder) { seedCachedLedgerHistory(b, "ledger", ledgerHistoryEmpty) },
+			run:   func(b *Builder) error { return b.observeLedgerPayload("ledger", controlPayload()) },
+			want:  "without an active readstore batch",
+		},
+		{
+			name:  "delete without batch",
+			setup: func(b *Builder) { seedCachedLedgerHistory(b, "ledger", ledgerHistoryEmpty) },
+			run:   func(b *Builder) error { return b.observeDeletedLedger("ledger") },
+			want:  "without an active readstore batch",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			b := newTestBuilderWithStore(t)
+			if test.setup != nil {
+				test.setup(b)
+			}
+
+			err := test.run(b)
+			require.ErrorContains(t, err, test.want)
+		})
+	}
+}
+
+func TestDropLedgerBuilderStateRollbackRestoresAllState(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	const ledger = "rollback"
+	config := newLedgerIndexConfig()
+	versions := map[string]readstore.IndexVersionState{"index": {CurrentVersion: 1, HighWater: 1}}
+	unresolved := map[string]*commonpb.Index{"index": {Ledger: ledger}}
+	targetBackfill := &backfillTask{ledger: ledger}
+	otherBackfill := &backfillTask{ledger: "other"}
+	targetRewrite := &schemaRewriteTask{ledger: ledger}
+	otherRewrite := &schemaRewriteTask{ledger: "other"}
+	b.indexConfig[ledger] = config
+	b.indexVersions = map[string]map[string]readstore.IndexVersionState{ledger: versions}
+	b.unresolvedIndexes = map[string]map[string]*commonpb.Index{ledger: unresolved}
+	b.backfillTasks = []*backfillTask{targetBackfill, otherBackfill}
+	b.schemaRewriteTasks = []*schemaRewriteTask{targetRewrite, otherRewrite}
+	b.nextBackfillIdx = 1
+
+	batch := b.readStore.NewBatch()
+	b.initFoldBatch(batch)
+	b.dropLedgerBuilderState(ledger)
+	assert.NotContains(t, b.indexConfig, ledger)
+	assert.NotContains(t, b.indexVersions, ledger)
+	assert.NotContains(t, b.unresolvedIndexes, ledger)
+	assert.Equal(t, []*backfillTask{otherBackfill}, b.backfillTasks)
+	assert.Equal(t, []*schemaRewriteTask{otherRewrite}, b.schemaRewriteTasks)
+	assert.Zero(t, b.nextBackfillIdx)
+
+	require.NoError(t, batch.Cancel())
+	b.wb.Reset()
+	b.rollbackFoldBatch()
+	assert.Same(t, config, b.indexConfig[ledger])
+	assert.Equal(t, versions, b.indexVersions[ledger])
+	assert.Equal(t, unresolved, b.unresolvedIndexes[ledger])
+	assert.Equal(t, []*backfillTask{targetBackfill, otherBackfill}, b.backfillTasks)
+	assert.Equal(t, []*schemaRewriteTask{targetRewrite, otherRewrite}, b.schemaRewriteTasks)
+	assert.Equal(t, 1, b.nextBackfillIdx)
+}
+
+func TestTombstoneVersionStateRollback(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		withPrior bool
+	}{
+		{name: "restores prior version", withPrior: true},
+		{name: "removes newly inserted version", withPrior: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			b := newTestBuilderWithStore(t)
+			const ledger = "ledger"
+			const canonical = "index"
+			prior := readstore.IndexVersionState{CurrentVersion: 2, HighWater: 3}
+			if test.withPrior {
+				b.putVersionState(ledger, canonical, prior)
+			}
+
+			batch := b.readStore.NewBatch()
+			b.initFoldBatch(batch)
+			require.NoError(t, b.tombstoneVersionState(ledger, canonical))
+			_, exists := b.versionStateFor(ledger, canonical)
+			require.True(t, exists)
+
+			require.NoError(t, batch.Cancel())
+			b.wb.Reset()
+			b.rollbackFoldBatch()
+			got, exists := b.versionStateFor(ledger, canonical)
+			if test.withPrior {
+				require.True(t, exists)
+				assert.Equal(t, prior, got)
+			} else {
+				assert.False(t, exists)
+				assert.NotContains(t, b.indexVersions, ledger)
+			}
+		})
+	}
+}
+
+func TestProcessLogsRejectsMalformedLedgerLifecycle(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		log  *commonpb.Log
+		want string
+	}{
+		{
+			name: "apply without tracker",
+			log: ledgerPayloadLog(1, "missing", 1, &commonpb.LedgerLogPayload_FillGap{
+				FillGap: &commonpb.FilledGapLog{},
+			}, 10),
+			want: "no EMPTY/NON_EMPTY history state",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			b := newTestBuilderWithStore(t)
+			b.batchSize = DefaultBatchSize
+			b.notifications = signal.NewNotifications()
+			writeLogToFSM(t, b, test.log)
+
+			cursor, err := b.processLogs(context.Background(), 0, time.Time{})
+			require.ErrorContains(t, err, test.want)
+			assert.Zero(t, cursor)
+		})
+	}
+}
+
+func TestProcessLogsAcceptsRepeatedDeleteLedger(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.batchSize = DefaultBatchSize
+	b.notifications = signal.NewNotifications()
+	const ledger = "delete-me-ledger"
+
+	writeLogToFSM(t, b, &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
+		CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+	}}})
+	for sequence := uint64(2); sequence <= 3; sequence++ {
+		writeLogToFSM(t, b, &commonpb.Log{Sequence: sequence, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{
+			DeleteLedger: &commonpb.DeletedLedgerLog{Name: ledger},
+		}}})
+	}
+
+	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), cursor)
+	_, exists := b.historyStateFor(ledger)
+	require.False(t, exists)
+}
+
+func TestIndexLogEntryRejectsMalformedDelete(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	cfg := newLedgerIndexConfig()
+	err := b.indexLogEntry(cfg, &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{
+		DeleteLedger: nil,
+	}}}, nil)
+	require.ErrorContains(t, err, "nil DeletedLedger payload")
+
+	err = b.indexLogEntry(cfg, &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{
+		DeleteLedger: &commonpb.DeletedLedgerLog{Name: "ledger"},
+	}}}, nil)
+	require.ErrorContains(t, err, "without an active readstore batch")
+}
+
 func TestReplayValidationRejectsTrackerForInactiveLedger(t *testing.T) {
 	t.Parallel()
 
@@ -486,6 +765,16 @@ func TestReplayValidationRejectsTrackerForInactiveLedger(t *testing.T) {
 
 	err := b.validateHistoryReplayState()
 	require.ErrorContains(t, err, "inactive ledger \"ghost\"")
+}
+
+func TestReplayValidationRejectsActiveLedgerWithoutTracker(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.indexConfig["active"] = newLedgerIndexConfig()
+
+	err := b.validateHistoryReplayState()
+	require.ErrorContains(t, err, "active ledger \"active\" has no EMPTY/NON_EMPTY history state")
 }
 
 func TestDeleteRecreateResetsLedgerHistoryIncarnation(t *testing.T) {

@@ -2489,3 +2489,60 @@ func TestMetadataBackfillSkipsForeignLedgerLogs(t *testing.T) {
 	foreignRmap := testReverseMapNamespacePrefix(dal.NewKeyBuilder(), foreignLedger, readstore.NamespaceAccount)
 	assert.Zero(t, countKeysWithPrefix(t, b.readStore, foreignRmap), "foreign ledger must have no rmap rows")
 }
+
+func TestPurgeBackfillTaskGenerationRejectsInvalidTasks(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		task *backfillTask
+		want string
+	}{
+		{name: "nil task", want: "without an active task batch"},
+		{
+			name: "unsupported transaction builtin",
+			task: &backfillTask{ledger: "ledger", index: indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex(99))},
+			want: "unsupported transaction backfill index",
+		},
+		{
+			name: "unsupported account builtin",
+			task: &backfillTask{ledger: "ledger", index: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex(99))},
+			want: "unsupported account backfill index",
+		},
+		{
+			name: "unsupported log builtin",
+			task: &backfillTask{ledger: "ledger", index: indexes.LogBuiltinID(commonpb.LogBuiltinIndex(99))},
+			want: "unsupported log backfill index",
+		},
+		{
+			name: "nil metadata index",
+			task: &backfillTask{ledger: "ledger", index: &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{}}},
+			want: "nil metadata backfill index",
+		},
+		{
+			name: "unsupported metadata target",
+			task: &backfillTask{ledger: "ledger", index: indexes.MetadataID(commonpb.TargetType(99), "key")},
+			want: "unsupported metadata backfill target",
+		},
+		{
+			name: "unsupported kind",
+			task: &backfillTask{ledger: "ledger", index: &commonpb.IndexID{}},
+			want: "unsupported backfill index kind",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			b := newTestBuilderWithStore(t)
+			batch := b.readStore.NewBatch()
+			b.initFoldBatch(batch)
+			err := b.purgeBackfillTaskGeneration(test.task)
+			require.ErrorContains(t, err, test.want)
+			require.NoError(t, batch.Cancel())
+			b.wb.Reset()
+			b.rollbackFoldBatch()
+		})
+	}
+}

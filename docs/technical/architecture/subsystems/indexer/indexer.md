@@ -101,7 +101,7 @@ the exact log range.
 
 The generated `LedgerLogCategoryOf` table classifies every ledger-local payload. `CreateLedger` writes `EMPTY`; the first `HISTORY` payload writes `NON_EMPTY`; CONTROL payloads do not change it; and `DeleteLedger` removes the incarnation's tracker and local config/version/tasks. Unknown payload classes, duplicate creates without a delete, missing tracker state, and unknown persisted state bytes fail loudly.
 
-At `CreateIndex`, `EMPTY` promotes a fresh version directly (`current > 0`, `pending = 0`) with no task or cursor. `NON_EMPTY` follows the normal backfill path. The decision therefore survives arbitrary proposal boundaries and restart. For `log_date`, which indexes CONTROL too, the live fold pre-populates date rows while `EMPTY`; the first HISTORY deletes those speculative rows if the date index is not active.
+At `CreateIndex`, `EMPTY` promotes a fresh version directly (`current > 0`, `pending = 0`) with no task or cursor. `NON_EMPTY` follows the normal backfill path. The decision therefore survives arbitrary proposal boundaries and restart. For `log_date`, which indexes CONTROL too, the live fold pre-populates date rows while `EMPTY`; the first HISTORY deletes those speculative rows if the date index is not active. If the incarnation stays `EMPTY` and never declares `log_date`, the speculative rows remain by design so a later direct promotion can include every earlier CONTROL log; they are bounded by that incarnation's CONTROL-log count and disappear on first HISTORY or deletion.
 
 ## Handlers
 

@@ -1,8 +1,11 @@
 package readstore_test
 
 import (
+	"errors"
+	"io"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -64,4 +67,63 @@ func TestLedgerHistoryStateRejectsMalformedValue(t *testing.T) {
 	_, err = readstore.ReadAllLedgerHistoryStatesFrom(snapshot)
 	require.ErrorContains(t, err, "got 2 bytes, want 1")
 	require.NoError(t, snapshot.Close())
+}
+
+type failingLedgerHistoryReader struct {
+	err error
+}
+
+func (r failingLedgerHistoryReader) Get([]byte) ([]byte, io.Closer, error) {
+	return nil, nil, r.err
+}
+
+func (r failingLedgerHistoryReader) NewIter(*pebble.IterOptions) (*pebble.Iterator, error) {
+	return nil, r.err
+}
+
+func TestLedgerHistoryStatePropagatesIteratorCreationError(t *testing.T) {
+	t.Parallel()
+
+	want := errors.New("iterator unavailable")
+	_, err := readstore.ReadAllLedgerHistoryStatesFrom(failingLedgerHistoryReader{err: want})
+	require.ErrorIs(t, err, want)
+}
+
+func TestLedgerHistoryStateRejectsMalformedKeys(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		suffix []byte
+		want   string
+	}{
+		{name: "short suffix", suffix: []byte("short"), want: "got 5-byte suffix"},
+		{name: "empty ledger", suffix: make([]byte, dal.LedgerNameFixedSize), want: "empty ledger name"},
+		{name: "embedded NUL", suffix: func() []byte {
+			suffix := make([]byte, dal.LedgerNameFixedSize)
+			copy(suffix, []byte("bad\x00name"))
+
+			return suffix
+		}(), want: "embedded NUL byte"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			store, err := readstore.New(t.TempDir(), discardLogger{}, readstore.DefaultConfig())
+			require.NoError(t, err)
+			defer func() { _ = store.Close() }()
+
+			key := append(append([]byte{}, readstore.LedgerHistoryStatePrefix()...), test.suffix...)
+			batch := store.NewBatch()
+			require.NoError(t, batch.SetBytes(key, []byte{1}))
+			require.NoError(t, batch.Commit())
+
+			snapshot := store.NewSnapshot()
+			_, err = readstore.ReadAllLedgerHistoryStatesFrom(snapshot)
+			require.ErrorContains(t, err, test.want)
+			require.NoError(t, snapshot.Close())
+		})
+	}
 }
