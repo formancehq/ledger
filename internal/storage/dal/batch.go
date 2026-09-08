@@ -128,22 +128,27 @@ func (b *WriteSession) Cancel() error {
 // Pebble batch is finalised exactly once: it is closed and released back to
 // Pebble's pool (or the release is deferred while the WAL commit pipeline still
 // holds a reference under NoSync), and the session enters the committed terminal
-// state. On failure the batch remains owned by the session so the caller can
-// Cancel it to release resources; a failed commit is not described as rolled
-// back.
+// state. If the underlying commit fails, the batch remains owned by the session
+// so the caller can Cancel it to release resources; a failed commit is not
+// described as rolled back. If the batch cannot be finalised after a successful
+// commit, the error is returned and the session still enters the committed
+// terminal state, since the data was already applied.
 func (b *WriteSession) Commit() error {
 	if err := b.checkActive(); err != nil {
 		return err
 	}
 
-	err := b.batch.Commit(pebble.NoSync)
-	if err != nil {
+	if err := b.batch.Commit(pebble.NoSync); err != nil {
 		return fmt.Errorf("committing write session: %w", err)
 	}
 
 	b.committed = true
 
-	_ = b.batch.Close()
+	if err := b.batch.Close(); err != nil {
+		b.batch = nil
+
+		return fmt.Errorf("finalizing write session batch: %w", err)
+	}
 	b.batch = nil
 
 	return nil
