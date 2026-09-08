@@ -115,17 +115,25 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 
-	// A gRPC InvalidArgument status is a caller error, not a server fault, and
-	// must not degrade to a 500. The audit-filter compiler (query.CompileAuditFilter,
+	// Statuses with nothing typed left to recover. A business error forwarded
+	// from the leader no longer reaches here: grpcerr.NewConn rebuilds it into a
+	// Describable at the transport seam (see bootstrap.getLeaderCtrl), so it is
+	// caught by the branch above with its real reason and status. What is left
+	// are statuses that never carried an ErrorInfo.
+	//
+	// A codes.InvalidArgument is a caller error, not a server fault, and must
+	// not degrade to a 500. The audit-filter compiler (query.CompileAuditFilter,
 	// shared with the gRPC surface) rejects filters that parse but are not
-	// audit-supported — `not outcome == failure`, a non-audit condition, an unknown
-	// field — as codes.InvalidArgument; surface that as a 400. A codes.Unavailable
-	// status is a retry-now transient (a forwarded stream torn down mid-transfer,
-	// a peer connection missing from the pool) and gets the same 503 + Retry-After
-	// contract as the KindUnavailable Describables above. Only these two codes are
-	// translated; the rest keep the generic 500 fallthrough deliberately, since no
-	// other HTTP handler is expected to produce them and we do not want to leak
-	// arbitrary gRPC semantics.
+	// audit-supported — `not outcome == failure`, a non-audit condition, an
+	// unknown field — as codes.InvalidArgument; surface that as a 400. A
+	// codes.Unavailable status is a retry-now transient (a forwarded stream torn
+	// down mid-transfer, a peer connection missing from the pool, no leader yet)
+	// and gets the same 503 + Retry-After contract as the KindUnavailable
+	// Describables above; that class has no reason code to recover, which is why
+	// the seam leaves it alone.
+	//
+	// Only these two codes are translated; the rest keep the generic 500
+	// fallthrough deliberately, since they denote genuine server faults.
 	if st, ok := status.FromError(err); ok {
 		switch st.Code() {
 		case codes.InvalidArgument:

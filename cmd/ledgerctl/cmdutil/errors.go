@@ -6,10 +6,10 @@ import (
 	"strings"
 
 	"github.com/pterm/pterm"
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
@@ -34,7 +34,7 @@ func Displayed(err error) error {
 // For other gRPC errors, it uses a human-friendly message based on the status code.
 // For non-gRPC errors, it wraps the original error.
 func FormatGRPCError(context string, err error) error {
-	bizErr := BusinessErrorFromGRPC(err)
+	bizErr := grpcerr.BusinessErrorFromGRPC(err)
 	if bizErr != nil {
 		msg := fmt.Sprintf("%s: %s", context, bizErr.Err.Error())
 		pterm.Error.Println(msg)
@@ -132,64 +132,5 @@ func printErrorDetails(err error) {
 		pterm.Println()
 		pterm.Printf("  Index: %s\n", pterm.Yellow(meta["index"]))
 		pterm.Println(pterm.Gray("  hint: wait for the index to finish building, check status with 'ledgerctl indexes list'"))
-	}
-}
-
-// BusinessErrorFromGRPC extracts a BusinessError from a gRPC status error.
-// Returns nil if the error is not a business error (no ErrorInfo with
-// domain "ledger"). The returned BusinessError.Err is a *domain.RemoteError
-// transporting the wire contract (Reason, Metadata, Message) plus the
-// Kind derived from the gRPC status code. New server-side error types
-// reach this code path automatically — no client-side switch to extend.
-func BusinessErrorFromGRPC(err error) *domain.BusinessError {
-	st := status.Convert(err)
-	if st.Code() == codes.OK {
-		return nil
-	}
-
-	for _, detail := range st.Details() {
-		info, ok := detail.(*errdetails.ErrorInfo)
-		if !ok || info.GetDomain() != "ledger" || info.GetReason() == "" {
-			continue
-		}
-
-		return &domain.BusinessError{
-			Err: &domain.RemoteError{
-				KindValue:   grpcCodeToKind(st.Code()),
-				ReasonValue: info.GetReason(),
-				Message:     st.Message(),
-				Meta:        info.GetMetadata(),
-			},
-		}
-	}
-
-	return nil
-}
-
-// grpcCodeToKind reverses the server-side kindToGRPCCode mapping. Two Kinds
-// (KindConflict, KindPrecondition) collapse to codes.FailedPrecondition on
-// the wire; the client cannot distinguish them post-fact, so we conservatively
-// pick KindPrecondition (the more common semantic). Clients that need the
-// distinction should pattern-match on Reason instead.
-func grpcCodeToKind(c codes.Code) domain.ErrorKind {
-	switch c {
-	case codes.InvalidArgument:
-		return domain.KindValidation
-	case codes.NotFound:
-		return domain.KindNotFound
-	case codes.AlreadyExists:
-		return domain.KindAlreadyExists
-	case codes.FailedPrecondition:
-		return domain.KindPrecondition
-	case codes.ResourceExhausted:
-		return domain.KindResourceExhausted
-	case codes.Unavailable:
-		return domain.KindUnavailable
-	case codes.Unauthenticated:
-		return domain.KindUnauthenticated
-	case codes.PermissionDenied:
-		return domain.KindPermissionDenied
-	default:
-		return domain.KindInternal
 	}
 }

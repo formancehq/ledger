@@ -112,6 +112,56 @@ Every path logs the raw cause **server-side** with a `correlation_id` field. Whe
 
 The correlation ID reuses the request's `X-Request-Id` (Chi `RequestID`) when it is valid, so operators can grep the server logs for the exact ID a caller reports. Empty IDs, values longer than 128 bytes, invalid UTF-8, and values containing control characters are replaced with a generated token before they reach logs or responses. Adding a new persisted error path that reaches `handleError`'s fallthrough inherits this sanitization automatically; do not add a branch that serializes a raw non-domain error into the response body.
 
+### Forwarded Writes and the Transport Seam
+
+Every REST write is routed to the Raft leader. When the node serving the HTTP
+request is not the leader, `RoutedController.getLeaderCtrl`
+(`internal/bootstrap/controller_routed.go`) forwards it over gRPC, so the FSM
+that produces the business error runs on a different process from the handler
+that must map it to a status code.
+
+The leader serialises the error faithfully — the kind selects the gRPC status
+code and the reason plus metadata ride in an `errdetails.ErrorInfo` — but a
+`*status.Error` is not a `domain.Describable`. Without a conversion step,
+`handleError` and the bulk per-element mapper, which both dispatch on that
+contract, fall through to the sanitizer: the caller receives
+`500 INTERNAL_ERROR` with a correlation ID for what is a plain 4xx, and the
+stable `errorCode` and the human-readable message are both lost (EN-1636).
+
+`grpcerr.NewConn` (`internal/adapter/grpcerr`) decorates the leader connection
+so that reconstruction happens once, at the transport seam:
+
+- a status carrying a ledger-domain `ErrorInfo` becomes a
+  `*domain.BusinessError` wrapping a `*domain.RemoteError`;
+- a bare `codes.NotFound` becomes a `*commonpb.NotFoundError`;
+- `codes.Canceled`, `Unavailable`, `Internal`, `Unknown` and `DeadlineExceeded`
+  are left untouched — `Canceled` because the cursor layer keys end-of-stream
+  detection off it, `Unavailable` because `handleError` already answers it with
+  `503` + `Retry-After`, and the rest because they denote server faults with
+  nothing typed to restore.
+
+The HTTP layer needs no branch of its own: both mappers already dispatch on
+`Describable`, so a follower now answers with the same status and `errorCode`
+as the leader, and the bulk path is repaired by the same change.
+
+The decorator wraps the connection rather than the generated client's 32
+methods, because six list methods surface the leader's error from a later
+`Recv()` — after the method itself already returned `nil` — and because every
+method generated in future routes through `Invoke` or `NewStream` regardless.
+
+**Kind derivation is reason-first.** `grpcerr` derives the `ErrorKind` from the
+reason when this build's `ErrorReason` enum knows it, and falls back to the
+status code otherwise. Neither source suffices alone: `kindToGRPCCode` sends
+both `KindConflict` and `KindPrecondition` as `codes.FailedPrecondition`, so
+code-only derivation answers `400` for a `KindConflict` reason (such as
+`LEDGER_DELETED`) where the leader answers `409`; and reason-only derivation
+collapses a reason from a newer server to `KindInternal`, turning a caller
+mistake into a `500`.
+
+Forwarded **reads** cross the same seam, but only while a node is syncing
+(`readCtrl` falls back to the leader on `ErrNodeSyncing`/`ErrNotLeader`), so
+they are not reachable deterministically from a healthy cluster.
+
 ### Retry-After Header
 
 The `Retry-After` header is used to indicate when a client should retry a request after receiving a `503 Service Unavailable` response. Every `503` the adapter emits carries it — `503` is by definition the retry-now class.

@@ -486,12 +486,15 @@ func TestListSigningKeys_StreamError(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	mock.EXPECT().ListSigningKeys(gomock.Any(), gomock.Any()).Return(nil, errors.New("keys error"))
+	wantErr := errors.New("keys error")
+	mock.EXPECT().ListSigningKeys(gomock.Any(), gomock.Any()).Return(nil, wantErr)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ListSigningKeys(context.Background())
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "gRPC ListSigningKeys call failed")
+	require.ErrorIs(t, err, wantErr)
+	require.Equal(t, wantErr.Error(), err.Error(),
+		"the transport must not prefix the error: status.FromError rewrites the status message from err.Error(), so a prefix leaks to the client (EN-1636)")
 }
 
 func TestGetMetadataSchemaStatus_Success(t *testing.T) {
@@ -579,12 +582,15 @@ func TestAnalyzeAccounts_StreamInitError(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	mock.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any()).Return(nil, errors.New("stream init error"))
+	wantErr := errors.New("stream init error")
+	mock.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any()).Return(nil, wantErr)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.AnalyzeAccounts(context.Background(), "ledger1", 5, nil)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "gRPC AnalyzeAccounts stream")
+	require.ErrorIs(t, err, wantErr)
+	require.Equal(t, wantErr.Error(), err.Error(),
+		"the transport must not prefix the error: status.FromError rewrites the status message from err.Error(), so a prefix leaks to the client (EN-1636)")
 }
 
 func TestAnalyzeAccounts_StreamRecvError(t *testing.T) {
@@ -592,13 +598,16 @@ func TestAnalyzeAccounts_StreamRecvError(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	stream := newRecvStream[servicepb.AnalyzeAccountsEvent](ctrl, nil, errors.New("recv error"))
+	wantErr := errors.New("recv error")
+	stream := newRecvStream[servicepb.AnalyzeAccountsEvent](ctrl, nil, wantErr)
 	mock.EXPECT().AnalyzeAccounts(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.AnalyzeAccounts(context.Background(), "ledger1", 5, nil)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "receiving AnalyzeAccounts event")
+	require.ErrorIs(t, err, wantErr)
+	require.Equal(t, wantErr.Error(), err.Error(),
+		"the transport must not prefix the error: status.FromError rewrites the status message from err.Error(), so a prefix leaks to the client (EN-1636)")
 }
 
 func TestAnalyzeAccounts_EOFWithoutResult(t *testing.T) {
@@ -671,12 +680,15 @@ func TestAnalyzeTransactions_StreamInitError(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	mock.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any()).Return(nil, errors.New("stream init error"))
+	wantErr := errors.New("stream init error")
+	mock.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any()).Return(nil, wantErr)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.AnalyzeTransactions(context.Background(), "ledger1", 3, nil)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "gRPC AnalyzeTransactions stream")
+	require.ErrorIs(t, err, wantErr)
+	require.Equal(t, wantErr.Error(), err.Error(),
+		"the transport must not prefix the error: status.FromError rewrites the status message from err.Error(), so a prefix leaks to the client (EN-1636)")
 }
 
 func TestAnalyzeTransactions_StreamRecvError(t *testing.T) {
@@ -684,13 +696,16 @@ func TestAnalyzeTransactions_StreamRecvError(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	stream := newRecvStream[servicepb.AnalyzeTransactionsEvent](ctrl, nil, errors.New("recv error"))
+	wantErr := errors.New("recv error")
+	stream := newRecvStream[servicepb.AnalyzeTransactionsEvent](ctrl, nil, wantErr)
 	mock.EXPECT().AnalyzeTransactions(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.AnalyzeTransactions(context.Background(), "ledger1", 3, nil)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "receiving AnalyzeTransactions event")
+	require.ErrorIs(t, err, wantErr)
+	require.Equal(t, wantErr.Error(), err.Error(),
+		"the transport must not prefix the error: status.FromError rewrites the status message from err.Error(), so a prefix leaks to the client (EN-1636)")
 }
 
 func TestAnalyzeTransactions_EOFWithoutResult(t *testing.T) {
@@ -873,12 +888,15 @@ func TestListNumscripts_StreamInitError(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	mock.EXPECT().ListNumscripts(gomock.Any(), gomock.Any()).Return(nil, errors.New("stream error"))
+	wantErr := errors.New("stream error")
+	mock.EXPECT().ListNumscripts(gomock.Any(), gomock.Any()).Return(nil, wantErr)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ListNumscripts(context.Background(), "ledger1")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "gRPC ListNumscripts call failed")
+	require.ErrorIs(t, err, wantErr)
+	require.Equal(t, wantErr.Error(), err.Error(),
+		"the transport must not prefix the error: status.FromError rewrites the status message from err.Error(), so a prefix leaks to the client (EN-1636)")
 }
 
 func TestListNumscripts_StreamRecvError(t *testing.T) {
@@ -886,13 +904,16 @@ func TestListNumscripts_StreamRecvError(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	stream := newRecvStream[commonpb.NumscriptInfo](ctrl, nil, errors.New("recv failed"))
+	wantErr := errors.New("recv failed")
+	stream := newRecvStream[commonpb.NumscriptInfo](ctrl, nil, wantErr)
 	mock.EXPECT().ListNumscripts(gomock.Any(), gomock.Any()).Return(stream, nil)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.ListNumscripts(context.Background(), "ledger1")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "receiving numscript")
+	require.ErrorIs(t, err, wantErr)
+	require.Equal(t, wantErr.Error(), err.Error(),
+		"the transport must not prefix the error: status.FromError rewrites the status message from err.Error(), so a prefix leaks to the client (EN-1636)")
 }
 
 func TestListNumscripts_EmptyStream(t *testing.T) {
@@ -931,12 +952,15 @@ func TestApply_Error(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	mock.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, errors.New("apply failed"))
+	wantErr := errors.New("apply failed")
+	mock.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, wantErr)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.Apply(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{}))
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "gRPC call failed")
+	require.ErrorIs(t, err, wantErr)
+	require.Equal(t, wantErr.Error(), err.Error(),
+		"the transport must not prefix the error: status.FromError rewrites the status message from err.Error(), so a prefix leaks to the client (EN-1636)")
 }
 
 // TestApply_ForwardsCallerSnapshot verifies that when a follower forwards an

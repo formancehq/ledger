@@ -1247,16 +1247,25 @@ func (e *ErrTransientAccountNonZero) joinedAccounts() string {
 	return strings.Join(parts, ", ")
 }
 
-// RemoteError is the client-side Describable produced by cmdutil's
-// BusinessErrorFromGRPC: it transports the wire contract (Reason + Metadata
-// + Message + the gRPC-derived Kind) without committing the client to any
-// specific Go type. Replaces the 14-case hand-maintained reconstruction
-// switch — new server-side error types automatically reach the CLI with
-// full structured info (Reason, all Metadata keys, original Message).
+// RemoteError is the Describable produced by grpcerr.BusinessErrorFromGRPC:
+// it transports the wire contract (Reason + Metadata + Message + the
+// wire-derived Kind) without committing the receiver to any specific Go type.
+// Replaces the 14-case hand-maintained reconstruction switch — new
+// server-side error types automatically reach the receiver with full
+// structured info (Reason, all Metadata keys, original Message).
 //
-// Server code must NOT use RemoteError; it is the boundary representation
-// for errors arriving FROM the network. Use the specific Describable types
-// in this file on the server side.
+// RemoteError represents an error that arrived FROM the network, and only
+// that. Two boundaries legitimately produce one: the CLI decoding a status
+// from the server, and a follower decoding a status from the leader while
+// forwarding a request (internal/adapter/grpcerr, applied at
+// bootstrap.getLeaderCtrl). The second is server code — being server code is
+// not the test; receiving the error off the wire is.
+//
+// It must never be RAISED by admission, the FSM or order processing, and must
+// never be persisted or hashed. Those paths use the specific Describable types
+// in this file, whose reasons stay enum-bound for the audit-failure freeze and
+// whose Error() strings are hashed into AuditFailure — a message that varies
+// with a peer's build would break the chain.
 type RemoteError struct {
 	KindValue   ErrorKind
 	ReasonValue string
