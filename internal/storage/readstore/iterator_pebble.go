@@ -784,8 +784,156 @@ func (it *PebbleReverseTxIterator) extractTxID(key []byte) []byte {
 	return key[it.idOffset : it.idOffset+8]
 }
 
+// LedgerLogRangeIterator iterates over ledger-local log IDs within a [min, max)
+// half-open range of the ledger logs read index.
+// Keys: [0x09][ledger 64B][logID_BE(8B)], one key per log ID, physically
+// ordered by log ID — so the leaf streams IDs in ascending order without
+// materializing or sorting the range.
+type LedgerLogRangeIterator struct {
+	iter       *pebble.Iterator
+	prefix     []byte // [0x09][ledger 64B]
+	lowerBound []byte // prefix + min logID (or prefix when unbounded below)
+	idOffset   int    // len(prefix)
+
+	current   []byte
+	started   bool
+	exhausted bool
+	floor     seekFloor
+}
+
+// NewLedgerLogRangeIterator creates a bounded forward iterator over log IDs.
+// lower and upper are the 8-byte big-endian ID bounds (nil when absent); the
+// returned iterator covers the half-open range [lower, upper). An absent upper
+// bound is closed by the successor of the ledger-log prefix (not prefix +
+// eight 0xff bytes), so a MaxUint64 log ID stays included.
+func NewLedgerLogRangeIterator(reader dal.PebbleReader, kb *dal.KeyBuilder, ledgerName string, lower, upper []byte) (*LedgerLogRangeIterator, error) {
+	prefix := LedgerLogPrefix(kb, ledgerName)
+
+	lowerBound := make([]byte, len(prefix)+len(lower))
+	copy(lowerBound, prefix)
+	copy(lowerBound[len(prefix):], lower)
+
+	var upperBound []byte
+	if upper != nil {
+		upperBound = make([]byte, len(prefix)+len(upper))
+		copy(upperBound, prefix)
+		copy(upperBound[len(prefix):], upper)
+	} else {
+		upperBound = IncrementBytes(prefix)
+	}
+
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &LedgerLogRangeIterator{
+		iter:       iter,
+		prefix:     prefix,
+		lowerBound: lowerBound,
+		idOffset:   len(prefix),
+	}, nil
+}
+
+func (it *LedgerLogRangeIterator) Next() bool {
+	if it.exhausted {
+		return false
+	}
+
+	if !it.started {
+		it.started = true
+		if !it.iter.SeekGE(it.lowerBound) {
+			it.exhausted = true
+
+			return false
+		}
+
+		if entity := it.extractEntity(it.iter.Key()); entity != nil {
+			it.current = copyBytes(entity)
+
+			return true
+		}
+	}
+
+	for it.iter.Next() {
+		if entity := it.extractEntity(it.iter.Key()); entity != nil {
+			it.current = copyBytes(entity)
+
+			return true
+		}
+	}
+
+	it.exhausted = true
+
+	return false
+}
+
+func (it *LedgerLogRangeIterator) Current() []byte { return it.current }
+
+func (it *LedgerLogRangeIterator) SeekGE(target []byte) bool {
+	// A prior failed seek at or below target proves this one empty too.
+	if it.floor.covers(target) {
+		it.exhausted = true
+
+		return false
+	}
+
+	// Absolute reposition: clear the exhausted latch so a re-seek after
+	// exhaustion still finds entities (the body re-seeks from target).
+	it.exhausted = false
+	it.started = true
+
+	seekKey := make([]byte, it.idOffset+len(target))
+	copy(seekKey, it.prefix)
+	copy(seekKey[it.idOffset:], target)
+
+	if !it.iter.SeekGE(seekKey) {
+		it.exhausted = true
+		it.floor.fail(target, it.iter.Error())
+
+		return false
+	}
+
+	entity := it.extractEntity(it.iter.Key())
+	if entity != nil && compareEntities(entity, target) >= 0 {
+		it.current = copyBytes(entity)
+
+		return true
+	}
+
+	it.exhausted = true
+	it.floor.fail(target, it.iter.Error())
+
+	return false
+}
+
+func (it *LedgerLogRangeIterator) Err() error {
+	if it.iter == nil {
+		return nil
+	}
+
+	return it.iter.Error()
+}
+
+func (it *LedgerLogRangeIterator) Close() {
+	if it.iter != nil {
+		_ = it.iter.Close()
+	}
+}
+
+func (it *LedgerLogRangeIterator) extractEntity(key []byte) []byte {
+	if len(key) < it.idOffset+8 {
+		return nil
+	}
+
+	return key[it.idOffset : it.idOffset+8]
+}
+
 // LedgerLogIterator iterates over log IDs from the read index (Pebble).
-// Keys: [0x09][ledger\x00][logID_BE(8B)].
+// Keys: [0x09][ledger 64B][logID_BE(8B)].
 type LedgerLogIterator struct {
 	inner *PrefixIterator
 }

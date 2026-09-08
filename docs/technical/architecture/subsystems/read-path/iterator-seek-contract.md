@@ -39,6 +39,25 @@ every construction site materializes it into a sorted `SliceIterator` before
 composing, and a direct `SeekGE` call fails the query with an invariant
 error.
 
+### Bounded entity-ordered leaves
+
+A leaf whose keys place the entity at a fixed suffix and are physically
+ordered by it — `LedgerLogRangeIterator` — can honour the absolute-seek
+contract *without* materializing. Its Pebble iterator is bounded by the
+half-open `[lower, upper)` range resolved from the compile-time bounds, so
+both the first `Next` and every absolute `SeekGE` observe those bounds:
+`SeekGE(target)` builds `prefix + target`, Pebble clamps the probe into
+`[lower, upper)`, and the emitted entity is the first in-range one `>= target`.
+The floor cache works exactly as on the prefix leaves, and reaching the range's
+last entity (a `MaxUint64` log ID) must not wrap the following `Next` back to
+the smallest ID.
+
+An absent upper bound is closed with the **successor of the ledger-log
+prefix** (`IncrementBytes(prefix)`), not `prefix` plus eight `0xff` bytes: the
+latter would exclude a `MaxUint64` log ID because the upper bound is exclusive.
+A singleton lower bound at `MaxUint64` is resolved by the compiler as a point
+read rather than handed to a leaf that would have to increment past it.
+
 The contract is enforced by unit tests per leaf (`iterator_floor_test.go`,
 `iterator_address_test.go`, `iterator_and_seek_test.go`) and end-to-end by the
 contradiction specs in

@@ -145,7 +145,7 @@ applies to the `ListAccounts` and `ListTransactions` paths.
 
 | Operator | Purpose |
 |----------|---------|
-| `PebbleAccountIterator`, `PebbleReverseTxIterator`, `LedgerLogsIterator`, … | Leaf scans over one read-store prefix. |
+| `PebbleAccountIterator`, `PebbleReverseTxIterator`, `LedgerLogIterator`, `LedgerLogRangeIterator`, … | Leaf scans over one read-store prefix; `LedgerLogRangeIterator` is a bounded, entity-ordered leaf that streams a log-ID range without materializing it. |
 | `AndIterator` | Merge-intersect of sorted child iterators. |
 | `OrIterator` | Merge-union. |
 | `NotIterator` | Difference against the entity-existence index (`0x02`). |
