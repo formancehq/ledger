@@ -43,10 +43,14 @@ func runAddressTxBenchmark(b *testing.B, txsByAccount map[string][]uint64, addrs
 		}
 	}
 
+	b.ResetTimer()
+
+	// Report after ResetTimer: ResetTimer deletes user-reported metrics, so
+	// reporting the setup-derived cardinalities beforehand would drop them
+	// from the benchmark output.
 	b.ReportMetric(float64(scanned), "scanned-rows")
 	b.ReportMetric(float64(len(unique)), "unique-ids")
 
-	b.ResetTimer()
 	for range b.N {
 		it := NewAddressTxIterator(s.DB(), dal.NewKeyBuilder(), "l", newAliasingIter(addrs...), PrefixAccountTx)
 		for n := 0; n < addressBenchPage && it.Next(); n++ {
