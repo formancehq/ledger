@@ -127,13 +127,19 @@ node terminal before returning the persistence error, rejects subsequent Raft
 commands and proposals, fails work queued while the persistence call was in
 flight, and stops the orchestrate task. Once a force-removal command is admitted,
 caller cancellation cannot release it before that definitive result is known.
+If `Node.Run` stops before an admitted command executes, its waiter receives
+`raft.ErrStopped` after all node tasks have stopped; a result already produced
+by the command is preserved, with terminal persistence failure taking precedence.
 `Node.Run` propagates the task failure to the bootstrap runner, which terminates
 the process. The Pebble batch is not attempted. Applying an inverse add change
 is deliberately not used: it would create new progress, not restore the removed
 member's prior replication state.
 
-`UpdateSnapshotConfState` has two durable writes. It atomically replaces the
-snapshot file, then appends the matching etcd WAL snapshot record. Because a
+`UpdateSnapshotConfState` first replaces its in-memory snapshot, then performs
+two durable writes: it atomically replaces the snapshot file, then appends the
+matching etcd WAL snapshot record. A failure before file replacement leaves both
+the live Raft tracker and the WAL's in-memory ConfState reduced, while the old
+snapshot file remains the restart authority. Because a
 ConfState-only update retains the same snapshot term/index, a failure before the
 file replacement restarts with the old ConfState, while a failure after the
 replacement can restart with the new ConfState even if the following record

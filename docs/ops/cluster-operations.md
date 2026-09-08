@@ -494,10 +494,10 @@ off-cluster backup instead. See
 
 **How it works:**
 
-1. `ForceRemoveNode` directly calls `rawNode.ApplyConfChange()` on the leader, bypassing the Raft log
+1. `ForceRemoveNode` directly calls `rawNode.ApplyConfChange()` on the leader, bypassing the Raft log. This immediately recalculates the live quorum and can advance the live commit index before persistence.
 2. The updated `ConfState` is persisted to the WAL snapshot immediately (before the peer row is deleted, so a crash between the two heals to "voter absent, orphan address" rather than "voter present, unreachable")
 3. Membership cleanup then deletes the peer row from Pebble (`[ZoneGlobal][SubGlobPeers]`), atomically writes the removed-member tombstone when the peer has an instance identity, and drops the peer from the in-memory cache + transport + service pool in lockstep
-4. The reduced voter set immediately recalculates quorum, allowing the leader to resume normal operations
+4. After the command succeeds, Raft processing resumes with the reduced quorum.
 
 The live etcd/raft tracker mutation in step 1 cannot be rolled back safely. If
 the WAL persistence in step 2 fails, the command returns an error and the node
@@ -507,7 +507,7 @@ Restart uses the membership in the latest durable snapshot. A failure before
 the atomic snapshot-file replacement restores the previous voter set; a later
 WAL-record failure can restart with the new voter set because the replacement
 file matches the snapshot's existing term/index. Both outcomes are safe because
-the failed process stops before accepting more work. After restart, inspect the
+the failed process stops before executing more work. After restart, inspect the
 cluster state and retry only if the target is still present and the storage
 fault has been resolved.
 

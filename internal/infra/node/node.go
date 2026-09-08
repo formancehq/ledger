@@ -109,9 +109,8 @@ const StaleRaftProgressReason = "STALE_RAFT_PROGRESS"
 // clusterCommand represents an operation that must execute in the orchestrate loop
 // because rawNode is not thread-safe. Implementations return an error via errCh.
 type clusterCommand struct {
-	fn                func() error
-	errCh             chan error
-	waitForCompletion bool
+	fn    func() error
+	errCh chan error
 }
 
 // terminalNodeError marks a command failure that leaves rawNode unsafe to use.
@@ -130,38 +129,38 @@ func (e *terminalNodeError) Unwrap() error {
 	return e.cause
 }
 
-// execClusterCommand dispatches a function to the orchestrate loop and waits for its result.
-func (node *Node) execClusterCommand(ctx context.Context, fn func() error) error {
-	return node.execClusterCommandWithOptions(ctx, fn, false)
-}
-
-// execClusterCommandToCompletion honors cancellation until the command is
-// admitted, then waits for its definitive result. ForceRemoveNode uses this
-// because caller cancellation after the irreversible live mutation must not
-// release the caller before a terminal persistence outcome is published.
-func (node *Node) execClusterCommandToCompletion(ctx context.Context, fn func() error) error {
-	return node.execClusterCommandWithOptions(ctx, fn, true)
-}
-
-func (node *Node) execClusterCommandWithOptions(
+// execClusterCommand dispatches a function to the orchestrate loop and waits for
+// its result. With waitForCompletion, cancellation is honored only until admission.
+// ForceRemoveNode needs the definitive result after its irreversible live mutation
+// so cancellation cannot release its caller before a terminal outcome is published.
+// Run termination also releases waiters: its tasks have stopped, so a command
+// that has no result can no longer execute its mutation.
+func (node *Node) execClusterCommand(
 	ctx context.Context,
-	fn func() error,
 	waitForCompletion bool,
+	fn func() error,
 ) error {
 	if err := node.terminalError(); err != nil {
 		return err
 	}
 
 	cmd := &clusterCommand{
-		fn:                fn,
-		errCh:             make(chan error, 1),
-		waitForCompletion: waitForCompletion,
+		fn:    fn,
+		errCh: make(chan error, 1),
+	}
+
+	select {
+	case <-node.runDone:
+		return node.clusterCommandResultAfterStop(cmd)
+	default:
 	}
 
 	select {
 	case node.clusterCommandCh <- cmd:
 	case <-node.terminalCh:
 		return node.terminalErrorFromSignal()
+	case <-node.runDone:
+		return node.clusterCommandResultAfterStop(cmd)
 	case <-ctx.Done():
 		if err := node.terminalError(); err != nil {
 			return err
@@ -170,12 +169,14 @@ func (node *Node) execClusterCommandWithOptions(
 		return ctx.Err()
 	}
 
-	if cmd.waitForCompletion {
+	if waitForCompletion {
 		select {
 		case err := <-cmd.errCh:
 			return err
 		case <-node.terminalCh:
 			return node.terminalErrorFromSignal()
+		case <-node.runDone:
+			return node.clusterCommandResultAfterStop(cmd)
 		}
 	}
 
@@ -184,12 +185,30 @@ func (node *Node) execClusterCommandWithOptions(
 		return err
 	case <-node.terminalCh:
 		return node.terminalErrorFromSignal()
+	case <-node.runDone:
+		return node.clusterCommandResultAfterStop(cmd)
 	case <-ctx.Done():
 		if err := node.terminalError(); err != nil {
 			return err
 		}
 
 		return ctx.Err()
+	}
+}
+
+// clusterCommandResultAfterStop preserves a definitive result when Run exits
+// before the waiter consumes it. Only a command without a result is stopped;
+// an irreversible persistence failure always takes precedence.
+func (node *Node) clusterCommandResultAfterStop(cmd *clusterCommand) error {
+	if err := node.terminalError(); err != nil {
+		return err
+	}
+
+	select {
+	case err := <-cmd.errCh:
+		return err
+	default:
+		return raft.ErrStopped
 	}
 }
 
@@ -2014,7 +2033,7 @@ func (node *Node) TransferLeader(ctx context.Context, transferee uint64) error {
 		return nil
 	}
 
-	err := node.execClusterCommand(ctx, func() error {
+	err := node.execClusterCommand(ctx, false, func() error {
 		return node.handleTransferLeader(transferee)
 	})
 	if err != nil {
@@ -2233,7 +2252,7 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 		lastPersistedIndex uint64
 	)
 
-	err := node.execClusterCommand(ctx, func() error {
+	err := node.execClusterCommand(ctx, false, func() error {
 		status = node.rawNode.Status()
 		lastPersistedIndex = node.fsm.LastPersistedIndex()
 
@@ -2393,7 +2412,7 @@ func (node *Node) IsStarted() bool {
 func (node *Node) pickBestTransferee(ctx context.Context) (uint64, error) {
 	var best uint64
 
-	err := node.execClusterCommand(ctx, func() error {
+	err := node.execClusterCommand(ctx, false, func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
@@ -2508,7 +2527,7 @@ func (node *Node) proposeConfChangeAndWait(
 	node.pendingConfChanges.Store(proposalID, pending)
 	defer node.pendingConfChanges.CompareAndDelete(proposalID, pending)
 
-	err := node.execClusterCommand(ctx, proposeFn)
+	err := node.execClusterCommand(ctx, false, proposeFn)
 	if err != nil {
 		return 0, false, err
 	}
@@ -3096,7 +3115,7 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 	node.confChangeMu.Lock()
 	defer node.confChangeMu.Unlock()
 
-	return node.execClusterCommandToCompletion(ctx, func() error {
+	return node.execClusterCommand(ctx, true, func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return ErrNotLeader
@@ -3147,7 +3166,7 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 			// and removed the peer's Progress. The library has no rollback
 			// primitive; applying an AddNode would create new progress rather
 			// than restore the previous replication state. Continuing would use
-			// a quorum that restart cannot reconstruct, so fail-stop is the only
+			// a quorum that restart might not reconstruct, so fail-stop is the only
 			// safe recovery contract.
 			return &terminalNodeError{cause: fmt.Errorf("persisting confstate after force-remove: %w", err)}
 		}

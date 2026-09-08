@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -33,6 +35,8 @@ type forceRemoveWAL struct {
 	wal.WAL
 
 	mu           sync.Mutex
+	walDir       string
+	closed       bool
 	failureStage forceRemoveFailureStage
 	updateErr    error
 	updates      int
@@ -56,7 +60,26 @@ func (w *forceRemoveWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 	case forceRemoveNoFailure:
 		return w.WAL.UpdateSnapshotConfState(cs)
 	case forceRemoveBeforeSnapshotPersistence:
-		return w.updateErr
+		// Fail the real snapshot-file write after UpdateSnapshotConfState has
+		// replaced its in-memory snapshot. The existing durable file survives.
+		snapshot, err := w.Snapshot()
+		if err != nil {
+			return fmt.Errorf("reading snapshot for failure injection: %w", err)
+		}
+		tmpPath := filepath.Join(w.walDir, "snap", fmt.Sprintf("%016x-%016x.snap.tmp",
+			snapshot.GetMetadata().GetTerm(), snapshot.GetMetadata().GetIndex()))
+		if err := os.Mkdir(tmpPath, 0700); err != nil {
+			return fmt.Errorf("blocking snapshot file creation: %w", err)
+		}
+		err = w.WAL.UpdateSnapshotConfState(cs)
+		if cleanupErr := os.Remove(tmpPath); cleanupErr != nil {
+			return fmt.Errorf("removing snapshot failure injection: %w", cleanupErr)
+		}
+		if err == nil {
+			return errors.New("invariant: snapshot write accepted a directory")
+		}
+
+		return fmt.Errorf("%w before snapshot-file persistence: %w", w.updateErr, err)
 	case forceRemoveAfterSnapshotFilePersistence:
 		// Closing the real etcd WAL makes its SaveSnapshot call fail while
 		// leaving Snapshotter.Save operational. This drives the production
@@ -65,6 +88,7 @@ func (w *forceRemoveWAL) UpdateSnapshotConfState(cs *raftpb.ConfState) error {
 		if err := w.Close(); err != nil {
 			return fmt.Errorf("closing WAL for failure injection: %w", err)
 		}
+		w.closed = true
 
 		err := w.WAL.UpdateSnapshotConfState(cs)
 		if err == nil {
@@ -196,6 +220,7 @@ func newForceRemoveHarness(
 
 	injectedWAL := &forceRemoveWAL{
 		WAL:          setup.wal,
+		walDir:       setup.walDir,
 		failureStage: failureStage,
 		updateErr:    updateErr,
 		started:      make(chan struct{}),
@@ -320,7 +345,7 @@ func receiveForceRemoveError(t *testing.T, ch <-chan error) error {
 	}
 }
 
-func durableState(t *testing.T, w wal.WAL) (*raftpb.HardState, []uint64) {
+func walState(t *testing.T, w wal.WAL) (*raftpb.HardState, []uint64) {
 	t.Helper()
 
 	hardState, confState, err := w.InitialState()
@@ -332,14 +357,20 @@ func durableState(t *testing.T, w wal.WAL) (*raftpb.HardState, []uint64) {
 func (h *forceRemoveHarness) restartedState(t *testing.T) (*raftpb.HardState, map[uint64]struct{}) {
 	t.Helper()
 
-	_ = h.durableWAL.Close()
+	if !h.stopped {
+		require.NoError(t, h.stopAndWait(t))
+	}
+	// The post-file failure already closed the WAL to fail its record write.
+	if !h.injectedWAL.closed {
+		require.NoError(t, h.durableWAL.Close())
+	}
 	reopened, err := wal.New(
 		h.walDir,
 		logging.Testing(),
 		noop.NewMeterProvider().Meter("force-remove-restart"),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = reopened.Close() })
+	t.Cleanup(func() { require.NoError(t, reopened.Close()) })
 
 	hardState, _, err := reopened.InitialState()
 	require.NoError(t, err)
@@ -358,6 +389,8 @@ func (h *forceRemoveHarness) restartedState(t *testing.T) (*raftpb.HardState, ma
 }
 
 func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
+	t.Parallel()
+
 	t.Run("validation failure happens before live mutation", func(t *testing.T) {
 		t.Parallel()
 
@@ -368,7 +401,7 @@ func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 		require.Zero(t, h.injectedWAL.updateCount())
 		require.Contains(t, h.rawNode.Status().Progress, uint64(3))
 		require.Equal(t, []uint64{1, 2, 3}, h.n.confState.Load().GetVoters())
-		_, voters := durableState(t, h.durableWAL)
+		_, voters := walState(t, h.durableWAL)
 		require.Equal(t, []uint64{1, 2, 3}, voters)
 
 		_, err = h.n.GetClusterState(context.Background())
@@ -385,11 +418,13 @@ func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 
 		err := h.n.ForceRemoveNode(context.Background(), 3)
 		require.ErrorIs(t, err, injected)
+		require.ErrorContains(t, err, "creating temp snap file")
 		require.Equal(t, 1, h.injectedWAL.updateCount())
 		require.NotContains(t, h.rawNode.Status().Progress, uint64(3))
 		require.Equal(t, []uint64{1, 2}, h.n.confState.Load().GetVoters())
-		_, voters := durableState(t, h.durableWAL)
-		require.Equal(t, []uint64{1, 2, 3}, voters)
+		_, voters := walState(t, h.durableWAL)
+		require.Equal(t, []uint64{1, 2}, voters,
+			"the real WAL mutates its in-memory snapshot before attempting the file write")
 		require.Contains(t, h.membership.PeerAddresses(), uint64(3))
 		removed, lookupErr := h.membership.IsRemoved(3, []byte("0000000000000003"))
 		require.NoError(t, lookupErr)
@@ -481,38 +516,56 @@ func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 		require.Equal(t, trackerBefore, h.n.indexTracker.Next())
 	})
 
-	t.Run("reduced live quorum cannot durably commit staged work after failure", func(t *testing.T) {
-		t.Parallel()
+	for _, tc := range []struct {
+		name            string
+		stage           forceRemoveFailureStage
+		restartedVoters map[uint64]struct{}
+	}{
+		{
+			name:            "before snapshot-file persistence",
+			stage:           forceRemoveBeforeSnapshotPersistence,
+			restartedVoters: map[uint64]struct{}{1: {}, 2: {}, 3: {}, 4: {}},
+		},
+		{
+			name:            "after snapshot-file persistence",
+			stage:           forceRemoveAfterSnapshotFilePersistence,
+			restartedVoters: map[uint64]struct{}{1: {}, 2: {}, 3: {}},
+		},
+	} {
+		t.Run("reduced live quorum cannot durably commit staged work/"+tc.name, func(t *testing.T) {
+			t.Parallel()
 
-		injected := errors.New("injected four-to-three persistence failure")
-		h := newForceRemoveHarness(
-			t, []uint64{1, 2, 3, 4}, forceRemoveBeforeSnapshotPersistence, injected, false,
-		)
+			injected := errors.New("injected four-to-three persistence failure")
+			h := newForceRemoveHarness(
+				t, []uint64{1, 2, 3, 4}, tc.stage, injected, false,
+			)
 
-		baselineHardState, _ := durableState(t, h.durableWAL)
-		baselineApplied := h.n.fsm.LastAppliedIndex()
-		require.Equal(t, h.baselineCommit, baselineHardState.GetCommit())
-		require.Greater(t, h.stagedIndex, h.baselineCommit)
-		require.Equal(t, h.baselineCommit, h.rawNode.Status().GetCommit())
+			baselineHardState, _ := walState(t, h.durableWAL)
+			baselineApplied := h.n.fsm.LastAppliedIndex()
+			require.Equal(t, h.baselineCommit, baselineHardState.GetCommit())
+			require.Greater(t, h.stagedIndex, h.baselineCommit)
+			require.Equal(t, h.baselineCommit, h.rawNode.Status().GetCommit())
 
-		err := h.n.ForceRemoveNode(context.Background(), 4)
-		require.ErrorIs(t, err, injected)
-		require.Equal(t, map[uint64]struct{}{1: {}, 2: {}, 3: {}}, h.rawNode.Status().Config.Voters.IDs())
-		require.Equal(t, h.stagedIndex, h.rawNode.Status().GetCommit(),
-			"the irreversible four-to-three transition makes the staged entry live-committed")
-		require.ErrorIs(t, h.waitForTerminal(t), injected)
-		require.Equal(t, baselineApplied, h.n.fsm.LastAppliedIndex(),
-			"terminal exit must prevent business application")
+			err := h.n.ForceRemoveNode(context.Background(), 4)
+			require.ErrorIs(t, err, injected)
+			require.Equal(t, map[uint64]struct{}{1: {}, 2: {}, 3: {}}, h.rawNode.Status().Config.Voters.IDs())
+			require.Equal(t, h.stagedIndex, h.rawNode.Status().GetCommit(),
+				"the irreversible four-to-three transition makes the staged entry live-committed")
+			require.ErrorIs(t, h.waitForTerminal(t), injected)
+			require.Equal(t, baselineApplied, h.n.fsm.LastAppliedIndex(),
+				"terminal exit must prevent business application")
 
-		durableHardState, durableVoters := durableState(t, h.durableWAL)
-		require.Equal(t, baselineHardState.GetCommit(), durableHardState.GetCommit(),
-			"the live-only commit must not reach durable HardState")
-		require.Equal(t, []uint64{1, 2, 3, 4}, durableVoters)
+			durableHardState, memoryVoters := walState(t, h.durableWAL)
+			require.Equal(t, baselineHardState.GetCommit(), durableHardState.GetCommit(),
+				"the live-only commit must not reach durable HardState")
+			require.Equal(t, []uint64{1, 2, 3}, memoryVoters,
+				"WAL memory advances before snapshot-file persistence; restart below proves durable membership")
 
-		restartedHardState, restartedVoters := h.restartedState(t)
-		require.Equal(t, baselineHardState.GetCommit(), restartedHardState.GetCommit())
-		require.Equal(t, map[uint64]struct{}{1: {}, 2: {}, 3: {}, 4: {}}, restartedVoters)
-	})
+			restartedHardState, restartedVoters := h.restartedState(t)
+			require.Equal(t, baselineHardState.GetCommit(), restartedHardState.GetCommit())
+			require.Equal(t, tc.restartedVoters, restartedVoters)
+		})
+	}
 
 	t.Run("successful persistence remains live durable and restartable", func(t *testing.T) {
 		t.Parallel()
@@ -523,7 +576,7 @@ func TestForceRemoveNodeDurabilityFailureContract(t *testing.T) {
 		require.Equal(t, 1, h.injectedWAL.updateCount())
 		require.NotContains(t, h.rawNode.Status().Progress, uint64(3))
 		require.Equal(t, []uint64{1, 2}, h.n.confState.Load().GetVoters())
-		_, voters := durableState(t, h.durableWAL)
+		_, voters := walState(t, h.durableWAL)
 		require.Equal(t, []uint64{1, 2}, voters)
 		require.NotContains(t, h.membership.PeerAddresses(), uint64(3))
 		removed, err := h.membership.IsRemoved(3, []byte("0000000000000003"))
