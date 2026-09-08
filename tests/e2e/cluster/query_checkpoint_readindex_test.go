@@ -46,10 +46,10 @@ var _ = Describe("Query Checkpoints (frozen read index completeness)", Ordered, 
 	)
 
 	destinationIs := func(address string) *commonpb.QueryFilter {
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{
-			Match: &commonpb.AddressMatch_HardcodedExact{HardcodedExact: address},
-			Role:  commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
-		}}}
+		f := actions.AddressExactFilter(address)
+		f.GetAddress().Role = commonpb.AddressRole_ADDRESS_ROLE_DESTINATION
+
+		return f
 	}
 
 	BeforeAll(func() {
