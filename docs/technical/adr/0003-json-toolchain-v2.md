@@ -45,8 +45,13 @@ so it can only be converted *end to end*, never incrementally.
 1. **Prefer the standard library for marshal.** Adopt `encoding/json/v2` for
    marshal and checked-response buffering, selecting per-call the options
    derived from `encoding/json.DefaultOptionsV1()` (deterministic map keys,
-   legacy `omitempty`, nil-as-null framing, HTML escaping, trailing newline)
-   so the public JSON contract stays byte-stable.
+   legacy `omitempty`, nil-as-null framing, HTML escaping) so the public JSON
+   contract stays byte-stable. `DefaultOptionsV1()` has no trailing-newline
+   option, and `encoding/json/v2.MarshalWrite` writes only the JSON value
+   without a trailing newline, whereas Sonic's `Encoder.Encode` (the current
+   `json.MarshalWrite` under `ConfigStd`) terminates the stream with `\n`.
+   Streaming callers must therefore append the newline delimiter separately
+   after a successful write to keep streaming responses byte-stable.
 2. **Do not bump or drop Sonic unconditionally.** Retain Sonic for decode only
    if, at implementation time, a supported pin plus representative Go 1.27
    benchmarks on amd64/arm64 still justify its decode advantage. There is no
