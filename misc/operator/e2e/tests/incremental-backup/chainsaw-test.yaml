@@ -62,6 +62,9 @@ spec:
       try:
         - script:
             content: |
-              cd "$(git rev-parse --show-toplevel)"
-              go test -tags e2e -v -count=1 -run TestIncrementalBackup_S3Segments -timeout 30s ./e2e/...
+              set -eu
+              cd "$(git rev-parse --show-toplevel)/misc/operator"
+              test_name=TestIncrementalBackup_S3Segments
+              go test -tags e2e -count=1 -list "^${test_name}$" ./e2e/... | grep -Fqx "${test_name}"
+              go test -tags e2e -v -count=1 -run "^${test_name}$" -timeout 30s ./e2e/...
             timeout: 60s
