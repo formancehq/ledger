@@ -197,8 +197,8 @@ If no notification arrives (e.g., after restart), the emitter polls at a configu
 
 The event system is gated by both the node's leader status and the presence of sink configs:
 
-- **On becoming leader**: The `Manager.OnLeadershipChange(true)` is called. If any sinks are configured, the Manager starts one Emitter per sink.
-- **On losing leadership**: The `Manager.OnLeadershipChange(false)` is called. The Manager tears down all Emitters and Sinks.
+- **On becoming leader**: The Raft observer records `Manager.OnLeadershipChange(true)` synchronously. The Manager's lifecycle-owned loop reconciles the latest recorded generation and starts one Emitter per configured sink.
+- **On losing leadership**: The Raft observer records `Manager.OnLeadershipChange(false)` synchronously. The same loop tears down all Emitters and Sinks; reconciliation from a superseded generation is discarded.
 - **On config change (while leader)**: The FSM signals the Manager via a `Signal` notification. The Manager reconciles by diffing the desired sink configs against the currently running emitters — only sinks that were added, removed, or changed are affected; unchanged sinks keep running.
 - **Followers**: Never emit events, regardless of config.
 
@@ -235,6 +235,16 @@ sequenceDiagram
 ```
 
 The Manager reconciles emitter lifecycles on leadership changes and config updates. Each emitter independently tails the log, publishes to its sink, and advances its cursor via Raft. Failed publishes are recorded as sink errors in Pebble (visible via `GetEventsSinks`), and the emitter retries with exponential backoff.
+
+Leadership callbacks do not own reconciliation goroutines. Bootstrap records
+each transition inline, preserving Raft observer order, while the Manager's
+existing loop owns the slow Pebble scan and worker mutations. A monotonically
+increasing generation fences a scan or startup that was superseded before it
+could retain a sink. The Manager records which generation owns the active
+emitter set, so a complete leadership loss and regain recycles it even when the
+buffered notification coalesces both transitions. `Stop` closes the leadership
+gate before draining the loop so a late transition cannot recreate emitters
+during Fx teardown.
 
 ## Sink Interface
 

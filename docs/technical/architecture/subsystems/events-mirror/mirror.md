@@ -10,12 +10,21 @@ Source: `internal/application/mirror/` (worker + manager) and `internal/adapter/
 
 ## Worker model
 
-One mirror worker runs per mirror ledger, **on the leader only**. The Manager (`internal/application/mirror/manager.go:30-47`) reconciles workers against the current set of mirror ledgers (`ReadMirrorLedgers`) on every leadership change and on relevant Raft commits:
+One mirror worker runs per mirror ledger, **on the leader only**. The Manager (`internal/application/mirror/manager.go`) reconciles workers against the current set of mirror ledgers (`ReadMirrorLedgers`) on every leadership change and on relevant Raft commits:
 
 - Ledger created in mirror mode → spin up a worker.
 - Ledger promoted, deleted, or mirror config changed → stop the corresponding worker.
 
-Reconciliation is in `Manager.reconcile()` (`manager.go:112-179`).
+The Raft observer records leadership transitions synchronously, in observer
+order. The Manager's lifecycle-owned loop performs the potentially slow Pebble
+scan and worker reconciliation against the latest generation. Superseded
+generations cannot retain newly started workers. The Manager records which
+generation owns the active worker set, so a complete leadership loss and regain
+recycles it even when the buffered notification coalesces both transitions.
+`Stop` closes the leadership gate before draining the loop so a late callback
+cannot recreate a mirror worker during Fx teardown.
+
+Reconciliation is in `Manager.reconcileGeneration()`.
 
 The Worker (`worker.go:27-175`) is a polling loop:
 
