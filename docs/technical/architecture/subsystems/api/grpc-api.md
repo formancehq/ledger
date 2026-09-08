@@ -69,6 +69,20 @@ service BucketService {
 }
 ```
 
+`ClusterService.GetDiskUsage` is a node-local diagnostic RPC: it is not
+forwarded to the leader. Its WAL and data `VolumeUsage` messages contain the
+last known bytes plus collection state:
+
+- `valid` reports whether the latest `Statfs` attempt succeeded;
+- `sample_age_ms` is computed on the serving node and is the machine-readable
+  freshness signal, avoiding cross-node clock arithmetic;
+- `observed_at_us` is the last successful sample time for diagnostics;
+- `error` is diagnostic text and must never be parsed for control decisions.
+
+When `valid` is false, `used_bytes`, `total_bytes`, and `observed_at_us` may be
+the last successful values. Health and operator control loops reject invalid or
+older-than-one-minute samples.
+
 ## Read Operations
 
 ### ListLedgers

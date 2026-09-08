@@ -1,0 +1,30 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: volume-auto-expansion-contract
+spec:
+  timeouts:
+    assert: 30s
+  steps:
+    - name: Reject cold-cache auto-expansion
+      try:
+        - apply:
+            file: cluster-invalid.yaml
+        - assert:
+            file: assert-invalid.yaml
+
+    - name: Keep auto-expansion disabled when omitted
+      try:
+        - apply:
+            file: cluster-disabled.yaml
+        - assert:
+            resource:
+              apiVersion: ledger.formance.com/v1alpha1
+              kind: Cluster
+              metadata:
+                name: volume-auto-disabled
+              status:
+                (conditions[?type == 'ConfigValid'].status): ['True']
+        - script:
+            content: |
+              test -z "$(kubectl get pvc -n "$NAMESPACE" -l app.kubernetes.io/instance=volume-auto-disabled -o name)"

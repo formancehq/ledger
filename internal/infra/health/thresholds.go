@@ -6,7 +6,9 @@ import "github.com/formancehq/ledger/v3/internal/domain"
 // health-check cycle.
 type VolumeSample struct {
 	WALFraction  float64
+	WALValid     bool
 	DataFraction float64
+	DataValid    bool
 }
 
 // Thresholds holds the block (high-water) and resume (low-water) marks for the
@@ -24,7 +26,8 @@ type Thresholds struct {
 // anyAtBlock reports whether any sampled volume is at or above its block mark.
 func (t Thresholds) anyAtBlock(samples []VolumeSample) bool {
 	for _, s := range samples {
-		if s.WALFraction >= t.WALBlock || s.DataFraction >= t.DataBlock {
+		if (s.WALValid && s.WALFraction >= t.WALBlock) ||
+			(s.DataValid && s.DataFraction >= t.DataBlock) {
 			return true
 		}
 	}
@@ -36,7 +39,10 @@ func (t Thresholds) anyAtBlock(samples []VolumeSample) bool {
 // resume mark.
 func (t Thresholds) allBelowResume(samples []VolumeSample) bool {
 	for _, s := range samples {
-		if s.WALFraction >= t.WALResume || s.DataFraction >= t.DataResume {
+		// Recovery requires current information for every volume. An invalid or
+		// stale sample cannot clear an existing disk-full write gate.
+		if !s.WALValid || !s.DataValid ||
+			s.WALFraction >= t.WALResume || s.DataFraction >= t.DataResume {
 			return false
 		}
 	}

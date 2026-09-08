@@ -276,6 +276,10 @@ func (m *VolumeUsage) CloneVT() *VolumeUsage {
 	r := new(VolumeUsage)
 	r.UsedBytes = m.UsedBytes
 	r.TotalBytes = m.TotalBytes
+	r.ObservedAtUs = m.ObservedAtUs
+	r.SampleAgeMs = m.SampleAgeMs
+	r.Valid = m.Valid
+	r.Error = m.Error
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1133,6 +1137,18 @@ func (this *VolumeUsage) EqualVT(that *VolumeUsage) bool {
 		return false
 	}
 	if this.TotalBytes != that.TotalBytes {
+		return false
+	}
+	if this.ObservedAtUs != that.ObservedAtUs {
+		return false
+	}
+	if this.SampleAgeMs != that.SampleAgeMs {
+		return false
+	}
+	if this.Valid != that.Valid {
+		return false
+	}
+	if this.Error != that.Error {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -2478,6 +2494,35 @@ func (m *VolumeUsage) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Error) > 0 {
+		i -= len(m.Error)
+		copy(dAtA[i:], m.Error)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Error)))
+		i--
+		dAtA[i] = 0x32
+	}
+	if m.Valid {
+		i--
+		if m.Valid {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.SampleAgeMs != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.SampleAgeMs))
+		i--
+		dAtA[i] = 0x21
+	}
+	if m.ObservedAtUs != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ObservedAtUs))
+		i--
+		dAtA[i] = 0x19
 	}
 	if m.TotalBytes != 0 {
 		i -= 8
@@ -3959,6 +4004,19 @@ func (m *VolumeUsage) SizeVT() (n int) {
 	}
 	if m.TotalBytes != 0 {
 		n += 9
+	}
+	if m.ObservedAtUs != 0 {
+		n += 9
+	}
+	if m.SampleAgeMs != 0 {
+		n += 9
+	}
+	if m.Valid {
+		n += 2
+	}
+	l = len(m.Error)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -6110,6 +6168,78 @@ func (m *VolumeUsage) UnmarshalVT(dAtA []byte) error {
 			}
 			m.TotalBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 3:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ObservedAtUs", wireType)
+			}
+			m.ObservedAtUs = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ObservedAtUs = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 4:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SampleAgeMs", wireType)
+			}
+			m.SampleAgeMs = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SampleAgeMs = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Valid", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Valid = bool(v != 0)
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Error = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

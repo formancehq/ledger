@@ -817,8 +817,12 @@ func (x *NodeTime) GetTimestampUs() uint64 {
 // VolumeUsage represents the disk usage of a single filesystem volume.
 type VolumeUsage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UsedBytes     uint64                 `protobuf:"fixed64,1,opt,name=used_bytes,json=usedBytes,proto3" json:"used_bytes,omitempty"`    // Used bytes on the filesystem
-	TotalBytes    uint64                 `protobuf:"fixed64,2,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"` // Total capacity of the filesystem in bytes
+	UsedBytes     uint64                 `protobuf:"fixed64,1,opt,name=used_bytes,json=usedBytes,proto3" json:"used_bytes,omitempty"`            // Last known used bytes on the filesystem
+	TotalBytes    uint64                 `protobuf:"fixed64,2,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`         // Last known total capacity of the filesystem in bytes
+	ObservedAtUs  uint64                 `protobuf:"fixed64,3,opt,name=observed_at_us,json=observedAtUs,proto3" json:"observed_at_us,omitempty"` // Unix timestamp in microseconds of the last successful sample
+	SampleAgeMs   uint64                 `protobuf:"fixed64,4,opt,name=sample_age_ms,json=sampleAgeMs,proto3" json:"sample_age_ms,omitempty"`    // Age of the last successful sample when this response was built
+	Valid         bool                   `protobuf:"varint,5,opt,name=valid,proto3" json:"valid,omitempty"`                                      // Whether the latest collection attempt succeeded
+	Error         string                 `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`                                       // Diagnostic only; callers must use valid/sample_age_ms for decisions
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -865,6 +869,34 @@ func (x *VolumeUsage) GetTotalBytes() uint64 {
 		return x.TotalBytes
 	}
 	return 0
+}
+
+func (x *VolumeUsage) GetObservedAtUs() uint64 {
+	if x != nil {
+		return x.ObservedAtUs
+	}
+	return 0
+}
+
+func (x *VolumeUsage) GetSampleAgeMs() uint64 {
+	if x != nil {
+		return x.SampleAgeMs
+	}
+	return 0
+}
+
+func (x *VolumeUsage) GetValid() bool {
+	if x != nil {
+		return x.Valid
+	}
+	return false
+}
+
+func (x *VolumeUsage) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
 }
 
 // DiskUsage represents the filesystem-level disk usage on a node.
@@ -2257,12 +2289,16 @@ const file_cluster_proto_rawDesc = "" +
 	"\x13GetDiskUsageRequest\"\x14\n" +
 	"\x12GetNodeTimeRequest\"-\n" +
 	"\bNodeTime\x12!\n" +
-	"\ftimestamp_us\x18\x01 \x01(\x06R\vtimestampUs\"M\n" +
+	"\ftimestamp_us\x18\x01 \x01(\x06R\vtimestampUs\"\xc3\x01\n" +
 	"\vVolumeUsage\x12\x1d\n" +
 	"\n" +
 	"used_bytes\x18\x01 \x01(\x06R\tusedBytes\x12\x1f\n" +
 	"\vtotal_bytes\x18\x02 \x01(\x06R\n" +
-	"totalBytes\"w\n" +
+	"totalBytes\x12$\n" +
+	"\x0eobserved_at_us\x18\x03 \x01(\x06R\fobservedAtUs\x12\"\n" +
+	"\rsample_age_ms\x18\x04 \x01(\x06R\vsampleAgeMs\x12\x14\n" +
+	"\x05valid\x18\x05 \x01(\bR\x05valid\x12\x14\n" +
+	"\x05error\x18\x06 \x01(\tR\x05error\"w\n" +
 	"\tDiskUsage\x123\n" +
 	"\n" +
 	"wal_volume\x18\x01 \x01(\v2\x14.cluster.VolumeUsageR\twalVolume\x125\n" +

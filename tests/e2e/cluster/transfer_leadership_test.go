@@ -82,13 +82,16 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 	It("should continue operating after leadership transfer", func() {
 		lid := *leaderID
 
-		// Create a ledger before transfer
-		_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("transfer-test", nil)))
-		Expect(err).To(Succeed())
+		// The preceding ordered scenario also transferred leadership. Wait for
+		// that leader's first complete disk verdict before creating the ledger.
+		Eventually(func(g Gomega) {
+			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("transfer-test", nil)))
+			g.Expect(err).To(Succeed())
+		}).Should(Succeed())
 
 		// Transfer leadership
 		targetID := (lid % countInstances) + 1
-		_, err = servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
+		_, err := servers[lid-1].ClusterClient.TransferLeadership(ctx, &clusterpb.TransferLeadershipRequest{
 			Transferee: uint32(targetID),
 		})
 		Expect(err).To(Succeed())
@@ -104,8 +107,18 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 			}).Should(Equal(targetID))
 		}
 
-		// Create transactions through the new leader
-		for i := 0; i < 3; i++ {
+		// A new leadership epoch intentionally fails writes closed until the
+		// health worker has collected fresh WAL and data samples from every
+		// committed member. Leader discovery can complete just before that poll.
+		Eventually(func(g Gomega) {
+			_, err := servers[targetID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("transfer-test", []*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
+			}, nil, nil)))
+			g.Expect(err).To(Succeed())
+		}).Should(Succeed())
+
+		// Create the remaining transactions through the now-open new leader.
+		for i := 0; i < 2; i++ {
 			_, err := servers[targetID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("transfer-test", []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
@@ -173,8 +186,17 @@ var _ = Describe("Leadership transfer", Ordered, func() {
 			return newLeaderID != 0 && newLeaderID != oldLeaderID
 		}).Should(BeTrue(), "a new leader should be elected after the old leader stops")
 
-		// Verify the cluster continues to function: create transactions via the new leader
-		for i := 0; i < 3; i++ {
+		// Leader discovery can complete just before the new leader publishes its
+		// first current-epoch disk verdict. Retry the first write across that short
+		// fail-closed window; the unavailable old leader must not block it forever.
+		Eventually(func(g Gomega) {
+			_, err := servers[newLeaderID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*commonpb.Posting{
+				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
+			}, nil, nil)))
+			g.Expect(err).To(Succeed())
+		}).Should(Succeed())
+
+		for i := 0; i < 2; i++ {
 			_, err := servers[newLeaderID-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("auto-transfer-test", []*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(100), "USD"),
 			}, nil, nil)))
