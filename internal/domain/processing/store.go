@@ -82,7 +82,11 @@ type Scope interface {
 
 	// Counters and timestamps
 	GetNextSequenceID() uint64
-	IncrementNextSequenceID() uint64
+	// IncrementNextSequenceID allocates the next log sequence. It fails with
+	// domain.ErrSequenceSpaceExhausted rather than wrapping the counter to 0
+	// when the space is used up; the caller must propagate, which fails the
+	// proposal deterministically on every node.
+	IncrementNextSequenceID() (uint64, error)
 	GetNextAuditSequenceID() uint64
 	// GetLastAuditHash returns the audit chain head as this proposal began.
 	// Read-only: callers that persist it must copy.

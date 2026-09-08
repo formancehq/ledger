@@ -1388,7 +1388,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		// AppendAuditEntry validates that the peeked sequence matches
 		// the actual next one (no concurrent mutation) and advances
 		// LastAuditHash for the next entry.
-		committedSeq := fsm.State.AppendAuditEntry(auditHash)
+		committedSeq, err := fsm.State.AppendAuditEntry(auditHash)
+		if err != nil {
+			return fmt.Errorf("appending audit entry for %s: %w", label, err)
+		}
+
 		if committedSeq != entry.GetSequence() {
 			return fmt.Errorf("audit sequence race for %s: peeked %d, got %d", label, entry.GetSequence(), committedSeq)
 		}

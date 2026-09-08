@@ -1,6 +1,9 @@
 package processing
 
 import (
+	"fmt"
+	"math"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -152,12 +155,20 @@ func (o *orderOverlayScope) GetNextSequenceID() uint64 {
 	return o.baseSeqID + o.seqIDDelta
 }
 
-func (o *orderOverlayScope) IncrementNextSequenceID() uint64 {
+func (o *orderOverlayScope) IncrementNextSequenceID() (uint64, error) {
 	o.captureBaseCounters()
+
+	// The overlay allocates ahead of the parent and drains the delta in Commit,
+	// so the exhaustion check has to happen against the position it is about to
+	// hand out, not against the parent's counter — which has not moved yet.
 	next := o.baseSeqID + o.seqIDDelta
+	if next == math.MaxUint64 {
+		return 0, fmt.Errorf("allocating log sequence in order overlay: %w", domain.ErrSequenceSpaceExhausted)
+	}
+
 	o.seqIDDelta++
 
-	return next
+	return next, nil
 }
 
 func (o *orderOverlayScope) GetNextLedgerID() uint32 {
@@ -236,8 +247,13 @@ func (o *orderOverlayScope) Commit() error {
 		o.Scope.PutReverted(k, v)
 	}
 
+	// Drains the ids the overlay already handed out. The parent cannot refuse
+	// them: the overlay checked the same space against the same base before
+	// allocating each one, so an error here would mean the two disagree.
 	for range o.seqIDDelta {
-		o.Scope.IncrementNextSequenceID()
+		if _, err := o.Scope.IncrementNextSequenceID(); err != nil {
+			return fmt.Errorf("draining overlay log sequence allocations: %w", err)
+		}
 	}
 
 	for range o.ledgerIDDelta {

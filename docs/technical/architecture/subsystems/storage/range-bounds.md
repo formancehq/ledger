@@ -44,6 +44,11 @@ Where a bound or a counter is derived by adding one to a stored sequence, `math.
 | `backup.exportEntries` | Falls back to the prefix successor; a wrapped bound would export an empty segment and lose the rows the delta must carry (invariant #11). |
 | `query.readAuditPageFromZone` | Already branched on `hi == ^uint64(0)`; that branch now uses the prefix successor instead of the `0xFF` run it reached for. |
 | `state.LoadFSMStateFromStore` | **Refuses to boot.** `lastSeq + 1` would wrap to 0 and the FSM would start allocating at a sequence the checker reports as impossible, on top of whatever row is there. Same for the audit head, which would rewrite the chain from its beginning. |
+| `WriteSet.IncrementNextSequenceID`, `FSMState.AppendAuditEntry` | **Fail the allocation** with `domain.ErrSequenceSpaceExhausted` instead of wrapping the counter. |
+
+The boot guard alone is not enough, and the reason is worth stating: it rejects a head of `math.MaxUint64`, but a head one below it boots, and the next allocation returns `MaxUint64` and leaves the counter at 0. Every allocation after that hands out a sequence that already addresses a stored row. Rejecting the penultimate head instead would only move the question to the head below it, so the guard that holds for every head lives at the allocators.
+
+Both counters are replicated state, so the refusal is deterministic: every node reaches it on the same entry and fails the same proposal (invariant #2). A failed proposal writes a Failure audit entry and the chain continues; it does not stop the node.
 
 ## Reachability
 

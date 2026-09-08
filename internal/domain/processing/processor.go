@@ -292,7 +292,11 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 					return nil, err
 				}
 
-				nextSequenceID := orderScope.IncrementNextSequenceID()
+				nextSequenceID, seqErr := orderScope.IncrementNextSequenceID()
+				if seqErr != nil {
+					return nil, domain.StoreFailure("allocating skip log sequence", seqErr)
+				}
+
 				skipLog := &commonpb.Log{
 					Sequence: nextSequenceID,
 					Payload:  skippedPayload,
@@ -350,7 +354,11 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 			}
 		}
 
-		nextSequenceID := orderScope.IncrementNextSequenceID()
+		nextSequenceID, seqErr := orderScope.IncrementNextSequenceID()
+		if seqErr != nil {
+			return nil, domain.StoreFailure("allocating log sequence", seqErr)
+		}
+
 		log := &commonpb.Log{
 			Sequence: nextSequenceID,
 			Payload:  payload,

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
+
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -119,12 +121,20 @@ func (s *FSMState) UpdateClusterConfig(cfg *commonpb.ClusterConfig) {
 // sequence number the entry should carry (the value before the bump). Tying
 // the hash and the sequence to a single method prevents call sites from
 // advancing one without the other.
-func (s *FSMState) AppendAuditEntry(hash []byte) uint64 {
+// AppendAuditEntry allocates the next audit sequence and advances the chain
+// head. Fails with domain.ErrSequenceSpaceExhausted at math.MaxUint64 rather
+// than wrapping to 0, which would restart the chain over its own beginning.
+// Same reasoning as WriteSet.IncrementNextSequenceID.
+func (s *FSMState) AppendAuditEntry(hash []byte) (uint64, error) {
+	if s.NextAuditSequenceID == math.MaxUint64 {
+		return 0, fmt.Errorf("allocating audit sequence: %w", domain.ErrSequenceSpaceExhausted)
+	}
+
 	sequence := s.NextAuditSequenceID
 	s.LastAuditHash = hash
 	s.NextAuditSequenceID++
 
-	return sequence
+	return sequence, nil
 }
 
 // LoadFSMStateFromStore reads every FSM-level field that lives in FSMState

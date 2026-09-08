@@ -258,7 +258,7 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
-	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))
+	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100), nil)
 
 	response, err := processor.ProcessOrders(proposal.GetOrders(), mockFactory(mockStore), noopSink{})
 	require.NoError(t, err)
@@ -334,8 +334,8 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "myled", ID: 1}, nil)
 
-	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(1))
-	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(2))
+	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(1), nil)
+	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(2), nil)
 
 	orders := []*raftcmdpb.Order{
 		{Type: &raftcmdpb.Order_LedgerScoped{
@@ -415,13 +415,13 @@ func TestProcessOrders_OrdersResultAccumulator(t *testing.T) {
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "ledger-a"}, nil)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "ledger-a"}, nil)
-	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))
+	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100), nil)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "ledger-b"}, nil, domain.ErrNotFound)
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(2))
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "ledger-b"}, nil)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "ledger-b"}, nil)
-	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(110))
+	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(110), nil)
 
 	orders := []*raftcmdpb.Order{
 		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -506,7 +506,7 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 	})
 
 	// Global proposal-level sequence ID for the skip log.
-	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100))
+	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100), nil)
 
 	order := &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{

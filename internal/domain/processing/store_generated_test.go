@@ -784,11 +784,12 @@ func (c *MockScopeIncrementNextQueryCheckpointIDCall) DoAndReturn(f func() uint6
 }
 
 // IncrementNextSequenceID mocks base method.
-func (m *MockScope) IncrementNextSequenceID() uint64 {
+func (m *MockScope) IncrementNextSequenceID() (uint64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "IncrementNextSequenceID")
 	ret0, _ := ret[0].(uint64)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // IncrementNextSequenceID indicates an expected call of IncrementNextSequenceID.
@@ -804,19 +805,19 @@ type MockScopeIncrementNextSequenceIDCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeIncrementNextSequenceIDCall) Return(arg0 uint64) *MockScopeIncrementNextSequenceIDCall {
-	c.Call = c.Call.Return(arg0)
+func (c *MockScopeIncrementNextSequenceIDCall) Return(arg0 uint64, arg1 error) *MockScopeIncrementNextSequenceIDCall {
+	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeIncrementNextSequenceIDCall) Do(f func() uint64) *MockScopeIncrementNextSequenceIDCall {
+func (c *MockScopeIncrementNextSequenceIDCall) Do(f func() (uint64, error)) *MockScopeIncrementNextSequenceIDCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeIncrementNextSequenceIDCall) DoAndReturn(f func() uint64) *MockScopeIncrementNextSequenceIDCall {
+func (c *MockScopeIncrementNextSequenceIDCall) DoAndReturn(f func() (uint64, error)) *MockScopeIncrementNextSequenceIDCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

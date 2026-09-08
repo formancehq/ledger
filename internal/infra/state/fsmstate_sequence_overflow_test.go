@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -87,4 +88,53 @@ func TestLoadFSMStateFromStore_RefusesMaxUint64Heads(t *testing.T) {
 			require.Contains(t, err.Error(), tc.want)
 		})
 	}
+}
+
+// TestAllocatorsRefuseToWrap pins the guard at the allocators themselves, which
+// is the only place that holds for every head.
+//
+// The boot guard in LoadFSMStateFromStore rejects a head of math.MaxUint64, but
+// a head one below it boots happily: the next allocation returns MaxUint64 and
+// leaves the counter at 0, and every allocation after that hands out a sequence
+// that already addresses a stored row. Rejecting the penultimate head instead
+// would only move the question to the head below that one.
+//
+// Both counters are replicated state, so the refusal is deterministic — every
+// node reaches it on the same entry and fails the same proposal (invariant #2).
+func TestAllocatorsRefuseToWrap(t *testing.T) {
+	t.Parallel()
+
+	t.Run("log sequence", func(t *testing.T) {
+		t.Parallel()
+
+		ws := &WriteSet{NextSequenceID: math.MaxUint64 - 1}
+
+		last, err := ws.IncrementNextSequenceID()
+		require.NoError(t, err, "the last representable sequence is still allocatable")
+		require.EqualValues(t, uint64(math.MaxUint64-1), last)
+		require.EqualValues(t, uint64(math.MaxUint64), ws.NextSequenceID)
+
+		_, err = ws.IncrementNextSequenceID()
+		require.ErrorIs(t, err, domain.ErrSequenceSpaceExhausted,
+			"the allocation that would wrap the counter must fail instead")
+		require.EqualValues(t, uint64(math.MaxUint64), ws.NextSequenceID,
+			"a refused allocation must not move the counter")
+	})
+
+	t.Run("audit sequence", func(t *testing.T) {
+		t.Parallel()
+
+		s := &FSMState{NextAuditSequenceID: math.MaxUint64 - 1}
+
+		last, err := s.AppendAuditEntry([]byte("hash-penultimate"))
+		require.NoError(t, err)
+		require.EqualValues(t, uint64(math.MaxUint64-1), last)
+
+		_, err = s.AppendAuditEntry([]byte("hash-wrap"))
+		require.ErrorIs(t, err, domain.ErrSequenceSpaceExhausted,
+			"wrapping would restart the audit chain over its own beginning")
+		require.EqualValues(t, uint64(math.MaxUint64), s.NextAuditSequenceID)
+		require.Equal(t, []byte("hash-penultimate"), s.LastAuditHash,
+			"a refused append must not advance the chain head either")
+	})
 }

@@ -664,11 +664,11 @@ func (s *scopeImpl) GetNextSequenceID() uint64 {
 	return s.engine.nextSequenceID
 }
 
-func (s *scopeImpl) IncrementNextSequenceID() uint64 {
+func (s *scopeImpl) IncrementNextSequenceID() (uint64, error) {
 	id := s.engine.nextSequenceID
 	s.engine.nextSequenceID++
 
-	return id
+	return id, nil
 }
 
 func (s *scopeImpl) GetNextLedgerID() uint32 {

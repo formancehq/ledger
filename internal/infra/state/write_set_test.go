@@ -320,7 +320,8 @@ func TestWriteSetSequenceIDOperations(t *testing.T) {
 
 	// NextSequenceID
 	startSeqID := buf.GetNextSequenceID()
-	seqID := buf.IncrementNextSequenceID()
+	seqID, err := buf.IncrementNextSequenceID()
+	require.NoError(t, err)
 	require.Equal(t, startSeqID, seqID)
 	require.Equal(t, startSeqID+1, buf.GetNextSequenceID())
 }
