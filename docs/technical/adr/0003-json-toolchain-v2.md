@@ -18,10 +18,14 @@ baseline.
 The JSON entry points at this revision are:
 
 - **HTTP:** `internal/adapter/json` documents itself as "the same API surface as
-  `encoding/json/v2`" but delegates to Sonic — `Marshal` via `ConfigDefault`
-  (`EscapeHTML=false`, `SortMapKeys=false`), `MarshalWrite` via `ConfigStd`
-  (`EscapeHTML=true`, `SortMapKeys=true`, newline-terminated stream). It omits
-  the `opts ...Options` parameter that is v2's central design point.
+  `encoding/json/v2`" but delegates to Sonic — `Marshal` via `ConfigDefault`,
+  `MarshalWrite` via `ConfigStd` (newline-terminated stream). On Go 1.27 this
+  "Sonic" is its `encoding/json` fallback (`UseStdJSON`): `ConfigDefault`
+  becomes an `encoding/json.Encoder` with `SetEscapeHTML(false)` while map keys
+  stay sorted and U+2028/U+2029 stay escaped, and `ConfigStd` keeps the
+  `encoding/json` encoder defaults (HTML-escaped, sorted, trailing newline).
+  The `EscapeHTML`/`SortMapKeys` flags describe native Sonic only. It omits the
+  `opts ...Options` parameter that is v2's central design point.
 - **Checked routes:** `writeOKChecked` (`internal/adapter/http/response.go`)
   serves transaction-list, single-log and audit-entry responses. It buffers
   `json.Marshal` *before* committing success headers so a nested marshal
@@ -59,14 +63,21 @@ so it can only be converted *end to end*, never incrementally.
      successful write to stay byte-stable.
 
    - **Checked buffering** (`json.Marshal`, `writeOKChecked`, Sonic
-     `ConfigDefault`) does not sort map keys and does not HTML-escape strings,
-     so `DefaultOptionsV1()` must not be applied there: its `Deterministic`
-     and `EscapeForHTML`/`EscapeForJS` options would reorder `MetadataMap`
-     keys and escape any metadata/string value containing `<`, `>` or `&`,
-     changing bytes instead of preserving them. Buffered callers must start
-     from the v2 defaults (`encoding/json/v2.DefaultOptionsV2()` — no
-     `Deterministic`, no escaping) and opt in only the framing options needed
-     to match `ConfigDefault`, keeping buffered output ConfigDefault-stable.
+     `ConfigDefault`) must not be described by native Sonic's `ConfigDefault`
+     flags. Native Sonic (`SortMapKeys=false`, `EscapeHTML=false`) only exists
+     on Go ≤1.26; on the active Go 1.27 toolchain `ConfigDefault.Marshal` runs
+     through the `UseStdJSON` fallback — an `encoding/json.Encoder` with
+     `SetEscapeHTML(false)` whose trailing `\n` is stripped. `encoding/json`
+     sorts map keys and escapes U+2028/U+2029 unconditionally (independent of
+     `SetEscapeHTML`) while leaving `<`, `>` and `&` unescaped. The byte-stable
+     target is therefore that measured fallback output, so buffered callers must
+     enable `Deterministic` and `EscapeForJS` *without* `EscapeForHTML` (plus the
+     remaining v1 framing/legacy options), i.e.
+     `encoding/json.DefaultOptionsV1()` overridden by
+     `encoding/json/jsontext.EscapeForHTML(false)` — not the bare
+     `encoding/json/v2.DefaultOptionsV2()`, whose non-deterministic map order
+     and minimal escaping would reorder `MetadataMap` keys and change any
+     metadata/string value containing U+2028/U+2029.
 2. **Do not bump or drop Sonic unconditionally.** Retain Sonic for decode only
    if, at implementation time, a supported pin plus representative Go 1.27
    benchmarks on amd64/arm64 still justify its decode advantage. There is no
@@ -89,7 +100,10 @@ so it can only be converted *end to end*, never incrementally.
    hashed/persisted (audit/idempotency bind protobuf binary, not JSON).
 2. Record Go 1.27+ encoder/decoder baselines on representative payloads —
    marshal, streaming write and unmarshal separately, amd64 and arm64, with
-   exact toolchain and ns/B/allocs.
+   exact toolchain and ns/B/allocs. Capture byte-level output per entry point
+   (map-key order, `<`/`>`/`&` vs U+2028/U+2029 escaping, trailing newline):
+   on Go 1.27 native Sonic is not compiled, so the baseline is the
+   `encoding/json` fallback, not the documented native-Sonic config flags.
 3. Prove compatibility of nested marshaller paths before switching; convert
    each affected path (`MarshalJSON` → `MarshalJSONTo`) end to end so call-site
    options are never absorbed at an opaque v1 boundary.
@@ -97,10 +111,10 @@ so it can only be converted *end to end*, never incrementally.
    `MarshalJSONTo`/v2 so messages do not fall through to `protojson`.
 5. Fail-fast tests: inject late nested marshal failures and writer failures;
    checked routes must 500 cleanly before headers.
-6. Publish the per-entry-point golden/round-trip matrix (field names, uint256
-   encoding, oneofs/discriminators, timestamps, nil/empty collections,
-   zero-value omission, colors, escaping, trailing newline) and explicit decode
-   strictness/duplicate/unknown/trailing-data behavior.
+6. Publish the per-entry-point golden/round-trip matrix (field names, map-key
+   ordering, uint256 encoding, oneofs/discriminators, timestamps, nil/empty
+   collections, zero-value omission, colors, escaping, trailing newline) and
+   explicit decode strictness/duplicate/unknown/trailing-data behavior.
 7. **Keep the existing path and report the unresolved choice** if the
    compatibility or performance gates cannot be met. This ADR validates the
    plan, not the migration.
