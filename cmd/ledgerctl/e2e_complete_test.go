@@ -48,6 +48,7 @@ func TestE2ECompletionUsesExplicitProfileNotActive(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
 	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("APPDATA", tmp)
 	t.Setenv("LEDGERCTL_PROFILE", "")
 	t.Setenv("LEDGERCTL_SERVER", "")
 	dir, err := cmdutil.ConfigDir()
