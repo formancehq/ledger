@@ -263,6 +263,74 @@ func TestBatch_SetProtoAfterCommit(t *testing.T) {
 	require.Contains(t, err.Error(), "already committed")
 }
 
+func TestBatch_RawSetAfterCommit(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.Commit())
+
+	err := batch.Set([]byte("key"), []byte("val"), pebble.NoSync)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "already committed")
+}
+
+func TestBatch_RawDeleteRangeAfterCommit(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.Commit())
+
+	err := batch.DeleteRange([]byte("a"), []byte("z"), pebble.NoSync)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "already committed")
+}
+
+func TestBatch_CancelIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.OpenWriteSession()
+
+	require.NoError(t, batch.SetBytes([]byte("key1"), []byte("val1")))
+	require.NoError(t, batch.Cancel())
+	require.NoError(t, batch.Cancel())
+	require.NoError(t, batch.Cancel())
+
+	// Data should NOT be committed after cancel.
+	_, _, err := s.Get([]byte("key1"))
+	require.Error(t, err)
+}
+
+func TestBatch_CommitAfterCancel(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.OpenWriteSession()
+
+	require.NoError(t, batch.Cancel())
+
+	err := batch.Commit()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cancelled")
+}
+
+func TestBatch_MutationsAfterCancel(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.Cancel())
+
+	require.ErrorContains(t, batch.Set([]byte("k"), []byte("v"), pebble.NoSync), "cancelled")
+	require.ErrorContains(t, batch.SetBytes([]byte("k"), []byte("v")), "cancelled")
+	require.ErrorContains(t, batch.DeleteKey([]byte("k")), "cancelled")
+	require.ErrorContains(t, batch.SingleDeleteKey([]byte("k")), "cancelled")
+	require.ErrorContains(t, batch.DeleteRange([]byte("a"), []byte("z"), pebble.NoSync), "cancelled")
+	require.ErrorContains(t, batch.DeleteRangeNoSync([]byte("a"), []byte("z")), "cancelled")
+}
+
 func TestBatch_DeleteRangeWithSet(t *testing.T) {
 	t.Parallel()
 
