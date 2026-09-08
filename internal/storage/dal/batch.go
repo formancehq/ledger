@@ -38,8 +38,11 @@ type vtDeterministicMarshaler interface {
 // state every mutator returns a documented error and never touches the
 // released batch.
 type WriteSession struct {
-	store          *Store
-	batch          *pebble.Batch
+	store *Store
+	batch *pebble.Batch
+	// closeBatchFn allows tests to observe release without accessing a pooled batch.
+	// When nil, releaseBatch calls Pebble's Close directly.
+	closeBatchFn   func(*pebble.Batch) error
 	KeyBuilder     *KeyBuilder
 	protoBuffer    []byte
 	CacheBuffer    []byte // reusable buffer for 0xFF cache zone writes (tag+value)
@@ -118,7 +121,18 @@ func (b *WriteSession) Cancel() error {
 		return nil
 	}
 
-	err := b.batch.Close()
+	return b.releaseBatch()
+}
+
+// releaseBatch relinquishes ownership even if Close reports an error.
+// Callers must check the session state before releasing the batch.
+func (b *WriteSession) releaseBatch() error {
+	var err error
+	if b.closeBatchFn != nil {
+		err = b.closeBatchFn(b.batch)
+	} else {
+		err = b.batch.Close()
+	}
 	b.batch = nil
 
 	return err
@@ -144,12 +158,9 @@ func (b *WriteSession) Commit() error {
 
 	b.committed = true
 
-	if err := b.batch.Close(); err != nil {
-		b.batch = nil
-
+	if err := b.releaseBatch(); err != nil {
 		return fmt.Errorf("finalizing write session batch: %w", err)
 	}
-	b.batch = nil
 
 	return nil
 }

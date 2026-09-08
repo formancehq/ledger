@@ -8,7 +8,7 @@ The persistence layer (`internal/storage/dal`, `internal/storage/wal`, `internal
 |----------|-------------|
 | [storage.md](storage.md) | WAL, snapshot/compaction boundaries, runtime stores, persistence, and recovery. |
 | [follower-sync.md](follower-sync.md) | Checkpoint streaming, session lifetime, SHA-256 verification, retries, and WAL reclamation after snapshot install. |
-| [storage-drivers.md](storage-drivers.md) | Pebble storage driver characteristics and configuration. |
+| [storage-drivers.md](storage-drivers.md) | Pebble storage driver characteristics, configuration, and write session ownership. |
 | [spool.md](spool.md) | Committed entry buffer between Raft and FSM synchronization. |
 
 ## Related

@@ -1,6 +1,7 @@
 package dal
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -47,21 +48,64 @@ func TestBatch_CommitFinalizesBatch(t *testing.T) {
 	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("key1"), []byte("val1")))
 
-	// Capture the underlying Pebble batch before Commit releases the
-	// session's reference to it, so finalization can be observed directly.
-	pb := batch.batch
-	require.False(t, pb.Empty())
+	closeCalls := 0
+	batch.closeBatchFn = func(pb *pebble.Batch) error {
+		closeCalls++
+		if closeCalls > 1 {
+			t.Fatal("batch closed more than once")
+		}
+
+		return pb.Close()
+	}
 
 	require.NoError(t, batch.Commit())
+	require.Equal(t, 1, closeCalls)
+	require.Nil(t, batch.batch)
 
-	// Commit must finalize the owned batch exactly once by closing it, which
-	// returns it to Pebble's pool in a reset state. If the Close call were
-	// removed, the committed batch would retain its records and non-zero
-	// count, so both assertions fail.
-	require.True(t, pb.Empty())
-	require.Zero(t, pb.Count())
+	// Terminal operations must not attempt to close the released batch again.
+	require.NoError(t, batch.Cancel())
+	require.NoError(t, batch.Cancel())
+	require.ErrorContains(t, batch.Commit(), "already committed")
+	require.Equal(t, 1, closeCalls)
+	require.Nil(t, batch.batch)
 
 	// The write itself must remain visible after the batch was finalized.
+	val, closer, err := s.Get([]byte("key1"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("val1"), val)
+	require.NoError(t, closer.Close())
+}
+
+func TestBatch_CommitCloseError(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte("key1"), []byte("val1")))
+
+	closeErr := errors.New("injected close failure")
+	closeCalls := 0
+	batch.closeBatchFn = func(pb *pebble.Batch) error {
+		closeCalls++
+		if closeCalls > 1 {
+			t.Fatal("batch closed more than once")
+		}
+		// Release the real resource before simulating the reported error.
+		require.NoError(t, pb.Close())
+
+		return closeErr
+	}
+
+	err := batch.Commit()
+	require.ErrorIs(t, err, closeErr)
+	require.ErrorContains(t, err, "finalizing write session batch")
+	require.True(t, batch.committed)
+	require.Nil(t, batch.batch)
+	require.NoError(t, batch.Cancel())
+	require.ErrorContains(t, batch.Commit(), "already committed")
+	require.ErrorContains(t, batch.SetBytes([]byte("key1"), []byte("new")), "already committed")
+	require.Equal(t, 1, closeCalls)
+
 	val, closer, err := s.Get([]byte("key1"))
 	require.NoError(t, err)
 	require.Equal(t, []byte("val1"), val)

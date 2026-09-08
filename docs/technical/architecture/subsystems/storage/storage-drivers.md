@@ -297,6 +297,25 @@ The `Batch` (`internal/storage/dal/batch.go`) provides atomic write operations:
 - `AppendAuditEntries` — Audit trail entries
 - `Set` / `DeleteRange` — Low-level operations used by the attribute system
 
+### Write session ownership
+
+`WriteSession` owns its Pebble batch until `Commit` or `Cancel` finalizes it.
+`Commit` first applies the batch with `NoSync` (without waiting for an fsync),
+then marks the session committed, calls `Close` exactly once, and clears the
+batch reference. Pebble may defer pool reuse while its WAL pipeline retains a
+reference. Code must never inspect the batch after `Close` returns.
+
+If the underlying commit fails, the session retains the batch so the caller can
+`Cancel` it; this does not imply rollback. If closing fails after a successful
+commit, `Commit` returns a finalization error, but the data has already been
+applied and the session remains committed with a nil batch reference.
+
+`Cancel` closes an unfinished batch and clears the reference even on a close
+error. Further cancellations are no-ops after either terminal state. Mutators
+and repeated commits return a terminal-state error without touching the released
+batch. Finalization tests observe close calls through a session-local hook and
+assert the cleared reference, without reading Pebble's pooled object.
+
 ### Source Files
 
 | Component | Source File |
