@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -355,9 +356,45 @@ const (
 // allow more bytes than admission accepts.
 const LedgerNameFixedSize = invariants.LedgerNameMaxLength
 
-// MaxUint64Bytes is the big-endian representation of math.MaxUint64,
-// used as an upper bound sentinel for sequence-keyed iterations.
-var MaxUint64Bytes = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+// PrefixUpperBound returns the smallest key strictly greater than every key
+// having prefix as a prefix — the exclusive upper bound of a prefix scan.
+// Returns nil when prefix is empty or all 0xFF, which Pebble reads as "no upper
+// bound", the correct answer when the prefix runs to the end of the key space.
+//
+// Use this, never a run of 0xFF bytes appended to the prefix. Pebble's
+// IterOptions.UpperBound is EXCLUSIVE, so appending eight 0xFF bytes to a
+// sequence-keyed prefix produces a bound byte-identical to the key at
+// math.MaxUint64 and silently drops exactly that row. That is not a theoretical
+// position: sequences arrive from restore streams and can be corrupted in
+// place, and a scan that cannot see the row cannot report it either.
+//
+// The returned slice is freshly allocated and never aliases prefix.
+func PrefixUpperBound(prefix []byte) []byte {
+	end := make([]byte, len(prefix))
+	copy(end, prefix)
+
+	for i, v := range slices.Backward(end) {
+		if v != 0xFF {
+			end[i]++
+
+			return end[:i+1]
+		}
+	}
+
+	return nil
+}
+
+// ZonePrefixUpperBound returns the exclusive upper bound covering every key
+// under the two-byte [zone][sub] prefix — the two-byte convenience form of
+// PrefixUpperBound, and the bound every sequence-keyed zone scan wants.
+//
+// A two-byte successor sorts strictly below every key in the next sub-prefix,
+// all of which carry a suffix, so the bound admits the whole prefix and nothing
+// beyond it. Carries into zone when sub is 0xFF, and returns nil ("no upper
+// bound") when both are.
+func ZonePrefixUpperBound(zone, sub byte) []byte {
+	return PrefixUpperBound([]byte{zone, sub})
+}
 
 // NewStore creates a new Store instance.
 func NewStore(
@@ -1565,7 +1602,7 @@ func ReadProto[T proto.Message](reader PebbleGetter, key []byte) (T, error) {
 // ScanZone returns a ProtoCursor over all entries in a [zone][sub] prefix range.
 func ScanZone[T proto.Message](reader PebbleReader, zone, sub byte, opts ...ProtoCursorOption) (*ProtoCursor[T], error) {
 	lowerBound := []byte{zone, sub}
-	upperBound := []byte{zone, sub + 1}
+	upperBound := ZonePrefixUpperBound(zone, sub)
 
 	iter, err := NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
@@ -1595,8 +1632,7 @@ func ReadLastEntry[T proto.Message](reader PebbleReader, zone, sub byte) (T, err
 	lowerBound := kb.Snapshot()
 	kb.Reset()
 
-	kb.PutZonePrefix(zone, sub).PutBytes(MaxUint64Bytes)
-	upperBound := kb.Build()
+	upperBound := ZonePrefixUpperBound(zone, sub)
 
 	iter, err := NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {

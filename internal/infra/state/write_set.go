@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 
@@ -1373,11 +1374,23 @@ func (b *WriteSet) GetLastAuditHash() []byte {
 	return b.LastAuditHash
 }
 
-func (b *WriteSet) IncrementNextSequenceID() uint64 {
+// IncrementNextSequenceID allocates the next log sequence.
+//
+// Guarded rather than a bare post-increment: at math.MaxUint64 the increment
+// wraps to 0 and every subsequent allocation hands out a sequence that already
+// addresses a stored row, silently overwriting audited history. Recovery
+// refuses to boot on a head of MaxUint64, but a head just below it boots and
+// reaches the wrap here, so this is the guard that holds for every head
+// (invariant #7). See domain.ErrSequenceSpaceExhausted.
+func (b *WriteSet) IncrementNextSequenceID() (uint64, error) {
+	if b.NextSequenceID == math.MaxUint64 {
+		return 0, fmt.Errorf("allocating log sequence: %w", domain.ErrSequenceSpaceExhausted)
+	}
+
 	id := b.NextSequenceID
 	b.NextSequenceID++
 
-	return id
+	return id, nil
 }
 
 func (b *WriteSet) GetNextLedgerID() uint32 {

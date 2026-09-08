@@ -2,7 +2,9 @@ package state
 
 import (
 	"fmt"
+	"math"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -118,12 +120,20 @@ func (s *FSMState) UpdateClusterConfig(cfg *commonpb.ClusterConfig) {
 // sequence number the entry should carry (the value before the bump). Tying
 // the hash and the sequence to a single method prevents call sites from
 // advancing one without the other.
-func (s *FSMState) AppendAuditEntry(hash []byte) uint64 {
+// AppendAuditEntry allocates the next audit sequence and advances the chain
+// head. Fails with domain.ErrSequenceSpaceExhausted at math.MaxUint64 rather
+// than wrapping to 0, which would restart the chain over its own beginning.
+// Same reasoning as WriteSet.IncrementNextSequenceID.
+func (s *FSMState) AppendAuditEntry(hash []byte) (uint64, error) {
+	if s.NextAuditSequenceID == math.MaxUint64 {
+		return 0, fmt.Errorf("allocating audit sequence: %w", domain.ErrSequenceSpaceExhausted)
+	}
+
 	sequence := s.NextAuditSequenceID
 	s.LastAuditHash = hash
 	s.NextAuditSequenceID++
 
-	return sequence
+	return sequence, nil
 }
 
 // LoadFSMStateFromStore reads every FSM-level field that lives in FSMState
@@ -155,6 +165,17 @@ func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle, cl
 		return nil, fmt.Errorf("reading last sequence: %w", err)
 	}
 
+	// A head at MaxUint64 cannot be advanced past: lastSeq+1 wraps to 0, and
+	// the FSM would start allocating at a sequence the checker reports as
+	// impossible, on top of whatever row is already there. The FSM cannot reach
+	// that head on its own — NextSequenceID is seeded at 1 and only ever
+	// incremented — so a store holding one was corrupted or restored from a
+	// tampered stream. Refuse to boot rather than wrap (invariant #7).
+	if lastSeq == math.MaxUint64 {
+		return nil, fmt.Errorf("stored log head is %d, the maximum uint64: no further log sequence can be "+
+			"allocated, so this store is corrupt or was restored from a tampered export", lastSeq)
+	}
+
 	if lastSeq > 0 {
 		s.NextSequenceID = lastSeq + 1
 	}
@@ -165,6 +186,14 @@ func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle, cl
 	}
 
 	if lastAuditEntry != nil {
+		// Same wrap, same refusal: an audit head at MaxUint64 would restart the
+		// audit sequence at 0 and rewrite the chain from the beginning.
+		if lastAuditEntry.GetSequence() == math.MaxUint64 {
+			return nil, fmt.Errorf("stored audit head is %d, the maximum uint64: no further audit sequence "+
+				"can be allocated, so this store is corrupt or was restored from a tampered export",
+				lastAuditEntry.GetSequence())
+		}
+
 		s.LastAuditHash = lastAuditEntry.GetHash()
 		s.NextAuditSequenceID = lastAuditEntry.GetSequence() + 1
 	}

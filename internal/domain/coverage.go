@@ -66,6 +66,23 @@ func CoverageContractViolation(err error) Describable {
 // operation is the short identifier ErrStorageOperation surfaces ("loading
 // ledger", "checking transaction reference"). err is expected to be non-nil;
 // calling with nil yields an ErrStorageOperation with a nil cause.
+// ErrSequenceSpaceExhausted is returned when a monotone FSM counter has no
+// successor left: the next allocation would be math.MaxUint64 and the counter
+// would then wrap to 0, handing out sequences that already address existing
+// rows.
+//
+// Unreachable by allocation — the counters are seeded at 1 and advanced by one,
+// so the top of the space is 2^64 proposals away. It is reachable by restoring
+// a tampered export: backup key validation checks the key prefix, the key
+// length and a range taken from the manifest itself, so a segment declaring a
+// head near the top passes. Recovery refuses to boot on a head of MaxUint64
+// (state.LoadFSMStateFromStore), but a head just below it boots and wraps on
+// the next allocation, which is why the guard also lives at the allocator.
+//
+// Deterministic: the counter is replicated state, so every node reaches this
+// on the same entry and fails the same proposal (invariant #2).
+var ErrSequenceSpaceExhausted = errors.New("FSM sequence space exhausted")
+
 func StoreFailure(operation string, err error) Describable {
 	if violation := CoverageContractViolation(err); violation != nil {
 		return violation

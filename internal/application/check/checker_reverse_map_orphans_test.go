@@ -820,8 +820,10 @@ func TestCompareReverseMapOrphans_EmptyAudit(t *testing.T) {
 }
 
 // TestCheck_ReverseMapOrphans_EmptyAuditWiring is the Check()-level twin of the
-// above: it pins that the pass actually runs on the lastSequence == 0 path, which
-// returns before the replay and therefore before every other pass.
+// above: it pins that the pass actually runs when the store holds no logs. It
+// used to sit on a dedicated lastSequence == 0 branch that returned before the
+// replay; EN-1526 removed that branch, so the assertion now guards the single
+// normal-path call site.
 func TestCheck_ReverseMapOrphans_EmptyAuditWiring(t *testing.T) {
 	t.Parallel()
 

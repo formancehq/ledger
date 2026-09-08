@@ -248,7 +248,7 @@ func TestOrderOverlayScope_RollbackOnNoCommit(t *testing.T) {
 	overlay := newOrderOverlayScope(s.parent)
 	overlay.Ledgers().Put(domain.LedgerKey{Name: "L"}, &commonpb.LedgerInfo{Name: "L"})
 	overlay.Boundaries().Put(domain.LedgerKey{Name: "L"}, &raftcmdpb.LedgerBoundaries{})
-	overlay.IncrementNextSequenceID()
+	_, _ = overlay.IncrementNextSequenceID()
 	overlay.IncrementNextLedgerID()
 
 	// No Commit. The catch-all parent write hook fails the test on any
@@ -269,7 +269,7 @@ func TestOrderOverlayScope_CommitFlushesEveryCategory(t *testing.T) {
 	s.parent.EXPECT().GetNextLedgerID().Return(uint32(5)).AnyTimes()
 	s.parent.EXPECT().GetNextQueryCheckpointID().Return(uint64(0)).AnyTimes()
 	s.parent.EXPECT().PutReverted(gomock.Any(), true)
-	s.parent.EXPECT().IncrementNextSequenceID().Return(uint64(101)).Times(2)
+	s.parent.EXPECT().IncrementNextSequenceID().Return(uint64(101), nil).Times(2)
 	s.parent.EXPECT().IncrementNextLedgerID().Return(uint32(6))
 	s.parent.EXPECT().IncrementNextQueryCheckpointID().Return(uint64(1))
 
@@ -304,8 +304,8 @@ func TestOrderOverlayScope_CommitFlushesEveryCategory(t *testing.T) {
 	overlay.TransactionStates().Put(tsk, &commonpb.TransactionState{})
 	overlay.PreparedQueries().Put(pqk, &commonpb.PreparedQuery{Name: "q1"})
 	overlay.Indexes().Put(ik, &commonpb.Index{})
-	overlay.IncrementNextSequenceID()
-	overlay.IncrementNextSequenceID()
+	_, _ = overlay.IncrementNextSequenceID()
+	_, _ = overlay.IncrementNextSequenceID()
 	overlay.IncrementNextLedgerID()
 	overlay.IncrementNextQueryCheckpointID()
 
@@ -328,8 +328,13 @@ func TestOrderOverlayScope_CounterDeltasMonotonicWithinOrder(t *testing.T) {
 
 	overlay := newOrderOverlayScope(s.parent)
 
-	require.Equal(t, uint64(100), overlay.IncrementNextSequenceID())
-	require.Equal(t, uint64(101), overlay.IncrementNextSequenceID())
+	first, err := overlay.IncrementNextSequenceID()
+	require.NoError(t, err)
+	require.Equal(t, uint64(100), first)
+
+	second, err := overlay.IncrementNextSequenceID()
+	require.NoError(t, err)
+	require.Equal(t, uint64(101), second)
 	require.Equal(t, uint64(102), overlay.GetNextSequenceID())
 }
 

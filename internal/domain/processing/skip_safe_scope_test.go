@@ -92,7 +92,9 @@ func TestSkipSafeScope_ReadsAndBufferedWritesPassThrough(t *testing.T) {
 
 	// Buffered counter reads/increments delegate through overlay.
 	require.Equal(t, uint64(100), trap.GetNextSequenceID())
-	require.Equal(t, uint64(100), trap.IncrementNextSequenceID())
+	seq, err := trap.IncrementNextSequenceID()
+	require.NoError(t, err)
+	require.Equal(t, uint64(100), seq)
 	require.Equal(t, uint64(101), trap.GetNextSequenceID())
 
 	// Non-buffered counter reads (audit seq is monotonic, read-only via
@@ -138,7 +140,7 @@ func TestSkipSafeScope_RollbackKeepsParentUntouched(t *testing.T) {
 	trap.Ledgers().Put(domain.LedgerKey{Name: "L"}, &commonpb.LedgerInfo{Name: "L"})
 	trap.Boundaries().Put(domain.LedgerKey{Name: "L"}, &raftcmdpb.LedgerBoundaries{})
 	trap.PutReverted(domain.TransactionKey{LedgerName: "L", ID: 1}, true)
-	trap.IncrementNextSequenceID()
+	_, _ = trap.IncrementNextSequenceID()
 	trap.IncrementNextLedgerID()
 	trap.IncrementNextQueryCheckpointID()
 

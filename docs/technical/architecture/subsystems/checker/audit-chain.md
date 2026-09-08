@@ -61,7 +61,7 @@ Items are concatenated in `OrderIndex` order before being fed into the hash. A s
 
 ### Chain link
 
-`HashGenerator.Compute(prevHash, slices...)` (`internal/domain/processing/hash.go:54-77`) feeds `prevHash || header || items` into the BLAKE3 keyed hash. The resulting `hash` is stored on the `AuditEntry`; the *next* entry then consumes this as `prevHash`. Genesis (`Sequence = 0`) hashes `nil || header || items` — no external seed is required because the cluster-specific BLAKE3 key already domain-separates two distinct clusters.
+`HashGenerator.Compute(prevHash, slices...)` (`internal/domain/processing/hash.go:54-77`) feeds `prevHash || header || items` into the BLAKE3 keyed hash. The resulting `hash` is stored on the `AuditEntry`; the *next* entry then consumes this as `prevHash`. Genesis (the first entry, `Sequence = 1`) hashes `nil || header || items` — no external seed is required because the cluster-specific BLAKE3 key already domain-separates two distinct clusters.
 
 ## `AuditEntry` proto and persistence
 
@@ -86,7 +86,7 @@ message AuditEntry {
 
 Persistence layout:
 
-- The entry itself lives under zone `History`, sub `Audit` (the `AuditEntry` row), with `items` **intentionally set to nil on disk** (`internal/infra/state/machine.go:1403`). Items live under their own keys (zone `History`, sub `AuditItem`), keyed by `(audit_sequence, order_index)`. This split prevents a `ListAuditEntries` reader from receiving items that have never been hash-checked against the chain.
+- The entry itself lives under zone `History`, sub `Audit` (the `AuditEntry` row), with `items` **intentionally set to nil on disk** (`writeAuditEntry` in `internal/infra/state/machine.go`). Items live under their own keys (zone `History`, sub `AuditItem`), keyed by `(audit_sequence, order_index)`. This split prevents a `ListAuditEntries` reader from receiving items that have never been hash-checked against the chain.
 - Reads that need item bodies join through the per-item keys; the checker uses `BuildPerItemPayload` to recompute the same byte sequence the writer used.
 
 ## When the hash is computed
@@ -113,7 +113,7 @@ Reference: `internal/infra/state/machine.go:1370-1384`. The hash is bound to the
 
 ## What's in the chain — orders and logs
 
-**Exactly one `AuditEntry` per Raft proposal.** The outcome is either `Success` (with `order_count` items and the resulting log range) or `Failure` (with a reason and message; zero items). Both outcomes are bound by the hash chain — a rejected proposal is just as auditable as an accepted one.
+**Exactly one `AuditEntry` per Raft proposal.** The outcome is either `Success` (with the resulting log range) or `Failure` (with a reason and message). **Both outcomes write `order_count` `AuditItem` rows** — one per order in the proposal, each carrying that order's `SerializedOrder`. The difference is `LogSequence`: a success binds each item to the log its order produced, while a failure produced no log at all and every one of its items therefore carries `LogSequence = 0` (`writeAuditEntry(failureEntry, nil, …)` in `internal/infra/state/machine.go` reaches `buildAuditItems(serializedOrders, nil)` in `internal/infra/state/audit.go`). The items enter the hash identically in both cases: `writeAuditEntry` appends `BuildPerItemPayload` for every item before computing the hash, whatever the outcome. Both outcomes are bound by the hash chain — a rejected proposal is just as auditable as an accepted one.
 
 Each successful order produces a `Log` (`internal/proto/commonpb/common.proto`, `message Log { LogPayload payload = …; }`). The audit chain binds the orders via `AuditItem.SerializedOrder` (the order's canonical vtprotobuf bytes); the resulting `Log` rows are addressable separately by `LogSequence` and bound transitively through the items.
 
@@ -177,56 +177,72 @@ The FSM writes up to four datasets per proposal, all in `ZoneHistory`, but they 
 | Sub-zone | Key | Success (N orders) | Failure | Idempotent replay (success or failure) |
 |----------|-----|--------------------|---------|----------------------------------------|
 | `SubHistoryAudit = 0x02` — `AuditEntry` | `[seq BE 8]` | 1 | 1 | **0** |
-| `SubHistoryAuditItem = 0x03` — `AuditItem` | `[seq BE 8][order_idx BE 4]` | N (≥1) | **0** | **0** |
+| `SubHistoryAuditItem = 0x03` — `AuditItem` | `[seq BE 8][order_idx BE 4]` | N | N, each with `LogSequence = 0` | **0** |
 | `SubHistoryAppliedProposal = 0x04` — `AppliedProposal` | `[seq BE 8]` | 1 | **0** | **0** |
 | `SubHistoryLog = 0x01` — `Log` | `[log_seq BE 8]` | 0..M (=`MaxLog-MinLog+1`) | 0 | 0 |
 
-**Idempotent replay is the one exception to "one AuditEntry per proposal":** when the proposal carries a previously-recorded idempotency key with a matching hash, `applyProposal` short-circuits (`internal/infra/state/machine.go:1313-1326`) and returns the recorded outcome verbatim — no new pipeline run, no new logs, no new audit entry. `audit_sequence` does **not** advance for that proposal. The first-time apply of that key is what's already recorded under the "Success" or "Failure" column; the replay is invisible to Pebble.
+**Idempotent replay is one of four paths on which an admitted proposal writes no `AuditEntry`:** when the proposal carries a previously-recorded idempotency key with a matching hash, `applyProposal` short-circuits (its `if replayed { … return }` branch, `internal/infra/state/machine.go`) and returns the recorded outcome verbatim — no new pipeline run, no new logs, no new audit entry. `audit_sequence` does **not** advance for that proposal. The first-time apply of that key is what's already recorded under the "Success" or "Failure" column; the replay is invisible to Pebble.
 
-A same-key-different-hash conflict, by contrast, is **not** a replay — it's a fresh rejection, so it takes the Failure column (1 audit entry, no items, no applied proposal, no log).
+The other three are all **order-less** proposals, and none of them reaches the audit path: a technical-only proposal drains its overlay through `Merge` and returns before the audit-entry path (`if len(proposal.GetOrders()) == 0`, `internal/infra/state/machine.go`, whose comment states the audit-entry path is skipped entirely); a TU-phase plan-invariant rejection returns a business error before the orders phase ("the audit chain is not extended here", same file); and a proposal with neither orders nor technical updates is skipped in the apply loop before `applyProposal` is called. Every persisted `AuditEntry` therefore has `OrderCount >= 1`.
+
+A same-key-different-hash conflict, by contrast, is **not** a replay — it's a fresh rejection, so it takes the Failure column (1 audit entry, N items each with `LogSequence = 0`, no applied proposal, no log).
 
 Two independent monotone counters, bridged per successful non-replayed proposal:
 
 - **`audit_sequence`** advances by 1 on every non-replayed proposal — success or failure alike (`AppendAuditEntry` in `internal/infra/state/fsmstate.go`). The `audit_sequence` values themselves are **dense** (no gaps in the numbering), but the proposal-to-sequence mapping is many-to-one: several replayed proposals can share the sequence number of the next non-replayed one.
-- **`log_sequence`** advances only when a log is produced. The mapping `audit_seq → [MinLog, MaxLog]` is sparse: failures contribute zero logs; a success in which every order is an in-batch idempotent reference contributes `[0, 0]`.
+- **`log_sequence`** advances only when a log is produced. The mapping `audit_seq → [MinLog, MaxLog]` is sparse: failures contribute zero logs; a success in which every order took the no-log outcome in `ProcessOrders` — today an idempotent mirror replay, or a `SetClusterPolicy` re-proposal at the applied revision — contributes `[0, 0]`. (The in-batch idempotent *reference* that used to produce this shape no longer exists: per-batch idempotency moved out of `ProcessOrders` into the FSM apply path, which short-circuits replays before the processor runs, so `ReferenceSequence` items are no longer produced — `internal/domain/processing/processor.go`.)
 
 Gaps live on the **companion streams**, not on `audit_sequence` itself:
 
 - `SubHistoryAppliedProposal` iteration shows a gap at every failed audit_seq.
-- `SubHistoryAuditItem[seq][…]` shows no items at every failed audit_seq.
+- `SubHistoryAuditItem[seq][…]` is dense across successes and failures alike — a failed audit_seq still carries one item per order, and no persisted audit_seq carries zero items: an order-less proposal writes no `AuditEntry` in the first place, so there is no such sequence to be sparse at.
 - A `Log` reader has no visibility into failures at all.
 
 ### Implication for downstream code
 
-**`audit.count > 0` does NOT imply `auditItem.count > 0`.** An incremental range consisting of only failures has one AuditEntry per proposal (audit_seq advances) but zero AuditItems (nothing to hash into the per-item payload beyond an empty list). Anything that assumes the two rise together — a backup exporter that indexes segments by audit range, an indexer that scans AppliedProposal alongside AuditEntry, a mirror that assumes a log per audit — must guard on the companion stream's count independently, rather than deriving one count from the other.
+**Neither the `Log` count nor the `AppliedProposal` count follows from the audit count.** An incremental range consisting of only failures has one `AuditEntry` per proposal (audit_seq advances), zero `AppliedProposal` rows and zero `Log` rows. Anything that assumes those rise together — a backup exporter that indexes segments by audit range, an indexer that scans `AppliedProposal` alongside `AuditEntry`, a mirror that assumes a log per audit — must guard on the companion stream's own count rather than deriving one count from the other.
 
-The `internal/infra/backup/manager.go` incremental export is the canonical example: each of the three companion segments (`audit`, `auditItem`, `appliedProposal`) is guarded on its own count when appended to the manifest. Failure-only ranges produce an `audit` segment with `count > 0`, an `auditItem` segment with `count == 0` (skipped from the manifest), and no `appliedProposal` segment at all.
+What the outcome does **not** change is the `AuditItem` count: every non-replayed proposal writes one item per order regardless of outcome, and only proposals that carry orders write an `AuditEntry` at all, so every non-empty audit range has `auditItem.count > 0`. No writer produces an `AuditEntry` without its items — not `writeAuditEntry` (`internal/infra/state/machine.go`, whose items come from `buildAuditItems`, one per serialized order unconditionally), and not the incremental restore, which replays exported rows verbatim (`backup.ApplyExports`). An empty `AuditItem` range spanning a non-empty audit range is therefore a **corruption signal** — a truncated store, or a manifest that lost its `auditItem` segments — and the chain already reports it rather than presenting a silently thinner range: the per-item payloads are part of the hash pre-image and `OrderCount` is bound into the hashed header, so the missing items surface as `HASH_MISMATCH` at that sequence. Nor does `LogSequence` identify the outcome: an item reads `0` on a failure, but also on a success whose order neither created a log nor resolved to a positive in-batch reference sequence. Only `AuditEntry.outcome` distinguishes the two.
+
+The `internal/infra/backup/manager.go` incremental export is the canonical example. Each companion stream (`audit`, `auditItem`, `appliedProposal`) is exported by its own `exportEntries` call, and `exportEntries` returns no segments when its range holds no rows, so an empty stream appends nothing to the manifest and the manifest never references a storage key that does not exist (a later `ApplyExports` would fail on `GetFile`). The guard is structural, so it holds whichever stream turns out to be empty — in practice `appliedProposal`, the one stream legitimately empty over a failure-only range. A failure-only range produces an `audit` segment with `count > 0`, an `auditItem` segment with `count > 0` (one item per order), and no `appliedProposal` segment at all.
 
 ## Tampering model — what the chain detects
 
 | Attack | Detected because |
 |--------|-----------------|
 | Mutate a hashed field on entry *N* | Recomputed `hash[N]` ≠ stored `hash[N]` → `CHECK_STORE_ERROR_TYPE_HASH_MISMATCH` at `N`. |
-| Delete entry *N* | Sequence gap on read → `CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP`. |
+| Delete an *interior* entry *N* | Entry *N+1*'s chain link was computed over `hash[N]`; recomputing it against `hash[N-1]` diverges → `CHECK_STORE_ERROR_TYPE_HASH_MISMATCH` at *N+1*. A deleted **tail** is a different case — see the limitation below. |
 | Swap entries *N* and *M* | At least one of them has a `prev_hash` link that no longer matches → mismatch at the earliest violating slot. |
 | Rewrite `hash[N]` to match a forged payload | `hash[N+1]` was computed against the original `hash[N]`. Recomputing forward from the forged value produces `computed[N+1] ≠ stored[N+1]`. The attacker must rewrite every entry from *N* to the head, but cannot regenerate hashes without the per-cluster BLAKE3 key. |
-| Smuggle items into `entry.items` on disk | The on-disk row has `items = nil` by design (`machine.go:1403`); the checker flags `len(entry.Items) > 0` as tampering (`internal/application/check/checker.go:1523-1531`). |
+| Smuggle items into `entry.items` on disk | The on-disk row has `items = nil` by design (`writeAuditEntry` in `internal/infra/state/machine.go`); the checker flags it through the `len(entry.GetItems()) > 0` check at the top of the `verifyAuditHashChain` loop. |
+
+### Limitation — coordinated tail truncation is not detectable
+
+Deleting the top *M* audit entries **and** the top *N* `Log` rows together leaves a store the chain verifies as clean. It is a valid *prefix*: every surviving entry still links to its surviving predecessor, and no entry claims a log that is gone.
+
+Nothing recovers the lost head, because both counters are re-derived from the store's own last surviving row at boot. `LoadFSMStateFromStore` reads `NextSequenceID` from `query.ReadLastSequence` and `NextAuditSequenceID` plus `LastAuditHash` from `query.ReadLastAuditEntry` (both in `internal/infra/state/fsmstate.go`). There is no independently persisted head, no external anchor, and no bijection between the two streams that a shortened pair would violate — a truncated store is indistinguishable from a younger cluster that simply never got that far.
+
+What the checker does instead is **declare what it could not authenticate**. `logBoundsVerifier` (see [checker.md → Stored log bounds](checker.md#stored-log-bounds)) catches the *uncoordinated* case: logs truncated while the audit chain survives, which is the shape a restore bug takes. Where the chain itself is cut short it reports `LOG_VERIFICATION_INCOMPLETE` rather than a bound it cannot derive. The absence of findings is therefore a statement about the range that was verified, not a promise that no entry was ever removed from the head.
+
+The threat model matters here. The chain key is derived from the `ClusterID` persisted beside the store, so an attacker with write access to the data directory has the key and can re-chain a forged history end to end — the paragraph below already says the chain does not defend against that. The bound pass is an **ops-correctness detector**, aimed at a restore or migration that silently drops tail logs, not a defence against a local adversary.
 
 The chain does *not* defend against an attacker who has the cluster's BLAKE3 key — that key is local to the node and is the same secret that lets the node propose. Securing the key is part of the threat model the operator-level [Security](../../../../security/) and [Request Signing](../../../../ops/signing.md) docs cover.
 
 ## Genesis
 
-The first entry (`Sequence = 0`) is computed with `lastHash = nil`. The per-cluster BLAKE3 key is the only secret needed; there is no external seed and no genesis ceremony.
+The first entry carries `Sequence = 1` and is computed with `lastHash = nil`. `NewFSMState` starts `NextAuditSequenceID` at 1 (`internal/infra/state/fsmstate.go`) and `AppendAuditEntry` hands out the value before the bump, so no entry ever carries sequence 0. The per-cluster BLAKE3 key is the only secret needed; there is no external seed and no genesis ceremony.
 
 ## Verification
 
-The chain is verified by `checker.verifyAuditHashChain` (`internal/application/check/checker.go:1449-1616`):
+The chain is verified by `checker.verifyAuditHashChain` (`internal/application/check/checker.go`):
 
 1. Iterate `AuditEntry` rows in sequence order.
 2. For each entry, rebuild the header payload + every per-item payload (joining `AuditItem` rows by `(sequence, order_index)`).
 3. `HashGenerator.Compute(lastHash, ...)` with the version pinned by `entry.hash_version`.
 4. Compare to the stored `entry.hash`. Mismatch → emit `CHECK_STORE_ERROR_TYPE_HASH_MISMATCH` and **stop** (the chain is broken from this point; downstream verifications would be meaningless).
 5. Match → advance `lastHash`, continue.
+
+The walk runs on every `Check()`, whatever the log count. A history made only of rejected proposals has audit entries and items but no `Log` rows at all, and until EN-1526 `Check()` returned early on `lastSequence == 0` — above the verifier's only call site — leaving such a chain unverified. The log stream no longer gates the walk.
 
 The walk also collects an `expectedIdempotency` map (which idempotency keys were committed under which outcome) that `compareIdempotencyOutcomes` consumes downstream.
 

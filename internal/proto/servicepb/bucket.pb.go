@@ -28,8 +28,17 @@ const (
 type CheckStoreErrorType int32
 
 const (
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNSPECIFIED                 CheckStoreErrorType = 0
-	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH               CheckStoreErrorType = 1
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNSPECIFIED   CheckStoreErrorType = 0
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH CheckStoreErrorType = 1
+	// Emitted when log sequences the store should hold are absent. Two
+	// emitters, both reporting a contiguous RUN as ONE event carrying the run's
+	// first sequence in log_sequence: the interior scan over the Log rows, for a
+	// hole between two surviving rows inside the audited range; and the stored
+	// log bound pass, for a deleted TAIL, which the interior scan cannot see
+	// because it has no surviving row above it. Never one event per missing
+	// position: the hole is chosen by whoever wrote the row above it, and a
+	// truncated tail can be millions of rows. A run one sequence long names that
+	// single sequence rather than a range. See EN-1526.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP                CheckStoreErrorType = 2
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH             CheckStoreErrorType = 3
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH           CheckStoreErrorType = 4
@@ -180,6 +189,50 @@ const (
 	// back point-in-time query reads and the FSM's live-count cap, so a tampered
 	// row changes which checkpoints exist. See EN-1501.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH CheckStoreErrorType = 26
+	// Emitted when a Log row's `sequence` field disagrees with the sequence
+	// encoded in its Pebble key. Log rows are not hash-bound, so the two copies
+	// of the sequence are held together by convention alone, and
+	// query.ReadLastSequence reads the value's field off the last row -- a
+	// single edited field could previously make a populated store look empty to
+	// the checker, which then returned clean without replaying anything. The
+	// checker keys every projection on the key sequence, and the divergent row is
+	// reported and still replayed under that key sequence: the value's field is
+	// not an input to replay, and skipping the row would suppress the elision
+	// check and emit a cascade of volume, boundary and transaction findings that
+	// misdescribe a store whose log is present and readable. See EN-1526.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH CheckStoreErrorType = 27
+	// Emitted when the expected log range could not be derived over the whole
+	// history, so the stored log bound cannot be compared. Three causes: the live
+	// audit walk was cut short by a hash chain break, leaving every success range
+	// after it unread; the chain-verified AuditSuccess ranges were not contiguous
+	// from sequence 1, which contradicts the premise the bound rests on; or a
+	// success range is not accounted for by its own entry's chain-verified
+	// AuditItems, so the declared range is not evidence of which logs the FSM
+	// allocated and cannot serve as the oracle. The pass reports this instead of presenting a partial bound as a clean
+	// comparison -- against a truncated store a partial bound would report the
+	// surviving logs above it as unaudited and every log below the break as
+	// missing, both false. See EN-1526.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE CheckStoreErrorType = 28
+	// Emitted when the store holds a Log row at a position no chain-verified
+	// AuditSuccess range accounts for. Log rows are not hash-bound, so nothing
+	// but the audit ranges says which positions the FSM ever allocated: a row
+	// outside the audited interval was produced by no audited proposal, hence
+	// injected or forged, and every projection keyed on its sequence would fold
+	// unaudited data. Two shapes, one per end of the interval. Above the audited
+	// bound: reported once for the whole unaudited range, naming the range
+	// searched and counting the rows actually found in it -- not the width of
+	// that range, which over-counts a sparse injection and would describe its
+	// empty positions as holding unaudited rows. Never one event per row, since a
+	// forged tail can be millions of rows. This event and a tail SEQUENCE_GAP are
+	// independent and can both be emitted for one store: a planted row must not
+	// be able to erase a genuine missing tail. At sequence 0: one
+	// event, carrying log_sequence 0 rather than a range, because keys are unique
+	// and the reserved position holds at most one row -- FSMState.NextSequenceID
+	// is seeded at 1 and recovery only raises it, so the audited interval starts
+	// at 1 and nothing the FSM allocated can land there. The sequence-0 row is otherwise invisible, sitting below both
+	// the interior gap scan (seeded at 1) and the bound comparison (which bounds
+	// the interval from above only). See EN-1526.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED CheckStoreErrorType = 29
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -212,6 +265,9 @@ var (
 		24: "CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH",
 		25: "CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE",
 		26: "CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH",
+		27: "CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH",
+		28: "CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE",
+		29: "CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                            0,
@@ -241,6 +297,9 @@ var (
 		"CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH":                24,
 		"CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE": 25,
 		"CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH":              26,
+		"CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH":                  27,
+		"CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE":            28,
+		"CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED":                          29,
 	}
 )
 
@@ -9426,8 +9485,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xa9\n" +
-	"\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xbd\v\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
 	"$CHECK_STORE_ERROR_TYPE_HASH_MISMATCH\x10\x01\x12'\n" +
@@ -9456,7 +9514,10 @@ const file_bucket_proto_rawDesc = "" +
 	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17\x122\n" +
 	".CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH\x10\x18\x12A\n" +
 	"=CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE\x10\x19\x124\n" +
-	"0CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH\x10\x1a*W\n" +
+	"0CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH\x10\x1a\x120\n" +
+	",CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH\x10\x1b\x126\n" +
+	"2CHECK_STORE_ERROR_TYPE_LOG_VERIFICATION_INCOMPLETE\x10\x1c\x12(\n" +
+	"$CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED\x10\x1d*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +
