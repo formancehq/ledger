@@ -3071,7 +3071,16 @@ Manage named connection profiles. Each profile stores a server address and TLS s
 
 **Aliases:** `profiles`, `prof`
 
-**Config file location:** `~/.config/ledgerctl/config.json` (Linux), `~/Library/Application Support/ledgerctl/config.json` (macOS)
+**Config file location:** ledgerctl uses the OS-native user configuration
+directory under the shared Formance namespace:
+
+- Linux: `$XDG_CONFIG_HOME/formance/ledgerctl/config.json` when set, otherwise
+  `~/.config/formance/ledgerctl/config.json`
+- macOS: `~/Library/Application Support/formance/ledgerctl/config.json`
+- Windows: `%AppData%\formance\ledgerctl\config.json`
+
+The former alpha location directly under the user configuration directory
+(`.../ledgerctl/config.json`) is intentionally ignored rather than migrated.
 
 **Flag resolution priority:** Explicit CLI flag > Environment variable > Profile value > Cobra default
 
