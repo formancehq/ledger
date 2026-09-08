@@ -147,13 +147,13 @@ func TestHydrateLogRejectsMalformedPayload(t *testing.T) {
 		{"wrapped skip", commonpb.OrderSkippedLogType, `{"orderSkipped":{"reason":"TRANSACTION_REFERENCE_CONFLICT"}}`, "must contain a reason"},
 		{"invalid skip reason", commonpb.OrderSkippedLogType, `{"reason":"INVALID"}`, "unknown ErrorReason"},
 		{"unknown target", commonpb.SetMetadataLogType, `{"savedMetadata":{"targetType":"UNKNOWN"}}`, "unknown type"},
-		{"bad target ID", commonpb.DeleteMetadataLogType, `{"deletedMetadata":{"targetType":"TRANSACTION","transactionId":"x"}}`, ""},
-		{"bad schema enum", commonpb.SetMetadataFieldTypeLogType, `{"setMetadataFieldType":{"type":"NOT_A_TYPE"}}`, ""},
+		{"bad target ID", commonpb.DeleteMetadataLogType, `{"deletedMetadata":{"targetType":"TRANSACTION","transactionId":"x"}}`, "uint64"},
+		{"bad schema enum", commonpb.SetMetadataFieldTypeLogType, `{"setMetadataFieldType":{"type":"NOT_A_TYPE"}}`, `invalid value for enum field type: "NOT_A_TYPE"`},
 		{"bad nested index", commonpb.RemovedMetadataFieldTypeLogType, `{"removedMetadataFieldType":{"droppedIndex":{"unknown":true}}}`, "unknown field"},
 		{"metadata overflow", commonpb.SetMetadataLogType, `{"savedMetadata":{"targetType":"ACCOUNT","accountId":"a","metadata":{"n":18446744073709551616}}}`, "metadata key"},
 		{"metadata fractional", commonpb.NewTransactionLogType, `{"createdTransaction":{"accountMetadata":{"a":{"n":1.5}}}}`, "metadata key"},
 		{"metadata object", commonpb.NewTransactionLogType, `{"createdTransaction":{"transaction":{"metadata":{"n":{}}}}}`, "metadata key"},
-		{"bad volumes", commonpb.RevertedTransactionLogType, `{"revertedTransaction":{"revertTransaction":{"postCommitVolumes":{"a":{}}}}}`, ""},
+		{"bad volumes", commonpb.RevertedTransactionLogType, `{"revertedTransaction":{"revertTransaction":{"postCommitVolumes":{"a":{}}}}}`, "[]*commonpb.VolumeEntry"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
