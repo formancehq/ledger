@@ -27,7 +27,7 @@ func listTransactions(paginationConfig storagecommon.PaginationConfig) http.Hand
 
 		rq, err := getPaginatedQuery[any](r, paginationConfig, paginationColumn, order)
 		if err != nil {
-			api.BadRequest(w, common.ErrValidation, err)
+			common.HandleRequestParsingErrors(w, err)
 			return
 		}
 

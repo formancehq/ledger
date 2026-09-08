@@ -17,7 +17,7 @@ func countAccounts(w http.ResponseWriter, r *http.Request) {
 
 	rq, err := getResourceQuery[any](r)
 	if err != nil {
-		api.BadRequest(w, common.ErrValidation, err)
+		common.HandleRequestParsingErrors(w, err)
 		return
 	}
 
