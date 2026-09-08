@@ -5,8 +5,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-
-	"github.com/formancehq/go-libs/v5/pkg/transport/api"
 )
 
 const MaxJSONBodySize int64 = 4 << 20
@@ -27,17 +25,26 @@ func ReadBody(r *http.Request) ([]byte, error) {
 // DecodeBody reads and decodes one bounded JSON request body. Streaming routes
 // intentionally use their own decoders and are not subject to this limit.
 func DecodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
+	return decodeBody(w, r, v, false)
+}
+
+// DecodeOptionalBody accepts an empty body, including when its length is unknown.
+// Non-empty bodies have the same size and JSON validation as DecodeBody.
+func DecodeOptionalBody(w http.ResponseWriter, r *http.Request, v any) bool {
+	return decodeBody(w, r, v, true)
+}
+
+func decodeBody(w http.ResponseWriter, r *http.Request, v any, optional bool) bool {
 	data, err := ReadBody(r)
 	if err != nil {
-		if errors.Is(err, ErrBodyTooLarge) {
-			api.WriteErrorResponse(w, http.StatusRequestEntityTooLarge, ErrRequestBodyTooLarge, err)
-			return false
-		}
-		api.BadRequest(w, ErrValidation, err)
+		HandleRequestParsingErrors(w, err)
 		return false
 	}
+	if optional && len(data) == 0 {
+		return true
+	}
 	if err := json.Unmarshal(data, v); err != nil {
-		api.BadRequest(w, ErrValidation, err)
+		HandleRequestParsingErrors(w, err)
 		return false
 	}
 	return true

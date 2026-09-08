@@ -17,7 +17,7 @@ func listAccounts(paginationConfig storagecommon.PaginationConfig) http.HandlerF
 
 		query, err := getPaginatedQuery[any](r, paginationConfig, "address", paginate.OrderAsc)
 		if err != nil {
-			api.BadRequest(w, common.ErrValidation, err)
+			common.HandleRequestParsingErrors(w, err)
 			return
 		}
 

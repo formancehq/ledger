@@ -72,6 +72,16 @@ func HandleCommonWriteErrors(w http.ResponseWriter, r *http.Request, err error) 
 	}
 }
 
+// HandleRequestParsingErrors preserves validation responses for malformed input
+// while distinguishing request bodies that exceed the read limit.
+func HandleRequestParsingErrors(w http.ResponseWriter, err error) {
+	if errors.Is(err, ErrBodyTooLarge) {
+		api.WriteErrorResponse(w, http.StatusRequestEntityTooLarge, ErrRequestBodyTooLarge, err)
+		return
+	}
+	api.BadRequest(w, ErrValidation, err)
+}
+
 func HandleCommonPaginationErrors(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, ErrBodyTooLarge):
