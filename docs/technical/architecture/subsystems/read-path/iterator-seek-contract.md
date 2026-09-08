@@ -44,6 +44,19 @@ The contract is enforced by unit tests per leaf (`iterator_floor_test.go`,
 contradiction specs in
 `tests/e2e/business/filter_nested_not_reposition_test.go`.
 
+## AddressTxIterator materialization
+
+`AddressTxIterator` materializes the union of transaction IDs lazily on first
+positioning call and keeps it as a stable sorted slice for the iterator's
+lifetime. Materialization deduplicates via a seen-set, appends each unseen ID
+as an owned copy (never a Pebble iterator key buffer), and **sorts the slice
+once** when the scan completes. The observable requirement is O(U log U)
+sorting work for U unique IDs rather than the O(U²) shifts of the former
+per-insert `insertSorted`, which an interleaved account history (evens in one
+account, odds in another) triggers. This is a pure cost change: the emitted
+IDs remain identical, sorted and unique, so the absolute-seek contract above is
+unchanged.
+
 ## The exhaustion-proof cache (`seekFloor`/`seekCeil`)
 
 `iterator_floor.go`. Without the latch, an exhausted child would be re-seeked
