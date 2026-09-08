@@ -111,18 +111,14 @@ func (s *Store) DropAuditIndex() error {
 // prefixUpperBound returns the smallest key strictly greater than every key
 // that has prefix as a prefix (the standard exclusive bound for a prefix scan).
 // Returns nil when prefix is all 0xFF, meaning "no upper bound".
+//
+// Thin alias over dal.PrefixUpperBound, kept so the readstore call sites read
+// unqualified. The rule it encodes — never bound a prefix scan with a run of
+// 0xFF bytes, because Pebble's upper bound is exclusive and such a bound drops
+// the row at the top of the suffix space — belongs to the key layer, and the
+// readstore's copy of it predated the DAL's.
 func prefixUpperBound(prefix []byte) []byte {
-	end := make([]byte, len(prefix))
-	copy(end, prefix)
-	for i, v := range slices.Backward(end) {
-		if v != 0xFF {
-			end[i]++
-
-			return end[:i+1]
-		}
-	}
-
-	return nil
+	return dal.PrefixUpperBound(prefix)
 }
 
 // auditSeqsForPrefix iterates the half-open range [lower, upper) and extracts

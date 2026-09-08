@@ -269,14 +269,14 @@ func buildLedgerScopedPrefix(zone, sub byte, ledgerName string) []byte {
 
 // buildLedgerScopedPrefixSuccessor returns the immediate successor of
 // buildLedgerScopedPrefix(zone, sub, ledgerName) — used as the exclusive
-// upper bound for DeleteRange. Increments the last byte of the padded
-// name block; safe because the validation layer rejects names containing
-// 0xFF bytes (printable ASCII only).
+// upper bound for DeleteRange.
+//
+// dal.PrefixUpperBound carries through a trailing 0xFF run rather than
+// incrementing the last byte blindly. The validation layer rejects names
+// containing 0xFF (printable ASCII only), so the carry never fires here, but
+// there is no reason for a second definition of the same rule to exist.
 func buildLedgerScopedPrefixSuccessor(zone, sub byte, ledgerName string) []byte {
-	out := buildLedgerScopedPrefix(zone, sub, ledgerName)
-	out[len(out)-1]++
-
-	return out
+	return dal.PrefixUpperBound(buildLedgerScopedPrefix(zone, sub, ledgerName))
 }
 
 // SavePreparedQuery stores a prepared query in the batch under the given

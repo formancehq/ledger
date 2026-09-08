@@ -84,26 +84,15 @@ func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string
 // verified (EN-1526).
 // logPrefixUpperBound is the exclusive upper bound covering EVERY Log row.
 //
-// Pebble's IterOptions.UpperBound is exclusive, so the obvious bound —
-// [ZoneHistory][SubHistoryLog] followed by an eight-byte run of 0xFF, which is
-// what dal.MaxUint64Bytes builds — is byte-identical to the key of the row at
-// sequence math.MaxUint64 and therefore excludes exactly that row. A row
-// planted at the top of the key space would be invisible to the one pass built
-// to see planted rows: the symmetric twin of the reserved sequence 0 the log
-// loop reports below.
-//
-// The successor of the two-byte prefix has no such hole. SubHistoryLog + 1 is
-// SubHistoryAudit, and a two-byte key sorts strictly below every ten-byte audit
-// key, so the bound admits the whole log prefix and nothing beyond it.
-//
-// Scoped to the checker deliberately. The same 0xFF-run bound is built across
-// internal/query and internal/storage/dal, and widening dal.ReadLastEntry would
-// feed a MaxUint64 head to LoadFSMStateFromStore, whose `lastSeq + 1` wraps to
-// 0 — turning a row this pass merely failed to report into one the FSM would
-// allocate on top of. Fixing that contract needs overflow guards on the
-// recovery path and is tracked separately.
+// Named here because the log loop and its fixtures both need it, but the rule
+// is the DAL's: never bound a sequence-keyed prefix scan with a run of 0xFF
+// bytes. Pebble's IterOptions.UpperBound is exclusive, so such a bound is
+// byte-identical to the key at math.MaxUint64 and excludes exactly that row —
+// which for this pass meant a row planted at the top of the key space was
+// invisible to the one pass built to see planted rows, the twin of the reserved
+// sequence 0 the log loop reports below. See dal.PrefixUpperBound.
 func logPrefixUpperBound() []byte {
-	return []byte{dal.ZoneHistory, dal.SubHistoryLog + 1}
+	return dal.ZonePrefixUpperBound(dal.ZoneHistory, dal.SubHistoryLog)
 }
 
 // readHighestLogKey returns the greatest Log KEY sequence in the store, or 0

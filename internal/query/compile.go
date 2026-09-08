@@ -1397,7 +1397,12 @@ func compileTimestampRangeCondition(
 		binary.BigEndian.PutUint64(maxBytes, bounds.max)
 		upper = append(upper, maxBytes...)
 	} else {
-		upper = append(upper, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+		// Unbounded above: the successor of the ledger prefix, not a 0xFF run.
+		// Pebble's upper bound is exclusive, so appending eight 0xFF bytes
+		// excludes every row whose 8-byte suffix is MaxUint64 — here a whole
+		// timestamp bucket, since the key carries a further entity id. The
+		// prefix starts with a prefix byte below 0xFF, so the successor exists.
+		upper = dal.PrefixUpperBound(ledgerPrefix)
 	}
 
 	if !bounds.hasMin {
@@ -1509,7 +1514,12 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 		binary.BigEndian.PutUint64(maxBytes, bounds.max)
 		upper = append(upper, maxBytes...)
 	} else {
-		upper = append(upper, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+		// Unbounded above: the successor of the ledger prefix, not a 0xFF run.
+		// The suffix here IS the log id, so the 0xFF form excluded exactly the
+		// row at MaxUint64 — reached by `id <= <max>`, where applyMaxInclusiveUint
+		// refuses to wrap and drops the bound, and this fallback then silently
+		// reimposed one that hid the row the filter asked for.
+		upper = dal.PrefixUpperBound(prefix)
 	}
 
 	if !bounds.hasMin {
