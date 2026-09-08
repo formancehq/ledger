@@ -29,7 +29,7 @@ func ValidateInstanceID(instanceID []byte) error {
 //
 // InstanceID (EN-1045) is the required 16-byte UUID identifying the specific
 // (pod, PVC) incarnation of this peer. Every registration and removal context
-// carries it; only role-only promotion contexts omit peer registration data.
+// carries it; promotions repeat the registered learner identity and addresses.
 // See docs/technical/architecture/subsystems/consensus/removed-member-registry.md.
 type ConfChangeContext struct {
 	RaftAddress    string `json:"raftAddress"`
@@ -49,13 +49,6 @@ func (c ConfChangeContext) Equal(other ConfChangeContext) bool {
 	return c.RaftAddress == other.RaftAddress &&
 		c.ServiceAddress == other.ServiceAddress &&
 		bytes.Equal(c.InstanceID, other.InstanceID)
-}
-
-// HasPeerRegistration reports whether the context carries data that should
-// create or refresh a peer row. Promotion contexts contain only ProposalID and
-// must not overwrite the existing row with empty addresses.
-func (c ConfChangeContext) HasPeerRegistration() bool {
-	return c.RaftAddress != "" || c.ServiceAddress != "" || len(c.InstanceID) > 0
 }
 
 // MarshalConfChangeContext serialises a ConfChangeContext to JSON bytes
@@ -142,8 +135,8 @@ func UnmarshalConfChangeV2(entry *raftpb.Entry) (*raftpb.ConfChangeV2, bool, err
 //     path lands the corresponding RemovedMemberEntry atomically with the
 //     peer row delete (EN-1045). The RaftAddress / ServiceAddress fields
 //     on the RemoveNode ctx are empty by convention.
-//   - PromoteLearner sends AddNode with a correlation-only Context. Callers
-//     must use HasPeerRegistration before treating it as an address payload.
+//   - PromoteLearner sends AddNode with the registered learner identity and
+//     addresses, plus ProposalID for an explicit administrative promotion.
 //
 // A single cc.Context carries exactly one peer identity. A ConfChangeV2
 // that bundles multiple Add/AddLearner/UpdateNode/RemoveNode changes with
@@ -202,19 +195,18 @@ func WalkConfChangeContexts(cc *raftpb.ConfChangeV2, fn func(raftpb.ConfChangeTy
 
 // ValidateConfChangeIdentities enforces the universal member-identity
 // invariant before either the deterministic FSM write or RawNode's ConfState
-// mutation runs. AddNode without a registration payload is PromoteLearner and
-// therefore does not create a member; all other registration and removal
-// operations require a concrete identity.
+// mutation runs. Promotions carry full registration data too: accepting an
+// empty AddNode would let Raft create an identity-less voter. Validation uses
+// only the committed payload, never a node-local cache or a Pebble read.
 func ValidateConfChangeIdentities(cc *raftpb.ConfChangeV2) error {
 	return WalkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
 		switch t {
-		case raftpb.ConfChangeAddNode:
-			if ctx == nil || !ctx.HasPeerRegistration() {
-				return nil
-			}
-		case raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode:
-			if ctx == nil || !ctx.HasPeerRegistration() {
+		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode:
+			if ctx == nil {
 				return fmt.Errorf("invariant: ConfChange registration for peer %d has no payload", nodeID)
+			}
+			if ctx.RaftAddress == "" || ctx.ServiceAddress == "" {
+				return fmt.Errorf("invariant: ConfChange registration for peer %d requires raft and service addresses", nodeID)
 			}
 		case raftpb.ConfChangeRemoveNode:
 			if ctx == nil {

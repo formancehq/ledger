@@ -108,6 +108,18 @@ func newTestApplierSetupWithSink(t *testing.T, sink LocalResponses) *testApplier
 func newTestApplierSetupWithNotifier(t *testing.T, sink LocalResponses, notifier state.Notifier) *testApplierSetup {
 	t.Helper()
 
+	return newTestApplierSetupWithHandlers(t, sink, notifier, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+}
+
+func newTestApplierSetupWithConfChangeHandler(t *testing.T, sink LocalResponses, handler func(*raftpb.Entry, *dal.WriteSession) error) *testApplierSetup {
+	t.Helper()
+
+	return newTestApplierSetupWithHandlers(t, sink, newNoopNotifier(t), handler)
+}
+
+func newTestApplierSetupWithHandlers(t *testing.T, sink LocalResponses, notifier state.Notifier, handler func(*raftpb.Entry, *dal.WriteSession) error) *testApplierSetup {
+	t.Helper()
+
 	logger := logging.Testing()
 	meterProvider := noop.NewMeterProvider()
 	meter := meterProvider.Meter("test")
@@ -138,7 +150,7 @@ func newTestApplierSetupWithNotifier(t *testing.T, sink LocalResponses, notifier
 	fsm, err := state.NewMachine(
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,
 		nil, state.NewSharedState(), notifier, nil, "test-cluster", 0,
-		func(*raftpb.Entry, *dal.WriteSession) error { return nil },
+		handler,
 	)
 	require.NoError(t, err)
 
