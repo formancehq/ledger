@@ -1506,7 +1506,7 @@ func assertReadStoreMissing(t *testing.T, b *Builder, key []byte) {
 	require.True(t, errors.Is(err, pebble.ErrNotFound), "expected key %x to be missing, got %v", key, err)
 }
 
-func TestIsDataLog(t *testing.T) {
+func TestIsHistoryLog(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1660,7 +1660,7 @@ func TestIsDataLog(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, tc.expected, isDataLog(tc.log))
+			assert.Equal(t, tc.expected, isHistoryLog(tc.log))
 		})
 	}
 }
@@ -2108,6 +2108,7 @@ func TestAccountAssetBackfillLifecycle(t *testing.T) {
 	require.Equal(t, uint64(3), globalCursor)
 
 	canonical := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
+	seedCachedLedgerHistory(b, ledger, ledgerHistoryNonEmpty)
 
 	// CreateIndex: registers the index, seeds {current:0, pending:1}, schedules
 	// the backfill task. Wrap in an active batch so the IndexVersionState
@@ -2197,6 +2198,7 @@ func TestAccountAssetBackfillWipesDeletedLedgerGeneration(t *testing.T) {
 	require.Equal(t, uint64(3), globalCursor)
 
 	canonical := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
+	seedCachedLedgerHistory(b, ledger, ledgerHistoryNonEmpty)
 
 	// CreateIndex schedules the backfill (current=0, pending=1).
 	batch := b.readStore.NewBatch()
@@ -2338,6 +2340,7 @@ func TestAccountAssetBackfillDoesNotWipeUnrelatedLedger(t *testing.T) {
 // its backfill to catch up to globalCursor, leaving the index READY.
 func runAccountAssetBackfill(t *testing.T, b *Builder, ledger string, globalCursor uint64) {
 	t.Helper()
+	seedCachedLedgerHistory(b, ledger, ledgerHistoryNonEmpty)
 
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
@@ -2454,6 +2457,7 @@ func TestMetadataBackfillSkipsForeignLedgerLogs(t *testing.T) {
 	require.Equal(t, uint64(2), globalCursor)
 
 	// CreateIndex on (ACCOUNT, metaKey) in taskLedger only.
+	seedCachedLedgerHistory(b, taskLedger, ledgerHistoryNonEmpty)
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	b.wb.SetEventSequence(1)

@@ -691,19 +691,19 @@ message TouchedVolume {
 
 message LedgerLogPayload {
   oneof payload {
-    CreatedTransaction created_transaction = 1;
-    RevertedTransaction reverted_transaction = 2;
-    SavedMetadata saved_metadata = 3;
-    DeletedMetadata deleted_metadata = 4;
-    SetMetadataFieldTypeLog set_metadata_field_type = 5;
-    RemovedMetadataFieldTypeLog removed_metadata_field_type = 6;
-    FilledGapLog fill_gap = 7;
-    CreatedIndexLog create_index = 8;
-    DroppedIndexLog drop_index = 9;
-    AddedAccountTypeLog added_account_type = 10;
-    RemovedAccountTypeLog removed_account_type = 11;
-    UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 12;
-    OrderSkippedLog order_skipped = 13;
+    CreatedTransaction created_transaction = 1 [(ledger_log_is_history) = true];
+    RevertedTransaction reverted_transaction = 2 [(ledger_log_is_history) = true];
+    SavedMetadata saved_metadata = 3 [(ledger_log_is_history) = true];
+    DeletedMetadata deleted_metadata = 4 [(ledger_log_is_history) = true];
+    SetMetadataFieldTypeLog set_metadata_field_type = 5 [(ledger_log_is_history) = false];
+    RemovedMetadataFieldTypeLog removed_metadata_field_type = 6 [(ledger_log_is_history) = false];
+    FilledGapLog fill_gap = 7 [(ledger_log_is_history) = false];
+    CreatedIndexLog create_index = 8 [(ledger_log_is_history) = false];
+    DroppedIndexLog drop_index = 9 [(ledger_log_is_history) = false];
+    AddedAccountTypeLog added_account_type = 10 [(ledger_log_is_history) = false];
+    RemovedAccountTypeLog removed_account_type = 11 [(ledger_log_is_history) = false];
+    UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 12 [(ledger_log_is_history) = false];
+    OrderSkippedLog order_skipped = 13 [(ledger_log_is_history) = true];
   }
 }
 
@@ -729,11 +729,6 @@ message OrderSkippedLog {
 // CreatedIndexLog records the creation of an index.
 message CreatedIndexLog {
   IndexID id = 1;
-  // initial marks an index declared on a ledger that had no local history yet
-  // (same atomic apply batch as CreateLedger, before any indexable data log).
-  // The read-side indexbuilder promotes such indexes straight to live with no
-  // historical backfill; later indexes (initial=false) keep backfilling. EN-1564.
-  bool initial = 2;
   // bound_type is the declared type of the indexed metadata field at this
   // log's sequence, stamped by the FSM when the log is minted. The index's
   // first version binds to it: every replica encodes that version's rows —
@@ -741,12 +736,12 @@ message CreatedIndexLog {
   // atomic switch rebinds. Stamping at mint time is what keeps the binding
   // stable at any replay distance; the schema readable when a replica folds
   // the log may already be many retypes ahead. EN-1724.
-  MetadataType bound_type = 3;
+  MetadataType bound_type = 2;
   // bound_type_declared is false for builtin indexes, which have no metadata
   // field and therefore no binding: their values keep the natural encoding.
   // Metadata indexes always carry a binding — CreateIndex validates that the
   // field is declared in the schema.
-  bool bound_type_declared = 4;
+  bool bound_type_declared = 3;
 }
 
 // DroppedIndexLog records the removal of an index.
@@ -1343,7 +1338,7 @@ message UpdatedDefaultEnforcementModeLog {
 // "valid nowhere" intent needs its own boolean marker rather than being inferred
 // from absence.
 //
-// Extension numbers 50123-50124 are in the private, non-reserved range for
+// Extension numbers 50123-50125 are in the private, non-reserved range for
 // FieldOptions extensions (50000-99999, per descriptor.proto guidance).
 extend google.protobuf.FieldOptions {
   repeated QueryTarget allowed_query_targets = 50123;
@@ -1351,6 +1346,11 @@ extend google.protobuf.FieldOptions {
   // QueryTarget (rejected everywhere). It is the EXPLICIT opt-in the generator
   // requires instead of inferring "valid nowhere" from a missing annotation.
   bool valid_on_no_query_target = 50124;
+  // ledger_log_is_history is mandatory on every LedgerLogPayload.payload arm.
+  // Explicit false classifies CONTROL; true classifies HISTORY. The generator
+  // rejects a missing annotation, so proto's false default cannot classify by
+  // accident.
+  bool ledger_log_is_history = 50125;
 }
 
 message QueryFilter {

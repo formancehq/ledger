@@ -36,13 +36,16 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
 6. Only after every promised projection covers `H`, the builder flushes the
    WAL-less read store and materializes `{dataDir}/query-checkpoints/{id}/readindex/`.
    The flush is required: otherwise newly committed memtable-only rows and
-   certificates have no WAL or SST for Pebble to link. Materialization is
-   **per-replica** and **atomic**: build into `readindex.tmp/`, fsync, rename,
-   then write `.ready` last. The independently maintained audit projection may
-   already contain rows newer than `H`; checkpoint audit reads trim every
-   compiled candidate to the audit sequence visible in the frozen main store.
-   A crash before the marker never exposes a partial checkpoint.
-   Link/compaction races are retried from a clean temp directory.
+   certificates have no WAL or SST for Pebble to link. The physical snapshot
+   includes internal progress, per-index version state, backfill cursors, and
+   the EN-1771 per-ledger `EMPTY`/`NON_EMPTY` history tracker at that same
+   certified boundary. Materialization is **per-replica** and **atomic**: build
+   into `readindex.tmp/`, fsync, rename, then write `.ready` last. The
+   independently maintained audit projection may already contain rows newer
+   than `H`; checkpoint audit reads trim every compiled candidate to the audit
+   sequence visible in the frozen main store. A crash before the marker never
+   exposes a partial checkpoint. Link/compaction races are retried from a clean
+   temp directory.
 7. Both stores are opened read-only when a query specifies `checkpoint_id`.
    Reads verify the frozen projection certificate against the main checkpoint's
    durable applied index rather than trusting `.ready` alone.

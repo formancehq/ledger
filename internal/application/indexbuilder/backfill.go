@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -166,20 +167,30 @@ func (b *Builder) addBackfillTaskForLogBuiltin(ledgerName string, index commonpb
 // and deletes its persisted progress. Matching by IndexID alone would
 // drop an unrelated ledger's backfill when two ledgers index the same
 // metadata key — that ledger's index would then stay BUILDING forever.
-func (b *Builder) removeBackfillTask(ledgerName string, id *commonpb.IndexID) {
+func (b *Builder) removeBackfillTask(ledgerName string, id *commonpb.IndexID) error {
 	for i, t := range b.backfillTasks {
 		if t.ledger != ledgerName || !indexes.Equal(t.index, id) {
 			continue
 		}
 
-		// Delete persisted progress.
-		_ = b.readStore.DeleteBackfillProgress(t.bbKey)
+		if b.wb != nil && b.wb.Batch() != nil {
+			if err := b.readStore.DeleteBackfillProgressInBatch(b.wb.Batch(), t.bbKey); err != nil {
+				return fmt.Errorf("deleting backfill cursor for %q/%s: %w", ledgerName, backfillIndexName(id), err)
+			}
+		} else if err := b.readStore.DeleteBackfillProgress(t.bbKey); err != nil {
+			return fmt.Errorf("deleting standalone backfill cursor for %q/%s: %w", ledgerName, backfillIndexName(id), err)
+		}
+
+		prior := slices.Clone(b.backfillTasks)
+		b.recordFoldRollback(func() { b.backfillTasks = prior })
 		// Remove from slice (order doesn't matter).
 		b.backfillTasks[i] = b.backfillTasks[len(b.backfillTasks)-1]
 		b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
 
-		return
+		return nil
 	}
+
+	return nil
 }
 
 // schemaRewriteTask tracks the progress of re-encoding metadata index entries
@@ -398,6 +409,9 @@ func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexI
 	prior, priorExists := b.versionStateFor(ledgerName, canonical)
 
 	base := max(prior.PendingVersion, prior.CurrentVersion, prior.HighWater)
+	if base == ^uint32(0) {
+		return fmt.Errorf("invariant: IndexVersionState high-water exhausted for %q/%s", ledgerName, canonical)
+	}
 
 	// CurrentVersion keeps everything that describes it: its activation
 	// sequence and its bound type both belong to the version still being
@@ -450,11 +464,26 @@ func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexI
 }
 
 // removeSchemaRewriteTask removes a schema rewrite task and deletes its persisted progress.
-func (b *Builder) removeSchemaRewriteTask(idx int) {
+func (b *Builder) removeSchemaRewriteTask(idx int) error {
 	task := b.schemaRewriteTasks[idx]
 
-	_ = b.readStore.DeleteBackfillProgress(task.bbKey)
+	if b.wb != nil && b.wb.Batch() != nil {
+		if err := b.readStore.DeleteBackfillProgressInBatch(b.wb.Batch(), task.bbKey); err != nil {
+			return fmt.Errorf("deleting schema rewrite cursor for %q/%s: %w", task.ledger, task.key, err)
+		}
+	} else if err := b.readStore.DeleteBackfillProgress(task.bbKey); err != nil {
+		return fmt.Errorf("deleting standalone schema rewrite cursor for %q/%s: %w", task.ledger, task.key, err)
+	}
 
+	prior := slices.Clone(b.schemaRewriteTasks)
+	b.recordFoldRollback(func() { b.schemaRewriteTasks = prior })
+	b.schemaRewriteTasks[idx] = b.schemaRewriteTasks[len(b.schemaRewriteTasks)-1]
+	b.schemaRewriteTasks = b.schemaRewriteTasks[:len(b.schemaRewriteTasks)-1]
+
+	return nil
+}
+
+func (b *Builder) discardCompletedSchemaRewriteTask(idx int) {
 	b.schemaRewriteTasks[idx] = b.schemaRewriteTasks[len(b.schemaRewriteTasks)-1]
 	b.schemaRewriteTasks = b.schemaRewriteTasks[:len(b.schemaRewriteTasks)-1]
 }
@@ -463,7 +492,7 @@ func (b *Builder) removeSchemaRewriteTask(idx int) {
 // at boot from the persisted per-replica state. Every IndexVersionState
 // entry with current_version != 0 and pending_version != 0 belongs to a
 // schema rewrite that had not reached the atomic switch when this replica
-// stopped. A state with current_version == 0 is an initial index backfill,
+// stopped. A state with current_version == 0 is a creation backfill,
 // including one reset into a fresh pending version by a mid-backfill retype;
 // loadIndexRegistry already schedules its backfill task. Treating it as a
 // reverse-map rewrite would violate that fresh-version contract. For rewrites,
@@ -563,14 +592,14 @@ func (b *Builder) scheduleResumedRewrites() {
 // (ledger, target, key). Called when the schema field is removed: the index
 // it was rewriting no longer exists, so the task must be discarded
 // instead of scanning toward a keyspace nothing will ever serve.
-func (b *Builder) removeSchemaRewriteTaskByField(ledgerName string, target commonpb.TargetType, key string) {
+func (b *Builder) removeSchemaRewriteTaskByField(ledgerName string, target commonpb.TargetType, key string) error {
 	for i, t := range b.schemaRewriteTasks {
 		if t.ledger == ledgerName && t.targetType == target && t.key == key {
-			b.removeSchemaRewriteTask(i)
-
-			return
+			return b.removeSchemaRewriteTask(i)
 		}
 	}
+
+	return nil
 }
 
 // processSchemaRewrite processes a batch of reverse map entries for a schema rewrite task.
@@ -909,6 +938,9 @@ scan:
 			if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
 				return false, fmt.Errorf("persisting atomic version switch: %w", err)
 			}
+			if err := b.readStore.DeleteBackfillProgressInBatch(batch, task.bbKey); err != nil {
+				return false, fmt.Errorf("deleting completed schema-rewrite cursor: %w", err)
+			}
 
 			if err := b.gcVersionAt(batch, kb, task.ledger, ns, task.key, currentVersion); err != nil {
 				return false, fmt.Errorf("gc v_old keyspace: %w", err)
@@ -989,6 +1021,9 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 
 	if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
 		return false, fmt.Errorf("persisting atomic version switch: %w", err)
+	}
+	if err := b.readStore.DeleteBackfillProgressInBatch(batch, task.bbKey); err != nil {
+		return false, fmt.Errorf("deleting completed schema-rewrite cursor: %w", err)
 	}
 
 	if err := b.gcVersionAt(batch, kb, task.ledger, ns, task.key, currentVersion); err != nil {
@@ -1115,7 +1150,7 @@ func (b *Builder) processSchemaRewrites(ctx context.Context, stop <-chan struct{
 				"processed": task.processedCount,
 			}).Infof("Schema rewrite complete")
 
-			b.removeSchemaRewriteTask(i)
+			b.discardCompletedSchemaRewriteTask(i)
 
 			continue
 		}
@@ -1176,7 +1211,6 @@ func (b *Builder) processBackfills(ctx context.Context, stop <-chan struct{}, gl
 				"cursor": task.cursor,
 			}).Infof("Backfill complete — local atomic switch applied")
 
-			_ = b.readStore.DeleteBackfillProgress(task.bbKey)
 			b.backfillTasks[b.nextBackfillIdx] = b.backfillTasks[len(b.backfillTasks)-1]
 			b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
 
@@ -1281,6 +1315,11 @@ func (b *Builder) completeBackfill(task *backfillTask) error {
 
 		return fmt.Errorf("persisting backfill atomic switch: %w", err)
 	}
+	if err := b.readStore.DeleteBackfillProgressInBatch(batch, task.bbKey); err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("deleting completed backfill cursor: %w", err)
+	}
 
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("committing backfill atomic switch: %w", err)
@@ -1360,37 +1399,59 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 
 				return err
 			}
+			lastSeq = log.GetSequence()
+			batchCount++
 
-			// This task only builds task.ledger's index, but the cursor
-			// replays the GLOBAL log and the write helpers key by the log's
-			// own ledger — a foreign log would pass the task config's gates
-			// and write forward+rmap rows into ITS ledger's keyspace for a
-			// field that ledger never indexed. Skip foreign logs, as
-			// processBackfillPostings does after its own delete branch. A log
-			// carrying no Apply payload (a technical or cluster order) has no
-			// ledger name and is skipped here too.
-			if log.GetPayload().GetApply().GetLedgerName() != task.ledger {
-				lastSeq = log.GetSequence()
-				batchCount++
+			if deleted := log.GetPayload().GetDeleteLedger(); deleted != nil {
+				if deleted.GetName() == task.ledger {
+					if err := b.purgeBackfillTaskGeneration(task); err != nil {
+						_ = batch.Cancel()
+
+						return err
+					}
+					b.markLedgerDeletedInBatch(task.ledger)
+				}
 
 				continue
 			}
 
-			// The date index covers every log of the ledger, config-mutation
-			// logs included: a date filter reads the same universe ListLogs
-			// scans, so a log absent from the date index would be invisible to
-			// one and visible to the other.
-			if err := b.backfillLogDateRow(cfg, log); err != nil {
+			// This task only builds task.ledger's index, but the cursor
+			// replays the GLOBAL log and indexLogEntry keys writes by the
+			// log's own ledger — a foreign log would pass the task config's
+			// gates and write forward+rmap rows into ITS ledger's keyspace
+			// for a field that ledger never indexed. Skip foreign logs,
+			// exactly as processBackfillPostings does.
+			apply := log.GetPayload().GetApply()
+			if apply == nil || apply.GetLedgerName() != task.ledger {
+				continue
+			}
+			ledgerLog := apply.GetLog()
+			if ledgerLog == nil || ledgerLog.GetData() == nil {
 				_ = batch.Cancel()
 
-				return err
+				return fmt.Errorf("invariant: ledger %q has malformed log payload at global sequence %d", task.ledger, log.GetSequence())
 			}
 
-			// Only a data log's payload contributes entity projections.
-			if !isDataLog(log) {
-				lastSeq = log.GetSequence()
-				batchCount++
+			// log_date is intentionally broader than business HISTORY: it indexes
+			// every ledger-local log, including CONTROL. Write only the date row;
+			// dispatching CONTROL payloads would replay config handlers.
+			if isLogDateIndex(task.index) {
+				if err := b.wb.WriteLedgerLogDateIndex(b.kb, task.ledger, ledgerLog.GetDate().GetData(), ledgerLog.GetId()); err != nil {
+					_ = batch.Cancel()
 
+					return err
+				}
+
+				continue
+			}
+
+			category := commonpb.LedgerLogCategoryOf(ledgerLog.GetData())
+			if category == commonpb.LedgerLogCategory_LEDGER_LOG_CATEGORY_UNSPECIFIED {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("invariant: unclassified ledger log payload %T at global sequence %d", ledgerLog.GetData().GetPayload(), log.GetSequence())
+			}
+			if !commonpb.IsLedgerHistoryPayload(ledgerLog.GetData()) {
 				continue
 			}
 
@@ -1399,9 +1460,6 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 
 				return err
 			}
-
-			lastSeq = log.GetSequence()
-			batchCount++
 		}
 
 		// AppliedProposal cursor errors set during indexLogEntry must be
@@ -1470,15 +1528,9 @@ func (b *Builder) buildBackfillConfig(task *backfillTask) *ledgerIndexConfig {
 	return cfg
 }
 
-// isDataLog returns true if the log entry is a real ledger log the
-// backfill path must process: transactions, metadata, and OrderSkipped.
-// OrderSkipped carries its own log id and date (assigned by
-// assignSkipLogIDAndDate in the FSM apply path), so it participates in
-// the per-ledger LedgerLogIndex and the log-date builtin index just
-// like any other ledger log. Returns false for config-mutation logs
-// (CreateIndex, DropIndex, etc.) which the live path
-// already applied in-memory and never need re-indexing on backfill.
-func isDataLog(log *commonpb.Log) bool {
+// isHistoryLog delegates the business-history decision to the exhaustive
+// protobuf annotation table generated by protoc-gen-ledger-log-category.
+func isHistoryLog(log *commonpb.Log) bool {
 	if log.GetPayload() == nil {
 		return false
 	}
@@ -1492,15 +1544,74 @@ func isDataLog(log *commonpb.Log) bool {
 		return false
 	}
 
-	switch applyLog.Apply.GetLog().GetData().GetPayload().(type) {
-	case *commonpb.LedgerLogPayload_CreatedTransaction,
-		*commonpb.LedgerLogPayload_RevertedTransaction,
-		*commonpb.LedgerLogPayload_SavedMetadata,
-		*commonpb.LedgerLogPayload_DeletedMetadata,
-		*commonpb.LedgerLogPayload_OrderSkipped:
-		return true
+	return commonpb.IsLedgerHistoryPayload(applyLog.Apply.GetLog().GetData())
+}
+
+func (b *Builder) purgeBackfillTaskGeneration(task *backfillTask) error {
+	if task == nil || task.index == nil || b.wb == nil || b.wb.Batch() == nil {
+		return errors.New("invariant: historical DeleteLedger reached backfill without an active task batch")
+	}
+
+	deletePrefix := func(prefix byte) error {
+		return readstore.DeleteLedgerIndexPrefix(b.wb.Batch(), prefix, task.ledger)
+	}
+
+	switch kind := task.index.GetKind().(type) {
+	case *commonpb.IndexID_TxBuiltin:
+		switch kind.TxBuiltin {
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:
+			// Transaction IDs are inherent in the primary transaction key and
+			// own no readstore projection to purge. Crossing the generation
+			// boundary is nevertheless valid for this scheduled index kind.
+			return nil
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS:
+			return deletePrefix(readstore.PrefixAccountTx)
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS:
+			return deletePrefix(readstore.PrefixSourceAccountTx)
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS:
+			return deletePrefix(readstore.PrefixDestinationAccountTx)
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE:
+			return deletePrefix(readstore.PrefixTransactionReference)
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+			return deletePrefix(readstore.PrefixTransactionTimestamp)
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+			return deletePrefix(readstore.PrefixTransactionInsertedAt)
+		case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+			return deletePrefix(readstore.PrefixTransactionRevertedAt)
+		default:
+			return fmt.Errorf("invariant: unsupported transaction backfill index %v", kind.TxBuiltin)
+		}
+	case *commonpb.IndexID_AccountBuiltin:
+		if kind.AccountBuiltin != commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET {
+			return fmt.Errorf("invariant: unsupported account backfill index %v", kind.AccountBuiltin)
+		}
+
+		return deletePrefix(readstore.PrefixAccountByAsset)
+	case *commonpb.IndexID_LogBuiltin:
+		if kind.LogBuiltin != commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
+			return fmt.Errorf("invariant: unsupported log backfill index %v", kind.LogBuiltin)
+		}
+
+		return deletePrefix(readstore.PrefixLedgerLogDate)
+	case *commonpb.IndexID_Metadata:
+		if kind.Metadata == nil {
+			return errors.New("invariant: nil metadata backfill index")
+		}
+		ns := namespaceForTarget(kind.Metadata.GetTarget())
+		if ns == "" {
+			return fmt.Errorf("invariant: unsupported metadata backfill target %v", kind.Metadata.GetTarget())
+		}
+		key := kind.Metadata.GetKey()
+		if err := deleteReadStoreRange(b.wb.Batch(), readstore.MetadataIndexFieldPrefix(b.kb, task.ledger, ns, key)); err != nil {
+			return err
+		}
+		if err := deleteReadStoreRange(b.wb.Batch(), readstore.EntityExistsFieldPrefix(b.kb, task.ledger, ns, key)); err != nil {
+			return err
+		}
+
+		return b.purgeReverseMapForKey(b.kb, task.ledger, ns, key)
 	default:
-		return false
+		return fmt.Errorf("invariant: unsupported backfill index kind %T", task.index.GetKind())
 	}
 }
 

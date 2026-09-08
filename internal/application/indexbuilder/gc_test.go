@@ -342,6 +342,7 @@ func TestProcessLogsSuccessfulEventCommitAdvancesDirtyZoneEpochs(t *testing.T) {
 	cfg.byCanonical[canonical] = &commonpb.Index{Id: id}
 	b.indexConfig[ledger] = cfg
 	b.putVersionState(ledger, canonical, readstore.IndexVersionState{CurrentVersion: 1, HighWater: 1})
+	seedCachedLedgerHistory(b, ledger, ledgerHistoryNonEmpty)
 
 	writeLogToFSM(t, b, makeSavedAccountMetadataLog(1, ledger, "accounts:1", key, "open"))
 	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
@@ -539,6 +540,7 @@ func TestInitIndexConfig_PurgesOrphanVersionsOnBoot(t *testing.T) {
 	entityID := []byte(account)
 	encoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(7))
 	canonical := indexes.Canonical(indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
+	persistLedgerHistory(t, b, ledger, ledgerHistoryNonEmpty)
 
 	// Persist post-switch state: current=2 (the new live keyspace),
 	// pending=0 (rewrite finished cleanly).

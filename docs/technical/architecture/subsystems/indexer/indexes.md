@@ -106,7 +106,7 @@ The atomic switch is a single Pebble batch commit that flips `Pending → Curren
 
 A rewrite is driven by `indexbuilder.Builder` (`internal/application/indexbuilder/`). The relevant entry points:
 
-- `handleCreatedIndexLog` — allocates `next = HighWater + 1`. An initial index, the log-date builtin aside, is promoted directly to `CurrentVersion=next`; a later index gets `CurrentVersion=0`, `PendingVersion=next`, a persisted version-state row, and a `backfillTask` (`internal/application/indexbuilder/index_config.go`).
+- `handleCreatedIndexLog` — allocates `next = HighWater + 1`. If the durable ledger-history tracker is `EMPTY`, the index is promoted directly to `CurrentVersion=next`; if it is `NON_EMPTY`, the index gets `CurrentVersion=0`, `PendingVersion=next`, a persisted version-state row, and a `backfillTask` (`internal/application/indexbuilder/index_config.go`).
 - `backfillTask` — opaque cursor that replays historical logs into `v_pending`, persisting progress in Pebble so a node restart resumes mid-rewrite (`internal/application/indexbuilder/backfill.go:21-32`).
 - `completeBackfill` — when the cursor reaches the global indexer cursor, the **atomic switch** runs: `CurrentVersion ← PendingVersion`, `PendingVersion ← 0`, in one Pebble batch (`backfill.go:1197+`).
 - `handleDroppedIndexLog` — removes the index from the in-memory config, cancels in-flight work, tombstones `IndexVersionState` while preserving `HighWater`, and purges metadata forward (`0x01`), existence (`0x02`), and reverse-map (`0x03`) rows in the same fold batch (`index_config.go`).
@@ -116,7 +116,8 @@ A `SetMetadataFieldType` order bumps the cluster-wide `forward_encoding_version`
 ```mermaid
 stateDiagram-v2
     [*] --> Created: CreateIndex log
-    Created --> Backfilling: backfillTask runs
+    Created --> Steady: ledger history EMPTY<br/>direct local promotion
+    Created --> Backfilling: ledger history NON_EMPTY<br/>backfillTask runs
     Backfilling --> Backfilling: cursor advances<br/>writes to v_pending
     Backfilling --> Switched: cursor == global cursor<br/>atomic switch
     Switched --> Steady: v_old GC
@@ -124,16 +125,17 @@ stateDiagram-v2
     Steady --> [*]: DropIndex
 ```
 
-### Initial indexes vs. later indexes
+### Durable EMPTY/NON_EMPTY decision
 
-An index gets a fast path when it is declared in the **same atomic apply batch** as the `CreateLedger` that creates its ledger, before any indexable data log for that ledger. The FSM classifies this per-proposal — a ledger is treated as "born empty" until it emits its first indexable data log — and stamps the result on a new `CreatedIndexLog.initial` boolean.
+The indexbuilder, not the FSM, owns one durable byte per active ledger incarnation under read-store key `[0xFE][0x09][ledger padded 64B]`. `CreateLedger` starts it at `EMPTY`; the first business-history payload changes it monotonically to `NON_EMPTY`; `DeleteLedger` removes it. The transition and the indexbuilder progress cursor commit in the same read-store batch, so proposal boundaries and restarts cannot change the answer.
 
-- **Initial index** (`CreatedIndexLog.initial == true`, the log-date builtin excepted — see below): there is no *entity* history to replay, so the indexbuilder allocates `next = HighWater + 1`, promotes it straight to `CurrentVersion=next`, and schedules **no** historical backfill. On the first incarnation `next` is 1; after a drop/recreate it is higher. `GetIndexStatus` immediately reports `current_version > 0` and carries no backfill cursor.
-- **Later index** (`CreatedIndexLog.initial == false`): this covers an index added to a ledger that already holds data, **and** an index created in a separate apply batch even if the ledger is still empty. It is seeded with `CurrentVersion=0` and `PendingVersion=HighWater+1`, backfilled from cursor `0`, and gated by `current_version == 0` (queries get `ErrIndexBuilding`) until the backfill completes and the atomic switch flips the served version.
+The protobuf oneof annotations in `common.proto` are the build-enforced classification source. `CreatedTransaction`, `RevertedTransaction`, `SavedMetadata`, `DeletedMetadata`, and `OrderSkipped` are `HISTORY`. Schema, index, account-type, default-enforcement, and `FilledGap` payloads are `CONTROL`. Adding a new `LedgerLogPayload` arm without an explicit classification makes `just generate-proto` fail.
 
-The classification is deliberately conservative: only the same-atomic-batch-before-any-data case qualifies as initial. A separate-batch index on a still-empty ledger backfills exactly as before — safe (it replays an empty history and completes immediately), just not routed through the zero-cost promotion.
+- **`EMPTY`**: there is no business history to replay. The builder allocates `next = HighWater + 1`, persists `CurrentVersion=next, PendingVersion=0`, and creates neither a backfill task nor a cursor. This remains true when `CreateLedger`, CONTROL logs, and `CreateIndex` are in separate proposals.
+- **`NON_EMPTY`**: the builder persists `CurrentVersion=0, PendingVersion=next`, schedules the normal historical backfill from the global cursor, and keeps queries behind `ErrIndexBuilding` until the atomic switch.
+- **Missing or corrupt state**: the builder fails the replay invariant; it never silently treats an unproved ledger as empty.
 
-The log-date builtin is the exception to the fast path: born-empty means no indexable *data* log, and such a ledger can already carry configuration logs — the `CreateIndex` log itself among them — whose dates belong in the index. It therefore backfills in both classifications (`isLogDateIndex`, EN-1987).
+`log_date` covers CONTROL as well as HISTORY. While a ledger is `EMPTY`, date rows are staged for every ledger-local CONTROL log even before the index is declared, which lets an EMPTY `log_date` creation promote immediately without omitting earlier configuration logs or its own `CreateIndex` log. If the first HISTORY arrives before `log_date` exists, that speculative prefix is deleted in the same fold and a future `NON_EMPTY` creation uses the complete backfill.
 
 ## Restore Lifecycle
 
@@ -146,7 +148,7 @@ The index registry (the bucket-scoped `Index` rows under `SubAttrIndex`) is a pe
 
 Same-window visibility follows the pattern of the other replayed projections (cf. volumes): replay-touched rows — including deletions, kept as explicit markers — are read back from the in-flight overlay, untouched rows from the committed checkpoint store. The deletion markers are what keep a later read in the same replay window from resurrecting a checkpoint row the replay already deleted (drop-then-recreate folds to exactly one live row).
 
-What is deliberately **not** restored: the per-replica `IndexVersionState` rows and the read-store keyspaces. Both live in each node's read store, outside the checkpoint. A restored node boots with an empty read store against the restored registry, so `loadIndexRegistry` schedules a fresh backfill for every registry entry (no local `CurrentVersion` yet) and the normal build lifecycle repopulates the keyspaces. A data directory whose `read-indexes/` survived an offline restore of an *older* backup is the classic corruption shape the checker's cursor pass reports — see [Checker Coverage](#checker-coverage).
+What is deliberately **not** restored by a main-store backup: the per-replica `IndexVersionState`, ledger-history tracker, cursors, and read-index keyspaces. They live in each node's peer read store. A fresh read store first leaves registry entries unresolved, then replays the restored log from cursor zero: the replay reconstructs the history tracker and resolves each `CreatedIndexLog` to direct promotion for `EMPTY` or a normal task for `NON_EMPTY`. Reaching replay EOF with an unresolved registry row or an active ledger without a tracker is an invariant failure. A normal process restart keeps the read store and resumes the persisted tracker/version/cursor snapshot. Query checkpoints are physical read-store checkpoints, so they capture the tracker at the same committed boundary as the index data and progress cursor. A data directory whose `read-indexes/` survived an offline restore of an *older* backup remains the classic corruption shape the checker's cursor pass reports — see [Checker Coverage](#checker-coverage).
 
 ## Statistics (computed on demand)
 

@@ -1979,7 +1979,6 @@ func (m *CreatedIndexLog) CloneVT() *CreatedIndexLog {
 	}
 	r := new(CreatedIndexLog)
 	r.Id = m.Id.CloneVT()
-	r.Initial = m.Initial
 	r.BoundType = m.BoundType
 	r.BoundTypeDeclared = m.BoundTypeDeclared
 	if len(m.unknownFields) > 0 {
@@ -7699,9 +7698,6 @@ func (this *CreatedIndexLog) EqualVT(that *CreatedIndexLog) bool {
 		return false
 	}
 	if !this.Id.EqualVT(that.Id) {
-		return false
-	}
-	if this.Initial != that.Initial {
 		return false
 	}
 	if this.BoundType != that.BoundType {
@@ -16707,20 +16703,10 @@ func (m *CreatedIndexLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			dAtA[i] = 0
 		}
 		i--
-		dAtA[i] = 0x20
+		dAtA[i] = 0x18
 	}
 	if m.BoundType != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BoundType))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.Initial {
-		i--
-		if m.Initial {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
 		i--
 		dAtA[i] = 0x10
 	}
@@ -24555,9 +24541,6 @@ func (m *CreatedIndexLog) SizeVT() (n int) {
 	if m.Id != nil {
 		l = m.Id.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Initial {
-		n += 2
 	}
 	if m.BoundType != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.BoundType))
@@ -39026,26 +39009,6 @@ func (m *CreatedIndexLog) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Initial", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Initial = bool(v != 0)
-		case 3:
-			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BoundType", wireType)
 			}
 			m.BoundType = 0
@@ -39063,7 +39026,7 @@ func (m *CreatedIndexLog) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 4:
+		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BoundTypeDeclared", wireType)
 			}
