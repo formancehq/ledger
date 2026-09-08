@@ -33,7 +33,7 @@ func listSchemas(paginationConfig storagecommon.PaginationConfig) http.HandlerFu
 
 		query, err := getPaginatedQuery[any](r, paginationConfig, column, order)
 		if err != nil {
-			api.BadRequest(w, common.ErrValidation, err)
+			common.HandleRequestParsingErrors(w, err)
 			return
 		}
 

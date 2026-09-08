@@ -16,7 +16,7 @@ import (
 func createLedger(systemController systemcontroller.Controller) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		configuration := ledger.Configuration{}
-		if r.ContentLength != 0 && !common.DecodeBody(w, r, &configuration) {
+		if !common.DecodeOptionalBody(w, r, &configuration) {
 			return
 		}
 

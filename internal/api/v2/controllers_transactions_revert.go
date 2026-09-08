@@ -28,10 +28,8 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	x := request{}
-	if r.ContentLength > 0 {
-		if !common.DecodeBody(w, r, &x) {
-			return
-		}
+	if !common.DecodeOptionalBody(w, r, &x) {
+		return
 	}
 
 	_, ret, idempotencyHit, err := l.RevertTransaction(
