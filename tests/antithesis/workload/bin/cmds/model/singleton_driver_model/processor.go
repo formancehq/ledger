@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -101,6 +103,7 @@ func (c *Checker) handleObservation(obs observation) {
 		// high-water reproduces the observed error (validateFailure).
 		dbg("BULK ERR: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
 		c.validateFailure(obs.observeTicket, obs.bulk, obs.err)
+		markModelOutcomeVerified()
 		return
 	}
 
@@ -108,6 +111,7 @@ func (c *Checker) handleObservation(obs observation) {
 	if minSeq == 0 {
 		// Success with no committed log is impossible under the model.
 		c.validateEmptyCommit(obs.bulk)
+		markModelOutcomeVerified()
 		return
 	}
 
@@ -131,7 +135,15 @@ func (c *Checker) tryDrain() {
 
 		c.pending = c.pending[1:]
 		c.validateBulkSuccess(head.obs.bulk, head.obs.resp)
+		markModelOutcomeVerified()
 	}
+}
+
+// markModelOutcomeVerified is the report-visible proof that a definitive
+// server result reached a model validation path. Keep this separate from setup
+// assertions: setup runs before Checker exists and cannot establish conformance.
+func markModelOutcomeVerified() {
+	assert.Reachable("singleton_driver_model: model outcome verified", internal.Details{})
 }
 
 // Inserts into c.pending, kept sorted ascending by minSeq. Caller holds c.mu.
