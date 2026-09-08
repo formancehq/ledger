@@ -9,6 +9,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/adapter/apitrace"
 )
 
 // jsonRecoverer is a middleware that recovers from panics and returns a JSON
@@ -33,9 +35,9 @@ func jsonRecoverer(next http.Handler) http.Handler {
 				id := correlationID(r)
 				stack := debug.Stack()
 
-				logging.FromContext(r.Context()).WithFields(map[string]any{
-					"correlation_id": id,
-				}).Errorf("HTTP handler panicked: %v\n%s", rvr, stack)
+				fields := apitrace.Fields(r.Context())
+				fields["correlation_id"] = id
+				logging.FromContext(r.Context()).WithFields(fields).Errorf("HTTP handler panicked: %v\n%s", rvr, stack)
 
 				if span := trace.SpanFromContext(r.Context()); span.SpanContext().IsValid() {
 					span.SetAttributes(

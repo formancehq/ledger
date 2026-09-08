@@ -14,6 +14,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -86,13 +89,18 @@ func TestWriteInternalServerError(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := logging.NewDefaultLogger(&logs, false, false, false)
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.Background())) })
 
-	ctx := logging.ContextWithLogger(context.Background(), logger)
+	ctx, span := provider.Tracer("test").Start(context.Background(), "request")
+	ctx = logging.ContextWithLogger(ctx, logger)
 	ctx = context.WithValue(ctx, middleware.RequestIDKey, "corr-123")
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
 	writeInternalServerError(w, r, errors.New("boom: /var/lib/pebble path leaked"))
+	span.End()
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 	resp := decodeResponse[ErrorResponse](t, w)
@@ -109,6 +117,46 @@ func TestWriteInternalServerError(t *testing.T) {
 	logged := logs.String()
 	require.Contains(t, logged, "boom: /var/lib/pebble path leaked")
 	require.Contains(t, logged, "corr-123")
+	assert.Contains(t, logged, span.SpanContext().TraceID().String())
+	assert.Contains(t, logged, span.SpanContext().SpanID().String())
+
+	ended := recorder.Ended()
+	require.Len(t, ended, 1)
+	assert.Equal(t, "corr-123", httpSpanAttribute(ended[0], "correlation_id"))
+	assert.NotEmpty(t, ended[0].Events(), "the server error must be recorded on the request span")
+}
+
+func TestWriteInternalServerErrorOmitsTraceFieldsForNonRecordingSpan(t *testing.T) {
+	t.Parallel()
+
+	var logs bytes.Buffer
+	logger := logging.NewDefaultLogger(&logs, false, false, false)
+	spanContext := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: trace.TraceID{1},
+		SpanID:  trace.SpanID{2},
+		Remote:  true,
+	})
+	ctx := trace.ContextWithRemoteSpanContext(context.Background(), spanContext)
+	ctx = logging.ContextWithLogger(ctx, logger)
+	ctx = context.WithValue(ctx, middleware.RequestIDKey, "corr-unrecorded")
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+	writeInternalServerError(w, r, errors.New("boom"))
+
+	require.Contains(t, logs.String(), "corr-unrecorded")
+	require.NotContains(t, logs.String(), "trace_id")
+	require.NotContains(t, logs.String(), "span_id")
+}
+
+func httpSpanAttribute(span sdktrace.ReadOnlySpan, key string) string {
+	for _, attr := range span.Attributes() {
+		if string(attr.Key) == key {
+			return attr.Value.AsString()
+		}
+	}
+
+	return ""
 }
 
 func TestWriteErrorResponse_NilError(t *testing.T) {

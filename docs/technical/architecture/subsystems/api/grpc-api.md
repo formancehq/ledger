@@ -512,6 +512,8 @@ See [Idempotency](../admission/idempotency.md) for detailed documentation.
 
 Processing errors (insufficient funds, ledger not found, etc.) are wrapped in a `BusinessError` struct in the FSM layer. The gRPC interceptor converts `BusinessError` instances to proper gRPC status codes with structured `google.rpc.ErrorInfo` details. This allows clients to programmatically identify error types without parsing error messages.
 
+Unknown errors, `KindInternal` errors, and recovered panics are logged with a generated `correlation_id`. When the RPC span is recording, the same log also carries `trace_id` and `span_id`, and the span records the correlation ID and error. This applies to both unary and streaming interceptors. Existing wire contracts remain distinct: unknown errors and panics return sanitized messages containing the correlation ID, while recognized `KindInternal` errors keep their existing status, reason, and message.
+
 Each business error response includes:
 - A **gRPC status code** (e.g., `NOT_FOUND`, `ALREADY_EXISTS`, `FAILED_PRECONDITION`)
 - A **human-readable message** (the original error string)
