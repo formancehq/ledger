@@ -95,19 +95,20 @@ That is a different thing from the `attrCode` → resolver registry described in
 - **no** central mapping from *proposal type* to *which keys it needs* — that lives with each producer;
 - **one** central mapping from *attribute code* to *how to resolve a key of that kind* — that lives in `internal/infra/plan/attribute_resolvers.go`.
 
-The shared helper for technical proposals is:
+The shared submitter for technical proposals is:
 
 ```go
-func proposeTechnical(
+func SubmitTechnical(
     ctx context.Context,
-    builder *plan.Builder,
-    proposer plan.Proposer,
+    builder *Builder,
+    proposer Proposer,
     cmd *raftcmdpb.Proposal,
-    operations []plan.WriteOperation,
+    operations []WriteOperation,
+    identity string,
 ) error
 ```
 
-in `internal/bootstrap/propose_technical.go`. It never inspects the command body — the caller supplies the `WriteOperation` slice, coverage included. Callers whose apply path performs no cache-keyed reads pass an empty `Coverage` (or a nil one). It retries `domain.ErrStaleProposal` up to `maxTechnicalStaleRetries` (5) before giving up. Note the package: the sentinel lives in `internal/domain`. The `plan` package exports no `ErrStaleProposal` — its own errors are `ErrCacheHorizonExceeded`, `ErrMarshalProposal` and `ErrAcquireProposalGuard`.
+in `internal/infra/plan/submit_technical.go`. It never inspects the command body — the caller supplies the `WriteOperation` slice, coverage included, along with an `identity` string used in error messages. Callers whose apply path performs no cache-keyed reads pass an empty `Coverage` (or a nil one). `SubmitTechnical` owns the shared lifecycle that the bootstrap technical proposals and the events emitter's cursor updates used to duplicate: per-attempt reset of `Id`/`PredictedIndex`/`ExecutionPlan`, `Build`/`Run` with coercive loader release, Raft-acceptance and FSM-apply waits, and a bounded retry of `domain.ErrStaleProposal` up to `maxTechnicalStaleRetries` (5) before giving up. The two production triggers are `bootstrap.proposeTechnical` (`internal/bootstrap/propose_technical.go`) and `events.Emitter.proposeSinkUpdate` (`internal/application/events/emitter.go`), both thin wrappers that stamp their caller `identity` and delegate here. Note the package: the stale sentinel lives in `internal/domain`. The `plan` package exports no `ErrStaleProposal` — its own errors are `ErrCacheHorizonExceeded`, `ErrMarshalProposal` and `ErrAcquireProposalGuard`.
 
 ## Layers 2 and 3 — resolution and loading (typed)
 
