@@ -211,6 +211,45 @@ func TestSubmitTechnical_CancelAfterRaftAcceptance(t *testing.T) {
 	require.Contains(t, err.Error(), "waiting for FSM apply")
 }
 
+// referencePreloadNeeds returns a Coverage carrying a single absent
+// transaction-reference key plus the loader key it hashes to. Building
+// that coverage takes the slow preload path and tracks the key in the
+// loader, giving tests a real loader entry to observe across retry and
+// cancellation. The calibration build is released immediately so the
+// caller starts from a clean loader.
+func referencePreloadNeeds(t *testing.T, builder *Builder) (*Coverage, attributes.U128) {
+	t.Helper()
+
+	refKey := domain.TransactionReferenceKey{LedgerName: "test", Reference: "fresh-ref"}
+	expectedID, _ := attributes.MakeKey(refKey.Bytes())
+
+	needs := NewCoverage()
+	needs.Add(dal.SubAttrReference, refKey.Bytes())
+
+	// Calibrate: Build on an absent key actually tracks the key in the
+	// loader (CacheMiss load), proving this fixture exercises the slow
+	// preload path rather than the empty no-op token.
+	build, err := builder.Build(needs, []WriteOperation{{Coverage: needs}})
+	require.NoError(t, err)
+	require.NotEmpty(t, build.token.Tracked, "calibration build must track the preload key")
+	build.ReleaseLoaders()
+
+	return needs, expectedID
+}
+
+// requireReferenceReloads asserts that the reference key is no longer
+// pinned in the loader, so a subsequent LoadOrWait performs a real load
+// (FromLoad) rather than returning a stale cached entry.
+func requireReferenceReloads(t *testing.T, builder *Builder, expectedID attributes.U128) {
+	t.Helper()
+
+	reload, err := builder.loaders.References.LoadOrWait(expectedID, 0, 1, func() (*commonpb.TransactionReferenceValue, error) {
+		return nil, nil
+	})
+	require.NoError(t, err)
+	require.True(t, reload.FromLoad, "loader must release the preload key after SubmitTechnical returns")
+}
+
 // TestSubmitTechnical_ReleasesLoaders pins that a successful submission
 // (through the slow preload path, not the empty no-op token) releases its
 // loader keys exactly once, so later preloads of the same key do a real
@@ -222,28 +261,75 @@ func TestSubmitTechnical_ReleasesLoaders(t *testing.T) {
 	builder := newSubmitTestBuilder(t, tracker)
 	proposer := &recordingProposer{tracker: tracker}
 
-	refKey := domain.TransactionReferenceKey{LedgerName: "test", Reference: "fresh-ref"}
-	expectedID, _ := attributes.MakeKey(refKey.Bytes())
-
-	// Calibrate: Build on an absent key actually tracks the key in the
-	// loader (CacheMiss load). Release it so SubmitTechnical below
-	// starts from a clean loader.
-	needs := NewCoverage()
-	needs.Add(dal.SubAttrReference, refKey.Bytes())
-	build, err := builder.Build(needs, []WriteOperation{{Coverage: needs}})
-	require.NoError(t, err)
-	require.NotEmpty(t, build.token.Tracked, "calibration build must track the preload key")
-
-	build.ReleaseLoaders()
+	needs, expectedID := referencePreloadNeeds(t, builder)
 
 	// SubmitTechnical must load, then release, the same key.
-	cmd := &raftcmdpb.Proposal{}
-	require.NoError(t, SubmitTechnical(context.Background(), builder, proposer, cmd, []WriteOperation{{Coverage: needs}}, "test"))
+	require.NoError(t, SubmitTechnical(context.Background(), builder, proposer, &raftcmdpb.Proposal{}, []WriteOperation{{Coverage: needs}}, "test"))
 	require.Equal(t, 1, proposer.callCount())
 
-	reload, err := builder.loaders.References.LoadOrWait(expectedID, 0, 1, func() (*commonpb.TransactionReferenceValue, error) {
-		return nil, nil
-	})
-	require.NoError(t, err)
-	require.True(t, reload.FromLoad, "loader must release the preload key after SubmitTechnical returns")
+	requireReferenceReloads(t, builder, expectedID)
+}
+
+// TestSubmitTechnical_ReleasesLoadersAcrossStaleRetry pins loader
+// ownership across the retry lifecycle: with a non-empty preload, each
+// stale attempt must release the loader entry it acquired before the next
+// attempt, so the key is loadable again once SubmitTechnical completes.
+func TestSubmitTechnical_ReleasesLoadersAcrossStaleRetry(t *testing.T) {
+	t.Parallel()
+
+	tracker := node.NewIndexTracker(1)
+	builder := newSubmitTestBuilder(t, tracker)
+	proposer := &recordingProposer{tracker: tracker, staleRemain: 1}
+
+	needs, expectedID := referencePreloadNeeds(t, builder)
+
+	require.NoError(t, SubmitTechnical(context.Background(), builder, proposer, &raftcmdpb.Proposal{}, []WriteOperation{{Coverage: needs}}, "test"))
+	require.Equal(t, 2, proposer.callCount())
+
+	requireReferenceReloads(t, builder, expectedID)
+}
+
+// TestSubmitTechnical_ReleasesLoadersOnCancellation pins loader
+// ownership across a cancelled wait: with a non-empty preload, the loader
+// entry must be released before SubmitTechnical blocks on Raft acceptance
+// or FSM apply, so even an abandoned proposal leaves the key loadable.
+func TestSubmitTechnical_ReleasesLoadersOnCancellation(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		holdRaft bool
+		holdFSM  bool
+		wantMsg  string
+	}{
+		{name: "before raft acceptance", holdRaft: true, wantMsg: "waiting for raft acceptance"},
+		{name: "after raft acceptance", holdFSM: true, wantMsg: "waiting for FSM apply"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			builder := newSubmitTestBuilder(t, node.NewIndexTracker(1))
+			proposer := &recordingProposer{holdRaft: tc.holdRaft, holdFSM: tc.holdFSM}
+
+			needs, expectedID := referencePreloadNeeds(t, builder)
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			errCh := make(chan error, 1)
+			go func() {
+				errCh <- SubmitTechnical(ctx, builder, proposer, &raftcmdpb.Proposal{}, []WriteOperation{{Coverage: needs}}, "test")
+			}()
+
+			// Wait until Propose has been reached.
+			require.Eventually(t, func() bool { return proposer.callCount() == 1 }, time.Second, time.Millisecond)
+			cancel()
+
+			err := <-errCh
+			require.Error(t, err)
+			require.ErrorIs(t, err, context.Canceled)
+			require.Contains(t, err.Error(), tc.wantMsg)
+
+			requireReferenceReloads(t, builder, expectedID)
+		})
+	}
 }
