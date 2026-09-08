@@ -145,8 +145,10 @@ func awaitCheckpointRead[T any](read func() (T, error)) T {
 	Eventually(func(g Gomega) {
 		v, err := read()
 		if err != nil {
-			g.Expect(status.Code(err)).To(Equal(codes.Unavailable),
-				"pre-ready checkpoint read must be retryable Unavailable, never anything else; got %v", err)
+			if status.Code(err) != codes.Unavailable {
+				StopTrying("pre-ready checkpoint read must be retryable Unavailable, never anything else").Wrap(err).Now()
+			}
+
 			g.Expect(err).NotTo(HaveOccurred()) // keep polling
 			return
 		}

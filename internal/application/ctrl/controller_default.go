@@ -1685,24 +1685,46 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 	// must not be able to force an unbounded materialization.
 	pageSize = ClampFetchSize(pageSize)
 
+	handle, err := store.NewReadHandle()
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	closeHandle := true
+
+	defer func() {
+		if closeHandle {
+			_ = handle.Close()
+		}
+	}()
+
+	// The audit projection folds independently of this handle's main-store
+	// view, so its index can hold sequences past the audit head visible here
+	// (a live handle opened before the fold, or a frozen pair whose read index
+	// was cut after the main store). Every candidate is materialized from this
+	// handle, where such a sequence has no entry yet: trim to the head.
+	mainAuditSequence, err := query.ReadLastAuditSequence(handle)
+	if err != nil {
+		return nil, fmt.Errorf("reading main-store audit horizon: %w", err)
+	}
+
 	seqs, loSeq, hiSeq, narrowed, err := query.CompileAuditFilter(rs, filter)
 	if err != nil {
 		return nil, err
 	}
 
-	handle, err := store.NewReadHandle()
-	if err != nil {
-		return nil, fmt.Errorf("creating read handle: %w", err)
+	if hiSeq > mainAuditSequence {
+		hiSeq = mainAuditSequence
 	}
 
 	// Audit default is chronological (ascending); ReadAuditEntriesPage takes
 	// reverse=false as ascending, so pass reverse through directly.
 	c, err := query.ReadAuditEntriesPage(ctx, handle, seqs, narrowed, loSeq, hiSeq, afterSequence, reverse, pageSize)
 	if err != nil {
-		_ = handle.Close()
-
 		return nil, fmt.Errorf("listing audit entries: %w", err)
 	}
+
+	closeHandle = false
 
 	return cursor.NewClosingCursor(c, handle), nil
 }
