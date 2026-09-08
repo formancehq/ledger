@@ -38,6 +38,19 @@ type Notifier interface {
 	NotifyConfigChanged()
 }
 
+// PreloadReleaser is the admission side's hook for loader coherence: the FSM
+// calls ReleasePreloaded for every key a proposal's plan covered once that
+// proposal's batch has committed, so a preload built afterwards reloads the
+// key from the store rather than reusing a value read before the write.
+type PreloadReleaser interface {
+	ReleasePreloaded(attrCode byte, id attributes.U128)
+}
+
+type preloadKey struct {
+	attrCode byte
+	id       attributes.U128
+}
+
 type Machine struct {
 	logger logging.Logger
 
@@ -95,6 +108,14 @@ type Machine struct {
 	// cacheSnapshotter handles persisting/restoring cache, reversions, and bloom
 	// filters to/from Pebble (0xFF prefix).
 	cacheSnapshotter *CacheSnapshotter
+
+	// preloadReleaser drops the admission loaders' memoized loads of the
+	// keys a committed proposal covered (plan.Builder on the leader; nil on
+	// nodes without one). preparedPreloadKeys accumulates those keys while
+	// a batch is prepared under mu and moves into the PreparedBatch, whose
+	// commit releases them.
+	preloadReleaser     PreloadReleaser
+	preparedPreloadKeys []preloadKey
 
 	// BloomFilters holds per-attribute-type bloom filters for key existence checks.
 	// Updated during FSM apply, read during preload building.
@@ -443,6 +464,10 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
+	// Keys a cancelled prepare collected belong to no batch; the proposer's
+	// handler-return release covers them.
+	fsm.preparedPreloadKeys = nil
+
 	// Allocate a fresh tracer for this PrepareEntries call. The pointer is
 	// captured by the PreparedBatch below; once we return, the next
 	// PrepareEntries reassigns fsm.sentinelTracer to a new instance — the old
@@ -720,7 +745,9 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		sinkConfigChanged:   sinkConfigChanged,
 		mirrorConfigChanged: mirrorConfigChanged,
 		entryCount:          len(decoded),
+		preloadKeys:         fsm.preparedPreloadKeys,
 	}
+	fsm.preparedPreloadKeys = nil
 
 	// Capture sentinel data before releasing the lock.
 	if fsm.sentinelMode {
@@ -755,6 +782,16 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 	}
 
 	pb.batch = nil // committed, prevent double-close
+
+	// The writes are in the store: a preload built from here on must read
+	// them, so the memoized loads of every covered key go now (see
+	// PreloadReleaser). Released before the commit, a key could be reloaded
+	// with its pre-write value and memoized again.
+	if releaser := fsm.preloadReleaser; releaser != nil {
+		for _, k := range pb.preloadKeys {
+			releaser.ReleasePreloaded(k.attrCode, k.id)
+		}
+	}
 
 	fsm.batchCommitHistogram.Record(ctx, time.Since(commitStart).Microseconds())
 
@@ -873,6 +910,15 @@ func (fsm *Machine) deleteQueryCheckpointFiles(checkpointID uint64) {
 	}
 }
 
+// SetPreloadReleaser installs the hook that releases a committed proposal's
+// covered keys from the admission loaders (see PreloadReleaser).
+func (fsm *Machine) SetPreloadReleaser(r PreloadReleaser) {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	fsm.preloadReleaser = r
+}
+
 // Preload applies preloaded data to the Machine's volatile state.
 // batch and genByte are used for incremental 0xFF persistence of NumscriptParsed entries.
 func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.WriteSession, genByte byte) error {
@@ -912,6 +958,11 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 		if err := validatePlan(plan, i); err != nil {
 			return err
 		}
+
+		fsm.preparedPreloadKeys = append(fsm.preparedPreloadKeys, preloadKey{
+			attrCode: byte(plan.GetAttrCode()),
+			id:       attributes.U128FromBytes(plan.GetId().GetId()),
+		})
 	}
 
 	// The preloads must target gen0 or gen1. The admission uses the
@@ -1775,6 +1826,10 @@ type PreparedBatch struct {
 	sinkConfigChanged   bool
 	mirrorConfigChanged bool
 	checkpointDeletes   []uint64
+
+	// preloadKeys are the covered keys of every proposal in the batch,
+	// released from the admission loaders once the batch has committed.
+	preloadKeys []preloadKey
 
 	// Sentinel data (captured during prepare, validated after commit).
 	sentinelMode        bool

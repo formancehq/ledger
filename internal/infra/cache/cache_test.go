@@ -209,7 +209,7 @@ func TestAttributeCache_CheckCache_SameGeneration(t *testing.T) {
 	// Gen0 hit → CacheHit.
 	gen0Key := attributes.NewU128(1, 1)
 	ac.Put(gen0Key, attributes.Entry[*raftcmdpb.VolumePair]{})
-	assert.Equal(t, CacheHit, ac.CheckCache(5, gen0Key))
+	assert.Equal(t, CacheHit, ac.CheckCache(5, gen0Key, 0))
 
 	// Gen1-only entry within the same-generation horizon: the FSM apply
 	// path reads via AttributeCache.Get which falls back to Gen1, so
@@ -217,11 +217,11 @@ func TestAttributeCache_CheckCache_SameGeneration(t *testing.T) {
 	// "Gen1-only" — both return CacheHit.
 	gen1Key := attributes.NewU128(3, 3)
 	ac.Gen1().Put(gen1Key, attributes.Entry[*raftcmdpb.VolumePair]{})
-	assert.Equal(t, CacheHit, ac.CheckCache(5, gen1Key))
+	assert.Equal(t, CacheHit, ac.CheckCache(5, gen1Key, 0))
 
 	// Absent from both generations → CacheMiss.
 	nonExistent := attributes.NewU128(99, 99)
-	assert.Equal(t, CacheMiss, ac.CheckCache(5, nonExistent))
+	assert.Equal(t, CacheMiss, ac.CheckCache(5, nonExistent, 0))
 }
 
 func TestAttributeCache_CheckCache_NextGeneration(t *testing.T) {
@@ -246,9 +246,9 @@ func TestAttributeCache_CheckCache_NextGeneration(t *testing.T) {
 	ac.Gen1().Put(keyInGen1, attributes.Entry[*raftcmdpb.VolumePair]{})
 
 	// Index 15 is in generation 1 (next generation): one rotation expected.
-	assert.Equal(t, CacheHit, ac.CheckCache(15, keyInGen0),
+	assert.Equal(t, CacheHit, ac.CheckCache(15, keyInGen0, 0),
 		"Gen0-hit at next-gen horizon still reaches apply via the gen0→gen1 fallback")
-	assert.Equal(t, CacheMiss, ac.CheckCache(15, keyInGen1),
+	assert.Equal(t, CacheMiss, ac.CheckCache(15, keyInGen1, 0),
 		"Gen1-only at next-gen horizon is discarded by rotation")
 }
 
@@ -267,13 +267,13 @@ func TestAttributeCache_CheckCache_TwoGenerationsAhead(t *testing.T) {
 	// Index 25 is in generation 2 (two generations ahead): any preload
 	// computed now would be rotated out before apply. CheckCache surfaces
 	// CacheUnreachable so admission rejects the proposal transiently.
-	assert.Equal(t, CacheUnreachable, ac.CheckCache(25, key),
+	assert.Equal(t, CacheUnreachable, ac.CheckCache(25, key, 0),
 		"≥2 generations ahead must report CacheUnreachable")
 
 	// Same regime for a key absent from the cache: still Unreachable; the
 	// admission-level reject takes precedence over the per-key miss path.
 	absent := attributes.NewU128(9, 9)
-	assert.Equal(t, CacheUnreachable, ac.CheckCache(25, absent))
+	assert.Equal(t, CacheUnreachable, ac.CheckCache(25, absent, 0))
 }
 
 func TestCache_NewCache(t *testing.T) {
@@ -345,7 +345,7 @@ func TestAttributeCache_CheckCache_StaleBehindReportsMiss(t *testing.T) {
 
 	// nextIndex=15 → Gen(15, 10) = 1 (behind actualGeneration=5). Would
 	// underflow: 1 - 5 = huge → default branch → CacheUnreachable.
-	assert.Equal(t, CacheMiss, c.Volumes.CheckCache(15, attributes.NewU128(1, 1)),
+	assert.Equal(t, CacheMiss, c.Volumes.CheckCache(15, attributes.NewU128(1, 1), 0),
 		"stale-behind build must report CacheMiss, not underflow into CacheUnreachable")
 }
 
@@ -585,4 +585,53 @@ func TestCache_AllAttributeCachesRotate(t *testing.T) {
 	assert.False(t, ok)
 	_, ok = cache.AccountMetadata.Get(key)
 	assert.False(t, ok)
+}
+
+// A resident under the same U128 but another tag belongs to a different
+// canonical key: the apply-path read treats it as absent, so admission must
+// load rather than count it as a hit. A tombstone carrying this key's tag is
+// still a hit — coverage-only reads it as the absence the delete produced.
+func TestAttributeCache_CheckCache_ForeignTagIsMiss(t *testing.T) {
+	t.Parallel()
+
+	cache, err := New(10, nil)
+	require.NoError(t, err)
+
+	ac := cache.Volumes
+	cache.SetCurrentGeneration(0)
+
+	key := attributes.NewU128(1, 1)
+	ac.Put(key, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 7})
+
+	assert.Equal(t, CacheHit, ac.CheckCache(5, key, 7))
+	assert.Equal(t, CacheMiss, ac.CheckCache(5, key, 9), "a colliding resident of another key is not this key")
+
+	gen1Key := attributes.NewU128(2, 2)
+	ac.Gen1().Put(gen1Key, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 7})
+	assert.Equal(t, CacheMiss, ac.CheckCache(5, gen1Key, 9))
+
+	require.NoError(t, ac.Del(key))
+	assert.Equal(t, CacheHit, ac.CheckCache(5, key, 7), "a tombstone with this key's tag is a hit")
+
+	// Get serves Gen0 without falling back when Gen0 holds the U128, so a
+	// foreign Gen0 resident shadows this key's Gen1 entry.
+	shadowed := attributes.NewU128(3, 3)
+	ac.Gen1().Put(shadowed, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 7})
+	ac.Put(shadowed, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 9})
+	assert.Equal(t, CacheMiss, ac.CheckCache(5, shadowed, 7), "a foreign Gen0 resident shadows the matching Gen1 entry")
+}
+
+func TestCache_ResetSeq_CountsEveryClear(t *testing.T) {
+	t.Parallel()
+
+	c, err := New(10, nil)
+	require.NoError(t, err)
+
+	before := c.ResetSeq()
+	c.Reset()
+	assert.Equal(t, before+1, c.ResetSeq(), "a local reset counts")
+	assert.Equal(t, before+1, c.Snapshot().ResetSeq)
+
+	c.ResetWithThreshold(10, 1)
+	assert.Equal(t, before+2, c.ResetSeq(), "a replicated reset counts too")
 }

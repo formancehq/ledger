@@ -126,15 +126,15 @@ The bloom filter is consulted **here**, at the resolution layer, not below it: `
 
 This is the surviving typed shape, and `loader.go` (plus its test) is the entire package — the loaders are the only thing `internal/infra/preload` contains. Everything upstream of them, including the parallel resolution that drives them, lives in `internal/infra/plan`.
 
-The division of labour between the two layers is easy to get wrong: **the loader never touches the attribute cache.** The hit/miss verdict is taken above it, in the `plan` package — `resolveCoverage` asks `AttributeCache.CheckCache(nextIndex, id)` (`internal/infra/plan/resolve.go`) and only on a miss hands the loader a Pebble-`Get` closure. `loader.go` holds no cache reference at all; the only cache-derived thing it sees is a `cacheEpoch` scalar.
+The division of labour between the two layers is easy to get wrong: **the loader never touches the attribute cache.** The hit/miss verdict is taken above it, in the `plan` package — `resolveCoverage` asks `AttributeCache.CheckCache(nextIndex, id, tag)` (`internal/infra/plan/resolve.go`) and only on a miss hands the loader a Pebble-`Get` closure. `loader.go` holds no cache reference at all; the only cache-derived thing it sees is the `preload.CacheStamp` (generation boundary, epoch, reset count) that keys its memo.
 
 Each loader then:
 
 1. **single-flights** the load per key (`loading map[attributes.U128]chan struct{}`), so concurrent proposals resolving the same key perform one Pebble read and observe the same value;
-2. **memoizes** the loaded value (`loaded map[attributes.U128]*loadedEntry[T]`), validity keyed by `validFor(boundary, cacheEpoch)`, so a later proposal in the same generation reuses it;
+2. **memoizes** the loaded value (`loaded map[attributes.U128]*loadedEntry[T]`), validity keyed by a `preload.CacheStamp` — the generation boundary, the replicated cache epoch and the local reset count (`Cache.ResetSeq`, bumped by every clear of the cache, snapshot install and restore included) — so a later proposal in the same generation reuses it and no value read before a reset survives one;
 3. **shards its own two maps** 256 ways, keyed by `U128.Lo()`, to avoid mutex contention — the sharding is over the loader's maps, not over the cache.
 
-`Release()` deletes the memoized entry — it does **not** decrement a refcount, and it **evicts nothing** from the attribute cache, whose entry survives for as long as the rotation policy allows.
+`Release()` deletes the memoized entry — it does **not** decrement a refcount, and it **evicts nothing** from the attribute cache, whose entry survives for as long as the rotation policy allows. It runs at two points: the FSM releases every key a proposal's plan covered right after that proposal's batch commits (`state.PreloadReleaser`, wired to `plan.Builder.ReleasePreloaded` in bootstrap), so a preload built after a write reloads the key from the store; the proposer's `CleanupToken` releases again when its handler returns, which covers proposals that never applied. A load already in flight when its key is released is returned to its caller but not memoized — its value predates the commit — so no memo outlives a write to its key. Every attribute type, the index registry included, takes the same path: a cache hit (same tag) is coverage-only, a bloom-absent key is coverage-only, and everything else loads through the loader.
 
 ### `MirrorPreload` — two functions, one name
 

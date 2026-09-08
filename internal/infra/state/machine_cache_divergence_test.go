@@ -591,7 +591,7 @@ func buildProposalWithLeaderPreloads(
 		ledgerCanonical := ledgerKey.Bytes()
 		ledgerU128, ledgerTag := attributes.MakeKey(ledgerCanonical)
 
-		switch leader.Registry.Cache.Ledgers.CheckCache(nextIndex, ledgerU128) {
+		switch leader.Registry.Cache.Ledgers.CheckCache(nextIndex, ledgerU128, ledgerTag) {
 		case cache.CacheHit:
 			plans = append(plans, declareTestPlan(ledgerU128, dal.SubAttrLedger))
 		case cache.CacheMiss:
@@ -605,7 +605,7 @@ func buildProposalWithLeaderPreloads(
 		}
 
 		// Check Boundaries in leader's cache
-		switch leader.Registry.Cache.Boundaries.CheckCache(nextIndex, ledgerU128) {
+		switch leader.Registry.Cache.Boundaries.CheckCache(nextIndex, ledgerU128, ledgerTag) {
 		case cache.CacheHit:
 			plans = append(plans, declareTestPlan(ledgerU128, dal.SubAttrBoundary))
 		case cache.CacheMiss:
@@ -642,7 +642,7 @@ func buildProposalWithLeaderPreloads(
 					volCanonical := volKey.Bytes()
 					volU128, volTag := attributes.MakeKey(volCanonical)
 
-					switch leader.Registry.Cache.Volumes.CheckCache(nextIndex, volU128) {
+					switch leader.Registry.Cache.Volumes.CheckCache(nextIndex, volU128, volTag) {
 					case cache.CacheHit:
 						plans = append(plans, declareTestPlan(volU128, dal.SubAttrVolume))
 					case cache.CacheMiss:

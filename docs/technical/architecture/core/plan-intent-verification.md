@@ -19,7 +19,7 @@ On the pre-fix code (release/v3.0), a `DeleteMetadata` on a key that had migrate
 
 ```
 T0  Admission builds plan for Delete(X.k)
-      CheckCache(nextIndex, id) → CacheMiss (Gen0∅, Gen1∅, Pebble∅)
+      CheckCache(nextIndex, id, tag) → CacheMiss (Gen0∅, Gen1∅, Pebble∅)
       → resolver emits a coverage-only entry (no cache seed)
 
 T1  Concurrent Save(X.k, v) applies at raftIndex M

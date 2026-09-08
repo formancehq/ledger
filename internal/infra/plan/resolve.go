@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/antithesishq/antithesis-sdk-go/assert"
-
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -142,7 +140,8 @@ func resolveCoverage[T interface {
 	MarshalVT() ([]byte, error)
 }](
 	keys map[attributes.U128]CoverageEntry,
-	nextIndex, boundary, cacheEpoch uint64,
+	nextIndex uint64,
+	stamp preload.CacheStamp,
 	attrCache *cache.AttributeCache[T],
 	loader *preload.AttributeLoader[T],
 	getValue func(reader dal.PebbleGetter, canonicalKey []byte) (T, error),
@@ -171,7 +170,7 @@ func resolveCoverage[T interface {
 		canonicalKey := entry.Canonical
 		tag := entry.Tag
 
-		switch attrCache.CheckCache(nextIndex, id) {
+		switch attrCache.CheckCache(nextIndex, id, tag) {
 		case cache.CacheUnreachable:
 			// Admission predicts ≥2 rotations between propose and apply.
 			// Any preload computed now would be discarded before the FSM
@@ -187,7 +186,7 @@ func resolveCoverage[T interface {
 					"type":      typeName,
 					"key":       hex.EncodeToString(canonicalKey),
 					"nextIndex": nextIndex,
-					"boundary":  boundary,
+					"boundary":  stamp.Boundary,
 				}).Tracef("Cache horizon exceeded: admission rejection")
 			}
 
@@ -200,41 +199,22 @@ func resolveCoverage[T interface {
 			continue
 
 		case cache.CacheHit:
-			// Cache has the key somewhere (gen0 or gen1). Emit a
-			// coverage-only entry — no cache mutation is needed at
-			// Preload: Get's gen0→gen1 fallback surfaces the value on
-			// read and Del's lazy promote fabricates a gen0 tombstone
-			// on delete. No Pebble read required.
-			//
-			// Index registry keys never take this shortcut: the classifier
-			// answers hit for any resident under the key's id — tombstoned or
-			// tag-mismatched included — while the apply-path read checks both
-			// and treats them as absent. Loading and seeding below keeps the
-			// plan carrying the durable truth for these rare keys; with the
-			// miss path already arbitrated, a finding that persists past this
-			// pins the divergence to the cache shadowing the seed at apply.
-			if attrCode != dal.SubAttrIndex {
-				mu.Lock()
-				plans = append(plans, slab.appendCoverage(id, tag, attrCode))
-				mu.Unlock()
+			// Cache has the key somewhere (gen0 or gen1), under this key's
+			// tag. Emit a coverage-only entry — no cache mutation is needed
+			// at Preload: Get's gen0→gen1 fallback surfaces the value on
+			// read and Del's lazy promote fabricates a gen0 tombstone on
+			// delete. No Pebble read required.
+			mu.Lock()
+			plans = append(plans, slab.appendCoverage(id, tag, attrCode))
+			mu.Unlock()
 
-				continue
-			}
-
-			fallthrough
+			continue
 
 		case cache.CacheMiss:
 			// Bloom filter short-circuit: when the key is definitely not
 			// in Pebble, skip the goroutine + Pebble Get and emit Declare
 			// (coverage-only, no value to seed).
-			//
-			// Index registry keys are exempt: they are rare enough that the
-			// Pebble read costs nothing, and a false negative here would make
-			// every replica read an existing index as absent — the removal
-			// then reports nothing dropped while the row sits in Pebble.
-			// The load below both corrects it and proves the filter wrong.
-			bloomAbsent := bloomFilter != nil && !bloomFilter.MayContain(id)
-			if bloomAbsent && attrCode != dal.SubAttrIndex {
+			if bloomFilter != nil && !bloomFilter.MayContain(id) {
 				mu.Lock()
 				plans = append(plans, slab.appendCoverage(id, tag, attrCode))
 				mu.Unlock()
@@ -247,7 +227,7 @@ func resolveCoverage[T interface {
 					"type":      typeName,
 					"key":       hex.EncodeToString(canonicalKey),
 					"nextIndex": nextIndex,
-					"boundary":  boundary,
+					"boundary":  stamp.Boundary,
 				}).Tracef("Cache miss: key not guaranteed in cache, loading from store")
 			}
 
@@ -260,7 +240,7 @@ func resolveCoverage[T interface {
 			wg.Go(func() {
 				defer func() { <-sem }()
 
-				result, err := loader.LoadOrWait(id, boundary, cacheEpoch, func() (T, error) {
+				result, err := loader.LoadOrWait(id, stamp, func() (T, error) {
 					return getValue(store, canonicalKey)
 				})
 
@@ -282,22 +262,9 @@ func resolveCoverage[T interface {
 				var zero T
 				hasValue := any(result.Value) != any(zero)
 
-				if hasValue && bloomAbsent {
-					logger.WithFields(map[string]any{
-						"type": typeName,
-						"key":  hex.EncodeToString(canonicalKey),
-					}).Errorf("Bloom filter denied a key Pebble holds")
-					assert.Unreachable("index preload bloom false negative", map[string]any{
-						"type": typeName,
-						"key":  hex.EncodeToString(canonicalKey),
-					})
-				}
-
 				// Track bloom false positives: MayContain said "maybe" but Pebble
 				// had nothing. Only counts loads we actually performed (FromLoad).
-				// A bloom-negative load (an index key exempt from the veto) is a
-				// true negative, not a false positive.
-				if result.FromLoad && !hasValue && bloomFilter != nil && !bloomAbsent {
+				if result.FromLoad && !hasValue && bloomFilter != nil {
 					bloomFilter.RecordFalsePositive()
 				}
 
@@ -316,54 +283,10 @@ func resolveCoverage[T interface {
 					return
 				}
 
-				// The loader dedupes and caches loads keyed by boundary and
-				// cache epoch, so a stale cached absence would poison every
-				// later preload of the key — deterministically, since the
-				// plan is replicated. For index keys, arbitrate an absent
-				// answer against a fresh read before trusting it. A failed
-				// arbitration fails the resolve, exactly like the primary
-				// load and marshal paths: a coverage-only plan carries no
-				// seed, so apply would route back through the very cache
-				// this read exists to distrust.
-				if !hasValue && attrCode == dal.SubAttrIndex {
-					fresh, freshErr := getValue(store, canonicalKey)
-					if freshErr != nil {
-						if firstErr == nil {
-							firstErr = freshErr
-						}
-
-						return
-					}
-
-					if any(fresh) != any(zero) {
-						logger.WithFields(map[string]any{
-							"type": typeName,
-							"key":  hex.EncodeToString(canonicalKey),
-						}).Errorf("Index preload served absence for a row Pebble holds")
-						assert.Unreachable("index preload served stale absence", map[string]any{
-							"type": typeName,
-							"key":  hex.EncodeToString(canonicalKey),
-						})
-
-						attrValue, marshalErr := buildPreloadPayload(attrCode, fresh)
-						if marshalErr != nil {
-							if firstErr == nil {
-								firstErr = marshalErr
-							}
-
-							return
-						}
-
-						plans = append(plans, slab.appendSeed(id, tag, attrCode, attrValue))
-
-						return
-					}
-				}
-
-				// Pebble had no value either — coverage-only entry. If a
-				// concurrent write populated the cache between admission
-				// and apply, Get's gen0→gen1 fallback will surface it at
-				// apply time (bounded by CacheUnreachable at ≥2 rotations).
+				// Pebble had no value — coverage-only entry. If a concurrent
+				// write populated the cache between admission and apply,
+				// Get's gen0→gen1 fallback will surface it at apply time
+				// (bounded by CacheUnreachable at ≥2 rotations).
 				plans = append(plans, slab.appendCoverage(id, tag, attrCode))
 			})
 		}

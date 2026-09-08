@@ -7,7 +7,7 @@
 ## What it is
 
 When admission builds a proposal's preload plan, it queries the dual-generation
-cache (`AttributeCache.CheckCache(at, key)`) to decide, per key, whether to
+cache (`AttributeCache.CheckCache(at, key, tag)`) to decide, per key, whether to
 emit a coverage-only `AttributeCoverage` (value nil) or a seed
 `AttributeCoverage` (value set). The decision compares the predicted
 apply-time generation `Gen(at, threshold)` against the FSM's current applied
@@ -15,8 +15,8 @@ generation:
 
 | `Gen(at) − currentGen` | `CheckCache` result | Plan emitted |
 |---|---|---|
-| 0 | `CacheHit` / `CacheMiss` | coverage-only (`value = nil`) / seed (`value` set) |
-| 1 | `CacheHit` (Gen0-hit only) / `CacheMiss` | coverage-only / seed |
+| 0 | `CacheHit` (resident under the key's tag) / `CacheMiss` | coverage-only (`value = nil`) / seed (`value` set) |
+| 1 | `CacheHit` (Gen0 resident under the key's tag) / `CacheMiss` | coverage-only / seed |
 | **≥ 2** | **`CacheUnreachable`** | **proposal rejected at admission** |
 
 The ≥ 2 case is the "cache horizon exceeded" condition this document is about.

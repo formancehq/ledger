@@ -26,7 +26,8 @@ type attrResolver interface {
 	// caller must associate with Loader() for the CleanupToken.
 	Resolve(
 		keys map[attributes.U128]CoverageEntry,
-		nextIndex, boundary, cacheEpoch uint64,
+		nextIndex uint64,
+		stamp preload.CacheStamp,
 		store dal.PebbleGetter,
 		logger logging.Logger,
 	) (*resolveResult, error)
@@ -59,12 +60,13 @@ type protoAttrResolver[T interface {
 
 func (r *protoAttrResolver[T]) Resolve(
 	keys map[attributes.U128]CoverageEntry,
-	nextIndex, boundary, cacheEpoch uint64,
+	nextIndex uint64,
+	stamp preload.CacheStamp,
 	store dal.PebbleGetter,
 	logger logging.Logger,
 ) (*resolveResult, error) {
 	return resolveCoverage[T](
-		keys, nextIndex, boundary, cacheEpoch,
+		keys, nextIndex, stamp,
 		r.cache, r.loader, r.getValue, store,
 		r.attrCode, nil, r.bloom(), logger, r.typeName,
 	)

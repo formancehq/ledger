@@ -10,6 +10,7 @@ package state
 import (
 	reflect "reflect"
 
+	attributes "github.com/formancehq/ledger/v3/internal/infra/attributes"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -105,6 +106,66 @@ func (c *MockNotifierNotifyLogsCommittedCall) Do(f func(uint64)) *MockNotifierNo
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockNotifierNotifyLogsCommittedCall) DoAndReturn(f func(uint64)) *MockNotifierNotifyLogsCommittedCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// MockPreloadReleaser is a mock of PreloadReleaser interface.
+type MockPreloadReleaser struct {
+	ctrl     *gomock.Controller
+	recorder *MockPreloadReleaserMockRecorder
+	isgomock struct{}
+}
+
+// MockPreloadReleaserMockRecorder is the mock recorder for MockPreloadReleaser.
+type MockPreloadReleaserMockRecorder struct {
+	mock *MockPreloadReleaser
+}
+
+// NewMockPreloadReleaser creates a new mock instance.
+func NewMockPreloadReleaser(ctrl *gomock.Controller) *MockPreloadReleaser {
+	mock := &MockPreloadReleaser{ctrl: ctrl}
+	mock.recorder = &MockPreloadReleaserMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockPreloadReleaser) EXPECT() *MockPreloadReleaserMockRecorder {
+	return m.recorder
+}
+
+// ReleasePreloaded mocks base method.
+func (m *MockPreloadReleaser) ReleasePreloaded(attrCode byte, id attributes.U128) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ReleasePreloaded", attrCode, id)
+}
+
+// ReleasePreloaded indicates an expected call of ReleasePreloaded.
+func (mr *MockPreloadReleaserMockRecorder) ReleasePreloaded(attrCode, id any) *MockPreloadReleaserReleasePreloadedCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleasePreloaded", reflect.TypeOf((*MockPreloadReleaser)(nil).ReleasePreloaded), attrCode, id)
+	return &MockPreloadReleaserReleasePreloadedCall{Call: call}
+}
+
+// MockPreloadReleaserReleasePreloadedCall wrap *gomock.Call
+type MockPreloadReleaserReleasePreloadedCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockPreloadReleaserReleasePreloadedCall) Return() *MockPreloadReleaserReleasePreloadedCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockPreloadReleaserReleasePreloadedCall) Do(f func(byte, attributes.U128)) *MockPreloadReleaserReleasePreloadedCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockPreloadReleaserReleasePreloadedCall) DoAndReturn(f func(byte, attributes.U128)) *MockPreloadReleaserReleasePreloadedCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

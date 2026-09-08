@@ -703,6 +703,11 @@ func Module() fx.Option {
 			func(lc fx.Lifecycle, bindings network.Bindings) {
 				lc.Append(releaseBindingsHook(bindings))
 			},
+			// Loader coherence: a committed proposal releases its covered keys
+			// from the admission loaders (see state.PreloadReleaser).
+			func(machine *state.Machine, builder *plan.Builder) {
+				machine.SetPreloadReleaser(builder)
+			},
 			func(
 				lc fx.Lifecycle,
 				runtime *dal.Store,

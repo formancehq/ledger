@@ -134,6 +134,17 @@ func NewBuilder(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.At
 	return b
 }
 
+// ReleasePreloaded drops the memoized load of one covered key. The FSM calls
+// it for every key of a proposal's plan right after that proposal's batch
+// commits, so the next preload of a key the proposal wrote reads the store
+// instead of a value from before the write. An attrCode without a resolver is
+// a no-op: the plan validator has already rejected such entries at apply.
+func (p *Builder) ReleasePreloaded(attrCode byte, id attributes.U128) {
+	if r, ok := p.resolvers[attrCode]; ok {
+		r.Loader().Release(id)
+	}
+}
+
 // Loaders returns the shared preload.Loaders instance, allowing callers to
 // release tokens from a BuildResult on error paths.
 func (p *Builder) Loaders() *preload.Loaders {
@@ -308,6 +319,7 @@ type buildResult struct {
 // in parallel to reduce wall-clock time and shard lock hold duration.
 func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, needs *Coverage) (*raftcmdpb.ExecutionPlan, *preload.CleanupToken, error) {
 	boundary := cache.BoundaryIndex(nextIndex, snap.GenerationThreshold)
+	stamp := preload.CacheStamp{Boundary: boundary, Epoch: snap.Epoch, ResetSeq: snap.ResetSeq}
 
 	if p.logger.Enabled(logging.TraceLevel) {
 		p.logger.WithFields(map[string]any{
@@ -377,7 +389,7 @@ func (p *Builder) buildPreloadsAt(nextIndex uint64, snap cache.ConfigSnapshot, n
 		launch(func(i int) {
 			r, err := resolver.Resolve(
 				set,
-				nextIndex, boundary, snap.Epoch,
+				nextIndex, stamp,
 				p.store, p.logger,
 			)
 			results[i].resolve = r

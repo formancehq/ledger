@@ -82,7 +82,7 @@ func TestApplyClusterConfig_ThresholdChangePersistsGeneration(t *testing.T) {
 	// restored generation, not currentGeneration=0.
 	inGenIndex := raftIndex + 1
 	require.NotEqual(t, cache.CacheUnreachable,
-		fsm.Registry.Cache.LedgerMetadata.CheckCache(inGenIndex, attributes.NewU128(0, 0)),
+		fsm.Registry.Cache.LedgerMetadata.CheckCache(inGenIndex, attributes.NewU128(0, 0), 0),
 		"CheckCache at a future index in the same generation must not fire the horizon guard")
 }
 

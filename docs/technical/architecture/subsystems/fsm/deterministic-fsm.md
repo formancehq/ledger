@@ -425,9 +425,9 @@ type CleanupToken struct {
 
 > **Note:** Reversions do not use an `AttributeLoader` — they are stored as an in-memory `bitset.Bitset` (from `internal/pkg/bitset/bitset.go`) that is always authoritative. No preloading or Pebble lookups are needed. See [Attributes - Reversions](../attributes/attributes.md#reversions) for details.
 
-After the command is applied (success or error), `CleanupToken.Release()` removes the keys from their respective loaders. This is safe because:
-- On success: The FSM cache now has the values
-- On error: The values should not be retained (stale boundary)
+A memoized load is dropped at two points. The FSM releases every key a proposal's plan covered right after that proposal's batch commits (`state.PreloadReleaser`, implemented by `plan.Builder.ReleasePreloaded`): from then on the store holds the proposal's writes, so a later preload of the same key must read them rather than reuse a value loaded before. The proposer's `CleanupToken.Release()` runs when its handler returns and covers the proposals that never applied (rejected, dropped, stale). A load still in flight when its key is released is not memoized, since its value predates the commit. Both are safe because:
+- On success: the FSM cache now has the values, and the store has the writes
+- On error: the values should not be retained (stale boundary)
 
 ---
 

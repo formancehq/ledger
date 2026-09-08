@@ -212,7 +212,14 @@ const (
 // CheckCache determines whether a key will survive in cache until the future
 // raft index `at`. Takes a read lock on the cache to ensure a consistent view
 // of currentGeneration and the gen0/gen1 data during the check.
-func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus {
+//
+// A resident counts only when its tag matches: the apply-path read never
+// serves a tag mismatch (KeyStore.Get reports a collision, GetEntry reports
+// the key as not cached), so a resident of another canonical key colliding
+// on the same U128 is a miss here too. A tombstone with the right tag is a
+// hit — the delete that wrote it removed the Pebble row in the same apply,
+// so coverage-only reads it correctly as absent.
+func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128, tag uint64) CacheStatus {
 	a.Cache.mu.RLock()
 	defer a.Cache.mu.RUnlock()
 
@@ -242,15 +249,19 @@ func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus
 
 	switch futureGeneration - actualGeneration {
 	case 0:
-		// Same generation — no rotation expected before apply. Either
-		// gen holds the key: the FSM apply path reads via Get which
-		// falls back to Gen1, so the caller only needs to know "in
-		// cache anywhere".
-		if _, ok := a.gen0.Load().Get(k); ok {
-			return CacheHit
+		// Same generation — no rotation expected before apply. Mirror the
+		// FSM apply path's read: Get serves the Gen0 resident when there is
+		// one and falls back to Gen1 only when Gen0 has nothing, so a Gen0
+		// resident of another key shadows a Gen1 entry of this one.
+		if e, ok := a.gen0.Load().Get(k); ok {
+			if e.Tag == tag {
+				return CacheHit
+			}
+
+			return CacheMiss
 		}
 
-		if _, ok := a.gen1.Load().Get(k); ok {
+		if e, ok := a.gen1.Load().Get(k); ok && e.Tag == tag {
 			return CacheHit
 		}
 
@@ -263,7 +274,7 @@ func (a *AttributeCache[T]) CheckCache(at uint64, k attributes.U128) CacheStatus
 		// If Gen0 has the key now, post-rotation it sits in new Gen1 only.
 		// Get's gen0→gen1 fallback still surfaces it (and lazy Del promotes
 		// on tombstone if the handler deletes).
-		if _, ok := a.gen0.Load().Get(k); ok {
+		if e, ok := a.gen0.Load().Get(k); ok && e.Tag == tag {
 			return CacheHit
 		}
 
@@ -333,6 +344,12 @@ type Cache struct {
 	// detect that the cache was invalidated between preload building and FSM
 	// application (e.g. after a cluster config change).
 	epoch atomic.Uint64
+	// resetSeq counts every clear of the cache contents, replicated or
+	// local (snapshot install, restore). Preload loaders key their memoized
+	// values on it so a value read before a reset is never reused after one.
+	// It is process-local and differs across replicas: admission-side only,
+	// never an input to the apply path (invariant #2).
+	resetSeq atomic.Uint64
 
 	// Metrics (nil if not initialized)
 	rotations       metric.Int64Counter
@@ -437,6 +454,7 @@ func (c *Cache) RealignGeneration(raftIndex uint64) {
 
 // clearLocked clears all cache data without incrementing the epoch.
 func (c *Cache) clearLocked() {
+	c.resetSeq.Add(1)
 	for _, ac := range c.caches {
 		ac.Reset()
 	}
@@ -579,6 +597,9 @@ func (c *Cache) SetEpoch(e uint64) {
 type ConfigSnapshot struct {
 	GenerationThreshold uint64
 	Epoch               uint64
+	// ResetSeq is the local reset count at the time of the snapshot; see
+	// Cache.ResetSeq.
+	ResetSeq uint64
 }
 
 // Snapshot returns a consistent snapshot of the cache's mutable config.
@@ -591,7 +612,14 @@ func (c *Cache) Snapshot() ConfigSnapshot {
 	return ConfigSnapshot{
 		GenerationThreshold: c.generationThreshold.Load(),
 		Epoch:               c.epoch.Load(),
+		ResetSeq:            c.resetSeq.Load(),
 	}
+}
+
+// ResetSeq returns how many times the cache contents have been cleared in
+// this process, by a replicated ResetWithThreshold or a local Reset.
+func (c *Cache) ResetSeq() uint64 {
+	return c.resetSeq.Load()
 }
 
 // New creates a new Cache with the given generation threshold and meter.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -873,4 +874,85 @@ func TestPrepareEntriesTraceLogPipeliningLag(t *testing.T) {
 			}
 		})
 	})
+}
+
+// recordingReleaser captures the keys the FSM releases from the admission
+// loaders, in call order, and runs probe at each release so a test can
+// observe the store's state at that instant.
+type recordingReleaser struct {
+	mu    sync.Mutex
+	keys  []preloadKey
+	probe func()
+}
+
+func (r *recordingReleaser) ReleasePreloaded(attrCode byte, id attributes.U128) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.keys = append(r.keys, preloadKey{attrCode: attrCode, id: id})
+
+	if r.probe != nil {
+		r.probe()
+	}
+}
+
+func (r *recordingReleaser) snapshot() []preloadKey {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return append([]preloadKey(nil), r.keys...)
+}
+
+// A proposal's covered keys are released from the admission loaders when its
+// batch commits — not when it is prepared, when the writes are not yet in the
+// store, and not at the proposer's handler return, which is later than a
+// concurrent admission of the same key can preload.
+func TestMachine_CommitReleasesCoveredKeysFromLoaders(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, attrs := newTestMachine(t)
+	ctx := context.Background()
+
+	// The probe reads the ledger this proposal creates straight from the
+	// store: a release before the commit would find it absent.
+	var writeVisibleAtRelease []bool
+
+	releaser := &recordingReleaser{probe: func() {
+		reader, err := dataStore.NewReadHandle()
+		require.NoError(t, err)
+
+		defer func() { _ = reader.Close() }()
+
+		// Attribute.Get reports an absent row as (nil, nil): presence is
+		// the value, not the error.
+		info, err := attrs.Ledger.Get(reader, domain.LedgerKey{Name: "ledger"}.Bytes())
+		require.NoError(t, err)
+
+		writeVisibleAtRelease = append(writeVisibleAtRelease, info != nil)
+	}}
+	machine.SetPreloadReleaser(releaser)
+
+	proposal := makeProposal(1, createLedgerOrder("ledger"))
+	require.NotEmpty(t, proposal.GetExecutionPlan().GetAttributes())
+
+	decoded, err := DecodeEntries([]*raftpb.Entry{makeEntry(t, 1, proposal)})
+	require.NoError(t, err)
+
+	pb, err := machine.PrepareDecodedEntries(ctx, dataStore, decoded...)
+	require.NoError(t, err)
+	require.Empty(t, releaser.snapshot(), "nothing is released before the batch commits")
+
+	require.NoError(t, machine.CommitPreparedBatch(ctx, pb))
+
+	want := make([]preloadKey, 0, len(proposal.GetExecutionPlan().GetAttributes()))
+	for _, plan := range proposal.GetExecutionPlan().GetAttributes() {
+		want = append(want, preloadKey{attrCode: byte(plan.GetAttrCode()), id: attributes.U128FromBytes(plan.GetId().GetId())})
+	}
+
+	require.ElementsMatch(t, want, releaser.snapshot(), "every covered key is released exactly once after the commit")
+	require.Len(t, writeVisibleAtRelease, len(want))
+
+	for _, visible := range writeVisibleAtRelease {
+		require.True(t, visible, "the proposal's write is in the store when its keys are released")
+	}
 }

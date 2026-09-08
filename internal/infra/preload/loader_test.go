@@ -24,7 +24,7 @@ func TestAttributeLoader_LoadOrWait_FirstLoad(t *testing.T) {
 	key := attributes.NewU128(1, 2)
 
 	loadCount := 0
-	result, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+	result, err := loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 		loadCount++
 
 		return 42, nil
@@ -43,14 +43,14 @@ func TestAttributeLoader_LoadOrWait_CachedResult(t *testing.T) {
 	key := attributes.NewU128(1, 2)
 
 	// First load
-	_, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+	_, err := loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 		return 42, nil
 	})
 	require.NoError(t, err)
 
 	// Second load with same boundary - should use cached value
 	loadCount := 0
-	result, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+	result, err := loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 		loadCount++
 
 		return 999, nil
@@ -69,14 +69,14 @@ func TestAttributeLoader_LoadOrWait_CachedResultWithLowerBoundary(t *testing.T) 
 	key := attributes.NewU128(1, 2)
 
 	// First load at boundary 200
-	_, err := loader.LoadOrWait(key, 200, testCacheEpoch, func() (int, error) {
+	_, err := loader.LoadOrWait(key, CacheStamp{Boundary: 200, Epoch: testCacheEpoch}, func() (int, error) {
 		return 42, nil
 	})
 	require.NoError(t, err)
 
 	// Second load with lower boundary - should use cached value
 	loadCount := 0
-	result, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+	result, err := loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 		loadCount++
 
 		return 999, nil
@@ -94,7 +94,7 @@ func TestAttributeLoader_LoadOrWait_EpochMismatchReloadsEvenWithLowerBoundary(t 
 	loader := NewAttributeLoader[int]()
 	key := attributes.NewU128(1, 2)
 
-	_, err := loader.LoadOrWait(key, 200, testCacheEpoch, func() (int, error) {
+	_, err := loader.LoadOrWait(key, CacheStamp{Boundary: 200, Epoch: testCacheEpoch}, func() (int, error) {
 		return 42, nil
 	})
 	require.NoError(t, err)
@@ -102,7 +102,7 @@ func TestAttributeLoader_LoadOrWait_EpochMismatchReloadsEvenWithLowerBoundary(t 
 	const resetCacheEpoch = testCacheEpoch + 1
 
 	loadCount := 0
-	result, err := loader.LoadOrWait(key, 100, resetCacheEpoch, func() (int, error) {
+	result, err := loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: resetCacheEpoch}, func() (int, error) {
 		loadCount++
 
 		return 999, nil
@@ -113,7 +113,7 @@ func TestAttributeLoader_LoadOrWait_EpochMismatchReloadsEvenWithLowerBoundary(t 
 	assert.True(t, result.FromLoad, "Epoch mismatch should force a fresh load")
 	assert.Equal(t, 1, loadCount, "Load function should be called once after epoch reset")
 
-	result, err = loader.LoadOrWait(key, 100, resetCacheEpoch, func() (int, error) {
+	result, err = loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: resetCacheEpoch}, func() (int, error) {
 		loadCount++
 
 		return 123, nil
@@ -140,7 +140,7 @@ func TestAttributeLoader_LoadOrWait_ConcurrentLoads(t *testing.T) {
 	var wg sync.WaitGroup
 
 	wg.Go(func() {
-		result, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+		result, err := loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 			loadCount.Add(1)
 			close(loadStarted)
 			<-loadContinue // Wait for signal to continue
@@ -164,7 +164,7 @@ func TestAttributeLoader_LoadOrWait_ConcurrentLoads(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			result, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+			result, err := loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 				loadCount.Add(1)
 
 				return 999, nil // Should never be called
@@ -201,7 +201,7 @@ func TestAttributeLoader_LoadOrWait_Error(t *testing.T) {
 	key := attributes.NewU128(1, 2)
 
 	expectedErr := errors.New("load failed")
-	result, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+	result, err := loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 		return 0, expectedErr
 	})
 
@@ -211,7 +211,7 @@ func TestAttributeLoader_LoadOrWait_Error(t *testing.T) {
 
 	// Verify the key is not in the loaded map (error should not cache)
 	loadCount := 0
-	result, err = loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+	result, err = loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 		loadCount++
 
 		return 42, nil
@@ -236,7 +236,7 @@ func TestAttributeLoader_LoadOrWait_ErrorReleasesWaiters(t *testing.T) {
 	var wg sync.WaitGroup
 
 	wg.Go(func() {
-		_, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+		_, err := loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 			close(loadStarted)
 			<-loadContinue
 
@@ -256,7 +256,7 @@ func TestAttributeLoader_LoadOrWait_ErrorReleasesWaiters(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		// This should wait, then try to load again since the first one failed
-		result, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+		result, err := loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 			return 42, nil
 		})
 		require.NoError(t, err)
@@ -296,14 +296,14 @@ func TestAttributeLoader_Release(t *testing.T) {
 	key := attributes.NewU128(1, 2)
 
 	// Load a value
-	_, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+	_, err := loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 		return 42, nil
 	})
 	require.NoError(t, err)
 
 	// Verify it's cached
 	loadCount := 0
-	result, err := loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+	result, err := loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 		loadCount++
 
 		return 999, nil
@@ -317,7 +317,7 @@ func TestAttributeLoader_Release(t *testing.T) {
 	loader.Release(key)
 
 	// Should load again
-	result, err = loader.LoadOrWait(key, 100, testCacheEpoch, func() (int, error) {
+	result, err = loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 		loadCount++
 
 		return 123, nil
@@ -336,7 +336,7 @@ func TestAttributeLoader_DifferentKeys(t *testing.T) {
 	key2 := attributes.NewU128(2, 2)
 
 	// Load key1
-	result1, err := loader.LoadOrWait(key1, 100, testCacheEpoch, func() (int, error) {
+	result1, err := loader.LoadOrWait(key1, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 		return 42, nil
 	})
 	require.NoError(t, err)
@@ -344,7 +344,7 @@ func TestAttributeLoader_DifferentKeys(t *testing.T) {
 	assert.True(t, result1.FromLoad)
 
 	// Load key2 - should not use key1's cached value
-	result2, err := loader.LoadOrWait(key2, 100, testCacheEpoch, func() (int, error) {
+	result2, err := loader.LoadOrWait(key2, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (int, error) {
 		return 99, nil
 	})
 	require.NoError(t, err)
@@ -371,17 +371,17 @@ func TestCleanupToken_Release(t *testing.T) {
 	key2 := attributes.NewU128(2, 2)
 	key4 := attributes.NewU128(4, 4)
 
-	_, err := loaders.Volumes.LoadOrWait(key1, 100, testCacheEpoch, func() (*raftcmdpb.VolumePair, error) {
+	_, err := loaders.Volumes.LoadOrWait(key1, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (*raftcmdpb.VolumePair, error) {
 		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(42)}, nil
 	})
 	require.NoError(t, err)
 
-	_, err = loaders.Volumes.LoadOrWait(key2, 100, testCacheEpoch, func() (*raftcmdpb.VolumePair, error) {
+	_, err = loaders.Volumes.LoadOrWait(key2, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (*raftcmdpb.VolumePair, error) {
 		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(43)}, nil
 	})
 	require.NoError(t, err)
 
-	_, err = loaders.References.LoadOrWait(key4, 100, testCacheEpoch, func() (*commonpb.TransactionReferenceValue, error) {
+	_, err = loaders.References.LoadOrWait(key4, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (*commonpb.TransactionReferenceValue, error) {
 		return &commonpb.TransactionReferenceValue{TransactionId: 1}, nil
 	})
 	require.NoError(t, err)
@@ -399,7 +399,7 @@ func TestCleanupToken_Release(t *testing.T) {
 
 	// Verify all keys were removed - next load should actually load
 	volumeLoadCount := 0
-	_, err = loaders.Volumes.LoadOrWait(key1, 100, testCacheEpoch, func() (*raftcmdpb.VolumePair, error) {
+	_, err = loaders.Volumes.LoadOrWait(key1, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (*raftcmdpb.VolumePair, error) {
 		volumeLoadCount++
 
 		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)}, nil
@@ -408,7 +408,7 @@ func TestCleanupToken_Release(t *testing.T) {
 	assert.Equal(t, 1, volumeLoadCount, "Volumes key1 should reload after Release")
 
 	volumeLoadCount2 := 0
-	_, err = loaders.Volumes.LoadOrWait(key2, 100, testCacheEpoch, func() (*raftcmdpb.VolumePair, error) {
+	_, err = loaders.Volumes.LoadOrWait(key2, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (*raftcmdpb.VolumePair, error) {
 		volumeLoadCount2++
 
 		return &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(100)}, nil
@@ -417,11 +417,67 @@ func TestCleanupToken_Release(t *testing.T) {
 	assert.Equal(t, 1, volumeLoadCount2, "Volumes key2 should reload after Release")
 
 	refLoadCount := 0
-	_, err = loaders.References.LoadOrWait(key4, 100, testCacheEpoch, func() (*commonpb.TransactionReferenceValue, error) {
+	_, err = loaders.References.LoadOrWait(key4, CacheStamp{Boundary: 100, Epoch: testCacheEpoch}, func() (*commonpb.TransactionReferenceValue, error) {
 		refLoadCount++
 
 		return &commonpb.TransactionReferenceValue{TransactionId: 2}, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, refLoadCount, "References should reload after Release")
+}
+
+// A cache reset (snapshot install, restore) replaces the cache's contents
+// without a new epoch. The loader must not reuse a value read before it.
+func TestAttributeLoader_LoadOrWait_ResetSeqMismatchReloads(t *testing.T) {
+	t.Parallel()
+
+	loader := NewAttributeLoader[int]()
+	key := attributes.NewU128(1, 2)
+
+	_, err := loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch, ResetSeq: 3}, func() (int, error) {
+		return 42, nil
+	})
+	require.NoError(t, err)
+
+	loadCount := 0
+	result, err := loader.LoadOrWait(key, CacheStamp{Boundary: 100, Epoch: testCacheEpoch, ResetSeq: 4}, func() (int, error) {
+		loadCount++
+
+		return 999, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 999, result.Value, "a value read before the reset must not be reused after it")
+	assert.True(t, result.FromLoad)
+	assert.Equal(t, 1, loadCount)
+}
+
+// A Release that lands while a load is in flight marks the loaded value as
+// predating a commit: it is returned to the caller but not memoized, so the
+// next preload reads the store again.
+func TestAttributeLoader_LoadOrWait_ReleaseDuringLoadSkipsTheMemo(t *testing.T) {
+	t.Parallel()
+
+	loader := NewAttributeLoader[int]()
+	key := attributes.NewU128(1, 2)
+	stamp := CacheStamp{Boundary: 100, Epoch: testCacheEpoch}
+
+	result, err := loader.LoadOrWait(key, stamp, func() (int, error) {
+		loader.Release(key)
+
+		return 42, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 42, result.Value, "the caller still gets the value it loaded")
+	assert.True(t, result.FromLoad)
+
+	loadCount := 0
+	result, err = loader.LoadOrWait(key, stamp, func() (int, error) {
+		loadCount++
+
+		return 43, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 43, result.Value, "the pre-release value must not have been memoized")
+	assert.True(t, result.FromLoad)
+	assert.Equal(t, 1, loadCount)
 }

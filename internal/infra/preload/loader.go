@@ -10,25 +10,47 @@ import (
 
 const loaderShards = 256
 
+// CacheStamp identifies the attribute-cache state a loaded value was read
+// under. A memoized value is reusable only for a preload built against the
+// same cache incarnation (Epoch and ResetSeq unchanged) at a boundary no
+// later than the one it was loaded for.
+type CacheStamp struct {
+	// Boundary is the cache generation boundary the preload is built for
+	// (cache.BoundaryIndex of the predicted apply index).
+	Boundary uint64
+	// Epoch is the replicated cache epoch, bumped by a threshold change.
+	Epoch uint64
+	// ResetSeq is the local count of cache resets (snapshot install,
+	// restore), which replace the cache's contents without a new epoch.
+	ResetSeq uint64
+}
+
 // loadedEntry stores a loaded attribute value with the cache state that made
 // the value safe to reuse.
 type loadedEntry[T any] struct {
-	boundary   uint64
-	cacheEpoch uint64
-	value      T
+	stamp CacheStamp
+	value T
 }
 
-func (e *loadedEntry[T]) validFor(boundary, cacheEpoch uint64) bool {
-	return e.cacheEpoch == cacheEpoch && e.boundary >= boundary
+func (e *loadedEntry[T]) validFor(s CacheStamp) bool {
+	return e.stamp.Epoch == s.Epoch && e.stamp.ResetSeq == s.ResetSeq && e.stamp.Boundary >= s.Boundary
 }
 
 // loaderShard is one of loaderShards independent partitions, each with its own
 // mutex and maps. Cache-line padding prevents false sharing between shards.
 type loaderShard[T any] struct {
 	mu      sync.RWMutex
-	loading map[attributes.U128]chan struct{}
+	loading map[attributes.U128]*inflightLoad
 	loaded  map[attributes.U128]*loadedEntry[T]
 	_       [64]byte // cache-line padding
+}
+
+// inflightLoad is a load in progress: waiters block on done; released is set
+// by a Release that arrives while the load runs, in which case the loaded
+// value predates a commit and is returned to its caller but not memoized.
+type inflightLoad struct {
+	done     chan struct{}
+	released bool
 }
 
 // AttributeLoader coordinates loading of attributes to prevent duplicate loads from store.
@@ -51,7 +73,7 @@ type LoadResult[T any] struct {
 func NewAttributeLoader[T any]() *AttributeLoader[T] {
 	al := &AttributeLoader[T]{}
 	for i := range al.shards {
-		al.shards[i].loading = make(map[attributes.U128]chan struct{})
+		al.shards[i].loading = make(map[attributes.U128]*inflightLoad)
 		al.shards[i].loaded = make(map[attributes.U128]*loadedEntry[T])
 	}
 
@@ -67,28 +89,33 @@ func (al *AttributeLoader[T]) shard(key attributes.U128) *loaderShard[T] {
 // LoadOrWait loads an attribute value or waits for an ongoing load.
 // It returns the value and whether we actually performed a load (vs using cached).
 // The loadFn is called only if the value needs to be loaded from store.
-func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary, cacheEpoch uint64, loadFn func() (T, error)) (*LoadResult[T], error) {
+//
+// A memoized value stays valid until Release drops it or stamp no longer
+// matches (validFor). The FSM releases a key as soon as it commits a
+// proposal covering it, so a later preload of a key some proposal just wrote
+// always reloads from the store.
+func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, stamp CacheStamp, loadFn func() (T, error)) (*LoadResult[T], error) {
 	s := al.shard(key)
 
 	// Fast path: check if already loaded using read lock
 	s.mu.RLock()
 
-	if cached, ok := s.loaded[key]; ok && cached.validFor(boundary, cacheEpoch) {
+	if cached, ok := s.loaded[key]; ok && cached.validFor(stamp) {
 		s.mu.RUnlock()
 
 		return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
 	}
 	// Check if someone is already loading this key
-	waitCh, isLoading := s.loading[key]
+	inflight, isLoading := s.loading[key]
 	s.mu.RUnlock()
 
 	if isLoading {
 		// Wait for the ongoing load to complete
-		<-waitCh
+		<-inflight.done
 		// Re-check with read lock
 		s.mu.RLock()
 
-		if cached, ok := s.loaded[key]; ok && cached.validFor(boundary, cacheEpoch) {
+		if cached, ok := s.loaded[key]; ok && cached.validFor(stamp) {
 			s.mu.RUnlock()
 
 			return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
@@ -103,38 +130,42 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary, cacheEpo
 	s.mu.Lock()
 
 	// Double-check after acquiring write lock (another goroutine might have loaded it)
-	if cached, ok := s.loaded[key]; ok && cached.validFor(boundary, cacheEpoch) {
+	if cached, ok := s.loaded[key]; ok && cached.validFor(stamp) {
 		s.mu.Unlock()
 
 		return &LoadResult[T]{Value: cached.value, FromLoad: false}, nil
 	}
 
 	// Check again if someone started loading while we were waiting for the lock
-	if waitCh, ok := s.loading[key]; ok {
+	if inflight, ok := s.loading[key]; ok {
 		s.mu.Unlock()
 		// Wait and retry from the beginning
-		<-waitCh
+		<-inflight.done
 
-		return al.LoadOrWait(key, boundary, cacheEpoch, loadFn)
+		return al.LoadOrWait(key, stamp, loadFn)
 	}
 
 	// We're the one who will load - mark as loading
-	waitCh = make(chan struct{})
-	s.loading[key] = waitCh
+	inflight = &inflightLoad{done: make(chan struct{})}
+	s.loading[key] = inflight
 	s.mu.Unlock()
 
 	// Perform the actual load (outside of lock)
 	value, err := loadFn()
 
-	// Update state with write lock
+	// Update state with write lock. A Release during the load means a
+	// proposal covering the key committed after loadFn read the store: the
+	// value is still right for this caller's plan (the apply reconciles it
+	// against the cache), but memoizing it would serve the pre-write value
+	// to every later preload.
 	s.mu.Lock()
 	delete(s.loading, key)
 
-	if err == nil {
-		s.loaded[key] = &loadedEntry[T]{boundary: boundary, cacheEpoch: cacheEpoch, value: value}
+	if err == nil && !inflight.released {
+		s.loaded[key] = &loadedEntry[T]{stamp: stamp, value: value}
 	}
 
-	close(waitCh)
+	close(inflight.done)
 	s.mu.Unlock()
 
 	if err != nil {
@@ -146,8 +177,10 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, boundary, cacheEpo
 	return &LoadResult[T]{Value: value, FromLoad: true}, nil
 }
 
-// Release removes the loaded entry for the given key.
-// This should be called after the command has been applied and the cache updated.
+// Release removes the loaded entry for the given key. The FSM calls it, for
+// every key a committed proposal covered, right after that proposal's batch
+// commits; the proposer calls it again when its handler returns, which covers
+// proposals that never applied.
 func (al *AttributeLoader[T]) Release(key attributes.U128) {
 	s := al.shard(key)
 
@@ -155,6 +188,10 @@ func (al *AttributeLoader[T]) Release(key attributes.U128) {
 	defer s.mu.Unlock()
 
 	delete(s.loaded, key)
+
+	if inflight, ok := s.loading[key]; ok {
+		inflight.released = true
+	}
 }
 
 // Loaders groups all attribute loaders by type.
