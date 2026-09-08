@@ -18,9 +18,10 @@ baseline.
 The JSON entry points at this revision are:
 
 - **HTTP:** `internal/adapter/json` documents itself as "the same API surface as
-  `encoding/json/v2`" but delegates to Sonic — `Marshal` via `ConfigDefault`,
-  `MarshalWrite` via `ConfigStd` (newline-terminated stream). It omits the
-  `opts ...Options` parameter that is v2's central design point.
+  `encoding/json/v2`" but delegates to Sonic — `Marshal` via `ConfigDefault`
+  (`EscapeHTML=false`, `SortMapKeys=false`), `MarshalWrite` via `ConfigStd`
+  (`EscapeHTML=true`, `SortMapKeys=true`, newline-terminated stream). It omits
+  the `opts ...Options` parameter that is v2's central design point.
 - **Checked routes:** `writeOKChecked` (`internal/adapter/http/response.go`)
   serves transaction-list, single-log and audit-entry responses. It buffers
   `json.Marshal` *before* committing success headers so a nested marshal
@@ -42,16 +43,30 @@ so it can only be converted *end to end*, never incrementally.
 
 ## Decision
 
-1. **Prefer the standard library for marshal.** Adopt `encoding/json/v2` for
-   marshal and checked-response buffering, selecting per-call the options
-   derived from `encoding/json.DefaultOptionsV1()` (deterministic map keys,
-   legacy `omitempty`, nil-as-null framing, HTML escaping) so the public JSON
-   contract stays byte-stable. `DefaultOptionsV1()` has no trailing-newline
-   option, and `encoding/json/v2.MarshalWrite` writes only the JSON value
-   without a trailing newline, whereas Sonic's `Encoder.Encode` (the current
-   `json.MarshalWrite` under `ConfigStd`) terminates the stream with `\n`.
-   Streaming callers must therefore append the newline delimiter separately
-   after a successful write to keep streaming responses byte-stable.
+1. **Prefer the standard library for marshal — per entry point, not one
+   option set.** Adopt `encoding/json/v2` for marshal while preserving the two
+   distinct Sonic configurations in use today, so each entry point stays
+   byte-stable against its current output:
+
+   - **Streaming** (`json.MarshalWrite`, Sonic `ConfigStd`) already emits
+     sorted map keys, HTML-escaped strings and a trailing `\n`.
+     `encoding/json.DefaultOptionsV1()` reproduces those sorted/escaped
+     semantics (`encoding/json/v2.Deterministic`,
+     `encoding/json/jsontext.EscapeForHTML`/`EscapeForJS`, plus legacy
+     `omitempty` and nil-as-null framing). It has no trailing-newline option
+     and `encoding/json/v2.MarshalWrite` writes only the JSON value, so
+     streaming callers must append the `\n` delimiter separately after a
+     successful write to stay byte-stable.
+
+   - **Checked buffering** (`json.Marshal`, `writeOKChecked`, Sonic
+     `ConfigDefault`) does not sort map keys and does not HTML-escape strings,
+     so `DefaultOptionsV1()` must not be applied there: its `Deterministic`
+     and `EscapeForHTML`/`EscapeForJS` options would reorder `MetadataMap`
+     keys and escape any metadata/string value containing `<`, `>` or `&`,
+     changing bytes instead of preserving them. Buffered callers must start
+     from the v2 defaults (`encoding/json/v2.DefaultOptionsV2()` — no
+     `Deterministic`, no escaping) and opt in only the framing options needed
+     to match `ConfigDefault`, keeping buffered output ConfigDefault-stable.
 2. **Do not bump or drop Sonic unconditionally.** Retain Sonic for decode only
    if, at implementation time, a supported pin plus representative Go 1.27
    benchmarks on amd64/arm64 still justify its decode advantage. There is no
