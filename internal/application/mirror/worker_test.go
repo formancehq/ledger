@@ -2,14 +2,58 @@ package mirror
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+func TestWorkerTerminalSourcePositionNeverWraps(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		logs    []v2.V2Log
+		wantErr bool
+	}{
+		{name: "caught up source remains idle"},
+		{name: "non-empty source response is rejected", logs: []v2.V2Log{{ID: math.MaxUint64}}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			builder, store := newTestBuilder(t)
+			writeBoundaries(t, store, "mirrored", &raftcmdpb.LedgerBoundaries{
+				NextTransactionId: 1,
+				LastMirrorV2LogId: math.MaxUint64,
+			})
+			ctrl := gomock.NewController(t)
+			source := v2.NewMockSource(ctrl)
+			source.EXPECT().FetchLogs(gomock.Any(), uint64(math.MaxUint64), gomock.Any()).Return(tt.logs, false, nil)
+			w := newWorkerForTest(t, "mirrored", source, store, builder)
+
+			_, err := w.processBatch(context.Background())
+			if !tt.wantErr {
+				require.NoError(t, err)
+				require.Equal(t, uint64(math.MaxUint64), w.lastAppliedV2LogID)
+
+				return
+			}
+
+			var exhausted *domain.ErrSequenceExhausted
+			require.ErrorAs(t, err, &exhausted)
+			require.Equal(t, domain.SequenceCounterMirrorV2LogID, exhausted.Counter)
+			require.Equal(t, uint64(math.MaxUint64), w.lastAppliedV2LogID)
+		})
+	}
+}
 
 // A mirror ledger with no boundary row starts fetching from source ID 1,
 // i.e. it asks the source for logs after ID 0.

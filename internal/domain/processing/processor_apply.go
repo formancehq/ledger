@@ -53,6 +53,15 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 	ctx.Boundaries = boundaries
 	ctx.LedgerInfo = ledgerInfo
 
+	// Every successful ledger-scoped apply emits one per-ledger log. Check the
+	// next-ID transition before dispatch so exhaustion rejects without leaving
+	// any staged child-handler mutation behind (EN-1860).
+	nextLogID := boundaries.GetNextLogId()
+	advancedLogID, exhausted := domain.CheckedNextSequence(nextLogID, domain.SequenceCounterLedgerLogID)
+	if exhausted != nil {
+		return nil, exhausted
+	}
+
 	var (
 		logPayload *commonpb.LedgerLogPayload
 		err        domain.Describable
@@ -89,8 +98,7 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 		return nil, err
 	}
 
-	nextLogID := boundaries.GetNextLogId()
-	boundaries.NextLogId = nextLogID + 1
+	boundaries.NextLogId = advancedLogID
 
 	s.Boundaries().Put(domain.LedgerKey{Name: ledger}, boundaries)
 

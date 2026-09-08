@@ -1785,7 +1785,8 @@ paths:
              precondition, permission — 4xx): rolled up per
              `continueOnFailure`. `true` → `200`; `false` (default) →
              the highest 4xx among failing elements (typically `400`).
-           - Rate-limit failures (`KindResourceExhausted`, `429`):
+           - Resource exhaustion (`KindResourceExhausted`, `429`), including
+             rate limits and permanent authoritative-sequence exhaustion:
              surface unconditionally as `429`.
            - Retryable infrastructure failures (leader loss,
              cache-horizon exceeded, `KindUnavailable`): surface as
@@ -1839,8 +1840,8 @@ paths:
                 $ref: '#/components/schemas/BulkResponse'
         '429':
           description: |
-            A per-element error mapped to `KindResourceExhausted` (quota
-            or rate-limit hit during processing). Surfaces unconditionally,
+            A per-element error mapped to `KindResourceExhausted` (quota,
+            rate limit, or authoritative-sequence exhaustion during processing). Surfaces unconditionally,
             regardless of `continueOnFailure`. Body carries the per-element
             details in `data`.
           content:

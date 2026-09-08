@@ -112,7 +112,8 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_CLUSTER_UNHEALTHY,
 		commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW:
 		return KindUnavailable
-	case commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL:
+	case commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL,
+		commonpb.ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED:
 		return KindResourceExhausted
 	case commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
 		commonpb.ErrorReason_ERROR_REASON_INDEX_INCONSISTENT,

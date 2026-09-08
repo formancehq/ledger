@@ -1235,6 +1235,12 @@ enum ErrorReason {
   // ERROR_REASON_CHECKPOINT_NOT_FOUND: a DeleteQueryCheckpoint targeted an id
   // that is not live (never created, or already deleted). See EN-1501.
   ERROR_REASON_CHECKPOINT_NOT_FOUND = 67;
+  // ERROR_REASON_SEQUENCE_EXHAUSTED: an authoritative transaction, ledger-log,
+  // global-log, or audit sequence reached its final allocatable value. The
+  // operation is rejected before uint64 wrap can publish a zero/reused key.
+  // Permanent (Kind=ResourceExhausted): retrying cannot create another ID.
+  // See EN-1860.
+  ERROR_REASON_SEQUENCE_EXHAUSTED = 68;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

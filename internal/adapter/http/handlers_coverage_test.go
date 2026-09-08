@@ -985,6 +985,8 @@ func TestWriteBulkResponse_KindDispatch(t *testing.T) {
 	}{
 		// Business kinds → suppressed to 200 under continueOnFailure=true.
 		{"validation", domain.NewValidationSentinel("bad"), http.StatusOK, false},
+		// Resource exhaustion remains visible even when business failures are suppressed.
+		{"sequence-exhausted", &domain.ErrSequenceExhausted{Counter: domain.SequenceCounterLog}, http.StatusTooManyRequests, false},
 		// Retryable infra → 503 with Retry-After, unmasked by continueOnFailure.
 		{"leader-loss", commonpb.ErrNoLeader, http.StatusServiceUnavailable, true},
 		// Plain infrastructure error (non-Describable) → 500.

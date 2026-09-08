@@ -151,7 +151,12 @@ func assignSkipLogIDAndDate(parent Scope, order *raftcmdpb.Order, payload *commo
 
 	boundaries := boundariesReader.Mutate()
 	nextLogID := boundaries.GetNextLogId()
-	boundaries.NextLogId = nextLogID + 1
+	advancedLogID, exhausted := domain.CheckedNextSequence(nextLogID, domain.SequenceCounterLedgerLogID)
+	if exhausted != nil {
+		return exhausted
+	}
+
+	boundaries.NextLogId = advancedLogID
 
 	boundariesAccessor.Put(domain.LedgerKey{Name: ledger}, boundaries)
 

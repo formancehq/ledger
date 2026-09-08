@@ -11,6 +11,7 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -49,7 +50,11 @@ func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNe
 					FillGap: &raftcmdpb.MirrorFillGap{},
 				},
 			}))
-			expectedNextLogID++
+			nextLogID, exhausted := domain.CheckedNextSequence(expectedNextLogID, domain.SequenceCounterMirrorV2LogID)
+			if exhausted != nil {
+				return nil, 0, 0, fmt.Errorf("filling v2 log gap before %d: %w", v2Log.ID, exhausted)
+			}
+			expectedNextLogID = nextLogID
 		}
 
 		entry, newNextTxID, err := translateV2Log(v2Log, expectedNextTxID)
@@ -78,7 +83,11 @@ func TranslateBatch(ledger string, v2Logs []V2Log, expectedNextLogID, expectedNe
 			orders = append(orders, makeMirrorOrder(ledger, entry))
 		}
 
-		expectedNextLogID = v2Log.ID + 1
+		nextLogID, exhausted := domain.CheckedNextSequence(v2Log.ID, domain.SequenceCounterMirrorV2LogID)
+		if exhausted != nil {
+			return nil, 0, 0, fmt.Errorf("advancing after v2 log %d: %w", v2Log.ID, exhausted)
+		}
+		expectedNextLogID = nextLogID
 	}
 
 	return orders, expectedNextLogID, expectedNextTxID, nil
@@ -159,6 +168,13 @@ func translateNewTransaction(v2Log V2Log, _ uint64) (*raftcmdpb.MirrorLogEntry, 
 	}
 
 	txID := data.Transaction.ID
+	nextTxID, exhausted := domain.CheckedNextSequence(txID, domain.SequenceCounterTransactionID)
+	if exhausted != nil {
+		resetV2NewTxData(data)
+		v2NewTxPool.Put(data)
+
+		return nil, 0, exhausted
+	}
 
 	postings, err := translatePostings(data.Transaction.Postings)
 	if err != nil {
@@ -198,7 +214,7 @@ func translateNewTransaction(v2Log V2Log, _ uint64) (*raftcmdpb.MirrorLogEntry, 
 	resetV2NewTxData(data)
 	v2NewTxPool.Put(data)
 
-	return entry, txID + 1, nil
+	return entry, nextTxID, nil
 }
 
 // resetV2NewTxData zeroes the struct while preserving the Postings backing array.
@@ -241,6 +257,17 @@ func translateRevertedTransaction(v2Log V2Log, expectedNextTxID uint64) (*raftcm
 	}
 
 	revertTxID := data.RevertTransaction.ID
+	newNextTxID := expectedNextTxID
+	if revertTxID >= newNextTxID {
+		next, exhausted := domain.CheckedNextSequence(revertTxID, domain.SequenceCounterTransactionID)
+		if exhausted != nil {
+			resetV2RevertData(data)
+			v2RevertPool.Put(data)
+
+			return nil, 0, exhausted
+		}
+		newNextTxID = next
+	}
 
 	postings, err := translatePostings(data.RevertTransaction.Postings)
 	if err != nil {
@@ -270,11 +297,6 @@ func translateRevertedTransaction(v2Log V2Log, expectedNextTxID uint64) (*raftcm
 				Timestamp:             timestamp,
 			},
 		},
-	}
-
-	newNextTxID := expectedNextTxID
-	if revertTxID >= newNextTxID {
-		newNextTxID = revertTxID + 1
 	}
 
 	resetV2RevertData(data)

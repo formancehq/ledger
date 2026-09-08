@@ -82,7 +82,7 @@ type Scope interface {
 
 	// Counters and timestamps
 	GetNextSequenceID() uint64
-	IncrementNextSequenceID() uint64
+	IncrementNextSequenceID() (uint64, domain.Describable)
 	GetNextAuditSequenceID() uint64
 	// GetLastAuditHash returns the audit chain head as this proposal began.
 	// Read-only: callers that persist it must copy.

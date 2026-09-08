@@ -1373,11 +1373,16 @@ func (b *WriteSet) GetLastAuditHash() []byte {
 	return b.LastAuditHash
 }
 
-func (b *WriteSet) IncrementNextSequenceID() uint64 {
+func (b *WriteSet) IncrementNextSequenceID() (uint64, domain.Describable) {
 	id := b.NextSequenceID
-	b.NextSequenceID++
+	next, exhausted := domain.CheckedNextSequence(id, domain.SequenceCounterLog)
+	if exhausted != nil {
+		return 0, exhausted
+	}
 
-	return id
+	b.NextSequenceID = next
+
+	return id, nil
 }
 
 func (b *WriteSet) GetNextLedgerID() uint32 {

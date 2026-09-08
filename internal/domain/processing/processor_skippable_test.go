@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -183,6 +184,34 @@ func TestAssignSkipLogIDAndDate_AllocatesLogIDAndDateOnParent(t *testing.T) {
 	ledgerLog := payload.GetApply().GetLog()
 	require.Equal(t, uint64(42), ledgerLog.GetId())
 	require.Equal(t, uint64(1700), ledgerLog.GetDate().GetData())
+}
+
+func TestAssignSkipLogIDAndDateRejectsExhaustedLedgerLogWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	parent := NewMockScope(ctrl)
+	persisted := false
+	boundary := &raftcmdpb.LedgerBoundaries{NextLogId: math.MaxUint64}
+	boundaries := &kindStub[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]{}
+	boundaries.expectGet(domain.LedgerKey{Name: "L"}, boundary.AsReader(), nil)
+	boundaries.onPut(func(domain.LedgerKey, *raftcmdpb.LedgerBoundaries) { persisted = true })
+	parent.EXPECT().Boundaries().Return(boundaries).AnyTimes()
+
+	order := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
+		LedgerScoped: &raftcmdpb.LedgerScopedOrder{Ledger: "L"},
+	}}
+	payload := wrapSkippedPayloadForOrder(order, &commonpb.OrderSkippedLog{})
+
+	err := assignSkipLogIDAndDate(parent, order, payload)
+	var exhausted *domain.ErrSequenceExhausted
+	require.ErrorAs(t, err, &exhausted)
+	require.Equal(t, domain.SequenceCounterLedgerLogID, exhausted.Counter)
+	require.Equal(t, uint64(math.MaxUint64), boundary.GetNextLogId())
+	require.Zero(t, payload.GetApply().GetLog().GetId())
+	require.False(t, persisted)
 }
 
 // TestAssignSkipLogIDAndDate_RefusesNonLedgerScoped surfaces a structural

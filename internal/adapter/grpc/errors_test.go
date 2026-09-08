@@ -66,6 +66,20 @@ func TestBusinessErrorToGRPCStatus_LedgerAlreadyExists(t *testing.T) {
 	require.Equal(t, "my-ledger", info.GetMetadata()["name"])
 }
 
+func TestBusinessErrorToGRPCStatus_SequenceExhausted(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &domain.BusinessError{Err: &domain.ErrSequenceExhausted{
+		Counter: domain.SequenceCounterTransactionID,
+	}}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.ResourceExhausted, st.Code())
+	info := extractErrorInfo(t, st)
+	require.Equal(t, domain.ErrReasonSequenceExhausted, info.GetReason())
+	require.Equal(t, "transactionId", info.GetMetadata()["counter"])
+}
+
 func TestBusinessErrorToGRPCStatus_LedgerNotFound(t *testing.T) {
 	t.Parallel()
 
