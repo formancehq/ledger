@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -91,6 +92,7 @@ func (sc *ScenarioCluster) startServer() {
 
 	conn, err := grpc.NewClient(
 		fmt.Sprintf("localhost:%d", sc.lease.Ports().GRPC()),
+		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy),
 	)

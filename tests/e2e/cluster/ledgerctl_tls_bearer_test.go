@@ -21,6 +21,7 @@ import (
 
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
@@ -98,6 +99,7 @@ var _ = Describe("ledgerctl TLS bearer against tls-mode=required", Ordered, func
 		}
 		addr := fmt.Sprintf("localhost:%d", ports.GRPC())
 		conn, err := grpc.NewClient(addr,
+			grpcprotocol.ClientOption(),
 			grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)),
 		)
 		Expect(err).To(Succeed())

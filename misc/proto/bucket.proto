@@ -445,6 +445,7 @@ message ServerInfo {
   string commit = 2;      // git SHA, "unknown" if unset
   string build_date = 3;  // RFC3339, "unknown" if unset
   string go_version = 4;  // runtime Go version
+  string protocol_version = 5; // Required ledger-protocol-version RPC metadata
 }
 
 message DiscoveryResponse {

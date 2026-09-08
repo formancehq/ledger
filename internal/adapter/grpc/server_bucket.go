@@ -38,6 +38,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
 var bucketTracer = otel.Tracer("grpc.bucket")
@@ -1464,10 +1465,11 @@ func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *servicepb.B
 func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.DiscoveryRequest) (*servicepb.DiscoveryResponse, error) {
 	resp := &servicepb.DiscoveryResponse{
 		ServerInfo: &servicepb.ServerInfo{
-			Version:   impl.info.Version,
-			Commit:    impl.info.Commit,
-			BuildDate: impl.info.BuildDate,
-			GoVersion: impl.info.GoVersion,
+			Version:         impl.info.Version,
+			Commit:          impl.info.Commit,
+			BuildDate:       impl.info.BuildDate,
+			GoVersion:       impl.info.GoVersion,
+			ProtocolVersion: grpcprotocol.Version,
 		},
 	}
 	if impl.responseSigner != nil {

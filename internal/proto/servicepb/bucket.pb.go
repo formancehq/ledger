@@ -3124,13 +3124,14 @@ func (*DiscoveryRequest) Descriptor() ([]byte, []int) {
 
 // ServerInfo carries the server build metadata (unauthenticated).
 type ServerInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Version       string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`                      // semver / git tag (e.g. v3.1.0), "dev" if unset
-	Commit        string                 `protobuf:"bytes,2,opt,name=commit,proto3" json:"commit,omitempty"`                        // git SHA, "unknown" if unset
-	BuildDate     string                 `protobuf:"bytes,3,opt,name=build_date,json=buildDate,proto3" json:"build_date,omitempty"` // RFC3339, "unknown" if unset
-	GoVersion     string                 `protobuf:"bytes,4,opt,name=go_version,json=goVersion,proto3" json:"go_version,omitempty"` // runtime Go version
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Version         string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`                                        // semver / git tag (e.g. v3.1.0), "dev" if unset
+	Commit          string                 `protobuf:"bytes,2,opt,name=commit,proto3" json:"commit,omitempty"`                                          // git SHA, "unknown" if unset
+	BuildDate       string                 `protobuf:"bytes,3,opt,name=build_date,json=buildDate,proto3" json:"build_date,omitempty"`                   // RFC3339, "unknown" if unset
+	GoVersion       string                 `protobuf:"bytes,4,opt,name=go_version,json=goVersion,proto3" json:"go_version,omitempty"`                   // runtime Go version
+	ProtocolVersion string                 `protobuf:"bytes,5,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"` // Required ledger-protocol-version RPC metadata
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ServerInfo) Reset() {
@@ -3187,6 +3188,13 @@ func (x *ServerInfo) GetBuildDate() string {
 func (x *ServerInfo) GetGoVersion() string {
 	if x != nil {
 		return x.GoVersion
+	}
+	return ""
+}
+
+func (x *ServerInfo) GetProtocolVersion() string {
+	if x != nil {
+		return x.ProtocolVersion
 	}
 	return ""
 }
@@ -8991,7 +8999,7 @@ const file_bucket_proto_rawDesc = "" +
 	"!SetQueryCheckpointScheduleRequest\x12\x12\n" +
 	"\x04cron\x18\x01 \x01(\tR\x04cron\"&\n" +
 	"$DeleteQueryCheckpointScheduleRequest\"\x12\n" +
-	"\x10DiscoveryRequest\"|\n" +
+	"\x10DiscoveryRequest\"\xa7\x01\n" +
 	"\n" +
 	"ServerInfo\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x16\n" +
@@ -8999,7 +9007,8 @@ const file_bucket_proto_rawDesc = "" +
 	"\n" +
 	"build_date\x18\x03 \x01(\tR\tbuildDate\x12\x1d\n" +
 	"\n" +
-	"go_version\x18\x04 \x01(\tR\tgoVersion\"\x90\x01\n" +
+	"go_version\x18\x04 \x01(\tR\tgoVersion\x12)\n" +
+	"\x10protocol_version\x18\x05 \x01(\tR\x0fprotocolVersion\"\x90\x01\n" +
 	"\x11DiscoveryResponse\x12F\n" +
 	"\x10response_signing\x18\x01 \x01(\v2\x1b.ledger.ResponseSigningInfoR\x0fresponseSigning\x123\n" +
 	"\vserver_info\x18\x02 \x01(\v2\x12.ledger.ServerInfoR\n" +

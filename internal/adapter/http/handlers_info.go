@@ -5,15 +5,17 @@ import (
 	"net/http"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
 // infoResponse is the flat JSON body of GET /_info (camelCase, unwrapped to
 // match the platform _info convention).
 type infoResponse struct {
-	Version   string `json:"version"`
-	Commit    string `json:"commit"`
-	BuildDate string `json:"buildDate"`
-	GoVersion string `json:"goVersion"`
+	Version         string `json:"version"`
+	Commit          string `json:"commit"`
+	BuildDate       string `json:"buildDate"`
+	GoVersion       string `json:"goVersion"`
+	ProtocolVersion string `json:"protocolVersion"`
 }
 
 // infoHandler returns an unauthenticated handler reporting the server build
@@ -25,10 +27,11 @@ func infoHandler(info version.Info) http.HandlerFunc {
 		// best-effort: status 200 + Content-Type are already written, so there
 		// is nothing actionable to do on an encode failure of this static payload.
 		_ = json.NewEncoder(w).Encode(infoResponse{
-			Version:   info.Version,
-			Commit:    info.Commit,
-			BuildDate: info.BuildDate,
-			GoVersion: info.GoVersion,
+			Version:         info.Version,
+			Commit:          info.Commit,
+			BuildDate:       info.BuildDate,
+			GoVersion:       info.GoVersion,
+			ProtocolVersion: grpcprotocol.Version,
 		})
 	}
 }

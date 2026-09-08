@@ -854,6 +854,7 @@ func NewServiceServer(host string, port int, logger logging.Logger, debug bool, 
 		consistencyInterceptor(),
 		loggingInterceptor(logger, slowThreshold),
 		errorConversionInterceptor(logger),
+		protocolVersionInterceptor(),
 	}
 	streamInterceptors := []ggrpc.StreamServerInterceptor{
 		recoveryStreamInterceptor(logger),
@@ -861,6 +862,7 @@ func NewServiceServer(host string, port int, logger logging.Logger, debug bool, 
 		consistencyStreamInterceptor(),
 		loggingStreamInterceptor(logger, slowThreshold),
 		errorConversionStreamInterceptor(logger),
+		protocolVersionStreamInterceptor(),
 	}
 
 	serverOpts := []ggrpc.ServerOption{

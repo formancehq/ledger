@@ -17,6 +17,8 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/encoding/gzip"
+
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
 const (
@@ -110,6 +112,7 @@ func BearerTokenDialOption(token string) grpc.DialOption {
 // dialOptions returns the common gRPC dial options derived from PoolConfig.
 func dialOptions(creds credentials.TransportCredentials, cfg PoolConfig) []grpc.DialOption {
 	opts := []grpc.DialOption{
+		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(creds),
 		// NOTE: BackoffMaxDelay must stay below the election timeout.
 		grpc.WithConnectParams(grpc.ConnectParams{

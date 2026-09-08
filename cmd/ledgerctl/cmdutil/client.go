@@ -20,6 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
 const (
@@ -133,6 +134,7 @@ func GetClient(cmd *cobra.Command) (servicepb.BucketServiceClient, *grpc.ClientC
 	}
 
 	conn, err := grpc.NewClient(serverAddr,
+		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy), // Retry on UNAVAILABLE (no leader) up to 50 times with 200ms delay (10s max)
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),     // Emit a client span per RPC and propagate W3C trace context.
@@ -155,6 +157,7 @@ func GetClusterClient(cmd *cobra.Command) (clusterpb.ClusterServiceClient, *grpc
 	}
 
 	conn, err := grpc.NewClient(serverAddr,
+		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()), // Emit a client span per RPC and propagate W3C trace context.
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxRecvMsgSize)),

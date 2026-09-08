@@ -3085,6 +3085,7 @@ type ServerInfoReader interface {
 	GetCommit() string
 	GetBuildDate() string
 	GetGoVersion() string
+	GetProtocolVersion() string
 	Mutate() *ServerInfo
 }
 
@@ -3104,6 +3105,10 @@ func (r *serverInfoReadonly) GetBuildDate() string {
 
 func (r *serverInfoReadonly) GetGoVersion() string {
 	return (*ServerInfo)(r).GetGoVersion()
+}
+
+func (r *serverInfoReadonly) GetProtocolVersion() string {
+	return (*ServerInfo)(r).GetProtocolVersion()
 }
 
 func (r *serverInfoReadonly) Mutate() *ServerInfo {

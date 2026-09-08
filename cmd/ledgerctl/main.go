@@ -32,6 +32,7 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/transactions"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/upgrade"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
 func main() {
@@ -275,7 +276,9 @@ func newVersionCommand() *cobra.Command {
 			pterm.Println(banner)
 
 			pterm.DefaultBox.WithTitle(pterm.LightGreen("Version Info")).
-				Println(pterm.Sprintf("%s %s", pterm.LightCyan("Version:"), pterm.Green(version.Get().Version)))
+				Println(pterm.Sprintf("%s %s\n%s %s",
+					pterm.LightCyan("Version:"), pterm.Green(version.Get().Version),
+					pterm.LightCyan("Protocol:"), pterm.Green(grpcprotocol.Version)))
 		},
 	}
 }
