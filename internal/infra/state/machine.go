@@ -38,12 +38,19 @@ type Notifier interface {
 	NotifyConfigChanged()
 }
 
-// PreloadReleaser is the admission side's hook for loader coherence: the FSM
-// calls ReleasePreloaded for every key a proposal's plan covered once that
-// proposal's batch has committed, so a preload built afterwards reloads the
-// key from the store rather than reusing a value read before the write.
-type PreloadReleaser interface {
-	ReleasePreloaded(attrCode byte, id attributes.U128)
+// PreloadInvalidator is the admission side's hook for loader coherence. For
+// every key a proposal's plan covered, the FSM calls FencePreloaded
+// immediately before committing the batch and UnfencePreloaded once the
+// commit has returned: the memoized load is dropped at the fence and nothing
+// loaded while the fence is up is memoized, so no preload is ever served a
+// value from before a write that has been committed. A batch that deletes a
+// ledger range-deletes keys no plan enumerates; its commit is bracketed by
+// FenceAllPreloaded and UnfenceAllPreloaded, which fence every loader.
+type PreloadInvalidator interface {
+	FencePreloaded(attrCode byte, id attributes.U128)
+	UnfencePreloaded(attrCode byte, id attributes.U128)
+	FenceAllPreloaded()
+	UnfenceAllPreloaded()
 }
 
 type preloadKey struct {
@@ -109,13 +116,16 @@ type Machine struct {
 	// filters to/from Pebble (0xFF prefix).
 	cacheSnapshotter *CacheSnapshotter
 
-	// preloadReleaser drops the admission loaders' memoized loads of the
-	// keys a committed proposal covered (plan.Builder on the leader; nil on
-	// nodes without one). preparedPreloadKeys accumulates those keys while
-	// a batch is prepared under mu and moves into the PreparedBatch, whose
-	// commit releases them.
-	preloadReleaser     PreloadReleaser
-	preparedPreloadKeys []preloadKey
+	// preloadInvalidator fences and unfences the admission loaders' memoized
+	// loads of the keys a proposal covers around its commit (plan.Builder on
+	// the leader; nil on nodes without one). preparedPreloadKeys accumulates
+	// those keys while a batch is prepared under mu and moves into the
+	// PreparedBatch, whose commit brackets them; preparedPreloadFenceAll is
+	// set when the batch deletes a ledger, whose range delete no plan
+	// enumerates, and makes the commit fence every loader.
+	preloadInvalidator      PreloadInvalidator
+	preparedPreloadKeys     []preloadKey
+	preparedPreloadFenceAll bool
 
 	// BloomFilters holds per-attribute-type bloom filters for key existence checks.
 	// Updated during FSM apply, read during preload building.
@@ -467,6 +477,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 	// Keys a cancelled prepare collected belong to no batch; the proposer's
 	// handler-return release covers them.
 	fsm.preparedPreloadKeys = nil
+	fsm.preparedPreloadFenceAll = false
 
 	// Allocate a fresh tracer for this PrepareEntries call. The pointer is
 	// captured by the PreparedBatch below; once we return, the next
@@ -746,8 +757,11 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		mirrorConfigChanged: mirrorConfigChanged,
 		entryCount:          len(decoded),
 		preloadKeys:         fsm.preparedPreloadKeys,
+		preloadInvalidator:  fsm.preloadInvalidator,
+		preloadFenceAll:     fsm.preparedPreloadFenceAll,
 	}
 	fsm.preparedPreloadKeys = nil
+	fsm.preparedPreloadFenceAll = false
 
 	// Capture sentinel data before releasing the lock.
 	if fsm.sentinelMode {
@@ -776,22 +790,55 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) error {
 	commitStart := time.Now()
 
+	// Fence the covered keys across the commit (see PreloadInvalidator):
+	// their memos are dropped now and nothing loaded before the fence lifts
+	// is memoized, since such a load may have read the store on either side
+	// of the write. A batch that deletes a ledger range-deletes keys no plan
+	// enumerates and fences every loader. The fence lifts as soon as Commit
+	// returns, whether it succeeded or failed; the defer only backs the
+	// panic path.
+	unfence := func() {}
+
+	if inv := pb.preloadInvalidator; inv != nil {
+		if pb.preloadFenceAll {
+			inv.FenceAllPreloaded()
+		} else {
+			for _, k := range pb.preloadKeys {
+				inv.FencePreloaded(k.attrCode, k.id)
+			}
+		}
+
+		lifted := false
+		unfence = func() {
+			if lifted {
+				return
+			}
+
+			lifted = true
+
+			if pb.preloadFenceAll {
+				inv.UnfenceAllPreloaded()
+
+				return
+			}
+
+			for _, k := range pb.preloadKeys {
+				inv.UnfencePreloaded(k.attrCode, k.id)
+			}
+		}
+
+		defer unfence()
+	}
+
 	err := pb.batch.Commit()
+
+	unfence()
+
 	if err != nil {
 		return fmt.Errorf("committing batch: %w", err)
 	}
 
 	pb.batch = nil // committed, prevent double-close
-
-	// The writes are in the store: a preload built from here on must read
-	// them, so the memoized loads of every covered key go now (see
-	// PreloadReleaser). Released before the commit, a key could be reloaded
-	// with its pre-write value and memoized again.
-	if releaser := fsm.preloadReleaser; releaser != nil {
-		for _, k := range pb.preloadKeys {
-			releaser.ReleasePreloaded(k.attrCode, k.id)
-		}
-	}
 
 	fsm.batchCommitHistogram.Record(ctx, time.Since(commitStart).Microseconds())
 
@@ -910,16 +957,19 @@ func (fsm *Machine) deleteQueryCheckpointFiles(checkpointID uint64) {
 	}
 }
 
-// SetPreloadReleaser installs the hook that releases a committed proposal's
-// covered keys from the admission loaders (see PreloadReleaser).
-func (fsm *Machine) SetPreloadReleaser(r PreloadReleaser) {
+// SetPreloadInvalidator installs the hook that brackets a proposal's commit
+// with a fence on its covered keys in the admission loaders (see
+// PreloadInvalidator).
+func (fsm *Machine) SetPreloadInvalidator(inv PreloadInvalidator) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
-	fsm.preloadReleaser = r
+	fsm.preloadInvalidator = inv
 }
 
-// Preload applies preloaded data to the Machine's volatile state.
+// Preload applies preloaded data to the Machine's volatile state and records
+// the plan's covered keys in preparedPreloadKeys; the caller holds fsm.mu
+// (applyProposal, inside PrepareDecodedEntries).
 // batch and genByte are used for incremental 0xFF persistence of NumscriptParsed entries.
 func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.WriteSession, genByte byte) error {
 	if executionPlan == nil {
@@ -1556,6 +1606,12 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	sinkConfigChanged := buffer.SinkConfigChanged()
 	mirrorConfigChanged := buffer.MirrorConfigChanged()
 
+	// A ledger deletion range-deletes keys no plan enumerates, so this
+	// batch's commit fences every admission loader (see PreloadInvalidator).
+	if buffer.HasLedgerDeletions() {
+		fsm.preparedPreloadFenceAll = true
+	}
+
 	// Merge consumes the per-order log slice (CreatedLog or ReferenceSequence)
 	// so it can inject Log.purged_volumes using per-order tracking before
 	// AppendLogs runs.
@@ -1828,8 +1884,12 @@ type PreparedBatch struct {
 	checkpointDeletes   []uint64
 
 	// preloadKeys are the covered keys of every proposal in the batch,
-	// released from the admission loaders once the batch has committed.
-	preloadKeys []preloadKey
+	// fenced through preloadInvalidator (captured under fsm.mu at prepare)
+	// across the batch's commit; preloadFenceAll fences every loader
+	// instead, for a batch that deletes a ledger.
+	preloadKeys        []preloadKey
+	preloadInvalidator PreloadInvalidator
+	preloadFenceAll    bool
 
 	// Sentinel data (captured during prepare, validated after commit).
 	sentinelMode        bool

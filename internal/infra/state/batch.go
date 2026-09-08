@@ -445,10 +445,10 @@ func setLastAppliedTimestamp(b *dal.WriteSession, timestamp uint64) error {
 // targets [SubAttrIndex][ledgerName padded 64B] → its byte-successor, so only
 // the ledger-scoped half of the registry is purged — the bucket-scoped slot
 // (empty LedgerName) lives under a distinct all-zero 64B prefix and is
-// unreachable from a non-empty ledger name's range. processDeleteLedger also
-// clears the cache-resident entries up-front for immediate visibility; without
-// the Pebble-level range delete here, entries evicted from the cache before
-// deletion would survive the purge (PR #453 review).
+// unreachable from a non-empty ledger name's range. processDeleteLedger leaves
+// cache-resident entries in place (every read path gates on
+// LedgerInfo.DeletedAt first); this Pebble-level range delete is what purges
+// the rows themselves, whether or not the cache holds them.
 var ledgerScopedAttrTypes = []byte{
 	dal.SubAttrVolume,
 	dal.SubAttrMetadata,

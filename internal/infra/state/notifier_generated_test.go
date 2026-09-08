@@ -110,62 +110,170 @@ func (c *MockNotifierNotifyLogsCommittedCall) DoAndReturn(f func(uint64)) *MockN
 	return c
 }
 
-// MockPreloadReleaser is a mock of PreloadReleaser interface.
-type MockPreloadReleaser struct {
+// MockPreloadInvalidator is a mock of PreloadInvalidator interface.
+type MockPreloadInvalidator struct {
 	ctrl     *gomock.Controller
-	recorder *MockPreloadReleaserMockRecorder
+	recorder *MockPreloadInvalidatorMockRecorder
 	isgomock struct{}
 }
 
-// MockPreloadReleaserMockRecorder is the mock recorder for MockPreloadReleaser.
-type MockPreloadReleaserMockRecorder struct {
-	mock *MockPreloadReleaser
+// MockPreloadInvalidatorMockRecorder is the mock recorder for MockPreloadInvalidator.
+type MockPreloadInvalidatorMockRecorder struct {
+	mock *MockPreloadInvalidator
 }
 
-// NewMockPreloadReleaser creates a new mock instance.
-func NewMockPreloadReleaser(ctrl *gomock.Controller) *MockPreloadReleaser {
-	mock := &MockPreloadReleaser{ctrl: ctrl}
-	mock.recorder = &MockPreloadReleaserMockRecorder{mock}
+// NewMockPreloadInvalidator creates a new mock instance.
+func NewMockPreloadInvalidator(ctrl *gomock.Controller) *MockPreloadInvalidator {
+	mock := &MockPreloadInvalidator{ctrl: ctrl}
+	mock.recorder = &MockPreloadInvalidatorMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockPreloadReleaser) EXPECT() *MockPreloadReleaserMockRecorder {
+func (m *MockPreloadInvalidator) EXPECT() *MockPreloadInvalidatorMockRecorder {
 	return m.recorder
 }
 
-// ReleasePreloaded mocks base method.
-func (m *MockPreloadReleaser) ReleasePreloaded(attrCode byte, id attributes.U128) {
+// FenceAllPreloaded mocks base method.
+func (m *MockPreloadInvalidator) FenceAllPreloaded() {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "ReleasePreloaded", attrCode, id)
+	m.ctrl.Call(m, "FenceAllPreloaded")
 }
 
-// ReleasePreloaded indicates an expected call of ReleasePreloaded.
-func (mr *MockPreloadReleaserMockRecorder) ReleasePreloaded(attrCode, id any) *MockPreloadReleaserReleasePreloadedCall {
+// FenceAllPreloaded indicates an expected call of FenceAllPreloaded.
+func (mr *MockPreloadInvalidatorMockRecorder) FenceAllPreloaded() *MockPreloadInvalidatorFenceAllPreloadedCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleasePreloaded", reflect.TypeOf((*MockPreloadReleaser)(nil).ReleasePreloaded), attrCode, id)
-	return &MockPreloadReleaserReleasePreloadedCall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FenceAllPreloaded", reflect.TypeOf((*MockPreloadInvalidator)(nil).FenceAllPreloaded))
+	return &MockPreloadInvalidatorFenceAllPreloadedCall{Call: call}
 }
 
-// MockPreloadReleaserReleasePreloadedCall wrap *gomock.Call
-type MockPreloadReleaserReleasePreloadedCall struct {
+// MockPreloadInvalidatorFenceAllPreloadedCall wrap *gomock.Call
+type MockPreloadInvalidatorFenceAllPreloadedCall struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockPreloadReleaserReleasePreloadedCall) Return() *MockPreloadReleaserReleasePreloadedCall {
+func (c *MockPreloadInvalidatorFenceAllPreloadedCall) Return() *MockPreloadInvalidatorFenceAllPreloadedCall {
 	c.Call = c.Call.Return()
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockPreloadReleaserReleasePreloadedCall) Do(f func(byte, attributes.U128)) *MockPreloadReleaserReleasePreloadedCall {
+func (c *MockPreloadInvalidatorFenceAllPreloadedCall) Do(f func()) *MockPreloadInvalidatorFenceAllPreloadedCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockPreloadReleaserReleasePreloadedCall) DoAndReturn(f func(byte, attributes.U128)) *MockPreloadReleaserReleasePreloadedCall {
+func (c *MockPreloadInvalidatorFenceAllPreloadedCall) DoAndReturn(f func()) *MockPreloadInvalidatorFenceAllPreloadedCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// FencePreloaded mocks base method.
+func (m *MockPreloadInvalidator) FencePreloaded(attrCode byte, id attributes.U128) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "FencePreloaded", attrCode, id)
+}
+
+// FencePreloaded indicates an expected call of FencePreloaded.
+func (mr *MockPreloadInvalidatorMockRecorder) FencePreloaded(attrCode, id any) *MockPreloadInvalidatorFencePreloadedCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FencePreloaded", reflect.TypeOf((*MockPreloadInvalidator)(nil).FencePreloaded), attrCode, id)
+	return &MockPreloadInvalidatorFencePreloadedCall{Call: call}
+}
+
+// MockPreloadInvalidatorFencePreloadedCall wrap *gomock.Call
+type MockPreloadInvalidatorFencePreloadedCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockPreloadInvalidatorFencePreloadedCall) Return() *MockPreloadInvalidatorFencePreloadedCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockPreloadInvalidatorFencePreloadedCall) Do(f func(byte, attributes.U128)) *MockPreloadInvalidatorFencePreloadedCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockPreloadInvalidatorFencePreloadedCall) DoAndReturn(f func(byte, attributes.U128)) *MockPreloadInvalidatorFencePreloadedCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// UnfenceAllPreloaded mocks base method.
+func (m *MockPreloadInvalidator) UnfenceAllPreloaded() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "UnfenceAllPreloaded")
+}
+
+// UnfenceAllPreloaded indicates an expected call of UnfenceAllPreloaded.
+func (mr *MockPreloadInvalidatorMockRecorder) UnfenceAllPreloaded() *MockPreloadInvalidatorUnfenceAllPreloadedCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnfenceAllPreloaded", reflect.TypeOf((*MockPreloadInvalidator)(nil).UnfenceAllPreloaded))
+	return &MockPreloadInvalidatorUnfenceAllPreloadedCall{Call: call}
+}
+
+// MockPreloadInvalidatorUnfenceAllPreloadedCall wrap *gomock.Call
+type MockPreloadInvalidatorUnfenceAllPreloadedCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockPreloadInvalidatorUnfenceAllPreloadedCall) Return() *MockPreloadInvalidatorUnfenceAllPreloadedCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockPreloadInvalidatorUnfenceAllPreloadedCall) Do(f func()) *MockPreloadInvalidatorUnfenceAllPreloadedCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockPreloadInvalidatorUnfenceAllPreloadedCall) DoAndReturn(f func()) *MockPreloadInvalidatorUnfenceAllPreloadedCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// UnfencePreloaded mocks base method.
+func (m *MockPreloadInvalidator) UnfencePreloaded(attrCode byte, id attributes.U128) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "UnfencePreloaded", attrCode, id)
+}
+
+// UnfencePreloaded indicates an expected call of UnfencePreloaded.
+func (mr *MockPreloadInvalidatorMockRecorder) UnfencePreloaded(attrCode, id any) *MockPreloadInvalidatorUnfencePreloadedCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnfencePreloaded", reflect.TypeOf((*MockPreloadInvalidator)(nil).UnfencePreloaded), attrCode, id)
+	return &MockPreloadInvalidatorUnfencePreloadedCall{Call: call}
+}
+
+// MockPreloadInvalidatorUnfencePreloadedCall wrap *gomock.Call
+type MockPreloadInvalidatorUnfencePreloadedCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockPreloadInvalidatorUnfencePreloadedCall) Return() *MockPreloadInvalidatorUnfencePreloadedCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockPreloadInvalidatorUnfencePreloadedCall) Do(f func(byte, attributes.U128)) *MockPreloadInvalidatorUnfencePreloadedCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockPreloadInvalidatorUnfencePreloadedCall) DoAndReturn(f func(byte, attributes.U128)) *MockPreloadInvalidatorUnfencePreloadedCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

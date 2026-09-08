@@ -359,16 +359,18 @@ Each attribute type (Volumes, References, Ledgers, Boundaries, SinkConfigs, Acco
 1. **Tracks loading keys**: When a goroutine starts loading a key, it's marked as "loading"
 2. **Wait on pending loads**: Other goroutines needing the same key wait for the ongoing load
 3. **Cache loaded values**: Once loaded, the value is cached with its boundary
-4. **Cleanup after apply**: Values are removed from the loader after the command is applied (data is then in the FSM cache)
+4. **Cleanup at commit**: Values are dropped from the loader when the FSM fences the covered keys around the command's commit (data is then in the FSM cache)
 
 The `AttributeLoader` uses 256-shard partitioning (`loaderShards = 256`) keyed by `U128.Lo()` to reduce contention under high concurrency. Each shard has its own `sync.RWMutex` and independent loading/loaded maps, with cache-line padding to prevent false sharing. Located in `internal/infra/preload/loader.go`.
 
 ```go
 type loaderShard[T any] struct {
-    mu      sync.RWMutex
-    loading map[attributes.U128]chan struct{}
-    loaded  map[attributes.U128]*loadedEntry[T]
-    _       [64]byte // cache-line padding
+    mu        sync.RWMutex
+    loading   map[attributes.U128]*inflightLoad
+    loaded    map[attributes.U128]*loadedEntry[T]
+    fenced    map[attributes.U128]int
+    fencedAll int
+    _         [64]byte // cache-line padding
 }
 
 type AttributeLoader[T any] struct {
@@ -425,7 +427,7 @@ type CleanupToken struct {
 
 > **Note:** Reversions do not use an `AttributeLoader` — they are stored as an in-memory `bitset.Bitset` (from `internal/pkg/bitset/bitset.go`) that is always authoritative. No preloading or Pebble lookups are needed. See [Attributes - Reversions](../attributes/attributes.md#reversions) for details.
 
-A memoized load is dropped at two points. The FSM releases every key a proposal's plan covered right after that proposal's batch commits (`state.PreloadReleaser`, implemented by `plan.Builder.ReleasePreloaded`): from then on the store holds the proposal's writes, so a later preload of the same key must read them rather than reuse a value loaded before. The proposer's `CleanupToken.Release()` runs when its handler returns and covers the proposals that never applied (rejected, dropped, stale). A load still in flight when its key is released is not memoized, since its value predates the commit. Both are safe because:
+A memoized load is invalidated at two points. The FSM brackets every proposal's commit with a fence on the keys its plan covered (`state.PreloadInvalidator`, implemented by `plan.Builder.FencePreloaded` / `UnfencePreloaded`): the fence drops the memo immediately before the batch commits, and no load that starts, runs or completes while it is up is memoized, until it lifts once the commit has returned; a load whose store read may sit on either side of the write is returned to its caller but never kept, and a preload built after the fence lifts reads the committed store. The fence covers the keys the proposal's plan covered; the ledger-wide range delete of `DeleteLedger` writes keys no plan can enumerate, so the commit of a batch that deletes a ledger is bracketed by `FenceAllPreloaded` / `UnfenceAllPreloaded`, which fence every loader. The proposer's `CleanupToken.Release()` runs when its handler returns and covers the proposals that never applied. Both are safe because:
 - On success: the FSM cache now has the values, and the store has the writes
 - On error: the values should not be retained (stale boundary)
 

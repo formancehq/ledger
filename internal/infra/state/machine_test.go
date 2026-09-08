@@ -876,48 +876,92 @@ func TestPrepareEntriesTraceLogPipeliningLag(t *testing.T) {
 	})
 }
 
-// recordingReleaser captures the keys the FSM releases from the admission
-// loaders, in call order, and runs probe at each release so a test can
-// observe the store's state at that instant.
-type recordingReleaser struct {
-	mu    sync.Mutex
-	keys  []preloadKey
-	probe func()
+// recordingInvalidator captures the fence and unfence calls the FSM makes on
+// the admission loaders and runs a probe at each so a test can observe the
+// store's state at that instant.
+type recordingInvalidator struct {
+	mu          sync.Mutex
+	fenced      []preloadKey
+	unfenced    []preloadKey
+	fencedAll   int
+	unfencedAll int
+	probe       func(phase string)
 }
 
-func (r *recordingReleaser) ReleasePreloaded(attrCode byte, id attributes.U128) {
+func (r *recordingInvalidator) FenceAllPreloaded() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.keys = append(r.keys, preloadKey{attrCode: attrCode, id: id})
+	r.fencedAll++
 
 	if r.probe != nil {
-		r.probe()
+		r.probe("fenceAll")
 	}
 }
 
-func (r *recordingReleaser) snapshot() []preloadKey {
+func (r *recordingInvalidator) UnfenceAllPreloaded() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	return append([]preloadKey(nil), r.keys...)
+	r.unfencedAll++
+
+	if r.probe != nil {
+		r.probe("unfenceAll")
+	}
 }
 
-// A proposal's covered keys are released from the admission loaders when its
-// batch commits — not when it is prepared, when the writes are not yet in the
-// store, and not at the proposer's handler return, which is later than a
-// concurrent admission of the same key can preload.
-func TestMachine_CommitReleasesCoveredKeysFromLoaders(t *testing.T) {
+func (r *recordingInvalidator) all() (fencedAll, unfencedAll int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.fencedAll, r.unfencedAll
+}
+
+func (r *recordingInvalidator) FencePreloaded(attrCode byte, id attributes.U128) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.fenced = append(r.fenced, preloadKey{attrCode: attrCode, id: id})
+
+	if r.probe != nil {
+		r.probe("fence")
+	}
+}
+
+func (r *recordingInvalidator) UnfencePreloaded(attrCode byte, id attributes.U128) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.unfenced = append(r.unfenced, preloadKey{attrCode: attrCode, id: id})
+
+	if r.probe != nil {
+		r.probe("unfence")
+	}
+}
+
+func (r *recordingInvalidator) snapshot() (fenced, unfenced []preloadKey) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return append([]preloadKey(nil), r.fenced...), append([]preloadKey(nil), r.unfenced...)
+}
+
+// A proposal's covered keys are fenced in the admission loaders before its
+// batch commits and unfenced after — not at prepare, when the writes are not
+// yet in the store, and not at the proposer's handler return, which is later
+// than a concurrent admission of the same key can preload.
+func TestMachine_CommitFencesCoveredKeysAcrossTheCommit(t *testing.T) {
 	t.Parallel()
 
 	machine, dataStore, attrs := newTestMachine(t)
 	ctx := context.Background()
 
 	// The probe reads the ledger this proposal creates straight from the
-	// store: a release before the commit would find it absent.
-	var writeVisibleAtRelease []bool
+	// store: it must be absent at every fence (before the commit) and
+	// present at every unfence (after it).
+	visible := map[string][]bool{}
 
-	releaser := &recordingReleaser{probe: func() {
+	inv := &recordingInvalidator{probe: func(phase string) {
 		reader, err := dataStore.NewReadHandle()
 		require.NoError(t, err)
 
@@ -928,9 +972,9 @@ func TestMachine_CommitReleasesCoveredKeysFromLoaders(t *testing.T) {
 		info, err := attrs.Ledger.Get(reader, domain.LedgerKey{Name: "ledger"}.Bytes())
 		require.NoError(t, err)
 
-		writeVisibleAtRelease = append(writeVisibleAtRelease, info != nil)
+		visible[phase] = append(visible[phase], info != nil)
 	}}
-	machine.SetPreloadReleaser(releaser)
+	machine.SetPreloadInvalidator(inv)
 
 	proposal := makeProposal(1, createLedgerOrder("ledger"))
 	require.NotEmpty(t, proposal.GetExecutionPlan().GetAttributes())
@@ -940,7 +984,10 @@ func TestMachine_CommitReleasesCoveredKeysFromLoaders(t *testing.T) {
 
 	pb, err := machine.PrepareDecodedEntries(ctx, dataStore, decoded...)
 	require.NoError(t, err)
-	require.Empty(t, releaser.snapshot(), "nothing is released before the batch commits")
+
+	fenced, unfenced := inv.snapshot()
+	require.Empty(t, fenced, "nothing is fenced before the commit starts")
+	require.Empty(t, unfenced)
 
 	require.NoError(t, machine.CommitPreparedBatch(ctx, pb))
 
@@ -949,10 +996,73 @@ func TestMachine_CommitReleasesCoveredKeysFromLoaders(t *testing.T) {
 		want = append(want, preloadKey{attrCode: byte(plan.GetAttrCode()), id: attributes.U128FromBytes(plan.GetId().GetId())})
 	}
 
-	require.ElementsMatch(t, want, releaser.snapshot(), "every covered key is released exactly once after the commit")
-	require.Len(t, writeVisibleAtRelease, len(want))
+	fenced, unfenced = inv.snapshot()
+	require.ElementsMatch(t, want, fenced, "every covered key is fenced exactly once")
+	require.ElementsMatch(t, want, unfenced, "every covered key is unfenced exactly once")
 
-	for _, visible := range writeVisibleAtRelease {
-		require.True(t, visible, "the proposal's write is in the store when its keys are released")
+	require.Len(t, visible["fence"], len(want))
+	require.Len(t, visible["unfence"], len(want))
+
+	for _, v := range visible["fence"] {
+		require.False(t, v, "the fence goes up before the proposal's write is in the store")
 	}
+
+	for _, v := range visible["unfence"] {
+		require.True(t, v, "the fence lifts only once the proposal's write is in the store")
+	}
+}
+
+// A batch that deletes a ledger range-deletes keys no plan enumerates, so its
+// commit fences every loader, and only that: no per-key fence is placed.
+func TestMachine_DeleteLedgerCommitFencesEveryLoader(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, attrs := newTestMachine(t)
+	ctx := context.Background()
+
+	_, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1, createLedgerOrder("ledger"))))
+	require.NoError(t, err)
+
+	// The probe reads the ledger's DeletedAt straight from the store: unset
+	// at the fence (before the commit), set at the unfence (after it).
+	deleted := map[string][]bool{}
+
+	inv := &recordingInvalidator{probe: func(phase string) {
+		reader, err := dataStore.NewReadHandle()
+		require.NoError(t, err)
+
+		defer func() { _ = reader.Close() }()
+
+		info, err := attrs.Ledger.Get(reader, domain.LedgerKey{Name: "ledger"}.Bytes())
+		require.NoError(t, err)
+		require.NotNil(t, info)
+
+		deleted[phase] = append(deleted[phase], info.GetDeletedAt() != nil)
+	}}
+	machine.SetPreloadInvalidator(inv)
+
+	decoded, err := DecodeEntries([]*raftpb.Entry{makeEntry(t, 2, makeProposal(2, deleteLedgerOrder("ledger")))})
+	require.NoError(t, err)
+
+	pb, err := machine.PrepareDecodedEntries(ctx, dataStore, decoded...)
+	require.NoError(t, err)
+	require.Len(t, pb.Result.Results, 1)
+	require.NoError(t, pb.Result.Results[0].Error)
+
+	fencedAll, unfencedAll := inv.all()
+	require.Zero(t, fencedAll, "nothing is fenced before the commit starts")
+	require.Zero(t, unfencedAll)
+
+	require.NoError(t, machine.CommitPreparedBatch(ctx, pb))
+
+	fencedAll, unfencedAll = inv.all()
+	require.Equal(t, 1, fencedAll, "the batch fences every loader once")
+	require.Equal(t, 1, unfencedAll, "and lifts it once")
+
+	fenced, unfenced := inv.snapshot()
+	require.Empty(t, fenced, "no per-key fence is placed beside the fence-all")
+	require.Empty(t, unfenced)
+
+	require.Equal(t, []bool{false}, deleted["fenceAll"], "the fence goes up before the deletion is in the store")
+	require.Equal(t, []bool{true}, deleted["unfenceAll"], "the fence lifts only once the deletion is in the store")
 }

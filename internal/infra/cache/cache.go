@@ -598,7 +598,7 @@ type ConfigSnapshot struct {
 	GenerationThreshold uint64
 	Epoch               uint64
 	// ResetSeq is the local reset count at the time of the snapshot; see
-	// Cache.ResetSeq.
+	// Cache.resetSeq.
 	ResetSeq uint64
 }
 
@@ -614,12 +614,6 @@ func (c *Cache) Snapshot() ConfigSnapshot {
 		Epoch:               c.epoch.Load(),
 		ResetSeq:            c.resetSeq.Load(),
 	}
-}
-
-// ResetSeq returns how many times the cache contents have been cleared in
-// this process, by a replicated ResetWithThreshold or a local Reset.
-func (c *Cache) ResetSeq() uint64 {
-	return c.resetSeq.Load()
 }
 
 // New creates a new Cache with the given generation threshold and meter.

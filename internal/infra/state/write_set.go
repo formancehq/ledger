@@ -1349,6 +1349,11 @@ func (b *WriteSet) SinkConfigChanged() bool {
 	return b.sinkConfigChanged
 }
 
+// HasLedgerDeletions reports whether Merge will range-delete a ledger's data.
+func (b *WriteSet) HasLedgerDeletions() bool {
+	return len(b.deletedLedgers) > 0
+}
+
 // AllVolumeUpdates returns all volume updates (kept + purged) captured during Merge.
 // Used for delta/posting cross-check which needs purged ephemeral entries too.
 func (b *WriteSet) AllVolumeUpdates() []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {

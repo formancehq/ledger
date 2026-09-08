@@ -134,14 +134,40 @@ func NewBuilder(tracker *node.IndexTracker, c *cache.Cache, attrs *attributes.At
 	return b
 }
 
-// ReleasePreloaded drops the memoized load of one covered key. The FSM calls
-// it for every key of a proposal's plan right after that proposal's batch
-// commits, so the next preload of a key the proposal wrote reads the store
-// instead of a value from before the write. An attrCode without a resolver is
-// a no-op: the plan validator has already rejected such entries at apply.
-func (p *Builder) ReleasePreloaded(attrCode byte, id attributes.U128) {
+// FencePreloaded drops the memoized load of one covered key and blocks
+// re-memoization until UnfencePreloaded. The FSM calls it for every key of a
+// proposal's plan immediately before committing the batch that writes them,
+// so no preload built from then on is served a value from before the write.
+// An attrCode without a resolver is a no-op: the plan validator has already
+// rejected such entries at apply.
+func (p *Builder) FencePreloaded(attrCode byte, id attributes.U128) {
 	if r, ok := p.resolvers[attrCode]; ok {
-		r.Loader().Release(id)
+		r.Loader().Fence(id)
+	}
+}
+
+// UnfencePreloaded lifts the fence FencePreloaded placed, once the commit has
+// returned; loads completing afterwards read the committed store.
+func (p *Builder) UnfencePreloaded(attrCode byte, id attributes.U128) {
+	if r, ok := p.resolvers[attrCode]; ok {
+		r.Loader().Unfence(id)
+	}
+}
+
+// FenceAllPreloaded fences every loader (preload.AttributeLoader.FenceAll):
+// the FSM brackets with it the commit of a batch that range-deletes keys no
+// plan enumerates.
+func (p *Builder) FenceAllPreloaded() {
+	for _, r := range p.resolvers {
+		r.Loader().FenceAll()
+	}
+}
+
+// UnfenceAllPreloaded lifts the fence FenceAllPreloaded placed, once the
+// commit has returned.
+func (p *Builder) UnfenceAllPreloaded() {
+	for _, r := range p.resolvers {
+		r.Loader().UnfenceAll()
 	}
 }
 

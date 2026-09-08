@@ -42,12 +42,19 @@ type loaderShard[T any] struct {
 	mu      sync.RWMutex
 	loading map[attributes.U128]*inflightLoad
 	loaded  map[attributes.U128]*loadedEntry[T]
-	_       [64]byte // cache-line padding
+	// fenced counts the commits in progress for a key (Fence … Unfence) and
+	// fencedAll those in progress for every key (FenceAll … UnfenceAll). A
+	// load that starts, runs or completes under either may predate the
+	// write being committed and is not memoized.
+	fenced    map[attributes.U128]int
+	fencedAll int
+	_         [64]byte // cache-line padding
 }
 
-// inflightLoad is a load in progress: waiters block on done; released is set
-// by a Release that arrives while the load runs, in which case the loaded
-// value predates a commit and is returned to its caller but not memoized.
+// inflightLoad is a load in progress: waiters block on done; released marks
+// a load that started under a fence or saw a Fence or Release while running,
+// in which case the loaded value may predate a commit and is returned to its
+// caller but not memoized.
 type inflightLoad struct {
 	done     chan struct{}
 	released bool
@@ -75,6 +82,7 @@ func NewAttributeLoader[T any]() *AttributeLoader[T] {
 	for i := range al.shards {
 		al.shards[i].loading = make(map[attributes.U128]*inflightLoad)
 		al.shards[i].loaded = make(map[attributes.U128]*loadedEntry[T])
+		al.shards[i].fenced = make(map[attributes.U128]int)
 	}
 
 	return al
@@ -90,10 +98,11 @@ func (al *AttributeLoader[T]) shard(key attributes.U128) *loaderShard[T] {
 // It returns the value and whether we actually performed a load (vs using cached).
 // The loadFn is called only if the value needs to be loaded from store.
 //
-// A memoized value stays valid until Release drops it or stamp no longer
-// matches (validFor). The FSM releases a key as soon as it commits a
-// proposal covering it, so a later preload of a key some proposal just wrote
-// always reloads from the store.
+// A memoized value stays valid until a Fence, FenceAll or Release drops it or
+// stamp no longer matches (validFor). The FSM fences every key a proposal
+// covers before committing its batch and unfences them after (every key, for
+// a batch that deletes a ledger), so no preload is ever served a value from
+// before a write that has been committed.
 func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, stamp CacheStamp, loadFn func() (T, error)) (*LoadResult[T], error) {
 	s := al.shard(key)
 
@@ -145,23 +154,26 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, stamp CacheStamp, 
 		return al.LoadOrWait(key, stamp, loadFn)
 	}
 
-	// We're the one who will load - mark as loading
-	inflight = &inflightLoad{done: make(chan struct{})}
+	// We're the one who will load - mark as loading. A load that starts under
+	// a fence is not memoizable even if the fence lifts before it completes:
+	// its store read may predate the commit the fence brackets.
+	inflight = &inflightLoad{done: make(chan struct{}), released: s.fenced[key] > 0 || s.fencedAll > 0}
 	s.loading[key] = inflight
 	s.mu.Unlock()
 
 	// Perform the actual load (outside of lock)
 	value, err := loadFn()
 
-	// Update state with write lock. A Release during the load means a
-	// proposal covering the key committed after loadFn read the store: the
-	// value is still right for this caller's plan (the apply reconciles it
-	// against the cache), but memoizing it would serve the pre-write value
-	// to every later preload.
+	// Update state with write lock. A fence at any point of the load's
+	// lifetime, or a Release during it, means a proposal covering the key is
+	// committing or has committed since loadFn read the store: the value is
+	// still right for this caller's plan (the apply reconciles it against the
+	// cache), but memoizing it would serve the pre-write value to every later
+	// preload.
 	s.mu.Lock()
 	delete(s.loading, key)
 
-	if err == nil && !inflight.released {
+	if err == nil && !inflight.released && s.fenced[key] == 0 && s.fencedAll == 0 {
 		s.loaded[key] = &loadedEntry[T]{stamp: stamp, value: value}
 	}
 
@@ -177,16 +189,90 @@ func (al *AttributeLoader[T]) LoadOrWait(key attributes.U128, stamp CacheStamp, 
 	return &LoadResult[T]{Value: value, FromLoad: true}, nil
 }
 
-// Release removes the loaded entry for the given key. The FSM calls it, for
-// every key a committed proposal covered, right after that proposal's batch
-// commits; the proposer calls it again when its handler returns, which covers
-// proposals that never applied.
+// Release removes the loaded entry for the given key and marks a load in
+// flight as not memoizable. The proposer calls it when its handler returns,
+// which covers proposals that never applied; the FSM's commit path uses
+// Fence and Unfence instead.
 func (al *AttributeLoader[T]) Release(key attributes.U128) {
 	s := al.shard(key)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.dropLocked(key)
+}
+
+// Fence drops the loaded entry for the key and blocks memoization of any load
+// that completes before the matching Unfence. The FSM fences every key a
+// proposal covers immediately before committing the batch that writes it:
+// from then until the commit is visible, a load may read the store before or
+// after the write, so nothing it returns may be memoized.
+func (al *AttributeLoader[T]) Fence(key attributes.U128) {
+	s := al.shard(key)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.dropLocked(key)
+	s.fenced[key]++
+}
+
+// Unfence lifts one Fence on the key once the commit that motivated it has
+// returned (or failed); loads completing from now on read the committed
+// store and memoize again.
+func (al *AttributeLoader[T]) Unfence(key attributes.U128) {
+	s := al.shard(key)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.fenced[key] <= 1 {
+		delete(s.fenced, key)
+
+		return
+	}
+
+	s.fenced[key]--
+}
+
+// FenceAll drops every memo and blocks memoization of every load until the
+// matching UnfenceAll. The FSM brackets with it the commit of a batch that
+// range-deletes keys no plan enumerates (a ledger deletion).
+func (al *AttributeLoader[T]) FenceAll() {
+	for i := range al.shards {
+		s := &al.shards[i]
+
+		s.mu.Lock()
+		clear(s.loaded)
+
+		for _, inflight := range s.loading {
+			inflight.released = true
+		}
+
+		s.fencedAll++
+		s.mu.Unlock()
+	}
+}
+
+// UnfenceAll lifts one FenceAll once the commit that motivated it has
+// returned (or failed).
+func (al *AttributeLoader[T]) UnfenceAll() {
+	for i := range al.shards {
+		s := &al.shards[i]
+
+		s.mu.Lock()
+
+		if s.fencedAll > 0 {
+			s.fencedAll--
+		}
+
+		s.mu.Unlock()
+	}
+}
+
+// dropLocked forgets the key's memo and marks any load in flight as not
+// memoizable. Caller holds s.mu.
+func (s *loaderShard[T]) dropLocked(key attributes.U128) {
 	delete(s.loaded, key)
 
 	if inflight, ok := s.loading[key]; ok {
@@ -228,10 +314,14 @@ func NewLoaders() *Loaders {
 	}
 }
 
-// LoaderOps is the non-generic interface satisfied by every AttributeLoader[T].
-// It captures the Release operation needed by CleanupToken.
+// LoaderOps is the non-generic interface satisfied by every AttributeLoader[T]:
+// the operations CleanupToken and plan.Builder need.
 type LoaderOps interface {
 	Release(attributes.U128)
+	Fence(attributes.U128)
+	Unfence(attributes.U128)
+	FenceAll()
+	UnfenceAll()
 }
 
 // TrackedLoader pairs a loader with the keys that were loaded through it.

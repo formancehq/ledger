@@ -608,6 +608,7 @@ func TestAttributeCache_CheckCache_ForeignTagIsMiss(t *testing.T) {
 
 	gen1Key := attributes.NewU128(2, 2)
 	ac.Gen1().Put(gen1Key, attributes.Entry[*raftcmdpb.VolumePair]{Tag: 7})
+	assert.Equal(t, CacheHit, ac.CheckCache(5, gen1Key, 7), "a Gen1 resident with this key's tag is a hit when Gen0 holds nothing")
 	assert.Equal(t, CacheMiss, ac.CheckCache(5, gen1Key, 9))
 
 	require.NoError(t, ac.Del(key))
@@ -627,11 +628,10 @@ func TestCache_ResetSeq_CountsEveryClear(t *testing.T) {
 	c, err := New(10, nil)
 	require.NoError(t, err)
 
-	before := c.ResetSeq()
+	before := c.Snapshot().ResetSeq
 	c.Reset()
-	assert.Equal(t, before+1, c.ResetSeq(), "a local reset counts")
-	assert.Equal(t, before+1, c.Snapshot().ResetSeq)
+	assert.Equal(t, before+1, c.Snapshot().ResetSeq, "a local reset counts")
 
 	c.ResetWithThreshold(10, 1)
-	assert.Equal(t, before+2, c.ResetSeq(), "a replicated reset counts too")
+	assert.Equal(t, before+2, c.Snapshot().ResetSeq, "a replicated reset counts too")
 }

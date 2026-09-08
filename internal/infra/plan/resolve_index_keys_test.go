@@ -118,9 +118,10 @@ func TestResolveCoverage_IndexKeyHonoursBloomVeto(t *testing.T) {
 	require.Nil(t, res.attributes[0].GetValue())
 }
 
-// A memoized absence is served only until the FSM releases the key: after a
-// proposal covering it commits, the next preload loads from the store again.
-func TestBuilder_ReleasePreloaded_DropsTheMemoizedLoad(t *testing.T) {
+// A memoized absence is served only until the FSM fences the key for a
+// commit: the fence drops it and blocks re-memoization, and once the fence
+// lifts the next preload loads from the store and memoizes again.
+func TestBuilder_FencePreloaded_DropsAndBlocksTheMemo(t *testing.T) {
 	t.Parallel()
 
 	c, err := cache.New(1000, nil)
@@ -137,19 +138,82 @@ func TestBuilder_ReleasePreloaded_DropsTheMemoizedLoad(t *testing.T) {
 	require.True(t, first.FromLoad)
 
 	memo, err := b.loaders.Indexes.LoadOrWait(id, stamp, func() (*commonpb.Index, error) {
-		t.Fatal("the memoized absence must be served before the release")
+		t.Fatal("the memoized absence must be served before the fence")
 
 		return nil, nil
 	})
 	require.NoError(t, err)
 	require.False(t, memo.FromLoad)
 
-	b.ReleasePreloaded(dal.SubAttrIndex, id)
+	b.FencePreloaded(dal.SubAttrIndex, id)
+
+	fenced, err := b.loaders.Indexes.LoadOrWait(id, stamp, func() (*commonpb.Index, error) { return nil, nil })
+	require.NoError(t, err)
+	require.True(t, fenced.FromLoad, "the fence drops the memo")
+
+	stillFenced, err := b.loaders.Indexes.LoadOrWait(id, stamp, func() (*commonpb.Index, error) { return nil, nil })
+	require.NoError(t, err)
+	require.True(t, stillFenced.FromLoad, "a load completed under the fence is not memoized")
+
+	b.UnfencePreloaded(dal.SubAttrIndex, id)
 
 	reloaded, err := b.loaders.Indexes.LoadOrWait(id, stamp, func() (*commonpb.Index, error) {
 		return &commonpb.Index{Ledger: "ledger"}, nil
 	})
 	require.NoError(t, err)
-	require.True(t, reloaded.FromLoad, "the release must force a fresh load")
+	require.True(t, reloaded.FromLoad, "the first load after the fence lifts reads the store")
 	require.NotNil(t, reloaded.Value)
+
+	memoAgain, err := b.loaders.Indexes.LoadOrWait(id, stamp, func() (*commonpb.Index, error) {
+		t.Fatal("the post-fence load must be memoized")
+
+		return nil, nil
+	})
+	require.NoError(t, err)
+	require.False(t, memoAgain.FromLoad)
+}
+
+// FenceAllPreloaded fences every loader: a memo in any of them is dropped and
+// nothing is memoized until UnfenceAllPreloaded.
+func TestBuilder_FenceAllPreloaded_DropsEveryLoader(t *testing.T) {
+	t.Parallel()
+
+	c, err := cache.New(1000, nil)
+	require.NoError(t, err)
+
+	b := NewBuilder(nil, c, attributes.New(), nil, nil, logging.Testing(), 0)
+
+	id, _ := attributes.MakeKey([]byte("bucket/ledger/meta:account:score"))
+	stamp := preload.CacheStamp{Boundary: 1, Epoch: 1}
+
+	_, err = b.loaders.Indexes.LoadOrWait(id, stamp, func() (*commonpb.Index, error) { return &commonpb.Index{Ledger: "ledger"}, nil })
+	require.NoError(t, err)
+	_, err = b.loaders.References.LoadOrWait(id, stamp, func() (*commonpb.TransactionReferenceValue, error) {
+		return &commonpb.TransactionReferenceValue{TransactionId: 1}, nil
+	})
+	require.NoError(t, err)
+
+	b.FenceAllPreloaded()
+
+	index, err := b.loaders.Indexes.LoadOrWait(id, stamp, func() (*commonpb.Index, error) { return nil, nil })
+	require.NoError(t, err)
+	require.True(t, index.FromLoad, "the fence dropped the index memo")
+
+	ref, err := b.loaders.References.LoadOrWait(id, stamp, func() (*commonpb.TransactionReferenceValue, error) { return nil, nil })
+	require.NoError(t, err)
+	require.True(t, ref.FromLoad, "the fence dropped the reference memo")
+
+	b.UnfenceAllPreloaded()
+
+	index, err = b.loaders.Indexes.LoadOrWait(id, stamp, func() (*commonpb.Index, error) { return &commonpb.Index{Ledger: "ledger"}, nil })
+	require.NoError(t, err)
+	require.True(t, index.FromLoad, "the first load after the fence lifts reads the store")
+
+	index, err = b.loaders.Indexes.LoadOrWait(id, stamp, func() (*commonpb.Index, error) {
+		t.Fatal("the post-fence load must be memoized")
+
+		return nil, nil
+	})
+	require.NoError(t, err)
+	require.False(t, index.FromLoad)
 }

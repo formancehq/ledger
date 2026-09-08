@@ -481,3 +481,123 @@ func TestAttributeLoader_LoadOrWait_ReleaseDuringLoadSkipsTheMemo(t *testing.T) 
 	assert.True(t, result.FromLoad)
 	assert.Equal(t, 1, loadCount)
 }
+
+// Fence drops the memo and holds memoization off until Unfence; a load that
+// completes under the fence is returned but not kept.
+func TestAttributeLoader_FenceBlocksMemoizationUntilUnfence(t *testing.T) {
+	t.Parallel()
+
+	loader := NewAttributeLoader[int]()
+	key := attributes.NewU128(1, 2)
+	stamp := CacheStamp{Boundary: 100, Epoch: testCacheEpoch}
+
+	_, err := loader.LoadOrWait(key, stamp, func() (int, error) { return 1, nil })
+	require.NoError(t, err)
+
+	loader.Fence(key)
+
+	result, err := loader.LoadOrWait(key, stamp, func() (int, error) { return 2, nil })
+	require.NoError(t, err)
+	assert.True(t, result.FromLoad, "the fence dropped the memo")
+	assert.Equal(t, 2, result.Value)
+
+	result, err = loader.LoadOrWait(key, stamp, func() (int, error) { return 3, nil })
+	require.NoError(t, err)
+	assert.True(t, result.FromLoad, "loads under the fence are not memoized")
+	assert.Equal(t, 3, result.Value)
+
+	loader.Fence(key)
+	loader.Unfence(key)
+
+	result, err = loader.LoadOrWait(key, stamp, func() (int, error) { return 4, nil })
+	require.NoError(t, err)
+	assert.True(t, result.FromLoad, "one fence of two is still up")
+
+	loader.Unfence(key)
+
+	result, err = loader.LoadOrWait(key, stamp, func() (int, error) { return 5, nil })
+	require.NoError(t, err)
+	assert.True(t, result.FromLoad)
+
+	result, err = loader.LoadOrWait(key, stamp, func() (int, error) { return 6, nil })
+	require.NoError(t, err)
+	assert.False(t, result.FromLoad, "memoization resumes once every fence is lifted")
+	assert.Equal(t, 5, result.Value)
+}
+
+// A load that starts under a fence may have read the store before the commit
+// the fence brackets, so it is not memoized even when the fence lifts before
+// it completes.
+func TestAttributeLoader_LoadStartedUnderFenceIsNotMemoizedAfterUnfence(t *testing.T) {
+	t.Parallel()
+
+	loader := NewAttributeLoader[int]()
+	key := attributes.NewU128(1, 2)
+	stamp := CacheStamp{Boundary: 100, Epoch: testCacheEpoch}
+
+	loader.Fence(key)
+
+	result, err := loader.LoadOrWait(key, stamp, func() (int, error) {
+		loader.Unfence(key)
+
+		return 1, nil
+	})
+	require.NoError(t, err)
+	assert.True(t, result.FromLoad)
+	assert.Equal(t, 1, result.Value, "the caller still gets the value it loaded")
+
+	loadCount := 0
+	result, err = loader.LoadOrWait(key, stamp, func() (int, error) {
+		loadCount++
+
+		return 2, nil
+	})
+	require.NoError(t, err)
+	assert.True(t, result.FromLoad, "a load started under the fence is not memoized")
+	assert.Equal(t, 2, result.Value)
+	assert.Equal(t, 1, loadCount)
+}
+
+// FenceAll drops every memo and blocks memoization of every load until the
+// matching UnfenceAll, a load that started under it included.
+func TestAttributeLoader_FenceAllBlocksEveryKey(t *testing.T) {
+	t.Parallel()
+
+	loader := NewAttributeLoader[int]()
+	stamp := CacheStamp{Boundary: 100, Epoch: testCacheEpoch}
+	keys := []attributes.U128{attributes.NewU128(1, 1), attributes.NewU128(2, 2), attributes.NewU128(3, 3)}
+
+	for _, key := range keys {
+		_, err := loader.LoadOrWait(key, stamp, func() (int, error) { return 1, nil })
+		require.NoError(t, err)
+	}
+
+	loader.FenceAll()
+
+	for _, key := range keys {
+		result, err := loader.LoadOrWait(key, stamp, func() (int, error) { return 2, nil })
+		require.NoError(t, err)
+		assert.True(t, result.FromLoad, "the fence dropped every memo")
+
+		result, err = loader.LoadOrWait(key, stamp, func() (int, error) { return 3, nil })
+		require.NoError(t, err)
+		assert.True(t, result.FromLoad, "loads under the fence are not memoized")
+	}
+
+	result, err := loader.LoadOrWait(keys[0], stamp, func() (int, error) {
+		loader.UnfenceAll()
+
+		return 4, nil
+	})
+	require.NoError(t, err)
+	assert.True(t, result.FromLoad)
+
+	result, err = loader.LoadOrWait(keys[0], stamp, func() (int, error) { return 5, nil })
+	require.NoError(t, err)
+	assert.True(t, result.FromLoad, "a load started under the fence is not memoized")
+
+	result, err = loader.LoadOrWait(keys[0], stamp, func() (int, error) { return 6, nil })
+	require.NoError(t, err)
+	assert.False(t, result.FromLoad, "memoization resumes once the fence is lifted")
+	assert.Equal(t, 5, result.Value)
+}
