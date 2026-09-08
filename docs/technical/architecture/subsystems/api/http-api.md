@@ -93,12 +93,13 @@ same guarantee for the `Request` oneof.
 
 Business errors (validation, not-found, conflict, etc.) map to specific status codes and carry a machine-readable `errorCode` and a descriptive `errorMessage`, mirroring the gRPC adapter's `Describable` contract.
 
-Two paths, however, must never expose internal error text to clients — the raw value could contain filesystem paths, wrapped Pebble/storage errors, or internal invariant strings:
+Three paths need correlated server-side diagnostics because the raw value can contain filesystem paths, wrapped Pebble/storage errors, or internal invariant strings:
 
 1. **Panic recovery** (`jsonRecoverer`) — a panic in any handler.
 2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Describable` or a known sentinel.
+3. **`KindInternal` domain errors** — recognized internal failures whose existing status, reason, and response message contract is preserved.
 
-Both paths are sanitized identically to the gRPC adapter: the raw cause is logged **server-side** with a `correlation_id` field (and, for a panic, additionally recorded on the OTel span together with the stack), while the client receives only a generic body:
+Every path logs the raw cause **server-side** with a `correlation_id` field. When the request span is recording, the log also carries `trace_id` and `span_id`, and the span records both the correlation ID and the error. Panic spans additionally carry the panic value and stack. Unmapped errors and panics remain sanitized identically to the gRPC adapter, so the client receives only a generic body:
 
 ```json
 {
@@ -107,7 +108,7 @@ Both paths are sanitized identically to the gRPC adapter: the raw cause is logge
 }
 ```
 
-The correlation ID is the request's `X-Request-Id` (Chi `RequestID`) so operators can grep the server logs for the exact ID a caller reports. Adding a new persisted error path that reaches `handleError`'s fallthrough inherits this sanitization automatically; do not add a branch that serializes a raw non-domain error into the response body.
+The correlation ID reuses the request's `X-Request-Id` (Chi `RequestID`) when it is valid, so operators can grep the server logs for the exact ID a caller reports. Empty IDs, values longer than 128 bytes, invalid UTF-8, and values containing control characters are replaced with a generated token before they reach logs or responses. Adding a new persisted error path that reaches `handleError`'s fallthrough inherits this sanitization automatically; do not add a branch that serializes a raw non-domain error into the response body.
 
 ### Retry-After Header
 

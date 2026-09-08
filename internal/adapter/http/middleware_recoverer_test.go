@@ -9,7 +9,10 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -25,18 +28,23 @@ func TestJSONRecoverer_SanitizesPanic(t *testing.T) {
 
 	var logs bytes.Buffer
 	logger := logging.NewDefaultLogger(&logs, false, false, false)
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.Background())) })
 
 	panicking := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic("secret invariant: /var/lib/ledger/pebble corrupted")
 	})
 
-	ctx := logging.ContextWithLogger(context.Background(), logger)
+	ctx, span := provider.Tracer("test").Start(context.Background(), "request")
+	ctx = logging.ContextWithLogger(ctx, logger)
 	ctx = context.WithValue(ctx, middleware.RequestIDKey, "corr-panic")
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
 
 	jsonRecoverer(panicking).ServeHTTP(w, r)
+	span.End()
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 	require.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -55,6 +63,13 @@ func TestJSONRecoverer_SanitizesPanic(t *testing.T) {
 	require.Contains(t, logged, "secret invariant: /var/lib/ledger/pebble corrupted")
 	require.Contains(t, logged, "corr-panic")
 	require.Contains(t, logged, "HTTP handler panicked")
+	assert.Contains(t, logged, span.SpanContext().TraceID().String())
+	assert.Contains(t, logged, span.SpanContext().SpanID().String())
+
+	ended := recorder.Ended()
+	require.Len(t, ended, 1)
+	assert.Equal(t, "corr-panic", httpSpanAttribute(ended[0], "correlation_id"))
+	assert.NotEmpty(t, ended[0].Events())
 }
 
 func TestJSONRecoverer_PropagatesErrAbortHandler(t *testing.T) {
