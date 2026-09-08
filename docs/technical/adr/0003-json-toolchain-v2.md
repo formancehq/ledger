@@ -1,144 +1,145 @@
-# 0003 — JSON toolchain: stdlib `encoding/json/v2` for marshal, keep Sonic only where decode wins
+# 0003 — JSON toolchain: evaluate v2 marshal for request-scoped options
 
-**Status:** Proposed (2026-09-08). Direction accepted as the plan for EN-1795;
-implementation is gated on the compatibility matrix and representative
-benchmarks below and remains unmerged. Revisit if Go 1.27/1.28 changes v2
-defaults, if a supported Sonic release lands that keeps the decode win, or if
-EN-1792 / EN-1752 change the representation/DTO layer first.
+**Status:** Proposed (2026-09-08). EN-1795 records a supported, measured JSON
+serialization path that preserves Ledger's public JSON contract. The preferred
+`encoding/json/v2` direction remains gated on compatibility and performance;
+this ADR does not implement or approve the migration. Refreshed against
+`release/v3.0` at `47ae5b0482d5c58ad70b1bebb72da23818d5d1a7` and Sonic v1.15.3.
 
-## Context
+## Context and requirement
 
-Docker and Nix already select Go 1.27, but `github.com/bytedance/sonic`
-v1.15.0 (our pin) carries the build constraint `!go1.27` on both amd64 and
-arm64. On Go 1.27 Sonic therefore compiles its thin `encoding/json` wrapper
-*fallback* rather than failing the build — a silent performance cliff that
-lands exactly when the standard library's `encoding/json/v2` becomes the
-baseline.
+EN-1779 (opt-in string `Uint256` amounts) exposes the remaining need: clients
+such as JavaScript consumers must be able to request lossless decimal strings
+for amounts above 2^53 while the default wire remains numeric. A request-scoped
+encoding option must reach every nested amount without process-global state.
+EN-1795 explores a shared serialization mechanism for that capability; shipping
+EN-1779 itself is separate and must not depend on this migration.
 
-The JSON entry points at this revision are:
+The previous revision of this ADR was based on Sonic v1.15.0, which selected
+its `encoding/json` fallback on Go 1.27. The target now pins v1.15.3, whose
+native codec supports Go 1.27 on amd64/arm64. The fallback performance cliff
+is therefore no longer a current migration rationale. Docker and Nix select
+Go 1.27; the module still declares `go 1.26.0`.
 
-- **HTTP:** `internal/adapter/json` documents itself as "the same API surface as
-  `encoding/json/v2`" but delegates to Sonic — `Marshal` via `ConfigDefault`,
-  `MarshalWrite` via `ConfigStd` (newline-terminated stream). On Go 1.27 this
-  "Sonic" is its `encoding/json` fallback (`UseStdJSON`): `ConfigDefault`
-  becomes an `encoding/json.Encoder` with `SetEscapeHTML(false)` while map keys
-  stay sorted and U+2028/U+2029 stay escaped, and `ConfigStd` keeps the
-  `encoding/json` encoder defaults (HTML-escaped, sorted, trailing newline).
-  The `EscapeHTML`/`SortMapKeys` flags describe native Sonic only. It omits the
-  `opts ...Options` parameter that is v2's central design point.
-- **Checked routes:** `writeOKChecked` (`internal/adapter/http/response.go`)
-  serves transaction-list, single-log and audit-entry responses. It buffers
-  `json.Marshal` *before* committing success headers so a nested marshal
-  failure surfaces as a clean 500 (invariant #7), unlike the streaming
-  `writeJSONResponse`/`writeOK` path.
+The JSON entry points at the refreshed revision are:
+
+- **HTTP:** `internal/adapter/json` delegates `Marshal` to Sonic
+  `ConfigDefault` and `MarshalWrite` to `ConfigStd.NewEncoder(w).Encode(v)`.
+  Its claim to provide the v2 API surface omits the central `opts ...Options`
+  parameter. Native `ConfigDefault` does not sort maps or escape HTML/JS;
+  native `ConfigStd` enables sorting and escaping and appends a newline.
+  These flags do not guarantee normalization inside opaque custom marshalers.
+- **Checked routes:** `writeOKChecked` in `internal/adapter/http/response.go`
+  buffers transaction-list, single-log and audit-entry responses before
+  committing success headers. A nested marshal failure must remain a clean
+  500 (invariant #7), even if direct streaming would allocate less.
 - **CLI:** `cmd/ledgerctl/cmdutil/output.go` dispatches on `json.Marshaler`
-  before falling through to `protojson` — a dispatch that must stay in sync
-  with any marshaller surface change.
-- **Contract enforcement:** `internal/adapter/http/encoder_contract_test.go`
-  pins the split in both directions (protojson routes must have no custom
-  `MarshalJSON`; Sonic routes must have one).
+  before `protojson`; migration must preserve that choice and CLI formatting.
+- **Contract tests:** `internal/adapter/http/encoder_contract_test.go` enforces
+  that protojson routes have no custom `MarshalJSON` and that the transaction
+  and log routes retain their custom representation.
 
-The structural blocker is the v1 marshaller boundary: `MarshalJSON() ([]byte,
-error)` has no options parameter, so a v2 `MarshalJSONTo(enc *jsontext.Encoder)`
-override is silently lost whenever any nested level still exposes the opaque v1
-method. The money/log path is hand-written at every level
-(`Transaction` → `Posting` → `Uint256`, plus `Log`, `Timestamp`, `Metadata`, …),
-so it can only be converted *end to end*, never incrementally.
+`MarshalJSON() ([]byte, error)` has no options parameter. An outer v2 encoder
+cannot propagate `WithMarshalers` into a nested value already serialized by an
+opaque v1 method. `Transaction.MarshalJSON` builds an auxiliary shape, then
+calls the Sonic adapter; `Posting.MarshalJSON` does the same before reaching
+`Uint256.MarshalJSON`. A call-site amount override requires a continuous
+option-aware path, not merely replacing the outer adapter. Unrelated paths
+can migrate separately, but each affected path must work end to end.
 
 ## Decision
 
-1. **Prefer the standard library for marshal — per entry point, not one
-   option set.** Adopt `encoding/json/v2` for marshal while preserving the two
-   distinct Sonic configurations in use today, so each entry point stays
-   byte-stable against its current output:
+1. **Prefer v2 for option propagation, subject to measurement.** Evaluate an
+   option-aware marshal path using the standard library. Do not infer a
+   performance win from the removed v1.15.0 fallback or historical Go 1.26
+   measurements. Keep native Sonic v1.15.3 as the current baseline and as a
+   credible alternative until the gates below pass.
+2. **Select compatibility options per entry point.** The native baseline
+   supersedes the previous buffered prescription (`Deterministic` and
+   `EscapeForJS`). For ordinary values, start with:
 
-   - **Streaming** (`json.MarshalWrite`, Sonic `ConfigStd`) already emits
-     sorted map keys, HTML-escaped strings and a trailing `\n`.
-     `encoding/json.DefaultOptionsV1()` reproduces those sorted/escaped
-     semantics (`encoding/json/v2.Deterministic`,
-     `encoding/json/jsontext.EscapeForHTML`/`EscapeForJS`, plus legacy
-     `omitempty` and nil-as-null framing). It has no trailing-newline option
-     and `encoding/json/v2.MarshalWrite` writes only the JSON value, so
-     streaming callers must append the `\n` delimiter separately after a
-     successful write to stay byte-stable.
+   - **Buffered `ConfigDefault`:** `encoding/json.DefaultOptionsV1()` with
+     `encoding/json/v2.Deterministic(false)`,
+     `encoding/json/jsontext.EscapeForHTML(false)` and
+     `encoding/json/jsontext.EscapeForJS(false)`. Retain v1 omission and
+     nil-as-null behavior; bare `DefaultOptionsV2()` is not equivalent.
+   - **Streaming `ConfigStd`:** `encoding/json.DefaultOptionsV1()` for the
+     ordinary-value sorting, escaping and legacy framing. Append `\n`
+     separately only after a successful `MarshalWrite`: v2 has no
+     trailing-newline compatibility option.
 
-   - **Checked buffering** (`json.Marshal`, `writeOKChecked`, Sonic
-     `ConfigDefault`) must not be described by native Sonic's `ConfigDefault`
-     flags. Native Sonic (`SortMapKeys=false`, `EscapeHTML=false`) only exists
-     on Go ≤1.26; on the active Go 1.27 toolchain `ConfigDefault.Marshal` runs
-     through the `UseStdJSON` fallback — an `encoding/json.Encoder` with
-     `SetEscapeHTML(false)` whose trailing `\n` is stripped. `encoding/json`
-     sorts map keys and escapes U+2028/U+2029 unconditionally (independent of
-     `SetEscapeHTML`) while leaving `<`, `>` and `&` unescaped. The byte-stable
-     target is therefore that measured fallback output, so buffered callers must
-     enable `Deterministic` and `EscapeForJS` *without* `EscapeForHTML` (plus the
-     remaining v1 framing/legacy options), i.e.
-     `encoding/json.DefaultOptionsV1()` overridden by
-     `encoding/json/jsontext.EscapeForHTML(false)` — not the bare
-     `encoding/json/v2.DefaultOptionsV2()`, whose non-deterministic map order
-     and minimal escaping would reorder `MetadataMap` keys and change any
-     metadata/string value containing U+2028/U+2029.
-2. **Do not bump or drop Sonic unconditionally.** Retain Sonic for decode only
-   if, at implementation time, a supported pin plus representative Go 1.27
-   benchmarks on amd64/arm64 still justify its decode advantage. There is no
-   unconditional dependency bump and no unsupported build-tag override.
-3. **Preserve the checked-response contract.** Transaction-list, single-log and
-   audit routes keep buffering (or an equivalent preflight) so nested marshal
-   failures return a clean 500 before any success headers. `MarshalWrite`
-   streaming is eligible only where the existing route already streams.
-4. **No silent toolchain drop.** The module's `go 1.26.0` minimum (and its
-   Nix/Docker/CI alignment) is raised only when a direct v2 import actually
-   requires it — not speculatively.
-5. **No new generator or alternate DTO here.** EN-1792 (generated
-   representation) and EN-1752 (HTTP DTO) are separate options and must be
-   reconciled; this decision must not silently absorb either.
+   These are candidate option sets, not proof of universal byte equivalence.
+   Neither unsorted encoder promises the same map iteration order on two
+   calls. Compare map-containing output modulo member order where the current
+   contract has no order guarantee, and assert escaping, framing and numeric
+   spelling separately. Preserve bytes where they are stable/promised; do not
+   add a sorting promise or call nondeterministic output byte-stable.
+   Existing nested custom marshalers can retain their own order and escaping;
+   verify the complete response, not just a plain map probe, before converting
+   a path. Error handling and invalid input behavior also require their own
+   compatibility tests.
+3. **Retain Sonic decode pending a measured alternative.** v1.15.3 already
+   supplies a supported native path. Compare byte and reader decode separately
+   on representative payloads before replacing it; no dependency bump, removal
+   or build-tag override is part of this ADR.
+4. **Preserve checked-response buffering.** A v2 migration must retain the
+   pre-header error boundary. Direct streaming is eligible only where a route
+   already streams. A post-header writer failure cannot be rolled back.
+5. **Align toolchains explicitly.** Raise the module's Go 1.26 minimum only
+   when direct v2 imports require it, with Nix/Docker/CI support aligned.
+6. **Keep one external representation.** EN-1792 (generated representation)
+   and EN-1752 (HTTP DTOs) remain separate architectural options. Resolve their
+   overlap before introducing a generator or a competing representation layer.
+
+## Alternatives and consequences
+
+- **Keep Sonic and the existing representation:** supported today and avoids
+  a broad migration. It does not itself carry per-call v2 options through the
+  custom methods; EN-1779 can deliver its own mode-carrying representation.
+  This is the fallback if the proposed migration cannot meet its gates.
+- **Convert affected paths to v2:** provides a shared request-scoped option
+  mechanism but requires contiguous custom-marshaler conversion, CLI dispatch
+  updates and full compatibility validation. An outer encoder swap is not an
+  implementation of that mechanism.
+- **Generated representation or HTTP DTOs:** credible alternatives under
+  EN-1792 / EN-1752, not dependencies silently added by this decision.
+
+Once an affected path propagates options, `WithMarshalers` can implement an
+amount override without global state. This does not deliver HTTP negotiation,
+input compatibility, schemas or SDK support for EN-1779. The preference for
+v2 is a capability decision; current measurements do not establish a general
+marshal speedup or a cluster TPS improvement.
 
 ## Scoped implementation sequence
 
 1. Inventory HTTP/CLI/event/mirror JSON entry points and custom/generated
-   `MarshalJSON` contracts at this revision; re-verify which JSON is
-   hashed/persisted (audit/idempotency bind protobuf binary, not JSON).
-2. Record Go 1.27+ encoder/decoder baselines on representative payloads —
-   marshal, streaming write and unmarshal separately, amd64 and arm64, with
-   exact toolchain and ns/B/allocs. Capture byte-level output per entry point
-   (map-key order, `<`/`>`/`&` vs U+2028/U+2029 escaping, trailing newline):
-   on Go 1.27 native Sonic is not compiled, so the baseline is the
-   `encoding/json` fallback, not the documented native-Sonic config flags.
-3. Prove compatibility of nested marshaller paths before switching; convert
-   each affected path (`MarshalJSON` → `MarshalJSONTo`) end to end so call-site
-   options are never absorbed at an opaque v1 boundary.
-4. Update CLI dispatch (`cmdutil/output.go`) and `encoder_contract_test.go` for
-   `MarshalJSONTo`/v2 so messages do not fall through to `protojson`.
-5. Fail-fast tests: inject late nested marshal failures and writer failures;
-   checked routes must 500 cleanly before headers.
-6. Publish the per-entry-point golden/round-trip matrix (field names, map-key
-   ordering, uint256 encoding, oneofs/discriminators, timestamps, nil/empty
-   collections, zero-value omission, colors, escaping, trailing newline) and
-   explicit decode strictness/duplicate/unknown/trailing-data behavior.
-7. **Keep the existing path and report the unresolved choice** if the
-   compatibility or performance gates cannot be met. This ADR validates the
-   plan, not the migration.
+   marshaller contracts at the implementation revision. Re-verify which bytes
+   are hashed/persisted before claiming that audited protobuf bytes,
+   signatures/idempotency and persisted semantics are unaffected.
+2. Repeat the linked compatibility probes and benchmarks against the exact
+   implementation baseline on supported amd64 and arm64 environments. Record
+   runtime backend, dependency, toolchain, payload, ns/op, B/op and allocs/op;
+   measure marshal, streaming write, byte decode and reader decode separately.
+3. Convert each affected money/log path to an option-aware v2 path end to end.
+   Prove a greater-than-2^53 amount override at nested levels and map values,
+   followed by a default call that remains numeric (no option leakage).
+4. Update CLI dispatch and `encoder_contract_test.go` with any
+   `MarshalJSONTo` conversion so messages cannot fall through to `protojson`.
+5. Publish the full per-entry-point golden/round-trip matrix: field names,
+   map ordering promises, uint256 encoding, oneofs/discriminators, timestamps,
+   nil/empty collections, zero-value omission, colors, escaping and newline.
+   Specify decode strictness, case matching, duplicate/unknown fields and
+   trailing-data behavior explicitly.
+6. Inject late nested marshal errors and writer errors. Checked routes must
+   return a clean 500 before success headers on serialization failure.
+7. Keep the current path and report the unresolved choice if compatibility or
+   performance gates cannot be met. This document validates a plan, not a
+   completed JSON migration.
 
-## Consequences
+## Refreshed evidence
 
-- `EN-1779` (opt-in string `Uint256` amounts) collapses to a per-call v2
-  `WithMarshalers` option once the conversion lands — the motivation for doing
-  this work rather than a smaller fix.
-- The historical measurements below are local diagnostics from a different
-  toolchain/revision. They raise the question but do **not** settle it; their
-  causal explanations are not reproduced here and must not be repeated as
-  established fact in the migration decision.
-
-### Historical evidence (non-normative)
-
-| Benchmark (100-tx list-shaped payload, darwin/arm64, Go 1.26.5) | ns/op | B/op | allocs/op |
-|---|--:|--:|--:|
-| Marshal `encoding/json` v1 | 49,152 | 44,732 | 701 |
-| Marshal Sonic | 69,609 | 40,646 | 302 |
-| MarshalWrite Sonic | 77,568 | 61,066 | 304 |
-| Unmarshal v1 | 183,515 | 77,016 | 2,318 |
-| Unmarshal Sonic | 52,117 | 94,736 | 906 |
-
-The only durable signal from these numbers is that Sonic is on the wrong path
-for marshal here, while its decode advantage is real enough to require a
-Go 1.27 baseline before dropping it. Nothing above is a cluster TPS forecast.
+The reproducible probe, exact environment and repeated measurements are in
+[the Sonic 1.15.3 evidence](evidence/sonic-1.15.3.md). They exercise the current
+custom Ledger types rather than claiming to benchmark an end-to-end v2
+conversion that has not been implemented. The full migration matrix and
+cross-platform performance gate remain implementation work.
