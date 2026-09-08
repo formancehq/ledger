@@ -1534,10 +1534,8 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 		err := membership.WalkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *membership.ConfChangeContext) error {
 			switch t {
 			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode:
-				if ctx != nil && ctx.HasPeerRegistration() {
-					if err := node.membership.Set(nodeID, ctx.RaftAddress, ctx.ServiceAddress, ctx.InstanceID); err != nil {
-						return fmt.Errorf("invariant: applying membership cache update: %w", err)
-					}
+				if err := node.membership.Set(nodeID, ctx.RaftAddress, ctx.ServiceAddress, ctx.InstanceID); err != nil {
+					return fmt.Errorf("invariant: applying membership cache update: %w", err)
 				}
 			case raftpb.ConfChangeRemoveNode:
 				// Install admission protection as part of observing the commit,
@@ -2243,6 +2241,48 @@ func (node *Node) LastPersistedIndex() uint64 {
 	return node.fsm.LastPersistedIndex()
 }
 
+// GetConfiguredPeers returns the leader's configured members with their
+// registered addresses and identities. Both views are captured in the same
+// orchestrate command, so a removal or re-registration cannot mix a previous
+// configuration with a later membership row. Followers return an empty list,
+// as they do not expose the leader's progress view.
+func (node *Node) GetConfiguredPeers(ctx context.Context) ([]Peer, error) {
+	var peers []Peer
+
+	err := node.execClusterCommand(ctx, func() error {
+		status := node.rawNode.Status()
+		if status.RaftState != raft.StateLeader {
+			return nil
+		}
+
+		addresses := node.membership.PeerAddresses()
+		peers = make([]Peer, 0, len(status.Progress))
+		for nodeID := range status.Progress {
+			address, ok := addresses[nodeID]
+			if !ok {
+				return fmt.Errorf("invariant: cluster member %d has no membership row", nodeID)
+			}
+			if err := membership.ValidateInstanceID(address.InstanceID); err != nil {
+				return fmt.Errorf("invariant: cluster member %d has invalid identity: %w", nodeID, err)
+			}
+
+			peers = append(peers, Peer{
+				ID:             nodeID,
+				Address:        address.RaftAddress,
+				ServiceAddress: address.ServiceAddress,
+				InstanceID:     address.InstanceID,
+			})
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return peers, nil
+}
+
 // GetClusterState returns the current state of the Raft cluster.
 // The rawNode.Status() call is dispatched to the orchestrate goroutine
 // because rawNode is not thread-safe. lastPersistedIndex is sampled in the
@@ -2778,12 +2818,6 @@ func (node *Node) addLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 // Must be called on the leader.
 func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 	proposalID := uuid.NewString()
-	ccCtx, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{
-		ProposalID: proposalID,
-	})
-	if err != nil {
-		return fmt.Errorf("marshaling promote-learner context: %w", err)
-	}
 
 	return node.retryConfChange(ctx, proposalID, nodeID, "PromoteLearner", []raftpb.ConfChangeType{
 		raftpb.ConfChangeAddNode,
@@ -2802,6 +2836,11 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 			return fmt.Errorf("node %d is already a voter", nodeID)
 		}
 
+		ccCtx, err := node.promotionContext(nodeID, proposalID)
+		if err != nil {
+			return err
+		}
+
 		return node.rawNode.ProposeConfChange(&raftpb.ConfChangeV2{
 			Changes: []*raftpb.ConfChangeSingle{{
 				Type:   new(raftpb.ConfChangeAddNode),
@@ -2810,6 +2849,24 @@ func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 			Context: ccCtx,
 		})
 	}, nil)
+}
+
+// promotionContext captures the registered learner payload on the orchestrate
+// goroutine. Both promotion paths commit this data so apply needs no cache read.
+func (node *Node) promotionContext(nodeID uint64, proposalID string) ([]byte, error) {
+	peer, ok := node.membership.PeerAddresses()[nodeID]
+	if !ok {
+		return nil, fmt.Errorf("invariant: learner %d has no membership row", nodeID)
+	}
+	if peer.RaftAddress == "" || peer.ServiceAddress == "" {
+		return nil, fmt.Errorf("invariant: learner %d requires raft and service addresses", nodeID)
+	}
+	if err := membership.ValidateInstanceID(peer.InstanceID); err != nil {
+		return nil, fmt.Errorf("invariant: learner %d has invalid identity: %w", nodeID, err)
+	}
+	peer.ProposalID = proposalID
+
+	return membership.MarshalConfChangeContext(peer)
 }
 
 // RemoveNode proposes removing a node (voter or learner) from the Raft cluster.
@@ -3269,7 +3326,13 @@ func (node *Node) checkAndPromoteLearners() error {
 				"threshold": node.config.AutoPromoteThreshold,
 			}).Infof("Auto-promoting learner to voter")
 
+			ccCtx, err := node.promotionContext(id, "")
+			if err != nil {
+				return err
+			}
+
 			cc := &raftpb.ConfChangeV2{
+				Context: ccCtx,
 				Changes: []*raftpb.ConfChangeSingle{
 					{
 						Type:   new(raftpb.ConfChangeAddNode),
@@ -3278,7 +3341,7 @@ func (node *Node) checkAndPromoteLearners() error {
 				},
 			}
 
-			err := node.rawNode.ProposeConfChange(cc)
+			err = node.rawNode.ProposeConfChange(cc)
 			if err != nil {
 				node.logger.WithFields(map[string]any{
 					"node_id": id,

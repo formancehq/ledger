@@ -7,6 +7,8 @@ import (
 	"time"
 
 	ggrpc "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
+	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -299,6 +302,9 @@ func (impl *ClusterServiceServerImpl) GetNodeTime(ctx context.Context, _ *cluste
 func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
 		return nil, err
+	}
+	if err := raftmembership.ValidateInstanceID(req.GetInstanceId()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	impl.logger.WithFields(map[string]any{

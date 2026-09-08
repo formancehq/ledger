@@ -797,8 +797,10 @@ creation and discovery message. `ClusterService.AddLearnerRequest.instance_id`
 is required and contains the raw bytes from the target's persisted
 `INSTANCE_ID` marker. The inter-node `JoinAsLearnerRequest.instance_id` has the
 same contract, and `ClusterBootstrapService.GetPeers` returns each member's ID
-in `PeerInfo.instance_id`. Missing or incorrectly sized values are rejected;
-there is no identity-less compatibility path because v3 is unreleased.
+in `PeerInfo.instance_id`. Missing or incorrectly sized registration identities
+are rejected with gRPC `InvalidArgument`. Peer discovery aborts startup when a
+returned member has an invalid identity, rather than retrying a malformed
+response. There is no identity-less compatibility path because v3 is unreleased.
 
 ### BucketService Methods
 

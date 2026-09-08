@@ -704,8 +704,17 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	return cfg, nil
 }
 
-// discoverPeersFromClusterWithRetry retries peer discovery with exponential backoff
-// indefinitely until peers are found or the context is cancelled (e.g. SIGTERM).
+type invalidDiscoveredPeerIdentityError struct {
+	cause error
+}
+
+func (e *invalidDiscoveredPeerIdentityError) Error() string { return e.cause.Error() }
+
+func (e *invalidDiscoveredPeerIdentityError) Unwrap() error { return e.cause }
+
+// discoverPeersFromClusterWithRetry retries transient peer discovery failures
+// with exponential backoff until peers are found or the context is cancelled.
+// Authentication failures and malformed discovered identities fail immediately.
 func discoverPeersFromClusterWithRetry(ctx context.Context, raftAddr string, tlsCfg bootstrap.TLSConfig, clusterID, clusterSecret string) ([]node.Peer, error) {
 	delay := 500 * time.Millisecond
 
@@ -713,6 +722,11 @@ func discoverPeersFromClusterWithRetry(ctx context.Context, raftAddr string, tls
 		peers, err := discoverPeersFromCluster(raftAddr, tlsCfg, clusterID, clusterSecret)
 		if err == nil {
 			return peers, nil
+		}
+
+		var identityErr *invalidDiscoveredPeerIdentityError
+		if errors.As(err, &identityErr) {
+			return nil, err
 		}
 
 		// A cluster-secret mismatch is a hard configuration error, never
@@ -797,7 +811,7 @@ func discoverPeersFromCluster(raftAddr string, tlsCfg bootstrap.TLSConfig, clust
 			continue
 		}
 		if err := membership.ValidateInstanceID(p.GetInstanceId()); err != nil {
-			return nil, fmt.Errorf("peer %d returned by %s has invalid identity: %w", p.GetId(), raftAddr, err)
+			return nil, &invalidDiscoveredPeerIdentityError{cause: fmt.Errorf("peer %d returned by %s has invalid identity: %w", p.GetId(), raftAddr, err)}
 		}
 
 		peers = append(peers, node.Peer{

@@ -183,35 +183,24 @@ func (s *Service) RemoveNode(ctx context.Context, nodeID uint64, force bool) err
 
 // ListPeers returns the current cluster members enriched with their
 // Raft and service addresses. The local node fills in its own
-// addresses from the constructor; remote addresses come from the
-// transport / service pools populated by the ConfChange observer.
+// addresses from the constructor; remote addresses and identities come
+// from the same membership snapshot as the configured member list.
 func (s *Service) ListPeers(ctx context.Context) ([]Peer, error) {
-	clusterState, err := s.node.GetClusterState(ctx)
+	configuredPeers, err := s.node.GetConfiguredPeers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading cluster state: %w", err)
 	}
 
 	localNodeID := s.node.GetNodeID()
-	peers := make([]Peer, 0, len(clusterState.GetNodes()))
+	peers := make([]Peer, 0, len(configuredPeers))
 
-	for _, n := range clusterState.GetNodes() {
-		nodeID := uint64(n.GetId())
+	for _, peer := range configuredPeers {
+		nodeID := peer.ID
 
-		var raftAddr, serviceAddr string
+		raftAddr, serviceAddr := peer.Address, peer.ServiceAddress
 		if nodeID == localNodeID {
 			raftAddr = s.localRaftAddr
 			serviceAddr = s.localServiceAddr
-		} else {
-			raftAddr = s.raftTransport.GetPeerAddress(nodeID)
-			serviceAddr = s.servicePool.GetPeerAddress(nodeID)
-		}
-
-		instanceID, ok := s.infraMembership.GetInstanceID(nodeID)
-		if !ok {
-			return nil, fmt.Errorf("invariant: cluster member %d has no membership row", nodeID)
-		}
-		if err := membership.ValidateInstanceID(instanceID); err != nil {
-			return nil, fmt.Errorf("invariant: cluster member %d has invalid identity: %w", nodeID, err)
 		}
 
 		if raftAddr == "" || serviceAddr == "" {
@@ -222,7 +211,7 @@ func (s *Service) ListPeers(ctx context.Context) ([]Peer, error) {
 			ID:             nodeID,
 			RaftAddress:    raftAddr,
 			ServiceAddress: serviceAddr,
-			InstanceID:     instanceID,
+			InstanceID:     peer.InstanceID,
 		})
 	}
 

@@ -4361,6 +4361,8 @@ The comparison is constant-time. Leaving `--cluster-secret` empty preserves the
 historical unauthenticated behavior for single-node setups; multi-node
 deployments **MUST** set it.
 
+Peer discovery also fails immediately when a discovered member has a missing or malformed 16-byte `instance_id`; retrying cannot repair this invalid cluster identity. Transient discovery failures still use exponential backoff.
+
 **Joining fails fast on a secret mismatch.** A node started with `--join`
 against a cluster whose RaftServer requires a secret will **not** retry
 indefinitely if its own secret is missing or wrong — that is a
