@@ -173,22 +173,35 @@ func (b *Builder) removeBackfillTask(ledgerName string, id *commonpb.IndexID) er
 			continue
 		}
 
-		if b.wb != nil && b.wb.Batch() != nil {
-			if err := b.readStore.DeleteBackfillProgressInBatch(b.wb.Batch(), t.bbKey); err != nil {
-				return fmt.Errorf("deleting backfill cursor for %q/%s: %w", ledgerName, backfillIndexName(id), err)
-			}
-		} else if err := b.readStore.DeleteBackfillProgress(t.bbKey); err != nil {
-			return fmt.Errorf("deleting standalone backfill cursor for %q/%s: %w", ledgerName, backfillIndexName(id), err)
-		}
-
-		prior := slices.Clone(b.backfillTasks)
-		b.recordFoldRollback(func() { b.backfillTasks = prior })
-		// Remove from slice (order doesn't matter).
-		b.backfillTasks[i] = b.backfillTasks[len(b.backfillTasks)-1]
-		b.backfillTasks = b.backfillTasks[:len(b.backfillTasks)-1]
-
-		return nil
+		return removeTaskAndProgress(
+			b,
+			&b.backfillTasks,
+			i,
+			t.bbKey,
+			fmt.Sprintf("backfill cursor for %q/%s", ledgerName, backfillIndexName(id)),
+		)
 	}
+
+	return nil
+}
+
+// removeTaskAndProgress atomically removes one in-memory task and its durable
+// cursor. The rollback closure restores the exact task ordering when the fold
+// batch later fails.
+func removeTaskAndProgress[T any](b *Builder, tasks *[]*T, idx int, bbKey []byte, description string) error {
+	if b.wb != nil && b.wb.Batch() != nil {
+		if err := b.readStore.DeleteBackfillProgressInBatch(b.wb.Batch(), bbKey); err != nil {
+			return fmt.Errorf("deleting %s: %w", description, err)
+		}
+	} else if err := b.readStore.DeleteBackfillProgress(bbKey); err != nil {
+		return fmt.Errorf("deleting standalone %s: %w", description, err)
+	}
+
+	prior := slices.Clone(*tasks)
+	b.recordFoldRollback(func() { *tasks = prior })
+	current := *tasks
+	current[idx] = current[len(current)-1]
+	*tasks = current[:len(current)-1]
 
 	return nil
 }
@@ -467,20 +480,13 @@ func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexI
 func (b *Builder) removeSchemaRewriteTask(idx int) error {
 	task := b.schemaRewriteTasks[idx]
 
-	if b.wb != nil && b.wb.Batch() != nil {
-		if err := b.readStore.DeleteBackfillProgressInBatch(b.wb.Batch(), task.bbKey); err != nil {
-			return fmt.Errorf("deleting schema rewrite cursor for %q/%s: %w", task.ledger, task.key, err)
-		}
-	} else if err := b.readStore.DeleteBackfillProgress(task.bbKey); err != nil {
-		return fmt.Errorf("deleting standalone schema rewrite cursor for %q/%s: %w", task.ledger, task.key, err)
-	}
-
-	prior := slices.Clone(b.schemaRewriteTasks)
-	b.recordFoldRollback(func() { b.schemaRewriteTasks = prior })
-	b.schemaRewriteTasks[idx] = b.schemaRewriteTasks[len(b.schemaRewriteTasks)-1]
-	b.schemaRewriteTasks = b.schemaRewriteTasks[:len(b.schemaRewriteTasks)-1]
-
-	return nil
+	return removeTaskAndProgress(
+		b,
+		&b.schemaRewriteTasks,
+		idx,
+		task.bbKey,
+		fmt.Sprintf("schema rewrite cursor for %q/%s", task.ledger, task.key),
+	)
 }
 
 func (b *Builder) discardCompletedSchemaRewriteTask(idx int) {

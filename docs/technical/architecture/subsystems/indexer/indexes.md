@@ -135,7 +135,7 @@ The protobuf oneof annotations in `common.proto` are the build-enforced classifi
 - **`NON_EMPTY`**: the builder persists `CurrentVersion=0, PendingVersion=next`, schedules the normal historical backfill from the global cursor, and keeps queries behind `ErrIndexBuilding` until the atomic switch.
 - **Missing or corrupt state**: the builder fails the replay invariant; it never silently treats an unproved ledger as empty.
 
-`log_date` covers CONTROL as well as HISTORY. While a ledger is `EMPTY`, date rows are staged for every ledger-local CONTROL log even before the index is declared, which lets an EMPTY `log_date` creation promote immediately without omitting earlier configuration logs or its own `CreateIndex` log. If the first HISTORY arrives before `log_date` exists, that speculative prefix is deleted in the same fold and a future `NON_EMPTY` creation uses the complete backfill.
+`log_date` covers CONTROL as well as HISTORY. While a ledger is `EMPTY`, date rows are staged for every ledger-local CONTROL log even before the index is declared, which lets an EMPTY `log_date` creation promote immediately without omitting earlier configuration logs or its own `CreateIndex` log. If the first HISTORY arrives before `log_date` exists, that speculative prefix is deleted in the same fold and a future `NON_EMPTY` creation uses the complete backfill. An incarnation that remains `EMPTY` and never declares `log_date` deliberately retains this speculative prefix: discarding it earlier would make a later direct promotion omit the preceding CONTROL logs. Its retained size is therefore `O(CONTROL logs for the incarnation)` until `log_date` is created, the first HISTORY arrives, or the ledger is deleted.
 
 ## Restore Lifecycle
 

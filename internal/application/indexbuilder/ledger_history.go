@@ -111,11 +111,14 @@ func (b *Builder) observeLedgerPayload(ledger string, payload *commonpb.LedgerLo
 }
 
 func (b *Builder) observeDeletedLedger(ledger string) error {
-	if _, exists := b.historyStateFor(ledger); !exists {
-		return fmt.Errorf("invariant: DeleteLedger for %q has no EMPTY/NON_EMPTY history state", ledger)
-	}
 	if b.wb == nil || b.wb.Batch() == nil {
 		return fmt.Errorf("invariant: DeleteLedger for %q encountered without an active readstore batch", ledger)
+	}
+	if _, exists := b.historyStateFor(ledger); !exists {
+		// Ledger deletion is idempotent at the API/FSM boundary, so repeated
+		// DeleteLedger logs are valid. The first one already removed the durable
+		// tracker and all generation-scoped builder state.
+		return nil
 	}
 	if err := b.wb.DeleteLedgerHistoryState(b.kb, ledger); err != nil {
 		return fmt.Errorf("deleting ledger history state for %q: %w", ledger, err)
