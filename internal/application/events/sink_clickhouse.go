@@ -125,11 +125,25 @@ func NewClickHouseSink(ctx context.Context, cfg ClickHouseSinkConfig) (*ClickHou
 		return nil, fmt.Errorf("opening ClickHouse connection: %w", err)
 	}
 
+	return initializeClickHouseSink(ctx, conn, cfg.Table)
+}
+
+// initializeClickHouseSink completes the fallible initialization steps after
+// clickhouse.Open. It owns conn until success so constructor retries cannot
+// leak connections when Ping or table creation fails.
+func initializeClickHouseSink(ctx context.Context, conn driver.Conn, configuredTable string) (*ClickHouseSink, error) {
+	success := false
+	defer func() {
+		if !success {
+			_ = conn.Close()
+		}
+	}()
+
 	if err := conn.Ping(ctx); err != nil {
 		return nil, fmt.Errorf("pinging ClickHouse: %w", err)
 	}
 
-	table := cfg.Table
+	table := configuredTable
 	if table == "" {
 		table = defaultClickHouseTable
 	}
@@ -137,6 +151,8 @@ func NewClickHouseSink(ctx context.Context, cfg ClickHouseSinkConfig) (*ClickHou
 	if err := conn.Exec(ctx, ClickHouseCreateTableDDL(table)); err != nil {
 		return nil, fmt.Errorf("creating ClickHouse table %s: %w", table, err)
 	}
+
+	success = true
 
 	return &ClickHouseSink{
 		conn:  conn,
