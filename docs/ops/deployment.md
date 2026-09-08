@@ -523,11 +523,11 @@ config:
 
 #### Error-Aware Trace Sampling
 
-The application supports intelligent trace sampling that prioritizes error traces while reducing the volume of successful traces. This is particularly useful in high-throughput production environments where you want to:
-
-- **Always capture errors**: All traces containing errors are exported, regardless of sampling ratio
-- **Reduce costs**: Lower the volume of successful traces to reduce storage and processing costs
-- **Maintain visibility**: Keep enough successful traces for baseline performance analysis
+The optional in-process sampler reduces exported successful traces while retaining
+pending spans for cross-batch error discovery. It is disabled by default. At high
+trace rates, its 30-second retention can consume substantial application memory.
+An error arriving after that window cannot recover expired spans; errors seen
+only in another process cannot promote this process's pending spans.
 
 **Configuration**:
 
@@ -552,32 +552,43 @@ export TRACE_SAMPLING_SUCCESS_RATIO=0.1
 
 **How it works**:
 
-1. All spans are recorded locally
-2. At export time, the sampling decision is made:
-   - **Error spans**: Always exported (status code ERROR, exception attributes, or error=true)
-   - **Successful spans**: Sampled based on `successRatio` using deterministic hash of trace ID
-3. All spans within the same trace have the same sampling decision (trace-level consistency)
+1. The SDK records spans according to its head sampler.
+2. The local exporter discovers error trace IDs, flushes their buffered spans,
+   and exports their current siblings. Other traces are hash-sampled by trace ID.
+3. Non-sampled spans wait up to 30 seconds from their first local observation.
+   Additional spans do not refresh the deadline. Expiry runs on the next
+   non-empty export batch; shutdown clears retained state.
 
-**Recommendations**:
+**Collector-side sampling**:
 
-| Environment | `successRatio` | Notes |
-|-------------|---------------|-------|
-| Development | `1.0` (disabled) | Keep all traces for debugging |
-| Staging | `0.5` | Balance between visibility and volume |
-| Production (low traffic) | `0.2` | Keep 20% of successful traces |
-| Production (high traffic) | `0.05-0.1` | Keep 5-10% of successful traces |
+Use `TRACE_SAMPLING_ENABLED=false` and `OTEL_TRACES_SAMPLER=always_on`, with OTLP
+trace export enabled, to send the exhaustive Ledger stream without local tail
+buffering. Setting the success ratio to `1` still installs the wrapper. The
+collector must compute span metrics before sampling and route all spans of a
+trace to the same sampling instance. Size its decision window and queues from
+measured trace duration and arrival skew; a finite window cannot recover spans
+already dropped when a late error arrives.
 
-**Kubernetes (Ledger CR) configuration**:
+See the [sampling contract and EN-1588 experiment](../technical/architecture/subsystems/monitoring/trace-sampling.md)
+for CPU/memory limitations, error-completeness constraints, and the required A/B
+validation before a collector rollout.
+
+**Kubernetes (Cluster CR) configuration for collector-side sampling**:
 
 ```yaml
 spec:
-  config:
-    monitoring:
-      traces:
-        sampling:
-          enabled: true
-          successRatio: "0.1"  # 10% of successful traces
+  monitoring:
+    traces:
+      sampling:
+        enabled: false
+  extraEnv:
+    - name: OTEL_TRACES_SAMPLER
+      value: always_on
 ```
+
+Keep the OTLP exporter and endpoint configured. When using the main Formance
+Operator's `LedgerConfiguration`, these fields are under `spec.cluster`.
+Verify the rendered pod environment on the deployed Operator version.
 
 #### ServiceMonitor (Prometheus)
 

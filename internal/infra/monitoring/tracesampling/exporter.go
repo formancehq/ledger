@@ -15,9 +15,9 @@ const defaultPendingWindow = 30 * time.Second
 // ErrorAwareSamplingExporter is a SpanExporter that implements trace-aware
 // tail-based sampling at the SDK level.
 //
-// It ensures that ALL spans from error traces are exported (including spans
-// that arrived in earlier export batches), while applying ratio-based sampling
-// to successful traces.
+// It exports error traces together with their unexpired buffered spans from
+// earlier export batches, while applying ratio-based sampling to successful
+// traces. Errors arriving after the pending window cannot recover expired spans.
 //
 // This is necessary because child spans (e.g. ReadIndex, query) end in
 // milliseconds and are batched for export long before the parent streaming
@@ -37,6 +37,15 @@ type ErrorAwareSamplingExporter struct {
 	mu          sync.Mutex
 	errorTraces map[[16]byte]time.Time     // trace ID → when error was first seen
 	pending     map[[16]byte]*pendingTrace // non-error, non-sampled spans awaiting decision
+	expirations []expiryBatch              // first-seen order, containing IDs only (never spans)
+}
+
+// Every map insertion belongs to one export batch. All entries have the same
+// fixed lifetime, so expiration can consume this FIFO without scanning live maps.
+type expiryBatch struct {
+	firstSeen  time.Time
+	pendingIDs [][16]byte
+	errorIDs   [][16]byte
 }
 
 type pendingTrace struct {
@@ -83,24 +92,23 @@ func (e *ErrorAwareSamplingExporter) ExportSpans(ctx context.Context, spans []sd
 	now := time.Now()
 	e.cleanupLocked(now)
 
-	// Phase 1: discover error trace IDs in this batch.
+	var toExport []sdktrace.ReadOnlySpan
+	expiry := expiryBatch{firstSeen: now}
+
+	// Discover errors and flush only their buffered spans. Successful batches
+	// must not scan the entire pending window looking for newly errored traces.
 	for _, s := range spans {
 		if isErrorSpan(s) {
 			traceID := s.SpanContext().TraceID()
 			if _, ok := e.errorTraces[traceID]; !ok {
 				e.errorTraces[traceID] = now
+				expiry.errorIDs = append(expiry.errorIDs, traceID)
 			}
-		}
-	}
 
-	// Phase 2: flush previously buffered spans from now-known error traces.
-	var toExport []sdktrace.ReadOnlySpan
-
-	for id, pt := range e.pending {
-		if _, ok := e.errorTraces[id]; ok {
-			toExport = append(toExport, pt.spans...)
-
-			delete(e.pending, id)
+			if pt, ok := e.pending[traceID]; ok {
+				toExport = append(toExport, pt.spans...)
+				delete(e.pending, traceID)
+			}
 		}
 	}
 
@@ -117,10 +125,15 @@ func (e *ErrorAwareSamplingExporter) ExportSpans(ctx context.Context, spans []sd
 			if !ok {
 				pt = &pendingTrace{firstSeen: now}
 				e.pending[traceID] = pt
+				expiry.pendingIDs = append(expiry.pendingIDs, traceID)
 			}
 
 			pt.spans = append(pt.spans, s)
 		}
+	}
+
+	if len(expiry.pendingIDs) > 0 || len(expiry.errorIDs) > 0 {
+		e.expirations = append(e.expirations, expiry)
 	}
 
 	e.mu.Unlock()
@@ -135,16 +148,23 @@ func (e *ErrorAwareSamplingExporter) ExportSpans(ctx context.Context, spans []sd
 // cleanupLocked removes expired entries from errorTraces and pending.
 // Must be called with e.mu held.
 func (e *ErrorAwareSamplingExporter) cleanupLocked(now time.Time) {
-	for id, t := range e.errorTraces {
-		if now.Sub(t) > e.pendingWindow {
+	for len(e.expirations) > 0 && now.Sub(e.expirations[0].firstSeen) > e.pendingWindow {
+		expiry := e.expirations[0]
+		for _, id := range expiry.errorIDs {
 			delete(e.errorTraces, id)
 		}
-	}
-
-	for id, pt := range e.pending {
-		if now.Sub(pt.firstSeen) > e.pendingWindow {
+		for _, id := range expiry.pendingIDs {
+			// A promoted trace is already absent. It cannot become pending
+			// again until its later error deadline has also expired.
 			delete(e.pending, id)
 		}
+		// Release ID slices as well as map entries; consumed batches must not
+		// remain reachable through the queue's backing array.
+		e.expirations[0] = expiryBatch{}
+		e.expirations = e.expirations[1:]
+	}
+	if len(e.expirations) == 0 {
+		e.expirations = nil
 	}
 }
 
@@ -204,6 +224,7 @@ func (e *ErrorAwareSamplingExporter) Shutdown(ctx context.Context) error {
 
 	e.pending = nil
 	e.errorTraces = nil
+	e.expirations = nil
 	e.mu.Unlock()
 
 	if len(remaining) > 0 {
