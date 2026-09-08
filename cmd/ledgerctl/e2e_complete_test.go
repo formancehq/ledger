@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -47,11 +48,11 @@ func TestE2ECompletionUsesExplicitProfileNotActive(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
 	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("APPDATA", tmp)
 	t.Setenv("LEDGERCTL_PROFILE", "")
 	t.Setenv("LEDGERCTL_SERVER", "")
-	base, err := os.UserConfigDir()
+	dir, err := cmdutil.ConfigDir()
 	require.NoError(t, err)
-	dir := filepath.Join(base, "ledgerctl")
 	require.NoError(t, os.MkdirAll(dir, 0o700))
 	cfg := `{"activeProfile":"acme","profiles":{` +
 		`"acme":{"server":"` + activeAddr + `","insecure":true},` +

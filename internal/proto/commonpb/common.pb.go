@@ -625,6 +625,12 @@ const (
 	// ERROR_REASON_CHECKPOINT_NOT_FOUND: a DeleteQueryCheckpoint targeted an id
 	// that is not live (never created, or already deleted). See EN-1501.
 	ErrorReason_ERROR_REASON_CHECKPOINT_NOT_FOUND ErrorReason = 67
+	// ERROR_REASON_SEQUENCE_EXHAUSTED: an authoritative transaction, ledger-log,
+	// global-log, or audit sequence reached its final allocatable value. The
+	// operation is rejected before uint64 wrap can publish a zero/reused key.
+	// Permanent (Kind=ResourceExhausted): retrying cannot create another ID.
+	// See EN-1860.
+	ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED ErrorReason = 68
 )
 
 // Enum value maps for ErrorReason.
@@ -698,6 +704,7 @@ var (
 		65: "ERROR_REASON_CLUSTER_POLICY_INVALID",
 		66: "ERROR_REASON_CHECKPOINT_LIMIT_REACHED",
 		67: "ERROR_REASON_CHECKPOINT_NOT_FOUND",
+		68: "ERROR_REASON_SEQUENCE_EXHAUSTED",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -768,6 +775,7 @@ var (
 		"ERROR_REASON_CLUSTER_POLICY_INVALID":           65,
 		"ERROR_REASON_CHECKPOINT_LIMIT_REACHED":         66,
 		"ERROR_REASON_CHECKPOINT_NOT_FOUND":             67,
+		"ERROR_REASON_SEQUENCE_EXHAUSTED":               68,
 	}
 )
 
@@ -13232,7 +13240,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xbc\x15\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xe1\x15\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -13302,7 +13310,8 @@ const file_common_proto_rawDesc = "" +
 	"-ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT\x10@\x12'\n" +
 	"#ERROR_REASON_CLUSTER_POLICY_INVALID\x10A\x12)\n" +
 	"%ERROR_REASON_CHECKPOINT_LIMIT_REACHED\x10B\x12%\n" +
-	"!ERROR_REASON_CHECKPOINT_NOT_FOUND\x10C*Q\n" +
+	"!ERROR_REASON_CHECKPOINT_NOT_FOUND\x10C\x12#\n" +
+	"\x1fERROR_REASON_SEQUENCE_EXHAUSTED\x10D*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +

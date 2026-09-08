@@ -230,6 +230,7 @@ const (
 	ErrReasonClusterPolicyInvalid          = "CLUSTER_POLICY_INVALID"
 	ErrReasonCheckpointLimitReached        = "CHECKPOINT_LIMIT_REACHED"
 	ErrReasonCheckpointNotFound            = "CHECKPOINT_NOT_FOUND"
+	ErrReasonSequenceExhausted             = "SEQUENCE_EXHAUSTED"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -241,6 +242,21 @@ const (
 	// Maps to gRPC Unavailable / HTTP 503.
 	ErrReasonWritesBlockedClockSkew = "WRITES_BLOCKED_CLOCK_SKEW"
 )
+
+// ErrSequenceExhausted rejects an allocation that would wrap an authoritative
+// uint64 counter to zero. Exhaustion is permanent for the affected ledger or
+// cluster; retrying cannot create another unique identifier.
+type ErrSequenceExhausted struct {
+	Counter SequenceCounter
+}
+
+func (e *ErrSequenceExhausted) Error() string {
+	return fmt.Sprintf("%s exhausted: cannot allocate another identifier", e.Counter)
+}
+func (*ErrSequenceExhausted) Reason() string { return ErrReasonSequenceExhausted }
+func (e *ErrSequenceExhausted) Metadata() map[string]string {
+	return map[string]string{"counter": string(e.Counter)}
+}
 
 // BusinessError wraps a Describable so it can flow through code paths that
 // only understand the standard `error` interface (futures, admission,

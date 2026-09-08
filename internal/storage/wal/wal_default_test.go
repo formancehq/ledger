@@ -657,6 +657,150 @@ func TestEntries_HiOutOfBound(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestEntries_ResultCannotCorruptWAL pins the Raft Storage capacity contract
+// (EN-1964): Entries() lends part of its cached window to callers that are
+// allowed to append to the returned slice. With contiguous cache growth
+// retaining spare capacity, an uncapped subrange or maxSize-limited result
+// extends over still-retained entries, so a caller-appended suffix would write
+// into the WAL. The returned slice must be capped to its final length so
+// caller appends reallocate instead of sharing writable slots with the WAL.
+func TestEntries_ResultCannotCorruptWAL(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		lo, hi  uint64
+		maxSize uint64
+	}{
+		// A subrange ends before the window end: the un-capped backing array
+		// continues over the retained entries that follow it.
+		{name: "subrange", lo: 2, hi: 4, maxSize: math.MaxUint64},
+		// A tiny maxSize keeps only the first entry; entries 2..5 remain in
+		// the un-capped tail of the returned backing array.
+		{name: "maxSize limited", lo: 1, hi: 6, maxSize: 1},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			w := newTestWAL(t)
+			// Build the cached window directly with deterministic spare
+			// capacity so the aliasing risk is exercised regardless of Go's
+			// growth heuristics.
+			w.entries = make([]*raftpb.Entry, 5, 10)
+			for i := range w.entries {
+				w.entries[i] = ent(uint64(i+1), uint64(i+1), []byte{byte('a' + i)})
+			}
+
+			got, err := w.Entries(tc.lo, tc.hi, tc.maxSize)
+			require.NoError(t, err)
+			require.Equal(t, len(got), cap(got), "Entries() result must be capped to its final length")
+
+			// Raft's Storage contract permits callers to append to the
+			// returned slice. The appended value is discarded: only the write
+			// into the (ideally absent) shared spare capacity is under test.
+			_ = append(got, ent(999, 999, []byte("unstable")))
+
+			// The retained WAL entries must be untouched.
+			all, err := w.Entries(1, 6, math.MaxUint64)
+			require.NoError(t, err)
+			require.Len(t, all, 5)
+			for i := range all {
+				require.Equal(t, uint64(i+1), all[i].GetIndex(), "entry %d index corrupted", i)
+				require.Equal(t, uint64(i+1), all[i].GetTerm(), "entry %d term corrupted", i)
+				require.Equal(t, []byte{byte('a' + i)}, all[i].GetData(), "entry %d data corrupted", i)
+			}
+		})
+	}
+}
+
+// TestEntries_FullWindowResultSurvivesLaterAppend pins the reverse direction
+// of the EN-1964 capacity contract: a caller may append an unstable suffix to
+// a full-window Entries() result and serialize it asynchronously. A later
+// contiguous WAL append that reuses the shared spare capacity must not
+// overwrite that caller-owned suffix.
+func TestEntries_FullWindowResultSurvivesLaterAppend(t *testing.T) {
+	t.Parallel()
+
+	w := newTestWAL(t)
+
+	// Seed memory and disk with entries 1..5 through the public Append so the
+	// on-disk WAL stays consistent for the later contiguous Append at index 6.
+	seed := make([]*raftpb.Entry, 5)
+	for i := range seed {
+		seed[i] = ent(uint64(i+1), 1, []byte{byte('a' + i)})
+	}
+	require.NoError(t, w.Append(hs(1, 1, 5), seed))
+
+	// Give the cached window deterministic spare capacity (matching what the
+	// contiguous-grow fast path leaves behind).
+	fresh := make([]*raftpb.Entry, 5, 10)
+	copy(fresh, w.entries[:5])
+	w.entries = fresh
+
+	got, err := w.Entries(1, 6, math.MaxUint64)
+	require.NoError(t, err)
+	require.Len(t, got, 5)
+	require.Equal(t, len(got), cap(got), "full-window Entries() result must be capped to its final length")
+
+	// Caller appends an unstable suffix (index 6) and keeps the slice for
+	// asynchronous transport serialization.
+	got = append(got, ent(6, 999, []byte("unstable")))
+
+	// A later contiguous WAL append reuses the shared spare slot. It must not
+	// clobber the caller's appended message.
+	require.NoError(t, w.Append(hs(1, 1, 6), []*raftpb.Entry{ent(6, 1, []byte("real"))}))
+
+	require.Len(t, got, 6)
+	require.Equal(t, uint64(6), got[5].GetIndex())
+	require.Equal(t, uint64(999), got[5].GetTerm(), "caller-appended suffix was overwritten by a later WAL write")
+	require.Equal(t, []byte("unstable"), got[5].GetData())
+
+	// The WAL itself stored the real entry, not the caller's suffix.
+	stored, err := w.Entries(6, 7, math.MaxUint64)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), stored[0].GetTerm())
+	require.Equal(t, []byte("real"), stored[0].GetData())
+}
+
+// TestAppend_OverlappingReplacementKeepsBorrowedWindow pins the retained
+// allocation in the overlap/truncation path: Entries() results are serialized
+// asynchronously by the transport, so an overlapping Append (leader change)
+// that truncates the cached window must allocate a new backing array rather
+// than overwrite the still-borrowed window.
+func TestAppend_OverlappingReplacementKeepsBorrowedWindow(t *testing.T) {
+	t.Parallel()
+
+	w := newTestWAL(t)
+	require.NoError(t, w.Append(hs(1, 1, 3), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
+	}))
+
+	borrowed, err := w.Entries(1, 4, math.MaxUint64)
+	require.NoError(t, err)
+	require.Len(t, borrowed, 3)
+
+	// Overlapping replacement from index 2 (simulated leader change).
+	require.NoError(t, w.Append(hs(2, 2, 2), []*raftpb.Entry{
+		ent(2, 2, []byte("b-new")),
+	}))
+
+	// The borrowed window must still reflect the pre-truncation log.
+	require.Equal(t, []byte("a"), borrowed[0].GetData())
+	require.Equal(t, []byte("b"), borrowed[1].GetData())
+	require.Equal(t, []byte("c"), borrowed[2].GetData())
+
+	// The WAL now reflects the truncated log.
+	got, err := w.Entries(1, 3, math.MaxUint64)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, uint64(2), got[1].GetIndex())
+	require.Equal(t, []byte("b-new"), got[1].GetData())
+}
+
 // --- Term tests ---
 
 func TestTerm_Basic(t *testing.T) {

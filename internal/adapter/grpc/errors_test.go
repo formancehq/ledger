@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,7 +9,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -36,8 +41,15 @@ func TestHandlePanic_DoesNotLeakStackToClient(t *testing.T) {
 
 	const secretInternal = "panic message leaking /internal/path"
 	stack := []byte("goroutine 1 [running]:\nmain.veryRevealingFunctionName(...)\n\t/build/ledger/internal/secret.go:42")
+	var logs bytes.Buffer
+	logger := logging.NewDefaultLogger(&logs, false, false, false)
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.Background())) })
+	ctx, span := provider.Tracer("test").Start(context.Background(), "request")
 
-	grpcErr := handlePanic(context.Background(), testLogger(), secretInternal, stack)
+	grpcErr := handlePanic(ctx, logger, secretInternal, stack)
+	span.End()
 
 	st, ok := status.FromError(grpcErr)
 	require.True(t, ok)
@@ -49,6 +61,13 @@ func TestHandlePanic_DoesNotLeakStackToClient(t *testing.T) {
 	require.NotContains(t, st.Message(), "/build",
 		"file paths MUST NOT leak through to the client (#326)")
 	require.Contains(t, st.Message(), "correlation ID")
+	require.Contains(t, logs.String(), span.SpanContext().TraceID().String())
+	require.Contains(t, logs.String(), span.SpanContext().SpanID().String())
+
+	ended := recorder.Ended()
+	require.Len(t, ended, 1)
+	require.NotEmpty(t, grpcSpanAttribute(ended[0], "correlation_id"))
+	require.NotEmpty(t, ended[0].Events())
 }
 
 func TestBusinessErrorToGRPCStatus_LedgerAlreadyExists(t *testing.T) {
@@ -64,6 +83,20 @@ func TestBusinessErrorToGRPCStatus_LedgerAlreadyExists(t *testing.T) {
 	require.Equal(t, domain.ErrReasonLedgerAlreadyExists, info.GetReason())
 	require.Equal(t, errorDomain, info.GetDomain())
 	require.Equal(t, "my-ledger", info.GetMetadata()["name"])
+}
+
+func TestBusinessErrorToGRPCStatus_SequenceExhausted(t *testing.T) {
+	t.Parallel()
+
+	bizErr := &domain.BusinessError{Err: &domain.ErrSequenceExhausted{
+		Counter: domain.SequenceCounterTransactionID,
+	}}
+	st := businessErrorToGRPCStatus(bizErr)
+
+	require.Equal(t, codes.ResourceExhausted, st.Code())
+	info := extractErrorInfo(t, st)
+	require.Equal(t, domain.ErrReasonSequenceExhausted, info.GetReason())
+	require.Equal(t, "transactionId", info.GetMetadata()["counter"])
 }
 
 func TestBusinessErrorToGRPCStatus_LedgerNotFound(t *testing.T) {
@@ -435,6 +468,121 @@ func TestConvertToGRPCError_UnknownErrorIsSanitized(t *testing.T) {
 	require.NotContains(t, st.Message(), secretInternalDetail,
 		"raw internal error string MUST NOT leak through to the client (#326)")
 	require.Contains(t, st.Message(), "correlation ID")
+}
+
+func TestErrorConversionInterceptorsRecordCorrelatedDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		err      error
+		wantCode codes.Code
+	}{
+		{name: "unknown", err: errors.New("unknown storage failure"), wantCode: codes.Unknown},
+		{name: "kind internal", err: &domain.ErrInvalidExecutionPlan{Reason_: "secret structural detail"}, wantCode: codes.Internal},
+	}
+
+	transports := []struct {
+		name string
+		run  func(context.Context, logging.Logger, error) error
+	}{
+		{
+			name: "unary",
+			run: func(ctx context.Context, logger logging.Logger, injected error) error {
+				_, err := errorConversionInterceptor(logger)(ctx, nil, &ggrpc.UnaryServerInfo{FullMethod: "/test.Service/Method"},
+					func(context.Context, any) (any, error) { return nil, injected })
+
+				return err
+			},
+		},
+		{
+			name: "stream",
+			run: func(ctx context.Context, logger logging.Logger, injected error) error {
+				stream := &loggerServerStream{ctx: ctx}
+
+				return errorConversionStreamInterceptor(logger)(nil, stream, &ggrpc.StreamServerInfo{FullMethod: "/test.Service/Stream"},
+					func(any, ggrpc.ServerStream) error { return injected })
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		for _, transport := range transports {
+			t.Run(tt.name+"/"+transport.name, func(t *testing.T) {
+				var logs bytes.Buffer
+				logger := logging.NewDefaultLogger(&logs, false, false, false)
+				recorder := tracetest.NewSpanRecorder()
+				provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+				t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.Background())) })
+
+				ctx, span := provider.Tracer("test").Start(context.Background(), "request")
+				grpcErr := transport.run(ctx, logger, tt.err)
+				span.End()
+
+				st, ok := status.FromError(grpcErr)
+				require.True(t, ok)
+				require.Equal(t, tt.wantCode, st.Code())
+				if tt.wantCode == codes.Internal {
+					require.Equal(t, tt.err.Error(), st.Message(), "KindInternal response contracts stay unchanged")
+				}
+
+				require.Contains(t, logs.String(), tt.err.Error())
+				require.Contains(t, logs.String(), span.SpanContext().TraceID().String())
+				require.Contains(t, logs.String(), span.SpanContext().SpanID().String())
+
+				ended := recorder.Ended()
+				require.Len(t, ended, 1)
+				require.NotEmpty(t, grpcSpanAttribute(ended[0], "correlation_id"))
+				require.NotEmpty(t, ended[0].Events())
+			})
+		}
+	}
+}
+
+func TestErrorConversionInterceptorOmitsTraceFieldsForNonRecordingSpan(t *testing.T) {
+	t.Parallel()
+
+	var logs bytes.Buffer
+	logger := logging.NewDefaultLogger(&logs, false, false, false)
+	spanContext := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: trace.TraceID{1},
+		SpanID:  trace.SpanID{2},
+		Remote:  true,
+	})
+	ctx := trace.ContextWithRemoteSpanContext(context.Background(), spanContext)
+
+	_, err := errorConversionInterceptor(logger)(ctx, nil, &ggrpc.UnaryServerInfo{FullMethod: "/test.Service/Method"},
+		func(context.Context, any) (any, error) { return nil, errors.New("boom") })
+
+	require.Equal(t, codes.Unknown, status.Code(err))
+	require.Contains(t, logs.String(), "correlation_id")
+	require.NotContains(t, logs.String(), "trace_id")
+	require.NotContains(t, logs.String(), "span_id")
+}
+
+func TestErrorConversionInterceptorPreservesSequenceExhausted(t *testing.T) {
+	t.Parallel()
+
+	var logs bytes.Buffer
+	logger := logging.NewDefaultLogger(&logs, false, false, false)
+	_, err := errorConversionInterceptor(logger)(context.Background(), nil,
+		&ggrpc.UnaryServerInfo{FullMethod: "/test.Service/Method"},
+		func(context.Context, any) (any, error) {
+			return nil, &domain.ErrSequenceExhausted{Counter: domain.SequenceCounterLog}
+		})
+
+	require.Equal(t, codes.ResourceExhausted, status.Code(err))
+	require.Empty(t, logs.String())
+}
+
+func grpcSpanAttribute(span sdktrace.ReadOnlySpan, key string) string {
+	for _, attr := range span.Attributes() {
+		if string(attr.Key) == key {
+			return attr.Value.AsString()
+		}
+	}
+
+	return ""
 }
 
 // TestConvertToGRPCError_BareValidationSentinels pins EN-1253: request

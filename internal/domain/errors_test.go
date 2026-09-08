@@ -315,6 +315,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrTransactionAlreadyReverted":    &ErrTransactionAlreadyReverted{},
 		"ErrInsufficientFunds":             &ErrInsufficientFunds{},
 		"ErrVolumeOverflow":                &ErrVolumeOverflow{},
+		"ErrSequenceExhausted":             &ErrSequenceExhausted{},
 		"ErrBalanceNotFound":               &ErrBalanceNotFound{},
 		"ErrSinkAlreadyExists":             &ErrSinkAlreadyExists{},
 		"ErrSinkBatchSizeTooLarge":         &ErrSinkBatchSizeTooLarge{},

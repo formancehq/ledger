@@ -11,7 +11,6 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -435,101 +434,32 @@ func (e *Emitter) reportError(ctx context.Context, publishErr error) {
 	}
 }
 
-// maxSinkUpdateStaleRetries bounds the number of times proposeSinkUpdate
-// will retry an ErrStaleProposal rejection before giving up. Stale
-// rejections fire when the IndexTracker is inflated from a dropped
-// proposal (typically a leadership transition); a fresh PredictedIndex
-// is computed on every re-attempt, so once the tracker catches up the
-// next try succeeds. Matches bootstrap.proposeTechnical's bound.
-const maxSinkUpdateStaleRetries = 5
-
-// proposeSinkUpdate proposes a Raft command to update per-sink state.
-// Routed through Builder.Run so PredictedIndex, IndexTracker mutex
-// ordering and the (fast-path) no-preload flow are identical to every
-// other proposer.
+// proposeSinkUpdate proposes a Raft command to update per-sink state,
+// routed through plan.SubmitTechnical so command-ID generation,
+// PredictedIndex, IndexTracker mutex ordering and the (fast-path)
+// no-preload flow are identical to every other proposer.
 //
 // Stale rejections must be retried here, not returned to the caller:
 // publishBatch has already delivered the events to the external sink
 // before this function is reached, so a returned error makes the
 // emitter restart from the unchanged cursor and re-publish the same
-// batch. Mirror bootstrap.proposeTechnical's bounded retry.
+// batch. plan.SubmitTechnical's bounded retry provides that.
 func (e *Emitter) proposeSinkUpdate(ctx context.Context, update *raftcmdpb.EventsSinkUpdate) error {
-	var lastErr error
-
-	for range maxSinkUpdateStaleRetries {
-		err := e.proposeSinkUpdateOnce(ctx, update)
-		if err == nil {
-			return nil
-		}
-
-		if !errors.Is(err, domain.ErrStaleProposal) {
-			return err
-		}
-
-		lastErr = err
-	}
-
-	return fmt.Errorf("proposeSinkUpdate: giving up after %d stale retries: %w", maxSinkUpdateStaleRetries, lastErr)
-}
-
-func (e *Emitter) proposeSinkUpdateOnce(ctx context.Context, update *raftcmdpb.EventsSinkUpdate) error {
-	// Reset every per-attempt field so Run assigns a fresh ID and
-	// PredictedIndex; the previous stale rejection left them populated.
+	// Prepare the reusable proposal buffer once per cursor update. The
+	// shared submitter resets only the per-attempt fields (Id,
+	// PredictedIndex, ExecutionPlan) on each retry, so the caller owns
+	// stamping CallerSnapshot and the technical update here.
 	e.proposal.Reset()
-	e.proposal.Id = commands.GenerateRandomID()
-	e.proposal.ExecutionPlan = nil
 	e.proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentEventsSink)
 	e.proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 		Kind: &raftcmdpb.TechnicalUpdate_EventsSink{EventsSink: update},
 	}}
 
 	// One WriteOperation per TU. applyEventsSinkUpdate reads no cache
-	// state, so Coverage stays nil and the runner takes the fast path
-	// (tracker mutex held just long enough to inject PredictedIndex +
-	// proposer.Propose).
+	// state, so Coverage stays nil and the runner takes the fast path.
 	operations := []plan.WriteOperation{{
 		Target: &e.proposal.GetTechnicalUpdates()[0].CoverageBits,
 	}}
 
-	// applyEventsSinkUpdate reads no cache state — an empty aggregate is
-	// enough for Build to skip the slow path entirely.
-	build, err := e.builder.Build(plan.NewCoverage(), operations)
-	if err != nil {
-		if build != nil {
-			build.ReleaseLoaders()
-		}
-
-		return fmt.Errorf("building preloads for sink update: %w", err)
-	}
-
-	result, err := e.builder.Run(
-		ctx, &e.proposal, build,
-		func(c *raftcmdpb.Proposal) ([]byte, error) { return c.MarshalVT() },
-		e.proposer,
-	)
-	if err != nil {
-		return err
-	}
-
-	result.Guard.ReleaseLoaders()
-
-	if _, err := result.Proposal.Wait(ctx); err != nil {
-		return fmt.Errorf("waiting for raft acceptance: %w", err)
-	}
-
-	applyResult, err := result.FSMFuture.Wait(ctx)
-	if err != nil {
-		return fmt.Errorf("waiting for FSM apply: %w", err)
-	}
-
-	// The FSM apply succeeded transport-wise but may have rejected the
-	// proposal as a business error (ErrStaleProposal from a stale
-	// IndexTracker after leadership churn, ErrCoverageMiss on a
-	// malformed plan, etc.). Wrap with %w so the caller retry loop
-	// can detect ErrStaleProposal via errors.Is.
-	if applyResult.Error != nil {
-		return fmt.Errorf("applying sink update: %w", applyResult.Error)
-	}
-
-	return nil
+	return plan.SubmitTechnical(ctx, e.builder, e.proposer, &e.proposal, operations, "proposeSinkUpdate")
 }

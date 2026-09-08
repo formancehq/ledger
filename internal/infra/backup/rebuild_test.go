@@ -3,6 +3,7 @@ package backup
 import (
 	"bytes"
 	"context"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -855,6 +856,42 @@ func newAttributeReplayWriter(t *testing.T) (*attributeReplayWriter, *attributes
 	t.Cleanup(func() { _ = writer.batch.Cancel() })
 
 	return writer, attrs, store
+}
+
+func TestAttributeReplayWriterRejectsExhaustedBoundariesWithoutWrap(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ledger log", func(t *testing.T) {
+		t.Parallel()
+
+		writer, _, _ := newAttributeReplayWriter(t)
+		err := writer.advanceLogID("ledger", math.MaxUint64)
+		var exhausted *domain.ErrSequenceExhausted
+		require.ErrorAs(t, err, &exhausted)
+		require.Equal(t, domain.SequenceCounterLedgerLogID, exhausted.Counter)
+		require.Equal(t, uint64(1), writer.boundaries["ledger"].GetNextLogId())
+	})
+
+	t.Run("transaction", func(t *testing.T) {
+		t.Parallel()
+
+		writer, _, _ := newAttributeReplayWriter(t)
+		err := writer.recordTransactionBoundary(domain.TransactionKey{LedgerName: "ledger", ID: math.MaxUint64}.Bytes())
+		var exhausted *domain.ErrSequenceExhausted
+		require.ErrorAs(t, err, &exhausted)
+		require.Equal(t, domain.SequenceCounterTransactionID, exhausted.Counter)
+		require.Equal(t, uint64(1), writer.boundaries["ledger"].GetNextTransactionId())
+	})
+}
+
+func TestAttributeReplayWriterAllowsLastBoundaryValues(t *testing.T) {
+	t.Parallel()
+
+	writer, _, _ := newAttributeReplayWriter(t)
+	require.NoError(t, writer.advanceLogID("ledger", math.MaxUint64-1))
+	require.NoError(t, writer.recordTransactionBoundary(domain.TransactionKey{LedgerName: "ledger", ID: math.MaxUint64 - 1}.Bytes()))
+	require.Equal(t, uint64(math.MaxUint64), writer.boundaries["ledger"].GetNextLogId())
+	require.Equal(t, uint64(math.MaxUint64), writer.boundaries["ledger"].GetNextTransactionId())
 }
 
 func rebuildTestMetaMap(entries ...string) map[string]*commonpb.MetadataValue {

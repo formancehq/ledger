@@ -2,12 +2,84 @@ package v2
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+func TestTranslateBatchRejectsExhaustedSourceCounters(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		log     V2Log
+		nextLog uint64
+		nextTx  uint64
+		counter domain.SequenceCounter
+	}{
+		{
+			name:    "v2 log id",
+			log:     V2Log{ID: math.MaxUint64, Type: "UNKNOWN"},
+			nextLog: math.MaxUint64,
+			counter: domain.SequenceCounterMirrorV2LogID,
+		},
+		{
+			name: "created transaction id",
+			log: V2Log{ID: 1, Type: "NEW_TRANSACTION", Data: mustMarshal(t, V2NewTransactionData{
+				Transaction: V2Transaction{ID: math.MaxUint64},
+			})},
+			nextLog: 1,
+			counter: domain.SequenceCounterTransactionID,
+		},
+		{
+			name: "revert transaction id",
+			log: V2Log{ID: 1, Type: "REVERTED_TRANSACTION", Data: mustMarshal(t, V2RevertedTransactionData{
+				RevertTransaction: V2Transaction{ID: math.MaxUint64},
+			})},
+			nextLog: 1,
+			nextTx:  1,
+			counter: domain.SequenceCounterTransactionID,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			orders, nextLog, nextTx, err := TranslateBatch("default", []V2Log{tt.log}, tt.nextLog, tt.nextTx, nil)
+			require.Error(t, err)
+			require.Nil(t, orders)
+			require.Zero(t, nextLog)
+			require.Zero(t, nextTx)
+
+			var exhausted *domain.ErrSequenceExhausted
+			require.ErrorAs(t, err, &exhausted)
+			require.Equal(t, tt.counter, exhausted.Counter)
+		})
+	}
+}
+
+func TestTranslateBatchAllowsLastRepresentableNextValues(t *testing.T) {
+	t.Parallel()
+
+	log := V2Log{
+		ID:   math.MaxUint64 - 1,
+		Type: "NEW_TRANSACTION",
+		Data: mustMarshal(t, V2NewTransactionData{
+			Transaction: V2Transaction{ID: math.MaxUint64 - 1},
+		}),
+	}
+
+	orders, nextLog, nextTx, err := TranslateBatch("default", []V2Log{log}, math.MaxUint64-1, 1, nil)
+	require.NoError(t, err)
+	require.Len(t, orders, 1)
+	require.Equal(t, uint64(math.MaxUint64), nextLog)
+	require.Equal(t, uint64(math.MaxUint64), nextTx)
+}
 
 func TestTranslateBatch_NewTransaction(t *testing.T) {
 	t.Parallel()

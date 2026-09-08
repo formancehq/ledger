@@ -37,10 +37,15 @@ type Manager struct {
 	logger         logging.Logger
 	notifications  *signal.Notifications
 
-	mu       sync.Mutex
-	isLeader bool
-	emitters map[string]*managedSink
-	retries  map[string]struct{}
+	mu                  sync.Mutex
+	emitters            map[string]*managedSink
+	retries             map[string]struct{}
+	resourcesGeneration uint64
+
+	leadershipMu         sync.Mutex
+	leadershipGeneration uint64
+	isLeader             bool
+	stopped              bool
 
 	w worker.Worker
 }
@@ -68,6 +73,18 @@ func (m *Manager) Start() {
 
 // Stop gracefully stops the Manager and tears down any active emitters/sinks.
 func (m *Manager) Stop() {
+	m.leadershipMu.Lock()
+	if m.stopped {
+		m.leadershipMu.Unlock()
+
+		return
+	}
+
+	m.leadershipGeneration++
+	m.isLeader = false
+	m.stopped = true
+	m.leadershipMu.Unlock()
+
 	m.w.Stop()
 
 	m.mu.Lock()
@@ -76,13 +93,24 @@ func (m *Manager) Stop() {
 	m.teardown()
 }
 
-// OnLeadershipChange is called when the node's leadership status changes.
+// OnLeadershipChange records the latest leadership generation and wakes the
+// lifecycle-owned reconciliation loop. It deliberately does not reconcile on
+// the caller: bootstrap invokes it synchronously from the Raft observer so
+// transitions are recorded in order without blocking the Raft processing loop
+// on Pebble reads or worker startup.
 func (m *Manager) OnLeadershipChange(isLeader bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.leadershipMu.Lock()
+	if m.stopped {
+		m.leadershipMu.Unlock()
 
+		return
+	}
+
+	m.leadershipGeneration++
 	m.isLeader = isLeader
-	m.reconcile()
+	m.leadershipMu.Unlock()
+
+	m.notifications.NotifyConfigChanged()
 }
 
 func (m *Manager) loop(stop <-chan struct{}) {
@@ -99,11 +127,30 @@ func (m *Manager) loop(stop <-chan struct{}) {
 			m.mu.Lock()
 			defer m.mu.Unlock()
 
-			if m.isLeader {
-				m.reconcile()
-			}
+			m.reconcile()
 		},
 	)
+}
+
+func (m *Manager) leadershipSnapshot() (uint64, bool, bool) {
+	m.leadershipMu.Lock()
+	defer m.leadershipMu.Unlock()
+
+	return m.leadershipGeneration, m.isLeader, m.stopped
+}
+
+func (m *Manager) isCurrentLeader(generation uint64) bool {
+	m.leadershipMu.Lock()
+	defer m.leadershipMu.Unlock()
+
+	return !m.stopped && m.isLeader && m.leadershipGeneration == generation
+}
+
+func (m *Manager) isCurrentGeneration(generation uint64) bool {
+	m.leadershipMu.Lock()
+	defer m.leadershipMu.Unlock()
+
+	return m.leadershipGeneration == generation
 }
 
 // reconcile reads the current per-sink configurations from the store and
@@ -111,7 +158,24 @@ func (m *Manager) loop(stop <-chan struct{}) {
 // were added, removed, or changed are affected — unchanged sinks keep running.
 // Must be called under lock.
 func (m *Manager) reconcile() {
-	if !m.isLeader {
+	generation, isLeader, stopped := m.leadershipSnapshot()
+	m.reconcileGeneration(generation, isLeader, stopped)
+}
+
+// reconcileGeneration applies one captured leadership generation. A transition
+// can arrive after the loop wakes but before it acquires m.mu, so reject a
+// superseded generation before either teardown or startup mutates ownership.
+// Must be called under lock.
+func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool) {
+	if !m.isCurrentGeneration(generation) {
+		return
+	}
+	if m.resourcesGeneration != generation {
+		m.teardown()
+		m.resourcesGeneration = generation
+	}
+
+	if stopped || !isLeader {
 		m.teardown()
 
 		return
@@ -133,6 +197,10 @@ func (m *Manager) reconcile() {
 		return
 	}
 
+	if !m.isCurrentLeader(generation) {
+		return
+	}
+
 	// Build desired state as a map keyed by sink name
 	desired := make(map[string]*commonpb.SinkConfig, len(sinkCfgs))
 	for _, sc := range sinkCfgs {
@@ -147,6 +215,10 @@ func (m *Manager) reconcile() {
 
 	// Remove sinks that no longer exist or whose config changed
 	for name, ms := range m.emitters {
+		if !m.isCurrentLeader(generation) {
+			return
+		}
+
 		sc, stillDesired := desired[name]
 		if !stillDesired || !sc.EqualVT(ms.config) {
 			m.stopSink(name, ms)
@@ -156,11 +228,21 @@ func (m *Manager) reconcile() {
 
 	// Start sinks that are new or were just removed due to config change
 	for name, sc := range desired {
+		if !m.isCurrentLeader(generation) {
+			return
+		}
+
 		if _, exists := m.emitters[name]; exists {
 			continue // already running with same config
 		}
 
 		if ms := m.startSink(sc); ms != nil {
+			if !m.isCurrentLeader(generation) {
+				m.stopSink(name, ms)
+
+				return
+			}
+
 			m.emitters[name] = ms
 			delete(m.retries, name)
 		}
@@ -195,6 +277,7 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig) *managedSink {
 	sink, err := m.createSink(sc)
 	if err != nil {
 		m.logger.Errorf("Failed to create sink %q: %v", sc.GetName(), err)
+		m.scheduleStartupRetry(sc.GetName())
 
 		return nil
 	}
@@ -245,10 +328,10 @@ func (m *Manager) scheduleStartupRetry(name string) {
 		}
 
 		delete(m.retries, name)
-		isLeader := m.isLeader
+		_, isLeader, stopped := m.leadershipSnapshot()
 		m.mu.Unlock()
 
-		if isLeader {
+		if isLeader && !stopped {
 			m.notifications.NotifyConfigChanged()
 		}
 	}()

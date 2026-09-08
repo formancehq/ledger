@@ -349,7 +349,11 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			expectedSeq++
 		}
 
-		expectedSeq = seq + 1
+		nextExpectedSeq, exhausted := domain.CheckedNextSequence(seq, domain.SequenceCounterLog)
+		if exhausted != nil {
+			return fmt.Errorf("checking log sequence %d: %w", seq, exhausted)
+		}
+		expectedSeq = nextExpectedSeq
 
 		value, err := logIter.ValueAndErr()
 		if err != nil {
@@ -474,7 +478,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 							}
 						}
 
-						advanceExpectedBoundaries(expectedBoundaries, ledgerName, payload.Apply.GetLog())
+						if err := advanceExpectedBoundaries(expectedBoundaries, ledgerName, payload.Apply.GetLog()); err != nil {
+							return fmt.Errorf("advancing expected boundaries at log %d: %w", seq, err)
+						}
 
 						// Index registry derivation: every CreateIndex /
 						// DropIndex / RemovedMetadataFieldType log entry
@@ -2164,7 +2170,10 @@ func (c *Checker) verifyAuditHashChain(
 			// The decoded orders come back so the signing fold below reuses them
 			// instead of unmarshalling the whole live audit range a second time.
 			// Parallel to `items` by index; nil where the bytes did not decode.
-			decoded := collectExpectedSkippable(items, success.GetMinLogSequence(), success.GetMaxLogSequence(), expectedSkippable, chainBound)
+			decoded, err := collectExpectedSkippable(items, success.GetMinLogSequence(), success.GetMaxLogSequence(), expectedSkippable, chainBound)
+			if err != nil {
+				return expectedSkippable, fmt.Errorf("rebuild chain-bound state: %w", err)
+			}
 
 			// Fold signing orders from this successful entry, over the SAME fresh-log
 			// window collectExpectedSkippable uses. AuditSuccess.{Min,Max}LogSequence
@@ -2427,7 +2436,7 @@ func collectExpectedSkippable(
 	minLogSeq, maxLogSeq uint64,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
-) []*raftcmdpb.Order {
+) ([]*raftcmdpb.Order, error) {
 	// Parallel to `items` by index, which is what lets a caller pair an order back
 	// to the item it came from — the filters below are per-item and each caller
 	// applies its own, so a compacted slice would not line up.
@@ -2541,7 +2550,9 @@ func collectExpectedSkippable(
 		// the emitting order opted into skip — a later skip on the same
 		// key/id needs the full prior history to answer "was the
 		// underlying condition true?".
-		recordChainBoundMutations(ls, ledger, logSeq, chainBound)
+		if err := recordChainBoundMutations(ls, ledger, logSeq, chainBound); err != nil {
+			return decoded, err
+		}
 
 		reasons := apply.GetSkippableReasons()
 		if len(reasons) == 0 {
@@ -2585,7 +2596,7 @@ func collectExpectedSkippable(
 		expectedSkippable[logSeq] = exp
 	}
 
-	return decoded
+	return decoded, nil
 }
 
 // recordChainBoundMutations extracts every state transition from the
@@ -2639,9 +2650,9 @@ func recordChainBoundMutations(
 	ledger string,
 	logSeq uint64,
 	chainBound *chainBoundState,
-) {
+) error {
 	if ls == nil || ledger == "" {
-		return
+		return nil
 	}
 
 	if cl := ls.GetCreateLedger(); cl != nil {
@@ -2667,7 +2678,7 @@ func recordChainBoundMutations(
 
 	apply := ls.GetApply()
 	if apply == nil {
-		return
+		return nil
 	}
 
 	if am := apply.GetAddMetadata(); am != nil {
@@ -2736,7 +2747,10 @@ func recordChainBoundMutations(
 				}
 			}
 
-			txID := allocateChainBoundTxID(ledger, chainBound)
+			txID, err := allocateChainBoundTxID(ledger, chainBound)
+			if err != nil {
+				return err
+			}
 
 			// The successful CreateTransaction owns its reference — record
 			// the (ref → txID) binding so a later conflicting order's skip
@@ -2772,7 +2786,10 @@ func recordChainBoundMutations(
 			// counter allocation.
 			rememberFirstRevert(chainBound.reverted, ledger, rt.GetTransactionId(), logSeq)
 
-			newTxID := allocateChainBoundTxID(ledger, chainBound)
+			newTxID, err := allocateChainBoundTxID(ledger, chainBound)
+			if err != nil {
+				return err
+			}
 
 			if _, anchored := chainBound.ledgerCreationSeen[ledger]; anchored {
 				// Same "tx:<id>" namespacing as the CreateTransaction path
@@ -2798,21 +2815,27 @@ func recordChainBoundMutations(
 			appendAccountTypeMutation(chainBound.accountTypes, ledger, name, logSeq, false)
 		}
 	}
+
+	return nil
 }
 
 // allocateChainBoundTxID mirrors the FSM's boundary bump: returns the
 // current nextTxID for the ledger, then increments. Auto-initialises to
 // 1 (matching CreateLedger's initial value) when the ledger's counter
 // has not been seeded yet.
-func allocateChainBoundTxID(ledger string, chainBound *chainBoundState) uint64 {
+func allocateChainBoundTxID(ledger string, chainBound *chainBoundState) (uint64, *domain.ErrSequenceExhausted) {
 	current, seen := chainBound.nextTxID[ledger]
 	if !seen {
 		current = 1
 	}
 
-	chainBound.nextTxID[ledger] = current + 1
+	next, err := domain.CheckedNextSequence(current, domain.SequenceCounterTransactionID)
+	if err != nil {
+		return 0, err
+	}
+	chainBound.nextTxID[ledger] = next
 
-	return current
+	return current, nil
 }
 
 // chainBoundCreateTxSkipped predicts whether a CreateTransactionOrder
@@ -4434,15 +4457,20 @@ func trackTxID(m map[string]*bitset.Bitset, ledgerName string, txID uint64) {
 // The per-ledger usage counters (posting / revert / numscript / volume /
 // metadata / reference) live in the usagestore peer secondary store and are
 // out of main-store checker scope, so they are not advanced here.
-func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, ledger string, log *commonpb.LedgerLog) {
+func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, ledger string, log *commonpb.LedgerLog) error {
 	b, ok := expected[ledger]
 	if !ok {
 		b = &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 		expected[ledger] = b
 	}
 
-	if next := log.GetId() + 1; next > b.GetNextLogId() {
-		b.NextLogId = next
+	nextLogID, exhausted := domain.CheckedNextSequence(log.GetId(), domain.SequenceCounterLedgerLogID)
+	if exhausted != nil {
+		return exhausted
+	}
+
+	if nextLogID > b.GetNextLogId() {
+		b.NextLogId = nextLogID
 	}
 
 	var txID uint64
@@ -4451,24 +4479,31 @@ func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, 
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		tx := d.CreatedTransaction.GetTransaction()
 		if tx == nil {
-			return
+			return nil
 		}
 
 		txID = tx.GetId()
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
 		revertTx := d.RevertedTransaction.GetRevertTransaction()
 		if revertTx == nil {
-			return
+			return nil
 		}
 
 		txID = revertTx.GetId()
 	default:
-		return
+		return nil
 	}
 
-	if next := txID + 1; next > b.GetNextTransactionId() {
-		b.NextTransactionId = next
+	nextTransactionID, exhausted := domain.CheckedNextSequence(txID, domain.SequenceCounterTransactionID)
+	if exhausted != nil {
+		return exhausted
 	}
+
+	if nextTransactionID > b.GetNextTransactionId() {
+		b.NextTransactionId = nextTransactionID
+	}
+
+	return nil
 }
 
 // collectAuditOrderBoundaryEffects iterates the AuditItem rows and folds the
@@ -4520,7 +4555,12 @@ func (c *Checker) collectAuditOrderBoundaryEffects(reader dal.PebbleReader, expe
 		}
 
 		for _, id := range effects.SkippedTransactionIDs {
-			if next := id + 1; next > b.GetNextTransactionId() {
+			next, exhausted := domain.CheckedNextSequence(id, domain.SequenceCounterTransactionID)
+			if exhausted != nil {
+				return fmt.Errorf("advancing mirror fill-gap transaction id for ledger %q: %w", effects.Ledger, exhausted)
+			}
+
+			if next > b.GetNextTransactionId() {
 				b.NextTransactionId = next
 			}
 		}

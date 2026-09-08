@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"math"
 	"strings"
 	"testing"
 
@@ -23,6 +24,48 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestCheckerBoundaryRebuildRejectsExhaustedCounters(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ledger log", func(t *testing.T) {
+		t.Parallel()
+
+		expected := make(map[string]*raftcmdpb.LedgerBoundaries)
+		err := advanceExpectedBoundaries(expected, "ledger", &commonpb.LedgerLog{Id: math.MaxUint64})
+		var exhausted *domain.ErrSequenceExhausted
+		require.ErrorAs(t, err, &exhausted)
+		require.Equal(t, domain.SequenceCounterLedgerLogID, exhausted.Counter)
+		require.Equal(t, uint64(1), expected["ledger"].GetNextLogId())
+	})
+
+	t.Run("transaction", func(t *testing.T) {
+		t.Parallel()
+
+		expected := make(map[string]*raftcmdpb.LedgerBoundaries)
+		log := &commonpb.LedgerLog{Id: 1, Data: &commonpb.LedgerLogPayload{
+			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
+				Transaction: &commonpb.Transaction{Id: math.MaxUint64},
+			}},
+		}}
+		err := advanceExpectedBoundaries(expected, "ledger", log)
+		var exhausted *domain.ErrSequenceExhausted
+		require.ErrorAs(t, err, &exhausted)
+		require.Equal(t, domain.SequenceCounterTransactionID, exhausted.Counter)
+		require.Equal(t, uint64(1), expected["ledger"].GetNextTransactionId())
+	})
+
+	t.Run("audit-derived transaction allocation", func(t *testing.T) {
+		t.Parallel()
+
+		chainBound := newChainBoundState()
+		chainBound.nextTxID["ledger"] = math.MaxUint64
+		id, err := allocateChainBoundTxID("ledger", chainBound)
+		require.Zero(t, id)
+		require.Equal(t, domain.SequenceCounterTransactionID, err.Counter)
+		require.Equal(t, uint64(math.MaxUint64), chainBound.nextTxID["ledger"])
+	})
+}
 
 func createTestStore(t *testing.T) *dal.Store {
 	t.Helper()
@@ -664,11 +707,16 @@ func (s *scopeImpl) GetNextSequenceID() uint64 {
 	return s.engine.nextSequenceID
 }
 
-func (s *scopeImpl) IncrementNextSequenceID() uint64 {
+func (s *scopeImpl) IncrementNextSequenceID() (uint64, domain.Describable) {
 	id := s.engine.nextSequenceID
-	s.engine.nextSequenceID++
+	next, exhausted := domain.CheckedNextSequence(id, domain.SequenceCounterLog)
+	if exhausted != nil {
+		return 0, exhausted
+	}
 
-	return id
+	s.engine.nextSequenceID = next
+
+	return id, nil
 }
 
 func (s *scopeImpl) GetNextLedgerID() uint32 {

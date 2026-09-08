@@ -53,7 +53,6 @@ type benchScope struct {
 	transactions *kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
 
 	date         commonpb.TimestampReader
-	logSequence  uint64
 	nextSequence uint64
 
 	baseInfo          *commonpb.LedgerInfo
@@ -86,10 +85,15 @@ func (s *benchScope) GetNextSequenceID() uint64 {
 	return s.nextSequence
 }
 
-func (s *benchScope) IncrementNextSequenceID() uint64 {
-	s.logSequence++
+func (s *benchScope) IncrementNextSequenceID() (uint64, domain.Describable) {
+	id := s.nextSequence
+	next, exhausted := domain.CheckedNextSequence(id, domain.SequenceCounterLog)
+	if exhausted != nil {
+		return 0, exhausted
+	}
+	s.nextSequence = next
 
-	return s.logSequence
+	return id, nil
 }
 
 // reset restores the pre-batch ledger and boundary snapshots for the next
@@ -97,7 +101,7 @@ func (s *benchScope) IncrementNextSequenceID() uint64 {
 func (s *benchScope) reset() {
 	s.info = s.baseInfo
 	s.currentBoundaries = s.baseBoundaries
-	s.logSequence = 0
+	s.nextSequence = 1
 }
 
 // benchLedgerConfig describes the ledger the scope exposes to ProcessOrders.

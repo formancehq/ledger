@@ -921,12 +921,12 @@ func Module() fx.Option {
 						// cancellation. Apply it inline.
 						backupOrchestrator.OnLeadershipChange(e.IsLeader)
 
-						// The events / mirror reconcile is dispatched off the
-						// observer thread because it does a full Pebble
-						// attribute scan that can take minutes; running it
-						// synchronously would stall processReady and the
-						// readiness probe.
-						go handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
+						// Record the events / mirror transition inline so it
+						// cannot be reordered behind a later transition. The
+						// managers only update their desired generation here;
+						// their lifecycle-owned loops perform the potentially
+						// slow Pebble reconciliation asynchronously.
+						handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
 					case node.LeaderReadyEvent:
 						proposeClusterConfigIfNeeded(n, builder, store, cfg, logger)
 					default:
@@ -1774,20 +1774,21 @@ func applyAnonymousScopes(mapping internalauth.ScopeMapping, raw string, logger 
 	return nil
 }
 
-// handleLeadershipChangeEvent reconciles event emitter and mirror
-// workers on leadership transitions. Runs in a goroutine — see the
-// observer callback above for the dispatch and the reason
-// (event/mirror reconcile can take minutes).
+// handleLeadershipChangeEvent records the desired leadership generation for
+// the event and mirror managers. Each manager's lifecycle-owned loop performs
+// the potentially slow reconciliation and fences it against later generations.
 //
 // The backup orchestrator's OnLeadershipChange is intentionally NOT
-// called here: it must observe transitions in order and inline, so
-// a leadership flap cannot interleave an old-(false) update behind
-// a newer-(true) update. See the observer's LeadershipChangeEvent
-// branch.
+// called here: it has no asynchronous reconciliation and is updated directly
+// by the observer. See the observer's LeadershipChangeEvent branch.
+type leadershipChangeManager interface {
+	OnLeadershipChange(bool)
+}
+
 func handleLeadershipChangeEvent(
 	e node.LeadershipChangeEvent,
-	eventsManager *events.Manager,
-	mirrorManager *mirror.Manager,
+	eventsManager leadershipChangeManager,
+	mirrorManager leadershipChangeManager,
 	logger logging.Logger,
 ) {
 	if e.IsLeader {

@@ -125,7 +125,33 @@ Before allowing configuration to influence a write path, answer:
 
 If question 3 is not unconditionally true, the configuration is on the wrong side of the admission/FSM boundary.
 
-### 3.5 Raft-replicated cluster policy
+### 3.5 Sequence exhaustion
+
+The authoritative transaction ID, per-ledger log ID, global log sequence, and
+audit sequence are `uint64` next-value counters. They share one terminal
+contract: a counter never wraps. `MaxUint64 - 1` is the last allocatable value;
+the successful allocation advances the stored next value to `MaxUint64`, and a
+later allocation fails deterministically with `SEQUENCE_EXHAUSTED` before the
+affected business, cache, or durable mutation is staged. When the failure is
+still auditable, the failure audit entry is the only committed effect and
+consumes its own audit sequence. Exhausting the audit sequence itself stops a
+proposal before preload, HLC advancement, technical updates, or audit-hash and
+durable mutation. Saturating or wrapping to zero would permit an existing
+transaction or sequence-derived Pebble key to be reused.
+
+Externally supplied v2 mirror log and transaction IDs obey the same boundary
+while translation needs to return a next cursor. Mirror apply also validates
+the supplied transaction ID and the local per-ledger log allocation before
+changing boundaries. A terminal `last_mirror_v2_log_id == MaxUint64` remains a
+valid applied high-water mark: every representable replay is at or below it and
+is therefore a no-op; contiguity checks never compute `last + 1` in that state.
+
+Recovery, incremental-restore rebuilding, and checker replay use the same
+checked transition. A persisted terminal key is detected and rejected instead
+of being hidden by an exclusive iterator bound or reconstructed as zero. This
+keeps retry, replay, and restart behavior deterministic (EN-1860).
+
+### 3.6 Raft-replicated cluster policy
 
 When a setting must influence FSM apply identically on every node — not merely gate admission — it cannot stay node-local. The **cluster policy** (`ClusterPolicy`) is the Raft-replicated home for such settings: the idempotency TTL and the query-checkpoint limit. It is a single global row (`ZoneGlobal` / `SubGlobClusterPolicy`) carried in `FSMState`, so it rides inside snapshots and cold backups and is checker-verified (`clusterPolicyVerifier`) against the audited `SetClusterPolicy` orders.
 

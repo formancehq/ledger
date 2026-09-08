@@ -81,6 +81,14 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 		}
 	}
 
+	// Reject exhaustion before applying the compensating postings or marking
+	// the original transaction reverted. See processCreateTransaction.
+	revertTxID := boundaries.GetNextTransactionId()
+	advancedTransactionID, exhausted := domain.CheckedNextSequence(revertTxID, domain.SequenceCounterTransactionID)
+	if exhausted != nil {
+		return nil, exhausted
+	}
+
 	for _, posting := range revertPostings {
 		// Apply the reversed posting (skip balance check if force is set)
 		err := applyPosting(s, ledger, posting, order.GetForce(), ctx.AssetCache)
@@ -92,9 +100,8 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	// Mark the original transaction as reverted
 	s.PutReverted(txKey, true)
 
-	// Get new transaction ID for the revert transaction
-	revertTxID := boundaries.GetNextTransactionId()
-	boundaries.NextTransactionId = revertTxID + 1
+	// Consume the preflighted transaction ID for the compensating transaction.
+	boundaries.NextTransactionId = advancedTransactionID
 
 	// posting_count and revert_count are no longer maintained on
 	// LedgerBoundaries — the usagebuilder derives them from the audit

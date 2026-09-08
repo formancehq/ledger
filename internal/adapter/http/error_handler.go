@@ -103,6 +103,9 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		if httpStatus == http.StatusServiceUnavailable {
 			w.Header().Set("Retry-After", "1")
 		}
+		if httpStatus == http.StatusInternalServerError {
+			recordHTTPInternalError(r, correlationID(r), err)
+		}
 
 		writeErrorResponse(w, httpStatus, d.Reason(), err)
 

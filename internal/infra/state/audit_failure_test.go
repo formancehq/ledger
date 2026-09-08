@@ -287,6 +287,12 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"name": "kafka-main"},
 		},
 		{
+			name:        "SequenceExhausted",
+			err:         &domain.ErrSequenceExhausted{Counter: domain.SequenceCounterTransactionID},
+			wantReason:  domain.ErrReasonSequenceExhausted,
+			wantContext: map[string]string{"counter": "transactionId"},
+		},
+		{
 			name:        "SinkNotFound",
 			err:         &domain.ErrSinkNotFound{Name: "missing-sink"},
 			wantReason:  domain.ErrReasonSinkNotFound,
