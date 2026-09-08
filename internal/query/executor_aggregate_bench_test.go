@@ -79,10 +79,11 @@ func TestAggregateAllVolumes_OpensSinglePhysicalIterator(t *testing.T) {
 }
 
 // The per-account strategy AggregateAllVolumes replaces opens one physical
-// volume iterator per matched account. Pinning that N here documents exactly
+// volume iterator per matched account plus two account-enumeration iterators.
+// Pinning that N+2 here documents exactly
 // what the fast path avoids and guards the counting reader against silently
 // passing both sides.
-func TestAggregateVolumes_OpensOneIteratorPerAccount(t *testing.T) {
+func TestAggregateVolumes_OpensAccountAndVolumeIterators(t *testing.T) {
 	t.Parallel()
 
 	const accounts = 6
@@ -107,18 +108,18 @@ func TestAggregateVolumes_OpensOneIteratorPerAccount(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	// The account iterator is built against the real handle so only the
-	// per-account volume iterators are attributed to the counting reader.
-	accountIter, err := readstore.NewPebbleAccountIterator(handle, "l")
+	// Count both account enumeration and per-account volume scans.
+	cr := &countingReader{inner: handle}
+	accountIter, err := readstore.NewPebbleAccountIterator(cr, "l")
 	require.NoError(t, err)
 	defer accountIter.Close()
 
-	cr := &countingReader{inner: handle}
+	require.Equal(t, 2, cr.iters, "account enumeration opens volume and metadata iterators")
 	result, err := query.AggregateVolumes(cr, attrs.Volume, "l", accountIter, query.AggregateOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, accounts, cr.iters,
-		"the per-account strategy opens one physical volume iterator per account")
+	require.Equal(t, accounts+2, cr.iters,
+		"the per-account strategy also opens two account-enumeration iterators")
 }
 
 type aggBenchFixture struct {
@@ -210,7 +211,7 @@ func newAggBenchFixture(b *testing.B, accounts int) *aggBenchFixture {
 // strategy it replaces, at the 1k and 100k account scales EN-1970 requires.
 //
 // Run with -benchmem to also collect B/op and allocs/op. The iters/op metric
-// is the physical scan count: 1 for the fast path, accounts+1 for the
+// is the physical scan count: 1 for the fast path, accounts+2 for the
 // per-account strategy.
 func BenchmarkAggregate_ScanCount(b *testing.B) {
 	for _, accounts := range []int{1000, 100000} {
@@ -234,12 +235,12 @@ func BenchmarkAggregate_ScanCount(b *testing.B) {
 		b.Run(fmt.Sprintf("per_account/accounts=%d", accounts), func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
-				accountIter, err := readstore.NewPebbleAccountIterator(fx.handle, "l")
+				cr := &countingReader{inner: fx.handle}
+				accountIter, err := readstore.NewPebbleAccountIterator(cr, "l")
 				if err != nil {
 					b.Fatal(err)
 				}
 
-				cr := &countingReader{inner: fx.handle}
 				res, err := query.AggregateVolumes(cr, fx.attrs.Volume, "l", accountIter, query.AggregateOptions{})
 				accountIter.Close()
 				if err != nil {
