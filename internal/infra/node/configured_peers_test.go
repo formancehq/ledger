@@ -34,6 +34,13 @@ func newConfiguredPeersTestNode(t *testing.T) *Node {
 	})
 	require.NoError(t, err)
 	require.NoError(t, rawNode.Campaign())
+	// Raft delivers its self-vote only after the election HardState is
+	// durable. Drain the election/no-op Ready cycles before using the leader.
+	for rawNode.HasReady() {
+		ready := rawNode.Ready()
+		require.NoError(t, w.Append(ready.HardState, ready.Entries))
+		rawNode.Advance(ready)
+	}
 	require.Equal(t, raft.StateLeader, rawNode.Status().RaftState)
 
 	m := newTestMembership(t)
