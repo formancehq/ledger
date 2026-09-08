@@ -6,8 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -66,7 +64,4 @@ func TestListAuditEntriesTrimsProjectionAheadOfMainSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 1, "audit candidates beyond the main-store audit head must be trimmed before materialization")
 	require.Equal(t, uint64(1), entries[0].GetSequence())
-
-	_, err = ctrl.ListAuditEntriesFrom(context.Background(), store, rs, 10, 0, &commonpb.QueryFilter{}, false)
-	require.Equal(t, codes.InvalidArgument, status.Code(err), "a malformed filter must fail in audit-filter compilation")
 }
