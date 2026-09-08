@@ -40,6 +40,34 @@ func TestBatch_CommitAndCancel(t *testing.T) {
 	require.NoError(t, closer.Close())
 }
 
+func TestBatch_CommitFinalizesBatch(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte("key1"), []byte("val1")))
+
+	// Capture the underlying Pebble batch before Commit releases the
+	// session's reference to it, so finalization can be observed directly.
+	pb := batch.batch
+	require.False(t, pb.Empty())
+
+	require.NoError(t, batch.Commit())
+
+	// Commit must finalize the owned batch exactly once by closing it, which
+	// returns it to Pebble's pool in a reset state. If the Close call were
+	// removed, the committed batch would retain its records and non-zero
+	// count, so both assertions fail.
+	require.True(t, pb.Empty())
+	require.Zero(t, pb.Count())
+
+	// The write itself must remain visible after the batch was finalized.
+	val, closer, err := s.Get([]byte("key1"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("val1"), val)
+	require.NoError(t, closer.Close())
+}
+
 func TestBatch_CancelBeforeCommit(t *testing.T) {
 	t.Parallel()
 
