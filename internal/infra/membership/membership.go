@@ -541,8 +541,8 @@ func (m *Membership) OnSnapshotInstalled() {
 // as the commit is observed, before asynchronous FSM submission, via
 // Membership.Set / Membership.Remove.
 //
-// PromoteLearner (ConfChangeAddNode with a correlation-only context) carries
-// no address payload — it's a role change — so we skip it.
+// Promotions repeat the existing peer registration, making replay independent
+// of the node-local membership cache.
 func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSession) error {
 	cc, ok, err := UnmarshalConfChangeV2(entry)
 	if err != nil {
@@ -572,12 +572,6 @@ func (m *Membership) WriteConfChange(entry *raftpb.Entry, session *dal.WriteSess
 	return WalkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
 		switch t {
 		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode:
-			// A promotion is encoded as AddNode with a correlation-only
-			// context and does not create a member.
-			if ctx == nil || !ctx.HasPeerRegistration() {
-				return nil
-			}
-
 			return writeRegistration(nodeID, ctx)
 		case raftpb.ConfChangeRemoveNode:
 			if err := session.DeleteKey(peerKey(nodeID)); err != nil {
