@@ -12,21 +12,30 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// countingLedgerReader wraps a LedgerInfoReader and counts Mutate() calls. It
-// pins the clone contract: read-only apply orders (transactions, metadata)
-// resolve account types/enforcement from the immutable reader and must never
-// call Mutate(); configuration-mutating handlers acquire exactly one owned
-// clone through loadLedger.
+// countingLedgerReader wraps a LedgerInfoReader and observes the clone
+// contract: read-only apply orders (transactions, metadata) resolve account
+// types/enforcement from the immutable reader and must never call Mutate();
+// configuration-mutating handlers acquire exactly one owned clone through
+// loadLedger. Mutate() also captures the clone it returns so the test can
+// prove the pointer written back through Put is that same clone — an extra
+// `info = info.CloneVT()` after loadLedger would swap in a second allocation
+// without touching the Mutate() call count.
 type countingLedgerReader struct {
 	commonpb.LedgerInfoReader
 
 	mutateCalls *int
+	mutated     **commonpb.LedgerInfo
 }
 
 func (r countingLedgerReader) Mutate() *commonpb.LedgerInfo {
 	*r.mutateCalls++
 
-	return r.LedgerInfoReader.Mutate()
+	clone := r.LedgerInfoReader.Mutate()
+	if r.mutated != nil {
+		*r.mutated = clone
+	}
+
+	return clone
 }
 
 // TestProcessCreateTransaction_DoesNotCloneLedgerInfo pins the EN-1968 hot
@@ -111,7 +120,7 @@ func TestProcessCreateTransaction_DoesNotCloneLedgerInfo(t *testing.T) {
 
 // TestProcessAddAccountType_ClonesLedgerInfoOnce pins the mutation boundary:
 // processAddAccountType loads an owned clone through loadLedger exactly once
-// (no redundant CloneVT afterwards), then writes it back.
+// (no redundant CloneVT afterwards), then writes that same clone back.
 func TestProcessAddAccountType_ClonesLedgerInfoOnce(t *testing.T) {
 	t.Parallel()
 
@@ -120,13 +129,22 @@ func TestProcessAddAccountType_ClonesLedgerInfoOnce(t *testing.T) {
 
 	mockStore := NewMockScope(ctrl)
 
-	var mutateCalls int
+	var (
+		mutateCalls int
+		mutated     *commonpb.LedgerInfo
+	)
 	ledgerReader := countingLedgerReader{
 		mutateCalls:      &mutateCalls,
+		mutated:          &mutated,
 		LedgerInfoReader: (&commonpb.LedgerInfo{Name: "l", Id: 1}).AsReader(),
 	}
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "l"}, ledgerReader, nil)
+
+	var putInfo *commonpb.LedgerInfo
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "l"}, nil, func(_ string, info *commonpb.LedgerInfo) {
+		putInfo = info
+	})
 
 	order := &raftcmdpb.AddAccountTypeOrder{
 		AccountType: &commonpb.AccountType{Name: "new-type", Pattern: "users:{z}"},
@@ -136,4 +154,6 @@ func TestProcessAddAccountType_ClonesLedgerInfoOnce(t *testing.T) {
 	require.Nil(t, derr)
 	require.NotNil(t, payload)
 	require.Equal(t, 1, mutateCalls, "mutating apply must acquire exactly one owned clone")
+	require.NotNil(t, mutated)
+	require.Same(t, mutated, putInfo, "mutating apply must write back the clone returned by Mutate(), not a redundant CloneVT() clone")
 }
