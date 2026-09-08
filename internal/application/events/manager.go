@@ -277,6 +277,7 @@ func (m *Manager) startSink(sc *commonpb.SinkConfig) *managedSink {
 	sink, err := m.createSink(sc)
 	if err != nil {
 		m.logger.Errorf("Failed to create sink %q: %v", sc.GetName(), err)
+		m.scheduleStartupRetry(sc.GetName())
 
 		return nil
 	}

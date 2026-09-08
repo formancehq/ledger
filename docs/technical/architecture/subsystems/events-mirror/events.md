@@ -236,6 +236,15 @@ sequenceDiagram
 
 The Manager reconciles emitter lifecycles on leadership changes and config updates. Each emitter independently tails the log, publishes to its sink, and advances its cursor via Raft. Failed publishes are recorded as sink errors in Pebble (visible via `GetEventsSinks`), and the emitter retries with exponential backoff.
 
+If a sink cannot be constructed or its emitter cannot read its persisted cursor
+at startup, the leader keeps the Raft-replicated configuration unchanged and
+retries startup after a bounded delay. Constructor failures therefore recover
+without another configuration write or leadership transition when an external
+dependency becomes available. Retry wake-ups are deduplicated per sink and are
+canceled with the Manager lifecycle; followers never start a sink. Constructors
+must release resources acquired by a failed attempt because the Manager may
+retry them repeatedly.
+
 Leadership callbacks do not own reconciliation goroutines. Bootstrap records
 each transition inline, preserving Raft observer order, while the Manager's
 existing loop owns the slow Pebble scan and worker mutations. A monotonically
