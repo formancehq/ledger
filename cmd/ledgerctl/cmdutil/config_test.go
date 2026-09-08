@@ -70,15 +70,16 @@ func TestSaveConfigPermissions(t *testing.T) {
 }
 
 // isolateConfigDir redirects os.UserConfigDir to a temp directory so the test
-// never touches the developer's real ledgerctl config. It sets both HOME
-// (used on macOS) and XDG_CONFIG_HOME (used on Linux) to keep the test
-// cross-platform. Env mutation precludes t.Parallel.
+// never touches the developer's real ledgerctl config. It sets HOME (used on
+// macOS), XDG_CONFIG_HOME (used on Linux), and APPDATA (used on Windows) to
+// keep the test cross-platform. Env mutation precludes t.Parallel.
 func isolateConfigDir(t *testing.T) {
 	t.Helper()
 
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("APPDATA", dir)
 }
 
 func TestCompleteProfileNames(t *testing.T) {
