@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"math"
 	"slices"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -54,10 +55,7 @@ func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequenc
 
 	lowerBound := kb.Build()
 
-	kb2 := dal.NewKeyBuilder()
-	kb2.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).
-		PutBytes(dal.MaxUint64Bytes)
-	upperBound := kb2.Build()
+	upperBound := dal.ZonePrefixUpperBound(dal.ZoneHistory, dal.SubHistoryAudit)
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
@@ -205,9 +203,14 @@ func readAuditPageFromZone(
 	lowerBound := kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(lo).Build()
 
 	kb2 := dal.NewKeyBuilder()
+
 	var upperBound []byte
+
 	if hi == ^uint64(0) {
-		upperBound = kb2.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutBytes(dal.MaxUint64Bytes).Build()
+		// hi+1 would wrap. The prefix successor is the bound that includes the
+		// entry at MaxUint64; a 0xFF run appended to the prefix is byte-identical
+		// to that entry's key and would exclude the very row hi asks for.
+		upperBound = dal.ZonePrefixUpperBound(dal.ZoneHistory, dal.SubHistoryAudit)
 	} else {
 		// Upper bound is exclusive, so hi+1 includes hi.
 		upperBound = kb2.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(hi + 1).Build()
@@ -270,8 +273,18 @@ func ReadAuditItems(ctx context.Context, reader dal.PebbleReader, auditSequence 
 	lowerBound := kb.Snapshot()
 	kb.Reset()
 
-	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(auditSequence + 1)
-	upperBound := kb.Build()
+	// auditSequence+1 wraps at MaxUint64, and a wrapped bound sorts BELOW the
+	// lower one: Pebble reads the range as empty and the items of that entry
+	// silently vanish, which on the audit path reads as an entry with no orders.
+	// The prefix successor is the correct bound for the last addressable entry.
+	var upperBound []byte
+
+	if auditSequence == math.MaxUint64 {
+		upperBound = dal.ZonePrefixUpperBound(dal.ZoneHistory, dal.SubHistoryAuditItem)
+	} else {
+		kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).PutUint64(auditSequence + 1)
+		upperBound = kb.Build()
+	}
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {

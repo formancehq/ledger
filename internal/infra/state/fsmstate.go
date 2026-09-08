@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
@@ -169,6 +170,17 @@ func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle, cl
 	lastSeq, err := query.ReadLastSequence(handle)
 	if err != nil {
 		return nil, fmt.Errorf("reading last sequence: %w", err)
+	}
+
+	// A head at MaxUint64 cannot be advanced past: lastSeq+1 wraps to 0, and
+	// the FSM would start allocating at a sequence the checker reports as
+	// impossible, on top of whatever row is already there. The FSM cannot reach
+	// that head on its own — NextSequenceID is seeded at 1 and only ever
+	// incremented — so a store holding one was corrupted or restored from a
+	// tampered stream. Refuse to boot rather than wrap (invariant #7).
+	if lastSeq == math.MaxUint64 {
+		return nil, fmt.Errorf("stored log head is %d, the maximum uint64: no further log sequence can be "+
+			"allocated, so this store is corrupt or was restored from a tampered export", lastSeq)
 	}
 
 	if lastSeq > 0 {
