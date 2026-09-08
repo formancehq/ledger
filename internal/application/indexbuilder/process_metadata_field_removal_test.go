@@ -392,11 +392,13 @@ func TestPurgeReverseMapForKeyIsFieldBoundedAcrossVersions(t *testing.T) {
 			removedV3 := tt.key(b, ledger, removedKey, 3)
 			removedInFlightV2 := tt.key(b, ledger, removedKey, 2)
 			keepField := tt.key(b, ledger, keepKey, 1)
+			keepPrefixSiblingV1 := tt.key(b, ledger, removedKey+"2", 1)
+			keepPrefixSiblingV3 := tt.key(b, ledger, removedKey+"2", 3)
 			keepLedger := tt.key(b, otherLedger, removedKey, 1)
 			keepNamespace := tt.otherNSKey(b)
 
 			seed := b.readStore.NewBatch()
-			for _, key := range [][]byte{removedV1, removedV3, keepField, keepLedger, keepNamespace} {
+			for _, key := range [][]byte{removedV1, removedV3, keepField, keepPrefixSiblingV1, keepPrefixSiblingV3, keepLedger, keepNamespace} {
 				require.NoError(t, seed.SetBytes(key, encoded))
 			}
 			require.NoError(t, seed.Commit())
@@ -414,7 +416,7 @@ func TestPurgeReverseMapForKeyIsFieldBoundedAcrossVersions(t *testing.T) {
 			for _, key := range [][]byte{removedV1, removedInFlightV2, removedV3} {
 				assertReadStoreMissing(t, b, key)
 			}
-			for _, key := range [][]byte{keepField, keepLedger, keepNamespace} {
+			for _, key := range [][]byte{keepField, keepPrefixSiblingV1, keepPrefixSiblingV3, keepLedger, keepNamespace} {
 				assertReadStoreValue(t, b, key, encoded)
 			}
 		})
@@ -426,7 +428,7 @@ func TestPurgeReverseMapForKeyIsFieldBoundedAcrossVersions(t *testing.T) {
 // initBatch first, so an unbound batch is impossible by design — but the old
 // `return nil` reported success while skipping all three limbs at once: the
 // forward-index range delete, the entity-exists range delete and the reverse-map
-// point deletes. Neither 0x01 nor 0x02 has a detector of its own, so a refactor
+// range tombstone. Neither 0x01 nor 0x02 has a detector of its own, so a refactor
 // that dropped an initBatch would have produced a fully unindexed removal with no
 // signal anywhere. It now mirrors bumpPendingVersion and fails loudly.
 func TestHandleRemovedMetadataFieldType_NoBatchFailsLoudly(t *testing.T) {

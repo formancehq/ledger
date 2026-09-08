@@ -187,12 +187,14 @@ func TestReverseMapPrefixesBoundFieldAndVersion(t *testing.T) {
 			target := tt.key(dal.NewKeyBuilder(), "status", 2)
 			otherVersion := tt.key(dal.NewKeyBuilder(), "status", 3)
 			otherField := tt.key(dal.NewKeyBuilder(), "team", 2)
+			prefixSibling := tt.key(dal.NewKeyBuilder(), "status2", 2)
 
 			require.True(t, bytes.HasPrefix(target, fieldPrefix))
 			require.True(t, bytes.HasPrefix(target, versionPrefix))
 			require.True(t, bytes.HasPrefix(otherVersion, fieldPrefix))
 			require.False(t, bytes.HasPrefix(otherVersion, versionPrefix))
 			require.False(t, bytes.HasPrefix(otherField, fieldPrefix))
+			require.False(t, bytes.HasPrefix(prefixSibling, fieldPrefix), "the field terminator must exclude prefix siblings")
 		})
 	}
 }
