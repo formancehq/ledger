@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -32,7 +33,7 @@ func TestNewNodeAcceptsReplayedRemovalBeforeConfStatePersistence(t *testing.T) {
 	require.NoError(t, setup.wal.UpdateSnapshotConfState(&raftpb.ConfState{Voters: []uint64{1, 2}}))
 	context, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{InstanceID: identity})
 	require.NoError(t, err)
-	data, err := (&raftpb.ConfChange{Type: new(raftpb.ConfChangeRemoveNode), NodeId: new(uint64(2)), Context: context}).MarshalVT()
+	data, err := proto.Marshal(&raftpb.ConfChange{Type: new(raftpb.ConfChangeRemoveNode), NodeId: new(uint64(2)), Context: context})
 	require.NoError(t, err)
 	require.NoError(t, setup.wal.Append(&raftpb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, []*raftpb.Entry{{
 		Index: new(uint64(1)), Term: new(uint64(1)), Type: new(raftpb.EntryConfChange), Data: data,
