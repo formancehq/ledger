@@ -252,8 +252,8 @@ func extractKeyID(token string) string {
 
 // logAuthFailure logs an authentication or authorization failure with structured fields
 // and records it on the current OpenTelemetry span. Setting the span status to Error
-// ensures the ErrorAwareSamplingExporter always exports auth failures regardless of
-// sampling ratio.
+// lets the collector identify authentication failures when applying tail-sampling
+// policies to the exported spans.
 func logAuthFailure(ctx context.Context, keyID, reason string, err error) {
 	fields := map[string]any{
 		"reason": reason,
@@ -271,7 +271,7 @@ func logAuthFailure(ctx context.Context, keyID, reason string, err error) {
 
 	logging.FromContext(ctx).WithFields(fields).Infof("auth failure")
 
-	// Record on the OTEL span so auth failures are always exported (error-aware sampling).
+	// Preserve error status and exception details for collector-side sampling.
 	span := trace.SpanFromContext(ctx)
 
 	attrs := []attribute.KeyValue{

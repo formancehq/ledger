@@ -4449,22 +4449,25 @@ ledger run --flight-recorder-enabled --flight-recorder-max-bytes 50Mi --flight-r
 
 ---
 
-### Server Trace Sampling Flags
+### Server Trace Sampling
 
-Error-aware trace sampling: always export error spans, ratio-sample successful spans. This reduces trace volume without losing visibility into failures.
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--trace-sampling-enabled` | bool | `false` | Enable error-aware trace sampling (always sample errors, ratio-sample successes) |
-| `--trace-sampling-success-ratio` | float64 | `0.1` | Sampling ratio for successful spans (0.0-1.0). Error spans are always sampled. |
+Tracing uses the standard OpenTelemetry SDK configuration. There are no
+Ledger-specific trace sampling flags. To export all Ledger spans for collector
+sampling, keep the OTLP exporter and endpoint configured and set:
 
 ```bash
-# Enable trace sampling, keep 10% of successful spans
-ledger run --trace-sampling-enabled [other flags...]
-
-# Keep 50% of successful spans
-ledger run --trace-sampling-enabled --trace-sampling-success-ratio 0.5 [other flags...]
+export OTEL_TRACES_SAMPLER=always_on
 ```
+
+The SDK otherwise defaults to parent-based sampling, which may discard spans
+under an incoming unsampled parent. Ledger retains error status and exception
+information; the collector owns error/success retention policies and must compute
+span metrics before sampling.
+
+The former `--trace-sampling-enabled` and `--trace-sampling-success-ratio` flags
+have been removed, along with `TRACE_SAMPLING_ENABLED` and
+`TRACE_SAMPLING_SUCCESS_RATIO`. Remove them from launch configuration and configure
+the collector as described in [deployment](deployment.md#collector-side-trace-sampling).
 
 ---
 

@@ -411,12 +411,6 @@ func appendMonitoringEnvVars(envs []corev1.EnvVar, mon *ledgerv1alpha1.Monitorin
 		if mon.Traces.Endpoint != "" || mon.Traces.Port != "" {
 			envs = append(envs, strEnv("OTEL_TRACES_EXPORTER_OTLP_ENDPOINT", mon.Traces.Endpoint+":"+mon.Traces.Port))
 		}
-
-		// Trace sampling
-		if mon.Traces.Sampling != nil && mon.Traces.Sampling.Enabled {
-			envs = append(envs, boolEnv("TRACE_SAMPLING_ENABLED", true))
-			envs = appendIfStr(envs, "TRACE_SAMPLING_SUCCESS_RATIO", mon.Traces.Sampling.SuccessRatio)
-		}
 	}
 
 	// Logs enabled/level (core.monitoring)

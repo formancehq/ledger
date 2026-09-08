@@ -565,6 +565,33 @@ func TestBuildEnvVars_IdempotencyEvictionInterval(t *testing.T) {
 // Extra env vars
 // ---------------------------------------------------------------------------
 
+func TestBuildEnvVars_CollectorTraceSampling(t *testing.T) {
+	t.Parallel()
+
+	ls := newMinimalCluster()
+	ls.Spec.Monitoring = &ledgerv1alpha1.MonitoringConfig{
+		Traces: &ledgerv1alpha1.TracesConfig{
+			Enabled:  new(true),
+			Exporter: "otlp",
+			Endpoint: "otel-collector.monitoring.svc",
+			Port:     "4317",
+			Mode:     "grpc",
+		},
+	}
+	ls.Spec.ExtraEnv = []corev1.EnvVar{
+		{Name: "OTEL_TRACES_SAMPLER", Value: "always_on"},
+	}
+
+	envs := buildEnvVars(ls, "disabled", nil)
+	assertEnv(t, envs, "OTEL_TRACES", "true")
+	assertEnv(t, envs, "OTEL_TRACES_EXPORTER", "otlp")
+	assertEnv(t, envs, "OTEL_TRACES_EXPORTER_OTLP_ENDPOINT", "otel-collector.monitoring.svc:4317")
+	assertEnv(t, envs, "OTEL_TRACES_EXPORTER_OTLP_MODE", "grpc")
+	assertEnv(t, envs, "OTEL_TRACES_SAMPLER", "always_on")
+	assertNoEnv(t, envs, "TRACE_SAMPLING_ENABLED")
+	assertNoEnv(t, envs, "TRACE_SAMPLING_SUCCESS_RATIO")
+}
+
 func TestBuildEnvVars_ExtraEnv(t *testing.T) {
 	t.Parallel()
 

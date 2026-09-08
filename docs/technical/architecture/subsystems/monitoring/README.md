@@ -2,8 +2,8 @@
 
 Code: `internal/infra/monitoring/`.
 
-- [Trace sampling](trace-sampling.md): local retention, expiration cost, collector
-  handoff, and the EN-1588 performance experiment.
+- [Trace sampling](trace-sampling.md): standard SDK export, collector ownership,
+  error signals, and the EN-1588 acceptance experiment.
 
-See [deployment](../../../../ops/deployment.md#error-aware-trace-sampling) for
-configuration and [CLI](../../../../ops/cli.md#server-trace-sampling-flags) for flags.
+See [deployment](../../../../ops/deployment.md#collector-side-trace-sampling) for
+configuration and [CLI](../../../../ops/cli.md#server-trace-sampling) for SDK settings.
