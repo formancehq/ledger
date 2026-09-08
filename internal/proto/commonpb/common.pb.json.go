@@ -3,7 +3,6 @@ package commonpb
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -205,12 +204,36 @@ func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
 	return json.Marshal(flat)
 }
 
-// (No custom UnmarshalJSON for PostCommitVolumes.) The type is response-only:
-// the server emits it, no request payload ever carries it, so there is no
-// production caller for reverse conversion. Client-side consumers wanting to
-// parse the flat shape can decode straight into a
-// `map[string][]VolumeEntry` — the same structure MarshalJSON emits, where each
-// VolumeEntry is `{asset, color, input, output}`.
+// UnmarshalJSON reverses the flat account-to-volume-list response shape.
+func (x *PostCommitVolumes) UnmarshalJSON(data []byte) error {
+	var flat map[string][]*VolumeEntry
+	if err := json.Unmarshal(data, &flat); err != nil {
+		return err
+	}
+	x.VolumesByAccount = make(map[string]*VolumesByAssets, len(flat))
+	for account, volumes := range flat {
+		x.VolumesByAccount[account] = &VolumesByAssets{Volumes: volumes}
+	}
+
+	return nil
+}
+
+// UnmarshalJSON reverses the flat asset/color/input/output response tuple.
+func (x *VolumeEntry) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		Asset  string `json:"asset"`
+		Color  string `json:"color"`
+		Input  string `json:"input"`
+		Output string `json:"output"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	x.Asset, x.Color = aux.Asset, aux.Color
+	x.Volumes = &Volumes{Input: aux.Input, Output: aux.Output}
+
+	return nil
+}
 
 // MarshalJSON implements json.Marshaler for VolumeEntry. Color is always
 // emitted (even when empty) so clients can distinguish the uncolored bucket
@@ -344,105 +367,91 @@ func (x *DeletedMetadata) MarshalJSON() ([]byte, error) {
 	return json.Marshal(aux)
 }
 
-// UnmarshalJSON implements json.Unmarshaler for DeletedMetadata
-// Handles the special case where TargetID can be either a string (for ACCOUNT) or uint64 (for TRANSACTION).
+// UnmarshalJSON decodes the accountId/transactionId fields emitted by MarshalJSON.
 func (dm *DeletedMetadata) UnmarshalJSON(data []byte) error {
-	type X struct {
-		TargetType string        `json:"targetType"`
-		TargetID   json.RawValue `json:"targetId"`
-		Key        string        `json:"key"`
+	var aux struct {
+		logMetadataTargetJSON
+
+		Key string `json:"key"`
 	}
-
-	x := X{}
-
-	err := json.Unmarshal(data, &x)
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	target, err := aux.target()
 	if err != nil {
 		return err
 	}
+	dm.Target, dm.Key = target, aux.Key
 
-	dm.Key = x.Key
-
-	switch strings.ToUpper(x.TargetType) {
-	case strings.ToUpper(MetaTargetTypeAccount):
-		var accountID string
-
-		err = json.Unmarshal(x.TargetID, &accountID)
-		if err == nil {
-			dm.Target = &Target{
-				Target: &Target_Account{
-					Account: &TargetAccount{
-						Addr: accountID,
-					},
-				},
-			}
-		}
-	case strings.ToUpper(MetaTargetTypeTransaction):
-		var txID uint64
-
-		txID, err = strconv.ParseUint(string(x.TargetID), 10, 64)
-		if err == nil {
-			dm.Target = &Target{
-				Target: &Target_TransactionId{TransactionId: txID},
-			}
-		}
-	default:
-		return fmt.Errorf("unknown type '%s'", x.TargetType)
-	}
-
-	return err
+	return nil
 }
 
-// UnmarshalJSON implements json.Unmarshaler for SavedMetadata
-// Handles the special case where TargetID can be either a string (for ACCOUNT) or uint64 (for TRANSACTION).
+// UnmarshalJSON decodes the target and typed response metadata emitted by MarshalJSON.
 func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
-	type X struct {
-		TargetType string         `json:"targetType"`
-		TargetID   json.RawValue  `json:"targetId"`
-		Metadata   map[string]any `json:"metadata"`
+	var aux struct {
+		logMetadataTargetJSON
+
+		Metadata logMetadataJSON `json:"metadata"`
 	}
-
-	x := X{}
-
-	err := json.Unmarshal(data, &x)
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	target, err := aux.target()
 	if err != nil {
 		return err
 	}
+	sm.Target, sm.Metadata = target, aux.Metadata
 
-	md, err := MetadataFromAnyMap(x.Metadata)
-	if err != nil {
-		return fmt.Errorf("invalid metadata: %w", err)
-	}
+	return nil
+}
 
-	sm.Metadata = md
+type logMetadataTargetJSON struct {
+	TargetType    string `json:"targetType"`
+	AccountID     string `json:"accountId"`
+	TransactionID uint64 `json:"transactionId"`
+}
 
+func (x logMetadataTargetJSON) target() (*Target, error) {
 	switch strings.ToUpper(x.TargetType) {
-	case strings.ToUpper(MetaTargetTypeAccount):
-		var accountID string
-
-		err = json.Unmarshal(x.TargetID, &accountID)
-		if err == nil {
-			sm.Target = &Target{
-				Target: &Target_Account{
-					Account: &TargetAccount{
-						Addr: accountID,
-					},
-				},
-			}
-		}
-	case strings.ToUpper(MetaTargetTypeTransaction):
-		var txID uint64
-
-		txID, err = strconv.ParseUint(string(x.TargetID), 10, 64)
-		if err == nil {
-			sm.Target = &Target{
-				Target: &Target_TransactionId{TransactionId: txID},
-			}
-		}
+	case MetaTargetTypeAccount:
+		return &Target{Target: &Target_Account{Account: &TargetAccount{Addr: x.AccountID}}}, nil
+	case MetaTargetTypeTransaction:
+		return &Target{Target: &Target_TransactionId{TransactionId: x.TransactionID}}, nil
 	default:
-		return fmt.Errorf("unknown type '%s'", x.TargetType)
+		return nil, fmt.Errorf("unknown type %q", x.TargetType)
+	}
+}
+
+// UnmarshalJSON reverses CreatedTransaction's camelCase response fields.
+func (x *CreatedTransaction) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		Transaction     *Transaction               `json:"transaction"`
+		AccountMetadata map[string]logMetadataJSON `json:"accountMetadata"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	x.Transaction = aux.Transaction
+	x.AccountMetadata = make(map[string]*MetadataMap, len(aux.AccountMetadata))
+	for account, metadata := range aux.AccountMetadata {
+		x.AccountMetadata[account] = &MetadataMap{Values: metadata}
 	}
 
-	return err
+	return nil
+}
+
+// UnmarshalJSON reverses RevertedTransaction's camelCase response fields.
+func (x *RevertedTransaction) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		RevertedTransactionID uint64       `json:"revertedTransactionId"`
+		RevertTransaction     *Transaction `json:"revertTransaction"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	x.RevertedTransactionId, x.RevertTransaction = aux.RevertedTransactionID, aux.RevertTransaction
+
+	return nil
 }
 
 // MarshalJSON implements json.Marshaler for PreparedQuery.

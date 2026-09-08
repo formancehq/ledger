@@ -74,30 +74,49 @@ When `format=json` in the events config, the event is serialized as JSON via `in
   "type": "COMMITTED_TRANSACTION",
   "ledger": "orders",
   "date": "2026-02-18T10:30:00.000Z",
-  "logSequence": "42",
+  "logSequence": 42,
   "log": {
-    "data": {
-      "createdTransaction": {
-        "transaction": {
-          "id": "7",
-          "postings": [
-            {
-              "source": "world",
-              "destination": "user:123",
-              "amount": { "lo": "1000" },
-              "asset": "USD/2"
+    "sequence": 42,
+    "payload": {
+      "apply": {
+        "ledgerName": "orders",
+        "log": {
+          "type": "NEW_TRANSACTION",
+          "data": {
+            "createdTransaction": {
+              "transaction": {
+                "id": 7,
+                "postings": [
+                  {
+                    "source": "world",
+                    "destination": "user:123",
+                    "amount": 1000,
+                    "asset": "USD/2",
+                    "color": ""
+                  }
+                ],
+                "metadata": {},
+                "timestamp": "2026-02-18T10:30:00.000Z",
+                "reference": "order-456",
+                "reverted": false
+              }
             }
-          ],
-          "metadata": {},
-          "timestamp": "2026-02-18T10:30:00.000Z",
-          "reference": "order-456"
+          },
+          "date": "2026-02-18T10:30:00.000Z",
+          "id": 12
         }
       }
-    },
-    "date": "2026-02-18T10:30:00.000Z"
+    }
   }
 }
 ```
+
+The nested ledger-log JSON follows the same
+[hydration contract](../api/http-api.md#ledger-log-json-hydration) as HTTP log
+responses and prepared-query `logData`. JSON hydration preserves the existing
+payload wrappers and discriminator values. The ClickHouse and Databricks sinks
+use their separate analytical JSON projection; the Protobuf format uses binary
+protobuf encoding.
 
 ### Protobuf Format
 

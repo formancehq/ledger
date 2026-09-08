@@ -2,9 +2,11 @@ package events
 
 import (
 	"encoding/json"
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
@@ -232,6 +234,53 @@ func TestSerializeEvent_JSON(t *testing.T) {
 	require.Equal(t, EventVersion, decoded["version"])
 	require.Equal(t, "COMMITTED_TRANSACTION", decoded["type"])
 	require.Equal(t, "orders", decoded["ledger"])
+}
+
+func TestSerializeEvent_JSONLedgerLogRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	wantLog := &commonpb.LedgerLog{
+		Id:   7,
+		Date: &commonpb.Timestamp{Data: 1_700_000_000_000_000},
+		Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{
+				Transaction: &commonpb.Transaction{
+					Id:        9,
+					Reference: "order-456",
+					Postings: []*commonpb.Posting{
+						commonpb.NewColoredPosting("world", "alice", "USD/2", "pending", big.NewInt(1000)),
+					},
+					Metadata: map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("checkout")},
+				},
+				AccountMetadata: map[string]*commonpb.MetadataMap{
+					"alice": {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")}},
+				},
+			},
+		}},
+	}
+	event := LogToEvent(&commonpb.Log{
+		Sequence: 42,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{LedgerName: "orders", Log: wantLog},
+		}},
+	})
+
+	data, err := SerializeEvent(event, FormatJSON)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"createdTransaction":`)
+	require.Contains(t, string(data), `"type":"NEW_TRANSACTION"`)
+	require.Contains(t, string(data), `"logSequence":42`)
+	var response struct {
+		Log struct {
+			Payload struct {
+				Apply struct {
+					Log *commonpb.LedgerLog `json:"log"`
+				} `json:"apply"`
+			} `json:"payload"`
+		} `json:"log"`
+	}
+	require.NoError(t, json.Unmarshal(data, &response))
+	require.True(t, proto.Equal(wantLog, response.Log.Payload.Apply.Log), "JSON event consumers must rehydrate the complete ledger log")
 }
 
 func TestSerializeEvent_Proto(t *testing.T) {

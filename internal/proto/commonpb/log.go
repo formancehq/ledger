@@ -61,55 +61,11 @@ func (l *LedgerLog) UnmarshalJSON(data []byte) error {
 
 	// Parse LedgerLogPayload from JSON using the type from rawLog
 	if len(rawLog.Data) > 0 {
-		payload, err := HydrateLog(rawLog.Type, rawLog.Data)
+		payload, err := hydrateLedgerLogPayload(rawLog.Type, rawLog.Data)
 		if err != nil {
 			return err
 		}
-
-		switch p := payload.(type) {
-		case *CreatedTransaction:
-			l.Data = &LedgerLogPayload{
-				Payload: &LedgerLogPayload_CreatedTransaction{
-					CreatedTransaction: p,
-				},
-			}
-		case *RevertedTransaction:
-			l.Data = &LedgerLogPayload{
-				Payload: &LedgerLogPayload_RevertedTransaction{
-					RevertedTransaction: p,
-				},
-			}
-		case *SavedMetadata:
-			l.Data = &LedgerLogPayload{
-				Payload: &LedgerLogPayload_SavedMetadata{
-					SavedMetadata: p,
-				},
-			}
-		case *DeletedMetadata:
-			l.Data = &LedgerLogPayload{
-				Payload: &LedgerLogPayload_DeletedMetadata{
-					DeletedMetadata: p,
-				},
-			}
-		case *SetMetadataFieldTypeLog:
-			l.Data = &LedgerLogPayload{
-				Payload: &LedgerLogPayload_SetMetadataFieldType{
-					SetMetadataFieldType: p,
-				},
-			}
-		case *RemovedMetadataFieldTypeLog:
-			l.Data = &LedgerLogPayload{
-				Payload: &LedgerLogPayload_RemovedMetadataFieldType{
-					RemovedMetadataFieldType: p,
-				},
-			}
-		case *OrderSkippedLog:
-			l.Data = &LedgerLogPayload{
-				Payload: &LedgerLogPayload_OrderSkipped{
-					OrderSkipped: p,
-				},
-			}
-		}
+		l.Data = payload
 	}
 
 	return nil

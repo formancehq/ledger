@@ -159,9 +159,24 @@ func FuzzTimestampUnmarshalJSON(f *testing.F) {
 }
 
 // FuzzLedgerLogUnmarshalJSON fuzzes the LedgerLog JSON decoder.
-// This targets the polymorphic log hydration with 8 different payload types.
+// This targets all 13 payload variants and malformed envelopes.
 func FuzzLedgerLogUnmarshalJSON(f *testing.F) {
-	// Seed corpus: one valid entry per log type.
+	// Seed corpus: each current wire variant, including the variants that
+	// retain the default SET_METADATA discriminator.
+	f.Add([]byte(`{"type":"NEW_TRANSACTION","data":{"createdTransaction":{"transaction":{"postings":[],"metadata":{"n":18446744073709551615},"postCommitVolumes":{"a":[{"asset":"USD","color":"","input":"1","output":"0"}]}},"accountMetadata":{"a":null}}}}`))
+	f.Add([]byte(`{"type":"REVERTED_TRANSACTION","data":{"revertedTransaction":{"revertedTransactionId":1,"revertTransaction":{"id":2,"revertsTransactionId":1}}}}`))
+	f.Add([]byte(`{"type":"SET_METADATA","data":{"savedMetadata":{"targetType":"ACCOUNT","accountId":"a","metadata":{"key":null}}}}`))
+	f.Add([]byte(`{"type":"DELETE_METADATA","data":{"deletedMetadata":{"targetType":"TRANSACTION","transactionId":1,"key":"key"}}}`))
+	f.Add([]byte(`{"type":"SET_METADATA_FIELD_TYPE","data":{"setMetadataFieldType":{"key":"key","type":"METADATA_TYPE_UINT64"}}}`))
+	f.Add([]byte(`{"type":"REMOVED_METADATA_FIELD_TYPE","data":{"removedMetadataFieldType":{"key":"key"}}}`))
+	f.Add([]byte(`{"type":"SET_METADATA","data":{"fillGap":{"originalId":"1"}}}`))
+	f.Add([]byte(`{"type":"SET_METADATA","data":{"createIndex":{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}}}`))
+	f.Add([]byte(`{"type":"SET_METADATA","data":{"dropIndex":{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}}}`))
+	f.Add([]byte(`{"type":"SET_METADATA","data":{"addedAccountType":{"accountType":{"name":"a"}}}}`))
+	f.Add([]byte(`{"type":"SET_METADATA","data":{"removedAccountType":{"name":"a"}}}`))
+	f.Add([]byte(`{"type":"SET_METADATA","data":{"updatedDefaultEnforcementMode":{"enforcementMode":"CHART_ENFORCEMENT_AUDIT"}}}`))
+	f.Add([]byte(`{"type":"ORDER_SKIPPED","data":{"reason":"TRANSACTION_REFERENCE_CONFLICT","context":{"reference":"ref"}}}`))
+	// Retain obsolete bare envelopes and removed types as malformed inputs.
 	f.Add([]byte(`{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[],"metadata":{}}}}`))
 	f.Add([]byte(`{"type":"SET_METADATA","data":{"targetType":"ACCOUNT","targetId":"users:alice","metadata":{"key":"value"}}}`))
 	f.Add([]byte(`{"type":"DELETE_METADATA","data":{"targetType":"ACCOUNT","targetId":"users:alice","key":"key"}}`))
