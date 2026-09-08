@@ -44,18 +44,43 @@ The contract is enforced by unit tests per leaf (`iterator_floor_test.go`,
 contradiction specs in
 `tests/e2e/business/filter_nested_not_reposition_test.go`.
 
-## AddressTxIterator materialization
+## The materialized union (`AddressTxIterator`)
 
-`AddressTxIterator` materializes the union of transaction IDs lazily on first
-positioning call and keeps it as a stable sorted slice for the iterator's
-lifetime. Materialization deduplicates via a seen-set, appends each unseen ID
-as an owned copy (never a Pebble iterator key buffer), and **sorts the slice
-once** when the scan completes. The observable requirement is O(U log U)
-sorting work for U unique IDs rather than the O(U²) shifts of the former
-per-insert `insertSorted`, which an interleaved account history (evens in one
-account, odds in another) triggers. This is a pure cost change: the emitted
-IDs remain identical, sorted and unique, so the absolute-seek contract above is
-unchanged.
+`iterator_address.go`. An address match on the `TRANSACTIONS` target has no
+entity-ordered index to scan: it walks the matching account addresses and, per
+account, scans that account's `account→tx` bucket. Each per-account scan is
+ascending, but the accounts are visited in address order, so the transaction
+IDs arrive out of order across accounts.
+
+The iterator satisfies the absolute-seek contract by materializing the whole
+union once, on first use, and keeping it for the iterator's lifetime; `Next`
+and `SeekGE` are then cursor moves over a stable sorted slice. `SeekGE`
+binary-searches that slice, which makes it computed from `target` alone,
+idempotent, and well-defined after exhaustion for free.
+
+The observable requirement is on the *exposed* slice, not on how it is built:
+
+- Before any positioning call returns, the slice is **sorted and unique**.
+  `ensureMaterialized` is the single gate in front of both `Next` and
+  `SeekGE`, and it returns only after the sort.
+- The order **during** materialization is unspecified. IDs are appended as
+  they are scanned, deduplicated through a `uint64` set, and the completed
+  slice is sorted once (`slices.SortFunc` with `bytes.Compare`, which is the
+  numeric order of the 8-byte big-endian IDs — see `ReadStoreComparer`).
+  Nothing outside `materialize` may observe the intermediate order.
+
+Sorting per insertion instead — a binary search plus a tail shift, the
+pre-EN-1965 `insertSorted` — is the same output at O(U²) element movement for
+U unique IDs, because interleaved account histories make almost every new ID
+land near the front. Appending and sorting once is O(U log U). Both variants
+materialize in full, so neither claims O(pageSize) memory, and IDs stay
+immutable 8-byte copies rather than retained Pebble key buffers.
+
+`iterator_address_bench_test.go` holds the workloads that keep this honest:
+interleaved multi-account histories, an already-ascending single account (a
+one-shot sort can only lose there, so any small-history regression is visible
+rather than implicit), and duplicate-heavy unions that report scanned rows
+alongside unique IDs.
 
 ## The exhaustion-proof cache (`seekFloor`/`seekCeil`)
 

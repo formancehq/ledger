@@ -17,21 +17,49 @@ func txIDBytes(id uint64) []byte {
 	return b
 }
 
-// newAddressTxFixture writes account→tx rows and returns an AddressTxIterator
-// over the given addresses.
+// newAddressTxFixture writes account→tx rows in the any-role bucket and
+// returns an AddressTxIterator over the given addresses.
 func newAddressTxFixture(t *testing.T, txsByAccount map[string][]uint64, addrs ...string) *AddressTxIterator {
 	t.Helper()
 
-	s := newTestStore(t)
+	return newAddressTxFixtureForPrefix(t, PrefixAccountTx, txsByAccount, addrs...)
+}
+
+// newAddressTxFixtureForPrefix is newAddressTxFixture over an explicit
+// account→tx bucket, so tests can cover every address role reached from
+// addressRolePrefix (source, destination, any).
+func newAddressTxFixtureForPrefix(
+	tb testing.TB,
+	prefix byte,
+	txsByAccount map[string][]uint64,
+	addrs ...string,
+) *AddressTxIterator {
+	tb.Helper()
+
+	s := newTestStore(tb)
 	kb := dal.NewKeyBuilder()
 
 	for account, txs := range txsByAccount {
 		for _, id := range txs {
-			require.NoError(t, s.DB().Set(AccountTxKey(kb, PrefixAccountTx, "l", account, id), nil, pebble.NoSync))
+			require.NoError(tb, s.DB().Set(AccountTxKey(kb, prefix, "l", account, id), nil, pebble.NoSync))
 		}
 	}
 
-	return NewAddressTxIterator(s.DB(), dal.NewKeyBuilder(), "l", newAliasingIter(addrs...), PrefixAccountTx)
+	return NewAddressTxIterator(s.DB(), dal.NewKeyBuilder(), "l", newAliasingIter(addrs...), prefix)
+}
+
+// drainIDs consumes the iterator and returns the decoded transaction IDs.
+func drainIDs(tb testing.TB, it *AddressTxIterator) []uint64 {
+	tb.Helper()
+
+	var got []uint64
+	for it.Next() {
+		got = append(got, binary.BigEndian.Uint64(it.Current()))
+	}
+
+	require.NoError(tb, it.Err())
+
+	return got
 }
 
 // SeekGE on AddressTxIterator must be an absolute reposition over the
@@ -154,34 +182,68 @@ func TestAddressTxIterator_EmptyUnion(t *testing.T) {
 	require.NoError(t, it.Err())
 }
 
-// Materialization must emit sorted, deduplicated IDs for single-account,
-// interleaved multi-account, and duplicate-heavy unions regardless of the
-// order IDs are appended. The append-then-sort-once implementation must
-// therefore be observably identical to the previous per-ID insertSorted.
-func TestAddressTxIterator_MaterializeSortedUniqueOutput(t *testing.T) {
+// The union is appended in whatever order the address iterator and the per-
+// account Pebble scans produce, then sorted once. Whatever that append order
+// is, the exposed slice must be sorted and unique before the first positioning
+// call — the observable requirement that replaced per-insertion insertSorted
+// (EN-1965).
+func TestAddressTxIterator_UnionIsSortedAndUnique(t *testing.T) {
 	t.Parallel()
 
-	cases := map[string]struct {
+	for _, tc := range []struct {
+		name         string
 		txsByAccount map[string][]uint64
 		addrs        []string
 		want         []uint64
 	}{
-		"single account sorted": {
-			txsByAccount: map[string][]uint64{"acc:1": {1, 2, 3, 4, 5}},
+		{
+			// One account: the Pebble scan already appends ascending.
+			name:         "single account ascending",
+			txsByAccount: map[string][]uint64{"acc:1": {1, 2, 3, 4}},
 			addrs:        []string{"acc:1"},
-			want:         []uint64{1, 2, 3, 4, 5},
+			want:         []uint64{1, 2, 3, 4},
 		},
-		"interleaved accounts": {
-			// Interleaved histories: each account's scan is ascending, but
-			// the merged append order alternates low/high IDs.
+		{
+			// Interleaved histories: every account appends IDs that belong
+			// before IDs already appended. This is the workload whose tail
+			// shifts were quadratic.
+			name: "interleaved histories",
 			txsByAccount: map[string][]uint64{
-				"acc:even": {0, 2, 4},
-				"acc:odd":  {1, 3, 5},
+				"acc:1": {1, 4, 7},
+				"acc:2": {2, 5, 8},
+				"acc:3": {3, 6, 9},
 			},
-			addrs: []string{"acc:even", "acc:odd"},
-			want:  []uint64{0, 1, 2, 3, 4, 5},
+			addrs: []string{"acc:1", "acc:2", "acc:3"},
+			want:  []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		},
-		"duplicate heavy": {
+		{
+			// Strictly descending append order: each later account holds only
+			// IDs below every ID appended so far.
+			name: "descending append order",
+			txsByAccount: map[string][]uint64{
+				"acc:1": {7, 8, 9},
+				"acc:2": {4, 5, 6},
+				"acc:3": {1, 2, 3},
+			},
+			addrs: []string{"acc:1", "acc:2", "acc:3"},
+			want:  []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		},
+		{
+			// Every ID is shared by all three accounts: the dedup map must
+			// still collapse them to one entry each.
+			name: "duplicate heavy",
+			txsByAccount: map[string][]uint64{
+				"acc:1": {1, 2, 3},
+				"acc:2": {1, 2, 3},
+				"acc:3": {1, 2, 3},
+			},
+			addrs: []string{"acc:1", "acc:2", "acc:3"},
+			want:  []uint64{1, 2, 3},
+		},
+		{
+			// Partially overlapping histories: the dedup map must collapse the
+			// shared IDs while keeping the ID only one account holds.
+			name: "partially overlapping histories",
 			txsByAccount: map[string][]uint64{
 				"acc:1": {1, 2, 3},
 				"acc:2": {1, 2, 3},
@@ -190,21 +252,102 @@ func TestAddressTxIterator_MaterializeSortedUniqueOutput(t *testing.T) {
 			addrs: []string{"acc:1", "acc:2", "acc:3"},
 			want:  []uint64{1, 2, 3, 4},
 		},
-	}
-
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
+		{
+			// A matched address with no transaction rows contributes nothing
+			// and must not disturb the other accounts.
+			name: "matched address with no rows",
+			txsByAccount: map[string][]uint64{
+				"acc:1": {2},
+				"acc:3": {1},
+			},
+			addrs: []string{"acc:1", "acc:2", "acc:3"},
+			want:  []uint64{1, 2},
+		},
+		{
+			// Only the matched addresses contribute; acc:2 is indexed but not
+			// selected.
+			name: "unmatched account excluded",
+			txsByAccount: map[string][]uint64{
+				"acc:1": {1, 3},
+				"acc:2": {2},
+			},
+			addrs: []string{"acc:1"},
+			want:  []uint64{1, 3},
+		},
+		{
+			name:         "no matched addresses",
+			txsByAccount: map[string][]uint64{"acc:1": {1, 2}},
+			addrs:        nil,
+			want:         nil,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			it := newAddressTxFixture(t, tc.txsByAccount, tc.addrs...)
 			defer it.Close()
 
-			var got []uint64
-			for it.Next() {
-				got = append(got, binary.BigEndian.Uint64(it.Current()))
+			require.Equal(t, tc.want, drainIDs(t, it))
+
+			// A seek before the first entry sees the same sorted union, so no
+			// consumer can reach an unsorted slice through either entry point.
+			if len(tc.want) == 0 {
+				require.False(t, it.SeekGE(txIDBytes(0)))
+
+				return
 			}
-			require.Equal(t, tc.want, got)
+
+			require.True(t, it.SeekGE(txIDBytes(0)))
+			require.Equal(t, tc.want[0], binary.BigEndian.Uint64(it.Current()))
 			require.NoError(t, it.Err())
 		})
 	}
+}
+
+// Sorting once must hold in every account→tx bucket, not only the any-role one
+// the other tests use: compileAddressPrefix picks the bucket from the query's
+// address role (addressRolePrefix), and the iterator must never mix buckets.
+func TestAddressTxIterator_UnionIsSortedPerAddressRole(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		prefix byte
+	}{
+		{name: "any role", prefix: PrefixAccountTx},
+		{name: "source", prefix: PrefixSourceAccountTx},
+		{name: "destination", prefix: PrefixDestinationAccountTx},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			it := newAddressTxFixtureForPrefix(t, tc.prefix, map[string][]uint64{
+				"acc:1": {5, 6},
+				"acc:2": {3, 4},
+				"acc:3": {1, 2},
+			}, "acc:1", "acc:2", "acc:3")
+			defer it.Close()
+
+			require.Equal(t, []uint64{1, 2, 3, 4, 5, 6}, drainIDs(t, it))
+		})
+	}
+}
+
+// The rows written for one role must stay invisible to an iterator scanning
+// another role's bucket, so a per-role empty union really is empty.
+func TestAddressTxIterator_AddressRoleBucketsAreIsolated(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	kb := dal.NewKeyBuilder()
+	require.NoError(t, s.DB().Set(AccountTxKey(kb, PrefixSourceAccountTx, "l", "acc:1", 1), nil, pebble.NoSync))
+
+	it := NewAddressTxIterator(
+		s.DB(), dal.NewKeyBuilder(), "l", newAliasingIter("acc:1"), PrefixDestinationAccountTx,
+	)
+	defer it.Close()
+
+	require.Empty(t, drainIDs(t, it))
+	require.False(t, it.SeekGE(txIDBytes(0)))
+	require.NoError(t, it.Err())
 }

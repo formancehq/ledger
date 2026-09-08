@@ -3,6 +3,7 @@ package readstore
 import (
 	"bytes"
 	"encoding/binary"
+	"slices"
 	"sort"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -14,7 +15,12 @@ import (
 // a sorted iterator of transaction IDs. It works by:
 //  1. Scanning the existence index for matching account addresses
 //  2. For each matching account, scanning the account→tx mapping
-//  3. Merge-unioning all transaction ID sets into a single sorted output
+//  3. Unioning all transaction ID sets into a single sorted output
+//
+// The union is built by appending each unseen ID and sorting the completed
+// slice once, so the order during materialization is unspecified; nothing
+// outside materialize may observe it. Every positioning call goes through
+// ensureMaterialized, which returns only after the slice is sorted.
 //
 // The union is materialized in full on first use and kept for the iterator's
 // lifetime; Next and SeekGE are cursor moves over the stable sorted slice, so
@@ -126,13 +132,13 @@ func (it *AddressTxIterator) ensureMaterialized() bool {
 }
 
 // materialize collects all transaction IDs from all matching accounts,
-// deduplicating via a seen-set and appending each unseen ID copy, then sorts
-// the completed slice once. The sort is O(U log U) in the number of unique
-// IDs; the previous per-ID insertSorted moved an ever-growing sorted slice on
-// every insert, which is O(U²) for interleaved account histories. Output IDs
-// are immutable copies, so no Pebble iterator key buffer is retained. Surfaces
-// I/O errors from the underlying Pebble iterators and from the addrIter
-// through addrIter.Err() (checked by the caller via it.Err()).
+// deduplicates them through txSeen, appends each unseen ID as an owned copy
+// (never a retained Pebble iterator key buffer), and sorts the completed slice
+// once. Sorting on each insertion instead (a binary search plus a tail shift)
+// moves O(U^2) elements for U unique IDs when account histories interleave,
+// because most new IDs land near the front. Surfaces I/O errors from the
+// underlying Pebble iterators and from the addrIter through addrIter.Err()
+// (checked by the caller via it.Err()).
 func (it *AddressTxIterator) materialize() error {
 	txSeen := make(map[uint64]struct{})
 
@@ -178,9 +184,11 @@ func (it *AddressTxIterator) materialize() error {
 		}
 	}
 
-	sort.Slice(it.txns, func(i, j int) bool {
-		return bytes.Compare(it.txns[i], it.txns[j]) < 0
-	})
+	// Sort once, on every non-error path, before any consumer can reach the
+	// slice. IDs are unique after txSeen, so no tie can be reordered and an
+	// unstable sort is safe. bytes.Compare on the 8-byte big-endian IDs is the
+	// numeric ID order (see ReadStoreComparer).
+	slices.SortFunc(it.txns, bytes.Compare)
 
 	return it.addrIter.Err()
 }
