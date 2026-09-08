@@ -65,6 +65,14 @@ type Store struct {
 	// reclaims history a pinned reader could still resolve (see read_lease.go
 	// and event_gc.go). Nil on frozen stores — no GC runs against them.
 	leases *LeaseRegistry
+
+	// servingInFlight holds the indexes whose serving transition has been
+	// committed but not yet flushed to stable storage (serving_transitions.go).
+	servingMu       sync.Mutex
+	servingInFlight map[servingTransitionKey]struct{}
+	// servingFlush stands in for db.Flush in FlushServingTransitions; nil
+	// means the real flush (OverrideServingFlushForTest).
+	servingFlush func() error
 }
 
 // Leases returns the read-lease registry gating the event GC.
@@ -546,16 +554,17 @@ func (s *Store) ReadIndexVersionState(ledgerName, canonicalID string) (IndexVers
 // SnapshotVersionResolver returns a closure that resolves per-replica
 // index versions via the given reader. The intended call site is right
 // after a NewSnapshot() (or ReadHandle creation) so the resolver and
-// the iteration share a single point-in-time view — the resolver MUST
-// NOT close over the live `*Store` while the caller iterates a
-// snapshot, or a concurrent atomic version switch will hand the
-// caller a version that does not match the snapshot's keyspace.
+// the iteration share a single point-in-time view — the version state
+// MUST be read through that reader, never the live DB, or a concurrent
+// atomic version switch will hand the caller a version that does not
+// match the snapshot's keyspace. The store itself only supplies the
+// in-flight serving-transition marks (serving_transitions.go).
 //
 // Returns (0, error) on a real Pebble I/O failure; (0, nil) when no
 // version state has been written yet (caller should translate to
 // ErrIndexBuilding at query boundaries).
-func SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) IndexVersionResolver {
-	return PinnedVersionResolver(reader, ledgerName, 0)
+func (s *Store) SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) IndexVersionResolver {
+	return s.PinnedVersionResolver(reader, ledgerName, 0)
 }
 
 // ResolvedIndexVersion is what a query learns about an index from the
@@ -594,7 +603,12 @@ type IndexVersionResolver func(canonical string) (ResolvedIndexVersion, bool, er
 //
 // A pin of 0 means "no pin" (introspection paths that do not resolve rows
 // at a sequence) and skips the check.
-func PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint64) IndexVersionResolver {
+//
+// The state is read through reader (a snapshot) but the in-flight check
+// consults the live store: a promotion committed after the snapshot is
+// invisible to it anyway, and one committed before it is either still in
+// flight — refused — or flushed.
+func (s *Store) PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint64) IndexVersionResolver {
 	return func(canonical string) (ResolvedIndexVersion, bool, error) {
 		state, present, err := ReadIndexVersionStateFrom(reader, ledgerName, canonical)
 		if err != nil {
@@ -613,6 +627,10 @@ func PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint6
 			// must read exactly like the removed index it is, never as one
 			// still building.
 			return ResolvedIndexVersion{}, false, nil
+		}
+
+		if s.ServingTransitionInFlight(ledgerName, canonical) {
+			return ResolvedIndexVersion{}, true, nil
 		}
 
 		if pin > 0 && state.ActivationSequence > pin {

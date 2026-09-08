@@ -91,7 +91,7 @@ func listEntities[T interface{ ~string | ~uint64 }](
 		// No index leaves, so no version to resolve and no pin to resolve it
 		// at; and no index-ahead membership to trim, since every row comes
 		// from params.pebbleReader itself.
-		params.indexVersionFor = readstore.SnapshotVersionResolver(snap, params.ledgerName)
+		params.indexVersionFor = readStore.SnapshotVersionResolver(snap, params.ledgerName)
 
 		return listWithoutIndex(snap, params)
 	}
@@ -107,7 +107,7 @@ func listEntities[T interface{ ~string | ~uint64 }](
 	defer releaseLease()
 	defer func() { _ = snap.Close() }()
 
-	params.indexVersionFor = readstore.PinnedVersionResolver(snap, params.ledgerName, mainSeq)
+	params.indexVersionFor = readStore.PinnedVersionResolver(snap, params.ledgerName, mainSeq)
 	params.horizonKeep = query.MainHorizonKeep(params.target, params.pebbleReader, snap, params.ledgerName, mainSeq)
 	params.pin = mainSeq
 

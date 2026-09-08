@@ -168,7 +168,7 @@ func Execute(
 	// (rewrite commit) return v_new from the resolver while the
 	// snapshot still holds an incomplete v_new keyspace — silent
 	// partial results.
-	indexVersionFor := readstore.PinnedVersionResolver(indexSnap, ledgerInfo.GetName(), mainSeq)
+	indexVersionFor := rs.PinnedVersionResolver(indexSnap, ledgerInfo.GetName(), mainSeq)
 
 	compiled, compileErr := Compile(indexSnap, kb, pq.GetFilter(), pq.GetTarget(), ledgerInfo.GetName(), req.GetParameters(), schema, ledgerInfo, indexRegistry, indexVersionFor, profile, handle, mainSeq)
 	if compileErr != nil {

@@ -721,6 +721,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	committed := false
+	staged := false
 
 	// The rewrite stamps events with the FSM state it reads from; the
 	// atomic switch is gated on the read-store cursor reaching that same
@@ -731,6 +732,10 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 		if !committed {
 			_ = batch.Cancel()
 			b.wb.Reset()
+
+			if staged {
+				b.abandonPromotion(task.ledger, canonical)
+			}
 		}
 	}()
 
@@ -907,7 +912,8 @@ scan:
 				CurrentTypeDeclared: prior.PendingTypeDeclared,
 			}
 
-			if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
+			staged = true
+			if err := b.stagePromotion(batch, task.ledger, canonical, newState); err != nil {
 				return false, fmt.Errorf("persisting atomic version switch: %w", err)
 			}
 
@@ -926,7 +932,7 @@ scan:
 	committed = true
 
 	if didSwitch {
-		b.putVersionState(task.ledger, canonical, newState)
+		b.finishPromotion(task.ledger, canonical, newState)
 		b.logger.WithFields(map[string]any{
 			"ledger":         task.ledger,
 			"key":            task.key,
@@ -975,6 +981,7 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 		if !committed {
 			_ = batch.Cancel()
 			b.wb.Reset()
+			b.abandonPromotion(task.ledger, canonical)
 		}
 	}()
 
@@ -988,7 +995,7 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 		CurrentTypeDeclared: prior.PendingTypeDeclared,
 	}
 
-	if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
+	if err := b.stagePromotion(batch, task.ledger, canonical, newState); err != nil {
 		return false, fmt.Errorf("persisting atomic version switch: %w", err)
 	}
 
@@ -1002,7 +1009,7 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 
 	committed = true
 
-	b.putVersionState(task.ledger, canonical, newState)
+	b.finishPromotion(task.ledger, canonical, newState)
 	b.logger.WithFields(map[string]any{
 		"ledger":             task.ledger,
 		"key":                task.key,
@@ -1277,17 +1284,20 @@ func (b *Builder) completeBackfill(task *backfillTask) error {
 	}
 
 	batch := b.readStore.NewBatch()
-	if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
+	if err := b.stagePromotion(batch, task.ledger, canonical, newState); err != nil {
 		_ = batch.Cancel()
+		b.abandonPromotion(task.ledger, canonical)
 
 		return fmt.Errorf("persisting backfill atomic switch: %w", err)
 	}
 
 	if err := batch.Commit(); err != nil {
+		b.abandonPromotion(task.ledger, canonical)
+
 		return fmt.Errorf("committing backfill atomic switch: %w", err)
 	}
 
-	b.putVersionState(task.ledger, canonical, newState)
+	b.finishPromotion(task.ledger, canonical, newState)
 
 	return nil
 }

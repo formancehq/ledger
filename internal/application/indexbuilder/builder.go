@@ -207,6 +207,51 @@ func (b *Builder) tombstoneVersionState(ledgerName, canonicalID string) error {
 	return nil
 }
 
+// stagePromotion writes a promoted version state (current ← pending) into
+// batch and marks the index's serving transition in flight, so readers
+// refuse it as building until the commit has been flushed
+// (readstore.Store.FlushServingTransitions — the store has no WAL, and a
+// promotion runs beside the fold, so a kill between commit and flush would
+// otherwise reopen the node serving the superseded binding at states past
+// the promoted one). A caller whose batch does not commit must call
+// abandonPromotion; one whose batch commits must call finishPromotion.
+func (b *Builder) stagePromotion(batch *dal.WriteSession, ledgerName, canonicalID string, state readstore.IndexVersionState) error {
+	b.readStore.MarkServingTransition(ledgerName, canonicalID)
+
+	return b.readStore.WriteIndexVersionState(batch, ledgerName, canonicalID, state)
+}
+
+// abandonPromotion withdraws the mark of a promotion whose batch was
+// cancelled or failed to commit. Never call it after a commit: the promoted
+// state is then in the store, and only a flush may lift the mark.
+func (b *Builder) abandonPromotion(ledgerName, canonicalID string) {
+	b.readStore.UnmarkServingTransition(ledgerName, canonicalID)
+}
+
+// finishPromotion publishes a committed promotion to the builder's cache and
+// flushes the read store so it becomes servable. A flush failure is not a
+// failure of the promotion — the state is committed and cached — so it is
+// logged, the mark stays, and retryServingFlush picks it up on the next tick.
+func (b *Builder) finishPromotion(ledgerName, canonicalID string, state readstore.IndexVersionState) {
+	b.putVersionState(ledgerName, canonicalID, state)
+
+	if err := b.readStore.FlushServingTransitions(); err != nil {
+		b.logger.WithFields(map[string]any{
+			"ledger":    ledgerName,
+			"canonical": canonicalID,
+			"error":     err,
+		}).Errorf("Flushing index promotion failed; the index stays unavailable until the flush is retried")
+	}
+}
+
+// retryServingFlush re-attempts the flush of promotions whose flush failed.
+// A no-op when none is pending.
+func (b *Builder) retryServingFlush() {
+	if err := b.readStore.FlushServingTransitions(); err != nil {
+		b.logger.Errorf("Retrying index promotion flush: %v", err)
+	}
+}
+
 // effectiveCurrentVersion returns the forward-encoding version live
 // writes should currently target on this replica. The indexer hot
 // path calls this for every metadata index touched.
@@ -727,6 +772,8 @@ func (b *Builder) loop(ctx context.Context) {
 		case <-b.notifications.LogCommitted.C():
 		case <-ticker.C:
 		}
+
+		b.retryServingFlush()
 
 		// Fast path: skip Pebble iterator + batch commit when the FSM
 		// hasn't advanced past our cursor.
