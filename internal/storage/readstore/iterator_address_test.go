@@ -153,3 +153,58 @@ func TestAddressTxIterator_EmptyUnion(t *testing.T) {
 	require.False(t, it.Next())
 	require.NoError(t, it.Err())
 }
+
+// Materialization must emit sorted, deduplicated IDs for single-account,
+// interleaved multi-account, and duplicate-heavy unions regardless of the
+// order IDs are appended. The append-then-sort-once implementation must
+// therefore be observably identical to the previous per-ID insertSorted.
+func TestAddressTxIterator_MaterializeSortedUniqueOutput(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		txsByAccount map[string][]uint64
+		addrs        []string
+		want         []uint64
+	}{
+		"single account sorted": {
+			txsByAccount: map[string][]uint64{"acc:1": {1, 2, 3, 4, 5}},
+			addrs:        []string{"acc:1"},
+			want:         []uint64{1, 2, 3, 4, 5},
+		},
+		"interleaved accounts": {
+			// Interleaved histories: each account's scan is ascending, but
+			// the merged append order alternates low/high IDs.
+			txsByAccount: map[string][]uint64{
+				"acc:even": {0, 2, 4},
+				"acc:odd":  {1, 3, 5},
+			},
+			addrs: []string{"acc:even", "acc:odd"},
+			want:  []uint64{0, 1, 2, 3, 4, 5},
+		},
+		"duplicate heavy": {
+			txsByAccount: map[string][]uint64{
+				"acc:1": {1, 2, 3},
+				"acc:2": {1, 2, 3},
+				"acc:3": {2, 3, 4},
+			},
+			addrs: []string{"acc:1", "acc:2", "acc:3"},
+			want:  []uint64{1, 2, 3, 4},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			it := newAddressTxFixture(t, tc.txsByAccount, tc.addrs...)
+			defer it.Close()
+
+			var got []uint64
+			for it.Next() {
+				got = append(got, binary.BigEndian.Uint64(it.Current()))
+			}
+			require.Equal(t, tc.want, got)
+			require.NoError(t, it.Err())
+		})
+	}
+}

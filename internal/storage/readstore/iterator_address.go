@@ -126,9 +126,13 @@ func (it *AddressTxIterator) ensureMaterialized() bool {
 }
 
 // materialize collects all transaction IDs from all matching accounts,
-// deduplicates, and sorts them. Surfaces I/O errors from the underlying
-// Pebble iterators and from the addrIter through addrIter.Err()
-// (checked by the caller via it.Err()).
+// deduplicating via a seen-set and appending each unseen ID copy, then sorts
+// the completed slice once. The sort is O(U log U) in the number of unique
+// IDs; the previous per-ID insertSorted moved an ever-growing sorted slice on
+// every insert, which is O(U²) for interleaved account histories. Output IDs
+// are immutable copies, so no Pebble iterator key buffer is retained. Surfaces
+// I/O errors from the underlying Pebble iterators and from the addrIter
+// through addrIter.Err() (checked by the caller via it.Err()).
 func (it *AddressTxIterator) materialize() error {
 	txSeen := make(map[uint64]struct{})
 
@@ -163,7 +167,7 @@ func (it *AddressTxIterator) materialize() error {
 
 			txCopy := make([]byte, 8)
 			copy(txCopy, txIDBytes)
-			it.txns = insertSorted(it.txns, txCopy)
+			it.txns = append(it.txns, txCopy)
 		}
 
 		iterErr := iter.Error()
@@ -174,26 +178,9 @@ func (it *AddressTxIterator) materialize() error {
 		}
 	}
 
+	sort.Slice(it.txns, func(i, j int) bool {
+		return bytes.Compare(it.txns[i], it.txns[j]) < 0
+	})
+
 	return it.addrIter.Err()
-}
-
-// insertSorted inserts a value into a sorted slice maintaining sort order.
-func insertSorted(slice [][]byte, val []byte) [][]byte {
-	// Find insertion point via binary search
-	lo, hi := 0, len(slice)
-	for lo < hi {
-		mid := (lo + hi) / 2
-		if bytes.Compare(slice[mid], val) < 0 {
-			lo = mid + 1
-		} else {
-			hi = mid
-		}
-	}
-
-	// Insert at position lo
-	slice = append(slice, nil)
-	copy(slice[lo+1:], slice[lo:])
-	slice[lo] = val
-
-	return slice
 }
