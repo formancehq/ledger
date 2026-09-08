@@ -30,6 +30,7 @@ from schemathesis.checks import (
 # application/json on all non-204 responses (verified manually).
 from schemathesis.runner import from_schema
 from schemathesis.runner.events import AfterExecution, Finished
+from schemathesis.models import Status
 from schemathesis.stateful import Stateful
 
 OPENAPI_PATH = Path(
@@ -276,11 +277,6 @@ def main():
     else:
         phases = [p for p in hypothesis_settings.default.phases if p is not Phase.shrink]
 
-    has_failures = False
-    has_errors = False
-    tested_count = 0
-    network_error_count = 0
-
     runner = from_schema(
         schema,
         checks=[
@@ -314,7 +310,24 @@ def main():
             database=None,
         ),
     )
-    for event in runner.execute():
+    sys.exit(_report_events(runner.execute()))
+
+
+def _report_events(events):
+    """Report runner events and require proof that checks actually succeeded.
+
+    Network errors are tolerated only after a later execution completes real
+    checks successfully, proving that the runner recovered before finishing.
+    """
+    has_failures = False
+    has_errors = False
+    tested_count = 0
+    successful_execution_count = 0
+    recovered_network_error_count = 0
+    pending_network_error_count = 0
+    finished = False
+
+    for event in events:
         if isinstance(event, AfterExecution):
             tested_count += 1
             method = event.method.upper()
@@ -345,21 +358,30 @@ def main():
 
             if event.result.has_errors:
                 # Distinguish real server errors from transient network errors
-                is_network_error = all(
-                    _is_network_error(error)
-                    for error in event.result.errors
+                is_network_error = bool(event.result.errors) and all(
+                    _is_network_error(error) for error in event.result.errors
                 )
                 if is_network_error:
-                    network_error_count += 1
+                    pending_network_error_count += 1
                 else:
                     has_errors = True
                     for error in event.result.errors:
                         print(f"    ERROR: {error}", file=sys.stderr)
 
+            if (
+                not event.result.has_failures
+                and not event.result.has_errors
+                and any(check.value is Status.success for check in event.result.checks)
+            ):
+                successful_execution_count += 1
+                recovered_network_error_count += pending_network_error_count
+                pending_network_error_count = 0
+
         elif isinstance(event, Finished):
+            finished = True
             print("=" * 60)
-            passed = event.passed_count + network_error_count
-            errored = event.errored_count - network_error_count
+            passed = event.passed_count
+            errored = event.errored_count - recovered_network_error_count
             print(
                 f"Tested {tested_count} endpoint(s) | "
                 f"Passed: {passed} | "
@@ -367,23 +389,42 @@ def main():
                 f"Errored: {errored} | "
                 f"Skipped: {event.skipped_count}"
             )
-            if network_error_count > 0:
+            if recovered_network_error_count > 0:
                 print(
-                    f"  (ignored {network_error_count} transient network error(s))"
+                    "  (ignored "
+                    f"{recovered_network_error_count} recovered transient network "
+                    "error(s))"
+                )
+            if pending_network_error_count > 0:
+                has_errors = True
+                print(
+                    f"  ERROR: {pending_network_error_count} transient network "
+                    "error(s) were not followed by a successful check execution",
+                    file=sys.stderr,
+                )
+            if successful_execution_count == 0:
+                has_errors = True
+                print(
+                    "  ERROR: no successful check execution was observed",
+                    file=sys.stderr,
                 )
             if has_failures or has_errors:
                 print("RESULT: FAILURES DETECTED")
             else:
                 print("RESULT: ALL CHECKS PASSED")
 
-    sys.exit(1 if has_failures or has_errors else 0)
+    if not finished:
+        print("ERROR: Schemathesis runner ended without a Finished event", file=sys.stderr)
+        return 1
+    return 1 if has_failures or has_errors else 0
 
 
 def _is_network_error(error):
     """Check if an error is a transient network error (connection reset, etc.).
 
     These occur intermittently due to HTTP connection pooling and the Go
-    server's connection lifecycle. They are not indicative of API bugs.
+    server's connection lifecycle. The reporter still requires a later
+    successful check execution as proof that the runner recovered.
     """
     error_str = str(error)
     network_indicators = [
