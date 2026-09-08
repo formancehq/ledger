@@ -125,6 +125,18 @@ func (it *AddressTxIterator) ensureMaterialized() bool {
 	return true
 }
 
+// SortedTxns materializes (once) and returns the sorted, deduplicated
+// transaction IDs. The caller must not mutate the slice. It exists so the
+// descending compilation path can traverse the address union's single sorted
+// result through a ReverseSliceIterator instead of building a second copy.
+func (it *AddressTxIterator) SortedTxns() ([][]byte, error) {
+	if !it.ensureMaterialized() {
+		return nil, it.err
+	}
+
+	return it.txns, nil
+}
+
 // materialize collects all transaction IDs from all matching accounts,
 // deduplicates, and sorts them. Surfaces I/O errors from the underlying
 // Pebble iterators and from the addrIter through addrIter.Err()

@@ -1,7 +1,6 @@
 package ctrl
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -269,11 +268,16 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 	}
 }
 
-// listDescFiltered collects all ascending results, reverses them, and paginates.
+// listDescFiltered compiles the filter into a descending iterator tree and
+// paginates it with cursor lookahead. Entity-ordered leaves stream in
+// descending order directly; the materializing fallback leaves (value-ordered
+// ranges, the address→transaction union) are traversed through a reverse view
+// of their single sorted result. No complete-result drain/copy is performed
+// solely to reverse and paginate.
 func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T], out *[][]byte) error {
 	kb := dal.NewKeyBuilder()
 
-	compiled, err := query.Compile(
+	compiled, err := query.CompileReverse(
 		indexReader, kb, params.filter,
 		params.target,
 		params.ledgerName, nil, params.schema, params.info, params.indexRegistry, params.indexVersionFor, params.profile,
@@ -282,55 +286,26 @@ func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleRe
 	if err != nil {
 		return domain.WrapCompileError(err)
 	}
+	defer compiled.Close()
 
-	var iter = compiled
+	var iter readstore.ReverseIterator = compiled
 	if params.horizonKeep != nil {
-		iter = readstore.NewFilterIterator(compiled, params.horizonKeep)
-	}
-	defer iter.Close()
-
-	var all [][]byte
-
-	for iter.Next() {
-		cp := make([]byte, len(iter.Current()))
-		copy(cp, iter.Current())
-		all = append(all, cp)
+		iter = readstore.NewFilterReverseIterator(compiled, params.horizonKeep)
 	}
 
-	// Next() returns false for a storage fault as readily as for exhaustion,
-	// and FilterIterator latches a failing horizon probe the same way — so
-	// without this the page is silently truncated and returned as complete.
-	if err := iter.Err(); err != nil {
-		return fmt.Errorf("draining filtered descending list: %w", err)
-	}
+	var before []byte
 
-	// Reverse for descending order
-	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
-		all[i], all[j] = all[j], all[i]
-	}
-
-	// Apply pagination: skip past after cursor
 	var zero T
 	if params.after != zero {
-		afterBytes := params.afterToBytes(params.after)
-		skip := 0
-
-		for _, id := range all {
-			if bytes.Compare(id, afterBytes) >= 0 {
-				skip++
-			} else {
-				break
-			}
-		}
-
-		all = all[skip:]
+		before = params.afterToBytes(params.after)
 	}
 
-	if uint32(len(all)) > params.pageSize {
-		all = all[:params.pageSize]
+	items, _, err := readstore.PaginateReverse(iter, params.pageSize, before)
+	if err != nil {
+		return fmt.Errorf("paginating reverse filtered list: %w", err)
 	}
 
-	*out = all
+	*out = items
 
 	return nil
 }

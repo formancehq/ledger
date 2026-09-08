@@ -242,3 +242,188 @@ func (it *EventResolveIterator) Err() error {
 func (it *EventResolveIterator) Close() {
 	_ = it.iter.Close()
 }
+
+// ReverseEventResolveIterator is the descending counterpart of
+// EventResolveIterator for its point form. It walks event groups in reverse
+// key order and emits each live group's entity once, resolving the latest
+// event at or below pin exactly as the forward pass does. The range form has
+// no reverse equivalent: callers materialize it (forward) and traverse the
+// sorted slice through a ReverseSliceIterator.
+type ReverseEventResolveIterator struct {
+	iter       *pebble.Iterator
+	seekPrefix []byte // point form: the scan prefix (runs through the encoded value)
+	prefixLen  int
+	pin        uint64
+
+	current   []byte
+	started   bool
+	exhausted bool
+	ceil      seekCeil
+	err       error
+}
+
+// NewReverseEventResolveIterator scans the event range under prefix in reverse
+// key order, resolving groups as of pin. It supports only the point form (the
+// group IS the entity).
+func NewReverseEventResolveIterator(reader dal.PebbleReader, prefix []byte, pin uint64) (*ReverseEventResolveIterator, error) {
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: prefix,
+		UpperBound: IncrementBytes(prefix),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &ReverseEventResolveIterator{iter: iter, seekPrefix: prefix, prefixLen: len(prefix), pin: pin}, nil
+}
+
+func (it *ReverseEventResolveIterator) parse(key []byte) (group []byte, seq uint64, op byte, ok bool) {
+	rest := key[it.prefixLen:]
+	tpos := len(rest) - metadataEventSuffixLen - 1
+	if tpos < 0 || rest[tpos] != metadataEventTerminator {
+		return nil, 0, 0, false
+	}
+
+	if op := rest[tpos+9]; !validEventOp(op) {
+		return nil, 0, 0, false
+	}
+
+	return rest[:tpos], binary.BigEndian.Uint64(rest[tpos+1 : tpos+9]), rest[tpos+9], true
+}
+
+// settle walks descending from the raw iterator's current position (which must
+// rest on the LAST event of a group) until a group is live at the pin, leaving
+// the raw iterator on the previous group's last event.
+func (it *ReverseEventResolveIterator) settle() bool {
+	for it.iter.Valid() {
+		g, _, _, ok := it.parse(it.iter.Key())
+		if !ok {
+			it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
+
+			return false
+		}
+
+		group := append([]byte(nil), g...)
+		live := false
+		decided := false
+
+		for it.iter.Valid() {
+			g2, seq, op, ok := it.parse(it.iter.Key())
+			if !ok {
+				it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
+
+				return false
+			}
+
+			if !bytes.Equal(g2, group) {
+				break
+			}
+
+			// Events are seq-ascending within the group, so walking in reverse
+			// visits them descending: the FIRST event at or below the pin is
+			// the latest one, and it decides.
+			if !decided && seq <= it.pin {
+				live = op == MetadataEventAdd
+				decided = true
+			}
+
+			if !it.iter.Prev() {
+				break
+			}
+		}
+
+		if live {
+			it.current = group
+
+			return true
+		}
+	}
+
+	it.exhausted = true
+
+	return false
+}
+
+func (it *ReverseEventResolveIterator) settleFrom(seekTarget []byte) bool {
+	live := it.settle()
+	if !live && seekTarget != nil && it.err == nil {
+		it.ceil.fail(seekTarget, it.iter.Error())
+	}
+
+	return live
+}
+
+func (it *ReverseEventResolveIterator) Next() bool {
+	if it.err != nil || it.exhausted {
+		return false
+	}
+
+	if !it.started {
+		it.started = true
+		if !it.iter.Last() {
+			it.exhausted = true
+
+			return false
+		}
+	}
+
+	return it.settleFrom(nil)
+}
+
+func (it *ReverseEventResolveIterator) Current() []byte { return it.current }
+
+// SeekLE positions the iterator at the largest live entity <= target. It seeks
+// the raw iterator just past the maximum key an event of entity==target can
+// occupy, steps back to the last real event of the largest entity <= target,
+// and resolves forward (downward) from there.
+func (it *ReverseEventResolveIterator) SeekLE(target []byte) bool {
+	if it.err != nil {
+		return false
+	}
+
+	if it.ceil.covers(target) {
+		it.exhausted = true
+
+		return false
+	}
+
+	it.exhausted = false
+	it.started = true
+
+	probe := make([]byte, 0, len(it.seekPrefix)+len(target)+1+metadataEventSuffixLen)
+	probe = append(probe, it.seekPrefix...)
+	probe = append(probe, target...)
+	probe = append(probe, metadataEventTerminator)
+	probe = append(probe, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+	probe = append(probe, MetadataEventAdd)
+
+	var positioned bool
+	if it.iter.SeekGE(IncrementBytes(probe)) {
+		positioned = it.iter.Prev()
+	} else {
+		positioned = it.iter.Last()
+	}
+
+	if !positioned {
+		it.exhausted = true
+		it.ceil.fail(target, it.iter.Error())
+
+		return false
+	}
+
+	return it.settleFrom(target)
+}
+
+func (it *ReverseEventResolveIterator) Err() error {
+	if it.err != nil {
+		return it.err
+	}
+
+	return it.iter.Error()
+}
+
+func (it *ReverseEventResolveIterator) Close() {
+	_ = it.iter.Close()
+}
+
+var _ ReverseIterator = (*ReverseEventResolveIterator)(nil)

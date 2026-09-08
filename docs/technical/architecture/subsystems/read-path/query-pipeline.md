@@ -153,6 +153,35 @@ applies to the `ListAccounts` and `ListTransactions` paths.
 
 The filter compiler turns a `QueryFilter` proto into a tree of these. `SeekGE`/`SeekLE` are **absolute** repositions — `AndIterator.SeekGE` force-seeks *every* child to the target (EN-1597; a child left ahead would skip valid intersections), and the ahead-child leapfrog survives only inside `converge`'s merge loop. Exhausted leaves stay re-seekable; the `seekFloor`/`seekCeil` cache keeps repeated re-seeks of a proven-empty child O(1). See [iterator-seek-contract.md](iterator-seek-contract.md).
 
+### Descending traversal
+
+Descending listing (the public default for transactions) uses a second, mirror
+iterator algebra over the same leaf sources instead of draining the ascending
+result and reversing it. `query.CompileReverse` (`internal/query/compile_reverse.go`)
+walks the identical `QueryFilter` with the identical bounds/index/schema
+resolution and produces a descending tree:
+
+| Operator | Ascending | Descending |
+|----------|-----------|------------|
+| merge-intersect | `AndIterator` | `ReverseAndIterator` |
+| merge-union | `OrIterator` | `ReverseOrIterator` |
+| merge-difference | `NotIterator` | `ReverseNotIterator` |
+| entity-ordered leaf | e.g. `PebbleTxIterator`, `EventResolveIterator` | `PebbleReverseTxIterator`, `ReverseEventResolveIterator` |
+| value-ordered range leaf | materialize → `SliceIterator` | materialize once, traverse via `ReverseSliceIterator` |
+
+`listDescFiltered` (`internal/application/ctrl/list_entities.go`) compiles
+through `CompileReverse`, wraps the tree in `FilterReverseIterator` for the
+main-store horizon trim, and hands it to `PaginateReverse` — which resumes at
+the cursor and stops after the `pageSize+1` lookahead, exactly like the
+ascending path.
+
+Two leaf classes remain materializing (they always did): value-ordered
+metadata/date ranges and the `AddressTxIterator` account→transaction union.
+The descending path reuses each fallback's single sorted result through
+`ReverseSliceIterator` rather than building a second all-result copy solely to
+reverse. Entity-ordered leaves — equality, universe, ID, reference, exists,
+account-has-asset — stream directly in descending order.
+
 ## Pagination
 
 A `Cursor[T]` is opaque to the client. Internally the cursor encodes the position of the *last returned* entity — a transaction ID as a decimal string (cursor.go:508), an account address as-is (`:676`), etc. The streamer (`server_bucket.go` → `sendPagedToStream`, `internal/adapter/grpc/stream_helper.go:44`):
@@ -160,6 +189,12 @@ A `Cursor[T]` is opaque to the client. Internally the cursor encodes the positio
 1. Reads `pageSize + 1` entities.
 2. If exactly `pageSize` are read, emits them with **no next cursor** (end of stream).
 3. If `pageSize + 1` are read, emits the first `pageSize` and computes the next cursor from the **last sent** (the `+1`th is dropped — it was a peek).
+
+This `pageSize + 1` lookahead applies in **both** directions: the descending
+path positions the descending iterator at the cursor with `SeekLE` and reads the
+same one-entity peek instead of materializing the whole matching set. The cursor
+carries only the exclusive resume position in either case, and its encoding is
+unchanged by EN-1966.
 
 This avoids the classic "phantom trailing cursor" bug where a result set of exactly `pageSize` items would advertise a non-existent next page.
 

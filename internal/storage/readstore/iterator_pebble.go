@@ -278,16 +278,20 @@ type PebbleReverseAccountIterator struct {
 }
 
 // newSingleTypeReverseAccountIterator creates a reverse account iterator for one attribute type.
-func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte, ledgerName string) (*PebbleReverseAccountIterator, error) {
+func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte, ledgerName string, addrPrefix string) (*PebbleReverseAccountIterator, error) {
 	prefix := make([]byte, 2+dal.LedgerNameFixedSize)
 	prefix[0] = dal.ZoneAttributes
 	prefix[1] = attrType
 	copy(prefix[2:], ledgerName)
 
-	upperBound := IncrementBytes(prefix)
+	lowerBound := make([]byte, len(prefix)+len(addrPrefix))
+	copy(lowerBound, prefix)
+	copy(lowerBound[len(prefix):], addrPrefix)
+
+	upperBound := IncrementBytes(lowerBound)
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: prefix,
+		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
 	if err != nil {
@@ -303,12 +307,19 @@ func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte,
 // NewPebbleReverseAccountIterator creates a reverse account iterator that merges
 // V and M attribute types, yielding unique addresses in descending order.
 func NewPebbleReverseAccountIterator(reader dal.PebbleReader, ledgerName string) (*ReverseOrIterator, error) {
-	vIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrVolume, ledgerName)
+	return NewPebbleReverseAccountPrefixIterator(reader, ledgerName, "")
+}
+
+// NewPebbleReverseAccountPrefixIterator is NewPebbleReverseAccountIterator for
+// addresses matching an address prefix, used by the descending
+// compileAddressPrefix path on the ACCOUNTS target.
+func NewPebbleReverseAccountPrefixIterator(reader dal.PebbleReader, ledgerName string, addrPrefix string) (*ReverseOrIterator, error) {
+	vIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrVolume, ledgerName, addrPrefix)
 	if err != nil {
 		return nil, err
 	}
 
-	mIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrMetadata, ledgerName)
+	mIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrMetadata, ledgerName, addrPrefix)
 	if err != nil {
 		vIter.Close()
 
@@ -964,6 +975,184 @@ func (it *PebbleTxRangeIterator) extractTxID(key []byte) []byte {
 
 	return key[it.idOffset : it.idOffset+8]
 }
+
+// ReversePebbleTxRangeIterator iterates over unique transaction IDs within a
+// [min, max) range in descending order over the Pebble attributes zone. It is
+// the descending counterpart of PebbleTxRangeIterator, streaming the
+// entity-ordered tx-ID leaf without materializing a second all-result copy.
+type ReversePebbleTxRangeIterator struct {
+	iter     *pebble.Iterator
+	prefix   []byte
+	idOffset int
+
+	current   []byte
+	started   bool
+	exhausted bool
+	ceil      seekCeil
+}
+
+// NewReversePebbleTxRangeIterator creates a bounded descending transaction
+// iterator for range queries. lower/upper are raw 8-byte big-endian tx ID
+// encodings; nil means unbounded on that side.
+func NewReversePebbleTxRangeIterator(reader dal.PebbleReader, ledgerName string, lower, upper []byte) (*ReversePebbleTxRangeIterator, error) {
+	prefix := txAttributeCode(ledgerName)
+
+	lowerBound := make([]byte, len(prefix)+len(lower))
+	copy(lowerBound, prefix)
+	copy(lowerBound[len(prefix):], lower)
+
+	var upperBound []byte
+	if upper != nil {
+		upperBound = make([]byte, len(prefix)+len(upper))
+		copy(upperBound, prefix)
+		copy(upperBound[len(prefix):], upper)
+	} else {
+		upperBound = IncrementBytes(prefix)
+	}
+
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &ReversePebbleTxRangeIterator{
+		iter:     iter,
+		prefix:   prefix,
+		idOffset: len(prefix),
+	}, nil
+}
+
+func (it *ReversePebbleTxRangeIterator) Next() bool {
+	if it.exhausted {
+		return false
+	}
+
+	if !it.started {
+		it.started = true
+		if !it.iter.Last() {
+			it.exhausted = true
+
+			return false
+		}
+
+		txID := it.extractTxID(it.iter.Key())
+		if txID != nil {
+			it.current = copyBytes(txID)
+
+			return true
+		}
+
+		return it.prevTx()
+	}
+
+	return it.prevTx()
+}
+
+func (it *ReversePebbleTxRangeIterator) prevTx() bool {
+	// Seek before the first byLog entry for the current txID.
+	seekKey := make([]byte, len(it.prefix)+8)
+	copy(seekKey, it.prefix)
+	copy(seekKey[len(it.prefix):], it.current)
+
+	if !it.iter.SeekLT(seekKey) {
+		it.exhausted = true
+
+		return false
+	}
+
+	txID := it.extractTxID(it.iter.Key())
+	if txID != nil {
+		it.current = copyBytes(txID)
+
+		return true
+	}
+
+	it.exhausted = true
+
+	return false
+}
+
+func (it *ReversePebbleTxRangeIterator) Current() []byte { return it.current }
+
+func (it *ReversePebbleTxRangeIterator) SeekLE(target []byte) bool {
+	// A prior failed seek at or above target proves this one empty too.
+	if it.ceil.covers(target) {
+		it.exhausted = true
+
+		return false
+	}
+
+	it.exhausted = false
+	it.started = true
+
+	var positioned bool
+	if isMaxUint64Bytes(target) {
+		positioned = it.iter.Last()
+	} else {
+		nextTarget := incrementUint64Bytes(target)
+		seekKey := make([]byte, len(it.prefix)+8)
+		copy(seekKey, it.prefix)
+		copy(seekKey[len(it.prefix):], nextTarget)
+
+		if it.iter.SeekGE(seekKey) {
+			positioned = it.iter.Prev()
+		} else {
+			positioned = it.iter.Last()
+		}
+	}
+
+	if !positioned {
+		it.exhausted = true
+		it.ceil.fail(target, it.iter.Error())
+
+		return false
+	}
+
+	for it.iter.Valid() {
+		txID := it.extractTxID(it.iter.Key())
+		if txID != nil && compareEntities(txID, target) <= 0 {
+			it.current = copyBytes(txID)
+
+			return true
+		}
+
+		if !it.iter.Prev() {
+			break
+		}
+	}
+
+	it.exhausted = true
+	it.ceil.fail(target, it.iter.Error())
+
+	return false
+}
+
+func (it *ReversePebbleTxRangeIterator) Err() error {
+	if it.iter == nil {
+		return nil
+	}
+
+	return it.iter.Error()
+}
+
+func (it *ReversePebbleTxRangeIterator) Close() {
+	if it.iter != nil {
+		_ = it.iter.Close()
+	}
+}
+
+func (it *ReversePebbleTxRangeIterator) extractTxID(key []byte) []byte {
+	if len(key) < it.idOffset+8 {
+		return nil
+	}
+
+	return key[it.idOffset : it.idOffset+8]
+}
+
+var _ ReverseIterator = (*ReversePebbleTxRangeIterator)(nil)
 
 // --- transaction prefix helper ---
 

@@ -221,6 +221,34 @@ func TestPebbleTxRangeIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	require.NoError(t, it.Err())
 }
 
+func TestReversePebbleTxRangeIterator_SeekFloorKeepsRepositioning(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	for _, id := range []uint64{1, 2, 3} {
+		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, pebble.NoSync))
+	}
+
+	it, err := NewReversePebbleTxRangeIterator(s.DB(), "l", txIDBytes(1), txIDBytes(4))
+	require.NoError(t, err)
+	defer it.Close()
+
+	require.False(t, it.SeekLE(txIDBytes(0)), "below the lower bound")
+	require.False(t, it.Next(), "failed seek leaves the iterator exhausted")
+	require.False(t, it.SeekLE(txIDBytes(0)), "covered by the ceil")
+
+	require.True(t, it.SeekLE(txIDBytes(2)), "below the ceil: real reposition")
+	require.Equal(t, uint64(2), binary.BigEndian.Uint64(it.Current()))
+	require.True(t, it.Next())
+	require.Equal(t, uint64(1), binary.BigEndian.Uint64(it.Current()))
+	require.False(t, it.Next())
+
+	require.True(t, it.SeekLE(txIDBytes(9)), "seek above the upper bound clamps to the max in range")
+	require.Equal(t, uint64(3), binary.BigEndian.Uint64(it.Current()))
+	require.NoError(t, it.Err())
+}
+
 func TestPebbleAccountIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	t.Parallel()
 
@@ -273,7 +301,7 @@ func TestPebbleReverseAccountIterator_SeekLERepositioning(t *testing.T) {
 		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
 	}
 
-	it, err := newSingleTypeReverseAccountIterator(s.DB(), dal.SubAttrVolume, "l")
+	it, err := newSingleTypeReverseAccountIterator(s.DB(), dal.SubAttrVolume, "l", "")
 	require.NoError(t, err)
 	defer it.Close()
 
@@ -292,7 +320,7 @@ func TestPebbleReverseAccountIterator_SeekLERepositioning(t *testing.T) {
 
 	// Last()-fails branch: an empty view records the ceil on the first seek,
 	// covering every later target below it.
-	empty, err := newSingleTypeReverseAccountIterator(s.DB(), dal.SubAttrVolume, "empty")
+	empty, err := newSingleTypeReverseAccountIterator(s.DB(), dal.SubAttrVolume, "empty", "")
 	require.NoError(t, err)
 	defer empty.Close()
 

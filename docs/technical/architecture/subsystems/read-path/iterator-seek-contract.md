@@ -29,8 +29,12 @@ become the convergence candidate and skip valid intersections below it), then
 `converge` leapfrogs children forward; `OrIterator`/`ReverseOrIterator`
 re-seek all children per seek; `NotIterator` re-seeks its excluded child on
 every `SeekGE` — including after the child reported done — and catches it up
-with `Next()` as the universe advances. Any latch or consuming seek in a leaf
-turns these algebra steps into silent row drops.
+with `Next()` as the universe advances. The descending mirrors
+(`ReverseAndIterator`, `ReverseNotIterator`) follow the same contract through
+`SeekLE`, and `ReverseAndIterator` initializes every child on its first `Next`
+so an un-positioned child's nil `Current()` is never misread as "below the
+candidate". Any latch or consuming seek in a leaf turns these algebra steps
+into silent row drops.
 
 One leaf is exempt by construction: `RangeIterator` emits rows in
 `(value, entity)` order across index-value buckets, so an entity-space

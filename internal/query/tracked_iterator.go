@@ -55,3 +55,55 @@ func (t *TrackedIterator) Close() {
 }
 
 var _ readstore.EntityIterator = (*TrackedIterator)(nil)
+
+// TrackedReverseIterator wraps a ReverseIterator and records per-iterator
+// stats, mirroring TrackedIterator for the descending execution path.
+type TrackedReverseIterator struct {
+	inner readstore.ReverseIterator
+	stats *IteratorStats
+	close func()
+}
+
+// NewTrackedReverseIterator wraps a reverse iterator with profiling counters.
+func NewTrackedReverseIterator(inner interface {
+	readstore.ReverseIterator
+	Close()
+}, stats *IteratorStats) *TrackedReverseIterator {
+	return &TrackedReverseIterator{inner: inner, stats: stats, close: inner.Close}
+}
+
+func (t *TrackedReverseIterator) Next() bool {
+	start := time.Now()
+	ok := t.inner.Next()
+	t.stats.Duration += time.Since(start)
+	t.stats.NextCalls++
+
+	if ok {
+		t.stats.ItemsEmitted++
+	}
+
+	return ok
+}
+
+func (t *TrackedReverseIterator) Current() []byte {
+	return t.inner.Current()
+}
+
+func (t *TrackedReverseIterator) SeekLE(target []byte) bool {
+	start := time.Now()
+	ok := t.inner.SeekLE(target)
+	t.stats.Duration += time.Since(start)
+	t.stats.SeekCalls++
+
+	return ok
+}
+
+func (t *TrackedReverseIterator) Err() error {
+	return t.inner.Err()
+}
+
+func (t *TrackedReverseIterator) Close() {
+	t.close()
+}
+
+var _ readstore.ReverseIterator = (*TrackedReverseIterator)(nil)
