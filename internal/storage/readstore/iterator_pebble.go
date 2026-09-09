@@ -236,16 +236,22 @@ type PebbleReverseAccountIterator struct {
 }
 
 // newSingleTypeReverseAccountIterator creates a reverse account iterator for one attribute type.
-func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte, ledgerName string) (*PebbleReverseAccountIterator, error) {
+func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte, ledgerName string, addrPrefix string) (*PebbleReverseAccountIterator, error) {
 	prefix := make([]byte, 2+dal.LedgerNameFixedSize)
 	prefix[0] = dal.ZoneAttributes
 	prefix[1] = attrType
 	copy(prefix[2:], ledgerName)
 
-	upperBound := IncrementBytes(prefix)
+	// Bounds mirror newSingleTypeAccountIterator: an empty addrPrefix scans
+	// the whole ledger, a non-empty one scans that address range.
+	lowerBound := make([]byte, len(prefix)+len(addrPrefix))
+	copy(lowerBound, prefix)
+	copy(lowerBound[len(prefix):], addrPrefix)
+
+	upperBound := IncrementBytes(lowerBound)
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: prefix,
+		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
 	if err != nil {
@@ -261,12 +267,20 @@ func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte,
 // NewPebbleReverseAccountIterator creates a reverse account iterator that merges
 // V and M attribute types, yielding unique addresses in descending order.
 func NewPebbleReverseAccountIterator(reader dal.PebbleReader, ledgerName string) (*OrIterator[Desc], error) {
-	vIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrVolume, ledgerName)
+	return NewPebbleReverseAccountPrefixIterator(reader, ledgerName, "")
+}
+
+// NewPebbleReverseAccountPrefixIterator is the descending twin of
+// NewPebbleAccountPrefixIterator: unique addresses under addrPrefix, high to
+// low. Accounts are entity-ordered in the attributes zone, so an address
+// prefix match streams in both directions (EN-1966).
+func NewPebbleReverseAccountPrefixIterator(reader dal.PebbleReader, ledgerName string, addrPrefix string) (*OrIterator[Desc], error) {
+	vIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrVolume, ledgerName, addrPrefix)
 	if err != nil {
 		return nil, err
 	}
 
-	mIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrMetadata, ledgerName)
+	mIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrMetadata, ledgerName, addrPrefix)
 	if err != nil {
 		vIter.Close()
 
@@ -591,6 +605,42 @@ func NewPebbleReverseTxIterator(reader dal.PebbleReader, ledgerName string) (*Pe
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: prefix,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &PebbleReverseTxIterator{
+		iter:     iter,
+		prefix:   prefix,
+		idOffset: len(prefix),
+	}, nil
+}
+
+// NewPebbleReverseTxRangeIterator is NewPebbleReverseTxIterator restricted to
+// [lower, upper) on the transaction id, mirroring NewPebbleTxRangeIterator's
+// bound construction. A nil bound means "open on that side". The traversal
+// logic is unchanged: Last/Prev/SeekLT all respect the Pebble bounds, so the
+// descending id-range scan streams exactly like the ascending one (EN-1966).
+func NewPebbleReverseTxRangeIterator(reader dal.PebbleReader, ledgerName string, lower, upper []byte) (*PebbleReverseTxIterator, error) {
+	prefix := txAttributeCode(ledgerName)
+
+	lowerBound := make([]byte, len(prefix)+len(lower))
+	copy(lowerBound, prefix)
+	copy(lowerBound[len(prefix):], lower)
+
+	var upperBound []byte
+	if upper != nil {
+		upperBound = make([]byte, len(prefix)+len(upper))
+		copy(upperBound, prefix)
+		copy(upperBound[len(prefix):], upper)
+	} else {
+		upperBound = IncrementBytes(prefix)
+	}
+
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
 	if err != nil {

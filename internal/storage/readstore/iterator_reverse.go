@@ -1,6 +1,8 @@
 package readstore
 
 import (
+	"encoding/binary"
+	"fmt"
 	"slices"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -19,6 +21,14 @@ type ReversePrefixIterator struct {
 	started      bool
 	exhausted    bool
 	ceil         seekCeil
+	// stampPin gates rows by the fold sequence stored in their value,
+	// identically to PrefixIterator.stampPin. The gate MUST exist on both
+	// directions: a row written after the reader's pin that ascending pages
+	// hide but descending pages admit is a direction-dependent visibility
+	// bug, and a whole-set parity test cannot see it — both directions are
+	// compared against the same pinned view (EN-1966).
+	stampPin uint64
+	stampErr error
 }
 
 // NewReversePrefixIterator creates an iterator that scans all keys with the
@@ -48,6 +58,46 @@ func NewReversePrefixIterator(
 	}, nil
 }
 
+// NewStampGatedReversePrefixIterator is NewReversePrefixIterator with the
+// fold-sequence gate armed at pin — the descending twin of
+// NewStampGatedPrefixIterator.
+func NewStampGatedReversePrefixIterator(
+	reader dal.PebbleReader,
+	prefix []byte,
+	entityOffset int,
+	entityLen int,
+	pin uint64,
+) (*ReversePrefixIterator, error) {
+	it, err := NewReversePrefixIterator(reader, prefix, entityOffset, entityLen)
+	if err != nil {
+		return nil, err
+	}
+
+	it.stampPin = pin
+
+	return it, nil
+}
+
+// admitStamp applies the fold-sequence gate to the row under the cursor. A
+// malformed value latches an error and exhausts the iterator: refusing per
+// invariant #7 beats silently folding an unreadable row into the page.
+// See PrefixIterator.admitStamp.
+func (it *ReversePrefixIterator) admitStamp() bool {
+	if it.stampPin == 0 {
+		return true
+	}
+
+	v := it.iter.Value()
+	if len(v) != 8 {
+		it.stampErr = fmt.Errorf("stamp-gated reverse scan: row %x carries a %d-byte value (want an 8-byte fold sequence)", it.iter.Key(), len(v))
+		it.exhausted = true
+
+		return false
+	}
+
+	return binary.BigEndian.Uint64(v) <= it.stampPin
+}
+
 func (it *ReversePrefixIterator) Next() bool {
 	if it.exhausted {
 		return false
@@ -62,19 +112,27 @@ func (it *ReversePrefixIterator) Next() bool {
 		}
 
 		entity := it.extractEntity(it.iter.Key())
-		if entity != nil {
+		if entity != nil && it.admitStamp() {
 			it.current = entity
 
 			return true
+		}
+
+		if it.stampErr != nil {
+			return false
 		}
 	}
 
 	for it.iter.Prev() {
 		entity := it.extractEntity(it.iter.Key())
-		if entity != nil {
+		if entity != nil && it.admitStamp() {
 			it.current = entity
 
 			return true
+		}
+
+		if it.stampErr != nil {
+			return false
 		}
 	}
 
@@ -87,7 +145,7 @@ func (it *ReversePrefixIterator) Current() []byte {
 	return it.current
 }
 
-// Seek positions the iterator at the first entity whose key is <= target.
+// Seek positions the iterator at the largest entity whose key is <= target.
 func (it *ReversePrefixIterator) Seek(target []byte) bool {
 	// A prior failed seek at or above target proves this one empty too.
 	if it.ceil.covers(target) {
@@ -107,14 +165,18 @@ func (it *ReversePrefixIterator) Seek(target []byte) bool {
 
 	it.started = true
 
-	// Seek positions at first key >= seekKey. If exact match, check it.
+	// SeekGE positions at first key >= seekKey. If exact match, check it.
 	// If past target, step back.
 	if it.iter.SeekGE(seekKey) {
 		entity := it.extractEntity(it.iter.Key())
-		if entity != nil && compareEntities(entity, target) <= 0 {
+		if entity != nil && compareEntities(entity, target) <= 0 && it.admitStamp() {
 			it.current = entity
 
 			return true
+		}
+
+		if it.stampErr != nil {
+			return false
 		}
 		// Key is > target, step back
 		if !it.iter.Prev() {
@@ -133,10 +195,14 @@ func (it *ReversePrefixIterator) Seek(target []byte) bool {
 
 	for it.iter.Valid() {
 		entity := it.extractEntity(it.iter.Key())
-		if entity != nil && compareEntities(entity, target) <= 0 {
+		if entity != nil && compareEntities(entity, target) <= 0 && it.admitStamp() {
 			it.current = entity
 
 			return true
+		}
+
+		if it.stampErr != nil {
+			return false
 		}
 
 		if !it.iter.Prev() {
@@ -151,6 +217,10 @@ func (it *ReversePrefixIterator) Seek(target []byte) bool {
 }
 
 func (it *ReversePrefixIterator) Err() error {
+	if it.stampErr != nil {
+		return it.stampErr
+	}
+
 	if it.iter == nil {
 		return nil
 	}
@@ -196,6 +266,8 @@ func IncrementBytes(b []byte) []byte {
 	// Overflow
 	return append(result, 0xFF)
 }
+
+var _ ReverseIterator = (*ReversePrefixIterator)(nil)
 
 // Direction is the compile-time direction witness; see Iterator.Direction.
 func (it *ReversePrefixIterator) Direction() (d Desc) { return }

@@ -138,6 +138,12 @@ func (it *OrIterator[D]) advanceToLeader() bool {
 	return true
 }
 
+// Or creates an OR over children travelling in D's direction. See And for why
+// both a generic and a named spelling exist.
+func Or[D Direction](children []Iterator[D]) *OrIterator[D] {
+	return newOrIterator(children)
+}
+
 // Direction is the compile-time direction witness; see Iterator.Direction.
 func (it *OrIterator[D]) Direction() (d D) { return }
 
