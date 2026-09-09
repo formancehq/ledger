@@ -272,23 +272,27 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 	// Opening a not-yet-materialized directory would surface an opaque,
 	// non-retryable Unknown (EN-1460).
 	//
-	// The read-index .ready marker is written atomically last by the builder, so
-	// it is a reliable readiness gate for the read index. The main store has no
-	// such marker (the applier checkpoints straight into {id}/main), so we gate it
-	// by attempting the read-only open: any failure on a checkpoint whose read
-	// index is ready is treated as "main store not materialized here yet" and
-	// routed through resolveMissingMarker, which returns a retryable
-	// ErrCheckpointNotReady for a registered checkpoint (or NotFound after a
-	// barrier confirms it does not exist).
-	if !readstore.CheckpointDirReady(readIndexPath) {
+	// Both halves write their .ready marker atomically last, after the directory
+	// it vouches for has been renamed into place, so the pair of markers is the
+	// gate. Neither marker says anything about the other half; a missing one
+	// means "not materialized here yet" and routes through
+	// resolveMissingMarker, which returns a retryable ErrCheckpointNotReady for
+	// a registered checkpoint (or NotFound after a barrier confirms it does not
+	// exist).
+	//
+	// Openability is not a completeness gate, so the markers are checked before
+	// the open rather than inferred from it: pebble writes the MANIFEST that
+	// makes a directory openable BEFORE it copies the WAL files, so an unmarked
+	// directory can open cleanly while missing every write still resident in the
+	// source memtable.
+	if !dal.CheckpointDirReady(readIndexPath) || !dal.CheckpointDirReady(mainPath) {
 		return nil, nil, impl.resolveMissingMarker(ctx, checkpointID)
 	}
 
 	mainStore, err := dal.OpenReadOnly(mainPath, impl.logger)
 	if err != nil {
-		// The read index is ready but the main store is not openable yet — most
-		// likely the applier's main checkpoint has not landed on this replica.
-		// Never surface a raw Unknown: classify as not-ready / not-found.
+		// Marked ready yet unopenable: damaged rather than merely late. Never
+		// surface a raw Unknown: classify as not-ready / not-found.
 		return nil, nil, impl.resolveMissingMarker(ctx, checkpointID)
 	}
 

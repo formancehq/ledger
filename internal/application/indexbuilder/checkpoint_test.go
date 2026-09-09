@@ -50,7 +50,7 @@ func TestCreateReadIndexCheckpointWritesReadyMarker(t *testing.T) {
 	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
 
 	dir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
-	require.True(t, readstore.CheckpointDirReady(dir), "readiness marker must exist after creation")
+	require.True(t, dal.CheckpointDirReady(dir), "readiness marker must exist after creation")
 
 	ro, err := readstore.OpenReadOnly(dir, logging.NopZap())
 	require.NoError(t, err)
@@ -72,11 +72,11 @@ func TestCreateReadIndexCheckpointRebuildsUnmarkedDir(t *testing.T) {
 	// Simulate a stale, markerless directory left by a crashed prior attempt.
 	require.NoError(t, os.MkdirAll(dir, 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "stale.sst"), []byte("garbage"), 0o640))
-	require.False(t, readstore.CheckpointDirReady(dir))
+	require.False(t, dal.CheckpointDirReady(dir))
 
 	// Recreation must succeed and produce a ready, openable checkpoint.
 	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
-	require.True(t, readstore.CheckpointDirReady(dir))
+	require.True(t, dal.CheckpointDirReady(dir))
 
 	// The stale file must be gone (directory was rebuilt from scratch).
 	_, err := os.Stat(filepath.Join(dir, "stale.sst"))
@@ -99,7 +99,7 @@ func TestCreateReadIndexCheckpointLeavesNoTempDir(t *testing.T) {
 	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
 
 	finalDir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
-	require.True(t, readstore.CheckpointDirReady(finalDir))
+	require.True(t, dal.CheckpointDirReady(finalDir))
 
 	_, err := os.Stat(finalDir + ".tmp")
 	require.True(t, os.IsNotExist(err), "temp dir must not survive a successful materialization")
@@ -143,7 +143,7 @@ func TestCreateReadIndexCheckpointClearsStaleTempDir(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "partial.sst"), []byte("x"), 0o640))
 
 	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
-	require.True(t, readstore.CheckpointDirReady(finalDir))
+	require.True(t, dal.CheckpointDirReady(finalDir))
 
 	_, err := os.Stat(tmpDir)
 	require.True(t, os.IsNotExist(err), "stale temp dir must be cleared and not survive")
@@ -160,7 +160,7 @@ func TestDeleteReadIndexCheckpoint(t *testing.T) {
 	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
 
 	dir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
-	require.True(t, readstore.CheckpointDirReady(dir))
+	require.True(t, dal.CheckpointDirReady(dir))
 
 	b.deleteReadIndexCheckpoint(cpID)
 

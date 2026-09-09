@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // TestCheckpointDirReadyRequiresMarker verifies readiness is keyed on the
@@ -22,10 +24,10 @@ func TestCheckpointDirReadyRequiresMarker(t *testing.T) {
 	dir := t.TempDir()
 
 	// A directory that exists but has no marker is not ready.
-	require.False(t, CheckpointDirReady(dir))
+	require.False(t, dal.CheckpointDirReady(dir))
 
-	require.NoError(t, MarkCheckpointReady(dir))
-	require.True(t, CheckpointDirReady(dir))
+	require.NoError(t, dal.MarkCheckpointReady(dir))
+	require.True(t, dal.CheckpointDirReady(dir))
 }
 
 // TestCreateCheckpointThenMarkIsOpenable mirrors what the index builder does
@@ -39,8 +41,8 @@ func TestCreateCheckpointThenMarkIsOpenable(t *testing.T) {
 
 	destDir := filepath.Join(t.TempDir(), "readindex")
 	require.NoError(t, s.CreateCheckpoint(destDir))
-	require.NoError(t, MarkCheckpointReady(destDir))
-	require.True(t, CheckpointDirReady(destDir))
+	require.NoError(t, dal.MarkCheckpointReady(destDir))
+	require.True(t, dal.CheckpointDirReady(destDir))
 
 	ro, err := OpenReadOnly(destDir, logging.NopZap())
 	require.NoError(t, err)
@@ -121,7 +123,7 @@ func TestWaitForCheckpointFastPath(t *testing.T) {
 
 	s := newTestStore(t)
 	dir := t.TempDir()
-	require.NoError(t, MarkCheckpointReady(dir))
+	require.NoError(t, dal.MarkCheckpointReady(dir))
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -155,7 +157,7 @@ func TestWaitForCheckpointBlocksUntilMarker(t *testing.T) {
 
 	// Simulate the builder finishing the checkpoint: write the marker, then
 	// broadcast progress exactly as the inline path does after materialization.
-	require.NoError(t, MarkCheckpointReady(dir))
+	require.NoError(t, dal.MarkCheckpointReady(dir))
 	s.NotifyProgress()
 
 	select {
