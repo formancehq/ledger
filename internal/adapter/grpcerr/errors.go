@@ -46,10 +46,11 @@
 // A reconstructed error still answers GRPCStatus() with the original status,
 // so status.Code and status.FromError keep working for callers that read the
 // code directly and convertToGRPCError re-derives the same status when the
-// value crosses a second hop. That is what keeps the two axes independent:
-// READ_INDEX_NOT_CAUGHT_UP stays semantically KindUnavailable while travelling
-// as codes.FailedPrecondition on every hop, so it never enters
-// actions.GRPCRetryPolicy's Unavailable retry loop.
+// value crosses a second hop. That is what keeps the two axes independent, and
+// the transport axis is the lossy one: CodeForKind sends both KindConflict and
+// KindPrecondition as codes.FailedPrecondition, so the received code alone
+// cannot name the kind. Preserving the status verbatim rather than rebuilding
+// it from the kind keeps every code-reading caller correct.
 //
 // It is deliberately a leaf: it imports only gRPC, errdetails,
 // internal/adapter/apierr, internal/domain and internal/proto/commonpb.
@@ -114,32 +115,25 @@ func CodeForKind(k domain.ErrorKind) codes.Code {
 	return codes.Internal
 }
 
-// wireCodeExceptions lists the reasons the server deliberately sends under a
-// code other than CodeForKind(KindForReason(reason)), because the transport
-// axis and the semantic axis are allowed to disagree.
-//
-// READ_INDEX_NOT_CAUGHT_UP is the only entry. It is semantically
-// KindUnavailable — a fold behind the requested index, retry shortly — but
-// convertToGRPCError sends it as codes.FailedPrecondition
-// (internal/adapter/grpc/server.go) on purpose: actions.GRPCRetryPolicy
-// retries codes.Unavailable fifty times at 0.2s, so answering the semantic
-// code would turn a read-index lag into a ten-second client-side hang instead
-// of a fast rejection. Both codes are therefore legitimate for this reason.
-var wireCodeExceptions = map[commonpb.ErrorReason][]codes.Code{
-	commonpb.ErrorReason_ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP: {codes.FailedPrecondition},
-}
-
 // allowedWireCodes returns every status code a ledger server may legitimately
-// send rc under: the code its kind maps to, plus any declared exception.
+// send rc under.
 //
-// The policy is reason-specific rather than kind-specific by design. Deriving
-// the permitted code from CodeForKind alone would reject the
-// READ_INDEX_NOT_CAUGHT_UP pair the server actually sends.
+// Today that is exactly one code. Every reason in the enum reaches the wire
+// through describableToGRPCStatus (internal/adapter/grpc/errors.go), which
+// derives the status from CodeForKind and nothing else, so a second legitimate
+// code for a known reason cannot arise without a deliberate encoder change.
+// The three reasons the server hand-builds an ErrorInfo for
+// (EXTERNAL_SERVICE_ERROR, RAFT_NODE_NOT_IN_CLUSTER,
+// RAFT_NODE_REMOVAL_COMMITTED) are not enum members, so they decode down the
+// unknown-reason path and are never validated here.
+//
+// Should the transport and semantic axes have to disagree for some reason —
+// as they did for the removed READ_INDEX_NOT_CAUGHT_UP, sent as
+// codes.FailedPrecondition so callers skipped actions.GRPCRetryPolicy's fifty
+// Unavailable retries — widen the returned set for that reason rather than
+// relaxing the kind mapping, which the encoder shares.
 func allowedWireCodes(rc commonpb.ErrorReason) []codes.Code {
-	allowed := make([]codes.Code, 0, 2)
-	allowed = append(allowed, CodeForKind(domain.KindForReason(rc)))
-
-	return append(allowed, wireCodeExceptions[rc]...)
+	return []codes.Code{CodeForKind(domain.KindForReason(rc))}
 }
 
 // FromStatusError turns a gRPC status error into a typed error whose chain
@@ -205,9 +199,8 @@ func (e *reconstructedError) Unwrap() error { return e.inner }
 // GRPCStatus keeps the original status reachable through status.FromError, so
 // the code survives reconstruction unchanged — the transport axis is preserved
 // exactly as received, independently of the semantic kind. cursor.go's
-// end-of-stream check, convertToGRPCError's "already a status, return as-is"
-// shortcut and the READ_INDEX_NOT_CAUGHT_UP fail-fast contract all depend on
-// it.
+// end-of-stream check and convertToGRPCError's "already a status, return
+// as-is" shortcut both depend on it.
 func (e *reconstructedError) GRPCStatus() *status.Status { return e.st }
 
 // Decode reads the boundary view out of a gRPC status error. It returns:

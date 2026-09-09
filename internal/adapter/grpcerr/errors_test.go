@@ -643,36 +643,6 @@ func TestDecode_ConflictAndPreconditionShareOneWireCode(t *testing.T) {
 		"at least two KindPrecondition reasons must exist for this test to prove anything")
 }
 
-// TestDecode_ReadIndexNotCaughtUpKeepsBothAxes is the EN-1980 exception case:
-// the one reason whose semantic kind and wire code deliberately disagree.
-//
-// Semantically it is KindUnavailable — a fold behind the requested index — so
-// HTTP must answer 503 + Retry-After. On the wire it travels as
-// codes.FailedPrecondition, because actions.GRPCRetryPolicy retries
-// codes.Unavailable fifty times at 0.2s and would turn the lag into a
-// ten-second hang. Both must hold at once, and the code must survive a second
-// hop unchanged.
-func TestDecode_ReadIndexNotCaughtUpKeepsBothAxes(t *testing.T) {
-	t.Parallel()
-
-	grpcErr := buildGRPCError(t, codes.FailedPrecondition,
-		"read index not caught up", domain.ErrReasonReadIndexNotCaughtUp,
-		map[string]string{"requested": "42", "current": "17"})
-
-	assertRemote(t, Decode(grpcErr), domain.ErrReasonReadIndexNotCaughtUp,
-		map[string]string{"requested": "42", "current": "17"})
-	require.Equal(t, domain.KindUnavailable, remoteFrom(t, Decode(grpcErr)).KindValue,
-		"the semantic axis: KindUnavailable, which HTTP answers as 503")
-
-	converted := FromStatusError(grpcErr)
-	require.Equal(t, codes.FailedPrecondition, status.Code(converted),
-		"the transport axis: FailedPrecondition must survive so the fail-fast contract holds on the next hop")
-
-	d, ok := apierr.Describe(converted)
-	require.True(t, ok)
-	require.Equal(t, domain.KindUnavailable, d.Kind)
-}
-
 // TestDecode_InvalidReasonCodePairIsRejected covers the mismatch policy. A
 // reason this build knows is a reason whose legitimate codes it knows too, so
 // a contradiction is a protocol fault rather than a business outcome: nothing

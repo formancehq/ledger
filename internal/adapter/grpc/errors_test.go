@@ -27,7 +27,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // testLogger is the silent logger used by convertToGRPCError tests.
@@ -750,68 +749,6 @@ func TestConvertToGRPCError_CheckpointNotReady(t *testing.T) {
 			info := extractErrorInfo(t, st)
 			require.Equal(t, domain.ErrReasonCheckpointNotReady, info.GetReason())
 			require.Equal(t, "27", info.GetMetadata()["checkpointId"])
-		})
-	}
-}
-
-// TestConvertToGRPCError_ReadIndexNotCaughtUp pins a deliberate divergence
-// between the gRPC status code and the reason's ErrorKind, and the reason for
-// it.
-//
-// query.ErrReadIndexNotCaughtUp is a domain.Describable whose reason,
-// READ_INDEX_NOT_CAUGHT_UP, is classified KindUnavailable — correct for HTTP,
-// where handleError answers 503 + Retry-After through the Describable branch
-// (the HTTP surface talks to the controller directly and never reaches this
-// function). Routing it through describableToGRPCStatus would therefore emit
-// codes.Unavailable for consistency, and the hand-written branch that emits
-// codes.FailedPrecondition instead looks redundant.
-//
-// It is not. On gRPC, codes.Unavailable means "retry this RPC", and
-// actions.GRPCRetryPolicy — used by ledgerctl and the e2e clients — retries it
-// 50 times at 0.2s. A read-index lag is not fixed by re-sending the same read:
-// it clears when the fold catches up, which can take minutes. Emitting
-// Unavailable converts a fast, actionable rejection into a ~10s client-side
-// hang and starves the caller's retry budget without ever waiting long enough.
-// FailedPrecondition fails fast and lets the caller decide when to poll again.
-//
-// Removing this branch was tried under EN-1636 and reverted: it caused the
-// cross-store e2e specs, which read with min_log_sequence while the fold is
-// behind, to blow their fold-drain and teardown budgets.
-//
-// The reason still travels in the ErrorInfo, so a forwarded read reconstructed
-// by internal/adapter/grpcerr derives KindUnavailable from the reason and a
-// follower answers the same 503 as the leader. The code and the kind are
-// allowed to disagree here precisely because the reason is what carries the
-// classification.
-func TestConvertToGRPCError_ReadIndexNotCaughtUp(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		err  error
-	}{
-		{"raw", &query.ErrReadIndexNotCaughtUp{Requested: 42, Current: 40}},
-		{"wrapped", fmt.Errorf("serving read: %w", &query.ErrReadIndexNotCaughtUp{Requested: 42, Current: 40})},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			grpcErr := convertToGRPCError(tt.err, testLogger())
-			st, ok := status.FromError(grpcErr)
-			require.True(t, ok)
-			require.Equal(t, codes.FailedPrecondition, st.Code(),
-				"must NOT be codes.Unavailable: actions.GRPCRetryPolicy retries that code "+
-					"50x at 0.2s, and re-sending the read cannot make the fold catch up")
-			require.NotContains(t, st.Message(), "correlation ID",
-				"must not fall through to the opaque Unknown sanitizer")
-
-			info := extractErrorInfo(t, st)
-			require.Equal(t, domain.ErrReasonReadIndexNotCaughtUp, info.GetReason(),
-				"the reason is what carries the KindUnavailable classification across the wire")
-			require.Equal(t, "42", info.GetMetadata()["requested"])
-			require.Equal(t, "40", info.GetMetadata()["current"])
 		})
 	}
 }

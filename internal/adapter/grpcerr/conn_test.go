@@ -248,39 +248,6 @@ func businessStatusWithMetadata(t *testing.T, code codes.Code, message, reason s
 	return detailed.Err()
 }
 
-// TestConn_ReadIndexNotCaughtUpKeepsBothAxesOverTheWire proves the two axes
-// survive the real decorated connection, not just a hand-built status.
-//
-// The reason is semantically KindUnavailable, so a REST consumer must see 503;
-// the wire code is codes.FailedPrecondition so a gRPC caller fails fast rather
-// than entering actions.GRPCRetryPolicy's fifty Unavailable retries. Both have
-// to hold on the value the client actually receives, or the next hop loses one
-// of them.
-func TestConn_ReadIndexNotCaughtUpKeepsBothAxesOverTheWire(t *testing.T) {
-	t.Parallel()
-
-	client := dialWrapped(t, &rejectingServer{
-		err: businessStatusWithMetadata(t, codes.FailedPrecondition,
-			"read index not caught up", domain.ErrReasonReadIndexNotCaughtUp,
-			map[string]string{"requested": "42", "current": "17"}),
-	})
-
-	_, err := client.GetTransaction(context.Background(), &servicepb.GetTransactionRequest{
-		Ledger:        "test",
-		TransactionId: 1,
-	})
-	require.Error(t, err)
-
-	d, ok := apierr.Describe(err)
-	require.True(t, ok)
-	require.Equal(t, domain.KindUnavailable, d.Kind, "the semantic axis")
-	require.Equal(t, domain.ErrReasonReadIndexNotCaughtUp, d.Reason)
-	require.Equal(t, map[string]string{"requested": "42", "current": "17"}, d.Metadata)
-
-	require.Equal(t, codes.FailedPrecondition, status.Code(err),
-		"the transport axis: the fail-fast code must survive to the next hop")
-}
-
 // TestConn_UnknownReasonKeepsItsExactCodeOverTheWire is the version-skew case
 // at the seam: a reason from a newer server, under a code no ErrorKind maps to.
 // The classification degrades to KindInternal because the receiver genuinely
