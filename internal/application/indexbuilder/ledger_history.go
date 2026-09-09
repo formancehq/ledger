@@ -46,6 +46,10 @@ func (b *Builder) historyStateFor(ledger string) (ledgerHistoryState, bool) {
 func (b *Builder) loadLedgerHistory(reader dal.PebbleReader) error {
 	entries, err := readstore.ReadAllLedgerHistoryStatesFrom(reader)
 	if err != nil {
+		if errors.Is(err, readstore.ErrLedgerHistoryCorrupt) {
+			return historyReplayInvariantf("%v", err)
+		}
+
 		return err
 	}
 
@@ -53,10 +57,10 @@ func (b *Builder) loadLedgerHistory(reader dal.PebbleReader) error {
 	for _, entry := range entries {
 		state := ledgerHistoryState(entry.State)
 		if state != ledgerHistoryEmpty && state != ledgerHistoryNonEmpty {
-			return fmt.Errorf("corrupt ledger history state for %q: unknown value %d", entry.LedgerName, entry.State)
+			return historyReplayInvariantf("corrupt ledger history state for %q: unknown value %d", entry.LedgerName, entry.State)
 		}
 		if _, duplicate := b.ledgerHistory[entry.LedgerName]; duplicate {
-			return fmt.Errorf("corrupt ledger history state: duplicate ledger %q", entry.LedgerName)
+			return historyReplayInvariantf("corrupt ledger history state: duplicate ledger %q", entry.LedgerName)
 		}
 
 		b.ledgerHistory[entry.LedgerName] = state

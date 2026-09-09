@@ -150,6 +150,7 @@ func TestLedgerHistoryStateRejectsMalformedKeys(t *testing.T) {
 
 			snapshot := store.NewSnapshot()
 			_, err = readstore.ReadAllLedgerHistoryStatesFrom(snapshot)
+			require.ErrorIs(t, err, readstore.ErrLedgerHistoryCorrupt)
 			require.ErrorContains(t, err, test.want)
 			require.NoError(t, snapshot.Close())
 		})
