@@ -50,11 +50,23 @@ type Descriptor struct {
 	// Reason is the stable, client-facing UPPER_SNAKE_CASE identifier.
 	Reason string
 
-	// Message is the client-safe human-readable message.
+	// Message is the client-safe human-readable message: the public
+	// presentation the error type owns when it has one (domain.PublicDetails),
+	// otherwise its Error(). Never the diagnostic identity of a type that
+	// separates the two.
 	Message string
 
-	// Metadata is the structured per-occurrence context, or nil.
+	// Metadata is the client-safe structured per-occurrence context, or nil.
+	// Same selection as Message.
 	Metadata map[string]string
+
+	// PublicOverride reports that the error type owns a public presentation
+	// distinct from its diagnostic identity, so Message and Metadata are that
+	// redacted view. A consumer that would otherwise render the whole error
+	// chain — outer wrapping text included — must render Message instead:
+	// the wrapping was built from Error(), which is what the override exists
+	// to withhold.
+	PublicOverride bool
 }
 
 // Remote is a failure decoded from a peer: the wire contract (reason,
@@ -150,6 +162,14 @@ func InvalidWire(err error) (*InvalidWireError, bool) {
 // what must not happen for a reason this build's enum does not know:
 // ReasonCode yields UNSPECIFIED, KindForReason collapses it to KindInternal,
 // and a caller mistake becomes a 500.
+//
+// A locally raised failure is read through domain.PublicErrorDetails, so a type
+// that separates its diagnostic identity from its client presentation never
+// reaches a surface through this contract with the diagnostic one. A decoded
+// remote failure needs no such selection: the sender already applied it before
+// serialising (internal/adapter/grpc.describableToGRPCStatus), so what arrived
+// is the public presentation and PublicOverride stays false — a consumer keeps
+// rendering its own outer context for it, exactly as it did before the hop.
 func Describe(err error) (Descriptor, bool) {
 	if remote, ok := errors.AsType[*Remote](err); ok {
 		return Descriptor{
@@ -161,11 +181,14 @@ func Describe(err error) (Descriptor, bool) {
 	}
 
 	if d, ok := errors.AsType[domain.Describable](err); ok {
+		message, metadata, overridden := domain.PublicErrorDetails(d)
+
 		return Descriptor{
-			Kind:     domain.Kind(d),
-			Reason:   d.Reason(),
-			Message:  d.Error(),
-			Metadata: d.Metadata(),
+			Kind:           domain.Kind(d),
+			Reason:         d.Reason(),
+			Message:        message,
+			Metadata:       metadata,
+			PublicOverride: overridden,
 		}, true
 	}
 

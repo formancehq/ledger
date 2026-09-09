@@ -374,9 +374,9 @@ func bulkErrorDescription(r *http.Request, err error) string {
 	}
 	id := correlationID(r)
 	recordHTTPInternalError(r, id, err)
-	if d, ok := errors.AsType[domain.Describable](err); ok {
-		if public, _, overridden := domain.PublicErrorDetails(d); overridden {
-			return public
+	if d, ok := apierr.Describe(err); ok {
+		if d.PublicOverride {
+			return d.Message
 		}
 
 		return message

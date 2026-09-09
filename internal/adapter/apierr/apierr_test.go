@@ -165,3 +165,54 @@ func TestRemote_SatisfiesDescribable(t *testing.T) {
 	require.Equal(t, "ledger deleted: foo", d.Error())
 	require.Equal(t, map[string]string{"name": "foo"}, d.Metadata())
 }
+
+// TestDescribe_LocalDescribableUsesItsPublicPresentation pins the EN-1623
+// redaction contract at this boundary: a type that separates its diagnostic
+// identity from its client presentation must reach a surface through Describe
+// with the public one, and the flag must tell the surface to render Message
+// instead of the wrapped chain it was built from.
+func TestDescribe_LocalDescribableUsesItsPublicPresentation(t *testing.T) {
+	t.Parallel()
+
+	inconsistent := &domain.ErrIndexInconsistent{Index: "secret-index", Detail: "raw storage detail"}
+
+	d, ok := Describe(fmt.Errorf("read accounts: %w", inconsistent))
+	require.True(t, ok)
+
+	require.True(t, d.PublicOverride, "the type owns a separate public presentation")
+	require.Equal(t, "index is inconsistent", d.Message)
+	require.Nil(t, d.Metadata)
+	require.NotContains(t, d.Message, "secret-index")
+	require.Equal(t, domain.ErrReasonIndexInconsistent, d.Reason,
+		"the reason is the wire contract and is never redacted")
+}
+
+// TestDescribe_LocalDescribableWithoutPublicPresentation: the common case is
+// unchanged — Error() and Metadata() are the client-facing values, and the
+// consumer keeps rendering its own outer context.
+func TestDescribe_LocalDescribableWithoutPublicPresentation(t *testing.T) {
+	t.Parallel()
+
+	d, ok := Describe(&domain.ErrLedgerDeleted{Name: "foo"})
+	require.True(t, ok)
+
+	require.False(t, d.PublicOverride)
+	require.Equal(t, (&domain.ErrLedgerDeleted{Name: "foo"}).Error(), d.Message)
+}
+
+// TestDescribe_RemoteNeedsNoPublicSelection: the sender applied its own public
+// presentation before serialising, so what arrived is already client-safe and
+// the receiver has nothing left to select.
+func TestDescribe_RemoteNeedsNoPublicSelection(t *testing.T) {
+	t.Parallel()
+
+	d, ok := Describe(&Remote{
+		KindValue:   domain.KindInternal,
+		ReasonValue: domain.ErrReasonIndexInconsistent,
+		Msg:         "index is inconsistent",
+	})
+	require.True(t, ok)
+
+	require.False(t, d.PublicOverride)
+	require.Equal(t, "index is inconsistent", d.Message)
+}

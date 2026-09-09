@@ -123,8 +123,8 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		if httpStatus == http.StatusInternalServerError {
 			recordHTTPInternalError(r, correlationID(r), err)
 		}
-		if message, _, overridden := domain.PublicErrorDetails(d); overridden {
-			err = errors.New(message)
+		if d.PublicOverride {
+			err = errors.New(d.Message)
 		}
 
 		writeErrorResponse(w, httpStatus, d.Reason, err)
