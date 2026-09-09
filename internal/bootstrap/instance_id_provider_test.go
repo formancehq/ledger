@@ -2,6 +2,8 @@ package bootstrap
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -48,4 +50,29 @@ func TestWALProviderDependsOnNodeIdentity(t *testing.T) {
 	instanceID, err := wal.ReadInstanceID(walDir)
 	require.NoError(t, err)
 	require.Len(t, instanceID, wal.InstanceIDLen)
+}
+
+func TestNodeConfigProviderRefusesExistingWALWithoutIdentity(t *testing.T) {
+	t.Parallel()
+
+	walDir := t.TempDir()
+	require.NoError(t, wal.MarkClusterJoined(walDir))
+	var providedWAL *wal.DefaultWAL
+	app := fx.New(
+		fx.NopLogger,
+		fx.Supply(Config{RaftConfig: node.NodeConfig{WalDir: walDir}}),
+		fx.Provide(
+			func() logging.Logger { return logging.Testing() },
+			func() metric.MeterProvider { return noop.NewMeterProvider() },
+			provideNodeConfig,
+			provideWAL,
+		),
+		fx.Populate(&providedWAL),
+	)
+	t.Cleanup(func() { require.NoError(t, app.Stop(context.Background())) })
+	require.ErrorContains(t, app.Err(), "ensuring instance id")
+	require.ErrorContains(t, app.Err(), "refusing to generate a new identity")
+	require.Nil(t, providedWAL, "WAL construction must not run after identity admission fails")
+	_, err := os.Stat(filepath.Join(walDir, wal.InstanceIDMarkerFile))
+	require.ErrorIs(t, err, os.ErrNotExist)
 }

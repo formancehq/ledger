@@ -51,9 +51,39 @@ func newConfiguredPeersTestNode(t *testing.T) *Node {
 
 	return &Node{
 		rawNode:          rawNode,
+		wal:              w,
 		membership:       m,
 		clusterCommandCh: make(chan *clusterCommand),
 	}
+}
+
+func TestGetConfiguredPeers_FollowerDoesNotPublishLeaderView(t *testing.T) {
+	t.Parallel()
+
+	n := newConfiguredPeersTestNode(t)
+	storage := raft.NewMemoryStorage()
+	require.NoError(t, storage.ApplySnapshot(&raftpb.Snapshot{Metadata: &raftpb.SnapshotMetadata{
+		Index: new(uint64(1)), Term: new(uint64(1)), ConfState: &raftpb.ConfState{Voters: []uint64{1, 2}},
+	}}))
+	var err error
+	n.rawNode, err = raft.NewRawNode(&raft.Config{
+		ID: 1, ElectionTick: 10, HeartbeatTick: 1, Storage: storage,
+		MaxInflightMsgs: 256, Logger: NewLoggerAdapter(logging.Testing()),
+	})
+	require.NoError(t, err)
+	require.Equal(t, raft.StateFollower, n.rawNode.Status().RaftState)
+	results := make(chan []Peer, 1)
+	errors := make(chan error, 1)
+	go func() {
+		peers, err := n.GetConfiguredPeers(t.Context())
+		results <- peers
+		errors <- err
+	}()
+	cmd := <-n.clusterCommandCh
+	cmd.errCh <- cmd.fn()
+	require.NoError(t, <-errors)
+	require.Empty(t, <-results, "local cached peers must not masquerade as leader discovery")
+	require.NotEmpty(t, n.membership.PeerAddresses())
 }
 
 func TestGetConfiguredPeers_SnapshotSurvivesMembershipChange(t *testing.T) {
