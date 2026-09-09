@@ -291,9 +291,9 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 
 	mainStore, err := dal.OpenReadOnly(mainPath, impl.logger)
 	if err != nil {
-		// Marked ready yet unopenable: damaged rather than merely late. Never
-		// surface a raw Unknown: classify as not-ready / not-found.
-		return nil, nil, impl.resolveMissingMarker(ctx, checkpointID)
+		// Both markers are present, so this directory is damaged rather than
+		// late; the error surfaces as-is, like the read index's below.
+		return nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)
 	}
 
 	readIdx, err := readstore.OpenReadOnly(readIndexPath, impl.logger)

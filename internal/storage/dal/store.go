@@ -960,7 +960,7 @@ func (s *Store) CreateQueryCheckpoint(id uint64) (string, error) {
 	}
 
 	if err := s.checkpointQueryTemp(tmpDir); err != nil {
-		_ = os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir) // best-effort cleanup of the failed attempt
 
 		return "", err
 	}
@@ -968,14 +968,14 @@ func (s *Store) CreateQueryCheckpoint(id uint64) (string, error) {
 	// fsync the fully-built temp directory before the rename so its content is
 	// durable independent of the rename.
 	if err := FsyncDir(tmpDir); err != nil {
-		_ = os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir) // best-effort cleanup of the failed attempt
 
 		return "", fmt.Errorf("fsync temp query checkpoint %d: %w", id, err)
 	}
 
 	// Atomic rename into the final location: a reader never sees a partial dir.
 	if err := os.Rename(tmpDir, dir); err != nil {
-		_ = os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir) // best-effort cleanup of the failed attempt
 
 		return "", fmt.Errorf("renaming query checkpoint %d into place: %w", id, err)
 	}
