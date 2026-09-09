@@ -21,16 +21,25 @@
 //     as codes.Unavailable or codes.Internal *with* an ErrorInfo, and is
 //     reconstructed like any other, so INDEX_BUILDING and COVERAGE_MISS keep
 //     their reason across the hop.
-//   - A bare codes.NotFound (no ErrorInfo — roughly twenty
-//     commonpb.NewNotFoundError sites) becomes a *commonpb.NotFoundError,
-//     which the HTTP handler already maps to 404.
+//   - A bare codes.NotFound — carrying no ErrorInfo at all, which is the
+//     shape of roughly twenty commonpb.NewNotFoundError sites — becomes a
+//     *commonpb.NotFoundError, which the HTTP handler already maps to 404. A
+//     NotFound carrying another service's ErrorInfo is not bare and is left
+//     untouched: reinterpreting it as a ledger NotFoundError would answer a
+//     foreign contract as this one.
 //
 // Everything else passes through, which covers three groups:
 //
-//   - codes.Canceled, unconditionally and before the ErrorInfo check.
+//   - A *bare* codes.Canceled — no ledger ErrorInfo to decode.
 //     internal/adapter/grpc/cursor.go keys end-of-stream detection off
 //     status.Code(err) == codes.Canceled and normalises it to io.EOF;
-//     reconstructing it would break pagination.
+//     answering that with anything but the status would break pagination. The
+//     detail is still decoded first: no kind maps to codes.Canceled, so a
+//     reason this build knows arriving under it is a contradiction, and
+//     letting the passthrough run first would hand the client the untrusted
+//     message of a pair the validation exists to reject. A reconstructed
+//     value keeps answering GRPCStatus() with the received Canceled status,
+//     so cursor termination is unaffected either way.
 //   - A *bare* status of any code — no ledger ErrorInfo to decode, and no
 //     reason to recover. Bare codes.Unavailable (no leader yet, peer missing
 //     from the pool, stream torn down) already reaches the right outcome:
@@ -152,7 +161,7 @@ func FromStatusError(err error) error {
 		return err
 	}
 
-	if st.Code() == codes.OK || st.Code() == codes.Canceled {
+	if st.Code() == codes.OK {
 		return err
 	}
 
@@ -170,11 +179,37 @@ func FromStatusError(err error) error {
 		return invalid
 	}
 
-	if st.Code() == codes.NotFound {
+	// Only now, with the ledger detail decoded, is a codes.Canceled known to
+	// be bare — the end-of-stream signal cursor.go reads. Returning it before
+	// the decode would exempt the one code no kind maps to from the
+	// reason/code validation, so a peer could carry a known reason and its
+	// message past the sanitizer under Canceled.
+	if st.Code() == codes.Canceled {
+		return err
+	}
+
+	// The bare-NotFound fallback, and only for a status that carries no
+	// ErrorInfo at all. One that carries a foreign domain's ErrorInfo is that
+	// service's contract to answer: Decode already declines it, and wrapping
+	// it as a ledger *commonpb.NotFoundError here would put it back.
+	if st.Code() == codes.NotFound && !hasErrorInfo(st) {
 		return &reconstructedError{st: st, inner: commonpb.NewNotFoundError("%s", st.Message())}
 	}
 
 	return err
+}
+
+// hasErrorInfo reports whether st carries an errdetails.ErrorInfo of any
+// domain. A status that does is a typed failure of whichever contract stamped
+// it, so this build must not reinterpret it as one of its own untyped shapes.
+func hasErrorInfo(st *status.Status) bool {
+	for _, detail := range st.Details() {
+		if _, ok := detail.(*errdetails.ErrorInfo); ok {
+			return true
+		}
+	}
+
+	return false
 }
 
 // reconstructedError carries a typed error recovered from the wire while

@@ -325,42 +325,68 @@ func TestBulkPerElementForwardedInvalidWirePairIsSanitized(t *testing.T) {
 	t.Parallel()
 
 	// LEDGER_DELETED is KindConflict, which this build only ever sends as
-	// codes.FailedPrecondition. Arriving as codes.InvalidArgument contradicts
-	// it, so nothing in the payload may be answered as a business outcome.
-	leaderErr := leaderStatusWithMetadata(t, codes.InvalidArgument,
-		"ledger deleted: secret-ledger", domain.ErrReasonLedgerDeleted,
-		map[string]string{"name": "secret-ledger"})
-
-	elements := []*servicepb.BulkElement{{Action: &servicepb.LedgerAction{
-		Data: &servicepb.LedgerAction_CreateTransaction{
-			CreateTransaction: &servicepb.CreateTransactionPayload{},
+	// codes.FailedPrecondition. Any other code contradicts it, so nothing in
+	// the payload may be answered as a business outcome.
+	tests := []struct {
+		name string
+		code codes.Code
+	}{
+		{
+			name: "invalid argument",
+			code: codes.InvalidArgument,
 		},
-	}}}
+		{
+			// codes.Canceled is the one code the decoder answered before
+			// reading the ledger detail, so a peer could carry a known reason
+			// and its message straight past the mismatch policy under it. The
+			// bulk description is where that surfaced: it renders the element
+			// error, so the untrusted message reached the client body with a
+			// 500 that was never correlated.
+			name: "canceled — decoded before the end-of-stream passthrough",
+			code: codes.Canceled,
+		},
+	}
 
-	w := httptest.NewRecorder()
-	writeBulkResponse(w, testBulkRequest(), elements,
-		[]bulkResult{{err: grpcerr.FromStatusError(leaderErr)}}, true)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	require.Equal(t, http.StatusInternalServerError, w.Code,
-		"a contradicting reason/code pair is a server-side fault, not a caller error")
+			leaderErr := leaderStatusWithMetadata(t, tc.code,
+				"ledger deleted: secret-ledger", domain.ErrReasonLedgerDeleted,
+				map[string]string{"name": "secret-ledger"})
 
-	var resp bulkResponse
-	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
-	require.Len(t, resp.Data, 1)
+			elements := []*servicepb.BulkElement{{Action: &servicepb.LedgerAction{
+				Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{},
+				},
+			}}}
 
-	element := resp.Data[0]
+			w := httptest.NewRecorder()
+			writeBulkResponse(w, testBulkRequest(), elements,
+				[]bulkResult{{err: grpcerr.FromStatusError(leaderErr)}}, true)
 
-	require.Equal(t, "ERROR", element.ResponseType)
-	require.Equal(t, "INTERNAL_ERROR", element.ErrorCode)
-	require.Contains(t, element.ErrorDescription, "correlation ID",
-		"the fault must be recorded server-side and correlatable")
+			require.Equal(t, http.StatusInternalServerError, w.Code,
+				"a contradicting reason/code pair is a server-side fault, not a caller error")
 
-	require.NotContains(t, element.ErrorDescription, "secret-ledger",
-		"neither the received message nor its metadata may reach the client")
-	require.NotContains(t, element.ErrorDescription, domain.ErrReasonLedgerDeleted,
-		"the received reason must not be echoed in the element description")
-	require.NotContains(t, element.ErrorCode, domain.ErrReasonLedgerDeleted,
-		"the received reason must not be presented as a trusted business code")
-	require.NotContains(t, element.ErrorDescription, "invalid wire error",
-		"the internal representation is log material, not client-visible text")
+			var resp bulkResponse
+			require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+			require.Len(t, resp.Data, 1)
+
+			element := resp.Data[0]
+
+			require.Equal(t, "ERROR", element.ResponseType)
+			require.Equal(t, "INTERNAL_ERROR", element.ErrorCode)
+			require.Contains(t, element.ErrorDescription, "correlation ID",
+				"the fault must be recorded server-side and correlatable")
+
+			require.NotContains(t, element.ErrorDescription, "secret-ledger",
+				"neither the received message nor its metadata may reach the client")
+			require.NotContains(t, element.ErrorDescription, domain.ErrReasonLedgerDeleted,
+				"the received reason must not be echoed in the element description")
+			require.NotContains(t, element.ErrorCode, domain.ErrReasonLedgerDeleted,
+				"the received reason must not be presented as a trusted business code")
+			require.NotContains(t, element.ErrorDescription, "invalid wire error",
+				"the internal representation is log material, not client-visible text")
+		})
+	}
 }

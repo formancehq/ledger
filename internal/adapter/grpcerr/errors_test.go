@@ -541,18 +541,96 @@ func TestFromStatusError_NonStatusErrors(t *testing.T) {
 
 // TestFromStatusError_ForeignErrorDomain: an ErrorInfo stamped by another
 // service is not ours to reinterpret.
+//
+// codes.NotFound is the row that matters. The bare-NotFound fallback exists
+// for the ~20 commonpb.NewNotFoundError sites, which carry no detail at all;
+// applied to a foreign typed failure it rewrote that service's contract into a
+// ledger *commonpb.NotFoundError, which is exactly what the domain check
+// upstream of it declined to do.
 func TestFromStatusError_ForeignErrorDomain(t *testing.T) {
 	t.Parallel()
 
-	st := status.New(codes.FailedPrecondition, "some other service said no")
-	detailed, err := st.WithDetails(&errdetails.ErrorInfo{
-		Reason: "SOMETHING",
-		Domain: "not-ledger",
-	})
-	require.NoError(t, err)
+	tests := []struct {
+		name string
+		code codes.Code
+	}{
+		{
+			name: "failed precondition",
+			code: codes.FailedPrecondition,
+		},
+		{
+			name: "not found — must not take the bare-NotFound fallback",
+			code: codes.NotFound,
+		},
+	}
 
-	original := detailed.Err()
-	require.Equal(t, original, FromStatusError(original))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			st := status.New(tc.code, "some other service said no")
+			detailed, err := st.WithDetails(&errdetails.ErrorInfo{
+				Reason: "SOMETHING",
+				Domain: "not-ledger",
+			})
+			require.NoError(t, err)
+
+			original := detailed.Err()
+			require.Equal(t, original, FromStatusError(original))
+
+			_, isNotFound := errors.AsType[*commonpb.NotFoundError](FromStatusError(original))
+			require.False(t, isNotFound,
+				"a foreign service's typed failure must not become a ledger NotFoundError")
+		})
+	}
+}
+
+// TestFromStatusError_CanceledCarryingLedgerReasonIsValidated is the
+// end-of-stream half of the mismatch policy.
+//
+// No ErrorKind maps to codes.Canceled, so every reason this build knows is a
+// contradiction under it — and the passthrough that keeps cursor termination
+// working used to answer the status before the detail was ever decoded. That
+// exempted the one code with no legitimate reason from the validation the
+// policy exists for, and handed the peer's message to the surfaces that render
+// an unrecognised error.
+func TestFromStatusError_CanceledCarryingLedgerReasonIsValidated(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := buildGRPCError(t, codes.Canceled, "ledger deleted: secret-ledger",
+		domain.ErrReasonLedgerDeleted, map[string]string{"name": "secret-ledger"})
+
+	converted := FromStatusError(grpcErr)
+
+	var invalid *apierr.InvalidWireError
+	require.ErrorAs(t, converted, &invalid)
+	require.Equal(t, codes.Canceled, invalid.Code)
+	require.Equal(t, []codes.Code{codes.FailedPrecondition}, invalid.Expected)
+
+	_, isDescribable := apierr.Describe(converted)
+	require.False(t, isDescribable, "a protocol fault is not a business outcome")
+
+	require.NotContains(t, converted.Error(), "secret-ledger",
+		"the received message must not survive into any rendered text")
+}
+
+// TestFromStatusError_CanceledWithUnknownReasonKeepsItsCode: an unknown reason
+// cannot be validated, so it decodes down the forward-compatibility path like
+// any other code. Reconstruction is still safe for cursor.go, because the
+// carrier answers GRPCStatus() with the received Canceled status.
+func TestFromStatusError_CanceledWithUnknownReasonKeepsItsCode(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := buildGRPCError(t, codes.Canceled, "canceled upstream", unknownReason, nil)
+
+	converted := FromStatusError(grpcErr)
+
+	require.Equal(t, codes.Canceled, status.Code(converted),
+		"cursor.go reads the code to normalise a page end into io.EOF")
+
+	d, ok := apierr.Describe(converted)
+	require.True(t, ok)
+	require.Equal(t, unknownReason, d.Reason, "the sender's reason is preserved verbatim")
 }
 
 // enumReasons returns every reason this build's ErrorReason enum knows,

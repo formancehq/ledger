@@ -135,16 +135,24 @@ two shapes:
 
 - a status carrying a ledger-domain `ErrorInfo` — **whatever its code** —
   becomes an `*apierr.Remote`;
-- a bare `codes.NotFound` becomes a `*commonpb.NotFoundError`, which the
-  handler already maps to `404`.
+- a **bare** `codes.NotFound` — one carrying no `ErrorInfo` at all — becomes a
+  `*commonpb.NotFoundError`, which the handler already maps to `404`. A
+  `NotFound` stamped with another service's `ErrorInfo` is not bare: it is that
+  service's typed failure and is left untouched, since rewriting it as a ledger
+  `NotFoundError` would answer a foreign contract as this one.
 
 Read the rest of the rule as the complement of those two rather than as a list
 of excluded codes: **everything else passes through unchanged**. That covers
 three groups.
 
-- `codes.Canceled`, unconditionally and before the `ErrorInfo` check, because
-  the cursor layer keys end-of-stream detection off it and normalises it to
-  `io.EOF`; reconstructing it would break pagination.
+- A **bare** `codes.Canceled`, because the cursor layer keys end-of-stream
+  detection off it and normalises it to `io.EOF`. The ledger `ErrorInfo` is
+  still decoded first: no `ErrorKind` maps to `codes.Canceled`, so a reason
+  this build knows arriving under it is a contradiction, and answering the
+  status before the decode would exempt the one code with no legitimate reason
+  from the mismatch policy below and hand the peer's message to the client.
+  Pagination is unaffected either way — a reconstructed value keeps answering
+  `GRPCStatus()` with the received `Canceled` status.
 - A **bare** status of any code — no ledger `ErrorInfo`, so no reason to
   recover. A bare `codes.Unavailable` already reaches the right outcome
   (`handleError` answers that code with `503` + `Retry-After` on its own);
@@ -197,6 +205,15 @@ The order matters. An `*apierr.Remote` is checked first, because a reason from a
 newer server is absent from this build's `ErrorReason` enum: re-deriving its
 kind would yield `KindInternal` and answer `500` for what the sender classified
 as a caller error.
+
+`Message` and `Metadata` are the client-safe presentation, not the diagnostic
+identity: a locally raised failure is read through `domain.PublicErrorDetails`,
+so a type that owns a separate public presentation (EN-1623) reaches a surface
+redacted, and `Descriptor.PublicOverride` tells the surface to render `Message`
+in place of the wrapped chain that presentation exists to withhold. A decoded
+failure needs no such selection — the sender applied it before serialising — so
+`PublicOverride` is false for an `*apierr.Remote` and the consumer keeps
+rendering its own outer context, exactly as it did before the hop.
 
 `apierr` imports `internal/domain` and nothing else, so HTTP reads a decoded
 failure without linking any gRPC detail. The reverse direction is a layering
