@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -164,11 +166,11 @@ func TestIndexedQueryOutcomeLegal_MismatchAndAbsentCoexist(t *testing.T) {
 
 	noWindow := func(oracle.LedgerState) bool { return false }
 
-	require.True(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrCompilation, noWindow),
+	require.True(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrCompilation, "", noWindow),
 		"the mismatched leaf makes a compilation rejection legal even with an absent sibling index")
-	require.True(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrNotReady, noWindow),
+	require.True(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrNotReady, "", noWindow),
 		"the absent index keeps a not-ready rejection legal too")
-	require.False(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrNone, noWindow),
+	require.False(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, both, needed, indexedErrNone, "", noWindow),
 		"results are never legal while a leaf mismatches")
 
 	// Mismatch alone (all needed indexes active): compilation legal, not-ready illegal.
@@ -176,8 +178,8 @@ func TestIndexedQueryOutcomeLegal_MismatchAndAbsentCoexist(t *testing.T) {
 	neededAlone := map[string]struct{}{}
 	neededIndexCanonicals(alone, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, neededAlone)
 
-	require.True(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, alone, neededAlone, indexedErrCompilation, noWindow))
-	require.False(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, alone, neededAlone, indexedErrNotReady, noWindow),
+	require.True(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, alone, neededAlone, indexedErrCompilation, "", noWindow))
+	require.False(t, indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, alone, neededAlone, indexedErrNotReady, "", noWindow),
 		"with every needed index active, a not-ready rejection is unexplained")
 }
 
@@ -340,4 +342,94 @@ func TestIndexNotReadyRequiresDocumentedCode(t *testing.T) {
 
 	_, ok := classifyIndexedQueryError(wrongCode.Err())
 	require.False(t, ok, "the wrong-code shape must stay a finding")
+}
+
+// An open window for one filter leaf cannot explain a refusal attributed to
+// its active sibling. Both codes carry the server's index identity, so keep
+// that identity through classification and candidate validation.
+func TestIndexedQueryOutcomeLegal_RetypeRefusalAttribution(t *testing.T) {
+	t.Parallel()
+
+	for _, target := range []struct {
+		name   string
+		typeID commonpb.TargetType
+		query  commonpb.QueryTarget
+	}{
+		{"accounts", commonpb.TargetType_TARGET_TYPE_ACCOUNT, accounts},
+		{"transactions", commonpb.TargetType_TARGET_TYPE_TRANSACTION, txns},
+	} {
+		t.Run(target.name, func(t *testing.T) {
+			t.Parallel()
+			gs := buildGlobal(t,
+				oracletest.SetFieldTypeReq(target.typeID, "changing", commonpb.MetadataType_METADATA_TYPE_STRING),
+				oracletest.CreateIndexReq(indexes.MetadataID(target.typeID, "changing")),
+				oracletest.SetFieldTypeReq(target.typeID, "sibling", commonpb.MetadataType_METADATA_TYPE_STRING),
+				oracletest.CreateIndexReq(indexes.MetadataID(target.typeID, "sibling")),
+				oracletest.SetFieldTypeReq(target.typeID, "changing", commonpb.MetadataType_METADATA_TYPE_INT64),
+			)
+			for _, key := range []string{"changing", "sibling"} {
+				gs.SetIndexActive("L", indexes.Canonical(indexes.MetadataID(target.typeID, key)))
+			}
+			filter := filterAnd(filterMetaExists("changing"), filterMetaExists("sibling"))
+			needed := map[string]struct{}{}
+			neededIndexCanonicals(filter, target.query, needed)
+			_, open := gs.Ledger("L").RetypeWindow(metadataCanonical(target.query, "changing"))
+			require.True(t, open, "the setup must actually exercise an open window")
+
+			for _, refusal := range []struct {
+				code   codes.Code
+				reason string
+			}{
+				{codes.Unavailable, "INDEX_BUILDING"},
+				{codes.FailedPrecondition, "INDEX_NOT_FOUND"},
+			} {
+				for _, key := range []string{"changing", "sibling", "unreferenced", ""} {
+					label := ""
+					if key != "" {
+						label = fmt.Sprintf("metadata[%q] on %s", key, target.name)
+					}
+					st, err := status.New(refusal.code, "index refusal").WithDetails(&errdetails.ErrorInfo{
+						Domain: "ledger", Reason: refusal.reason, Metadata: map[string]string{"index": label},
+					})
+					require.NoError(t, err)
+					errKind, ok := classifyIndexedQueryError(st.Err())
+					require.True(t, ok)
+					legal := indexedQueryOutcomeLegal(gs.Ledger("L"), target.query, filter, needed, errKind, rejectedIndexLabel(st.Err()), func(oracle.LedgerState) bool {
+						t.Fatal("a refusal must not use the result-window branch")
+						return false
+					})
+					require.Equal(t, key == "changing", legal, "%s attributed to %q", refusal.reason, label)
+				}
+			}
+			gs.CloseRetypeWindow("L", metadataCanonical(target.query, "changing"))
+			require.False(t, indexedQueryOutcomeLegal(gs.Ledger("L"), target.query, filter, needed, indexedErrNotReady,
+				fmt.Sprintf("metadata[%q] on %s", "changing", target.name), func(oracle.LedgerState) bool { return false }),
+				"once the window closes, its active index must serve results again")
+		})
+	}
+}
+
+// This probabilistic generator check exercises the actual probe selection,
+// following the existing generator tests. At 4096 rolls the expected count is
+// 128 for each target; an account-only generator deterministically fails.
+func TestGenerateIndexOp_UndeclaredFieldsOnBothTargets(t *testing.T) {
+	t.Parallel()
+
+	gs := oracle.NewGlobalState()
+	seen := map[commonpb.TargetType]bool{}
+	for range 4096 {
+		req := generateIndexOp(gs, "L")
+		field := req.GetCreateIndex().GetId().GetMetadata()
+		if field == nil || !strings.HasPrefix(field.GetKey(), "undeclared-") {
+			continue
+		}
+		seen[field.GetTarget()] = true
+		res := gs.Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
+		require.False(t, res.OK)
+		require.Equal(t, "METADATA_FIELD_NOT_IN_SCHEMA", res.Reason)
+	}
+	require.Equal(t, map[commonpb.TargetType]bool{
+		commonpb.TargetType_TARGET_TYPE_ACCOUNT:     true,
+		commonpb.TargetType_TARGET_TYPE_TRANSACTION: true,
+	}, seen)
 }

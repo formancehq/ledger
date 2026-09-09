@@ -38,21 +38,11 @@ func genLogFilter(ledger string, depth int) *commonpb.QueryFilter {
 
 	switch random.RandomChoice([]uint8{0, 1, 2}) {
 	case 0:
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_And{
-			And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{
-				genLogFilter(ledger, depth+1), genLogFilter(ledger, depth+1),
-			}},
-		}}
+		return filterAnd(genLogFilter(ledger, depth+1), genLogFilter(ledger, depth+1))
 	case 1:
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{
-			Or: &commonpb.OrFilter{Filters: []*commonpb.QueryFilter{
-				genLogFilter(ledger, depth+1), genLogFilter(ledger, depth+1),
-			}},
-		}}
+		return filterOr(genLogFilter(ledger, depth+1), genLogFilter(ledger, depth+1))
 	default:
-		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Not{
-			Not: &commonpb.NotFilter{Filter: genLogFilter(ledger, depth+1)},
-		}}
+		return filterNot(genLogFilter(ledger, depth+1))
 	}
 }
 
@@ -420,7 +410,7 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 // shared index-lifecycle legality, with the base's ordered log window as the
 // result check.
 func logOutcomeLegal(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, errKind indexedErrKind, ids []uint64, afterSeq uint64, pageSize int) bool {
-	return indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed, errKind, func(view oracle.LedgerState) bool {
+	return indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed, errKind, "", func(view oracle.LedgerState) bool {
 		return logWindowMatches(view, ledger, filter, afterSeq, pageSize, ids)
 	})
 }
