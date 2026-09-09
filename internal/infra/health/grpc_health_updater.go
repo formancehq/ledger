@@ -21,6 +21,7 @@ type GRPCHealthUpdater struct {
 	healthServer       *health.Server
 	interval           time.Duration
 	clusterPolicyReady func() bool
+	readProjectionOK   func() bool
 	w                  worker.Worker
 }
 
@@ -30,12 +31,20 @@ type GRPCHealthUpdater struct {
 // clusterPolicyReady reports whether the Raft-replicated cluster policy has been
 // committed at least once: the node is not write-ready until it has, so writes
 // never depend on a policy that has not yet been agreed cluster-wide (EN-1827).
-func NewGRPCHealthUpdater(n *node.Node, healthServer *health.Server, clusterPolicyReady func() bool) *GRPCHealthUpdater {
+// readProjectionOK keeps a node out of service after its normal read projection
+// has stopped on a terminal invariant failure.
+func NewGRPCHealthUpdater(
+	n *node.Node,
+	healthServer *health.Server,
+	clusterPolicyReady func() bool,
+	readProjectionOK func() bool,
+) *GRPCHealthUpdater {
 	return &GRPCHealthUpdater{
 		node:               n,
 		healthServer:       healthServer,
 		interval:           grpcHealthUpdateInterval,
 		clusterPolicyReady: clusterPolicyReady,
+		readProjectionOK:   readProjectionOK,
 		w:                  worker.New(),
 	}
 }
@@ -54,7 +63,7 @@ func (u *GRPCHealthUpdater) Stop() {
 }
 
 func (u *GRPCHealthUpdater) update() {
-	ready := u.node.IsHealthy() && u.node.GetLeader() != 0 && u.clusterPolicyReady()
+	ready := u.node.IsHealthy() && u.node.GetLeader() != 0 && u.clusterPolicyReady() && u.readProjectionOK()
 
 	status := healthpb.HealthCheckResponse_NOT_SERVING
 	if ready {

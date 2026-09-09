@@ -780,7 +780,7 @@ func (b *Builder) loop(ctx context.Context) {
 	b.batchSize = savedBatchSize
 	if err == nil {
 		if validationErr := b.validateHistoryReplayState(); validationErr != nil {
-			b.logger.Errorf("Indexbuilder history replay invariant failed: %v", validationErr)
+			b.failHistoryReplay(validationErr)
 
 			return
 		}
@@ -829,7 +829,7 @@ func (b *Builder) loop(ctx context.Context) {
 		logsProcessed := cursor > prevCursor
 		if replayValidationPending && err == nil && !logsProcessed {
 			if validationErr := b.validateHistoryReplayState(); validationErr != nil {
-				b.logger.Errorf("Indexbuilder history replay invariant failed: %v", validationErr)
+				b.failHistoryReplay(validationErr)
 
 				return
 			}
@@ -853,6 +853,11 @@ func (b *Builder) loop(ctx context.Context) {
 		// tick could miss the broadcast and block until new logs arrive.
 		b.readStore.NotifyProgress()
 	}
+}
+
+func (b *Builder) failHistoryReplay(err error) {
+	b.logger.Errorf("Indexbuilder history replay invariant failed: %v", err)
+	b.readStore.SetReadProjectionFailed()
 }
 
 // bootInit runs the index builder's boot prologue as a single retryable unit:
