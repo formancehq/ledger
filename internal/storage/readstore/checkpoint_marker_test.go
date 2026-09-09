@@ -60,7 +60,7 @@ func TestCheckpointMarkerRequiresStableAuditGeneration(t *testing.T) {
 	ready, err := s.MarkCheckpointReadyAtAuditGeneration(dir, generation)
 	require.NoError(t, err)
 	require.False(t, ready)
-	require.False(t, CheckpointDirReady(dir),
+	require.False(t, dal.CheckpointDirReady(dir),
 		"a rebuild that starts during materialization must keep the checkpoint unavailable")
 
 	s.SetAuditProjectionState(false, false)
@@ -68,7 +68,7 @@ func TestCheckpointMarkerRequiresStableAuditGeneration(t *testing.T) {
 	ready, err = s.MarkCheckpointReadyAtAuditGeneration(dir, generation)
 	require.NoError(t, err)
 	require.True(t, ready)
-	require.True(t, CheckpointDirReady(dir))
+	require.True(t, dal.CheckpointDirReady(dir))
 }
 
 // TestCreateCheckpointFailsIfDirExists documents the pebble contract the index
