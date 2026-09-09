@@ -134,15 +134,9 @@ func TestCheckAndPromoteLearnersMissingRowStopsRun(t *testing.T) {
 	t.Cleanup(func() {
 		// Join the real Run tasks before the fixture closes their storage,
 		// including when an assertion above the expected failure aborts.
-		select {
-		case <-done:
-			return
-		case n.stopChannel <- make(chan struct{}):
-		case <-time.After(5 * time.Second):
-			t.Error("could not request node shutdown")
-
-			return
-		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		require.NoError(t, n.Stop(ctx))
 		select {
 		case <-done:
 		case <-time.After(5 * time.Second):
