@@ -10,6 +10,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
@@ -110,9 +111,87 @@ func parityStore(t *testing.T) *readstore.Store {
 			false, []byte(account), uint64(10+i), readstore.MetadataEventAdd), nil))
 	}
 
+	seedParityAccountVolumes(t, batch, kb)
+	seedParityTransactions(t, batch, kb)
+	seedParityLogs(t, batch, kb)
+
 	require.NoError(t, batch.Commit())
 
 	return store
+}
+
+// parityTxIDs / parityLogIDs are the entity sets the TRANSACTIONS and LOGS
+// cases page over. Both are 12 wide like the account set, so the same page
+// sizes divide them unevenly.
+func parityTxIDs() []uint64 {
+	ids := make([]uint64, 0, 12)
+	for i := range 12 {
+		ids = append(ids, uint64(100+i))
+	}
+
+	return ids
+}
+
+func parityLogIDs() []uint64 {
+	ids := make([]uint64, 0, 12)
+	for i := range 12 {
+		ids = append(ids, uint64(200+i))
+	}
+
+	return ids
+}
+
+// seedParityAccountVolumes writes the main-store volume rows the ACCOUNTS
+// universe scans. Without them the universe shape compares an empty
+// descending drain against an empty ascending reference and passes for a
+// reason unrelated to direction: the index event rows above feed the filtered
+// leaves, not PebbleAccountIterator, which reads the attributes zone.
+func seedParityAccountVolumes(t *testing.T, batch *dal.WriteSession, kb *dal.KeyBuilder) {
+	t.Helper()
+
+	for i := range 12 {
+		account := fmt.Sprintf("accounts:%02d", i)
+
+		key := kb.Reset().
+			PutZonePrefix(dal.ZoneAttributes, dal.SubAttrVolume).
+			PutBytes(domain.NewVolumeKey(parityLedger, account, "USD/2", "").Bytes()).
+			Build()
+		require.NoError(t, batch.SetBytes(key, []byte{1}))
+	}
+}
+
+// seedParityTransactions writes the main-store transaction rows the
+// TRANSACTIONS universe and the id-range leaf scan, plus the timestamp index
+// rows the value-ordered fallback needs. The key is assembled from the
+// canonical pieces (domain.TransactionKey under the attributes zone) rather
+// than a hand-spelled layout, so a change to that layout breaks the build
+// here instead of silently seeding rows no iterator can see.
+func seedParityTransactions(t *testing.T, batch *dal.WriteSession, kb *dal.KeyBuilder) {
+	t.Helper()
+
+	for i, id := range parityTxIDs() {
+		txKey := kb.Reset().
+			PutZonePrefix(dal.ZoneAttributes, dal.SubAttrTransaction).
+			PutBytes(domain.TransactionKey{LedgerName: parityLedger, ID: id}.Bytes()).
+			Build()
+		require.NoError(t, batch.SetBytes(txKey, []byte{1}))
+
+		// Timestamps ascend with the id, so (timestamp, entity) order and
+		// entity order agree; the fallback is still exercised because the
+		// scan spans several value buckets.
+		require.NoError(t, batch.SetBytes(readstore.TransactionTimestampKey(
+			dal.NewKeyBuilder(), parityLedger, uint64(1_000+i), id), nil))
+	}
+}
+
+// seedParityLogs writes the ledger-log rows behind the LOGS universe and the
+// log-id leaves.
+func seedParityLogs(t *testing.T, batch *dal.WriteSession, kb *dal.KeyBuilder) {
+	t.Helper()
+
+	for _, id := range parityLogIDs() {
+		require.NoError(t, batch.SetBytes(readstore.LedgerLogKey(kb, parityLedger, id), nil))
+	}
 }
 
 func accountFieldFilter(key string, cond *commonpb.FieldCondition) *commonpb.QueryFilter {
@@ -168,14 +247,14 @@ func notFilter(f *commonpb.QueryFilter) *commonpb.QueryFilter {
 const parityPin = 1000
 
 // ascendingReference drains the ascending tree — the oracle's source.
-func ascendingReference(t *testing.T, store *readstore.Store, filter *commonpb.QueryFilter) []string {
+func ascendingReference(t *testing.T, store *readstore.Store, target commonpb.QueryTarget, filter *commonpb.QueryFilter) []string {
 	t.Helper()
 
 	reader := store.DB()
 
 	iter, err := query.Compile(
 		reader, dal.NewKeyBuilder(), filter,
-		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
+		target, parityLedger,
 		nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
 	require.NoError(t, err)
 
@@ -193,7 +272,7 @@ func ascendingReference(t *testing.T, store *readstore.Store, filter *commonpb.Q
 
 // descendingByPages walks the whole result descending, one page at a time,
 // resuming from the previous page's last entity — the controller's own loop.
-func descendingByPages(t *testing.T, store *readstore.Store, filter *commonpb.QueryFilter, pageSize uint32) []string {
+func descendingByPages(t *testing.T, store *readstore.Store, target commonpb.QueryTarget, filter *commonpb.QueryFilter, pageSize uint32) []string {
 	t.Helper()
 
 	reader := store.DB()
@@ -207,7 +286,7 @@ func descendingByPages(t *testing.T, store *readstore.Store, filter *commonpb.Qu
 	for range 100 {
 		iter, err := query.CompileReverse(
 			reader, dal.NewKeyBuilder(), filter,
-			commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, parityLedger,
+			target, parityLedger,
 			nil, paritySchema(), parityInfo(), parityRegistry(), parityResolver(), nil, reader, parityPin)
 		require.NoError(t, err)
 
@@ -231,7 +310,115 @@ func descendingByPages(t *testing.T, store *readstore.Store, filter *commonpb.Qu
 	return nil
 }
 
-func parityFilters() []struct {
+// --- TRANSACTIONS and LOGS filter constructors -----------------------------
+
+func txIDRangeFilter(minV, maxV uint64) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &commonpb.BuiltinUintCondition{
+			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID,
+			Cond:  &commonpb.UintCondition{Min: &minV, Max: &maxV},
+		},
+	}}
+}
+
+func txIDEqualFilter(id uint64) *commonpb.QueryFilter { return txIDRangeFilter(id, id) }
+
+func txTimestampRangeFilter(minV, maxV uint64) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+		BuiltinUint: &commonpb.BuiltinUintCondition{
+			Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+			Cond:  &commonpb.UintCondition{Min: &minV, Max: &maxV},
+		},
+	}}
+}
+
+func logIDRangeFilter(minV, maxV uint64) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
+		LogId: &commonpb.LogIdCondition{
+			Cond: &commonpb.UintCondition{Min: &minV, Max: &maxV},
+		},
+	}}
+}
+
+func logIDEqualFilter(id uint64) *commonpb.QueryFilter { return logIDRangeFilter(id, id) }
+
+// parityCase is one (target, filter) pair the oracle drives. Target is part of
+// the case and not a fixed constant: the motivating surface for EN-1966 is
+// TRANSACTIONS, the public default descending direction, and an
+// ACCOUNTS-only oracle proves the acceptance criterion on the wrong target.
+type parityCase struct {
+	name   string
+	target commonpb.QueryTarget
+	filter *commonpb.QueryFilter
+}
+
+// parityCases is the three-target matrix: every target crossed with the
+// filter families reachable on it, streaming leaves and materializing
+// fallbacks alike, plus the boolean compositions over them.
+func parityCases() []parityCase {
+	cases := make([]parityCase, 0, 24)
+
+	for _, f := range accountParityFilters() {
+		cases = append(cases, parityCase{
+			name:   "accounts/" + f.name,
+			target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			filter: f.filter,
+		})
+	}
+
+	txIDs := parityTxIDs()
+	lo, hi := txIDs[0], txIDs[len(txIDs)-1]
+
+	for _, f := range []struct {
+		name   string
+		filter *commonpb.QueryFilter
+	}{
+		{"universe", nil},
+		// The bounded id range is the leaf this matrix exists for: it is the
+		// only compiled descending path that reaches
+		// NewPebbleReverseTxRangeIterator.
+		{"tx id range (streaming leaf)", txIDRangeFilter(lo+2, hi-2)},
+		{"tx id range open above", txIDRangeFilter(lo+5, ^uint64(0))},
+		{"tx id equality", txIDEqualFilter(lo + 3)},
+		{"tx timestamp range (materializing fallback)", txTimestampRangeFilter(1_002, 1_008)},
+		{"and of two id ranges", andFilter(txIDRangeFilter(lo, hi-1), txIDRangeFilter(lo+4, hi))},
+		{"or of two id equalities", orFilter(txIDEqualFilter(lo+1), txIDEqualFilter(hi-1))},
+		{"not of an id equality", notFilter(txIDEqualFilter(lo + 6))},
+		{"and containing a materializing range", andFilter(txIDRangeFilter(lo, hi), txTimestampRangeFilter(1_003, 1_009))},
+		{"empty result", txIDEqualFilter(999_999)},
+	} {
+		cases = append(cases, parityCase{
+			name:   "transactions/" + f.name,
+			target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+			filter: f.filter,
+		})
+	}
+
+	logIDs := parityLogIDs()
+	logLo, logHi := logIDs[0], logIDs[len(logIDs)-1]
+
+	for _, f := range []struct {
+		name   string
+		filter *commonpb.QueryFilter
+	}{
+		{"universe", nil},
+		{"log id range (materializing fallback)", logIDRangeFilter(logLo+2, logHi-2)},
+		{"log id equality", logIDEqualFilter(logLo + 4)},
+		{"or of two id equalities", orFilter(logIDEqualFilter(logLo+1), logIDEqualFilter(logHi-1))},
+		{"and of two id ranges", andFilter(logIDRangeFilter(logLo, logHi-1), logIDRangeFilter(logLo+3, logHi))},
+		{"empty result", logIDEqualFilter(999_999)},
+	} {
+		cases = append(cases, parityCase{
+			name:   "logs/" + f.name,
+			target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
+			filter: f.filter,
+		})
+	}
+
+	return cases
+}
+
+func accountParityFilters() []struct {
 	name   string
 	filter *commonpb.QueryFilter
 } {
@@ -258,24 +445,24 @@ func parityFilters() []struct {
 }
 
 // TestDescendingParity_FullTraversal is the acceptance oracle: for every
-// filter shape and page size, the paged descending traversal equals the
-// reversed ascending reference.
+// target, filter shape and page size, the paged descending traversal equals
+// the reversed ascending reference.
 func TestDescendingParity_FullTraversal(t *testing.T) {
 	t.Parallel()
 
 	store := parityStore(t)
 
-	for _, tc := range parityFilters() {
+	for _, tc := range parityCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			want := ascendingReference(t, store, tc.filter)
+			want := ascendingReference(t, store, tc.target, tc.filter)
 			slices.Reverse(want)
 
 			// Page sizes around, at, and past the result size, so boundary
 			// and final pages are all exercised.
 			for _, pageSize := range []uint32{1, 2, 3, 5, 12, 50} {
-				got := descendingByPages(t, store, tc.filter, pageSize)
+				got := descendingByPages(t, store, tc.target, tc.filter, pageSize)
 
 				require.Equal(t, want, got,
 					"pageSize=%d: descending traversal must equal the reversed ascending reference", pageSize)
@@ -283,6 +470,52 @@ func TestDescendingParity_FullTraversal(t *testing.T) {
 				require.Equal(t, len(want), len(got),
 					"pageSize=%d: no duplicates and no omissions", pageSize)
 			}
+		})
+	}
+}
+
+// TestDescendingParity_EveryTargetIsCovered fails if a supported target drops
+// out of the matrix. Without it, deleting the TRANSACTIONS cases would leave
+// the oracle green while proving nothing about the default descending
+// surface — the exact hole this matrix was added to close.
+func TestDescendingParity_EveryTargetIsCovered(t *testing.T) {
+	t.Parallel()
+
+	seen := map[commonpb.QueryTarget]int{}
+	for _, tc := range parityCases() {
+		seen[tc.target]++
+	}
+
+	for _, target := range []commonpb.QueryTarget{
+		commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		commonpb.QueryTarget_QUERY_TARGET_LOGS,
+	} {
+		require.GreaterOrEqual(t, seen[target], 4,
+			"target %s needs paged descending parity cases, not fewer than four",
+			commonpb.TargetHumanName(target))
+	}
+}
+
+// TestDescendingParity_NonEmptyFixtures guards the matrix against the failure
+// mode that makes every case above pass for the wrong reason: an unseeded
+// target compiles fine and yields an empty reference, so "descending equals
+// reversed ascending" holds trivially.
+func TestDescendingParity_NonEmptyFixtures(t *testing.T) {
+	t.Parallel()
+
+	store := parityStore(t)
+
+	for _, tc := range []parityCase{
+		{"accounts", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil},
+		{"transactions", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil},
+		{"logs", commonpb.QueryTarget_QUERY_TARGET_LOGS, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Len(t, ascendingReference(t, store, tc.target, tc.filter), 12,
+				"the %s fixture must be seeded, or every parity case passes on an empty set", tc.name)
 		})
 	}
 }
@@ -297,7 +530,7 @@ func TestDescendingParity_CursorBoundaries(t *testing.T) {
 	reader := store.DB()
 	filter := stringFieldFilter("colour", "red")
 
-	want := ascendingReference(t, store, filter)
+	want := ascendingReference(t, store, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter)
 	slices.Reverse(want)
 	require.NotEmpty(t, want)
 

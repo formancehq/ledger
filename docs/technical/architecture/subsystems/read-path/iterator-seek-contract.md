@@ -151,8 +151,10 @@ exact reverse of the ascending one and that `Seek` is absolute in both
 directions), by the registry-driven forward/reverse suite in
 `iterator_conformance_test.go` — every pair registered there is checked for
 set parity, gate parity, the absolute `Seek` contract and error propagation,
-so a reverse leaf added later is covered without anyone remembering to write
-those four tests — and end-to-end by the contradiction specs in
+and `TestConformanceRegistry_IsExhaustive` fails if a descending iterator has
+no registered pair, so a reverse leaf added later is covered whether or not
+its author remembers those four tests — and end-to-end by the contradiction
+specs in
 `tests/e2e/business/filter_nested_not_reposition_test.go`.
 
 ## The materialized union (`AddressTxIterator`)

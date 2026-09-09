@@ -3,8 +3,14 @@ package readstore
 import (
 	"encoding/binary"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -21,6 +27,13 @@ import (
 // point: a reverse leaf added later is checked by construction, instead of
 // depending on whoever writes it remembering to hand-write the same four
 // tests.
+//
+// TestConformanceRegistry_IsExhaustive turns that from a convention into a
+// contract. It derives the registered set from the runtime type of each
+// pair's reverse half and the expected set from the package source, so a
+// missing registration fails here rather than silently shrinking the suite —
+// and a pair driving a test double instead of a production iterator fails
+// too.
 //
 // The gate-parity case (TestIteratorPairs_GateParity) is the one that earns
 // the suite. A whole-set parity test cannot catch a missing visibility gate:
@@ -146,6 +159,93 @@ func conformancePairs() []iterPair {
 				return fwd, rev
 			},
 			want:    []string{"2", "4", "6"},
+			entityB: txEntity,
+			render:  renderTx,
+		},
+		{
+			// The transaction universe: what a descending TRANSACTIONS page
+			// with no filter compiles to.
+			name: "PebbleTxIterator",
+			build: func(t *testing.T) (EntityIterator, ReverseIterator) {
+				s := newTestStore(t)
+
+				for _, id := range []uint64{3, 5, 7} {
+					require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, pebble.NoSync))
+				}
+
+				fwd, err := NewPebbleTxIterator(s.DB(), "l")
+				require.NoError(t, err)
+				t.Cleanup(fwd.Close)
+
+				rev, err := NewPebbleReverseTxIterator(s.DB(), "l")
+				require.NoError(t, err)
+				t.Cleanup(rev.Close)
+
+				return fwd, rev
+			},
+			want:    []string{"3", "5", "7"},
+			entityB: txEntity,
+			render:  renderTx,
+		},
+		{
+			// The single-attribute-type account leaf behind the account
+			// universe. Registered at the leaf rather than through
+			// NewPebbleReverseAccountIterator, which returns an OrIterator
+			// over two of these and so would leave the leaf itself
+			// unregistered.
+			name: "PebbleAccountIterator",
+			build: func(t *testing.T) (EntityIterator, ReverseIterator) {
+				s := newTestStore(t)
+
+				prefix := make([]byte, 2+dal.LedgerNameFixedSize)
+				prefix[0] = dal.ZoneAttributes
+				prefix[1] = dal.SubAttrVolume
+				copy(prefix[2:], "l")
+
+				for _, addr := range []string{"a:1", "a:2", "a:3"} {
+					key := append(append(append([]byte{}, prefix...), addr...), dal.CanonicalKeySepVolume)
+					require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+				}
+
+				fwd, err := newSingleTypeAccountIterator(s.DB(), dal.SubAttrVolume, "l", "")
+				require.NoError(t, err)
+				t.Cleanup(fwd.Close)
+
+				rev, err := newSingleTypeReverseAccountIterator(s.DB(), dal.SubAttrVolume, "l", "")
+				require.NoError(t, err)
+				t.Cleanup(rev.Close)
+
+				return fwd, rev
+			},
+			want:    []string{"a:1", "a:2", "a:3"},
+			entityB: stringEntity,
+			render:  renderString,
+		},
+		{
+			// The bounded id range: the leaf a compiled descending
+			// TRANSACTIONS page with a tx-id range reaches
+			// (compileTxIDConditionRev). Seeded outside the range on both
+			// sides, so a bound the reverse leaf drops shows up as an extra
+			// entity rather than only as a different order.
+			name: "PebbleTxRangeIterator",
+			build: func(t *testing.T) (EntityIterator, ReverseIterator) {
+				s := newTestStore(t)
+
+				for _, id := range []uint64{1, 2, 4, 6, 8, 9} {
+					require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, pebble.NoSync))
+				}
+
+				fwd, err := NewPebbleTxRangeIterator(s.DB(), "l", txIDBytes(2), txIDBytes(9))
+				require.NoError(t, err)
+				t.Cleanup(fwd.Close)
+
+				rev, err := NewPebbleReverseTxRangeIterator(s.DB(), "l", txIDBytes(2), txIDBytes(9))
+				require.NoError(t, err)
+				t.Cleanup(rev.Close)
+
+				return fwd, rev
+			},
+			want:    []string{"2", "4", "6", "8"},
 			entityB: txEntity,
 			render:  renderTx,
 		},
@@ -513,4 +613,158 @@ func TestReverseAndIterator_OverNotWithConsumedChild(t *testing.T) {
 	require.Equal(t, []string{"c"}, drainRendered(it, renderString),
 		"AND over a NOT must not admit an entity the NOT excludes")
 	require.NoError(t, it.Err())
+}
+
+// TestConformanceRegistry_IsExhaustive is what makes the registry a contract
+// rather than a convention. The suite's charter is that every iterator with a
+// descending twin is driven here; without this test that holds only while
+// whoever adds the next reverse leaf remembers to register it, and a missing
+// entry is invisible — the suite still passes, over one fewer iterator.
+//
+// The two sides are derived, not written down. The registered set comes from
+// the RUNTIME type of the reverse half each pair actually builds, so a pair
+// cannot claim coverage it does not exercise; the declared set comes from the
+// package source, where a descending iterator is exactly a type whose
+// Direction witness returns Desc (a concrete reverse leaf) or its own type
+// parameter (a direction-parameterized combinator, reachable at Desc).
+func TestConformanceRegistry_IsExhaustive(t *testing.T) {
+	t.Parallel()
+
+	declared := declaredReverseIterators(t)
+	require.NotEmpty(t, declared, "source scan found no descending iterators: the scan itself is broken")
+
+	registered := registeredReverseIterators(t)
+
+	for name := range declared {
+		require.Contains(t, registered, name,
+			"%s walks descending but no conformance pair drives it. Register it in "+
+				"conformancePairs (or gatedPairs if its visibility depends on a pin), so set "+
+				"parity, the absolute Seek contract and error propagation are checked for it.",
+			name)
+	}
+
+	for name := range registered {
+		require.Contains(t, declared, name,
+			"conformance pair builds %s, which declares no Desc direction witness: the pair "+
+				"is driving a test double instead of a production iterator", name)
+	}
+}
+
+// registeredReverseIterators is the set of reverse iterator type names the
+// registry actually constructs, read off the built values themselves.
+func registeredReverseIterators(t *testing.T) map[string]struct{} {
+	t.Helper()
+
+	seen := map[string]struct{}{}
+
+	for _, p := range conformancePairs() {
+		_, rev := p.build(t)
+		seen[baseTypeName(rev)] = struct{}{}
+	}
+
+	for _, p := range gatedPairs() {
+		_, rev := p.build(t, p.pin)
+		seen[baseTypeName(rev)] = struct{}{}
+	}
+
+	return seen
+}
+
+// baseTypeName is the declared name of it's concrete type, with any type
+// arguments stripped: *OrIterator[readstore.Desc] reads as "OrIterator".
+func baseTypeName(it ReverseIterator) string {
+	ty := reflect.TypeOf(it)
+	for ty.Kind() == reflect.Pointer {
+		ty = ty.Elem()
+	}
+
+	name := ty.Name()
+	if i := strings.IndexByte(name, '['); i >= 0 {
+		name = name[:i]
+	}
+
+	return name
+}
+
+// declaredReverseIterators scans the package's non-test sources for types
+// that can travel descending: a Direction method returning Desc, or returning
+// the receiver's own type parameter.
+func declaredReverseIterators(t *testing.T) map[string]struct{} {
+	t.Helper()
+
+	entries, err := os.ReadDir(".")
+	require.NoError(t, err)
+
+	out := map[string]struct{}{}
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+
+		file, pErr := parser.ParseFile(token.NewFileSet(), name, nil, parser.SkipObjectResolution)
+		require.NoError(t, pErr, "parsing %s", name)
+
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Name.Name != "Direction" || fn.Recv == nil || len(fn.Recv.List) != 1 {
+				continue
+			}
+
+			recv, param := receiverTypeName(fn.Recv.List[0].Type)
+			if recv == "" {
+				continue
+			}
+
+			// Desc names the descending direction outright; the receiver's own
+			// type parameter means the type serves both and is instantiated at
+			// Desc by its NewReverse* constructor.
+			if result := directionResultName(fn); result == "Desc" || (param != "" && result == param) {
+				out[recv] = struct{}{}
+			}
+		}
+	}
+
+	return out
+}
+
+// receiverTypeName returns the receiver's declared type name and, for a
+// generic receiver, the name of its first type parameter.
+func receiverTypeName(expr ast.Expr) (name, typeParam string) {
+	if star, ok := expr.(*ast.StarExpr); ok {
+		expr = star.X
+	}
+
+	switch e := expr.(type) {
+	case *ast.Ident:
+		return e.Name, ""
+	case *ast.IndexExpr:
+		base, ok := e.X.(*ast.Ident)
+		if !ok {
+			return "", ""
+		}
+
+		if arg, ok := e.Index.(*ast.Ident); ok {
+			return base.Name, arg.Name
+		}
+
+		return base.Name, ""
+	default:
+		return "", ""
+	}
+}
+
+// directionResultName is the type name the Direction method returns.
+func directionResultName(fn *ast.FuncDecl) string {
+	if fn.Type.Results == nil || len(fn.Type.Results.List) != 1 {
+		return ""
+	}
+
+	id, ok := fn.Type.Results.List[0].Type.(*ast.Ident)
+	if !ok {
+		return ""
+	}
+
+	return id.Name
 }
