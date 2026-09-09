@@ -141,7 +141,19 @@ func CodeForKind(k domain.ErrorKind) codes.Code {
 // codes.FailedPrecondition so callers skipped actions.GRPCRetryPolicy's fifty
 // Unavailable retries — widen the returned set for that reason rather than
 // relaxing the kind mapping, which the encoder shares.
+//
+// The one reason with an empty set is UNSPECIFIED. It is the enum's absence
+// marker, not a business reason: no Describable carries it (pinned by
+// domain.TestEveryDomainErrorImplementsDescribable), so describableToGRPCStatus
+// cannot stamp it and no code is legitimate for it. Returning nil rejects the
+// pair through decodeReason's one validation branch rather than a second
+// special case — including under codes.Internal, which
+// CodeForKind(KindForReason(UNSPECIFIED)) would otherwise have licensed.
 func allowedWireCodes(rc commonpb.ErrorReason) []codes.Code {
+	if rc == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
+		return nil
+	}
+
 	return []codes.Code{CodeForKind(domain.KindForReason(rc))}
 }
 
@@ -285,9 +297,18 @@ func Decode(err error) error {
 // An unknown reason cannot be validated — this build has no policy for it — so
 // its exact code, reason, message and metadata are preserved verbatim and the
 // code supplies the classification.
+//
+// "Unknown" is the enum lookup missing the name, which is why the branch keys
+// on LookupReasonCode's second result rather than on the UNSPECIFIED zero
+// value: ReasonCode collapses both onto it. The explicit UNSPECIFIED member is
+// a reason this build knows — and knows no ledger error emits — so it is
+// validated like any other and rejected by the empty set allowedWireCodes
+// returns for it. Trusting it as a reason from the future would answer a
+// client `errorCode: "UNSPECIFIED"` and the peer's message for an ErrorInfo no
+// ledger server can produce.
 func decodeReason(info *errdetails.ErrorInfo, st *status.Status) error {
-	rc := domain.ReasonCode(info.GetReason())
-	if rc == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
+	rc, known := domain.LookupReasonCode(info.GetReason())
+	if !known {
 		return &apierr.Remote{
 			KindValue:   kindForCode(st.Code()),
 			ReasonValue: info.GetReason(),

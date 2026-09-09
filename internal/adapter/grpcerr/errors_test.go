@@ -746,6 +746,89 @@ func TestDecode_InvalidReasonCodePairIsRejected(t *testing.T) {
 		"the received metadata is untrusted and must not be carried forward")
 }
 
+// unspecifiedReason is the enum's absence marker as it travels on the wire:
+// the Reason() spelling of ERROR_REASON_UNSPECIFIED. No Describable carries it
+// (domain.TestEveryDomainErrorImplementsDescribable), so describableToGRPCStatus
+// cannot stamp it and a status carrying it did not come from a ledger server.
+var unspecifiedReason = domain.ReasonString(commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED)
+
+// TestDecode_ExplicitUnspecifiedReasonIsRejected separates the two conditions
+// domain.ReasonCode collapses onto the zero value. A name this build's enum
+// does not know is a reason from a newer server, and its payload is trusted by
+// design; the explicit UNSPECIFIED member is a name this build does know — and
+// knows no ledger error emits — so it is a protocol fault at every code.
+//
+// Deriving "unknown" from the zero value rather than from the enum lookup made
+// the sentinel take the forward-compatibility path: UNSPECIFIED under
+// codes.InvalidArgument reached the client as a 400 with errorCode
+// "UNSPECIFIED" and the peer's own message.
+func TestDecode_ExplicitUnspecifiedReasonIsRejected(t *testing.T) {
+	t.Parallel()
+
+	rc, known := domain.LookupReasonCode(unspecifiedReason)
+	require.True(t, known, "precondition: the sentinel is a name the enum declares")
+	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, rc)
+
+	_, knownUnknown := domain.LookupReasonCode(unknownReason)
+	require.False(t, knownUnknown, "precondition: a reason from a newer server is absent from the enum")
+	require.Equal(t, domain.ReasonCode(unspecifiedReason), domain.ReasonCode(unknownReason),
+		"precondition: ReasonCode alone cannot separate the two, which is why the branch keys on the lookup")
+
+	require.Empty(t, allowedWireCodes(rc), "no code is legitimate for the sentinel")
+
+	// The discrimination is the point, not a blanket rejection: the same code
+	// carrying a reason from a newer server still decodes verbatim.
+	assertRemote(t, Decode(buildGRPCError(t, codes.InvalidArgument, "message", unknownReason, nil)),
+		unknownReason, nil)
+
+	for _, code := range []codes.Code{
+		codes.InvalidArgument,
+		codes.NotFound,
+		codes.FailedPrecondition,
+		// CodeForKind(KindForReason(UNSPECIFIED)): the kind table would have
+		// licensed this one pair, so the empty allowed set is what rejects it.
+		codes.Internal,
+		codes.Unauthenticated,
+	} {
+		t.Run(code.String(), func(t *testing.T) {
+			t.Parallel()
+
+			decoded := Decode(buildGRPCError(t, code, "ledger deleted: secret-ledger",
+				unspecifiedReason, map[string]string{"name": "secret-ledger"}))
+
+			invalid, ok := errors.AsType[*apierr.InvalidWireError](decoded)
+			require.Truef(t, ok,
+				"the sentinel is not a business reason and must not decode to one, got %T", decoded)
+			require.Equal(t, unspecifiedReason, invalid.ReasonValue)
+			require.Equal(t, code, invalid.Code)
+			require.Empty(t, invalid.Expected)
+
+			require.NotContains(t, invalid.Error(), "secret-ledger",
+				"the peer's message and metadata are untrusted and must not be carried forward")
+		})
+	}
+}
+
+// TestFromStatusError_ExplicitUnspecifiedReachesTheSanitizer is the end-to-end
+// half: the rejected sentinel must satisfy neither the boundary contract nor
+// GRPCStatus, so every surface answers its own internal error instead of the
+// code it arrived under.
+func TestFromStatusError_ExplicitUnspecifiedReachesTheSanitizer(t *testing.T) {
+	t.Parallel()
+
+	converted := FromStatusError(buildGRPCError(t, codes.InvalidArgument,
+		"ledger deleted: secret-ledger", unspecifiedReason, nil))
+
+	_, isDescribable := apierr.Describe(converted)
+	require.False(t, isDescribable, "a status no ledger server sends is not a business outcome")
+
+	_, hasStatus := status.FromError(converted)
+	require.False(t, hasStatus,
+		"keeping the status would let handleError answer InvalidArgument as a 400 with the untrusted message")
+
+	require.ErrorAs(t, converted, new(*apierr.InvalidWireError))
+}
+
 // TestFromStatusError_InvalidPairReachesTheSanitizer pins where a rejected
 // pair ends up. It must satisfy neither the boundary contract nor GRPCStatus,
 // so HTTP falls through to writeInternalServerError (500 + correlation ID +

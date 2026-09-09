@@ -16,8 +16,31 @@ const errorReasonPrefix = "ERROR_REASON_"
 // enum. An unknown reason yields ERROR_REASON_UNSPECIFIED — only reachable for
 // a non-Describable error that escaped the typed pipeline (see
 // state.buildAuditFailure).
+//
+// The zero value it returns for an unknown reason is indistinguishable from
+// the enum's explicit UNSPECIFIED member. That is harmless for a locally
+// raised Describable, whose Reason() is always an enum name
+// (TestEveryDomainErrorImplementsDescribable pins it), but a decoder reading a
+// reason off the wire must tell the two apart: use LookupReasonCode.
 func ReasonCode(reason string) commonpb.ErrorReason {
-	return commonpb.ErrorReason(commonpb.ErrorReason_value[errorReasonPrefix+reason])
+	code, _ := LookupReasonCode(reason)
+
+	return code
+}
+
+// LookupReasonCode maps a Reason() string to its wire-bound ErrorReason enum
+// and reports whether the enum knows that name at all.
+//
+// It separates the two conditions ReasonCode collapses onto
+// ERROR_REASON_UNSPECIFIED: a reason this build's enum does not know (a newer
+// sender), and the explicit UNSPECIFIED member. No ledger error emits the
+// latter — every Describable's Reason() names a real reason — so a decoder
+// that receives it received something no ledger server sends, which is a
+// protocol fault rather than a reason from the future.
+func LookupReasonCode(reason string) (commonpb.ErrorReason, bool) {
+	code, ok := commonpb.ErrorReason_value[errorReasonPrefix+reason]
+
+	return commonpb.ErrorReason(code), ok
 }
 
 // ReasonString is the inverse of ReasonCode: the stable, client-facing Reason()

@@ -297,6 +297,18 @@ never reaches `errorCode` or `errorDescription`.
 An **unknown** reason cannot be validated — this build has no policy for it —
 so its reason, message, metadata and exact status are preserved verbatim.
 
+"Unknown" means the `ErrorReason` enum does not declare the name, which the
+decoder reads from `domain.LookupReasonCode`'s second result rather than from
+the `ERROR_REASON_UNSPECIFIED` zero value `domain.ReasonCode` returns for it.
+The two are not the same condition: `UNSPECIFIED` is a name this build *does*
+declare, and one no ledger error emits — every `Describable`'s `Reason()` names
+a real reason, so `describableToGRPCStatus` cannot stamp it. Its allowed set is
+therefore empty and the pair is rejected under **every** code, including the
+`codes.Internal` that `CodeForKind(KindForReason(UNSPECIFIED))` would otherwise
+license. Keying the passthrough on the zero value instead let the sentinel take
+the forward-compatibility path, which answered a client `400` with
+`errorCode: "UNSPECIFIED"` and the peer's own message.
+
 ### Retry-After Header
 
 The `Retry-After` header is used to indicate when a client should retry a request after receiving a `503 Service Unavailable` response. Every `503` the adapter emits carries it — `503` is by definition the retry-now class.
