@@ -15,12 +15,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// The log-date index is opt-in, so creating it on a ledger that already has
-// logs schedules a backfill over that history. Every ledger log carries a date,
-// and the unfiltered ListLogs universe holds every one of them, so a date range
-// covering all of time must return exactly the unfiltered listing — whichever
-// side of the CreateIndex log each entry landed on, and whatever its payload
-// kind is.
 // listLedgerLogIDs drains one ListLogs page into per-ledger log ids, reporting
 // a transport error through g so a polling caller retries instead of failing.
 func listLedgerLogIDs(g Gomega, ledger string, filter *commonpb.QueryFilter) []uint64 {
@@ -49,6 +43,12 @@ func listLedgerLogIDs(g Gomega, ledger string, filter *commonpb.QueryFilter) []u
 	return ids
 }
 
+// The log-date index is opt-in, so creating it on a ledger that already has
+// logs schedules a backfill over that history. Every ledger log carries a date,
+// and the unfiltered ListLogs universe holds every one of them, so a date range
+// covering all of time must return exactly the unfiltered listing — whichever
+// side of the CreateIndex log each entry landed on, and whatever its payload
+// kind is.
 var _ = Describe("Log date index backfill", Ordered, func() {
 	const ledgerName = "log-date-backfill"
 
@@ -162,21 +162,23 @@ var _ = Describe("Log date index backfill", Ordered, func() {
 
 	It("Should return nothing for the complement of a date range every log satisfies", func() {
 		// The complement is served as the log universe minus the date-index
-		// matches, so a range no log can satisfy must return nothing.
-		unreachable := uint64(1)
-		noLogMatches := &commonpb.QueryFilter{
+		// matches, so every log satisfying the range is the same statement as
+		// its complement being empty — and it holds only if the index carries
+		// every log.
+		everSince := uint64(1)
+		everyLogMatches := &commonpb.QueryFilter{
 			Filter: &commonpb.QueryFilter_Not{Not: &commonpb.NotFilter{Filter: &commonpb.QueryFilter{
 				Filter: &commonpb.QueryFilter_LogBuiltinUint{
 					LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
 						Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-						Cond:  &commonpb.UintCondition{Min: &unreachable},
+						Cond:  &commonpb.UintCondition{Min: &everSince},
 					},
 				},
 			}}},
 		}
 
 		Consistently(func(g Gomega) {
-			g.Expect(listLogIDs(g, noLogMatches)).To(BeEmpty(),
+			g.Expect(listLogIDs(g, everyLogMatches)).To(BeEmpty(),
 				"every log's date is at or above the bound, so its complement is empty")
 		}).Within(3 * time.Second).ProbeEvery(500 * time.Millisecond).Should(Succeed())
 	})
