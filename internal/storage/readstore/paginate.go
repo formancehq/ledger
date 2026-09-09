@@ -2,82 +2,50 @@ package readstore
 
 import "bytes"
 
-// PaginateForward collects up to pageSize entity IDs from a forward
-// (ascending) EntityIterator. If after is non-nil, the iterator is positioned
-// past that entity before collecting. Returns the collected items, whether
-// more items exist beyond the page, and any storage error surfaced via the
-// iterator (#320). A non-nil error MUST be propagated to the caller — silently
-// returning a short page would deliver a truncated balance/transaction list
-// as if it were complete.
+// paginate collects up to pageSize entity IDs from iter in D's order. If
+// cursor is non-nil, the iterator is positioned at the first entity at or
+// after it and that entity is skipped, so the page starts strictly past the
+// cursor.
+//
+// Returns the collected items, whether more items exist beyond the page, and
+// any storage error surfaced via the iterator (#320). A non-nil error MUST be
+// propagated to the caller — silently returning a short page would deliver a
+// truncated balance/transaction list as if it were complete.
+func paginate[D Direction](iter Iterator[D], pageSize uint32, cursor []byte) (items [][]byte, hasMore bool, err error) {
+	var positioned bool
+	if cursor != nil {
+		positioned = iter.Seek(cursor)
+		// Skip the cursor entity itself: the page starts after it.
+		if positioned && bytes.Equal(iter.Current(), cursor) {
+			positioned = iter.Next()
+		}
+	} else {
+		positioned = iter.Next()
+	}
+
+	if !positioned {
+		return nil, false, iter.Err()
+	}
+
+	items, hasMore = collectPage(iter, pageSize)
+
+	return items, hasMore, iter.Err()
+}
+
+// PaginateForward collects a page from an ascending iterator, starting past
+// after when it is non-nil.
 func PaginateForward(iter EntityIterator, pageSize uint32, after []byte) (items [][]byte, hasMore bool, err error) {
-	var positioned bool
-	if after != nil {
-		positioned = iter.SeekGE(after)
-		// Skip the cursor entity itself (we want items after it)
-		if positioned && bytes.Equal(iter.Current(), after) {
-			positioned = iter.Next()
-		}
-	} else {
-		positioned = iter.Next()
-	}
-
-	if !positioned {
-		return nil, false, iter.Err()
-	}
-
-	items, hasMore = collectPage(iter, pageSize)
-
-	return items, hasMore, iter.Err()
+	return paginate[Asc](iter, pageSize, after)
 }
 
-// ReverseIterator is the interface for reverse (descending) iteration.
-// Err() reports the first storage error encountered. Callers MUST consult
-// Err after Next/SeekLE returns false to distinguish clean exhaustion from
-// an I/O failure (#320).
-type ReverseIterator interface {
-	Next() bool
-	Current() []byte
-	// SeekLE positions the iterator at the first (largest) entity <= target.
-	// Returns false if no such entity exists OR on I/O error — see Err().
-	//
-	// SeekLE is an ABSOLUTE reposition, the descending mirror of
-	// EntityIterator.SeekGE (see iterator_pebble.go and
-	// docs/technical/architecture/subsystems/read-path/iterator-seek-contract.md):
-	// computed from target alone, idempotent and non-consuming at the same
-	// target, well-defined after exhaustion, and a failed seek leaves the
-	// iterator un-positioned but still re-seekable.
-	SeekLE(target []byte) bool
-	Err() error
-}
-
-// PaginateReverse collects up to pageSize entity IDs from a
-// ReverseIterator (descending order). If before is non-nil, the iterator
-// is positioned at the first entity <= before and that entity is skipped.
-// Returns the collected items, whether more items exist, and any storage
-// error surfaced via the iterator. See PaginateForward for the rationale
-// (#320).
+// PaginateReverse collects a page from a descending iterator, starting past
+// before when it is non-nil.
 func PaginateReverse(iter ReverseIterator, pageSize uint32, before []byte) (items [][]byte, hasMore bool, err error) {
-	var positioned bool
-	if before != nil {
-		positioned = iter.SeekLE(before)
-		// Skip the cursor entity itself
-		if positioned && bytes.Equal(iter.Current(), before) {
-			positioned = iter.Next()
-		}
-	} else {
-		positioned = iter.Next()
-	}
-
-	if !positioned {
-		return nil, false, iter.Err()
-	}
-
-	items, hasMore = collectPage(iter, pageSize)
-
-	return items, hasMore, iter.Err()
+	return paginate[Desc](iter, pageSize, before)
 }
 
-// nextable is the common subset of EntityIterator and ReversePrefixIterator.
+// nextable is the positioning subset every Iterator shares, in either
+// direction.
 type nextable interface {
 	Next() bool
 	Current() []byte

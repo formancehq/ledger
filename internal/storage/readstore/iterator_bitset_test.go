@@ -45,7 +45,7 @@ func TestBitsetIterator_Empty(t *testing.T) {
 	require.Empty(t, collectBitsetIDs(readstore.NewBitsetIterator(nil)))
 }
 
-func TestBitsetIterator_SeekGE(t *testing.T) {
+func TestBitsetIterator_Seek(t *testing.T) {
 	t.Parallel()
 
 	bs := &bitset.Bitset{}
@@ -55,17 +55,17 @@ func TestBitsetIterator_SeekGE(t *testing.T) {
 
 	// Seek onto an exact set bit, then keep iterating.
 	it := readstore.NewBitsetIterator(bs)
-	require.True(t, it.SeekGE(be8(5)))
+	require.True(t, it.Seek(be8(5)))
 	require.Equal(t, uint64(5), binary.BigEndian.Uint64(it.Current()))
 	require.True(t, it.Next())
 	require.Equal(t, uint64(64), binary.BigEndian.Uint64(it.Current()))
 
 	// Seek into a gap lands on the next set bit (across a word boundary).
 	gap := readstore.NewBitsetIterator(bs)
-	require.True(t, gap.SeekGE(be8(6)))
+	require.True(t, gap.Seek(be8(6)))
 	require.Equal(t, uint64(64), binary.BigEndian.Uint64(gap.Current()))
 
 	// Seek beyond the last set bit is exhausted.
 	past := readstore.NewBitsetIterator(bs)
-	require.False(t, past.SeekGE(be8(131)))
+	require.False(t, past.Seek(be8(131)))
 }

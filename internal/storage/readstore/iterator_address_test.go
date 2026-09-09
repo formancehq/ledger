@@ -62,12 +62,12 @@ func drainIDs(tb testing.TB, it *AddressTxIterator) []uint64 {
 	return got
 }
 
-// SeekGE on AddressTxIterator must be an absolute reposition over the
+// Seek on AddressTxIterator must be an absolute reposition over the
 // materialized union: repeatable at the same target, seekable backwards, and
 // well-defined after exhaustion (EN-1597, paul-nicolas review of PR #1635).
 // The prior implementation consumed the matched entry (`pendingTxns[idx+1:]`)
 // and latched on exhaustion, so a repeated or backward seek dropped rows.
-func TestAddressTxIterator_SeekGEIsAbsolute(t *testing.T) {
+func TestAddressTxIterator_SeekIsAbsolute(t *testing.T) {
 	t.Parallel()
 
 	it := newAddressTxFixture(t, map[string][]uint64{
@@ -85,11 +85,11 @@ func TestAddressTxIterator_SeekGEIsAbsolute(t *testing.T) {
 	require.NoError(t, it.Err())
 
 	// Reposition after exhaustion.
-	require.True(t, it.SeekGE(txIDBytes(2)))
+	require.True(t, it.Seek(txIDBytes(2)))
 	require.Equal(t, uint64(2), binary.BigEndian.Uint64(it.Current()))
 
 	// Same target again: same row (a conforming seek does not consume).
-	require.True(t, it.SeekGE(txIDBytes(2)))
+	require.True(t, it.Seek(txIDBytes(2)))
 	require.Equal(t, uint64(2), binary.BigEndian.Uint64(it.Current()))
 
 	// Next continues from the seeked position.
@@ -97,20 +97,20 @@ func TestAddressTxIterator_SeekGEIsAbsolute(t *testing.T) {
 	require.Equal(t, uint64(3), binary.BigEndian.Uint64(it.Current()))
 
 	// Backward seek below everything.
-	require.True(t, it.SeekGE(txIDBytes(0)))
+	require.True(t, it.Seek(txIDBytes(0)))
 	require.Equal(t, uint64(1), binary.BigEndian.Uint64(it.Current()))
 
 	// Seek past the end fails, then a lower seek succeeds again.
-	require.False(t, it.SeekGE(txIDBytes(99)))
+	require.False(t, it.Seek(txIDBytes(99)))
 	require.False(t, it.Next())
-	require.True(t, it.SeekGE(txIDBytes(3)))
+	require.True(t, it.Seek(txIDBytes(3)))
 	require.Equal(t, uint64(3), binary.BigEndian.Uint64(it.Current()))
 	require.NoError(t, it.Err())
 }
 
 // An AND over an AddressTxIterator must not drop intersections when converge
 // re-seeks the child onto its own current position (the destructive-consume
-// regression from the unconditional all-children re-seek in AndIterator.SeekGE).
+// regression from the unconditional all-children re-seek in AndIterator.Seek).
 func TestAndIterator_AddressTxChildKeepsIntersection(t *testing.T) {
 	t.Parallel()
 
@@ -125,11 +125,11 @@ func TestAndIterator_AddressTxChildKeepsIntersection(t *testing.T) {
 	it := NewAndIterator(addrTx, other)
 	defer it.Close()
 
-	require.True(t, it.SeekGE(txIDBytes(1)))
+	require.True(t, it.Seek(txIDBytes(1)))
 	require.Equal(t, uint64(1), binary.BigEndian.Uint64(it.Current()))
 
 	// Re-seek to the same target: the intersection must still start at 1.
-	require.True(t, it.SeekGE(txIDBytes(1)))
+	require.True(t, it.Seek(txIDBytes(1)))
 	require.Equal(t, uint64(1), binary.BigEndian.Uint64(it.Current()))
 
 	var rest []uint64
@@ -141,7 +141,7 @@ func TestAndIterator_AddressTxChildKeepsIntersection(t *testing.T) {
 }
 
 // A NOT whose child is an AddressTxIterator must keep excluding after the
-// child was driven to exhaustion by a forward pass — the child's SeekGE must
+// child was driven to exhaustion by a forward pass — the child's Seek must
 // reposition, not latch. Pre-fix, the exhausted (and consumed) child stopped
 // excluding, leaking every excluded row into the difference.
 func TestNotIterator_AddressTxChildExcludesAfterExhaustion(t *testing.T) {
@@ -165,7 +165,7 @@ func TestNotIterator_AddressTxChildExcludesAfterExhaustion(t *testing.T) {
 	require.False(t, it.Next())
 
 	// The absolute re-seek back to 1 must still exclude 1-3 and land on 4.
-	require.True(t, it.SeekGE(txIDBytes(1)))
+	require.True(t, it.Seek(txIDBytes(1)))
 	require.Equal(t, uint64(4), binary.BigEndian.Uint64(it.Current()))
 	require.NoError(t, it.Err())
 }
@@ -177,7 +177,7 @@ func TestAddressTxIterator_EmptyUnion(t *testing.T) {
 	defer it.Close()
 
 	require.False(t, it.Next())
-	require.False(t, it.SeekGE(txIDBytes(0)))
+	require.False(t, it.Seek(txIDBytes(0)))
 	require.False(t, it.Next())
 	require.NoError(t, it.Err())
 }
@@ -292,12 +292,12 @@ func TestAddressTxIterator_UnionIsSortedAndUnique(t *testing.T) {
 			// A seek before the first entry sees the same sorted union, so no
 			// consumer can reach an unsorted slice through either entry point.
 			if len(tc.want) == 0 {
-				require.False(t, it.SeekGE(txIDBytes(0)))
+				require.False(t, it.Seek(txIDBytes(0)))
 
 				return
 			}
 
-			require.True(t, it.SeekGE(txIDBytes(0)))
+			require.True(t, it.Seek(txIDBytes(0)))
 			require.Equal(t, tc.want[0], binary.BigEndian.Uint64(it.Current()))
 			require.NoError(t, it.Err())
 		})
@@ -348,6 +348,6 @@ func TestAddressTxIterator_AddressRoleBucketsAreIsolated(t *testing.T) {
 	defer it.Close()
 
 	require.Empty(t, drainIDs(t, it))
-	require.False(t, it.SeekGE(txIDBytes(0)))
+	require.False(t, it.Seek(txIDBytes(0)))
 	require.NoError(t, it.Err())
 }

@@ -152,17 +152,21 @@ applies to the `ListAccounts` and `ListTransactions` paths.
 
 ## Iterator algebra
 
-`internal/storage/readstore/iterator_*.go` — the iterators implement a small set of composable operators, all sharing an `EntityIterator` interface (`Next`, `Current`, `SeekGE`, `Err`, `Close`):
+`internal/storage/readstore/` — the iterators implement a small set of composable operators, all sharing one interface, `Iterator[D Direction]` (`Next`, `Current`, `Seek`, `Err`, `Close`), declared in `iterator.go`. `Direction` is the sealed pair `Asc`/`Desc`; `EntityIterator` and `ReverseIterator` are aliases for `Iterator[Asc]` and `Iterator[Desc]`.
 
-| Operator | Purpose |
-|----------|---------|
-| `PebbleAccountIterator`, `PebbleReverseTxIterator`, `LedgerLogsIterator`, … | Leaf scans over one read-store prefix. |
-| `AndIterator` | Merge-intersect of sorted child iterators. |
-| `OrIterator` | Merge-union. |
-| `NotIterator` | Difference against the entity-existence index (`0x02`). |
-| address-prefix iterator | Leaf scan with a chart-of-accounts prefix predicate. |
+| Operator | File | Purpose |
+|----------|------|---------|
+| `PebbleAccountIterator`, `PebbleReverseTxIterator`, `LedgerLogIterator`, `PrefixIterator`/`ReversePrefixIterator`, … | `iterator_*.go` | Leaf scans over one read-store prefix. Direction-specific: a Pebble cursor walked `First`/`Next` is not the one walked `Last`/`Prev`. |
+| `AndIterator[D]` | `combinator_and.go` | Merge-intersect of sorted child iterators. |
+| `OrIterator[D]` | `combinator_or.go` | Merge-union. |
+| `NotIterator[D]` | `combinator_not.go` | Difference against the entity-existence index (`0x02`). |
+| `FilterIterator[D]` | `combinator_filter.go` | Predicate wrapper (for example the main-store horizon trim). |
+| `SliceIterator[D]` | `combinator_slice.go` | Borrowed view over an already sorted, materialized result. |
+| address-prefix iterator | `iterator_pebble.go` | Leaf scan with a chart-of-accounts prefix predicate. |
 
-The filter compiler turns a `QueryFilter` proto into a tree of these. `SeekGE`/`SeekLE` are **absolute** repositions — `AndIterator.SeekGE` force-seeks *every* child to the target (EN-1597; a child left ahead would skip valid intersections), and the ahead-child leapfrog survives only inside `converge`'s merge loop. Exhausted leaves stay re-seekable; the `seekFloor`/`seekCeil` cache keeps repeated re-seeks of a proven-empty child O(1). See [iterator-seek-contract.md](iterator-seek-contract.md).
+The boolean combinators are **direction-parameterized, not duplicated**: each is one implementation whose only direction-dependent input is `D`'s comparator, so ascending and descending composition cannot drift apart (EN-1966). Only the leaves listed as direction-specific above have two implementations.
+
+The filter compiler turns a `QueryFilter` proto into a tree of these. `Seek` is an **absolute** reposition to the first entity at or after the target *in the iterator's direction* — `AndIterator.Seek` force-seeks *every* child to the target (EN-1597; a child left ahead would skip valid intersections), and the ahead-child leapfrog survives only inside `converge`'s merge loop. Exhausted leaves stay re-seekable; the `seekFloor`/`seekCeil` cache keeps repeated re-seeks of a proven-empty child O(1). See [iterator-seek-contract.md](iterator-seek-contract.md).
 
 ## Pagination
 

@@ -148,7 +148,7 @@ func (it *PrefixIterator) Current() []byte {
 	return it.current
 }
 
-func (it *PrefixIterator) SeekGE(target []byte) bool {
+func (it *PrefixIterator) Seek(target []byte) bool {
 	// A prior failed seek at or below target proves this one empty too.
 	if it.floor.covers(target) {
 		it.exhausted = true
@@ -237,7 +237,7 @@ func (it *PrefixIterator) extractEntity(key []byte) []byte {
 // extracting entity IDs from each key. When the range spans several
 // index-value buckets the emitted entities are NOT globally sorted — they
 // surface in (value, entity) order — so this iterator only supports forward
-// draining; see SeekGE.
+// draining; see Seek.
 type RangeIterator struct {
 	iter         *pebble.Iterator
 	lowerBound   []byte // stored for SeekPrefixGE initial positioning
@@ -254,8 +254,8 @@ type RangeIterator struct {
 }
 
 // errInvariantRangeIteratorSeek fails a query that composed a RangeIterator
-// without materializing it first — see RangeIterator.SeekGE.
-var errInvariantRangeIteratorSeek = errors.New("invariant: RangeIterator.SeekGE called; materialize into a SliceIterator before composing")
+// without materializing it first — see RangeIterator.Seek.
+var errInvariantRangeIteratorSeek = errors.New("invariant: RangeIterator.Seek called; materialize into a SliceIterator before composing")
 
 // NewRangeIterator creates an iterator that scans keys in [lower, upper).
 func NewRangeIterator(
@@ -363,7 +363,7 @@ func (it *RangeIterator) Current() []byte {
 	return it.current
 }
 
-// SeekGE cannot be implemented on a raw range scan: the [lower, upper) range
+// Seek cannot be implemented on a raw range scan: the [lower, upper) range
 // may span several index-value buckets, so rows surface in (value, entity)
 // order and "the first entity >= target" is undefined without draining the
 // whole range. Every construction site materializes this iterator into a
@@ -371,7 +371,7 @@ func (it *RangeIterator) Current() []byte {
 // which serves seeks over the sorted result; a call here is an invariant
 // violation and fails the query loudly instead of returning
 // plausible-looking wrong rows.
-func (it *RangeIterator) SeekGE([]byte) bool {
+func (it *RangeIterator) Seek([]byte) bool {
 	it.seekErr = errInvariantRangeIteratorSeek
 	it.exhausted = true
 
@@ -416,3 +416,9 @@ func (it *RangeIterator) extractEntity(key []byte) []byte {
 
 	return suffix
 }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *PrefixIterator) Direction() (d Asc) { return }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *RangeIterator) Direction() (d Asc) { return }

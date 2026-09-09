@@ -67,12 +67,12 @@ func (it *BitsetIterator) Current() []byte {
 	return it.current
 }
 
-func (it *BitsetIterator) SeekGE(target []byte) bool {
+func (it *BitsetIterator) Seek(target []byte) bool {
 	if it.bs == nil {
 		return false
 	}
 
-	// SeekGE is absolute repositioning: recompute the position from target even
+	// Seek is absolute repositioning: recompute the position from target even
 	// after a prior walk exhausted the iterator. A latched `done` would make a
 	// re-seek to an earlier target (as the NOT/AND merge iterators issue once
 	// forward iteration has consumed the bitset) wrongly report no match.
@@ -100,3 +100,6 @@ func (it *BitsetIterator) SeekGE(target []byte) bool {
 func (it *BitsetIterator) Err() error { return nil }
 
 func (it *BitsetIterator) Close() {}
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *BitsetIterator) Direction() (d Asc) { return }

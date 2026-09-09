@@ -131,13 +131,13 @@ func TestEventResolveIterator_SeekContract(t *testing.T) {
 	require.NoError(t, err)
 	defer it.Close()
 
-	require.True(t, it.SeekGE([]byte("a:2")), "lands on the first LIVE entity >= target")
+	require.True(t, it.Seek([]byte("a:2")), "lands on the first LIVE entity >= target")
 	require.Equal(t, "a:3", string(it.Current()), "a:2 is dead at pin 25")
-	require.True(t, it.SeekGE([]byte("a:2")), "repeatable")
+	require.True(t, it.Seek([]byte("a:2")), "repeatable")
 	require.Equal(t, "a:3", string(it.Current()))
 	require.False(t, it.Next())
 
-	require.True(t, it.SeekGE([]byte("a:0")), "backward after exhaustion")
+	require.True(t, it.Seek([]byte("a:0")), "backward after exhaustion")
 	require.Equal(t, "a:1", string(it.Current()))
 	require.NoError(t, it.Err())
 }
@@ -162,18 +162,18 @@ func TestEventResolveIterator_SeekFloor(t *testing.T) {
 
 	// a:5 is dead at this pin and nothing lives beyond it, so the seek is
 	// proven empty and the bound is recorded.
-	require.False(t, it.SeekGE([]byte("a:5")))
+	require.False(t, it.Seek([]byte("a:5")))
 	require.True(t, it.floor.covers([]byte("a:5")), "the failed seek must be memoised")
 	require.True(t, it.floor.covers([]byte("a:9")), "a higher target is proven empty by the same failure")
 
 	// Nothing below the bound is covered: the live group at a:1 is still
 	// reachable, which is the property a latch would break.
 	require.False(t, it.floor.covers([]byte("a:0")))
-	require.True(t, it.SeekGE([]byte("a:0")))
+	require.True(t, it.Seek([]byte("a:0")))
 	require.Equal(t, "a:1", string(it.Current()))
 
 	// And the memoised verdict is still the right one on a re-seek.
-	require.False(t, it.SeekGE([]byte("a:5")))
+	require.False(t, it.Seek([]byte("a:5")))
 	require.NoError(t, it.Err())
 }
 
@@ -193,7 +193,7 @@ func TestEventResolveIterator_SeekFloorIgnoresFaults(t *testing.T) {
 	it.floor.fail([]byte("a:0"), errFaultProbe)
 	require.False(t, it.floor.covers([]byte("a:0")), "a faulted seek must leave the floor unset")
 
-	require.True(t, it.SeekGE([]byte("a:0")))
+	require.True(t, it.Seek([]byte("a:0")))
 	require.Equal(t, "a:1", string(it.Current()))
 }
 
