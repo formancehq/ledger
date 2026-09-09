@@ -68,3 +68,84 @@ func TestPromotionContextCarriesCompleteRegisteredIdentity(t *testing.T) {
 		require.NoError(t, membership.ValidateConfChangeIdentities(&raftpb.ConfChangeV2{Context: payload, Changes: []*raftpb.ConfChangeSingle{{Type: new(raftpb.ConfChangeAddNode), NodeId: new(uint64(9))}}}))
 	}
 }
+
+func TestPromotionContextRejectsIncompleteAddresses(t *testing.T) {
+	t.Parallel()
+	for name, addresses := range map[string][2]string{
+		"missing raft address":    {"", "peer:8888"},
+		"missing service address": {"peer:7777", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			m := newTestMembership(t)
+			require.NoError(t, m.Set(9, addresses[0], addresses[1], []byte("peer-instance-id")))
+			n := &Node{membership: m}
+			payload, err := n.promotionContext(9, "promotion")
+			require.Nil(t, payload)
+			require.EqualError(t, err, "invariant: learner 9 requires raft and service addresses")
+		})
+	}
+}
+
+func TestFinishReadyCommittedRegistrationPublishesCompleteIdentity(t *testing.T) {
+	t.Parallel()
+	for _, changeType := range []raftpb.ConfChangeType{
+		raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode,
+	} {
+		t.Run(changeType.String(), func(t *testing.T) {
+			t.Parallel()
+			n := newConfiguredPeersTestNode(t)
+			n.logger = logging.Testing()
+			target := uint64(9)
+			if changeType == raftpb.ConfChangeUpdateNode {
+				target = 2
+			}
+			payload := membership.ConfChangeContext{
+				RaftAddress: "new:7777", ServiceAddress: "new:8888", InstanceID: []byte("next-instance-id"),
+			}
+			encoded, err := membership.MarshalConfChangeContext(payload)
+			require.NoError(t, err)
+			cc := &raftpb.ConfChangeV2{Context: encoded, Changes: []*raftpb.ConfChangeSingle{{
+				Type: new(changeType), NodeId: new(target),
+			}}}
+			require.NoError(t, n.finishReady(readyResult{confChanges: []committedConfChange{{index: 2, change: cc}}}, make(chan struct{})))
+			require.Equal(t, payload, n.membership.PeerAddresses()[target])
+			progress, exists := n.rawNode.Status().Progress[target]
+			require.True(t, exists)
+			require.Equal(t, changeType != raftpb.ConfChangeAddNode, progress.IsLearner)
+			_, persisted, err := n.wal.InitialState()
+			require.NoError(t, err)
+			require.True(t, confStatesEqual(n.confState.Load(), persisted), "published configuration must be persisted in the WAL snapshot")
+		})
+	}
+}
+
+func TestFinishReadyCommittedRemovalProtectsAdmissionBeforeApply(t *testing.T) {
+	t.Parallel()
+	setup := newTestApplierSetup(t)
+	n := newConfiguredPeersTestNode(t)
+	n.logger = logging.Testing()
+	n.fsm = setup.fsm
+	n.runDone = make(chan struct{})
+	t.Cleanup(func() { close(n.runDone) })
+	identity := []byte("peer-instance-id")
+	encoded, err := membership.MarshalConfChangeContext(membership.ConfChangeContext{InstanceID: identity})
+	require.NoError(t, err)
+	cc := &raftpb.ConfChangeV2{Context: encoded, Changes: []*raftpb.ConfChangeSingle{{
+		Type: new(raftpb.ConfChangeRemoveNode), NodeId: new(uint64(2)),
+	}}}
+	require.NoError(t, n.finishReady(readyResult{confChanges: []committedConfChange{{index: 42, change: cc}}}, make(chan struct{})))
+	require.NotContains(t, n.rawNode.Status().Progress, uint64(2))
+	require.NotContains(t, n.membership.PeerAddresses(), uint64(2))
+	require.True(t, n.isRemovalPending(2, identity), "commit observation must protect admission even without an originating RPC")
+	pending, exists := n.pendingRemovals.Load(2)
+	require.True(t, exists)
+	require.Equal(t, uint64(42), pending.committedIndex)
+	removed, err := n.membership.IsRemoved(2, identity)
+	require.NoError(t, err)
+	require.False(t, removed, "the barrier protects the interval before the FSM tombstone is applied")
+	_, persisted, err := n.wal.InitialState()
+	require.NoError(t, err)
+	require.Equal(t, []uint64{1}, persisted.GetVoters())
+	require.Empty(t, persisted.GetLearners())
+}
