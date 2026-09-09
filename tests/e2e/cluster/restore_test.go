@@ -338,10 +338,8 @@ var _ = Describe("Restore", Ordered, func() {
 			// This checkpoint is created only after the full backup. Its metadata
 			// row — including applied_index — must therefore be rebuilt from the
 			// incremental log export rather than copied from checkpoint files.
-			checkpoint, err := clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+			deltaCheckpointID, deltaCheckpointMaxSequence, err = actions.CreateQueryCheckpoint(ctx, client)
 			Expect(err).To(Succeed())
-			deltaCheckpointID = checkpoint.GetCheckpointId()
-			deltaCheckpointMaxSequence = checkpoint.GetMaxSequence()
 			Expect(deltaCheckpointID).NotTo(BeZero())
 
 			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
