@@ -309,10 +309,10 @@ it hears from a higher term. It still cannot commit or acknowledge new writes,
 and a `ReadOnlySafe` `ReadIndex` cannot complete without quorum confirmation.
 That temporary role disagreement is not a split brain at the committed-state
 level. Explicit `stale` reads intentionally bypass the quorum barrier and may
-return an older local view. An explicit `leader` read can do the same when it
-reaches a node that still considers itself leader: the local-leader routing
-shortcut serves local state without `ReadIndex`. Neither mode should be used
-when quorum-confirmed freshness is required during a partition.
+return an older local view. They should not be used when quorum-confirmed
+freshness is required during a partition. All non-stale reads require a
+successful `ReadIndex`, including reads served on the node that currently
+reports itself as leader.
 
 ### Quorum and Failure Tolerance
 
@@ -553,6 +553,38 @@ The system can pipeline requests:
 - Send multiple `AppendEntries` before receiving confirmations
 - Limited by `MaxInflightMsgs`
 
+### Why v3 has no `leader` read selector (EN-1946)
+
+The product requirement is one predictable default for every non-stale live
+read: the serving node must confirm a quorum-backed horizon before it opens the
+state snapshot, whether that node currently reports itself as leader or
+follower. Routing to the perceived leader is only a location preference; it is
+not a consistency proof. With `CheckQuorum` disabled, an isolated former leader
+can temporarily keep its local leader role and serve old local state if that
+route shortcuts `ReadIndex`.
+
+Because v3 is unreleased, EN-1946 removes the `x-consistency: leader` selector
+instead of preserving that ambiguous contract. The default route always uses
+`ReadIndexAndWait`; `stale` remains the sole explicit opt-out and says exactly
+that it skips quorum confirmation.
+
+Alternatives considered:
+
+- Retain and document `leader`: rejected because a placement hint that can
+  weaken freshness contradicts the common non-stale contract.
+- Reinterpret `leader` to route and then perform `ReadIndex`: rejected because
+  it duplicates the default guarantee while concentrating read load and keeping
+  a selector with no distinct semantic value.
+- Keep the shortcut unchanged: rejected because an isolated former leader can
+  return stale data under a mode callers reasonably read as authoritative.
+
+Validation is split at the contract boundaries:
+`TestExtractConsistency_LeaderIsNotSupported` proves the old token cannot
+select a weaker path, routed-controller tests prove local default reads obtain
+and propagate the `ReadIndex` horizon, and
+`TestRoutedController_FinishLeaderFallback` proves a failed follower barrier
+cannot turn into an unbarriered local read if leadership moves during fallback.
+
 ### Linearizable Reads via ReadIndex
 
 Default live reads routed through `RoutedController.readCtrl` use the etcd/raft
@@ -583,15 +615,6 @@ indexes need their own progress barrier:
 - `x-consistency: stale` bypasses `ReadIndex` and reads the local store directly;
   it may return an older view, but any projection it uses is still aligned to
   the fixed applied index of that local main-store snapshot.
-- `x-consistency: leader` routes the read to the node currently considered
-  leader. A call forwarded to a remote node does not propagate the consistency
-  metadata, so the remote call defaults to linearizable mode and performs its
-  quorum barrier. However, if the receiving node already considers itself
-  leader, `getLeaderCtrl` returns the local controller directly and skips
-  `ReadIndex`. Because `CheckQuorum` is disabled, an isolated former leader can
-  therefore serve stale local state in this mode. Projection-backed reads still
-  align to that local main-store snapshot even though no quorum horizon `R` is
-  available.
 - If a non-leader node is syncing or cannot complete its local barrier,
   `RoutedController` can transparently retry the read against the leader. The
   forwarded attempt can still fail when the leader is unavailable. If

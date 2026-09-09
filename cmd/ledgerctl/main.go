@@ -118,8 +118,8 @@ func newRootCommand() *cobra.Command {
 	rootCmd.PersistentFlags().String("response-verify-key", "", "Path to Ed25519 seed file for verifying server response signatures (env: LEDGERCTL_RESPONSE_VERIFY_KEY)")
 
 	// Add persistent flag for read consistency level.
-	rootCmd.PersistentFlags().String("consistency", "", "Read consistency level: stale, leader, or linearizable (default) (env: LEDGERCTL_CONSISTENCY)")
-	cmdutil.RegisterEnumCompletion(rootCmd, "consistency", "stale", "leader", "linearizable")
+	rootCmd.PersistentFlags().String("consistency", "", "Read consistency level: stale or linearizable (default) (env: LEDGERCTL_CONSISTENCY)")
+	cmdutil.RegisterEnumCompletion(rootCmd, "consistency", "stale", "linearizable")
 
 	// Add persistent flag for bearer token authentication.
 	rootCmd.PersistentFlags().String("auth-token", "", "Bearer token for authentication (JWT string or @path-to-file) (env: LEDGERCTL_AUTH_TOKEN)")

@@ -82,7 +82,7 @@ was used.
 
 Once both succeed, the local Pebble snapshot reflects state at least as fresh as the moment the request reached the cluster. This guarantees **linearizable reads on any node**: a read started after a successful write returns at least that write's effects, regardless of which node serves the read.
 
-If the node is syncing or otherwise unable to confirm `ReadIndex`, the call fails — callers either retry or forward to the leader. The explicit `leader` consistency mode remains available at this stage: a remote hop defaults to the linearizable path, while a node that already considers itself leader serves locally without `R` and still aligns every projection it uses to the fixed local `H` below.
+If the node is syncing or otherwise unable to confirm `ReadIndex`, the call fails — callers either retry or forward to the leader.
 
 ## Projection alignment — fixed Raft horizon
 
