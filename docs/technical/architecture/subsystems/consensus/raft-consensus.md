@@ -103,6 +103,30 @@ type Node struct {
 }
 ```
 
+#### Node shutdown
+
+`Node.Stop(ctx)` first attempts a best-effort leadership transfer while peer
+connections remain available. It then closes a persistent stop signal exactly
+once, even when the caller context has expired during transfer or `Run` has not
+reached its outer stop select. The context bounds transfer and waiting; it must
+never abandon the shutdown request. Concurrent callers share this signal and
+wait for the same `Run` completion.
+
+`Run` owns task termination: it closes the task stop channels and joins the
+orchestrator, ready processor, maintenance loop, and applier. During applier
+exit, any pending commit is drained, the commit queue is closed, the committer
+is joined, and the decoder is cancelled and joined. `Run` then stops FSM
+background tasks and publishes completion. A successful `Stop` waits for this
+whole sequence. This preserves the existing pending-commit drain; it does not
+promise to apply every queued entry before shutdown.
+
+Bootstrap leaves the run context live until `Stop` returns so normal shutdown
+can complete pending commits. If `Stop` times out, the shutdown request remains
+published and bootstrap cancels context-aware work, but that cancellation does
+not itself terminate idle tasks or join `Run`. Task/drain completion may still
+be pending, so a timeout must not be treated as permission to close the node's
+storage or transport. `Stop` after `Run` has exited returns immediately.
+
 #### Applier
 
 `internal/infra/node/applier.go` decouples WAL writes from FSM application by running as a dedicated goroutine. This provides two levels of pipelining:

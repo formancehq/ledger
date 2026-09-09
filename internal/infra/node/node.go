@@ -374,7 +374,8 @@ type Node struct {
 	// touch it). Used only when raft.Config.AsyncStorageWrites is true.
 	localResponseCh LocalResponses
 	tasks           *taskSet
-	stopChannel     chan chan struct{}
+	stopChannel     chan struct{}
+	stopOnce        sync.Once
 	runDone         chan struct{} // closed when Run() exits
 	// terminalCh closes when an irreversible live Raft mutation could not be
 	// durably established. New work is rejected immediately while the task
@@ -681,7 +682,7 @@ func NewNode(
 		readyTerminated:  make(chan readyResult, 1),
 		localResponseCh:  localResponses,
 		tasks:            newTaskSet(),
-		stopChannel:      make(chan chan struct{}),
+		stopChannel:      make(chan struct{}),
 		terminalCh:       make(chan struct{}),
 		pendingReads:     &SyncMap[uint64, *readIndexRequest]{},
 		membership:       membership,
@@ -974,6 +975,11 @@ func (node *Node) doMaintenance() {
 }
 
 func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
+	return node.run(ctx, func() { close(ready) })
+}
+
+// run publishes readiness after starting the tasks and owns their shutdown.
+func (node *Node) run(ctx context.Context, ready func()) error {
 	node.runDone = make(chan struct{})
 	defer close(node.runDone)
 
@@ -1163,10 +1169,10 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 	// specific index (index builder, event manager, cluster-config
 	// reconciler) call fsm.WaitForApplied on demand rather than piggybacking
 	// on node.Run's ready signal.
-	close(ready)
+	ready()
 
 	select {
-	case ch := <-node.stopChannel:
+	case <-node.stopChannel:
 		err := node.tasks.stop()
 		if err != nil {
 			node.logger.Errorf("Error stopping task pool: %v", err)
@@ -1176,8 +1182,6 @@ func (node *Node) Run(ctx context.Context, ready chan struct{}) error {
 		// Must run after tasks.stop() (which stops the applier that can
 		// trigger new bloom tasks) and before the fx hook closes the DB.
 		node.fsm.StopBackgroundTasks()
-
-		close(ch)
 
 		return nil
 	case err := <-node.tasks.err():
@@ -2465,11 +2469,13 @@ func (node *Node) tryTransferLeadershipBeforeShutdown(ctx context.Context) {
 	node.logger.Infof("Leadership transferred successfully before shutdown")
 }
 
+// Stop requests task shutdown after a best-effort leadership transfer. The
+// context bounds transfer and waiting, but cannot abandon the shutdown request.
+// A nil result means Run has joined its tasks and stopped FSM background work.
 func (node *Node) Stop(ctx context.Context) error {
 	node.logger.Infof("Stopping node")
 
-	// If Run() has already exited (e.g. task error or context cancellation),
-	// skip the leadership transfer and stopChannel handshake.
+	// If Run has already exited, skip the leadership transfer and stop request.
 	select {
 	case <-node.runDone:
 		node.logger.Infof("Run already exited, nothing to stop")
@@ -2482,20 +2488,15 @@ func (node *Node) Stop(ctx context.Context) error {
 		node.tryTransferLeadershipBeforeShutdown(ctx)
 	}
 
-	ch := make(chan struct{})
+	// Publish a persistent request even if the caller's deadline expired during
+	// transfer or Run has not reached its outer select yet. Run owns task stop
+	// and drain; cancelling its context is not a substitute for this signal.
+	node.stopOnce.Do(func() { close(node.stopChannel) })
+
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case node.stopChannel <- ch:
-		select {
-		case <-ch:
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
 	case <-node.runDone:
-		// Run() exited while we were trying to send on stopChannel
-		// (e.g. a task crashed between our check and the send).
 		return nil
 	}
 }
