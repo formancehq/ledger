@@ -708,6 +708,14 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	return status.Errorf(codes.Unknown, "unknown server error (correlation ID: %s)", correlationID)
 }
 
+// internalGRPCError sanitizes a known internal read failure at its source while
+// retaining Internal (the unmapped-error boundary deliberately uses Unknown).
+func internalGRPCError(ctx context.Context, logger logging.Logger, err error) error {
+	correlationID := recordGRPCInternalError(ctx, logger, err)
+
+	return status.Errorf(codes.Internal, "internal server error (correlation ID: %s)", correlationID)
+}
+
 func recordGRPCInternalError(ctx context.Context, logger logging.Logger, err error) string {
 	correlationID := newCorrelationID()
 	fields := apitrace.Fields(ctx)

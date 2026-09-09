@@ -830,7 +830,7 @@ Note that `POST /v3/{ledgerName}/bulk` shares this classifier but can only expre
 
 ### gRPC Error Mapping
 
-Business errors from the processing layer are mapped to gRPC status codes with structured `ErrorInfo` details via the `Describable` contract in `internal/domain`. This allows clients to programmatically identify error types without parsing error messages. See `internal/domain/errors.go` for the canonical list — the `Reason()` method on each typed error returns the constant below, and `Metadata()` returns the keys listed.
+Business errors from the processing layer are mapped to gRPC status codes with structured `ErrorInfo` details via the `Describable` contract in `internal/domain`. This allows clients to programmatically identify error types without parsing error messages. See `internal/domain/errors.go` for the canonical list — the `Reason()` method on each typed error returns the constant below, and `Metadata()` supplies the diagnostic context. The optional `domain.PublicErrorDetails` presentation supplies the public message and metadata for types whose diagnostic values are not safe to expose; the keys listed below describe the public response.
 
 Each error response includes a `google.rpc.ErrorInfo` detail with:
 - **`reason`**: Machine-readable error reason constant (e.g., `LEDGER_ALREADY_EXISTS`)
@@ -881,7 +881,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Filter compilation error | `INVALID_ARGUMENT` | `FILTER_COMPILATION_ERROR` | `detail` |
 | Index not found | `FAILED_PRECONDITION` | `INDEX_NOT_FOUND` | `index` |
 | Index building | `FAILED_PRECONDITION` | `INDEX_BUILDING` | `index` |
-| Index inconsistent | `INTERNAL` | `INDEX_INCONSISTENT` | `index`, `detail` |
+| Index inconsistent | `INTERNAL` | `INDEX_INCONSISTENT` | *(none — internal index/storage details remain server-side)* |
 | Account not matching type | `FAILED_PRECONDITION` | `ACCOUNT_NOT_MATCHING_TYPE` | `address` |
 | Account type not found | `NOT_FOUND` | `ACCOUNT_TYPE_NOT_FOUND` | `name` |
 | Account type already exists | `ALREADY_EXISTS` | `ACCOUNT_TYPE_ALREADY_EXISTS` | `name` |
@@ -895,7 +895,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Invalid order type (protocol mismatch) | `INTERNAL` | `INVALID_ORDER_TYPE` | `typeName` |
 | Invalid apply type (protocol mismatch) | `INTERNAL` | `INVALID_APPLY_TYPE` | `typeName` |
 | Storage operation failed | `INTERNAL` | `STORAGE_OPERATION_FAILED` | `operation` |
-| Preload coverage miss (admission contract violation) | `INTERNAL` | `COVERAGE_MISS` | `attribute`, `canonicalHex`, `idHex`, `raftIndex` |
+| Preload coverage miss (admission contract violation) | `INTERNAL` | `COVERAGE_MISS` | *(none — coverage context remains in diagnostics and audit)* |
 | Checkpoint ID required | `INVALID_ARGUMENT` | `CHECKPOINT_ID_REQUIRED` | *(none)* |
 
 ### REST/HTTP Error Mapping

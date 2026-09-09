@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"net"
+	"strconv"
 	"testing"
 	"time"
 
@@ -26,6 +27,10 @@ import (
 // a distinct status when reached; rejected calls must never reach them.
 func TestServiceServerProtocolVersion(t *testing.T) {
 	t.Parallel()
+
+	currentRevision, err := strconv.Atoi(grpcprotocol.Version)
+	require.NoError(t, err)
+	require.Positive(t, currentRevision)
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -94,7 +99,8 @@ func TestServiceServerProtocolVersion(t *testing.T) {
 				{"missing", nil},
 				{"empty", []string{""}},
 				{"older", []string{"0"}},
-				{"newer", []string{"5"}},
+				{"previous", []string{strconv.Itoa(currentRevision - 1)}},
+				{"newer", []string{strconv.Itoa(currentRevision + 1)}},
 				{"invalid", []string{"dev"}},
 				{"duplicate", []string{grpcprotocol.Version, grpcprotocol.Version}},
 				{"conflicting", []string{grpcprotocol.Version, "0"}},

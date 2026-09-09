@@ -1857,7 +1857,7 @@ ledgerctl version
 
 The **server** exposes the same build metadata over two unauthenticated channels:
 
-- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"4"}`.
+- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"5"}`.
 - **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same information, including `protocol_version`.
 
 This is useful for monitoring deployed nodes and spotting version skew across a cluster (the per-node `version` is also surfaced on each `NodeInfo` in `GetClusterState`).
@@ -4486,6 +4486,11 @@ the collector as described in [deployment](deployment.md#collector-side-trace-sa
 ### Server OTLP Logs Flags
 
 Configure OpenTelemetry log export.
+
+Logs share `--otel-service-name`, build version metadata, and
+`--otel-resource-attributes` with traces and metrics. See
+[shared telemetry resource](monitoring.md#shared-telemetry-resource) for defaults
+and attribute precedence.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|

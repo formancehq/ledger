@@ -84,10 +84,10 @@ A coverage miss is an admission bug, not an infrastructure fault, and it is labe
 | Hash-chained `AuditFailure.Reason` | `ERROR_REASON_COVERAGE_MISS` |
 | `AuditFailure.Context` | `attribute`, `canonicalHex`, `idHex`, `raftIndex` |
 | Frozen idempotency outcome | **not applicable** — `KindInternal` failures are deliberately never frozen (`IsFreezableFailure`, `internal/domain/errors.go:152-158`), so a coverage miss leaves no idempotency record and the request stays retryable |
-| gRPC / HTTP `ErrorInfo.reason` | `COVERAGE_MISS` (status `INTERNAL` — both reasons are `KindInternal`) |
+| gRPC / HTTP error reason | `COVERAGE_MISS` (gRPC `INTERNAL` / HTTP 500), public message `preload coverage miss`, no gRPC error metadata |
 | Node-local log + OTel counter | `scope.go:374-378` (see [Metrics](#metrics)) |
 
-The `Metadata()` keys are camelCase, matching every other `Describable` and the repo-wide wire convention. The structured log emitted alongside keeps snake_case field names — that is a log, not a wire payload.
+The `Metadata()` keys are camelCase and remain part of the diagnostic and authoritative audit contract. The API adapters use the separate, type-owned `PublicDetails()` presentation through `domain.PublicErrorDetails`: it hides the attribute, canonical key, hashed identifier, and Raft index from error responses without changing `Error()`, `Metadata()`, or the audit hash pre-image. This response-only redaction does not change FSM execution, persisted state, or incremental restore behavior. The structured log emitted alongside keeps snake_case field names — that is a log, not a wire payload.
 
 The idempotency row is worth stating explicitly because the non-freezing is a design point, not an oversight: `recordIdempotencyFailure` returns early (`machine.go:1729`) for any non-freezable kind, and `KindForReason` classifies `ERROR_REASON_COVERAGE_MISS` as `KindInternal` (`internal/domain/reason.go:124`). Freezing would pin a server bug against the caller's key for the whole TTL. This was equally true before EN-1379 — `ERROR_REASON_STORAGE_OPERATION_FAILED` sits in the same `KindInternal` arm — so the idempotency outcome is not one of the surfaces the fix repairs.
 

@@ -108,8 +108,10 @@ func (k ErrorKind) String() string {
 // Describable is the contract every domain business error must satisfy.
 // Adapters derive a transport status code from domain.Kind(d) — a function of
 // Reason — read Reason() for the stable client-facing identifier, and
-// Metadata() for the structured error-info payload (field values that let the
-// client format a precise user message — names, IDs, etc.).
+// Metadata() for diagnostic context. API adapters use PublicErrorDetails for
+// the message and structured payload, allowing types with sensitive diagnostic
+// context to provide a separate presentation. Audit projections always consume
+// Error() and Metadata() directly.
 //
 // The interface embeds `error` so `errors.As(err, &target Describable)` works
 // transparently from any chain. Implementations should be value-comparable
@@ -124,10 +126,29 @@ type Describable interface {
 	// kind is derived from it via domain.Kind / KindForReason.
 	Reason() string
 
-	// Metadata returns structured context the client uses to format a
-	// user-facing message (e.g. {"name": "default"}). Return nil when
-	// there is no per-occurrence context.
+	// Metadata returns structured diagnostic context. It is also the default
+	// public context unless PublicDetails overrides the presentation.
+	// Return nil when there is no per-occurrence context.
 	Metadata() map[string]string
+}
+
+// PublicErrorDetails selects the optional public presentation owned by an
+// error type. Error() and Metadata() remain the diagnostic and audit identity;
+// this helper is only for API responses, never persisted failure projections.
+// The override flag lets adapters preserve their existing outer error text
+// when the type has not opted into a separate public presentation.
+//
+// Only the selected Describable is consulted: a nested cause must not replace
+// the presentation of an unrelated outer reason. Transparent BusinessError
+// wrappers explicitly delegate their presentation to the contained error.
+func PublicErrorDetails(d Describable) (message string, metadata map[string]string, overridden bool) {
+	if public, ok := d.(interface {
+		PublicDetails() (string, map[string]string, bool)
+	}); ok {
+		return public.PublicDetails()
+	}
+
+	return d.Error(), d.Metadata(), false
 }
 
 // ReplayedFailure is a Describable reconstructed from a stored idempotency
@@ -271,6 +292,10 @@ func (e *BusinessError) Error() string               { return e.Err.Error() }
 func (e *BusinessError) Unwrap() error               { return e.Err }
 func (e *BusinessError) Reason() string              { return e.Err.Reason() }
 func (e *BusinessError) Metadata() map[string]string { return e.Err.Metadata() }
+
+func (e *BusinessError) PublicDetails() (string, map[string]string, bool) {
+	return PublicErrorDetails(e.Err)
+}
 
 // WrapCompileError propagates errors returned by query.Compile through to the
 // caller. Typed BusinessErrors (ErrIndexNotFound from missing-index paths,
@@ -981,6 +1006,12 @@ func (e *ErrIndexInconsistent) Error() string {
 func (*ErrIndexInconsistent) Reason() string { return ErrReasonIndexInconsistent }
 func (e *ErrIndexInconsistent) Metadata() map[string]string {
 	return map[string]string{"index": e.Index, "detail": e.Detail}
+}
+
+// PublicDetails omits the index identity and raw storage diagnostics while
+// retaining Error() and Metadata() for operator diagnostics.
+func (*ErrIndexInconsistent) PublicDetails() (string, map[string]string, bool) {
+	return "index is inconsistent", nil, true
 }
 
 // ErrNumscriptNotFound — referenced numscript does not exist in the library.

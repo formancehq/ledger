@@ -287,7 +287,7 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 	// the source cluster's key.
 	persisted, err := query.ReadPersistedConfig(store)
 	if err != nil {
-		return status.Errorf(codes.Internal, "reading staged backup config: %v", err)
+		return internalGRPCError(stream.Context(), s.logger, fmt.Errorf("reading staged backup config: %w", err))
 	}
 
 	if persisted == nil {

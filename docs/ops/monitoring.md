@@ -15,6 +15,20 @@ Metrics are organized into several categories:
 
 For a complete reference, see the [Grafana Dashboard](#grafana-dashboards) section.
 
+## Shared telemetry resource
+
+Server OTLP logs, traces, and metrics use the same OpenTelemetry resource.
+`service.name` comes from `--otel-service-name` and defaults to
+`ledger-node-<node ID>`. `service.version` contains the build version and commit,
+joined by a hyphen. `--otel-resource-attributes` applies to all three signals;
+explicit attributes take precedence, including overrides of `service.name`
+and `service.version`.
+
+The resource is built before the server logger starts and is supplied to the
+trace and metric providers. Invalid resource attributes fail startup before
+telemetry providers are created. Console log fields and API error responses
+are independent of these OTLP resource attributes.
+
 ## Naming Convention
 
 Metric names in this document use the **OpenTelemetry dot-notation**

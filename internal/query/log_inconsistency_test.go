@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"io"
 	"testing"
 
@@ -134,6 +135,29 @@ func TestReadLedgerLogsCompiled_IndexGetError(t *testing.T) {
 	var inc *domain.ErrIndexInconsistent
 	require.ErrorAs(t, err, &inc)
 	require.Contains(t, inc.Detail, "logID=99")
+}
+
+// An actual read-index IO failure can contain an internal filesystem path.
+// Keep its diagnostic detail while the type supplies a safe API presentation.
+func TestReadLedgerLogsCompiled_IndexGetErrorPublicDetails(t *testing.T) {
+	t.Parallel()
+
+	const cause = "open /private/ledger/index/000123.sst: permission denied"
+	_, err := ReadLedgerLogsCompiled(
+		context.Background(), nil, newGetterAlwaysErr(t, errors.New(cause)),
+		"test", [][]byte{logID8(99)},
+	)
+	var inc *domain.ErrIndexInconsistent
+	require.ErrorAs(t, err, &inc)
+	require.Equal(t, "reading per-ledger log index for logID=99: "+cause, inc.Detail)
+	require.Contains(t, inc.Error(), cause)
+
+	message, metadata, overridden := domain.PublicErrorDetails(inc)
+	require.True(t, overridden)
+	require.Equal(t, "index is inconsistent", message)
+	require.Empty(t, metadata)
+	require.Equal(t, domain.ErrReasonIndexInconsistent, inc.Reason())
+	require.Equal(t, domain.KindInternal, domain.Kind(inc))
 }
 
 // TestReadLedgerLogsCompiled_MalformedIndexValue asserts that an index entry
