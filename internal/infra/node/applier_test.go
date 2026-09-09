@@ -102,6 +102,12 @@ func newTestApplierSetup(t *testing.T) *testApplierSetup {
 func newTestApplierSetupWithSink(t *testing.T, sink LocalResponses) *testApplierSetup {
 	t.Helper()
 
+	return newTestApplierSetupWithNotifier(t, sink, newNoopNotifier(t))
+}
+
+func newTestApplierSetupWithNotifier(t *testing.T, sink LocalResponses, notifier state.Notifier) *testApplierSetup {
+	t.Helper()
+
 	logger := logging.Testing()
 	meterProvider := noop.NewMeterProvider()
 	meter := meterProvider.Meter("test")
@@ -131,7 +137,7 @@ func newTestApplierSetupWithSink(t *testing.T, sink LocalResponses) *testApplier
 	nodeSnapshotter := state.NewCacheSnapshotter(logger, nodeRegistry, nil)
 	fsm, err := state.NewMachine(
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,
-		nil, state.NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0,
+		nil, state.NewSharedState(), notifier, nil, "test-cluster", 0,
 		func(*raftpb.Entry, *dal.WriteSession) error { return nil },
 	)
 	require.NoError(t, err)

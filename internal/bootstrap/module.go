@@ -943,8 +943,9 @@ func Module() fx.Option {
 
 						// Use a dedicated context for node.Run that survives
 						// the OnStart return (unlike ctx which expires). On
-						// startup failure we cancel it to abandon the goroutine;
-						// on graceful shutdown node.Stop is the signal, NOT this
+						// startup failure we cancel context-aware work; this
+						// cancellation alone does not join Run. During shutdown,
+						// node.Stop supplies the task termination signal, not this
 						// cancel — see the OnStop hook below for the rationale.
 						var runCtx context.Context
 						runCtx, cancelRun = context.WithCancel(context.Background())
@@ -993,18 +994,15 @@ func Module() fx.Option {
 						// pool error" from Node.Run, panics the bootstrap
 						// goroutine, and crashes the process mid-shutdown
 						// instead of returning a clean nil (#345).
-						// Defer the cancel so it runs on EVERY return path,
-						// including the error path below. If node.Stop returns
-						// ctx.Err() (e.g. fx stop timeout expired during the
-						// leadership transfer or stopChannel handshake), the
-						// Run goroutine is still alive and waiting; without
-						// this cancel the goroutine would outlive OnStop while
-						// downstream fx hooks tear down transport and Pebble
-						// underneath it. The cancel propagates into the tasks'
-						// FSM calls (PrepareEntries / CommitPreparedBatch /
-						// InstallSnapshot) so the bootstrap goroutine exits
-						// via a logged task-pool error rather than racing with
-						// concurrent infrastructure teardown.
+						// Cancel only after Stop returns, preserving the run
+						// context through successful task/commit drain. Stop
+						// publishes its shutdown request even if ctx expires
+						// during transfer or before Run reaches its stop select.
+						// On timeout, cancellation can interrupt context-aware
+						// work, but does not join Run or terminate idle tasks;
+						// Run's explicit stop path still owns their termination.
+						// A timeout is not proof that infrastructure is safe to
+						// close. Only successful Stop confirms the drain/join.
 						defer cancelRun()
 
 						err := node.Stop(ctx)

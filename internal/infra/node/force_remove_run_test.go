@@ -58,15 +58,9 @@ func TestForceRemoveNodeDurabilityFailureStopsRun(t *testing.T) {
 	t.Cleanup(func() {
 		// Also stop and join Run when an earlier assertion fails, before the
 		// shared fixture closes the WAL, spool, and Pebble store.
-		select {
-		case <-done:
-			return
-		case n.stopChannel <- make(chan struct{}):
-		case <-time.After(5 * time.Second):
-			t.Error("could not request node shutdown")
-
-			return
-		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		require.NoError(t, n.Stop(ctx))
 		select {
 		case <-done:
 		case <-time.After(5 * time.Second):
