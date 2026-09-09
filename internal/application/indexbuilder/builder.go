@@ -101,6 +101,12 @@ type Builder struct {
 	projectionTargetSequence     uint64
 	projectionTargetAppliedIndex uint64
 
+	// pendingCheckpointMaterialization retains a checkpoint action after its
+	// projection batch and cursor have committed but the filesystem snapshot
+	// failed transiently. The next processLogs call retries it before reading
+	// later logs, without replaying the already-committed batch.
+	pendingCheckpointMaterialization pendingCheckpointMaterialization
+
 	// Reusable scratch objects to reduce allocations in the hot loop.
 	kb       *dal.KeyBuilder
 	wb       *readstore.WriteBatch
@@ -152,6 +158,11 @@ type Builder struct {
 	// nil in the common data-only fold and outside processLogs.
 	foldRollbacks []func()
 	foldBatchOpen bool
+}
+
+type pendingCheckpointMaterialization struct {
+	id      uint64
+	horizon uint64
 }
 
 // versionFor returns (current, pending) for an indexed (ledger, canonicalID).
@@ -812,7 +823,12 @@ func (b *Builder) loop(ctx context.Context) {
 		}).Infof("Initial catch-up complete")
 	}
 
-	b.processBackgroundTasks(ctx, stop, cursor)
+	// A checkpoint retry must freeze the readstore exactly at its committed log
+	// boundary. Backfills and GC also mutate the readstore, so hold them until
+	// materialization succeeds (or is abandoned because audit is unavailable).
+	if b.pendingCheckpointMaterialization.id == 0 {
+		b.processBackgroundTasks(ctx, stop, cursor)
+	}
 
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -866,8 +882,10 @@ func (b *Builder) loop(ctx context.Context) {
 			b.backfillBudget = 50 * time.Millisecond
 		}
 
-		b.processBackgroundTasks(ctx, stop, cursor)
-		b.runEventGC(cursor)
+		if b.pendingCheckpointMaterialization.id == 0 {
+			b.processBackgroundTasks(ctx, stop, cursor)
+			b.runEventGC(cursor)
+		}
 
 		// Always wake projection-progress and checkpoint-readiness waiters.
 		// Without this, a waiter that enters Wait() between the last

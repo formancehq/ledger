@@ -42,6 +42,14 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		b.wb.Reset()
 	}()
 
+	// The projection batch containing a checkpoint log may already be durable
+	// when filesystem materialization fails. Retry that side effect before
+	// consuming later logs; replaying the committed batch would duplicate
+	// lifecycle mutations such as the ledger-history tracker.
+	if err := b.materializePendingCheckpoint(ctx); err != nil {
+		return cursor, err
+	}
+
 	handle, err := b.pebbleStore.NewReadHandle()
 	if err != nil {
 		return cursor, fmt.Errorf("creating read handle for log processing: %w", err)
@@ -385,39 +393,12 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		// return the retryable ErrCheckpointNotReady (Unavailable) until the
 		// client deletes and recreates it (see openCheckpointStores).
 		if cpID := pendingCheckpointCreate; cpID > 0 {
-			for {
-				err := b.readStore.WaitForAuditRaftProgress(ctx, pendingCheckpointHorizon)
-				if errors.Is(err, readstore.ErrAuditProjectionUnavailable) ||
-					errors.Is(err, readstore.ErrAuditProjectionFailed) {
-					auditState := "disabled"
-					if errors.Is(err, readstore.ErrAuditProjectionFailed) {
-						auditState = "failed"
-					}
-					b.logger.WithFields(map[string]any{
-						"checkpointID": cpID,
-						"horizon":      pendingCheckpointHorizon,
-						"auditState":   auditState,
-					}).Infof("Query checkpoint remains unavailable because the audit projection cannot certify it")
-
-					break
-				}
-				if err != nil {
-					return cursor, fmt.Errorf("waiting for audit projection before query checkpoint %d: %w", cpID, err)
-				}
-
-				_, _, auditGeneration := b.readStore.AuditProjectionStateWithGeneration()
-				if err := b.createReadIndexCheckpoint(cpID, auditGeneration); errors.Is(err, readstore.ErrAuditProjectionUnavailable) {
-					b.logger.WithFields(map[string]any{
-						"checkpointID": cpID,
-						"horizon":      pendingCheckpointHorizon,
-					}).Infof("Audit projection changed during query checkpoint materialization; retrying")
-
-					continue
-				} else if err != nil {
-					return cursor, err
-				}
-
-				break
+			b.pendingCheckpointMaterialization = pendingCheckpointMaterialization{
+				id:      cpID,
+				horizon: pendingCheckpointHorizon,
+			}
+			if err := b.materializePendingCheckpoint(ctx); err != nil {
+				return cursor, err
 			}
 		}
 
@@ -518,6 +499,51 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 	}
 
 	return cursor, nil
+}
+
+func (b *Builder) materializePendingCheckpoint(ctx context.Context) error {
+	pending := b.pendingCheckpointMaterialization
+	if pending.id == 0 {
+		return nil
+	}
+
+	for {
+		err := b.readStore.WaitForAuditRaftProgress(ctx, pending.horizon)
+		if errors.Is(err, readstore.ErrAuditProjectionUnavailable) ||
+			errors.Is(err, readstore.ErrAuditProjectionFailed) {
+			auditState := "disabled"
+			if errors.Is(err, readstore.ErrAuditProjectionFailed) {
+				auditState = "failed"
+			}
+			b.logger.WithFields(map[string]any{
+				"checkpointID": pending.id,
+				"horizon":      pending.horizon,
+				"auditState":   auditState,
+			}).Infof("Query checkpoint remains unavailable because the audit projection cannot certify it")
+			b.pendingCheckpointMaterialization = pendingCheckpointMaterialization{}
+
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("waiting for audit projection before query checkpoint %d: %w", pending.id, err)
+		}
+
+		_, _, auditGeneration := b.readStore.AuditProjectionStateWithGeneration()
+		if err := b.createReadIndexCheckpoint(pending.id, auditGeneration); errors.Is(err, readstore.ErrAuditProjectionUnavailable) {
+			b.logger.WithFields(map[string]any{
+				"checkpointID": pending.id,
+				"horizon":      pending.horizon,
+			}).Infof("Audit projection changed during query checkpoint materialization; retrying")
+
+			continue
+		} else if err != nil {
+			return err
+		}
+
+		b.pendingCheckpointMaterialization = pendingCheckpointMaterialization{}
+
+		return nil
+	}
 }
 
 // indexPayload dispatches a ledger log payload to the appropriate index handler.
