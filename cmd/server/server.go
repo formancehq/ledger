@@ -806,11 +806,11 @@ func discoverPeersFromCluster(raftAddr string, tlsCfg bootstrap.TLSConfig, clust
 	peers := make([]node.Peer, 0, len(resp.GetPeers()))
 
 	for _, p := range resp.GetPeers() {
-		if p.GetRaftAddress() == "" || p.GetServiceAddress() == "" {
-			continue
-		}
 		if err := membership.ValidateInstanceID(p.GetInstanceId()); err != nil {
 			return nil, &invalidDiscoveredPeerIdentityError{cause: fmt.Errorf("peer %d returned by %s has invalid identity: %w", p.GetId(), raftAddr, err)}
+		}
+		if p.GetRaftAddress() == "" || p.GetServiceAddress() == "" {
+			continue
 		}
 
 		peers = append(peers, node.Peer{

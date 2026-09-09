@@ -49,7 +49,10 @@ func startBootstrapTestServer(t *testing.T, service clusterbootstrappb.ClusterBo
 
 	srv := grpc.NewServer()
 	clusterbootstrappb.RegisterClusterBootstrapServiceServer(srv, service)
-	go func() { _ = srv.Serve(lis) }()
+	go func() {
+		// Cleanup owns server shutdown; Serve's shutdown result is not the assertion under test.
+		_ = srv.Serve(lis)
+	}()
 	t.Cleanup(srv.Stop)
 
 	return lis.Addr().String()
@@ -150,22 +153,34 @@ func TestDiscoverPeersWithRetryRejectsInvalidInstanceID(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range []struct {
-		name     string
-		identity []byte
+		name                  string
+		identity              []byte
+		missingRaftAddress    bool
+		missingServiceAddress bool
 	}{
 		{name: "missing"},
 		{name: "short", identity: make([]byte, 15)},
 		{name: "long", identity: make([]byte, 17)},
+		{name: "missing identity and addresses", missingRaftAddress: true, missingServiceAddress: true},
+		{name: "short identity and missing raft address", identity: make([]byte, 15), missingRaftAddress: true},
+		{name: "long identity and missing service address", identity: make([]byte, 17), missingServiceAddress: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			var calls atomic.Int64
+			peer := &clusterbootstrappb.PeerInfo{
+				Id: 1, RaftAddress: "node-1:7777", ServiceAddress: "node-1:8888", InstanceId: tt.identity,
+			}
+			if tt.missingRaftAddress {
+				peer.RaftAddress = ""
+			}
+			if tt.missingServiceAddress {
+				peer.ServiceAddress = ""
+			}
 			address := startBootstrapTestServer(t, staticClusterBootstrapServer{
 				calls: &calls,
-				peers: []*clusterbootstrappb.PeerInfo{{
-					Id: 1, RaftAddress: "node-1:7777", ServiceAddress: "node-1:8888", InstanceId: tt.identity,
-				}},
+				peers: []*clusterbootstrappb.PeerInfo{peer},
 			})
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			t.Cleanup(cancel)
