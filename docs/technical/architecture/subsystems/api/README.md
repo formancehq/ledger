@@ -11,6 +11,7 @@ Client-facing transport layers (`internal/adapter/grpc`, `internal/adapter/http`
 | [protocol-compatibility.md](protocol-compatibility.md) | Mandatory service protocol revision, client/server rejection behavior, diagnostics, and revision maintenance (EN-1851). |
 | [http-api.md](http-api.md) | HTTP REST API endpoints, response formats, and error handling. |
 | [auth.md](auth.md) | Client JWT authentication (OIDC + Ed25519), scope-based authorization, and the Raft inter-node cluster-secret auth layer. |
+| [secret-redaction.md](secret-redaction.md) | Shared sink/mirror credential projections, public status diagnostics, and audit verification limits. |
 
 ## Related
 

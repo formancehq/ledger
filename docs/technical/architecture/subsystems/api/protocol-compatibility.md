@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"5"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"6"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -55,6 +55,11 @@ codes. Internal read failures in restore validation retain `Internal` with a
 sanitized correlation message. AuditFailure records retain their original
 diagnostic message and context.
 
+Revision 6 (EN-1632, EN-1634, EN-1635) projects sink/mirror credentials and
+transport status diagnostics out of public reads. Redacted audit payloads no
+longer constitute verifiable original evidence; unmodified envelopes retain
+their original bytes. See [credential read projections](secret-redaction.md).
+
 ## Client and deployment scope
 
 Enforcement starts with servers implementing EN-1851: they reject old clients
@@ -67,10 +72,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 5:
+leader. For example, with a schema implementing revision 6:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 5' \
+grpcurl -plaintext -H 'ledger-protocol-version: 6' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 

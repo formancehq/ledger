@@ -645,3 +645,11 @@ The HTTP sink sends each event as an individual HTTP POST request with the follo
 ### ClickHouse Sink Details
 
 The ClickHouse sink auto-creates the target table using the experimental JSON type with Variant support (ClickHouse 24.x-25.x compatibility). The `format` setting is ignored — events are always inserted as ClickHouse-native JSON for optimal query performance.
+
+## Public credential reads
+
+The HTTP and gRPC adapters return [secret-safe display projections](../api/secret-redaction.md)
+for live sink/mirror configuration, historical creation logs, and audit payloads.
+Public sink/mirror status messages are masked because connection diagnostics
+can repeat credentials. The workers, persisted configuration, audit records,
+and protected operator diagnostics retain their original values.

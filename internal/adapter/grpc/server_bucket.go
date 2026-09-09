@@ -22,6 +22,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/adapter/readprojection"
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -524,7 +525,14 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 		return fmt.Errorf("paginating ledgers: %w", err)
 	}
 
-	return sendPagedToStream(ctx, c, stream, "ledger", pageSize, func(l *commonpb.LedgerInfo) string {
+	projectedStream := &readProjectionStream[commonpb.LedgerInfo]{
+		ServerStreamingServer: stream,
+		project: func(info *commonpb.LedgerInfo) (*commonpb.LedgerInfo, error) {
+			return readprojection.Ledger(info), nil
+		},
+	}
+
+	return sendPagedToStream(ctx, c, projectedStream, "ledger", pageSize, func(l *commonpb.LedgerInfo) string {
 		return l.GetName()
 	})
 }
@@ -549,7 +557,12 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 	}
 	defer cleanup()
 
-	return c.GetLedgerByName(ctx, req.GetLedger())
+	info, err := c.GetLedgerByName(ctx, req.GetLedger())
+	if err != nil {
+		return nil, err
+	}
+
+	return readprojection.Ledger(info), nil
 }
 
 func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
@@ -774,7 +787,12 @@ func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *ser
 		return nil, err
 	}
 
-	return impl.ctrl.GetAuditEntry(ctx, req.GetSequence())
+	entry, err := impl.ctrl.GetAuditEntry(ctx, req.GetSequence())
+	if err != nil {
+		return nil, err
+	}
+
+	return readprojection.Audit(entry)
 }
 
 func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEntriesRequest, stream servicepb.BucketService_ListAuditEntriesServer) error {
@@ -828,7 +846,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		return fmt.Errorf("listing audit entries: %w", err)
 	}
 
-	return sendPagedToStream(ctx, c, stream, "audit entry", pageSize, func(e *auditpb.AuditEntry) string {
+	return sendPagedToStream(ctx, c, &readProjectionStream[auditpb.AuditEntry]{ServerStreamingServer: stream, project: readprojection.Audit}, "audit entry", pageSize, func(e *auditpb.AuditEntry) string {
 		return strconv.FormatUint(e.GetSequence(), 10)
 	})
 }
@@ -844,7 +862,12 @@ func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.
 	}
 	defer cleanup()
 
-	return c.GetLog(ctx, req.GetSequence())
+	log, err := c.GetLog(ctx, req.GetSequence())
+	if err != nil {
+		return nil, err
+	}
+
+	return readprojection.Log(log)
 }
 
 func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
@@ -899,7 +922,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	// which would publish a bogus `x-next-cursor: "0"` and trap the client
 	// in an infinite resume loop. Return an empty cursor in that case so the
 	// stream signals "no more pages" instead.
-	return sendPagedToStream(ctx, cur, stream, "log", pageSize, func(l *commonpb.Log) string {
+	return sendPagedToStream(ctx, cur, &readProjectionStream[commonpb.Log]{ServerStreamingServer: stream, project: readprojection.Log}, "log", pageSize, func(l *commonpb.Log) string {
 		apply := l.GetPayload().GetApply()
 		if apply == nil {
 			return ""
@@ -921,10 +944,15 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 		return nil, fmt.Errorf("loading events sinks: %w", err)
 	}
 
-	return &servicepb.GetEventsSinksResponse{
-		Sinks:        sinks,
-		SinkStatuses: statuses,
-	}, nil
+	response := &servicepb.GetEventsSinksResponse{}
+	for _, sink := range sinks {
+		response.Sinks = append(response.Sinks, readprojection.Sink(sink))
+	}
+	for _, sinkStatus := range statuses {
+		response.SinkStatuses = append(response.SinkStatuses, readprojection.SinkStatus(sinkStatus))
+	}
+
+	return response, nil
 }
 
 func (impl *BucketServiceServerImpl) ListSigningKeys(req *servicepb.ListSigningKeysRequest, stream servicepb.BucketService_ListSigningKeysServer) error {
