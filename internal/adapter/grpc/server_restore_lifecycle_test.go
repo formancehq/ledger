@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -100,105 +102,115 @@ func startBlockedRestoreDownload(t *testing.T) (*RestoreServiceServerImpl, *down
 
 func TestRestoreShutdownCancelsAndJoinsActiveDownload(t *testing.T) {
 	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		server, job, reader := startBlockedRestoreDownload(t)
+		server.BeginShutdown()
+		<-reader.canceled
 
-	server, job, reader := startBlockedRestoreDownload(t)
-	server.BeginShutdown()
-	<-reader.canceled
+		shutdownDone := make(chan struct{})
+		go func() {
+			server.Shutdown()
+			close(shutdownDone)
+		}()
+		// Wait until shutdown has either joined the blocked job or returned early.
+		synctest.Wait()
 
-	shutdownDone := make(chan struct{})
-	go func() {
-		server.Shutdown()
-		close(shutdownDone)
-	}()
+		select {
+		case <-shutdownDone:
+			t.Fatal("shutdown returned before the canceled download unwound")
+		default:
+		}
+		select {
+		case <-reader.closed:
+			t.Fatal("the download resource closed before its owner unwound")
+		default:
+		}
 
-	select {
-	case <-shutdownDone:
-		t.Fatal("shutdown returned before the canceled download unwound")
-	default:
-	}
-	select {
-	case <-reader.closed:
-		t.Fatal("the download resource closed before its owner unwound")
-	default:
-	}
+		_, err := server.StartDownloadBackup(context.Background(), &restorepb.StartDownloadBackupRequest{})
+		require.Equal(t, codes.Unavailable, status.Code(err))
 
-	_, err := server.StartDownloadBackup(context.Background(), &restorepb.StartDownloadBackupRequest{})
-	require.Equal(t, codes.Unavailable, status.Code(err))
+		reader.allowUnwind()
+		select {
+		case <-shutdownDone:
+		case <-time.After(10 * time.Second):
+			t.Fatal("shutdown did not join the canceled download")
+		}
 
-	reader.allowUnwind()
-	select {
-	case <-shutdownDone:
-	case <-time.After(10 * time.Second):
-		t.Fatal("shutdown did not join the canceled download")
-	}
+		select {
+		case <-reader.closed:
+		default:
+			t.Fatal("download resource was not closed during unwind")
+		}
+		select {
+		case <-job.done:
+		default:
+			t.Fatal("shutdown returned before the download job terminated")
+		}
 
-	select {
-	case <-reader.closed:
-	default:
-		t.Fatal("download resource was not closed during unwind")
-	}
-	select {
-	case <-job.done:
-	default:
-		t.Fatal("shutdown returned before the download job terminated")
-	}
-
-	server.mu.Lock()
-	state := job.state
-	server.mu.Unlock()
-	require.Equal(t, restorepb.DownloadState_DOWNLOAD_STATE_CANCELED, state)
+		server.mu.Lock()
+		state := job.state
+		server.mu.Unlock()
+		require.Equal(t, restorepb.DownloadState_DOWNLOAD_STATE_CANCELED, state)
+	})
 }
 
 func TestRestoreDownloadOutlivesInitiatingRPC(t *testing.T) {
 	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		storage := NewMockStorage(ctrl)
+		readerReady := make(chan *cancellationBlockingReader, 1)
+		storage.EXPECT().
+			GetFile(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, _ string) (io.ReadCloser, error) {
+				reader := newCancellationBlockingReader(ctx)
+				readerReady <- reader
 
-	ctrl := gomock.NewController(t)
-	storage := NewMockStorage(ctrl)
-	readerReady := make(chan *cancellationBlockingReader, 1)
-	storage.EXPECT().
-		GetFile(gomock.Any(), gomock.Any()).
-		DoAndReturn(func(ctx context.Context, _ string) (io.ReadCloser, error) {
-			reader := newCancellationBlockingReader(ctx)
-			readerReady <- reader
+				return reader, nil
+			})
 
-			return reader, nil
+		server := newServerForTest(t, staticFactory(storage))
+		rpcCtx, cancelRPC := context.WithCancel(context.Background())
+		started, err := server.StartDownloadBackup(rpcCtx, &restorepb.StartDownloadBackupRequest{})
+		require.NoError(t, err)
+
+		reader := <-readerReady
+		<-reader.started
+		t.Cleanup(func() {
+			reader.allowUnwind()
+			server.Shutdown()
 		})
+		cancelRPC()
 
-	server := newServerForTest(t, staticFactory(storage))
-	rpcCtx, cancelRPC := context.WithCancel(context.Background())
-	started, err := server.StartDownloadBackup(rpcCtx, &restorepb.StartDownloadBackupRequest{})
-	require.NoError(t, err)
+		// Drain runnable cancellation work before asserting that the job remains live.
+		synctest.Wait()
+		select {
+		case <-reader.canceled:
+			t.Fatal("initiating RPC cancellation reached the detached download")
+		default:
+		}
+		downloadStatus, err := server.GetDownloadStatus(context.Background(), &restorepb.GetDownloadStatusRequest{JobId: started.GetJobId()})
+		require.NoError(t, err)
+		// The job is still waiting for its manifest, before the RUNNING transition.
+		require.Equal(t, restorepb.DownloadState_DOWNLOAD_STATE_PENDING, downloadStatus.GetState())
 
-	reader := <-readerReady
-	<-reader.started
-	t.Cleanup(func() {
+		cancelDone := make(chan error, 1)
+		go func() {
+			_, err := server.CancelDownload(context.Background(), &restorepb.CancelDownloadRequest{JobId: started.GetJobId()})
+			cancelDone <- err
+		}()
+		<-reader.canceled
 		reader.allowUnwind()
+
+		select {
+		case err := <-cancelDone:
+			require.NoError(t, err)
+		case <-time.After(10 * time.Second):
+			t.Fatal("explicit cancellation did not join the download")
+		}
+
 		server.Shutdown()
 	})
-	cancelRPC()
-
-	select {
-	case <-reader.canceled:
-		t.Fatal("initiating RPC cancellation reached the detached download")
-	default:
-	}
-
-	cancelDone := make(chan error, 1)
-	go func() {
-		_, err := server.CancelDownload(context.Background(), &restorepb.CancelDownloadRequest{JobId: started.GetJobId()})
-		cancelDone <- err
-	}()
-	<-reader.canceled
-	reader.allowUnwind()
-
-	select {
-	case err := <-cancelDone:
-		require.NoError(t, err)
-	case <-time.After(10 * time.Second):
-		t.Fatal("explicit cancellation did not join the download")
-	}
-
-	server.Shutdown()
 }
 
 func TestRestoreShutdownWaitsForAdmittedRequestBeforeClosingStagingStore(t *testing.T) {
@@ -283,16 +295,18 @@ func TestRestoreDownloadRemainsAsynchronousAndSucceeds(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	storage := NewMockStorage(ctrl)
-	manifestRequested := make(chan struct{})
+	manifestRequested := make(chan context.Context, 1)
 	releaseManifest := make(chan struct{})
 	var requested sync.Once
 
 	storage.EXPECT().
 		GetFile(gomock.Any(), gomock.Any()).
 		AnyTimes().
-		DoAndReturn(func(_ context.Context, key string) (io.ReadCloser, error) {
+		DoAndReturn(func(ctx context.Context, key string) (io.ReadCloser, error) {
 			if strings.HasSuffix(key, "/backups/manifest.json") {
-				requested.Do(func() { close(manifestRequested) })
+				requested.Do(func() {
+					manifestRequested <- ctx
+				})
 				<-releaseManifest
 
 				return io.NopCloser(bytes.NewReader(manifestData)), nil
@@ -311,7 +325,7 @@ func TestRestoreDownloadRemainsAsynchronousAndSucceeds(t *testing.T) {
 	started, err := server.StartDownloadBackup(context.Background(), &restorepb.StartDownloadBackupRequest{})
 	require.NoError(t, err)
 	require.NotEmpty(t, started.GetJobId())
-	<-manifestRequested
+	downloadCtx := <-manifestRequested
 
 	server.mu.Lock()
 	job := server.job
@@ -328,6 +342,7 @@ func TestRestoreDownloadRemainsAsynchronousAndSucceeds(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("successful download did not terminate")
 	}
+	require.ErrorIs(t, downloadCtx.Err(), context.Canceled, "a completed job must release its lifetime child context")
 
 	server.mu.Lock()
 	state := job.state
@@ -345,6 +360,34 @@ func TestRestoreDownloadRemainsAsynchronousAndSucceeds(t *testing.T) {
 	server.Shutdown()
 	_, err = store.NewDirectReadHandle()
 	require.Error(t, err)
+}
+
+func TestRestoreFailedDownloadReleasesContext(t *testing.T) {
+	t.Parallel()
+
+	storage := NewMockStorage(gomock.NewController(t))
+	contextReady := make(chan context.Context, 1)
+	storage.EXPECT().GetFile(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, _ string) (io.ReadCloser, error) {
+		contextReady <- ctx
+
+		return nil, errors.New("manifest request failed")
+	})
+	server := newServerForTest(t, staticFactory(storage))
+	t.Cleanup(server.Shutdown)
+	_, err := server.StartDownloadBackup(context.Background(), &restorepb.StartDownloadBackupRequest{})
+	require.NoError(t, err)
+
+	server.mu.Lock()
+	job := server.job
+	server.mu.Unlock()
+	select {
+	case <-job.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("failed download did not terminate")
+	}
+	require.Equal(t, restorepb.DownloadState_DOWNLOAD_STATE_FAILED, job.state)
+	downloadCtx := <-contextReady
+	require.ErrorIs(t, downloadCtx.Err(), context.Canceled, "a failed job must release its lifetime child context")
 }
 
 func TestCancelDownloadAndShutdownCanCompete(t *testing.T) {

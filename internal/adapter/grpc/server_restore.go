@@ -224,11 +224,12 @@ func (s *RestoreServiceServerImpl) BeginShutdown() {
 // asynchronous download job, then closes the retained staging store. Waiting
 // happens without s.mu because job completion takes that mutex in finishJob.
 //
-// The join intentionally does not stop at the Fx deadline: returning while a
+// The join has no internal deadline: returning while a
 // storage client is still unwinding would let later teardown outlive and race
-// the application's restore resources. Download backends are required to
-// honor the canceled context; if one violates that contract, shutdown must
-// remain visibly stuck rather than claim that teardown completed safely.
+// the application's restore resources. The production service runner calls
+// Fx Stop with a context without a deadline. Shutdown also waits for synchronous
+// storage-client initialization and filesystem cleanup to return. A caller that
+// supplies its own Fx Stop deadline can return before teardown finishes.
 func (s *RestoreServiceServerImpl) Shutdown() {
 	s.BeginShutdown()
 	s.activeRequests.Wait()

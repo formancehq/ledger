@@ -7,12 +7,14 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
+	"go.uber.org/fx/fxevent"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -23,6 +25,43 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 )
+
+// restoreLifecycleEvents observes the hooks Fx actually executes. Method names
+// identify the two restore phases without depending on anonymous closure numbers.
+type restoreLifecycleEvents struct {
+	mu        sync.Mutex
+	functions []string
+}
+
+func (l *restoreLifecycleEvents) LogEvent(event fxevent.Event) {
+	if event, ok := event.(*fxevent.OnStopExecuting); ok {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+
+		l.functions = append(l.functions, event.FunctionName)
+	}
+}
+
+func (l *restoreLifecycleEvents) stopPhases() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	var phases []string
+	for _, name := range l.functions {
+		switch {
+		case strings.Contains(name, "RestoreServiceServerImpl).BeginShutdown"):
+			phases = append(phases, "close admission and cancel download")
+		case strings.Contains(name, "httpserver.NewHook."):
+			phases = append(phases, "stop HTTP")
+		case strings.Contains(name, ".grpcServerHook."):
+			phases = append(phases, "stop gRPC")
+		case strings.Contains(name, "RestoreServiceServerImpl).Shutdown"):
+			phases = append(phases, "join restore requests and job")
+		}
+	}
+
+	return phases
+}
 
 func TestRestoreDownloadStopsWithFxApplication(t *testing.T) {
 	t.Parallel()
@@ -64,8 +103,9 @@ func TestRestoreDownloadStopsWithFxApplication(t *testing.T) {
 	}
 
 	var restoreServer *grpcadp.RestoreServiceServerImpl
+	lifecycleEvents := &restoreLifecycleEvents{}
 	app := fx.New(
-		fx.NopLogger,
+		fx.WithLogger(func() fxevent.Logger { return lifecycleEvents }),
 		fx.Supply(cfg),
 		fx.Supply(network.Bindings{HTTP: httpListener, Service: serviceListener}),
 		fx.Provide(func() logging.Logger { return logging.Testing() }),
@@ -117,6 +157,16 @@ func TestRestoreDownloadStopsWithFxApplication(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("Fx shutdown did not join the canceled restore job")
 	}
+
+	// Event order comes from Fx's synchronous hook execution, not goroutine
+	// scheduling. Cancellation alone could pass with either restore hook missing
+	// or with their positions swapped, because Shutdown also calls BeginShutdown.
+	require.Equal(t, []string{
+		"close admission and cancel download",
+		"stop HTTP",
+		"stop gRPC",
+		"join restore requests and job",
+	}, lifecycleEvents.stopPhases(), "restore shutdown phases must surround network teardown")
 
 	_, err = restoreServer.StartDownloadBackup(context.Background(), &restorepb.StartDownloadBackupRequest{})
 	require.Equal(t, codes.Unavailable, status.Code(err))

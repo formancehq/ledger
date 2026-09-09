@@ -209,6 +209,9 @@ func (s *RestoreServiceServerImpl) runDownloadJob(
 	factory storageFactory,
 ) {
 	defer close(job.done)
+	// Release this child from the service lifetime context on every terminal
+	// path, including success and failure without an explicit cancellation.
+	defer job.cancel()
 
 	storage, manifest, err := s.prepareDownload(ctx, req, factory)
 	if err != nil {

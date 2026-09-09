@@ -378,12 +378,23 @@ If the job fails or is cancelled, the staging directory is wiped so the
 operator can retry with a fresh state without restarting the server.
 
 The transfer is detached from the initiating RPC, not from the restore-mode
-application. Fx shutdown first rejects new restore RPCs and cancels any active
-download, then stops the gRPC server, joins admitted RPCs and the download job,
-and finally closes the retained staging Pebble store. Explicit
+application. After any configured shutdown grace period, restore shutdown
+rejects new restore RPCs and cancels any active download, stops the HTTP health
+server and then gRPC, joins admitted RPCs and the download job, and finally
+closes the retained staging Pebble store. Explicit
 `CancelDownload` keeps its client-facing behavior: it cancels only the selected
 job, waits for a bounded drain, and leaves the restore-mode application running
 so the operator can retry.
+
+The join includes failed/canceled-job staging cleanup. Storage-client
+initialization and local filesystem operations do not accept the download
+context, so shutdown waits for them to return. The current service runner
+calls Fx `Stop` with a context without a deadline; `--total-stop-timeout` does
+not bound this path. A slow cleanup or backend can therefore delay process
+exit. Forced termination can interrupt cleanup and leave staging files or an
+uncleanly closed staging store; size the process termination grace period
+accordingly. Staging-store close errors are logged under the existing close
+policy and are not returned by the restore stop hook.
 
 ### Step 2: Validate
 

@@ -1,7 +1,6 @@
 package bootstrap
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 
@@ -68,13 +67,7 @@ func RestoreModule() fx.Option {
 			// canceled the download by then; this phase joins admitted RPCs and the
 			// detached job before closing the retained staging Pebble handle.
 			func(lc fx.Lifecycle, restoreServer *grpcadp.RestoreServiceServerImpl) {
-				lc.Append(fx.Hook{
-					OnStop: func(_ context.Context) error {
-						restoreServer.Shutdown()
-
-						return nil
-					},
-				})
+				lc.Append(fx.StopHook(restoreServer.Shutdown))
 			},
 			// Validate that the data directory is fresh: no checkpoints, no
 			// live/ database (normal startup prefers it over the restored
@@ -129,18 +122,12 @@ func RestoreModule() fx.Option {
 					httpListenerOption(bindings.HTTP, fmt.Sprintf("%s:%d", cfg.EffectiveRestoreListen(), cfg.HTTPPort)),
 				)))
 			},
-			// Registered last so it is the first OnStop hook: close restore
+			// Registered last so it is this module's first OnStop hook: close restore
 			// admission and cancel its application-owned job at the Fx shutdown
 			// boundary, before either network server stops. The earlier shutdown
 			// hook performs the joins and resource close after the gRPC server stop.
 			func(lc fx.Lifecycle, restoreServer *grpcadp.RestoreServiceServerImpl) {
-				lc.Append(fx.Hook{
-					OnStop: func(_ context.Context) error {
-						restoreServer.BeginShutdown()
-
-						return nil
-					},
-				})
+				lc.Append(fx.StopHook(restoreServer.BeginShutdown))
 			},
 		),
 	)
