@@ -13,6 +13,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 )
 
+// These tests cover input validation before any dependency is touched.
+// membership_node_test.go exercises admission and discovery through a real
+// *node.Node; the e2e cluster suite covers inter-node routing.
+
 func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 	t.Parallel()
 
