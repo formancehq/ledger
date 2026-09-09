@@ -202,9 +202,8 @@ func (m *Membership) PeerAddresses() map[uint64]ConfChangeContext {
 
 // GetInstanceID returns the peer's 16-byte identity UUID from the in-memory
 // cache, and ok=true when the peer is currently known. Returns (nil, false)
-// when the peer is not in the cache — the caller decides whether that's an
-// error (RemoveNode) or a skip (checkAndPromoteLearners of a not-yet-added
-// learner).
+// when the peer is not in the cache. Removal and promotion treat a missing
+// row for a configured member as an invariant failure.
 //
 // Used by Node.RemoveNode to pack the target's identity into the
 // ConfChange context before proposing, so every node's FSM apply lands the
