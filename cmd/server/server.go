@@ -33,7 +33,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/bootstrap"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/pyroscope"
-	"github.com/formancehq/ledger/v3/internal/infra/monitoring/tracesampling"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/bytesize"
@@ -103,9 +102,6 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 
 	// Add Pyroscope profiling flags
 	addPyroscopeFlags(runCmd.Flags())
-
-	// Add trace sampling flags
-	addTraceSamplingFlags(runCmd.Flags())
 
 	// Add application-specific flags
 	runCmd.Flags().Uint64("node-id", 0, "Numeric node ID for this instance (must be non-zero)")
@@ -321,9 +317,6 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		pyroscopeCfg.Tags["cluster_id"] = cfg.ClusterID
 	}
 
-	// Configure trace sampling
-	traceSamplingCfg := traceSamplingConfigFromFlags(cmd)
-
 	// Configure flight recorder
 	frEnabled, _ := cmd.Flags().GetBool("flight-recorder-enabled")
 	frMinAge, _ := cmd.Flags().GetDuration("flight-recorder-min-age")
@@ -365,8 +358,6 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		// profile samples captured while it ran. No-op unless enabled by flag.
 		observefx.PyroscopeTracesModuleFromFlags(cmd),
 		observefx.MetricsModuleFromFlags(cmd),
-		// Add trace sampling module (wraps exporter with error-aware sampling)
-		tracesampling.Module(traceSamplingCfg),
 		// Add Pyroscope profiling module
 		pyroscope.Module(pyroscopeCfg),
 		// Add flight recorder module
