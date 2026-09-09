@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
@@ -30,15 +31,19 @@ func Displayed(err error) error {
 }
 
 // FormatGRPCError prints a clean error for gRPC errors and returns a Displayed error.
-// For business errors, it reconstructs the typed error and prints details.
+// For business errors, it decodes the boundary representation and prints details.
 // For other gRPC errors, it uses a human-friendly message based on the status code.
 // For non-gRPC errors, it wraps the original error.
+//
+// Only an *apierr.Remote is formatted as a business error. An
+// *apierr.InvalidWireError — a reason and code that contradict each other — is
+// a protocol fault whose payload is not trusted, so it falls through to the
+// status-code path below rather than being presented as a business outcome.
 func FormatGRPCError(context string, err error) error {
-	bizErr := grpcerr.BusinessErrorFromGRPC(err)
-	if bizErr != nil {
-		msg := fmt.Sprintf("%s: %s", context, bizErr.Err.Error())
+	if remote, ok := errors.AsType[*apierr.Remote](grpcerr.Decode(err)); ok {
+		msg := fmt.Sprintf("%s: %s", context, remote.Error())
 		pterm.Error.Println(msg)
-		printErrorDetails(bizErr.Err)
+		printErrorDetails(remote)
 
 		return Displayed(fmt.Errorf("%s", msg))
 	}
@@ -102,19 +107,19 @@ func formatAuthError(serverMsg string) string {
 }
 
 // printErrorDetails prints structured details for business errors. After
-// the Describable refactor (#431) reconstructed errors carry Reason+Metadata
+// the Describable refactor (#431) decoded errors carry Reason+Metadata
 // directly off the wire; this switch dispatches on Reason rather than Go
 // type so a new server-side error gets a "no extra details" graceful
 // fallback instead of a missing branch.
 func printErrorDetails(err error) {
-	var d domain.Describable
-	if !errors.As(err, &d) {
+	d, ok := apierr.Describe(err)
+	if !ok {
 		return
 	}
 
-	meta := d.Metadata()
+	meta := d.Metadata
 
-	switch d.Reason() {
+	switch d.Reason {
 	case domain.ErrReasonInsufficientFunds:
 		pterm.Println()
 		pterm.Printf("  Account: %s\n", pterm.Cyan(meta["account"]))

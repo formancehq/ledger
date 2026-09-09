@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -108,10 +109,10 @@ func TestConn_UnaryErrorIsReconstructed(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	d, ok := errors.AsType[domain.Describable](err)
-	require.True(t, ok, "a forwarded business error must arrive as a Describable")
-	require.Equal(t, domain.ErrReasonMetadataFieldNotInSchema, d.Reason())
-	require.Equal(t, domain.KindPrecondition, domain.Kind(d))
+	d, ok := apierr.Describe(err)
+	require.True(t, ok, "a forwarded business error must satisfy the boundary contract")
+	require.Equal(t, domain.ErrReasonMetadataFieldNotInSchema, d.Reason)
+	require.Equal(t, domain.KindPrecondition, d.Kind)
 
 	require.Equal(t, codes.FailedPrecondition, status.Code(err), "the status code must survive")
 }
@@ -145,10 +146,10 @@ func TestConn_StreamErrorIsReconstructed(t *testing.T) {
 	require.Equal(t, 2, received, "the rows before the error must still arrive")
 	require.NotErrorIs(t, recvErr, io.EOF)
 
-	d, ok := errors.AsType[domain.Describable](recvErr)
+	d, ok := apierr.Describe(recvErr)
 	require.True(t, ok, "a business error arriving at Recv must also be reconstructed")
-	require.Equal(t, domain.ErrReasonLedgerDeleted, d.Reason())
-	require.Equal(t, domain.KindConflict, domain.Kind(d), "409, not the 400 the wire code alone implies")
+	require.Equal(t, domain.ErrReasonLedgerDeleted, d.Reason)
+	require.Equal(t, domain.KindConflict, d.Kind, "409, not the 400 the wire code alone implies")
 }
 
 // TestConn_StreamEndStillEOF pins the pagination contract: a clean stream end
@@ -228,4 +229,119 @@ func TestConn_SuccessPathUnaffected(t *testing.T) {
 	info, err := stream.Recv()
 	require.NoError(t, err)
 	require.Equal(t, "some-ledger", info.GetName())
+}
+
+// businessStatusWithMetadata is businessStatus with a metadata payload.
+func businessStatusWithMetadata(t *testing.T, code codes.Code, message, reason string,
+	metadata map[string]string,
+) error {
+	t.Helper()
+
+	st := status.New(code, message)
+	detailed, err := st.WithDetails(&errdetails.ErrorInfo{
+		Reason:   reason,
+		Domain:   "ledger",
+		Metadata: metadata,
+	})
+	require.NoError(t, err)
+
+	return detailed.Err()
+}
+
+// TestConn_ReadIndexNotCaughtUpKeepsBothAxesOverTheWire proves the two axes
+// survive the real decorated connection, not just a hand-built status.
+//
+// The reason is semantically KindUnavailable, so a REST consumer must see 503;
+// the wire code is codes.FailedPrecondition so a gRPC caller fails fast rather
+// than entering actions.GRPCRetryPolicy's fifty Unavailable retries. Both have
+// to hold on the value the client actually receives, or the next hop loses one
+// of them.
+func TestConn_ReadIndexNotCaughtUpKeepsBothAxesOverTheWire(t *testing.T) {
+	t.Parallel()
+
+	client := dialWrapped(t, &rejectingServer{
+		err: businessStatusWithMetadata(t, codes.FailedPrecondition,
+			"read index not caught up", domain.ErrReasonReadIndexNotCaughtUp,
+			map[string]string{"requested": "42", "current": "17"}),
+	})
+
+	_, err := client.GetTransaction(context.Background(), &servicepb.GetTransactionRequest{
+		Ledger:        "test",
+		TransactionId: 1,
+	})
+	require.Error(t, err)
+
+	d, ok := apierr.Describe(err)
+	require.True(t, ok)
+	require.Equal(t, domain.KindUnavailable, d.Kind, "the semantic axis")
+	require.Equal(t, domain.ErrReasonReadIndexNotCaughtUp, d.Reason)
+	require.Equal(t, map[string]string{"requested": "42", "current": "17"}, d.Metadata)
+
+	require.Equal(t, codes.FailedPrecondition, status.Code(err),
+		"the transport axis: the fail-fast code must survive to the next hop")
+}
+
+// TestConn_UnknownReasonKeepsItsExactCodeOverTheWire is the version-skew case
+// at the seam: a reason from a newer server, under a code no ErrorKind maps to.
+// The classification degrades to KindInternal because the receiver genuinely
+// cannot do better, but re-deriving the status from that kind would answer
+// codes.Internal and lose what the sender said.
+func TestConn_UnknownReasonKeepsItsExactCodeOverTheWire(t *testing.T) {
+	t.Parallel()
+
+	client := dialWrapped(t, &rejectingServer{
+		rowsBeforeError: 1,
+		err: businessStatusWithMetadata(t, codes.Aborted, "aborted upstream",
+			"SOME_REASON_FROM_A_NEWER_SERVER", map[string]string{"k": "v"}),
+	})
+
+	stream, err := client.ListLedgers(context.Background(), &servicepb.ListLedgersRequest{})
+	require.NoError(t, err)
+
+	var recvErr error
+
+	for {
+		if _, recvErr = stream.Recv(); recvErr != nil {
+			break
+		}
+	}
+
+	require.Equal(t, codes.Aborted, status.Code(recvErr), "the exact upstream code must survive")
+
+	d, ok := apierr.Describe(recvErr)
+	require.True(t, ok)
+	require.Equal(t, domain.KindInternal, d.Kind)
+	require.Equal(t, "SOME_REASON_FROM_A_NEWER_SERVER", d.Reason,
+		"the sender's reason is preserved verbatim")
+	require.Equal(t, map[string]string{"k": "v"}, d.Metadata)
+}
+
+// TestConn_InvalidWirePairIsRejectedOverTheWire: a contradicting reason/code
+// pair reaching the seam must not be presented as a business outcome, and must
+// not keep the status it arrived under — otherwise the InvalidArgument below
+// would be answered to the caller as a 400 carrying the peer's own message.
+func TestConn_InvalidWirePairIsRejectedOverTheWire(t *testing.T) {
+	t.Parallel()
+
+	client := dialWrapped(t, &rejectingServer{
+		err: businessStatusWithMetadata(t, codes.InvalidArgument,
+			"ledger deleted: secret-ledger", domain.ErrReasonLedgerDeleted,
+			map[string]string{"name": "secret-ledger"}),
+	})
+
+	_, err := client.GetTransaction(context.Background(), &servicepb.GetTransactionRequest{
+		Ledger:        "test",
+		TransactionId: 1,
+	})
+	require.Error(t, err)
+
+	_, ok := apierr.Describe(err)
+	require.False(t, ok, "a protocol fault is not a business outcome")
+
+	_, hasStatus := status.FromError(err)
+	require.False(t, hasStatus, "the contradicting status must not survive")
+
+	var invalid *apierr.InvalidWireError
+	require.ErrorAs(t, err, &invalid)
+	require.NotContains(t, invalid.Error(), "secret-ledger")
 }

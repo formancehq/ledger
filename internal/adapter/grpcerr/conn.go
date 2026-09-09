@@ -12,10 +12,13 @@ import (
 // Reconstruction belongs here rather than in the generated clients' callers.
 // Every generated method reaches the wire through exactly one of Invoke (unary)
 // or NewStream (streaming), so wrapping the connection covers the whole
-// BucketService surface — including the six list methods whose error does not
-// come back from the method at all but from a later Recv() on the stream, after
-// the method already returned nil. It also covers whatever method is generated
-// next, which per-method conversion cannot promise.
+// BucketService surface — all 37 generated methods, 11 of them server-
+// streaming — including the six BucketGrpcClient list methods that return a
+// lazy cursor (ListLedgers, ListTransactions, ListAccounts, ListLogs,
+// ListAuditEntries, ListIndexes), whose error does not come back from the
+// method at all but from a later Recv() on the stream, after the method
+// already returned nil. It also covers whatever method is generated next,
+// which per-method conversion cannot promise.
 type Conn struct {
 	inner grpc.ClientConnInterface
 }

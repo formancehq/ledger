@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // buildGRPCError creates a gRPC status error with an ErrorInfo detail, simulating what the server sends.
@@ -102,4 +103,52 @@ func TestFormatGRPCError_BusinessError_ReturnsDisplayed(t *testing.T) {
 	var cliErr *CLIError
 	require.ErrorAs(t, err, &cliErr, "FormatGRPCError should return a Displayed error for business errors")
 	require.Contains(t, err.Error(), "index not found")
+}
+
+// TestFormatGRPCError_BusinessError_UnknownReasonStillFormatted pins the
+// forward-compatibility half on the CLI surface. A reason from a newer server
+// is absent from this build's ErrorReason enum, but the wire contract —
+// message and metadata — is still what the operator needs to see, so it must
+// be formatted as a business error rather than falling through to the generic
+// status message.
+func TestFormatGRPCError_BusinessError_UnknownReasonStillFormatted(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
+		domain.ReasonCode("SOME_REASON_FROM_A_NEWER_SERVER"),
+		"precondition: the reason must be unknown to this build")
+
+	grpcErr := buildGRPCError(t, codes.AlreadyExists, "something conflicted",
+		"SOME_REASON_FROM_A_NEWER_SERVER", map[string]string{"name": "foo"})
+
+	err := FormatGRPCError("create ledger", grpcErr)
+
+	var cliErr *CLIError
+	require.ErrorAs(t, err, &cliErr)
+	require.Equal(t, "create ledger: something conflicted", err.Error(),
+		"the business-error path formats context + the server's message, with no status prefix")
+}
+
+// TestFormatGRPCError_InvalidWirePairIsNotABusinessError covers the mismatch
+// policy on the CLI surface. LEDGER_DELETED is KindConflict, which this build
+// only sends as codes.FailedPrecondition; arriving as codes.Unavailable is a
+// protocol fault, so the payload is not trusted as a business outcome and the
+// error is reported through the status-code path instead.
+//
+// codes.Unavailable is chosen deliberately: friendlyMessage gives it a
+// distinguishing "server unavailable: " prefix, so the two paths are
+// observably different. A code whose friendlyMessage is a bare st.Message()
+// would render identically and the assertion would prove nothing.
+func TestFormatGRPCError_InvalidWirePairIsNotABusinessError(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := buildGRPCError(t, codes.Unavailable, "ledger deleted: foo",
+		domain.ErrReasonLedgerDeleted, map[string]string{"name": "foo"})
+
+	err := FormatGRPCError("delete ledger", grpcErr)
+
+	var cliErr *CLIError
+	require.ErrorAs(t, err, &cliErr)
+	require.Equal(t, "delete ledger: server unavailable: ledger deleted: foo", err.Error(),
+		"a contradicting reason/code pair must not be presented as a business outcome")
 }

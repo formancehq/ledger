@@ -19,6 +19,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
@@ -958,7 +959,7 @@ func TestConvertToGRPCError_AlreadyGRPCStatus(t *testing.T) {
 
 func TestKindResourceExhaustedMapsToGRPC(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, codes.ResourceExhausted, kindToGRPCCode(domain.KindResourceExhausted))
+	require.Equal(t, codes.ResourceExhausted, grpcerr.CodeForKind(domain.KindResourceExhausted))
 }
 
 // extractErrorInfo extracts the ErrorInfo detail from a gRPC status.

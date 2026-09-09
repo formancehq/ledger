@@ -1,26 +1,73 @@
-// Package grpcerr reconstructs typed domain errors from gRPC statuses
-// arriving off the network.
+// Package grpcerr is the gRPC decoder for the internal/adapter/apierr boundary
+// contract, and the owner of the single ErrorKind-to-status-code table.
 //
-// The server serialises a domain.Describable faithfully: the Kind selects the
-// status code and the reason plus metadata ride along in an errdetails.ErrorInfo
-// (see internal/adapter/grpc.describableToGRPCStatus). A client receiving that
-// status holds a *status.Error, which is not a Describable, so every consumer
-// that dispatches on the Describable contract — the HTTP error handler, the
-// bulk per-element mapper, the CLI formatter — falls through to its generic
-// "unknown error" branch. This package turns the wire representation back into
-// a Describable so those consumers keep working across a network hop.
+// The server serialises a domain.Describable faithfully: CodeForKind selects
+// the status code and the reason plus metadata ride along in an
+// errdetails.ErrorInfo (see internal/adapter/grpc.describableToGRPCStatus,
+// which encodes through the table in this package). A receiver holds a
+// *status.Error, which carries no semantic classification at all, so every
+// consumer that dispatches on the boundary contract — the HTTP error handler,
+// the bulk per-element mapper, the CLI formatter — falls through to its
+// generic "unknown error" branch. This package turns the wire representation
+// back into an *apierr.Remote so those consumers keep working across a network
+// hop.
 //
-// It is deliberately a leaf: it imports only gRPC, errdetails, internal/domain
-// and internal/proto/commonpb. internal/adapter/grpc, the intuitive home,
-// transitively pulls in the Pebble DAL, the readstore, the usage store, backup
-// and the Raft node, which cmd/ledgerctl must not link.
+// FromStatusError reconstructs exactly two shapes and returns everything else
+// unchanged; read the rule as that complement rather than as a list of
+// excluded codes.
+//
+//   - A status carrying a ledger-domain ErrorInfo becomes an *apierr.Remote —
+//     whatever its code. A KindUnavailable or KindInternal Describable arrives
+//     as codes.Unavailable or codes.Internal *with* an ErrorInfo, and is
+//     reconstructed like any other, so INDEX_BUILDING and COVERAGE_MISS keep
+//     their reason across the hop.
+//   - A bare codes.NotFound (no ErrorInfo — roughly twenty
+//     commonpb.NewNotFoundError sites) becomes a *commonpb.NotFoundError,
+//     which the HTTP handler already maps to 404.
+//
+// Everything else passes through, which covers three groups:
+//
+//   - codes.Canceled, unconditionally and before the ErrorInfo check.
+//     internal/adapter/grpc/cursor.go keys end-of-stream detection off
+//     status.Code(err) == codes.Canceled and normalises it to io.EOF;
+//     reconstructing it would break pagination.
+//   - A *bare* status of any code — no ledger ErrorInfo to decode, and no
+//     reason to recover. Bare codes.Unavailable (no leader yet, peer missing
+//     from the pool, stream torn down) already reaches the right outcome:
+//     handleError maps that code to 503 + Retry-After on its own. Bare
+//     Internal, Unknown and DeadlineExceeded are server faults or transport
+//     conditions. Bare codes.Unauthenticated and codes.PermissionDenied from
+//     the leader denote a cluster-secret failure between nodes rather than a
+//     caller credential problem, and correctly stay a 500 rather than
+//     surfacing as 401/403 to the caller.
+//   - An ErrorInfo stamped with another service's domain, left for that
+//     service's client.
+//
+// A reconstructed error still answers GRPCStatus() with the original status,
+// so status.Code and status.FromError keep working for callers that read the
+// code directly and convertToGRPCError re-derives the same status when the
+// value crosses a second hop. That is what keeps the two axes independent:
+// READ_INDEX_NOT_CAUGHT_UP stays semantically KindUnavailable while travelling
+// as codes.FailedPrecondition on every hop, so it never enters
+// actions.GRPCRetryPolicy's Unavailable retry loop.
+//
+// It is deliberately a leaf: it imports only gRPC, errdetails,
+// internal/adapter/apierr, internal/domain and internal/proto/commonpb.
+// internal/adapter/grpc, the intuitive home, transitively pulls in the Pebble
+// DAL, the readstore, the usage store, backup and the Raft node, which
+// cmd/ledgerctl must not link — so the shared table lives here and that
+// package imports it.
 package grpcerr
 
 import (
+	"errors"
+	"slices"
+
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -30,36 +77,75 @@ import (
 // left alone.
 const errorDomain = "ledger"
 
+// CodeForKind maps a semantic ErrorKind to the gRPC status code the server
+// sends it under. Adding a new Kind without a branch fails the `exhaustive`
+// golangci-lint rule, which is the whole point of this design (#431): a new
+// domain error cannot reach the API without a declared mapping.
+//
+// This is the one encode table. internal/adapter/grpc encodes through it,
+// kindForCode reverses it, and allowedWireCodes derives the validation policy
+// from it — so the encode and decode directions cannot drift apart.
+func CodeForKind(k domain.ErrorKind) codes.Code {
+	switch k { //exhaustive:enforce
+	case domain.KindValidation:
+		return codes.InvalidArgument
+	case domain.KindNotFound:
+		return codes.NotFound
+	case domain.KindAlreadyExists:
+		return codes.AlreadyExists
+	case domain.KindConflict:
+		return codes.FailedPrecondition
+	case domain.KindPrecondition:
+		return codes.FailedPrecondition
+	case domain.KindUnavailable:
+		return codes.Unavailable
+	case domain.KindUnauthenticated:
+		return codes.Unauthenticated
+	case domain.KindPermissionDenied:
+		return codes.PermissionDenied
+	case domain.KindInternal:
+		return codes.Internal
+	case domain.KindResourceExhausted:
+		return codes.ResourceExhausted
+	}
+
+	// Unreachable: every Kind defined in domain has a branch above, and
+	// adding a new one without updating this switch fails CI.
+	return codes.Internal
+}
+
+// wireCodeExceptions lists the reasons the server deliberately sends under a
+// code other than CodeForKind(KindForReason(reason)), because the transport
+// axis and the semantic axis are allowed to disagree.
+//
+// READ_INDEX_NOT_CAUGHT_UP is the only entry. It is semantically
+// KindUnavailable — a fold behind the requested index, retry shortly — but
+// convertToGRPCError sends it as codes.FailedPrecondition
+// (internal/adapter/grpc/server.go) on purpose: actions.GRPCRetryPolicy
+// retries codes.Unavailable fifty times at 0.2s, so answering the semantic
+// code would turn a read-index lag into a ten-second client-side hang instead
+// of a fast rejection. Both codes are therefore legitimate for this reason.
+var wireCodeExceptions = map[commonpb.ErrorReason][]codes.Code{
+	commonpb.ErrorReason_ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP: {codes.FailedPrecondition},
+}
+
+// allowedWireCodes returns every status code a ledger server may legitimately
+// send rc under: the code its kind maps to, plus any declared exception.
+//
+// The policy is reason-specific rather than kind-specific by design. Deriving
+// the permitted code from CodeForKind alone would reject the
+// READ_INDEX_NOT_CAUGHT_UP pair the server actually sends.
+func allowedWireCodes(rc commonpb.ErrorReason) []codes.Code {
+	allowed := make([]codes.Code, 0, 2)
+	allowed = append(allowed, CodeForKind(domain.KindForReason(rc)))
+
+	return append(allowed, wireCodeExceptions[rc]...)
+}
+
 // FromStatusError turns a gRPC status error into a typed error whose chain
-// satisfies the contract its consumers dispatch on, and returns every other
-// error unchanged.
-//
-// Two shapes are reconstructed:
-//
-//   - A status carrying a ledger-domain ErrorInfo becomes a
-//     *domain.BusinessError wrapping a *domain.RemoteError, so
-//     errors.AsType[domain.Describable] succeeds and domain.Kind yields the
-//     kind the wire described.
-//   - A bare codes.NotFound (no ErrorInfo — roughly twenty
-//     commonpb.NewNotFoundError sites) becomes a *commonpb.NotFoundError,
-//     which the HTTP handler already maps to 404.
-//
-// Everything else is returned as-is, by design:
-//
-//   - codes.Canceled must stay raw. internal/adapter/grpc/cursor.go keys
-//     end-of-stream detection off status.Code(err) == codes.Canceled, and
-//     normalises it to io.EOF; reconstructing it would break pagination.
-//   - A bare codes.Unavailable already reaches the right outcome. The HTTP
-//     handler maps that code to 503 + Retry-After on its own, and the class
-//     (no leader yet, peer missing from the pool, stream torn down) has no
-//     reason code to recover.
-//   - Internal, Unknown and DeadlineExceeded are server faults or transport
-//     conditions with nothing typed to restore.
-//
-// The returned error still answers GRPCStatus() with the original status, so
-// status.Code and status.FromError keep working for callers that read the code
-// directly, and convertToGRPCError re-derives the same status when the value
-// crosses a second hop.
+// satisfies the apierr boundary contract, and returns every other error
+// unchanged. See the package documentation for which shapes are reconstructed
+// and why the rest are not.
 func FromStatusError(err error) error {
 	if err == nil {
 		return nil
@@ -76,8 +162,18 @@ func FromStatusError(err error) error {
 		return err
 	}
 
-	if bizErr := BusinessErrorFromGRPC(err); bizErr != nil {
-		return &reconstructedError{st: st, inner: bizErr}
+	decoded := Decode(err)
+
+	if remote, ok := errors.AsType[*apierr.Remote](decoded); ok {
+		return &reconstructedError{st: st, inner: remote}
+	}
+
+	if invalid, ok := errors.AsType[*apierr.InvalidWireError](decoded); ok {
+		// A protocol fault, not a business outcome. Return it bare: without a
+		// GRPCStatus it cannot be answered as the code it arrived under, so it
+		// reaches the internal-error sanitizer on every surface and the
+		// untrusted reason, message and metadata are never echoed.
+		return invalid
 	}
 
 	if st.Code() == codes.NotFound {
@@ -90,14 +186,12 @@ func FromStatusError(err error) error {
 // reconstructedError carries a typed error recovered from the wire while
 // remaining a gRPC status error.
 //
-// It deliberately does NOT implement domain.Describable. errors.AsType walks
-// the chain, so a consumer looking for a Describable unwraps past this type to
-// the *domain.BusinessError inside, and domain.Kind then reaches
-// RemoteError.kindOverride and returns the kind the wire carried. Were this
-// type to implement Describable itself (by embedding, say), domain.Kind would
-// match neither the kindOverride branch nor the *BusinessError branch: it would
-// fall through to KindForReason and silently discard the override that exists
-// precisely to survive an unknown reason.
+// It deliberately does NOT implement domain.Describable or expose the decoded
+// kind itself. errors.AsType walks the chain, so apierr.Describe unwraps past
+// this type to the *apierr.Remote inside and reads the classification the wire
+// carried. Were this type to satisfy the contract itself (by embedding, say),
+// a consumer would stop at the wrapper and lose the kind — which for a reason
+// this build does not know is the whole point of decoding.
 type reconstructedError struct {
 	st    *status.Status
 	inner error
@@ -109,19 +203,24 @@ func (e *reconstructedError) Error() string { return e.inner.Error() }
 func (e *reconstructedError) Unwrap() error { return e.inner }
 
 // GRPCStatus keeps the original status reachable through status.FromError, so
-// the code survives reconstruction. cursor.go's end-of-stream check and
-// convertToGRPCError's "already a status, return as-is" shortcut both depend
-// on it.
+// the code survives reconstruction unchanged — the transport axis is preserved
+// exactly as received, independently of the semantic kind. cursor.go's
+// end-of-stream check, convertToGRPCError's "already a status, return as-is"
+// shortcut and the READ_INDEX_NOT_CAUGHT_UP fail-fast contract all depend on
+// it.
 func (e *reconstructedError) GRPCStatus() *status.Status { return e.st }
 
-// BusinessErrorFromGRPC extracts a BusinessError from a gRPC status error.
-// Returns nil if the error is not a business error (no ErrorInfo with
-// domain "ledger"). The returned BusinessError.Err is a *domain.RemoteError
-// transporting the wire contract (Reason, Metadata, Message) plus the Kind
-// derived from the reason, falling back to the status code. New server-side
-// error types reach this code path automatically — no client-side switch to
-// extend.
-func BusinessErrorFromGRPC(err error) *domain.BusinessError {
+// Decode reads the boundary view out of a gRPC status error. It returns:
+//
+//   - an *apierr.Remote when the status carries a ledger-domain ErrorInfo
+//     whose reason and code are a pair this build's server could have sent;
+//   - an *apierr.InvalidWireError when the reason is one this build knows but
+//     the code contradicts it;
+//   - nil when there is no ledger-domain ErrorInfo to decode.
+//
+// New server-side error types reach this code path automatically — there is no
+// client-side type switch to extend.
+func Decode(err error) error {
 	st := status.Convert(err)
 	if st.Code() == codes.OK {
 		return nil
@@ -133,47 +232,62 @@ func BusinessErrorFromGRPC(err error) *domain.BusinessError {
 			continue
 		}
 
-		return &domain.BusinessError{
-			Err: &domain.RemoteError{
-				KindValue:   kindForWire(info.GetReason(), st.Code()),
-				ReasonValue: info.GetReason(),
-				Message:     st.Message(),
-				Meta:        info.GetMetadata(),
-			},
-		}
+		return decodeReason(info, st)
 	}
 
 	return nil
 }
 
-// kindForWire derives the ErrorKind of a received error from the reason first
-// and the status code only as a fallback.
+// decodeReason classifies one ledger-domain ErrorInfo.
 //
-// Neither source is sufficient alone. Reason-only is unsound across versions:
-// a client older than the server receives a reason its enum does not know,
-// ReasonCode yields UNSPECIFIED, and KindForReason collapses it to KindInternal
-// — turning a caller mistake into a 500. Code-only loses information the wire
-// carried: kindToGRPCCode maps both KindConflict and KindPrecondition to
-// codes.FailedPrecondition, so deriving from the code alone reports every
-// KindConflict reason (LEDGER_DELETED, TRANSACTION_ALREADY_REVERTED,
-// LEDGER_IN_MIRROR_MODE, ACCOUNT_TYPE_HAS_ACCOUNTS, ACCOUNT_TYPE_CONFLICT,
-// STALE_CLUSTER_POLICY) as KindPrecondition and answers 400 where the leader
-// answers 409.
+// Kind derivation is reason-first, and neither source is sufficient alone.
+// Reason-only is unsound across versions: a receiver older than the sender
+// gets a reason its enum does not know, ReasonCode yields UNSPECIFIED, and
+// KindForReason collapses it to KindInternal — turning a caller mistake into a
+// 500. Code-only loses information the wire carried: CodeForKind maps both
+// KindConflict and KindPrecondition to codes.FailedPrecondition, so deriving
+// from the code alone reports every KindConflict reason (LEDGER_DELETED,
+// TRANSACTION_ALREADY_REVERTED, LEDGER_IN_MIRROR_MODE,
+// ACCOUNT_TYPE_HAS_ACCOUNTS, ACCOUNT_TYPE_CONFLICT, STALE_CLUSTER_POLICY) as
+// KindPrecondition and answers 400 where the sender answered 409.
 //
-// Reason-first gets both: a reason this build knows is authoritative, and an
-// unknown one still keeps whatever the status code described.
-func kindForWire(reason string, code codes.Code) domain.ErrorKind {
-	if rc := domain.ReasonCode(reason); rc != commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
-		return domain.KindForReason(rc)
+// A known reason is also validated against the code it arrived under, because
+// a reason this build knows is a reason whose legitimate codes it knows too. A
+// contradiction there is a protocol fault and nothing received is trusted.
+// An unknown reason cannot be validated — this build has no policy for it — so
+// its exact code, reason, message and metadata are preserved verbatim and the
+// code supplies the classification.
+func decodeReason(info *errdetails.ErrorInfo, st *status.Status) error {
+	rc := domain.ReasonCode(info.GetReason())
+	if rc == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
+		return &apierr.Remote{
+			KindValue:   kindForCode(st.Code()),
+			ReasonValue: info.GetReason(),
+			Msg:         st.Message(),
+			Meta:        info.GetMetadata(),
+		}
 	}
 
-	return kindForCode(code)
+	if allowed := allowedWireCodes(rc); !slices.Contains(allowed, st.Code()) {
+		return &apierr.InvalidWireError{
+			ReasonValue: info.GetReason(),
+			Code:        st.Code(),
+			Expected:    allowed,
+		}
+	}
+
+	return &apierr.Remote{
+		KindValue:   domain.KindForReason(rc),
+		ReasonValue: info.GetReason(),
+		Msg:         st.Message(),
+		Meta:        info.GetMetadata(),
+	}
 }
 
-// kindForCode reverses the server-side kindToGRPCCode mapping. It is the
-// fallback for a reason this build does not know, so the collapse of
-// KindConflict and KindPrecondition onto codes.FailedPrecondition is
-// unavoidable here; kindForWire resolves it from the reason whenever it can.
+// kindForCode reverses CodeForKind. It is the classification for a reason this
+// build does not know, so the collapse of KindConflict and KindPrecondition
+// onto codes.FailedPrecondition is unavoidable here; decodeReason resolves it
+// from the reason whenever it can.
 func kindForCode(c codes.Code) domain.ErrorKind {
 	switch c {
 	case codes.InvalidArgument:

@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -30,17 +31,14 @@ func buildGRPCError(t *testing.T, code codes.Code, message, reason string, metad
 	return detailed.Err()
 }
 
-// assertRemote asserts that bizErr.Err is a *domain.RemoteError with the
-// expected Reason and metadata-subset. Replaces the per-type ErrorAs checks
-// from before the Describable refactor: client-side code no longer ties to
-// the specific server Go types.
-func assertRemote(t *testing.T, bizErr *domain.BusinessError, reason string, meta map[string]string) {
+// assertRemote asserts that decoded is an *apierr.Remote with the expected
+// Reason and metadata-subset. Replaces the per-type ErrorAs checks from before
+// the Describable refactor: a receiver no longer ties to the specific server
+// Go types.
+func assertRemote(t *testing.T, decoded error, reason string, meta map[string]string) {
 	t.Helper()
 
-	require.NotNil(t, bizErr)
-
-	var remote *domain.RemoteError
-	require.ErrorAs(t, bizErr, &remote)
+	remote := remoteFrom(t, decoded)
 	require.Equal(t, reason, remote.Reason())
 
 	for k, v := range meta {
@@ -48,37 +46,48 @@ func assertRemote(t *testing.T, bizErr *domain.BusinessError, reason string, met
 	}
 }
 
-func TestBusinessErrorFromGRPC_LedgerAlreadyExists(t *testing.T) {
+// remoteFrom is assertRemote's extraction half, for the assertions that read
+// the decoded kind rather than only the wire contract.
+func remoteFrom(t *testing.T, decoded error) *apierr.Remote {
+	t.Helper()
+
+	remote, ok := errors.AsType[*apierr.Remote](decoded)
+	require.True(t, ok, "expected an *apierr.Remote, got %T", decoded)
+
+	return remote
+}
+
+func TestDecode_LedgerAlreadyExists(t *testing.T) {
 	t.Parallel()
 
 	grpcErr := buildGRPCError(t, codes.AlreadyExists, "ledger already exists: foo",
 		domain.ErrReasonLedgerAlreadyExists, map[string]string{"name": "foo"})
 
-	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonLedgerAlreadyExists,
+	assertRemote(t, Decode(grpcErr), domain.ErrReasonLedgerAlreadyExists,
 		map[string]string{"name": "foo"})
 }
 
-func TestBusinessErrorFromGRPC_LedgerNotFound(t *testing.T) {
+func TestDecode_LedgerNotFound(t *testing.T) {
 	t.Parallel()
 
 	grpcErr := buildGRPCError(t, codes.NotFound, "ledger does not exist: bar",
 		domain.ErrReasonLedgerNotFound, map[string]string{"name": "bar"})
 
-	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonLedgerNotFound,
+	assertRemote(t, Decode(grpcErr), domain.ErrReasonLedgerNotFound,
 		map[string]string{"name": "bar"})
 }
 
-func TestBusinessErrorFromGRPC_IdempotencyKeyConflict(t *testing.T) {
+func TestDecode_IdempotencyKeyConflict(t *testing.T) {
 	t.Parallel()
 
 	grpcErr := buildGRPCError(t, codes.AlreadyExists, "idempotency key conflict",
 		domain.ErrReasonIdempotencyKeyConflict, map[string]string{"key": "ik-123"})
 
-	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonIdempotencyKeyConflict,
+	assertRemote(t, Decode(grpcErr), domain.ErrReasonIdempotencyKeyConflict,
 		map[string]string{"key": "ik-123"})
 }
 
-func TestBusinessErrorFromGRPC_TransactionReferenceConflict(t *testing.T) {
+func TestDecode_TransactionReferenceConflict(t *testing.T) {
 	t.Parallel()
 
 	grpcErr := buildGRPCError(t, codes.AlreadyExists, "ref conflict",
@@ -87,31 +96,31 @@ func TestBusinessErrorFromGRPC_TransactionReferenceConflict(t *testing.T) {
 			"reference": "ref-001",
 		})
 
-	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonTransactionReferenceConflict,
+	assertRemote(t, Decode(grpcErr), domain.ErrReasonTransactionReferenceConflict,
 		map[string]string{"ledger": "test", "reference": "ref-001"})
 }
 
-func TestBusinessErrorFromGRPC_TransactionNotFound(t *testing.T) {
+func TestDecode_TransactionNotFound(t *testing.T) {
 	t.Parallel()
 
 	grpcErr := buildGRPCError(t, codes.NotFound, "tx not found",
 		domain.ErrReasonTransactionNotFound, map[string]string{"transactionId": "999"})
 
-	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonTransactionNotFound,
+	assertRemote(t, Decode(grpcErr), domain.ErrReasonTransactionNotFound,
 		map[string]string{"transactionId": "999"})
 }
 
-func TestBusinessErrorFromGRPC_TransactionAlreadyReverted(t *testing.T) {
+func TestDecode_TransactionAlreadyReverted(t *testing.T) {
 	t.Parallel()
 
 	grpcErr := buildGRPCError(t, codes.FailedPrecondition, "already reverted",
 		domain.ErrReasonTransactionAlreadyReverted, map[string]string{"transactionId": "42"})
 
-	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonTransactionAlreadyReverted,
+	assertRemote(t, Decode(grpcErr), domain.ErrReasonTransactionAlreadyReverted,
 		map[string]string{"transactionId": "42"})
 }
 
-func TestBusinessErrorFromGRPC_InsufficientFunds(t *testing.T) {
+func TestDecode_InsufficientFunds(t *testing.T) {
 	t.Parallel()
 
 	grpcErr := buildGRPCError(t, codes.FailedPrecondition, "insufficient funds",
@@ -122,54 +131,52 @@ func TestBusinessErrorFromGRPC_InsufficientFunds(t *testing.T) {
 			"balance": "500",
 		})
 
-	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonInsufficientFunds,
+	assertRemote(t, Decode(grpcErr), domain.ErrReasonInsufficientFunds,
 		map[string]string{"account": "user:001", "asset": "USD", "amount": "1000", "balance": "500"})
 }
 
-func TestBusinessErrorFromGRPC_NumscriptParseError(t *testing.T) {
+func TestDecode_NumscriptParseError(t *testing.T) {
 	t.Parallel()
 
 	grpcErr := buildGRPCError(t, codes.InvalidArgument, "parse error",
 		domain.ErrReasonNumscriptParseError, map[string]string{"details": "unexpected token"})
 
-	assertRemote(t, BusinessErrorFromGRPC(grpcErr), domain.ErrReasonNumscriptParseError,
+	assertRemote(t, Decode(grpcErr), domain.ErrReasonNumscriptParseError,
 		map[string]string{"details": "unexpected token"})
 }
 
-func TestBusinessErrorFromGRPC_Validation(t *testing.T) {
+func TestDecode_Validation(t *testing.T) {
 	t.Parallel()
 
 	grpcErr := buildGRPCError(t, codes.InvalidArgument, "target is required",
 		domain.ErrReasonValidation, nil)
 
-	bizErr := BusinessErrorFromGRPC(grpcErr)
-	require.NotNil(t, bizErr)
-	require.Equal(t, "target is required", bizErr.Err.Error())
+	assertRemote(t, Decode(grpcErr), domain.ErrReasonValidation, nil)
+	require.Equal(t, "target is required", remoteFrom(t, Decode(grpcErr)).Error())
 }
 
-func TestBusinessErrorFromGRPC_NonBusinessError(t *testing.T) {
+func TestDecode_NonBusinessError(t *testing.T) {
 	t.Parallel()
 
 	// A plain gRPC error without ErrorInfo domain "ledger"
 	grpcErr := status.Error(codes.Internal, "some internal error")
 
-	bizErr := BusinessErrorFromGRPC(grpcErr)
-	require.Nil(t, bizErr)
+	require.NoError(t, Decode(grpcErr), "no ledger ErrorInfo, nothing to decode")
 }
 
-func TestBusinessErrorFromGRPC_NonGRPCError(t *testing.T) {
+func TestDecode_NonGRPCError(t *testing.T) {
 	t.Parallel()
 
-	bizErr := BusinessErrorFromGRPC(errors.New("plain error"))
-	require.Nil(t, bizErr)
+	require.NoError(t, Decode(errors.New("plain error")))
 }
 
 func TestKindForCode_ResourceExhausted(t *testing.T) {
 	t.Parallel()
 
-	// Round-trip symmetry with the server-side kindToGRPCCode: a disk-full /
-	// clock-skew write rejection (KindResourceExhausted) is sent as
-	// codes.ResourceExhausted and must reconstruct to the same Kind client-side.
+	// Round-trip symmetry with CodeForKind: a disk-full / clock-skew write
+	// rejection (KindResourceExhausted) is sent as codes.ResourceExhausted and
+	// must decode back to the same Kind.
+	require.Equal(t, codes.ResourceExhausted, CodeForKind(domain.KindResourceExhausted))
 	require.Equal(t, domain.KindResourceExhausted, kindForCode(codes.ResourceExhausted))
 }
 
@@ -201,10 +208,13 @@ func TestBusinessErrorRoundTrip(t *testing.T) {
 			bizErr := &domain.BusinessError{Err: tt.err}
 			st := serverSideConvert(bizErr)
 
-			// Client side: reconstruct from gRPC error
-			reconstructed := BusinessErrorFromGRPC(st.Err())
-			require.NotNil(t, reconstructed, "expected reconstructed business error")
-			require.Equal(t, tt.err.Error(), reconstructed.Err.Error())
+			// Receiving side: decode the boundary view back out.
+			remote, ok := errors.AsType[*apierr.Remote](Decode(st.Err()))
+			require.True(t, ok, "expected a decoded remote failure")
+			require.Equal(t, tt.err.Error(), remote.Error())
+			require.Equal(t, tt.err.Reason(), remote.Reason())
+			require.Equal(t, domain.Kind(tt.err), remote.KindValue,
+				"the decoded kind must equal the kind the server classified")
 		})
 	}
 }
@@ -290,17 +300,18 @@ func serverSideConvert(bizErr *domain.BusinessError) *status.Status {
 	return detailed
 }
 
-// TestKindForWire_ReasonFirst covers one reason per ErrorKind. The
-// KindConflict row is the one that matters most: kindToGRPCCode sends both
-// KindConflict and KindPrecondition as codes.FailedPrecondition, so deriving
-// the kind from the code alone answers KindPrecondition (400) where the leader
-// answered 409. Reason-first recovers the distinction.
+// TestDecode_ReasonFirst covers one reason per ErrorKind through the real
+// decoder. The KindConflict row is the one that matters most: CodeForKind
+// sends both KindConflict and KindPrecondition as codes.FailedPrecondition, so
+// deriving the kind from the code alone answers KindPrecondition (400) where
+// the leader answered 409. Reason-first recovers the distinction.
 //
 // A KindAlreadyExists reason would NOT catch that regression —
 // codes.AlreadyExists is collision-free and round-trips either way — so
 // ledger-already-exists, idempotency-key conflict and reference conflict are
 // deliberately not used as the 409 case here.
-func TestKindForWire_ReasonFirst(t *testing.T) {
+// TestDecode_EveryEnumReasonRoundTrips widens this to the whole enum.
+func TestDecode_ReasonFirst(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -326,26 +337,61 @@ func TestKindForWire_ReasonFirst(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			require.Equal(t, tt.wantKind, kindForWire(tt.reason, tt.code))
+			decoded := Decode(buildGRPCError(t, tt.code, "message", tt.reason, nil))
+			assertRemote(t, decoded, tt.reason, nil)
+			require.Equal(t, tt.wantKind, remoteFrom(t, decoded).KindValue)
 		})
 	}
 }
 
-// TestKindForWire_UnknownReasonFallsBackToCode pins the forward-compatibility
-// half of the derivation. A client older than the server receives a reason its
-// enum does not know; ReasonCode yields UNSPECIFIED, and reason-only derivation
-// would collapse the error to KindInternal and answer 500 for what the server
+// TestDecode_UnknownReasonFallsBackToCode pins the forward-compatibility half
+// of the derivation. A receiver older than the sender gets a reason its enum
+// does not know; ReasonCode yields UNSPECIFIED, and reason-only derivation
+// would collapse the error to KindInternal and answer 500 for what the sender
 // classified as a caller error.
-func TestKindForWire_UnknownReasonFallsBackToCode(t *testing.T) {
+//
+// The AlreadyExists row is the EN-1980 acceptance case: an unknown reason
+// whose code does have an ErrorKind mapping keeps the code-derived
+// classification (409), rather than collapsing to KindInternal (500).
+func TestDecode_UnknownReasonFallsBackToCode(t *testing.T) {
 	t.Parallel()
 
 	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
-		domain.ReasonCode("SOME_REASON_FROM_A_NEWER_SERVER"),
+		domain.ReasonCode(unknownReason),
 		"precondition: the reason must be unknown to this build for the test to mean anything")
 
-	require.Equal(t, domain.KindNotFound, kindForWire("SOME_REASON_FROM_A_NEWER_SERVER", codes.NotFound))
-	require.Equal(t, domain.KindAlreadyExists, kindForWire("SOME_REASON_FROM_A_NEWER_SERVER", codes.AlreadyExists))
+	tests := []struct {
+		code     codes.Code
+		wantKind domain.ErrorKind
+	}{
+		{codes.NotFound, domain.KindNotFound},
+		{codes.AlreadyExists, domain.KindAlreadyExists},
+		{codes.InvalidArgument, domain.KindValidation},
+		{codes.FailedPrecondition, domain.KindPrecondition},
+		{codes.ResourceExhausted, domain.KindResourceExhausted},
+		{codes.Unavailable, domain.KindUnavailable},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.code.String(), func(t *testing.T) {
+			t.Parallel()
+
+			decoded := Decode(buildGRPCError(t, tt.code, "message", unknownReason,
+				map[string]string{"k": "v"}))
+			assertRemote(t, decoded, unknownReason, map[string]string{"k": "v"})
+
+			remote := remoteFrom(t, decoded)
+			require.Equal(t, tt.wantKind, remote.KindValue)
+			require.Equal(t, "message", remote.Error(),
+				"the sender's message is preserved verbatim for a reason we cannot validate")
+		})
+	}
 }
+
+// unknownReason stands for a reason from a newer server: absent from this
+// build's ErrorReason enum, so it can be neither classified nor validated
+// against its code.
+const unknownReason = "SOME_REASON_FROM_A_NEWER_SERVER"
 
 // TestFromStatusError_BusinessErrorBecomesDescribable is the core of EN-1636:
 // a business error forwarded from the leader must reach the consumer as a
@@ -402,19 +448,19 @@ func TestFromStatusError_ConflictReachesKindConflict(t *testing.T) {
 	grpcErr := buildGRPCError(t, codes.FailedPrecondition, "ledger deleted: foo",
 		domain.ErrReasonLedgerDeleted, nil)
 
-	d, ok := errors.AsType[domain.Describable](FromStatusError(grpcErr))
+	d, ok := apierr.Describe(FromStatusError(grpcErr))
 	require.True(t, ok)
-	require.Equal(t, domain.KindConflict, domain.Kind(d))
+	require.Equal(t, domain.KindConflict, d.Kind)
 }
 
 // TestFromStatusError_ReconstructedErrorIsNotItselfDescribable pins the shape
-// that makes the kind override work.
+// that makes the decoded kind reachable.
 //
-// domain.Kind checks for kindOverride first, then for *BusinessError. If the
-// carrier implemented Describable itself, errors.AsType would stop at the
-// carrier, domain.Kind would match neither branch, and it would silently
-// re-derive the kind from the reason — discarding the override that exists
-// precisely so an unknown reason keeps the status the wire carried.
+// apierr.Describe looks for an *apierr.Remote in the chain and reads the kind
+// it carries. If the carrier satisfied domain.Describable itself, a consumer
+// walking the chain could stop at the carrier and re-derive the kind from the
+// reason — which for a reason this build does not know collapses to
+// KindInternal, discarding exactly what decoding recovered.
 func TestFromStatusError_ReconstructedErrorIsNotItselfDescribable(t *testing.T) {
 	t.Parallel()
 
@@ -433,7 +479,7 @@ func TestFromStatusError_ReconstructedErrorIsNotItselfDescribable(t *testing.T) 
 
 	d, ok := errors.AsType[domain.Describable](converted)
 	require.True(t, ok)
-	require.IsType(t, &domain.BusinessError{}, d, "errors.AsType must unwrap to the BusinessError")
+	require.IsType(t, &apierr.Remote{}, d, "errors.AsType must unwrap to the decoded remote failure")
 }
 
 // TestFromStatusError_BareNotFound covers the ~20 commonpb.NewNotFoundError
@@ -507,4 +553,199 @@ func TestFromStatusError_ForeignErrorDomain(t *testing.T) {
 
 	original := detailed.Err()
 	require.Equal(t, original, FromStatusError(original))
+}
+
+// enumReasons returns every reason this build's ErrorReason enum knows,
+// excluding UNSPECIFIED (which is the "unknown reason" signal, not a reason).
+func enumReasons(t *testing.T) map[commonpb.ErrorReason]string {
+	t.Helper()
+
+	reasons := make(map[commonpb.ErrorReason]string, len(commonpb.ErrorReason_name))
+
+	for value := range commonpb.ErrorReason_name {
+		code := commonpb.ErrorReason(value)
+		if code == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
+			continue
+		}
+
+		reasons[code] = domain.ReasonString(code)
+	}
+
+	require.NotEmpty(t, reasons, "the enum scan found nothing — the scan is broken, not the decoder")
+
+	return reasons
+}
+
+// TestDecode_EveryEnumReasonRoundTrips is the exhaustive form of the
+// conversion table: every reason in the enum, under every code this build's
+// server may legitimately send it under, must decode back to the semantic kind
+// the sender classified.
+//
+// One reason per ErrorKind is not enough coverage (EN-1980). Kinds are not
+// one-to-one with wire codes — KindConflict and KindPrecondition share
+// codes.FailedPrecondition — so a single sampled reason per kind can pass
+// while a sibling reason of the same kind decodes wrong. Driving the table off
+// the enum itself also means a reason added tomorrow is covered without
+// touching this test, and cannot be added with a kind the decoder disagrees
+// about.
+func TestDecode_EveryEnumReasonRoundTrips(t *testing.T) {
+	t.Parallel()
+
+	for rc, reason := range enumReasons(t) {
+		t.Run(reason, func(t *testing.T) {
+			t.Parallel()
+
+			allowed := allowedWireCodes(rc)
+			require.NotEmpty(t, allowed)
+
+			for _, code := range allowed {
+				decoded := Decode(buildGRPCError(t, code, "message", reason,
+					map[string]string{"k": "v"}))
+				assertRemote(t, decoded, reason, map[string]string{"k": "v"})
+
+				require.Equal(t, domain.KindForReason(rc), remoteFrom(t, decoded).KindValue,
+					"reason %s sent as %s must decode to its semantic kind", reason, code)
+			}
+		})
+	}
+}
+
+// TestDecode_ConflictAndPreconditionShareOneWireCode is the structural reason
+// the exhaustive test above must be exhaustive, pinned directly: two distinct
+// semantic kinds travel under the same status code, so no amount of
+// code-derived classification can separate them and every reason of both kinds
+// has to be checked from the reason side.
+func TestDecode_ConflictAndPreconditionShareOneWireCode(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, codes.FailedPrecondition, CodeForKind(domain.KindConflict))
+	require.Equal(t, codes.FailedPrecondition, CodeForKind(domain.KindPrecondition))
+
+	counts := map[domain.ErrorKind]int{}
+
+	for rc, reason := range enumReasons(t) {
+		kind := domain.KindForReason(rc)
+		if kind != domain.KindConflict && kind != domain.KindPrecondition {
+			continue
+		}
+
+		counts[kind]++
+
+		decoded := Decode(buildGRPCError(t, codes.FailedPrecondition, "message", reason, nil))
+		assertRemote(t, decoded, reason, nil)
+		require.Equal(t, kind, remoteFrom(t, decoded).KindValue,
+			"reason %s collapsed onto the wrong side of the FailedPrecondition collapse", reason)
+	}
+
+	require.Greater(t, counts[domain.KindConflict], 1,
+		"at least two KindConflict reasons must exist for this test to prove anything")
+	require.Greater(t, counts[domain.KindPrecondition], 1,
+		"at least two KindPrecondition reasons must exist for this test to prove anything")
+}
+
+// TestDecode_ReadIndexNotCaughtUpKeepsBothAxes is the EN-1980 exception case:
+// the one reason whose semantic kind and wire code deliberately disagree.
+//
+// Semantically it is KindUnavailable — a fold behind the requested index — so
+// HTTP must answer 503 + Retry-After. On the wire it travels as
+// codes.FailedPrecondition, because actions.GRPCRetryPolicy retries
+// codes.Unavailable fifty times at 0.2s and would turn the lag into a
+// ten-second hang. Both must hold at once, and the code must survive a second
+// hop unchanged.
+func TestDecode_ReadIndexNotCaughtUpKeepsBothAxes(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := buildGRPCError(t, codes.FailedPrecondition,
+		"read index not caught up", domain.ErrReasonReadIndexNotCaughtUp,
+		map[string]string{"requested": "42", "current": "17"})
+
+	assertRemote(t, Decode(grpcErr), domain.ErrReasonReadIndexNotCaughtUp,
+		map[string]string{"requested": "42", "current": "17"})
+	require.Equal(t, domain.KindUnavailable, remoteFrom(t, Decode(grpcErr)).KindValue,
+		"the semantic axis: KindUnavailable, which HTTP answers as 503")
+
+	converted := FromStatusError(grpcErr)
+	require.Equal(t, codes.FailedPrecondition, status.Code(converted),
+		"the transport axis: FailedPrecondition must survive so the fail-fast contract holds on the next hop")
+
+	d, ok := apierr.Describe(converted)
+	require.True(t, ok)
+	require.Equal(t, domain.KindUnavailable, d.Kind)
+}
+
+// TestDecode_InvalidReasonCodePairIsRejected covers the mismatch policy. A
+// reason this build knows is a reason whose legitimate codes it knows too, so
+// a contradiction is a protocol fault rather than a business outcome: nothing
+// received is answered to the client.
+func TestDecode_InvalidReasonCodePairIsRejected(t *testing.T) {
+	t.Parallel()
+
+	// LEDGER_NOT_FOUND is KindNotFound, which this build only ever sends as
+	// codes.NotFound. Arriving as AlreadyExists means the sender is not a
+	// ledger of this contract.
+	grpcErr := buildGRPCError(t, codes.AlreadyExists, "ledger not found: foo",
+		domain.ErrReasonLedgerNotFound, map[string]string{"name": "foo"})
+
+	invalid, ok := errors.AsType[*apierr.InvalidWireError](Decode(grpcErr))
+	require.True(t, ok, "a contradicting pair must not decode to a business outcome")
+	require.Equal(t, domain.ErrReasonLedgerNotFound, invalid.ReasonValue)
+	require.Equal(t, codes.AlreadyExists, invalid.Code)
+	require.Equal(t, []codes.Code{codes.NotFound}, invalid.Expected)
+
+	require.NotContains(t, invalid.Error(), "ledger not found: foo",
+		"the received message is untrusted and must not be carried forward")
+	require.NotContains(t, invalid.Error(), "foo",
+		"the received metadata is untrusted and must not be carried forward")
+}
+
+// TestFromStatusError_InvalidPairReachesTheSanitizer pins where a rejected
+// pair ends up. It must satisfy neither the boundary contract nor GRPCStatus,
+// so HTTP falls through to writeInternalServerError (500 + correlation ID +
+// server-side log) and convertToGRPCError sanitises it to codes.Unknown —
+// rather than being answered as the code it arrived under, which for
+// codes.InvalidArgument would have echoed the untrusted message as a 400.
+func TestFromStatusError_InvalidPairReachesTheSanitizer(t *testing.T) {
+	t.Parallel()
+
+	grpcErr := buildGRPCError(t, codes.InvalidArgument, "ledger deleted: foo",
+		domain.ErrReasonLedgerDeleted, nil)
+
+	converted := FromStatusError(grpcErr)
+
+	_, isDescribable := apierr.Describe(converted)
+	require.False(t, isDescribable, "a protocol fault is not a business outcome")
+
+	_, hasStatus := status.FromError(converted)
+	require.False(t, hasStatus,
+		"keeping the status would let handleError answer InvalidArgument as a 400 with the untrusted message")
+
+	require.ErrorAs(t, converted, new(*apierr.InvalidWireError))
+}
+
+// TestFromStatusError_UnknownReasonPreservesExactCode is the second EN-1980
+// forward-compatibility case: a reason this build does not know, carried by a
+// code no ErrorKind maps to. The classification degrades to KindInternal — the
+// receiver genuinely cannot do better — but the exact upstream code must still
+// cross a second hop, because a code reconstructed from KindInternal would be
+// codes.Internal and would lose what the sender said.
+func TestFromStatusError_UnknownReasonPreservesExactCode(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, domain.KindInternal, kindForCode(codes.Aborted),
+		"precondition: codes.Aborted has no ErrorKind of its own")
+
+	grpcErr := buildGRPCError(t, codes.Aborted, "aborted upstream", unknownReason,
+		map[string]string{"k": "v"})
+
+	converted := FromStatusError(grpcErr)
+
+	require.Equal(t, codes.Aborted, status.Code(converted),
+		"the exact upstream code must survive to the next hop")
+
+	d, ok := apierr.Describe(converted)
+	require.True(t, ok)
+	require.Equal(t, domain.KindInternal, d.Kind)
+	require.Equal(t, unknownReason, d.Reason, "the sender's reason is preserved verbatim")
+	require.Equal(t, "aborted upstream", d.Message)
+	require.Equal(t, map[string]string{"k": "v"}, d.Metadata)
 }

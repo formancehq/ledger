@@ -249,19 +249,28 @@ var _ = Describe("REST error parity across cluster nodes (EN-1636)", Ordered, fu
 			}
 			Expect(json.Unmarshal(raw, &decoded)).To(Succeed(), "unparseable bulk body: %s", raw)
 
-			// A per-element failure is reported inside data[]; a request-level
-			// failure sets the top-level errorCode. Return whichever fired so a
-			// mismatch between nodes is visible either way.
-			if len(decoded.Data) > 0 && decoded.Data[0].ErrorCode != "" {
-				return decoded.Data[0].ErrorCode
-			}
+			// The failure must be reported per element, inside data[]. A
+			// request-level rejection — a parse failure, say, which serveBulk
+			// answers with a top-level "VALIDATION" before any element reaches
+			// admission — never crosses the forwarding seam this spec exists to
+			// cover, yet is non-empty and identical on every node. Asserting the
+			// element shape here is what stops such a rejection from satisfying
+			// the spec: a later change to bulk parsing or admission fails it
+			// instead of silently making it test nothing.
+			Expect(decoded.Data).To(HaveLen(1),
+				"the rejection must be per-element, not request-level; top-level errorCode was %q, body: %s",
+				decoded.ErrorCode, raw)
 
-			return decoded.ErrorCode
+			return decoded.Data[0].ErrorCode
 		}
 
+		// The posting's source is an account with no balance, so admission
+		// rejects the single element with INSUFFICIENT_FUNDS (KindPrecondition,
+		// 400). Pinning the expected code rather than only "non-empty and equal"
+		// means the spec fails if the element stops reaching the FSM at all.
 		onLeader := elementCode(leader)
-		Expect(onLeader).NotTo(BeEmpty(), "the element must fail for this spec to mean anything")
-		Expect(onLeader).NotTo(Equal("ERROR"), "the leader must name the business reason")
+		Expect(onLeader).To(Equal("INSUFFICIENT_FUNDS"),
+			"the leader must name the business reason of the element rejection")
 
 		for _, follower := range followers {
 			Expect(elementCode(follower)).To(Equal(onLeader),

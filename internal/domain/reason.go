@@ -29,14 +29,15 @@ func ReasonString(code commonpb.ErrorReason) string {
 // Kind returns the semantic ErrorKind of a Describable. Kind is a function of
 // the error's reason — KindForReason(ReasonCode(d.Reason())) — so it lives in
 // exactly one place (the KindForReason switch) and is never duplicated per
-// type. A BusinessError is unwrapped to its inner error. A type that observed
-// its kind off the wire instead of deriving it (RemoteError, reconstructed from
-// a gRPC status on the client) overrides via kindOverride.
+// type. A BusinessError is unwrapped to its inner error.
+//
+// It is strictly reason-based, with no escape hatch. A failure decoded from a
+// peer may carry a reason this build's enum does not know, whose kind must
+// therefore come off the wire rather than from this switch; that is not a
+// domain concern and is not represented here. Read such a failure through
+// apierr.Describe (internal/adapter/apierr), the boundary contract that reads
+// either provenance.
 func Kind(d Describable) ErrorKind {
-	if o, ok := d.(interface{ kindOverride() ErrorKind }); ok {
-		return o.kindOverride()
-	}
-
 	if be, ok := d.(*BusinessError); ok {
 		return Kind(be.Err)
 	}

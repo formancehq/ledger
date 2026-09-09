@@ -52,12 +52,13 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 
 	// grpcerr.NewConn is the seam that keeps a forwarded error typed. The
 	// leader answers a business rejection with a status carrying an
-	// errdetails.ErrorInfo, but a *status.Error is not a domain.Describable, so
-	// without this decorator every consumer that dispatches on that contract —
-	// handleError, the bulk per-element mapper — sees an unrecognised error and
-	// sanitises a legitimate 4xx into a 500 (EN-1636). Wrapping the connection
-	// rather than the 32 client methods also covers the list endpoints, whose
-	// error surfaces at Recv() after the method already returned nil.
+	// errdetails.ErrorInfo, but a *status.Error carries no semantic
+	// classification, so without this decorator every consumer that dispatches
+	// on the apierr boundary contract — handleError, the bulk per-element
+	// mapper — sees an unrecognised error and sanitises a legitimate 4xx into a
+	// 500 (EN-1636). Wrapping the connection rather than the generated client's
+	// 37 methods also covers the list endpoints, whose error surfaces at Recv()
+	// after the method already returned nil.
 	//
 	// This is the only production site that builds a leader-forwarding client,
 	// so it is the only place that needs the wrapper.

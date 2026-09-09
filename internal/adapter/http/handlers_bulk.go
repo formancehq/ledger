@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"runtime/pprof"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -337,8 +338,8 @@ func perElementStatus(err error) int {
 		return http.StatusServiceUnavailable
 	}
 
-	if d, ok := errors.AsType[domain.Describable](err); ok {
-		return kindToHTTPStatus(domain.Kind(d))
+	if d, ok := apierr.Describe(err); ok {
+		return kindToHTTPStatus(d.Kind)
 	}
 
 	// Unknown error: 500. Can't be masked as 200 under continueOnFailure.
@@ -366,11 +367,12 @@ func bulkErrorDescription(r *http.Request, err error) string {
 }
 
 // bulkErrorCode returns a machine-readable code for a per-element bulk failure.
-// Domain-typed errors expose it through the Describable contract; anything else
-// keeps the generic "ERROR" fallback rather than leaking a raw string.
+// Domain-typed errors and failures decoded from the leader both expose it
+// through the apierr boundary contract; anything else keeps the generic
+// "ERROR" fallback rather than leaking a raw string.
 func bulkErrorCode(err error) string {
-	if d, ok := errors.AsType[domain.Describable](err); ok {
-		return d.Reason()
+	if d, ok := apierr.Describe(err); ok {
+		return d.Reason
 	}
 
 	return "ERROR"

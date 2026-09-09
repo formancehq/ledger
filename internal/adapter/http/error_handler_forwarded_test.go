@@ -178,3 +178,160 @@ func TestHandleErrorForwardedFromLeader(t *testing.T) {
 		})
 	}
 }
+
+// leaderStatusWithMetadata is leaderStatus with a metadata payload, for the
+// rows that assert what does and does not reach the client body.
+func leaderStatusWithMetadata(t *testing.T, code codes.Code, message, reason string,
+	metadata map[string]string,
+) error {
+	t.Helper()
+
+	st := status.New(code, message)
+	detailed, err := st.WithDetails(&errdetails.ErrorInfo{
+		Reason:   reason,
+		Domain:   "ledger",
+		Metadata: metadata,
+	})
+	require.NoError(t, err)
+
+	return detailed.Err()
+}
+
+// TestHandleErrorForwardedInvalidWirePairIsSanitized covers the mismatch
+// policy (EN-1980). A reason this build knows, carried under a code this build
+// would never send it under, is a protocol fault: the peer is not speaking this
+// contract, so nothing it sent may be answered as a business outcome.
+//
+// The pair below would be answered as a 400 with the peer's own message if the
+// original status survived reconstruction — which is precisely why the decoder
+// returns the rejection without a GRPCStatus.
+func TestHandleErrorForwardedInvalidWirePairIsSanitized(t *testing.T) {
+	t.Parallel()
+
+	leaderErr := leaderStatusWithMetadata(t, codes.InvalidArgument,
+		"ledger deleted: secret-ledger", domain.ErrReasonLedgerDeleted,
+		map[string]string{"name": "secret-ledger"})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/", nil)
+
+	handleError(w, r, grpcerr.FromStatusError(leaderErr))
+
+	require.Equal(t, http.StatusInternalServerError, w.Code,
+		"a contradicting reason/code pair is a server-side fault, not a caller error")
+
+	var resp ErrorResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+
+	require.Equal(t, "INTERNAL_ERROR", resp.ErrorCode)
+	require.Contains(t, resp.ErrorMessage, "correlation ID",
+		"the fault must be recorded server-side and correlatable")
+	require.NotContains(t, resp.ErrorCode, domain.ErrReasonLedgerDeleted,
+		"the received reason must not be presented as a trusted business code")
+	require.NotContains(t, resp.ErrorMessage, "secret-ledger",
+		"neither the received message nor its metadata may reach the client")
+}
+
+// TestHandleErrorForwardedBareAuthStatusStaysInternal pins the passthrough
+// rule for the two kinds with no enum reason. HTTP auth is enforced by the
+// middleware at the entry node before any forwarding, so an auth status
+// arriving from the leader denotes a cluster-secret failure between nodes, not
+// a caller credential problem — surfacing it as 401/403 would tell the caller
+// to fix something it does not control.
+func TestHandleErrorForwardedBareAuthStatusStaysInternal(t *testing.T) {
+	t.Parallel()
+
+	for _, code := range []codes.Code{codes.Unauthenticated, codes.PermissionDenied} {
+		t.Run(code.String(), func(t *testing.T) {
+			t.Parallel()
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPost, "/", nil)
+
+			handleError(w, r, grpcerr.FromStatusError(status.Error(code, "cluster secret mismatch")))
+
+			require.Equal(t, http.StatusInternalServerError, w.Code)
+
+			var resp ErrorResponse
+			require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+			require.Equal(t, "INTERNAL_ERROR", resp.ErrorCode)
+		})
+	}
+}
+
+// TestHandleErrorForwardedReadIndexNotCaughtUpAnswers503 is the two-axes case
+// at the HTTP surface. The wire code is codes.FailedPrecondition — chosen so
+// gRPC callers fail fast instead of entering the Unavailable retry policy —
+// but the reason is semantically KindUnavailable, so the REST answer must be
+// 503 + Retry-After, exactly as it is on the leader-local path. Deriving the
+// HTTP status from the wire code would answer 400.
+func TestHandleErrorForwardedReadIndexNotCaughtUpAnswers503(t *testing.T) {
+	t.Parallel()
+
+	leaderErr := leaderStatusWithMetadata(t, codes.FailedPrecondition,
+		"read index not caught up", domain.ErrReasonReadIndexNotCaughtUp,
+		map[string]string{"requested": "42", "current": "17"})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+
+	handleError(w, r, grpcerr.FromStatusError(leaderErr))
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.Equal(t, "1", w.Header().Get("Retry-After"))
+
+	var resp ErrorResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	require.Equal(t, domain.ErrReasonReadIndexNotCaughtUp, resp.ErrorCode)
+}
+
+// TestBulkPerElementForwardedFromLeader pins the second consumer of the
+// boundary contract. The bulk per-element mapper is a separate dispatch site
+// from handleError, and it was broken by the same cause and repaired by the
+// same change; a forwarded element rejection must roll up under its own status
+// and code rather than the generic 500 / "ERROR" fallback.
+func TestBulkPerElementForwardedFromLeader(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		leaderErr    error
+		expectStatus int
+		expectCode   string
+	}{
+		{
+			name: "insufficient funds",
+			leaderErr: leaderStatus(t, codes.FailedPrecondition, "insufficient funds",
+				domain.ErrReasonInsufficientFunds),
+			expectStatus: http.StatusBadRequest,
+			expectCode:   domain.ErrReasonInsufficientFunds,
+		},
+		{
+			name: "conflict survives the FailedPrecondition collapse",
+			leaderErr: leaderStatus(t, codes.FailedPrecondition, "ledger deleted: foo",
+				domain.ErrReasonLedgerDeleted),
+			expectStatus: http.StatusConflict,
+			expectCode:   domain.ErrReasonLedgerDeleted,
+		},
+		{
+			name: "reason from a newer server",
+			leaderErr: leaderStatus(t, codes.AlreadyExists, "something conflicted",
+				"SOME_REASON_FROM_A_NEWER_SERVER"),
+			expectStatus: http.StatusConflict,
+			expectCode:   "SOME_REASON_FROM_A_NEWER_SERVER",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			forwarded := grpcerr.FromStatusError(tc.leaderErr)
+
+			require.Equal(t, tc.expectStatus, perElementStatus(forwarded))
+			require.Equal(t, tc.expectCode, bulkErrorCode(forwarded))
+			require.NotEqual(t, "ERROR", bulkErrorCode(forwarded),
+				"a forwarded element rejection must not fall back to the generic code")
+		})
+	}
+}

@@ -132,7 +132,8 @@ func checkFile(path string) ([]finding, error) {
 func checkGoSource(path string, source []byte) ([]finding, error) {
 	checkSleep := strings.HasSuffix(path, "_test.go")
 	checkEnvironment := isDeterministicFSMPath(path) && !checkSleep
-	if !checkSleep && !checkEnvironment {
+	checkBoundaryImport := isBusinessCorePath(path)
+	if !checkSleep && !checkEnvironment && !checkBoundaryImport {
 		return nil, nil
 	}
 
@@ -175,6 +176,29 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 	}
 
 	var findings []finding
+
+	if checkBoundaryImport {
+		for _, spec := range file.Imports {
+			importPath, err := strconv.Unquote(spec.Path.Value)
+			if err != nil {
+				return nil, fmt.Errorf("decoding import %q: %w", spec.Path.Value, err)
+			}
+
+			if importPath != apierrPackage {
+				continue
+			}
+
+			findings = append(findings, goFinding(
+				fileSet,
+				path,
+				spec.Path.Pos(),
+				"the business core must not import "+apierrPackage+
+					"; a failure decoded from a peer is an adapter-boundary representation and"+
+					" must never be raised by admission, the FSM or order processing, nor persisted,"+
+					" frozen, audited or hashed",
+			))
+		}
+	}
 
 	ast.Inspect(file, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
@@ -362,6 +386,37 @@ func lineAndColumn(source []byte, offset int) (int, int) {
 	lastNewline := bytes.LastIndex(source[:offset], []byte{'\n'})
 
 	return line, offset - lastNewline
+}
+
+// apierrPackage is the API boundary representation of a failure decoded from a
+// peer. It is legitimate at an adapter boundary and nowhere else.
+const apierrPackage = "github.com/formancehq/ledger/v3/internal/adapter/apierr"
+
+// isBusinessCorePath reports whether path belongs to the business core: the
+// packages that raise, freeze, audit and hash business failures.
+//
+// EN-1980: a decoded remote failure carries a reason and message belonging to
+// the *sending* build. The audit chain hashes an error's Error() string, so a
+// message that varies with a peer's version would break the chain; a frozen
+// idempotency outcome replays a reason that must stay enum-bound. Keeping the
+// boundary type out of these trees is a dependency rule, not a type-system
+// guarantee — this check is what enforces it. internal/domain is listed for
+// completeness: apierr imports it, so that direction is already a compile
+// error, and the rule states the intent rather than relying on the cycle.
+func isBusinessCorePath(path string) bool {
+	for _, prefix := range []string{
+		"internal/domain/",
+		"internal/application/admission/",
+		"internal/infra/state/",
+		"internal/infra/plan/",
+		"internal/infra/preload/",
+	} {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func isDeterministicFSMPath(path string) bool {
