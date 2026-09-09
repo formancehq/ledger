@@ -53,8 +53,8 @@ func queryPageSize() int {
 }
 
 // runAccountQuery issues a linearizable ListAccounts and checks the streamed
-// page against the model's ordered window (see validateAccountQuery). One-in-six
-// queries carry an index-backed filter to exercise the NotFound rejection path.
+// page against the model's ordered window (see validateAccountQuery). Filters
+// cover indexed and index-free reads plus missing-index and invalid-kind probes.
 func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	ledger := random.RandomChoice(c.ledgerNames)
 	filter := genAccountFilter(c.sampleAccountFieldSeeds(ledger))
@@ -166,7 +166,7 @@ func (c *Checker) sampleAccountFieldSeeds(ledger string) []fieldSeed {
 
 // runTransactionQuery issues a linearizable ListTransactions and checks the
 // streamed page against the model's ordered window (see validateTransactionQuery).
-// One-in-six queries carry an index-backed filter to exercise the NotFound path.
+// Filters cover indexed and index-free reads plus missing-index and invalid-kind probes.
 func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	ledger := random.RandomChoice(c.ledgerNames)
 	filter := genTransactionFilter(c.sampleTxFilterSeeds(ledger))
@@ -691,13 +691,11 @@ func oneIn(n int) bool {
 	return random.RandomChoice(choices) == 0
 }
 
-// genAccountFilter rolls a query filter for ListAccounts. One-in-six is an
-// index-backed metadata condition the driver never creates (the gated / NotFound
-// path); one-in-six is an account-by-asset filter whose outcome the index
-// lifecycle governs (see genAccountAssetFilter); ~1-in-16 is a transactions-only
-// condition invalid on this target (the InvalidArgument path); then one-in-four
-// is the no-filter universe (a nil top-level filter); the rest are index-free
-// address filters and boolean compositions.
+// genAccountFilter rolls a query filter for ListAccounts. The sequential rolls
+// try an undeclared-field probe (1/8), a kind-mismatch probe (1/12), has-asset
+// (1/6), a target-invalid condition (1/16), then the no-filter universe (1/4).
+// These odds are conditional on earlier rolls missing. The remaining choices
+// mix declared metadata filters with address leaves or use index-free filters.
 func genAccountFilter(seeds []fieldSeed) *commonpb.QueryFilter {
 	switch {
 	case oneIn(8):
@@ -806,12 +804,11 @@ func (c *Checker) sampleTxFilterSeeds(ledger string) txFilterSeeds {
 	return seeds
 }
 
-// genTransactionFilter rolls a query filter for ListTransactions. One-in-six is
-// an index-backed metadata condition (a never-built index — the NotFound path);
-// ~1-in-16 is an accounts-only condition invalid on this target (the
-// InvalidArgument path); then one-in-four is the no-filter universe; the rest
-// split between the index-backed tx-builtin grammar (reference / date leaves,
-// freely composed with index-free ones) and the pure index-free grammar.
+// genTransactionFilter rolls a query filter for ListTransactions. Sequential
+// rolls try an undeclared-field probe (1/8), a kind-mismatch probe (1/12), a
+// target-invalid condition (1/16), then the no-filter universe (1/4). These
+// odds are conditional on earlier rolls missing. The remaining choices split
+// between indexed metadata/tx-builtin filters and the index-free grammar.
 func genTransactionFilter(seeds txFilterSeeds) *commonpb.QueryFilter {
 	switch {
 	case oneIn(8):

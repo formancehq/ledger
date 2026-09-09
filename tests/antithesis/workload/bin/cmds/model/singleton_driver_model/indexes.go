@@ -11,6 +11,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -507,7 +508,10 @@ func rollIndexOp() bool {
 func generateIndexOp(g oracle.GlobalState, ledger string) *servicepb.Request {
 	if oneIn(16) {
 		return createIndexReq(ledger, indexes.MetadataID(
-			commonpb.TargetType_TARGET_TYPE_ACCOUNT, "undeclared-"+metaKey()))
+			random.RandomChoice([]commonpb.TargetType{
+				commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+				commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+			}), "undeclared-"+metaKey()))
 	}
 
 	ls := g.Ledger(ledger)
@@ -781,8 +785,9 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 		return
 	}
 
+	rejectedIndex := rejectedIndexLabel(err)
 	if c.matchesModel(maxTicket, "TXQUERY-IDX", func(cand oracle.GlobalState) bool {
-		return indexedQueryOutcomeLegal(cand.Ledger(ledger), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed, errKind, func(ls oracle.LedgerState) bool {
+		return indexedQueryOutcomeLegal(cand.Ledger(ledger), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
 			return txWindowMatches(ls, filter, afterID, pageSize, reverse, serverTxs)
 		})
 	}) {
@@ -916,6 +921,22 @@ func (c *Checker) describeCandidateVerdicts(maxTicket uint64, ledger string, tar
 	return fmt.Sprintf("%d bases, %d distinct: %s", n, len(parts), strings.Join(parts, " ; "))
 }
 
+// rejectedIndexLabel preserves the index identity carried by a documented
+// readiness refusal. The reason match prevents an unrelated detail from
+// granting the retype-window exception.
+func rejectedIndexLabel(err error) string {
+	if !isIndexNotFound(err) && !isIndexNotReady(err) {
+		return ""
+	}
+	for _, detail := range status.Convert(err).Details() {
+		if info, ok := detail.(*errdetails.ErrorInfo); ok &&
+			(info.GetReason() == "INDEX_NOT_FOUND" || info.GetReason() == "INDEX_BUILDING") {
+			return info.GetMetadata()["index"]
+		}
+	}
+	return ""
+}
+
 // metadataCanonical is the canonical IndexID of the per-(target, key) metadata
 // index serving Field conditions on the given query target.
 func metadataCanonical(target commonpb.QueryTarget, key string) string {
@@ -960,6 +981,7 @@ func indexedQueryOutcomeLegal(
 	filter *commonpb.QueryFilter,
 	needed map[string]struct{},
 	errKind indexedErrKind,
+	rejectedIndex string,
 	windowMatches func(oracle.LedgerState) bool,
 ) bool {
 	refs := windowedFieldRefs(ls, target, filter)
@@ -969,8 +991,16 @@ func indexedQueryOutcomeLegal(
 	// refuses the read (pin below the promoted version's activation
 	// sequence) instead of serving it — the same not-ready class a building
 	// index produces.
-	if errKind == indexedErrNotReady && len(refs) > 0 {
-		return true
+	// Attribute the refusal to the windowed index through the server's
+	// ErrorInfo metadata. A sibling index being active must still make its
+	// own refusal a finding, even when this filter also touches a retype.
+	if errKind == indexedErrNotReady {
+		targetName := commonpb.TargetHumanName(target)
+		for _, ref := range refs {
+			if rejectedIndex == fmt.Sprintf("metadata[%q] on %s", ref.key, targetName) {
+				return true
+			}
+		}
 	}
 
 	tt := commonpb.TargetType_TARGET_TYPE_ACCOUNT
@@ -1126,8 +1156,9 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 		return
 	}
 
+	rejectedIndex := rejectedIndexLabel(err)
 	if c.matchesModel(maxTicket, "AQUERY-IDX", func(cand oracle.GlobalState) bool {
-		return indexedQueryOutcomeLegal(cand.Ledger(ledger), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, errKind, func(ls oracle.LedgerState) bool {
+		return indexedQueryOutcomeLegal(cand.Ledger(ledger), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
 			want := accountWindow(ls, filter, cursor, pageSize, reverse)
 			if len(want) != len(serverAccts) {
 				return false
