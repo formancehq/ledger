@@ -63,15 +63,16 @@ func kindToGRPCCode(k domain.ErrorKind) codes.Code {
 
 // describableToGRPCStatus converts a Describable to a gRPC status with the
 // ErrorInfo detail clients pattern-match on. The Kind selects the status
-// code via the exhaustive switch above; the Reason and Metadata carry the
-// per-type wire contract.
+// code via the exhaustive switch above; the Reason and type-owned public
+// presentation carry the wire contract without exposing diagnostic context.
 func describableToGRPCStatus(d domain.Describable) *status.Status {
-	st := status.New(kindToGRPCCode(domain.Kind(d)), d.Error())
+	message, metadata, _ := domain.PublicErrorDetails(d)
+	st := status.New(kindToGRPCCode(domain.Kind(d)), message)
 
 	detailed, err := st.WithDetails(&errdetails.ErrorInfo{
 		Reason:   d.Reason(),
 		Domain:   errorDomain,
-		Metadata: d.Metadata(),
+		Metadata: metadata,
 	})
 	if err != nil {
 		return st

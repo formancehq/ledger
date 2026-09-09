@@ -272,21 +272,15 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		return fmt.Errorf("validating config: %w", err)
 	}
 
-	// Set default service name if not provided via flags
-	serviceName, _ := cmd.Flags().GetString(otlp.OtelServiceNameFlag)
-	if serviceName == "" {
-		// Set default service name based on node ID
-		defaultServiceName := fmt.Sprintf("ledger-node-%d", cfg.RaftConfig.NodeID)
-
-		err := cmd.Flags().Set(otlp.OtelServiceNameFlag, defaultServiceName)
-		if err != nil {
-			return fmt.Errorf("setting default service name: %w", err)
-		}
+	info := version.Get()
+	telemetryResource, err := resourceFromFlags(cmd, cfg.RaftConfig.NodeID, info)
+	if err != nil {
+		return fmt.Errorf("creating telemetry resource: %w", err)
 	}
 
 	logger, err := loggerFromFlags(cmd, map[string]any{
 		"node-id": cfg.RaftConfig.NodeID,
-	})
+	}, telemetryResource)
 	if err != nil {
 		return fmt.Errorf("creating logger: %w", err)
 	}
@@ -335,8 +329,6 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		appModule = bootstrap.Module()
 	}
 
-	info := version.Get()
-
 	// Auth (OIDC discovery + JWKS reads, bounded by OIDCDiscoveryTimeout) is built in
 	// bootstrap.buildAuthConfig; there is no auth fx module. The go-libs authnfx JWT
 	// module is intentionally not wired in: nothing in this service consumes its
@@ -350,7 +342,7 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		// Provide build metadata for version reporting
 		fx.Supply(info),
 		// Add OpenTelemetry modules from go-libs (using flags)
-		observefx.ResourceModuleFromFlags(cmd, otlp.WithServiceVersion(fmt.Sprintf("%s-%s", info.Version, info.Commit))),
+		fx.Supply(telemetryResource),
 		observefx.TracesModuleFromFlags(cmd),
 		// Decorates the trace.TracerProvider from TracesModule with a
 		// pyroscope.profile.id span attribute (see PyroscopeTracesModule doc

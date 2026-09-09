@@ -1,14 +1,18 @@
 package server
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
+	"go.opentelemetry.io/otel/sdk/resource"
 
 	otlp "github.com/formancehq/go-libs/v5/pkg/observe"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/service"
 
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/otlplogs"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
 )
 
 const (
@@ -29,7 +33,23 @@ func addOtlpLogsFlags(flags *flag.FlagSet) {
 	flags.String(LogLevelFlag, "", "Log level (error|info|debug|trace). Overrides --debug when set. Trace is stdout-only and never exported via OTLP.")
 }
 
-func loggerFromFlags(cmd *cobra.Command, defaultFields map[string]any) (logging.Logger, error) {
+// resourceFromFlags builds the resource shared by logs, traces, and metrics.
+// Keep go-libs' resource attribute precedence, including explicit overrides of
+// service.name and service.version through --otel-resource-attributes.
+func resourceFromFlags(cmd *cobra.Command, nodeID uint64, info version.Info) (*resource.Resource, error) {
+	serviceName, _ := cmd.Flags().GetString(otlp.OtelServiceNameFlag)
+	if serviceName == "" {
+		serviceName = fmt.Sprintf("ledger-node-%d", nodeID)
+		if err := cmd.Flags().Set(otlp.OtelServiceNameFlag, serviceName); err != nil {
+			return nil, fmt.Errorf("setting default service name: %w", err)
+		}
+	}
+	attributes, _ := cmd.Flags().GetStringSlice(otlp.OtelResourceAttributesFlag)
+
+	return otlp.BuildResource(serviceName, attributes, fmt.Sprintf("%s-%s", info.Version, info.Commit))
+}
+
+func loggerFromFlags(cmd *cobra.Command, defaultFields map[string]any, res *resource.Resource) (logging.Logger, error) {
 	exporter, _ := cmd.Flags().GetString(OtelLogsExporterFlag)
 	jsonFormatting, _ := cmd.Flags().GetBool(logging.JsonFormattingLoggerFlag)
 
@@ -40,6 +60,7 @@ func loggerFromFlags(cmd *cobra.Command, defaultFields map[string]any) (logging.
 
 	return otlplogs.Logger(otlplogs.ModuleConfig{
 		Exporter: exporter,
+		Resource: res,
 		OTLPConfig: func() *otlplogs.OTLPConfig {
 			if exporter != otlplogs.OTLPExporter {
 				return nil

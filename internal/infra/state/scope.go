@@ -56,7 +56,8 @@ func (*ErrCoverageMiss) Reason() string { return domain.ErrReasonCoverageMiss }
 //     AuditFailure.Context. The snake_case keys were already in the audit.
 //   - planInvariantDescribable returns the bare miss to applyProposal, which
 //     surfaces it as a domain.BusinessError whose Metadata() delegates through
-//     to the gRPC/HTTP ErrorInfo.
+//     to the miss. That metadata used to reach the gRPC ErrorInfo; API error
+//     responses now use PublicDetails while the audit identity stays intact.
 //
 // So operator tooling keyed on canonical_hex / id_hex / raft_index stops
 // matching at this deploy, and audit entries for this failure class carry
@@ -76,6 +77,13 @@ func (e *ErrCoverageMiss) Metadata() map[string]string {
 		"idHex":        e.IDHex,
 		"raftIndex":    strconv.FormatUint(e.RaftIndex, 10),
 	}
+}
+
+// PublicDetails hides cache keys and Raft position from API error responses.
+// Error() and Metadata() must retain their diagnostic values: both are copied
+// into the authoritative, hash-chained AuditFailure by buildAuditFailure.
+func (*ErrCoverageMiss) PublicDetails() (string, map[string]string, bool) {
+	return "preload coverage miss", nil, true
 }
 
 // gatedScope decorates an embedded *WriteSet (the raw engine) with the

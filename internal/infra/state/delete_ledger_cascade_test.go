@@ -99,6 +99,17 @@ func TestDeleteLedger_MissingBoundaryCoverageSurfacesCoverageMiss(t *testing.T) 
 	require.ErrorAs(t, result.Results[0].Error, &miss, "the gated boundary delete must surface *ErrCoverageMiss")
 	require.Equal(t, "boundaries", miss.Attribute)
 
+	// The real FSM result retains the diagnostic key for audit and operators,
+	// while its public presentation must not expose that key to the caller.
+	var described domain.Describable
+	require.ErrorAs(t, result.Results[0].Error, &described)
+	message, metadata, overridden := domain.PublicErrorDetails(described)
+	require.True(t, overridden)
+	require.Equal(t, "preload coverage miss", message)
+	require.Empty(t, metadata)
+	require.NotEmpty(t, miss.CanonicalHex)
+	require.NotEmpty(t, miss.Metadata()["canonicalHex"])
+
 	// The ledger row is untouched (the proposal was rejected as a unit).
 	info, _, err := fsm.Registry.Ledgers.GetKey(domain.LedgerKey{Name: ledgerName})
 	require.NoError(t, err)

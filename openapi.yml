@@ -3567,7 +3567,11 @@ components:
           description: Error code (present only on error)
         errorDescription:
           type: string
-          description: Error description (present only on error)
+          description: |
+            Client-facing error description (present only on error). Unknown
+            internal failures carry a generic message with a correlation ID;
+            internal index/coverage details are omitted. Machine-readable
+            error codes and the bulk response shape are preserved.
         data:
           description: |
             Operation result data. Shape depends on the originating action:
@@ -5438,7 +5442,10 @@ components:
           description: Error code identifier
         errorMessage:
           type: string
-          description: Human-readable error message
+          description: |
+            Human-readable, client-facing error message. INDEX_INCONSISTENT
+            and COVERAGE_MISS omit internal index, cache-key and Raft
+            details; other domain errors retain their documented diagnostics.
 
     AuditEntry:
       type: object

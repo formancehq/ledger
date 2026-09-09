@@ -7,8 +7,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	otlp "github.com/formancehq/go-libs/v5/pkg/observe"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/service"
+
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
 )
 
 // newCmdWithLogFlags returns a fresh cobra.Command with the --debug and
@@ -96,4 +99,52 @@ func TestResolveLogLevel(t *testing.T) {
 			assert.Equal(t, tc.wantLevel, got)
 		})
 	}
+}
+
+func TestResourceFromFlags(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name        string
+		serviceName string
+		attributes  string
+		wantName    string
+		wantVersion string
+	}{
+		{name: "node default and build metadata", wantName: "ledger-node-42", wantVersion: "v3.0.0-abc123"},
+		{name: "explicit service", serviceName: "ledger-production", wantName: "ledger-production", wantVersion: "v3.0.0-abc123"},
+		{name: "resource overrides", serviceName: "ledger-production", attributes: "service.name=override,service.version=override-build,deployment.environment=regression", wantName: "override", wantVersion: "override-build"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := &cobra.Command{}
+			otlp.AddFlags(cmd.Flags())
+			require.NoError(t, cmd.Flags().Set(otlp.OtelServiceNameFlag, test.serviceName))
+			if test.attributes != "" {
+				require.NoError(t, cmd.Flags().Set(otlp.OtelResourceAttributesFlag, test.attributes))
+			}
+			res, err := resourceFromFlags(cmd, 42, version.Info{Version: "v3.0.0", Commit: "abc123"})
+			require.NoError(t, err)
+			attributes := res.Set()
+			name, ok := attributes.Value("service.name")
+			require.True(t, ok)
+			require.Equal(t, test.wantName, name.AsString())
+			build, ok := attributes.Value("service.version")
+			require.True(t, ok)
+			require.Equal(t, test.wantVersion, build.AsString())
+			if test.attributes != "" {
+				environment, ok := attributes.Value("deployment.environment")
+				require.True(t, ok)
+				require.Equal(t, "regression", environment.AsString())
+			}
+		})
+	}
+}
+
+func TestResourceFromFlagsRejectsMalformedAttributes(t *testing.T) {
+	t.Parallel()
+	cmd := &cobra.Command{}
+	otlp.AddFlags(cmd.Flags())
+	require.NoError(t, cmd.Flags().Set(otlp.OtelResourceAttributesFlag, "missing-value"))
+	_, err := resourceFromFlags(cmd, 42, version.Info{})
+	require.ErrorContains(t, err, "malformed otlp attribute: missing-value")
 }

@@ -97,7 +97,9 @@ Three paths need correlated server-side diagnostics because the raw value can co
 
 1. **Panic recovery** (`jsonRecoverer`) — a panic in any handler.
 2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Describable` or a known sentinel.
-3. **`KindInternal` domain errors** — recognized internal failures whose existing status, reason, and response message contract is preserved.
+3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply public messages (`index is inconsistent` and `preload coverage miss`) that omit internal identifiers and storage details, including when wrapped. Other recognized error presentations are unchanged.
+
+Type-owned public details are selected through `domain.PublicErrorDetails` at the response boundary. Diagnostic `Error()` and `Metadata()` values remain unchanged, including the coverage failure context in the authoritative audit chain.
 
 Every path logs the raw cause **server-side** with a `correlation_id` field. When the request span is recording, the log also carries `trace_id` and `span_id`, and the span records both the correlation ID and the error. Panic spans additionally carry the panic value and stack. Unmapped errors and panics remain sanitized identically to the gRPC adapter, so the client receives only a generic body:
 
@@ -336,6 +338,15 @@ Content-Type: application/json
 
 **Query Parameters**:
 - `continueOnFailure=true`: When the request is accepted, keep processing subsequent elements after a per-element **business** failure (validation / not-found / conflict / precondition / permission) instead of aborting. Business failures surface as `errorCode` on each element and the overall status stays `200`. Request-level failures (malformed body, missing scope, oversized) and processing-time infra/retryable failures (`ErrNoLeader`, cache-horizon exceeded, `KindInternal`, `KindResourceExhausted`, `KindUnavailable`) still surface as non-2xx (`4xx`, `429`, `503`, `500`) regardless of this flag — see the `POST /v3/{ledgerName}/bulk` operation in `openapi.yml` for the full status matrix.
+
+Bulk internal failures are logged and stamped on the recording request span
+with a validated correlation ID, including sequential and atomic apply failures.
+Unknown errors expose only `internal server error (correlation ID: <id>)` in
+`errorDescription`; the existing `ERROR` code and bulk envelope stay unchanged.
+Typed internal failures keep their reason and use their type-owned public
+presentation when provided; actionable Numscript diagnostics remain visible.
+The `continueOnFailure` rollup and retry semantics are unaffected.
+
 - `atomic=true`: Execute atomically (all or nothing) - not yet supported
 
 ### Account Metadata
