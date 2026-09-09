@@ -10,11 +10,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func newTestStore(t *testing.T) *Store {
-	t.Helper()
-	s, err := New(t.TempDir(), logging.NopZap(), DefaultConfig())
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = s.Close() })
+// newTestStore opens a throwaway read store. It takes testing.TB so that
+// benchmarks in this package can share the fixture with the tests.
+func newTestStore(tb testing.TB) *Store {
+	tb.Helper()
+	s, err := New(tb.TempDir(), logging.NopZap(), DefaultConfig())
+	require.NoError(tb, err)
+	tb.Cleanup(func() { _ = s.Close() })
 
 	return s
 }
