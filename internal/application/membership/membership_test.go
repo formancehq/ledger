@@ -16,7 +16,7 @@ import (
 func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 	t.Parallel()
 
-	// node, raftTransport, servicePool intentionally nil — the
+	// node intentionally nil — the
 	// validation paths must reject before reaching them.
 	s := &Service{}
 
