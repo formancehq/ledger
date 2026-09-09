@@ -102,7 +102,7 @@ func (s *Server) serveBulk(w http.ResponseWriter, r *http.Request) {
 	results := s.runBulk(r.Context(), ledgerName, elements, opts)
 
 	// Write response
-	writeBulkResponse(w, elements, results, opts.continueOnFailure)
+	writeBulkResponse(w, r, elements, results, opts.continueOnFailure)
 }
 
 // bulkOptions contains options for bulk processing.
@@ -231,7 +231,7 @@ func (s *Server) runBulkSequential(ctx context.Context, requests []*servicepb.Re
 //
 // Any 5xx/429 status from infra/retryable/rate-limit errors always surfaces,
 // with `Retry-After: 1` on 503 to match handleError.
-func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement, results []bulkResult, continueOnFailure bool) {
+func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servicepb.BulkElement, results []bulkResult, continueOnFailure bool) {
 	worstBusiness := 0 // highest 4xx from a per-element business failure
 	worstInfra := 0    // highest ≥429 from a retryable/infra/rate-limit error
 	apiResults := make([]bulkAPIResult, len(results))
@@ -265,7 +265,7 @@ func writeBulkResponse(w http.ResponseWriter, elements []*servicepb.BulkElement,
 			apiResults[i] = bulkAPIResult{
 				ResponseType:     "ERROR",
 				ErrorCode:        bulkErrorCode(result.err),
-				ErrorDescription: result.err.Error(),
+				ErrorDescription: bulkErrorDescription(r, result.err),
 			}
 
 			continue
@@ -343,6 +343,26 @@ func perElementStatus(err error) int {
 
 	// Unknown error: 500. Can't be masked as 200 under continueOnFailure.
 	return http.StatusInternalServerError
+}
+
+// bulkErrorDescription applies the same diagnostics and public presentation as
+// single-request errors while preserving the bulk envelope, reasons and rollup.
+func bulkErrorDescription(r *http.Request, err error) string {
+	message := err.Error()
+	if perElementStatus(err) != http.StatusInternalServerError {
+		return message
+	}
+	id := correlationID(r)
+	recordHTTPInternalError(r, id, err)
+	if d, ok := errors.AsType[domain.Describable](err); ok {
+		if public, _, overridden := domain.PublicErrorDetails(d); overridden {
+			return public
+		}
+
+		return message
+	}
+
+	return fmt.Sprintf("internal server error (correlation ID: %s)", id)
 }
 
 // bulkErrorCode returns a machine-readable code for a per-element bulk failure.

@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,6 +16,20 @@ import (
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestWriteSetRejectsExhaustedLogSequenceWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	buf, _, _ := newTestBuffer(t)
+	buf.NextSequenceID = math.MaxUint64
+
+	for range 2 {
+		sequence, err := buf.IncrementNextSequenceID()
+		require.Zero(t, sequence)
+		require.Equal(t, "logSequence", err.Metadata()["counter"])
+		require.Equal(t, uint64(math.MaxUint64), buf.NextSequenceID)
+	}
+}
 
 // newTestBuffer creates a Machine and returns a WriteSet for testing accessor methods.
 // The returned *dal.Store is exposed so tests can open write sessions directly,
@@ -320,9 +335,22 @@ func TestWriteSetSequenceIDOperations(t *testing.T) {
 
 	// NextSequenceID
 	startSeqID := buf.GetNextSequenceID()
-	seqID := buf.IncrementNextSequenceID()
+	seqID, err := buf.IncrementNextSequenceID()
+	require.NoError(t, err)
 	require.Equal(t, startSeqID, seqID)
 	require.Equal(t, startSeqID+1, buf.GetNextSequenceID())
+}
+
+func TestWriteSetAllowsLastLogSequence(t *testing.T) {
+	t.Parallel()
+
+	buf, _, _ := newTestBuffer(t)
+	buf.NextSequenceID = math.MaxUint64 - 1
+
+	sequence, err := buf.IncrementNextSequenceID()
+	require.NoError(t, err)
+	require.Equal(t, uint64(math.MaxUint64-1), sequence)
+	require.Equal(t, uint64(math.MaxUint64), buf.NextSequenceID)
 }
 
 func TestWriteSetDateAndHash(t *testing.T) {
@@ -330,6 +358,7 @@ func TestWriteSetDateAndHash(t *testing.T) {
 	buf, _, _ := newTestBuffer(t)
 
 	require.Equal(t, uint64(1700000000), buf.GetDate().GetData())
+	require.Zero(t, buf.GetRaftIndex(), "a bare recovery scope has no committed Raft entry")
 }
 
 // TestWriteSetResetIsolation verifies that data written during proposal N is

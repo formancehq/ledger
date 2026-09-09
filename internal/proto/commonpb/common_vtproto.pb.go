@@ -1404,6 +1404,7 @@ func (m *CreatedQueryCheckpointLog) CloneVT() *CreatedQueryCheckpointLog {
 	r.CheckpointId = m.CheckpointId
 	r.MaxSequence = m.MaxSequence
 	r.CreatedAt = m.CreatedAt.CloneVT()
+	r.AppliedIndex = m.AppliedIndex
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -4341,7 +4342,6 @@ func (m *ReadOptions) CloneVT() *ReadOptions {
 	}
 	r := new(ReadOptions)
 	r.CheckpointId = m.CheckpointId
-	r.MinLogSequence = m.MinLogSequence
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6637,6 +6637,9 @@ func (this *CreatedQueryCheckpointLog) EqualVT(that *CreatedQueryCheckpointLog) 
 		return false
 	}
 	if !this.CreatedAt.EqualVT(that.CreatedAt) {
+		return false
+	}
+	if this.AppliedIndex != that.AppliedIndex {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -11693,9 +11696,6 @@ func (this *ReadOptions) EqualVT(that *ReadOptions) bool {
 	if this.CheckpointId != that.CheckpointId {
 		return false
 	}
-	if this.MinLogSequence != that.MinLogSequence {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -15225,6 +15225,12 @@ func (m *CreatedQueryCheckpointLog) MarshalToSizedBufferVT(dAtA []byte) (int, er
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.AppliedIndex != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.AppliedIndex))
+		i--
+		dAtA[i] = 0x21
 	}
 	if m.CreatedAt != nil {
 		size, err := m.CreatedAt.MarshalToSizedBufferVT(dAtA[:i])
@@ -22309,12 +22315,6 @@ func (m *ReadOptions) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.MinLogSequence != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MinLogSequence))
-		i--
-		dAtA[i] = 0x11
-	}
 	if m.CheckpointId != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CheckpointId))
@@ -23892,6 +23892,9 @@ func (m *CreatedQueryCheckpointLog) SizeVT() (n int) {
 	if m.CreatedAt != nil {
 		l = m.CreatedAt.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.AppliedIndex != 0 {
+		n += 9
 	}
 	n += len(m.unknownFields)
 	return n
@@ -26969,9 +26972,6 @@ func (m *ReadOptions) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.CheckpointId != 0 {
-		n += 9
-	}
-	if m.MinLogSequence != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
@@ -35419,6 +35419,16 @@ func (m *CreatedQueryCheckpointLog) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AppliedIndex", wireType)
+			}
+			m.AppliedIndex = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AppliedIndex = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -51562,16 +51572,6 @@ func (m *ReadOptions) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 2:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MinLogSequence", wireType)
-			}
-			m.MinLogSequence = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.MinLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex

@@ -96,15 +96,15 @@ func TestLedgerLogRangeIterator_SeekContractAndNoWrapAfterMax(t *testing.T) {
 		require.NoError(t, err)
 		defer it.Close()
 
-		require.False(t, it.SeekGE(txIDBytes(7)), "no entity >= 7 within [1,10)")
-		require.False(t, it.SeekGE(txIDBytes(8)), "covered by the floor")
+		require.False(t, it.Seek(txIDBytes(7)), "no entity >= 7 within [1,10)")
+		require.False(t, it.Seek(txIDBytes(8)), "covered by the floor")
 
-		require.True(t, it.SeekGE(txIDBytes(4)), "backward seek repositions")
+		require.True(t, it.Seek(txIDBytes(4)), "backward seek repositions")
 		require.Equal(t, uint64(5), binary.BigEndian.Uint64(it.Current()))
 		require.False(t, it.Next())
 		require.NoError(t, it.Err())
 
-		require.True(t, it.SeekGE(txIDBytes(3)), "reposition after exhaustion")
+		require.True(t, it.Seek(txIDBytes(3)), "reposition after exhaustion")
 		require.Equal(t, uint64(3), binary.BigEndian.Uint64(it.Current()))
 	})
 
@@ -113,7 +113,7 @@ func TestLedgerLogRangeIterator_SeekContractAndNoWrapAfterMax(t *testing.T) {
 		require.NoError(t, err)
 		defer it.Close()
 
-		require.True(t, it.SeekGE(txIDBytes(5)))
+		require.True(t, it.Seek(txIDBytes(5)))
 		require.Equal(t, uint64(5), binary.BigEndian.Uint64(it.Current()))
 		require.True(t, it.Next())
 		require.Equal(t, uint64(math.MaxUint64), binary.BigEndian.Uint64(it.Current()))
@@ -121,7 +121,7 @@ func TestLedgerLogRangeIterator_SeekContractAndNoWrapAfterMax(t *testing.T) {
 		require.False(t, it.Next())
 		require.NoError(t, it.Err())
 
-		require.True(t, it.SeekGE(txIDBytes(4)), "re-seek after exhaustion past the maximum")
+		require.True(t, it.Seek(txIDBytes(4)), "re-seek after exhaustion past the maximum")
 		require.Equal(t, uint64(5), binary.BigEndian.Uint64(it.Current()))
 	})
 }

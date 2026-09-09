@@ -53,7 +53,7 @@ import (
 //     serialisation — but on a stream it also absorbs consumer back-pressure.
 //
 // BarrierDuration is excluded from both because it is a wait the caller opted
-// into (Raft ReadIndex quorum, ReadOptions.min_log_sequence catch-up), not work.
+// into the Raft ReadIndex quorum wait, not work.
 //
 // DeliverDuration is excluded from ServerDuration because on a server stream it
 // contains consumer back-pressure: folding it in would make the headline total
@@ -84,10 +84,11 @@ type QueryProfile struct {
 	// are subtracted out.
 	ExecuteDuration time.Duration
 	// BarrierDuration is time blocked on caller-requested read-consistency waits,
-	// LOCAL to this node: the min_log_sequence catch-up and the Raft ReadIndex
-	// quorum. Excluded from ServerDuration. Every local wait counts, including
-	// one that fails or is superseded — a syncing follower burns a quorum wait
-	// before falling back to the leader and reports it here, with Forwarded true.
+	// LOCAL to this node: the Raft ReadIndex quorum. Excluded from
+	// ServerDuration. Every local wait counts, including one that fails or is
+	// superseded — a follower that is syncing or loses its leader mid-quorum
+	// burns a local wait before falling back to the leader and reports it here,
+	// with Forwarded true.
 	BarrierDuration time.Duration
 	// DeliverDuration is time spent serialising result rows and handing them to
 	// the transport. Excluded from ServerDuration. On a gRPC server stream it is
@@ -103,17 +104,15 @@ type QueryProfile struct {
 	// ServerDuration is the consumer-independent server cost. Computed by
 	// Finish; zero until then.
 	ServerDuration time.Duration
-	// Forwarded is true when the read was routed to another node (an explicit
-	// leader read, or the syncing-follower fallback). The remote node runs its
-	// own barrier and execution, and that whole cost lands in this profile's
-	// ExecuteDuration.
+	// Forwarded is true when a follower routed the read to the leader because it
+	// was syncing or its pending ReadIndex was invalidated by a leader change. The
+	// remote node runs its own barrier and execution, and that whole cost lands in
+	// this profile's ExecuteDuration.
 	//
-	// Forwarded does NOT imply BarrierDuration == 0, and a non-zero value does
-	// not identify which wait occurred. Two paths produce one: the
-	// syncing-follower fallback attempts a ReadIndex barrier before forwarding,
-	// and waitMinLogSequence charges its catch-up regardless of consistency
-	// level, so an explicit leader read with min_log_sequence set reports a wait
-	// on a healthy cluster. The flag's job is narrower: stop a zero from being
+	// Forwarded does NOT imply BarrierDuration == 0. A non-zero value records a
+	// failed local barrier attempt before fallback: either the syncing precheck or
+	// a pending ReadIndex invalidated by a leadership change. It does not identify
+	// which trigger occurred. The flag's job is narrower: stop a zero from being
 	// misread as "no barrier was needed".
 	Forwarded bool
 	// Anomaly is non-empty when the phase bookkeeping detected a state that is
@@ -149,7 +148,7 @@ type IteratorStats struct {
 	NextCalls int64
 	SeekCalls int64
 	// Duration is inclusive: it covers time spent in children because a parent's
-	// Next/SeekGE calls the child's Next/SeekGE while the timer is running.
+	// Next/Seek calls the child's Next/Seek while the timer is running.
 	// Self-time can be derived at render as Duration - Σ Children.Duration.
 	Duration time.Duration
 	// ItemsEmitted counts Next() invocations that returned true.
@@ -220,7 +219,7 @@ func (p *QueryProfile) EnterExecute() {
 
 	if !p.executeEntered {
 		p.executeEntered = true
-		// Barrier waits before the executor (min_log_sequence, ReadIndex) are
+		// Barrier waits before the executor (ReadIndex) are
 		// caller-requested waiting, not preparation work.
 		p.PrepareDuration = p.clampPhase("prepare", time.Since(p.requestStart)-p.BarrierDuration)
 	}
@@ -242,8 +241,7 @@ func (p *QueryProfile) LeaveExecute() {
 }
 
 // AddBarrierWait records time blocked on a caller-requested read-consistency
-// barrier: the Raft ReadIndex quorum round-trip or the min_log_sequence
-// read-index catch-up. Nil-safe.
+// barrier: the Raft ReadIndex quorum round-trip. Nil-safe.
 func (p *QueryProfile) AddBarrierWait(d time.Duration) {
 	if p == nil {
 		return
@@ -491,8 +489,7 @@ func (p *QueryProfile) LogTo(logger logging.Logger) {
 			"wallDurationUs":       p.WallDuration().Microseconds(),
 			// True means the read was served by another node, so the remote node's
 			// whole cost sits inside executeDurationUs. barrierDurationUs then
-			// covers the local attempt only: 0 for an explicit leader read, non-zero
-			// when a local barrier failed before the fallback.
+			// covers the local attempt that failed before the follower fallback.
 			"forwarded": p.Forwarded,
 		}
 		if p.Root != nil {

@@ -19,6 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 )
 
@@ -50,6 +51,7 @@ func NewGRPCClient(grpcPort int) (servicepb.BucketServiceClient, clusterpb.Clust
 // NewGRPCClientWithRetry creates a new gRPC client with optional retry policy.
 func NewGRPCClientWithRetry(grpcPort int, withRetry bool, extraDialOptions ...grpc.DialOption) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
 	opts := []grpc.DialOption{
+		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	}
 

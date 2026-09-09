@@ -41,17 +41,26 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 		return nil, &domain.ErrLedgerInMirrorMode{Name: ledger}
 	}
 
-	// Mutate() once at the boundary so sub-processors keep receiving
-	// *LedgerInfo via the per-apply context. The clone cost is bounded
-	// (one CloneVT per apply).
-	var ledgerInfo *commonpb.LedgerInfo
-	if infoOk {
-		ledgerInfo = ledgerInfoReader.Mutate()
-	}
+	// Stage the ledger reader on the per-apply context unconditionally: a
+	// missing ledger (ErrNotFound with boundaries still available) must leave
+	// ctx.LedgerInfo nil — the Accessor returns a zero reader on ErrNotFound —
+	// rather than carrying a prior order's value into child handlers. Read-only
+	// child handlers consume the reader directly; only configuration-mutating
+	// handlers call Mutate() to acquire an owned clone. No CloneVT runs here,
+	// so a read-only order performs zero ledger clones.
+	ctx.LedgerInfo = ledgerInfoReader
 
 	// Stage per-apply context fields for child handlers.
 	ctx.Boundaries = boundaries
-	ctx.LedgerInfo = ledgerInfo
+
+	// Every successful ledger-scoped apply emits one per-ledger log. Check the
+	// next-ID transition before dispatch so exhaustion rejects without leaving
+	// any staged child-handler mutation behind (EN-1860).
+	nextLogID := boundaries.GetNextLogId()
+	advancedLogID, exhausted := domain.CheckedNextSequence(nextLogID, domain.SequenceCounterLedgerLogID)
+	if exhausted != nil {
+		return nil, exhausted
+	}
 
 	var (
 		logPayload *commonpb.LedgerLogPayload
@@ -89,8 +98,7 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 		return nil, err
 	}
 
-	nextLogID := boundaries.GetNextLogId()
-	boundaries.NextLogId = nextLogID + 1
+	boundaries.NextLogId = advancedLogID
 
 	s.Boundaries().Put(domain.LedgerKey{Name: ledger}, boundaries)
 

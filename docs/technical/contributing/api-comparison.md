@@ -10,6 +10,24 @@ This document compares the POC's API with the original Formance ledger API and d
 
 ## Summary
 
+### Service protocol compatibility (EN-1851)
+
+The v3 gRPC service requires one `ledger-protocol-version` metadata value per
+business RPC, equal to `pkg/grpcprotocol.Version` (currently `"4"`). Missing,
+invalid, duplicate, or different revisions fail with `FailedPrecondition` before
+business handler execution. This applies to unary and streaming Bucket, Cluster,
+and Restore operations, including internal forwarding. Discovery, gRPC health,
+and reflection remain available without this declaration. This is independent
+of release SemVer and commits; there is no legacy negotiation or bypass.
+
+Discovery's `ServerInfo.protocol_version` and the flat JSON response from
+`GET /_info` (`protocolVersion`) expose the server revision. HTTP callers do not
+need gRPC metadata. The gate does not version the HTTP API or Raft/storage
+formats. See [the service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
+for client setup, restore behavior, failure limitations, and revision changes.
+
+### Feature comparison
+
 | Feature | POC | Original | Notes |
 |---------|-----|----------|-------|
 | **Transactions (Write)** |
@@ -583,8 +601,8 @@ by a cluster-wide flag.
   `pending_version == 0`; a RETYPE is complete once `current_version`
   has advanced past its pre-retype value (per-replica numbers are
   allocated from a local high-water mark and are not comparable to
-  `forward_encoding_version`). `min_log_sequence` (below) enforces
-  log-application ordering.
+  `forward_encoding_version`). Projection catch-up is automatic on
+  indexed reads and is distinct from readiness.
 - `SetMetadataFieldType` (retype) bumps the cluster-wide
   `Index.forward_encoding_version`. Each replica then runs a local
   rewrite into the new versioned keyspace (`pending_version`), with
@@ -593,20 +611,15 @@ by a cluster-wide flag.
   switches. Queries served from the replica's `current_version` stay
   consistent throughout — no half-rewritten state is ever observable.
 
-**Client synchronization:** Use `ReadOptions.min_log_sequence` to
-require the read replica to have applied at least the given log
-sequence. The gate is satisfied by `LastIndexedSequence >=
-min_log_sequence` — it pins **log application** on this replica,
-not rewrite completion. After a `SetMetadataFieldType` apply,
-setting `min_log_sequence` to the retype's log sequence (returned
-in `ApplyResponse.logs[].sequence`) guarantees:
+**Client synchronization:** EN-1946 removed the unreleased v3
+`ReadOptions.min_log_sequence` surface. A linearizable indexed read now
+captures Raft `ReadIndex` result `R`, opens its main snapshot at durable applied
+index `H >= R`, and waits for only the projection it uses to certify `H`. A
+`stale` read skips `R` but still aligns used projections to its fixed local `H`.
+Native log/audit cursors remain internal fold and trimming state.
 
-  - the retype log has been processed locally,
-  - `pending_version` has been bumped, and
-  - the local schema-rewrite has been *scheduled*.
-
-It does **not** guarantee that the rewrite has completed or that
-the replica is serving the new encoding. The atomic switch
+That Raft certificate does **not** guarantee that a schema rewrite has
+completed or that the replica is serving the new encoding. The atomic switch
 (`current_version ← pending_version`) is a separate per-replica
 background event, gated internally on the read store catching up to
 the FSM seq the rewrite observed. Queries against the replica
@@ -817,7 +830,7 @@ Note that `POST /v3/{ledgerName}/bulk` shares this classifier but can only expre
 
 ### gRPC Error Mapping
 
-Business errors from the processing layer are mapped to gRPC status codes with structured `ErrorInfo` details via the `Describable` contract in `internal/domain`. This allows clients to programmatically identify error types without parsing error messages. See `internal/domain/errors.go` for the canonical list — the `Reason()` method on each typed error returns the constant below, and `Metadata()` returns the keys listed.
+Business errors from the processing layer are mapped to gRPC status codes with structured `ErrorInfo` details via the `Describable` contract in `internal/domain`. This allows clients to programmatically identify error types without parsing error messages. See `internal/domain/errors.go` for the canonical list — the `Reason()` method on each typed error returns the constant below, and `Metadata()` supplies the diagnostic context. The optional `domain.PublicErrorDetails` presentation supplies the public message and metadata for types whose diagnostic values are not safe to expose; the keys listed below describe the public response.
 
 Each error response includes a `google.rpc.ErrorInfo` detail with:
 - **`reason`**: Machine-readable error reason constant (e.g., `LEDGER_ALREADY_EXISTS`)
@@ -858,6 +871,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Raft node already absent during removal | `NOT_FOUND` | `RAFT_NODE_NOT_IN_CLUSTER` | *(none)* |
 | Raft node removal committed; durable FSM apply still pending | `UNAVAILABLE` | `RAFT_NODE_REMOVAL_COMMITTED` | `nodeId`, `committedIndex` |
 | Writes blocked — disk full | `RESOURCE_EXHAUSTED` | `WRITES_BLOCKED_DISK_FULL` | *(none)* |
+| Authoritative sequence exhausted | `RESOURCE_EXHAUSTED` | `SEQUENCE_EXHAUSTED` | `counter` (`transactionId`, `ledgerLogId`, `logSequence`, `auditSequence`, or `mirrorV2LogId`) |
 | Writes blocked — clock skew | `UNAVAILABLE` | `WRITES_BLOCKED_CLOCK_SKEW` | *(none)* |
 | Metadata not found | `NOT_FOUND` | `METADATA_NOT_FOUND` | `target`, `key` |
 | Metadata field not in schema | `FAILED_PRECONDITION` | `METADATA_FIELD_NOT_IN_SCHEMA` | `target`, `key` |
@@ -867,7 +881,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Filter compilation error | `INVALID_ARGUMENT` | `FILTER_COMPILATION_ERROR` | `detail` |
 | Index not found | `FAILED_PRECONDITION` | `INDEX_NOT_FOUND` | `index` |
 | Index building | `FAILED_PRECONDITION` | `INDEX_BUILDING` | `index` |
-| Index inconsistent | `INTERNAL` | `INDEX_INCONSISTENT` | `index`, `detail` |
+| Index inconsistent | `INTERNAL` | `INDEX_INCONSISTENT` | *(none — internal index/storage details remain server-side)* |
 | Account not matching type | `FAILED_PRECONDITION` | `ACCOUNT_NOT_MATCHING_TYPE` | `address` |
 | Account type not found | `NOT_FOUND` | `ACCOUNT_TYPE_NOT_FOUND` | `name` |
 | Account type already exists | `ALREADY_EXISTS` | `ACCOUNT_TYPE_ALREADY_EXISTS` | `name` |
@@ -881,7 +895,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Invalid order type (protocol mismatch) | `INTERNAL` | `INVALID_ORDER_TYPE` | `typeName` |
 | Invalid apply type (protocol mismatch) | `INTERNAL` | `INVALID_APPLY_TYPE` | `typeName` |
 | Storage operation failed | `INTERNAL` | `STORAGE_OPERATION_FAILED` | `operation` |
-| Preload coverage miss (admission contract violation) | `INTERNAL` | `COVERAGE_MISS` | `attribute`, `canonicalHex`, `idHex`, `raftIndex` |
+| Preload coverage miss (admission contract violation) | `INTERNAL` | `COVERAGE_MISS` | *(none — coverage context remains in diagnostics and audit)* |
 | Checkpoint ID required | `INVALID_ARGUMENT` | `CHECKPOINT_ID_REQUIRED` | *(none)* |
 
 ### REST/HTTP Error Mapping

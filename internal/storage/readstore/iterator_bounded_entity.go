@@ -1,6 +1,8 @@
 package readstore
 
 import (
+	"fmt"
+
 	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -20,13 +22,25 @@ type BoundedEntityIterator struct {
 	started   bool
 	exhausted bool
 	floor     seekFloor
+	err       error
 }
 
 // NewBoundedEntityIterator scans unique fixed-width entity suffixes in the
 // half-open [lower, upper) range. The prefix contains every byte before the
 // entity, so its length determines the extraction offset. Nil bounds are open;
 // an open upper bound uses the prefix successor to include the maximum entity.
+// entityLen must be positive; non-nil bounds must have exactly that width.
 func NewBoundedEntityIterator(reader dal.PebbleReader, prefix, lower, upper []byte, entityLen int) (*BoundedEntityIterator, error) {
+	if entityLen <= 0 {
+		return nil, fmt.Errorf("invariant: BoundedEntityIterator entityLen must be positive, got %d", entityLen)
+	}
+	if lower != nil && len(lower) != entityLen {
+		return nil, fmt.Errorf("invariant: BoundedEntityIterator lower bound length %d, want %d", len(lower), entityLen)
+	}
+	if upper != nil && len(upper) != entityLen {
+		return nil, fmt.Errorf("invariant: BoundedEntityIterator upper bound length %d, want %d", len(upper), entityLen)
+	}
+
 	lowerBound := make([]byte, len(prefix)+len(lower))
 	copy(lowerBound, prefix)
 	copy(lowerBound[len(prefix):], lower)
@@ -58,41 +72,33 @@ func NewBoundedEntityIterator(reader dal.PebbleReader, prefix, lower, upper []by
 }
 
 func (it *BoundedEntityIterator) Next() bool {
-	if it.exhausted {
+	if it.err != nil || it.exhausted {
+		return false
+	}
+	var valid bool
+	if !it.started {
+		it.started = true
+		valid = it.iter.SeekGE(it.lowerBound)
+	} else {
+		valid = it.iter.Next()
+	}
+	if !valid {
+		it.exhausted = true
+
 		return false
 	}
 
-	if !it.started {
-		it.started = true
-		if !it.iter.SeekGE(it.lowerBound) {
-			it.exhausted = true
-
-			return false
-		}
-
-		if entity := it.extractEntity(it.iter.Key()); entity != nil {
-			it.current = copyBytes(entity)
-
-			return true
-		}
-	}
-
-	for it.iter.Next() {
-		if entity := it.extractEntity(it.iter.Key()); entity != nil {
-			it.current = copyBytes(entity)
-
-			return true
-		}
-	}
-
-	it.exhausted = true
-
-	return false
+	return it.readCurrent()
 }
+
+func (*BoundedEntityIterator) Direction() (d Asc) { return }
 
 func (it *BoundedEntityIterator) Current() []byte { return it.current }
 
-func (it *BoundedEntityIterator) SeekGE(target []byte) bool {
+func (it *BoundedEntityIterator) Seek(target []byte) bool {
+	if it.err != nil {
+		return false
+	}
 	// A prior failed seek at or below target proves this one empty too.
 	if it.floor.covers(target) {
 		it.exhausted = true
@@ -116,20 +122,13 @@ func (it *BoundedEntityIterator) SeekGE(target []byte) bool {
 		return false
 	}
 
-	entity := it.extractEntity(it.iter.Key())
-	if entity != nil && compareEntities(entity, target) >= 0 {
-		it.current = copyBytes(entity)
-
-		return true
-	}
-
-	it.exhausted = true
-	it.floor.fail(target, it.iter.Error())
-
-	return false
+	return it.readCurrent()
 }
 
 func (it *BoundedEntityIterator) Err() error {
+	if it.err != nil {
+		return it.err
+	}
 	if it.iter == nil {
 		return nil
 	}
@@ -143,10 +142,21 @@ func (it *BoundedEntityIterator) Close() {
 	}
 }
 
-func (it *BoundedEntityIterator) extractEntity(key []byte) []byte {
-	if len(key) < it.idOffset+it.entityLen {
-		return nil
-	}
+// readCurrent enforces the unique fixed-width suffix contract before emission.
+// A malformed row poisons the iterator; it cannot prove clean exhaustion or be
+// skipped in favor of a plausible but incomplete result.
+func (it *BoundedEntityIterator) readCurrent() bool {
+	key := it.iter.Key()
+	suffixLen := len(key) - it.idOffset
+	if suffixLen != it.entityLen {
+		it.err = fmt.Errorf("invariant: BoundedEntityIterator key suffix length %d, want %d", suffixLen, it.entityLen)
+		it.current = nil
+		it.exhausted = true
+		it.floor = seekFloor{}
 
-	return key[it.idOffset : it.idOffset+it.entityLen]
+		return false
+	}
+	it.current = copyBytes(key[it.idOffset:])
+
+	return true
 }

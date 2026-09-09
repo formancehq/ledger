@@ -4217,6 +4217,7 @@ type CreatedQueryCheckpointLogReader interface {
 	GetCheckpointId() uint64
 	GetMaxSequence() uint64
 	GetCreatedAt() TimestampReader
+	GetAppliedIndex() uint64
 	Mutate() *CreatedQueryCheckpointLog
 }
 
@@ -4236,6 +4237,10 @@ func (r *createdQueryCheckpointLogReadonly) GetCreatedAt() TimestampReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *createdQueryCheckpointLogReadonly) GetAppliedIndex() uint64 {
+	return (*CreatedQueryCheckpointLog)(r).GetAppliedIndex()
 }
 
 func (r *createdQueryCheckpointLogReadonly) Mutate() *CreatedQueryCheckpointLog {
@@ -12215,7 +12220,6 @@ func NewBackupStorageListReader(s []*BackupStorage) BackupStorageListReader {
 // Call Mutate() to obtain a mutable clone.
 type ReadOptionsReader interface {
 	GetCheckpointId() uint64
-	GetMinLogSequence() uint64
 	Mutate() *ReadOptions
 }
 
@@ -12223,10 +12227,6 @@ type readOptionsReadonly ReadOptions
 
 func (r *readOptionsReadonly) GetCheckpointId() uint64 {
 	return (*ReadOptions)(r).GetCheckpointId()
-}
-
-func (r *readOptionsReadonly) GetMinLogSequence() uint64 {
-	return (*ReadOptions)(r).GetMinLogSequence()
 }
 
 func (r *readOptionsReadonly) Mutate() *ReadOptions {

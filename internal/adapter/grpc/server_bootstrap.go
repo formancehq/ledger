@@ -92,7 +92,7 @@ func (impl *ClusterBootstrapServiceServerImpl) GetPeers(ctx context.Context, req
 	if !impl.node.IsLeader() {
 		conn, err := impl.leaderRaftConn()
 		if err != nil {
-			return nil, convertToGRPCError(err, impl.logger)
+			return nil, convertToGRPCErrorWithContext(ctx, err, impl.logger)
 		}
 
 		outCtx := ctx
@@ -105,7 +105,7 @@ func (impl *ClusterBootstrapServiceServerImpl) GetPeers(ctx context.Context, req
 
 	peers, err := impl.membership.ListPeers(ctx)
 	if err != nil {
-		return nil, convertToGRPCError(err, impl.logger)
+		return nil, convertToGRPCErrorWithContext(ctx, err, impl.logger)
 	}
 
 	out := make([]*clusterbootstrappb.PeerInfo, 0, len(peers))
@@ -150,7 +150,7 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 			// map commonpb.ErrNoLeader to codes.Unavailable here so
 			// tryAddLearner treats it as transient and tries the
 			// next peer instead of failing fatally.
-			return nil, convertToGRPCError(err, impl.logger)
+			return nil, convertToGRPCErrorWithContext(ctx, err, impl.logger)
 		}
 
 		impl.logger.Infof("JoinAsLearner: forwarding to leader")
@@ -263,7 +263,7 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 		// Notably:
 		//   - ErrNotLeader / ErrProposalDropped / ErrNoLeader → Unavailable
 		//     (retried by the client)
-		return nil, convertToGRPCError(err, impl.logger)
+		return nil, convertToGRPCErrorWithContext(ctx, err, impl.logger)
 	}
 
 	return &clusterbootstrappb.JoinAsLearnerResponse{}, nil

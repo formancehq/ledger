@@ -20,6 +20,40 @@ func ValidatePattern(pattern string) error {
 // ValidateSegmentTypes checks that segment_types references valid variable names
 // from the pattern and applies the constraint to each segment.
 func ValidateSegmentTypes(segments []PatternSegment, segTypes map[string]*commonpb.SegmentType) error {
+	return applySegmentTypes(segments, slices.Sorted(maps.Keys(segTypes)), func(name string) any {
+		return segTypes[name].GetConstraint()
+	})
+}
+
+// validateSegmentTypesReader is the read-only twin of ValidateSegmentTypes:
+// it consumes the immutable segment-types map reader so compiled account
+// types never alias the cached ledger configuration.
+func validateSegmentTypesReader(segments []PatternSegment, segTypes commonpb.AccountType_SegmentTypesMapReader) error {
+	names := make([]string, 0, segTypes.Len())
+	segTypes.Range(func(name string, _ commonpb.SegmentTypeReader) bool {
+		names = append(names, name)
+
+		return true
+	})
+
+	slices.Sort(names)
+
+	return applySegmentTypes(segments, names, func(name string) any {
+		st, _ := segTypes.Get(name)
+		if st == nil {
+			return nil
+		}
+
+		return st.GetConstraint()
+	})
+}
+
+// applySegmentTypes validates declared segment types against the pattern's
+// variable names and installs the corresponding per-segment matchers.
+// Iteration order is caller-provided (sorted) so error selection is
+// deterministic across replicas (invariant #2). get returns the constraint
+// for a declared variable name, or nil when the stored type carries none.
+func applySegmentTypes(segments []PatternSegment, names []string, get func(name string) any) error {
 	vars := make(map[string]int, len(segments))
 
 	for i := range segments {
@@ -28,20 +62,13 @@ func ValidateSegmentTypes(segments []PatternSegment, segTypes map[string]*common
 		}
 	}
 
-	// Iterate names in sorted order so the first validation error reported is
-	// identical on every replica: this runs on the FSM apply path (via
-	// processAddAccountType / processCreateLedger) and its error is chain-bound
-	// through ErrInvalidPattern → AuditFailure, so a raw map range could select
-	// a different offending segment per node (invariant #2). See EN-1521. The
-	// matcher assignments below are per-index and order-independent.
-	for _, name := range slices.Sorted(maps.Keys(segTypes)) {
-		st := segTypes[name]
+	for _, name := range names {
 		idx, ok := vars[name]
 		if !ok {
 			return fmt.Errorf("segment_types references unknown variable %q", name)
 		}
 
-		matcher, err := buildMatcher(st)
+		matcher, err := buildMatcher(get(name))
 		if err != nil {
 			return fmt.Errorf("segment_types variable %q: %w", name, err)
 		}
@@ -54,12 +81,12 @@ func ValidateSegmentTypes(segments []PatternSegment, segTypes map[string]*common
 	return nil
 }
 
-func buildMatcher(st *commonpb.SegmentType) (SegmentMatcher, error) {
-	if st == nil {
+func buildMatcher(constraint any) (SegmentMatcher, error) {
+	if constraint == nil {
 		return nil, nil
 	}
 
-	switch c := st.GetConstraint().(type) {
+	switch c := constraint.(type) {
 	case *commonpb.SegmentType_Regex:
 		compiled, err := regexp.Compile("^(?:" + c.Regex + ")$")
 		if err != nil {

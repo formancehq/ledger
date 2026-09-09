@@ -217,7 +217,7 @@ func TestValidateListOptions(t *testing.T) {
 		err := ValidateListOptions(&commonpb.ListOptions{
 			Filter:  &commonpb.QueryFilter{},
 			Reverse: true,
-			Read:    &commonpb.ReadOptions{CheckpointId: 42, MinLogSequence: 99},
+			Read:    &commonpb.ReadOptions{CheckpointId: 42},
 		}, full)
 		require.NoError(t, err)
 	})

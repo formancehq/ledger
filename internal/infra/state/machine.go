@@ -1093,6 +1093,20 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return nil, fmt.Errorf("checkpoint trigger order not last in proposal id=%d at raft index %d", proposal.GetId(), raftIndex)
 	}
 
+	// Once the audit sequence is exhausted there is no key under which a fresh
+	// success or failure can be recorded. Stop every proposal carrying orders
+	// before preload, HLC, technical updates, or order processing can mutate
+	// state. This terminal cluster state also rejects an idempotency replay: its
+	// replay classification happens after preload and technical updates, which
+	// are deliberately kept beyond this no-mutation guard. MaxUint64 itself is
+	// not allocatable because persisting it would make the next sequence wrap to
+	// zero (EN-1860).
+	if len(proposal.GetOrders()) > 0 {
+		if _, exhausted := domain.CheckedNextSequence(fsm.State.NextAuditSequenceID, domain.SequenceCounterAudit); exhausted != nil {
+			return nil, exhausted
+		}
+	}
+
 	// Build the result up-front so every business-error branch below can
 	// stash its rejection on the same ApplyResult — including the per-order
 	// rejections (e.g. ErrBackupInProgress) that applyTechnicalUpdates
@@ -1386,7 +1400,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		// AppendAuditEntry validates that the peeked sequence matches
 		// the actual next one (no concurrent mutation) and advances
 		// LastAuditHash for the next entry.
-		committedSeq := fsm.State.AppendAuditEntry(auditHash)
+		committedSeq, exhausted := fsm.State.AppendAuditEntry(auditHash)
+		if exhausted != nil {
+			return exhausted
+		}
+
 		if committedSeq != entry.GetSequence() {
 			return fmt.Errorf("audit sequence race for %s: peeked %d, got %d", label, entry.GetSequence(), committedSeq)
 		}

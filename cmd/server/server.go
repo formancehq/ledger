@@ -33,7 +33,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/bootstrap"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/pyroscope"
-	"github.com/formancehq/ledger/v3/internal/infra/monitoring/tracesampling"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/bytesize"
@@ -103,9 +102,6 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 
 	// Add Pyroscope profiling flags
 	addPyroscopeFlags(runCmd.Flags())
-
-	// Add trace sampling flags
-	addTraceSamplingFlags(runCmd.Flags())
 
 	// Add application-specific flags
 	runCmd.Flags().Uint64("node-id", 0, "Numeric node ID for this instance (must be non-zero)")
@@ -276,21 +272,15 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		return fmt.Errorf("validating config: %w", err)
 	}
 
-	// Set default service name if not provided via flags
-	serviceName, _ := cmd.Flags().GetString(otlp.OtelServiceNameFlag)
-	if serviceName == "" {
-		// Set default service name based on node ID
-		defaultServiceName := fmt.Sprintf("ledger-node-%d", cfg.RaftConfig.NodeID)
-
-		err := cmd.Flags().Set(otlp.OtelServiceNameFlag, defaultServiceName)
-		if err != nil {
-			return fmt.Errorf("setting default service name: %w", err)
-		}
+	info := version.Get()
+	telemetryResource, err := resourceFromFlags(cmd, cfg.RaftConfig.NodeID, info)
+	if err != nil {
+		return fmt.Errorf("creating telemetry resource: %w", err)
 	}
 
 	logger, err := loggerFromFlags(cmd, map[string]any{
 		"node-id": cfg.RaftConfig.NodeID,
-	})
+	}, telemetryResource)
 	if err != nil {
 		return fmt.Errorf("creating logger: %w", err)
 	}
@@ -321,9 +311,6 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		pyroscopeCfg.Tags["cluster_id"] = cfg.ClusterID
 	}
 
-	// Configure trace sampling
-	traceSamplingCfg := traceSamplingConfigFromFlags(cmd)
-
 	// Configure flight recorder
 	frEnabled, _ := cmd.Flags().GetBool("flight-recorder-enabled")
 	frMinAge, _ := cmd.Flags().GetDuration("flight-recorder-min-age")
@@ -342,8 +329,6 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		appModule = bootstrap.Module()
 	}
 
-	info := version.Get()
-
 	// Auth (OIDC discovery + JWKS reads, bounded by OIDCDiscoveryTimeout) is built in
 	// bootstrap.buildAuthConfig; there is no auth fx module. The go-libs authnfx JWT
 	// module is intentionally not wired in: nothing in this service consumes its
@@ -357,7 +342,7 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		// Provide build metadata for version reporting
 		fx.Supply(info),
 		// Add OpenTelemetry modules from go-libs (using flags)
-		observefx.ResourceModuleFromFlags(cmd, otlp.WithServiceVersion(fmt.Sprintf("%s-%s", info.Version, info.Commit))),
+		fx.Supply(telemetryResource),
 		observefx.TracesModuleFromFlags(cmd),
 		// Decorates the trace.TracerProvider from TracesModule with a
 		// pyroscope.profile.id span attribute (see PyroscopeTracesModule doc
@@ -365,8 +350,6 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 		// profile samples captured while it ran. No-op unless enabled by flag.
 		observefx.PyroscopeTracesModuleFromFlags(cmd),
 		observefx.MetricsModuleFromFlags(cmd),
-		// Add trace sampling module (wraps exporter with error-aware sampling)
-		tracesampling.Module(traceSamplingCfg),
 		// Add Pyroscope profiling module
 		pyroscope.Module(pyroscopeCfg),
 		// Add flight recorder module

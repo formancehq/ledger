@@ -12,6 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/apitrace"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -174,10 +175,7 @@ func writeBadRequest(w http.ResponseWriter, errorCode string, err error) {
 // (mirrors the gRPC adapter's convertToGRPCError default branch, #375).
 func writeInternalServerError(w http.ResponseWriter, r *http.Request, err error) {
 	id := correlationID(r)
-
-	logging.FromContext(r.Context()).WithFields(map[string]any{
-		"correlation_id": id,
-	}).Errorf("HTTP unmapped handler error: %v", err)
+	recordHTTPInternalError(r, id, err)
 
 	writeErrorResponse(
 		w,
@@ -185,6 +183,13 @@ func writeInternalServerError(w http.ResponseWriter, r *http.Request, err error)
 		"INTERNAL_ERROR",
 		fmt.Errorf("internal server error (correlation ID: %s)", id),
 	)
+}
+
+func recordHTTPInternalError(r *http.Request, correlationID string, err error) {
+	fields := apitrace.Fields(r.Context())
+	fields["correlation_id"] = correlationID
+	logging.FromContext(r.Context()).WithFields(fields).Errorf("HTTP internal handler error: %v", err)
+	apitrace.Stamp(r.Context(), correlationID, err)
 }
 
 // queryParamBool returns true if the query parameter exists and is "true".

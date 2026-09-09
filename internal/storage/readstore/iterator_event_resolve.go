@@ -24,14 +24,14 @@ import (
 //
 //   - point form (NewEventResolveIterator): the prefix runs through the
 //     encoded value (or nullFlag), so a group IS an entity and Current()
-//     yields it directly. The absolute SeekGE contract
+//     yields it directly. The absolute Seek contract
 //     (iterator-seek-contract.md) holds: a seek positions at the first event
 //     key of the first group whose entity >= target and resolves forward.
 //   - range form (NewEventResolveRangeIterator): the bounds span several
 //     values under a shared prefix, a group is (encodedValue, entity), and
 //     Current() yields the entity by stripping the fixed-width value
 //     (emitOffset). Entities are NOT emitted in entity order — the caller
-//     must materialize + sort, and SeekGE fails loudly, mirroring
+//     must materialize + sort, and Seek fails loudly, mirroring
 //     RangeIterator.
 //
 // TODO(EN-1748): add a seekFloor exhaustion cache before this leaf serves
@@ -53,7 +53,7 @@ type EventResolveIterator struct {
 
 // errInvariantEventRangeSeek fails a query that composed a range-form event
 // iterator without materializing it first — see NewEventResolveRangeIterator.
-var errInvariantEventRangeSeek = errors.New("invariant: EventResolveIterator range form SeekGE called; materialize into a SliceIterator before composing")
+var errInvariantEventRangeSeek = errors.New("invariant: EventResolveIterator range form Seek called; materialize into a SliceIterator before composing")
 
 // NewEventResolveIterator scans the event range under prefix (built by
 // MetadataIndexEventValuePrefixV or an EntityExists*PrefixV) as of pin.
@@ -194,7 +194,7 @@ func (it *EventResolveIterator) Next() bool {
 
 func (it *EventResolveIterator) Current() []byte { return it.current }
 
-func (it *EventResolveIterator) SeekGE(target []byte) bool {
+func (it *EventResolveIterator) Seek(target []byte) bool {
 	if it.rangeMode {
 		it.err = errInvariantEventRangeSeek
 
@@ -242,3 +242,6 @@ func (it *EventResolveIterator) Err() error {
 func (it *EventResolveIterator) Close() {
 	_ = it.iter.Close()
 }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *EventResolveIterator) Direction() (d Asc) { return }

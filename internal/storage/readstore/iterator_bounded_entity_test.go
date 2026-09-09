@@ -96,16 +96,16 @@ func TestBoundedEntityIterator_ProductionConstructors(t *testing.T) {
 				it := newIterator(t, txIDBytes(3), txIDBytes(9))
 				seek := func(target, want uint64) {
 					t.Helper()
-					require.True(t, it.SeekGE(txIDBytes(target)))
+					require.True(t, it.Seek(txIDBytes(target)))
 					require.Equal(t, want, binary.BigEndian.Uint64(it.Current()))
 				}
 				seek(0, 3) // Pebble clamps a seek below the lower bound.
 				seek(4, 5)
 				seek(4, 5) // Absolute seeks do not consume the row.
-				require.False(t, it.SeekGE(txIDBytes(6)))
+				require.False(t, it.Seek(txIDBytes(6)))
 				require.False(t, it.Next(), "failed seek leaves iterator unpositioned")
 				seek(3, 3)
-				require.False(t, it.SeekGE(txIDBytes(7)), "covered by cached exhaustion floor")
+				require.False(t, it.Seek(txIDBytes(7)), "covered by cached exhaustion floor")
 				require.False(t, it.Next(), "cached failed seek must invalidate earlier position")
 				seek(4, 5)
 				require.False(t, it.Next())
@@ -117,12 +117,12 @@ func TestBoundedEntityIterator_ProductionConstructors(t *testing.T) {
 
 			t.Run("seek after maximum exhaustion", func(t *testing.T) {
 				it := newIterator(t, nil, nil)
-				require.True(t, it.SeekGE(txIDBytes(math.MaxUint64-1)))
+				require.True(t, it.Seek(txIDBytes(math.MaxUint64-1)))
 				require.True(t, it.Next())
 				require.Equal(t, uint64(math.MaxUint64), binary.BigEndian.Uint64(it.Current()))
 				require.False(t, it.Next(), "maximum entity must not wrap to zero")
 				require.False(t, it.Next())
-				require.True(t, it.SeekGE(txIDBytes(4)))
+				require.True(t, it.Seek(txIDBytes(4)))
 				require.Equal(t, uint64(5), binary.BigEndian.Uint64(it.Current()))
 				require.NoError(t, it.Err())
 			})
@@ -149,11 +149,11 @@ func TestBoundedEntityIterator_FixedWidthSuffixAndOwnedPrefix(t *testing.T) {
 	require.True(t, it.Next())
 	require.Equal(t, []byte{0, 3}, it.Current())
 	require.False(t, it.Next(), "upper bound remains exclusive")
-	require.True(t, it.SeekGE([]byte{0, 0}), "seek clamps to the stored lower bound")
+	require.True(t, it.Seek([]byte{0, 0}), "seek clamps to the stored lower bound")
 	require.Equal(t, []byte{0, 3}, it.Current())
-	require.False(t, it.SeekGE([]byte{0, 5}))
+	require.False(t, it.Seek([]byte{0, 5}))
 	require.False(t, it.Next())
-	require.True(t, it.SeekGE([]byte{0, 3}), "seek uses the original prefix after exhaustion")
+	require.True(t, it.Seek([]byte{0, 3}), "seek uses the original prefix after exhaustion")
 	require.Equal(t, []byte{0, 3}, it.Current())
 	require.NoError(t, it.Err())
 }

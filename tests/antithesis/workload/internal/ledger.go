@@ -53,7 +53,7 @@ const (
 	PrefixLedgerRecreate   OwnedLedgerPrefix = "lrecreate"
 	PrefixListCompleteness OwnedLedgerPrefix = "listcomp"
 	PrefixTimestampOrder   OwnedLedgerPrefix = "tsorder"
-	PrefixMinLogSeq        OwnedLedgerPrefix = "minseq"
+	PrefixProjectionAlign  OwnedLedgerPrefix = "projection"
 	PrefixStaleReads       OwnedLedgerPrefix = "stale"
 
 	// PrefixSentinel covers the witness-ledger family used by the
@@ -89,7 +89,7 @@ var ownedLedgerPrefixes = []OwnedLedgerPrefix{
 	PrefixLedgerRecreate,
 	PrefixListCompleteness,
 	PrefixTimestampOrder,
-	PrefixMinLogSeq,
+	PrefixProjectionAlign,
 	PrefixStaleReads,
 	PrefixSentinel,
 	PrefixModel,

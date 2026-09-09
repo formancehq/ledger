@@ -17,8 +17,9 @@
 #                transfer + follower restore.
 #
 # A "finding" is a failed antithesis assertion (a hit Unreachable, or an
-# Always/Sometimes whose condition was false), a server/driver panic, or (N>1)
-# the cluster failing to recover to N voters after a restart.
+# Always/Sometimes whose condition was false), no verified model outcome, a
+# server/driver panic, or (N>1) the cluster failing to recover to N voters after
+# a restart.
 #
 # Usage:
 #   ./run_model_test.sh [--nodes N | --cluster] [--restore] [DURATION_SECONDS]
@@ -368,6 +369,23 @@ check_fail_fast() {
 	[ -n "$ff" ]
 }
 
+# True (0) only after the driver has processed a definitive server outcome
+# through the model checker. Assertion registration and setup-only assertions
+# are deliberately insufficient: they prove the process started, not that the
+# conformance invariant ran.
+has_verified_model_outcome() {
+	[ -s "$ASSERTIONS" ] || return 1
+	if command -v jq >/dev/null 2>&1; then
+		jq -e 'select(.antithesis_assert.message == "singleton_driver_model: model outcome verified" and .antithesis_assert.hit == true and .antithesis_assert.condition == true)' \
+			"$ASSERTIONS" >/dev/null 2>&1
+		return
+	fi
+
+	grep -E '"message":[[:space:]]*"singleton_driver_model: model outcome verified"' "$ASSERTIONS" 2>/dev/null \
+		| grep -E '"hit":[[:space:]]*true' \
+		| grep -qE '"condition":[[:space:]]*true'
+}
+
 # ---------------------------------------------------------------------------
 # Build (server + driver; ledgerctl only when a cluster needs health checks).
 # ---------------------------------------------------------------------------
@@ -596,7 +614,18 @@ if [ "$DRIVER_EXITED_EARLY" -ne 0 ] && [ "$findings" -eq 0 ]; then
 	findings=$((findings + 1))
 fi
 
-# 6. --restore ran zero cycles: the restore path was never exercised, so a
+# 6. A live process and the absence of failed assertions do not prove that the
+# model checker processed an outcome. setupLedgers runs before Checker exists,
+# so registration-only or setup-only output must not satisfy this gate. Avoid
+# adding a second finding when an earlier failure already explains the run.
+if ! has_verified_model_outcome && [ "$findings" -eq 0 ]; then
+	echo
+	echo "NO VERIFIED MODEL OUTCOMES: the driver completed no model-conformance check"
+	echo "  (process liveness and setup assertions are not model-result evidence)"
+	findings=$((findings + 1))
+fi
+
+# 7. --restore ran zero cycles: the restore path was never exercised, so a
 # green run says nothing about RebuildDelta -- that vacuous pass is itself a
 # failure. Skipped when a finding already stopped the run early (fail-fast
 # legitimately preempts the first cycle).
@@ -607,7 +636,7 @@ if [ "$RESTORE" = 1 ] && [ "$RESTORE_CYCLES" -eq 0 ] && [ "$findings" -eq 0 ]; t
 	findings=$((findings + 1))
 fi
 
-# 7. A restore cycle failed mid-run (backup RPC, no exports, bootstrap, or the
+# 8. A restore cycle failed mid-run (backup RPC, no exports, bootstrap, or the
 # post-restore leader wait). The driver resumes so later cycles still run, but
 # a broken restore path is a defect regardless of how many cycles succeeded.
 if [ "$RESTORE" = 1 ] && [ "$RESTORE_FAILED_CYCLES" -gt 0 ]; then

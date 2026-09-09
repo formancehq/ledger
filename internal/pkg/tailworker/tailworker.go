@@ -29,8 +29,9 @@ type Config struct {
 	// channel is always selectable and would spin the loop, calling Tick
 	// continuously.
 	Wake <-chan struct{}
-	// Boot runs once before the ticker starts. A non-nil error aborts the
-	// loop (the worker does no further work). Optional.
+	// Boot must complete before the ticker starts. Non-cancellation errors are
+	// retried with bounded exponential backoff so a transient storage failure
+	// cannot permanently kill the worker. Optional.
 	Boot func(context.Context) error
 	// Tick runs once per ticker fire and per Wake signal. A context.Canceled
 	// error is swallowed (expected on shutdown); any other error is logged
@@ -70,11 +71,7 @@ func (t *TailWorker) Stop() {
 
 func (t *TailWorker) loop(ctx context.Context) {
 	if t.cfg.Boot != nil {
-		if err := t.cfg.Boot(ctx); err != nil {
-			if !errors.Is(err, context.Canceled) {
-				t.cfg.Logger.Errorf("%s boot: %v", t.cfg.Name, err)
-			}
-
+		if !t.runBoot(ctx) {
 			return
 		}
 	}
@@ -93,5 +90,36 @@ func (t *TailWorker) loop(ctx context.Context) {
 		if err := t.cfg.Tick(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			t.cfg.Logger.Errorf("%s tick: %v", t.cfg.Name, err)
 		}
+	}
+}
+
+func (t *TailWorker) runBoot(ctx context.Context) bool {
+	const (
+		initialBackoff = 100 * time.Millisecond
+		maxBackoff     = 10 * time.Second
+	)
+
+	backoff := initialBackoff
+	for {
+		err := t.cfg.Boot(ctx)
+		if err == nil {
+			return true
+		}
+		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			return false
+		}
+
+		t.cfg.Logger.Errorf("%s boot failed (retrying in %v): %v", t.cfg.Name, backoff, err)
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+
+			return false
+		case <-timer.C:
+		}
+		backoff = min(backoff*2, maxBackoff)
 	}
 }

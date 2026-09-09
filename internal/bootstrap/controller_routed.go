@@ -27,6 +27,10 @@ type RoutedController struct {
 
 	servicePool     *transport.ConnectionPool
 	localController ctrl.Controller
+	// readIndexAndWait is the node barrier dependency. NewRoutedController
+	// binds the real Raft implementation; the field keeps production method
+	// tests deterministic without constructing a running Raft node.
+	readIndexAndWait func(context.Context) (*node.ReadBarrierInfo, error)
 }
 
 // getLeaderCtrl returns the local controller when this node considers itself
@@ -53,11 +57,11 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 // The consistency level is determined from the context (set by the gRPC interceptor):
 //   - linearizable (default): ReadIndex+WaitForApplied barrier on the local node
 //   - stale: skip the barrier and read from the local store directly
-//   - leader: route the read to the node currently considered leader; the local
-//     leader shortcut does not perform a ReadIndex barrier
 //
-// For linearizable reads, if the local node is still syncing the read is
-// transparently forwarded to the leader.
+// For linearizable reads, a syncing precheck or an in-flight ReadIndex
+// invalidated by a leadership change transparently falls back to the remote
+// leader. If resolution points back to the local controller, the failed
+// barrier is returned instead of serving an unbarriered local read.
 func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node.ReadBarrierInfo, error) {
 	consistency := grpcadp.ConsistencyFromContext(ctx)
 
@@ -65,30 +69,10 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 		trace.WithAttributes(attribute.String("consistency", consistency)))
 	defer span.End()
 
-	switch consistency {
-	case grpcadp.ConsistencyStale:
+	if consistency == grpcadp.ConsistencyStale {
 		span.SetAttributes(attribute.String("route", "local_stale"))
 
 		return b.localController, nil, nil
-	case grpcadp.ConsistencyLeader:
-		span.SetAttributes(attribute.String("route", "leader"))
-
-		c, err := b.getLeaderCtrl()
-		if err != nil {
-			return nil, nil, err
-		}
-
-		// When getLeaderCtrl returns a remote controller, that node runs its own
-		// ReadIndex barrier (x-consistency is not propagated, so it defaults to
-		// linearizable there). The remote barrier and execution are invisible to
-		// this profile — the whole remote cost arrives as row-production time
-		// inside the local execute phase, and this node's barrier_duration_us stays
-		// 0. Flag it so a reader does not take that 0 to mean "no barrier was
-		// needed" (EN-1859). When this node already considers itself leader,
-		// getLeaderCtrl returns the local controller and no barrier is performed.
-		b.markForwardedIfRemote(ctx, c)
-
-		return c, nil, nil
 	}
 
 	// The ReadIndex quorum round-trip plus the local WaitForApplied catch-up is
@@ -98,7 +82,11 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 	// or not the barrier succeeds — a failed attempt is still time the caller
 	// waited (see the fallback branch below).
 	barrierStart := time.Now()
-	barrier, err := b.ReadIndexAndWait(ctx)
+	readIndexAndWait := b.readIndexAndWait
+	if readIndexAndWait == nil {
+		readIndexAndWait = b.ReadIndexAndWait
+	}
+	barrier, err := readIndexAndWait(ctx)
 	query.ProfileFromContext(ctx).AddBarrierWait(time.Since(barrierStart))
 
 	if err == nil {
@@ -114,9 +102,8 @@ func (b *RoutedController) readCtrl(ctx context.Context) (ctrl.Controller, *node
 		if !b.IsLeader() {
 			span.SetAttributes(attribute.String("route", "leader_fallback"))
 
-			// Same as the explicit-leader branch: the read leaves this node, so
-			// the phase breakdown describes the local hop only. Unlike that
-			// branch, the barrier already recorded above is KEPT: the caller
+			// The read leaves this node, so the phase breakdown describes the
+			// local hop only. The barrier already recorded above is KEPT: the caller
 			// really did wait for a quorum attempt that then failed. Dropping it
 			// would not delete the time — readCtrl runs inside the caller's
 			// EnterExecute/LeaveExecute bracket, so an uncharged wait stays in
@@ -154,13 +141,12 @@ func (b *RoutedController) finishLeaderFallback(ctx context.Context, selected ct
 	return selected, nil, nil
 }
 
-// markForwardedIfRemote preserves the query-profile contract that Forwarded
-// means another node served the read. The explicit leader-consistency path can
-// resolve to the local controller when this node considers itself leader.
-func (b *RoutedController) markForwardedIfRemote(ctx context.Context, selected ctrl.Controller) {
-	if selected != b.localController {
-		query.ProfileFromContext(ctx).MarkForwarded()
+func (b *RoutedController) withLocalBarrierHorizon(ctx context.Context, selected ctrl.Controller, barrier *node.ReadBarrierInfo) context.Context {
+	if selected == b.localController && barrier != nil {
+		return query.WithReadBarrierHorizon(ctx, barrier.CommitIndex)
 	}
+
+	return ctx
 }
 
 func (b *RoutedController) IsHealthy() bool {
@@ -236,21 +222,21 @@ func (b *RoutedController) GetTransaction(ctx context.Context, ledgerName string
 }
 
 func (b *RoutedController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ListTransactions(ctx, ledgerName, pageSize, afterTxID, filter, reverse)
+	return c.ListTransactions(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, pageSize, afterTxID, filter, reverse)
 }
 
 func (b *RoutedController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ListLogs(ctx, ledgerName, afterSequence, pageSize, filter)
+	return c.ListLogs(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, afterSequence, pageSize, filter)
 }
 
 func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
@@ -262,13 +248,13 @@ func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*common
 	return c.GetLog(ctx, sequence)
 }
 
-func (b *RoutedController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool, minLogSequence uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
-	c, _, err := b.readCtrl(ctx)
+func (b *RoutedController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ListAuditEntries(ctx, pageSize, afterSequence, filter, reverse, minLogSequence)
+	return c.ListAuditEntries(b.withLocalBarrierHorizon(ctx, c, barrier), pageSize, afterSequence, filter, reverse)
 }
 
 func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
@@ -307,7 +293,7 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 		return nil, err
 	}
 
-	if barrier != nil {
+	if barrier != nil && b.Node != nil && b.Logger() != nil {
 		b.Node.Logger().WithFields(map[string]any{
 			"op":             "ListAccounts",
 			"ledger":         ledgerName,
@@ -318,16 +304,16 @@ func (b *RoutedController) ListAccounts(ctx context.Context, ledgerName string, 
 		}).Infof("read barrier for ListAccounts")
 	}
 
-	return c.ListAccounts(ctx, ledgerName, pageSize, afterAddress, filter, reverse)
+	return c.ListAccounts(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, pageSize, afterAddress, filter, reverse)
 }
 
 func (b *RoutedController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.AggregateVolumes(ctx, ledgerName, filter, opts)
+	return c.AggregateVolumes(b.withLocalBarrierHorizon(ctx, c, barrier), ledgerName, filter, opts)
 }
 
 func (b *RoutedController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
@@ -376,12 +362,12 @@ func (b *RoutedController) ListPreparedQueries(ctx context.Context, ledger strin
 }
 
 func (b *RoutedController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.ExecutePreparedQuery(ctx, req)
+	return c.ExecutePreparedQuery(b.withLocalBarrierHorizon(ctx, c, barrier), req)
 }
 
 func (b *RoutedController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
@@ -439,12 +425,12 @@ func (b *RoutedController) GetEventsSinks(ctx context.Context) ([]*commonpb.Sink
 }
 
 func (b *RoutedController) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
-	c, _, err := b.readCtrl(ctx)
+	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.InspectIndex(ctx, req)
+	return c.InspectIndex(b.withLocalBarrierHorizon(ctx, c, barrier), req)
 }
 
 func (b *RoutedController) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
@@ -486,9 +472,14 @@ func (b *RoutedController) ListIndexes(ctx context.Context, req *servicepb.ListI
 var _ ctrl.Controller = (*RoutedController)(nil)
 
 func NewRoutedController(localController ctrl.Controller, node *node.Node, servicePool *transport.ConnectionPool) *RoutedController {
-	return &RoutedController{
+	routed := &RoutedController{
 		Node:            node,
 		servicePool:     servicePool,
 		localController: localController,
 	}
+	if node != nil {
+		routed.readIndexAndWait = node.ReadIndexAndWait
+	}
+
+	return routed
 }

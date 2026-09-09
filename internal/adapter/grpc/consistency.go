@@ -15,10 +15,6 @@ const (
 	// ConsistencyStale skips the ReadIndex barrier and reads from the local store directly.
 	// Data may lag behind the latest committed index.
 	ConsistencyStale = "stale"
-	// ConsistencyLeader routes the read to the node currently considered leader.
-	// A remote leader applies the default ReadIndex barrier, but a node that
-	// already considers itself leader serves the read locally without one.
-	ConsistencyLeader = "leader"
 )
 
 const metadataKeyConsistency = "x-consistency"
@@ -86,7 +82,7 @@ func extractConsistency(ctx context.Context) context.Context {
 
 	level := strings.ToLower(strings.TrimSpace(vals[0]))
 	switch level {
-	case ConsistencyStale, ConsistencyLeader:
+	case ConsistencyStale:
 		return WithConsistency(ctx, level)
 	default:
 		return ctx

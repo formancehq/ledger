@@ -108,11 +108,11 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_PRELOAD_UNAVAILABLE,
 		commonpb.ErrorReason_ERROR_REASON_INDEX_BUILDING,
 		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_READY,
-		commonpb.ErrorReason_ERROR_REASON_READ_INDEX_NOT_CAUGHT_UP,
 		commonpb.ErrorReason_ERROR_REASON_CLUSTER_UNHEALTHY,
 		commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW:
 		return KindUnavailable
-	case commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL:
+	case commonpb.ErrorReason_ERROR_REASON_WRITES_BLOCKED_DISK_FULL,
+		commonpb.ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED:
 		return KindResourceExhausted
 	case commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED,
 		commonpb.ErrorReason_ERROR_REASON_INDEX_INCONSISTENT,

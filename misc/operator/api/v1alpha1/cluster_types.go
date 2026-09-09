@@ -756,21 +756,6 @@ type TracesConfig struct {
 	// Batch enables batch mode.
 	// +optional
 	Batch string `json:"batch,omitempty"`
-
-	// Sampling configuration.
-	// +optional
-	Sampling *TraceSamplingConfig `json:"sampling,omitempty"`
-}
-
-// TraceSamplingConfig holds trace sampling configuration.
-type TraceSamplingConfig struct {
-	// Enabled enables error-aware trace sampling.
-	// +optional
-	Enabled bool `json:"enabled,omitempty"`
-
-	// SuccessRatio is the sampling ratio for successful traces (0.0-1.0).
-	// +optional
-	SuccessRatio string `json:"successRatio,omitempty"`
 }
 
 // MetricsConfig holds metrics configuration.

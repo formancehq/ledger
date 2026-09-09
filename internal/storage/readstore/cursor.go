@@ -52,4 +52,6 @@ var (
 	progressCursor        = Uint64Cursor{key: ProgressKey()}
 	appliedProposalCursor = Uint64Cursor{key: AppliedProposalProgressKey()}
 	auditCursor           = Uint64Cursor{key: AuditProgressKey()}
+	readRaftCursor        = Uint64Cursor{key: ReadRaftProgressKey()}
+	auditRaftCursor       = Uint64Cursor{key: AuditRaftProgressKey()}
 )

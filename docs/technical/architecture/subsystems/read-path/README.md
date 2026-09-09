@@ -4,10 +4,10 @@ The CQRS read side (`internal/application/ctrl` reads, `internal/query`,
 `internal/storage/readstore`). Default live reads routed through `readCtrl` use
 a `ReadIndex` quorum barrier to establish an applied-state horizon. Point reads
 and unfiltered account/transaction queries then use the main store only.
-Filtered account/transaction queries and every log query additionally wait for
-the read index to align with that horizon before iterating it. `stale` removes
-only the Raft barrier, checkpoint pairs are already frozen, and leader-local,
-audit-index, and usagestore exceptions are documented in the
+Filtered account/transaction queries, every log query, and `InspectIndex`
+additionally wait for the read index to align with that horizon before iterating
+it. `stale` removes only the Raft barrier, checkpoint pairs are already frozen,
+and audit-index and usagestore exceptions are documented in the
 [consensus matrix](../consensus/raft-consensus.md#linearizable-reads-via-readindex)
 and the pipeline pages.
 
@@ -15,8 +15,8 @@ and the pipeline pages.
 
 | Document | Description |
 |----------|-------------|
-| [query-pipeline.md](query-pipeline.md) | End-to-end read flow: ReadIndex barrier, min_log_sequence, Pebble snapshot, iterator algebra, pagination, streaming. |
-| [iterator-seek-contract.md](iterator-seek-contract.md) | Shared bounded log/transaction leaves, absolute SeekGE/SeekLE semantics across the iterator algebra, and the seekFloor/seekCeil exhaustion-proof cache. |
+| [query-pipeline.md](query-pipeline.md) | End-to-end read flow: ReadIndex barrier, fixed Raft projection horizon, Pebble snapshots, iterator algebra, pagination, streaming. |
+| [iterator-seek-contract.md](iterator-seek-contract.md) | Shared bounded log/transaction leaves, absolute Seek semantics across the iterator algebra, the AddressTxIterator materialized union, and the seekFloor/seekCeil exhaustion-proof cache. |
 | [read-snapshot-consistency.md](read-snapshot-consistency.md) | Single-snapshot rule for controller reads that stitch LedgerInfo with attribute data. |
 | [readstore-event-keys.md](readstore-event-keys.md) | Append-only metadata/existence event resolution, lease-bounded reclamation, and edge-triggered GC cycles. |
 | [prepared-queries.md](prepared-queries.md) | Named pre-validated query templates: lifecycle, filter DSL, execution, bloom acceleration. |
@@ -29,4 +29,4 @@ and the pipeline pages.
 
 - [Indexer](../indexer/) — populates the read store the query path consumes.
 - [Consensus](../consensus/) — `ReadIndex` quorum that gates default live reads (with stale/checkpoint exceptions).
-- [FSM](../fsm/) — what the read path waits to catch up to via `min_log_sequence`.
+- [FSM](../fsm/) — durable applied index used as the common projection horizon.

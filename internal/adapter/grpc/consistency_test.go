@@ -16,14 +16,6 @@ func TestWithConsistency(t *testing.T) {
 	require.Equal(t, ConsistencyStale, level)
 }
 
-func TestWithConsistency_Leader(t *testing.T) {
-	t.Parallel()
-
-	ctx := WithConsistency(context.Background(), ConsistencyLeader)
-	level := ConsistencyFromContext(ctx)
-	require.Equal(t, ConsistencyLeader, level)
-}
-
 func TestConsistencyFromContext_Default(t *testing.T) {
 	t.Parallel()
 
@@ -82,7 +74,7 @@ func TestExtractConsistency_Stale(t *testing.T) {
 	require.Equal(t, ConsistencyStale, level)
 }
 
-func TestExtractConsistency_Leader(t *testing.T) {
+func TestExtractConsistency_LeaderIsNotSupported(t *testing.T) {
 	t.Parallel()
 
 	md := metadata.New(map[string]string{metadataKeyConsistency: "leader"})
@@ -90,7 +82,7 @@ func TestExtractConsistency_Leader(t *testing.T) {
 
 	ctx = extractConsistency(ctx)
 	level := ConsistencyFromContext(ctx)
-	require.Equal(t, ConsistencyLeader, level)
+	require.Equal(t, ConsistencyLinearizable, level)
 }
 
 func TestExtractConsistency_CaseInsensitive(t *testing.T) {
@@ -119,10 +111,10 @@ func TestExtractConsistency_Linearizable(t *testing.T) {
 func TestExtractConsistency_WhitespaceHandling(t *testing.T) {
 	t.Parallel()
 
-	md := metadata.New(map[string]string{metadataKeyConsistency: "  leader  "})
+	md := metadata.New(map[string]string{metadataKeyConsistency: "  stale  "})
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
 	ctx = extractConsistency(ctx)
 	level := ConsistencyFromContext(ctx)
-	require.Equal(t, ConsistencyLeader, level)
+	require.Equal(t, ConsistencyStale, level)
 }

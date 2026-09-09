@@ -1,6 +1,8 @@
 package usagestore_test
 
 import (
+	"fmt"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,7 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
 
-func newTestStore(t *testing.T) *usagestore.Store {
+func newTestStore(t testing.TB) *usagestore.Store {
 	t.Helper()
 
 	s, err := usagestore.New(t.TempDir(), logging.NopZap(), usagestore.DefaultConfig())
@@ -21,6 +23,50 @@ func newTestStore(t *testing.T) *usagestore.Store {
 	t.Cleanup(func() { _ = s.Close() })
 
 	return s
+}
+
+// BenchmarkStoreFlushCadence compares the L0/compaction work created by
+// flushing every simulated second with the production 30-second cadence. Each
+// operation models five minutes at 100 active ledgers, updating all seven
+// counters and the progress cursor once per second.
+func BenchmarkStoreFlushCadence(b *testing.B) {
+	const (
+		simulatedSeconds = 5 * 60
+		ledgerCount      = 100
+		counterCount     = 7
+	)
+
+	for _, flushEvery := range []int{1, 30} {
+		b.Run(fmt.Sprintf("flush_every_%02ds", flushEvery), func(b *testing.B) {
+			s := newTestStore(b)
+			before := s.DB().Metrics()
+
+			b.ResetTimer()
+			for iteration := range b.N {
+				for second := 1; second <= simulatedSeconds; second++ {
+					batch := s.NewBatch()
+					for ledgerIndex := range ledgerCount {
+						ledger := fmt.Sprintf("ledger-%03d", ledgerIndex)
+						for counterID := 1; counterID <= counterCount; counterID++ {
+							require.NoError(b, s.PutCounter(batch, ledger, byte(counterID), uint64(iteration*simulatedSeconds+second)))
+						}
+					}
+					require.NoError(b, s.WriteProgress(batch, uint64(iteration*simulatedSeconds+second)))
+					require.NoError(b, batch.Commit())
+					if second%flushEvery == 0 {
+						require.NoError(b, s.Flush())
+					}
+				}
+			}
+			b.StopTimer()
+
+			after := s.DB().Metrics()
+			b.ReportMetric(float64(after.Flush.Count-before.Flush.Count)/float64(b.N), "flushes/op")
+			b.ReportMetric(float64(after.Levels[0].TablesFlushed-before.Levels[0].TablesFlushed)/float64(b.N), "l0_tables/op")
+			b.ReportMetric(float64(after.Levels[0].TableBytesFlushed-before.Levels[0].TableBytesFlushed)/float64(b.N), "l0_bytes/op")
+			b.ReportMetric(float64(after.Compact.Count-before.Compact.Count)/float64(b.N), "compactions/op")
+		})
+	}
 }
 
 func TestStore_ProgressRoundTrip(t *testing.T) {
@@ -92,6 +138,64 @@ func TestStore_TemplateUsageRoundTrip(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, want.GetCount(), got.GetCount())
 	assert.Equal(t, want.GetLastUsed().GetData(), got.GetLastUsed().GetData())
+}
+
+func TestStore_ClosePersistsProgressCountersAndTemplates(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	s, err := usagestore.New(dir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+
+	wantUsage := &commonpb.TemplateUsage{
+		Count:    7,
+		LastUsed: &commonpb.Timestamp{Data: 1_700_000_000_000_000_000},
+	}
+	batch := s.NewBatch()
+	require.NoError(t, s.PutCounter(batch, "l1", usagestore.CounterPosting, 123))
+	require.NoError(t, s.PutTemplateUsage(batch, "l1", "payout", wantUsage))
+	require.NoError(t, s.WriteProgress(batch, 42))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, s.Close())
+
+	reopened, err := usagestore.New(dir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reopened.Close() })
+
+	progress, err := reopened.ReadProgress()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(42), progress)
+
+	counter, err := reopened.GetCounter("l1", usagestore.CounterPosting)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(123), counter)
+
+	usage, err := reopened.GetTemplateUsage("l1", "payout")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	assert.Equal(t, wantUsage.GetCount(), usage.GetCount())
+	assert.Equal(t, wantUsage.GetLastUsed().GetData(), usage.GetLastUsed().GetData())
+}
+
+func TestStore_CloseReadOnlyDoesNotFlush(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writable, err := usagestore.New(dir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+
+	batch := writable.NewBatch()
+	require.NoError(t, writable.WriteProgress(batch, 42))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, writable.Close())
+
+	readOnly, err := usagestore.OpenReadOnly(filepath.Join(dir, "usagedb"), logging.NopZap())
+	require.NoError(t, err)
+
+	progress, err := readOnly.ReadProgress()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(42), progress)
+	require.NoError(t, readOnly.Close(), "closing a read-only store must not attempt a flush")
 }
 
 func TestStore_DeleteLedgerCascade(t *testing.T) {
@@ -176,4 +280,41 @@ func TestStore_Reset(t *testing.T) {
 
 	// Reset on an already-empty store is a no-op, not an error.
 	require.NoError(t, s.Reset())
+}
+
+func TestStore_ResetFlushesBeforeReturn(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	s, err := usagestore.New(dir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+
+	batch := s.NewBatch()
+	require.NoError(t, s.PutCounter(batch, "l1", usagestore.CounterPosting, 10))
+	require.NoError(t, s.PutTemplateUsage(batch, "l1", "t1", &commonpb.TemplateUsage{Count: 3}))
+	require.NoError(t, s.WriteProgress(batch, 500))
+	require.NoError(t, batch.Commit())
+	require.NoError(t, s.Flush(), "seed the old cursor in an SST before resetting")
+
+	flushesBeforeReset := s.DB().Metrics().Flush.Count
+	require.NoError(t, s.Reset())
+	assert.Greater(t, s.DB().Metrics().Flush.Count, flushesBeforeReset,
+		"Reset must establish a new durable SST watermark before returning")
+	require.NoError(t, s.Close())
+
+	reopened, err := usagestore.New(dir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reopened.Close() })
+
+	progress, err := reopened.ReadProgress()
+	require.NoError(t, err)
+	assert.Zero(t, progress)
+
+	counter, err := reopened.GetCounter("l1", usagestore.CounterPosting)
+	require.NoError(t, err)
+	assert.Zero(t, counter)
+
+	usage, err := reopened.GetTemplateUsage("l1", "t1")
+	require.NoError(t, err)
+	assert.Nil(t, usage)
 }

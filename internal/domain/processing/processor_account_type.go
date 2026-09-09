@@ -17,8 +17,6 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 		return nil, loadErr
 	}
 
-	info = info.CloneVT()
-
 	at := order.GetAccountType()
 	if at == nil || at.GetName() == "" {
 		return nil, &domain.ErrInvalidPattern{Pattern: "", Details: "account type name is required"}
@@ -81,8 +79,6 @@ func processRemoveAccountType(ledger string, order *raftcmdpb.RemoveAccountTypeO
 	if loadErr != nil {
 		return nil, loadErr
 	}
-
-	info = info.CloneVT()
 
 	// An empty name is not a valid account type (processAddAccountType
 	// rejects it symmetrically), so a RemoveAccountType targeting "" is a
@@ -178,8 +174,6 @@ func processUpdateDefaultEnforcementMode(ledger string, order *raftcmdpb.UpdateD
 	if loadErr != nil {
 		return nil, loadErr
 	}
-
-	info = info.CloneVT()
 
 	info.DefaultEnforcementMode = order.GetEnforcementMode()
 	ctx.Scope.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)

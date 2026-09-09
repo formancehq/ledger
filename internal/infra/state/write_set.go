@@ -1373,11 +1373,16 @@ func (b *WriteSet) GetLastAuditHash() []byte {
 	return b.LastAuditHash
 }
 
-func (b *WriteSet) IncrementNextSequenceID() uint64 {
+func (b *WriteSet) IncrementNextSequenceID() (uint64, domain.Describable) {
 	id := b.NextSequenceID
-	b.NextSequenceID++
+	next, exhausted := domain.CheckedNextSequence(id, domain.SequenceCounterLog)
+	if exhausted != nil {
+		return 0, exhausted
+	}
 
-	return id
+	b.NextSequenceID = next
+
+	return id, nil
 }
 
 func (b *WriteSet) GetNextLedgerID() uint32 {
@@ -1398,6 +1403,10 @@ func (b *WriteSet) GetDate() commonpb.TimestampReader {
 
 	return b.Date.AsReader()
 }
+
+// GetRaftIndex returns zero for bare recovery/test scopes. Production apply
+// uses gatedScope, which overrides this with the committed entry index.
+func (b *WriteSet) GetRaftIndex() uint64 { return 0 }
 
 // SetDate updates the proposal date late in the apply cycle. The technical-
 // update phase runs with `proposal.GetDate()` (raw, no HLC advance); when

@@ -355,3 +355,12 @@ func TxIDRangeFilter(minVal, maxVal uint64) *commonpb.QueryFilter {
 func TxIDExactFilter(id uint64) *commonpb.QueryFilter {
 	return TxIDRangeFilter(id, id)
 }
+
+// AddressExactRoleFilter creates a filter matching transactions whose posting
+// has addr in the given role (source, destination, or either).
+func AddressExactRoleFilter(addr string, role commonpb.AddressRole) *commonpb.QueryFilter {
+	f := AddressExactFilter(addr)
+	f.GetAddress().Role = role
+
+	return f
+}

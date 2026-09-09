@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -55,6 +56,17 @@ const (
 type releasingCloser struct {
 	handle  io.Closer
 	release func()
+}
+
+type joinedCloser []io.Closer
+
+func (c joinedCloser) Close() error {
+	var err error
+	for _, closer := range c {
+		err = errors.Join(err, closer.Close())
+	}
+
+	return err
 }
 
 func (c releasingCloser) Close() error {
@@ -900,26 +912,50 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
-	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle, releaseHold)
-	if err != nil {
-		return nil, err
-	}
+	var (
+		indexReader     dal.PebbleReader
+		indexVersionFor readstore.IndexVersionResolver
+		mainSeq         uint64
+		horizonKeep     func([]byte) (bool, error)
+	)
 
-	defer releaseLease()
-	defer func() { _ = snap.Close() }()
+	if query.AlignmentOwed(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS) {
+		snap, alignedMainSeq, releaseLease, alignErr := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle, releaseHold)
+		if alignErr != nil {
+			return nil, alignErr
+		}
+
+		defer releaseLease()
+		defer func() { _ = snap.Close() }()
+
+		indexReader = snap
+		mainSeq = alignedMainSeq
+		indexVersionFor = readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq)
+		horizonKeep = query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, handle, snap, ledgerInfo.GetName(), mainSeq)
+	} else {
+		// Main-store-only filters still go through Compile for validation and
+		// boolean semantics, but must not wait for or lease the read projection.
+		releaseHold()
+
+		snap := ctrl.readStore.NewSnapshot()
+		defer func() { _ = snap.Close() }()
+
+		indexReader = snap
+		indexVersionFor = readstore.SnapshotVersionResolver(snap, ledgerInfo.GetName())
+	}
 
 	kb := dal.NewKeyBuilder()
 
 	indexStart := time.Now()
 
-	compiled, err := query.Compile(snap, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), profile, handle, mainSeq)
+	compiled, err := query.Compile(indexReader, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), indexVersionFor, profile, handle, mainSeq)
 	if err != nil {
 		return nil, domain.WrapCompileError(err)
 	}
 
 	var iter = compiled
-	if keep := query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, handle, snap, ledgerInfo.GetName(), mainSeq); keep != nil {
-		iter = readstore.NewFilterIterator(compiled, keep)
+	if horizonKeep != nil {
+		iter = readstore.NewFilterIterator(compiled, horizonKeep)
 	}
 	defer iter.Close()
 
@@ -950,12 +986,14 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		))
 	defer span.End()
 
-	// One snapshot for the schema gate and the index-registry lookup so they
-	// observe the same committed state.
-	handleForIndex, err := ctrl.store.NewReadHandle()
+	// Reserve event history before opening the main snapshot. Inspect resolves
+	// append-only membership events at that snapshot's native sequence, so the
+	// same reservation-to-lease handoff as an indexed entity query is required.
+	handleForIndex, releaseHold, err := query.OpenReservedQueryHandle(ctrl.readStore, ctrl.store)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle for index lookup: %w", err)
 	}
+	defer releaseHold()
 	defer func() { _ = handleForIndex.Close() }()
 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handleForIndex, req.GetLedger())
@@ -1003,23 +1041,34 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		}}
 	}
 
-	// Per-replica readiness: the local replica's
-	// IndexVersionState.CurrentVersion decides whether queries can be
-	// served (EN-1323). We take the snapshot FIRST and read the version
-	// state through it so the gate and the subsequent Inspect scan
-	// observe the same point-in-time view — without this the atomic
-	// version switch could promote CurrentVersion between the gate
-	// and the iteration, leaving the scan looking at a keyspace that
-	// has already been GC'd in this snapshot.
-	snap := ctrl.readStore.NewSnapshot()
+	// Wait for a certificate covering this fixed main snapshot, then pin its
+	// native sequence while resolving version and membership history from the
+	// certified index snapshot. The projection may be ahead of the main view;
+	// the sequence returned here is the trimming horizon below.
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handleForIndex, releaseHold)
+	if err != nil {
+		return nil, err
+	}
+	defer releaseLease()
 	defer func() { _ = snap.Close() }()
 
-	state, _, err := readstore.ReadIndexVersionStateFrom(snap, ledgerInfo.GetName(), indexes.Canonical(indexID))
+	// Per-replica readiness is pin-aware (EN-1323): the snapshot's
+	// CurrentVersion is servable only when its ActivationSequence is at or
+	// below mainSeq. Resolve both through the same snapshot the Inspect scan
+	// uses, so a concurrent atomic version switch cannot make the gate select a
+	// keyspace that was not yet active at the main horizon.
+	version, primed, err := readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq)(indexes.Canonical(indexID))
 	if err != nil {
 		return nil, fmt.Errorf("reading index version state: %w", err)
 	}
 
-	if state.CurrentVersion == 0 {
+	if !primed {
+		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{
+			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
+		}}
+	}
+
+	if version.Version == 0 {
 		return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{
 			Index: fmt.Sprintf("metadata[%q] on %s", metaKey, req.GetTargetType()),
 		}}
@@ -1044,15 +1093,16 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 	}
 
 	inspectResult, err := readstore.InspectIndex(readstore.InspectParams{
-		Reader:      snap,
-		KB:          dal.NewKeyBuilder(),
-		LedgerName:  ledgerInfo.GetName(),
-		Namespace:   namespace,
-		MetadataKey: metaKey,
-		Version:     state.CurrentVersion,
-		Mode:        mode,
-		PageSize:    req.GetPageSize(),
-		CursorBytes: cursorBytes,
+		Reader:          snap,
+		KB:              dal.NewKeyBuilder(),
+		LedgerName:      ledgerInfo.GetName(),
+		Namespace:       namespace,
+		MetadataKey:     metaKey,
+		Version:         version.Version,
+		HorizonSequence: mainSeq,
+		Mode:            mode,
+		PageSize:        req.GetPageSize(),
+		CursorBytes:     cursorBytes,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("inspecting index: %w", err)
@@ -1664,15 +1714,16 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 // iterates ascending by sequence (oldest first) — this is the audit trail's
 // natural read order and is preserved from the pre-ListOptions behavior.
 // reverse=true iterates descending (newest first).
-func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool, _ uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	return ctrl.ListAuditEntriesFrom(ctx, ctrl.store, ctrl.readStore, pageSize, afterSequence, filter, reverse)
 }
 
 // ListAuditEntriesFrom returns a cursor over audit entries using the provided
-// stores (live or query checkpoint). The audit trail is queried exclusively
-// through the readstore audit secondary index (EN-1339) plus an audit-zone
-// sequence bound — there is no scan-time predicate fallback, so an expression
-// the index cannot answer is rejected upstream with InvalidArgument.
+// stores (live or query checkpoint). Nil and sequence-only filters scan the
+// authoritative audit zone directly. Indexed filters use a certificate-gated
+// readstore snapshot (EN-1339), then trim candidates to the main snapshot's
+// audit horizon. There is no scan-time predicate fallback for unsupported
+// expressions; they are rejected with InvalidArgument.
 func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	ctx, span := tracer.Start(ctx, "ctrl.list_audit_entries",
 		trace.WithAttributes(
@@ -1685,23 +1736,119 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 	// must not be able to force an unbounded materialization.
 	pageSize = ClampFetchSize(pageSize)
 
-	seqs, loSeq, hiSeq, narrowed, err := query.CompileAuditFilter(rs, filter)
-	if err != nil {
-		return nil, err
-	}
-
 	handle, err := store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+	closeHandle := true
+
+	defer func() {
+		if closeHandle {
+			_ = handle.Close() // error paths only; the close error adds nothing to the one returned
+		}
+	}()
+
+	mainAppliedIndex, err := query.ReadLastAppliedIndex(handle)
+	if err != nil {
+		return nil, fmt.Errorf("reading main-store applied index: %w", err)
+	}
+	if barrier, ok := query.ReadBarrierHorizon(ctx); ok && mainAppliedIndex < barrier {
+		return nil, fmt.Errorf("main-store snapshot applied index %d is behind ReadIndex horizon %d", mainAppliedIndex, barrier)
+	}
+
+	// The audit projection folds independently of this handle's main-store
+	// view, so its index can hold sequences past the audit head visible here
+	// (a live handle opened before the fold, or a frozen pair whose read index
+	// was cut after the main store). Every candidate is materialized from this
+	// handle, where such a sequence has no entry yet: trim to the head.
+	mainAuditSequence, err := query.ReadLastAuditSequence(handle)
+	if err != nil {
+		return nil, fmt.Errorf("reading main-store audit horizon: %w", err)
+	}
+	if err := query.ValidateAuditFilter(filter); err != nil {
+		return nil, err
+	}
+
+	var auditSnap *pebble.Snapshot
+	indexReader := query.AuditIndexReader(rs)
+	if query.AuditFilterNeedsIndex(filter) {
+		for {
+			disabled, rebuilding, auditGeneration := rs.AuditProjectionStateWithGeneration()
+			if disabled {
+				return nil, &domain.BusinessError{Err: domain.ErrAuditDisabled}
+			}
+			if rebuilding {
+				return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: "audit (rebuilding)"}}
+			}
+
+			auditSnap = rs.NewSnapshot()
+			progress, err := rs.ReadAuditRaftProgressFrom(auditSnap)
+			if err != nil {
+				_ = auditSnap.Close()
+
+				return nil, fmt.Errorf("reading audit projection progress: %w", err)
+			}
+			if progress >= mainAppliedIndex {
+				disabled, rebuilding, currentGeneration := rs.AuditProjectionStateWithGeneration()
+				if disabled {
+					_ = auditSnap.Close()
+
+					return nil, &domain.BusinessError{Err: domain.ErrAuditDisabled}
+				}
+				if rebuilding {
+					_ = auditSnap.Close()
+
+					return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: "audit (rebuilding)"}}
+				}
+				if currentGeneration != auditGeneration {
+					_ = auditSnap.Close()
+
+					continue
+				}
+				indexReader = readstore.NewAuditIndexSnapshot(auditSnap)
+
+				break
+			}
+			_ = auditSnap.Close()
+			if rs.Frozen() {
+				return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: "audit checkpoint"}}
+			}
+			if err := rs.WaitForAuditRaftProgress(ctx, mainAppliedIndex); errors.Is(err, readstore.ErrAuditProjectionUnavailable) {
+				return nil, &domain.BusinessError{Err: domain.ErrAuditDisabled}
+			} else if errors.Is(err, readstore.ErrAuditProjectionFailed) {
+				return nil, &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: "audit (rebuilding)"}}
+			} else if err != nil {
+				return nil, fmt.Errorf("waiting for audit projection alignment at Raft index %d: %w", mainAppliedIndex, err)
+			}
+		}
+	}
+
+	seqs, loSeq, hiSeq, narrowed, err := query.CompileAuditFilter(indexReader, filter)
+	if err != nil {
+		if auditSnap != nil {
+			_ = auditSnap.Close()
+		}
+
+		return nil, err
+	}
+	if hiSeq > mainAuditSequence {
+		hiSeq = mainAuditSequence
 	}
 
 	// Audit default is chronological (ascending); ReadAuditEntriesPage takes
 	// reverse=false as ascending, so pass reverse through directly.
 	c, err := query.ReadAuditEntriesPage(ctx, handle, seqs, narrowed, loSeq, hiSeq, afterSequence, reverse, pageSize)
 	if err != nil {
-		_ = handle.Close()
+		if auditSnap != nil {
+			_ = auditSnap.Close()
+		}
 
 		return nil, fmt.Errorf("listing audit entries: %w", err)
+	}
+
+	closeHandle = false
+	if auditSnap != nil {
+		return cursor.NewClosingCursor(c, joinedCloser{auditSnap, handle}), nil
 	}
 
 	return cursor.NewClosingCursor(c, handle), nil

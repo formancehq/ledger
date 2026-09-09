@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"strconv"
 
 	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel/attribute"
@@ -23,32 +22,6 @@ import (
 
 const defaultPageSize = 100
 
-// ErrReadIndexNotCaughtUp is returned when the read index has not yet processed
-// the requested minimum log sequence.
-type ErrReadIndexNotCaughtUp struct {
-	Requested uint64
-	Current   uint64
-}
-
-func (e *ErrReadIndexNotCaughtUp) Error() string {
-	return fmt.Sprintf("read index has not caught up to sequence %d (current: %d)", e.Requested, e.Current)
-}
-
-func (*ErrReadIndexNotCaughtUp) Reason() string { return domain.ErrReasonReadIndexNotCaughtUp }
-
-func (e *ErrReadIndexNotCaughtUp) Metadata() map[string]string {
-	return map[string]string{
-		"requested": strconv.FormatUint(e.Requested, 10),
-		"current":   strconv.FormatUint(e.Current, 10),
-	}
-}
-
-// Compile-time assertion that ErrReadIndexNotCaughtUp satisfies
-// domain.Describable. Without it the shared error edge cannot classify the
-// condition and every REST list endpoint renders a routine fold lag as an
-// opaque 500 rather than a retryable 503.
-var _ domain.Describable = (*ErrReadIndexNotCaughtUp)(nil)
-
 // EntityEnricher provides functions to hydrate raw entity IDs into full objects.
 type EntityEnricher struct {
 	EnrichAccount     func(reader dal.PebbleReader, ledgerName string, address string) (*commonpb.Account, error)
@@ -60,7 +33,7 @@ type EntityEnricher struct {
 func Execute(
 	ctx context.Context,
 	rs *readstore.Store,
-	pebbleStore *dal.Store,
+	pebbleStore queryHandleStore,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	preparedQueryAttr *attributes.Attribute[*commonpb.PreparedQuery],
 	indexAttr *attributes.Attribute[*commonpb.Index],
@@ -75,8 +48,21 @@ func Execute(
 		))
 	defer span.End()
 
-	// Fetch ledger info for schema-based filter validation and ledger ID resolution
-	ledgerInfo, err := GetLedgerByName(ctx, pebbleStore, req.GetLedger())
+	// The prepared-query definition and ledger schema are request-local query
+	// state. Open the main snapshot before loading them so a concurrent update,
+	// deletion, or schema change cannot be combined with entities from a newer
+	// state. The query shape is not known yet, so reserve the event-history floor
+	// until the definition tells us whether index alignment is owed.
+	handle, releaseHold, err := OpenReservedQueryHandle(rs, pebbleStore)
+	if err != nil {
+		return nil, fmt.Errorf("creating read handle: %w", err)
+	}
+
+	defer releaseHold()
+	defer func() { _ = handle.Close() }() // Best-effort cleanup after the response snapshot is consumed.
+
+	// Fetch ledger info for schema-based filter validation and ledger ID resolution.
+	ledgerInfo, err := GetLedgerByName(ctx, handle, req.GetLedger())
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, &domain.ErrLedgerNotFound{Name: req.GetLedger()}
@@ -85,8 +71,9 @@ func Execute(
 		return nil, fmt.Errorf("reading ledger info: %w", err)
 	}
 
-	// Read the prepared query from Pebble
-	pq, err := ReadPreparedQuery(ctx, preparedQueryAttr, pebbleStore, ledgerInfo.GetName(), req.GetQueryName())
+	// Read the prepared query from the same main snapshot used by compilation,
+	// aggregation, and entity enrichment.
+	pq, err := ReadPreparedQuery(ctx, preparedQueryAttr, handle, ledgerInfo.GetName(), req.GetQueryName())
 	if err != nil {
 		return nil, fmt.Errorf("reading prepared query: %w", err)
 	}
@@ -104,18 +91,6 @@ func Execute(
 	}
 
 	schema := SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), pq.GetTarget())
-
-	// Always open a read handle — needed for filter compilation and entity
-	// enrichment. Opened BEFORE the index snapshot: alignment guarantees the
-	// snapshot's fold cursor covers everything the handle sees (EN-1748), and
-	// OpenQueryHandle holds reclamation still across the two steps.
-	handle, releaseHold, err := OpenQueryHandle(rs, pebbleStore, pq.GetFilter(), pq.GetTarget())
-	if err != nil {
-		return nil, fmt.Errorf("creating read handle: %w", err)
-	}
-
-	defer releaseHold()
-	defer func() { _ = handle.Close() }()
 
 	var (
 		indexSnap    *pebble.Snapshot
@@ -147,16 +122,6 @@ func Execute(
 
 	defer releaseLease()
 	defer func() { _ = indexSnap.Close() }()
-
-	// Check min_log_sequence freshness against the handle: alignment makes
-	// the index snapshot at least as fresh, so the handle's sequence is the
-	// response's consistent state.
-	if req.GetMinLogSequence() > 0 && mainSeq < req.GetMinLogSequence() {
-		return nil, &ErrReadIndexNotCaughtUp{
-			Requested: req.GetMinLogSequence(),
-			Current:   mainSeq,
-		}
-	}
 
 	kb := dal.NewKeyBuilder()
 

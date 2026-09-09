@@ -426,16 +426,19 @@ func RebuildDelta(
 			}
 
 		case *commonpb.LogPayload_CreatedQueryCheckpoint:
-			// Rebuild the metadata row (id + max_sequence + created_at) from the log.
+			// Rebuild the metadata row from the log and mark its restore provenance.
 			// The physical checkpoint files cannot be reconstructed from the audit, so a
-			// rebuilt checkpoint reads as Unavailable until an operator deletes it. The
-			// row keeps the projection audit-consistent so the cap and
-			// compareQueryCheckpoints stay correct after a rebuild.
+			// rebuilt checkpoint reads as Unavailable until an operator deletes it.
+			// restored_from_backup also prevents the read-index builder from treating
+			// the source-cluster applied_index as a certificate in the new Raft domain.
+			// The business fields remain audit-derived so the cap and checker stay correct.
 			if cp := p.CreatedQueryCheckpoint; cp != nil {
 				if err := state.SaveQueryCheckpoint(batch, &raftcmdpb.QueryCheckpointState{
-					CheckpointId: cp.GetCheckpointId(),
-					MaxSequence:  cp.GetMaxSequence(),
-					CreatedAt:    cp.GetCreatedAt(),
+					CheckpointId:       cp.GetCheckpointId(),
+					MaxSequence:        cp.GetMaxSequence(),
+					CreatedAt:          cp.GetCreatedAt(),
+					AppliedIndex:       cp.GetAppliedIndex(),
+					RestoredFromBackup: true,
 				}); err != nil {
 					_ = batch.Cancel()
 
@@ -978,11 +981,18 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 			return err
 		}
 
+		advancedTransactionID := b.GetNextTransactionId()
 		for _, id := range effects.SkippedTransactionIDs {
-			if next := id + 1; next > b.GetNextTransactionId() {
-				b.NextTransactionId = next
+			next, exhausted := domain.CheckedNextSequence(id, domain.SequenceCounterTransactionID)
+			if exhausted != nil {
+				return fmt.Errorf("advancing skipped mirror transaction id for ledger %q: %w", effects.Ledger, exhausted)
+			}
+
+			if next > advancedTransactionID {
+				advancedTransactionID = next
 			}
 		}
+		b.NextTransactionId = advancedTransactionID
 
 		// Mirror high-water mark. Only the FSM writes LastMirrorV2LogId on the
 		// live path, and the ledger-log stream does not carry the source id
@@ -1216,7 +1226,12 @@ func (w *attributeReplayWriter) advanceLogID(ledgerName string, logID uint64) er
 		return err
 	}
 
-	if next := logID + 1; next > b.GetNextLogId() {
+	next, exhausted := domain.CheckedNextSequence(logID, domain.SequenceCounterLedgerLogID)
+	if exhausted != nil {
+		return fmt.Errorf("advancing ledger-log id for ledger %q: %w", ledgerName, exhausted)
+	}
+
+	if next > b.GetNextLogId() {
 		b.NextLogId = next
 	}
 
@@ -1239,7 +1254,12 @@ func (w *attributeReplayWriter) recordTransactionBoundary(canonicalKey []byte) e
 		return err
 	}
 
-	if next := tk.ID + 1; next > b.GetNextTransactionId() {
+	next, exhausted := domain.CheckedNextSequence(tk.ID, domain.SequenceCounterTransactionID)
+	if exhausted != nil {
+		return fmt.Errorf("advancing transaction id for ledger %q: %w", tk.LedgerName, exhausted)
+	}
+
+	if next > b.GetNextTransactionId() {
 		b.NextTransactionId = next
 	}
 

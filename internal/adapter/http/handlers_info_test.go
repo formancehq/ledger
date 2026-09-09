@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
 func TestInfoHandler(t *testing.T) {
@@ -33,6 +34,7 @@ func TestInfoHandler(t *testing.T) {
 	require.Equal(t, "abc1234", got["commit"])
 	require.Equal(t, "2026-06-19T00:00:00Z", got["buildDate"])
 	require.Equal(t, "go1.24", got["goVersion"])
+	require.Equal(t, grpcprotocol.Version, got["protocolVersion"])
 	_, wrapped := got["data"]
 	require.False(t, wrapped)
 }

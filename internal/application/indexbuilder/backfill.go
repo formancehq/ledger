@@ -210,7 +210,7 @@ type schemaRewriteTask struct {
 	// guarantees that when CurrentVersion flips to v_new, every entry in
 	// the v_new keyspace corresponds to a log sequence the read index
 	// has already processed — preserving the contiguous-prefix invariant
-	// every query relies on through min_log_sequence.
+	// every aligned indexed query relies on.
 	//
 	// Sampled per batch (not per task lifetime) so it tracks the
 	// freshest FSM state any batch could have observed. Reset on a
@@ -630,7 +630,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 
 	done := false
 
-	rmapPrefix := readstore.ReverseMapPrefix(kb, task.ledger, ns)
+	rmapPrefix := readstore.ReverseMapVersionPrefix(kb, task.ledger, ns, task.key, currentVersion)
 	upper := readstore.IncrementBytes(rmapPrefix)
 
 	// Pair two Pebble snapshots: one on the read store (rmap, forward
@@ -660,8 +660,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	// switch (further down) until LastIndexedSequence catches up to
 	// this watermark — otherwise post-switch the v_new keyspace would
 	// serve rows reflecting state ahead of the read-store cursor,
-	// breaking the contiguous-prefix invariant min_log_sequence
-	// callers rely on.
+	// breaking the contiguous-prefix invariant aligned readers rely on.
 	//
 	// Sampled per batch and accumulated as a max so the gate tracks
 	// the freshest FSM state any of this task's batches could have
@@ -768,20 +767,16 @@ scan:
 			return false, fmt.Errorf("schema rewrite: %w", err)
 		}
 
-		if rk.MetadataKey != task.key {
-			continue
-		}
-
 		entityID, entryVersion := rk.EntityID, rk.Version
 
-		// Skip rmap rows that don't belong to v_current. The rewrite
-		// reads from v_current and writes to v_pending; without this
-		// filter the iterator would also see v_pending rows already
-		// written by us or by live dual-writes, leading to wasted
-		// re-processing in the best case and lossy overwrites in the
-		// worst.
-		if entryVersion != currentVersion {
-			continue
+		// The iterator is bounded to exactly (field, v_current). A mismatch
+		// means either the stored key or the key-range contract is corrupt;
+		// silently skipping would allow an incomplete rewrite to switch.
+		if rk.MetadataKey != task.key || entryVersion != currentVersion {
+			return false, fmt.Errorf(
+				"invariant: schema rewrite range for field %q v=%d yielded field %q v=%d",
+				task.key, currentVersion, rk.MetadataKey, entryVersion,
+			)
 		}
 
 		rawValue, lookupErr := b.fetchStoredMetadataValue(fsmHandle, task.ledger, task.targetType, task.key, entityID)

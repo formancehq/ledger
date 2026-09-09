@@ -94,6 +94,16 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		producer = &stdPostingProducer{assetCache: ctx.AssetCache}
 	}
 
+	// The persisted boundary stores the next allocatable ID. MaxUint64 itself
+	// is therefore not allocatable: advancing it would wrap the boundary to zero
+	// and make existing transaction keys reusable (EN-1860). Check before the
+	// posting producer stages any volume mutation.
+	nextTransactionID := boundaries.GetNextTransactionId()
+	advancedTransactionID, exhausted := domain.CheckedNextSequence(nextTransactionID, domain.SequenceCounterTransactionID)
+	if exhausted != nil {
+		return nil, exhausted
+	}
+
 	// Produce postings (handles balance checks and buffer updates)
 	result, err := producer.produce(s, ledger, order, script)
 	if err != nil {
@@ -110,8 +120,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		return nil, domain.ErrEmptyTransaction
 	}
 
-	nextTransactionID := boundaries.GetNextTransactionId()
-	boundaries.NextTransactionId = nextTransactionID + 1
+	boundaries.NextTransactionId = advancedTransactionID
 
 	// posting_count, numscript_execution_count, revert_count, reference_count
 	// are no longer maintained on LedgerBoundaries — they are derived from the

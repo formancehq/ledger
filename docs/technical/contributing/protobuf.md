@@ -59,6 +59,17 @@ go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.1-0.
 
 ## Modifying Protocol Definitions
 
+The service API has a compiled protocol revision independent of release versions.
+For every exposed wire or semantic change, assess client/server compatibility and
+bump `pkg/grpcprotocol.Version` in the same change when the contract breaks.
+Renumbering exposed fields is a breaking change even if the generated code still
+compiles. Internal persisted/Raft-only changes require an impact assessment of
+shared service types rather than an automatic service revision bump. See the
+[service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
+for the gate, client obligations, and review criteria. This does not change the
+unreleased-v3 rule: remove obsolete fields and realign their numbers; do not add
+migrations, reserved fields, or support for older v3 formats.
+
 1. Edit the `.proto` file in `misc/proto/`
 2. **Realign field numbers sequentially** when adding/removing fields (no gaps, remove obsolete `reserved` entries)
 3. **Audit the hand-rolled wire sites** before renumbering — see below

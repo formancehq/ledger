@@ -21,6 +21,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
 func main() {
@@ -89,7 +90,7 @@ func run() error {
 		creds = credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 	}
 
-	dialOpts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
+	dialOpts := []grpc.DialOption{grpcprotocol.ClientOption(), grpc.WithTransportCredentials(creds)}
 	if *authToken != "" {
 		dialOpts = append(dialOpts,
 			grpc.WithUnaryInterceptor(bearerInterceptor(*authToken)),

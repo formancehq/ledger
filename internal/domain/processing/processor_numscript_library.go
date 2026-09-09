@@ -33,7 +33,7 @@ func processSaveNumscript(ledger string, order *raftcmdpb.SaveNumscriptOrder, ct
 		return nil, &domain.ErrNumscriptInvalidVersion{Version: order.GetVersion()}
 	}
 
-	if _, loadErr := loadLedger(s, ledger); loadErr != nil {
+	if _, loadErr := loadLedgerReader(s, ledger); loadErr != nil {
 		return nil, loadErr
 	}
 

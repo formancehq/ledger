@@ -1595,8 +1595,11 @@ func ReadLastEntry[T proto.Message](reader PebbleReader, zone, sub byte) (T, err
 	lowerBound := kb.Snapshot()
 	kb.Reset()
 
-	kb.PutZonePrefix(zone, sub).PutBytes(MaxUint64Bytes)
-	upperBound := kb.Build()
+	// Bound by the next sub-prefix, not by a synthetic MaxUint64 key. Pebble's
+	// upper bound is exclusive, so [zone][sub][MaxUint64] must remain visible:
+	// recovery uses it to detect and reject an exhausted persisted sequence
+	// instead of falling back to a lower/reusable next value (EN-1860).
+	upperBound := []byte{zone, sub + 1}
 
 	iter, err := NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {

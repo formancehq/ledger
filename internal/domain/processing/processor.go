@@ -48,8 +48,11 @@ type Context struct {
 
 	// Per-apply — set by processApply / processMirrorIngest before
 	// dispatching to apply-child handlers; nil/empty otherwise.
+	// LedgerInfo is the immutable reader view: read-only child handlers
+	// consume it directly and only configuration-mutating handlers call
+	// Mutate() to acquire an owned clone.
 	Boundaries *raftcmdpb.LedgerBoundaries
-	LedgerInfo *commonpb.LedgerInfo
+	LedgerInfo commonpb.LedgerInfoReader
 
 	// Per-batch — owned by *RequestProcessor; passed by reference so
 	// handlers see the same cache across orders. NumscriptCache lives
@@ -149,8 +152,8 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 // across orders. The cache map is mutated in place. Free function (not
 // a method on RequestProcessor) so handlers reach for it via explicit
 // parameter — see the isolation goal of the processor refactor.
-func compiledTypesFor(cache map[string][]accounttype.CompiledType, ledger string, info *commonpb.LedgerInfo) []accounttype.CompiledType {
-	if info == nil || len(info.GetAccountTypes()) == 0 {
+func compiledTypesFor(cache map[string][]accounttype.CompiledType, ledger string, info commonpb.LedgerInfoReader) []accounttype.CompiledType {
+	if info == nil || info.GetAccountTypes().Len() == 0 {
 		return nil
 	}
 
@@ -158,7 +161,7 @@ func compiledTypesFor(cache map[string][]accounttype.CompiledType, ledger string
 		return cached
 	}
 
-	compiled := accounttype.CompileTypes(info.GetAccountTypes())
+	compiled := accounttype.CompileTypesReader(info.GetAccountTypes())
 	cache[ledger] = compiled
 
 	return compiled
@@ -292,7 +295,10 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 					return nil, err
 				}
 
-				nextSequenceID := orderScope.IncrementNextSequenceID()
+				nextSequenceID, sequenceErr := orderScope.IncrementNextSequenceID()
+				if sequenceErr != nil {
+					return nil, sequenceErr
+				}
 				skipLog := &commonpb.Log{
 					Sequence: nextSequenceID,
 					Payload:  skippedPayload,
@@ -350,7 +356,10 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 			}
 		}
 
-		nextSequenceID := orderScope.IncrementNextSequenceID()
+		nextSequenceID, sequenceErr := orderScope.IncrementNextSequenceID()
+		if sequenceErr != nil {
+			return nil, sequenceErr
+		}
 		log := &commonpb.Log{
 			Sequence: nextSequenceID,
 			Payload:  payload,

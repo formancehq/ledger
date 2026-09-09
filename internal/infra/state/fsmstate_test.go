@@ -1,12 +1,29 @@
 package state
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+func TestAppendAuditEntryRejectsExhaustedSequenceWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	s := NewFSMState("test-cluster")
+	s.NextAuditSequenceID = math.MaxUint64
+	s.LastAuditHash = []byte("previous")
+
+	for range 2 {
+		sequence, err := s.AppendAuditEntry([]byte("hash-max"))
+		require.Zero(t, sequence)
+		require.Equal(t, "auditSequence", string(err.Counter))
+		require.Equal(t, uint64(math.MaxUint64), s.NextAuditSequenceID)
+		require.Equal(t, []byte("previous"), s.LastAuditHash)
+	}
+}
 
 // TestUpdateClusterConfig verifies the invariant the method exists to
 // protect: HashGenerator is rebuilt iff the algorithm changes; LastClusterConfig
@@ -71,7 +88,8 @@ func TestAppendAuditEntry(t *testing.T) {
 		require.Equal(t, uint64(1), s.NextAuditSequenceID)
 		require.Empty(t, s.LastAuditHash)
 
-		seq := s.AppendAuditEntry([]byte("hash-1"))
+		seq, err := s.AppendAuditEntry([]byte("hash-1"))
+		require.Nil(t, err)
 
 		require.Equal(t, uint64(1), seq, "returned sequence must be the pre-bump value")
 		require.Equal(t, []byte("hash-1"), s.LastAuditHash)
@@ -83,9 +101,12 @@ func TestAppendAuditEntry(t *testing.T) {
 
 		s := NewFSMState("test-cluster")
 
-		seq1 := s.AppendAuditEntry([]byte("hash-1"))
-		seq2 := s.AppendAuditEntry([]byte("hash-2"))
-		seq3 := s.AppendAuditEntry([]byte("hash-3"))
+		seq1, err := s.AppendAuditEntry([]byte("hash-1"))
+		require.Nil(t, err)
+		seq2, err := s.AppendAuditEntry([]byte("hash-2"))
+		require.Nil(t, err)
+		seq3, err := s.AppendAuditEntry([]byte("hash-3"))
+		require.Nil(t, err)
 
 		require.Equal(t, []uint64{1, 2, 3}, []uint64{seq1, seq2, seq3})
 		require.Equal(t, []byte("hash-3"), s.LastAuditHash, "LastAuditHash carries the latest hash")
@@ -98,10 +119,24 @@ func TestAppendAuditEntry(t *testing.T) {
 		s := NewFSMState("test-cluster")
 		s.LastAuditHash = []byte("seed")
 
-		seq := s.AppendAuditEntry(nil)
+		seq, err := s.AppendAuditEntry(nil)
+		require.Nil(t, err)
 
 		require.Equal(t, uint64(1), seq)
 		require.Nil(t, s.LastAuditHash, "nil hash overwrites a previous non-nil hash")
 		require.Equal(t, uint64(2), s.NextAuditSequenceID)
+	})
+
+	t.Run("max minus one is the last allocatable sequence", func(t *testing.T) {
+		t.Parallel()
+
+		s := NewFSMState("test-cluster")
+		s.NextAuditSequenceID = math.MaxUint64 - 1
+
+		seq, err := s.AppendAuditEntry([]byte("last"))
+		require.Nil(t, err)
+		require.Equal(t, uint64(math.MaxUint64-1), seq)
+		require.Equal(t, uint64(math.MaxUint64), s.NextAuditSequenceID)
+		require.Equal(t, []byte("last"), s.LastAuditHash)
 	})
 }

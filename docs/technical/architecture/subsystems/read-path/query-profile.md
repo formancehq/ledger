@@ -37,7 +37,7 @@ The request clock starts when the profile is created and stops at `Finish()`.
 |---|---|---|
 | `prepare_duration_us` | request entry → executor invocation: auth, validation, filter parsing/compilation, checkpoint-store opening, and HTTP query/body decode | yes |
 | `execute_duration_us` | the executor call: snapshot setup, ledger/schema resolution, index scan, enrichment, plus lazy row pulls | yes |
-| `barrier_duration_us` | **local** Raft `ReadIndex` quorum round-trip and `ReadOptions.min_log_sequence` read-index catch-up, successful or not | **no** |
+| `barrier_duration_us` | **local** Raft `ReadIndex` quorum round-trip, successful or not | **no** |
 | `deliver_duration_us` | row serialisation + transport hand-off | **no** |
 | `first_row_duration_us` | request entry → first row accepted by the transport | n/a |
 | `server_duration_us` | wall clock − barrier − deliver | — |
@@ -84,11 +84,11 @@ silently. A large residual is a signal that the phase boundaries need refining.
 
 ### Why `barrier` is excluded
 
-A linearizable read pays a `ReadIndex` quorum round-trip, and a read-your-writes
-read additionally waits for the read index to reach `min_log_sequence`. Both are
-latency the *caller opted into*. Folding them into the server total would blame
-the server for the caller's consistency requirement, and would make the number
-move with cluster RTT rather than with server cost.
+A linearizable read pays a `ReadIndex` quorum round-trip. It is latency the
+caller opted into; folding it into the server total would make the number move
+with cluster RTT rather than server work. Projection waits against the fixed
+main snapshot horizon happen inside query execution and remain execution time:
+they are automatic correctness work, not a separate client-selected barrier.
 
 Only **local** barriers are measured. On a forwarded read the leader runs its own
 `ReadIndexAndWait` (`x-consistency` is not propagated, so it defaults to
@@ -102,23 +102,15 @@ time inside `execute_duration_us`. Always read `barrier_duration_us` together wi
 | true | `0` | no local wait happened. Not "no barrier was needed": the remote node's is inside `execute_duration_us`. |
 | true | non-zero | a local wait happened before the read left this node; the remote barrier is on top of it (see below) |
 
-Two independent things produce the last row, and the value does **not** say
-which:
-
-- **`min_log_sequence` catch-up.** `waitMinLogSequence` charges the
-  `WaitForSequence` wait regardless of consistency level, and it runs before
-  routing — so `--consistency leader --min-log-sequence N` yields a non-zero
-  barrier on a perfectly healthy cluster, with no failed attempt anywhere.
-- **A failed `ReadIndex` attempt.** The syncing-follower fallback in
-  `RoutedController.readCtrl` records the attempt and may then forward after it
-  resolves a remote leader. If leadership moved local in the meantime, the
-  router returns the failed barrier rather than serving locally. Magnitude
-  differs sharply by cause: `ErrNodeSyncing` returns before any wait, so it
-  costs nanoseconds, whereas leadership lost mid-`ReadIndex` resolves a pending
-  future and can account for the whole quorum attempt.
-
-So do not read cluster health off a non-zero forwarded barrier — the common cause
-is a caller asking for read-your-writes.
+A non-zero value in the last row comes from a **failed local barrier attempt**.
+The attempt can stop at the syncing precheck before sending `ReadIndex`, or a
+leadership change can invalidate a pending `ReadIndex`. The router records both
+before it resolves a remote leader and forwards. If leadership moves local in
+the meantime, it returns the barrier failure rather than serving without a
+successful `ReadIndex`. Magnitude differs sharply by cause: `ErrNodeSyncing`
+returns before any wait, whereas leadership lost mid-`ReadIndex` can account for
+the whole quorum attempt. The duration does not identify the trigger, and must
+not be used to infer the remote node's health.
 
 Either way the wait is charged and stays excluded from `server_duration_us`, for
 the same reason a successful barrier is: the caller waited for it, and an
@@ -245,12 +237,12 @@ locally-served one.
 
 ## Known gaps
 
-- **Leader-forwarded reads report only the local hop.** When a follower forwards
-  a read (`ConsistencyLeader`, or the syncing-node fallback in
-  `RoutedController.readCtrl`), the upstream RPC is charged to the local
-  `execute` phase, so `execute` there conflates network hops, leader-side
-  prepare, leader-side barrier and leader-side execution. `barrier_duration_us`
-  covers only what this node attempted locally.
+- **Leader-forwarded reads report only the local hop.** When a follower falls
+  back to the leader in `RoutedController.readCtrl` because it is syncing or its
+  pending ReadIndex was invalidated by a leader change, the upstream RPC is
+  charged to the local `execute` phase, so `execute` there conflates network
+  hops, leader-side prepare, leader-side barrier and leader-side execution.
+  `barrier_duration_us` covers only what this node attempted locally.
 
   The `forwarded` flag makes this **detectable** rather than silent, which is the
   part that mattered: a consumer can tell "no barrier" from "barrier not measured

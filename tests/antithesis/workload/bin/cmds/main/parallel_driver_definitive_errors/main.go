@@ -52,21 +52,19 @@ func isDefinitiveCode(c codes.Code) bool {
 }
 
 // referenceFilterCheck lists transactions matching the reference and returns
-// (found, foundTxID, conclusive). conclusive is false when the read failed
-// (transient error, store lag, mid-stream error) — the ref is then skipped
-// rather than asserted on.
+// (found, foundTxID, conclusive). The caller first commits an acknowledged
+// marker, so this default linearizable read is aligned to that Raft horizon.
+// conclusive is false when the read fails before or during the stream.
 func referenceFilterCheck(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	ledger, ref string,
-	minLogSeq uint64,
 ) (bool, uint64, bool) {
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
 			PageSize: 10,
 			Filter:   actions.ReferenceFilter(ref),
-			Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
 		},
 	})
 	if err != nil {
@@ -185,8 +183,8 @@ func main() {
 		// Consistency barrier with a usable read floor: a successful marker
 		// write is sequenced after any hypothetically-committed rejected
 		// write (its rejection response was received before the marker was
-		// proposed), so MinLogSequence = marker sequence forces the read
-		// store past the window where a committed-but-rejected write could
+		// proposed), so the subsequent linearizable read forces the read store
+		// past the window where a committed-but-rejected write could
 		// hide. Transparent UNAVAILABLE retries of the marker are harmless
 		// (no reference, idempotent for this purpose).
 		markerResp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
@@ -213,15 +211,12 @@ func main() {
 			return
 		}
 
-		logs := markerResp.GetLogs()
-		if len(logs) == 0 {
+		if len(markerResp.GetLogs()) == 0 {
 			return
 		}
 
-		minLogSeq := logs[len(logs)-1].GetSequence()
-
 		for _, rej := range rejected {
-			found, foundID, conclusive := referenceFilterCheck(ctx, client, ledger, rej.reference, minLogSeq)
+			found, foundID, conclusive := referenceFilterCheck(ctx, client, ledger, rej.reference)
 			if !conclusive {
 				continue
 			}

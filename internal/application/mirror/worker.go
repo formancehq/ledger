@@ -306,8 +306,6 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 		w.boundariesLoaded = true
 	}
 
-	expectedNextLogID := w.lastAppliedV2LogID + 1
-
 	// Use prefetched result if available and valid, otherwise fetch synchronously.
 	var (
 		v2Logs   []v2.V2Log
@@ -355,6 +353,14 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 		w.publishIdleStatus(ctx)
 
 		return false, nil
+	}
+
+	expectedNextLogID, exhausted := domain.CheckedNextSequence(w.lastAppliedV2LogID, domain.SequenceCounterMirrorV2LogID)
+	if exhausted != nil {
+		// A source queried strictly after MaxUint64 cannot return a fresh log.
+		// Reject an inconsistent non-empty response without wrapping the
+		// translation cursor to zero.
+		return false, fmt.Errorf("advancing mirror source position: %w", exhausted)
 	}
 
 	w.logsIngested.Add(ctx, int64(len(v2Logs)), attrs)

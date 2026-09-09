@@ -126,6 +126,29 @@ Coverage bits for technical updates are computed by the runner's per-`WriteOpera
 
 A read at the handler level therefore travels: `Scope` (gate) → overlay → underlying KeyStore → cache, with **no Pebble Get** anywhere on the path.
 
+## Ledger configuration ownership
+
+`Context.LedgerInfo` is an immutable `LedgerInfoReader`. Read-only apply
+handlers and mirror ingest use the scoped reader without calling `Mutate()`
+or writing the unchanged configuration back. `processApply` assigns the
+reader for every order, including nil on a missing ledger, so a prior order's
+configuration cannot leak into the next order.
+
+Configuration-changing handlers use `loadLedger`, which acquires one owned
+deep clone through `Mutate()`. They modify and `Put` that same clone without
+an additional `CloneVT()`. The scoped overlay makes the update visible to
+later orders in the batch. Account-type changes also invalidate the compiled
+type cache: `CompiledType.Original` is a read-only view of the configuration,
+not an independently owned message.
+
+Mirror bypasses application admission, but still declares `SubAttrLedger`
+for ingest and standalone `MirrorSync` and uses the shared `Builder.Build/Run`
+preload pipeline. When a Gen1-only ledger would be evicted by the predicted
+rotation, `CheckCache` reports a miss, the builder loads a seed from Pebble,
+and `Machine.Preload` restores it before processing. Rewriting unchanged
+`LedgerInfo` on each mirror order is therefore unnecessary for correctness;
+it would add a clone and a persisted write merely to keep the cache warm.
+
 ## Write paths
 
 The cache and Pebble are mutated by two paths during apply, both honoring the same alignment guarantee — `AttributeCache.Gen0` is updated in-memory; Pebble 0xF1 and 0xFF rows are batched and persisted at `batch.Commit()`:

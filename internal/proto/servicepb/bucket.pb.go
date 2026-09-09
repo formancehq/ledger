@@ -127,16 +127,16 @@ const (
 	// A reverse-map (0x03) row in the peer read-index store references a
 	// metadata field that has no entry in the stored SubAttrIndex registry, or
 	// belongs to a ledger the audit chain does not list as live, or is not a
-	// well-formed reverse-map key at all. The reverse map is the only read-index
-	// limb that cannot be range-deleted by field — its metadata key sits after a
-	// fixed-width version block — so field removal must scan and point-delete,
-	// and a row missed by that scan is a permanent divergence no other pass can
-	// see. Reported per (ledger, namespace, metadata key) with a row count and a
-	// sample entity rather than per row: a field dropped on a large ledger can
-	// strand millions of rows. The encoding version block is deliberately NOT
-	// validated here — current and pending versions legitimately coexist during
-	// a per-replica rewrite, and stale versions are reclaimed at boot by
-	// purgeOrphanVersions.
+	// well-formed reverse-map key at all. Reverse-map keys use the
+	// field/version/entity layout, so removing a field across every version is a
+	// field-bounded DeleteRange. The checker remains as defense against
+	// read-store corruption or a broken index lifecycle even though correct
+	// field purges are atomic. Reported per (ledger, namespace, metadata key)
+	// with a row count and a sample entity rather than per row. Encoding version
+	// zero is malformed: it denotes an absent version and is never written into
+	// a reverse-map row. Nonzero versions are not compared to the live pair —
+	// current and pending versions legitimately coexist during a per-replica
+	// rewrite, and stale versions are reclaimed at boot by purgeOrphanVersions.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN CheckStoreErrorType = 20
 	// Emitted when the persisted signing-key projection (SubGlobSigningKey)
 	// diverges from the key set the checker re-derived from chain-bound
@@ -3124,13 +3124,14 @@ func (*DiscoveryRequest) Descriptor() ([]byte, []int) {
 
 // ServerInfo carries the server build metadata (unauthenticated).
 type ServerInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Version       string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`                      // semver / git tag (e.g. v3.1.0), "dev" if unset
-	Commit        string                 `protobuf:"bytes,2,opt,name=commit,proto3" json:"commit,omitempty"`                        // git SHA, "unknown" if unset
-	BuildDate     string                 `protobuf:"bytes,3,opt,name=build_date,json=buildDate,proto3" json:"build_date,omitempty"` // RFC3339, "unknown" if unset
-	GoVersion     string                 `protobuf:"bytes,4,opt,name=go_version,json=goVersion,proto3" json:"go_version,omitempty"` // runtime Go version
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Version         string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`                                        // semver / git tag (e.g. v3.1.0), "dev" if unset
+	Commit          string                 `protobuf:"bytes,2,opt,name=commit,proto3" json:"commit,omitempty"`                                          // git SHA, "unknown" if unset
+	BuildDate       string                 `protobuf:"bytes,3,opt,name=build_date,json=buildDate,proto3" json:"build_date,omitempty"`                   // RFC3339, "unknown" if unset
+	GoVersion       string                 `protobuf:"bytes,4,opt,name=go_version,json=goVersion,proto3" json:"go_version,omitempty"`                   // runtime Go version
+	ProtocolVersion string                 `protobuf:"bytes,5,opt,name=protocol_version,json=protocolVersion,proto3" json:"protocol_version,omitempty"` // Required ledger-protocol-version RPC metadata
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ServerInfo) Reset() {
@@ -3187,6 +3188,13 @@ func (x *ServerInfo) GetBuildDate() string {
 func (x *ServerInfo) GetGoVersion() string {
 	if x != nil {
 		return x.GoVersion
+	}
+	return ""
+}
+
+func (x *ServerInfo) GetProtocolVersion() string {
+	if x != nil {
+		return x.ProtocolVersion
 	}
 	return ""
 }
@@ -7195,16 +7203,15 @@ func (x *ListPreparedQueriesResponse) GetQueries() []*commonpb.PreparedQuery {
 }
 
 type ExecutePreparedQueryRequest struct {
-	state          protoimpl.MessageState              `protogen:"open.v1"`
-	Ledger         string                              `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	QueryName      string                              `protobuf:"bytes,2,opt,name=query_name,json=queryName,proto3" json:"query_name,omitempty"`
-	Parameters     map[string]*commonpb.ParameterValue `protobuf:"bytes,3,rep,name=parameters,proto3" json:"parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	PageSize       uint32                              `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	Cursor         string                              `protobuf:"bytes,5,opt,name=cursor,proto3" json:"cursor,omitempty"`
-	MinLogSequence uint64                              `protobuf:"fixed64,6,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
-	Mode           commonpb.QueryMode                  `protobuf:"varint,7,opt,name=mode,proto3,enum=common.QueryMode" json:"mode,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState              `protogen:"open.v1"`
+	Ledger        string                              `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	QueryName     string                              `protobuf:"bytes,2,opt,name=query_name,json=queryName,proto3" json:"query_name,omitempty"`
+	Parameters    map[string]*commonpb.ParameterValue `protobuf:"bytes,3,rep,name=parameters,proto3" json:"parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	PageSize      uint32                              `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Cursor        string                              `protobuf:"bytes,5,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	Mode          commonpb.QueryMode                  `protobuf:"varint,6,opt,name=mode,proto3,enum=common.QueryMode" json:"mode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExecutePreparedQueryRequest) Reset() {
@@ -7270,13 +7277,6 @@ func (x *ExecutePreparedQueryRequest) GetCursor() string {
 		return x.Cursor
 	}
 	return ""
-}
-
-func (x *ExecutePreparedQueryRequest) GetMinLogSequence() uint64 {
-	if x != nil {
-		return x.MinLogSequence
-	}
-	return 0
 }
 
 func (x *ExecutePreparedQueryRequest) GetMode() commonpb.QueryMode {
@@ -7814,22 +7814,21 @@ func (x *GetLedgerStatsRequest) GetCheckpointId() uint64 {
 }
 
 type AggregateVolumesRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Ledger         string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
-	Filter         *commonpb.QueryFilter  `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
-	MinLogSequence uint64                 `protobuf:"fixed64,3,opt,name=min_log_sequence,json=minLogSequence,proto3" json:"min_log_sequence,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Ledger string                 `protobuf:"bytes,1,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	Filter *commonpb.QueryFilter  `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	// When true, assets sharing the same base (e.g. USD/2, USD/4) are merged
 	// under the highest precision observed, with lower-precision amounts rescaled.
-	UseMaxPrecision bool `protobuf:"varint,4,opt,name=use_max_precision,json=useMaxPrecision,proto3" json:"use_max_precision,omitempty"`
+	UseMaxPrecision bool `protobuf:"varint,3,opt,name=use_max_precision,json=useMaxPrecision,proto3" json:"use_max_precision,omitempty"`
 	// When set, results are grouped by account prefix. Each account is assigned
 	// to the first matching prefix. Accounts not matching any prefix are excluded.
-	GroupByPrefixes []string `protobuf:"bytes,5,rep,name=group_by_prefixes,json=groupByPrefixes,proto3" json:"group_by_prefixes,omitempty"`
+	GroupByPrefixes []string `protobuf:"bytes,4,rep,name=group_by_prefixes,json=groupByPrefixes,proto3" json:"group_by_prefixes,omitempty"`
 	// checkpoint_id, when non-zero, reads from a query checkpoint instead of the live store
-	CheckpointId uint64 `protobuf:"fixed64,6,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId uint64 `protobuf:"fixed64,5,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	// When true, amounts in colored buckets are summed into the uncolored bucket
 	// ("" color). Result entries are produced with color = "". By default each
 	// (asset, color) bucket yields its own AggregatedVolume entry.
-	CollapseColors bool `protobuf:"varint,7,opt,name=collapse_colors,json=collapseColors,proto3" json:"collapse_colors,omitempty"`
+	CollapseColors bool `protobuf:"varint,6,opt,name=collapse_colors,json=collapseColors,proto3" json:"collapse_colors,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -7876,13 +7875,6 @@ func (x *AggregateVolumesRequest) GetFilter() *commonpb.QueryFilter {
 		return x.Filter
 	}
 	return nil
-}
-
-func (x *AggregateVolumesRequest) GetMinLogSequence() uint64 {
-	if x != nil {
-		return x.MinLogSequence
-	}
-	return 0
 }
 
 func (x *AggregateVolumesRequest) GetUseMaxPrecision() bool {
@@ -7968,26 +7960,24 @@ type QueryProfile struct {
 	// (a follower routing to the leader) — the time spent pulling rows out of
 	// the cursor.
 	ExecuteDurationUs int64 `protobuf:"varint,10,opt,name=execute_duration_us,json=executeDurationUs,proto3" json:"execute_duration_us,omitempty"`
-	// Time blocked on a read-consistency barrier the CALLER asked for: the Raft
-	// ReadIndex quorum round-trip and the ReadOptions.min_log_sequence read-index
-	// catch-up wait. Deliberately EXCLUDED from server_duration_us — it is a wait
+	// Time blocked on the read-consistency barrier the caller asked for: the Raft
+	// ReadIndex quorum round-trip. Deliberately EXCLUDED from server_duration_us — it is a wait
 	// the request opted into, not server cost.
 	//
-	// Only LOCAL waits are measured, and every local wait is measured: a
-	// min_log_sequence catch-up and a ReadIndex attempt are both counted, whether
-	// or not the attempt succeeds and whether or not the read is then forwarded.
+	// Only LOCAL waits are measured, whether or not the attempt succeeds and
+	// whether or not the read is then forwarded.
 	// Always read this field together with `forwarded`:
 	//
 	//   - forwarded=false: the whole barrier this read paid.
 	//   - forwarded=true, 0: no local wait happened. The remote node's barrier is
 	//     folded into its execution and arrives inside execute_duration_us — 0
 	//     does NOT mean "no barrier was needed".
-	//   - forwarded=true, non-zero: a local wait happened before the read left
-	//     this node, and the remote node's barrier is on top of it inside
-	//     execute_duration_us. The value does NOT identify which wait: a
-	//     min_log_sequence catch-up does not prevent forwarding, and a failed
-	//     ReadIndex attempt (syncing follower, leadership lost mid-quorum) is
-	//     what triggers the fallback. Do not read cluster health off it.
+	//   - forwarded=true, non-zero: a local barrier attempt failed before the
+	//     read left this node, either at the syncing precheck or because a
+	//     pending ReadIndex was invalidated by a leadership change. The remote
+	//     node's barrier is on top of the local attempt inside
+	//     execute_duration_us. The value does not identify the fallback trigger;
+	//     do not read cluster health off this timing.
 	//
 	// A failed or superseded wait is still excluded from server_duration_us: the
 	// caller waited for it, and an abandoned quorum round-trip is no more server
@@ -8015,13 +8005,13 @@ type QueryProfile struct {
 	// items_collected and the RPC's own status to tell them apart.
 	FirstRowDurationUs int64 `protobuf:"varint,13,opt,name=first_row_duration_us,json=firstRowDurationUs,proto3" json:"first_row_duration_us,omitempty"`
 	// True when this node did not serve the read itself but forwarded it to
-	// another node — an explicit leader-consistency read, or the fallback taken
-	// when the local replica is still catching up. The remote node's prepare,
-	// barrier and execution all arrive inside execute_duration_us, so the phase
-	// breakdown describes the local hop only. Its purpose is to stop a zero
-	// barrier_duration_us from being misread as "no barrier was needed"; see that
-	// field for the three cases the pair distinguishes — a forwarded read can
-	// report a non-zero local wait.
+	// another node — the fallback taken when the local replica is still catching
+	// up or its in-flight ReadIndex is invalidated by a leadership change. The
+	// remote node's prepare, barrier and execution all arrive inside
+	// execute_duration_us, so the phase breakdown describes the local hop only.
+	// Its purpose is to stop a zero barrier_duration_us from being misread as "no
+	// barrier was needed"; see that field for the three cases the pair
+	// distinguishes — a forwarded read can report a non-zero local wait.
 	Forwarded     bool `protobuf:"varint,14,opt,name=forwarded,proto3" json:"forwarded,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -8991,7 +8981,7 @@ const file_bucket_proto_rawDesc = "" +
 	"!SetQueryCheckpointScheduleRequest\x12\x12\n" +
 	"\x04cron\x18\x01 \x01(\tR\x04cron\"&\n" +
 	"$DeleteQueryCheckpointScheduleRequest\"\x12\n" +
-	"\x10DiscoveryRequest\"|\n" +
+	"\x10DiscoveryRequest\"\xa7\x01\n" +
 	"\n" +
 	"ServerInfo\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x16\n" +
@@ -8999,7 +8989,8 @@ const file_bucket_proto_rawDesc = "" +
 	"\n" +
 	"build_date\x18\x03 \x01(\tR\tbuildDate\x12\x1d\n" +
 	"\n" +
-	"go_version\x18\x04 \x01(\tR\tgoVersion\"\x90\x01\n" +
+	"go_version\x18\x04 \x01(\tR\tgoVersion\x12)\n" +
+	"\x10protocol_version\x18\x05 \x01(\tR\x0fprotocolVersion\"\x90\x01\n" +
 	"\x11DiscoveryResponse\x12F\n" +
 	"\x10response_signing\x18\x01 \x01(\v2\x1b.ledger.ResponseSigningInfoR\x0fresponseSigning\x123\n" +
 	"\vserver_info\x18\x02 \x01(\v2\x12.ledger.ServerInfoR\n" +
@@ -9301,7 +9292,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x1aListPreparedQueriesRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\"N\n" +
 	"\x1bListPreparedQueriesResponse\x12/\n" +
-	"\aqueries\x18\x01 \x03(\v2\x15.common.PreparedQueryR\aqueries\"\x86\x03\n" +
+	"\aqueries\x18\x01 \x03(\v2\x15.common.PreparedQueryR\aqueries\"\xdc\x02\n" +
 	"\x1bExecutePreparedQueryRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x1d\n" +
 	"\n" +
@@ -9310,9 +9301,8 @@ const file_bucket_proto_rawDesc = "" +
 	"parameters\x18\x03 \x03(\v23.ledger.ExecutePreparedQueryRequest.ParametersEntryR\n" +
 	"parameters\x12\x1b\n" +
 	"\tpage_size\x18\x04 \x01(\rR\bpageSize\x12\x16\n" +
-	"\x06cursor\x18\x05 \x01(\tR\x06cursor\x12(\n" +
-	"\x10min_log_sequence\x18\x06 \x01(\x06R\x0eminLogSequence\x12%\n" +
-	"\x04mode\x18\a \x01(\x0e2\x11.common.QueryModeR\x04mode\x1aU\n" +
+	"\x06cursor\x18\x05 \x01(\tR\x06cursor\x12%\n" +
+	"\x04mode\x18\x06 \x01(\x0e2\x11.common.QueryModeR\x04mode\x1aU\n" +
 	"\x0fParametersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12,\n" +
 	"\x05value\x18\x02 \x01(\v2\x16.common.ParameterValueR\x05value:\x028\x01\"\x98\x01\n" +
@@ -9350,15 +9340,14 @@ const file_bucket_proto_rawDesc = "" +
 	"\fSCOPE_LEDGER\x10\x02\"T\n" +
 	"\x15GetLedgerStatsRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12#\n" +
-	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"\xae\x02\n" +
+	"\rcheckpoint_id\x18\x02 \x01(\x06R\fcheckpointId\"\x84\x02\n" +
 	"\x17AggregateVolumesRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +
-	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x12(\n" +
-	"\x10min_log_sequence\x18\x03 \x01(\x06R\x0eminLogSequence\x12*\n" +
-	"\x11use_max_precision\x18\x04 \x01(\bR\x0fuseMaxPrecision\x12*\n" +
-	"\x11group_by_prefixes\x18\x05 \x03(\tR\x0fgroupByPrefixes\x12#\n" +
-	"\rcheckpoint_id\x18\x06 \x01(\x06R\fcheckpointId\x12'\n" +
-	"\x0fcollapse_colors\x18\a \x01(\bR\x0ecollapseColors\"\x9d\x05\n" +
+	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\x12*\n" +
+	"\x11use_max_precision\x18\x03 \x01(\bR\x0fuseMaxPrecision\x12*\n" +
+	"\x11group_by_prefixes\x18\x04 \x03(\tR\x0fgroupByPrefixes\x12#\n" +
+	"\rcheckpoint_id\x18\x05 \x01(\x06R\fcheckpointId\x12'\n" +
+	"\x0fcollapse_colors\x18\x06 \x01(\bR\x0ecollapseColors\"\x9d\x05\n" +
 	"\fQueryProfile\x12*\n" +
 	"\x11index_duration_us\x18\x01 \x01(\x03R\x0findexDurationUs\x124\n" +
 	"\x16enrichment_duration_us\x18\x02 \x01(\x03R\x14enrichmentDurationUs\x12'\n" +

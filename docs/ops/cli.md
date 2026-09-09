@@ -16,7 +16,10 @@ Releases publish platform archives on
 - Linux/macOS: `ledger_linux-amd64.tar.gz`, `ledger_darwin-arm64.tar.gz`, and the corresponding architectures. These archives contain `ledger-server` and `ledgerctl`.
 - Windows: `ledger_windows-amd64.zip` and `ledger_windows-arm64.zip`. These archives contain `ledgerctl.exe` only.
 
-Extract the archive and put `ledgerctl` or `ledgerctl.exe` on your `PATH`. Once installed, `ledgerctl upgrade` keeps the CLI current.
+Extract the archive and put `ledgerctl` or `ledgerctl.exe` on your `PATH`. Prefer
+the CLI distributed with the deployed server build. `ledgerctl upgrade` selects
+the latest release in a channel, which may use a different protocol from that
+server.
 
 ### Build from source
 
@@ -26,6 +29,26 @@ just build-client
 # Or directly with Go
 go build -o build/ledgerctl ./cmd/ledgerctl
 ```
+
+## Server compatibility
+
+`ledgerctl` sends its compiled protocol revision on every gRPC call. The server
+blocks business RPCs when the revision is absent, invalid, or different, returning
+`FailedPrecondition` before executing the operation. This includes streaming and
+restore commands. There is no flag to bypass the check.
+
+Run `ledgerctl version` locally to see the CLI's protocol revision. In normal
+server mode, `GET /_info` and gRPC Discovery expose the server's `protocolVersion`.
+Discovery, gRPC health, and reflection are exempt from the gate. Restore mode has
+no Discovery service; a rejected restore call reports the required protocol
+revision and metadata key directly.
+
+On a mismatch, use the CLI distributed with the server or build a client that
+implements the same protocol. A newer release is not necessarily compatible with
+an older server. Release versions and commit IDs can differ when the protocol
+matches; source builds reporting `dev` still carry a defined protocol revision.
+See the [service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
+for SDKs, custom gRPC clients, and internal forwarding.
 
 ## Global Flags
 
@@ -41,7 +64,7 @@ These flags are available for all commands:
 | `--signing-key` | | Path to Ed25519 private key file (seed: 32 bytes raw or hex-encoded) |
 | `--signing-key-id` | `default` | Key ID for request signatures |
 | `--response-verify-key` | | Path to Ed25519 public key file for verifying server response signatures |
-| `--consistency` | | Read consistency level: `stale`, `leader`, or `linearizable` (default) |
+| `--consistency` | | Read consistency level: `stale` or `linearizable` (default) |
 | `--auth-token` | | Bearer token for authentication (JWT string or `@path-to-file`) |
 
 ### TLS server name (verifying by name while dialing by IP)
@@ -83,34 +106,26 @@ repeated on every invocation.
 Most live business reads default to **linearizable** consistency: reads routed
 through `RoutedController.readCtrl` perform a ReadIndex barrier before reading
 from the local store. This establishes a quorum-confirmed applied-state horizon
-for FSM-backed data and secondary indexes aligned to that horizon. It does not
-make independently asynchronous projections linearizable; endpoint sections
-document those exceptions. The barrier can block during maintenance windows
+for FSM-backed data and the certified read or audit projections used by the
+request. The usage counters reported by ledger stats remain eventual and are
+not part of that horizon. The barrier can block during maintenance windows
 (e.g. mirror sync or snapshot creation) when the FSM is frozen.
 
-Two alternative consistency levels are available:
+One alternative consistency level is available:
 
 - **`stale`** — Skip the Raft ReadIndex barrier and read from local state, which
-  may lag behind the latest committed index. A read can still wait for an
-  explicitly requested `--min-log-sequence` or for mandatory secondary-index
-  alignment. Useful for monitoring, dashboards, and non-critical queries where
-  quorum-confirmed freshness is unnecessary.
-- **`leader`** — Route the read to the node currently considered leader. When
-  the request is forwarded, the remote node applies its default ReadIndex
-  barrier. When the receiving node already considers itself leader, it serves
-  the read locally without a barrier. Because `CheckQuorum` is disabled, an
-  isolated former leader can therefore return stale state in this mode; use the
-  default `linearizable` mode when quorum-confirmed freshness is required.
+  may lag behind the latest committed index. A read backed by a certified read
+  or audit projection still aligns that projection to the fixed horizon of the
+  local main-store snapshot; usage counters remain eventual. Useful for
+  monitoring, dashboards, and non-critical queries where quorum-confirmed
+  freshness is unnecessary.
 
-Filtered `audit list` has
-an endpoint-specific asynchronous-index caveat; see its consistency note below.
+Filtered `audit list` has an endpoint-specific asynchronous-index caveat; see
+its consistency note below.
 
 ```bash
 # Stale read (no Raft barrier; may lag)
 ledgerctl --consistency stale ledgers get my-ledger
-
-# Leader-routed read (may be stale from an isolated former leader)
-ledgerctl --consistency leader ledgers list
 
 # Default linearizable read
 ledgerctl ledgers list
@@ -164,7 +179,6 @@ scripting against the CLI predictable across resources.
 | Filter | `--filter` | string | Boolean filter expression — textual `filterexpr` grammar OR the structured JSON `QueryFilter` DSL (dual-format, EN-1511). |
 | Filter | `--prefix` | string | Account-address prefix shortcut. Only on `accounts list` (server-side `HardcodedPrefix` optimization). |
 | Consistency | `--checkpoint-id` | uint64 | Read from a named query checkpoint instead of the live store. |
-| Consistency | `--min-log-sequence` | uint64 | Require the server to have applied at least this log sequence before reading. `FailedPrecondition` if not. |
 | Output | `--json` | bool | Emit JSON to stdout. Mutually exclusive with `--yaml`. |
 | Output | `--yaml` | bool | Emit YAML to stdout. Mutually exclusive with `--json`. |
 | Output | `--result-file` | string | Also write the JSON payload to this file (for kubelet `/dev/termination-log` or CI scripts). |
@@ -1807,7 +1821,6 @@ ledgerctl accounts aggregate-volumes [flags]
 | `--ledger` | | Name of the ledger |
 | `--prefix` | | Filter accounts by address prefix |
 | `--filter` | | Filter expression (same DSL as account list) |
-| `--min-log-sequence` | `0` | Minimum log sequence before reading |
 | `--checkpoint-id` | `0` | Query checkpoint ID (0 = live data) |
 | `--analyze` | `false` | Display the query profile: server-side phase timing (prepare/execute/barrier/deliver) plus iterator stats |
 | `--json` | `false` | Output as JSON |
@@ -1833,7 +1846,10 @@ ledgerctl accounts aggregate-volumes --ledger my-ledger --json
 
 ### version
 
-Print version information for `ledgerctl`. Release builds report the real version (injected at link time via goreleaser ldflags into `internal/pkg/version`); a binary built without ldflags reports `dev`.
+Print version information and the local service protocol revision for `ledgerctl`
+without contacting a server. Release builds report the real version (injected at
+link time via goreleaser ldflags into `internal/pkg/version`); a binary built
+without ldflags reports `dev` but still reports its compiled protocol revision.
 
 ```bash
 ledgerctl version
@@ -1841,8 +1857,8 @@ ledgerctl version
 
 The **server** exposes the same build metadata over two unauthenticated channels:
 
-- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…"}`.
-- **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same fields.
+- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"5"}`.
+- **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same information, including `protocol_version`.
 
 This is useful for monitoring deployed nodes and spotting version skew across a cluster (the per-node `version` is also surfaced on each `NodeInfo` in `GetClusterState`).
 
@@ -2322,7 +2338,7 @@ Audit has **no dedicated filter flags** — there is no `--failures-only` and no
 `--filter` (e.g. `--filter 'outcome == failure'`,
 `--filter 'ledger == main'`), exactly like every other list command.
 
-Also honors the full [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--reverse`, `--filter`, `--checkpoint-id`, `--min-log-sequence`, `--json`, `--yaml`, `--timeout`).
+Also honors the full [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--reverse`, `--filter`, `--checkpoint-id`, `--json`, `--yaml`, `--timeout`).
 
 **Audit filter grammar (`--filter`):** the audit trail is queried through its
 secondary index, so `--filter` accepts bare `<field> <op> <value>` conditions
@@ -2351,26 +2367,18 @@ non-audit condition (`metadata[...]`, `address`, `source`, …). This keeps audi
 reads first-class with every other list endpoint while never degrading to a
 full-chain scan.
 
-> **Consistency note.** The audit secondary index is maintained by an
-> asynchronous per-node worker, so a filter that contains any field other than
-> `seq` (for example `ledger` or `outcome`) is eventually consistent when
-> `--min-log-sequence` is zero. With a non-zero bound, every node that receives
-> or forwards the live request first waits for its log index to reach that
-> sequence, samples its live audit head, and waits for its own audit index to
-> reach that head. This preserves the bound when the request is routed to
-> another node. An unfiltered live read, or a conjunction made only of `seq`
-> bounds, scans the audit zone directly. With a non-zero bound, every gRPC node
-> traversed by the routed request waits for its own log-index progress before
-> routing or serving, but does not wait for audit-index progress.
+> **Consistency note.** A filter containing an indexed audit condition (for
+> example `ledger` or `outcome`) waits for the local audit projection to certify
+> the fixed main-store snapshot horizon before compiling the filter. Matching
+> `AuditEntry` values are loaded from that same main snapshot. An unfiltered
+> read, or a filter made only of `seq` bounds, scans the audit zone directly and
+> does not wait for the audit projection.
 >
-> **Checkpoint + indexed-filter caveat.** A query checkpoint snapshots the audit index
-> at creation time; checkpoint creation waits for the log index but not yet for
-> the audit indexer, so a read whose filter contains a field other than `seq`
-> may omit entries whose audit-zone rows exist in the checkpoint but were not
-> indexed when it was taken (a frozen checkpoint never catches up). Unfiltered
-> and `seq`-only checkpoint reads scan the zone directly and are unaffected.
-> Making the audit indexer catch up before the checkpoint snapshot is a tracked
-> follow-up.
+> **Checkpoint reads.** Checkpoint creation waits for every promised projection,
+> including the audit index, to cover the checkpoint's durable applied index
+> before freezing the read store. A required disabled or rebuilding projection,
+> cancellation, or deadline fails explicitly instead of freezing an incomplete
+> checkpoint.
 
 **Behavior:**
 - Streams audit entries from the server, oldest first by default / chronological (`--reverse` for newest first)
@@ -2486,7 +2494,7 @@ ledgerctl logs list [flags]
 | `--ledger` | (required) | Ledger name to list logs for |
 | `--expand` | `false` | Expand details within each log entry |
 
-Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--filter`, `--checkpoint-id`, `--min-log-sequence`, `--json`, `--yaml`, `--timeout`).
+Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--filter`, `--checkpoint-id`, `--json`, `--yaml`, `--timeout`).
 
 **Behavior:**
 - Streams system log entries for a specific ledger from the server
@@ -3071,7 +3079,16 @@ Manage named connection profiles. Each profile stores a server address and TLS s
 
 **Aliases:** `profiles`, `prof`
 
-**Config file location:** `~/.config/ledgerctl/config.json` (Linux), `~/Library/Application Support/ledgerctl/config.json` (macOS)
+**Config file location:** ledgerctl uses the OS-native user configuration
+directory under the shared Formance namespace:
+
+- Linux: `$XDG_CONFIG_HOME/formance/ledgerctl/config.json` when set, otherwise
+  `~/.config/formance/ledgerctl/config.json`
+- macOS: `~/Library/Application Support/formance/ledgerctl/config.json`
+- Windows: `%AppData%\formance\ledgerctl\config.json`
+
+The former alpha location directly under the user configuration directory
+(`.../ledgerctl/config.json`) is intentionally ignored rather than migrated.
 
 **Flag resolution priority:** Explicit CLI flag > Environment variable > Profile value > Cobra default
 
@@ -3554,7 +3571,6 @@ ledgerctl queries execute <name> --ledger <ledger-name> [flags]
 | `--param` | | Query parameter as `key=value` (repeatable) |
 | `--page-size` | `10` | Number of results per page |
 | `--mode` | `list` | Query mode: `list` or `aggregate` |
-| `--min-log-sequence` | `0` | Minimum log sequence before reading |
 | `--analyze` | `false` | Display the query profile: server-side phase timing (prepare/execute/barrier/deliver) plus iterator stats |
 | `--timeout` | `10s` | Request timeout |
 
@@ -3590,7 +3606,12 @@ detached from any individual RPC and therefore survives ingress / load-balancer
 idle or max-stream timeouts (1.2 TB restores routinely take several hours).
 Press `Ctrl+C` to cancel the running download cleanly — the CLI issues a
 server-side `CancelDownload` so the staging directory is wiped before the
-process exits.
+process exits. Stopping the restore-mode server also cancels and joins the
+active job before its staging resources are closed. The current service runner
+passes no deadline to Fx `Stop`, so `--total-stop-timeout` does not bound this
+join. Backend initialization or staging cleanup can delay exit; forced process
+termination can leave staging files or an uncleanly closed staging store. See
+[restore shutdown](backup-restore.md#step-1-download) for the cleanup sequence.
 
 The server downloads files in parallel; tune the worker count with the server
 flag `--restore-download-parallelism` (default 16, clamped to `[1, 64]`).
@@ -4440,28 +4461,36 @@ ledger run --flight-recorder-enabled --flight-recorder-max-bytes 50Mi --flight-r
 
 ---
 
-### Server Trace Sampling Flags
+### Server Trace Sampling
 
-Error-aware trace sampling: always export error spans, ratio-sample successful spans. This reduces trace volume without losing visibility into failures.
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--trace-sampling-enabled` | bool | `false` | Enable error-aware trace sampling (always sample errors, ratio-sample successes) |
-| `--trace-sampling-success-ratio` | float64 | `0.1` | Sampling ratio for successful spans (0.0-1.0). Error spans are always sampled. |
+Tracing uses the standard OpenTelemetry SDK configuration. There are no
+Ledger-specific trace sampling flags. To export all Ledger spans for collector
+sampling, keep the OTLP exporter and endpoint configured and set:
 
 ```bash
-# Enable trace sampling, keep 10% of successful spans
-ledger run --trace-sampling-enabled [other flags...]
-
-# Keep 50% of successful spans
-ledger run --trace-sampling-enabled --trace-sampling-success-ratio 0.5 [other flags...]
+export OTEL_TRACES_SAMPLER=always_on
 ```
+
+The SDK otherwise defaults to parent-based sampling, which may discard spans
+under an incoming unsampled parent. Ledger retains error status and exception
+information; the collector owns error/success retention policies and must compute
+span metrics before sampling.
+
+The former `--trace-sampling-enabled` and `--trace-sampling-success-ratio` flags
+have been removed, along with `TRACE_SAMPLING_ENABLED` and
+`TRACE_SAMPLING_SUCCESS_RATIO`. Remove them from launch configuration and configure
+the collector as described in [deployment](deployment.md#collector-side-trace-sampling).
 
 ---
 
 ### Server OTLP Logs Flags
 
 Configure OpenTelemetry log export.
+
+Logs share `--otel-service-name`, build version metadata, and
+`--otel-resource-attributes` with traces and metrics. See
+[shared telemetry resource](monitoring.md#shared-telemetry-resource) for defaults
+and attribute precedence.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -4813,6 +4842,10 @@ See [Event System Architecture](../technical/architecture/subsystems/events-mirr
 ### upgrade
 
 Self-update `ledgerctl` to the latest version from GitHub releases. Downloads the archive, verifies the SHA256 checksum, and replaces the installed binary.
+
+This command does not select a version matching a target server. If a business
+command reports a protocol mismatch, obtain the CLI distributed with that server
+build; upgrading to the channel's latest release can leave the mismatch in place.
 
 ```bash
 ledgerctl upgrade [flags]

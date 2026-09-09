@@ -93,12 +93,15 @@ same guarantee for the `Request` oneof.
 
 Business errors (validation, not-found, conflict, etc.) map to specific status codes and carry a machine-readable `errorCode` and a descriptive `errorMessage`, mirroring the gRPC adapter's `Describable` contract.
 
-Two paths, however, must never expose internal error text to clients — the raw value could contain filesystem paths, wrapped Pebble/storage errors, or internal invariant strings:
+Three paths need correlated server-side diagnostics because the raw value can contain filesystem paths, wrapped Pebble/storage errors, or internal invariant strings:
 
 1. **Panic recovery** (`jsonRecoverer`) — a panic in any handler.
 2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Describable` or a known sentinel.
+3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply public messages (`index is inconsistent` and `preload coverage miss`) that omit internal identifiers and storage details, including when wrapped. Other recognized error presentations are unchanged.
 
-Both paths are sanitized identically to the gRPC adapter: the raw cause is logged **server-side** with a `correlation_id` field (and, for a panic, additionally recorded on the OTel span together with the stack), while the client receives only a generic body:
+Type-owned public details are selected through `domain.PublicErrorDetails` at the response boundary. Diagnostic `Error()` and `Metadata()` values remain unchanged, including the coverage failure context in the authoritative audit chain.
+
+Every path logs the raw cause **server-side** with a `correlation_id` field. When the request span is recording, the log also carries `trace_id` and `span_id`, and the span records both the correlation ID and the error. Panic spans additionally carry the panic value and stack. Unmapped errors and panics remain sanitized identically to the gRPC adapter, so the client receives only a generic body:
 
 ```json
 {
@@ -107,7 +110,7 @@ Both paths are sanitized identically to the gRPC adapter: the raw cause is logge
 }
 ```
 
-The correlation ID is the request's `X-Request-Id` (Chi `RequestID`) so operators can grep the server logs for the exact ID a caller reports. Adding a new persisted error path that reaches `handleError`'s fallthrough inherits this sanitization automatically; do not add a branch that serializes a raw non-domain error into the response body.
+The correlation ID reuses the request's `X-Request-Id` (Chi `RequestID`) when it is valid, so operators can grep the server logs for the exact ID a caller reports. Empty IDs, values longer than 128 bytes, invalid UTF-8, and values containing control characters are replaced with a generated token before they reach logs or responses. Adding a new persisted error path that reaches `handleError`'s fallthrough inherits this sanitization automatically; do not add a branch that serializes a raw non-domain error into the response body.
 
 ### Retry-After Header
 
@@ -335,6 +338,15 @@ Content-Type: application/json
 
 **Query Parameters**:
 - `continueOnFailure=true`: When the request is accepted, keep processing subsequent elements after a per-element **business** failure (validation / not-found / conflict / precondition / permission) instead of aborting. Business failures surface as `errorCode` on each element and the overall status stays `200`. Request-level failures (malformed body, missing scope, oversized) and processing-time infra/retryable failures (`ErrNoLeader`, cache-horizon exceeded, `KindInternal`, `KindResourceExhausted`, `KindUnavailable`) still surface as non-2xx (`4xx`, `429`, `503`, `500`) regardless of this flag — see the `POST /v3/{ledgerName}/bulk` operation in `openapi.yml` for the full status matrix.
+
+Bulk internal failures are logged and stamped on the recording request span
+with a validated correlation ID, including sequential and atomic apply failures.
+Unknown errors expose only `internal server error (correlation ID: <id>)` in
+`errorDescription`; the existing `ERROR` code and bulk envelope stay unchanged.
+Typed internal failures keep their reason and use their type-owned public
+presentation when provided; actionable Numscript diagnostics remain visible.
+The `continueOnFailure` rollup and retry semantics are unaffected.
+
 - `atomic=true`: Execute atomically (all or nothing) - not yet supported
 
 ### Account Metadata
@@ -401,12 +413,14 @@ Query parameters:
   to the audit condition only on the audit target, which is why audit fields are
   valid on this endpoint alone. This is the shared `filterexpr` DSL — **not** the
   JSON `QueryFilter` DSL used by prepared queries, which cannot represent audit
-  conditions. A filter containing any field other than `seq` is served by the
-  asynchronous audit index; unfiltered and `seq`-only conjunctions scan the
-  audit zone directly. This HTTP endpoint exposes no `minLogSequence` bound, so
-  index-backed reads are best-effort and may omit entries not yet indexed; gRPC
-  callers can request a consistency-bound wait that is preserved across routing
-  hops.
+  conditions. Filters that need indexed fields are compiled from an audit-index
+  snapshot whose Raft certificate covers the fixed main-store snapshot horizon;
+  matching `AuditEntry` values are loaded from that same main snapshot.
+  Unfiltered reads and sequence-only bounds scan the authoritative audit zone
+  directly and do not wait for the asynchronous audit index. A disabled,
+  rebuilding, cancelled, or deadline-bound required index fails explicitly
+  rather than returning a partial page. The consistency guarantee matches the
+  gRPC surface.
 
 **Response**: `{ "data": [ AuditEntry, ... ] }` (list omits per-order `items`).
 

@@ -114,7 +114,7 @@ var _ = Describe("Query Checkpoints", func() {
 		})
 
 		It("should see only the pre-checkpoint transaction when querying the checkpoint", func() {
-			txs, err := listAllTransactionsFromCheckpoint(ctx, client, ledgerName, 100, 0, checkpointID)
+			txs, err := listAllTransactionsFromCheckpoint(ctx, client, ledgerName, 100, 0, checkpointID, nil)
 			Expect(err).To(Succeed())
 			Expect(txs).To(HaveLen(1))
 
@@ -125,7 +125,7 @@ var _ = Describe("Query Checkpoints", func() {
 
 		It("should read a single transaction from the checkpoint", func() {
 			// First get the transaction list from the checkpoint to know the actual ID.
-			txs, err := listAllTransactionsFromCheckpoint(ctx, client, ledgerName, 100, 0, checkpointID)
+			txs, err := listAllTransactionsFromCheckpoint(ctx, client, ledgerName, 100, 0, checkpointID, nil)
 			Expect(err).To(Succeed())
 			Expect(txs).To(HaveLen(1))
 
@@ -260,14 +260,14 @@ var _ = Describe("Query Checkpoints", func() {
 		})
 
 		It("checkpoint1 should see 1 transaction", func() {
-			txs, err := listAllTransactionsFromCheckpoint(ctx, client, ledgerName, 100, 0, checkpoint1ID)
+			txs, err := listAllTransactionsFromCheckpoint(ctx, client, ledgerName, 100, 0, checkpoint1ID, nil)
 			Expect(err).To(Succeed())
 			Expect(txs).To(HaveLen(1))
 			Expect(txs[0].GetPostings()[0].GetDestination()).To(Equal("alice"))
 		})
 
 		It("checkpoint2 should see 2 transactions", func() {
-			txs, err := listAllTransactionsFromCheckpoint(ctx, client, ledgerName, 100, 0, checkpoint2ID)
+			txs, err := listAllTransactionsFromCheckpoint(ctx, client, ledgerName, 100, 0, checkpoint2ID, nil)
 			Expect(err).To(Succeed())
 			Expect(txs).To(HaveLen(2))
 		})
@@ -285,7 +285,7 @@ var _ = Describe("Query Checkpoints", func() {
 			Expect(err).To(Succeed())
 
 			// Checkpoint2 should still work.
-			txs, err := listAllTransactionsFromCheckpoint(ctx, client, ledgerName, 100, 0, checkpoint2ID)
+			txs, err := listAllTransactionsFromCheckpoint(ctx, client, ledgerName, 100, 0, checkpoint2ID, nil)
 			Expect(err).To(Succeed())
 			Expect(txs).To(HaveLen(2))
 		})
@@ -524,16 +524,18 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 })
 
 // listAllTransactionsFromCheckpoint collects all transactions from a checkpoint via the streaming RPC.
-func listAllTransactionsFromCheckpoint(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64, checkpointID uint64) ([]*commonpb.Transaction, error) {
+func listAllTransactionsFromCheckpoint(ctx context.Context, client servicepb.BucketServiceClient, ledgerName string, pageSize uint32, afterTxID uint64, checkpointID uint64, filter *commonpb.QueryFilter) ([]*commonpb.Transaction, error) {
 	var cursor string
 	if afterTxID > 0 {
 		cursor = strconv.FormatUint(afterTxID, 10)
 	}
+
 	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
 		Ledger: ledgerName,
 		Options: &commonpb.ListOptions{
 			PageSize: pageSize,
 			Cursor:   cursor,
+			Filter:   filter,
 			Read:     &commonpb.ReadOptions{CheckpointId: checkpointID},
 		},
 	})

@@ -30,6 +30,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/apitrace"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
@@ -38,7 +39,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // vtFallbackCodec is a gRPC codec that uses vtprotobuf when available
@@ -369,9 +369,9 @@ func newCorrelationID() string {
 // `correlation_id=<id>` against the logs.
 func handlePanic(ctx context.Context, logger logging.Logger, r any, stack []byte) error {
 	correlationID := newCorrelationID()
-	logger.WithFields(map[string]any{
-		"correlation_id": correlationID,
-	}).Errorf("gRPC handler panicked: %v\n%s", r, stack)
+	fields := apitrace.Fields(ctx)
+	fields["correlation_id"] = correlationID
+	logger.WithFields(fields).Errorf("gRPC handler panicked: %v\n%s", r, stack)
 
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(
@@ -481,7 +481,7 @@ func errorConversionInterceptor(logger logging.Logger) ggrpc.UnaryServerIntercep
 	return func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
 		resp, err := handler(ctx, req)
 		if err != nil {
-			err = convertToGRPCError(err, logger)
+			err = convertToGRPCErrorWithContext(ctx, err, logger)
 		}
 
 		return resp, err
@@ -493,7 +493,7 @@ func errorConversionStreamInterceptor(logger logging.Logger) ggrpc.StreamServerI
 	return func(srv any, ss ggrpc.ServerStream, info *ggrpc.StreamServerInfo, handler ggrpc.StreamHandler) error {
 		err := handler(srv, ss)
 		if err != nil {
-			err = convertToGRPCError(err, logger)
+			err = convertToGRPCErrorWithContext(ss.Context(), err, logger)
 		}
 
 		return err
@@ -511,6 +511,10 @@ func errorConversionStreamInterceptor(logger logging.Logger) ggrpc.StreamServerI
 // strings, file paths, invariant messages) are not disclosed to API
 // clients (#326).
 func convertToGRPCError(err error, logger logging.Logger) error {
+	return convertToGRPCErrorWithContext(context.Background(), err, logger)
+}
+
+func convertToGRPCErrorWithContext(ctx context.Context, err error, logger logging.Logger) error {
 	// Already a gRPC status error, return as-is
 	if _, ok := status.FromError(err); ok {
 		return err
@@ -644,29 +648,14 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 		return status.Error(codes.NotFound, notFoundErr.Error())
 	}
 
-	// Convert ErrReadIndexNotCaughtUp to FailedPrecondition with details
-	if notCaughtUp, ok := errors.AsType[*query.ErrReadIndexNotCaughtUp](err); ok {
-		st := status.New(codes.FailedPrecondition, notCaughtUp.Error())
-
-		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
-			Reason: "READ_INDEX_NOT_CAUGHT_UP",
-			Domain: "ledger",
-			Metadata: map[string]string{
-				"requested": strconv.FormatUint(notCaughtUp.Requested, 10),
-				"current":   strconv.FormatUint(notCaughtUp.Current, 10),
-			},
-		})
-		if detailErr == nil {
-			return detailed.Err()
-		}
-
-		return st.Err()
-	}
-
 	// Domain errors: any *Err* type or sentinel that implements Describable,
 	// whether wrapped in BusinessError or returned raw, flows through one
 	// exhaustive Kind switch in describableToGRPCStatus.
 	if d, ok := errors.AsType[domain.Describable](err); ok {
+		if domain.Kind(d) == domain.KindInternal {
+			recordGRPCInternalError(ctx, logger, err)
+		}
+
 		return describableToGRPCStatus(d).Err()
 	}
 
@@ -714,12 +703,27 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 	// file system paths, or internal invariant messages; do not leak any
 	// of that to the client. Log server-side with a correlation ID and
 	// return a generic Unknown.
-	correlationID := newCorrelationID()
-	logger.WithFields(map[string]any{
-		"correlation_id": correlationID,
-	}).Errorf("Unmapped gRPC handler error: %v", err)
+	correlationID := recordGRPCInternalError(ctx, logger, err)
 
 	return status.Errorf(codes.Unknown, "unknown server error (correlation ID: %s)", correlationID)
+}
+
+// internalGRPCError sanitizes a known internal read failure at its source while
+// retaining Internal (the unmapped-error boundary deliberately uses Unknown).
+func internalGRPCError(ctx context.Context, logger logging.Logger, err error) error {
+	correlationID := recordGRPCInternalError(ctx, logger, err)
+
+	return status.Errorf(codes.Internal, "internal server error (correlation ID: %s)", correlationID)
+}
+
+func recordGRPCInternalError(ctx context.Context, logger logging.Logger, err error) string {
+	correlationID := newCorrelationID()
+	fields := apitrace.Fields(ctx)
+	fields["correlation_id"] = correlationID
+	logger.WithFields(fields).Errorf("Internal gRPC handler error: %v", err)
+	apitrace.Stamp(ctx, correlationID, err)
+
+	return correlationID
 }
 
 // Option configures a Raft or Service gRPC server.
@@ -838,6 +842,7 @@ func NewServiceServer(host string, port int, logger logging.Logger, debug bool, 
 		consistencyInterceptor(),
 		loggingInterceptor(logger, slowThreshold),
 		errorConversionInterceptor(logger),
+		protocolVersionInterceptor(),
 	}
 	streamInterceptors := []ggrpc.StreamServerInterceptor{
 		recoveryStreamInterceptor(logger),
@@ -845,6 +850,7 @@ func NewServiceServer(host string, port int, logger logging.Logger, debug bool, 
 		consistencyStreamInterceptor(),
 		loggingStreamInterceptor(logger, slowThreshold),
 		errorConversionStreamInterceptor(logger),
+		protocolVersionStreamInterceptor(),
 	}
 
 	serverOpts := []ggrpc.ServerOption{

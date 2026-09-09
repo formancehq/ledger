@@ -3,25 +3,16 @@ package indexbuilder
 import (
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 // parseScopedReverseMapKey decodes k and asserts it belongs to (ledger, ns).
-// Every caller scans a Pebble prefix built from exactly (ledger, ns) —
-// gcReverseMapVersion, processSchemaRewrite, and both scans in
-// purgeReverseMapForKey — so a divergence between the decoded
-// key and the scope the caller iterated means the stored key is corrupt in a
-// way ParseReverseMapKey's own shape checks don't reject, not a runtime
-// condition. Per CLAUDE.md invariant #7 that gets a loud error, never a
-// silent skip. This is the single chokepoint for that assertion: callers
-// wrap the returned error with their own site-specific context and keep
-// their own soft continue/return for a legitimate metadata-key or version
-// mismatch (that check stays out of this helper — it isn't a corruption
-// signal).
+// Its sole caller scans an exact (ledger, namespace, field, version) prefix.
+// Divergence in ledger or namespace therefore means the stored key or range
+// contract is corrupt, not a runtime condition. Per invariant #7 it fails
+// loudly; the caller separately asserts the field and version before rewriting.
 func parseScopedReverseMapKey(k []byte, ledger, ns string) (readstore.ParsedReverseMapKey, error) {
 	rk, err := readstore.ParseReverseMapKey(k)
 	if err != nil {
@@ -36,22 +27,15 @@ func parseScopedReverseMapKey(k []byte, ledger, ns string) (readstore.ParsedReve
 }
 
 // gcVersionAt purges every readstore key tied to (ledger, ns, metaKey,
-// version): the forward index range and the eidx range via DeleteRange,
-// and the rmap rows via iter+DeleteKey.
+// version) with one DeleteRange per keyspace.
 //
 // The forward and eidx keyspaces have a clean per-version prefix
 // (MetadataIndexPrefixV / EntityExistsKeyPrefixV) so DeleteRange is
-// the natural primitive. The rmap key embeds version *after* the
-// entity, so per-version rows are interleaved with rows from other
-// versions — DeleteRange doesn't apply. The iter cost is bounded by
-// the indexed entity count for this metadata field at the given
-// version, the same bound the rewrite itself walked.
+// the natural primitive. Reverse-map rows use the same field/version-first
+// ordering, so their entity rows form one contiguous range too.
 //
-// All mutations land on the caller's batch — the caller decides when
-// to commit (typically alongside the atomic switch). The rmap iter
-// uses a fresh snapshot, so the GC observes committed state only and
-// never collides with the rewrite's in-flight v_pending writes (a
-// different keyspace) buffered in the same batch.
+// All mutations land on the caller's batch — the caller decides when to
+// commit, typically alongside the atomic switch.
 func (b *Builder) gcVersionAt(batch *dal.WriteSession, kb *dal.KeyBuilder, ledger, ns, metaKey string, version uint32) error {
 	fwdPrefix := readstore.MetadataIndexPrefixV(kb, ledger, ns, metaKey, version)
 	fwdUpper := readstore.IncrementBytes(fwdPrefix)
@@ -70,56 +54,16 @@ func (b *Builder) gcVersionAt(batch *dal.WriteSession, kb *dal.KeyBuilder, ledge
 	return b.gcReverseMapVersion(batch, kb, ledger, ns, metaKey, version)
 }
 
-// gcReverseMapVersion iterates the rmap range for (ledger, ns) and
-// queues a DeleteKey on every row matching (metaKey, version). Mirrors
-// the filter logic processSchemaRewrite uses to identify v_current
-// entries, but writes deletes instead of re-encodings.
-//
-// The iter runs against the read store directly (no snapshot). The
-// caller already holds a snapshot wherever the surrounding atomic
-// switch lives — taking a second one here would just pin extra SSTs
-// for the duration of the scan without buying anything: the keys we
-// queue are buffered in `batch` and won't land on disk until the
-// caller commits, and any concurrent live writes can only mutate
-// v_current/v_pending which we don't touch here (gcVersionAt only
-// runs for v_old or boot-orphan versions, both quiescent by
-// construction).
+// gcReverseMapVersion deletes the contiguous rmap range for exactly one
+// (ledger, namespace, metadata field, version). The entity suffix deliberately
+// comes last in the physical key so maintenance never scans unrelated fields
+// or versions.
 func (b *Builder) gcReverseMapVersion(batch *dal.WriteSession, kb *dal.KeyBuilder, ledger, ns, metaKey string, version uint32) error {
-	rmapPrefix := readstore.ReverseMapPrefix(kb, ledger, ns)
+	rmapPrefix := readstore.ReverseMapVersionPrefix(kb, ledger, ns, metaKey, version)
 	upper := readstore.IncrementBytes(rmapPrefix)
 
-	iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{
-		LowerBound: rmapPrefix,
-		UpperBound: upper,
-	})
-	if err != nil {
-		return fmt.Errorf("opening rmap iter for gc: %w", err)
-	}
-
-	defer func() { _ = iter.Close() }()
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		k := iter.Key()
-
-		rk, err := parseScopedReverseMapKey(k, ledger, ns)
-		if err != nil {
-			return fmt.Errorf("gc rmap: %w", err)
-		}
-
-		if rk.MetadataKey != metaKey || rk.Version != version {
-			continue
-		}
-
-		if err := batch.DeleteKey(cloneBytes(k)); err != nil {
-			return fmt.Errorf("gc rmap entry: %w", err)
-		}
-	}
-
-	// A truncated scan is indistinguishable from exhaustion on !iter.Valid(),
-	// and returning nil here would report the version as reclaimed while leaving
-	// rows behind — the same silent-truncation shape as purgeReverseMapForKey.
-	if err := iter.Error(); err != nil {
-		return fmt.Errorf("scanning rmap for gc: %w", err)
+	if err := batch.DeleteRangeNoSync(rmapPrefix, upper); err != nil {
+		return fmt.Errorf("gc rmap at v=%d: %w", version, err)
 	}
 
 	return nil
@@ -140,18 +84,9 @@ func (b *Builder) gcReverseMapVersion(batch *dal.WriteSession, kb *dal.KeyBuilde
 // tombstone even when the range is already empty, so the scan is
 // safe to run unconditionally.
 //
-// Cost: iterate versions 1..max(current, pending) skipping the live
-// pair, calling gcVersionAt on each. DeleteRange on the forward/eidx
-// keyspaces is constant cost regardless of contents, but
-// gcReverseMapVersion under the hood scans the whole namespace's rmap
-// rows once per non-live version — so the total cost is
-// O((maxV - liveVersions) × rmap_rows_in_ns) per indexed field, NOT
-// O(maxV). In practice maxV ≤ 2 in normal operation (one current,
-// one pending) so the scan reduces to zero versions in the common
-// case; only operator-driven rapid retype storms make this measurable.
-// A single-pass version of this sweep (scan rmap once, batch deletes
-// across all orphan versions) is a worthwhile follow-up if real
-// workloads hit it.
+// Cost: iterate versions 1..max(current, pending), skipping the live pair, and
+// queue three range tombstones for each orphan version. It is independent of
+// the number of reverse-map rows in the ledger.
 func (b *Builder) purgeOrphanVersions() error {
 	if b.indexVersions == nil {
 		return nil

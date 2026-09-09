@@ -87,8 +87,8 @@ func (it *ReversePrefixIterator) Current() []byte {
 	return it.current
 }
 
-// SeekLE positions the iterator at the first entity whose key is <= target.
-func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
+// Seek positions the iterator at the first entity whose key is <= target.
+func (it *ReversePrefixIterator) Seek(target []byte) bool {
 	// A prior failed seek at or above target proves this one empty too.
 	if it.ceil.covers(target) {
 		it.exhausted = true
@@ -107,7 +107,7 @@ func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
 
 	it.started = true
 
-	// SeekGE positions at first key >= seekKey. If exact match, check it.
+	// Seek positions at first key >= seekKey. If exact match, check it.
 	// If past target, step back.
 	if it.iter.SeekGE(seekKey) {
 		entity := it.extractEntity(it.iter.Key())
@@ -196,3 +196,6 @@ func IncrementBytes(b []byte) []byte {
 	// Overflow
 	return append(result, 0xFF)
 }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *ReversePrefixIterator) Direction() (d Desc) { return }

@@ -70,6 +70,10 @@ jobs:
       - name: Run unit tests with coverage
         run: >
           nix develop --command just test-coverage
+      - name: Test restore download Fx lifecycle with the S3 backend
+        run: >
+          nix develop --command go test -race -tags s3 ./internal/bootstrap
+          -run '^TestRestoreDownloadStopsWithFxApplication$' -count=1 -timeout 2m
       - name: Upload coverage profile
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -18,6 +18,15 @@ spec:
                 df -h /mnt/tiny-data
               '
             timeout: 30s
+      # Chainsaw cleanup blocks belong to a step and run after the whole test.
+      # Keep this on the step that owns the host-side tmpfs lifecycle so it is
+      # registered before any later assertion can stop the test.
+      cleanup:
+        - script:
+            content: |
+              kubectl delete cluster disk-gate -n $NAMESPACE --ignore-not-found=true
+              docker exec ledger-e2e-control-plane sh -c 'umount /mnt/tiny-data 2>/dev/null || true'
+            timeout: 60s
 
     # 2. Deploy the 1-replica Cluster and wait for it to be Ready.
     - name: Deploy Cluster
@@ -152,10 +161,3 @@ spec:
     - podLogs:
         name: disk-gate-0
         container: ledger
-
-  cleanup:
-    - script:
-        content: |
-          kubectl delete cluster disk-gate -n $NAMESPACE --ignore-not-found=true
-          docker exec ledger-e2e-control-plane sh -c 'umount /mnt/tiny-data 2>/dev/null || true'
-        timeout: 60s

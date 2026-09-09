@@ -53,8 +53,12 @@ type Store struct {
 	// progressMu and progressCond allow callers to wait until the indexed
 	// sequence reaches a target value. The index builder calls
 	// NotifyProgress after each WriteProgress to wake up waiters.
-	progressMu   sync.Mutex
-	progressCond *sync.Cond
+	progressMu      sync.Mutex
+	progressCond    *sync.Cond
+	auditDisabled   bool
+	auditRebuilding bool
+	auditFailed     bool
+	auditGeneration uint64
 
 	// readOnly marks a store opened via OpenReadOnly — a frozen view (query
 	// checkpoint) whose fold cursor will never advance, so freshness waits
@@ -179,8 +183,15 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 }
 
 // CreateCheckpoint creates a Pebble checkpoint of the read index at destDir.
-// Since the read index has WAL disabled, no WAL flush option is needed.
+// The read index has WAL disabled, so committed batches may exist only in a
+// memtable. Flush it first: otherwise Pebble has neither an SST nor a WAL file
+// to link and a ready checkpoint can silently omit the progress certificates
+// and projection rows that its creator just waited for.
 func (s *Store) CreateCheckpoint(destDir string) error {
+	if err := s.db.Flush(); err != nil {
+		return fmt.Errorf("flushing read index before checkpoint: %w", err)
+	}
+
 	return s.db.Checkpoint(destDir)
 }
 
@@ -229,6 +240,24 @@ func (s *Store) WriteProgress(batch *dal.WriteSession, sequence uint64) error {
 	return progressCursor.Write(batch, sequence)
 }
 
+// ReadRaftProgress returns the Raft horizon certified by the normal read
+// projection. The native log cursor remains the fold/reclamation position.
+func (s *Store) ReadRaftProgress() (uint64, error) {
+	return readRaftCursor.Read(s.db)
+}
+
+// ReadRaftProgressFrom reads the normal projection certificate from a pinned
+// snapshot, so the certificate and index rows come from one Pebble view.
+func (s *Store) ReadRaftProgressFrom(reader dal.PebbleGetter) (uint64, error) {
+	return readRaftCursor.Read(reader)
+}
+
+// WriteRaftProgress publishes a normal-projection causal certificate. It must
+// be committed atomically with the final writes for that target.
+func (s *Store) WriteRaftProgress(batch *dal.WriteSession, appliedIndex uint64) error {
+	return readRaftCursor.Write(batch, appliedIndex)
+}
+
 // LastIndexedSequence returns the last indexed log sequence (read-only).
 func (s *Store) LastIndexedSequence() (uint64, error) {
 	return s.ReadProgress()
@@ -241,8 +270,9 @@ func (s *Store) LastIndexedSequenceFrom(reader dal.PebbleGetter) (uint64, error)
 	return s.ReadProgressFrom(reader)
 }
 
-// NotifyProgress wakes all goroutines waiting in WaitForSequence /
-// WaitForCheckpoint. Must be called after WriteProgress commits successfully.
+// NotifyProgress wakes goroutines waiting for native or certified projection
+// progress and for checkpoint readiness. Call it only after the corresponding
+// progress write has committed or the checkpoint marker has been materialized.
 //
 // The broadcast is issued while holding progressMu: a waiter checks its
 // condition and calls cond.Wait() under the same lock, and Wait atomically
@@ -255,6 +285,70 @@ func (s *Store) NotifyProgress() {
 	s.progressMu.Lock()
 	s.progressCond.Broadcast()
 	s.progressMu.Unlock()
+}
+
+// SetAuditProjectionState records node-local operational readiness. It never
+// participates in Raft apply; it only prevents a causal progress certificate
+// from being mistaken for readiness while the local audit projection is
+// disabled or being rebuilt.
+func (s *Store) SetAuditProjectionState(disabled, rebuilding bool) {
+	s.progressMu.Lock()
+	if s.auditDisabled != disabled || s.auditRebuilding != rebuilding || s.auditFailed {
+		s.auditGeneration++
+	}
+	s.auditDisabled = disabled
+	s.auditRebuilding = rebuilding
+	s.auditFailed = false
+	s.progressCond.Broadcast()
+	s.progressMu.Unlock()
+}
+
+// SetAuditProjectionFailed marks a boot or steady-state indexing failure. It is
+// exposed as transient rebuilding to admission, but progress waiters receive a
+// terminal local error so one checkpoint cannot stall the normal indexer.
+func (s *Store) SetAuditProjectionFailed() {
+	s.progressMu.Lock()
+	if !s.auditFailed {
+		s.auditGeneration++
+	}
+	s.auditRebuilding = false
+	s.auditFailed = true
+	s.progressCond.Broadcast()
+	s.progressMu.Unlock()
+}
+
+// AuditProjectionState returns the local audit projection lifecycle state.
+func (s *Store) AuditProjectionState() (disabled, rebuilding bool) {
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+
+	return s.auditDisabled, s.auditRebuilding || s.auditFailed
+}
+
+// AuditProjectionStateWithGeneration returns lifecycle state together with a
+// process-local generation that changes on every readiness transition. A
+// checkpoint captures the generation after its progress wait and verifies it
+// again when publishing .ready, so a concurrent rebuild cannot certify a
+// snapshot taken from a reset projection.
+func (s *Store) AuditProjectionStateWithGeneration() (disabled, rebuilding bool, generation uint64) {
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+
+	return s.auditDisabled, s.auditRebuilding || s.auditFailed, s.auditGeneration
+}
+
+// MarkCheckpointReadyAtAuditGeneration publishes the marker only if the audit
+// projection remained ready in the generation captured before materializing
+// the checkpoint. The state lock closes the final check-to-marker race with
+// SetAuditProjectionState.
+func (s *Store) MarkCheckpointReadyAtAuditGeneration(dir string, generation uint64) (bool, error) {
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+	if s.auditDisabled || s.auditRebuilding || s.auditFailed || s.auditGeneration != generation {
+		return false, nil
+	}
+
+	return true, MarkCheckpointReady(dir)
 }
 
 // ReadAppliedProposalProgress returns the last consumed AppliedProposal
@@ -899,29 +993,22 @@ func (s *Store) WaitForCheckpoint(ctx context.Context, dirPath string) error {
 	}
 }
 
-// WaitForSequence blocks until LastIndexedSequence >= minSeq or the context
-// is cancelled.
-func (s *Store) WaitForSequence(ctx context.Context, minSeq uint64) error {
-	// Fast path: already caught up.
-	cur, err := s.LastIndexedSequence()
-	if err != nil {
-		return fmt.Errorf("reading index progress: %w", err)
-	}
+// WaitForRaftProgress blocks until the normal read projection has certified H.
+func (s *Store) WaitForRaftProgress(ctx context.Context, horizon uint64) error {
+	return s.waitForProgress(ctx, horizon, s.ReadRaftProgress, "read projection Raft progress")
+}
 
-	if cur >= minSeq {
+func (s *Store) waitForProgress(ctx context.Context, target uint64, read func() (uint64, error), label string) error {
+	cur, err := read()
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", label, err)
+	}
+	if cur >= target {
 		return nil
 	}
 
-	// Broadcast on cancellation while holding progressMu, exactly as
-	// WaitForCheckpoint does. Taking the lock is what closes the missed-wakeup
-	// window: the loop below checks ctx.Err() and calls Wait() under the same
-	// lock, and Wait releases it only once parked. Broadcasting without the
-	// lock can land between that check and Wait, stranding the waiter until an
-	// unrelated NotifyProgress arrives — so an alignment wait would outlive
-	// its caller's cancellation instead of ending with it.
 	done := make(chan struct{})
 	defer close(done)
-
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -933,26 +1020,18 @@ func (s *Store) WaitForSequence(ctx context.Context, minSeq uint64) error {
 	}()
 
 	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
 	for {
-		if ctx.Err() != nil {
-			s.progressMu.Unlock()
-
-			return ctx.Err()
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-
-		cur, err = s.LastIndexedSequence()
+		cur, err = read()
 		if err != nil {
-			s.progressMu.Unlock()
-
-			return fmt.Errorf("reading index progress: %w", err)
+			return fmt.Errorf("reading %s: %w", label, err)
 		}
-
-		if cur >= minSeq {
-			s.progressMu.Unlock()
-
+		if cur >= target {
 			return nil
 		}
-
 		s.progressCond.Wait()
 	}
 }

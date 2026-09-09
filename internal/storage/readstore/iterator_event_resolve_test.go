@@ -7,6 +7,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -130,13 +131,13 @@ func TestEventResolveIterator_SeekContract(t *testing.T) {
 	require.NoError(t, err)
 	defer it.Close()
 
-	require.True(t, it.SeekGE([]byte("a:2")), "lands on the first LIVE entity >= target")
+	require.True(t, it.Seek([]byte("a:2")), "lands on the first LIVE entity >= target")
 	require.Equal(t, "a:3", string(it.Current()), "a:2 is dead at pin 25")
-	require.True(t, it.SeekGE([]byte("a:2")), "repeatable")
+	require.True(t, it.Seek([]byte("a:2")), "repeatable")
 	require.Equal(t, "a:3", string(it.Current()))
 	require.False(t, it.Next())
 
-	require.True(t, it.SeekGE([]byte("a:0")), "backward after exhaustion")
+	require.True(t, it.Seek([]byte("a:0")), "backward after exhaustion")
 	require.Equal(t, "a:1", string(it.Current()))
 	require.NoError(t, it.Err())
 }
@@ -161,18 +162,18 @@ func TestEventResolveIterator_SeekFloor(t *testing.T) {
 
 	// a:5 is dead at this pin and nothing lives beyond it, so the seek is
 	// proven empty and the bound is recorded.
-	require.False(t, it.SeekGE([]byte("a:5")))
+	require.False(t, it.Seek([]byte("a:5")))
 	require.True(t, it.floor.covers([]byte("a:5")), "the failed seek must be memoised")
 	require.True(t, it.floor.covers([]byte("a:9")), "a higher target is proven empty by the same failure")
 
 	// Nothing below the bound is covered: the live group at a:1 is still
 	// reachable, which is the property a latch would break.
 	require.False(t, it.floor.covers([]byte("a:0")))
-	require.True(t, it.SeekGE([]byte("a:0")))
+	require.True(t, it.Seek([]byte("a:0")))
 	require.Equal(t, "a:1", string(it.Current()))
 
 	// And the memoised verdict is still the right one on a re-seek.
-	require.False(t, it.SeekGE([]byte("a:5")))
+	require.False(t, it.Seek([]byte("a:5")))
 	require.NoError(t, it.Err())
 }
 
@@ -192,7 +193,7 @@ func TestEventResolveIterator_SeekFloorIgnoresFaults(t *testing.T) {
 	it.floor.fail([]byte("a:0"), errFaultProbe)
 	require.False(t, it.floor.covers([]byte("a:0")), "a faulted seek must leave the floor unset")
 
-	require.True(t, it.SeekGE([]byte("a:0")))
+	require.True(t, it.Seek([]byte("a:0")))
 	require.Equal(t, "a:1", string(it.Current()))
 }
 
@@ -297,6 +298,100 @@ func TestInspectIndex_RejectsUnknownOp(t *testing.T) {
 		})
 		require.Error(t, err, "mode %d must refuse to report statistics over an unreadable event", mode)
 	}
+}
+
+func TestInspectIndex_ResolvesMembershipAtMainHorizon(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	kb := dal.NewKeyBuilder()
+
+	encoded := func(value *commonpb.MetadataValue) []byte {
+		return EncodeMetadataValue(nil, value)
+	}
+	stringValue := func(value string) *commonpb.MetadataValue {
+		return &commonpb.MetadataValue{
+			Type: &commonpb.MetadataValue_StringValue{StringValue: value},
+		}
+	}
+	nullValue := &commonpb.MetadataValue{
+		Type: &commonpb.MetadataValue_NullValue{NullValue: &commonpb.NullValue{}},
+	}
+	putMetadata := func(value *commonpb.MetadataValue, entity string, seq uint64, op byte) {
+		require.NoError(t, s.DB().Set(
+			MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, encoded(value), []byte(entity), seq, op),
+			nil,
+			pebble.NoSync,
+		))
+	}
+	putExists := func(isNull bool, entity string, seq uint64, op byte) {
+		require.NoError(t, s.DB().Set(
+			EntityExistsEventKeyV(kb, "l", NamespaceAccount, "k", 1, isNull, []byte(entity), seq, op),
+			nil,
+			pebble.NoSync,
+		))
+	}
+
+	gold := stringValue("gold")
+	silver := stringValue("silver")
+
+	// At H=20 all three entities are gold and non-null. The projection view
+	// also contains their post-H mutations: a:1 becomes silver and a:3 becomes
+	// null. Inspect must reconstruct H rather than report the projection head.
+	for _, entity := range []string{"a:1", "a:2", "a:3"} {
+		putMetadata(gold, entity, 10, MetadataEventAdd)
+		putExists(false, entity, 10, MetadataEventAdd)
+	}
+	putMetadata(gold, "a:1", 30, MetadataEventDel)
+	putMetadata(silver, "a:1", 30, MetadataEventAdd)
+	putMetadata(gold, "a:3", 30, MetadataEventDel)
+	putMetadata(nullValue, "a:3", 30, MetadataEventAdd)
+	putExists(false, "a:3", 30, MetadataEventDel)
+	putExists(true, "a:3", 30, MetadataEventAdd)
+
+	base := InspectParams{
+		Reader:          s.DB(),
+		KB:              kb,
+		LedgerName:      "l",
+		Namespace:       NamespaceAccount,
+		MetadataKey:     "k",
+		Version:         1,
+		HorizonSequence: 20,
+	}
+
+	distinct, err := InspectIndex(func() InspectParams {
+		params := base
+		params.Mode = InspectDistinctValuesMode
+
+		return params
+	}())
+	require.NoError(t, err)
+	require.Len(t, distinct.Values, 1)
+	require.Equal(t, "gold", distinct.Values[0].GetStringValue())
+
+	facets, err := InspectIndex(func() InspectParams {
+		params := base
+		params.Mode = InspectFacetsMode
+
+		return params
+	}())
+	require.NoError(t, err)
+	require.Len(t, facets.Facets, 1)
+	require.Equal(t, "gold", facets.Facets[0].Value.GetStringValue())
+	require.Equal(t, uint64(3), facets.Facets[0].Count)
+
+	summary, err := InspectIndex(func() InspectParams {
+		params := base
+		params.Mode = InspectSummaryMode
+
+		return params
+	}())
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), summary.Cardinality)
+	require.Equal(t, "gold", summary.Min.GetStringValue())
+	require.Equal(t, "gold", summary.Max.GetStringValue())
+	require.Equal(t, uint64(3), summary.EntitiesWithKey)
+	require.Zero(t, summary.EntitiesWithNull)
 }
 
 // The unreadable event can arrive after the group has already been judged:

@@ -103,6 +103,30 @@ type Node struct {
 }
 ```
 
+#### Node shutdown
+
+`Node.Stop(ctx)` first attempts a best-effort leadership transfer while peer
+connections remain available. It then closes a persistent stop signal exactly
+once, even when the caller context has expired during transfer or `Run` has not
+reached its outer stop select. The context bounds transfer and waiting; it must
+never abandon the shutdown request. Concurrent callers share this signal and
+wait for the same `Run` completion.
+
+`Run` owns task termination: it closes the task stop channels and joins the
+orchestrator, ready processor, maintenance loop, and applier. During applier
+exit, any pending commit is drained, the commit queue is closed, the committer
+is joined, and the decoder is cancelled and joined. `Run` then stops FSM
+background tasks and publishes completion. A successful `Stop` waits for this
+whole sequence. This preserves the existing pending-commit drain; it does not
+promise to apply every queued entry before shutdown.
+
+Bootstrap leaves the run context live until `Stop` returns so normal shutdown
+can complete pending commits. If `Stop` times out, the shutdown request remains
+published and bootstrap cancels context-aware work, but that cancellation does
+not itself terminate idle tasks or join `Run`. Task/drain completion may still
+be pending, so a timeout must not be treated as permission to close the node's
+storage or transport. `Stop` after `Run` has exited returns immediately.
+
 #### Applier
 
 `internal/infra/node/applier.go` decouples WAL writes from FSM application by running as a dedicated goroutine. This provides two levels of pipelining:
@@ -168,6 +192,37 @@ graph TB
     GRPC --> Transport
     Transport --> RaftNode
 ```
+
+#### Transport shutdown
+
+The transport remains available through the node's leadership-transfer and
+shutdown hook. Its own Fx stop hook runs afterwards. Once that hook enters,
+cancellation must not abandon the dispatcher or peer cleanup (EN-1986): the
+former cancellation-sensitive rendezvous could leave the hook waiting forever
+for a worker that never received its stop request.
+
+`DefaultTransport.Stop` rejects subsequent sends, cancels the peer connection
+loops, then closes a persistent stop signal exactly once. Its context bounds
+only the caller's wait for completion. The dispatcher finishes any publication
+already in progress, observes the stop signal, snapshots the peers, joins each
+peer loop and closes its priority queues, then closes the connection pool and
+publishes completion before returning from `Start`. Peer joins use an
+uncancelled context. Repeated stop callers share that same completion.
+
+The bootstrap hook unconditionally joins `Start`, so hook completion proves peer
+and pool cleanup even when `Stop` returned a context error. Fx's outer
+`App.Stop` can still return on its deadline while the hook finishes cleanup;
+that timeout does not establish that the worker has already exited. Transport
+receive, unreachable, and pending-send channels remain open, guarded by the
+stopped flag, as before. Shutdown does not promise delivery of queued Raft
+messages after peer cancellation and does not change node drain ordering.
+
+`TestTransportShutdown` blocks the actual dispatcher during peer publication,
+cancels after Fx hook entry, and checks both the context-bounded outer stop and
+the later worker/hook join. It also delays peer completion to prove cleanup
+ordering and covers normal, already-cancelled, and repeated stops. A persistent
+signal alone would prevent the lost wakeup but still leave cleanup vulnerable;
+keeping cleanup in the worker's exit path makes its existing join sufficient.
 
 ## Raft Configuration
 
@@ -275,6 +330,15 @@ unreachable and its old state cannot run or rejoin. If an isolated former
 leader force-removes voters that remain live, the reduced local configuration
 and the original majority can both commit, creating divergent histories.
 
+The force path applies the local etcd/raft configuration before it can persist
+the resulting ConfState. That live tracker transition has no safe rollback. If
+ConfState persistence fails, the node fail-stops and rejects further commands
+and proposals. Work queued while persistence is in flight is failed during
+terminal publication. Restart reconstructs whichever membership reached the
+latest durable snapshot: the old configuration before snapshot-file replacement,
+or the new configuration if replacement completed before a later WAL-record
+failure. It must never continue serving with the reduced, unpersisted quorum.
+
 For normal consensus operations, the guarantee applies to committed state,
 which is the boundary visible to a successful write response. A request that
 times out while consensus is being lost has an unknown outcome from the
@@ -300,10 +364,10 @@ it hears from a higher term. It still cannot commit or acknowledge new writes,
 and a `ReadOnlySafe` `ReadIndex` cannot complete without quorum confirmation.
 That temporary role disagreement is not a split brain at the committed-state
 level. Explicit `stale` reads intentionally bypass the quorum barrier and may
-return an older local view. An explicit `leader` read can do the same when it
-reaches a node that still considers itself leader: the local-leader routing
-shortcut serves local state without `ReadIndex`. Neither mode should be used
-when quorum-confirmed freshness is required during a partition.
+return an older local view. They should not be used when quorum-confirmed
+freshness is required during a partition. All non-stale reads require a
+successful `ReadIndex`, including reads served on the node that currently
+reports itself as leader.
 
 ### Quorum and Failure Tolerance
 
@@ -544,6 +608,38 @@ The system can pipeline requests:
 - Send multiple `AppendEntries` before receiving confirmations
 - Limited by `MaxInflightMsgs`
 
+### Why v3 has no `leader` read selector (EN-1946)
+
+The product requirement is one predictable default for every non-stale live
+read: the serving node must confirm a quorum-backed horizon before it opens the
+state snapshot, whether that node currently reports itself as leader or
+follower. Routing to the perceived leader is only a location preference; it is
+not a consistency proof. With `CheckQuorum` disabled, an isolated former leader
+can temporarily keep its local leader role and serve old local state if that
+route shortcuts `ReadIndex`.
+
+Because v3 is unreleased, EN-1946 removes the `x-consistency: leader` selector
+instead of preserving that ambiguous contract. The default route always uses
+`ReadIndexAndWait`; `stale` remains the sole explicit opt-out and says exactly
+that it skips quorum confirmation.
+
+Alternatives considered:
+
+- Retain and document `leader`: rejected because a placement hint that can
+  weaken freshness contradicts the common non-stale contract.
+- Reinterpret `leader` to route and then perform `ReadIndex`: rejected because
+  it duplicates the default guarantee while concentrating read load and keeping
+  a selector with no distinct semantic value.
+- Keep the shortcut unchanged: rejected because an isolated former leader can
+  return stale data under a mode callers reasonably read as authoritative.
+
+Validation is split at the contract boundaries:
+`TestExtractConsistency_LeaderIsNotSupported` proves the old token cannot
+select a weaker path, routed-controller tests prove local default reads obtain
+and propagate the `ReadIndex` horizon, and
+`TestRoutedController_FinishLeaderFallback` proves a failed follower barrier
+cannot turn into an unbarriered local read if leadership moves during fallback.
+
 ### Linearizable Reads via ReadIndex
 
 Default live reads routed through `RoutedController.readCtrl` use the etcd/raft
@@ -556,9 +652,12 @@ indexes need their own progress barrier:
 2. `ReadIndex` sends a `ReadIndex` request through the Raft orchestrate loop. The leader confirms it is still the leader by exchanging heartbeats with a quorum of peers (the `ReadOnlySafe` mode, which is the default).
 3. The leader responds with the current **commit index** via `rd.ReadStates`.
 4. `WaitForApplied` blocks until the local FSM has applied entries up to that commit index (using a `sync.Cond` that broadcasts after each `lastPersistedIndex.Store()`).
-5. The caller reads from the local Pebble store, which is now guaranteed to
-   reflect all writes committed before the ReadIndex call. This does not by
-   itself advance independently asynchronous secondary indexes.
+5. The caller opens a local main-store snapshot, reads its durable applied
+   index `H`, and verifies that `H` covers the returned commit index `R`.
+6. If the query uses an asynchronous projection, it waits for that projection's
+   independent Raft certificate to cover fixed `H`.
+7. The certificate is re-read from the projection snapshot used by the query;
+   the wait never follows the moving store head.
 
 **Benefits**:
 - **Linearizable reads on leaders, followers, and caught-up learners** that can reach quorum
@@ -569,14 +668,8 @@ indexes need their own progress barrier:
 
 **Consistency and routing exceptions**:
 - `x-consistency: stale` bypasses `ReadIndex` and reads the local store directly;
-  it may return an older view.
-- `x-consistency: leader` routes the read to the node currently considered
-  leader. A call forwarded to a remote node does not propagate the consistency
-  metadata, so the remote call defaults to linearizable mode and performs its
-  quorum barrier. However, if the receiving node already considers itself
-  leader, `getLeaderCtrl` returns the local controller directly and skips
-  `ReadIndex`. Because `CheckQuorum` is disabled, an isolated former leader can
-  therefore serve stale local state in this mode.
+  it may return an older view, but any projection it uses is still aligned to
+  the fixed applied index of that local main-store snapshot.
 - If a non-leader node is syncing or cannot complete its local barrier,
   `RoutedController` can transparently retry the read against the leader. The
   forwarded attempt can still fail when the leader is unavailable. If
@@ -584,19 +677,12 @@ indexes need their own progress barrier:
   router returns the barrier failure rather than serving the newly local
   controller without a successful `ReadIndex`.
 - A `ListAuditEntries` filter that contains any field other than `seq` resolves
-  through the independently asynchronous audit index. With the default
-  `minLogSequence = 0`, its handler does not wait for audit-index progress, so
-  it can temporarily omit entries that are already committed even though the
-  ReadIndex barrier completed. A non-zero `minLogSequence` makes each gRPC node
-  that receives the live request wait for that log sequence, sample its live
-  audit head, and wait for its own audit index to reach that head. The bound is
-  propagated when routing selects another node, so the node that actually
-  serves the indexed query repeats the wait against its own independently
-  maintained index. Unfiltered listings and conjunctions made only of `seq`
-  bounds scan the audit zone directly and do not have this secondary-index lag;
-  they still honor a non-zero log-sequence wait. Checkpoint reads ignore the
-  bound, and an index-backed checkpoint filter can retain audit-index lag frozen
-  at checkpoint creation.
+  through the independently asynchronous audit index. It waits for the audit
+  projection's Raft certificate to cover the fixed main-store horizon and
+  compiles the filter from that verified audit snapshot. Unfiltered listings
+  and conjunctions made only of `seq` bounds scan the authoritative audit zone
+  directly and do not wait for the projection. Checkpoint creation waits for
+  both read and audit certificates before publishing readiness.
 - `GetLedgerStats` has mixed provenance. `transactionCount` and `logCount` are
   FSM-backed, while `postingCount`, `revertCount`,
   `numscriptExecutionCount`, `referenceCount`, `ephemeralEvictedCount`,

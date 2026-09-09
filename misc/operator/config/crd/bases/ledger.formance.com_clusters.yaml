@@ -2011,17 +2011,6 @@ spec:
                       port:
                         description: Port for the trace exporter.
                         type: string
-                      sampling:
-                        description: Sampling configuration.
-                        properties:
-                          enabled:
-                            description: Enabled enables error-aware trace sampling.
-                            type: boolean
-                          successRatio:
-                            description: SuccessRatio is the sampling ratio for successful
-                              traces (0.0-1.0).
-                            type: string
-                        type: object
                     type: object
                 type: object
               networkPolicy:

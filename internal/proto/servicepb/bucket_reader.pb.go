@@ -3085,6 +3085,7 @@ type ServerInfoReader interface {
 	GetCommit() string
 	GetBuildDate() string
 	GetGoVersion() string
+	GetProtocolVersion() string
 	Mutate() *ServerInfo
 }
 
@@ -3104,6 +3105,10 @@ func (r *serverInfoReadonly) GetBuildDate() string {
 
 func (r *serverInfoReadonly) GetGoVersion() string {
 	return (*ServerInfo)(r).GetGoVersion()
+}
+
+func (r *serverInfoReadonly) GetProtocolVersion() string {
+	return (*ServerInfo)(r).GetProtocolVersion()
 }
 
 func (r *serverInfoReadonly) Mutate() *ServerInfo {
@@ -8221,7 +8226,6 @@ type ExecutePreparedQueryRequestReader interface {
 	GetParameters() ExecutePreparedQueryRequest_ParametersMapReader
 	GetPageSize() uint32
 	GetCursor() string
-	GetMinLogSequence() uint64
 	GetMode() commonpb.QueryMode
 	Mutate() *ExecutePreparedQueryRequest
 }
@@ -8246,10 +8250,6 @@ func (r *executePreparedQueryRequestReadonly) GetPageSize() uint32 {
 
 func (r *executePreparedQueryRequestReadonly) GetCursor() string {
 	return (*ExecutePreparedQueryRequest)(r).GetCursor()
-}
-
-func (r *executePreparedQueryRequestReadonly) GetMinLogSequence() uint64 {
-	return (*ExecutePreparedQueryRequest)(r).GetMinLogSequence()
 }
 
 func (r *executePreparedQueryRequestReadonly) GetMode() commonpb.QueryMode {
@@ -8952,7 +8952,6 @@ func NewGetLedgerStatsRequestListReader(s []*GetLedgerStatsRequest) GetLedgerSta
 type AggregateVolumesRequestReader interface {
 	GetLedger() string
 	GetFilter() commonpb.QueryFilterReader
-	GetMinLogSequence() uint64
 	GetUseMaxPrecision() bool
 	GetGroupByPrefixes() []string
 	GetCheckpointId() uint64
@@ -8972,10 +8971,6 @@ func (r *aggregateVolumesRequestReadonly) GetFilter() commonpb.QueryFilterReader
 		return nil
 	}
 	return v.AsReader()
-}
-
-func (r *aggregateVolumesRequestReadonly) GetMinLogSequence() uint64 {
-	return (*AggregateVolumesRequest)(r).GetMinLogSequence()
 }
 
 func (r *aggregateVolumesRequestReadonly) GetUseMaxPrecision() bool {

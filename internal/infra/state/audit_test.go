@@ -4,16 +4,79 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestApplyProposalRejectsAuditExhaustionBeforeStateOrDurableMutation(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, _ := newTestMachine(t)
+	machine.State.NextAuditSequenceID = math.MaxUint64
+	stateBefore := *machine.State
+	entry := makeEntry(t, 1, makeProposal(1, createLedgerOrder("never-created")))
+
+	_, err := machine.ApplyEntries(context.Background(), dataStore, entry)
+	var exhausted *domain.ErrSequenceExhausted
+	require.ErrorAs(t, err, &exhausted)
+	require.Equal(t, domain.SequenceCounterAudit, exhausted.Counter)
+	require.Equal(t, stateBefore.NextAuditSequenceID, machine.State.NextAuditSequenceID)
+	require.Equal(t, stateBefore.NextSequenceID, machine.State.NextSequenceID)
+	require.Equal(t, stateBefore.NextLedgerID, machine.State.NextLedgerID)
+
+	require.Empty(t, listAuditEntries(t, dataStore, 0))
+	handle, err := dataStore.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+	lastLog, err := query.ReadLastLog(handle)
+	require.NoError(t, err)
+	require.Nil(t, lastLog)
+}
+
+func TestApplyProposalRejectsLogSequenceExhaustionWithoutPublishingBusinessWrites(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, _ := newTestMachine(t)
+	machine.State.NextSequenceID = math.MaxUint64
+	nextLedgerBefore := machine.State.NextLedgerID
+
+	for i := uint64(1); i <= 2; i++ {
+		result, err := machine.ApplyEntries(
+			context.Background(),
+			dataStore,
+			makeEntry(t, i, makeProposal(i, createLedgerOrder("never-created"))),
+		)
+		require.NoError(t, err)
+		require.Len(t, result.Results, 1)
+		var exhausted *domain.ErrSequenceExhausted
+		require.ErrorAs(t, result.Results[0].Error, &exhausted)
+		require.Equal(t, domain.SequenceCounterLog, exhausted.Counter)
+		require.Equal(t, uint64(math.MaxUint64), machine.State.NextSequenceID)
+		require.Equal(t, nextLedgerBefore, machine.State.NextLedgerID)
+	}
+
+	handle, err := dataStore.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+	lastLog, err := query.ReadLastLog(handle)
+	require.NoError(t, err)
+	require.Nil(t, lastLog, "an exhausted allocator must not publish a zero or reused log key")
+	entries := listAuditEntries(t, dataStore, 0)
+	require.Len(t, entries, 2)
+	for _, entry := range entries {
+		require.Equal(t, commonpb.ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED, entry.GetFailure().GetReason())
+		require.Equal(t, "logSequence", entry.GetFailure().GetContext()["counter"])
+	}
+}
 
 // listAuditEntries collects all audit entries from the store into a slice.
 // Pass afterSequence=0 to return all entries.

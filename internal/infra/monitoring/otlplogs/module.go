@@ -2,13 +2,11 @@ package otlplogs
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"runtime/debug"
 
 	prettyconsole "github.com/thessem/zap-prettyconsole"
 	"go.opentelemetry.io/contrib/bridges/otelzap"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
@@ -33,6 +31,8 @@ const (
 type ModuleConfig struct {
 	Exporter   string
 	OTLPConfig *OTLPConfig
+	// Resource is the server resource shared with traces and metrics.
+	Resource   *resource.Resource
 	Output     io.Writer
 	Level      logging.Level
 	FormatJSON bool
@@ -84,21 +84,11 @@ func Logger(cfg ModuleConfig) (logging.Logger, error) {
 		exporter = NewNoOpExporter()
 	}
 
-	defaultResource := resource.Default()
-	attributes := make([]attribute.KeyValue, 0)
-	attributes = append(attributes, attribute.String("service.name", "ledger-exp"))
-	attributes = append(attributes, attribute.String("service.version", "0.1.0"))
-
-	resource, err := resource.Merge(defaultResource, resource.NewSchemaless(attributes...))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create resource: %w", err)
-	}
-
 	loggerProvider := sdklog.NewLoggerProvider(
 		sdklog.WithProcessor(
 			sdklog.NewBatchProcessor(exporter),
 		),
-		sdklog.WithResource(resource),
+		sdklog.WithResource(cfg.Resource),
 	)
 
 	global.SetLoggerProvider(loggerProvider)

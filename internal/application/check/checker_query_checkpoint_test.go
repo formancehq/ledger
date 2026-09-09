@@ -16,17 +16,17 @@ import (
 )
 
 // writeQueryCheckpointRow persists a query-checkpoint row (max_sequence = id*10,
-// created_at = id*100) directly at its ZoneGlobal/SubGlobQueryCheckpoint key,
+// created_at = id*100, applied_index = id*1000) directly at its ZoneGlobal/SubGlobQueryCheckpoint key,
 // matching the on-disk layout the FSM writes.
 func writeQueryCheckpointRow(t *testing.T, store *dal.Store, id uint64) {
 	t.Helper()
-	writeQueryCheckpointRowKeyed(t, store, id, id, id*10, id*100)
+	writeQueryCheckpointRowKeyed(t, store, id, id, id*10, id*100, id*1000)
 }
 
 // writeQueryCheckpointRowKeyed persists a row at key keyID carrying a payload
 // with checkpoint_id=payloadID, the given max_sequence and created_at, so tests
 // can build the corrupted key≠payload and content-mismatch cases.
-func writeQueryCheckpointRowKeyed(t *testing.T, store *dal.Store, keyID, payloadID, maxSeq, createdAt uint64) {
+func writeQueryCheckpointRowKeyed(t *testing.T, store *dal.Store, keyID, payloadID, maxSeq, createdAt, appliedIndex uint64) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
@@ -35,17 +35,19 @@ func writeQueryCheckpointRowKeyed(t *testing.T, store *dal.Store, keyID, payload
 		CheckpointId: payloadID,
 		MaxSequence:  maxSeq,
 		CreatedAt:    &commonpb.Timestamp{Data: createdAt},
+		AppliedIndex: appliedIndex,
 	}))
 	require.NoError(t, batch.Commit())
 }
 
 // derivedLog is the audit-derived value for one checkpoint id (max_sequence =
-// id*10, created_at = id*100), matching writeQueryCheckpointRow.
+// id*10, created_at = id*100, applied_index = id*1000), matching writeQueryCheckpointRow.
 func derivedLog(id uint64) *commonpb.CreatedQueryCheckpointLog {
 	return &commonpb.CreatedQueryCheckpointLog{
 		CheckpointId: id,
 		MaxSequence:  id * 10,
 		CreatedAt:    &commonpb.Timestamp{Data: id * 100},
+		AppliedIndex: id * 1000,
 	}
 }
 
@@ -107,7 +109,7 @@ func TestCompareQueryCheckpoints_KeyAuthoritative(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
-	writeQueryCheckpointRowKeyed(t, store, 99, 5, 50, 500)
+	writeQueryCheckpointRowKeyed(t, store, 99, 5, 50, 500, 5000)
 
 	events := collectQueryCheckpointEvents(t, store, map[uint64]*commonpb.CreatedQueryCheckpointLog{5: derivedLog(5)})
 	require.Len(t, events, 2)
@@ -135,11 +137,11 @@ func TestCompareQueryCheckpoints_MaxSequenceMismatch(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
-	writeQueryCheckpointRowKeyed(t, store, 5, 5, 50, 500)
+	writeQueryCheckpointRowKeyed(t, store, 5, 5, 50, 500, 5000)
 
 	// Audit says max_sequence 99, store holds 50 (created_at matches).
 	events := collectQueryCheckpointEvents(t, store, map[uint64]*commonpb.CreatedQueryCheckpointLog{
-		5: {CheckpointId: 5, MaxSequence: 99, CreatedAt: &commonpb.Timestamp{Data: 500}},
+		5: {CheckpointId: 5, MaxSequence: 99, CreatedAt: &commonpb.Timestamp{Data: 500}, AppliedIndex: 5000},
 	})
 	require.Len(t, events, 1)
 	require.Contains(t, events[0].GetMessage(), "max_sequence")
@@ -151,14 +153,27 @@ func TestCompareQueryCheckpoints_CreatedAtMismatch(t *testing.T) {
 	t.Parallel()
 
 	store := createTestStore(t)
-	writeQueryCheckpointRowKeyed(t, store, 5, 5, 50, 500)
+	writeQueryCheckpointRowKeyed(t, store, 5, 5, 50, 500, 5000)
 
 	// Audit says created_at 999, store holds 500 (max_sequence matches).
 	events := collectQueryCheckpointEvents(t, store, map[uint64]*commonpb.CreatedQueryCheckpointLog{
-		5: {CheckpointId: 5, MaxSequence: 50, CreatedAt: &commonpb.Timestamp{Data: 999}},
+		5: {CheckpointId: 5, MaxSequence: 50, CreatedAt: &commonpb.Timestamp{Data: 999}, AppliedIndex: 5000},
 	})
 	require.Len(t, events, 1)
 	require.Contains(t, events[0].GetMessage(), "created_at")
+}
+
+func TestCompareQueryCheckpoints_AppliedIndexMismatch(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	writeQueryCheckpointRowKeyed(t, store, 5, 5, 50, 500, 4999)
+
+	events := collectQueryCheckpointEvents(t, store, map[uint64]*commonpb.CreatedQueryCheckpointLog{
+		5: {CheckpointId: 5, MaxSequence: 50, CreatedAt: &commonpb.Timestamp{Data: 500}, AppliedIndex: 5000},
+	})
+	require.Len(t, events, 1)
+	require.Contains(t, events[0].GetMessage(), "applied_index")
 }
 
 // TestCompareQueryCheckpoints_PayloadIDMismatch: a present row whose payload
@@ -168,7 +183,7 @@ func TestCompareQueryCheckpoints_PayloadIDMismatch(t *testing.T) {
 
 	store := createTestStore(t)
 	// Keyed 5, payload says 6, matching max_sequence and created_at.
-	writeQueryCheckpointRowKeyed(t, store, 5, 6, 50, 500)
+	writeQueryCheckpointRowKeyed(t, store, 5, 6, 50, 500, 5000)
 
 	events := collectQueryCheckpointEvents(t, store, map[uint64]*commonpb.CreatedQueryCheckpointLog{5: derivedLog(5)})
 	require.Len(t, events, 1)

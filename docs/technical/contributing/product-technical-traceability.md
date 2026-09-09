@@ -118,3 +118,37 @@ Technical review uses it to distinguish implementation correctness from design p
 Deep audits use it to distinguish latent defects from unusual-but-intentional behavior and to identify decisions whose original requirements are no longer documented.
 
 Traceability is not a substitute for engineering judgment. It makes the inputs to that judgment explicit and durable.
+
+## Recorded decision: projection read horizon (EN-1946)
+
+- **Need:** a read assembled from the main store and asynchronous read/audit
+  projections must represent one causally valid state on leaders and followers,
+  including proposals that emit zero or several native records.
+- **Current limitation:** log sequence and audit sequence are different domains;
+  a client-facing minimum log sequence cannot prove that every projection covers
+  the main snapshot, and query checkpoints could previously freeze before audit
+  caught up.
+- **Requirement:** use one fixed Raft applied index per request, wait only for
+  projections the query uses, publish progress only after all native work in the
+  bounded source snapshot is committed, and retain independent readiness plus
+  native fold/trimming cursors.
+- **Decision:** default reads obtain `R` from `ReadIndexAndWait`, open the main
+  snapshot at durable `H >= R`, then verify each used projection snapshot carries
+  a Raft certificate `>= H`. `stale` is retained for Antithesis fault scenarios:
+  it skips `R` but still aligns projections to fixed local `H`. The unreleased
+  `leader` consistency selector and public `min_log_sequence` are removed;
+  removing `stale` is deferred to a separate decision/ticket.
+- **Explicit scope:** the usage projection remains eventual consistency and does
+  not participate in this common horizon. Live `GetLedgerStats` therefore gives
+  one internally atomic usagestore view alongside a separate main-store view;
+  writes concurrent with the request can place those two views at different
+  horizons. Adding usage certification is a separate product decision.
+- **Implementation evidence:**
+  [query-pipeline.md](../architecture/subsystems/read-path/query-pipeline.md),
+  [read-snapshot-consistency.md](../architecture/subsystems/read-path/read-snapshot-consistency.md),
+  [indexer.md](../architecture/subsystems/indexer/indexer.md), and
+  [query-checkpoints.md](../architecture/subsystems/read-path/query-checkpoints.md).
+- **Validation:** deterministic tests cover zero-native-record advancement,
+  multi-batch terminal publication, restart resumption, audit dependency
+  selection/cancellation, horizon trimming, and checkpoint creation while audit
+  initially lags.

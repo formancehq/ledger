@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -57,9 +59,8 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		interceptorAttempts = maxAttempts
 	}
 
-	// Service-config retry covers only the raw UNAVAILABLE code; the interceptors
-	// add ReadIndexNotCaughtUp, which is reason-specific and so cannot be matched
-	// here (it would over-retry permanent FailedPrecondition business errors).
+	// Service-config retry covers the raw UNAVAILABLE code; the interceptors also
+	// handle deadline and external-service classifications below.
 	methodConfig := ""
 	if !retryDisabled {
 		methodConfig = fmt.Sprintf(`,
@@ -79,6 +80,7 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 
 	addrs := strings.Split(target, ",")
 	opts := []grpc.DialOption{
+		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(serviceConfig),
 	}
@@ -156,8 +158,8 @@ func retryDelay(attempt int) time.Duration {
 
 // retryUnaryInterceptor retries unary RPCs on the transient set (IsTransient)
 // to a definitive outcome — each code either clears (Unavailable: no leader
-// → elected; ReadIndexNotCaughtUp: lagging read catches up; ExternalServiceError:
-// external service recovers) or is an ambiguous commit (DeadlineExceeded — see
+// → elected; ExternalServiceError: external service recovers) or is an
+// ambiguous commit (DeadlineExceeded — see
 // IsAmbiguousCommit) that a retry resolves via the idempotency cache. None is
 // a permanent business answer, so retrying is safe and cannot loop forever.
 // maxAttempts bounds the loop (~infinite in retry-forever mode); ctx
@@ -335,8 +337,8 @@ func IsCanceled(err error) bool {
 // IsAmbiguousCommit returns true if the error indicates the request may have
 // committed despite the error code — the retry resolves the ambiguity via
 // the idempotency cache. Today: DeadlineExceeded only (Unavailable surfaces
-// before the server sees the request, ReadIndexNotCaughtUp is a read-only
-// answer, ExternalServiceError happens before the audit ack).
+// before the server sees the request and ExternalServiceError happens before
+// the audit ack).
 //
 // IsAmbiguousCommit is a STRICT SUBSET of IsTransient — every member is
 // already retried by the interceptors. The separation exists so drivers
@@ -344,15 +346,6 @@ func IsCanceled(err error) bool {
 // read-after-write even on the "error" branch.
 func IsAmbiguousCommit(err error) bool {
 	return IsDeadlineExceeded(err)
-}
-
-// IsReadIndexNotCaughtUp returns true if the error is the server's
-// FailedPrecondition response carrying the READ_INDEX_NOT_CAUGHT_UP
-// reason. Emitted when a linearizable read targets an index the local
-// read-side store has not yet caught up to — always transient (the read
-// store will eventually catch up).
-func IsReadIndexNotCaughtUp(err error) bool {
-	return HasErrorReason(err, "READ_INDEX_NOT_CAUGHT_UP")
 }
 
 // HasErrorReason returns true if the error is a gRPC status with an
@@ -461,13 +454,12 @@ func IsNoFullCheckpoint(err error) bool {
 
 // IsTransient returns true for a retry-safe infrastructure error — not a
 // definitive business answer, not a local-lifecycle event. Retrying reaches a
-// definitive outcome: the condition clears (no leader → elected, lagging read
-// → caught up) or — since DeadlineExceeded can follow a commit — the retry
-// resolves the ambiguity via the idempotency cache. The retry interceptors
+// definitive outcome: the condition clears (no leader → elected) or — since
+// DeadlineExceeded can follow a commit — the retry resolves the ambiguity via
+// the idempotency cache. The retry interceptors
 // retry exactly this set. Covers:
 //   - Unavailable (cluster unhealthy / no leader / Raft transients)
 //   - DeadlineExceeded (wire-level timeout, also see IsAmbiguousCommit)
-//   - FailedPrecondition + READ_INDEX_NOT_CAUGHT_UP (read store catching up)
 //   - ExternalServiceError (S3 / NATS down, etc.)
 //
 // NOT in IsTransient:
@@ -478,23 +470,25 @@ func IsNoFullCheckpoint(err error) bool {
 func IsTransient(err error) bool {
 	return IsUnavailable(err) ||
 		IsDeadlineExceeded(err) ||
-		IsReadIndexNotCaughtUp(err) ||
 		IsExternalServiceError(err)
 }
 
-// IsTolerated returns true for any error the workload should NOT surface as
-// a finding: nil, retry-safe transient, or local-lifecycle Canceled. This is
-// the predicate the Sometimes() probes use (`assert.Sometimes(IsTolerated(err),
-// ...)`) so that a context cancellation late in the run doesn't flip a
-// per-driver Sometimes signal to "never true".
+// IsTolerated returns true for any error the workload should NOT surface as a
+// finding: nil, retry-safe transient, or a local context deadline/cancellation.
+// Local helpers can wrap context errors without converting them to gRPC status;
+// those remain inconclusive lifecycle outcomes. This is the predicate the
+// Sometimes() probes use (`assert.Sometimes(IsTolerated(err), ...)`) so that a
+// context cancellation late in the run doesn't flip a per-driver Sometimes
+// signal to "never true".
 func IsTolerated(err error) bool {
-	return err == nil || IsTransient(err) || IsCanceled(err)
+	return err == nil || IsTransient(err) || IsCanceled(err) ||
+		errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
 }
 
 // isBusinessError returns true for a definitive business answer the server
 // returns when the request was syntactically valid but the requested action
-// cannot apply (NotFound, AlreadyExists, InvalidArgument, FailedPrecondition
-// minus the two reasons that IsTransient already covers).
+// cannot apply (NotFound, AlreadyExists, InvalidArgument, or a generic
+// FailedPrecondition that is not ExternalServiceError).
 //
 // Unexported because it is only used by IsClassified — drivers that need to
 // validate a specific business outcome check the precise reason via
@@ -504,8 +498,8 @@ func isBusinessError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if IsReadIndexNotCaughtUp(err) || IsExternalServiceError(err) {
-		// These are FailedPrecondition codes but already classified as transient.
+	if IsExternalServiceError(err) {
+		// This is a FailedPrecondition code but already classified as transient.
 		return false
 	}
 	st, ok := status.FromError(err)

@@ -18,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -46,6 +47,7 @@ func newTLSGRPCClient(grpcPort int, caCertFile string) (servicepb.BucketServiceC
 
 	conn, err := grpc.NewClient(
 		fmt.Sprintf("localhost:%d", grpcPort),
+		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)),
 		grpc.WithDefaultServiceConfig(actions.GRPCRetryPolicy),
 	)
@@ -299,6 +301,7 @@ var _ = Describe("TLS", Ordered, func() {
 			// Create an insecure gRPC client (no TLS)
 			conn, err := grpc.NewClient(
 				fmt.Sprintf("localhost:%d", ports.GRPC()),
+				grpcprotocol.ClientOption(),
 				grpc.WithTransportCredentials(insecure.NewCredentials()),
 			)
 			Expect(err).To(Succeed())
@@ -318,6 +321,7 @@ var _ = Describe("TLS", Ordered, func() {
 
 			conn, err := grpc.NewClient(
 				fmt.Sprintf("localhost:%d", ports.GRPC()),
+				grpcprotocol.ClientOption(),
 				grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)),
 			)
 			Expect(err).To(Succeed())

@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,6 +11,32 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+func TestProcessRevertTransactionRejectsExhaustedIDBeforeWrites(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: math.MaxUint64}
+	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 3}
+	mockStore.EXPECT().GetReverted(txKey).Return(false, nil)
+	expectGetTransactionState(mockStore, txKey, (&commonpb.TransactionState{Postings: []*commonpb.Posting{{
+		Source: "world", Destination: "users:001", Amount: commonpb.NewUint256FromUint64(1), Asset: "USD",
+	}}}).AsReader(), nil)
+
+	payload, err := processRevertTransaction(
+		"test-ledger",
+		&raftcmdpb.RevertTransactionOrder{TransactionId: 3},
+		&Context{Scope: mockStore, Boundaries: boundaries, LedgerInfo: (&commonpb.LedgerInfo{}).AsReader()},
+	)
+	require.Nil(t, payload)
+	var exhausted *domain.ErrSequenceExhausted
+	require.ErrorAs(t, err, &exhausted)
+	require.Equal(t, domain.SequenceCounterTransactionID, exhausted.Counter)
+	require.Equal(t, uint64(math.MaxUint64), boundaries.GetNextTransactionId())
+}
 
 func TestProcessRevertTransaction_Success(t *testing.T) {
 	t.Parallel()

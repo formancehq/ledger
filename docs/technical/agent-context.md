@@ -42,6 +42,7 @@ When current code and authoritative documentation disagree, stop treating the do
 | `internal/bootstrap/**` | `docs/technical/architecture/overview.md`, relevant subsystem docs, and `docs/ops/deployment.md` for persisted/config behavior |
 | tests only | `docs/technical/contributing/testing.md` plus the subsystem documentation for the behavior under test |
 | contributor/build tooling | `docs/technical/contributing/getting-started.md`, `docs/technical/contributing/development.md`, `docs/technical/contributing/conventions.md`, `docs/technical/contributing/local-validation.md` as relevant |
+| `misc/operator/**` | `misc/operator/README.md`, `docs/ops/deployment.md`; `docs/ops/tls-migration.md` for TLS/auth transitions; `docs/ops/backup-restore.md` for backup/restore orchestration |
 
 If a touched production area has no matching row, do not assume that no subsystem rules apply. Identify its callers/callees or owning subsystem first, then load that subsystem's documentation before editing.
 
@@ -128,6 +129,14 @@ Use the native deep-audit workflow when the request seeks latent correctness def
    Do not create a parallel coordination record.
 
 If no manifest matches, first decide whether the requested correctness scope is durable and reusable. If it is, create and review a manifest before running the native audit. If it is not, keep the work as a task-specific investigation rather than mechanically creating a new audit domain.
+
+For Kubernetes control-plane correctness across repeated reconciliation, partial
+effects and controller restart, use
+[`operator-reconciliation-durability`](audits/operator-reconciliation-durability.json)
+and its [evidence and domain-boundary contract](audits/operator-reconciliation-durability.md).
+This includes ownership/finalizers/status, backup/restore handoffs, scale-down,
+TLS/secrets and PVC transitions; it does not replace the service-side Raft or
+persistence domains.
 
 Do not use `ai-audit` for:
 

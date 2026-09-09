@@ -6,7 +6,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -88,13 +90,30 @@ func newTestManager(t *testing.T, store *dal.Store, builder *plan.Builder) *Mana
 		noop.NewMeterProvider(),
 		0,
 	)
-	t.Cleanup(func() {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		m.teardown()
-	})
+	m.Start()
+	t.Cleanup(m.Stop)
 
 	return m
+}
+
+func requireWorkerNames(t *testing.T, m *Manager, expected ...string) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		actual := workerNames(m)
+		if len(actual) != len(expected) {
+			return false
+		}
+
+		for _, expectedName := range expected {
+			found := slices.Contains(actual, expectedName)
+			if !found {
+				return false
+			}
+		}
+
+		return true
+	}, time.Second, 10*time.Millisecond)
 }
 
 // workerNames snapshots the live worker set under the manager's lock.
@@ -121,7 +140,7 @@ func TestManager_ReconcileStartsWorkerForMirrorLedger(t *testing.T) {
 	m := newTestManager(t, store, builder)
 	m.OnLeadershipChange(true)
 
-	require.Equal(t, []string{"mirrored"}, workerNames(m))
+	requireWorkerNames(t, m, "mirrored")
 }
 
 // Promotion flips the ledger out of MIRROR mode, so ReadMirrorLedgers stops
@@ -137,7 +156,7 @@ func TestManager_ReconcileStopsWorkerOnPromotion(t *testing.T) {
 
 	m := newTestManager(t, store, builder)
 	m.OnLeadershipChange(true)
-	require.Equal(t, []string{"promoted"}, workerNames(m))
+	requireWorkerNames(t, m, "promoted")
 
 	// Promote: mode back to NORMAL and the source config cleared, matching
 	// processPromoteLedger.
@@ -147,7 +166,7 @@ func TestManager_ReconcileStopsWorkerOnPromotion(t *testing.T) {
 	})
 
 	m.OnLeadershipChange(true)
-	require.Empty(t, workerNames(m), "a promoted ledger is no longer a mirror; its worker must be stopped and dropped")
+	requireWorkerNames(t, m)
 }
 
 // Deletion soft-deletes the ledger, which also drops it from ReadMirrorLedgers
@@ -166,14 +185,14 @@ func TestManager_ReconcileStopsWorkerOnDeletion(t *testing.T) {
 
 	m := newTestManager(t, store, builder)
 	m.OnLeadershipChange(true)
-	require.Equal(t, []string{"deleted"}, workerNames(m))
+	requireWorkerNames(t, m, "deleted")
 
 	info := mirrorLedgerInfo("deleted", sourceURL)
 	info.DeletedAt = &commonpb.Timestamp{Data: 1}
 	saveLedgerInfo(t, store, info)
 
 	m.OnLeadershipChange(true)
-	require.Empty(t, workerNames(m), "a deleted ledger must not keep a worker, even though it is still in MIRROR mode")
+	requireWorkerNames(t, m)
 }
 
 // Losing leadership tears every worker down, whatever the config says: workers
@@ -186,12 +205,89 @@ func TestManager_ReconcileTearsDownOnLeadershipLoss(t *testing.T) {
 
 	m := newTestManager(t, store, builder)
 	m.OnLeadershipChange(true)
-	require.Equal(t, []string{"mirrored"}, workerNames(m))
+	requireWorkerNames(t, m, "mirrored")
 
 	m.OnLeadershipChange(false)
-	require.Empty(t, workerNames(m))
+	requireWorkerNames(t, m)
 
 	// And regaining leadership rebuilds the set from the store.
 	m.OnLeadershipChange(true)
-	require.Equal(t, []string{"mirrored"}, workerNames(m))
+	requireWorkerNames(t, m, "mirrored")
+}
+
+func TestManager_StopFencesLaterLeadershipGain(t *testing.T) {
+	t.Parallel()
+
+	m := &Manager{
+		notifications: signal.NewNotifications(),
+		workers:       make(map[string]*Worker),
+	}
+	m.Start()
+	m.Stop()
+
+	m.OnLeadershipChange(true)
+
+	_, isLeader, stopped := m.leadershipSnapshot()
+	require.True(t, stopped)
+	require.False(t, isLeader)
+	require.Empty(t, workerNames(m), "a leadership callback after Stop must not recreate mirror workers")
+}
+
+func TestManager_SupersededLossCannotTearDownCurrentGeneration(t *testing.T) {
+	t.Parallel()
+
+	m := &Manager{
+		notifications: signal.NewNotifications(),
+		workers:       map[string]*Worker{"current": nil},
+	}
+
+	m.OnLeadershipChange(false)
+	staleGeneration, staleIsLeader, staleStopped := m.leadershipSnapshot()
+	m.OnLeadershipChange(true)
+
+	m.mu.Lock()
+	m.reconcileGeneration(staleGeneration, staleIsLeader, staleStopped)
+	m.mu.Unlock()
+
+	require.Contains(t, m.workers, "current", "a superseded leadership loss must not tear down current-generation mirror workers")
+}
+
+func TestManager_CoalescedLeadershipFlapReplacesPriorGenerationWorker(t *testing.T) {
+	t.Parallel()
+
+	builder, store := newTestBuilder(t)
+	saveLedgerInfo(t, store, mirrorLedgerInfo("mirrored", quietV2Source(t)))
+
+	m := newTestManager(t, store, builder)
+	m.OnLeadershipChange(true)
+	requireWorkerNames(t, m, "mirrored")
+
+	m.mu.Lock()
+	previous := m.workers["mirrored"]
+	m.mu.Unlock()
+
+	func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+
+		// Occupy the lifecycle loop on the manager lock, then enqueue a complete
+		// leadership flap. Only one config notification can remain buffered.
+		m.notifications.NotifyLogsCommitted(1)
+		require.Eventually(t, func() bool {
+			return len(m.notifications.LogCommitted.C()) == 0
+		}, time.Second, 10*time.Millisecond, "the lifecycle loop must consume the log notification before the flap")
+
+		m.OnLeadershipChange(false)
+		m.OnLeadershipChange(true)
+		require.Len(t, m.notifications.ConfigChanged.C(), 1, "the loss and regain notifications must coalesce")
+	}()
+
+	require.Eventually(t, func() bool {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+
+		current := m.workers["mirrored"]
+
+		return current != nil && current != previous
+	}, time.Second, 10*time.Millisecond, "a worker from before the loss must not be retained by the new leader generation")
 }

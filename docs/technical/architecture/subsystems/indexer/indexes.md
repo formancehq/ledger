@@ -87,7 +87,7 @@ A rewrite is driven by `indexbuilder.Builder` (`internal/application/indexbuilde
 - `completeBackfill` — when the cursor reaches the global indexer cursor, the **atomic switch** runs: `CurrentVersion ← PendingVersion`, `PendingVersion ← 0`, in one Pebble batch (`backfill.go:1197+`).
 - `handleDroppedIndexLog` — removes the index from the in-memory config, cancels in-flight work, tombstones `IndexVersionState` while preserving `HighWater`, and purges metadata forward (`0x01`), existence (`0x02`), and reverse-map (`0x03`) rows in the same fold batch (`index_config.go`).
 
-A `SetMetadataFieldType` order bumps the cluster-wide `forward_encoding_version` and triggers a **schema rewrite** — a distinct code path (`schemaRewriteTask` / `processSchemaRewrite`, see [indexer.md](indexer.md#changing-a-metadata-keys-type-setmetadatafieldtype)) that reuses the same versioning strategy: queries continue to serve `v_current` until each replica completes its local rewrite and flips its own switch. Synchronisation across nodes is client-driven through `min_log_sequence` on the read API (note: that pins **log application**, not local rewrite completion — see `api-comparison.md`).
+A `SetMetadataFieldType` order bumps the cluster-wide `forward_encoding_version` and triggers a **schema rewrite** — a distinct code path (`schemaRewriteTask` / `processSchemaRewrite`, see [indexer.md](indexer.md#changing-a-metadata-keys-type-setmetadatafieldtype)) that reuses the same versioning strategy: queries continue to serve `v_current` until each replica completes its local rewrite and flips its own switch. Read-side causal alignment is automatic through the projection's Raft progress certificate, while local rewrite readiness remains explicit in `IndexVersionState` — the certificate does not complete or promote a rewrite (see `api-comparison.md`).
 
 ```mermaid
 stateDiagram-v2
@@ -126,7 +126,18 @@ What is deliberately **not** restored: the per-replica `IndexVersionState` rows 
 
 There is **no persisted statistics structure**. The figures returned by `InspectIndex` are recomputed by scanning the live Pebble keyspace at the version the caller asks for.
 
-`readstore.InspectParams` accepts a `Version` (always `IndexVersionState.CurrentVersion` from the controller — `0` is an invariant the caller must short-circuit), a mode, and pagination parameters. Three modes are supported (`internal/storage/readstore/inspect.go`):
+For a default-consistency call, routing obtains a Raft read barrier and
+`InspectIndex` waits until the local read projection certifies the fixed main
+snapshot horizon before opening the snapshot it scans. `stale` skips the quorum
+barrier but retains the same alignment to its fixed local main horizon.
+
+The controller uses `PinnedVersionResolver` so a version activated after the
+main snapshot cannot leak into the inspection. It holds an event-history lease
+at the main snapshot's native sequence for the duration of the scan.
+`readstore.InspectParams` accepts that resolved `Version`, the native
+`HorizonSequence`, a mode, and pagination parameters. Every mode ignores later
+membership events, including the existence events used by summary counts.
+Three modes are supported (`internal/storage/readstore/inspect.go`):
 
 | Mode | Output | Cost |
 |------|--------|------|
@@ -162,6 +173,22 @@ Source: `internal/storage/readstore/inspect.go:228-296`.
 
 The scan is unbuffered — each call rereads the full prefix. This is fine because inspect is a low-frequency operator/UI tool, not a query-planner input: the v3 query path uses **prepared queries** ([prepared-queries draft](../../../../drafts/prepared-queries.md)) rather than a cost-based planner over statistics.
 
+### Inspect consistency traceability (EN-1946)
+
+- **Need:** operators must not receive index statistics assembled from a main-store
+  state and index membership from a different committed state.
+- **Previous limitation:** `InspectIndex` scanned the current read-index head
+  without proving that it covered, or trimming it back to, the fixed main-store
+  snapshot used by the request.
+- **Requirement:** every inspection mode must use one Raft-certified read-index
+  snapshot and resolve membership at the main snapshot's native sequence.
+- **Decision:** route the request barrier, reserve the event-history floor, obtain
+  the projection snapshot through `AlignedIndexSnapshot`, resolve its pinned
+  version, and pass `HorizonSequence` to each scan.
+- **Validation:** controller-level skew coverage exercises the composed alignment
+  path, routed-controller coverage proves barrier propagation, and readstore tests
+  exercise horizon trimming in distinct-values, facets, and summary modes.
+
 ## API Surface
 
 | Layer | Entry point |
@@ -170,7 +197,11 @@ The scan is unbuffered — each call rereads the full prefix. This is fine becau
 | HTTP | `GET /v3/{ledger}/indexes/{canonicalId}/inspect` with `?mode=distinct-values|facets|summary`. Sibling per-ledger routes: `GET /v3/{ledger}/indexes` (list), `GET /v3/{ledger}/indexes/{canonicalId}` (single entry), `.../status` (IndexEntry), `POST /v3/{ledger}/indexes` (create), `DELETE .../indexes/{canonicalId}` (drop). Bucket-wide / cluster-wide reads live under the reserved system segment `/v3/_/indexes/…`: `GET /v3/_/indexes` (list, `?scope=all\|bucket`), `GET /v3/_/indexes/status` (aggregated status), `GET /v3/_/indexes/{canonicalId}` (single bucket-scoped entry), `GET /v3/_/indexes/{canonicalId}/status`. All responses serialize the protobuf message in protobuf-JSON camelCase, wrapped in the `{data:…}` envelope. |
 | CLI | `ledgerctl indexes inspect --ledger … --key … --mode summary` — see [ops/cli.md §indexes inspect](../../../../ops/cli.md). |
 
-The controller (`internal/application/ctrl/controller_default.go`) gates the inspect call on `state.CurrentVersion != 0` — a replica that has never built the index locally returns "not built locally" rather than scanning an empty keyspace.
+The controller (`internal/application/ctrl/controller_default.go`) gates the
+inspect call on the pin-aware resolved version. A replica with no live local
+version-state record returns `ErrIndexNotFound`. A version that exists locally
+but activates after the main snapshot resolves to version zero and returns the
+retryable `ErrIndexBuilding`; neither case scans an empty or future keyspace.
 
 ## Bloom Filter Metrics (Not Index Stats)
 
@@ -197,13 +228,18 @@ In-flight `IndexVersionState` is NOT checked: by design it is per-replica and ma
 
 ### Reverse-map rows are checker-visible
 
-The read store is a peer secondary store, and its index **contents** stay out of the main-store checker's scope (`EN-1514` / `EN-1323`). One limb is an exception: `compareReverseMapOrphans` (`internal/application/check/reverse_map_orphans.go`, EN-1458) opens a read-only snapshot of the read store and scans the reverse map (`0x03`) for rows whose `(ledger, target, metadata key)` has no stored `SubAttrIndex` registry entry. Findings emit `CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN`, aggregated per `(ledger, namespace, metadata key)` with a row count and one sample entity. The audit-replayed `MetadataSchema` affects only the diagnostic label: it distinguishes a missed `DropIndex` purge from a missed `RemovedMetadataFieldType` purge.
+The read store is a peer secondary store, and its index **contents** stay out of the main-store checker's scope (`EN-1514` / `EN-1323`). One limb is an exception: `compareReverseMapOrphans` (`internal/application/check/reverse_map_orphans.go`, EN-1458) opens a read-only snapshot of the read store and scans the reverse map (`0x03`) for rows whose `(ledger, target, metadata key)` has no stored `SubAttrIndex` registry entry. Findings emit `CHECK_STORE_ERROR_TYPE_REVERSE_MAP_ORPHAN`, aggregated per `(ledger, namespace, metadata key)` with a row count and one sample entity. The audit-replayed `MetadataSchema` affects only the diagnostic label: it classifies the finding against the `DropIndex` or `RemovedMetadataFieldType` lifecycle without identifying the cause of the orphan row.
 
-Why only this limb: `0x01` and `0x02` are keyed so that a whole field is covered by a prefix and can be dropped with one `DeleteRange`, which is atomic. In `0x03` the metadata key sits *after* the fixed-width version block, so no prefix covers "every row of this field" — removal has to scan the namespace and point-delete row by row (`purgeReverseMapForKey`), and a row that scan misses is a permanent divergence with no other detector.
+The reverse map remains checker-visible as a defense on the maintenance-critical
+projection. Its field/version-first keying now gives `0x03` the same atomic,
+field-bounded `DeleteRange` property as `0x01` and `0x02`; a removal no longer
+scans the namespace or emits one point tombstone per entity. The checker still
+detects orphan rows introduced by corruption or a broken lifecycle path rather
+than treating the cheaper purge as proof that divergence is impossible.
 
 What it does **not** cover:
 
-- **The encoding version.** Not validated: `v_current` and `v_pending` legitimately coexist during a rewrite, and stale versions are reclaimed at boot by `purgeOrphanVersions`.
+- **Which nonzero encoding version is live.** Version zero is rejected as malformed; other versions are not compared to the live pair: `v_current` and `v_pending` legitimately coexist during a rewrite, and stale versions are reclaimed at boot by `purgeOrphanVersions`.
 - **Row values.** Only presence is judged, never the encoded value or the entity it points at.
 
 The pass skips — logged at INFO, never reported as a clean result — when the checker has no read-store handle. An empty audit is **not** a skip: the read index folds from the log stream, so a reverse-map row over a zero-log store has nothing behind it.
@@ -212,7 +248,7 @@ The pass skips — logged at INFO, never reported as a clean result — when the
 
 | Cursor position | What the pass does |
 |---|---|
-| `indexedSequence == lastSequence` | judges rows: reports any field with no registered index; the replayed schema labels the purge path that missed it |
+| `indexedSequence == lastSequence` | judges rows: reports any field with no registered index; the replayed schema classifies the finding against the owning lifecycle path |
 | `indexedSequence < lastSequence` | decodes keys only — no verdict |
 | `indexedSequence > lastSequence` | reports the position itself as `REVERSE_MAP_ORPHAN`; still no per-row verdict |
 | any position | a key that does not decode is always reported; it needs no oracle |

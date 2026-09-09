@@ -63,7 +63,10 @@ type DefaultTransport struct {
 
 	bufferSize           int
 	pendingSendQueue     chan []*raftpb.Message
-	stopCh               chan chan struct{}
+	stopCh               chan struct{}
+	stopDone             chan struct{}
+	stopOnce             sync.Once
+	stopErr              error // published by closing stopDone
 	advertiseAddr        string
 	serviceAdvertiseAddr string
 	// Metrics for recv queues (indexed by priority: 0=high, 1=medium, 2=low)
@@ -164,7 +167,8 @@ func NewTransport(
 		nodeID:               nodeID,
 		clusterID:            clusterID,
 		bufferSize:           bufferSize,
-		stopCh:               make(chan chan struct{}),
+		stopCh:               make(chan struct{}),
+		stopDone:             make(chan struct{}),
 		pendingSendQueue:     make(chan []*raftpb.Message, pendingSendCapacity),
 		advertiseAddr:        advertiseAddr,
 		serviceAdvertiseAddr: serviceAdvertiseAddr,
@@ -292,29 +296,30 @@ func (t *DefaultTransport) CancelPeerConnections() {
 	}
 }
 
-// Stop stops the transport.
+// Stop initiates shutdown exactly once. Cancellation bounds only this caller's
+// wait; Start still joins peers and closes the pool before it returns.
 func (t *DefaultTransport) Stop(ctx context.Context) error {
-	t.logger.Infof("Stopping raft transport")
+	t.stopOnce.Do(func() {
+		t.logger.Infof("Stopping raft transport")
 
-	// Mark as stopped so orphaned goroutines skip channel sends.
-	t.stopped.Store(true)
+		// Reject new sends, cancel peer loops, then persist the dispatcher stop
+		// request even when the caller has already exhausted its stop deadline.
+		t.stopped.Store(true)
+		t.CancelPeerConnections()
+		close(t.stopCh)
+	})
 
-	// Cancel all peer reconnection loops upfront so pc.stop() below
-	// returns instantly (loops already exited).
-	t.CancelPeerConnections()
-
-	stopCh := make(chan struct{})
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case t.stopCh <- stopCh:
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-stopCh:
-		}
+	case <-t.stopDone:
+		return t.stopErr
 	}
+}
 
+// closePeers runs on the dispatcher after its last publication. Its joins must
+// outlive the Stop caller's deadline so an Fx worker join also proves cleanup.
+func (t *DefaultTransport) closePeers() error {
 	t.peersMu.RLock()
 	peersSnapshot := make([]*peerConnection, 0, len(t.peers))
 	for _, pc := range t.peers {
@@ -323,7 +328,7 @@ func (t *DefaultTransport) Stop(ctx context.Context) error {
 	t.peersMu.RUnlock()
 
 	for _, pc := range peersSnapshot {
-		err := pc.stop(ctx)
+		err := pc.stop(context.Background())
 		if err != nil {
 			return err
 		}
@@ -507,8 +512,9 @@ func messagePriority(msgType raftpb.MessageType) int {
 func (t *DefaultTransport) Start(_ context.Context) {
 	for {
 		select {
-		case ch := <-t.stopCh:
-			close(ch)
+		case <-t.stopCh:
+			t.stopErr = t.closePeers()
+			close(t.stopDone)
 
 			return
 		case msgs := <-t.pendingSendQueue:

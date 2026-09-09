@@ -147,7 +147,11 @@ classify_path() {
             needs_precommit=true
             return
             ;;
-        tests/antithesis/*|tests/oracle/*)
+        tests/antithesis/*)
+            needs_precommit=true
+            return
+            ;;
+        tests/oracle/*)
             needs_precommit=true
             append_package "./$(dirname "$path")"
             return

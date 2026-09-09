@@ -43,17 +43,11 @@ func main() {
 			return
 		}
 
-		// Gate the read on the Apply's log sequence: ListLogs reads the async
-		// query index, which lags the FSM commit. Waiting for the index to
-		// reach this sequence turns the read-after-write into a guarantee.
-		minLogSeq := resp.GetLogs()[len(resp.GetLogs())-1].GetSequence()
-
-		// 2. List logs for the ledger.
+		// 2. List logs; the default read aligns the asynchronous index.
 		stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
 			Ledger: ledger,
 			Options: &commonpb.ListOptions{
 				PageSize: 20,
-				Read:     &commonpb.ReadOptions{MinLogSequence: minLogSeq},
 			},
 		})
 		if err != nil {
@@ -95,7 +89,7 @@ func main() {
 			return
 		}
 
-		// MinLogSequence guaranteed the index caught up to our write, so the
+		// The default ReadIndex plus projection alignment covers our write, so the
 		// log we just committed must be present.
 		assert.Always(count > 0, "ListLogs should return at least one entry after a confirmed write", details)
 

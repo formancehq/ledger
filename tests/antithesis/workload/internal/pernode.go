@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
 // metadataKeyConsistency mirrors internal/adapter/grpc/consistency.go: the
@@ -109,6 +110,7 @@ func DialPerNode(ctx context.Context) (PerNodeConns, error) {
 	}`
 
 	opts := []grpc.DialOption{
+		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithDefaultServiceConfig(serviceConfig),
 		grpc.WithUnaryInterceptor(retryUnaryInterceptor(retryMaxAttempts)),

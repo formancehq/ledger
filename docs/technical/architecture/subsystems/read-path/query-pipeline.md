@@ -2,22 +2,14 @@
 
 ## Overview
 
-Entity-list reads can pass through four distinct mechanisms: a Raft
-**`ReadIndex`** barrier for default live consistency, an optional
-**`min_log_sequence`** wait for read-side freshness, Pebble snapshots, and a
-composable iterator pipeline. A query waits for cross-store alignment only when
-`query.AlignmentOwed` says its shape actually consults an index leaf: filtered
-account/transaction queries and every log query. Unfiltered account/transaction
-queries use only the main-store handle and do not wait for the read index. Point
-reads likewise use their own main-store path. `stale` skips only the Raft
-barrier, while the leader-local and checkpoint exceptions are described below
-and in the [consensus contract](../consensus/raft-consensus.md#linearizable-reads-via-readindex).
+Indexed entity-list reads go through four stages: a **Raft `ReadIndex`** barrier
+for linearizability, a fixed main-store horizon, per-projection **Raft progress**
+waits, coordinated **Pebble snapshots**, and a **composable iterator pipeline**.
+The result is streamed back through gRPC with cursor-based pagination. Point
+reads and main-store-only queries use their own single main-store handle and do
+not wait for projections they do not consult.
 
-The list dispatcher is shared across `ListAccounts`, `ListTransactions`, and
-`ListLogs`, but the selected execution path depends on the query shape. Point
-reads such as `GetAccount` and `GetTransaction`, plus main-store-only queries
-such as `ListLedgers`, use the controller layer but not the read-store iterator
-algebra.
+The indexed-list pipeline is deliberately uniform across `ListAccounts`, `ListTransactions`, and `ListLogs`. Point reads such as `GetAccount` and `GetTransaction`, plus main-store-only queries such as `ListLedgers`, use the controller layer but not the read-store iterator algebra. The differences between indexed lists are which read-store prefix is scanned and how iterators are composed.
 
 ```mermaid
 sequenceDiagram
@@ -31,18 +23,19 @@ sequenceDiagram
     participant Main as Pebble<br/>(main store)
     participant Index as Pebble<br/>(read store)
 
-    C->>G: ListAccounts(filter, min_log_seq, cursor)
-    G->>G: Auth + extract min_log_seq
+    C->>G: ListAccounts(filter, cursor)
+    G->>G: Auth + consistency selection
     G->>Ctrl: ListAccounts(...)
     Ctrl->>N: ReadIndexAndWait(ctx)
     N->>Raft: ReadIndex
     Raft-->>N: commitIndex
     N->>FSM: WaitForApplied(commitIndex)
     FSM-->>N: applied up to commitIndex
-    N-->>Ctrl: ReadBarrierInfo
+    N-->>Ctrl: ReadBarrierInfo(R)
     Ctrl->>Main: store.NewReadHandle()
-    Ctrl->>Index: NewSnapshot / AlignedIndexSnapshot
-    Note over Ctrl,Index: Separate snapshots coordinated to the main-store horizon
+    Ctrl->>Main: Read durable LastAppliedIndex H; assert H >= R
+    Ctrl->>Index: Wait RaftProgress >= H; open snapshot; re-read certificate
+    Note over Ctrl,Index: H is fixed; the wait never chases the moving head
     Ctrl->>Ctrl: Resolve ledger + schema
     Ctrl->>Ctrl: Compile filter → iterator tree
     Ctrl->>Index: Iterate read store
@@ -87,37 +80,55 @@ was used.
 1. Call `node.ReadIndex(ctx)` — Raft sends a heartbeat round-trip to confirm quorum and returns the current commit index.
 2. `fsm.WaitForApplied(commitIndex)` — block until the local FSM has applied every entry up to that commit index.
 
-For a default live request, once both steps succeed the local main-store snapshot
-reflects state at least as fresh as the moment the request reached the cluster.
-FSM-backed results served from that snapshot inherit this linearizable horizon;
-secondary-index results do so only after their separate alignment wait. The
-barrier alone does not advance independently asynchronous projections such as
-the audit index or usagestore.
+Once both succeed, the local Pebble snapshot reflects state at least as fresh as the moment the request reached the cluster. This guarantees **linearizable reads on any node**: a read started after a successful write returns at least that write's effects, regardless of which node serves the read.
 
-If the node is syncing or otherwise unable to confirm `ReadIndex`, the call
-fails. The router may resolve a remote leader and forward; if leadership moved
-local after the failed barrier, it returns the failure rather than serving the
-local store without a fresh barrier. Explicit `stale` skips this barrier, an
-explicit leader-local read does not perform it, and checkpoint reads use their
-frozen snapshot instead.
+If the node is syncing or otherwise unable to confirm `ReadIndex`, the call fails — callers either retry or forward to the leader.
 
-## Freshness — `min_log_sequence`
+## Projection alignment — fixed Raft horizon
 
-The client can pass `min_log_sequence` in the request's `ReadOptions` to demand
-a *read-side* freshness guarantee. `ReadIndex` only guarantees the **FSM** has
-caught up; `min_log_sequence` additionally waits for the **read store** to have
-indexed up to that log sequence. This wait is independent of consistency mode
-and can therefore also block a `stale` read.
+The public `min_log_sequence` gate was removed by EN-1946. A projection-backed
+read now aligns automatically against the exact main snapshot it will use:
 
-`waitMinLogSequence()` (`server_bucket.go:434`) calls `readStore.WaitForSequence(ctx, minLogSequence)`, which blocks until the indexer's persisted progress cursor (see [indexer / Progress Cursors](../indexer/indexer.md#progress-cursors)) has caught up.
+1. A linearizable read obtains Raft horizon `R` through `ReadIndexAndWait`.
+   `stale` deliberately skips this step.
+2. The controller opens one main-store snapshot, reads its durable
+   `LastAppliedIndex` as fixed horizon `H`, and verifies `H >= R` when `R` is
+   present.
+3. It waits only for projections the query actually uses. Each must publish a
+   Raft progress certificate `>= H`.
+4. It opens each projection snapshot and re-reads the certificate from that
+   same snapshot before compiling or iterating the query.
 
-Important nuance, repeated from the indexer page: `min_log_sequence` pins **log application** on this replica, **not local rewrite completion**. A read against an index undergoing schema rewrite will keep serving `v_current` until the atomic switch lands — see [indexer / Changing a Metadata Key's Type](../indexer/indexer.md#changing-a-metadata-keys-type-setmetadatafieldtype).
+The indexer captures its own bounded main-store snapshot and publishes `H` only
+after processing every native item visible in it. Intermediate batches advance
+only the native cursor; the terminal projection writes and certificate are one
+atomic Pebble batch. Raft entries that emit no log or audit item still advance
+the certificate. Native log/audit cursors remain separate because folds,
+history resolution, and trimming use them.
 
-Checkpoint reads (see below) ignore `min_log_sequence` — a frozen checkpoint is by definition at a single past sequence.
+For account and transaction queries, `AlignmentOwed` walks the complete
+boolean filter tree. Main-store-only leaves (transaction ID, reverted status,
+and account-target address matching) do not acquire a read-index wait; an AND,
+OR, or NOT tree containing any indexed leaf does. LOGS always uses the read
+index because even its unfiltered universe is projected.
+
+`stale` therefore means “no quorum barrier”, not “permit torn projections”: it
+uses the local main snapshot's fixed `H` and performs the same projection waits.
+Per-index build/rewrite readiness remains explicit through
+`IndexVersionState`; a Raft certificate does not promote an unfinished build.
 
 ## Pebble snapshot
 
-`store.NewReadHandle()` returns a Pebble snapshot. Within one controller request, main-store leaves and enrichment (volumes, metadata, transaction bodies) all read through the **one** main-store handle `query.OpenQueryHandle` opened. A query for which `AlignmentOwed` is false uses `readStore.NewSnapshot()` only as an implementation handle and executes `listWithoutIndex`; it does not wait for the read-store fold. A query that actually consults an index uses `query.AlignedIndexSnapshot`, which returns a separate index snapshot whose fold cursor covers the main handle's sequence. The two aligned snapshots are therefore *coordinated*, not identical — the index view may be **ahead** of the main handle, and `query.MainHorizonKeep` trims that excess back to the main-store horizon for TRANSACTIONS and LOGS (ACCOUNTS are served as folded). The contract and its per-target exceptions live in [read-snapshot-consistency.md](read-snapshot-consistency.md#cross-store-alignment-en-1748). The main handle — with the reclaim hold taken alongside it — is owned by the returned cursor and closed when that cursor is closed; the index snapshot and its read lease are released once the page's index iteration ends, before enrichment reads the handle. A paginated API call is streamed from that one cursor; when a client requests a subsequent page using the `x-next-cursor`, the server creates a new controller request and therefore fresh snapshot state.
+`store.NewReadHandle()` returns a Pebble snapshot. Within one controller request,
+main-store leaves and enrichment all use that **one** handle. Read-index
+iterators use a separate snapshot certified at the main handle's applied-index
+horizon. The projection may be ahead, so `query.MainHorizonKeep` still trims by
+the main snapshot's native log sequence for TRANSACTIONS and LOGS (ACCOUNTS are
+served as folded). The Raft certificate does not replace this native trimming
+cursor. The detailed per-target rules live in
+[read-snapshot-consistency.md](read-snapshot-consistency.md#cross-store-alignment-en-1748).
+The main handle and reclamation reservation live with the returned cursor; the
+projection snapshot and read lease are released after index iteration.
 
 The cursor carries only the exclusive resume position (for example, an account address or transaction ID); it does not identify or retain the Pebble snapshot. Within one request/page, results are served under the coordinated consistency contract described above: main-store leaves and enrichment reflect that request's single pin, subject to the per-target cross-store exceptions — ACCOUNTS membership is served as folded, so a page may include index members absent from the pinned main store. Because the cursor does not retain that snapshot state, there is no general snapshot-consistency guarantee across separate pages. Inserts, deletes, or updates committed between requests may therefore affect later pages according to the documented cursor ordering and filtering semantics. Duplications or omissions across pages under concurrent writes are not, by themselves, evidence of a product defect unless an API contract explicitly promises a cross-page snapshot.
 
@@ -141,17 +152,22 @@ applies to the `ListAccounts` and `ListTransactions` paths.
 
 ## Iterator algebra
 
-`internal/storage/readstore/iterator_*.go` — the iterators implement a small set of composable operators, all sharing an `EntityIterator` interface (`Next`, `Current`, `SeekGE`, `Err`, `Close`):
+`internal/storage/readstore/` — the iterators implement a small set of composable operators, all sharing one interface, `Iterator[D Direction]` (`Next`, `Current`, `Seek`, `Err`, `Close`), declared in `iterator.go`. `Direction` is the sealed pair `Asc`/`Desc`; `EntityIterator` and `ReverseIterator` are aliases for `Iterator[Asc]` and `Iterator[Desc]`.
 
-| Operator | Purpose |
-|----------|---------|
-| `PebbleAccountIterator`, `PebbleReverseTxIterator`, `LedgerLogIterator`, `LedgerLogRangeIterator`, … | Leaf scans over one read-store prefix; `LedgerLogRangeIterator` is a bounded, entity-ordered leaf that streams a log-ID range without materializing it. |
-| `AndIterator` | Merge-intersect of sorted child iterators. |
-| `OrIterator` | Merge-union. |
-| `NotIterator` | Difference against the entity-existence index (`0x02`). |
-| address-prefix iterator | Leaf scan with a chart-of-accounts prefix predicate. |
+| Operator | File | Purpose |
+|----------|------|---------|
+| `PebbleAccountIterator`, `PebbleReverseTxIterator`, `LedgerLogIterator`, `PrefixIterator`/`ReversePrefixIterator`, … | `iterator_*.go` | Leaf scans over one read-store prefix. Direction-specific: a Pebble cursor walked `First`/`Next` is not the one walked `Last`/`Prev`. |
+| `BoundedEntityIterator` with `LedgerLogRangeIterator`/`PebbleTxRangeIterator` wrappers | `iterator_bounded_entity.go` | Streams fixed-width entity ranges without materialization, enforcing key shape and half-open bounds. |
+| `AndIterator[D]` | `combinator_and.go` | Merge-intersect of sorted child iterators. |
+| `OrIterator[D]` | `combinator_or.go` | Merge-union. |
+| `NotIterator[D]` | `combinator_not.go` | Difference against the entity-existence index (`0x02`). |
+| `FilterIterator[D]` | `combinator_filter.go` | Predicate wrapper (for example the main-store horizon trim). |
+| `SliceIterator[D]` | `combinator_slice.go` | Borrowed view over an already sorted, materialized result. |
+| address-prefix iterator | `iterator_pebble.go` | Leaf scan with a chart-of-accounts prefix predicate. |
 
-The filter compiler turns a `QueryFilter` proto into a tree of these. `SeekGE`/`SeekLE` are **absolute** repositions — `AndIterator.SeekGE` force-seeks *every* child to the target (EN-1597; a child left ahead would skip valid intersections), and the ahead-child leapfrog survives only inside `converge`'s merge loop. Exhausted leaves stay re-seekable; the `seekFloor`/`seekCeil` cache keeps repeated re-seeks of a proven-empty child O(1). See [iterator-seek-contract.md](iterator-seek-contract.md).
+The boolean combinators are **direction-parameterized, not duplicated**: each is one implementation whose only direction-dependent input is `D`'s comparator, so ascending and descending composition cannot drift apart (EN-1966). Only the leaves listed as direction-specific above have two implementations.
+
+The filter compiler turns a `QueryFilter` proto into a tree of these. `Seek` is an **absolute** reposition to the first entity at or after the target *in the iterator's direction* — `AndIterator.Seek` force-seeks *every* child to the target (EN-1597; a child left ahead would skip valid intersections), and the ahead-child leapfrog survives only inside `converge`'s merge loop. Exhausted leaves stay re-seekable; the `seekFloor`/`seekCeil` cache keeps repeated re-seeks of a proven-empty child O(1). See [iterator-seek-contract.md](iterator-seek-contract.md).
 
 ## Pagination
 
@@ -167,7 +183,11 @@ The cursor is sent back as an `x-next-cursor` gRPC trailer.
 
 ## Special read paths
 
-**Query checkpoints.** When the request carries a `checkpoint_id > 0`, the controller resolves the checkpoint to its frozen main-store + read-store snapshot pair, ignores `min_log_sequence` entirely, and runs the same iterator pipeline against the frozen views. The pair is already frozen, so `AlignedIndexSnapshot` performs no catch-up wait. Useful for reconciliation and auditing. See [query-checkpoints.md](query-checkpoints.md).
+**Query checkpoints.** When the request carries a `checkpoint_id > 0`, the
+controller resolves the checkpoint to its frozen main-store + read-store pair
+and verifies the stored projection certificate against the checkpoint's durable
+applied index. Useful for reconciliation and auditing. See
+[query-checkpoints.md](query-checkpoints.md).
 
 **Aggregate volumes.** `ExecutePreparedQuery` with the `AGGREGATE_VOLUMES` mode runs the same compiled filter to obtain a candidate account set, then loops over per-account asset volumes in the main store and sums per asset. The aggregation is computed at request time — there is no precomputed aggregate table.
 
@@ -177,7 +197,7 @@ The cursor is sent back as an `x-next-cursor` gRPC trailer.
 
 | Concern | Where |
 |---------|-------|
-| gRPC entry + auth + min_log_seq | `internal/adapter/grpc/server_bucket.go` |
+| gRPC entry + auth | `internal/adapter/grpc/server_bucket.go` |
 | Controller read methods | `internal/application/ctrl/controller_default.go` |
 | `ReadIndexAndWait` | `internal/infra/node/read_index.go:101` |
 | Generic list | `internal/application/ctrl/list_entities.go:57` |

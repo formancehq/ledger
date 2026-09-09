@@ -8,6 +8,30 @@ The gRPC API provides a programmatic interface for interacting with the ledger c
 2. **Inter-node communication**: Request forwarding from followers to the leader
 3. **CLI tools**: The `ledgerctl` command-line tool uses gRPC
 
+### Restore-mode service lifetime
+
+`RestoreService.StartDownloadBackup` deliberately detaches the transfer from
+the initiating RPC so multi-hour downloads survive intermediary timeouts. The
+job remains a child of the restore-mode application's lifetime. On Fx shutdown,
+restore admission closes and the job context is canceled after any configured
+grace period and before the HTTP health server and then gRPC stop. The service
+then joins every admitted RPC and the
+download job before closing its retained staging Pebble store. No join waits
+while holding the service mutex used by job completion.
+
+Each completed job cancels its own child context before signaling completion,
+so retries do not retain completed jobs under the service lifetime context.
+The production runner calls Fx `Stop` with no deadline, so its configured
+`StopTimeout` does not bound this join. Synchronous client initialization and
+filesystem cleanup must return before shutdown can finish. A custom embedder
+that supplies a deadline to Fx `Stop` can receive a deadline error while a hook
+is still running, and remaining hooks may be skipped. Forced process exit can
+therefore leave staging files or an uncleanly closed staging store.
+
+Explicit `CancelDownload` is narrower: it cancels the selected job, performs a
+bounded wait for that job to drain, and leaves the restore-mode application
+running so another download can be attempted.
+
 ## Connection
 
 ### Default Port
@@ -24,11 +48,13 @@ The gRPC service server listens on port `8888` by default (configurable via `--g
 import (
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
-    "github.com/formancehq/ledger/internal/proto/servicepb"
+    "github.com/formancehq/ledger/v3/internal/proto/servicepb"
+    "github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
 conn, err := grpc.NewClient(
     "localhost:8888",
+    grpcprotocol.ClientOption(),
     grpc.WithTransportCredentials(insecure.NewCredentials()),
 )
 if err != nil {
@@ -38,6 +64,13 @@ defer conn.Close()
 
 client := servicepb.NewBucketServiceClient(conn)
 ```
+
+Every business RPC must declare the client's compiled service protocol revision.
+`grpcprotocol.ClientOption()` supplies it on each unary and streaming call;
+omitting it causes `FailedPrecondition` on servers enforcing EN-1851. Other
+clients must send the revision they implement as `ledger-protocol-version`
+metadata. See [service protocol compatibility](protocol-compatibility.md) for
+diagnostic exemptions, revision maintenance, and adoption scope.
 
 ## Service Definition
 
@@ -512,6 +545,13 @@ See [Idempotency](../admission/idempotency.md) for detailed documentation.
 
 Processing errors (insufficient funds, ledger not found, etc.) are wrapped in a `BusinessError` struct in the FSM layer. The gRPC interceptor converts `BusinessError` instances to proper gRPC status codes with structured `google.rpc.ErrorInfo` details. This allows clients to programmatically identify error types without parsing error messages.
 
+Unknown errors, `KindInternal` errors, and recovered panics are logged with a generated `correlation_id`. When the RPC span is recording, the same log also carries `trace_id` and `span_id`, and the span records the correlation ID and error. This applies to both unary and streaming interceptors. Existing wire contracts remain distinct: unknown errors and panics return sanitized messages containing the correlation ID, while recognized `KindInternal` errors retain their status and reason. `INDEX_INCONSISTENT` and `COVERAGE_MISS` use type-owned public messages (`index is inconsistent` and `preload coverage miss`) and empty `ErrorInfo.metadata`; their internal identifiers, storage details, and coverage keys remain in server diagnostics. Other recognized error presentations are unchanged. The adapters consume `domain.PublicErrorDetails`; this optional presentation never changes `Error()` or `Metadata()` used by the authoritative audit projection.
+
+Failures reading the staged restore configuration retain `Internal` but return
+a generic message with a correlation ID. The handler records the underlying cause
+before constructing the status, so the interceptor's existing-status passthrough cannot expose a raw storage error. Validation and
+other intentionally authored gRPC statuses keep their existing behavior.
+
 Each business error response includes:
 - A **gRPC status code** (e.g., `NOT_FOUND`, `ALREADY_EXISTS`, `FAILED_PRECONDITION`)
 - A **human-readable message** (the original error string)
@@ -656,9 +696,6 @@ stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
 	Options: &commonpb.ListOptions{
 		PageSize: 100,
 		Filter: auditFilter, // Bare audit fields, e.g. ledger/outcome.
-		Read: &commonpb.ReadOptions{
-			MinLogSequence: lastWrittenSequence,
-		},
 	},
 })
 if err != nil {
@@ -677,13 +714,13 @@ for {
 }
 ```
 
-For a live request whose filter contains any field other than `seq`, a non-zero
-`MinLogSequence` makes every gRPC node that receives or serves the routed
-request wait for its log index to reach the bound and for its local audit index
-to reach the live audit head sampled afterward. With a zero bound, those
-index-backed results are best-effort. Unfiltered and `seq`-only conjunctions
-scan the audit zone directly and need only the log-sequence wait. Checkpoint
-reads ignore the bound.
+Live requests first linearize through Raft and capture one fixed main-store
+snapshot horizon. A filter containing any field other than `seq` then waits for
+the audit projection to certify that horizon before compiling candidates from
+its aligned snapshot; the matching `AuditEntry` values are loaded from the same
+main-store snapshot. Unfiltered requests and `seq`-only conjunctions scan the
+audit zone directly and do not wait for the audit projection. Checkpoint reads
+use the projection snapshots frozen with the checkpoint.
 
 ## Store Metrics
 

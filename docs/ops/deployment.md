@@ -4,6 +4,18 @@
 
 This document describes the different deployment methods for Ledger v3 POC, from local configuration to production deployment on Kubernetes.
 
+### Service protocol compatibility
+
+Deploy the server and `ledgerctl` from the same delivery, and update other gRPC
+service clients to declare the protocol they implement. Servers implementing
+EN-1851 reject business RPCs with a missing or different protocol revision.
+Servers predating EN-1851 do not enforce this gate: the new CLI sends a protocol
+declaration without a preflight, so it cannot protect calls to an older, ungated
+server. Different builds may communicate when they implement the same service
+protocol, but mixed wire-format rolling upgrades are not guaranteed. See the
+[service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
+for scope and failure behavior.
+
 ## Local Deployment
 
 ### Prerequisites
@@ -60,6 +72,15 @@ Available flags for `run`:
 Options can be provided via:
 - Command line arguments
 - Environment variables (without prefix, with underscores)
+
+Configuration precedence is explicit command-line flag, then environment
+variable, then the flag's default. An environment value selected by that
+precedence is parsed as the flag's declared type before service startup. A
+malformed selected value fails startup with the environment variable and flag
+named in the diagnostic; Ledger does not open its service listeners or report
+readiness. When the same flag is explicitly supplied on the command line, that
+higher-precedence value is used and the lower-precedence environment value is
+ignored.
 
 Example with environment variables:
 ```bash
@@ -436,11 +457,7 @@ config:
       insecure: "false"  # Set to "true" for insecure connections
       mode: "grpc"  # or "http"
       batch: "false"
-      
-      # Error-aware sampling (reduces volume while keeping all errors)
-      sampling:
-        enabled: false      # Enable error-aware trace sampling
-        successRatio: 0.1   # Sample 10% of successful traces
+
     
     # Metrics configuration
     metrics:
@@ -521,63 +538,60 @@ config:
 
 **Note**: Monitoring configuration can also be set globally. Global values take precedence if `config.monitoring` values are not set.
 
-#### Error-Aware Trace Sampling
+#### Collector-Side Trace Sampling
 
-The application supports intelligent trace sampling that prioritizes error traces while reducing the volume of successful traces. This is particularly useful in high-throughput production environments where you want to:
-
-- **Always capture errors**: All traces containing errors are exported, regardless of sampling ratio
-- **Reduce costs**: Lower the volume of successful traces to reduce storage and processing costs
-- **Maintain visibility**: Keep enough successful traces for baseline performance analysis
-
-**Configuration**:
+Ledger exports traces through the standard OpenTelemetry SDK. It does not retain
+spans for local tail sampling or decide which error/success traces to keep.
+To give the collector the complete Ledger span stream, keep the OTLP exporter
+and endpoint enabled and configure:
 
 ```bash
-# Enable error-aware sampling with 10% success rate
-go run . run \
-  --node-id 1 \
-  --cluster-id prod-ledger \
-  --bootstrap \
-  --trace-sampling-enabled \
-  --trace-sampling-success-ratio 0.1
-
-# Environment variables
-export TRACE_SAMPLING_ENABLED=true
-export TRACE_SAMPLING_SUCCESS_RATIO=0.1
+export OTEL_TRACES_SAMPLER=always_on
 ```
 
-| Flag | Environment Variable | Default | Description |
-|------|---------------------|---------|-------------|
-| `--trace-sampling-enabled` | `TRACE_SAMPLING_ENABLED` | `false` | Enable error-aware trace sampling |
-| `--trace-sampling-success-ratio` | `TRACE_SAMPLING_SUCCESS_RATIO` | `0.1` | Sampling ratio for successful spans (0.0-1.0) |
+This records Ledger spans even under an incoming parent marked unsampled. Without
+this explicit setting, the SDK defaults to parent-based sampling. It cannot
+recover spans already dropped by another service or lost in transport.
 
-**How it works**:
+Ledger still records error status, attributes, and exception events. The
+collector must route all spans of a trace to the same tail-sampling instance,
+retain error traces and approximately 10% of successful traces, and compute span
+metrics from the exhaustive stream **before** sampling. Size its decision window
+and queues from measured trace duration and arrival skew. An error arriving after
+a drop decision cannot recover earlier spans.
 
-1. All spans are recorded locally
-2. At export time, the sampling decision is made:
-   - **Error spans**: Always exported (status code ERROR, exception attributes, or error=true)
-   - **Successful spans**: Sampled based on `successRatio` using deterministic hash of trace ID
-3. All spans within the same trace have the same sampling decision (trace-level consistency)
-
-**Recommendations**:
-
-| Environment | `successRatio` | Notes |
-|-------------|---------------|-------|
-| Development | `1.0` (disabled) | Keep all traces for debugging |
-| Staging | `0.5` | Balance between visibility and volume |
-| Production (low traffic) | `0.2` | Keep 20% of successful traces |
-| Production (high traffic) | `0.05-0.1` | Keep 5-10% of successful traces |
-
-**Kubernetes (Ledger CR) configuration**:
+**Kubernetes (Cluster CR) configuration**:
 
 ```yaml
 spec:
-  config:
-    monitoring:
-      traces:
-        sampling:
-          enabled: true
-          successRatio: "0.1"  # 10% of successful traces
+  monitoring:
+    traces:
+      enabled: true
+      exporter: otlp
+      endpoint: otel-collector
+      port: "4317"
+      mode: grpc
+      insecure: "false"
+      batch: "true"
+  extraEnv:
+    - name: OTEL_TRACES_SAMPLER
+      value: always_on
 ```
+
+Set the endpoint and TLS settings for the actual collector. When using the main
+Formance Operator's `LedgerConfiguration`, these fields are under `spec.cluster`.
+Verify the rendered pod environment on the deployed Operator version.
+
+Remove the former `--trace-sampling-enabled` and `--trace-sampling-success-ratio`
+flags, `TRACE_SAMPLING_ENABLED` / `TRACE_SAMPLING_SUCCESS_RATIO` environment
+variables, and `monitoring.traces.sampling` configuration from deployments. These
+custom controls and the in-process sampler have been removed. Kubernetes CRDs
+must be updated with the matching Operator release. Collector-side sampling must
+be configured before relying on selective trace retention; Ledger does not
+install a collector pipeline automatically.
+
+See the [sampling contract and EN-1588 acceptance experiment](../technical/architecture/subsystems/monitoring/trace-sampling.md)
+for delivery limits and the required end-to-end performance/completeness checks.
 
 #### ServiceMonitor (Prometheus)
 

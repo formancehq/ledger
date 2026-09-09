@@ -563,10 +563,8 @@ func Module() fx.Option {
 			// arrive via the dedicated `name:"usage"` FanOut target.
 			fx.Annotate(func(store *dal.Store, us *usagestore.Store, notifications *signal.Notifications, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *usagebuilder.Builder {
 				// Final arg is batchSize; 0 selects usagebuilder.DefaultBatchSize.
-				// No rollback/catch-up guard is needed: audit entries are written
-				// only for committed Raft entries, so the audit chain is
-				// append-only and the persisted cursor can never sit ahead of the
-				// head — the builder only ever moves forward.
+				// The builder handles catch-up durability and rewinds its peer-store
+				// projection when a primary restore leaves the usage cursor ahead.
 				return usagebuilder.NewBuilder(store, us, notifications, logger, meterProvider.Meter("usage.builder"), 0)
 			}, fx.ParamTags(``, ``, `name:"usage"`, ``, ``, ``)),
 			httpcompat.NewServer,
@@ -587,6 +585,7 @@ func Module() fx.Option {
 				ks *keystore.KeyStore,
 				ss *state.SharedState,
 				attrs *attributes.Attributes,
+				rs *readstore.Store,
 				authCfg internalauth.AuthConfig,
 			) ctrl.Admission {
 				var opts []func(*admission.Admission)
@@ -597,6 +596,7 @@ func Module() fx.Option {
 				if authCfg.Enabled {
 					opts = append(opts, admission.WithAuthEnabled())
 				}
+				opts = append(opts, admission.WithAuditProjectionState(rs.AuditProjectionState))
 
 				return admission.NewAdmission(
 					store,
@@ -921,12 +921,12 @@ func Module() fx.Option {
 						// cancellation. Apply it inline.
 						backupOrchestrator.OnLeadershipChange(e.IsLeader)
 
-						// The events / mirror reconcile is dispatched off the
-						// observer thread because it does a full Pebble
-						// attribute scan that can take minutes; running it
-						// synchronously would stall processReady and the
-						// readiness probe.
-						go handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
+						// Record the events / mirror transition inline so it
+						// cannot be reordered behind a later transition. The
+						// managers only update their desired generation here;
+						// their lifecycle-owned loops perform the potentially
+						// slow Pebble reconciliation asynchronously.
+						handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
 					case node.LeaderReadyEvent:
 						proposeClusterConfigIfNeeded(n, builder, store, cfg, logger)
 					default:
@@ -943,8 +943,9 @@ func Module() fx.Option {
 
 						// Use a dedicated context for node.Run that survives
 						// the OnStart return (unlike ctx which expires). On
-						// startup failure we cancel it to abandon the goroutine;
-						// on graceful shutdown node.Stop is the signal, NOT this
+						// startup failure we cancel context-aware work; this
+						// cancellation alone does not join Run. During shutdown,
+						// node.Stop supplies the task termination signal, not this
 						// cancel — see the OnStop hook below for the rationale.
 						var runCtx context.Context
 						runCtx, cancelRun = context.WithCancel(context.Background())
@@ -993,18 +994,15 @@ func Module() fx.Option {
 						// pool error" from Node.Run, panics the bootstrap
 						// goroutine, and crashes the process mid-shutdown
 						// instead of returning a clean nil (#345).
-						// Defer the cancel so it runs on EVERY return path,
-						// including the error path below. If node.Stop returns
-						// ctx.Err() (e.g. fx stop timeout expired during the
-						// leadership transfer or stopChannel handshake), the
-						// Run goroutine is still alive and waiting; without
-						// this cancel the goroutine would outlive OnStop while
-						// downstream fx hooks tear down transport and Pebble
-						// underneath it. The cancel propagates into the tasks'
-						// FSM calls (PrepareEntries / CommitPreparedBatch /
-						// InstallSnapshot) so the bootstrap goroutine exits
-						// via a logged task-pool error rather than racing with
-						// concurrent infrastructure teardown.
+						// Cancel only after Stop returns, preserving the run
+						// context through successful task/commit drain. Stop
+						// publishes its shutdown request even if ctx expires
+						// during transfer or before Run reaches its stop select.
+						// On timeout, cancellation can interrupt context-aware
+						// work, but does not join Run or terminate idle tasks;
+						// Run's explicit stop path still owns their termination.
+						// A timeout is not proof that infrastructure is safe to
+						// close. Only successful Stop confirms the drain/join.
 						defer cancelRun()
 
 						err := node.Stop(ctx)
@@ -1774,20 +1772,21 @@ func applyAnonymousScopes(mapping internalauth.ScopeMapping, raw string, logger 
 	return nil
 }
 
-// handleLeadershipChangeEvent reconciles event emitter and mirror
-// workers on leadership transitions. Runs in a goroutine — see the
-// observer callback above for the dispatch and the reason
-// (event/mirror reconcile can take minutes).
+// handleLeadershipChangeEvent records the desired leadership generation for
+// the event and mirror managers. Each manager's lifecycle-owned loop performs
+// the potentially slow reconciliation and fences it against later generations.
 //
 // The backup orchestrator's OnLeadershipChange is intentionally NOT
-// called here: it must observe transitions in order and inline, so
-// a leadership flap cannot interleave an old-(false) update behind
-// a newer-(true) update. See the observer's LeadershipChangeEvent
-// branch.
+// called here: it has no asynchronous reconciliation and is updated directly
+// by the observer. See the observer's LeadershipChangeEvent branch.
+type leadershipChangeManager interface {
+	OnLeadershipChange(bool)
+}
+
 func handleLeadershipChangeEvent(
 	e node.LeadershipChangeEvent,
-	eventsManager *events.Manager,
-	mirrorManager *mirror.Manager,
+	eventsManager leadershipChangeManager,
+	mirrorManager leadershipChangeManager,
 	logger logging.Logger,
 ) {
 	if e.IsLeader {

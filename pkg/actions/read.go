@@ -371,9 +371,8 @@ func ListAuditEntriesWithRequest(ctx context.Context, client servicepb.BucketSer
 	// messages embed a sync.Mutex (in MessageState) so value copy trips
 	// govet (copylocks). We only need the request fields used by the
 	// underlying RPC; the per-page cursor is updated below.
-	// Preserve the caller's Read (min_log_sequence, checkpoint_id) on every
-	// page request — dropping it would silently turn a freshness-gated audit
-	// scan into a stale read against a lagging follower.
+	// Preserve the caller's checkpoint selection on every page request —
+	// dropping it would silently turn a historical scan into a live read.
 	page := &servicepb.ListAuditEntriesRequest{
 		Options: &commonpb.ListOptions{
 			Read:     req.GetOptions().GetRead(),
