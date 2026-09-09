@@ -1,6 +1,18 @@
 # CLAUDE.md - AI Agent Instructions
 
-This document contains rules and conventions for AI agents working on this codebase. Detailed documentation lives in `docs/` - see [docs/README.md](docs/README.md) for navigation.
+This document is a historical snapshot of the former monolithic agent instructions.
+It is not a current engineering contract. Start with [AGENTS.md](../../AGENTS.md)
+and [agent-context.md](agent-context.md); current subsystem documentation takes
+precedence over every section below.
+
+> **Reverse-map snapshot warning (EN-1957):** the reverse-map exception below
+> describes the removed entity-first layout and scan/point-delete cleanup.
+> Current reverse maps use field/version/entity keys and atomic bounded range
+> cleanup. Encoding version zero is malformed; nonzero versions are not compared
+> with the current/pending pair. The checker classifies lifecycle state without
+> attributing orphan rows to a missed purge. See the current
+> [index layout](architecture/subsystems/indexer/indexes.md) and
+> [checker contract](architecture/subsystems/checker/checker.md).
 
 > **Obsolete content warning (EN-1945):** every mention of chapters, chapter
 > archival, sealing, cold storage, `coldstorage/`, baseline checkpoints, or

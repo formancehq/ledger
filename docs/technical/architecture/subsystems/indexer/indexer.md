@@ -159,7 +159,7 @@ The read store partitions its keyspace by a single leading byte:
 |--------|---------|--------|
 | `0x01` | Metadata index (forward, append-only events — see [readstore-event-keys.md](../read-path/readstore-event-keys.md)) | `MetadataIndexPrefixV` / `MetadataIndexEventKeyV` |
 | `0x02` | Entity existence (null / non-null, append-only events) | `EntityExistsEventKeyV`, `EntityExistsNonNullPrefixV`, `EntityExistsNullPrefixV` |
-| `0x03` | Reverse map (entity → metadata values, for rewrites). The only limb that cannot be range-deleted by field, and the only one the checker scans — see [Reverse-map rows are checker-visible](indexes.md#reverse-map-rows-are-checker-visible) | `AccountReverseMapKeyV`, `TransactionReverseMapKeyV` |
+| `0x03` | Reverse map (field/version → entity → encoded value, for mutation lookup and rewrites). Field and field/version prefixes support bounded maintenance; the checker also scans it for orphan detection — see [Reverse-map rows are checker-visible](indexes.md#reverse-map-rows-are-checker-visible) | `AccountReverseMapKeyV`, `TransactionReverseMapKeyV`, `ReverseMapFieldPrefix`, `ReverseMapVersionPrefix` |
 | `0x04` | Account → transaction mapping | `AccountTxKey` |
 | `0x05` | Source-account → transaction | dedicated key builder |
 | `0x06` | Destination-account → transaction | dedicated key builder |
@@ -194,6 +194,30 @@ resolution and reclamation rules.
 `ledger` is fixed-width (`dal.LedgerNameFixedSize` = 64B, zero-padded). `ns:` is the entity namespace — currently `"a:"` for accounts and `"t:"` for transactions; not a fixed width, but always followed by `\x00` after `metadataKey`.
 
 Two adjacent versions share the same prefix up to the `version` field, so a single Pebble `DeleteRange` over `MetadataIndexPrefixV(..., v)` cleanly drops a whole version in one operation (used by GC after an atomic switch).
+
+### Reverse-map keying
+
+```
+[0x03] [ledger 64B] [ns:] [metadataKey \x00] [version 4B BE] [entityID]
+```
+
+The account entity suffix is the raw address; the transaction suffix is its
+8-byte big-endian ID. `metadataKey` and `version` deliberately precede the
+entity so a rewrite scans exactly one `ReverseMapVersionPrefix` and a dropped
+field is removed with one `DeleteRange` over `ReverseMapFieldPrefix`. The hot
+path still performs an exact reverse-map point lookup to recover the old
+encoded value before appending `DEL(old)` and `ADD(new)` forward events. Its
+`WriteBatch` overlay preserves read-your-writes, including range tombstones;
+no FSM cache coverage or preload is added.
+
+This layout is an operational maintenance tradeoff (EN-1957). The former
+entity-first layout grouped all metadata for one entity but forced schema
+rewrite, old-version GC, and field removal to scan the whole namespace.
+Field/version-first makes those operations proportional to the affected field
+and version. The ingestion benchmarks cover 1, 4, and 12 indexed fields so the
+lost per-entity write locality remains measurable. Ledger v3 is unreleased, so
+the format changes directly without migration, dual-format writes, or fallback
+reads.
 
 ### Value encoding
 
@@ -252,23 +276,23 @@ The two paths use the **same** switch primitive but write **different** batches.
 1. `WriteIndexVersionState(batch, ledger, canonicalID, {Current: pending, Pending: 0, CurrentType: PendingType})` — flips the served version and promotes the pending type binding with it.
 2. `batch.Commit()`.
 
-No `gcVersionAt` call is needed (and none is made — see the explicit comment in `backfill.go:1193-1196`).
+No `gcVersionAt` call is needed (and none is made — see the explicit comment in `backfill.go`).
 
-**Schema-rewrite path** (in `processSchemaRewrite`, around `backfill.go:855-864` and the deferred-switch path at `backfill.go:931-937`). The batch additionally reclaims the old keyspace:
+**Schema-rewrite path** (`processSchemaRewrite` and the deferred `tryCommitScanCompleteSwitch` in `backfill.go`). The batch additionally reclaims the old keyspace:
 
 1. `WriteIndexVersionState(batch, ledger, canonicalID, {Current: pending, Pending: 0, CurrentType: PendingType})`.
-2. `gcVersionAt(batch, old)` — `DeleteRange` over `MetadataIndexPrefixV(..., old)` and `EntityExistsKey…PrefixV(..., old)`, plus per-key reverse-map cleanup at `gcReverseMapVersion`. Immediate, in-batch, **not deferred**.
+2. `gcVersionAt(batch, old)` — `DeleteRange` over `MetadataIndexPrefixV(..., old)`, `EntityExistsKey…PrefixV(..., old)`, and `ReverseMapVersionPrefix(..., old)`. Immediate, in-batch, **not deferred**.
 3. `batch.Commit()`.
 
 The single-batch commit is what makes the version flip + old-version GC atomic from a query's point of view: there is no instant at which a query could observe `Current = new` and still see live keys at `v_old`.
 
 ### Deferred switch (`scanComplete` gate)
 
-If the rewrite's scan cursor has reached the head **but** `LastIndexedSequence < requiredIndexedSeq` (i.e. the FSM has committed logs past what the indexer has applied), the switch must be deferred: flipping early would expose `v_new` keys that do not yet contain the late writes. The builder sets `task.scanComplete = true`, commits the `v_pending` writes alone, and the next loop tick calls `tryCommitScanCompleteSwitch()`, which re-checks the gate and fires the switch as a small standalone batch once the indexer catches up. See `backfill.go:889-959`.
+If the rewrite's scan cursor has reached the head **but** `LastIndexedSequence < requiredIndexedSeq` (i.e. the FSM has committed logs past what the indexer has applied), the switch must be deferred: flipping early would expose `v_new` keys that do not yet contain the late writes. The builder sets `task.scanComplete = true`, commits the `v_pending` writes alone, and the next loop tick calls `tryCommitScanCompleteSwitch()`, which re-checks the gate and fires the switch as a small standalone batch once the indexer catches up. See `backfill.go`.
 
 ## Changing a Metadata Key's Type (`SetMetadataFieldType`)
 
-Re-typing a metadata key (e.g. `category: string → int`) is the most subtle path the indexer handles. It is the operation that **re-encodes all live entities at a new type tag** while continuing to serve queries against the old encoding — and it is the original motivation for the dual-write + versioned-keyspace machinery described above. (A second `SetMetadataFieldType` arriving while a previous rewrite is still in flight is the only other trigger: it resets the in-flight task's cursor to start over under the new target type, see `addSchemaRewriteTask` → `backfill.go:310-324`.)
+Re-typing a metadata key (e.g. `category: string → int`) is the most subtle path the indexer handles. It is the operation that **re-encodes all live entities at a new type tag** while continuing to serve queries against the old encoding — and it is the original motivation for the dual-write + versioned-keyspace machinery described above. (A second `SetMetadataFieldType` arriving while a previous rewrite is still in flight is the only other trigger: it resets the in-flight task's cursor to start over under the new target type, see `addSchemaRewriteTask` → `backfill.go`.)
 
 ### Order flow
 
@@ -280,11 +304,11 @@ Re-typing a metadata key (e.g. `category: string → int`) is the most subtle pa
 
 ### What runs during the rewrite — a state scan, not a log replay
 
-`processSchemaRewrite` (`backfill.go:545-887`) is the workhorse. The important framing: the rewrite is a **scan of derived state**, not a replay of logs. There is **no log-sequence upper bound** — the iterator runs from the persisted cursor to the EOF of the reverse-map keyspace under a Pebble snapshot. Each indexer tick runs one budget-bounded slice:
+`processSchemaRewrite` (`backfill.go`) is the workhorse. The important framing: the rewrite is a **scan of derived state**, not a replay of logs. There is **no log-sequence upper bound** — the iterator runs from the persisted cursor to the EOF of the reverse-map keyspace under a Pebble snapshot. Each indexer tick runs one budget-bounded slice:
 
-1. **Iterate the reverse map** for `(ledger, namespace, key)` between the persisted cursor and the prefix upper bound (`backfill.go:597-650`). The iterator runs on a read-store snapshot taken at the start of the batch. Reverse-map entries that already live at `v_pending` are skipped — they were written by the dual-write path while the rewrite was running, and re-touching them would be wasted work (`backfill.go:727-735`).
+1. **Iterate the reverse map** for exactly `(ledger, namespace, key, v_current)` between the persisted cursor and the `ReverseMapVersionPrefix` upper bound (`backfill.go`). The iterator runs on a read-store snapshot taken at the start of the batch, so unrelated fields and versions are never visited. `v_pending` lives outside the iterator range and continues to receive live dual-writes.
 2. **Fetch the raw value** from the FSM-side canonical attribute store (`fetchStoredMetadataValue`) — *not* from the forward index, not from a log. This is the load-bearing design choice: the FSM is the source of truth for stored values, so the rewrite is a pure function of stored state and is safe to cancel-and-restart on a new `SetMetadataFieldType`. **Convert** through `commonpb.ConvertMetadataValue` to the new type. Notable behaviour: **conversion failures silently downgrade to `NullValue`** with the original payload preserved in `value.Original` (`internal/proto/commonpb/metadata_convert.go:221-260`). There is no error returned, no `LastError` set on the `Index` — a "category" field that was numeric strings retyped to `int` will lose its non-numeric rows to `null`. This is a known limitation of the current path.
-3. **Write to `v_pending`** via `ReplaceMetadataIndexV` (`backfill.go:781-787`): delete any prior `v_pending` forward-index + existence keys for that entity, write the new ones, update the reverse-map row at the pending version.
+3. **Write to `v_pending`** via `ReplaceMetadataIndexV` (`backfill.go`): delete any prior `v_pending` forward-index + existence keys for that entity, write the new ones, update the reverse-map row at the pending version.
 4. **Persist the cursor** in the same batch as the writes, so a crash resumes from exactly the same reverse-map position.
 
 While this loop runs, new `SavedMetadata` / `DeletedMetadata` logs continue to land in `processLogs`. The handlers detect `PendingVersion != 0` and dual-write, encoding each value once per version under that version's bound type — `v_current` under `CurrentType` (the old declared type), `v_pending` under `PendingType` (the retype's target). The rewrite never has to "catch up" to live writes — they keep `v_pending` fresh autonomously.
@@ -300,18 +324,26 @@ Once the reverse-map iterator hits EOF, the rewrite *could* fire the switch. But
 
 The fix is the **`requiredIndexedSeq` gate**. It is *not* the bound of the rewrite — it is a post-scan consistency gate:
 
-- **It is sampled per batch, not at task creation.** At the start of every batch of `processSchemaRewrite`, the builder calls `query.ReadLastSequence(fsmHandle)` (`backfill.go:633-637`) and **accumulates the result as a max** into `task.requiredIndexedSeq`. The longer the rewrite takes, the higher the watermark climbs — it tracks the freshest FSM state that any of this task's batches could possibly have observed and encoded into `v_pending`.
-- **It is checked at the switch attempt.** Once the scan is exhausted, the switch tries to fire (`backfill.go:821-864`):
+- **It is sampled per batch, not at task creation.** At the start of every batch of `processSchemaRewrite`, the builder calls `query.ReadLastSequence(fsmHandle)` (`backfill.go`) and **accumulates the result as a max** into `task.requiredIndexedSeq`. The longer the rewrite takes, the higher the watermark climbs — it tracks the freshest FSM state that any of this task's batches could possibly have observed and encoded into `v_pending`.
+- **It is checked at the switch attempt.** Once the scan is exhausted, the switch tries to fire (`backfill.go`):
   - If `readStore.LastIndexedSequence() >= task.requiredIndexedSeq`, fire immediately: `{Current: pending, Pending: 0}` + `gcVersionAt(old)` in one Pebble batch.
-  - Otherwise, set `task.scanComplete = true`, commit the `v_pending` writes alone, and the next loop tick calls `tryCommitScanCompleteSwitch()` (`backfill.go:901-948`), which re-checks the gate and fires the switch as a small standalone batch once the indexer catches up. Note: under steady write load, `requiredIndexedSeq` will *not* keep climbing during this phase because no further `processSchemaRewrite` batches run for this task — `scanComplete` short-circuits the scan setup (`backfill.go:591-593`).
+  - Otherwise, set `task.scanComplete = true`, commit the `v_pending` writes alone, and the next loop tick calls `tryCommitScanCompleteSwitch()` (`backfill.go`), which re-checks the gate and fires the switch as a small standalone batch once the indexer catches up. Note: under steady write load, `requiredIndexedSeq` will *not* keep climbing during this phase because no further `processSchemaRewrite` batches run for this task — `scanComplete` short-circuits the scan setup (`backfill.go`).
 
-The GC step (`gcVersionAt` → `gc.go:30-95`) reclaims the old forward-index range, the old existence ranges, and walks the reverse map to delete per-key rows at the old version. **For the schema-rewrite path this GC is part of the same atomic batch as the switch** — unlike the index-backfill path where there is no `v_old` to reclaim.
+The GC step (`gcVersionAt` → `gc.go`) reclaims the old forward-index, existence, and reverse-map ranges with three range tombstones. **For the schema-rewrite path this GC is part of the same atomic batch as the switch** — unlike the index-backfill path where there is no `v_old` to reclaim.
 
 ### Cancellation: `RemovedMetadataFieldType`
 
 If the field type is removed mid-rewrite (`RemovedMetadataFieldType`), the indexer purges every versioned namespace for that key (`process_metadata_field_removal.go:37-111`) and `removeSchemaRewriteTaskByField` (`backfill.go`) drops the in-flight task. Any orphan `v_pending` rows are reclaimed by the same purge. No special end-state is needed: the entire key is gone.
 
-The `0x01` and `0x02` limbs go in one `DeleteRange` each. The reverse map cannot: its metadata key sits after the fixed-width version block, so no prefix covers "every row of this field" and `purgeReverseMapForKey` (`process_metadata_field_removal.go:121+`) has to scan the namespace and point-delete row by row. A row that scan misses is a permanent orphan — the range deletes cannot half-succeed, this scan can. The scan therefore checks `iter.Error()` before reporting success: a mid-scan I/O failure is indistinguishable from exhaustion on `!iter.Valid()`, and swallowing it would commit the batch with rows left behind and never retry. Propagating aborts the batch so the fold retries the log. A missing write batch is likewise a hard error (invariant #7), since a silent skip there would strand all three limbs at once and `0x01`/`0x02` have no detector of their own. That asymmetry is why the checker scans `0x03` and no other limb: `compareReverseMapOrphans` flags rows whose field has no registered index. The audit-replayed schema only diagnoses whether `DropIndex` or `RemovedMetadataFieldType` missed its purge. See [Reverse-map rows are checker-visible](indexes.md#reverse-map-rows-are-checker-visible) for the oracle and its limits.
+All three limbs use a field-bounded `DeleteRange`. On the reverse-map side,
+`WriteBatch.DeleteReverseMapRange` also records the tombstone in the batch
+overlay: an exact lookup after the purge observes deletion instead of falling
+through to committed Pebble state, while a later exact write supersedes the
+range in the same order Pebble applies the batch. A missing write batch remains
+a hard error (invariant #7), since a silent skip would strand all three limbs.
+`compareReverseMapOrphans` continues to scan `0x03` as a checker defense and
+flags rows whose field has no registered index. See [Reverse-map rows are
+checker-visible](indexes.md#reverse-map-rows-are-checker-visible).
 
 ### Recovery and observability
 
