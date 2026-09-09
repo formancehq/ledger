@@ -175,11 +175,12 @@ The temporary checkpoint is removed from the leader's filesystem after the backu
 Backup preparation is performed on the **restore side** (during `FinalizeRestore` or `store bootstrap`), not during backup. It resets cluster-local and checkpoint-era zones and leaves the attribute zone **byte-for-byte intact** — there is no attribute compaction, because each canonical key holds exactly one Pebble entry (no per-index history to fold):
 
 1. **Preserve lastAppliedIndex as the genesis boundary**: The checkpoint's applied index is kept (a genesis checkpoint at index 0 gets the fallback boundary 1; MaxUint64 is refused). The restored bootstrap plants its WAL snapshot at this index, so the new log starts just above it and any fresh peer is routed through the snapshot → checkpoint-sync path (plain log replay from index 1 would land on an empty store and miss the restored state). The boundary labels the new log's start — it is NOT the restored state's provenance: incremental exports are sequence-keyed and never advance it, so after a full + incremental restore the state is newer than the boundary.
-2. **Remove persisted config**: Node and cluster IDs are stripped for portability.
-3. **Wipe the cluster-transient zone**: In-flight-only tracking (e.g. running backup jobs) has no meaning on the restored cluster.
-4. **Drop persisted bloom blocks**: Stale bloom blocks are cleared so the booting node rebuilds the bloom from a full attribute scan using its own config.
-5. **Drop persisted Raft peers**: Cluster membership is local to the source cluster; the booting node reseeds membership from its own config.
-6. **Clear the cache zone**: Checkpoint-era cache rows predate the delta replayed into the attribute zone; the restored node boots with a cold cache and re-seeds from the rebuilt attribute zone on first touch.
+2. **Mark query-checkpoint metadata as restored**: Physical query-checkpoint directories are not part of the restored Pebble store. Surviving rows are marked `restored_from_backup`; rows rebuilt from incremental logs receive the same marker. The read-index builder uses it to keep source-cluster Raft indexes out of destination-cluster progress certificates.
+3. **Remove persisted config**: Node and cluster IDs are stripped for portability.
+4. **Wipe the cluster-transient zone**: In-flight-only tracking (e.g. running backup jobs) has no meaning on the restored cluster.
+5. **Drop persisted bloom blocks**: Stale bloom blocks are cleared so the booting node rebuilds the bloom from a full attribute scan using its own config.
+6. **Drop persisted Raft peers**: Cluster membership is local to the source cluster; the booting node reseeds membership from its own config.
+7. **Clear the cache zone**: Checkpoint-era cache rows predate the delta replayed into the attribute zone; the restored node boots with a cold cache and re-seeds from the rebuilt attribute zone on first touch.
 
 **File**: `internal/infra/attributes/prepare.go` — `PrepareForBackup()`
 

@@ -585,6 +585,7 @@ func Module() fx.Option {
 				ks *keystore.KeyStore,
 				ss *state.SharedState,
 				attrs *attributes.Attributes,
+				rs *readstore.Store,
 				authCfg internalauth.AuthConfig,
 			) ctrl.Admission {
 				var opts []func(*admission.Admission)
@@ -595,6 +596,7 @@ func Module() fx.Option {
 				if authCfg.Enabled {
 					opts = append(opts, admission.WithAuthEnabled())
 				}
+				opts = append(opts, admission.WithAuditProjectionState(rs.AuditProjectionState))
 
 				return admission.NewAdmission(
 					store,

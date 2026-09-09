@@ -207,9 +207,9 @@ func (b *Builder) flushIfDue(now time.Time, cursor uint64) error {
 
 // boot runs once before the tail loop: seed both atomics from the persisted
 // state and drain the reachable backlog with a bigger batch size so the
-// steady-state loop starts already caught up. A cursor-read error aborts the
-// loop (returned to tailworker, which logs and stops); a catch-up error is
-// logged and swallowed so steady-state indexing still starts.
+// steady-state loop starts already caught up. TailWorker retries a cursor-read
+// error before starting steady state; a catch-up error is logged and swallowed
+// so steady-state indexing still starts.
 func (b *Builder) boot(ctx context.Context) error {
 	cursor, err := b.usageStore.ReadProgress()
 	if err != nil {

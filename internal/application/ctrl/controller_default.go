@@ -1689,7 +1689,6 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
-
 	closeHandle := true
 
 	defer func() {
@@ -1712,7 +1711,6 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 	if err != nil {
 		return nil, err
 	}
-
 	if hiSeq > mainAuditSequence {
 		hiSeq = mainAuditSequence
 	}

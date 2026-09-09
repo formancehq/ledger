@@ -90,6 +90,10 @@ type Scope interface {
 	GetNextLedgerID() uint32
 	IncrementNextLedgerID() uint32
 	GetDate() commonpb.TimestampReader
+	// GetRaftIndex returns the committed Raft entry currently being applied.
+	// It is deterministic proposal input and is used to bind derived snapshots
+	// to the same causal horizon as the primary store.
+	GetRaftIndex() uint64
 
 	// Numscript library operations — heterogeneous shapes (string/bool returns,
 	// multi-arg keys). Kept discrete; the Accessor trio does not fit.

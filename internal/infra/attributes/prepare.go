@@ -8,6 +8,7 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -20,20 +21,22 @@ import (
 // exactly one Pebble entry that Set overwrites in place, so there are no
 // versions to fold. The attribute zone is left byte-for-byte intact.
 //
-// The six resets are:
+// The seven restore preparations are:
 //  1. lastAppliedIndex is preserved as the restored genesis boundary — the
 //     raft index the restored FSM genesis occupies in the new log (see
 //     below); a genesis checkpoint (index 0) gets the fallback boundary 1.
-//  2. persisted config (nodeId, clusterId) deleted, so the backup is portable
+//  2. live query-checkpoint rows marked as restored, because their physical
+//     checkpoint directories are not part of the restored Pebble store.
+//  3. persisted config (nodeId, clusterId) deleted, so the backup is portable
 //     to any cluster.
-//  3. ZoneClusterTransient wiped — in-flight-only tracking (backup jobs) has
+//  4. ZoneClusterTransient wiped — in-flight-only tracking (backup jobs) has
 //     no meaning on the restored cluster.
-//  4. persisted bloom blocks dropped, so the booting node rebuilds the bloom
+//  5. persisted bloom blocks dropped, so the booting node rebuilds the bloom
 //     from a full attribute scan using its own config.
-//  5. persisted Raft peers dropped (EN-1413), so the restored cluster does
+//  6. persisted Raft peers dropped (EN-1413), so the restored cluster does
 //     not dial the source cluster's pods. NewNode reseeds [ZoneGlobal]
 //     [SubGlobPeers] from cfg.Peers + self on the next boot.
-//  6. cache zone (ZoneCache) cleared, so the restored node boots with a cold
+//  7. cache zone (ZoneCache) cleared, so the restored node boots with a cold
 //     cache and re-seeds from the rebuilt attribute zone on first touch.
 //
 // The caller must ensure all in-memory state has been flushed to Pebble before
@@ -94,6 +97,42 @@ func PrepareForBackup(s *dal.Store) error {
 		_ = batch.Cancel()
 
 		return fmt.Errorf("writing genesis boundary: %w", err)
+	}
+
+	// Query-checkpoint metadata survives in the primary Pebble store, but the
+	// physical main/read-index checkpoint directories do not. Mark every live
+	// row before the restored node starts so the asynchronous read-index builder
+	// never interprets a source-cluster applied index as progress in the new Raft
+	// domain. RebuildDelta applies the same marker to post-checkpoint rows.
+	checkpointReader, err := s.NewDirectReadHandle()
+	if err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("opening query checkpoints for restore preparation: %w", err)
+	}
+	checkpoints, err := dal.CollectZone[*raftcmdpb.QueryCheckpointState](checkpointReader, dal.ZoneGlobal, dal.SubGlobQueryCheckpoint)
+	closeErr := checkpointReader.Close()
+	if err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("reading query checkpoints for restore preparation: %w", err)
+	}
+	if closeErr != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("closing query checkpoints after restore preparation: %w", closeErr)
+	}
+	for _, checkpoint := range checkpoints {
+		checkpoint.RestoredFromBackup = true
+		key := dal.NewKeyBuilder().
+			PutZonePrefix(dal.ZoneGlobal, dal.SubGlobQueryCheckpoint).
+			PutUint64(checkpoint.GetCheckpointId()).
+			Build()
+		if err := batch.SetProto(key, checkpoint); err != nil {
+			_ = batch.Cancel()
+
+			return fmt.Errorf("marking query checkpoint %d as restored: %w", checkpoint.GetCheckpointId(), err)
+		}
 	}
 
 	// Remove persisted config (nodeId, clusterId) so the backup is portable to any cluster.

@@ -326,6 +326,9 @@ func NewScopeFactory(
 	return g
 }
 
+// GetRaftIndex exposes the fixed committed entry index bound to this proposal.
+func (g *gatedScope) GetRaftIndex() uint64 { return g.raftIndex }
+
 // NewScope reconfigures the scope's coverage for the given bits and
 // returns itself. The previous configuration is overwritten in place;
 // callers must finish using the scope before requesting another one

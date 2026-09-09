@@ -1,6 +1,11 @@
 # Indexer
 
-The background worker (`internal/application/indexbuilder`) that turns committed audit logs into the inverted, queryable keyspaces consumed by the read API. Runs on every node — leader and followers — independently. Decoupled from the FSM hot path: the FSM commits and signals; the indexer reads from its own Pebble read handle and writes to the read store.
+The background workers (`internal/application/indexbuilder` and
+`internal/application/auditindexer`) that turn committed main-store logs and
+audit entries into queryable read-store keyspaces. They run independently on
+every leader and follower and remain outside the FSM hot path. Both retain a
+native resume cursor and publish a separate Raft applied-index certificate for
+cross-store read alignment.
 
 ## Documents
 

@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -41,7 +43,6 @@ func TestListAuditEntriesTrimsProjectionAheadOfMainSnapshot(t *testing.T) {
 	rs, err := readstore.New(t.TempDir(), logger, readstore.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = rs.Close() })
-
 	indexBatch := rs.NewBatch()
 	kb := dal.NewKeyBuilder()
 	require.NoError(t, indexBatch.SetBytes(readstore.AuditIndexStringKey(kb, readstore.AuditFieldLedger, "main", 1), nil))
@@ -54,7 +55,6 @@ func TestListAuditEntriesTrimsProjectionAheadOfMainSnapshot(t *testing.T) {
 			Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "main"},
 		}},
 	}}}
-
 	ctrl := NewDefaultController(nil, store, logger, attributes.New(), rs, nil, meter)
 
 	c, err := ctrl.ListAuditEntriesFrom(context.Background(), store, rs, 10, 0, filter, false)
@@ -64,4 +64,7 @@ func TestListAuditEntriesTrimsProjectionAheadOfMainSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 1, "audit candidates beyond the main-store audit head must be trimmed before materialization")
 	require.Equal(t, uint64(1), entries[0].GetSequence())
+
+	_, err = ctrl.ListAuditEntriesFrom(context.Background(), store, rs, 10, 0, &commonpb.QueryFilter{}, false)
+	require.Equal(t, codes.InvalidArgument, status.Code(err), "a malformed filter must fail in audit-filter compilation")
 }

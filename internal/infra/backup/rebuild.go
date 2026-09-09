@@ -426,16 +426,19 @@ func RebuildDelta(
 			}
 
 		case *commonpb.LogPayload_CreatedQueryCheckpoint:
-			// Rebuild the metadata row (id + max_sequence + created_at) from the log.
+			// Rebuild the metadata row from the log and mark its restore provenance.
 			// The physical checkpoint files cannot be reconstructed from the audit, so a
-			// rebuilt checkpoint reads as Unavailable until an operator deletes it. The
-			// row keeps the projection audit-consistent so the cap and
-			// compareQueryCheckpoints stay correct after a rebuild.
+			// rebuilt checkpoint reads as Unavailable until an operator deletes it.
+			// restored_from_backup also prevents the read-index builder from treating
+			// the source-cluster applied_index as a certificate in the new Raft domain.
+			// The business fields remain audit-derived so the cap and checker stay correct.
 			if cp := p.CreatedQueryCheckpoint; cp != nil {
 				if err := state.SaveQueryCheckpoint(batch, &raftcmdpb.QueryCheckpointState{
-					CheckpointId: cp.GetCheckpointId(),
-					MaxSequence:  cp.GetMaxSequence(),
-					CreatedAt:    cp.GetCreatedAt(),
+					CheckpointId:       cp.GetCheckpointId(),
+					MaxSequence:        cp.GetMaxSequence(),
+					CreatedAt:          cp.GetCreatedAt(),
+					AppliedIndex:       cp.GetAppliedIndex(),
+					RestoredFromBackup: true,
 				}); err != nil {
 					_ = batch.Cancel()
 

@@ -44,6 +44,12 @@ const (
 	// SubInternalAuditProgress holds the per-replica audit indexing cursor.
 	// Layout: [PrefixInternal][SubInternalAuditProgress] -> last_indexed_audit_sequence BE8.
 	SubInternalAuditProgress byte = 0x06
+	// SubInternalReadRaftProgress certifies that the normal read projection has
+	// folded every native log visible at the associated Raft applied index.
+	SubInternalReadRaftProgress byte = 0x07
+	// SubInternalAuditRaftProgress is the equivalent causal certificate for
+	// the audit secondary index. It is independent from the native audit cursor.
+	SubInternalAuditRaftProgress byte = 0x08
 )
 
 // AuditField discriminates the indexed field within the audit-index keyspace.
@@ -645,6 +651,16 @@ func AppliedProposalProgressKey() []byte {
 //	[0xFE][0x06]
 func AuditProgressKey() []byte {
 	return []byte{PrefixInternal, SubInternalAuditProgress}
+}
+
+// ReadRaftProgressKey returns the causal progress key for the normal indexes.
+func ReadRaftProgressKey() []byte {
+	return []byte{PrefixInternal, SubInternalReadRaftProgress}
+}
+
+// AuditRaftProgressKey returns the causal progress key for the audit index.
+func AuditRaftProgressKey() []byte {
+	return []byte{PrefixInternal, SubInternalAuditRaftProgress}
 }
 
 // AuditIndexPrefix returns the global prefix for the whole audit index,

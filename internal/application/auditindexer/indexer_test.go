@@ -11,6 +11,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -30,6 +31,14 @@ func writeAuditEntry(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry) 
 		kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(entry.GetSequence()).Build(),
 		val,
 	))
+	require.NoError(t, batch.Commit())
+}
+
+func setAppliedIndex(t *testing.T, store *dal.Store, appliedIndex uint64) {
+	t.Helper()
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SetAppliedIndex(batch, appliedIndex))
 	require.NoError(t, batch.Commit())
 }
 
@@ -87,6 +96,115 @@ func TestRebuildYieldsIdenticalIndex(t *testing.T) {
 	cursor, err := rs.ReadAuditProgress()
 	require.NoError(t, err)
 	require.Equal(t, uint64(5), cursor)
+	disabled, rebuilding := rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.False(t, rebuilding)
+}
+
+func TestFailedRebuildRemainsNotReady(t *testing.T) {
+	t.Parallel()
+
+	idx, _, rs := newIndexerForTest(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	require.ErrorIs(t, idx.Rebuild(ctx), context.Canceled)
+	disabled, rebuilding := rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.True(t, rebuilding)
+}
+
+func TestBootKeepsProjectionUnavailableUntilInitialCatchUp(t *testing.T) {
+	t.Parallel()
+
+	idx, mainStore, rs := newIndexerForTest(t)
+	disabled, rebuilding := rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.True(t, rebuilding, "an enabled projection must start conservatively unavailable")
+
+	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+		Sequence: 1, ProposalId: 1, Timestamp: &commonpb.Timestamp{Data: 1_000_000},
+		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Ledgers: []string{"main"},
+	})
+	setAppliedIndex(t, mainStore, 7)
+
+	require.NoError(t, idx.boot(context.Background()))
+	disabled, rebuilding = rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.False(t, rebuilding, "successful boot rebuild/catch-up may publish readiness")
+	progress, err := rs.ReadAuditRaftProgress()
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), progress)
+}
+
+func TestDisabledIndexerKeepsProjectionUnavailableWithoutFolding(t *testing.T) {
+	t.Parallel()
+
+	idx, mainStore, rs := newIndexerForTest(t)
+	disabledIndexer := New(Config{Disabled: true}, mainStore, rs, idx.logger, idx.meter)
+	disabled, rebuilding := rs.AuditProjectionState()
+	require.True(t, disabled)
+	require.False(t, rebuilding)
+
+	batch := rs.NewBatch()
+	require.NoError(t, rs.WriteAuditProgress(batch, 7))
+	require.NoError(t, batch.Commit())
+
+	cursor, err := disabledIndexer.ProcessOnce(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), cursor)
+
+	disabledIndexer.Start()
+	disabledIndexer.Stop()
+}
+
+func TestBootMarksAlreadyCaughtUpProjectionReady(t *testing.T) {
+	t.Parallel()
+
+	idx, mainStore, rs := newIndexerForTest(t)
+	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+		Sequence: 1, ProposalId: 1, Timestamp: &commonpb.Timestamp{Data: 1_000_000},
+		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Ledgers: []string{"main"},
+	})
+	setAppliedIndex(t, mainStore, 7)
+	_, err := idx.ProcessOnce(context.Background())
+	require.NoError(t, err)
+
+	rs.SetAuditProjectionState(false, true)
+	require.NoError(t, idx.boot(context.Background()))
+	disabled, rebuilding := rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.False(t, rebuilding, "boot must publish readiness after validating an already caught-up cursor")
+}
+
+func TestBootPublishesFailureThenRecoversReadiness(t *testing.T) {
+	t.Parallel()
+
+	idx, mainStore, rs := newIndexerForTest(t)
+	batch := mainStore.OpenWriteSession()
+	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(1).Build()
+	require.NoError(t, batch.SetBytes(key, []byte{0xff}))
+	require.NoError(t, state.SetAppliedIndex(batch, 7))
+	require.NoError(t, batch.Commit())
+
+	require.Error(t, idx.boot(context.Background()))
+	disabled, rebuilding := rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.True(t, rebuilding, "a boot fold failure must withdraw readiness")
+	require.ErrorIs(t, rs.WaitForAuditRaftProgress(context.Background(), 7), readstore.ErrAuditProjectionFailed)
+
+	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+		Sequence: 1, ProposalId: 1, Timestamp: &commonpb.Timestamp{Data: 1_000_000},
+		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Ledgers: []string{"main"},
+	})
+	require.NoError(t, idx.boot(context.Background()))
+	disabled, rebuilding = rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.False(t, rebuilding, "a later successful boot retry must restore readiness")
+	require.NoError(t, rs.WaitForAuditRaftProgress(context.Background(), 7))
 }
 
 // TestShouldRebuildOnBoot covers the sole retained rebuild trigger: a missing
@@ -158,6 +276,82 @@ func TestIndexerCatchUpAndResume(t *testing.T) {
 	require.Equal(t, []uint64{1, 2}, seqs)
 }
 
+func TestProcessOncePublishesFixedRaftHorizonOnlyWithTerminalBatch(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	idx, mainStore, rs := newIndexerForTest(t)
+	idx.batchSize = 1
+
+	for sequence := uint64(1); sequence <= 3; sequence++ {
+		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+			Sequence: sequence, ProposalId: sequence,
+			Timestamp: &commonpb.Timestamp{Data: sequence * 1_000_000},
+			Outcome:   &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+			Ledgers:   []string{"main"},
+		})
+	}
+	setAppliedIndex(t, mainStore, 11)
+
+	handle, err := mainStore.NewReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	cursor, advanced, err := idx.processBatch(ctx, handle, 0, 3, 11)
+	require.NoError(t, err)
+	require.True(t, advanced)
+	require.Equal(t, uint64(1), cursor)
+	progress, err := rs.ReadAuditRaftProgress()
+	require.NoError(t, err)
+	require.Zero(t, progress, "an intermediate native batch must not certify the target")
+
+	// A later commit must remain outside this ProcessOnce-equivalent snapshot.
+	// Otherwise sustained writes can keep boot in rebuilding indefinitely.
+	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+		Sequence: 4, ProposalId: 4, Timestamp: &commonpb.Timestamp{Data: 4_000_000},
+		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Ledgers: []string{"main"},
+	})
+	setAppliedIndex(t, mainStore, 19)
+
+	cursor, advanced, err = idx.processBatch(ctx, handle, cursor, 3, 11)
+	require.NoError(t, err)
+	require.True(t, advanced)
+	require.Equal(t, uint64(2), cursor)
+	progress, err = rs.ReadAuditRaftProgress()
+	require.NoError(t, err)
+	require.Zero(t, progress, "a crash between batches must leave the Raft target unpublished")
+
+	cursor, advanced, err = idx.processBatch(ctx, handle, cursor, 3, 11)
+	require.NoError(t, err)
+	require.True(t, advanced)
+	require.Equal(t, uint64(3), cursor)
+	progress, err = rs.ReadAuditRaftProgress()
+	require.NoError(t, err)
+	require.Equal(t, uint64(11), progress, "the final index writes and certificate commit atomically")
+
+	cursor, advanced, err = idx.processBatch(ctx, handle, cursor, 3, 11)
+	require.NoError(t, err)
+	require.False(t, advanced)
+	require.Equal(t, uint64(3), cursor, "the pinned target must exclude entries committed after capture")
+}
+
+func TestProcessOnceCertifiesAppliedEntryWithoutAuditMovement(t *testing.T) {
+	t.Parallel()
+
+	idx, mainStore, rs := newIndexerForTest(t)
+	setAppliedIndex(t, mainStore, 17)
+
+	cursor, err := idx.ProcessOnce(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, cursor)
+
+	progress, err := rs.ReadAuditRaftProgress()
+	require.NoError(t, err)
+	require.Equal(t, uint64(17), progress,
+		"a Raft entry that emits no audit item must still advance the causal certificate")
+}
+
 // TestProcessOnceWakesAuditWaiters verifies the indexer wakes readers blocked in
 // WaitForAuditSequence as soon as it commits the audit cursor, rather than
 // leaving them parked until an unrelated log-index notification or the next tick.
@@ -224,9 +418,37 @@ func TestStartStopIndexes(t *testing.T) {
 	}, 5*time.Second, 20*time.Millisecond)
 }
 
+func TestProcessTickPublishesFailureThenRecoversReadiness(t *testing.T) {
+	t.Parallel()
+
+	idx, mainStore, rs := newIndexerForTest(t)
+	batch := mainStore.OpenWriteSession()
+	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(1).Build()
+	require.NoError(t, batch.SetBytes(key, []byte{0xff}))
+	require.NoError(t, state.SetAppliedIndex(batch, 7))
+	require.NoError(t, batch.Commit())
+
+	require.Error(t, idx.processTick(context.Background()))
+	disabled, rebuilding := rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.True(t, rebuilding, "a steady-state fold failure must withdraw readiness")
+	require.ErrorIs(t, rs.WaitForAuditRaftProgress(context.Background(), 7), readstore.ErrAuditProjectionFailed)
+
+	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
+		Sequence: 1, ProposalId: 1, Timestamp: &commonpb.Timestamp{Data: 1_000_000},
+		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Ledgers: []string{"main"},
+	})
+	require.NoError(t, idx.processTick(context.Background()))
+	disabled, rebuilding = rs.AuditProjectionState()
+	require.False(t, disabled)
+	require.False(t, rebuilding, "the next successful fold must restore readiness without restart")
+	require.NoError(t, rs.WaitForAuditRaftProgress(context.Background(), 7))
+}
+
 // TestProcessOnceHonorsContextCancellation asserts the drain loop checks the
-// context between batches: with a backlog present and an already-cancelled
-// context, ProcessOnce must abort immediately (returning context.Canceled)
+// context before entries and between batches: with a backlog present and an
+// already-cancelled context, ProcessOnce must abort immediately (returning context.Canceled)
 // instead of draining to completion, so worker.Stop() cannot hang on a large
 // backlog or sustained write stream during shutdown.
 func TestProcessOnceHonorsContextCancellation(t *testing.T) {

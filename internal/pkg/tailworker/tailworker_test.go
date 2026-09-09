@@ -41,16 +41,23 @@ func TestBootRunsOnceThenTicks(t *testing.T) {
 	require.Equal(t, int32(1), boots.Load(), "Boot must run exactly once")
 }
 
-func TestBootErrorAbortsLoop(t *testing.T) {
+func TestBootErrorRetriesThenTicks(t *testing.T) {
 	t.Parallel()
 
+	var boots atomic.Int32
 	var ticks atomic.Int32
 
 	tw := New(Config{
 		Name:   "test",
 		Logger: testLogger(),
 		Ticker: 5 * time.Millisecond,
-		Boot:   func(context.Context) error { return errors.New("boom") },
+		Boot: func(context.Context) error {
+			if boots.Add(1) == 1 {
+				return errors.New("transient")
+			}
+
+			return nil
+		},
 		Tick: func(context.Context) error {
 			ticks.Add(1)
 
@@ -60,7 +67,40 @@ func TestBootErrorAbortsLoop(t *testing.T) {
 	tw.Start()
 	t.Cleanup(tw.Stop)
 
-	require.Never(t, func() bool { return ticks.Load() > 0 }, 100*time.Millisecond, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return ticks.Load() > 0 }, time.Second, 5*time.Millisecond)
+	require.Equal(t, int32(2), boots.Load(), "Boot must recover without restarting the worker")
+}
+
+func TestStopCancelsBootBackoff(t *testing.T) {
+	t.Parallel()
+
+	booted := make(chan struct{}, 1)
+	tw := New(Config{
+		Name:   "test",
+		Logger: testLogger(),
+		Ticker: time.Hour,
+		Boot: func(context.Context) error {
+			booted <- struct{}{}
+
+			return errors.New("persistent")
+		},
+		Tick: func(context.Context) error { return nil },
+	})
+	tw.Start()
+
+	select {
+	case <-booted:
+	case <-time.After(time.Second):
+		t.Fatal("Boot never ran")
+	}
+
+	done := make(chan struct{})
+	go func() { tw.Stop(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Stop did not cancel the boot retry backoff")
+	}
 }
 
 func TestTickCanceledErrorSwallowedOthersContinue(t *testing.T) {

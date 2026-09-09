@@ -30,6 +30,7 @@ func processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, c
 		CheckpointId: checkpointID,
 		MaxSequence:  s.GetNextSequenceID() - 1,
 		CreatedAt:    s.GetDate().Mutate(),
+		AppliedIndex: s.GetRaftIndex(),
 	}
 
 	s.SaveQueryCheckpoint(cp)
@@ -42,6 +43,7 @@ func processCreateQueryCheckpoint(order *raftcmdpb.CreateQueryCheckpointOrder, c
 				CheckpointId: checkpointID,
 				MaxSequence:  cp.GetMaxSequence(),
 				CreatedAt:    cp.GetCreatedAt(),
+				AppliedIndex: cp.GetAppliedIndex(),
 			},
 		},
 	}, nil
