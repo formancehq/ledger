@@ -166,7 +166,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				if cl.CreateLedger == nil {
 					_ = batch.Cancel()
 
-					return cursor, errors.New("invariant: nil CreatedLedger payload")
+					return cursor, historyReplayInvariantf("nil CreatedLedger payload")
 				}
 				if err := b.observeCreatedLedger(cl.CreateLedger.GetName()); err != nil {
 					_ = batch.Cancel()
@@ -182,7 +182,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				if dl.DeleteLedger == nil {
 					_ = batch.Cancel()
 
-					return cursor, errors.New("invariant: nil DeletedLedger payload")
+					return cursor, historyReplayInvariantf("nil DeletedLedger payload")
 				}
 				name := dl.DeleteLedger.GetName()
 				if err := readstore.DeleteLedgerIndexes(batch, name); err != nil {

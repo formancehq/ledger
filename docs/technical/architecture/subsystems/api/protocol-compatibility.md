@@ -61,6 +61,10 @@ codes. Internal read failures in restore validation retain `Internal` with a
 sanitized correlation message. AuditFailure records retain their original
 diagnostic message and context.
 
+Revision 6 (EN-1771) removes `CreatedIndexLog.initial` and renumbers the
+remaining exposed fields. Clients and servers built against revision 5 would
+therefore decode the same varint fields with different meanings.
+
 ## Client and deployment scope
 
 Enforcement starts with servers implementing EN-1851: they reject old clients
