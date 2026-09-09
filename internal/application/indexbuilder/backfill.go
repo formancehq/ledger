@@ -1457,7 +1457,7 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 
 				return fmt.Errorf("invariant: unclassified ledger log payload %T at global sequence %d", ledgerLog.GetData().GetPayload(), log.GetSequence())
 			}
-			if !commonpb.IsLedgerHistoryPayload(ledgerLog.GetData()) {
+			if !isHistoryLog(log) {
 				continue
 			}
 

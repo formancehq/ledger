@@ -48,9 +48,13 @@ func newLedgerIndexConfig() *ledgerIndexConfig {
 // Bucket-scoped entries (Index.Ledger == "") land in b.bucketIndexConfig
 // and are reserved for audit-style indexes (see #436); they aren't tied
 // to any ledger and don't trigger per-ledger backfill paths.
-func (b *Builder) initIndexConfig(ctx context.Context) error {
+func (b *Builder) initIndexConfig(ctx context.Context) (err error) {
 	snapshot := b.readStore.NewSnapshot()
-	defer func() { _ = snapshot.Close() }()
+	defer func() {
+		if closeErr := snapshot.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("closing read-store index config snapshot: %w", closeErr))
+		}
+	}()
 
 	if err := b.loadLedgerHistory(snapshot); err != nil {
 		return fmt.Errorf("reading ledger history state: %w", err)

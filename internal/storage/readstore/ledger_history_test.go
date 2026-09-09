@@ -3,6 +3,7 @@ package readstore_test
 import (
 	"errors"
 	"io"
+	"path/filepath"
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -50,6 +51,33 @@ func TestLedgerHistoryStateRoundTripAndDelete(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, snapshot.Close())
 	require.Equal(t, []readstore.LedgerHistoryStateEntry{{LedgerName: "non-empty", State: 2}}, entries)
+}
+
+func TestLedgerHistoryStateSurvivesCheckpoint(t *testing.T) {
+	t.Parallel()
+
+	store, err := readstore.New(t.TempDir(), discardLogger{}, readstore.DefaultConfig())
+	require.NoError(t, err)
+	defer func() { require.NoError(t, store.Close()) }()
+
+	wb := readstore.NewWriteBatch()
+	batch := store.NewBatch()
+	wb.Init(batch)
+	require.NoError(t, wb.WriteLedgerHistoryState(dal.NewKeyBuilder(), "ledger", 2))
+	require.NoError(t, wb.Flush())
+
+	checkpointDir := filepath.Join(t.TempDir(), "readindex")
+	require.NoError(t, store.CreateCheckpoint(checkpointDir))
+
+	frozen, err := readstore.OpenReadOnly(checkpointDir, discardLogger{})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, frozen.Close()) }()
+
+	snapshot := frozen.NewSnapshot()
+	entries, err := readstore.ReadAllLedgerHistoryStatesFrom(snapshot)
+	require.NoError(t, err)
+	require.NoError(t, snapshot.Close())
+	require.Equal(t, []readstore.LedgerHistoryStateEntry{{LedgerName: "ledger", State: 2}}, entries)
 }
 
 func TestLedgerHistoryStateRejectsMalformedValue(t *testing.T) {
