@@ -14,6 +14,7 @@ ledger run \
   --tls-key-file /etc/ledger/tls.key \
   --auth-enabled \
   --auth-issuer https://auth.example.com \
+  --auth-audience urn:formance:ledger:production-eu \
   --auth-service ledger
 ```
 
@@ -29,14 +30,36 @@ ledger run \
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization. Requires `--tls-mode=required` — rejected with `--tls-mode=disabled` or `--tls-mode=optional` |
+| `--auth-audience` | string | `""` | Required deployment resource-server identifier, shared by all nodes and matched exactly against JWT `aud` (OIDC and Ed25519) |
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 
 When `--auth-enabled` is set:
 1. The server performs OIDC discovery at `<issuer>/.well-known/openid-configuration`
 2. Downloads the JWKS (JSON Web Key Set) from the discovered `jwks_uri`
-3. Validates JWT signatures, issuer, and expiration on every request
+3. Validates JWT signatures, issuer, expiration, and deployment audience on every request
 4. Enforces scope-based authorization on all endpoints
+
+## Deployment audience
+
+Configure `--auth-audience` (or `AUTH_AUDIENCE`) explicitly, for example
+`urn:formance:ledger:production-eu`, and configure the issuer to include that
+identifier in access tokens. Every node in the deployment must use the same
+value. Distinct deployments should use distinct audiences. The value is not a
+ledger name, node address, cluster ID, or scope prefix; `--auth-service` remains
+independent.
+
+Both OIDC and Ed25519 tokens must include this exact, case-sensitive value as
+an `aud` string or a member of an `aud` array. Missing, empty or mismatched
+values return HTTP 401 / gRPC `Unauthenticated`, even with recognized scopes
+or god mode. Invalid presented tokens never fall back to anonymous scopes.
+The server refuses authenticated startup without a nonblank expected audience.
+
+Pass the same value to `ledgerctl auth generate-token --audience ...` and
+`ledgerctl auth login --audience ...`, including when using a key bundle.
+Configure the issuer and deployment together and mint replacement tokens before
+using this revision. Audience checks only gate API admission; committed Raft
+entries and restored business state never re-evaluate this setting.
 
 ## Scopes
 
@@ -66,6 +89,7 @@ ledger:ClusterRead      ledger:ClusterWrite
 
 The server enforces the following rules at startup:
 
+- `--auth-enabled` requires a nonblank `--auth-audience`.
 - `--auth-enabled` requires at least one of `--auth-issuer` (OIDC) or
   `--auth-ed25519-keys` (Ed25519 key file). The server refuses to start
   without a credential source.
@@ -83,7 +107,7 @@ The server enforces the following rules at startup:
   **gRPC service transport** only — `--tls-mode` does not govern the HTTP
   REST-compat listener, which remains plaintext and must be protected by
   separate HTTPS termination (ingress/proxy) when authentication is enabled.
-- Setting auth-related flags (`--auth-issuer`, `--auth-ed25519-keys`,
+- Setting auth-related flags (`--auth-audience`, `--auth-issuer`, `--auth-ed25519-keys`,
   `--auth-scope-mapping-file`) without `--auth-enabled` is rejected to
   prevent operators from believing authentication is active when it is not.
 
@@ -105,7 +129,8 @@ By default, every request must authenticate. To open up a subset of operations t
 The writes-only configuration is:
 
 ```bash
-ledger run --auth-enabled --auth-issuer https://auth.example.com \
+ledger run --auth-enabled --auth-issuer https://auth.example.com --auth-audience urn:formance:ledger:production-eu \
+  --auth-audience urn:formance:ledger:production-eu \
   --tls-mode required --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \
   --auth-anonymous-scopes "*:read"
 ```
@@ -181,10 +206,12 @@ ledgerctl auth generate-key ./keys
 3. Start the server with Ed25519 authentication:
 
 ```bash
-ledger run --auth-ed25519-keys auth-keys.json --bootstrap --node-id 1 --cluster-id test
+ledger run --auth-enabled --auth-audience urn:formance:ledger:production-eu \
+  --auth-ed25519-keys auth-keys.json --bootstrap --node-id 1 --cluster-id test \
+  --tls-mode required --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key
 ```
 
-Setting `--auth-ed25519-keys` automatically enables `--auth-enabled` unless `--auth-enabled=false` is explicitly set.
+Set `--auth-enabled` explicitly with the key file, deployment audience, and required TLS configuration.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -195,7 +222,7 @@ Setting `--auth-ed25519-keys` automatically enables `--auth-enabled` unless `--a
 1. Generate a JWT token:
 
 ```bash
-TOKEN=$(ledgerctl auth generate-token \
+TOKEN=$(ledgerctl auth generate-token --audience urn:formance:ledger:production-eu \
   --signing-key ./keys/seed.hex \
   --key-id <key-id> \
   --subject ci-bot \
@@ -227,6 +254,7 @@ ledgerctl --auth-token @token.txt ledgers list
 | `--signing-key` | yes | | Path to Ed25519 seed file |
 | `--key-id` | yes | | Key ID matching the server config |
 | `--subject` | yes | | JWT subject claim |
+| `--audience` | yes | | Exact deployment audience configured on the server |
 | `--scopes` | no | | Comma-separated scopes |
 | `--expiration` | no | `1h` | Token validity duration |
 | `--god` | no | `false` | Include god-mode claim (grants all scopes; key must allow it) |
@@ -255,7 +283,7 @@ A key can be configured with `"god": true` in `auth-keys.json` to allow it to em
 Generate a god-mode token:
 
 ```bash
-TOKEN=$(ledgerctl auth generate-token \
+TOKEN=$(ledgerctl auth generate-token --audience urn:formance:ledger:production-eu \
   --signing-key ./keys/seed.hex \
   --key-id admin-key \
   --subject admin \
@@ -289,7 +317,7 @@ When making API calls, `ledgerctl` resolves the bearer token in this order:
 **Login (generate and store a token):**
 
 ```bash
-ledgerctl auth login \
+ledgerctl auth login --audience urn:formance:ledger:production-eu \
   --signing-key ./keys/seed.hex \
   --key-id my-key-id \
   --subject ci-bot \
@@ -305,14 +333,14 @@ The `kubectl ledger agents get-key --bundle -` command outputs a JSON key bundle
 
 ```bash
 # Single-pipe workflow
-kubectl ledger agents get-key my-agent --bundle - | ledgerctl auth login
+kubectl ledger agents get-key my-agent --bundle - | ledgerctl auth login --audience urn:formance:ledger:production-eu
 
 # Override subject from the bundle
-kubectl ledger agents get-key my-agent --bundle - | ledgerctl auth login --subject ci-bot
+kubectl ledger agents get-key my-agent --bundle - | ledgerctl auth login --audience urn:formance:ledger:production-eu --subject ci-bot
 
 # Or save the bundle to a file
 kubectl ledger agents get-key my-agent --bundle agent-bundle.json
-ledgerctl auth login --bundle agent-bundle.json
+ledgerctl auth login --audience urn:formance:ledger:production-eu --bundle agent-bundle.json
 ```
 
 The bundle JSON format:
@@ -345,8 +373,8 @@ ledgerctl auth logout
 
 ```bash
 # Login to different servers
-ledgerctl --server dev:8888 auth login --signing-key ./keys/seed.hex --key-id dev --subject ci
-ledgerctl --server prod:8888 auth login --signing-key ./keys/seed.hex --key-id prod --subject ci
+ledgerctl --server dev:8888 auth login --audience urn:formance:ledger:development --signing-key ./keys/seed.hex --key-id dev --subject ci
+ledgerctl --server prod:8888 auth login --audience urn:formance:ledger:production-eu --signing-key ./keys/seed.hex --key-id prod --subject ci
 
 # Commands automatically use the correct token
 ledgerctl --server dev:8888 ledgers list   # uses dev token

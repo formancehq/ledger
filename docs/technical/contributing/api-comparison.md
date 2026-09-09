@@ -1092,3 +1092,12 @@ Admission rejects the exact names `_` (system API routes) and `_system`
 (system events) on every ledger-scoped write, before proposing to Raft.
 This applies equally to HTTP and gRPC. Other underscore-prefixed names,
 including `_systemx` and `_System`, remain valid.
+
+## JWT deployment audience (EN-1926)
+
+Both HTTP and gRPC require OIDC/Ed25519 access tokens to contain the explicit
+deployment `--auth-audience` in `aud`, before scope expansion or god mode.
+Missing or mismatching audiences yield HTTP 401 / gRPC `Unauthenticated`;
+matching string and array forms are accepted. Server startup and `ledgerctl`
+token generation require explicit audience configuration. See the
+[authentication contract](../architecture/subsystems/api/auth.md#deployment-audience-en-1926).
