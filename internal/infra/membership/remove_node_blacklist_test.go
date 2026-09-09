@@ -92,6 +92,8 @@ func TestWriteConfChange_RemoveNodeWithoutIdentityFailsLoudly(t *testing.T) {
 	t.Parallel()
 
 	ps, store := storesForBlacklistTest(t)
+	instanceID := fixedInstanceID(0xAA)
+	require.NoError(t, ps.Put(3, "pod-2:7777", "pod-2:8888", instanceID))
 
 	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
 	require.NoError(t, err)
@@ -111,12 +113,16 @@ func TestWriteConfChange_RemoveNodeWithoutIdentityFailsLoudly(t *testing.T) {
 	entry := &raftpb.Entry{Type: new(raftpb.EntryConfChangeV2), Data: data}
 
 	session := store.OpenWriteSession()
-	t.Cleanup(func() { _ = session.Cancel() })
-	require.ErrorContains(t, m.WriteConfChange(entry, session), "instance_id must be 16 bytes")
+	require.ErrorContains(t, m.WriteConfChange(entry, session), "invariant: ConfChange for peer 3 has invalid identity")
+	// Commit after rejection to prove no peer deletion was staged before validation.
+	require.NoError(t, session.Commit())
 
 	peers, err := ps.LoadAll()
 	require.NoError(t, err)
-	require.Empty(t, peers)
+	require.Contains(t, peers, uint64(3), "rejected removal must preserve the existing peer row")
+	require.Equal(t, ConfChangeContext{
+		RaftAddress: "pod-2:7777", ServiceAddress: "pod-2:8888", InstanceID: instanceID,
+	}, peers[3])
 
 	dumped, err := ps.LoadAllRemoved()
 	require.NoError(t, err)
@@ -140,9 +146,10 @@ func TestWriteConfChange_AddLearnerWithoutIdentityFailsLoudly(t *testing.T) {
 	require.NoError(t, err)
 
 	session := store.OpenWriteSession()
-	t.Cleanup(func() { _ = session.Cancel() })
 	err = m.WriteConfChange(&raftpb.Entry{Type: new(raftpb.EntryConfChangeV2), Data: data}, session)
 	require.ErrorContains(t, err, "has no payload")
+	// Commit after rejection to make any incorrectly staged registration visible.
+	require.NoError(t, session.Commit())
 
 	peers, err := ps.LoadAll()
 	require.NoError(t, err)

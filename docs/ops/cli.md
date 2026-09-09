@@ -2692,6 +2692,8 @@ ledgerctl cluster add-learner <node-id> <raft-address> <service-address> <instan
 **Behavior:**
 - The request is forwarded to the current leader if sent to a follower
 - `instance-id` is the 32-character hexadecimal encoding of the target node's 16-byte persisted `INSTANCE_ID` file
+- An existing member with replicated progress rejects a different identity with `FailedPrecondition`; retrying the same active identity returns `AlreadyExists`. With no replicated progress, a different identity refreshes the registration.
+- For stale progress, retire the old instance, remove its membership, then retry. If quorum is unavailable, use the leader-only `cluster remove-node --force` procedure in [Cluster operations](./cluster-operations.md), ensuring the retired instance cannot rejoin.
 - The leader proposes a ConfChange to add the node as a learner (non-voting member)
 - Once committed, all nodes add the learner to their transport and service pool
 - The learner receives log entries and snapshots but cannot vote or become leader

@@ -532,6 +532,28 @@ func TestMembership_SetRewiresChangedAddresses(t *testing.T) {
 	require.Equal(t, "new:7777", m.PeerAddresses()[1].RaftAddress)
 }
 
+func TestMembership_SetKeepsRaftPeerOnServiceAddressChange(t *testing.T) {
+	t.Parallel()
+
+	transport := &countingTransport{}
+	pool := &countingPool{}
+	m, err := NewMembership(newTestPeerStore(t), transport, pool,
+		testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, fixedInstanceID(0x42), logging.Testing())
+	require.NoError(t, err)
+	m.Start()
+
+	require.NoError(t, m.Set(1, "raft:7777", "old:8888", fixedInstanceID(1)))
+	require.NoError(t, m.Set(1, "raft:7777", "new:8888", fixedInstanceID(1)))
+
+	// Removing the existing Raft peer would require a fresh optional-TLS probe;
+	// a failed probe could then strand a previously healthy replication channel.
+	require.Zero(t, transport.removes, "a service-only change must retain the Raft peer")
+	require.Equal(t, []string{"raft:7777", "raft:7777"}, transport.addrs)
+	require.Zero(t, pool.removes, "Pool.AddPeer replaces a changed service endpoint itself")
+	require.Equal(t, []string{"old:8888", "new:8888"}, pool.addrs)
+	require.Equal(t, "new:8888", m.PeerAddresses()[1].ServiceAddress)
+}
+
 func TestMembership_ClonesInstanceIDs(t *testing.T) {
 	t.Parallel()
 

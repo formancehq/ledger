@@ -66,18 +66,13 @@ var (
 	// ErrNodeAlreadyInCluster is returned when trying to add a node that already exists.
 	ErrNodeAlreadyInCluster = errors.New("node already in cluster")
 
-	// ErrNodeStaleProgress (EN-1436) is returned by AddLearner when the
-	// leader already holds a Progress entry for the joining nodeID with a
-	// non-zero Match — the leader believes it has already replicated log
-	// entries to this node. A JoinAsLearner call only reaches AddLearner
-	// when the caller has no CLUSTER_JOINED marker (empty/reprovisioned
-	// WAL), so a non-zero Match means the leader's known match index points
-	// at state the caller cannot possibly have. Proceeding would trigger
-	// etcd-raft's "tocommit out of range" panic on the next MsgApp. This is
-	// distinct from ErrNodeAlreadyInCluster (Match == 0: a benign idempotent
-	// join or a not-yet-replicated learner refresh) and fires regardless of
-	// whether the stored instance_id matches the incoming one — covering
-	// both the identical-identity and the fresh-identity (WAL-wiped) rejoin.
+	// ErrNodeStaleProgress (EN-1436) means the leader already replicated to
+	// the node (Match > 0), but the caller cannot own that progress. A fresh-WAL
+	// JoinAsLearner always rejects in this state, regardless of identity, to
+	// prevent etcd-raft's "tocommit out of range" panic. Administrative
+	// AddLearner rejects only a different identity; retrying the same active
+	// identity remains idempotent with ErrNodeAlreadyInCluster. With Match == 0,
+	// a different identity can instead refresh the row via ConfChangeUpdateNode.
 	ErrNodeStaleProgress = errors.New("node already has stale raft progress on the leader")
 
 	// ErrLearnerNotEligible is returned when trying to transfer leadership to a learner.
@@ -2659,11 +2654,10 @@ type existingLearnerAction int
 
 const (
 	// existingLearnerStaleProgress: the leader has already replicated log
-	// entries to this node (Match > 0) AND the caller is a booting pod
-	// (JoinAsLearner) presenting a real 16-byte instance_id. Such a caller
-	// runs with a fresh, empty WAL and no CLUSTER_JOINED marker, so it cannot
-	// own the replicated state the leader believes it has — proceeding would
-	// trip etcd-raft's "tocommit out of range" panic. Fail fast.
+	// entries to this node (Match > 0) AND the caller is either a fresh-WAL
+	// JoinAsLearner or an administrative AddLearner with a different identity.
+	// Neither can own the replication progress associated with the existing
+	// member. Reject before replacing its identity or resuming replication.
 	existingLearnerStaleProgress existingLearnerAction = iota
 	// existingLearnerAlreadyInCluster: an idempotent join — nothing to do.
 	// Covers a matching stored identity with no replicated progress, and an
@@ -2678,8 +2672,7 @@ const (
 // classifyExistingLearner decides what AddLearner must do when the leader's
 // Progress already carries the joining nodeID (EN-1436).
 //
-// The stale-progress fail-fast is scoped strictly to the JoinAsLearner boot
-// path. That path is a pod booting with a fresh, empty WAL: if the leader has
+// JoinAsLearner is a pod booting with a fresh, empty WAL: if the leader has
 // already replicated to this nodeID (Match > 0), the next MsgApp would drive
 // "tocommit out of range", so we reject and point the operator at remove-node
 // --force. The Match > 0 check precedes the identity comparison so it fires on

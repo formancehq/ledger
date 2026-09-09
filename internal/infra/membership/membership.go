@@ -240,11 +240,12 @@ func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string, instanceID
 	defer m.mu.Unlock()
 
 	previous, existed := m.addresses[nodeID]
-	if existed && (previous.RaftAddress != raftAddr || previous.ServiceAddress != serviceAddr) {
+	if existed && previous.RaftAddress != raftAddr {
 		// DefaultTransport.AddPeer is intentionally idempotent by node ID and
 		// therefore cannot replace an existing peer's Raft endpoint in place.
-		// Tear down both transport views before installing changed addresses so
-		// an UpdateNode cannot leave Raft dialing the stale endpoint.
+		// Tear down both transport views before replacing the Raft endpoint.
+		// A service-only change is handled by Pool.AddPeer in wireAdd; keep
+		// the healthy Raft peer instead of requiring a fresh TLS probe.
 		m.wireRemove(nodeID)
 	}
 
