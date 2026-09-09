@@ -81,6 +81,7 @@ var _ = Describe("Auth writes-only mode", Ordered, func() {
 		instruments = append(instruments,
 			testserver.WithBootstrap(),
 			testserver.WithAuthEnabled(),
+			testserver.WithAuthAudience("urn:formance:ledger:test"),
 			testserver.WithAuthIssuer(oidcServer.URL),
 			testserver.WithAuthService("ledger"),
 			testserver.WithTLSMode("required"),

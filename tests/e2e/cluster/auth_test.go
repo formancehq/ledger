@@ -98,6 +98,7 @@ func makeAuthClaims(issuer string, scopes ...string) *oidc.AccessTokenClaims {
 	now := time.Now()
 	claims := &oidc.AccessTokenClaims{}
 	claims.Issuer = issuer
+	claims.Audience = oidc.Audience{"urn:formance:ledger:test"}
 	claims.Subject = "test-user"
 	claims.IssuedAt = oidc.FromTime(oidc.Time(now.Unix()).AsTime())
 	claims.Expiration = oidc.FromTime(oidc.Time(now.Add(1 * time.Hour).Unix()).AsTime())
@@ -161,6 +162,7 @@ var _ = Describe("Auth", Ordered, func() {
 		instruments = append(instruments,
 			testserver.WithBootstrap(),
 			testserver.WithAuthEnabled(),
+			testserver.WithAuthAudience("urn:formance:ledger:test"),
 			testserver.WithAuthIssuer(oidcServer.URL),
 			testserver.WithAuthService("ledger"),
 			testserver.WithTLSMode("required"),
