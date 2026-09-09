@@ -766,8 +766,6 @@ func (b *Builder) loop(ctx context.Context) {
 		deadline := time.Now().Add(catchUpBudget)
 
 		if cursor, err = b.processLogs(ctx, cursor, deadline); err != nil {
-			b.logger.Errorf("Error during initial catch-up: %v", err)
-
 			break
 		}
 
@@ -778,6 +776,14 @@ func (b *Builder) loop(ctx context.Context) {
 
 	restoreIndexes()
 	b.batchSize = savedBatchSize
+	if errors.Is(err, errHistoryReplayInvariant) {
+		b.failHistoryReplay(err)
+
+		return
+	}
+	if err != nil {
+		b.logger.Errorf("Error during initial catch-up: %v", err)
+	}
 	if err == nil {
 		if validationErr := b.validateHistoryReplayState(); validationErr != nil {
 			b.failHistoryReplay(validationErr)
@@ -823,6 +829,11 @@ func (b *Builder) loop(ctx context.Context) {
 
 		prevCursor := cursor
 		if cursor, err = b.processLogs(ctx, cursor, logDeadline); err != nil {
+			if errors.Is(err, errHistoryReplayInvariant) {
+				b.failHistoryReplay(err)
+
+				return
+			}
 			b.logger.Errorf("Error processing logs: %v", err)
 		}
 

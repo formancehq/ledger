@@ -12,6 +12,12 @@ import (
 
 type ledgerHistoryState byte
 
+var errHistoryReplayInvariant = errors.New("ledger history replay invariant")
+
+func historyReplayInvariantf(format string, args ...any) error {
+	return fmt.Errorf("%w: %s", errHistoryReplayInvariant, fmt.Sprintf(format, args...))
+}
+
 const (
 	ledgerHistoryUnknown ledgerHistoryState = iota
 	ledgerHistoryEmpty
@@ -61,13 +67,13 @@ func (b *Builder) loadLedgerHistory(reader dal.PebbleReader) error {
 
 func (b *Builder) observeCreatedLedger(ledger string) error {
 	if ledger == "" {
-		return errors.New("invariant: CreatedLedger has an empty ledger name")
+		return historyReplayInvariantf("CreatedLedger has an empty ledger name")
 	}
 	if _, exists := b.historyStateFor(ledger); exists {
-		return fmt.Errorf("invariant: CreatedLedger for %q encountered while a history state already exists", ledger)
+		return historyReplayInvariantf("CreatedLedger for %q encountered while a history state already exists", ledger)
 	}
 	if b.wb == nil || b.wb.Batch() == nil {
-		return fmt.Errorf("invariant: CreatedLedger for %q encountered without an active readstore batch", ledger)
+		return historyReplayInvariantf("CreatedLedger for %q encountered without an active readstore batch", ledger)
 	}
 	if err := b.wb.WriteLedgerHistoryState(b.kb, ledger, byte(ledgerHistoryEmpty)); err != nil {
 		return fmt.Errorf("persisting EMPTY ledger history state for %q: %w", ledger, err)
@@ -85,18 +91,18 @@ func (b *Builder) observeCreatedLedger(ledger string) error {
 func (b *Builder) observeLedgerPayload(ledger string, payload *commonpb.LedgerLogPayload) error {
 	category := commonpb.LedgerLogCategoryOf(payload)
 	if category == commonpb.LedgerLogCategory_LEDGER_LOG_CATEGORY_UNSPECIFIED {
-		return fmt.Errorf("invariant: ledger %q emitted an unclassified ledger log payload %T", ledger, payload.GetPayload())
+		return historyReplayInvariantf("ledger %q emitted an unclassified ledger log payload %T", ledger, payload.GetPayload())
 	}
 
 	state, exists := b.historyStateFor(ledger)
 	if !exists {
-		return fmt.Errorf("invariant: ledger log for %q has no EMPTY/NON_EMPTY history state", ledger)
+		return historyReplayInvariantf("ledger log for %q has no EMPTY/NON_EMPTY history state", ledger)
 	}
 	if state != ledgerHistoryEmpty && state != ledgerHistoryNonEmpty {
-		return fmt.Errorf("invariant: ledger %q has invalid history state %d", ledger, state)
+		return historyReplayInvariantf("ledger %q has invalid history state %d", ledger, state)
 	}
 	if b.wb == nil || b.wb.Batch() == nil {
-		return fmt.Errorf("invariant: ledger log for %q encountered without an active readstore batch", ledger)
+		return historyReplayInvariantf("ledger log for %q encountered without an active readstore batch", ledger)
 	}
 	if category != commonpb.LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY || state == ledgerHistoryNonEmpty {
 		return nil
@@ -112,7 +118,7 @@ func (b *Builder) observeLedgerPayload(ledger string, payload *commonpb.LedgerLo
 
 func (b *Builder) observeDeletedLedger(ledger string) error {
 	if b.wb == nil || b.wb.Batch() == nil {
-		return fmt.Errorf("invariant: DeleteLedger for %q encountered without an active readstore batch", ledger)
+		return historyReplayInvariantf("DeleteLedger for %q encountered without an active readstore batch", ledger)
 	}
 	if _, exists := b.historyStateFor(ledger); !exists {
 		// Ledger deletion is idempotent at the API/FSM boundary, so repeated

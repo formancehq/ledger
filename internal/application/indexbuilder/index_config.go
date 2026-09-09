@@ -251,7 +251,7 @@ func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 		state, stateExists := b.versionStateFor(ledgerName, canonical)
 		if stateExists && (state.CurrentVersion != 0 || state.PendingVersion != 0) {
 			if _, historyExists := b.historyStateFor(ledgerName); !historyExists {
-				return fmt.Errorf("invariant: active IndexVersionState for %q/%s has no ledger history state", ledgerName, canonical)
+				return historyReplayInvariantf("active IndexVersionState for %q/%s has no ledger history state", ledgerName, canonical)
 			}
 		}
 
@@ -294,18 +294,18 @@ func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 func (b *Builder) validateHistoryReplayState() error {
 	for ledger, indexesByCanonical := range b.unresolvedIndexes {
 		for canonical := range indexesByCanonical {
-			return fmt.Errorf("invariant: index registry entry %q/%s was not resolved by CreatedIndex replay", ledger, canonical)
+			return historyReplayInvariantf("index registry entry %q/%s was not resolved by CreatedIndex replay", ledger, canonical)
 		}
 	}
 
 	for ledger := range b.indexConfig {
 		if _, ok := b.historyStateFor(ledger); !ok {
-			return fmt.Errorf("invariant: active ledger %q has no EMPTY/NON_EMPTY history state after catch-up", ledger)
+			return historyReplayInvariantf("active ledger %q has no EMPTY/NON_EMPTY history state after catch-up", ledger)
 		}
 	}
 	for ledger := range b.ledgerHistory {
 		if _, ok := b.indexConfig[ledger]; !ok {
-			return fmt.Errorf("invariant: ledger history state for inactive ledger %q survived catch-up", ledger)
+			return historyReplayInvariantf("ledger history state for inactive ledger %q survived catch-up", ledger)
 		}
 	}
 
@@ -479,10 +479,10 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 
 	historyState, historyExists := b.historyStateFor(ledgerName)
 	if !historyExists {
-		return fmt.Errorf("invariant: CreateIndex for %q has no EMPTY/NON_EMPTY history state", ledgerName)
+		return historyReplayInvariantf("CreateIndex for %q has no EMPTY/NON_EMPTY history state", ledgerName)
 	}
 	if historyState != ledgerHistoryEmpty && historyState != ledgerHistoryNonEmpty {
-		return fmt.Errorf("invariant: CreateIndex for %q has invalid history state %d", ledgerName, historyState)
+		return historyReplayInvariantf("CreateIndex for %q has invalid history state %d", ledgerName, historyState)
 	}
 
 	canonical := indexes.Canonical(id)
@@ -568,7 +568,7 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	boundType, declared := log.GetBoundType(), log.GetBoundTypeDeclared()
 
 	if b.wb == nil || b.wb.Batch() == nil {
-		return fmt.Errorf("invariant: CreateIndex for %q encountered without an active readstore batch", ledgerName)
+		return historyReplayInvariantf("CreateIndex for %q encountered without an active readstore batch", ledgerName)
 	}
 
 	if historyState == ledgerHistoryEmpty {

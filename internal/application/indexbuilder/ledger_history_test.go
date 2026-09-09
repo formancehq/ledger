@@ -511,6 +511,34 @@ func TestWorkerPublishesTerminalFailureWhenHistoryReplayIsIncomplete(t *testing.
 	), readstore.ErrReadProjectionFailed)
 }
 
+func TestWorkerPublishesTerminalFailureForReplayTimeHistoryError(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.batchSize = DefaultBatchSize
+	b.notifications = signal.NewNotifications()
+	b.meter = metricnoop.Meter{}
+	writeLogToFSM(t, b, ledgerPayloadLog(
+		1,
+		"missing-history",
+		1,
+		&commonpb.LedgerLogPayload_AddedAccountType{AddedAccountType: &commonpb.AddedAccountTypeLog{}},
+		10,
+	))
+
+	b.Start()
+	t.Cleanup(b.Stop)
+
+	require.Eventually(t, func() bool {
+		return !b.readStore.ReadProjectionHealthy()
+	}, 5*time.Second, 10*time.Millisecond)
+	require.ErrorIs(t, b.readStore.WaitForRaftProgress(context.Background(), 1), readstore.ErrReadProjectionFailed)
+	require.ErrorIs(t, b.readStore.WaitForCheckpoint(
+		context.Background(),
+		filepath.Join(t.TempDir(), "pending"),
+	), readstore.ErrReadProjectionFailed)
+}
+
 func TestLoadLedgerHistoryRejectsUnknownState(t *testing.T) {
 	t.Parallel()
 
