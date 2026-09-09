@@ -93,6 +93,14 @@ func TestSelectsLocalValidationGatesFromCompleteDiff(t *testing.T) {
 			expected: []string{"pre-commit", "agent-check", "test-operator"},
 		},
 		{
+			// Top-level Antithesis files are harness configuration, not a Go
+			// package. Selecting their directory for go test fails with "no Go
+			// files" before the actual workload validation can run.
+			name:     "antithesis harness documentation",
+			paths:    []string{"tests/antithesis/README.md"},
+			expected: []string{"pre-commit", "agent-check"},
+		},
+		{
 			name:      "production file renamed outside gated paths",
 			basePaths: []string{"internal/domain/example.go"},
 			renames: [][2]string{
