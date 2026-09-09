@@ -83,23 +83,21 @@ When `format=json` in the events config, the event is serialized as JSON via `in
         "log": {
           "type": "NEW_TRANSACTION",
           "data": {
-            "createdTransaction": {
-              "transaction": {
-                "id": 7,
-                "postings": [
-                  {
-                    "source": "world",
-                    "destination": "user:123",
-                    "amount": 1000,
-                    "asset": "USD/2",
-                    "color": ""
-                  }
-                ],
-                "metadata": {},
-                "timestamp": "2026-02-18T10:30:00.000Z",
-                "reference": "order-456",
-                "reverted": false
-              }
+            "transaction": {
+              "id": 7,
+              "postings": [
+                {
+                  "source": "world",
+                  "destination": "user:123",
+                  "amount": 1000,
+                  "asset": "USD/2",
+                  "color": ""
+                }
+              ],
+              "metadata": {},
+              "timestamp": "2026-02-18T10:30:00.000Z",
+              "reference": "order-456",
+              "reverted": false
             }
           },
           "date": "2026-02-18T10:30:00.000Z",
@@ -113,10 +111,12 @@ When `format=json` in the events config, the event is serialized as JSON via `in
 
 The nested ledger-log JSON follows the same
 [hydration contract](../api/http-api.md#ledger-log-json-hydration) as HTTP log
-responses and prepared-query `logData`. JSON hydration preserves the existing
-payload wrappers and discriminator values. The ClickHouse and Databricks sinks
-use their separate analytical JSON projection; the Protobuf format uses binary
-protobuf encoding.
+responses, prepared-query `logData`, and `ledgerctl` JSON/YAML output. Each
+ledger-log variant has a distinct `type`, and `data` holds the payload directly,
+as in v2. Metadata logs use `targetType` and `targetId`. The enclosing v3 event
+and global-log structures shown above remain present. The ClickHouse and
+Databricks sinks use their separate analytical JSON projection; the Protobuf
+format uses binary protobuf encoding.
 
 ### Protobuf Format
 

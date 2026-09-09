@@ -45,7 +45,8 @@ func TestPreparedQueryCursor_LogDataRoundTrip(t *testing.T) {
 	data, err := json.Marshal(cursor)
 	require.NoError(t, err)
 	require.Contains(t, string(data), `"logData":`)
-	require.Contains(t, string(data), `"createdTransaction":`)
+	require.NotContains(t, string(data), `"createdTransaction":`)
+	require.Contains(t, string(data), `"data":{"transaction":`)
 	require.Contains(t, string(data), `"type":"NEW_TRANSACTION"`)
 	var response struct {
 		LogData []struct {

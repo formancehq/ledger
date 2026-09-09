@@ -1,6 +1,8 @@
 package commonpb
 
 import (
+	"errors"
+
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
@@ -83,6 +85,9 @@ func (l *LedgerLog) MarshalJSON() ([]byte, error) {
 	aux := auxLog{
 		Type: GetLogTypeFromLog(l),
 		Data: l.GetData(),
+	}
+	if aux.Type.String() == "" {
+		return nil, errors.New("missing log payload")
 	}
 
 	if l.GetDate() != nil {

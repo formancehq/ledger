@@ -13,92 +13,88 @@ import (
 
 // LogType constants for log payload types.
 const (
-	SetMetadataLogType              LogType = 0 // "SET_METADATA"
-	NewTransactionLogType           LogType = 1 // "NEW_TRANSACTION"
-	RevertedTransactionLogType      LogType = 2 // "REVERTED_TRANSACTION"
-	DeleteMetadataLogType           LogType = 3 // "DELETE_METADATA"
-	SetMetadataFieldTypeLogType     LogType = 4 // "SET_METADATA_FIELD_TYPE"
-	RemovedMetadataFieldTypeLogType LogType = 5 // "REMOVED_METADATA_FIELD_TYPE"
-	OrderSkippedLogType             LogType = 6 // "ORDER_SKIPPED"
+	SetMetadataLogType                   LogType = 0  // "SET_METADATA"
+	NewTransactionLogType                LogType = 1  // "NEW_TRANSACTION"
+	RevertedTransactionLogType           LogType = 2  // "REVERTED_TRANSACTION"
+	DeleteMetadataLogType                LogType = 3  // "DELETE_METADATA"
+	SetMetadataFieldTypeLogType          LogType = 4  // "SET_METADATA_FIELD_TYPE"
+	RemovedMetadataFieldTypeLogType      LogType = 5  // "REMOVED_METADATA_FIELD_TYPE"
+	OrderSkippedLogType                  LogType = 6  // "ORDER_SKIPPED"
+	FillGapLogType                       LogType = 7  // "FILL_GAP"
+	CreateIndexLogType                   LogType = 8  // "CREATE_INDEX"
+	DropIndexLogType                     LogType = 9  // "DROP_INDEX"
+	AddedAccountTypeLogType              LogType = 10 // "ADDED_ACCOUNT_TYPE"
+	RemovedAccountTypeLogType            LogType = 11 // "REMOVED_ACCOUNT_TYPE"
+	UpdatedDefaultEnforcementModeLogType LogType = 12 // "UPDATED_DEFAULT_ENFORCEMENT_MODE"
 )
 
-// HydrateLog decodes the data emitted by LedgerLog.MarshalJSON. All variants
-// use a oneof envelope except ORDER_SKIPPED. The envelope also identifies the
-// variants whose published discriminator is the default SET_METADATA.
+// HydrateLog decodes the direct data object emitted by LedgerLog.MarshalJSON.
+// Each payload variant has a distinct log type, following the v2 JSON layout.
 func HydrateLog(logType LogType, data []byte) (proto.Message, error) {
 	payload, err := hydrateLedgerLogPayload(logType, data)
 	if err != nil {
 		return nil, err
 	}
-	message := payload.ProtoReflect()
-	field := message.WhichOneof(message.Descriptor().Oneofs().Get(0))
 
-	return message.Get(field).Message().Interface(), nil
+	return payload.jsonMessage()
 }
 
 func hydrateLedgerLogPayload(logType LogType, data []byte) (*LedgerLogPayload, error) {
-	if logType.String() == "" {
+	payload := &LedgerLogPayload{}
+	switch logType {
+	case NewTransactionLogType:
+		payload.Payload = &LedgerLogPayload_CreatedTransaction{CreatedTransaction: &CreatedTransaction{}}
+	case RevertedTransactionLogType:
+		payload.Payload = &LedgerLogPayload_RevertedTransaction{RevertedTransaction: &RevertedTransaction{}}
+	case SetMetadataLogType:
+		payload.Payload = &LedgerLogPayload_SavedMetadata{SavedMetadata: &SavedMetadata{}}
+	case DeleteMetadataLogType:
+		payload.Payload = &LedgerLogPayload_DeletedMetadata{DeletedMetadata: &DeletedMetadata{}}
+	case SetMetadataFieldTypeLogType:
+		payload.Payload = &LedgerLogPayload_SetMetadataFieldType{SetMetadataFieldType: &SetMetadataFieldTypeLog{}}
+	case RemovedMetadataFieldTypeLogType:
+		payload.Payload = &LedgerLogPayload_RemovedMetadataFieldType{RemovedMetadataFieldType: &RemovedMetadataFieldTypeLog{}}
+	case FillGapLogType:
+		payload.Payload = &LedgerLogPayload_FillGap{FillGap: &FilledGapLog{}}
+	case CreateIndexLogType:
+		payload.Payload = &LedgerLogPayload_CreateIndex{CreateIndex: &CreatedIndexLog{}}
+	case DropIndexLogType:
+		payload.Payload = &LedgerLogPayload_DropIndex{DropIndex: &DroppedIndexLog{}}
+	case AddedAccountTypeLogType:
+		payload.Payload = &LedgerLogPayload_AddedAccountType{AddedAccountType: &AddedAccountTypeLog{}}
+	case RemovedAccountTypeLogType:
+		payload.Payload = &LedgerLogPayload_RemovedAccountType{RemovedAccountType: &RemovedAccountTypeLog{}}
+	case UpdatedDefaultEnforcementModeLogType:
+		payload.Payload = &LedgerLogPayload_UpdatedDefaultEnforcementMode{UpdatedDefaultEnforcementMode: &UpdatedDefaultEnforcementModeLog{}}
+	case OrderSkippedLogType:
+		payload.Payload = &LedgerLogPayload_OrderSkipped{OrderSkipped: &OrderSkippedLog{}}
+	default:
 		return nil, fmt.Errorf("unknown log type: %d", logType)
 	}
-	var envelope map[string]json.RawValue
-	if err := json.Unmarshal(data, &envelope); err != nil {
+
+	var fields map[string]json.RawValue
+	if err := json.Unmarshal(data, &fields); err != nil {
 		return nil, err
 	}
+	if fields == nil {
+		return nil, errors.New("log data must be an object")
+	}
 	if logType == OrderSkippedLogType {
-		if reason, ok := envelope["reason"]; !ok || bytes.Equal(bytes.TrimSpace(reason), []byte("null")) {
+		if reason, ok := fields["reason"]; !ok || bytes.Equal(bytes.TrimSpace(reason), []byte("null")) {
 			return nil, errors.New("ORDER_SKIPPED data must contain a reason")
 		}
-		skipped := &OrderSkippedLog{}
-		if err := json.Unmarshal(data, skipped); err != nil {
-			return nil, err
-		}
-
-		return &LedgerLogPayload{Payload: &LedgerLogPayload_OrderSkipped{OrderSkipped: skipped}}, nil
 	}
-	if len(envelope) != 1 {
-		return nil, errors.New("log data must contain exactly one payload")
+	message, err := payload.jsonMessage()
+	if err != nil {
+		return nil, err
 	}
-	payload := &LedgerLogPayload{}
-	for key, innerData := range envelope {
-		if bytes.Equal(bytes.TrimSpace(innerData), []byte("null")) {
-			return nil, fmt.Errorf("log payload %q is null", key)
-		}
-		var inner proto.Message
-		switch key {
-		case "createdTransaction":
-			value := &CreatedTransaction{}
-			payload.Payload = &LedgerLogPayload_CreatedTransaction{CreatedTransaction: value}
-			inner = value
-		case "revertedTransaction":
-			value := &RevertedTransaction{}
-			payload.Payload = &LedgerLogPayload_RevertedTransaction{RevertedTransaction: value}
-			inner = value
-		case "savedMetadata":
-			value := &SavedMetadata{}
-			payload.Payload = &LedgerLogPayload_SavedMetadata{SavedMetadata: value}
-			inner = value
-		case "deletedMetadata":
-			value := &DeletedMetadata{}
-			payload.Payload = &LedgerLogPayload_DeletedMetadata{DeletedMetadata: value}
-			inner = value
-		default:
-			// The remaining envelopes are emitted by protojson, including enum
-			// names, quoted integers and nested protobuf oneofs.
-			if err := protojson.Unmarshal(data, payload); err != nil {
-				return nil, err
-			}
-		}
-		if inner != nil {
-			if err := json.Unmarshal(innerData, inner); err != nil {
-				return nil, err
-			}
-		}
+	if custom, ok := message.(interface{ UnmarshalJSON([]byte) error }); ok {
+		err = custom.UnmarshalJSON(data)
+	} else {
+		err = protojson.Unmarshal(data, message)
 	}
-	if payload.GetPayload() == nil {
-		return nil, errors.New("missing log payload")
-	}
-	if GetLogType(payload) != logType {
-		return nil, fmt.Errorf("log type %s does not match payload", logType)
+	if err != nil {
+		return nil, err
 	}
 
 	return payload, nil

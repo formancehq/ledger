@@ -69,13 +69,14 @@ func TestHandleGetLog_Success(t *testing.T) {
 	// change the body carried no discriminator and disagreed with the logs-list
 	// route, which has always used sonic for the same commonpb.Log type.
 	//
-	// Hydration consumes the existing oneof field-name wrapper. The same wire
+	// Hydration consumes the direct data payload selected by type. The same wire
 	// is shared by the logs-list route, prepared queries, and JSON event sinks.
 	body := w.Body.String()
 	require.Contains(t, body, `"type":"NEW_TRANSACTION"`)
 	require.Contains(t, body, `"sequence":7`)
 	require.NotContains(t, body, `"sequence":"7"`)
-	require.Contains(t, body, `"createdTransaction":`)
+	require.NotContains(t, body, `"createdTransaction":`)
+	require.Contains(t, body, `"data":{"transaction":`)
 	require.NotContains(t, body, `"id":"1"`)
 	var response struct {
 		Data struct {

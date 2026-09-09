@@ -134,6 +134,36 @@ for client setup, restore behavior, failure limitations, and revision changes.
 
 ---
 
+## Ledger-log JSON contract
+
+EN-1790 aligns the nested ledger-log JSON with v2 where the existing v3 data
+model permits a simple projection. Both use `type` to identify a payload held
+directly in `data`, and metadata logs use `targetType` with `targetId` (string
+for an account, unsigned integer for a transaction, including zero). V3 gives
+each of its 13 ledger-log variants a distinct discriminator; clients do not
+need to inspect a second oneof wrapper inside `data`.
+
+| Aspect | V2 | V3 |
+|--------|----|----|
+| Created transaction | `data.transaction` | `data.transaction` |
+| Metadata target | `targetType` + `targetId` | `targetType` + `targetId` |
+| Metadata values | Strings | Typed values, including integers, booleans and null |
+| Reversal | Original transaction and compensation | `revertedTransactionId` and `revertTransaction` |
+| Post-commit volumes | Account → asset → volumes | Account → volume entries with asset and color |
+| Enclosing response | Ledger log | System log containing a ledger log under `payload.apply.log` |
+
+The same v3 projection is used by HTTP get/list logs, prepared-query `logData`,
+JSON events, and `ledgerctl` JSON/YAML output. Global-log and event envelopes
+remain specific to v3. Protobuf RPCs, persisted data, audit hashing, and the
+separate ClickHouse/Databricks analytical projection are unchanged.
+
+This replaces the earlier unreleased v3 payload wrappers and shared
+`SET_METADATA` fallback discriminator without an old-format decoder. See the
+[ledger-log JSON hydration contract](../architecture/subsystems/api/http-api.md#ledger-log-json-hydration)
+for the full discriminator list and the limits of metadata round-tripping.
+
+---
+
 ## Features Implemented in POC
 
 ### 1. Transaction Creation

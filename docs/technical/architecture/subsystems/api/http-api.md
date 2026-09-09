@@ -819,20 +819,43 @@ This was EN-1622: the transactions list and single-log routes sent marshaller-ca
 
 ### Ledger-log JSON hydration
 
-Single-log responses, ledger-log lists, prepared-query `logData`, and JSON
-event sinks share the same nested `LedgerLog` encoding. Its `data` object retains
-the protobuf oneof field-name wrapper, such as
-`{"createdTransaction":{"transaction":{...}}}`. `ORDER_SKIPPED` is the exception:
-its `data` object directly contains `reason` and optional `context`.
+Single-log responses, ledger-log lists, prepared-query `logData`, JSON event
+sinks, and `ledgerctl` JSON/YAML output share the same nested `LedgerLog`
+encoding: `type`, `data`, and optional `date` and `id`. As in Ledger v2, `data`
+contains the payload directly, without a protobuf oneof field-name wrapper.
+For example, a created transaction has
+`{"type":"NEW_TRANSACTION","data":{"transaction":{...}}}`. The unique `type`
+identifies the payload, so clients need only one discriminator dispatch.
 
-`LedgerLog.UnmarshalJSON` and `HydrateLog` decode that existing representation,
-including nested transaction fields, account metadata, metadata targets, and
-post-commit volumes. Hydration uses the named payload wrapper to identify the
-variant. In particular, `fillGap`, `createIndex`, `dropIndex`, `addedAccountType`,
-`removedAccountType`, and `updatedDefaultEnforcementMode` retain the existing
-`"type":"SET_METADATA"` discriminator; their distinct wrappers identify their
-actual payloads. EN-1790 fixes decoding without changing these emitted names or
-the discriminator values.
+| `type` | Payload in `data` |
+|--------|-------------------|
+| `NEW_TRANSACTION` | Created transaction and optional account metadata |
+| `REVERTED_TRANSACTION` | Original transaction ID and compensating transaction |
+| `SET_METADATA` | Metadata target and values |
+| `DELETE_METADATA` | Metadata target and key |
+| `SET_METADATA_FIELD_TYPE` | Metadata field type assignment |
+| `REMOVED_METADATA_FIELD_TYPE` | Metadata field type removal |
+| `ORDER_SKIPPED` | Reason and optional context |
+| `FILL_GAP` | Fill-gap payload |
+| `CREATE_INDEX` | Index creation payload |
+| `DROP_INDEX` | Index removal payload |
+| `ADDED_ACCOUNT_TYPE` | Account type addition payload |
+| `REMOVED_ACCOUNT_TYPE` | Account type removal payload |
+| `UPDATED_DEFAULT_ENFORCEMENT_MODE` | Default enforcement mode update payload |
+
+Metadata logs use `targetType` (`ACCOUNT` or `TRANSACTION`) and `targetId`: a
+string account address or an unsigned integer transaction ID, including zero.
+`LedgerLog.UnmarshalJSON` and `HydrateLog` select the payload by `type` and
+decode its nested transaction fields, typed metadata, targets, and post-commit
+volumes. EN-1790 replaces the earlier unreleased v3 wrappers and shared
+`SET_METADATA` fallback discriminator; the decoder accepts the current format
+only.
+
+The alignment with v2 is limited to the ledger-log envelope and metadata target
+shape. V3 retains typed metadata, colored volumes, and
+`revertedTransactionId` plus `revertTransaction` for reversals. System logs and
+events retain their enclosing global-log structure. These JSON changes do not
+change protobuf messages, persisted data, or audit hashes.
 
 The round-trip contract preserves the JSON projection. Metadata numbers are
 hydrated without floating-point rounding, and null-valued keys remain present.

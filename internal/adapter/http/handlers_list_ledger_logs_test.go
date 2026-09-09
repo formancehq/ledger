@@ -55,8 +55,11 @@ func TestHandleListLedgerLogs_JSONRoundTrip(t *testing.T) {
 	r := newRequest(t, http.MethodGet, "/ledger1/logs", nil, map[string]string{"ledgerName": "ledger1"})
 	srv.handleListLedgerLogs(w, r)
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Contains(t, w.Body.String(), `"savedMetadata":`)
-	require.Contains(t, w.Body.String(), `"accountId":"alice"`)
+	require.NotContains(t, w.Body.String(), `"savedMetadata":`)
+	require.Contains(t, w.Body.String(), `"type":"SET_METADATA"`)
+	require.Contains(t, w.Body.String(), `"targetType":"ACCOUNT"`)
+	require.Contains(t, w.Body.String(), `"targetId":"alice"`)
+	require.NotContains(t, w.Body.String(), `"accountId":`)
 	var response struct {
 		Data []struct {
 			Payload struct {

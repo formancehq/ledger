@@ -98,3 +98,47 @@ func TestLedgerLog_OrderSkippedRoundTrip(t *testing.T) {
 	require.Equal(t, "ref-x", skipped.GetContext()["reference"])
 	require.Equal(t, "42", skipped.GetContext()["existingTransactionId"])
 }
+
+// Every wire discriminator is pinned independently from the encoder/decoder
+// mapping, so a mutually consistent rename or missing variant still fails.
+func TestLogTypeJSONNames(t *testing.T) {
+	t.Parallel()
+	for kind, name := range map[commonpb.LogType]string{
+		commonpb.SetMetadataLogType:                   "SET_METADATA",
+		commonpb.NewTransactionLogType:                "NEW_TRANSACTION",
+		commonpb.RevertedTransactionLogType:           "REVERTED_TRANSACTION",
+		commonpb.DeleteMetadataLogType:                "DELETE_METADATA",
+		commonpb.SetMetadataFieldTypeLogType:          "SET_METADATA_FIELD_TYPE",
+		commonpb.RemovedMetadataFieldTypeLogType:      "REMOVED_METADATA_FIELD_TYPE",
+		commonpb.OrderSkippedLogType:                  "ORDER_SKIPPED",
+		commonpb.FillGapLogType:                       "FILL_GAP",
+		commonpb.CreateIndexLogType:                   "CREATE_INDEX",
+		commonpb.DropIndexLogType:                     "DROP_INDEX",
+		commonpb.AddedAccountTypeLogType:              "ADDED_ACCOUNT_TYPE",
+		commonpb.RemovedAccountTypeLogType:            "REMOVED_ACCOUNT_TYPE",
+		commonpb.UpdatedDefaultEnforcementModeLogType: "UPDATED_DEFAULT_ENFORCEMENT_MODE",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, name, kind.String())
+			decoded, err := commonpb.LogTypeFromString(name)
+			require.NoError(t, err)
+			require.Equal(t, kind, decoded)
+		})
+	}
+}
+
+func TestLedgerLogJSONRejectsMissingPayload(t *testing.T) {
+	t.Parallel()
+	for name, payload := range map[string]*commonpb.LedgerLogPayload{
+		"nil":                  nil,
+		"empty":                {},
+		"nil selected message": {Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: nil}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := json.Marshal(&commonpb.LedgerLog{Data: payload})
+			require.ErrorContains(t, err, "missing log payload")
+		})
+	}
+}

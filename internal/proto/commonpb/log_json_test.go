@@ -53,6 +53,7 @@ func TestLedgerLogJSONRoundTrip(t *testing.T) {
 		{"skipped", commonpb.OrderSkippedLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{Reason: commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, Context: map[string]string{"reference": "ref-1", "existingTransactionId": "9007199254740993"}}}}},
 	}
 	for name, target := range map[string]*commonpb.Target{
+		"zero":        {Target: &commonpb.Target_TransactionId{TransactionId: 0}},
 		"account":     {Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "users:alice"}}},
 		"transaction": {Target: &commonpb.Target_TransactionId{TransactionId: transaction.GetId()}},
 	} {
@@ -62,23 +63,31 @@ func TestLedgerLogJSONRoundTrip(t *testing.T) {
 			logCase{"deleted-" + name, commonpb.DeleteMetadataLogType, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_DeletedMetadata{DeletedMetadata: &commonpb.DeletedMetadata{Target: target, Key: "label"}}}},
 		)
 	}
-	for _, wire := range []string{
-		`{"fillGap":{"originalId":"18446744073709551615"}}`,
-		`{"createIndex":{"id":{"metadata":{"target":"TARGET_TYPE_TRANSACTION","key":"label"}},"initial":true,"boundType":"METADATA_TYPE_UINT64","boundTypeDeclared":true}}`,
-		`{"dropIndex":{"id":{"metadata":{"target":"TARGET_TYPE_ACCOUNT","key":"label"}}}}`,
-		`{"addedAccountType":{"accountType":{"name":"users","pattern":"users:{id}","persistence":"ACCOUNT_TYPE_EPHEMERAL","segmentTypes":{"id":{"uint64":{}}}}}}`,
-		`{"removedAccountType":{"name":"users"}}`,
-		`{"updatedDefaultEnforcementMode":{"enforcementMode":"CHART_ENFORCEMENT_AUDIT"}}`,
+	for _, tc := range []struct {
+		kind commonpb.LogType
+		wire string
+	}{
+		{commonpb.FillGapLogType, `{"fillGap":{"originalId":"18446744073709551615"}}`},
+		{commonpb.CreateIndexLogType, `{"createIndex":{"id":{"metadata":{"target":"TARGET_TYPE_TRANSACTION","key":"label"}},"initial":true,"boundType":"METADATA_TYPE_UINT64","boundTypeDeclared":true}}`},
+		{commonpb.DropIndexLogType, `{"dropIndex":{"id":{"metadata":{"target":"TARGET_TYPE_ACCOUNT","key":"label"}}}}`},
+		{commonpb.AddedAccountTypeLogType, `{"addedAccountType":{"accountType":{"name":"users","pattern":"users:{id}","persistence":"ACCOUNT_TYPE_EPHEMERAL","segmentTypes":{"id":{"uint64":{}}}}}}`},
+		{commonpb.RemovedAccountTypeLogType, `{"removedAccountType":{"name":"users"}}`},
+		{commonpb.UpdatedDefaultEnforcementModeLogType, `{"updatedDefaultEnforcementMode":{"enforcementMode":"CHART_ENFORCEMENT_AUDIT"}}`},
 	} {
 		payload := &commonpb.LedgerLogPayload{}
-		require.NoError(t, protojson.Unmarshal([]byte(wire), payload))
+		require.NoError(t, protojson.Unmarshal([]byte(tc.wire), payload))
 		field := payload.ProtoReflect().WhichOneof(payload.ProtoReflect().Descriptor().Oneofs().Get(0))
-		cases = append(cases, logCase{field.JSONName(), commonpb.SetMetadataLogType, payload})
+		cases = append(cases, logCase{field.JSONName(), tc.kind, payload})
 	}
 	covered := map[string]bool{}
+	discriminators := map[commonpb.LogType]string{}
 	for _, tc := range cases {
 		field := tc.payload.ProtoReflect().WhichOneof(tc.payload.ProtoReflect().Descriptor().Oneofs().Get(0))
 		covered[string(field.Name())] = true
+		if previous, ok := discriminators[tc.kind]; ok {
+			require.Equal(t, previous, string(field.Name()), "each payload variant needs a distinct log type")
+		}
+		discriminators[tc.kind] = string(field.Name())
 	}
 	require.Len(t, covered, (&commonpb.LedgerLogPayload{}).ProtoReflect().Descriptor().Oneofs().Get(0).Fields().Len(), "extend the matrix for each new variant")
 	for _, tc := range cases {
@@ -102,14 +111,23 @@ func TestLedgerLogJSONRoundTrip(t *testing.T) {
 					require.Equal(t, tc.kind, envelope.Type)
 					var wireData map[string]json.RawMessage
 					require.NoError(t, json.Unmarshal(envelope.Data, &wireData))
-					if tc.kind == commonpb.OrderSkippedLogType {
-						require.Contains(t, wireData, "reason")
-						require.NotContains(t, wireData, "orderSkipped")
+					field := tc.payload.ProtoReflect().WhichOneof(tc.payload.ProtoReflect().Descriptor().Oneofs().Get(0))
+					require.NotContains(t, wireData, field.JSONName(), "data must be the direct payload")
+					message := tc.payload.ProtoReflect().Get(field).Message().Interface()
+					var expected []byte
+					if custom, ok := message.(json.Marshaler); ok {
+						expected, err = custom.MarshalJSON()
 					} else {
-						field := tc.payload.ProtoReflect().WhichOneof(tc.payload.ProtoReflect().Descriptor().Oneofs().Get(0))
-						require.Len(t, wireData, 1)
-						require.Contains(t, wireData, field.JSONName())
+						expected, err = protojson.Marshal(message)
 					}
+					require.NoError(t, err)
+					require.JSONEq(t, string(expected), string(envelope.Data))
+					if tc.kind == commonpb.SetMetadataLogType || tc.kind == commonpb.DeleteMetadataLogType {
+						require.Contains(t, wireData, "targetId")
+						require.NotContains(t, wireData, "accountId")
+						require.NotContains(t, wireData, "transactionId")
+					}
+
 					t.Run("hydrate", func(t *testing.T) {
 						hydrated, err := commonpb.HydrateLog(envelope.Type, envelope.Data)
 						require.NoError(t, err)
@@ -138,22 +156,28 @@ func TestHydrateLogRejectsMalformedPayload(t *testing.T) {
 	}{
 		{"unknown type", 99, `{}`, "unknown log type"},
 		{"invalid JSON", commonpb.NewTransactionLogType, `{`, ""},
-		{"missing envelope", commonpb.NewTransactionLogType, `{"transaction":{}}`, "unknown field"},
-		{"empty envelope", commonpb.NewTransactionLogType, `{}`, "exactly one payload"},
-		{"null envelope", commonpb.NewTransactionLogType, `null`, "exactly one payload"},
-		{"null payload", commonpb.NewTransactionLogType, `{"createdTransaction":null}`, "is null"},
-		{"two variants", commonpb.NewTransactionLogType, `{"createdTransaction":{},"revertedTransaction":{}}`, "exactly one payload"},
-		{"wrong discriminator", commonpb.NewTransactionLogType, `{"revertedTransaction":{}}`, "does not match"},
+		{"null data", commonpb.NewTransactionLogType, `null`, "log data must be an object"},
+		{"wrapped payload", commonpb.NewTransactionLogType, `{"createdTransaction":{"transaction":{}}}`, "unknown field"},
+		{"null wrapped payload", commonpb.NewTransactionLogType, `{"createdTransaction":null}`, "unknown field"},
+		{"two variants", commonpb.NewTransactionLogType, `{"createdTransaction":{},"revertedTransaction":{}}`, "unknown field"},
+		{"wrong discriminator", commonpb.NewTransactionLogType, `{"revertTransaction":{}}`, "unknown field"},
 		{"wrapped skip", commonpb.OrderSkippedLogType, `{"orderSkipped":{"reason":"TRANSACTION_REFERENCE_CONFLICT"}}`, "must contain a reason"},
 		{"invalid skip reason", commonpb.OrderSkippedLogType, `{"reason":"INVALID"}`, "unknown ErrorReason"},
-		{"unknown target", commonpb.SetMetadataLogType, `{"savedMetadata":{"targetType":"UNKNOWN"}}`, "unknown type"},
-		{"bad target ID", commonpb.DeleteMetadataLogType, `{"deletedMetadata":{"targetType":"TRANSACTION","transactionId":"x"}}`, "uint64"},
-		{"bad schema enum", commonpb.SetMetadataFieldTypeLogType, `{"setMetadataFieldType":{"type":"NOT_A_TYPE"}}`, `invalid value for enum field type: "NOT_A_TYPE"`},
-		{"bad nested index", commonpb.RemovedMetadataFieldTypeLogType, `{"removedMetadataFieldType":{"droppedIndex":{"unknown":true}}}`, "unknown field"},
-		{"metadata overflow", commonpb.SetMetadataLogType, `{"savedMetadata":{"targetType":"ACCOUNT","accountId":"a","metadata":{"n":18446744073709551616}}}`, "metadata key"},
-		{"metadata fractional", commonpb.NewTransactionLogType, `{"createdTransaction":{"accountMetadata":{"a":{"n":1.5}}}}`, "metadata key"},
-		{"metadata object", commonpb.NewTransactionLogType, `{"createdTransaction":{"transaction":{"metadata":{"n":{}}}}}`, "metadata key"},
-		{"bad volumes", commonpb.RevertedTransactionLogType, `{"revertedTransaction":{"revertTransaction":{"postCommitVolumes":{"a":{}}}}}`, "[]*commonpb.VolumeEntry"},
+		{"null skip reason", commonpb.OrderSkippedLogType, `{"reason":null}`, "must contain a reason"},
+		{"unknown target", commonpb.SetMetadataLogType, `{"targetType":"UNKNOWN","targetId":"a"}`, "unknown type"},
+		{"missing target ID", commonpb.SetMetadataLogType, `{"targetType":"TRANSACTION"}`, "targetId is required"},
+		{"null target ID", commonpb.DeleteMetadataLogType, `{"targetType":"ACCOUNT","targetId":null}`, "targetId is required"},
+		{"bad account ID", commonpb.SetMetadataLogType, `{"targetType":"ACCOUNT","targetId":123}`, "account targetId"},
+		{"bad target ID", commonpb.DeleteMetadataLogType, `{"targetType":"TRANSACTION","targetId":"x"}`, "transaction targetId"},
+		{"overflow target ID", commonpb.SetMetadataLogType, `{"targetType":"TRANSACTION","targetId":18446744073709551616}`, "transaction targetId"},
+		{"obsolete account ID", commonpb.SetMetadataLogType, `{"targetType":"ACCOUNT","accountId":"a"}`, "unknown field"},
+		{"obsolete transaction ID", commonpb.DeleteMetadataLogType, `{"targetType":"TRANSACTION","transactionId":1}`, "unknown field"},
+		{"bad schema enum", commonpb.SetMetadataFieldTypeLogType, `{"type":"NOT_A_TYPE"}`, `invalid value for enum field type: "NOT_A_TYPE"`},
+		{"bad nested index", commonpb.RemovedMetadataFieldTypeLogType, `{"droppedIndex":{"unknown":true}}`, "unknown field"},
+		{"metadata overflow", commonpb.SetMetadataLogType, `{"targetType":"ACCOUNT","targetId":"a","metadata":{"n":18446744073709551616}}`, "metadata key"},
+		{"metadata fractional", commonpb.NewTransactionLogType, `{"accountMetadata":{"a":{"n":1.5}}}`, "metadata key"},
+		{"metadata object", commonpb.NewTransactionLogType, `{"transaction":{"metadata":{"n":{}}}}`, "metadata key"},
+		{"bad volumes", commonpb.RevertedTransactionLogType, `{"revertTransaction":{"postCommitVolumes":{"a":{}}}}`, "[]*commonpb.VolumeEntry"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

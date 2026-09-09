@@ -267,7 +267,8 @@ func TestSerializeEvent_JSONLedgerLogRoundTrip(t *testing.T) {
 
 	data, err := SerializeEvent(event, FormatJSON)
 	require.NoError(t, err)
-	require.Contains(t, string(data), `"createdTransaction":`)
+	require.NotContains(t, string(data), `"createdTransaction":`)
+	require.Contains(t, string(data), `"data":{"transaction":`)
 	require.Contains(t, string(data), `"type":"NEW_TRANSACTION"`)
 	require.Contains(t, string(data), `"logSequence":42`)
 	var response struct {

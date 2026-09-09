@@ -1,10 +1,12 @@
 package commonpb
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
@@ -111,31 +113,37 @@ func (x *ApplyLedgerLog) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// MarshalJSON implements json.Marshaler for LedgerLogPayload (oneof dispatch).
-func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
-	switch p := x.GetPayload().(type) {
-	case *LedgerLogPayload_CreatedTransaction:
-		return json.Marshal(&struct {
-			CreatedTransaction *CreatedTransaction `json:"createdTransaction,omitempty"`
-		}{CreatedTransaction: p.CreatedTransaction})
-	case *LedgerLogPayload_RevertedTransaction:
-		return json.Marshal(&struct {
-			RevertedTransaction *RevertedTransaction `json:"revertedTransaction,omitempty"`
-		}{RevertedTransaction: p.RevertedTransaction})
-	case *LedgerLogPayload_SavedMetadata:
-		return json.Marshal(&struct {
-			SavedMetadata *SavedMetadata `json:"savedMetadata,omitempty"`
-		}{SavedMetadata: p.SavedMetadata})
-	case *LedgerLogPayload_DeletedMetadata:
-		return json.Marshal(&struct {
-			DeletedMetadata *DeletedMetadata `json:"deletedMetadata,omitempty"`
-		}{DeletedMetadata: p.DeletedMetadata})
-	case *LedgerLogPayload_OrderSkipped:
-		return p.OrderSkipped.MarshalJSON()
-	default:
-		// Other variants — use protojson for camelCase
-		return protojson.Marshal(x)
+// jsonMessage returns the selected payload without its protobuf oneof envelope.
+func (x *LedgerLogPayload) jsonMessage() (proto.Message, error) {
+	if x == nil || x.GetPayload() == nil {
+		return nil, errors.New("missing log payload")
 	}
+	message := x.ProtoReflect()
+	field := message.WhichOneof(message.Descriptor().Oneofs().Get(0))
+	if field == nil || !message.Get(field).Message().IsValid() {
+		return nil, errors.New("missing log payload")
+	}
+
+	return message.Get(field).Message().Interface(), nil
+}
+
+// MarshalJSON emits the direct data object; LedgerLog.type identifies its variant.
+func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
+	message, err := x.jsonMessage()
+	if err != nil {
+		return nil, err
+	}
+	if custom, ok := message.(interface{ MarshalJSON() ([]byte, error) }); ok {
+		return custom.MarshalJSON()
+	}
+
+	return protojson.Marshal(message)
+}
+
+// unmarshalLogFields rejects unknown payload fields so a mismatched type or
+// obsolete envelope cannot silently hydrate into an empty custom response.
+func unmarshalLogFields(data []byte, value any) error {
+	return sonic.Config{DisallowUnknownFields: true}.Froze().Unmarshal(data, value)
 }
 
 // MarshalJSON implements json.Marshaler for OrderSkippedLog. Renders the
@@ -321,60 +329,53 @@ func (x *RevertedTransaction) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// MarshalJSON implements json.Marshaler for SavedMetadata.
+// MarshalJSON emits the v2 targetType/targetId layout with v3 typed metadata.
 func (x *SavedMetadata) MarshalJSON() ([]byte, error) {
-	aux := struct {
-		TargetType    string         `json:"targetType,omitempty"`
-		AccountId     string         `json:"accountId,omitempty"`
-		TransactionId uint64         `json:"transactionId,omitempty"`
-		Metadata      map[string]any `json:"metadata,omitempty"`
-	}{
-		TargetType: x.GetTarget().AsConst(),
-		Metadata:   MetadataToAnyMap(x.GetMetadata()),
+	targetID, err := logMetadataTargetID(x.GetTarget())
+	if err != nil {
+		return nil, err
 	}
 
-	// Handle oneof target_id
-	switch v := x.GetTarget().GetTarget().(type) {
-	case *Target_Account:
-		aux.AccountId = v.Account.GetAddr()
-	case *Target_TransactionId:
-		aux.TransactionId = v.TransactionId
-	}
-
-	return json.Marshal(aux)
+	return json.Marshal(&struct {
+		TargetType string         `json:"targetType"`
+		TargetID   any            `json:"targetId"`
+		Metadata   map[string]any `json:"metadata,omitempty"`
+	}{TargetType: x.GetTarget().AsConst(), TargetID: targetID, Metadata: MetadataToAnyMap(x.GetMetadata())})
 }
 
-// MarshalJSON implements json.Marshaler for DeletedMetadata.
+// MarshalJSON emits the v2 targetType/targetId layout.
 func (x *DeletedMetadata) MarshalJSON() ([]byte, error) {
-	aux := struct {
-		TargetType    string `json:"targetType,omitempty"`
-		AccountId     string `json:"accountId,omitempty"`
-		TransactionId uint64 `json:"transactionId,omitempty"`
-		Key           string `json:"key,omitempty"`
-	}{
-		TargetType: x.GetTarget().AsConst(),
-		Key:        x.GetKey(),
+	targetID, err := logMetadataTargetID(x.GetTarget())
+	if err != nil {
+		return nil, err
 	}
 
-	// Handle oneof target_id
-	switch v := x.GetTarget().GetTarget().(type) {
-	case *Target_Account:
-		aux.AccountId = v.Account.GetAddr()
-	case *Target_TransactionId:
-		aux.TransactionId = v.TransactionId
-	}
-
-	return json.Marshal(aux)
+	return json.Marshal(&struct {
+		TargetType string `json:"targetType"`
+		TargetID   any    `json:"targetId"`
+		Key        string `json:"key,omitempty"`
+	}{TargetType: x.GetTarget().AsConst(), TargetID: targetID, Key: x.GetKey()})
 }
 
-// UnmarshalJSON decodes the accountId/transactionId fields emitted by MarshalJSON.
+func logMetadataTargetID(target *Target) (any, error) {
+	switch v := target.GetTarget().(type) {
+	case *Target_Account:
+		return v.Account.GetAddr(), nil
+	case *Target_TransactionId:
+		return v.TransactionId, nil
+	default:
+		return nil, errors.New("missing metadata target")
+	}
+}
+
+// UnmarshalJSON decodes the targetType/targetId fields emitted by MarshalJSON.
 func (dm *DeletedMetadata) UnmarshalJSON(data []byte) error {
 	var aux struct {
 		logMetadataTargetJSON
 
 		Key string `json:"key"`
 	}
-	if err := json.Unmarshal(data, &aux); err != nil {
+	if err := unmarshalLogFields(data, &aux); err != nil {
 		return err
 	}
 	target, err := aux.target()
@@ -393,7 +394,7 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 
 		Metadata logMetadataJSON `json:"metadata"`
 	}
-	if err := json.Unmarshal(data, &aux); err != nil {
+	if err := unmarshalLogFields(data, &aux); err != nil {
 		return err
 	}
 	target, err := aux.target()
@@ -406,17 +407,29 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 }
 
 type logMetadataTargetJSON struct {
-	TargetType    string `json:"targetType"`
-	AccountID     string `json:"accountId"`
-	TransactionID uint64 `json:"transactionId"`
+	TargetType string        `json:"targetType"`
+	TargetID   json.RawValue `json:"targetId"`
 }
 
 func (x logMetadataTargetJSON) target() (*Target, error) {
+	if len(x.TargetID) == 0 || bytes.Equal(bytes.TrimSpace(x.TargetID), []byte("null")) {
+		return nil, errors.New("metadata targetId is required")
+	}
 	switch strings.ToUpper(x.TargetType) {
 	case MetaTargetTypeAccount:
-		return &Target{Target: &Target_Account{Account: &TargetAccount{Addr: x.AccountID}}}, nil
+		var accountID string
+		if err := json.Unmarshal(x.TargetID, &accountID); err != nil {
+			return nil, fmt.Errorf("account targetId: %w", err)
+		}
+
+		return &Target{Target: &Target_Account{Account: &TargetAccount{Addr: accountID}}}, nil
 	case MetaTargetTypeTransaction:
-		return &Target{Target: &Target_TransactionId{TransactionId: x.TransactionID}}, nil
+		var transactionID uint64
+		if err := json.Unmarshal(x.TargetID, &transactionID); err != nil {
+			return nil, fmt.Errorf("transaction targetId: %w", err)
+		}
+
+		return &Target{Target: &Target_TransactionId{TransactionId: transactionID}}, nil
 	default:
 		return nil, fmt.Errorf("unknown type %q", x.TargetType)
 	}
@@ -428,7 +441,7 @@ func (x *CreatedTransaction) UnmarshalJSON(data []byte) error {
 		Transaction     *Transaction               `json:"transaction"`
 		AccountMetadata map[string]logMetadataJSON `json:"accountMetadata"`
 	}
-	if err := json.Unmarshal(data, &aux); err != nil {
+	if err := unmarshalLogFields(data, &aux); err != nil {
 		return err
 	}
 	x.Transaction = aux.Transaction
@@ -446,7 +459,7 @@ func (x *RevertedTransaction) UnmarshalJSON(data []byte) error {
 		RevertedTransactionID uint64       `json:"revertedTransactionId"`
 		RevertTransaction     *Transaction `json:"revertTransaction"`
 	}
-	if err := json.Unmarshal(data, &aux); err != nil {
+	if err := unmarshalLogFields(data, &aux); err != nil {
 		return err
 	}
 	x.RevertedTransactionId, x.RevertTransaction = aux.RevertedTransactionID, aux.RevertTransaction
