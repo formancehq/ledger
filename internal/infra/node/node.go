@@ -2248,7 +2248,7 @@ func (node *Node) LastPersistedIndex() uint64 {
 func (node *Node) GetConfiguredPeers(ctx context.Context) ([]Peer, error) {
 	var peers []Peer
 
-	err := node.execClusterCommand(ctx, func() error {
+	err := node.execClusterCommand(ctx, false, func() error {
 		status := node.rawNode.Status()
 		if status.RaftState != raft.StateLeader {
 			return nil
