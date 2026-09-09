@@ -33,12 +33,7 @@ var _ = Describe("Address index across a cross-ledger purge bulk", Ordered, func
 		ledgerB = "idx-reuse-leak-b"
 	)
 
-	roleFilter := func(addr string, role commonpb.AddressRole) *commonpb.QueryFilter {
-		f := actions.AddressExactFilter(addr)
-		f.GetAddress().Role = role
-
-		return f
-	}
+	roleFilter := actions.AddressExactRoleFilter
 
 	BeforeAll(func() {
 		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",

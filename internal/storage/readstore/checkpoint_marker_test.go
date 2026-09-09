@@ -67,6 +67,31 @@ func TestCreateCheckpointFailsIfDirExists(t *testing.T) {
 	require.NoError(t, s.CreateCheckpoint(destDir))
 }
 
+// TestCreateCheckpointIncludesUnflushedRows pins the WAL-less contract: a row
+// committed just before CreateCheckpoint sits only in the memtable, and the
+// frozen store must still hold it (EN-1978).
+func TestCreateCheckpointIncludesUnflushedRows(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	batch := s.NewBatch()
+	require.NoError(t, s.WriteProgress(batch, 42))
+	require.NoError(t, batch.Commit())
+
+	destDir := filepath.Join(t.TempDir(), "readindex")
+	require.NoError(t, s.CreateCheckpoint(destDir))
+
+	ro, err := OpenReadOnly(destDir, logging.NopZap())
+	require.NoError(t, err)
+
+	defer func() { require.NoError(t, ro.Close()) }()
+
+	progress, err := ro.ReadProgress()
+	require.NoError(t, err)
+	require.Equal(t, uint64(42), progress)
+}
+
 // TestWaitForCheckpointFastPath returns immediately when the marker already
 // exists.
 func TestWaitForCheckpointFastPath(t *testing.T) {

@@ -179,8 +179,13 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 }
 
 // CreateCheckpoint creates a Pebble checkpoint of the read index at destDir.
-// Since the read index has WAL disabled, no WAL flush option is needed.
+// The read index runs without a WAL, so a Pebble checkpoint carries only the
+// flushed SSTs: the memtable is flushed first so every committed row is in it.
 func (s *Store) CreateCheckpoint(destDir string) error {
+	if err := s.db.Flush(); err != nil {
+		return fmt.Errorf("flushing read index memtable: %w", err)
+	}
+
 	return s.db.Checkpoint(destDir)
 }
 
