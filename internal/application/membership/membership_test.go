@@ -8,11 +8,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Membership service unit tests cover the input-validation branches.
-// Leader-side admission and committed routing changes require a real
-// *node.Node and are covered by the
-// e2e cluster suite — input validation alone runs before any of those
-// dependencies is touched, which is what we assert here.
+// These tests cover input validation before any dependency is touched.
+// membership_node_test.go exercises admission and discovery through a real
+// *node.Node; the e2e cluster suite covers inter-node routing.
 
 func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 	t.Parallel()

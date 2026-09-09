@@ -145,6 +145,10 @@ func TestPeerStore_LoadAllRejectsPersistedInvalidInstanceID(t *testing.T) {
 
 	_, err := ps.LoadAll()
 	require.ErrorContains(t, err, "persisted peer 1 has invalid identity")
+	var identityErr *invalidPeerIdentityError
+	require.ErrorAs(t, err, &identityErr)
+	require.Equal(t, uint64(1), identityErr.nodeID)
+	require.ErrorIs(t, err, identityErr.cause, "storage wrappers must preserve the identity validation cause")
 }
 
 func TestNewMembershipRejectsInvalidSelfInstanceID(t *testing.T) {
