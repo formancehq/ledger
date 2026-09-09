@@ -155,6 +155,71 @@ func TestProcessLogsPublishesRaftHorizonOnlyAfterFinalNativeBatch(t *testing.T) 
 		"a later call captures and certifies the head that arrived after the fixed target")
 }
 
+func TestProcessLogsEmptyBatchDoesNotCrossFixedTargetOnContinuation(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.notifications = signal.NewNotifications()
+	b.batchSize = 2
+
+	const (
+		checkpointID      = uint64(47)
+		originalHorizon   = uint64(50)
+		checkpointHorizon = uint64(60)
+	)
+	seedLogTarget(t, b, originalHorizon, 5)
+
+	// Capture the original target and stop after one empty batch. The durable
+	// cursor advances to two while the builder retains (seq=5, H=50) as the
+	// fixed target for its continuation.
+	cursor, err := b.processLogs(context.Background(), 0, time.Unix(1, 0))
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), cursor)
+
+	// A newer snapshot contains a checkpoint immediately beyond the retained
+	// target. The continuation must consume only sequences 3..5 even though its
+	// first batch (3..4) produces no projection writes.
+	batch := b.pebbleStore.OpenWriteSession()
+	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
+		Sequence: 6,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
+			CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
+				CheckpointId: checkpointID,
+				MaxSequence:  6,
+				AppliedIndex: checkpointHorizon,
+			},
+		}},
+	}}))
+	require.NoError(t, state.SetAppliedIndex(batch, checkpointHorizon))
+	require.NoError(t, batch.Commit())
+	seedQueryCheckpointState(t, b, checkpointID, checkpointHorizon, false)
+
+	auditBatch := b.readStore.NewBatch()
+	require.NoError(t, b.readStore.WriteAuditRaftProgress(auditBatch, checkpointHorizon))
+	require.NoError(t, auditBatch.Commit())
+
+	cursor, err = b.processLogs(context.Background(), cursor, time.Time{})
+	require.NoError(t, err)
+	require.Equal(t, uint64(5), cursor, "the continuation must stop at its fixed native target")
+	require.False(t, readstore.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)),
+		"a checkpoint beyond the fixed target must remain untouched")
+
+	// The next call captures the newer target and can now materialize the
+	// checkpoint with its own matching projection certificate.
+	cursor, err = b.processLogs(context.Background(), cursor, time.Time{})
+	require.NoError(t, err)
+	require.Equal(t, uint64(6), cursor)
+	dir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
+	require.True(t, readstore.CheckpointDirReady(dir))
+	frozen, err := readstore.OpenReadOnly(dir, noopLogger{})
+	require.NoError(t, err)
+	defer func() { _ = frozen.Close() }()
+	frozenProgress, err := frozen.ReadRaftProgress()
+	require.NoError(t, err)
+	require.Equal(t, checkpointHorizon, frozenProgress,
+		"the checkpoint must freeze its own projection horizon")
+}
+
 func TestProcessLogsWaitsForAuditBeforeFreezingQueryCheckpoint(t *testing.T) {
 	t.Parallel()
 

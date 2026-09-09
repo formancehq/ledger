@@ -87,7 +87,10 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 	defer func() { _ = proposals.close() }()
 
-	// Track whether we advanced the cursor without persisting it yet.
+	// cursor is the last durably committed native sequence and is therefore the
+	// safe value returned on failure. unpersistedCursor is the latest sequence
+	// consumed from this snapshot; loop bounds must use it so coalesced empty
+	// batches cannot read beyond the fixed target on a continuation call.
 	needsPersist := false
 	unpersistedCursor := cursor
 	unpersistedCount := 0
@@ -114,7 +117,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		return b.lastAppliedProposalSeq, nil
 	}
 
-	for cursor < targetSequence {
+	for unpersistedCursor < targetSequence {
 		var (
 			batchCount                int
 			lastSeq                   uint64
@@ -133,7 +136,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		// target so later commits visible through a newly-opened continuation
 		// snapshot cannot pull the target forward between deadline-driven calls.
 		batchLimit := b.batchSize
-		if remaining := targetSequence - cursor; remaining < uint64(batchLimit) {
+		if remaining := targetSequence - unpersistedCursor; remaining < uint64(batchLimit) {
 			batchLimit = int(remaining)
 		}
 
@@ -443,7 +446,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		if eof {
 			break
 		}
-		if cursor >= targetSequence {
+		if unpersistedCursor >= targetSequence {
 			break
 		}
 
@@ -470,7 +473,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			return cursor, fmt.Errorf("writing applied proposal progress: %w", err)
 		}
 
-		if cursor >= targetSequence {
+		if unpersistedCursor >= targetSequence {
 			if err := b.readStore.WriteRaftProgress(batch, targetAppliedIndex); err != nil {
 				_ = batch.Cancel()
 
