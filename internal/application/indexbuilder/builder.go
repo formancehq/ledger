@@ -707,15 +707,26 @@ func (b *Builder) loop(ctx context.Context) {
 	// backoff until it succeeds or shutdown is requested. initIndexConfig
 	// resets its own state, so re-running it on retry is idempotent.
 	var (
-		cursor     uint64
-		pebbleLast uint64
-		err        error
+		cursor           uint64
+		pebbleLast       uint64
+		err              error
+		bootInvariantErr error
 	)
 	worker.RetryWithBackoff(stop, b.logger, func() error {
 		cursor, pebbleLast, err = b.bootInit(ctx)
+		if errors.Is(err, errHistoryReplayInvariant) {
+			bootInvariantErr = err
+
+			return nil
+		}
 
 		return err
 	})
+	if bootInvariantErr != nil {
+		b.failHistoryReplay(bootInvariantErr)
+
+		return
+	}
 
 	// RetryWithBackoff returns only on success or when stop is closed. If
 	// the context was cancelled we never got a good init — return without
@@ -900,7 +911,7 @@ func (b *Builder) bootInit(ctx context.Context) (cursor uint64, pebbleLast uint6
 		return 0, 0, err
 	}
 	if cursor == 0 && len(b.ledgerHistory) != 0 {
-		return 0, 0, errors.New("invariant: ledger history state exists while indexbuilder cursor is zero")
+		return 0, 0, historyReplayInvariantf("ledger history state exists while indexbuilder cursor is zero")
 	}
 
 	if err := b.initIndexConfigAfterHistory(ctx); err != nil {

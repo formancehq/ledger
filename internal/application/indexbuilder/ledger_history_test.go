@@ -539,6 +539,28 @@ func TestWorkerPublishesTerminalFailureForReplayTimeHistoryError(t *testing.T) {
 	), readstore.ErrReadProjectionFailed)
 }
 
+func TestWorkerPublishesTerminalFailureForBootHistoryInvariant(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.batchSize = DefaultBatchSize
+	b.notifications = signal.NewNotifications()
+	b.meter = metricnoop.Meter{}
+	persistLedgerHistory(t, b, "ghost", ledgerHistoryEmpty)
+
+	b.Start()
+	t.Cleanup(b.Stop)
+
+	require.Eventually(t, func() bool {
+		return !b.readStore.ReadProjectionHealthy()
+	}, 5*time.Second, 10*time.Millisecond)
+	require.ErrorIs(t, b.readStore.WaitForRaftProgress(context.Background(), 1), readstore.ErrReadProjectionFailed)
+	require.ErrorIs(t, b.readStore.WaitForCheckpoint(
+		context.Background(),
+		filepath.Join(t.TempDir(), "pending"),
+	), readstore.ErrReadProjectionFailed)
+}
+
 func TestLoadLedgerHistoryRejectsUnknownState(t *testing.T) {
 	t.Parallel()
 
@@ -564,6 +586,7 @@ func TestBootInitRejectsUnknownLedgerHistoryState(t *testing.T) {
 	require.NoError(t, wb.Flush())
 
 	_, _, err := b.bootInit(context.Background())
+	require.ErrorIs(t, err, errHistoryReplayInvariant)
 	require.ErrorContains(t, err, "unknown value 99")
 }
 
@@ -574,6 +597,7 @@ func TestBootInitRejectsHistoryWithoutProgress(t *testing.T) {
 	persistLedgerHistory(t, b, "ghost", ledgerHistoryEmpty)
 
 	_, _, err := b.bootInit(context.Background())
+	require.ErrorIs(t, err, errHistoryReplayInvariant)
 	require.ErrorContains(t, err, "history state exists while indexbuilder cursor is zero")
 }
 
