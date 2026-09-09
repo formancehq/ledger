@@ -659,6 +659,16 @@ plain `-tags e2e` run neither builds nor runs them:
 | `nats` | NATS event sink | none (embedded in-process server) |
 | `databricks` | Databricks event sink | real workspace credentials; skips itself when unset |
 
+The bootstrap regression `TestRestoreDownloadStopsWithFxApplication` also needs
+the `s3` tag to compile the production S3 backend, but uses an in-process HTTP
+server and requires no MinIO or Docker. CI's `Tests` job runs it separately with
+the race detector:
+
+```bash
+nix develop --command go test -race -tags s3 ./internal/bootstrap \
+  -run '^TestRestoreDownloadStopsWithFxApplication$' -count=1 -timeout 2m
+```
+
 `just test-e2e` runs the light set for a fast local loop. **CI runs the full tag
 set** through separate isolated Business and Cluster invocations of
 `just test-e2e-coverage`, so a green `just test-e2e` does not guarantee a green
