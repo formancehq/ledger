@@ -2,6 +2,8 @@ package http
 
 import (
 	"net/http"
+
+	"github.com/formancehq/ledger/v3/internal/adapter/readprojection"
 )
 
 // handleGetLedger handles GET /{ledgerName} to get a ledger.
@@ -19,5 +21,5 @@ func (s *Server) handleGetLedger(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return ledger info wrapped in BaseResponse
-	writeOK(w, ledgerInfo)
+	writeOK(w, readprojection.Ledger(ledgerInfo))
 }

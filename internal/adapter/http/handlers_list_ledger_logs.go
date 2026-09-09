@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/readprojection"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -104,5 +105,13 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for i, log := range logs {
+		logs[i], err = readprojection.Log(log)
+		if err != nil {
+			handleError(w, r, err)
+
+			return
+		}
+	}
 	writeOK(w, logs)
 }

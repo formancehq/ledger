@@ -6,6 +6,8 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/ledger/v3/internal/adapter/readprojection"
 )
 
 // handleGetLog handles GET /logs/{sequence} to fetch a single system log by
@@ -27,5 +29,11 @@ func (s *Server) handleGetLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log, err = readprojection.Log(log)
+	if err != nil {
+		handleError(w, r, err)
+
+		return
+	}
 	writeOKChecked(w, r, log)
 }

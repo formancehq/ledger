@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/readprojection"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -75,6 +76,15 @@ func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) 
 	entries, ok := drainCursor(w, r, cursor)
 	if !ok {
 		return
+	}
+
+	for i, entry := range entries {
+		entries[i], err = readprojection.Audit(entry)
+		if err != nil {
+			handleError(w, r, err)
+
+			return
+		}
 	}
 
 	// writeOKChecked (not writeOK): audit DTOs marshal chain-bound submessages
