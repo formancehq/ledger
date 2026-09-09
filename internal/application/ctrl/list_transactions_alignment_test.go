@@ -95,6 +95,7 @@ func TestListTransactions_AlignsComplementWithPrimaryHorizon(t *testing.T) {
 	wb.Init(indexBatch)
 	require.NoError(t, wb.WriteTransactionTimestampIndex(dal.NewKeyBuilder(), ledger, 42, txID))
 	require.NoError(t, rs.WriteProgress(indexBatch, logSeq))
+	require.NoError(t, rs.WriteRaftProgress(indexBatch, logSeq))
 	require.NoError(t, indexBatch.Commit())
 	rs.NotifyProgress()
 

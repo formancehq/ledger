@@ -124,16 +124,20 @@ func listEntities[T interface{ ~string | ~uint64 }](
 	return result, err
 }
 
-// listWithoutIndex serves the main-store-only shapes: an unfiltered ACCOUNTS or
-// TRANSACTIONS page in either direction. Split out so the aligned path above
-// keeps one exit and this one cannot accidentally acquire a lease or a pin.
+// listWithoutIndex serves the main-store-only shapes: an ACCOUNTS or
+// TRANSACTIONS page whose complete filter tree reads the main store. Split out
+// so the aligned path above keeps one exit and this one cannot accidentally
+// acquire a lease or a pin.
 func listWithoutIndex[T interface{ ~string | ~uint64 }](snap dal.PebbleReader, params entityListParams[T]) (entityListResult, error) {
 	var result entityListResult
 
 	var err error
-	if params.reverse {
+	switch {
+	case params.reverse && params.filter != nil:
+		err = listDescFiltered(snap, params, &result.entityIDs)
+	case params.reverse:
 		err = listDescUnfiltered(snap, params, &result.entityIDs)
-	} else {
+	default:
 		err = listAscending(snap, params, &result.entityIDs)
 	}
 

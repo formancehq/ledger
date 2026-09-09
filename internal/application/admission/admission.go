@@ -873,16 +873,14 @@ func (a *Admission) checkQueryCheckpointProjectionReady(reqs []*servicepb.Reques
 		}
 
 		disabled, rebuilding := a.auditProjectionState()
-		if !disabled && !rebuilding {
-			return nil
+		if disabled {
+			return &domain.BusinessError{Err: domain.ErrAuditDisabled}
 		}
-
-		state := "disabled"
 		if rebuilding {
-			state = "rebuilding"
+			return &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: "audit (rebuilding)"}}
 		}
 
-		return &domain.BusinessError{Err: &domain.ErrIndexBuilding{Index: "audit (" + state + ")"}}
+		return nil
 	}
 
 	return nil

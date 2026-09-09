@@ -404,10 +404,10 @@ Query parameters:
   JSON `QueryFilter` DSL used by prepared queries, which cannot represent audit
   conditions. A filter containing any field other than `seq` is served by the
   asynchronous audit index; unfiltered and `seq`-only conjunctions scan the
-  audit zone directly. This HTTP endpoint exposes no `minLogSequence` bound, so
-  index-backed reads are best-effort and may omit entries not yet indexed; gRPC
-  callers can request a consistency-bound wait that is preserved across routing
-  hops.
+  audit zone directly. Although this HTTP endpoint exposes no
+  `minLogSequence` bound, a filtered read automatically fixes a main-store Raft
+  horizon and waits for the audit projection to certify it before querying the
+  projection snapshot.
 
 **Response**: `{ "data": [ AuditEntry, ... ] }` (list omits per-order `items`).
 

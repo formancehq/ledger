@@ -13,7 +13,7 @@ This document compares the POC's API with the original Formance ledger API and d
 ### Service protocol compatibility (EN-1851)
 
 The v3 gRPC service requires one `ledger-protocol-version` metadata value per
-business RPC, equal to `pkg/grpcprotocol.Version` (currently `"1"`). Missing,
+business RPC, equal to `pkg/grpcprotocol.Version` (currently `"2"`). Missing,
 invalid, duplicate, or different revisions fail with `FailedPrecondition` before
 business handler execution. This applies to unary and streaming Bucket, Cluster,
 and Restore operations, including internal forwarding. Discovery, gRPC health,
