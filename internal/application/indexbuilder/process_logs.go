@@ -771,8 +771,9 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 	// and RemovedMetadataFieldType to handleRemovedMetadataFieldType. A retype
 	// that lands mid-backfill is handled by addSchemaRewriteTask resetting the
 	// in-flight cursor, not by replaying the schema log here. Do NOT add a case
-	// for them without also changing isDataLog: an unreachable second
-	// implementation of the schema rewrite is what this replaced.
+	// for CONTROL payloads without also changing their protobuf category
+	// annotation: an unreachable second implementation of the schema rewrite is
+	// what this replaced.
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes)
