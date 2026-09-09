@@ -19,6 +19,8 @@ func TestFinishReadyRejectsIncompleteRegistrationBeforeRawNodeMutation(t *testin
 		"correlation only":        {ProposalID: "promotion"},
 		"identity only":           {InstanceID: []byte("peer-instance-id")},
 		"missing service address": {RaftAddress: "peer:7777", InstanceID: []byte("peer-instance-id")},
+		"missing identity":        {RaftAddress: "peer:7777", ServiceAddress: "peer:8888"},
+		"short identity":          {RaftAddress: "peer:7777", ServiceAddress: "peer:8888", InstanceID: []byte("short")},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -35,7 +37,11 @@ func TestFinishReadyRejectsIncompleteRegistrationBeforeRawNodeMutation(t *testin
 				require.NoError(t, err)
 			}
 			err = n.finishReady(readyResult{confChanges: []committedConfChange{{index: 2, change: cc}}}, make(chan struct{}))
-			require.ErrorContains(t, err, "invariant: ConfChange registration for peer 9")
+			if name == "missing identity" || name == "short identity" {
+				require.ErrorContains(t, err, "invariant: ConfChange for peer 9 has invalid identity")
+			} else {
+				require.ErrorContains(t, err, "invariant: ConfChange registration for peer 9")
+			}
 			require.Equal(t, before, rn.Status().Config)
 			require.Equal(t, []uint64{1}, n.confState.Load().GetVoters())
 			require.Empty(t, n.membership.PeerAddresses())
