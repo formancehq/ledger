@@ -42,7 +42,7 @@ type AddressTxIterator struct {
 
 // NewAddressTxIterator creates an iterator that, for each address matching
 // addrIter, looks up all associated transaction IDs in the specified
-// account→tx prefix and produces them in sorted order (merge-union).
+// account→tx prefix and produces them in sorted order.
 func NewAddressTxIterator(
 	reader dal.PebbleReader,
 	kb *dal.KeyBuilder,
