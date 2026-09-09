@@ -27,7 +27,6 @@ import (
 // a distinct status when reached; rejected calls must never reach them.
 func TestServiceServerProtocolVersion(t *testing.T) {
 	t.Parallel()
-
 	currentRevision, err := strconv.Atoi(grpcprotocol.Version)
 	require.NoError(t, err)
 	require.Positive(t, currentRevision)
