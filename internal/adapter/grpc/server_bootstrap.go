@@ -126,8 +126,8 @@ func (impl *ClusterBootstrapServiceServerImpl) GetPeers(ctx context.Context, req
 // RaftServer. On the leader, it consults the removed-member registry
 // (EN-1045) first — a rejoin with a blacklisted (nodeID, instance_id)
 // tuple is refused with FailedPrecondition — then delegates to the
-// application membership service which wires the peer into the
-// transport/pool and proposes the ConfChange.
+// application membership service which proposes the ConfChange. The committed
+// change observer updates transport routing after admission succeeds.
 func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context, req *clusterbootstrappb.JoinAsLearnerRequest) (*clusterbootstrappb.JoinAsLearnerResponse, error) {
 	if err := impl.checkClusterID(ctx); err != nil {
 		return nil, err
