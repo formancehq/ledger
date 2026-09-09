@@ -170,3 +170,27 @@ func TestWriteInstanceID_RejectsWrongLength(t *testing.T) {
 	require.Error(t, WriteInstanceID(t.TempDir(), []byte("short")))
 	require.Error(t, WriteInstanceID(t.TempDir(), make([]byte, InstanceIDLen+1)))
 }
+
+func TestEnsureInstanceIDFailsClosedWhenWALArtifactCannotBeInspected(t *testing.T) {
+	t.Parallel()
+
+	for _, artifact := range []string{ClusterJoinedMarkerFile, walCreationCompletedFile, etcdWalDir, snapDir} {
+		t.Run(artifact, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			// A symlink loop gives a deterministic Stat failure on Linux and
+			// macOS, including when tests run with elevated filesystem access.
+			artifactPath := filepath.Join(dir, artifact)
+			require.NoError(t, os.Symlink(artifact, artifactPath))
+
+			identity, err := EnsureInstanceID(dir)
+			require.Nil(t, identity)
+			require.ErrorContains(t, err, "checking WAL identity artifact")
+			var pathErr *os.PathError
+			require.ErrorAs(t, err, &pathErr)
+			require.Equal(t, artifactPath, pathErr.Path)
+			_, err = os.Stat(filepath.Join(dir, InstanceIDMarkerFile))
+			require.ErrorIs(t, err, os.ErrNotExist, "an inspection failure must never rotate consensus identity")
+		})
+	}
+}
