@@ -830,6 +830,15 @@ type PebbleTxRangeIterator struct {
 }
 
 // NewPebbleTxRangeIterator creates a bounded transaction iterator for range queries.
+// NewReverseLedgerLogIterator is the descending twin of NewLedgerLogIterator:
+// log ids under the ledger's log prefix, high to low. Logs are entity-ordered
+// in the index, so the scan streams in both directions (EN-1966).
+func NewReverseLedgerLogIterator(reader dal.PebbleReader, kb *dal.KeyBuilder, ledgerName string) (*ReversePrefixIterator, error) {
+	prefix := LedgerLogPrefix(kb, ledgerName)
+
+	return NewReversePrefixIterator(reader, prefix, len(prefix), 8)
+}
+
 func NewPebbleTxRangeIterator(reader dal.PebbleReader, ledgerName string, lower, upper []byte) (*PebbleTxRangeIterator, error) {
 	prefix := txAttributeCode(ledgerName)
 
