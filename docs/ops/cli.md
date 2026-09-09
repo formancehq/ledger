@@ -16,7 +16,10 @@ Releases publish platform archives on
 - Linux/macOS: `ledger_linux-amd64.tar.gz`, `ledger_darwin-arm64.tar.gz`, and the corresponding architectures. These archives contain `ledger-server` and `ledgerctl`.
 - Windows: `ledger_windows-amd64.zip` and `ledger_windows-arm64.zip`. These archives contain `ledgerctl.exe` only.
 
-Extract the archive and put `ledgerctl` or `ledgerctl.exe` on your `PATH`. Once installed, `ledgerctl upgrade` keeps the CLI current.
+Extract the archive and put `ledgerctl` or `ledgerctl.exe` on your `PATH`. Prefer
+the CLI distributed with the deployed server build. `ledgerctl upgrade` selects
+the latest release in a channel, which may use a different protocol from that
+server.
 
 ### Build from source
 
@@ -26,6 +29,26 @@ just build-client
 # Or directly with Go
 go build -o build/ledgerctl ./cmd/ledgerctl
 ```
+
+## Server compatibility
+
+`ledgerctl` sends its compiled protocol revision on every gRPC call. The server
+blocks business RPCs when the revision is absent, invalid, or different, returning
+`FailedPrecondition` before executing the operation. This includes streaming and
+restore commands. There is no flag to bypass the check.
+
+Run `ledgerctl version` locally to see the CLI's protocol revision. In normal
+server mode, `GET /_info` and gRPC Discovery expose the server's `protocolVersion`.
+Discovery, gRPC health, and reflection are exempt from the gate. Restore mode has
+no Discovery service; a rejected restore call reports the required protocol
+revision and metadata key directly.
+
+On a mismatch, use the CLI distributed with the server or build a client that
+implements the same protocol. A newer release is not necessarily compatible with
+an older server. Release versions and commit IDs can differ when the protocol
+matches; source builds reporting `dev` still carry a defined protocol revision.
+See the [service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
+for SDKs, custom gRPC clients, and internal forwarding.
 
 ## Global Flags
 
@@ -1833,7 +1856,10 @@ ledgerctl accounts aggregate-volumes --ledger my-ledger --json
 
 ### version
 
-Print version information for `ledgerctl`. Release builds report the real version (injected at link time via goreleaser ldflags into `internal/pkg/version`); a binary built without ldflags reports `dev`.
+Print version information and the local service protocol revision for `ledgerctl`
+without contacting a server. Release builds report the real version (injected at
+link time via goreleaser ldflags into `internal/pkg/version`); a binary built
+without ldflags reports `dev` but still reports its compiled protocol revision.
 
 ```bash
 ledgerctl version
@@ -1841,8 +1867,8 @@ ledgerctl version
 
 The **server** exposes the same build metadata over two unauthenticated channels:
 
-- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…"}`.
-- **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same fields.
+- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"1"}`.
+- **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same information, including `protocol_version`.
 
 This is useful for monitoring deployed nodes and spotting version skew across a cluster (the per-node `version` is also surfaced on each `NodeInfo` in `GetClusterState`).
 
@@ -4825,6 +4851,10 @@ See [Event System Architecture](../technical/architecture/subsystems/events-mirr
 ### upgrade
 
 Self-update `ledgerctl` to the latest version from GitHub releases. Downloads the archive, verifies the SHA256 checksum, and replaces the installed binary.
+
+This command does not select a version matching a target server. If a business
+command reports a protocol mismatch, obtain the CLI distributed with that server
+build; upgrading to the channel's latest release can leave the mismatch in place.
 
 ```bash
 ledgerctl upgrade [flags]

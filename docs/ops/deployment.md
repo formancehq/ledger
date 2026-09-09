@@ -4,6 +4,18 @@
 
 This document describes the different deployment methods for Ledger v3 POC, from local configuration to production deployment on Kubernetes.
 
+### Service protocol compatibility
+
+Deploy the server and `ledgerctl` from the same delivery, and update other gRPC
+service clients to declare the protocol they implement. Servers implementing
+EN-1851 reject business RPCs with a missing or different protocol revision.
+Servers predating EN-1851 do not enforce this gate: the new CLI sends a protocol
+declaration without a preflight, so it cannot protect calls to an older, ungated
+server. Different builds may communicate when they implement the same service
+protocol, but mixed wire-format rolling upgrades are not guaranteed. See the
+[service protocol contract](../technical/architecture/subsystems/api/protocol-compatibility.md)
+for scope and failure behavior.
+
 ## Local Deployment
 
 ### Prerequisites

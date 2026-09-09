@@ -10,6 +10,24 @@ This document compares the POC's API with the original Formance ledger API and d
 
 ## Summary
 
+### Service protocol compatibility (EN-1851)
+
+The v3 gRPC service requires one `ledger-protocol-version` metadata value per
+business RPC, equal to `pkg/grpcprotocol.Version` (currently `"1"`). Missing,
+invalid, duplicate, or different revisions fail with `FailedPrecondition` before
+business handler execution. This applies to unary and streaming Bucket, Cluster,
+and Restore operations, including internal forwarding. Discovery, gRPC health,
+and reflection remain available without this declaration. This is independent
+of release SemVer and commits; there is no legacy negotiation or bypass.
+
+Discovery's `ServerInfo.protocol_version` and the flat JSON response from
+`GET /_info` (`protocolVersion`) expose the server revision. HTTP callers do not
+need gRPC metadata. The gate does not version the HTTP API or Raft/storage
+formats. See [the service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
+for client setup, restore behavior, failure limitations, and revision changes.
+
+### Feature comparison
+
 | Feature | POC | Original | Notes |
 |---------|-----|----------|-------|
 | **Transactions (Write)** |

@@ -5304,6 +5304,7 @@ components:
         - commit
         - buildDate
         - goVersion
+        - protocolVersion
       properties:
         version:
           type: string
@@ -5317,6 +5318,9 @@ components:
         goVersion:
           type: string
           description: Go runtime version the binary was built with
+        protocolVersion:
+          type: string
+          description: Required ledger-protocol-version metadata on Ledger gRPC business RPCs; independent of the release version
 
     SegmentType:
       type: object

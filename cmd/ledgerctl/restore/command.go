@@ -9,6 +9,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
 func NewCommand() *cobra.Command {
@@ -41,6 +42,7 @@ func getRestoreClient(cmd *cobra.Command) (restorepb.RestoreServiceClient, *grpc
 	}
 
 	conn, err := grpc.NewClient(serverAddr,
+		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()), // Emit a client span per RPC and propagate W3C trace context.
 	)
