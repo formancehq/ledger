@@ -432,7 +432,7 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 		ForwardEncodingVersion: 1,
 	}
 
-	// EN-1564: an entity index on a born-empty ledger has no entity history to
+	// EN-1564: an index declared on a born-empty ledger has no local history to
 	// replay. Promote it straight to live at HighWater+1 and skip the backfill;
 	// the live indexing path maintains it from ledger birth. Persist so a reboot
 	// sees current!=0 and loadIndexRegistry skips scheduling a backfill.
@@ -448,10 +448,7 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	// the log folds during a backfill or a rebuild replay.
 	boundType, declared := log.GetBoundType(), log.GetBoundTypeDeclared()
 
-	// Born-empty excludes entity data, but not earlier configuration logs or
-	// this CreateIndex log itself. A log-date index must backfill that history
-	// before it can serve the complete ListLogs universe.
-	if log.GetInitial() && id.GetLogBuiltin() != commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
+	if log.GetInitial() {
 		state := readstore.IndexVersionState{
 			CurrentVersion:      next,
 			PendingVersion:      0,
