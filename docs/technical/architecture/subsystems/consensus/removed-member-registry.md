@@ -180,9 +180,9 @@ Note on directionality: the authoritative `instanceID` is generated once on each
 
 ### Universal Identity Propagation
 
-The bootstrap seed persists its own `cfg.InstanceID` before constructing the initial ConfState. `ClusterBootstrapService.GetPeers` snapshots configured members together with their registered addresses and identities in one orchestrate command, preventing mixed incarnations or false missing-row failures during removal and re-registration. It returns that identity in every `PeerInfo`, and `discoverPeersFromCluster` carries it into `node.Peer`. `registerInitialPeers` therefore persists complete `(addresses, instanceID)` rows for all discovered voters before the joining node writes its initial WAL snapshot.
+The bootstrap seed first constructs the initial ConfState in memory, then persists its own membership row with `cfg.InstanceID`, and finally writes the initial WAL snapshot. If row persistence fails, no initial snapshot is written; if the snapshot write fails, the persisted row remains. `ClusterBootstrapService.GetPeers` snapshots configured members together with their registered addresses and identities in one orchestrate command, preventing mixed incarnations or false missing-row failures during removal and re-registration. It returns that identity in every `PeerInfo`, and `discoverPeersFromCluster` carries it into `node.Peer`. `registerInitialPeers` therefore persists complete `(addresses, instanceID)` rows for all discovered voters before the joining node writes its initial WAL snapshot.
 
-Administrative `ClusterService.AddLearner` likewise requires the target's 16-byte persisted identity. Caller intent is explicit in the application/node APIs: `AddLearner` is an administrative retry, while `JoinAsLearner` means a fresh-WAL boot. Presence or absence of `instanceID` is never used as an intent sentinel.
+Administrative `ClusterService.AddLearner` likewise requires the target's 16-byte persisted identity. Caller intent is explicit in the application/node APIs: `AddLearner` is administrative registration, including idempotent retries, while `JoinAsLearner` means a fresh-WAL boot. Presence or absence of `instanceID` is never used as an intent sentinel.
 
 The invariant is enforced at every boundary:
 
