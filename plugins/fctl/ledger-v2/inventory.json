@@ -1,0 +1,492 @@
+{
+  "commands": [
+    {
+      "aliases": [
+        "dm",
+        "del-meta"
+      ],
+      "api_major": "V2",
+      "destructive": true,
+      "exclusion_reason": null,
+      "http_method": "DELETE",
+      "http_path": "/v2/{ledger}/accounts/{address}/metadata/{key}",
+      "idempotency_key": true,
+      "included": true,
+      "mutation": true,
+      "operation_id": "v2DeleteAccountMetadata",
+      "paginated": false,
+      "path": "ledger accounts delete-metadata",
+      "scopes": [
+        "ledger:write"
+      ],
+      "sdk_method": "V2.DeleteAccountMetadata",
+      "use": "delete-metadata <address> <key>"
+    },
+    {
+      "aliases": [
+        "ls",
+        "l"
+      ],
+      "api_major": "V2",
+      "destructive": false,
+      "exclusion_reason": null,
+      "http_method": "GET",
+      "http_path": "/v2/{ledger}/accounts",
+      "idempotency_key": false,
+      "included": true,
+      "mutation": false,
+      "operation_id": "v2ListAccounts",
+      "paginated": true,
+      "path": "ledger accounts list",
+      "scopes": [
+        "ledger:read"
+      ],
+      "sdk_method": "V2.ListAccounts",
+      "use": "list"
+    },
+    {
+      "aliases": [
+        "sm",
+        "set-meta"
+      ],
+      "api_major": "V1",
+      "destructive": false,
+      "exclusion_reason": "v1_only",
+      "http_method": null,
+      "http_path": null,
+      "idempotency_key": false,
+      "included": false,
+      "mutation": true,
+      "operation_id": null,
+      "paginated": false,
+      "path": "ledger accounts set-metadata",
+      "scopes": [],
+      "sdk_method": "V1.AddMetadataToAccount",
+      "use": "set-metadata <address> [<key>=<value>...]"
+    },
+    {
+      "aliases": [
+        "sh",
+        "s"
+      ],
+      "api_major": "V1",
+      "destructive": false,
+      "exclusion_reason": "v1_only",
+      "http_method": null,
+      "http_path": null,
+      "idempotency_key": false,
+      "included": false,
+      "mutation": false,
+      "operation_id": null,
+      "paginated": false,
+      "path": "ledger accounts show",
+      "scopes": [],
+      "sdk_method": "V1.GetAccountLedger",
+      "use": "show <address>"
+    },
+    {
+      "aliases": [
+        "c",
+        "cr"
+      ],
+      "api_major": "V2",
+      "destructive": false,
+      "exclusion_reason": null,
+      "http_method": "POST",
+      "http_path": "/v2/{ledger}",
+      "idempotency_key": false,
+      "included": true,
+      "mutation": true,
+      "operation_id": "v2CreateLedger",
+      "paginated": false,
+      "path": "ledger create",
+      "scopes": [
+        "ledger:write"
+      ],
+      "sdk_method": "V2.CreateLedger",
+      "use": "create <name>"
+    },
+    {
+      "aliases": [
+        "dm",
+        "del-meta"
+      ],
+      "api_major": "V2",
+      "destructive": true,
+      "exclusion_reason": null,
+      "http_method": "DELETE",
+      "http_path": "/v2/{ledger}/metadata/{key}",
+      "idempotency_key": false,
+      "included": true,
+      "mutation": true,
+      "operation_id": "v2DeleteLedgerMetadata",
+      "paginated": false,
+      "path": "ledger delete-metadata",
+      "scopes": [
+        "ledger:write"
+      ],
+      "sdk_method": "V2.DeleteLedgerMetadata",
+      "use": "delete-metadata <ledger-name> <key>"
+    },
+    {
+      "aliases": [],
+      "api_major": "V2",
+      "destructive": false,
+      "exclusion_reason": null,
+      "http_method": "POST",
+      "http_path": "/v2/{ledger}/logs/export",
+      "idempotency_key": false,
+      "included": true,
+      "mutation": false,
+      "operation_id": "v2ExportLogs",
+      "paginated": false,
+      "path": "ledger export",
+      "scopes": [
+        "ledger:write"
+      ],
+      "sdk_method": "V2.ExportLogs",
+      "use": "export"
+    },
+    {
+      "aliases": [],
+      "api_major": "V2",
+      "destructive": true,
+      "exclusion_reason": null,
+      "http_method": "POST",
+      "http_path": "/v2/{ledger}/logs/import",
+      "idempotency_key": false,
+      "included": true,
+      "mutation": true,
+      "operation_id": "v2ImportLogs",
+      "paginated": false,
+      "path": "ledger import",
+      "scopes": [
+        "ledger:write"
+      ],
+      "sdk_method": "V2.ImportLogs",
+      "use": "import <ledger name> <file path>"
+    },
+    {
+      "aliases": [
+        "l",
+        "ls"
+      ],
+      "api_major": "V2",
+      "destructive": false,
+      "exclusion_reason": null,
+      "http_method": "GET",
+      "http_path": "/v2",
+      "idempotency_key": false,
+      "included": true,
+      "mutation": false,
+      "operation_id": "v2ListLedgers",
+      "paginated": true,
+      "path": "ledger list",
+      "scopes": [
+        "ledger:read"
+      ],
+      "sdk_method": "V2.ListLedgers",
+      "use": "list"
+    },
+    {
+      "aliases": [
+        "g",
+        "show"
+      ],
+      "api_major": "V2",
+      "destructive": false,
+      "exclusion_reason": null,
+      "http_method": "GET",
+      "http_path": "/v2/{ledger}/schemas/{version}",
+      "idempotency_key": false,
+      "included": true,
+      "mutation": false,
+      "operation_id": "v2GetSchema",
+      "paginated": false,
+      "path": "ledger schemas get",
+      "scopes": [
+        "ledger:read"
+      ],
+      "sdk_method": "V2.GetSchema",
+      "use": "get <version>"
+    },
+    {
+      "aliases": [
+        "i",
+        "create"
+      ],
+      "api_major": "V2",
+      "destructive": false,
+      "exclusion_reason": null,
+      "http_method": "POST",
+      "http_path": "/v2/{ledger}/schemas/{version}",
+      "idempotency_key": true,
+      "included": true,
+      "mutation": true,
+      "operation_id": "v2InsertSchema",
+      "paginated": false,
+      "path": "ledger schemas insert",
+      "scopes": [
+        "ledger:write"
+      ],
+      "sdk_method": "V2.InsertSchema",
+      "use": "insert <version> <source>"
+    },
+    {
+      "aliases": [
+        "ls",
+        "l"
+      ],
+      "api_major": "V2",
+      "destructive": false,
+      "exclusion_reason": null,
+      "http_method": "GET",
+      "http_path": "/v2/{ledger}/schemas",
+      "idempotency_key": false,
+      "included": true,
+      "mutation": false,
+      "operation_id": "v2ListSchemas",
+      "paginated": true,
+      "path": "ledger schemas list",
+      "scopes": [
+        "ledger:read"
+      ],
+      "sdk_method": "V2.ListSchemas",
+      "use": "list"
+    },
+    {
+      "aliases": [
+        "s",
+        "se"
+      ],
+      "api_major": "V1",
+      "destructive": false,
+      "exclusion_reason": "v1_only",
+      "http_method": null,
+      "http_path": null,
+      "idempotency_key": false,
+      "included": false,
+      "mutation": true,
+      "operation_id": null,
+      "paginated": false,
+      "path": "ledger send",
+      "scopes": [],
+      "sdk_method": "V1.CreateTransaction",
+      "use": "send [<source>] <destination> <amount> <asset>"
+    },
+    {
+      "aliases": [
+        "si"
+      ],
+      "api_major": "V1",
+      "destructive": false,
+      "exclusion_reason": "v1_only_and_host_owned_info_probe",
+      "http_method": null,
+      "http_path": null,
+      "idempotency_key": false,
+      "included": false,
+      "mutation": false,
+      "operation_id": null,
+      "paginated": false,
+      "path": "ledger server-infos",
+      "scopes": [],
+      "sdk_method": "V1.GetInfo",
+      "use": "server-infos"
+    },
+    {
+      "aliases": [
+        "sm",
+        "set-meta"
+      ],
+      "api_major": "V2",
+      "destructive": false,
+      "exclusion_reason": null,
+      "http_method": "PUT",
+      "http_path": "/v2/{ledger}/metadata",
+      "idempotency_key": false,
+      "included": true,
+      "mutation": true,
+      "operation_id": "v2UpdateLedgerMetadata",
+      "paginated": false,
+      "path": "ledger set-metadata",
+      "scopes": [
+        "ledger:write"
+      ],
+      "sdk_method": "V2.UpdateLedgerMetadata",
+      "use": "set-metadata <ledger-name> [<key>=<value>...]"
+    },
+    {
+      "aliases": [
+        "st"
+      ],
+      "api_major": "V1",
+      "destructive": false,
+      "exclusion_reason": "v1_only",
+      "http_method": null,
+      "http_path": null,
+      "idempotency_key": false,
+      "included": false,
+      "mutation": false,
+      "operation_id": null,
+      "paginated": false,
+      "path": "ledger stats",
+      "scopes": [],
+      "sdk_method": "V1.ReadStats",
+      "use": "stats"
+    },
+    {
+      "aliases": [
+        "dm",
+        "del-meta"
+      ],
+      "api_major": "V2",
+      "destructive": true,
+      "exclusion_reason": null,
+      "http_method": "DELETE",
+      "http_path": "/v2/{ledger}/transactions/{id}/metadata/{key}",
+      "idempotency_key": true,
+      "included": true,
+      "mutation": true,
+      "operation_id": "v2DeleteTransactionMetadata",
+      "paginated": false,
+      "path": "ledger transactions delete-metadata",
+      "scopes": [
+        "ledger:write"
+      ],
+      "sdk_method": "V2.DeleteTransactionMetadata",
+      "use": "delete-metadata <transaction-id> <key>"
+    },
+    {
+      "aliases": [
+        "ls",
+        "l"
+      ],
+      "api_major": "V1",
+      "destructive": false,
+      "exclusion_reason": "v1_only",
+      "http_method": null,
+      "http_path": null,
+      "idempotency_key": false,
+      "included": false,
+      "mutation": false,
+      "operation_id": null,
+      "paginated": true,
+      "path": "ledger transactions list",
+      "scopes": [],
+      "sdk_method": "V1.ListTransactions",
+      "use": "list"
+    },
+    {
+      "aliases": [],
+      "api_major": "V1",
+      "destructive": false,
+      "exclusion_reason": "v1_only",
+      "http_method": null,
+      "http_path": null,
+      "idempotency_key": false,
+      "included": false,
+      "mutation": true,
+      "operation_id": null,
+      "paginated": false,
+      "path": "ledger transactions num",
+      "scopes": [],
+      "sdk_method": "V1.CreateTransaction",
+      "use": "num -|<filename>"
+    },
+    {
+      "aliases": [],
+      "api_major": "V2",
+      "destructive": true,
+      "exclusion_reason": null,
+      "http_method": "POST",
+      "http_path": "/v2/{ledger}/transactions/{id}/revert",
+      "idempotency_key": true,
+      "included": true,
+      "mutation": true,
+      "operation_id": "v2RevertTransaction",
+      "paginated": false,
+      "path": "ledger transactions revert",
+      "scopes": [
+        "ledger:write"
+      ],
+      "sdk_method": "V2.RevertTransaction",
+      "use": "revert <transaction-id>"
+    },
+    {
+      "aliases": [
+        "sm",
+        "set-meta"
+      ],
+      "api_major": "V1",
+      "destructive": false,
+      "exclusion_reason": "v1_only",
+      "http_method": null,
+      "http_path": null,
+      "idempotency_key": false,
+      "included": false,
+      "mutation": true,
+      "operation_id": null,
+      "paginated": false,
+      "path": "ledger transactions set-metadata",
+      "scopes": [],
+      "sdk_method": "V1.AddMetadataOnTransaction",
+      "use": "set-metadata <transaction-id> [<key>=<value>...]"
+    },
+    {
+      "aliases": [
+        "sh"
+      ],
+      "api_major": "V1",
+      "destructive": false,
+      "exclusion_reason": "v1_only",
+      "http_method": null,
+      "http_path": null,
+      "idempotency_key": false,
+      "included": false,
+      "mutation": false,
+      "operation_id": null,
+      "paginated": false,
+      "path": "ledger transactions show",
+      "scopes": [],
+      "sdk_method": "V1.GetTransaction",
+      "use": "show <transaction-id>"
+    },
+    {
+      "aliases": [
+        "ls",
+        "l"
+      ],
+      "api_major": "V2",
+      "destructive": false,
+      "exclusion_reason": null,
+      "http_method": "GET",
+      "http_path": "/v2/{ledger}/volumes",
+      "idempotency_key": false,
+      "included": true,
+      "mutation": false,
+      "operation_id": "v2GetVolumesWithBalances",
+      "paginated": true,
+      "path": "ledger volumes list",
+      "scopes": [
+        "ledger:read"
+      ],
+      "sdk_method": "V2.GetVolumesWithBalances",
+      "use": "list"
+    }
+  ],
+  "plugin": "ledger-v2",
+  "product_major": 2,
+  "schema_version": 1,
+  "signing_capability": null,
+  "source": {
+    "baseline_commit": "693c58e27865f83332e6c3199d61fed81b742f41",
+    "baseline_path": "cmd/ledger",
+    "baseline_repo": "fctl",
+    "client_commit": "8cc679c9440aaf90d4b8646a013e5bd7421443d6",
+    "client_module": "github.com/formancehq/ledger/pkg/client",
+    "client_ref": "origin/main",
+    "client_repo": "ledger",
+    "inventory_basis": "old-fctl executable command tree",
+    "spec_path": "openapi/v2.yaml"
+  }
+}

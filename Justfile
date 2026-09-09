@@ -6,6 +6,19 @@ default:
 pre-commit: generate generate-client tidy lint export-docs-events openapi
 pc: pre-commit
 
+# Verify the fctl Ledger plugin preparation: inventory/manifest invariants for
+# the separate ledger-v2 and ledger-v3 plugins, plus canonical-form determinism.
+# Report on stdout, diagnostics on stderr.
+fctl-plugin-audit:
+    go run ./plugins/fctl/internal/audit/cmd/fctl-plugin-audit -root plugins/fctl
+
+# Rewrite the preparation documents in canonical form.
+fctl-plugin-audit-write:
+    go run ./plugins/fctl/internal/audit/cmd/fctl-plugin-audit -root plugins/fctl -write
+
+fctl-plugin-test:
+    go test -race -covermode=atomic ./plugins/...
+
 lint:
     golangci-lint --version
     golangci-lint run --fix --build-tags it,local --timeout 5m

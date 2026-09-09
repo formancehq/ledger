@@ -1,0 +1,46 @@
+{
+  "baseline": {
+    "commit": "693c58e27865f83332e6c3199d61fed81b742f41",
+    "excluded_v1_only": 9,
+    "executable_commands": 23,
+    "repo": "fctl"
+  },
+  "capabilities_declared": [],
+  "capabilities_required": [
+    "auth.stack"
+  ],
+  "client": {
+    "generated_auth": "disabled",
+    "generated_retries": "disabled",
+    "injection_point": "WithClient(HTTPClient)",
+    "kind": "generated-speakeasy-go",
+    "module": "github.com/formancehq/ledger/pkg/client",
+    "repo_commit": "8cc679c9440aaf90d4b8646a013e5bd7421443d6",
+    "repo_ref": "origin/main"
+  },
+  "coverage_denominator": 14,
+  "facets": [
+    "command_provider"
+  ],
+  "invariants": [
+    "declares product major 2 and no other major",
+    "declares no signing capability",
+    "cannot name or invoke sign.ledger.apply-batch",
+    "publishes no command whose only implementation is Ledger.V1",
+    "shares no catalogue entry or manifest field with ledger-v3",
+    "does not resolve endpoint, auth, or target"
+  ],
+  "kind": "logical-plugin-manifest",
+  "module": "ledger",
+  "name": "ledger-v2",
+  "plugin_module_path": "github.com/formancehq/ledger/plugins/fctl/ledger-v2",
+  "product_majors": [
+    2
+  ],
+  "runtime_artifact": null,
+  "runtime_artifact_note": "No component is declared. Runtime gates 4B/4C/4D are not released.",
+  "schema_version": 1,
+  "signing_capability": null,
+  "status": "preparation",
+  "transport": "http"
+}
