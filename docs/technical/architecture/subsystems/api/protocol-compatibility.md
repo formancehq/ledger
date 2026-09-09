@@ -90,12 +90,23 @@ their own contracts.
 
 The author of a service contract change must determine whether an existing
 client or server would interpret requests, responses, or operations differently.
-Bump `pkg/grpcprotocol.Version` in the same change for an incompatible wire or
-semantic change, and rebuild every service client and server that will
-communicate. This includes renumbering or changing the interpretation of exposed
+Increment the decimal counter `pkg/grpcprotocol.Version` by one in the same PR
+for an incompatible wire or semantic change (for example, `"1"` to `"2"`), and
+rebuild every service client and server that will communicate. This includes
+renumbering or changing the interpretation of exposed
 protobuf fields, and incompatible semantics even when the `.proto` text stays
 unchanged. Reviewers must check this classification; the revision is not inferred
 from a release tag or automatically negotiated from a schema hash.
+
+This obligation applies to AI agents throughout pre-release development, even
+though older Ledger versions and storage formats are not supported. Before
+publication, and again after a rebase or target-branch update, compare the
+revision with the target branch. If another PR has already consumed the planned
+number, increment from the target branch's current value so a newly incompatible
+contract does not reuse that number. Keep examples of the current revision in
+sync. State the compatibility assessment and the old/new revision in the PR;
+when no increment is needed, explain why. Documentation-only changes do not
+increment the counter.
 
 Compatible additions need not bump the revision only when both directions remain
 compatible under the declared service contract. A change confined to a persisted

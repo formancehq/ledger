@@ -10,6 +10,19 @@ This file is the always-loaded entry point for AI agents working on Ledger v3. K
 - When removing protobuf fields, delete them and realign field numbers sequentially. The EN-1551 cleanup removed every existing `reserved` declaration from `misc/proto/`; do not reintroduce any.
 - Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
 
+### Service protocol revision — required during pre-release
+
+Every agent changing the service gRPC contract must assess compatibility and
+**increment `pkg/grpcprotocol.Version` by one in the same PR for an incompatible
+change**. This includes exposed protobuf field renumbering and changed request,
+response, or operation semantics even when no `.proto` file changes. Read the
+[protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
+before making such a change. Check the target branch again before publication
+or after a rebase: incompatible contracts must not reuse its revision. State the
+compatibility assessment and revision change (or why no increment is needed) in
+the PR. The counter lets testers detect an incompatible client immediately; it
+does not require supporting older Ledger versions or storage formats.
+
 ## Configuration safety checks
 
 Critical persisted configuration such as node/cluster identity and storage schema is validated on boot. Do not weaken or bypass those checks without an explicit task requiring it. Read `docs/ops/deployment.md` and the relevant `internal/bootstrap/**` code before changing persisted/config-validation behavior.
