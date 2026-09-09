@@ -91,6 +91,18 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 
+	// A reason this build knows arriving under a code it would never send that
+	// reason under: the sender is not a ledger of this contract. Answer the
+	// generic sanitizer so none of the reason, message or metadata it claimed
+	// is echoed. InvalidWireError implements neither Describable nor
+	// GRPCStatus, so it would reach writeInternalServerError below anyway;
+	// this branch states the contract instead of relying on that method set.
+	if _, ok := apierr.InvalidWire(err); ok {
+		writeInternalServerError(w, r, err)
+
+		return
+	}
+
 	// The boundary contract: every typed *Err* and sentinel in internal/domain
 	// (and transitively in admission/numscript) flows through this branch, as
 	// does a failure decoded from the leader. apierr.Describe normalises the

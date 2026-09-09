@@ -132,23 +132,31 @@ func TestFormatGRPCError_BusinessError_UnknownReasonStillFormatted(t *testing.T)
 // TestFormatGRPCError_InvalidWirePairIsNotABusinessError covers the mismatch
 // policy on the CLI surface. LEDGER_DELETED is KindConflict, which this build
 // only sends as codes.FailedPrecondition; arriving as codes.Unavailable is a
-// protocol fault, so the payload is not trusted as a business outcome and the
-// error is reported through the status-code path instead.
+// protocol fault, so the payload is not trusted as a business outcome.
 //
 // codes.Unavailable is chosen deliberately: friendlyMessage gives it a
-// distinguishing "server unavailable: " prefix, so the two paths are
-// observably different. A code whose friendlyMessage is a bare st.Message()
-// would render identically and the assertion would prove nothing.
+// distinguishing "server unavailable: " prefix, so a fall-through to the
+// status-code path is observable. That fall-through is the defect this pins —
+// it formatted the peer's own status message, echoing untrusted free-form text
+// as though this build had produced it. The invalid-pair rendering names the
+// reason and the codes, which are this build's enum values, and nothing else.
 func TestFormatGRPCError_InvalidWirePairIsNotABusinessError(t *testing.T) {
 	t.Parallel()
 
-	grpcErr := buildGRPCError(t, codes.Unavailable, "ledger deleted: foo",
-		domain.ErrReasonLedgerDeleted, map[string]string{"name": "foo"})
+	grpcErr := buildGRPCError(t, codes.Unavailable, "ledger deleted: secret-ledger",
+		domain.ErrReasonLedgerDeleted, map[string]string{"name": "secret-ledger"})
 
 	err := FormatGRPCError("delete ledger", grpcErr)
 
 	var cliErr *CLIError
 	require.ErrorAs(t, err, &cliErr)
-	require.Equal(t, "delete ledger: server unavailable: ledger deleted: foo", err.Error(),
-		"a contradicting reason/code pair must not be presented as a business outcome")
+
+	require.NotContains(t, err.Error(), "secret-ledger",
+		"neither the peer's message nor its metadata may be echoed to the operator")
+	require.NotContains(t, err.Error(), "server unavailable",
+		"an invalid pair must not fall through to the status-code path, which formats the peer's message")
+	require.Contains(t, err.Error(), "delete ledger: invalid wire error",
+		"the operator is told the response was not a valid business outcome")
+	require.Contains(t, err.Error(), domain.ErrReasonLedgerDeleted,
+		"the reason and codes are this build's own enum values and stay for diagnosis")
 }

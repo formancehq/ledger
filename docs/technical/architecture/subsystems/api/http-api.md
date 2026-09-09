@@ -159,9 +159,9 @@ three groups.
 Note the qualifier on the second group. `codes.Unavailable` and
 `codes.Internal` are exactly the codes a `KindUnavailable` or `KindInternal`
 `Describable` is *sent* under, so those arrive **with** an `ErrorInfo` and are
-reconstructed like any other: `INDEX_BUILDING`, `READ_INDEX_NOT_CAUGHT_UP`,
-`BALANCE_NOT_PRELOADED` and `COVERAGE_MISS` all keep their reason across the
-hop. Only the bare form passes through.
+reconstructed like any other: `INDEX_BUILDING`, `BALANCE_NOT_PRELOADED` and
+`COVERAGE_MISS` all keep their reason across the hop. Only the bare form passes
+through.
 
 The HTTP layer needs no status-code branch of its own: both mappers read the
 failure through `apierr.Describe`, which answers identically for a locally
@@ -216,13 +216,16 @@ A failure crossing a gRPC hop carries two independent axes.
 | Semantic `ErrorKind` | the client: an HTTP status, a CLI message | `apierr.Descriptor.Kind` |
 | gRPC status code | transport behaviour: retry and hop semantics | the original `*status.Status`, kept by the decoder's carrier through `GRPCStatus()` |
 
-They may intentionally disagree. `READ_INDEX_NOT_CAUGHT_UP` is semantically
-`KindUnavailable` — a fold behind the requested index, retry shortly, `503` +
-`Retry-After` on REST — but travels as `codes.FailedPrecondition` on purpose,
-because `actions.GRPCRetryPolicy` retries `codes.Unavailable` fifty times at
-0.2s and answering the semantic code would turn a read-index lag into a
-ten-second client-side hang. Preserving the received status verbatim is what
-keeps both true at once, on this hop and the next.
+The mapping between them is lossy in both directions, which is why the decoder
+preserves the received status verbatim instead of rebuilding it from the kind.
+`grpcerr.CodeForKind` sends both `KindConflict` and `KindPrecondition` as
+`codes.FailedPrecondition`, so a code cannot name a kind; and a reason from a
+newer build carries a kind this enum cannot derive at all. The axes may also
+disagree deliberately: the removed `READ_INDEX_NOT_CAUGHT_UP` was semantically
+`KindUnavailable` but travelled as `codes.FailedPrecondition`, because
+`actions.GRPCRetryPolicy` retries `codes.Unavailable` fifty times at 0.2s and
+the semantic code would have turned a read-index lag into a ten-second
+client-side hang. No reason needs that treatment today.
 
 **Kind derivation is reason-first.** `grpcerr` derives the `ErrorKind` from the
 reason when this build's `ErrorReason` enum knows it, and falls back to the
@@ -241,21 +244,38 @@ rather than collapsing to `500`.
 ### Reason/Wire-Code Mismatch Policy
 
 A reason this build knows is a reason whose legitimate wire codes it knows too.
-The allowed set is `grpcerr.CodeForKind(KindForReason(reason))` plus any
-declared per-reason exception — today only `READ_INDEX_NOT_CAUGHT_UP` +
-`codes.FailedPrecondition`. The policy is reason-specific rather than
-kind-specific for exactly that reason: deriving it from `CodeForKind` alone
-would reject the pair the server actually sends.
+The allowed set is `grpcerr.CodeForKind(KindForReason(reason))` — today exactly
+one code, because every enum reason reaches the wire through
+`describableToGRPCStatus`, which derives the status from `CodeForKind` and
+nothing else. The check stays reason-keyed rather than kind-keyed so a reason
+that must travel under a second code can be widened on its own, as the removed
+`READ_INDEX_NOT_CAUGHT_UP` did, without relaxing the kind mapping the encoder
+shares. The three reasons the server hand-builds an `ErrorInfo` for
+(`EXTERNAL_SERVICE_ERROR`, `RAFT_NODE_NOT_IN_CLUSTER`,
+`RAFT_NODE_REMOVAL_COMMITTED`) are not enum members, so they take the
+unknown-reason path and are never validated here.
 
 A reason arriving under a code outside its allowed set is a **protocol fault**,
 not a business outcome — the peer is not speaking this contract. The decoder
-returns an `*apierr.InvalidWireError`, which implements neither the boundary
-contract nor `GRPCStatus()`, so it reaches the internal-error sanitizer on
-every surface: `500 INTERNAL_ERROR` with a correlation ID and a server-side
-log on REST, `codes.Unknown` with a correlation ID on gRPC. The received
-reason, message and metadata are dropped rather than answered — without that,
-a contradicting `codes.InvalidArgument` pair would be echoed to the caller as a
-trusted `400`.
+returns an `*apierr.InvalidWireError`. It implements neither the boundary
+contract nor `GRPCStatus()`, so a surface that forgets the case still degrades
+to its internal-error path rather than answering the pair as a business
+outcome — but each consumer branches on `apierr.InvalidWire` explicitly so the
+guarantee does not rest on that method set:
+
+| Surface | Client-visible answer |
+|---|---|
+| REST, unitary (`handleError`) | `500 INTERNAL_ERROR` + correlation ID, logged server-side |
+| REST, bulk element (`writeBulkResponse`) | element `errorCode: INTERNAL_ERROR` + correlation ID, logged server-side |
+| gRPC | `codes.Unknown` + correlation ID |
+| `ledgerctl` (`FormatGRPCError`) | the invalid-pair message: the reason and codes, which are this build's own enum values |
+
+The received message and metadata are dropped on every surface rather than
+answered — without that, a contradicting `codes.InvalidArgument` pair would be
+echoed to the caller as a trusted `400`, and the peer's free-form message would
+be presented as though this build had produced it. The bulk element carries the
+same generic correlated description as the unitary path, so the claimed reason
+never reaches `errorCode` or `errorDescription`.
 
 An **unknown** reason cannot be validated — this build has no policy for it —
 so its reason, message, metadata and exact status are preserved verbatim.

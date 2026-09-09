@@ -40,10 +40,25 @@ func Displayed(err error) error {
 // a protocol fault whose payload is not trusted, so it falls through to the
 // status-code path below rather than being presented as a business outcome.
 func FormatGRPCError(context string, err error) error {
-	if remote, ok := errors.AsType[*apierr.Remote](grpcerr.Decode(err)); ok {
+	decoded := grpcerr.Decode(err)
+
+	if remote, ok := errors.AsType[*apierr.Remote](decoded); ok {
 		msg := fmt.Sprintf("%s: %s", context, remote.Error())
 		pterm.Error.Println(msg)
 		printErrorDetails(remote)
+
+		return Displayed(fmt.Errorf("%s", msg))
+	}
+
+	// A contradicting reason/code pair is a protocol fault, not a business
+	// outcome. Falling through would format the peer's status — friendlyMessage
+	// or err.Error() — and present its free-form message as though this build
+	// had produced it. Render the invalid-pair error itself instead: it names
+	// the reason and the codes, which are this build's own enum values, and
+	// carries none of the peer's message or metadata.
+	if invalid, ok := apierr.InvalidWire(decoded); ok {
+		msg := fmt.Sprintf("%s: %s", context, invalid.Error())
+		pterm.Error.Println(msg)
 
 		return Displayed(fmt.Errorf("%s", msg))
 	}

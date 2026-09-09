@@ -263,6 +263,25 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 				}
 			}
 
+			// A contradicting reason/code pair is a protocol fault, not a
+			// per-element business outcome. bulkErrorCode already withholds
+			// the claimed reason, but result.err.Error() would still put the
+			// received reason and code in the client-visible description, so
+			// this element carries the same generic correlated internal error
+			// the unitary path answers through writeInternalServerError.
+			if _, ok := apierr.InvalidWire(result.err); ok {
+				id := correlationID(r)
+				recordHTTPInternalError(r, id, result.err)
+
+				apiResults[i] = bulkAPIResult{
+					ResponseType:     "ERROR",
+					ErrorCode:        "INTERNAL_ERROR",
+					ErrorDescription: fmt.Sprintf("internal server error (correlation ID: %s)", id),
+				}
+
+				continue
+			}
+
 			apiResults[i] = bulkAPIResult{
 				ResponseType:     "ERROR",
 				ErrorCode:        bulkErrorCode(result.err),

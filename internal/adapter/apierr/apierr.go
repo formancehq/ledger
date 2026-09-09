@@ -13,12 +13,12 @@
 //
 // Two axes, deliberately separate. The semantic ErrorKind answers the client
 // (an HTTP status, a CLI message); the gRPC status code is a transport-
-// behaviour signal driving retry and hop behaviour. They may intentionally
-// disagree: READ_INDEX_NOT_CAUGHT_UP is semantically KindUnavailable but
-// travels as codes.FailedPrecondition so callers fail fast instead of entering
-// actions.GRPCRetryPolicy's Unavailable retry loop. Nothing in this package
-// touches the transport axis — preserving the exact upstream status is the
-// decoder's job (internal/adapter/grpcerr).
+// behaviour signal driving retry and hop behaviour. The mapping between them
+// is lossy in both directions — KindConflict and KindPrecondition share
+// codes.FailedPrecondition, so a code cannot name a kind — and a reason from a
+// newer build carries a kind this enum cannot derive at all. Nothing in this
+// package touches the transport axis: preserving the exact upstream status is
+// the decoder's job (internal/adapter/grpcerr).
 //
 // This package is transport-neutral on purpose: it imports internal/domain and
 // nothing else. HTTP reads a decoded remote failure through Descriptor without
@@ -121,6 +121,24 @@ func (e *InvalidWireError) Error() string {
 		"invalid wire error: reason %s arrived as %s, expected %v",
 		e.ReasonValue, e.Code, e.Expected,
 	)
+}
+
+// InvalidWire reports whether err's chain holds an *InvalidWireError.
+//
+// Every client-facing surface must branch on this before rendering anything
+// derived from err, and answer its own internal-error representation instead.
+// An invalid pair means the sender is not a ledger of this contract, so
+// nothing it sent is trustworthy — least of all its free-form message and
+// metadata, which must never reach a client as though this build had produced
+// them. Error() above is the safe rendering: it names the reason and codes,
+// which are this build's own enum values, and carries no peer text.
+//
+// The type deliberately implements neither Describable nor GRPCStatus, so a
+// surface that omits this check still degrades to its internal-error path
+// rather than answering the pair as a business outcome. This function makes
+// that guarantee explicit rather than incidental to the method set.
+func InvalidWire(err error) (*InvalidWireError, bool) {
+	return errors.AsType[*InvalidWireError](err)
 }
 
 // Describe returns the normalized view of err, reading either a decoded remote

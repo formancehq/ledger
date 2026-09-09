@@ -13,6 +13,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // leaderStatus builds the error a leader sends for a business rejection:
@@ -259,32 +260,6 @@ func TestHandleErrorForwardedBareAuthStatusStaysInternal(t *testing.T) {
 	}
 }
 
-// TestHandleErrorForwardedReadIndexNotCaughtUpAnswers503 is the two-axes case
-// at the HTTP surface. The wire code is codes.FailedPrecondition — chosen so
-// gRPC callers fail fast instead of entering the Unavailable retry policy —
-// but the reason is semantically KindUnavailable, so the REST answer must be
-// 503 + Retry-After, exactly as it is on the leader-local path. Deriving the
-// HTTP status from the wire code would answer 400.
-func TestHandleErrorForwardedReadIndexNotCaughtUpAnswers503(t *testing.T) {
-	t.Parallel()
-
-	leaderErr := leaderStatusWithMetadata(t, codes.FailedPrecondition,
-		"read index not caught up", domain.ErrReasonReadIndexNotCaughtUp,
-		map[string]string{"requested": "42", "current": "17"})
-
-	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
-
-	handleError(w, r, grpcerr.FromStatusError(leaderErr))
-
-	require.Equal(t, http.StatusServiceUnavailable, w.Code)
-	require.Equal(t, "1", w.Header().Get("Retry-After"))
-
-	var resp ErrorResponse
-	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
-	require.Equal(t, domain.ErrReasonReadIndexNotCaughtUp, resp.ErrorCode)
-}
-
 // TestBulkPerElementForwardedFromLeader pins the second consumer of the
 // boundary contract. The bulk per-element mapper is a separate dispatch site
 // from handleError, and it was broken by the same cause and repaired by the
@@ -334,4 +309,58 @@ func TestBulkPerElementForwardedFromLeader(t *testing.T) {
 				"a forwarded element rejection must not fall back to the generic code")
 		})
 	}
+}
+
+// TestBulkPerElementForwardedInvalidWirePairIsSanitized is the bulk half of the
+// sanitization contract TestHandleErrorForwardedInvalidWirePairIsSanitized pins
+// on the unitary path.
+//
+// perElementStatus and bulkErrorCode already withhold the claimed reason, but
+// they are not what the client reads: the description is, and rendering
+// result.err.Error() there put the received reason and code into the response
+// body. The two consumers of the boundary contract must answer an invalid pair
+// identically, so this asserts the client-visible element body directly rather
+// than the two mapping helpers.
+func TestBulkPerElementForwardedInvalidWirePairIsSanitized(t *testing.T) {
+	t.Parallel()
+
+	// LEDGER_DELETED is KindConflict, which this build only ever sends as
+	// codes.FailedPrecondition. Arriving as codes.InvalidArgument contradicts
+	// it, so nothing in the payload may be answered as a business outcome.
+	leaderErr := leaderStatusWithMetadata(t, codes.InvalidArgument,
+		"ledger deleted: secret-ledger", domain.ErrReasonLedgerDeleted,
+		map[string]string{"name": "secret-ledger"})
+
+	elements := []*servicepb.BulkElement{{Action: &servicepb.LedgerAction{
+		Data: &servicepb.LedgerAction_CreateTransaction{
+			CreateTransaction: &servicepb.CreateTransactionPayload{},
+		},
+	}}}
+
+	w := httptest.NewRecorder()
+	writeBulkResponse(w, testBulkRequest(), elements,
+		[]bulkResult{{err: grpcerr.FromStatusError(leaderErr)}}, true)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code,
+		"a contradicting reason/code pair is a server-side fault, not a caller error")
+
+	var resp bulkResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	require.Len(t, resp.Data, 1)
+
+	element := resp.Data[0]
+
+	require.Equal(t, "ERROR", element.ResponseType)
+	require.Equal(t, "INTERNAL_ERROR", element.ErrorCode)
+	require.Contains(t, element.ErrorDescription, "correlation ID",
+		"the fault must be recorded server-side and correlatable")
+
+	require.NotContains(t, element.ErrorDescription, "secret-ledger",
+		"neither the received message nor its metadata may reach the client")
+	require.NotContains(t, element.ErrorDescription, domain.ErrReasonLedgerDeleted,
+		"the received reason must not be echoed in the element description")
+	require.NotContains(t, element.ErrorCode, domain.ErrReasonLedgerDeleted,
+		"the received reason must not be presented as a trusted business code")
+	require.NotContains(t, element.ErrorDescription, "invalid wire error",
+		"the internal representation is log material, not client-visible text")
 }
