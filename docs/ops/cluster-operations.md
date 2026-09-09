@@ -164,8 +164,17 @@ When a ConfChange is committed (adding a learner or promoting a voter), an obser
 The `AddLearner` gRPC handler on the leader:
 
 1. Requires the target node's persisted 16-byte `INSTANCE_ID` in the request
-2. Pre-registers the new peer in its local transport and service pool (so Raft messages can reach the new node immediately)
-3. Proposes a `ConfChangeV2` with `ConfChangeAddLearnerNode`; its context replicates addresses and identity atomically into every peer row
+2. Checks membership admission on the leader without changing its transport or service routing
+3. Proposes a `ConfChangeV2` with `ConfChangeAddLearnerNode` (or `ConfChangeUpdateNode` for an admitted refresh); its context carries both addresses and the identity
+4. Observes the committed change, updates in-memory membership and attempts to wire its transport/service endpoints before resolving the successful request
+
+Connection/probe failures retain their existing logged, nonfatal behavior: a
+successful request confirms committed membership, not peer reachability.
+A rejected admission leaves the existing addresses and connections intact. The
+current voters commit a learner addition without needing an acknowledgement
+from that learner, so pre-registering its transport is unnecessary. Cancellation
+after proposal submission does not undo a change that later commits; routing
+then follows that committed change, independently of the RPC result.
 
 If the request reaches a follower, it is transparently forwarded to the leader.
 Administrative `AddLearner` and bootstrap `JoinAsLearner` are separate code
