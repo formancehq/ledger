@@ -37,6 +37,7 @@ func addOtlpLogsFlags(flags *flag.FlagSet) {
 // Keep go-libs' resource attribute precedence, including explicit overrides of
 // service.name and service.version through --otel-resource-attributes.
 func resourceFromFlags(cmd *cobra.Command, nodeID uint64, info version.Info) (*resource.Resource, error) {
+	// addOtlpLogsFlags registers this flag with its string type before use.
 	serviceName, _ := cmd.Flags().GetString(otlp.OtelServiceNameFlag)
 	if serviceName == "" {
 		serviceName = fmt.Sprintf("ledger-node-%d", nodeID)
@@ -44,6 +45,7 @@ func resourceFromFlags(cmd *cobra.Command, nodeID uint64, info version.Info) (*r
 			return nil, fmt.Errorf("setting default service name: %w", err)
 		}
 	}
+	// addOtlpLogsFlags registers this flag with its string-slice type before use.
 	attributes, _ := cmd.Flags().GetStringSlice(otlp.OtelResourceAttributesFlag)
 
 	return otlp.BuildResource(serviceName, attributes, fmt.Sprintf("%s-%s", info.Version, info.Commit))

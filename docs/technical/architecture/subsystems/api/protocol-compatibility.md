@@ -51,9 +51,9 @@ health and reflection remain exempt.
 
 Revision 5 (EN-1623) removes internal index/coverage details from public
 error messages and ErrorInfo metadata while retaining their reasons and status
-codes. Internal read failures in restore validation retain `Internal` with a sanitized
-correlation message. AuditFailure records
-retain their original diagnostic message and context.
+codes. Internal read failures in restore validation retain `Internal` with a
+sanitized correlation message. AuditFailure records retain their original
+diagnostic message and context.
 
 ## Client and deployment scope
 
