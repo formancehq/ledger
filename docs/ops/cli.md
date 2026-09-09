@@ -106,18 +106,19 @@ repeated on every invocation.
 Most live business reads default to **linearizable** consistency: reads routed
 through `RoutedController.readCtrl` perform a ReadIndex barrier before reading
 from the local store. This establishes a quorum-confirmed applied-state horizon
-for FSM-backed data and secondary indexes aligned to that horizon. It does not
-make independently asynchronous projections linearizable; endpoint sections
-document those exceptions. The barrier can block during maintenance windows
+for FSM-backed data and the certified read or audit projections used by the
+request. The usage counters reported by ledger stats remain eventual and are
+not part of that horizon. The barrier can block during maintenance windows
 (e.g. mirror sync or snapshot creation) when the FSM is frozen.
 
 One alternative consistency level is available:
 
 - **`stale`** — Skip the Raft ReadIndex barrier and read from local state, which
-  may lag behind the latest committed index. A read can still wait for an
-  explicitly requested `--min-log-sequence` or for mandatory secondary-index
-  alignment. Useful for monitoring, dashboards, and non-critical queries where
-  quorum-confirmed freshness is unnecessary.
+  may lag behind the latest committed index. A read backed by a certified read
+  or audit projection still aligns that projection to the fixed horizon of the
+  local main-store snapshot; usage counters remain eventual. Useful for
+  monitoring, dashboards, and non-critical queries where quorum-confirmed
+  freshness is unnecessary.
 
 Filtered `audit list` has an endpoint-specific asynchronous-index caveat; see
 its consistency note below.
@@ -178,7 +179,6 @@ scripting against the CLI predictable across resources.
 | Filter | `--filter` | string | Boolean filter expression — textual `filterexpr` grammar OR the structured JSON `QueryFilter` DSL (dual-format, EN-1511). |
 | Filter | `--prefix` | string | Account-address prefix shortcut. Only on `accounts list` (server-side `HardcodedPrefix` optimization). |
 | Consistency | `--checkpoint-id` | uint64 | Read from a named query checkpoint instead of the live store. |
-| Consistency | `--min-log-sequence` | uint64 | Require the server to have applied at least this log sequence before reading. `FailedPrecondition` if not. |
 | Output | `--json` | bool | Emit JSON to stdout. Mutually exclusive with `--yaml`. |
 | Output | `--yaml` | bool | Emit YAML to stdout. Mutually exclusive with `--json`. |
 | Output | `--result-file` | string | Also write the JSON payload to this file (for kubelet `/dev/termination-log` or CI scripts). |
@@ -1821,7 +1821,6 @@ ledgerctl accounts aggregate-volumes [flags]
 | `--ledger` | | Name of the ledger |
 | `--prefix` | | Filter accounts by address prefix |
 | `--filter` | | Filter expression (same DSL as account list) |
-| `--min-log-sequence` | `0` | Minimum log sequence before reading |
 | `--checkpoint-id` | `0` | Query checkpoint ID (0 = live data) |
 | `--analyze` | `false` | Display the query profile: server-side phase timing (prepare/execute/barrier/deliver) plus iterator stats |
 | `--json` | `false` | Output as JSON |
@@ -1858,7 +1857,7 @@ ledgerctl version
 
 The **server** exposes the same build metadata over two unauthenticated channels:
 
-- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"3"}`.
+- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"4"}`.
 - **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same information, including `protocol_version`.
 
 This is useful for monitoring deployed nodes and spotting version skew across a cluster (the per-node `version` is also surfaced on each `NodeInfo` in `GetClusterState`).
@@ -2339,7 +2338,7 @@ Audit has **no dedicated filter flags** — there is no `--failures-only` and no
 `--filter` (e.g. `--filter 'outcome == failure'`,
 `--filter 'ledger == main'`), exactly like every other list command.
 
-Also honors the full [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--reverse`, `--filter`, `--checkpoint-id`, `--min-log-sequence`, `--json`, `--yaml`, `--timeout`).
+Also honors the full [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--reverse`, `--filter`, `--checkpoint-id`, `--json`, `--yaml`, `--timeout`).
 
 **Audit filter grammar (`--filter`):** the audit trail is queried through its
 secondary index, so `--filter` accepts bare `<field> <op> <value>` conditions
@@ -2368,20 +2367,18 @@ non-audit condition (`metadata[...]`, `address`, `source`, …). This keeps audi
 reads first-class with every other list endpoint while never degrading to a
 full-chain scan.
 
-> **Consistency note.** For a live filter containing any field other than
-> `seq` (for example `ledger` or `outcome`), the server fixes the main-store
-> Raft horizon for the request and waits for the local audit projection to
-> certify that horizon before taking the snapshot it queries. A non-zero
-> `--min-log-sequence` additionally waits for the native log index before that
-> automatically aligned read. An unfiltered live read, or a conjunction made
-> only of `seq` bounds, scans the authoritative audit zone directly and does
-> not wait for the audit projection.
+> **Consistency note.** A filter containing an indexed audit condition (for
+> example `ledger` or `outcome`) waits for the local audit projection to certify
+> the fixed main-store snapshot horizon before compiling the filter. Matching
+> `AuditEntry` values are loaded from that same main snapshot. An unfiltered
+> read, or a filter made only of `seq` bounds, scans the audit zone directly and
+> does not wait for the audit projection.
 >
-> **Checkpoint reads.** Checkpoint creation waits for both read and audit
-> projections to certify the checkpoint horizon before publishing readiness.
-> Indexed audit reads therefore use the complete frozen audit projection;
-> unfiltered and `seq`-only reads continue to scan the frozen audit zone
-> directly.
+> **Checkpoint reads.** Checkpoint creation waits for every promised projection,
+> including the audit index, to cover the checkpoint's durable applied index
+> before freezing the read store. A required disabled or rebuilding projection,
+> cancellation, or deadline fails explicitly instead of freezing an incomplete
+> checkpoint.
 
 **Behavior:**
 - Streams audit entries from the server, oldest first by default / chronological (`--reverse` for newest first)
@@ -2497,7 +2494,7 @@ ledgerctl logs list [flags]
 | `--ledger` | (required) | Ledger name to list logs for |
 | `--expand` | `false` | Expand details within each log entry |
 
-Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--filter`, `--checkpoint-id`, `--min-log-sequence`, `--json`, `--yaml`, `--timeout`).
+Also honors the [Shared Flag Contract](#shared-flag-contract) (`--page-size`, `--cursor`, `--filter`, `--checkpoint-id`, `--json`, `--yaml`, `--timeout`).
 
 **Behavior:**
 - Streams system log entries for a specific ledger from the server
@@ -3574,7 +3571,6 @@ ledgerctl queries execute <name> --ledger <ledger-name> [flags]
 | `--param` | | Query parameter as `key=value` (repeatable) |
 | `--page-size` | `10` | Number of results per page |
 | `--mode` | `list` | Query mode: `list` or `aggregate` |
-| `--min-log-sequence` | `0` | Minimum log sequence before reading |
 | `--analyze` | `false` | Display the query profile: server-side phase timing (prepare/execute/barrier/deliver) plus iterator stats |
 | `--timeout` | `10s` | Request timeout |
 

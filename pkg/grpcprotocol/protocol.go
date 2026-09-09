@@ -12,7 +12,7 @@ const (
 	// Version must change when the client-facing wire format or semantics break.
 	// See docs/technical/architecture/subsystems/api/protocol-compatibility.md.
 	// A compiled constant also identifies local builds without release ldflags.
-	Version = "3"
+	Version = "4"
 	// MetadataKey carries the protocol version, not authentication credentials.
 	MetadataKey = "ledger-protocol-version"
 )

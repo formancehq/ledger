@@ -4342,7 +4342,6 @@ func (m *ReadOptions) CloneVT() *ReadOptions {
 	}
 	r := new(ReadOptions)
 	r.CheckpointId = m.CheckpointId
-	r.MinLogSequence = m.MinLogSequence
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -11695,9 +11694,6 @@ func (this *ReadOptions) EqualVT(that *ReadOptions) bool {
 		return false
 	}
 	if this.CheckpointId != that.CheckpointId {
-		return false
-	}
-	if this.MinLogSequence != that.MinLogSequence {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -22319,12 +22315,6 @@ func (m *ReadOptions) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.MinLogSequence != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MinLogSequence))
-		i--
-		dAtA[i] = 0x11
-	}
 	if m.CheckpointId != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.CheckpointId))
@@ -26982,9 +26972,6 @@ func (m *ReadOptions) SizeVT() (n int) {
 	var l int
 	_ = l
 	if m.CheckpointId != 0 {
-		n += 9
-	}
-	if m.MinLogSequence != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
@@ -51585,16 +51572,6 @@ func (m *ReadOptions) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.CheckpointId = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 2:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MinLogSequence", wireType)
-			}
-			m.MinLogSequence = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.MinLogSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex

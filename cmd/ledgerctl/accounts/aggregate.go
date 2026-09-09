@@ -37,7 +37,6 @@ Examples:
 	cmd.Flags().String("filter", "", `Filter expression (e.g. "metadata[category] == premium")`)
 	cmdutil.AddOutputFlags(cmd)
 	cmdutil.AddAnalyzeFlag(cmd)
-	cmd.Flags().Uint64("min-log-sequence", 0, "Minimum log sequence the server must have applied before reading (0 = no constraint)")
 	cmd.Flags().Uint64("checkpoint-id", 0, "Read from a query checkpoint instead of the live store")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -62,7 +61,6 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	prefix, _ := cmd.Flags().GetString("prefix")
 	filterExpr, _ := cmd.Flags().GetString("filter")
 	showProfile, _ := cmd.Flags().GetBool("analyze")
-	minLogSeq, _ := cmd.Flags().GetUint64("min-log-sequence")
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 
 	filter, err := cmdutil.BuildQueryFilter(filterExpr, prefix, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
@@ -82,10 +80,9 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	var trailer metadata.MD
 
 	result, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
-		Ledger:         ledgerName,
-		Filter:         filter,
-		MinLogSequence: minLogSeq,
-		CheckpointId:   checkpointID,
+		Ledger:       ledgerName,
+		Filter:       filter,
+		CheckpointId: checkpointID,
 	}, grpc.Trailer(&trailer))
 	_ = spinner.Stop()
 

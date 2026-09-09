@@ -270,8 +270,9 @@ func (s *Store) LastIndexedSequenceFrom(reader dal.PebbleGetter) (uint64, error)
 	return s.ReadProgressFrom(reader)
 }
 
-// NotifyProgress wakes all goroutines waiting in WaitForSequence /
-// WaitForCheckpoint. Must be called after WriteProgress commits successfully.
+// NotifyProgress wakes goroutines waiting for native or certified projection
+// progress and for checkpoint readiness. Call it only after the corresponding
+// progress write has committed or the checkpoint marker has been materialized.
 //
 // The broadcast is issued while holding progressMu: a waiter checks its
 // condition and calls cond.Wait() under the same lock, and Wait atomically
@@ -985,64 +986,6 @@ func (s *Store) WaitForCheckpoint(ctx context.Context, dirPath string) error {
 		}
 
 		if CheckpointDirReady(dirPath) {
-			return nil
-		}
-
-		s.progressCond.Wait()
-	}
-}
-
-// WaitForSequence blocks until LastIndexedSequence >= minSeq or the context
-// is cancelled.
-func (s *Store) WaitForSequence(ctx context.Context, minSeq uint64) error {
-	// Fast path: already caught up.
-	cur, err := s.LastIndexedSequence()
-	if err != nil {
-		return fmt.Errorf("reading index progress: %w", err)
-	}
-
-	if cur >= minSeq {
-		return nil
-	}
-
-	// Broadcast on cancellation while holding progressMu, exactly as
-	// WaitForCheckpoint does. Taking the lock is what closes the missed-wakeup
-	// window: the loop below checks ctx.Err() and calls Wait() under the same
-	// lock, and Wait releases it only once parked. Broadcasting without the
-	// lock can land between that check and Wait, stranding the waiter until an
-	// unrelated NotifyProgress arrives — so an alignment wait would outlive
-	// its caller's cancellation instead of ending with it.
-	done := make(chan struct{})
-	defer close(done)
-
-	go func() {
-		select {
-		case <-ctx.Done():
-			s.progressMu.Lock()
-			s.progressCond.Broadcast()
-			s.progressMu.Unlock()
-		case <-done:
-		}
-	}()
-
-	s.progressMu.Lock()
-	for {
-		if ctx.Err() != nil {
-			s.progressMu.Unlock()
-
-			return ctx.Err()
-		}
-
-		cur, err = s.LastIndexedSequence()
-		if err != nil {
-			s.progressMu.Unlock()
-
-			return fmt.Errorf("reading index progress: %w", err)
-		}
-
-		if cur >= minSeq {
-			s.progressMu.Unlock()
-
 			return nil
 		}
 

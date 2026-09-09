@@ -667,9 +667,6 @@ stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
 	Options: &commonpb.ListOptions{
 		PageSize: 100,
 		Filter: auditFilter, // Bare audit fields, e.g. ledger/outcome.
-		Read: &commonpb.ReadOptions{
-			MinLogSequence: lastWrittenSequence,
-		},
 	},
 })
 if err != nil {
@@ -688,14 +685,13 @@ for {
 }
 ```
 
-For a live request whose filter contains any field other than `seq`, the server
-automatically fixes a main-store Raft horizon and waits for its local audit
-projection to certify that horizon before querying the projection snapshot. A
-non-zero `MinLogSequence` additionally waits for the native log index before
-that aligned read. Unfiltered and `seq`-only conjunctions scan the authoritative
-audit zone directly and need only the optional log-sequence wait. Checkpoint
-reads ignore the request bound because checkpoint readiness already certifies
-both frozen projections at creation time.
+Live requests first linearize through Raft and capture one fixed main-store
+snapshot horizon. A filter containing any field other than `seq` then waits for
+the audit projection to certify that horizon before compiling candidates from
+its aligned snapshot; the matching `AuditEntry` values are loaded from the same
+main-store snapshot. Unfiltered requests and `seq`-only conjunctions scan the
+audit zone directly and do not wait for the audit projection. Checkpoint reads
+use the projection snapshots frozen with the checkpoint.
 
 ## Store Metrics
 

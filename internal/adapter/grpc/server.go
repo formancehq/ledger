@@ -39,7 +39,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // vtFallbackCodec is a gRPC codec that uses vtprotobuf when available
@@ -647,25 +646,6 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	// Convert NotFoundError to NotFound
 	if notFoundErr, ok := errors.AsType[*commonpb.NotFoundError](err); ok {
 		return status.Error(codes.NotFound, notFoundErr.Error())
-	}
-
-	// Convert ErrReadIndexNotCaughtUp to FailedPrecondition with details
-	if notCaughtUp, ok := errors.AsType[*query.ErrReadIndexNotCaughtUp](err); ok {
-		st := status.New(codes.FailedPrecondition, notCaughtUp.Error())
-
-		detailed, detailErr := st.WithDetails(&errdetails.ErrorInfo{
-			Reason: "READ_INDEX_NOT_CAUGHT_UP",
-			Domain: "ledger",
-			Metadata: map[string]string{
-				"requested": strconv.FormatUint(notCaughtUp.Requested, 10),
-				"current":   strconv.FormatUint(notCaughtUp.Current, 10),
-			},
-		})
-		if detailErr == nil {
-			return detailed.Err()
-		}
-
-		return st.Err()
 	}
 
 	// Domain errors: any *Err* type or sentinel that implements Describable,

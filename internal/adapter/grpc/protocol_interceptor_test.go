@@ -94,7 +94,7 @@ func TestServiceServerProtocolVersion(t *testing.T) {
 				{"missing", nil},
 				{"empty", []string{""}},
 				{"older", []string{"0"}},
-				{"newer", []string{"4"}},
+				{"newer", []string{"5"}},
 				{"invalid", []string{"dev"}},
 				{"duplicate", []string{grpcprotocol.Version, grpcprotocol.Version}},
 				{"conflicting", []string{grpcprotocol.Version, "0"}},

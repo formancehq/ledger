@@ -57,7 +57,7 @@ func TestListAuditEntriesRejectsMainSnapshotBehindReadBarrier(t *testing.T) {
 	ctrl, _ := newAuditAlignmentController(t, 12, 1)
 	ctx := query.WithReadBarrierHorizon(context.Background(), 13)
 
-	_, err := ctrl.ListAuditEntries(ctx, 10, 0, nil, false, 0)
+	_, err := ctrl.ListAuditEntries(ctx, 10, 0, nil, false)
 	require.ErrorContains(t, err, "behind ReadIndex horizon")
 }
 
@@ -146,7 +146,7 @@ func TestListAuditEntriesOnlyWaitsWhenFilterUsesAuditProjection(t *testing.T) {
 
 	ctrl, rs := newAuditAlignmentController(t, 12, 1, 2)
 	rs.SetAuditProjectionState(true, false)
-	_, err := ctrl.ListAuditEntries(context.Background(), 10, 0, &commonpb.QueryFilter{}, false, 0)
+	_, err := ctrl.ListAuditEntries(context.Background(), 10, 0, &commonpb.QueryFilter{}, false)
 	require.Equal(t, codes.InvalidArgument, status.Code(err),
 		"malformed filters must be validated before projection readiness")
 
@@ -155,7 +155,7 @@ func TestListAuditEntriesOnlyWaitsWhenFilterUsesAuditProjection(t *testing.T) {
 		"sequence-only": auditSequenceFilter(2),
 	} {
 		t.Run(name, func(t *testing.T) {
-			c, err := ctrl.ListAuditEntries(context.Background(), 10, 0, filter, false, 0)
+			c, err := ctrl.ListAuditEntries(context.Background(), 10, 0, filter, false)
 			require.NoError(t, err, "a query independent of the disabled projection must remain available")
 			got := collectAuditSequences(t, c)
 			if filter == nil {
@@ -166,7 +166,7 @@ func TestListAuditEntriesOnlyWaitsWhenFilterUsesAuditProjection(t *testing.T) {
 		})
 	}
 
-	_, err = ctrl.ListAuditEntries(context.Background(), 10, 0, auditLedgerFilter("main"), false, 0)
+	_, err = ctrl.ListAuditEntries(context.Background(), 10, 0, auditLedgerFilter("main"), false)
 	var disabled domain.Describable
 	require.ErrorAs(t, err, &disabled)
 	require.Equal(t, domain.ErrReasonAuditDisabled, disabled.Reason())
@@ -174,7 +174,7 @@ func TestListAuditEntriesOnlyWaitsWhenFilterUsesAuditProjection(t *testing.T) {
 		"a permanently disabled projection is a precondition, not a retryable build")
 
 	rs.SetAuditProjectionState(false, true)
-	_, err = ctrl.ListAuditEntries(context.Background(), 10, 0, auditLedgerFilter("main"), false, 0)
+	_, err = ctrl.ListAuditEntries(context.Background(), 10, 0, auditLedgerFilter("main"), false)
 	var rebuilding *domain.ErrIndexBuilding
 	require.ErrorAs(t, err, &rebuilding)
 	require.Equal(t, "audit (rebuilding)", rebuilding.Index)
@@ -201,7 +201,7 @@ func TestListAuditEntriesEmptyOrDoesNotDependOnAuditProjection(t *testing.T) {
 			ctrl, rs := newAuditAlignmentController(t, 12, 1, 2)
 			rs.SetAuditProjectionState(state.disabled, state.rebuilding)
 
-			c, err := ctrl.ListAuditEntries(t.Context(), 10, 0, emptyOr, false, 0)
+			c, err := ctrl.ListAuditEntries(t.Context(), 10, 0, emptyOr, false)
 			require.NoError(t, err)
 			require.Empty(t, collectAuditSequences(t, c),
 				"OR() is an empty set and must not wait for an index it never reads")
@@ -216,7 +216,7 @@ func TestListAuditEntriesIndexedFilterHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(query.WithReadBarrierHorizon(context.Background(), 12))
 	cancel()
 
-	_, err := ctrl.ListAuditEntries(ctx, 10, 0, auditLedgerFilter("main"), false, 0)
+	_, err := ctrl.ListAuditEntries(ctx, 10, 0, auditLedgerFilter("main"), false)
 	require.ErrorIs(t, err, context.Canceled,
 		"an unavailable required projection must not silently return an incomplete result")
 }
@@ -229,7 +229,7 @@ func TestListAuditEntriesMapsConcurrentProjectionFailureToUnavailable(t *testing
 	started := make(chan struct{})
 	go func() {
 		close(started)
-		_, err := ctrl.ListAuditEntries(t.Context(), 10, 0, auditLedgerFilter("main"), false, 0)
+		_, err := ctrl.ListAuditEntries(t.Context(), 10, 0, auditLedgerFilter("main"), false)
 		errCh <- err
 	}()
 	<-started
@@ -247,8 +247,9 @@ func TestListAuditEntriesMapsConcurrentProjectionFailureToUnavailable(t *testing
 			return false
 		}
 	}, time.Second, time.Millisecond)
-	var rebuilding domain.Describable
+	var rebuilding *domain.ErrIndexBuilding
 	require.ErrorAs(t, err, &rebuilding)
+	require.Equal(t, "audit (rebuilding)", rebuilding.Index)
 	require.Equal(t, domain.ErrReasonIndexBuilding, rebuilding.Reason())
 	require.Equal(t, domain.KindUnavailable, domain.Kind(rebuilding),
 		"a projection failure racing the wait must keep the retryable rebuilding contract")
@@ -268,7 +269,7 @@ func TestListAuditEntriesUsesAlignedAuditSnapshotAndMainHorizon(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	ctx := query.WithReadBarrierHorizon(context.Background(), 12)
-	c, err := ctrl.ListAuditEntries(ctx, 10, 0, auditLedgerFilter("main"), false, 0)
+	c, err := ctrl.ListAuditEntries(ctx, 10, 0, auditLedgerFilter("main"), false)
 	require.NoError(t, err)
 	require.Equal(t, []uint64{1}, collectAuditSequences(t, c),
 		"audit candidates ahead of H must be trimmed before main-store materialization")

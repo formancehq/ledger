@@ -398,74 +398,6 @@ func (impl *BucketServiceServerImpl) readController(ctx context.Context, checkpo
 	return impl.localCtrl.WithStores(mainStore, readIdx), cleanup, nil
 }
 
-// waitMinLogSequence blocks until the Pebble read index has processed at
-// least the requested minimum log sequence, or the context is cancelled.
-//
-// The wait is charged to the profile's barrier phase rather than to server
-// work: the caller asked for read-your-writes freshness, so counting the wait
-// as server latency would blame the server for the caller's consistency
-// requirement.
-func (impl *BucketServiceServerImpl) waitMinLogSequence(ctx context.Context, minLogSequence uint64) error {
-	if minLogSequence == 0 {
-		return nil
-	}
-
-	start := time.Now()
-	err := impl.readStore.WaitForSequence(ctx, minLogSequence)
-	query.ProfileFromContext(ctx).AddBarrierWait(time.Since(start))
-
-	return err
-}
-
-// waitFilteredAuditConsistency gives a live, filtered ListAuditEntries read a
-// read-your-writes guarantee against the async audit secondary index.
-//
-// min_log_sequence is a LOG sequence, but a filtered audit read resolves through
-// the audit index whose cursor (ReadAuditProgress) is an AUDIT sequence. The two
-// spaces diverge — the audit sequence advances on every proposal, including
-// failures that emit no log — so waiting for audit_progress >= min_log_sequence
-// would be incorrect. Instead, conservatively:
-//
-//  1. wait for the log index to reach min_log_sequence (waitMinLogSequence);
-//  2. read the current live audit head from the main store;
-//  3. wait for the audit index cursor to reach that observed head.
-//
-// This can over-wait (the head observed in step 2 may include audit entries
-// produced after min_log_sequence), which is acceptable for v3.0 and avoids a
-// new min_audit_sequence API. A minLogSeq of 0 means "no consistency bound
-// requested", so this is a no-op.
-//
-// Only the LIVE filtered path calls this. Unfiltered reads scan the audit
-// zone directly and are always current, so they keep the direct fast path.
-// Checkpoint reads are frozen snapshots and are handled (and documented) at the
-// checkpoint-creation boundary, out of scope here.
-func (impl *BucketServiceServerImpl) waitFilteredAuditConsistency(ctx context.Context, minLogSeq uint64) error {
-	if minLogSeq == 0 {
-		return nil
-	}
-
-	if err := impl.waitMinLogSequence(ctx, minLogSeq); err != nil {
-		return err
-	}
-
-	handle, err := impl.store.NewDirectReadHandle()
-	if err != nil {
-		return status.Errorf(codes.Unavailable, "opening read handle for audit head: %v", err)
-	}
-
-	auditHead, err := query.ReadLastAuditSequence(handle)
-	// Close before waiting: the handle holds dbMu.RLock for its lifetime, and the
-	// wait below can block for a while. We only need the head value, not the
-	// handle, past this point.
-	_ = handle.Close()
-
-	if err != nil {
-		return status.Errorf(codes.Internal, "reading live audit head: %v", err)
-	}
-
-	return impl.readStore.WaitForAuditSequence(ctx, auditHead)
-}
-
 func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransactionsRequest, stream servicepb.BucketService_ListTransactionsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListTransactions",
 		trace.WithAttributes(attribute.String("ledger", req.GetLedger())))
@@ -520,10 +452,6 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		c, err = impl.localCtrl.ListTransactionsFrom(ctx, mainStore, readIdx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), opts.GetReverse())
 		profile.LeaveExecute()
 	} else {
-		if waitErr := impl.waitMinLogSequence(ctx, opts.GetRead().GetMinLogSequence()); waitErr != nil {
-			return waitErr
-		}
-
 		profile.EnterExecute()
 		c, err = impl.ctrl.ListTransactions(ctx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), opts.GetReverse())
 		profile.LeaveExecute()
@@ -572,12 +500,6 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 		return err
 	}
 
-	if read.GetCheckpointId() == 0 {
-		if err := impl.waitMinLogSequence(ctx, read.GetMinLogSequence()); err != nil {
-			return err
-		}
-	}
-
 	listingCtrl, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
 	if err != nil {
 		return err
@@ -620,12 +542,6 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 	}
 
 	read := req.GetRead()
-
-	if read.GetCheckpointId() == 0 {
-		if err := impl.waitMinLogSequence(ctx, read.GetMinLogSequence()); err != nil {
-			return nil, err
-		}
-	}
 
 	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
 	if err != nil {
@@ -682,13 +598,6 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 		return err
 	}
 	defer cleanup()
-
-	// minLogSequence only gates live reads; a checkpoint is a fixed snapshot.
-	if read.GetCheckpointId() == 0 {
-		if err := impl.waitMinLogSequence(ctx, read.GetMinLogSequence()); err != nil {
-			return err
-		}
-	}
 
 	if impl.logger.Enabled(logging.TraceLevel) {
 		impl.logger.Tracef("ListAccounts request received for ledger %s (pageSize=%d, cursor=%q, hasFilter=%v, reverse=%v)",
@@ -912,21 +821,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		// sequence.
 		c, err = impl.localCtrl.ListAuditEntriesFrom(ctx, mainStore, readIdx, fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
 	} else {
-		minLogSeq := opts.GetRead().GetMinLogSequence()
-
-		// Filters that consult the async audit secondary index need its independent
-		// progress gate. Nil filters and conjunctions made only of seq bounds scan
-		// the audit zone directly, so coupling them to audit-index progress
-		// would make an authoritative read wait for a projection it never uses.
-		if query.AuditFilterNeedsIndex(opts.GetFilter()) {
-			if waitErr := impl.waitFilteredAuditConsistency(ctx, minLogSeq); waitErr != nil {
-				return waitErr
-			}
-		} else if waitErr := impl.waitMinLogSequence(ctx, minLogSeq); waitErr != nil {
-			return waitErr
-		}
-
-		c, err = impl.ctrl.ListAuditEntries(ctx, fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse(), minLogSeq)
+		c, err = impl.ctrl.ListAuditEntries(ctx, fetchSize, afterSeq, opts.GetFilter(), opts.GetReverse())
 	}
 
 	if err != nil {
@@ -975,13 +870,6 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 		return err
 	}
 	defer cleanup()
-
-	// minLogSequence only gates live reads; a checkpoint is a fixed snapshot.
-	if read.GetCheckpointId() == 0 {
-		if err := impl.waitMinLogSequence(ctx, read.GetMinLogSequence()); err != nil {
-			return err
-		}
-	}
 
 	if req.GetLedger() == "" {
 		return domain.ErrLedgerNameRequired
@@ -1050,10 +938,6 @@ func (impl *BucketServiceServerImpl) ListSigningKeys(req *servicepb.ListSigningK
 	opts := req.GetOptions()
 
 	if err := ValidateListOptions(opts, ListOptionsSupport{Reverse: true}); err != nil {
-		return err
-	}
-
-	if err := impl.waitMinLogSequence(ctx, opts.GetRead().GetMinLogSequence()); err != nil {
 		return err
 	}
 
@@ -1279,13 +1163,6 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 	}
 	defer cleanup()
 
-	// minLogSequence only gates live reads; a checkpoint is a fixed snapshot.
-	if req.GetCheckpointId() == 0 {
-		if err := impl.waitMinLogSequence(ctx, req.GetMinLogSequence()); err != nil {
-			return nil, err
-		}
-	}
-
 	profile.EnterExecute()
 	result, err := c.AggregateVolumes(ctx, req.GetLedger(), req.GetFilter(), query.AggregateOptions{
 		UseMaxPrecision: req.GetUseMaxPrecision(),
@@ -1304,12 +1181,6 @@ func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *serv
 
 	read := req.GetRead()
 
-	if read.GetCheckpointId() == 0 {
-		if err := impl.waitMinLogSequence(ctx, read.GetMinLogSequence()); err != nil {
-			return nil, err
-		}
-	}
-
 	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
 	if err != nil {
 		return nil, err
@@ -1321,9 +1192,9 @@ func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *serv
 
 // GetTemplateUsage returns the invocation counter + last-used timestamp for
 // a Numscript template. Reads are served from the usagebuilder side-store,
-// which is eventually consistent with the FSM — no ReadOptions barrier is
-// honored on this endpoint (a min-log-sequence wait wouldn't help, since
-// the usagebuilder cursor is decoupled from the log cursor).
+// which is eventually consistent with the FSM. The usage projection is outside
+// EN-1946's certified projection horizon, so this endpoint does not wait for a
+// read-index or audit-index certificate.
 func (impl *BucketServiceServerImpl) GetTemplateUsage(ctx context.Context, req *servicepb.GetTemplateUsageRequest) (*commonpb.TemplateUsage, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
 		return nil, err
@@ -1351,12 +1222,6 @@ func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscript
 
 	if err := ValidateListOptions(opts, ListOptionsSupport{Reverse: true, CheckpointID: true}); err != nil {
 		return err
-	}
-
-	if read.GetCheckpointId() == 0 {
-		if err := impl.waitMinLogSequence(ctx, read.GetMinLogSequence()); err != nil {
-			return err
-		}
 	}
 
 	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
@@ -1396,12 +1261,6 @@ func (impl *BucketServiceServerImpl) ListNumscriptVersions(ctx context.Context, 
 	}
 
 	read := req.GetRead()
-
-	if read.GetCheckpointId() == 0 {
-		if err := impl.waitMinLogSequence(ctx, read.GetMinLogSequence()); err != nil {
-			return nil, err
-		}
-	}
 
 	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
 	if err != nil {

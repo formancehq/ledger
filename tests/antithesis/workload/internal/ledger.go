@@ -53,7 +53,6 @@ const (
 	PrefixLedgerRecreate   OwnedLedgerPrefix = "lrecreate"
 	PrefixListCompleteness OwnedLedgerPrefix = "listcomp"
 	PrefixTimestampOrder   OwnedLedgerPrefix = "tsorder"
-	PrefixMinLogSeq        OwnedLedgerPrefix = "minseq"
 	PrefixProjectionAlign  OwnedLedgerPrefix = "projection"
 	PrefixStaleReads       OwnedLedgerPrefix = "stale"
 
@@ -90,7 +89,6 @@ var ownedLedgerPrefixes = []OwnedLedgerPrefix{
 	PrefixLedgerRecreate,
 	PrefixListCompleteness,
 	PrefixTimestampOrder,
-	PrefixMinLogSeq,
 	PrefixProjectionAlign,
 	PrefixStaleReads,
 	PrefixSentinel,

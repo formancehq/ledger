@@ -402,12 +402,14 @@ Query parameters:
   to the audit condition only on the audit target, which is why audit fields are
   valid on this endpoint alone. This is the shared `filterexpr` DSL — **not** the
   JSON `QueryFilter` DSL used by prepared queries, which cannot represent audit
-  conditions. A filter containing any field other than `seq` is served by the
-  asynchronous audit index; unfiltered and `seq`-only conjunctions scan the
-  audit zone directly. Although this HTTP endpoint exposes no
-  `minLogSequence` bound, a filtered read automatically fixes a main-store Raft
-  horizon and waits for the audit projection to certify it before querying the
-  projection snapshot.
+  conditions. Filters that need indexed fields are compiled from an audit-index
+  snapshot whose Raft certificate covers the fixed main-store snapshot horizon;
+  matching `AuditEntry` values are loaded from that same main snapshot.
+  Unfiltered reads and sequence-only bounds scan the authoritative audit zone
+  directly and do not wait for the asynchronous audit index. A disabled,
+  rebuilding, cancelled, or deadline-bound required index fails explicitly
+  rather than returning a partial page. The consistency guarantee matches the
+  gRPC surface.
 
 **Response**: `{ "data": [ AuditEntry, ... ] }` (list omits per-order `items`).
 
