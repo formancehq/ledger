@@ -31,8 +31,6 @@ const (
 	ClusterService_CreateCheckpoint_FullMethodName           = "/cluster.ClusterService/CreateCheckpoint"
 	ClusterService_Backup_FullMethodName                     = "/cluster.ClusterService/Backup"
 	ClusterService_IncrementalBackup_FullMethodName          = "/cluster.ClusterService/IncrementalBackup"
-	ClusterService_CreateQueryCheckpoint_FullMethodName      = "/cluster.ClusterService/CreateQueryCheckpoint"
-	ClusterService_DeleteQueryCheckpoint_FullMethodName      = "/cluster.ClusterService/DeleteQueryCheckpoint"
 	ClusterService_ListQueryCheckpoints_FullMethodName       = "/cluster.ClusterService/ListQueryCheckpoints"
 	ClusterService_GetQueryCheckpointInfo_FullMethodName     = "/cluster.ClusterService/GetQueryCheckpointInfo"
 	ClusterService_GetQueryCheckpointSchedule_FullMethodName = "/cluster.ClusterService/GetQueryCheckpointSchedule"
@@ -77,13 +75,6 @@ type ClusterServiceClient interface {
 	// IncrementalBackup exports new log and audit entries since the last export.
 	// Can run on any node (log/audit sequences are identical across replicas).
 	IncrementalBackup(ctx context.Context, in *IncrementalBackupRequest, opts ...grpc.CallOption) (*IncrementalBackupResponse, error)
-	// CreateQueryCheckpoint creates a physical Pebble checkpoint via Raft consensus.
-	// The checkpoint captures both the main store and read index, enabling
-	// point-in-time queries on any node. Forwarded to leader.
-	CreateQueryCheckpoint(ctx context.Context, in *CreateQueryCheckpointRequest, opts ...grpc.CallOption) (*CreateQueryCheckpointResponse, error)
-	// DeleteQueryCheckpoint removes a previously created query checkpoint via Raft consensus.
-	// Forwarded to leader.
-	DeleteQueryCheckpoint(ctx context.Context, in *DeleteQueryCheckpointRequest, opts ...grpc.CallOption) (*DeleteQueryCheckpointResponse, error)
 	// ListQueryCheckpoints lists all existing query checkpoints.
 	// Reads from replicated Pebble state (available on any node).
 	ListQueryCheckpoints(ctx context.Context, in *ListQueryCheckpointsRequest, opts ...grpc.CallOption) (*ListQueryCheckpointsResponse, error)
@@ -223,26 +214,6 @@ func (c *clusterServiceClient) IncrementalBackup(ctx context.Context, in *Increm
 	return out, nil
 }
 
-func (c *clusterServiceClient) CreateQueryCheckpoint(ctx context.Context, in *CreateQueryCheckpointRequest, opts ...grpc.CallOption) (*CreateQueryCheckpointResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CreateQueryCheckpointResponse)
-	err := c.cc.Invoke(ctx, ClusterService_CreateQueryCheckpoint_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *clusterServiceClient) DeleteQueryCheckpoint(ctx context.Context, in *DeleteQueryCheckpointRequest, opts ...grpc.CallOption) (*DeleteQueryCheckpointResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DeleteQueryCheckpointResponse)
-	err := c.cc.Invoke(ctx, ClusterService_DeleteQueryCheckpoint_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *clusterServiceClient) ListQueryCheckpoints(ctx context.Context, in *ListQueryCheckpointsRequest, opts ...grpc.CallOption) (*ListQueryCheckpointsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListQueryCheckpointsResponse)
@@ -312,13 +283,6 @@ type ClusterServiceServer interface {
 	// IncrementalBackup exports new log and audit entries since the last export.
 	// Can run on any node (log/audit sequences are identical across replicas).
 	IncrementalBackup(context.Context, *IncrementalBackupRequest) (*IncrementalBackupResponse, error)
-	// CreateQueryCheckpoint creates a physical Pebble checkpoint via Raft consensus.
-	// The checkpoint captures both the main store and read index, enabling
-	// point-in-time queries on any node. Forwarded to leader.
-	CreateQueryCheckpoint(context.Context, *CreateQueryCheckpointRequest) (*CreateQueryCheckpointResponse, error)
-	// DeleteQueryCheckpoint removes a previously created query checkpoint via Raft consensus.
-	// Forwarded to leader.
-	DeleteQueryCheckpoint(context.Context, *DeleteQueryCheckpointRequest) (*DeleteQueryCheckpointResponse, error)
 	// ListQueryCheckpoints lists all existing query checkpoints.
 	// Reads from replicated Pebble state (available on any node).
 	ListQueryCheckpoints(context.Context, *ListQueryCheckpointsRequest) (*ListQueryCheckpointsResponse, error)
@@ -373,12 +337,6 @@ func (UnimplementedClusterServiceServer) Backup(context.Context, *BackupRequest)
 }
 func (UnimplementedClusterServiceServer) IncrementalBackup(context.Context, *IncrementalBackupRequest) (*IncrementalBackupResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method IncrementalBackup not implemented")
-}
-func (UnimplementedClusterServiceServer) CreateQueryCheckpoint(context.Context, *CreateQueryCheckpointRequest) (*CreateQueryCheckpointResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method CreateQueryCheckpoint not implemented")
-}
-func (UnimplementedClusterServiceServer) DeleteQueryCheckpoint(context.Context, *DeleteQueryCheckpointRequest) (*DeleteQueryCheckpointResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method DeleteQueryCheckpoint not implemented")
 }
 func (UnimplementedClusterServiceServer) ListQueryCheckpoints(context.Context, *ListQueryCheckpointsRequest) (*ListQueryCheckpointsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListQueryCheckpoints not implemented")
@@ -626,42 +584,6 @@ func _ClusterService_IncrementalBackup_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ClusterService_CreateQueryCheckpoint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateQueryCheckpointRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ClusterServiceServer).CreateQueryCheckpoint(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ClusterService_CreateQueryCheckpoint_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ClusterServiceServer).CreateQueryCheckpoint(ctx, req.(*CreateQueryCheckpointRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _ClusterService_DeleteQueryCheckpoint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DeleteQueryCheckpointRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ClusterServiceServer).DeleteQueryCheckpoint(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ClusterService_DeleteQueryCheckpoint_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ClusterServiceServer).DeleteQueryCheckpoint(ctx, req.(*DeleteQueryCheckpointRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _ClusterService_ListQueryCheckpoints_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListQueryCheckpointsRequest)
 	if err := dec(in); err != nil {
@@ -770,14 +692,6 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "IncrementalBackup",
 			Handler:    _ClusterService_IncrementalBackup_Handler,
-		},
-		{
-			MethodName: "CreateQueryCheckpoint",
-			Handler:    _ClusterService_CreateQueryCheckpoint_Handler,
-		},
-		{
-			MethodName: "DeleteQueryCheckpoint",
-			Handler:    _ClusterService_DeleteQueryCheckpoint_Handler,
 		},
 		{
 			MethodName: "ListQueryCheckpoints",

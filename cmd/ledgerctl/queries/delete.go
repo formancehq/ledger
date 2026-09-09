@@ -45,10 +45,23 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	_, err = client.DeletePreparedQuery(ctx, &servicepb.DeletePreparedQueryRequest{
-		Ledger: ledgerName,
-		Name:   name,
-	})
+	requests := []*servicepb.Request{
+		{
+			Type: &servicepb.Request_DeletePreparedQuery{
+				DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+					Ledger: ledgerName,
+					Name:   name,
+				},
+			},
+		},
+	}
+
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
+	if err != nil {
+		return cmdutil.Displayed(err)
+	}
+
+	_, err = client.Apply(ctx, applyReq)
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to delete prepared query", err)
 	}

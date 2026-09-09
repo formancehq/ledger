@@ -81,11 +81,24 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	_, err = client.UpdatePreparedQuery(ctx, &servicepb.UpdatePreparedQueryRequest{
-		Ledger: ledgerName,
-		Name:   name,
-		Filter: filter,
-	})
+	requests := []*servicepb.Request{
+		{
+			Type: &servicepb.Request_UpdatePreparedQuery{
+				UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+					Ledger: ledgerName,
+					Name:   name,
+					Filter: filter,
+				},
+			},
+		},
+	}
+
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
+	if err != nil {
+		return cmdutil.Displayed(err)
+	}
+
+	_, err = client.Apply(ctx, applyReq)
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to update prepared query", err)
 	}

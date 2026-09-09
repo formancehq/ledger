@@ -17,7 +17,7 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
 
 ## Creation Flow
 
-1. Client sends `CreateQueryCheckpoint` request (via ClusterService RPC or BucketService Apply).
+1. Client submits a `create_query_checkpoint` request through `BucketService.Apply` — the only gRPC entry point for it since EN-1954. It is a checkpoint trigger, so admission accepts it only as the last action of a batch.
 2. The request is proposed through Raft consensus.
 3. The FSM commits pending state and records `QueryCheckpointState` metadata in
    Pebble, including the entry's Raft applied index `H`.
@@ -51,17 +51,18 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
 
 The read index materializes asynchronously and **per-replica** (step 5). Readiness on a node is signalled solely by the local `.ready` marker; there is **no** cross-node readiness map and **no** background reconciler.
 
-- **`CreateQueryCheckpoint` blocks on the creator node's marker.** The handler waits (`readStore.WaitForCheckpoint`) for the local `.ready` marker before returning, so an immediate read at the returned `checkpoint_id` **routed back to the creator node succeeds**. It waits on the marker, not on the index-builder progress cursor — the cursor fast path was the EN-1460 root cause: the cursor is persisted in the batch that *precedes* the physical checkpoint creation, so it reaches the target sequence ~100-150 ms before the directory exists.
+- **`Apply` blocks on the serving node's marker before returning.** The `Apply` handler executes in this order: `ctrl.Apply` returns the committed logs → the handler scans those logs for a `CreatedQueryCheckpointLog` and, for each one, waits (`readStore.WaitForCheckpoint`) for that checkpoint's local `.ready` marker → response signing → `skip_response` payload stripping → return. The wait therefore precedes stripping, which nils out the payload carrying the id, and it locates the log by payload type rather than by position, because the checkpoint trigger is the batch's *last* action. An immediate read at the returned `checkpoint_id` **routed back to that node succeeds**. It waits on the marker, not on the index-builder progress cursor — the cursor fast path was the EN-1460 root cause: the cursor is persisted in the batch that *precedes* the physical checkpoint creation, so it reaches the target sequence ~100-150 ms before the directory exists.
+- **A follower waits for its own marker after the leader waited for the leader's.** A follower's `Apply` forwards the batch to the leader through `BucketGrpcClient.Apply`; the leader's handler waits for the leader's marker, and the forwarding node then waits for its own. The node the client is actually talking to is therefore ready when the call returns, at the cost of a second wait on the follower path.
 - **Audit is part of the readiness promise.** The checkpoint log carries `H`.
   The normal builder does not publish `.ready` until the audit projection has
   certified `H`, so a filtered audit query cannot be frozen against an
   incomplete audit index. Every creation trigger passes through a shared
-  admission preflight, so public `Apply`, the cluster RPC and the automatic
-  scheduler all fail explicitly with `ErrAuditDisabled` when the projection is
-  permanently disabled and `ErrIndexBuilding` while it is rebuilding. An
-  enabled projection starts in the rebuilding state and only becomes ready
-  after boot has classified its persisted cursor and completed the initial
-  rebuild/catch-up. A failed rebuild
+  admission preflight, so public `Apply` and the automatic scheduler both fail
+  explicitly with `ErrAuditDisabled` when the projection is permanently
+  disabled and `ErrIndexBuilding` while it is rebuilding. An enabled projection
+  starts in the rebuilding state and only becomes ready after boot has
+  classified its persisted cursor and completed the initial rebuild/catch-up.
+  A failed rebuild
   remains in rebuilding state until a later successful rebuild/catch-up; it
   cannot advertise a false readiness window. An already-proposed create waits
   through a transient rebuild and resumes only after the replacement projection
@@ -120,7 +121,7 @@ The cron expression uses the standard 5-field format (`minute hour day-of-month 
 
 ### How It Works
 
-The `QueryCheckpointScheduler` runs on every node but only triggers checkpoint creation on the **Raft leader**. When the cron fires, the leader proposes a `CreateQueryCheckpoint` order through the admission layer — the same path as `ledgerctl query-checkpoint create`.
+The `QueryCheckpointScheduler` runs on every node but only triggers checkpoint creation on the **Raft leader**. When the cron fires, the leader proposes a `CreateQueryCheckpoint` order through the admission layer directly, as a leader-internal system actor. That is not a gRPC handler, so it is outside the Apply-only rule; `ledgerctl query-checkpoint create` reaches the same order through `Apply`.
 
 1. The schedule is persisted in Pebble (key prefix `0xE4`) and replicated via Raft.
 2. When the schedule changes, a notification signal wakes the scheduler goroutine to recompute the next fire time.
@@ -153,15 +154,17 @@ rpc GetQueryCheckpointSchedule(GetQueryCheckpointScheduleRequest) returns (GetQu
 
 | Method | Service | Description |
 |--------|---------|-------------|
-| `CreateQueryCheckpoint` | ClusterService | Create a checkpoint (write, leader-only) |
-| `DeleteQueryCheckpoint` | ClusterService | Delete a checkpoint (write, leader-only) |
 | `ListQueryCheckpoints` | ClusterService | List all checkpoints (read, any node) |
 | `GetQueryCheckpointInfo` | ClusterService | Get checkpoint details (read, any node) |
 | `GetQueryCheckpointSchedule` | ClusterService | Get the current schedule (read, any node) |
 | `Apply(SetQueryCheckpointScheduleRequest)` | BucketService | Set the schedule (write, leader-only) |
 | `Apply(DeleteQueryCheckpointScheduleRequest)` | BucketService | Delete the schedule (write, leader-only) |
-| `Apply(CreateQueryCheckpointRequest)` | BucketService | Create a checkpoint (write, leader-only) |
+| `Apply(CreateQueryCheckpointRequest)` | BucketService | Create a checkpoint (write, leader-only). Returns the id and max sequence in the `CreatedQueryCheckpointLog`; blocks on the serving node's `.ready` marker |
 | `Apply(DeleteQueryCheckpointRequest)` | BucketService | Delete a checkpoint (write, leader-only) |
+
+ClusterService keeps only the three read RPCs. EN-1954 removed its
+`CreateQueryCheckpoint` and `DeleteQueryCheckpoint` mutation RPCs, and with them
+its admission dependency, so every audited write reaches Raft through `Apply`.
 
 ## CLI Commands
 

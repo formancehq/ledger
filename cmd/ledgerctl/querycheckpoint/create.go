@@ -1,12 +1,14 @@
 package querycheckpoint
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 func newCreateCommand() *cobra.Command {
@@ -26,7 +28,7 @@ func newCreateCommand() *cobra.Command {
 }
 
 func runCreate(cmd *cobra.Command, _ []string) error {
-	client, conn, err := cmdutil.GetClusterClient(cmd)
+	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {
 		return err
 	}
@@ -43,7 +45,26 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		spinner = cmdutil.StartSpinner("Creating query checkpoint...")
 	}
 
-	resp, err := client.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+	requests := []*servicepb.Request{
+		{
+			Type: &servicepb.Request_CreateQueryCheckpoint{
+				CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
+			},
+		},
+	}
+
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
+	if err != nil {
+		if spinner != nil {
+			spinner.Fail("Failed to sign request")
+		}
+
+		return cmdutil.Displayed(err)
+	}
+
+	// Apply does not return until the read index checkpoint is materialized on
+	// the serving node, so a read at the returned ID succeeds immediately there.
+	resp, err := client.Apply(ctx, applyReq)
 	if err != nil {
 		if spinner != nil {
 			_ = spinner.Stop()
@@ -52,16 +73,25 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("query checkpoint creation failed", err)
 	}
 
+	checkpointID, maxSequence, ok := actions.GetCreatedQueryCheckpoint(resp)
+	if !ok {
+		if spinner != nil {
+			_ = spinner.Stop()
+		}
+
+		return errors.New("checkpoint creation log not found in response")
+	}
+
 	if spinner != nil {
-		spinner.Success(fmt.Sprintf("Query checkpoint created (id=%d)", resp.GetCheckpointId()))
+		spinner.Success(fmt.Sprintf("Query checkpoint created (id=%d)", checkpointID))
 	}
 
 	if handled, err := cmdutil.EncodeStructured(cmd, struct {
 		CheckpointID uint64 `json:"checkpointId"`
 		MaxSequence  uint64 `json:"maxSequence"`
 	}{
-		CheckpointID: resp.GetCheckpointId(),
-		MaxSequence:  resp.GetMaxSequence(),
+		CheckpointID: checkpointID,
+		MaxSequence:  maxSequence,
 	}); handled || err != nil {
 		return err
 	}

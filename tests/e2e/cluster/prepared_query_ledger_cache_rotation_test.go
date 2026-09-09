@@ -86,15 +86,17 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 	})
 
 	It("CreatePreparedQuery must succeed after the LedgerInfo is evicted from cache", func() {
-		_, err := client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
-			Ledger: ledgerName,
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+				Ledger: ledgerName,
 
-			Query: &commonpb.PreparedQuery{
-				Name:   "after-rotation",
-				Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-				Filter: actions.AddressPrefixFilter("users:"),
-			},
-		})
+				Query: &commonpb.PreparedQuery{
+					Name:   "after-rotation",
+					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+					Filter: actions.AddressPrefixFilter("users:"),
+				},
+			}},
+		}))
 		Expect(err).To(Succeed())
 	})
 
@@ -108,11 +110,13 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 			Expect(err).To(Succeed())
 		}
 
-		_, err := client.UpdatePreparedQuery(ctx, &servicepb.UpdatePreparedQueryRequest{
-			Ledger: ledgerName,
-			Name:   "after-rotation",
-			Filter: actions.AddressPrefixFilter("admins:"),
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_UpdatePreparedQuery{UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+				Ledger: ledgerName,
+				Name:   "after-rotation",
+				Filter: actions.AddressPrefixFilter("admins:"),
+			}},
+		}))
 		Expect(err).To(Succeed())
 	})
 
@@ -122,10 +126,12 @@ var _ = Describe("Prepared query and numscript work after ledger cache eviction"
 			Expect(err).To(Succeed())
 		}
 
-		_, err := client.DeletePreparedQuery(ctx, &servicepb.DeletePreparedQueryRequest{
-			Ledger: ledgerName,
-			Name:   "after-rotation",
-		})
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_DeletePreparedQuery{DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+				Ledger: ledgerName,
+				Name:   "after-rotation",
+			}},
+		}))
 		Expect(err).To(Succeed())
 	})
 

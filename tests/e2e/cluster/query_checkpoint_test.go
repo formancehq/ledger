@@ -75,12 +75,12 @@ var _ = Describe("Query Checkpoints", func() {
 		})
 
 		It("should create a query checkpoint with sequential ID", func() {
-			resp, err := clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+			id, maxSequence, err := actions.CreateQueryCheckpoint(ctx, client)
 			Expect(err).To(Succeed())
-			Expect(resp.GetCheckpointId()).To(Equal(uint64(1))) // First checkpoint gets ID 1
-			Expect(resp.GetMaxSequence()).NotTo(BeZero())
+			Expect(id).To(Equal(uint64(1))) // First checkpoint gets ID 1
+			Expect(maxSequence).NotTo(BeZero())
 
-			checkpointID = resp.GetCheckpointId()
+			checkpointID = id
 		})
 
 		It("should list the checkpoint", func() {
@@ -185,10 +185,7 @@ var _ = Describe("Query Checkpoints", func() {
 		})
 
 		It("should delete the checkpoint", func() {
-			_, err := clusterClient.DeleteQueryCheckpoint(ctx, &clusterpb.DeleteQueryCheckpointRequest{
-				CheckpointId: checkpointID,
-			})
-			Expect(err).To(Succeed())
+			Expect(actions.DeleteQueryCheckpoint(ctx, client, checkpointID)).To(Succeed())
 		})
 
 		It("should list no checkpoints after deletion", func() {
@@ -229,9 +226,8 @@ var _ = Describe("Query Checkpoints", func() {
 			Expect(err).To(Succeed())
 
 			// Checkpoint 1
-			resp, err := clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+			checkpoint1ID, _, err = actions.CreateQueryCheckpoint(ctx, client)
 			Expect(err).To(Succeed())
-			checkpoint1ID = resp.GetCheckpointId()
 
 			// tx1: world -> bob 200
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
@@ -240,9 +236,8 @@ var _ = Describe("Query Checkpoints", func() {
 			Expect(err).To(Succeed())
 
 			// Checkpoint 2
-			resp, err = clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+			checkpoint2ID, _, err = actions.CreateQueryCheckpoint(ctx, client)
 			Expect(err).To(Succeed())
-			checkpoint2ID = resp.GetCheckpointId()
 
 			// tx2: world -> charlie 300
 			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
@@ -279,10 +274,7 @@ var _ = Describe("Query Checkpoints", func() {
 		})
 
 		It("deleting checkpoint1 should not affect checkpoint2", func() {
-			_, err := clusterClient.DeleteQueryCheckpoint(ctx, &clusterpb.DeleteQueryCheckpointRequest{
-				CheckpointId: checkpoint1ID,
-			})
-			Expect(err).To(Succeed())
+			Expect(actions.DeleteQueryCheckpoint(ctx, client, checkpoint1ID)).To(Succeed())
 
 			// Checkpoint2 should still work.
 			txs, err := listAllTransactionsFromCheckpoint(ctx, client, ledgerName, 100, 0, checkpoint2ID, nil)
@@ -306,9 +298,8 @@ var _ = Describe("Query Checkpoints", func() {
 	// entries) would surface here even if the simpler test still passed.
 	Context("GetAccount(checkpoint_id) returns frozen balance for the same account across checkpoints", Ordered, func() {
 		var (
-			ctx           context.Context
-			client        servicepb.BucketServiceClient
-			clusterClient clusterpb.ClusterServiceClient
+			ctx    context.Context
+			client servicepb.BucketServiceClient
 		)
 
 		const (
@@ -323,7 +314,6 @@ var _ = Describe("Query Checkpoints", func() {
 			var node *testutil.ServiceWithClient
 			ctx, node = testutil.SetupSingleNode()
 			client = node.Client
-			clusterClient = node.ClusterClient
 
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
@@ -338,10 +328,10 @@ var _ = Describe("Query Checkpoints", func() {
 			}
 
 			snapshot := func() uint64 {
-				resp, err := clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+				id, _, err := actions.CreateQueryCheckpoint(ctx, client)
 				Expect(err).To(Succeed())
 
-				return resp.GetCheckpointId()
+				return id
 			}
 
 			credit(100)
@@ -395,16 +385,15 @@ var _ = Describe("Query Checkpoints", func() {
 
 	// EN-1460: an immediate read at a freshly-created checkpoint used to race the
 	// asynchronous read-index materialization and return an opaque, non-retryable
-	// code=Unknown. CreateQueryCheckpoint now blocks on the CREATOR node's local
-	// .ready marker, so a read routed back to that node succeeds immediately.
+	// code=Unknown. Apply now blocks on the CREATOR node's local .ready marker
+	// before returning, so a read routed back to that node succeeds immediately.
 	// This single-node suite always hits the creator, so the read must succeed
 	// with zero delay — and any error must be a typed retryable Unavailable,
 	// never an opaque Unknown.
 	Context("immediate read after checkpoint creation is race-free", Ordered, func() {
 		var (
-			ctx           context.Context
-			client        servicepb.BucketServiceClient
-			clusterClient clusterpb.ClusterServiceClient
+			ctx    context.Context
+			client servicepb.BucketServiceClient
 		)
 
 		const (
@@ -415,7 +404,6 @@ var _ = Describe("Query Checkpoints", func() {
 			var node *testutil.ServiceWithClient
 			ctx, node = testutil.SetupSingleNode()
 			client = node.Client
-			clusterClient = node.ClusterClient
 
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
@@ -430,11 +418,10 @@ var _ = Describe("Query Checkpoints", func() {
 				}, nil)))
 				Expect(err).To(Succeed())
 
-				// CreateQueryCheckpoint blocks until the read index is
-				// materialized on this (creator) node.
-				resp, err := clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+				// Apply blocks until the read index is materialized on this
+				// (creator) node.
+				cpID, _, err := actions.CreateQueryCheckpoint(ctx, client)
 				Expect(err).To(Succeed())
-				cpID := resp.GetCheckpointId()
 
 				// Read at the checkpoint with zero delay on the creator node.
 				// Before the fix this intermittently returned code=Unknown; now
@@ -484,9 +471,8 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 	})
 
 	It("serves the checkpoint on every node — retryable, never Unknown, eventually consistent", func() {
-		resp, err := servers[0].ClusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+		cpID, _, err := actions.CreateQueryCheckpoint(ctx, servers[0].Client)
 		Expect(err).To(Succeed())
-		cpID := resp.GetCheckpointId()
 
 		for i := range servers {
 			node := servers[i]
@@ -571,7 +557,7 @@ func aggregateAssets(result *commonpb.AggregateResult) []string {
 }
 
 // FSM-enforced live-checkpoint cap (EN-1501): the limit comes from the
-// Raft-replicated cluster policy, and CreateQueryCheckpoint / DeleteQueryCheckpoint
+// Raft-replicated cluster policy, and the create / delete checkpoint actions
 // are enforced in the FSM apply path. This node starts with a low limit so the
 // cap is reached quickly.
 var _ = Describe("Query Checkpoints live cap", Ordered, func() {
@@ -598,7 +584,7 @@ var _ = Describe("Query Checkpoints live cap", Ordered, func() {
 
 	It("allows creating up to the cap", func() {
 		for i := 0; i < limit; i++ {
-			_, err := clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+			_, _, err := actions.CreateQueryCheckpoint(ctx, client)
 			Expect(err).To(Succeed(), "creation %d of %d must succeed", i+1, limit)
 		}
 
@@ -608,7 +594,7 @@ var _ = Describe("Query Checkpoints live cap", Ordered, func() {
 	})
 
 	It("rejects creation past the cap with CHECKPOINT_LIMIT_REACHED (FailedPrecondition)", func() {
-		_, err := clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+		_, _, err := actions.CreateQueryCheckpoint(ctx, client)
 		Expect(err).To(HaveOccurred())
 		Expect(status.Code(err)).To(Equal(codes.FailedPrecondition))
 
@@ -623,15 +609,14 @@ var _ = Describe("Query Checkpoints live cap", Ordered, func() {
 		Expect(list.GetCheckpoints()).NotTo(BeEmpty())
 
 		victim := list.GetCheckpoints()[0].GetCheckpointId()
-		_, err = clusterClient.DeleteQueryCheckpoint(ctx, &clusterpb.DeleteQueryCheckpointRequest{CheckpointId: victim})
-		Expect(err).To(Succeed())
+		Expect(actions.DeleteQueryCheckpoint(ctx, client, victim)).To(Succeed())
 
-		_, err = clusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+		_, _, err = actions.CreateQueryCheckpoint(ctx, client)
 		Expect(err).To(Succeed(), "a slot was freed, so creation must succeed again")
 	})
 
 	It("returns CHECKPOINT_NOT_FOUND when deleting a non-live checkpoint", func() {
-		_, err := clusterClient.DeleteQueryCheckpoint(ctx, &clusterpb.DeleteQueryCheckpointRequest{CheckpointId: 999999})
+		err := actions.DeleteQueryCheckpoint(ctx, client, 999999)
 		Expect(err).To(HaveOccurred())
 		Expect(status.Code(err)).To(Equal(codes.NotFound))
 

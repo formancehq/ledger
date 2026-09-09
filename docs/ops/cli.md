@@ -3520,6 +3520,9 @@ ledgerctl queries create <name> --ledger <ledger-name> [flags]
 | `--filter` | | Filter expression (same DSL as account/transaction list) |
 | `--timeout` | `10s` | Request timeout |
 
+**Behavior:**
+- Submits a `create_prepared_query` action through `BucketService.Apply`, so the batch honours `--signing-key` like any other write
+
 **Examples:**
 
 ```bash
@@ -4931,8 +4934,11 @@ ledgerctl query-checkpoint create [flags]
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
+- Submits a `create_query_checkpoint` action through `BucketService.Apply`, so the batch honours `--signing-key` like any other write
 - Routes through Raft so the checkpoint is replicated to all nodes
-- The FSM commits pending state and creates a main store Pebble checkpoint; the read index checkpoint is created asynchronously by the index builder
+- The FSM commits pending state and creates a main store Pebble checkpoint; the read index checkpoint is materialized by the index builder on each replica
+- The command does not return until the read index checkpoint is materialized on the node it talked to, so a point-in-time read there succeeds immediately
+- Reports the checkpoint id and max sequence; `--json` emits `{"checkpointId":…,"maxSequence":…}` unchanged
 - Checkpoints are stored under `{dataDir}/query-checkpoints/{id}/main/` and `{dataDir}/query-checkpoints/{id}/readindex/`
 - Not cleaned up on restart — use `query-checkpoint delete` to remove
 
@@ -4962,6 +4968,9 @@ ledgerctl query-checkpoint delete <checkpoint-id>
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Submits a `delete_query_checkpoint` action through `BucketService.Apply`, so the batch honours `--signing-key` like any other write
 
 **Example:**
 

@@ -2404,22 +2404,6 @@ func (m *CreatePreparedQueryRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *CreatePreparedQueryResponse) CloneVT() *CreatePreparedQueryResponse {
-	if m == nil {
-		return (*CreatePreparedQueryResponse)(nil)
-	}
-	r := new(CreatePreparedQueryResponse)
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *CreatePreparedQueryResponse) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
 func (m *UpdatePreparedQueryRequest) CloneVT() *UpdatePreparedQueryRequest {
 	if m == nil {
 		return (*UpdatePreparedQueryRequest)(nil)
@@ -2439,22 +2423,6 @@ func (m *UpdatePreparedQueryRequest) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *UpdatePreparedQueryResponse) CloneVT() *UpdatePreparedQueryResponse {
-	if m == nil {
-		return (*UpdatePreparedQueryResponse)(nil)
-	}
-	r := new(UpdatePreparedQueryResponse)
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *UpdatePreparedQueryResponse) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
 func (m *DeletePreparedQueryRequest) CloneVT() *DeletePreparedQueryRequest {
 	if m == nil {
 		return (*DeletePreparedQueryRequest)(nil)
@@ -2470,22 +2438,6 @@ func (m *DeletePreparedQueryRequest) CloneVT() *DeletePreparedQueryRequest {
 }
 
 func (m *DeletePreparedQueryRequest) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *DeletePreparedQueryResponse) CloneVT() *DeletePreparedQueryResponse {
-	if m == nil {
-		return (*DeletePreparedQueryResponse)(nil)
-	}
-	r := new(DeletePreparedQueryResponse)
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *DeletePreparedQueryResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -6845,22 +6797,6 @@ func (this *CreatePreparedQueryRequest) EqualMessageVT(thatMsg proto.Message) bo
 	}
 	return this.EqualVT(that)
 }
-func (this *CreatePreparedQueryResponse) EqualVT(that *CreatePreparedQueryResponse) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *CreatePreparedQueryResponse) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*CreatePreparedQueryResponse)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
 func (this *UpdatePreparedQueryRequest) EqualVT(that *UpdatePreparedQueryRequest) bool {
 	if this == that {
 		return true
@@ -6886,22 +6822,6 @@ func (this *UpdatePreparedQueryRequest) EqualMessageVT(thatMsg proto.Message) bo
 	}
 	return this.EqualVT(that)
 }
-func (this *UpdatePreparedQueryResponse) EqualVT(that *UpdatePreparedQueryResponse) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *UpdatePreparedQueryResponse) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*UpdatePreparedQueryResponse)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
 func (this *DeletePreparedQueryRequest) EqualVT(that *DeletePreparedQueryRequest) bool {
 	if this == that {
 		return true
@@ -6919,22 +6839,6 @@ func (this *DeletePreparedQueryRequest) EqualVT(that *DeletePreparedQueryRequest
 
 func (this *DeletePreparedQueryRequest) EqualMessageVT(thatMsg proto.Message) bool {
 	that, ok := thatMsg.(*DeletePreparedQueryRequest)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *DeletePreparedQueryResponse) EqualVT(that *DeletePreparedQueryResponse) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *DeletePreparedQueryResponse) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*DeletePreparedQueryResponse)
 	if !ok {
 		return false
 	}
@@ -13875,39 +13779,6 @@ func (m *CreatePreparedQueryRequest) MarshalToSizedBufferVT(dAtA []byte) (int, e
 	return len(dAtA) - i, nil
 }
 
-func (m *CreatePreparedQueryResponse) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *CreatePreparedQueryResponse) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *CreatePreparedQueryResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *UpdatePreparedQueryRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -13965,39 +13836,6 @@ func (m *UpdatePreparedQueryRequest) MarshalToSizedBufferVT(dAtA []byte) (int, e
 	return len(dAtA) - i, nil
 }
 
-func (m *UpdatePreparedQueryResponse) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *UpdatePreparedQueryResponse) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *UpdatePreparedQueryResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *DeletePreparedQueryRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -14041,39 +13879,6 @@ func (m *DeletePreparedQueryRequest) MarshalToSizedBufferVT(dAtA []byte) (int, e
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Ledger)))
 		i--
 		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *DeletePreparedQueryResponse) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *DeletePreparedQueryResponse) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *DeletePreparedQueryResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
 	}
 	return len(dAtA) - i, nil
 }
@@ -18010,16 +17815,6 @@ func (m *CreatePreparedQueryRequest) SizeVT() (n int) {
 	return n
 }
 
-func (m *CreatePreparedQueryResponse) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += len(m.unknownFields)
-	return n
-}
-
 func (m *UpdatePreparedQueryRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -18042,16 +17837,6 @@ func (m *UpdatePreparedQueryRequest) SizeVT() (n int) {
 	return n
 }
 
-func (m *UpdatePreparedQueryResponse) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += len(m.unknownFields)
-	return n
-}
-
 func (m *DeletePreparedQueryRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -18066,16 +17851,6 @@ func (m *DeletePreparedQueryRequest) SizeVT() (n int) {
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *DeletePreparedQueryResponse) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
 	n += len(m.unknownFields)
 	return n
 }
@@ -32723,57 +32498,6 @@ func (m *CreatePreparedQueryRequest) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CreatePreparedQueryResponse) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: CreatePreparedQueryResponse: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CreatePreparedQueryResponse: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
 func (m *UpdatePreparedQueryRequest) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -32925,57 +32649,6 @@ func (m *UpdatePreparedQueryRequest) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *UpdatePreparedQueryResponse) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: UpdatePreparedQueryResponse: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: UpdatePreparedQueryResponse: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
 func (m *DeletePreparedQueryRequest) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -33069,57 +32742,6 @@ func (m *DeletePreparedQueryRequest) UnmarshalVT(dAtA []byte) error {
 			}
 			m.Name = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *DeletePreparedQueryResponse) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: DeletePreparedQueryResponse: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DeletePreparedQueryResponse: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -5,6 +5,8 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -21,9 +23,12 @@ func main() {
 	defer conn.Close()
 
 	client := clusterpb.NewClusterServiceClient(conn)
+	// Checkpoint mutations are audited writes: they travel as ledger.Request
+	// variants through BucketService.Apply. The read RPCs stay on ClusterService.
+	bucketClient := servicepb.NewBucketServiceClient(conn)
 
 	// 1. Create a query checkpoint.
-	createResp, err := client.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+	cpID, maxSeq, err := actions.CreateQueryCheckpoint(ctx, bucketClient)
 	if err != nil {
 		if internal.IsTransient(err) {
 			log.Printf("CreateQueryCheckpoint transient: %v", err)
@@ -36,8 +41,6 @@ func main() {
 		return
 	}
 
-	cpID := createResp.GetCheckpointId()
-	maxSeq := createResp.GetMaxSequence()
 	details := internal.Details{"checkpointId": cpID, "maxSequence": maxSeq}
 
 	assert.Reachable("query checkpoint created", details)
@@ -100,10 +103,7 @@ func main() {
 		}))
 
 	// 4. Delete the checkpoint.
-	_, err = client.DeleteQueryCheckpoint(ctx, &clusterpb.DeleteQueryCheckpointRequest{
-		CheckpointId: cpID,
-	})
-	if err != nil {
+	if err := actions.DeleteQueryCheckpoint(ctx, bucketClient, cpID); err != nil {
 		if internal.IsTransient(err) {
 			return
 		}

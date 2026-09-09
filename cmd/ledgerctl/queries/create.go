@@ -72,14 +72,27 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	_, err = client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
-		Ledger: ledgerName,
-		Query: &commonpb.PreparedQuery{
-			Name:   name,
-			Filter: filter,
-			Target: target,
+	requests := []*servicepb.Request{
+		{
+			Type: &servicepb.Request_CreatePreparedQuery{
+				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
+					Query: &commonpb.PreparedQuery{
+						Name:   name,
+						Filter: filter,
+						Target: target,
+					},
+				},
+			},
 		},
-	})
+	}
+
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
+	if err != nil {
+		return cmdutil.Displayed(err)
+	}
+
+	_, err = client.Apply(ctx, applyReq)
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to create prepared query", err)
 	}

@@ -64,10 +64,12 @@ var _ = Describe("PreparedQueryDeleteCreateRace", Ordered, func() {
 
 			// Seed: pre-create the query so it lives in the leader's cache
 			// at the moment admission inspects CheckCache for the racing ops.
-			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
-				Ledger: ledgerName,
-				Query:  query(name),
-			})
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
+					Query:  query(name),
+				}},
+			}))
 			Expect(err).To(Succeed())
 
 			// Issue delete + create through a barrier so they reach admission
@@ -82,19 +84,23 @@ var _ = Describe("PreparedQueryDeleteCreateRace", Ordered, func() {
 			go func() {
 				defer wg.Done()
 				<-barrier
-				_, errDelete = sharedClient.DeletePreparedQuery(sharedCtx, &servicepb.DeletePreparedQueryRequest{
-					Ledger: ledgerName,
-					Name:   name,
-				})
+				_, errDelete = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+					Type: &servicepb.Request_DeletePreparedQuery{DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+						Ledger: ledgerName,
+						Name:   name,
+					}},
+				}))
 			}()
 
 			go func() {
 				defer wg.Done()
 				<-barrier
-				_, errCreate = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
-					Ledger: ledgerName,
-					Query:  query(name),
-				})
+				_, errCreate = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+					Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+						Ledger: ledgerName,
+						Query:  query(name),
+					}},
+				}))
 			}()
 
 			close(barrier)

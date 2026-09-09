@@ -61,15 +61,17 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 
 		It("Should error when using string filter on int64 field", func() {
 			// Create prepared query: string filter on int64 "age"
-			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
-				Ledger: ledgerName,
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
 
-				Query: &commonpb.PreparedQuery{
-					Name:   "bad-string-on-int",
-					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: actions.StringMetadataFilter("age", "hello"),
-				},
-			})
+					Query: &commonpb.PreparedQuery{
+						Name:   "bad-string-on-int",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: actions.StringMetadataFilter("age", "hello"),
+					},
+				}},
+			}))
 			Expect(err).To(Succeed())
 
 			// Execution should fail with type mismatch error
@@ -84,15 +86,17 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 
 		It("Should error when using int filter on string field", func() {
 			val := int64(42)
-			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
-				Ledger: ledgerName,
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
 
-				Query: &commonpb.PreparedQuery{
-					Name:   "bad-int-on-string",
-					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: actions.Int64RangeMetadataFilterExclusive("name", &val, nil, false, false),
-				},
-			})
+					Query: &commonpb.PreparedQuery{
+						Name:   "bad-int-on-string",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: actions.Int64RangeMetadataFilterExclusive("name", &val, nil, false, false),
+					},
+				}},
+			}))
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
@@ -105,15 +109,17 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		})
 
 		It("Should error when using bool filter on int64 field", func() {
-			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
-				Ledger: ledgerName,
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
 
-				Query: &commonpb.PreparedQuery{
-					Name:   "bad-bool-on-int",
-					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: actions.BoolMetadataFilter("age", true),
-				},
-			})
+					Query: &commonpb.PreparedQuery{
+						Name:   "bad-bool-on-int",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: actions.BoolMetadataFilter("age", true),
+					},
+				}},
+			}))
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
@@ -126,15 +132,17 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		})
 
 		It("Should allow exists filter on any typed field", func() {
-			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
-				Ledger: ledgerName,
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
 
-				Query: &commonpb.PreparedQuery{
-					Name:   "exists-on-int",
-					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: actions.ExistsMetadataFilter("age"),
-				},
-			})
+					Query: &commonpb.PreparedQuery{
+						Name:   "exists-on-int",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: actions.ExistsMetadataFilter("age"),
+					},
+				}},
+			}))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -190,15 +198,17 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 			// Use IntCondition (the parser's default for integer literals) on a uint64 field.
 			// The compiler should auto-coerce to UintCondition.
 			minVal := int64(30)
-			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
-				Ledger: ledgerName,
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
 
-				Query: &commonpb.PreparedQuery{
-					Name:   "counter-gte-30",
-					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: actions.Int64RangeMetadataFilterExclusive("counter", &minVal, nil, false, false),
-				},
-			})
+					Query: &commonpb.PreparedQuery{
+						Name:   "counter-gte-30",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: actions.Int64RangeMetadataFilterExclusive("counter", &minVal, nil, false, false),
+					},
+				}},
+			}))
 			Expect(err).To(Succeed())
 
 			var result *servicepb.ExecutePreparedQueryResponse
@@ -219,15 +229,17 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 
 		It("Should error when int filter has negative bound on uint field", func() {
 			negVal := int64(-1)
-			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
-				Ledger: ledgerName,
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
 
-				Query: &commonpb.PreparedQuery{
-					Name:   "counter-neg",
-					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: actions.Int64RangeMetadataFilterExclusive("counter", &negVal, nil, false, false),
-				},
-			})
+					Query: &commonpb.PreparedQuery{
+						Name:   "counter-neg",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: actions.Int64RangeMetadataFilterExclusive("counter", &negVal, nil, false, false),
+					},
+				}},
+			}))
 			Expect(err).To(Succeed())
 
 			_, err = sharedClient.ExecutePreparedQuery(sharedCtx, &servicepb.ExecutePreparedQueryRequest{
@@ -369,15 +381,17 @@ var _ = Describe("FilterSchemaValidation", Ordered, func() {
 		It("Should reject int filter on a STRING field", func() {
 			// Declared schema type is STRING, so int filter must fail with type mismatch
 			val := int64(42)
-			_, err := sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
-				Ledger: ledgerName,
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
 
-				Query: &commonpb.PreparedQuery{
-					Name:   "auto-schema-int",
-					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: actions.Int64RangeMetadataFilterExclusive("anything", &val, nil, false, false),
-				},
-			})
+					Query: &commonpb.PreparedQuery{
+						Name:   "auto-schema-int",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: actions.Int64RangeMetadataFilterExclusive("anything", &val, nil, false, false),
+					},
+				}},
+			}))
 			Expect(err).To(Succeed())
 
 			// Execution should fail with type mismatch
