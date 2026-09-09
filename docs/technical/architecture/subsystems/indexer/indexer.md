@@ -265,6 +265,23 @@ Two distinct backfill paths share the same atomic-switch primitive:
 
 **Index backfill** (a non-initial `CreateIndex`): the builder allocates `pending = HighWater + 1`, keeps `Current = 0`, and queries return `ErrIndexBuilding` until the switch — there is no served `v_current` yet. `effectiveCurrentVersion` maps `0 → pending` for live writes, so the dual-write call site degenerates to a single write in the pending version, which is also where the backfill replays history. No real dual-write occurs.
 
+The log-date builtin backfills every ledger log, including schema, account-type,
+index-lifecycle, and skipped-order logs. Those rows belong to the same universe
+as unfiltered `ListLogs`; omitting their dates would produce false negatives
+for date ranges and false positives for their complements. Historical replay
+writes the log identity/date projections before filtering payloads for entity
+indexing, and never replays schema or index-lifecycle mutations. Foreign-ledger
+logs do not contribute rows to a task's index.
+
+Even an `initial` log-date index takes this backfill path: the born-empty flag
+rules out entity data, but earlier configuration logs and the `CreateIndex` log
+itself already form log history. Other initial indexes retain direct promotion.
+Backfill buffers date rows and its cursor in the same read-store batch; a failed
+write or flush does not advance the task's in-memory cursor. Only after those
+rows are durable and the task reaches the fold cursor does the separate atomic
+switch commit publish readiness. These are rebuildable per-replica projections;
+restore reconstructs them from the restored logs and registry.
+
 **Schema rewrite** (`SetMetadataFieldType` on an already-built index): the builder preserves `Current = N` and allocates `Pending = max(Current, Pending, HighWater) + 1`. In steady state that is `N+1`; repeated retypes keep climbing rather than reusing an abandoned version. Queries continue to serve `v_current = N` while live writes are dual-written to both keyspaces (see [Dual-write while a rewrite is in flight](#dual-write-while-a-rewrite-is-in-flight)), and the rewrite scan re-encodes pre-existing rows into `v_pending`.
 
 ### `completeBackfill` — the switch
