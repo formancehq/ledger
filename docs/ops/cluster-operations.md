@@ -156,7 +156,7 @@ On **restart** (WAL not empty), this registration step is **skipped** because th
 
 ### ConfChange Observer
 
-When a ConfChange is committed (adding a learner or promoting a voter), an observer on each node synchronously updates the transport and service pool. The ConfChange carries a `ConfChangeContext` with the new node's Raft and service addresses, so all nodes learn the addresses without external configuration. If an `UpdateNode` changes either address, the observer removes and re-adds the peer connections so Raft cannot continue dialing the stale endpoint.
+When a ConfChange is committed (adding a learner or promoting a voter), an observer on each node synchronously updates the transport and service pool. The ConfChange carries a `ConfChangeContext` with the new node's Raft and service addresses, so all nodes learn the addresses without external configuration. An `UpdateNode` that changes the Raft address removes and re-adds the peer connections so Raft cannot continue dialing the stale endpoint. A service-address-only change refreshes the service pool through its address-aware `AddPeer`, retaining the existing Raft connection.
 
 ### AddLearner RPC
 
@@ -168,8 +168,16 @@ The `AddLearner` gRPC handler on the leader:
 
 If the request reaches a follower, it is transparently forwarded to the leader.
 Administrative `AddLearner` and bootstrap `JoinAsLearner` are separate code
-paths. Both require an identity, but only the latter represents a fresh-WAL
-boot and therefore triggers EN-1436's strict stale-progress check.
+paths. Both require an identity. For `JoinAsLearner`, EN-1436's stale-progress
+check rejects whenever the leader has already replicated to that node
+(`Match > 0`), regardless of the supplied identity. Administrative `AddLearner`
+rejects with `FailedPrecondition` only when `Match > 0` and the supplied identity
+differs from the registered one. A retry with the same active identity returns
+`AlreadyExists`; with `Match == 0`, a different identity refreshes the row through
+`ConfChangeUpdateNode`. For stale progress, permanently retire the previous
+instance, remove its membership, then retry registration; the leader-only
+`remove-node --force` recovery procedure below applies when normal removal
+cannot reach quorum.
 
 ## Synchronization
 
