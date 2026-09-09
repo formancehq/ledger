@@ -86,7 +86,7 @@ func TestPrefixIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	require.NoError(t, it.Err())
 }
 
-// The descending mirror: failed SeekLEs at or below the proven ceil return
+// The descending mirror: failed descending Seeks at or below the proven ceil return
 // false without a Pebble seek, while a seek above it repositions normally —
 // including after exhaustion.
 func TestReversePrefixIterator_SeekCeilKeepsRepositioning(t *testing.T) {
@@ -123,7 +123,7 @@ func TestReversePrefixIterator_SeekCeilKeepsRepositioning(t *testing.T) {
 // PebbleReverseTxIterator.Seek has three exhaustion branches (Prev fails
 // after a positioned Seek, Last fails on an empty view, and the scan-back
 // loop running out); the first two must record the ceil and stay re-seekable.
-func TestPebbleReverseTxIterator_SeekLERepositioning(t *testing.T) {
+func TestPebbleReverseTxIterator_SeekRepositioning(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
@@ -255,10 +255,10 @@ func TestPebbleAccountIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	require.NoError(t, it.Err())
 }
 
-// The account mirror of TestPebbleReverseTxIterator_SeekLERepositioning:
+// The account mirror of TestPebbleReverseTxIterator_SeekRepositioning:
 // same seek-then-step-back shape over address extraction, covering the
 // Prev()-fails and Last()-fails branches plus reposition after exhaustion.
-func TestPebbleReverseAccountIterator_SeekLERepositioning(t *testing.T) {
+func TestPebbleReverseAccountIterator_SeekRepositioning(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
@@ -304,7 +304,7 @@ func TestPebbleReverseAccountIterator_SeekLERepositioning(t *testing.T) {
 // Seek at the all-0xff cursor must return the last transaction: the
 // incremented probe key wraps to zero, and mistaking that for an empty range
 // would also poison the ceil for every later seek.
-func TestPebbleReverseTxIterator_SeekLEMaxUint64(t *testing.T) {
+func TestPebbleReverseTxIterator_SeekMaxUint64(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)

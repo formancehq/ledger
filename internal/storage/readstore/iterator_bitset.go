@@ -72,7 +72,7 @@ func (it *BitsetIterator) Seek(target []byte) bool {
 		return false
 	}
 
-	// SeekGE is absolute repositioning: recompute the position from target even
+	// Seek is absolute repositioning: recompute the position from target even
 	// after a prior walk exhausted the iterator. A latched `done` would make a
 	// re-seek to an earlier target (as the NOT/AND merge iterators issue once
 	// forward iteration has consumed the bitset) wrongly report no match.

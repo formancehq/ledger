@@ -11,7 +11,7 @@ import (
 // smaller target must not let that child's stale (higher) Current() become the
 // convergence candidate — doing so skips valid intersections below it (EN-1597,
 // NumaryBot review of PR #1635).
-func TestAndIterator_SeekGERepositionsAllChildren(t *testing.T) {
+func TestAndIterator_SeekRepositionsAllChildren(t *testing.T) {
 	t.Parallel()
 
 	left := newAliasingIter("a", "b", "c", "z")

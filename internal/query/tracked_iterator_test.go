@@ -48,7 +48,7 @@ func TestTrackedIterator_CountsNextCalls(t *testing.T) {
 	assert.Equal(t, int64(0), stats.SeekCalls)
 }
 
-func TestTrackedIterator_CountsSeekGECalls(t *testing.T) {
+func TestTrackedIterator_CountsSeekCalls(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)

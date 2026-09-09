@@ -67,7 +67,7 @@ func drainIDs(tb testing.TB, it *AddressTxIterator) []uint64 {
 // well-defined after exhaustion (EN-1597, paul-nicolas review of PR #1635).
 // The prior implementation consumed the matched entry (`pendingTxns[idx+1:]`)
 // and latched on exhaustion, so a repeated or backward seek dropped rows.
-func TestAddressTxIterator_SeekGEIsAbsolute(t *testing.T) {
+func TestAddressTxIterator_SeekIsAbsolute(t *testing.T) {
 	t.Parallel()
 
 	it := newAddressTxFixture(t, map[string][]uint64{

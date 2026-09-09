@@ -45,7 +45,7 @@ func TestBitsetIterator_Empty(t *testing.T) {
 	require.Empty(t, collectBitsetIDs(readstore.NewBitsetIterator(nil)))
 }
 
-func TestBitsetIterator_SeekGE(t *testing.T) {
+func TestBitsetIterator_Seek(t *testing.T) {
 	t.Parallel()
 
 	bs := &bitset.Bitset{}

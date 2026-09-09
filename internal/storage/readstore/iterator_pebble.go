@@ -101,8 +101,8 @@ func (it *PebbleAccountIterator) Next() bool {
 
 	if !it.started {
 		it.started = true
-		// SeekGE positions at the first key >= prefix within the iterator bounds.
-		// Note: we use SeekGE (not SeekPrefixGE) because the main Pebble store
+		// Seek positions at the first key >= prefix within the iterator bounds.
+		// Note: we use Seek (not SeekPrefixGE) because the main Pebble store
 		// uses DefaultComparer whose Split returns len(key), making
 		// SeekPrefixGE's implicit upper bound too restrictive.
 		if !it.iter.SeekGE(it.prefix) {
@@ -674,7 +674,7 @@ func (it *PebbleReverseTxIterator) Seek(target []byte) bool {
 	it.started = true
 
 	// Seek to the last byLog entry for target txID:
-	// SeekGE([prefix][target+1]) then Prev(), or Last() if past end.
+	// Seek([prefix][target+1]) then Prev(), or Last() if past end.
 	// An all-0xff target wraps the increment to zero, which would land the
 	// probe on the FIRST key and mis-record an emptiness proof; every key
 	// qualifies for that target, so position at the end of the range directly.
@@ -770,7 +770,7 @@ func (it *LedgerLogIterator) Close()                  { it.inner.Close() }
 // Used for compileTxIDCondition range scans.
 type PebbleTxRangeIterator struct {
 	iter       *pebble.Iterator
-	lowerBound []byte // stored for SeekGE initial positioning
+	lowerBound []byte // stored for Seek initial positioning
 	idOffset   int
 
 	current   []byte

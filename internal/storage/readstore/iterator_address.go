@@ -23,8 +23,8 @@ import (
 // ensureMaterialized, which returns only after the slice is sorted.
 //
 // The union is materialized in full on first use and kept for the iterator's
-// lifetime; Next and SeekGE are cursor moves over the stable sorted slice, so
-// SeekGE is a true absolute reposition — seekable backwards, repeatable, and
+// lifetime; Next and Seek are cursor moves over the stable sorted slice, so
+// Seek is a true absolute reposition — seekable backwards, repeatable, and
 // well-defined after exhaustion — as the EntityIterator contract requires.
 type AddressTxIterator struct {
 	reader     dal.PebbleReader

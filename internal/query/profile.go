@@ -149,7 +149,7 @@ type IteratorStats struct {
 	NextCalls int64
 	SeekCalls int64
 	// Duration is inclusive: it covers time spent in children because a parent's
-	// Next/SeekGE calls the child's Next/SeekGE while the timer is running.
+	// Next/Seek calls the child's Next/Seek while the timer is running.
 	// Self-time can be derived at render as Duration - Σ Children.Duration.
 	Duration time.Duration
 	// ItemsEmitted counts Next() invocations that returned true.

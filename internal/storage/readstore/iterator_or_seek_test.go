@@ -7,8 +7,8 @@ import (
 )
 
 // OrIterator.Seek must re-establish the union after exhaustion — the union
-// mirror of TestAndIterator_SeekGERepositionsAllChildren.
-func TestOrIterator_SeekGERepositionsAfterExhaustion(t *testing.T) {
+// mirror of TestAndIterator_SeekRepositionsAllChildren.
+func TestOrIterator_SeekRepositionsAfterExhaustion(t *testing.T) {
 	t.Parallel()
 
 	it := NewOrIterator(newAliasingIter("a", "c"), newAliasingIter("b"))
@@ -33,7 +33,7 @@ func TestOrIterator_SeekGERepositionsAfterExhaustion(t *testing.T) {
 
 // ReverseOrIterator.Seek must re-establish the union after exhaustion —
 // the descending mirror of the OR test above.
-func TestReverseOrIterator_SeekLERepositionsAfterExhaustion(t *testing.T) {
+func TestReverseOrIterator_SeekRepositionsAfterExhaustion(t *testing.T) {
 	t.Parallel()
 
 	it := NewReverseOrIterator(newReverseAliasingIter("a", "c"), newReverseAliasingIter("b"))
