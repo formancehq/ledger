@@ -147,11 +147,14 @@ conditions are valid for every declared type.
 
 ### Index inspection
 
-`InspectIndex` pins a read-store snapshot, rejects `CurrentVersion == 0`, and
-scans only the locally served version. Distinct values, facets, and summary
-statistics therefore describe one consistent encoding. The HTTP adapter uses
-the declared type as a rendering hint so signed datetime index values are shown
-as RFC3339 strings.
+`InspectIndex` first fixes the main-store snapshot and waits for a read-store
+certificate covering its Raft horizon. It resolves `CurrentVersion` through a
+pin-aware resolver, rejects a zero or not-yet-activated version, and scans that
+version from the aligned index snapshot while ignoring membership events after
+the main snapshot's native sequence. Distinct values, facets, and summary
+statistics therefore describe the same historical state and one consistent
+encoding. The HTTP adapter uses the declared type as a rendering hint so signed
+datetime index values are shown as RFC3339 strings.
 
 ### Progress and barriers
 

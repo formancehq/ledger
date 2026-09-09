@@ -5,7 +5,9 @@ The background workers (`internal/application/indexbuilder` and
 audit entries into queryable read-store keyspaces. They run independently on
 every leader and follower and remain outside the FSM hot path. Both retain a
 native resume cursor and publish a separate Raft applied-index certificate for
-cross-store read alignment.
+cross-store read alignment. `InspectIndex` is a projection consumer under the
+same contract: it certifies the fixed main horizon, resolves the servable index
+version at that pin, and ignores membership events committed after it.
 
 ## Documents
 
