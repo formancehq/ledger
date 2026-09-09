@@ -69,6 +69,20 @@ func TestProjectionRaftProgressWaitCancellation(t *testing.T) {
 	require.ErrorIs(t, s.WaitForAuditRaftProgress(ctx, 1), context.Canceled)
 }
 
+func TestWaitForRaftProgressReturnsTerminalProjectionFailure(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	waitErr := make(chan error, 1)
+	go func() {
+		waitErr <- s.WaitForRaftProgress(context.Background(), 1)
+	}()
+
+	s.SetReadProjectionFailed()
+	require.ErrorIs(t, <-waitErr, ErrReadProjectionFailed)
+	require.False(t, s.ReadProjectionHealthy())
+}
+
 func TestAuditRaftProgressWaitsThroughRebuildAndRejectsDisabled(t *testing.T) {
 	t.Parallel()
 

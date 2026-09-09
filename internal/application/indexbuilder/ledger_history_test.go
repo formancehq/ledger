@@ -9,6 +9,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metricnoop "go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -483,6 +484,31 @@ func TestFreshReadstoreFailsIfRegistryCreateWasNotReplayed(t *testing.T) {
 
 	err := b.validateHistoryReplayState()
 	require.ErrorContains(t, err, "was not resolved by CreatedIndex replay")
+}
+
+func TestWorkerPublishesTerminalFailureWhenHistoryReplayIsIncomplete(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.batchSize = DefaultBatchSize
+	b.notifications = signal.NewNotifications()
+	b.meter = metricnoop.Meter{}
+	persistLedgerAndIndexRegistry(t, b, "missing-create", indexes.MetadataID(
+		commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		"role",
+	))
+
+	b.Start()
+	t.Cleanup(b.Stop)
+
+	require.Eventually(t, func() bool {
+		return !b.readStore.ReadProjectionHealthy()
+	}, 5*time.Second, 10*time.Millisecond)
+	require.ErrorIs(t, b.readStore.WaitForRaftProgress(context.Background(), 1), readstore.ErrReadProjectionFailed)
+	require.ErrorIs(t, b.readStore.WaitForCheckpoint(
+		context.Background(),
+		filepath.Join(t.TempDir(), "pending"),
+	), readstore.ErrReadProjectionFailed)
 }
 
 func TestLoadLedgerHistoryRejectsUnknownState(t *testing.T) {
