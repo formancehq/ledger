@@ -52,7 +52,10 @@ swallows a stream truncation will silently report "all green" on a real bug.
 The workload uses a layered predicate set (`internal/client.go`):
 
 - `IsTransient(err)` — retry-safe set, what the retry interceptor handles.
-  Covers `Unavailable | DeadlineExceeded | ExternalServiceError`.
+  Covers `Unavailable | DeadlineExceeded | ExternalServiceError |
+  WritesBlockedDiskFull` (the write gate's
+  `ResourceExhausted / WRITES_BLOCKED_DISK_FULL` refusal: rejected before
+  consensus, so the bulk did not commit and a retry is sound).
 - `IsCanceled(err)` — local ctx is dead (driver shutting down). Not a
   finding; the driver just exits.
 - `IsTolerated(err)` — `nil | IsTransient | IsCanceled | errors.Is(context.DeadlineExceeded) | errors.Is(context.Canceled)`.
