@@ -169,6 +169,25 @@ The boolean combinators are **direction-parameterized, not duplicated**: each is
 
 The filter compiler turns a `QueryFilter` proto into a tree of these. `Seek` is an **absolute** reposition to the first entity at or after the target *in the iterator's direction* — `AndIterator.Seek` force-seeks *every* child to the target (EN-1597; a child left ahead would skip valid intersections), and the ahead-child leapfrog survives only inside `converge`'s merge loop. Exhausted leaves stay re-seekable; the `seekFloor`/`seekCeil` cache keeps repeated re-seeks of a proven-empty child O(1). See [iterator-seek-contract.md](iterator-seek-contract.md).
 
+### Direction is compiled, not applied afterwards
+
+The compiler has two entry points over one recursion shape: `query.Compile` builds the ascending tree, `query.CompileReverse` (`internal/query/compile_reverse.go`) builds the descending one, out of the shared combinators and the direction-specific leaves. `listDescFiltered` therefore has the same shape as `listAscending` — compile, trim to the main-store horizon, hand to `PaginateReverse` — and a descending page seeks to its cursor and stops after the lookahead.
+
+Before EN-1966 a filtered descending page drained **every** match into a slice, reversed it in place, and only then applied the cursor and page size: O(M) visits and O(M) memory per page, on what is the public default direction for transactions. Measured on one leaf at 100k matches, a first page went from ~6.3 ms / 100,000 rows visited / ~200k allocations to ~15 µs / 101 rows visited / ~282 allocations, and rows-visited is now flat in the match count rather than linear.
+
+Only leaf *construction* is duplicated between the two entry points. Predicate resolution, schema validation, index-readiness gating and bound computation are shared functions (`resolveFieldMetadataCtx`, `resolveIntBounds`/`resolveUintBounds`, `requireIndexReady`, `mergeFieldRanges`, `intRangeBounds`/`uintRangeBounds`/`timestampRangeBounds`/`logIDRangeBounds`), so the two directions cannot disagree about what a filter *means* — only about which way they walk it.
+
+**Two leaf classes stay materializing**, and deliberately so:
+
+| Fallback | Why it cannot stream backwards | Descending behaviour |
+|---|---|---|
+| Value-ordered ranges — int/uint metadata ranges, transaction timestamp / inserted-at / reverted-at, log date, log-id ranges | The scan spans several index-value buckets, so rows surface in `(value, entity)` order and "the next entity below X" is undefined without the sorted result | `materializeReverse` reuses the ascending path's single `materializeEntities` drain and hands out a borrowed `SliceIterator[Desc]` over that one slice |
+| `AddressTxIterator[D]` — the account→transaction union, including the exact-address form | Members come from N per-account scans, each ascending but collectively unordered | Both directions share one `addressTxUnion` and its one sorted slice, walked through a `SliceIterator[D]` |
+
+Neither adds a second complete-result collection for the reversal: the descending page costs exactly the one materialization the ascending page already pays. Both remain visible in the iterator tree under their own `Kind`, so [query-profile](query-profile.md) still attributes their cost. Making them stream is separate work with its own tickets.
+
+A gate that hides rows must hide them in **both** directions. `ReversePrefixIterator` carries the same fold-sequence stamp gate as `PrefixIterator`, and `ReverseEventResolveIterator` resolves each group at the same pin as its ascending twin — walking a group backwards, the *first* event with `seq <= pin` is the latest one at or below it, which is the event the forward pass settles on. A gate present on one side only is a direction-dependent visibility bug that a whole-set parity test cannot see, because both directions are compared against the same pinned view; the registry-driven conformance suite in `internal/storage/readstore/iterator_conformance_test.go` compares each direction against the independently declared set at a pin instead.
+
 ## Pagination
 
 A `Cursor[T]` is opaque to the client. Internally the cursor encodes the position of the *last returned* entity — a transaction ID as a decimal string (cursor.go:508), an account address as-is (`:676`), etc. The streamer (`server_bucket.go` → `sendPagedToStream`, `internal/adapter/grpc/stream_helper.go:44`):
@@ -214,6 +233,7 @@ snapshot remain unchanged.
 | Controller read methods | `internal/application/ctrl/controller_default.go` |
 | `ReadIndexAndWait` | `internal/infra/node/read_index.go:101` |
 | Generic list | `internal/application/ctrl/list_entities.go:57` |
-| Filter compile | `internal/query/compile.go:90` |
+| Filter compile (ascending) | `internal/query/compile.go:90` |
+| Filter compile (descending) | `internal/query/compile_reverse.go` |
 | Iterator algebra | `internal/storage/readstore/iterator_*.go` |
 | Cursor + streamer | `internal/pkg/cursor/cursor.go`, `internal/adapter/grpc/stream_helper.go:44` |
