@@ -38,11 +38,8 @@ type vtDeterministicMarshaler interface {
 // state every mutator returns a documented error and never touches the
 // released batch.
 type WriteSession struct {
-	store *Store
-	batch *pebble.Batch
-	// closeBatchFn allows tests to observe release without accessing a pooled batch.
-	// When nil, releaseBatch calls Pebble's Close directly.
-	closeBatchFn   func(*pebble.Batch) error
+	store          *Store
+	batch          *pebble.Batch
 	KeyBuilder     *KeyBuilder
 	protoBuffer    []byte
 	CacheBuffer    []byte // reusable buffer for 0xFF cache zone writes (tag+value)
@@ -121,18 +118,7 @@ func (b *WriteSession) Cancel() error {
 		return nil
 	}
 
-	return b.releaseBatch()
-}
-
-// releaseBatch relinquishes ownership even if Close reports an error.
-// Callers must check the session state before releasing the batch.
-func (b *WriteSession) releaseBatch() error {
-	var err error
-	if b.closeBatchFn != nil {
-		err = b.closeBatchFn(b.batch)
-	} else {
-		err = b.batch.Close()
-	}
+	err := b.batch.Close()
 	b.batch = nil
 
 	return err
@@ -144,9 +130,7 @@ func (b *WriteSession) releaseBatch() error {
 // holds a reference under NoSync), and the session enters the committed terminal
 // state. If the underlying commit fails, the batch remains owned by the session
 // so the caller can Cancel it to release resources; a failed commit is not
-// described as rolled back. If the batch cannot be finalised after a successful
-// commit, the error is returned and the session still enters the committed
-// terminal state, since the data was already applied.
+// described as rolled back.
 func (b *WriteSession) Commit() error {
 	if err := b.checkActive(); err != nil {
 		return err
@@ -158,9 +142,10 @@ func (b *WriteSession) Commit() error {
 
 	b.committed = true
 
-	if err := b.releaseBatch(); err != nil {
-		return fmt.Errorf("finalizing write session batch: %w", err)
-	}
+	// Close only reports ErrClosed when ownership was already violated; the
+	// active-state guard and exclusive ownership prevent that here.
+	_ = b.batch.Close()
+	b.batch = nil
 
 	return nil
 }

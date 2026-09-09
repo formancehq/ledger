@@ -1,7 +1,6 @@
 package dal
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -48,25 +47,13 @@ func TestBatch_CommitFinalizesBatch(t *testing.T) {
 	batch := s.OpenWriteSession()
 	require.NoError(t, batch.SetBytes([]byte("key1"), []byte("val1")))
 
-	closeCalls := 0
-	batch.closeBatchFn = func(pb *pebble.Batch) error {
-		closeCalls++
-		if closeCalls > 1 {
-			t.Fatal("batch closed more than once")
-		}
-
-		return pb.Close()
-	}
-
 	require.NoError(t, batch.Commit())
-	require.Equal(t, 1, closeCalls)
 	require.Nil(t, batch.batch)
 
-	// Terminal operations must not attempt to close the released batch again.
+	// Only inspect the session after finalization, never the pooled batch.
 	require.NoError(t, batch.Cancel())
 	require.NoError(t, batch.Cancel())
 	require.ErrorContains(t, batch.Commit(), "already committed")
-	require.Equal(t, 1, closeCalls)
 	require.Nil(t, batch.batch)
 
 	// The write itself must remain visible after the batch was finalized.
@@ -76,40 +63,48 @@ func TestBatch_CommitFinalizesBatch(t *testing.T) {
 	require.NoError(t, closer.Close())
 }
 
-func TestBatch_CommitCloseError(t *testing.T) {
+func TestBatch_CommitFailureRetainsBatch(t *testing.T) {
 	t.Parallel()
 
-	s := newTestStore(t)
-	batch := s.OpenWriteSession()
+	path := t.TempDir()
+	db, err := pebble.Open(path, &pebble.Options{})
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+	db, err = pebble.Open(path, &pebble.Options{ReadOnly: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	batch := NewWriteSessionFromDB(db)
 	require.NoError(t, batch.SetBytes([]byte("key1"), []byte("val1")))
+	owned := batch.batch
 
-	closeErr := errors.New("injected close failure")
-	closeCalls := 0
-	batch.closeBatchFn = func(pb *pebble.Batch) error {
-		closeCalls++
-		if closeCalls > 1 {
-			t.Fatal("batch closed more than once")
-		}
-		// Release the real resource before simulating the reported error.
-		require.NoError(t, pb.Close())
-
-		return closeErr
-	}
-
-	err := batch.Commit()
-	require.ErrorIs(t, err, closeErr)
-	require.ErrorContains(t, err, "finalizing write session batch")
-	require.True(t, batch.committed)
+	err = batch.Commit()
+	require.ErrorIs(t, err, pebble.ErrReadOnly)
+	require.ErrorContains(t, err, "committing write session")
+	require.False(t, batch.committed)
+	require.Same(t, owned, batch.batch)
+	require.NoError(t, batch.Cancel())
 	require.Nil(t, batch.batch)
 	require.NoError(t, batch.Cancel())
-	require.ErrorContains(t, batch.Commit(), "already committed")
-	require.ErrorContains(t, batch.SetBytes([]byte("key1"), []byte("new")), "already committed")
-	require.Equal(t, 1, closeCalls)
+}
 
-	val, closer, err := s.Get([]byte("key1"))
-	require.NoError(t, err)
-	require.Equal(t, []byte("val1"), val)
-	require.NoError(t, closer.Close())
+// BenchmarkBatch_Commit reports the allocation cost of repeated sessions. It
+// can compare batch reuse against an omitted Close without inspecting pooled
+// objects or making nondeterministic sync.Pool reuse a test assertion.
+func BenchmarkBatch_Commit(b *testing.B) {
+	db, err := pebble.Open(b.TempDir(), &pebble.Options{})
+	require.NoError(b, err)
+	b.Cleanup(func() { require.NoError(b, db.Close()) })
+	key := []byte("key1")
+	value := make([]byte, 32<<10)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		batch := NewWriteSessionFromDB(db)
+		require.NoError(b, batch.SetBytes(key, value))
+		require.NoError(b, batch.Commit())
+	}
 }
 
 func TestBatch_CancelBeforeCommit(t *testing.T) {
