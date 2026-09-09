@@ -9,15 +9,15 @@ import (
 )
 
 // Membership service unit tests cover the input-validation branches.
-// Leader-side mutation (raftTransport.AddPeer + servicePool.AddPeer +
-// node.AddLearner) requires a real *node.Node and is covered by the
+// Leader-side admission and committed routing changes require a real
+// *node.Node and are covered by the
 // e2e cluster suite — input validation alone runs before any of those
 // dependencies is touched, which is what we assert here.
 
 func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 	t.Parallel()
 
-	// node, raftTransport, servicePool intentionally nil — the
+	// node intentionally nil — the
 	// validation paths must reject before reaching them.
 	s := &Service{}
 

@@ -462,13 +462,13 @@ func Module() fx.Option {
 					meterProvider.Meter("storage"),
 				)
 			},
-			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, infraMembership *raftmembership.Membership, cfg Config, logger logging.Logger) *membership.Service {
+			func(n *node.Node, infraMembership *raftmembership.Membership, cfg Config, logger logging.Logger) *membership.Service {
 				return membership.NewService(
-					n, raftTransport, servicePool, infraMembership, logger,
+					n, infraMembership, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 				)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
+			},
 			func(builder *plan.Builder, n *node.Node, store *dal.Store, cfg Config, logger logging.Logger) *backupapp.Orchestrator {
 				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, logger, n.GetNodeID(), backupapp.NewExecutorRegistry(), cfg.BackupMaxSegmentBytes)
 			},
