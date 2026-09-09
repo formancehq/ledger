@@ -9,6 +9,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 // returnsInOrder builds a closure that returns each bool from results in
@@ -33,7 +34,7 @@ func TestTrackedIterator_CountsNextCalls(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
-	inner := NewMockEntityIterator(ctrl)
+	inner := NewMockEntityIterator[readstore.Asc](ctrl)
 	inner.EXPECT().Next().DoAndReturn(returnsInOrder([]bool{true, true, false})).Times(3)
 
 	stats := &query.IteratorStats{}
@@ -51,15 +52,15 @@ func TestTrackedIterator_CountsSeekGECalls(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
-	inner := NewMockEntityIterator(ctrl)
+	inner := NewMockEntityIterator[readstore.Asc](ctrl)
 	seek := returnsInOrder([]bool{true, false})
-	inner.EXPECT().SeekGE(gomock.Any()).DoAndReturn(func(_ []byte) bool { return seek() }).Times(2)
+	inner.EXPECT().Seek(gomock.Any()).DoAndReturn(func(_ []byte) bool { return seek() }).Times(2)
 
 	stats := &query.IteratorStats{}
 	tracked := query.NewTrackedIterator(inner, stats)
 
-	require.True(t, tracked.SeekGE([]byte("abc")))
-	require.False(t, tracked.SeekGE([]byte("xyz")))
+	require.True(t, tracked.Seek([]byte("abc")))
+	require.False(t, tracked.Seek([]byte("xyz")))
 
 	assert.Equal(t, int64(0), stats.NextCalls)
 	assert.Equal(t, int64(2), stats.SeekCalls)
@@ -69,7 +70,7 @@ func TestTrackedIterator_DelegatesCurrent(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
-	inner := NewMockEntityIterator(ctrl)
+	inner := NewMockEntityIterator[readstore.Asc](ctrl)
 	expected := []byte("account:alice")
 	inner.EXPECT().Current().Return(expected)
 
@@ -83,7 +84,7 @@ func TestTrackedIterator_DelegatesClose(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
-	inner := NewMockEntityIterator(ctrl)
+	inner := NewMockEntityIterator[readstore.Asc](ctrl)
 	inner.EXPECT().Close()
 
 	stats := &query.IteratorStats{}
@@ -96,7 +97,7 @@ func TestTrackedIterator_CountsItemsEmittedOnSuccessfulNext(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
-	inner := NewMockEntityIterator(ctrl)
+	inner := NewMockEntityIterator[readstore.Asc](ctrl)
 	inner.EXPECT().Next().DoAndReturn(returnsInOrder([]bool{true, true, false, true})).Times(4)
 
 	stats := &query.IteratorStats{}
@@ -114,29 +115,29 @@ func TestTrackedIterator_AccumulatesDuration(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
-	inner := NewMockEntityIterator(ctrl)
+	inner := NewMockEntityIterator[readstore.Asc](ctrl)
 	next := returnsInOrder([]bool{true, false})
 	inner.EXPECT().Next().DoAndReturn(func() bool { return next() }).Times(2)
-	inner.EXPECT().SeekGE(gomock.Any()).Return(true)
+	inner.EXPECT().Seek(gomock.Any()).Return(true)
 
 	stats := &query.IteratorStats{}
 	tracked := query.NewTrackedIterator(inner, stats)
 
-	tracked.SeekGE([]byte("k"))
+	tracked.Seek([]byte("k"))
 	tracked.Next()
 	tracked.Next()
 
-	assert.Greater(t, stats.Duration, time.Duration(0), "Duration should advance after Next/SeekGE calls")
+	assert.Greater(t, stats.Duration, time.Duration(0), "Duration should advance after Next/Seek calls")
 }
 
 func TestTrackedIterator_MixedOperations(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
-	inner := NewMockEntityIterator(ctrl)
+	inner := NewMockEntityIterator[readstore.Asc](ctrl)
 	next := returnsInOrder([]bool{true, true})
 	inner.EXPECT().Next().DoAndReturn(func() bool { return next() }).Times(2)
-	inner.EXPECT().SeekGE(gomock.Any()).Return(true)
+	inner.EXPECT().Seek(gomock.Any()).Return(true)
 
 	stats := &query.IteratorStats{
 		Label: "test",
@@ -144,7 +145,7 @@ func TestTrackedIterator_MixedOperations(t *testing.T) {
 	}
 	tracked := query.NewTrackedIterator(inner, stats)
 
-	tracked.SeekGE([]byte("start"))
+	tracked.Seek([]byte("start"))
 	tracked.Next()
 	tracked.Next()
 

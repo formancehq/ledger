@@ -6,21 +6,26 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-// TrackedIterator wraps an EntityIterator and records per-iterator stats
-// (call counters, inclusive wall-clock duration, emitted-rows counter) into
-// the associated IteratorStats. Overhead is a single time.Now()/time.Since
-// pair plus two int64 increments per call.
-type TrackedIterator struct {
-	inner readstore.EntityIterator
+// TrackedIterator wraps an Iterator and records per-iterator stats (call
+// counters, inclusive wall-clock duration, emitted-rows counter) into the
+// associated IteratorStats. Overhead is a single time.Now()/time.Since pair
+// plus two int64 increments per call.
+//
+// Profiling is direction-agnostic: it counts calls and rows, neither of which
+// depends on which way the iterator walks, so one implementation covers both
+// directions and a reverse plan renders in the iterator tree exactly like an
+// ascending one (EN-1966).
+type TrackedIterator[D readstore.Direction] struct {
+	inner readstore.Iterator[D]
 	stats *IteratorStats
 }
 
-// NewTrackedIterator wraps an iterator with profiling counters.
-func NewTrackedIterator(inner readstore.EntityIterator, stats *IteratorStats) *TrackedIterator {
-	return &TrackedIterator{inner: inner, stats: stats}
+// NewTrackedIterator wraps an ascending iterator with profiling counters.
+func NewTrackedIterator(inner readstore.EntityIterator, stats *IteratorStats) *TrackedIterator[readstore.Asc] {
+	return &TrackedIterator[readstore.Asc]{inner: inner, stats: stats}
 }
 
-func (t *TrackedIterator) Next() bool {
+func (t *TrackedIterator[D]) Next() bool {
 	start := time.Now()
 	ok := t.inner.Next()
 	t.stats.Duration += time.Since(start)
@@ -33,25 +38,25 @@ func (t *TrackedIterator) Next() bool {
 	return ok
 }
 
-func (t *TrackedIterator) Current() []byte {
+func (t *TrackedIterator[D]) Current() []byte {
 	return t.inner.Current()
 }
 
-func (t *TrackedIterator) SeekGE(target []byte) bool {
+func (t *TrackedIterator[D]) Seek(target []byte) bool {
 	start := time.Now()
-	ok := t.inner.SeekGE(target)
+	ok := t.inner.Seek(target)
 	t.stats.Duration += time.Since(start)
 	t.stats.SeekCalls++
 
 	return ok
 }
 
-func (t *TrackedIterator) Err() error {
+func (t *TrackedIterator[D]) Err() error {
 	return t.inner.Err()
 }
 
-func (t *TrackedIterator) Close() {
+func (t *TrackedIterator[D]) Close() {
 	t.inner.Close()
 }
 
-var _ readstore.EntityIterator = (*TrackedIterator)(nil)
+var _ readstore.EntityIterator = (*TrackedIterator[readstore.Asc])(nil)

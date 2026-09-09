@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// RangeIterator drains [lower, upper) forward; SeekGE is unimplementable on
+// RangeIterator drains [lower, upper) forward; Seek is unimplementable on
 // the raw scan (rows surface in (value, entity) order across buckets) and
 // must fail the query loudly instead of mis-seeking.
 func TestRangeIterator_DrainsForwardAndRefusesSeek(t *testing.T) {
@@ -38,6 +38,6 @@ func TestRangeIterator_DrainsForwardAndRefusesSeek(t *testing.T) {
 	require.Equal(t, []uint64{1, 2}, got, "upper bound is exclusive")
 	require.NoError(t, it.Err())
 
-	require.False(t, it.SeekGE(txIDBytes(1)))
+	require.False(t, it.Seek(txIDBytes(1)))
 	require.ErrorIs(t, it.Err(), errInvariantRangeIteratorSeek)
 }

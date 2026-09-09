@@ -88,7 +88,7 @@ func (it *ReversePrefixIterator) Current() []byte {
 }
 
 // SeekLE positions the iterator at the first entity whose key is <= target.
-func (it *ReversePrefixIterator) SeekLE(target []byte) bool {
+func (it *ReversePrefixIterator) Seek(target []byte) bool {
 	// A prior failed seek at or above target proves this one empty too.
 	if it.ceil.covers(target) {
 		it.exhausted = true

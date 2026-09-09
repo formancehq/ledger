@@ -78,7 +78,7 @@ func (it *AddressTxIterator) Current() []byte {
 	return it.current
 }
 
-func (it *AddressTxIterator) SeekGE(target []byte) bool {
+func (it *AddressTxIterator) Seek(target []byte) bool {
 	if !it.ensureMaterialized() {
 		return false
 	}

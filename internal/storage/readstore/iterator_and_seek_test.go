@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// AndIterator.SeekGE must reposition EVERY child, not just the first. After a
-// forward pass advances/exhausts a non-first child, an absolute SeekGE back to a
+// AndIterator.Seek must reposition EVERY child, not just the first. After a
+// forward pass advances/exhausts a non-first child, an absolute Seek back to a
 // smaller target must not let that child's stale (higher) Current() become the
 // convergence candidate — doing so skips valid intersections below it (EN-1597,
 // NumaryBot review of PR #1635).
@@ -29,6 +29,6 @@ func TestAndIterator_SeekGERepositionsAllChildren(t *testing.T) {
 	require.Equal(t, []string{"a", "b", "c"}, got)
 
 	// Absolute re-seek back to "a" must yield "a" — both children hold it.
-	require.True(t, it.SeekGE([]byte("a")))
+	require.True(t, it.Seek([]byte("a")))
 	require.Equal(t, "a", string(it.Current()))
 }

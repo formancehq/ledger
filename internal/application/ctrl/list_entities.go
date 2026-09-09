@@ -211,17 +211,13 @@ func listDescUnfiltered[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 	return nil
 }
 
-// reverseCloser wraps a ReverseIterator with a Close method.
-type reverseCloser struct {
-	readstore.ReverseIterator
-
-	close func()
-}
-
-func (r *reverseCloser) Close() { r.close() }
-
 // newReverseIterator creates the appropriate reverse iterator for the target type.
-func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T]) (iter *reverseCloser, label, kind, bucket string, err error) {
+//
+// The returned iterator OWNS everything below it and closes it: every
+// ReverseIterator carries Close, so there is no per-call-site closer shim and
+// no branch that closes a raw leaf out from under the wrapper it handed back
+// (EN-1966).
+func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T]) (iter readstore.ReverseIterator, label, kind, bucket string, err error) {
 	switch params.target {
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		it, itErr := readstore.NewPebbleReverseTxIterator(params.pebbleReader, params.ledgerName)
@@ -229,7 +225,7 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 			return nil, "", "", "", fmt.Errorf("creating reverse tx iterator: %w", itErr)
 		}
 
-		return &reverseCloser{it, it.Close},
+		return it,
 			fmt.Sprintf("PebbleReverseTxIterator(%s)", params.ledgerName),
 			"PebbleReverseTx", "pebble:txupdate", nil
 
@@ -239,7 +235,7 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 			return nil, "", "", "", fmt.Errorf("creating reverse account iterator: %w", itErr)
 		}
 
-		return &reverseCloser{it, it.Close},
+		return it,
 			fmt.Sprintf("PebbleReverseAccountIterator(%s)", params.ledgerName),
 			"PebbleReverseAccount", "pebble:attributes", nil
 
@@ -260,7 +256,7 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 			rev = readstore.NewFilterReverseIterator(it, params.horizonKeep)
 		}
 
-		return &reverseCloser{rev, it.Close},
+		return rev,
 			fmt.Sprintf("ReverseLedgerLogIterator(%s)", params.ledgerName),
 			"ReverseLedgerLog", "pebble:llog", nil
 

@@ -49,7 +49,7 @@ func (it *failingIter) Current() []byte {
 	return it.rows[it.idx-1]
 }
 
-func (it *failingIter) SeekGE(_ []byte) bool { return it.Next() }
+func (it *failingIter) Seek(_ []byte) bool { return it.Next() }
 
 func (it *failingIter) Err() error { return it.err }
 
@@ -116,9 +116,11 @@ func (it *failingReverseIter) Current() []byte {
 	return it.rows[it.idx-1]
 }
 
-func (it *failingReverseIter) SeekLE(_ []byte) bool { return it.Next() }
+func (it *failingReverseIter) Seek(_ []byte) bool { return it.Next() }
 
 func (it *failingReverseIter) Err() error { return it.err }
+
+func (it *failingReverseIter) Close() {}
 
 var _ ReverseIterator = (*failingReverseIter)(nil)
 

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// OrIterator.SeekGE must re-establish the union after exhaustion — the union
+// OrIterator.Seek must re-establish the union after exhaustion — the union
 // mirror of TestAndIterator_SeekGERepositionsAllChildren.
 func TestOrIterator_SeekGERepositionsAfterExhaustion(t *testing.T) {
 	t.Parallel()
@@ -20,18 +20,18 @@ func TestOrIterator_SeekGERepositionsAfterExhaustion(t *testing.T) {
 	}
 	require.Equal(t, []string{"a", "b", "c"}, got)
 
-	require.True(t, it.SeekGE([]byte("b")), "reposition after exhaustion")
+	require.True(t, it.Seek([]byte("b")), "reposition after exhaustion")
 	require.Equal(t, "b", string(it.Current()))
 	require.True(t, it.Next())
 	require.Equal(t, "c", string(it.Current()))
 	require.False(t, it.Next())
 
-	require.True(t, it.SeekGE([]byte("a")), "backward absolute seek")
+	require.True(t, it.Seek([]byte("a")), "backward absolute seek")
 	require.Equal(t, "a", string(it.Current()))
 	require.NoError(t, it.Err())
 }
 
-// ReverseOrIterator.SeekLE must re-establish the union after exhaustion —
+// ReverseOrIterator.Seek must re-establish the union after exhaustion —
 // the descending mirror of the OR test above.
 func TestReverseOrIterator_SeekLERepositionsAfterExhaustion(t *testing.T) {
 	t.Parallel()
@@ -45,13 +45,13 @@ func TestReverseOrIterator_SeekLERepositionsAfterExhaustion(t *testing.T) {
 	}
 	require.Equal(t, []string{"c", "b", "a"}, got)
 
-	require.True(t, it.SeekLE([]byte("b")), "reposition after exhaustion")
+	require.True(t, it.Seek([]byte("b")), "reposition after exhaustion")
 	require.Equal(t, "b", string(it.Current()))
 	require.True(t, it.Next())
 	require.Equal(t, "a", string(it.Current()))
 	require.False(t, it.Next())
 
-	require.True(t, it.SeekLE([]byte("c")), "forward absolute seek")
+	require.True(t, it.Seek([]byte("c")), "forward absolute seek")
 	require.Equal(t, "c", string(it.Current()))
 	require.NoError(t, it.Err())
 }

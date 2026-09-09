@@ -1,47 +1,82 @@
 # Iterator Seek Contract
 
-How `SeekGE`/`SeekLE` behave across the read-store iterator algebra
-(`internal/storage/readstore/iterator_*.go`), and the exhaustion-proof cache
-(`seekFloor`/`seekCeil`) that keeps re-seeks cheap. Introduced by EN-1597,
-where iterators that latched on exhaustion silently dropped rows under nested
-boolean filters.
+How `Seek` behaves across the read-store iterator algebra
+(`internal/storage/readstore/iterator*.go`, `combinator_*.go`), and the
+exhaustion-proof cache (`seekFloor`/`seekCeil`) that keeps re-seeks cheap.
+Introduced by EN-1597, where iterators that latched on exhaustion silently
+dropped rows under nested boolean filters. Restated once for both directions
+by EN-1966.
+
+## Direction is a type parameter, not a second contract
+
+There is one iterator interface, `Iterator[D Direction]`, with one
+positioning method. `Direction` is a sealed pair — `Asc` and `Desc` — and its
+only content is a comparator that orders two entities **along the direction of
+travel**. `EntityIterator` and `ReverseIterator` are aliases for
+`Iterator[Asc]` and `Iterator[Desc]`.
+
+This matters for correctness, not only for tidiness:
+
+- **The ascending and descending algebras are the same code.** `AndIterator`,
+  `OrIterator`, `NotIterator`, `FilterIterator` and `SliceIterator` are single
+  direction-parameterized implementations. A new filter kind or a change to
+  boolean composition cannot be correct in one direction and missing in the
+  other, because there is only one place to change.
+- **The directions stay distinct types.** `Iterator[Asc]` is not assignable to
+  `Iterator[Desc]`, so an ascending consumer cannot be handed a descending
+  iterator. This is the guard the separate `SeekGE`/`SeekLE` method names used
+  to provide.
+
+Only leaves whose *physical* traversal differs — a Pebble cursor walked with
+`First`/`Next` versus `Last`/`Prev`, or an event group resolved in the
+opposite order — have a per-direction implementation.
 
 ## The absolute-seek contract
 
-`EntityIterator.SeekGE(target)` (and its descending mirror,
-`ReverseIterator.SeekLE`) is an **absolute reposition**:
+`Iterator[D].Seek(target)` positions at the first entity **at or after
+`target` in `D`'s order**: the smallest entity `>= target` ascending, the
+largest entity `<= target` descending. It is an **absolute reposition**:
 
 1. **Computed from `target` alone.** The result never depends on the
-   iterator's current position, direction of travel, or exhaustion state.
+   iterator's current position, distance travelled, or exhaustion state.
 2. **Idempotent and non-consuming.** Repeating the seek with the same target
    yields the same entity; a seek must not consume `Current()` (a destructive
    consume makes a repeated seek return the *next* row, silently dropping an
    intersection — the `AddressTxIterator` bug class).
-3. **Well-defined after exhaustion.** A false `Next`/`SeekGE` does not latch
-   the iterator; a later seek to a smaller (forward) or larger (reverse)
-   target repositions normally.
+3. **Well-defined after exhaustion.** A false `Next`/`Seek` does not latch
+   the iterator; a later seek to a target further back repositions normally.
 4. **A failed seek leaves the iterator un-positioned but re-seekable.**
    `Next` returns false until the next successful seek.
 
-Composite iterators rely on this freely: `AndIterator.SeekGE` seeks **every**
+Composite iterators rely on this freely: `AndIterator.Seek` seeks **every**
 child to the target (a child left at a stale position past the target would
-become the convergence candidate and skip valid intersections below it), then
-`converge` leapfrogs children forward; `OrIterator`/`ReverseOrIterator`
-re-seek all children per seek; `NotIterator` re-seeks its excluded child on
-every `SeekGE` — including after the child reported done — and catches it up
+become the convergence candidate and skip valid intersections behind it), then
+`converge` leapfrogs children along the direction of travel; `OrIterator`
+re-seeks all children per seek; `NotIterator` re-seeks its excluded child on
+every `Seek` — including after the child reported done — and catches it up
 with `Next()` as the universe advances. Any latch or consuming seek in a leaf
 turns these algebra steps into silent row drops.
 
+`AndIterator` positions **every** child on its first `Next`, rather than
+advancing the first child and letting `converge` seek the rest. The lazy form
+works ascending only by accident: an unpositioned child returns an empty
+`Current()`, which sorts below any candidate and so reads as "behind, seek it
+forward". Descending, empty reads as "past the end", `converge` adopts it as
+the candidate and the intersection collapses to nothing.
+
 One leaf is exempt by construction: `RangeIterator` emits rows in
 `(value, entity)` order across index-value buckets, so an entity-space
-`SeekGE` is undefined on the raw scan. It only supports forward draining;
+`Seek` is undefined on the raw scan. It only supports forward draining;
 every construction site materializes it into a sorted `SliceIterator` before
-composing, and a direct `SeekGE` call fails the query with an invariant
+composing, and a direct `Seek` call fails the query with an invariant
 error.
 
 The contract is enforced by unit tests per leaf (`iterator_floor_test.go`,
-`iterator_address_test.go`, `iterator_and_seek_test.go`) and end-to-end by the
-contradiction specs in
+`iterator_address_test.go`, `iterator_and_seek_test.go`), by the
+direction-parity suite over the shared combinators
+(`combinator_direction_test.go`, which asserts a descending traversal is the
+exact reverse of the ascending one and that `Seek` is absolute in both
+directions), and end-to-end by the contradiction specs in
 `tests/e2e/business/filter_nested_not_reposition_test.go`.
 
 ## The materialized union (`AddressTxIterator`)
@@ -89,9 +124,10 @@ by its composite parent once per merge step — a fresh Pebble seek plus
 allocations, O(rows) times per query. The floor restores the O(1) fast path
 without reintroducing the latch:
 
-- a **cleanly** failed `SeekGE(t)` proves *no entity >= t exists in the view*;
-  the floor records `t` and every later seek at or above it returns false in
-  one comparison. `seekCeil` mirrors this for `SeekLE` (*no entity <= t*).
+- a **cleanly** failed ascending `Seek(t)` proves *no entity >= t exists in
+  the view*; the floor records `t` and every later seek at or above it
+  returns false in one comparison. `seekCeil` mirrors this for a descending
+  `Seek` (*no entity <= t*).
 - a seek below the floor (above the ceil) is not covered and repositions
   normally — the contract above is preserved.
 
@@ -101,7 +137,7 @@ Two preconditions make the proof permanent, and both are load-bearing:
    view is fixed at creation; iterators are created per query. A proof can
    therefore never go stale, and the bound is never cleared. Handing these
    iterators a live, mutating view would silently violate this.
-2. **Only clean exhaustion proves anything.** `SeekGE` also returns false on
+2. **Only clean exhaustion proves anything.** `Seek` also returns false on
    I/O error (`Err()`), and an I/O-failed seek proves nothing about the view's
    contents. `seekFloor.fail`/`seekCeil.fail` take the iterator's storage
    error and drop the proof when it is non-nil. (Pebble's error is sticky and

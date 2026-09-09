@@ -41,7 +41,7 @@ func (it *aliasingIter) Next() bool {
 
 func (it *aliasingIter) Current() []byte { return it.buf }
 
-func (it *aliasingIter) SeekGE(target []byte) bool {
+func (it *aliasingIter) Seek(target []byte) bool {
 	for i, k := range it.keys {
 		if string(k) >= string(target) {
 			it.idx = i
@@ -120,7 +120,7 @@ func (it *reverseAliasingIter) Next() bool {
 
 func (it *reverseAliasingIter) Current() []byte { return it.buf }
 
-func (it *reverseAliasingIter) SeekLE(target []byte) bool {
+func (it *reverseAliasingIter) Seek(target []byte) bool {
 	for i, v := range slices.Backward(it.keys) {
 		if string(v) <= string(target) {
 			it.idx = i

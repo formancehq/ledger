@@ -289,7 +289,7 @@ func compileLedgerCondition(ctx *compileCtx, lc *commonpb.LedgerCondition) (read
 
 	if want != ctx.ledgerName {
 		// Names a different ledger than the one being queried: unsatisfiable.
-		return &SliceIterator{}, nil
+		return readstore.NewSliceIterator(nil), nil
 	}
 
 	return compileUniverse(ctx)
@@ -322,7 +322,7 @@ func compileAnd(ctx *compileCtx, and *commonpb.AndFilter) (readstore.EntityItera
 	}
 
 	if len(children) == 0 {
-		return &SliceIterator{}, nil
+		return readstore.NewSliceIterator(nil), nil
 	}
 
 	if len(children) == 1 {
@@ -365,7 +365,7 @@ func compileOr(ctx *compileCtx, or *commonpb.OrFilter) (readstore.EntityIterator
 	}
 
 	if len(children) == 0 {
-		return &SliceIterator{}, nil
+		return readstore.NewSliceIterator(nil), nil
 	}
 
 	if len(children) == 1 {
@@ -696,7 +696,7 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 	}
 
 	if bounds.empty {
-		return &SliceIterator{}, nil
+		return readstore.NewSliceIterator(nil), nil
 	}
 
 	// Equality optimization: single value range -> entities are naturally sorted
@@ -875,7 +875,7 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 	}
 
 	if bounds.empty {
-		return &SliceIterator{}, nil
+		return readstore.NewSliceIterator(nil), nil
 	}
 
 	// Equality optimization: single value range -> streaming
@@ -1117,11 +1117,11 @@ func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.Addres
 	}
 
 	if !exists {
-		return &SliceIterator{}, nil
+		return readstore.NewSliceIterator(nil), nil
 	}
 
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		iter := &SliceIterator{entities: [][]byte{[]byte(exactAddr)}}
+		iter := readstore.NewSliceIterator([][]byte{[]byte(exactAddr)})
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
 			Label: fmt.Sprintf("SliceIterator(exact:%s)", exactAddr),
@@ -1129,7 +1129,7 @@ func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.Addres
 		}), nil
 	}
 	// TRANSACTIONS target: wrap single account in AddressTxIterator
-	singleIter := &SliceIterator{entities: [][]byte{[]byte(exactAddr)}}
+	singleIter := readstore.NewSliceIterator([][]byte{[]byte(exactAddr)})
 	trackedSingle := trackIterator(singleIter, ctx.profile, &IteratorStats{
 		Label: fmt.Sprintf("SliceIterator(exact:%s)", exactAddr),
 		Kind:  "Slice",
@@ -1260,7 +1260,7 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 	}
 
 	if bounds.empty {
-		return &SliceIterator{}, nil
+		return readstore.NewSliceIterator(nil), nil
 	}
 
 	// Equality optimization: single txID -> check existence in Pebble and return slice
@@ -1271,13 +1271,13 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 		}
 
 		if !exists {
-			return &SliceIterator{}, nil
+			return readstore.NewSliceIterator(nil), nil
 		}
 
 		txIDBytes := make([]byte, 8)
 		binary.BigEndian.PutUint64(txIDBytes, bounds.min)
 
-		iter := &SliceIterator{entities: [][]byte{txIDBytes}}
+		iter := readstore.NewSliceIterator([][]byte{txIDBytes})
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
 			Label:  fmt.Sprintf("SliceIterator(pebble:%s:tx:id=%d)", ctx.ledgerName, bounds.min),
@@ -1374,7 +1374,7 @@ func compileTimestampRangeCondition(
 	}
 
 	if bounds.empty {
-		return &SliceIterator{}, nil
+		return readstore.NewSliceIterator(nil), nil
 	}
 
 	// Key layout: [prefix_byte][ledger\x00][timestamp_BE(8B)][entityID_BE(8B)]
@@ -1461,7 +1461,7 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 	}
 
 	if bounds.empty {
-		return &SliceIterator{}, nil
+		return readstore.NewSliceIterator(nil), nil
 	}
 
 	prefix := readstore.LedgerLogPrefix(ctx.kb, ctx.ledgerName)
@@ -1479,10 +1479,10 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 		}
 
 		if !exists {
-			return &SliceIterator{}, nil
+			return readstore.NewSliceIterator(nil), nil
 		}
 
-		iter := &SliceIterator{entities: [][]byte{logIDBytes}}
+		iter := readstore.NewSliceIterator([][]byte{logIDBytes})
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
 			Label:  fmt.Sprintf("SliceIterator(llog:%s:id=%d)", ctx.ledgerName, bounds.min),
@@ -1935,7 +1935,7 @@ func paramTypeName(pv *commonpb.ParameterValue) string {
 // the range, and a SliceIterator cannot carry the failure — its Err is nil by
 // construction, so returning one would present a truncated range as a
 // complete answer that every later check reads as clean.
-func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *IteratorStats) (*SliceIterator, error) {
+func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *IteratorStats) (*readstore.SliceIterator[readstore.Asc], error) {
 	if profile != nil {
 		profile.MaterializedRanges++
 	}
@@ -1969,7 +1969,7 @@ func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile, s
 
 	sortEntities(entities)
 
-	return &SliceIterator{entities: entities}, nil
+	return readstore.NewSliceIterator(entities), nil
 }
 
 func sortEntities(entities [][]byte) {
@@ -2100,52 +2100,3 @@ func coerceIntToUint(fc *commonpb.FieldCondition) (*commonpb.FieldCondition, err
 		Condition: &commonpb.FieldCondition_UintCond{UintCond: uintCond},
 	}, nil
 }
-
-// SliceIterator wraps a pre-sorted slice of entity IDs as an EntityIterator.
-type SliceIterator struct {
-	entities [][]byte
-	pos      int
-	current  []byte
-}
-
-func (it *SliceIterator) Next() bool {
-	it.pos++
-	if it.pos > len(it.entities) {
-		return false
-	}
-	// pos is 1-indexed after first Next() call (starts at 0, first Next -> pos=1)
-	idx := it.pos - 1
-	if idx >= len(it.entities) {
-		return false
-	}
-
-	it.current = it.entities[idx]
-
-	return true
-}
-
-func (it *SliceIterator) Current() []byte {
-	return it.current
-}
-
-func (it *SliceIterator) SeekGE(target []byte) bool {
-	idx := sort.Search(len(it.entities), func(i int) bool {
-		return bytes.Compare(it.entities[i], target) >= 0
-	})
-	if idx >= len(it.entities) {
-		it.pos = len(it.entities) + 1
-
-		return false
-	}
-
-	it.pos = idx + 1 // +1 because Next() increments before reading
-	it.current = it.entities[idx]
-
-	return true
-}
-
-func (it *SliceIterator) Err() error { return nil }
-
-func (it *SliceIterator) Close() {}
-
-var _ readstore.EntityIterator = (*SliceIterator)(nil)

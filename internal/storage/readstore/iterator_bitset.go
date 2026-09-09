@@ -67,7 +67,7 @@ func (it *BitsetIterator) Current() []byte {
 	return it.current
 }
 
-func (it *BitsetIterator) SeekGE(target []byte) bool {
+func (it *BitsetIterator) Seek(target []byte) bool {
 	if it.bs == nil {
 		return false
 	}

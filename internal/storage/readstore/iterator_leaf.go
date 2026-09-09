@@ -148,7 +148,7 @@ func (it *PrefixIterator) Current() []byte {
 	return it.current
 }
 
-func (it *PrefixIterator) SeekGE(target []byte) bool {
+func (it *PrefixIterator) Seek(target []byte) bool {
 	// A prior failed seek at or below target proves this one empty too.
 	if it.floor.covers(target) {
 		it.exhausted = true
@@ -371,7 +371,7 @@ func (it *RangeIterator) Current() []byte {
 // which serves seeks over the sorted result; a call here is an invariant
 // violation and fails the query loudly instead of returning
 // plausible-looking wrong rows.
-func (it *RangeIterator) SeekGE([]byte) bool {
+func (it *RangeIterator) Seek([]byte) bool {
 	it.seekErr = errInvariantRangeIteratorSeek
 	it.exhausted = true
 

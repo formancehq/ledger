@@ -71,17 +71,17 @@ func TestPrefixIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	require.NoError(t, err)
 	defer it.Close()
 
-	require.False(t, it.SeekGE(txIDBytes(5)), "no entity >= 5")
+	require.False(t, it.Seek(txIDBytes(5)), "no entity >= 5")
 	require.False(t, it.Next(), "failed seek leaves the iterator exhausted")
-	require.False(t, it.SeekGE(txIDBytes(7)), "covered by the floor")
+	require.False(t, it.Seek(txIDBytes(7)), "covered by the floor")
 
-	require.True(t, it.SeekGE(txIDBytes(2)), "below the floor: real reposition")
+	require.True(t, it.Seek(txIDBytes(2)), "below the floor: real reposition")
 	require.Equal(t, uint64(2), binary.BigEndian.Uint64(it.Current()))
 	require.True(t, it.Next())
 	require.Equal(t, uint64(3), binary.BigEndian.Uint64(it.Current()))
 	require.False(t, it.Next())
 
-	require.True(t, it.SeekGE(txIDBytes(0)), "reposition after Next-exhaustion")
+	require.True(t, it.Seek(txIDBytes(0)), "reposition after Next-exhaustion")
 	require.Equal(t, uint64(1), binary.BigEndian.Uint64(it.Current()))
 	require.NoError(t, it.Err())
 }
@@ -105,23 +105,23 @@ func TestReversePrefixIterator_SeekCeilKeepsRepositioning(t *testing.T) {
 	require.NoError(t, err)
 	defer it.Close()
 
-	require.False(t, it.SeekLE(txIDBytes(1)), "no entity <= 1")
+	require.False(t, it.Seek(txIDBytes(1)), "no entity <= 1")
 	require.False(t, it.Next(), "failed seek leaves the iterator exhausted")
-	require.False(t, it.SeekLE(txIDBytes(0)), "covered by the ceil")
+	require.False(t, it.Seek(txIDBytes(0)), "covered by the ceil")
 
-	require.True(t, it.SeekLE(txIDBytes(3)), "above the ceil: real reposition")
+	require.True(t, it.Seek(txIDBytes(3)), "above the ceil: real reposition")
 	require.Equal(t, uint64(3), binary.BigEndian.Uint64(it.Current()))
 	require.True(t, it.Next())
 	require.Equal(t, uint64(2), binary.BigEndian.Uint64(it.Current()))
 	require.False(t, it.Next())
 
-	require.True(t, it.SeekLE(txIDBytes(9)), "reposition after Next-exhaustion")
+	require.True(t, it.Seek(txIDBytes(9)), "reposition after Next-exhaustion")
 	require.Equal(t, uint64(4), binary.BigEndian.Uint64(it.Current()))
 	require.NoError(t, it.Err())
 }
 
-// PebbleReverseTxIterator.SeekLE has three exhaustion branches (Prev fails
-// after a positioned SeekGE, Last fails on an empty view, and the scan-back
+// PebbleReverseTxIterator.Seek has three exhaustion branches (Prev fails
+// after a positioned Seek, Last fails on an empty view, and the scan-back
 // loop running out); the first two must record the ceil and stay re-seekable.
 func TestPebbleReverseTxIterator_SeekLERepositioning(t *testing.T) {
 	t.Parallel()
@@ -136,16 +136,16 @@ func TestPebbleReverseTxIterator_SeekLERepositioning(t *testing.T) {
 	require.NoError(t, err)
 	defer it.Close()
 
-	// Prev()-fails branch: SeekGE lands on tx 5's key, stepping back leaves the
+	// Prev()-fails branch: Seek lands on tx 5's key, stepping back leaves the
 	// bounded range.
-	require.False(t, it.SeekLE(txIDBytes(4)), "no entity <= 4")
-	require.False(t, it.SeekLE(txIDBytes(4)), "covered by the ceil")
+	require.False(t, it.Seek(txIDBytes(4)), "no entity <= 4")
+	require.False(t, it.Seek(txIDBytes(4)), "covered by the ceil")
 
-	require.True(t, it.SeekLE(txIDBytes(6)), "above the ceil: real reposition")
+	require.True(t, it.Seek(txIDBytes(6)), "above the ceil: real reposition")
 	require.Equal(t, uint64(5), binary.BigEndian.Uint64(it.Current()))
 	require.False(t, it.Next())
 
-	require.True(t, it.SeekLE(txIDBytes(7)), "reposition after Next-exhaustion")
+	require.True(t, it.Seek(txIDBytes(7)), "reposition after Next-exhaustion")
 	require.Equal(t, uint64(7), binary.BigEndian.Uint64(it.Current()))
 	require.NoError(t, it.Err())
 
@@ -155,8 +155,8 @@ func TestPebbleReverseTxIterator_SeekLERepositioning(t *testing.T) {
 	require.NoError(t, err)
 	defer empty.Close()
 
-	require.False(t, empty.SeekLE(txIDBytes(9)), "empty view")
-	require.False(t, empty.SeekLE(txIDBytes(3)), "covered by the ceil")
+	require.False(t, empty.Seek(txIDBytes(9)), "empty view")
+	require.False(t, empty.Seek(txIDBytes(3)), "covered by the ceil")
 	require.NoError(t, empty.Err())
 }
 
@@ -178,17 +178,17 @@ func TestPebbleTxIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	require.NoError(t, err)
 	defer it.Close()
 
-	require.False(t, it.SeekGE(txIDBytes(5)), "no entity >= 5")
+	require.False(t, it.Seek(txIDBytes(5)), "no entity >= 5")
 	require.False(t, it.Next(), "failed seek leaves the iterator exhausted")
-	require.False(t, it.SeekGE(txIDBytes(7)), "covered by the floor")
+	require.False(t, it.Seek(txIDBytes(7)), "covered by the floor")
 
-	require.True(t, it.SeekGE(txIDBytes(2)), "below the floor: real reposition")
+	require.True(t, it.Seek(txIDBytes(2)), "below the floor: real reposition")
 	require.Equal(t, uint64(2), binary.BigEndian.Uint64(it.Current()))
 	require.True(t, it.Next())
 	require.Equal(t, uint64(3), binary.BigEndian.Uint64(it.Current()))
 	require.False(t, it.Next())
 
-	require.True(t, it.SeekGE(txIDBytes(1)), "reposition after Next-exhaustion")
+	require.True(t, it.Seek(txIDBytes(1)), "reposition after Next-exhaustion")
 	require.Equal(t, uint64(1), binary.BigEndian.Uint64(it.Current()))
 	require.NoError(t, it.Err())
 }
@@ -206,17 +206,17 @@ func TestPebbleTxRangeIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	require.NoError(t, err)
 	defer it.Close()
 
-	require.False(t, it.SeekGE(txIDBytes(5)), "past the upper bound")
+	require.False(t, it.Seek(txIDBytes(5)), "past the upper bound")
 	require.False(t, it.Next(), "failed seek leaves the iterator exhausted")
-	require.False(t, it.SeekGE(txIDBytes(9)), "covered by the floor")
+	require.False(t, it.Seek(txIDBytes(9)), "covered by the floor")
 
-	require.True(t, it.SeekGE(txIDBytes(2)), "below the floor: real reposition")
+	require.True(t, it.Seek(txIDBytes(2)), "below the floor: real reposition")
 	require.Equal(t, uint64(2), binary.BigEndian.Uint64(it.Current()))
 	require.True(t, it.Next())
 	require.Equal(t, uint64(3), binary.BigEndian.Uint64(it.Current()))
 	require.False(t, it.Next())
 
-	require.True(t, it.SeekGE(txIDBytes(1)), "reposition after Next-exhaustion")
+	require.True(t, it.Seek(txIDBytes(1)), "reposition after Next-exhaustion")
 	require.Equal(t, uint64(1), binary.BigEndian.Uint64(it.Current()))
 	require.NoError(t, it.Err())
 }
@@ -240,17 +240,17 @@ func TestPebbleAccountIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	require.NoError(t, err)
 	defer it.Close()
 
-	require.False(t, it.SeekGE([]byte("b")), "no address >= b")
+	require.False(t, it.Seek([]byte("b")), "no address >= b")
 	require.False(t, it.Next(), "failed seek leaves the iterator exhausted")
-	require.False(t, it.SeekGE([]byte("c")), "covered by the floor")
+	require.False(t, it.Seek([]byte("c")), "covered by the floor")
 
-	require.True(t, it.SeekGE([]byte("a:2")), "below the floor: real reposition")
+	require.True(t, it.Seek([]byte("a:2")), "below the floor: real reposition")
 	require.Equal(t, "a:2", string(it.Current()))
 	require.True(t, it.Next())
 	require.Equal(t, "a:3", string(it.Current()))
 	require.False(t, it.Next())
 
-	require.True(t, it.SeekGE([]byte("a:1")), "reposition after Next-exhaustion")
+	require.True(t, it.Seek([]byte("a:1")), "reposition after Next-exhaustion")
 	require.Equal(t, "a:1", string(it.Current()))
 	require.NoError(t, it.Err())
 }
@@ -279,14 +279,14 @@ func TestPebbleReverseAccountIterator_SeekLERepositioning(t *testing.T) {
 
 	// Prev()-fails branch: the seek lands on a:2's key, stepping back leaves
 	// the bounded range.
-	require.False(t, it.SeekLE([]byte("a:1")), "no address <= a:1")
-	require.False(t, it.SeekLE([]byte("a:0")), "covered by the ceil")
+	require.False(t, it.Seek([]byte("a:1")), "no address <= a:1")
+	require.False(t, it.Seek([]byte("a:0")), "covered by the ceil")
 
-	require.True(t, it.SeekLE([]byte("a:2")), "above the ceil: real reposition")
+	require.True(t, it.Seek([]byte("a:2")), "above the ceil: real reposition")
 	require.Equal(t, "a:2", string(it.Current()))
 	require.False(t, it.Next())
 
-	require.True(t, it.SeekLE([]byte("a:9")), "reposition after Next-exhaustion")
+	require.True(t, it.Seek([]byte("a:9")), "reposition after Next-exhaustion")
 	require.Equal(t, "a:3", string(it.Current()))
 	require.NoError(t, it.Err())
 
@@ -296,12 +296,12 @@ func TestPebbleReverseAccountIterator_SeekLERepositioning(t *testing.T) {
 	require.NoError(t, err)
 	defer empty.Close()
 
-	require.False(t, empty.SeekLE([]byte("z")), "empty view")
-	require.False(t, empty.SeekLE([]byte("a")), "covered by the ceil")
+	require.False(t, empty.Seek([]byte("z")), "empty view")
+	require.False(t, empty.Seek([]byte("a")), "covered by the ceil")
 	require.NoError(t, empty.Err())
 }
 
-// SeekLE at the all-0xff cursor must return the last transaction: the
+// Seek at the all-0xff cursor must return the last transaction: the
 // incremented probe key wraps to zero, and mistaking that for an empty range
 // would also poison the ceil for every later seek.
 func TestPebbleReverseTxIterator_SeekLEMaxUint64(t *testing.T) {
@@ -317,10 +317,10 @@ func TestPebbleReverseTxIterator_SeekLEMaxUint64(t *testing.T) {
 	require.NoError(t, err)
 	defer it.Close()
 
-	require.True(t, it.SeekLE(txIDBytes(math.MaxUint64)), "everything is <= MaxUint64")
+	require.True(t, it.Seek(txIDBytes(math.MaxUint64)), "everything is <= MaxUint64")
 	require.Equal(t, uint64(7), binary.BigEndian.Uint64(it.Current()))
 
-	require.True(t, it.SeekLE(txIDBytes(6)), "ceil must not be poisoned by the wrap")
+	require.True(t, it.Seek(txIDBytes(6)), "ceil must not be poisoned by the wrap")
 	require.Equal(t, uint64(5), binary.BigEndian.Uint64(it.Current()))
 	require.NoError(t, it.Err())
 }

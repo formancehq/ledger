@@ -194,7 +194,7 @@ func (it *EventResolveIterator) Next() bool {
 
 func (it *EventResolveIterator) Current() []byte { return it.current }
 
-func (it *EventResolveIterator) SeekGE(target []byte) bool {
+func (it *EventResolveIterator) Seek(target []byte) bool {
 	if it.rangeMode {
 		it.err = errInvariantEventRangeSeek
 

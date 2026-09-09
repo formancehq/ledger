@@ -10,71 +10,72 @@ package query_test
 import (
 	reflect "reflect"
 
+	readstore "github.com/formancehq/ledger/v3/internal/storage/readstore"
 	gomock "go.uber.org/mock/gomock"
 )
 
 // MockEntityIterator is a mock of EntityIterator interface.
-type MockEntityIterator struct {
+type MockEntityIterator[D readstore.Direction] struct {
 	ctrl     *gomock.Controller
-	recorder *MockEntityIteratorMockRecorder
+	recorder *MockEntityIteratorMockRecorder[D]
 	isgomock struct{}
 }
 
 // MockEntityIteratorMockRecorder is the mock recorder for MockEntityIterator.
-type MockEntityIteratorMockRecorder struct {
-	mock *MockEntityIterator
+type MockEntityIteratorMockRecorder[D readstore.Direction] struct {
+	mock *MockEntityIterator[D]
 }
 
 // NewMockEntityIterator creates a new mock instance.
-func NewMockEntityIterator(ctrl *gomock.Controller) *MockEntityIterator {
-	mock := &MockEntityIterator{ctrl: ctrl}
-	mock.recorder = &MockEntityIteratorMockRecorder{mock}
+func NewMockEntityIterator[D readstore.Direction](ctrl *gomock.Controller) *MockEntityIterator[D] {
+	mock := &MockEntityIterator[D]{ctrl: ctrl}
+	mock.recorder = &MockEntityIteratorMockRecorder[D]{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockEntityIterator) EXPECT() *MockEntityIteratorMockRecorder {
+func (m *MockEntityIterator[D]) EXPECT() *MockEntityIteratorMockRecorder[D] {
 	return m.recorder
 }
 
 // Close mocks base method.
-func (m *MockEntityIterator) Close() {
+func (m *MockEntityIterator[D]) Close() {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Close")
 }
 
 // Close indicates an expected call of Close.
-func (mr *MockEntityIteratorMockRecorder) Close() *MockEntityIteratorCloseCall {
+func (mr *MockEntityIteratorMockRecorder[D]) Close() *MockEntityIteratorCloseCall[D] {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockEntityIterator)(nil).Close))
-	return &MockEntityIteratorCloseCall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockEntityIterator[D])(nil).Close))
+	return &MockEntityIteratorCloseCall[D]{Call: call}
 }
 
 // MockEntityIteratorCloseCall wrap *gomock.Call
-type MockEntityIteratorCloseCall struct {
+type MockEntityIteratorCloseCall[D readstore.Direction] struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockEntityIteratorCloseCall) Return() *MockEntityIteratorCloseCall {
+func (c *MockEntityIteratorCloseCall[D]) Return() *MockEntityIteratorCloseCall[D] {
 	c.Call = c.Call.Return()
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockEntityIteratorCloseCall) Do(f func()) *MockEntityIteratorCloseCall {
+func (c *MockEntityIteratorCloseCall[D]) Do(f func()) *MockEntityIteratorCloseCall[D] {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockEntityIteratorCloseCall) DoAndReturn(f func()) *MockEntityIteratorCloseCall {
+func (c *MockEntityIteratorCloseCall[D]) DoAndReturn(f func()) *MockEntityIteratorCloseCall[D] {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // Current mocks base method.
-func (m *MockEntityIterator) Current() []byte {
+func (m *MockEntityIterator[D]) Current() []byte {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Current")
 	ret0, _ := ret[0].([]byte)
@@ -82,37 +83,37 @@ func (m *MockEntityIterator) Current() []byte {
 }
 
 // Current indicates an expected call of Current.
-func (mr *MockEntityIteratorMockRecorder) Current() *MockEntityIteratorCurrentCall {
+func (mr *MockEntityIteratorMockRecorder[D]) Current() *MockEntityIteratorCurrentCall[D] {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Current", reflect.TypeOf((*MockEntityIterator)(nil).Current))
-	return &MockEntityIteratorCurrentCall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Current", reflect.TypeOf((*MockEntityIterator[D])(nil).Current))
+	return &MockEntityIteratorCurrentCall[D]{Call: call}
 }
 
 // MockEntityIteratorCurrentCall wrap *gomock.Call
-type MockEntityIteratorCurrentCall struct {
+type MockEntityIteratorCurrentCall[D readstore.Direction] struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockEntityIteratorCurrentCall) Return(arg0 []byte) *MockEntityIteratorCurrentCall {
+func (c *MockEntityIteratorCurrentCall[D]) Return(arg0 []byte) *MockEntityIteratorCurrentCall[D] {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockEntityIteratorCurrentCall) Do(f func() []byte) *MockEntityIteratorCurrentCall {
+func (c *MockEntityIteratorCurrentCall[D]) Do(f func() []byte) *MockEntityIteratorCurrentCall[D] {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockEntityIteratorCurrentCall) DoAndReturn(f func() []byte) *MockEntityIteratorCurrentCall {
+func (c *MockEntityIteratorCurrentCall[D]) DoAndReturn(f func() []byte) *MockEntityIteratorCurrentCall[D] {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // Err mocks base method.
-func (m *MockEntityIterator) Err() error {
+func (m *MockEntityIterator[D]) Err() error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Err")
 	ret0, _ := ret[0].(error)
@@ -120,37 +121,37 @@ func (m *MockEntityIterator) Err() error {
 }
 
 // Err indicates an expected call of Err.
-func (mr *MockEntityIteratorMockRecorder) Err() *MockEntityIteratorErrCall {
+func (mr *MockEntityIteratorMockRecorder[D]) Err() *MockEntityIteratorErrCall[D] {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Err", reflect.TypeOf((*MockEntityIterator)(nil).Err))
-	return &MockEntityIteratorErrCall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Err", reflect.TypeOf((*MockEntityIterator[D])(nil).Err))
+	return &MockEntityIteratorErrCall[D]{Call: call}
 }
 
 // MockEntityIteratorErrCall wrap *gomock.Call
-type MockEntityIteratorErrCall struct {
+type MockEntityIteratorErrCall[D readstore.Direction] struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockEntityIteratorErrCall) Return(arg0 error) *MockEntityIteratorErrCall {
+func (c *MockEntityIteratorErrCall[D]) Return(arg0 error) *MockEntityIteratorErrCall[D] {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockEntityIteratorErrCall) Do(f func() error) *MockEntityIteratorErrCall {
+func (c *MockEntityIteratorErrCall[D]) Do(f func() error) *MockEntityIteratorErrCall[D] {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockEntityIteratorErrCall) DoAndReturn(f func() error) *MockEntityIteratorErrCall {
+func (c *MockEntityIteratorErrCall[D]) DoAndReturn(f func() error) *MockEntityIteratorErrCall[D] {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // Next mocks base method.
-func (m *MockEntityIterator) Next() bool {
+func (m *MockEntityIterator[D]) Next() bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Next")
 	ret0, _ := ret[0].(bool)
@@ -158,69 +159,69 @@ func (m *MockEntityIterator) Next() bool {
 }
 
 // Next indicates an expected call of Next.
-func (mr *MockEntityIteratorMockRecorder) Next() *MockEntityIteratorNextCall {
+func (mr *MockEntityIteratorMockRecorder[D]) Next() *MockEntityIteratorNextCall[D] {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Next", reflect.TypeOf((*MockEntityIterator)(nil).Next))
-	return &MockEntityIteratorNextCall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Next", reflect.TypeOf((*MockEntityIterator[D])(nil).Next))
+	return &MockEntityIteratorNextCall[D]{Call: call}
 }
 
 // MockEntityIteratorNextCall wrap *gomock.Call
-type MockEntityIteratorNextCall struct {
+type MockEntityIteratorNextCall[D readstore.Direction] struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockEntityIteratorNextCall) Return(arg0 bool) *MockEntityIteratorNextCall {
+func (c *MockEntityIteratorNextCall[D]) Return(arg0 bool) *MockEntityIteratorNextCall[D] {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockEntityIteratorNextCall) Do(f func() bool) *MockEntityIteratorNextCall {
+func (c *MockEntityIteratorNextCall[D]) Do(f func() bool) *MockEntityIteratorNextCall[D] {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockEntityIteratorNextCall) DoAndReturn(f func() bool) *MockEntityIteratorNextCall {
+func (c *MockEntityIteratorNextCall[D]) DoAndReturn(f func() bool) *MockEntityIteratorNextCall[D] {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
-// SeekGE mocks base method.
-func (m *MockEntityIterator) SeekGE(target []byte) bool {
+// Seek mocks base method.
+func (m *MockEntityIterator[D]) Seek(target []byte) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SeekGE", target)
+	ret := m.ctrl.Call(m, "Seek", target)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
-// SeekGE indicates an expected call of SeekGE.
-func (mr *MockEntityIteratorMockRecorder) SeekGE(target any) *MockEntityIteratorSeekGECall {
+// Seek indicates an expected call of Seek.
+func (mr *MockEntityIteratorMockRecorder[D]) Seek(target any) *MockEntityIteratorSeekCall[D] {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SeekGE", reflect.TypeOf((*MockEntityIterator)(nil).SeekGE), target)
-	return &MockEntityIteratorSeekGECall{Call: call}
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Seek", reflect.TypeOf((*MockEntityIterator[D])(nil).Seek), target)
+	return &MockEntityIteratorSeekCall[D]{Call: call}
 }
 
-// MockEntityIteratorSeekGECall wrap *gomock.Call
-type MockEntityIteratorSeekGECall struct {
+// MockEntityIteratorSeekCall wrap *gomock.Call
+type MockEntityIteratorSeekCall[D readstore.Direction] struct {
 	*gomock.Call
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockEntityIteratorSeekGECall) Return(arg0 bool) *MockEntityIteratorSeekGECall {
+func (c *MockEntityIteratorSeekCall[D]) Return(arg0 bool) *MockEntityIteratorSeekCall[D] {
 	c.Call = c.Call.Return(arg0)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockEntityIteratorSeekGECall) Do(f func([]byte) bool) *MockEntityIteratorSeekGECall {
+func (c *MockEntityIteratorSeekCall[D]) Do(f func([]byte) bool) *MockEntityIteratorSeekCall[D] {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockEntityIteratorSeekGECall) DoAndReturn(f func([]byte) bool) *MockEntityIteratorSeekGECall {
+func (c *MockEntityIteratorSeekCall[D]) DoAndReturn(f func([]byte) bool) *MockEntityIteratorSeekCall[D] {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

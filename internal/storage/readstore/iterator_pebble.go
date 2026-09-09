@@ -10,48 +10,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// EntityIterator iterates over sorted entity IDs (account addresses or
-// transaction IDs as raw bytes). All iterators produce entities in ascending
-// byte order.
-type EntityIterator interface {
-	// Next advances to the next entity. Returns false when exhausted OR when
-	// the underlying storage reported an error. Callers MUST call Err() after
-	// the loop terminates to distinguish clean exhaustion from a Pebble I/O
-	// failure (block checksum, blob-file read error, transient I/O). Without
-	// the check a corrupted SST returns a shorter, plausible-looking page
-	// rather than an error (#320).
-	Next() bool
-
-	// Current returns the current entity ID. The returned slice is only
-	// valid until the next call to Next or SeekGE.
-	Current() []byte
-
-	// SeekGE positions the iterator at the first entity >= target.
-	// Returns false if no such entity exists OR on I/O error — see Err().
-	//
-	// SeekGE is an ABSOLUTE reposition (see
-	// docs/technical/architecture/subsystems/read-path/iterator-seek-contract.md):
-	//   - the result is computed from target alone, never from the iterator's
-	//     position, direction of travel, or exhaustion state;
-	//   - it is idempotent: repeating SeekGE with the same target yields the
-	//     same entity, and must not consume it;
-	//   - it is well-defined after exhaustion (a false Next/SeekGE) — a later
-	//     seek to a smaller target repositions normally;
-	//   - a failed seek leaves the iterator un-positioned (Next returns false)
-	//     but still re-seekable.
-	// Composite iterators (AND/OR/NOT) re-seek children freely under this
-	// contract; a latch or a consuming seek silently drops rows (EN-1597).
-	SeekGE(target []byte) bool
-
-	// Err returns the first storage error encountered during iteration, or
-	// nil for clean exhaustion. Callers MUST consult Err after Next/SeekGE
-	// returns false.
-	Err() error
-
-	// Close releases resources held by this iterator.
-	Close()
-}
-
 // compareEntities compares two entity IDs in byte order.
 // Returns -1, 0, or 1.
 func compareEntities(a, b []byte) int {
@@ -202,7 +160,7 @@ func (it *PebbleAccountIterator) Current() []byte {
 	return it.current
 }
 
-func (it *PebbleAccountIterator) SeekGE(target []byte) bool {
+func (it *PebbleAccountIterator) Seek(target []byte) bool {
 	// A prior failed seek at or below target proves this one empty too.
 	if it.floor.covers(target) {
 		it.exhausted = true
@@ -302,7 +260,7 @@ func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte,
 
 // NewPebbleReverseAccountIterator creates a reverse account iterator that merges
 // V and M attribute types, yielding unique addresses in descending order.
-func NewPebbleReverseAccountIterator(reader dal.PebbleReader, ledgerName string) (*ReverseOrIterator, error) {
+func NewPebbleReverseAccountIterator(reader dal.PebbleReader, ledgerName string) (*OrIterator[Desc], error) {
 	vIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrVolume, ledgerName)
 	if err != nil {
 		return nil, err
@@ -379,7 +337,7 @@ func (it *PebbleReverseAccountIterator) Current() []byte {
 	return it.current
 }
 
-func (it *PebbleReverseAccountIterator) SeekLE(target []byte) bool {
+func (it *PebbleReverseAccountIterator) Seek(target []byte) bool {
 	// A prior failed seek at or above target proves this one empty too.
 	if it.ceil.covers(target) {
 		it.exhausted = true
@@ -554,7 +512,7 @@ func (it *PebbleTxIterator) Current() []byte {
 	return it.current
 }
 
-func (it *PebbleTxIterator) SeekGE(target []byte) bool {
+func (it *PebbleTxIterator) Seek(target []byte) bool {
 	// A prior failed seek at or below target proves this one empty too.
 	if it.floor.covers(target) {
 		it.exhausted = true
@@ -701,7 +659,7 @@ func (it *PebbleReverseTxIterator) Current() []byte {
 	return it.current
 }
 
-func (it *PebbleReverseTxIterator) SeekLE(target []byte) bool {
+func (it *PebbleReverseTxIterator) Seek(target []byte) bool {
 	// A prior failed seek at or above target proves this one empty too.
 	if it.ceil.covers(target) {
 		it.exhausted = true
@@ -802,11 +760,11 @@ func NewLedgerLogIterator(reader dal.PebbleReader, kb *dal.KeyBuilder, ledgerNam
 	return &LedgerLogIterator{inner: inner}, nil
 }
 
-func (it *LedgerLogIterator) Next() bool                { return it.inner.Next() }
-func (it *LedgerLogIterator) Current() []byte           { return it.inner.Current() }
-func (it *LedgerLogIterator) SeekGE(target []byte) bool { return it.inner.SeekGE(target) }
-func (it *LedgerLogIterator) Err() error                { return it.inner.Err() }
-func (it *LedgerLogIterator) Close()                    { it.inner.Close() }
+func (it *LedgerLogIterator) Next() bool              { return it.inner.Next() }
+func (it *LedgerLogIterator) Current() []byte         { return it.inner.Current() }
+func (it *LedgerLogIterator) Seek(target []byte) bool { return it.inner.Seek(target) }
+func (it *LedgerLogIterator) Err() error              { return it.inner.Err() }
+func (it *LedgerLogIterator) Close()                  { it.inner.Close() }
 
 // PebbleTxRangeIterator iterates over transaction IDs within a [min, max) range.
 // Used for compileTxIDCondition range scans.
@@ -904,7 +862,7 @@ func (it *PebbleTxRangeIterator) Next() bool {
 
 func (it *PebbleTxRangeIterator) Current() []byte { return it.current }
 
-func (it *PebbleTxRangeIterator) SeekGE(target []byte) bool {
+func (it *PebbleTxRangeIterator) Seek(target []byte) bool {
 	// A prior failed seek at or below target proves this one empty too.
 	if it.floor.covers(target) {
 		it.exhausted = true

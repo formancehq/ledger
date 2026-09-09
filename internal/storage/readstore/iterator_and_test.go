@@ -34,7 +34,7 @@ func (s *sliceIter) Current() []byte {
 	return s.rows[s.idx-1]
 }
 
-func (s *sliceIter) SeekGE(target []byte) bool {
+func (s *sliceIter) Seek(target []byte) bool {
 	for s.idx < len(s.rows) {
 		s.idx++
 
