@@ -91,7 +91,26 @@ For an already served metadata index, a retype performs this lifecycle:
 4. dual-write live metadata changes into current and pending versions, using
    each version's own type binding;
 5. after the scan and log-alignment gate complete, atomically promote pending
-   to current and garbage-collect the old version.
+   to current and garbage-collect the old version, then flush the read store
+   before the promotion is served (see below).
+
+The read store has no WAL: a hard kill rewinds it to its last Pebble flush.
+Transitions the fold performs inline (a born-empty index's initial version,
+a drop's tombstone) survive that rewind semantically, because the rewound
+fold re-walks their logs before alignment lets a query through. A promotion
+does not: the backfill or rewrite that completes it runs beside the fold, so
+after a rewind the fold catches up while the promotion is still being redone,
+and the node serves the superseded binding at states where it had already
+served the promoted one. Every promotion is therefore flushed to stable
+storage before it becomes servable — the builder marks the index in flight
+before committing, `PinnedVersionResolver` and `InspectIndex` refuse a marked
+index as `INDEX_BUILDING`, and `Store.FlushPromotions` clears the mark
+once Pebble's flush has completed. A mark is withdrawn only when its batch
+does not commit; a flush that fails after the commit keeps the mark, and the
+builder retries the flush on every tick until it succeeds. Ordinary fold
+commits carry no mark and trigger no flush. Marks are in-memory only: a
+reopened store holds exactly what was flushed, so nothing is in flight after
+a restart.
 
 If a retype arrives during an initial index backfill, the builder abandons the
 partially populated pending version, allocates a fresh `HighWater+1` version,
@@ -149,7 +168,7 @@ conditions are valid for every declared type.
 
 `InspectIndex` first fixes the main-store snapshot and waits for a read-store
 certificate covering its Raft horizon. It resolves `CurrentVersion` through a
-pin-aware resolver, rejects a zero or not-yet-activated version, and scans that
+pin-aware resolver, rejects a zero or not-yet-activated version and a promotion whose flush is still in flight, and scans that
 version from the aligned index snapshot while ignoring membership events after
 the main snapshot's native sequence. Distinct values, facets, and summary
 statistics therefore describe the same historical state and one consistent

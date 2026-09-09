@@ -201,7 +201,7 @@ The controller (`internal/application/ctrl/controller_default.go`) gates the
 inspect call on the pin-aware resolved version. A replica with no live local
 version-state record returns `ErrIndexNotFound`. A version that exists locally
 but activates after the main snapshot resolves to version zero and returns the
-retryable `ErrIndexBuilding`; neither case scans an empty or future keyspace.
+retryable `ErrIndexBuilding`; neither case scans an empty or future keyspace. A promotion committed but not yet flushed resolves to version zero the same way (`Store.PromotionInFlight`), so the scan runs only against a flushed, locally built keyspace.
 
 ## Bloom Filter Metrics (Not Index Stats)
 

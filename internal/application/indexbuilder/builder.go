@@ -216,6 +216,70 @@ func (b *Builder) tombstoneVersionState(ledgerName, canonicalID string) error {
 	return nil
 }
 
+// writePromotion writes a promoted version state (current ← pending) into
+// batch. The promotion sequence is writePromotion, any same-batch work (the
+// old version's GC), commitPromotion (mark, then commit), finishPromotion; a
+// caller whose batch does not commit releases it with discardBatch.
+func (b *Builder) writePromotion(batch *dal.WriteSession, ledgerName, canonicalID string, state readstore.IndexVersionState) error {
+	return b.readStore.WriteIndexVersionState(batch, ledgerName, canonicalID, state)
+}
+
+// commitPromotion commits a batch carrying an index promotion. It marks the
+// index's serving transition in flight immediately before commit runs, so
+// readers refuse the index as building from before the promoted state can be
+// observed until the commit has been flushed (the read store's promotion marks —
+// the store has no WAL, and a promotion runs beside the fold, so a kill
+// between commit and flush would otherwise reopen the node serving the
+// superseded binding at states past the promoted one). commit must be
+// all-or-nothing — an error means nothing reached the store (WriteSession.Commit
+// and WriteBatch.Flush are) — because a failed commit withdraws the mark; after
+// a successful one only a flush may lift it (finishPromotion).
+func (b *Builder) commitPromotion(ledgerName, canonicalID string, commit func() error) error {
+	b.readStore.MarkPromotion(ledgerName, canonicalID)
+
+	if err := commit(); err != nil {
+		b.readStore.UnmarkPromotion(ledgerName, canonicalID)
+
+		return err
+	}
+
+	return nil
+}
+
+// discardBatch releases a batch that did not commit: cancels it and unbinds
+// the shared WriteBatch if it was bound to it.
+func (b *Builder) discardBatch(batch *dal.WriteSession) {
+	_ = batch.Cancel() // releasing an uncommitted batch cannot fail in a way the caller could act on
+
+	if b.wb.Batch() == batch {
+		b.wb.Reset()
+	}
+}
+
+// finishPromotion publishes a committed promotion to the builder's cache and
+// flushes the read store so it becomes servable. A flush failure is not a
+// failure of the promotion — the state is committed and cached — so it is
+// logged, the mark stays, and retryPromotionFlush picks it up on the next tick.
+func (b *Builder) finishPromotion(ledgerName, canonicalID string, state readstore.IndexVersionState) {
+	b.putVersionState(ledgerName, canonicalID, state)
+
+	if err := b.readStore.FlushPromotions(); err != nil {
+		b.logger.WithFields(map[string]any{
+			"ledger":    ledgerName,
+			"canonical": canonicalID,
+			"error":     err,
+		}).Errorf("Flushing index promotion failed; the index stays unavailable until the flush is retried")
+	}
+}
+
+// retryPromotionFlush re-attempts the flush of promotions whose flush failed.
+// A no-op when none is pending.
+func (b *Builder) retryPromotionFlush() {
+	if err := b.readStore.FlushPromotions(); err != nil {
+		b.logger.Errorf("Retrying index promotion flush: %v", err)
+	}
+}
+
 // effectiveCurrentVersion returns the forward-encoding version live
 // writes should currently target on this replica. The indexer hot
 // path calls this for every metadata index touched.
@@ -736,6 +800,8 @@ func (b *Builder) loop(ctx context.Context) {
 		case <-b.notifications.LogCommitted.C():
 		case <-ticker.C:
 		}
+
+		b.retryPromotionFlush()
 
 		// The Raft applied index can advance without the native log sequence
 		// moving (no-op, technical-only, or rejected proposal). processLogs must

@@ -69,17 +69,68 @@ type Store struct {
 	// reclaims history a pinned reader could still resolve (see read_lease.go
 	// and event_gc.go). Nil on frozen stores — no GC runs against them.
 	leases *LeaseRegistry
+
+	// serving holds the index promotions committed but not yet flushed to
+	// stable storage, which readers must refuse until the flush completes.
+	serving *servingTransitions
 }
 
 // Leases returns the read-lease registry gating the event GC.
 func (s *Store) Leases() *LeaseRegistry { return s.leases }
 
+// MarkPromotion records that an index's serving transition is about to be
+// committed, so readers refuse the index as still building until the commit
+// has been flushed. Call it from the writer goroutine immediately before the
+// commit (see servingTransitions for the single-writer contract).
+func (s *Store) MarkPromotion(ledgerName, canonicalID string) {
+	s.serving.Mark(ledgerName, canonicalID)
+}
+
+// UnmarkPromotion withdraws a mark whose commit never landed.
+func (s *Store) UnmarkPromotion(ledgerName, canonicalID string) {
+	s.serving.Unmark(ledgerName, canonicalID)
+}
+
+// FlushPromotions makes every committed promotion durable and lifts the marks
+// it covered. A no-op when nothing is marked.
+func (s *Store) FlushPromotions() error {
+	return s.serving.Flush()
+}
+
+// PromotionInFlight reports whether the index has a promotion committed but
+// not yet flushed. Safe from any goroutine.
+func (s *Store) PromotionInFlight(ledgerName, canonicalID string) bool {
+	return s.serving.InFlight(ledgerName, canonicalID)
+}
+
 // Frozen reports whether this store is an immutable read-only view (a query
 // checkpoint) rather than the live, builder-fed read index.
 func (s *Store) Frozen() bool { return s.readOnly }
 
+// Option adjusts a Store at construction. Options are applied before the
+// store is returned and never afterwards, so a built store's behaviour is
+// fixed for its lifetime.
+type Option func(*Store)
+
+// WithPromotionFlushForTest wraps the flush that makes a committed promotion
+// durable, so a test can fail it: Pebble retries a failed memtable flush
+// internally and returns only on success, so that path is unreachable against
+// a live store. A nil wrap is ignored — a store whose promotion flush does
+// nothing lifts marks without making anything durable, which is the defect
+// FlushPromotions exists to prevent.
+func WithPromotionFlushForTest(wrap func(flush func() error) error) Option {
+	return func(s *Store) {
+		if wrap == nil {
+			return
+		}
+
+		own := s.serving.flush
+		s.serving.flush = func() error { return wrap(own) }
+	}
+}
+
 // New opens or creates a Pebble database at the given directory for the read index.
-func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
+func New(dir string, logger logging.Logger, cfg Config, options ...Option) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("creating read store directory: %w", err)
 	}
@@ -148,12 +199,17 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 	}).Infof("Pebble read index opened — LSM state")
 
 	s := &Store{
-		db:     db,
-		logger: logger.WithFields(map[string]any{"cmp": "read-store"}),
-		dir:    dir,
-		leases: NewLeaseRegistry(),
+		db:      db,
+		logger:  logger.WithFields(map[string]any{"cmp": "read-store"}),
+		dir:     dir,
+		leases:  NewLeaseRegistry(),
+		serving: newServingTransitions(db.Flush),
 	}
 	s.progressCond = sync.NewCond(&s.progressMu)
+
+	for _, opt := range options {
+		opt(s)
+	}
 
 	return s, nil
 }
@@ -176,6 +232,7 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 		dir:      dirPath,
 		readOnly: true,
 		leases:   NewLeaseRegistry(),
+		serving:  newServingTransitions(db.Flush),
 	}
 	s.progressCond = sync.NewCond(&s.progressMu)
 
@@ -186,8 +243,17 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 // The read index has WAL disabled, so committed batches may exist only in a
 // memtable. Flush it first: otherwise Pebble has neither an SST nor a WAL file
 // to link and a ready checkpoint can silently omit the progress certificates
-// and projection rows that its creator just waited for.
+// and projection rows that its creator just waited for. The flush goes through
+// the promotion marks so a promotion it makes durable also stops being refused;
+// the builder goroutine is the only caller (single-writer contract). With no
+// mark pending that path is a no-op and the store flushes directly, so a test
+// store built with WithPromotionFlushForTest only sees its wrap here while a
+// promotion is in flight.
 func (s *Store) CreateCheckpoint(destDir string) error {
+	if err := s.serving.Flush(); err != nil {
+		return fmt.Errorf("flushing pending index promotions before checkpoint: %w", err)
+	}
+
 	if err := s.db.Flush(); err != nil {
 		return fmt.Errorf("flushing read index before checkpoint: %w", err)
 	}
@@ -640,16 +706,17 @@ func (s *Store) ReadIndexVersionState(ledgerName, canonicalID string) (IndexVers
 // SnapshotVersionResolver returns a closure that resolves per-replica
 // index versions via the given reader. The intended call site is right
 // after a NewSnapshot() (or ReadHandle creation) so the resolver and
-// the iteration share a single point-in-time view — the resolver MUST
-// NOT close over the live `*Store` while the caller iterates a
-// snapshot, or a concurrent atomic version switch will hand the
-// caller a version that does not match the snapshot's keyspace.
+// the iteration share a single point-in-time view — the version state
+// MUST be read through that reader, never the live DB, or a concurrent
+// atomic version switch will hand the caller a version that does not
+// match the snapshot's keyspace. The store itself only supplies the
+// in-flight promotion marks (servingTransitions).
 //
 // Returns (0, error) on a real Pebble I/O failure; (0, nil) when no
 // version state has been written yet (caller should translate to
 // ErrIndexBuilding at query boundaries).
-func SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) IndexVersionResolver {
-	return PinnedVersionResolver(reader, ledgerName, 0)
+func (s *Store) SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) IndexVersionResolver {
+	return s.PinnedVersionResolver(reader, ledgerName, 0)
 }
 
 // ResolvedIndexVersion is what a query learns about an index from the
@@ -688,7 +755,14 @@ type IndexVersionResolver func(canonical string) (ResolvedIndexVersion, bool, er
 //
 // A pin of 0 means "no pin" (introspection paths that do not resolve rows
 // at a sequence) and skips the check.
-func PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint64) IndexVersionResolver {
+//
+// The state is read through reader (a snapshot) but the in-flight check
+// consults the live tracker: a promotion whose state the snapshot holds is
+// either still in flight — refused — or flushed, and a snapshot taken
+// before the mark is refused for the same mark-to-flush window even though
+// its v_old was still servable. Callers take the snapshot immediately before
+// resolving, so that over-refusal is confined to the window itself.
+func (s *Store) PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint64) IndexVersionResolver {
 	return func(canonical string) (ResolvedIndexVersion, bool, error) {
 		state, present, err := ReadIndexVersionStateFrom(reader, ledgerName, canonical)
 		if err != nil {
@@ -707,6 +781,10 @@ func PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint6
 			// must read exactly like the removed index it is, never as one
 			// still building.
 			return ResolvedIndexVersion{}, false, nil
+		}
+
+		if s.serving.InFlight(ledgerName, canonical) {
+			return ResolvedIndexVersion{}, true, nil
 		}
 
 		if pin > 0 && state.ActivationSequence > pin {

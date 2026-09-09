@@ -116,6 +116,9 @@ index because even its unfiltered universe is projected.
 uses the local main snapshot's fixed `H` and performs the same projection waits.
 Per-index build/rewrite readiness remains explicit through
 `IndexVersionState`; a Raft certificate does not promote an unfinished build.
+A switch that is committed but not yet flushed to stable storage is refused as
+building (`INDEX_BUILDING`, `Unavailable`, retryable) until the flush completes —
+see [indexer / Changing a Metadata Key's Type](../indexer/indexer.md#changing-a-metadata-keys-type-setmetadatafieldtype).
 
 ## Pebble snapshot
 

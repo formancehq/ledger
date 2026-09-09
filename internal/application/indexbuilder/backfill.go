@@ -728,8 +728,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 
 	defer func() {
 		if !committed {
-			_ = batch.Cancel()
-			b.wb.Reset()
+			b.discardBatch(batch)
 		}
 	}()
 
@@ -902,7 +901,7 @@ scan:
 				CurrentTypeDeclared: prior.PendingTypeDeclared,
 			}
 
-			if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
+			if err := b.writePromotion(batch, task.ledger, canonical, newState); err != nil {
 				return false, fmt.Errorf("persisting atomic version switch: %w", err)
 			}
 
@@ -914,14 +913,21 @@ scan:
 		}
 	}
 
-	if err := b.flushWriteBatch(); err != nil {
-		return false, fmt.Errorf("committing schema rewrite batch: %w", err)
+	var commitErr error
+	if didSwitch {
+		commitErr = b.commitPromotion(task.ledger, canonical, b.flushWriteBatch)
+	} else {
+		commitErr = b.flushWriteBatch()
+	}
+
+	if commitErr != nil {
+		return false, fmt.Errorf("committing schema rewrite batch: %w", commitErr)
 	}
 
 	committed = true
 
 	if didSwitch {
-		b.putVersionState(task.ledger, canonical, newState)
+		b.finishPromotion(task.ledger, canonical, newState)
 		b.logger.WithFields(map[string]any{
 			"ledger":         task.ledger,
 			"key":            task.key,
@@ -968,8 +974,7 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 
 	defer func() {
 		if !committed {
-			_ = batch.Cancel()
-			b.wb.Reset()
+			b.discardBatch(batch)
 		}
 	}()
 
@@ -983,7 +988,7 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 		CurrentTypeDeclared: prior.PendingTypeDeclared,
 	}
 
-	if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
+	if err := b.writePromotion(batch, task.ledger, canonical, newState); err != nil {
 		return false, fmt.Errorf("persisting atomic version switch: %w", err)
 	}
 
@@ -991,13 +996,13 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 		return false, fmt.Errorf("gc v_old keyspace: %w", err)
 	}
 
-	if err := b.flushWriteBatch(); err != nil {
+	if err := b.commitPromotion(task.ledger, canonical, b.flushWriteBatch); err != nil {
 		return false, fmt.Errorf("committing deferred schema-rewrite switch: %w", err)
 	}
 
 	committed = true
 
-	b.putVersionState(task.ledger, canonical, newState)
+	b.finishPromotion(task.ledger, canonical, newState)
 	b.logger.WithFields(map[string]any{
 		"ledger":             task.ledger,
 		"key":                task.key,
@@ -1272,17 +1277,19 @@ func (b *Builder) completeBackfill(task *backfillTask) error {
 	}
 
 	batch := b.readStore.NewBatch()
-	if err := b.readStore.WriteIndexVersionState(batch, task.ledger, canonical, newState); err != nil {
-		_ = batch.Cancel()
+	if err := b.writePromotion(batch, task.ledger, canonical, newState); err != nil {
+		b.discardBatch(batch)
 
 		return fmt.Errorf("persisting backfill atomic switch: %w", err)
 	}
 
-	if err := batch.Commit(); err != nil {
+	if err := b.commitPromotion(task.ledger, canonical, batch.Commit); err != nil {
+		b.discardBatch(batch)
+
 		return fmt.Errorf("committing backfill atomic switch: %w", err)
 	}
 
-	b.putVersionState(task.ledger, canonical, newState)
+	b.finishPromotion(task.ledger, canonical, newState)
 
 	return nil
 }

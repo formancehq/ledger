@@ -930,7 +930,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 		indexReader = snap
 		mainSeq = alignedMainSeq
-		indexVersionFor = readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq)
+		indexVersionFor = ctrl.readStore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq)
 		horizonKeep = query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, handle, snap, ledgerInfo.GetName(), mainSeq)
 	} else {
 		// Main-store-only filters still go through Compile for validation and
@@ -941,7 +941,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 		defer func() { _ = snap.Close() }()
 
 		indexReader = snap
-		indexVersionFor = readstore.SnapshotVersionResolver(snap, ledgerInfo.GetName())
+		indexVersionFor = ctrl.readStore.SnapshotVersionResolver(snap, ledgerInfo.GetName())
 	}
 
 	kb := dal.NewKeyBuilder()
@@ -1056,8 +1056,11 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 	// CurrentVersion is servable only when its ActivationSequence is at or
 	// below mainSeq. Resolve both through the same snapshot the Inspect scan
 	// uses, so a concurrent atomic version switch cannot make the gate select a
-	// keyspace that was not yet active at the main horizon.
-	version, primed, err := readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq)(indexes.Canonical(indexID))
+	// keyspace that was not yet active at the main horizon. The resolver also
+	// reports version zero for a promotion committed but not yet flushed
+	// (readstore.Store.PromotionInFlight), so the scan never reads a keyspace a
+	// kill could still take away.
+	version, primed, err := ctrl.readStore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq)(indexes.Canonical(indexID))
 	if err != nil {
 		return nil, fmt.Errorf("reading index version state: %w", err)
 	}
@@ -1671,7 +1674,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		snap, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_LOGS,
 		ledgerInfo.GetName(), nil, nil,
-		ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), readstore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), nil, handle, mainSeq,
+		ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), ctrl.readStore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), nil, handle, mainSeq,
 	)
 	if err != nil {
 		releaseHold()
