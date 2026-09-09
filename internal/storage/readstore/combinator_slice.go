@@ -110,6 +110,9 @@ func (it *SliceIterator[D]) Err() error { return nil }
 
 func (it *SliceIterator[D]) Close() {}
 
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *SliceIterator[D]) Direction() (d D) { return }
+
 var (
 	_ EntityIterator  = (*SliceIterator[Asc])(nil)
 	_ ReverseIterator = (*SliceIterator[Desc])(nil)

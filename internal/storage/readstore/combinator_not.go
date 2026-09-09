@@ -147,6 +147,9 @@ func (it *NotIterator[D]) Close() {
 	it.child.Close()
 }
 
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *NotIterator[D]) Direction() (d D) { return }
+
 var (
 	_ EntityIterator  = (*NotIterator[Asc])(nil)
 	_ ReverseIterator = (*NotIterator[Desc])(nil)

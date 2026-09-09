@@ -416,3 +416,9 @@ func (it *RangeIterator) extractEntity(key []byte) []byte {
 
 	return suffix
 }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *PrefixIterator) Direction() (d Asc) { return }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *RangeIterator) Direction() (d Asc) { return }

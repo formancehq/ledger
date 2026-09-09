@@ -150,3 +150,7 @@ func TestPaginateForward_NoErrorOnCleanExhaustion(t *testing.T) {
 	require.False(t, hasMore)
 	require.Len(t, items, 2)
 }
+
+func (it *failingIter) Direction() (d Asc) { return }
+
+func (it *failingReverseIter) Direction() (d Desc) { return }

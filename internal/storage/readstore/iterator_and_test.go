@@ -107,3 +107,5 @@ func TestAndIterator_OnSkip_Disabled_NoPanic(t *testing.T) {
 	require.True(t, and.Next())
 	assert.Equal(t, []byte{0x02}, and.Current())
 }
+
+func (it *sliceIter) Direction() (d readstore.Asc) { return }

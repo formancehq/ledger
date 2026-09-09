@@ -138,6 +138,9 @@ func (it *OrIterator[D]) advanceToLeader() bool {
 	return true
 }
 
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *OrIterator[D]) Direction() (d D) { return }
+
 var (
 	_ EntityIterator  = (*OrIterator[Asc])(nil)
 	_ ReverseIterator = (*OrIterator[Desc])(nil)

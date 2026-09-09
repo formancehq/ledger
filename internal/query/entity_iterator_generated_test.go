@@ -112,6 +112,44 @@ func (c *MockEntityIteratorCurrentCall[D]) DoAndReturn(f func() []byte) *MockEnt
 	return c
 }
 
+// Direction mocks base method.
+func (m *MockEntityIterator[D]) Direction() readstore.Asc {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Direction")
+	ret0, _ := ret[0].(readstore.Asc)
+	return ret0
+}
+
+// Direction indicates an expected call of Direction.
+func (mr *MockEntityIteratorMockRecorder[D]) Direction() *MockEntityIteratorDirectionCall[D] {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Direction", reflect.TypeOf((*MockEntityIterator[D])(nil).Direction))
+	return &MockEntityIteratorDirectionCall[D]{Call: call}
+}
+
+// MockEntityIteratorDirectionCall wrap *gomock.Call
+type MockEntityIteratorDirectionCall[D readstore.Direction] struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockEntityIteratorDirectionCall[D]) Return(arg0 readstore.Asc) *MockEntityIteratorDirectionCall[D] {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockEntityIteratorDirectionCall[D]) Do(f func() readstore.Asc) *MockEntityIteratorDirectionCall[D] {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockEntityIteratorDirectionCall[D]) DoAndReturn(f func() readstore.Asc) *MockEntityIteratorDirectionCall[D] {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // Err mocks base method.
 func (m *MockEntityIterator[D]) Err() error {
 	m.ctrl.T.Helper()

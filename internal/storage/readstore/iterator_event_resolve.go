@@ -242,3 +242,6 @@ func (it *EventResolveIterator) Err() error {
 func (it *EventResolveIterator) Close() {
 	_ = it.iter.Close()
 }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *EventResolveIterator) Direction() (d Asc) { return }

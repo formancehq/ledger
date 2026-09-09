@@ -59,4 +59,7 @@ func (t *TrackedIterator[D]) Close() {
 	t.inner.Close()
 }
 
+// Direction is the compile-time direction witness; see readstore.Iterator.
+func (t *TrackedIterator[D]) Direction() (d D) { return }
+
 var _ readstore.EntityIterator = (*TrackedIterator[readstore.Asc])(nil)

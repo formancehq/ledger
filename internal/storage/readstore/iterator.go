@@ -85,6 +85,20 @@ type Iterator[D Direction] interface {
 
 	// Close releases resources held by this iterator.
 	Close()
+
+	// Direction is a compile-time witness, never called. It exists because
+	// Go decides interface satisfaction STRUCTURALLY: with D absent from
+	// every method signature, Iterator[Asc] and Iterator[Desc] would have
+	// identical method sets and be freely interchangeable, so
+	// PaginateReverse(anAscendingIterator) would compile and silently return
+	// a page in the wrong order. Naming D in a result type is what makes the
+	// two interfaces distinct types, which is the guard the separate
+	// SeekGE/SeekLE method names used to provide.
+	//
+	// Implementations return the zero value: `func (*T) Direction() (d Asc)
+	// { return }`, or `func (t *T[D]) Direction() (d D) { return }` for a
+	// direction-parameterized one.
+	Direction() D
 }
 
 // EntityIterator is the ascending read-path iterator.

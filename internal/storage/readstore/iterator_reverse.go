@@ -196,3 +196,6 @@ func IncrementBytes(b []byte) []byte {
 	// Overflow
 	return append(result, 0xFF)
 }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *ReversePrefixIterator) Direction() (d Desc) { return }

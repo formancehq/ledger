@@ -100,3 +100,6 @@ func (it *BitsetIterator) Seek(target []byte) bool {
 func (it *BitsetIterator) Err() error { return nil }
 
 func (it *BitsetIterator) Close() {}
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *BitsetIterator) Direction() (d Asc) { return }

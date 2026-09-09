@@ -1001,3 +1001,21 @@ func incrementUint64Bytes(b []byte) []byte {
 
 	return result
 }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *PebbleAccountIterator) Direction() (d Asc) { return }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *PebbleTxIterator) Direction() (d Asc) { return }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *PebbleTxRangeIterator) Direction() (d Asc) { return }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *LedgerLogIterator) Direction() (d Asc) { return }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *PebbleReverseAccountIterator) Direction() (d Desc) { return }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *PebbleReverseTxIterator) Direction() (d Desc) { return }

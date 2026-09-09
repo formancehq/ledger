@@ -192,3 +192,6 @@ func (it *AddressTxIterator) materialize() error {
 
 	return it.addrIter.Err()
 }
+
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *AddressTxIterator) Direction() (d Asc) { return }

@@ -163,3 +163,7 @@ func TestReverseOrIterator_DedupSurvivesAliasedChildBuffers(t *testing.T) {
 	require.Equal(t, []string{"charlie", "bravo", "alpha"}, got,
 		"reverse OR merge must deduplicate even when child Current() aliases reused buffers (#319)")
 }
+
+func (it *aliasingIter) Direction() (d Asc) { return }
+
+func (it *reverseAliasingIter) Direction() (d Desc) { return }

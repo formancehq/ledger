@@ -177,6 +177,9 @@ func (it *AndIterator[D]) converge() bool {
 	}
 }
 
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *AndIterator[D]) Direction() (d D) { return }
+
 var (
 	_ EntityIterator  = (*AndIterator[Asc])(nil)
 	_ ReverseIterator = (*AndIterator[Desc])(nil)

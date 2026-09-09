@@ -86,6 +86,9 @@ func (it *FilterIterator[D]) Err() error {
 // future wrapper acquires of its own.
 func (it *FilterIterator[D]) Close() { it.inner.Close() }
 
+// Direction is the compile-time direction witness; see Iterator.Direction.
+func (it *FilterIterator[D]) Direction() (d D) { return }
+
 var (
 	_ EntityIterator  = (*FilterIterator[Asc])(nil)
 	_ ReverseIterator = (*FilterIterator[Desc])(nil)
