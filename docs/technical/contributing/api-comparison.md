@@ -1030,3 +1030,12 @@ if ok {
     }
 }
 ```
+
+## JWT deployment audience (EN-1926)
+
+Both HTTP and gRPC require OIDC/Ed25519 access tokens to contain the explicit
+deployment `--auth-audience` in `aud`, before scope expansion or god mode.
+Missing or mismatching audiences yield HTTP 401 / gRPC `Unauthenticated`;
+matching string and array forms are accepted. Server startup and `ledgerctl`
+token generation require explicit audience configuration. See the
+[authentication contract](../architecture/subsystems/api/auth.md#deployment-audience-en-1926).

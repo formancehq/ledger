@@ -9,11 +9,26 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+func TestBuildAuthConfigAudience(t *testing.T) {
+	t.Parallel()
+	configured := AuthFlagConfig{
+		Enabled:  true,
+		Issuer:   "https://issuer.example.com",
+		Audience: "urn:formance:ledger:production-eu",
+		Service:  "different-scope-prefix",
+	}
+	cfg, err := buildAuthConfig(Config{AuthConfig: configured}, logging.Testing(), oidc.NewStaticKeySet())
+	require.NoError(t, err)
+	require.Equal(t, configured.Audience, cfg.Audience)
+	require.Equal(t, configured.Service, cfg.Service)
+}
 
 func TestLoadScopeMapping_FromFile(t *testing.T) {
 	t.Parallel()

@@ -40,10 +40,46 @@ If no bearer is present, the request is treated as **anonymous** and given whate
 1. Decode the token (`grpc_auth.go:189`).
 2. Parse claims (`oidc.AccessTokenClaims`).
 3. Verify signature against the composite keyset (OIDC JWKS + Ed25519 statics).
-4. Verify expiration.
-5. For OIDC, verify issuer.
+4. For EdDSA, enforce configured key scopes and god-mode restrictions; for OIDC,
+   verify issuer.
+5. Verify expiration.
+6. Require the configured deployment audience in `aud` (exact, case-sensitive
+   membership), for both OIDC and EdDSA. Only then may either transport expand
+   scopes, grant god mode, or capture caller identity.
 
 The lack of cache is deliberate at this stage — JWKS lookups are local to the in-memory keyset (the OIDC discovery is done once at boot, see below).
+
+### Deployment audience (EN-1926)
+
+A same-issuer token for another resource must not authorize Ledger operations,
+even when its scopes overlap. The resource-server identifier is the explicit
+`--auth-audience` / `AUTH_AUDIENCE` value, chosen by the operator for this
+Ledger deployment and configured identically on every node and at its token
+issuer. For example, `urn:formance:ledger:production-eu` may identify one
+cluster. Use distinct identifiers for deployments that must reject each
+other's tokens. There is no global default and no derivation from a ledger
+name, node address, cluster ID, or `--auth-service` (which only maps scopes).
+
+Authentication-enabled startup rejects an absent or whitespace-only audience.
+The shared validator also rejects an empty expected audience when called
+outside bootstrap. A missing, empty, or mismatching token `aud` yields
+`Unauthenticated` / HTTP 401, without falling back to anonymous scopes. A
+matching JSON string or member of a string array is accepted; issuer,
+signature, expiry and scope/key restrictions still apply.
+
+Ed25519 development tokens follow exactly the same audience rule. Both
+`ledgerctl auth generate-token` and `ledgerctl auth login` require `--audience`;
+a key bundle does not infer a deployment. God-mode tokens also require a
+matching audience. The existing anonymous, authentication-disabled, public
+health/discovery and inter-node shared-secret paths are separate trust paths.
+
+This is an API admission check only. The configured audience is not persisted
+in business state or consulted by FSM apply, checker replay, or restore.
+Accepted caller snapshots retain their existing semantics. Operators must
+coordinate issuer configuration, node configuration and freshly minted
+tokens; a node configured with a different audience rejects requests locally.
+The service protocol revision increments for this incompatible authentication
+contract. No storage migration or compatibility fallback is introduced.
 
 ### Scopes
 
@@ -72,7 +108,7 @@ HTTP follows the same model: a `RequireScope` middleware (`http_middleware.go:10
 | Situation | gRPC | HTTP |
 |-----------|------|------|
 | No bearer token, anonymous scopes insufficient | `Unauthenticated` | 401 |
-| Bearer token invalid (bad signature, expired, wrong issuer) | `Unauthenticated` | 401 |
+| Bearer token invalid (bad signature, expired, wrong issuer, missing/wrong audience) | `Unauthenticated` | 401 |
 | Bearer token valid, scopes insufficient | `PermissionDenied` | 403 |
 
 Failures are structured-logged with reason, key ID, remote address, and an OTel span via `logAuthFailure()` (`grpc_auth.go:257-292`) — so an operator can correlate a 403 to a specific span without parsing logs.

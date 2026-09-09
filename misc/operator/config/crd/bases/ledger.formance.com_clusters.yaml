@@ -998,6 +998,12 @@ spec:
                     items:
                       type: string
                     type: array
+                  audience:
+                    description: |-
+                      Audience is the explicit JWT audience for this deployment, shared by all nodes.
+                      Required when authentication is enabled, including with Ed25519 credentials.
+                      Both OIDC and Ed25519 tokens must include this value in their aud claim.
+                    type: string
                   checkScopes:
                     description: CheckScopes enables scope checking.
                     type: boolean

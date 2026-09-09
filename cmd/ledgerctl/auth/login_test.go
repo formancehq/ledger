@@ -33,6 +33,7 @@ func newTestCmd(t *testing.T) *cobra.Command {
 	cmd.Flags().String("signing-key-id", "", "")
 	cmd.Flags().String("response-verify-key", "", "")
 	cmd.Flags().String("key-id", "", "")
+	cmd.Flags().String("audience", "test-ledger", "")
 	cmd.SetContext(context.Background())
 
 	return cmd
@@ -157,6 +158,7 @@ func TestRunLogin_RollbackRestoresPriorToken(t *testing.T) {
 	// --profile, --server, --tls-ca-cert, --insecure, --signing-key-id,
 	// --response-verify-key, plus login's own local flags.
 	cmd := NewLoginCommand()
+	require.NoError(t, cmd.Flags().Set("audience", "test-ledger"))
 	cmd.Flags().String("profile", "", "")
 	cmd.Flags().String("server", "localhost:8888", "")
 	cmd.Flags().Bool("insecure", false, "")
@@ -223,6 +225,7 @@ func TestRunLogin_SkipsRollbackOnOpaqueKeyringGetError(t *testing.T) {
 	require.NoError(t, os.WriteFile(seedPath, []byte(hex.EncodeToString(seed)), 0o600))
 
 	cmd := NewLoginCommand()
+	require.NoError(t, cmd.Flags().Set("audience", "test-ledger"))
 	cmd.Flags().String("profile", "", "")
 	cmd.Flags().String("server", "localhost:8888", "")
 	cmd.Flags().Bool("insecure", false, "")
@@ -407,6 +410,33 @@ func TestResolveLoginParams_ExplicitSigningKeyIDBeatsBundle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "cli-key-id", p.keyID,
 		"explicit --signing-key-id must beat bundle.KeyID (CLI over bundle)")
+}
+
+func TestResolveLoginParams_BundleRequiresExplicitAudience(t *testing.T) {
+	t.Parallel()
+
+	bundle := keyBundle{
+		SigningKey: hex.EncodeToString(make([]byte, 32)),
+		KeyID:      "bundle-key", Subject: "bundle-subject", Scopes: []string{"ledger:read"},
+	}
+	payload, err := json.Marshal(bundle)
+	require.NoError(t, err)
+	bundlePath := filepath.Join(t.TempDir(), "bundle.json")
+	require.NoError(t, os.WriteFile(bundlePath, payload, 0o600))
+
+	cmd := NewLoginCommand()
+	require.NoError(t, cmd.ParseFlags([]string{"--bundle", bundlePath}))
+	_, err = resolveLoginParams(cmd)
+	require.EqualError(t, err, "required flag \"audience\" must not be empty")
+
+	require.NoError(t, cmd.Flags().Set("audience", "prod-ledger"))
+	require.NoError(t, cmd.Flags().Set("subject", "cli-subject"))
+	params, err := resolveLoginParams(cmd)
+	require.NoError(t, err)
+	require.Equal(t, "prod-ledger", params.audience)
+	require.Equal(t, "cli-subject", params.subject)
+	require.Equal(t, bundle.KeyID, params.keyID)
+	require.Equal(t, bundle.Scopes, params.scopes)
 }
 
 func TestSyncProfile_BootstrapsMissingProfile(t *testing.T) {

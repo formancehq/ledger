@@ -1424,3 +1424,45 @@ func TestRaftPortFromBindAddr(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildEnvVars_AuthAudience(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name         string
+		tlsMode      string
+		audience     string
+		wantAudience bool
+	}{
+		{name: "explicit deployment audience", tlsMode: "required", audience: "ledger-production", wantAudience: true},
+		{name: "missing audience has no default", tlsMode: "required"},
+		{name: "deferred during TLS migration", tlsMode: "optional", audience: "ledger-production"},
+		{name: "deferred without TLS", tlsMode: "disabled", audience: "ledger-production"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cluster := newMinimalCluster()
+			cluster.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{
+				Audience: tc.audience,
+				Service:  "unrelated-scope-prefix",
+			}
+			envs := buildEnvVars(cluster, tc.tlsMode, nil)
+			if tc.wantAudience {
+				assertEnv(t, envs, "AUTH_AUDIENCE", tc.audience)
+			} else {
+				assertNoEnv(t, envs, "AUTH_AUDIENCE")
+			}
+		})
+	}
+}
+
+func TestBuildEnvVars_CredentialsAudience(t *testing.T) {
+	t.Parallel()
+
+	cluster := newMinimalCluster()
+	enabled := true
+	cluster.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled, Audience: "ledger-production"}
+	envs := buildEnvVars(cluster, "required", []credentialsKeyInfo{{KeyID: "test-key"}})
+	assertEnv(t, envs, "AUTH_ENABLED", "true")
+	assertEnv(t, envs, "AUTH_AUDIENCE", "ledger-production")
+	assertEnv(t, envs, "AUTH_ED25519_KEYS", "/auth-keys/auth-keys.json")
+}

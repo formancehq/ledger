@@ -39,7 +39,7 @@ func authEnabledCluster(name, namespace string, labels map[string]string) *ledge
 	return &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: labels},
 		Spec: ledgerv1alpha1.ClusterSpec{
-			Auth: &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled},
+			Auth: &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled, Audience: "ledger-production"},
 		},
 	}
 }
@@ -55,8 +55,9 @@ func issuerBackedCluster(name, namespace string, labels map[string]string) *ledg
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Labels: labels},
 		Spec: ledgerv1alpha1.ClusterSpec{
 			Auth: &ledgerv1alpha1.AuthorizationConfig{
-				Enabled: &enabled,
-				Issuer:  "https://issuer.example.com",
+				Enabled:  &enabled,
+				Audience: "ledger-production",
+				Issuer:   "https://issuer.example.com",
 			},
 		},
 	}

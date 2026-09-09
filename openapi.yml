@@ -2798,7 +2798,9 @@ components:
       bearerFormat: JWT
       description: >
         JWT token issued by a trusted OIDC provider. Required when the server
-        is started with `--auth-enabled`. Scopes: `ledger:read` (read operations),
+        is started with `--auth-enabled`. OIDC and Ed25519 tokens must contain the
+        configured `--auth-audience` in their `aud` string or array; absent or
+        mismatched audiences return 401 before scope authorization. Scopes: `ledger:read` (read operations),
         `ledger:write` (write operations), `ledger:admin` (cluster operations).
 
   parameters:

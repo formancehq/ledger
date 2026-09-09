@@ -33,10 +33,11 @@ func TestHTTPAuthMiddleware_PublicEndpoints(t *testing.T) {
 
 	_, keySet := testKeyPair(t)
 	handler := HTTPAuthMiddleware(AuthConfig{
-		Enabled: true,
-		KeySet:  keySet,
-		Issuer:  testIssuer,
-		Service: "ledger",
+		Enabled:  true,
+		Audience: "urn:formance:ledger:test",
+		KeySet:   keySet,
+		Issuer:   testIssuer,
+		Service:  "ledger",
 	})(ok200)
 
 	for _, path := range []string{"/health", "/livez", "/readyz", "/_info"} {
@@ -69,9 +70,10 @@ func TestHTTPAuthMiddleware_MissingToken(t *testing.T) {
 	})
 
 	handler := HTTPAuthMiddleware(AuthConfig{
-		Enabled: true,
-		KeySet:  keySet,
-		Issuer:  testIssuer,
+		Enabled:  true,
+		Audience: "urn:formance:ledger:test",
+		KeySet:   keySet,
+		Issuer:   testIssuer,
 	})(inner)
 
 	w := httptest.NewRecorder()
@@ -102,6 +104,7 @@ func TestHTTPAuthMiddleware_MissingToken_AnonymousReadScopes(t *testing.T) {
 
 	handler := HTTPAuthMiddleware(AuthConfig{
 		Enabled:      true,
+		Audience:     "urn:formance:ledger:test",
 		KeySet:       keySet,
 		Issuer:       testIssuer,
 		ScopeMapping: mapping,
@@ -133,9 +136,10 @@ func TestHTTPAuthMiddleware_ValidToken_ClaimsInContext(t *testing.T) {
 	})
 
 	handler := HTTPAuthMiddleware(AuthConfig{
-		Enabled: true,
-		KeySet:  keySet,
-		Issuer:  testIssuer,
+		Enabled:  true,
+		Audience: "urn:formance:ledger:test",
+		KeySet:   keySet,
+		Issuer:   testIssuer,
 	})(inner)
 
 	token := signToken(t, privKey, newTestClaims("ledger:read"))
@@ -163,6 +167,7 @@ func TestHTTPAuthMiddleware_ExpandsScopesInContext(t *testing.T) {
 
 	cfg := AuthConfig{
 		Enabled:      true,
+		Audience:     "urn:formance:ledger:test",
 		KeySet:       keySet,
 		Issuer:       testIssuer,
 		Service:      "ledger",
@@ -192,9 +197,10 @@ func TestHTTPAuthMiddleware_ExpiredToken(t *testing.T) {
 	claims.Expiration = claims.IssuedAt // expired immediately
 
 	handler := HTTPAuthMiddleware(AuthConfig{
-		Enabled: true,
-		KeySet:  keySet,
-		Issuer:  testIssuer,
+		Enabled:  true,
+		Audience: "urn:formance:ledger:test",
+		KeySet:   keySet,
+		Issuer:   testIssuer,
 	})(ok200)
 
 	token := signToken(t, privKey, claims)
@@ -213,9 +219,10 @@ func TestHTTPAuthMiddleware_WrongIssuer(t *testing.T) {
 	claims.Issuer = "https://wrong-issuer.example.com"
 
 	handler := HTTPAuthMiddleware(AuthConfig{
-		Enabled: true,
-		KeySet:  keySet,
-		Issuer:  testIssuer,
+		Enabled:  true,
+		Audience: "urn:formance:ledger:test",
+		KeySet:   keySet,
+		Issuer:   testIssuer,
 	})(ok200)
 
 	token := signToken(t, privKey, claims)
@@ -234,9 +241,10 @@ func TestHTTPAuthMiddleware_InvalidSignature(t *testing.T) {
 
 	_, keySet := testKeyPair(t)
 	handler := HTTPAuthMiddleware(AuthConfig{
-		Enabled: true,
-		KeySet:  keySet,
-		Issuer:  testIssuer,
+		Enabled:  true,
+		Audience: "urn:formance:ledger:test",
+		KeySet:   keySet,
+		Issuer:   testIssuer,
 	})(ok200)
 
 	token := signToken(t, otherKey, newTestClaims("ledger:read"))
@@ -294,6 +302,7 @@ func TestRequireScope_MatchingScope(t *testing.T) {
 	privKey, keySet := testKeyPair(t)
 	cfg := AuthConfig{
 		Enabled:      true,
+		Audience:     "urn:formance:ledger:test",
 		KeySet:       keySet,
 		Issuer:       testIssuer,
 		Service:      "ledger",
@@ -318,6 +327,7 @@ func TestRequireScope_WrongScope(t *testing.T) {
 	privKey, keySet := testKeyPair(t)
 	cfg := AuthConfig{
 		Enabled:      true,
+		Audience:     "urn:formance:ledger:test",
 		KeySet:       keySet,
 		Issuer:       testIssuer,
 		Service:      "ledger",
@@ -341,6 +351,7 @@ func TestRequireScope_WriteScope(t *testing.T) {
 	privKey, keySet := testKeyPair(t)
 	cfg := AuthConfig{
 		Enabled:      true,
+		Audience:     "urn:formance:ledger:test",
 		KeySet:       keySet,
 		Issuer:       testIssuer,
 		Service:      "ledger",
@@ -378,6 +389,7 @@ func TestRequireScope_LedgersRead_GatesLogListing(t *testing.T) {
 	privKey, keySet := testKeyPair(t)
 	cfg := AuthConfig{
 		Enabled:      true,
+		Audience:     "urn:formance:ledger:test",
 		KeySet:       keySet,
 		Issuer:       testIssuer,
 		Service:      "ledger",
@@ -430,9 +442,10 @@ func TestHTTPAuthMiddleware_EdDSA_ValidToken(t *testing.T) {
 	})
 
 	cfg := AuthConfig{
-		Enabled: true,
-		KeySet:  edKeySet,
-		Service: "ledger",
+		Enabled:  true,
+		Audience: "urn:formance:ledger:test",
+		KeySet:   edKeySet,
+		Service:  "ledger",
 		Ed25519AllowedScopes: map[string][]string{
 			"ed-http-key": {"ledger:read", "ledger:write"},
 		},
@@ -457,9 +470,10 @@ func TestHTTPAuthMiddleware_EdDSA_ExcessiveScopes(t *testing.T) {
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-http-key")
 	cfg := AuthConfig{
-		Enabled: true,
-		KeySet:  edKeySet,
-		Service: "ledger",
+		Enabled:  true,
+		Audience: "urn:formance:ledger:test",
+		KeySet:   edKeySet,
+		Service:  "ledger",
 		Ed25519AllowedScopes: map[string][]string{
 			"ed-http-key": {"ledger:read"},
 		},
@@ -487,9 +501,10 @@ func TestHTTPAuthMiddleware_EdDSA_UnknownKey(t *testing.T) {
 	_, edKeySet := ed25519TestKeyPair(t, "known-key")
 
 	cfg := AuthConfig{
-		Enabled: true,
-		KeySet:  edKeySet,
-		Service: "ledger",
+		Enabled:  true,
+		Audience: "urn:formance:ledger:test",
+		KeySet:   edKeySet,
+		Service:  "ledger",
 	}
 	handler := HTTPAuthMiddleware(cfg)(ok200)
 
@@ -510,6 +525,7 @@ func TestRequireScope_EdDSA_MatchingScope(t *testing.T) {
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-http-key")
 	cfg := AuthConfig{
 		Enabled:      true,
+		Audience:     "urn:formance:ledger:test",
 		KeySet:       edKeySet,
 		Service:      "ledger",
 		ScopeMapping: DefaultMapping("ledger"),
@@ -547,6 +563,7 @@ func TestHTTPAuthMiddleware_GodMode_GrantsAllScopes(t *testing.T) {
 
 	cfg := AuthConfig{
 		Enabled:      true,
+		Audience:     "urn:formance:ledger:test",
 		KeySet:       keySet,
 		Issuer:       testIssuer,
 		Service:      "ledger",
@@ -577,6 +594,7 @@ func TestRequireScope_GodMode_PassesAnyScope(t *testing.T) {
 	privKey, keySet := testKeyPair(t)
 	cfg := AuthConfig{
 		Enabled:      true,
+		Audience:     "urn:formance:ledger:test",
 		KeySet:       keySet,
 		Issuer:       testIssuer,
 		Service:      "ledger",
@@ -612,6 +630,7 @@ func writesOnlyConfig(t *testing.T) (AuthConfig, *rsa.PrivateKey) {
 
 	return AuthConfig{
 		Enabled:      true,
+		Audience:     "urn:formance:ledger:test",
 		KeySet:       keySet,
 		Issuer:       testIssuer,
 		Service:      "ledger",
@@ -694,6 +713,7 @@ func TestRequireScope_EdDSA_WrongScope(t *testing.T) {
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-http-key")
 	cfg := AuthConfig{
 		Enabled:      true,
+		Audience:     "urn:formance:ledger:test",
 		KeySet:       edKeySet,
 		Service:      "ledger",
 		ScopeMapping: DefaultMapping("ledger"),

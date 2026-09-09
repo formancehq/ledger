@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	jose "github.com/go-jose/go-jose/v4"
@@ -23,6 +24,7 @@ type tokenParams struct {
 	seed       []byte
 	keyID      string
 	subject    string
+	audience   string
 	scopes     []string
 	expiration time.Duration
 	god        bool
@@ -55,6 +57,7 @@ func addTokenGenerationFlags(cmd *cobra.Command) {
 	cmd.Flags().String("signing-key", "", "Path to Ed25519 seed file")
 	cmd.Flags().String("key-id", "", "Key ID matching the server's auth-keys.json")
 	cmd.Flags().String("subject", "", "JWT subject")
+	cmd.Flags().String("audience", "", "Required JWT audience matching the deployment's --auth-audience")
 	cmd.Flags().StringSlice("scopes", nil, "Scopes to include (e.g., ledger:read,ledger:write)")
 	cmd.Flags().Duration("expiration", 1*time.Hour, "Token validity duration")
 	cmd.Flags().Bool("god", false, "Include god-mode claim (grants all scopes; key must allow it)")
@@ -62,11 +65,16 @@ func addTokenGenerationFlags(cmd *cobra.Command) {
 
 // signToken creates a signed JWT from the given parameters.
 func signToken(p tokenParams) (string, error) {
+	if strings.TrimSpace(p.audience) == "" {
+		return "", errors.New("required flag \"audience\" must not be empty")
+	}
+
 	privKey := ed25519.NewKeyFromSeed(p.seed)
 
 	now := time.Now()
 	claims := &oidc.AccessTokenClaims{}
 	claims.Subject = p.subject
+	claims.Audience = oidc.Audience{p.audience}
 	claims.IssuedAt = oidc.FromTime(oidc.Time(now.Unix()).AsTime())
 	claims.Expiration = oidc.FromTime(oidc.Time(now.Add(p.expiration).Unix()).AsTime())
 	claims.Scopes = oidc.SpaceDelimitedArray(p.scopes)
@@ -119,6 +127,11 @@ func tokenParamsFromFlags(cmd *cobra.Command) (tokenParams, error) {
 	}
 
 	scopes, _ := cmd.Flags().GetStringSlice("scopes")
+	audience, err := tokenAudienceFromFlags(cmd)
+	if err != nil {
+		return tokenParams{}, err
+	}
+
 	expiration, _ := cmd.Flags().GetDuration("expiration")
 	god, _ := cmd.Flags().GetBool("god")
 
@@ -131,10 +144,23 @@ func tokenParamsFromFlags(cmd *cobra.Command) (tokenParams, error) {
 		seed:       seed,
 		keyID:      keyID,
 		subject:    subject,
+		audience:   audience,
 		scopes:     scopes,
 		expiration: expiration,
 		god:        god,
 	}, nil
+}
+
+func tokenAudienceFromFlags(cmd *cobra.Command) (string, error) {
+	audience, err := cmd.Flags().GetString("audience")
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(audience) == "" {
+		return "", errors.New("required flag \"audience\" must not be empty")
+	}
+
+	return audience, nil
 }
 
 func runGenerateToken(cmd *cobra.Command, _ []string) error {

@@ -28,6 +28,7 @@ type AuthConfig struct {
 	Enabled              bool
 	KeySet               oidc.KeySet
 	Issuer               string
+	Audience             string // explicit resource-server identifier, shared by all deployment nodes
 	Service              string
 	ScopeMapping         ScopeMapping
 	Ed25519AllowedScopes map[string][]string // keyID -> allowed scopes (nil = no Ed25519 auth)
@@ -183,7 +184,12 @@ func bearerTokenFromContext(ctx context.Context) (string, bool) {
 // validateToken validates a JWT token. It supports both OIDC (RS256/ES256/PS256) and
 // EdDSA tokens. For EdDSA tokens, the issuer check is skipped (self-signed) and
 // key-level scope enforcement is applied when Ed25519AllowedScopes is configured.
+// Both formats require the deployment's explicit audience before authorization.
 func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.AccessTokenClaims, error) {
+	if strings.TrimSpace(cfg.Audience) == "" {
+		return nil, errors.New("expected token audience is not configured")
+	}
+
 	claims := &oidc.AccessTokenClaims{}
 
 	decrypted, err := oidc.DecryptToken(token)
@@ -235,6 +241,10 @@ func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.Acc
 
 	if err := oidc.CheckExpiration(claims, 0); err != nil {
 		return nil, err
+	}
+
+	if !claims.Audience.Has(cfg.Audience) {
+		return nil, errors.New("token audience does not contain the expected deployment audience")
 	}
 
 	return claims, nil

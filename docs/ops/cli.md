@@ -1858,7 +1858,7 @@ ledgerctl version
 
 The **server** exposes the same build metadata over two unauthenticated channels:
 
-- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"5"}`.
+- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"6"}`.
 - **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same information, including `protocol_version`.
 
 This is useful for monitoring deployed nodes and spotting version skew across a cluster (the per-node `version` is also surfaced on each `NodeInfo` in `GetClusterState`).
@@ -2871,6 +2871,7 @@ Generate a signed EdDSA JWT token for use with servers configured with `--auth-e
 ledgerctl auth generate-token \
   --signing-key ./keys/seed.hex \
   --key-id my-key-id \
+  --audience urn:formance:ledger:production-eu \
   --subject ci-bot \
   --scopes ledger:read,ledger:write \
   --expiration 1h
@@ -2881,10 +2882,13 @@ ledgerctl auth generate-token \
 | `--signing-key` | yes | | Path to Ed25519 seed file |
 | `--key-id` | yes | | Key ID matching the server config |
 | `--subject` | yes | | JWT subject claim |
+| `--audience` | yes | | JWT audience matching the deployment's `--auth-audience` |
 | `--scopes` | no | | Comma-separated scopes |
 | `--expiration` | no | `1h` | Token validity duration |
 | `--god` | no | `false` | Include god-mode claim (grants all scopes; key must allow it) |
 | `--store` | no | `false` | Store the generated token in the OS keychain (keyed by `--server`) |
+
+The required `--audience` becomes the signed JWT `aud` claim and must match the target deployment's `--auth-audience`. It is never inferred from `--server`, cluster identity, or the scope prefix.
 
 The token is printed to stdout and can be used with `--auth-token` or the `Authorization: Bearer` header. When `--store` is set, the token is also stored in the OS keychain for the current `--server` address, and a confirmation is printed to stderr.
 
@@ -2893,6 +2897,7 @@ The token is printed to stdout and can be used with `--auth-token` or the `Autho
 ledgerctl auth generate-token \
   --signing-key ./keys/seed.hex \
   --key-id my-key-id \
+  --audience urn:formance:ledger:production-eu \
   --subject ci-bot \
   --store
 
@@ -2900,6 +2905,7 @@ ledgerctl auth generate-token \
 ledgerctl auth generate-token \
   --signing-key ./keys/seed.hex \
   --key-id my-key-id \
+  --audience urn:formance:ledger:production-eu \
   --subject ci-bot \
   --store > token.txt
 ```
@@ -2917,12 +2923,13 @@ ledgerctl auth login [flags]
 | `--signing-key` | * | | Path to Ed25519 seed file |
 | `--key-id` | * | | Key ID matching the server config |
 | `--subject` | * | | JWT subject claim |
+| `--audience` | yes | | JWT audience matching the deployment's `--auth-audience`; required even with a bundle |
 | `--scopes` | no | | Comma-separated scopes |
 | `--expiration` | no | `1h` | Token validity duration |
 | `--god` | no | `false` | Include god-mode claim (grants all scopes; key must allow it) |
 | `--bundle` | no | | Path to JSON key bundle file (or `-` for stdin) |
 
-\* Required when not using `--bundle` or stdin pipe. When a bundle is provided, explicit flags override bundle values.
+\* Required when not using `--bundle` or stdin pipe. When a bundle is provided, explicit flags override bundle values. The audience must still be supplied explicitly through `--audience`; key bundles do not select a deployment.
 
 **Behavior:**
 - Generates a signed JWT token using the provided Ed25519 key (from flags or bundle)
@@ -2952,17 +2959,18 @@ ledgerctl auth login [flags]
 ledgerctl auth login \
   --signing-key ./keys/seed.hex \
   --key-id my-key-id \
+  --audience urn:formance:ledger:production-eu \
   --subject ci-bot \
   --scopes ledger:read,ledger:write
 
 # Login with a bundle file
-ledgerctl auth login --bundle agent-bundle.json
+ledgerctl auth login --audience urn:formance:ledger:production-eu --bundle agent-bundle.json
 
 # Login from a piped bundle (e.g. from kubectl-ledger)
-kubectl ledger agents get-key my-agent --bundle - | ledgerctl auth login
+kubectl ledger agents get-key my-agent --bundle - | ledgerctl auth login --audience urn:formance:ledger:production-eu
 
 # Override the subject from a bundle
-kubectl ledger agents get-key my-agent --bundle - | ledgerctl auth login --subject ci-bot
+kubectl ledger agents get-key my-agent --bundle - | ledgerctl auth login --audience urn:formance:ledger:production-eu --subject ci-bot
 
 # All subsequent commands use the stored token automatically
 ledgerctl ledgers list
@@ -2971,6 +2979,7 @@ ledgerctl ledgers list
 ledgerctl --server prod:8888 auth login \
   --signing-key ./keys/seed.hex \
   --key-id my-key-id \
+  --audience urn:formance:ledger:production-eu \
   --subject ci-bot
 
 # Bootstrap a new connection profile in one shot (also stores the token
@@ -2979,6 +2988,7 @@ ledgerctl auth login --profile prod \
   --server prod:8888 \
   --signing-key ./keys/seed.hex \
   --key-id prod-key-id \
+  --audience urn:formance:ledger:production-eu \
   --subject ci-bot
 ```
 
@@ -3252,7 +3262,7 @@ ledgerctl profile create prod --server ledger.prod.example.com:443
 ledgerctl profile use prod
 
 # Auth works naturally with profiles (token keyed by server address)
-ledgerctl auth login --bundle key.json
+ledgerctl auth login --audience urn:formance:ledger:production-eu --bundle key.json
 ledgerctl auth status
 
 # Override profile for a single command
@@ -4439,6 +4449,7 @@ ledger run --auth-scope-mapping-file /etc/ledger/scope-mapping.json [other flags
 ```bash
 ledger run --auth-enabled --auth-issuer https://auth.example.com \
   --tls-mode required --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \
+  --auth-audience urn:formance:ledger:production-eu \
   --auth-anonymous-scopes "*:read"
 ```
 
@@ -4569,26 +4580,29 @@ Enable JWT/OIDC authentication with scope-based authorization. See [Authenticati
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization. Requires `--tls-mode=required` — rejected with `--tls-mode=disabled` or `--tls-mode=optional` (`optional` still accepts plaintext client connections) |
+| `--auth-audience` | string | `""` | Required deployment resource-server identifier (`AUTH_AUDIENCE`); identical on all nodes, matched exactly against OIDC/Ed25519 `aud` |
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 | `--auth-read-key-set-max-retries` | int | `10` | Maximum retries when fetching the JWKS key set |
-| `--auth-ed25519-keys` | string | `""` | Path to JSON file with Ed25519 public keys and scopes (auto-enables auth unless `--auth-enabled=false` is explicit) |
+| `--auth-ed25519-keys` | string | `""` | Path to JSON file with Ed25519 public keys and scopes; requires explicit `--auth-enabled`, audience, and TLS |
 
 ```bash
 # Start server with OIDC authentication
 ledger run \
   --auth-enabled \
   --auth-issuer https://auth.example.com \
+  --auth-audience urn:formance:ledger:production-eu \
   --auth-service ledger \
   [other flags...]
 
 # Start server with Ed25519 key-based authentication
-ledger run \
+ledger run --auth-enabled --auth-audience urn:formance:ledger:production-eu \
+  --tls-mode required --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \
   --auth-ed25519-keys auth-keys.json \
   [other flags...]
 ```
 
-When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, and expiration on every request. By default, tokens may use the virtual scopes `ledger:read`, `ledger:write`, and `ledger:admin`, which expand to granular `ledger:<Resource><Action>` scopes.
+When enabled, the server performs OIDC discovery, downloads the JWKS, and validates JWT signatures, issuer, expiration, and deployment audience on every request. By default, tokens may use the virtual scopes `ledger:read`, `ledger:write`, and `ledger:admin`, which expand to granular `ledger:<Resource><Action>` scopes.
 
 When `--auth-ed25519-keys` is set, both OIDC and Ed25519 authentication can coexist. See [Authentication Guide](authentication.md) for full Ed25519 setup instructions.
 

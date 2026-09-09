@@ -185,6 +185,7 @@ func mutationAuthContext(t *testing.T) (internalauth.AuthConfig, context.Context
 	})
 	authCfg := internalauth.AuthConfig{
 		Enabled:      true,
+		Audience:     "urn:formance:ledger:test",
 		KeySet:       keySet,
 		ScopeMapping: internalauth.DefaultMapping("ledger"),
 	}
@@ -193,6 +194,7 @@ func mutationAuthContext(t *testing.T) (internalauth.AuthConfig, context.Context
 	claims := &oidc.AccessTokenClaims{}
 	claims.Subject = mutationAuthContextSubject
 	claims.IssuedAt = oidc.FromTime(oidc.Time(now.Unix()).AsTime())
+	claims.Audience = oidc.Audience{"urn:formance:ledger:test"}
 	claims.Expiration = oidc.FromTime(oidc.Time(now.Add(time.Hour).Unix()).AsTime())
 	claims.Scopes = oidc.SpaceDelimitedArray{
 		string(internalauth.ScopeClusterWrite),

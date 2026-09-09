@@ -1620,9 +1620,10 @@ func TimeoutHTTPClient(timeout time.Duration) *http.Client {
 // Scope mapping is loaded from file, env var, or defaults to the backward-compatible mapping.
 func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) (internalauth.AuthConfig, error) {
 	authCfg := internalauth.AuthConfig{
-		Enabled: cfg.AuthConfig.Enabled,
-		Issuer:  cfg.AuthConfig.Issuer,
-		Service: cfg.AuthConfig.Service,
+		Enabled:  cfg.AuthConfig.Enabled,
+		Issuer:   cfg.AuthConfig.Issuer,
+		Audience: cfg.AuthConfig.Audience,
+		Service:  cfg.AuthConfig.Service,
 	}
 
 	// When auth is enabled and an issuer is configured but no external KeySet was injected,

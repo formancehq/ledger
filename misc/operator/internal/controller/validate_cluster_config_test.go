@@ -56,19 +56,19 @@ func TestValidateClusterConfig_AuthRequiresTLS(t *testing.T) {
 	}{
 		{
 			name:    "auth enabled + tls enabled is accepted",
-			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled},
+			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled, Audience: "ledger-production"},
 			tls:     &ledgerv1alpha1.TLSConfig{Enabled: true},
 			wantErr: false,
 		},
 		{
 			name:    "auth enabled + tls disabled is rejected",
-			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled},
+			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled, Audience: "ledger-production"},
 			tls:     &ledgerv1alpha1.TLSConfig{Enabled: false},
 			wantErr: true,
 		},
 		{
 			name:    "auth enabled + tls nil is rejected",
-			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled},
+			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled, Audience: "ledger-production"},
 			tls:     nil,
 			wantErr: true,
 		},
@@ -195,4 +195,35 @@ func TestValidateClusterConfig_CoversPreparedQueries(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "bloom.preparedQueries.fpRate")
+}
+
+func TestValidateClusterConfig_AuthRequiresAudience(t *testing.T) {
+	t.Parallel()
+	enabled := true
+	disabled := false
+	for _, tc := range []struct {
+		name     string
+		enabled  *bool
+		audience string
+		wantErr  bool
+	}{
+		{name: "missing", enabled: &enabled, wantErr: true},
+		{name: "blank", enabled: &enabled, audience: " \t", wantErr: true},
+		{name: "explicit", enabled: &enabled, audience: "ledger-production"},
+		{name: "disabled", enabled: &disabled},
+		{name: "unset"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateClusterConfig(&ledgerv1alpha1.ClusterSpec{
+				Auth: &ledgerv1alpha1.AuthorizationConfig{Enabled: tc.enabled, Audience: tc.audience},
+				TLS:  &ledgerv1alpha1.TLSConfig{Enabled: true},
+			})
+			if tc.wantErr {
+				require.EqualError(t, err, "auth.enabled requires a non-empty auth.audience for this deployment")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }

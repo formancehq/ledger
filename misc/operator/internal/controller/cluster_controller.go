@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -626,6 +627,10 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 		return errors.New("auth.enabled requires tls.enabled: authentication needs TLS " +
 			"(the ledger server rejects --auth-enabled without --tls-mode=required); " +
 			"enable TLS before enabling auth")
+	}
+
+	if spec.Auth != nil && spec.Auth.Enabled != nil && *spec.Auth.Enabled && strings.TrimSpace(spec.Auth.Audience) == "" {
+		return errors.New("auth.enabled requires a non-empty auth.audience for this deployment")
 	}
 
 	if spec.Cache != nil && spec.Cache.RotationThreshold != nil && *spec.Cache.RotationThreshold <= 0 {
