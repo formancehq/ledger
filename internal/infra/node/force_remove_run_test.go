@@ -31,6 +31,8 @@ func TestForceRemoveNodeDurabilityFailureStopsRun(t *testing.T) {
 		updateErr:    injected,
 		started:      make(chan struct{}),
 	}
+	m := newTestMembership(t)
+	require.NoError(t, m.Register(2, "node-2:7000", "node-2:8000", []byte("0000000000000002")))
 	n, err := NewNode(
 		NodeConfig{
 			NodeID:                 1,
@@ -44,7 +46,7 @@ func TestForceRemoveNodeDurabilityFailureStopsRun(t *testing.T) {
 		newForceRemoveTransport(t), setup.applier, logging.Testing(),
 		noop.NewMeterProvider().Meter("force-remove-run"), w, setup.fsm,
 		setup.applier.recovery, setup.applier.synchronizer,
-		newTestMembership(t), setup.responseSink,
+		m, setup.responseSink,
 	)
 	require.NoError(t, err)
 
