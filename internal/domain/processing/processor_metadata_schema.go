@@ -26,8 +26,6 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 		return nil, loadErr
 	}
 
-	info = info.CloneVT()
-
 	if info.GetMetadataSchema() == nil {
 		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
@@ -103,8 +101,6 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 	if loadErr != nil {
 		return nil, loadErr
 	}
-
-	info = info.CloneVT()
 
 	if info.GetMetadataSchema() == nil {
 		info.MetadataSchema = &commonpb.MetadataSchema{}

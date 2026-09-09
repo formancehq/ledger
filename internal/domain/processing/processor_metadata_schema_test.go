@@ -218,6 +218,40 @@ func TestProcessSetMetadataFieldType_LedgerNotFound(t *testing.T) {
 	require.ErrorAs(t, err, &ledgerNotFound)
 }
 
+// TestProcessApplyMissingLedgerClearsStaleLedgerInfo pins the processApply
+// contract: when a ledger lookup returns ErrNotFound while boundaries remain
+// available, the per-apply context must clear any LedgerInfo left over from a
+// prior order rather than conditionally skipping the assignment, so child
+// handlers cannot enforce a prior ledger's account types or enforcement mode.
+func TestProcessApplyMissingLedgerClearsStaleLedgerInfo(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockScope(ctrl)
+
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
+	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "missing"}, boundaries.AsReader(), nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "missing"}, nil, domain.ErrNotFound).AnyTimes()
+
+	stale := (&commonpb.LedgerInfo{Name: "previous-ledger", Id: 1}).AsReader()
+	ctx := &Context{Scope: mockStore, LedgerInfo: stale}
+
+	apply := &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
+		SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
+			TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+			Key:        "key",
+			Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+		},
+	}}
+
+	_, derr := processApply("missing", apply, ctx)
+	var ledgerNotFound *domain.ErrLedgerNotFound
+	require.ErrorAs(t, derr, &ledgerNotFound)
+	require.Nil(t, ctx.LedgerInfo, "missing ledger must clear stale LedgerInfo from a prior order")
+}
+
 func TestProcessRemoveMetadataFieldType_Account(t *testing.T) {
 	t.Parallel()
 

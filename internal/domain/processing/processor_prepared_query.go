@@ -56,7 +56,7 @@ func processCreatePreparedQuery(ledger string, order *raftcmdpb.CreatePreparedQu
 		return nil, err
 	}
 
-	if _, loadErr := loadLedger(s, ledger); loadErr != nil {
+	if _, loadErr := loadLedgerReader(s, ledger); loadErr != nil {
 		return nil, loadErr
 	}
 
@@ -90,7 +90,7 @@ func processUpdatePreparedQuery(ledger string, order *raftcmdpb.UpdatePreparedQu
 		return nil, err
 	}
 
-	if _, loadErr := loadLedger(s, ledger); loadErr != nil {
+	if _, loadErr := loadLedgerReader(s, ledger); loadErr != nil {
 		return nil, loadErr
 	}
 
@@ -161,7 +161,7 @@ func processDeletePreparedQuery(ledger string, order *raftcmdpb.DeletePreparedQu
 		return nil, err
 	}
 
-	if _, loadErr := loadLedger(s, ledger); loadErr != nil {
+	if _, loadErr := loadLedgerReader(s, ledger); loadErr != nil {
 		return nil, loadErr
 	}
 
