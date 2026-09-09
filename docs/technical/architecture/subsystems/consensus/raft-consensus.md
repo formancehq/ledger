@@ -193,6 +193,37 @@ graph TB
     Transport --> RaftNode
 ```
 
+#### Transport shutdown
+
+The transport remains available through the node's leadership-transfer and
+shutdown hook. Its own Fx stop hook runs afterwards. Once that hook enters,
+cancellation must not abandon the dispatcher or peer cleanup (EN-1986): the
+former cancellation-sensitive rendezvous could leave the hook waiting forever
+for a worker that never received its stop request.
+
+`DefaultTransport.Stop` rejects subsequent sends, cancels the peer connection
+loops, then closes a persistent stop signal exactly once. Its context bounds
+only the caller's wait for completion. The dispatcher finishes any publication
+already in progress, observes the stop signal, snapshots the peers, joins each
+peer loop and closes its priority queues, then closes the connection pool and
+publishes completion before returning from `Start`. Peer joins use an
+uncancelled context. Repeated stop callers share that same completion.
+
+The bootstrap hook unconditionally joins `Start`, so hook completion proves peer
+and pool cleanup even when `Stop` returned a context error. Fx's outer
+`App.Stop` can still return on its deadline while the hook finishes cleanup;
+that timeout does not establish that the worker has already exited. Transport
+receive, unreachable, and pending-send channels remain open, guarded by the
+stopped flag, as before. Shutdown does not promise delivery of queued Raft
+messages after peer cancellation and does not change node drain ordering.
+
+`TestTransportShutdown` blocks the actual dispatcher during peer publication,
+cancels after Fx hook entry, and checks both the context-bounded outer stop and
+the later worker/hook join. It also delays peer completion to prove cleanup
+ordering and covers normal, already-cancelled, and repeated stops. A persistent
+signal alone would prevent the lost wakeup but still leave cleanup vulnerable;
+keeping cleanup in the worker's exit path makes its existing join sufficient.
+
 ## Raft Configuration
 
 ### Configurable Parameters
