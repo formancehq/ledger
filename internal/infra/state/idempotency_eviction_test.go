@@ -448,3 +448,111 @@ func TestIdempotencyEvictionScheduler_StopCancelsProposeFn(t *testing.T) {
 	require.True(t, errors.Is(got, context.Canceled),
 		"proposeFn ctx must be cancelled by Stop, got %v", got)
 }
+
+// countIdemTimeIndexRows counts eviction time-index rows
+// ([0x05][0x02][expires_at 8B][hash 16B]) whose hash suffix matches keyHash.
+func countIdemTimeIndexRows(t *testing.T, reader dal.PebbleReader, keyHash []byte) int {
+	t.Helper()
+
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx},
+		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx + 1},
+	})
+	require.NoError(t, err)
+
+	defer func() { _ = iter.Close() }()
+
+	n := 0
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		k := iter.Key()
+		if len(k) == 2+8+16 && bytes.Equal(k[10:26], keyHash) {
+			n++
+		}
+	}
+
+	require.NoError(t, iter.Error())
+
+	return n
+}
+
+// TestEviction_ReusedKeyLifecycleThroughCompaction is the storage-lifecycle proof
+// for the SingleDelete->Delete fix. An expired-then-reused key is Set twice on the
+// same main Pebble key, so eviction must Delete it (SingleDelete over two Sets is
+// undefined and can resurrect the stale outcome at compaction). The test asserts
+// the exact precondition (two expiry-index rows, one logical eviction), then that
+// the outcome stays gone across the delete, CompactAll, and close/reopen
+// boundaries, with the expiry index drained.
+func TestEviction_ReusedKeyLifecycleThroughCompaction(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	store := openStoreAt(t, dir)
+
+	idemp := NewIdempotencyStore()
+
+	const (
+		key  = "reused-key"
+		expA = uint64(10_000_000)
+		expB = uint64(20_000_000)
+	)
+
+	keyHash := HashIdempotencyKey(key)
+
+	writeIdem := func(v *commonpb.IdempotencyKeyValue) {
+		b := store.OpenWriteSession()
+		require.NoError(t, SaveIdempotencyKey(b, key, v))
+		require.NoError(t, b.Commit())
+		idemp.Put(key, v)
+		require.NoError(t, store.Flush())
+	}
+
+	// A, then reuse with B — a second Set on the same main key, flushed into
+	// separate SSTs (the shape under which a SingleDelete could resurrect A).
+	writeIdem(&commonpb.IdempotencyKeyValue{FirstLogSequence: 1, LogCount: 1, CreatedAt: 1, ExpiresAt: expA})
+	writeIdem(&commonpb.IdempotencyKeyValue{FirstLogSequence: 2, LogCount: 1, CreatedAt: 2, ExpiresAt: expB})
+
+	// Precondition: exactly two expiry-index rows for the reused hash (A and B).
+	pre, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	require.Equal(t, 2, countIdemTimeIndexRows(t, pre, keyHash[:]),
+		"reuse must leave two expiry-index rows for the same hash")
+	_ = pre.Close()
+
+	// Evict B: one logical eviction (the second scanned occurrence of the hash is a
+	// map-gated no-op), one plain Delete on the twice-Set main key.
+	scan, err := store.NewReadHandle()
+	require.NoError(t, err)
+	hashes, lastKey, err := idemp.ScanExpiredKeyHashes(scan, expB, 100)
+	require.NoError(t, err)
+	_ = scan.Close()
+
+	evictBatch := store.OpenWriteSession()
+	evicted, err := idemp.Evict(evictBatch, expB, lastKey, hashes)
+	require.NoError(t, err)
+	require.NoError(t, evictBatch.Commit())
+	require.Equal(t, 1, evicted, "the reused key must be exactly one logical eviction")
+
+	assertGone := func(s *dal.Store, phase string) {
+		h, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+
+		defer func() { _ = h.Close() }()
+
+		v, err := LoadIdempotencyKey(h, key)
+		require.NoError(t, err)
+		require.Nil(t, v, "%s: the reused main key must be absent", phase)
+		require.Equal(t, 0, countIdemTimeIndexRows(t, h, keyHash[:]), "%s: the expiry index must be empty", phase)
+	}
+
+	assertGone(store, "after delete")
+	require.NoError(t, store.CompactAll())
+	assertGone(store, "after CompactAll")
+
+	// Close and reopen on the same directory: a restarting node rebuilds only from
+	// what survived to disk, so a resurrected Set would reappear here.
+	require.NoError(t, store.Close())
+	reopened := openStoreAt(t, dir)
+	t.Cleanup(func() { _ = reopened.Close() })
+	assertGone(reopened, "after reopen")
+}

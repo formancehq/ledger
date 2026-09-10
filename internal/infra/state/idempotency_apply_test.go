@@ -453,12 +453,12 @@ func TestApplyProposal_ReplayDoesNotExtendAuditChain(t *testing.T) {
 		"a failure replay must not advance the audit hash chain")
 }
 
-// TestPreload_DoesNotOverwriteNewerOutcomeWithStalePlan pins the freshness guard:
-// the eviction-cutoff gate proves a plan-carried value was not evicted, but not
-// that it is still the newest value for the key. Two proposals can carry the same
-// expired-but-not-yet-evicted value; if the first supersedes it with a fresh
-// outcome, the second's stale preload must not clobber the live one (which would
-// let the duplicate re-execute, breaking at-most-once).
+// TestPreload_DoesNotOverwriteNewerOutcomeWithStalePlan is a unit-level check of
+// the freshness guard around Preload: the eviction-cutoff gate proves a
+// plan-carried value was not evicted, but not that it is still the newest value
+// for the key, so a stale plan value must not overwrite a newer one in the map.
+// It does not exercise the cross-component race, the idempotency gate, or
+// recovery — that is TestApplyProposal_StalePreloadCannotResurrectSupersededOutcome.
 func TestPreload_DoesNotOverwriteNewerOutcomeWithStalePlan(t *testing.T) {
 	t.Parallel()
 
@@ -497,11 +497,11 @@ func TestPreload_DoesNotOverwriteNewerOutcomeWithStalePlan(t *testing.T) {
 	require.EqualValues(t, 1_000_000, installed.GetCreatedAt())
 }
 
-// TestEviction_ReusedKeyDeletesCleanly pins the SingleDelete-lifecycle fix: a key
-// is legitimately re-Set on reuse (a fresh proposal reusing an expired key writes
-// a new outcome over the old one), so the main key is NOT write-once. Eviction
-// uses a plain Delete, which tombstones every prior Set; a SingleDelete over the
-// two Sets is undefined and could resurrect the stale outcome at compaction.
+// TestEviction_ReusedKeyDeletesCleanly is a smoke-level check that a reused
+// (twice-Set) key is removed by eviction and its time-index swept. The full
+// storage lifecycle — the two-index-row precondition and absence through the
+// compaction and close/reopen boundaries a SingleDelete could resurrect at — is
+// TestEviction_ReusedKeyLifecycleThroughCompaction.
 func TestEviction_ReusedKeyDeletesCleanly(t *testing.T) {
 	t.Parallel()
 
@@ -557,4 +557,110 @@ func TestEviction_ReusedKeyDeletesCleanly(t *testing.T) {
 	remaining, _, err := machine.Registry.Idempotency.ScanExpiredKeyHashes(post, expB, 100)
 	require.NoError(t, err)
 	require.Empty(t, remaining, "both time-index rows for the reused key must be swept")
+}
+
+// TestApplyProposal_StalePreloadCannotResurrectSupersededOutcome is the FSM-level
+// regression for the preload freshness guard. It drives the full at-most-once and
+// conflict contracts through ApplyEntries (not a direct Preload call): two
+// proposals are planned against the same expired-but-unevicted outcome V0; A
+// supersedes it with a fresh live outcome V1, then B applies carrying its stale
+// plan. Without the freshness guard B's preload would reinstall V0 over V1 and the
+// gate would re-execute; with it, B replays A (identical content) or conflicts
+// (different content), and the surviving outcome is V1 across a restart.
+//
+// Raft indices are sequential (the FSM rejects gaps); the proposal Date is set
+// independently to drive HLC expiry timing (V0 expires between A0 and A; V1 stays
+// live across every B).
+func TestApplyProposal_StalePreloadCannotResurrectSupersededOutcome(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, _ := newTestMachine(t)
+	ctx := context.Background()
+
+	const (
+		ledgerName = "idem-stale"
+		key        = "reused-key"
+		acct       = "acc"
+		ttlMicros  = uint64(5) // tiny TTL so V0 expires between A0 and A
+	)
+
+	machine.State.ClusterPolicy = &commonpb.ClusterPolicy{Revision: 1, IdempotencyTtlMicros: ttlMicros}
+
+	keyed := func(date uint64, stale *commonpb.IdempotencyKeyValue, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
+		p := makeProposal(1, orders...)
+		p.Date = &commonpb.Timestamp{Data: date}
+		p.Idempotency = &commonpb.Idempotency{Key: key}
+		if stale != nil {
+			p.GetExecutionPlan().IdempotencyKeys = []*raftcmdpb.ReloadIdempotencyKey{{Key: key, Value: stale}}
+		}
+
+		return p
+	}
+	fund := func(amount int64) *raftcmdpb.Order {
+		return createTransactionOrder(ledgerName, true, newPosting("world", acct, "EUR", amount))
+	}
+	loadKey := func() *commonpb.IdempotencyKeyValue {
+		h, err := dataStore.NewDirectReadHandle()
+		require.NoError(t, err)
+
+		defer func() { _ = h.Close() }()
+
+		v, err := LoadIdempotencyKey(h, key)
+		require.NoError(t, err)
+
+		return v
+	}
+
+	r, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))))
+	require.NoError(t, err)
+	require.NoError(t, r.Results[0].Error)
+
+	// A0 (index 2, date 1_700_000_002): freeze V0. expires_at = created_at + tiny TTL.
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 2, keyed(1_700_000_002, nil, fund(100))))
+	require.NoError(t, err)
+	require.NoError(t, r.Results[0].Error)
+	v0 := loadKey()
+	require.NotNil(t, v0)
+	require.NotZero(t, v0.GetExpiresAt())
+
+	// A (index 3, date 1_700_000_100): plan carries V0, but V0 is now expired, so A
+	// reuses the key and executes fresh, installing a newer live outcome V1.
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 3, keyed(1_700_000_100, v0, fund(100))))
+	require.NoError(t, err)
+	require.NoError(t, r.Results[0].Error)
+	require.Len(t, r.Results[0].Logs, 1)
+	seqA := r.Results[0].Logs[0].GetCreatedLog().GetSequence()
+	require.NotZero(t, seqA, "A must execute fresh over the expired key")
+	v1 := loadKey()
+	require.Greater(t, v1.GetCreatedAt(), v0.GetCreatedAt(), "A installed a newer outcome")
+
+	// B-identical (index 4, date 1_700_000_101): stale plan (V0), same content, applies
+	// after A. The freshness guard keeps V1, so the gate replays A, not re-executes.
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 4, keyed(1_700_000_101, v0, fund(100))))
+	require.NoError(t, err)
+	require.NoError(t, r.Results[0].Error)
+	require.Len(t, r.Results[0].Logs, 1)
+	require.Nil(t, r.Results[0].Logs[0].GetCreatedLog(), "identical duplicate must NOT create a second log")
+	require.Equal(t, seqA, r.Results[0].Logs[0].GetReferenceSequence(), "identical duplicate replays A's log")
+	require.True(t, v1.EqualVT(loadKey()), "the live outcome must be unchanged by the replay")
+
+	// B-different (index 5, date 1_700_000_102): stale plan (V0), different content. The
+	// live V1 stands, so the gate conflicts instead of executing a second txn.
+	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 5, keyed(1_700_000_102, v0, fund(999))))
+	require.NoError(t, err)
+	var conflict *domain.ErrIdempotencyKeyConflict
+	require.ErrorAs(t, r.Results[0].Error, &conflict, "different content under a live key must conflict, not execute")
+	require.True(t, v1.EqualVT(loadKey()), "a conflict must not overwrite the live outcome")
+
+	// Restart: a fresh machine rebuilds the map from Pebble. It must hold V1 (A),
+	// not the stale V0, and re-applying B's stale plan must still not resurrect V0.
+	recovered := recoverMachineOnStore(t, dataStore)
+	got, ok := recovered.Registry.Idempotency.Get(key)
+	require.True(t, ok, "the live outcome survives restart in the rebuilt map")
+	require.True(t, v1.EqualVT(got), "the rebuilt map holds A's outcome, not the stale V0")
+
+	r, err = recovered.ApplyEntries(ctx, dataStore, makeEntry(t, 6, keyed(1_700_000_103, v0, fund(100))))
+	require.NoError(t, err)
+	require.NoError(t, r.Results[0].Error)
+	require.Nil(t, r.Results[0].Logs[0].GetCreatedLog(), "after restart, a stale-plan duplicate still replays")
 }

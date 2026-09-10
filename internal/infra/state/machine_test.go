@@ -62,6 +62,29 @@ func newTestMachine(t *testing.T) (*Machine, *dal.Store, *attributes.Attributes)
 	return newTestMachineWithThreshold(t, 1000)
 }
 
+// recoverMachineOnStore builds a fresh Machine bound to an existing store and
+// runs recovery, simulating a node restart: the new Machine's in-memory state
+// (including the IdempotencyStore map) is rebuilt only from what survived to
+// Pebble.
+func recoverMachineOnStore(t *testing.T, dataStore *dal.Store) *Machine {
+	t.Helper()
+
+	logger := logging.FromContext(logging.TestingContext())
+	meterProvider := noop.NewMeterProvider()
+
+	c, err := cache.New(1000, meterProvider.Meter("test"))
+	require.NoError(t, err)
+
+	registry := NewStateRegistry(c, attributes.New())
+	snapshotter := NewCacheSnapshotter(logger, registry, nil)
+
+	m, err := NewMachine(logger, registry, snapshotter, dataStore, dal.NewSentinelFactory(dataStore, false), meterProvider, keystore.NewKeyStore(), NewSharedState(), newNoopNotifier(t), nil, "test-cluster", 0, noopConfChangeHandler)
+	require.NoError(t, err)
+	require.NoError(t, NewRecovery(m, dataStore).RecoverState())
+
+	return m
+}
+
 // makeProposal builds a Proposal protobuf with the given orders.
 // It automatically generates a ExecutionPlan that declares every key the FSM
 // will read during apply (simulating what the admission layer does):

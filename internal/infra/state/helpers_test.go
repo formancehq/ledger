@@ -48,6 +48,21 @@ func newTestStore(t *testing.T) *dal.Store {
 	return s
 }
 
+// openStoreAt opens a dal.Store at dir. Unlike newTestStore it registers no
+// cleanup close, so a test driving a close/reopen lifecycle manages the handle
+// itself and can reopen a new Store on the same dir.
+func openStoreAt(t *testing.T, dir string) *dal.Store {
+	t.Helper()
+
+	logger := logging.FromContext(logging.TestingContext())
+	meter := noop.NewMeterProvider().Meter("test")
+
+	s, err := dal.NewStore(dir, logger, meter, dal.DefaultConfig())
+	require.NoError(t, err)
+
+	return s
+}
+
 func registerLedger(t *testing.T, s *dal.Store, name string) {
 	t.Helper()
 
