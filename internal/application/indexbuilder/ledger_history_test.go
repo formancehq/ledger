@@ -1119,46 +1119,63 @@ func TestLogDateBackfillIncludesControlAndHistory(t *testing.T) {
 
 func TestEmptyLogDateFastPathIncludesEarlierControlLogs(t *testing.T) {
 	t.Parallel()
+	for _, mode := range []string{"same fold", "later fold", "restart"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			b := newTestBuilderWithStore(t)
+			b.batchSize = DefaultBatchSize
+			b.notifications = signal.NewNotifications()
+			const ledger = "control-dates"
+			id := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+			writeLogToFSM(t, b, &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
+				CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+			}}})
+			writeLogToFSM(t, b, ledgerPayloadLog(2, ledger, 1, &commonpb.LedgerLogPayload_AddedAccountType{
+				AddedAccountType: &commonpb.AddedAccountTypeLog{},
+			}, 100))
+			writeLogToFSM(t, b, ledgerPayloadLog(3, ledger, 2, &commonpb.LedgerLogPayload_AddedAccountType{
+				AddedAccountType: &commonpb.AddedAccountTypeLog{},
+			}, 200))
+			var cursor uint64
+			if mode != "same fold" {
+				var err error
+				cursor, err = b.processLogs(context.Background(), 0, time.Time{})
+				require.NoError(t, err)
+				require.Equal(t, uint64(3), cursor)
+			}
+			if mode == "restart" {
+				// A new builder owns no prior in-memory history/config. Recover only
+				// committed read-store state through the real boot path.
+				mainBatch := b.pebbleStore.OpenWriteSession()
+				require.NoError(t, state.SaveLedger(mainBatch, ledger, &commonpb.LedgerInfo{Name: ledger}))
+				require.NoError(t, mainBatch.Commit())
+				restarted := newTestBuilderWithStore(t)
+				restarted.readStore = b.readStore
+				restarted.pebbleStore = b.pebbleStore
+				restarted.batchSize = DefaultBatchSize
+				restarted.notifications = signal.NewNotifications()
+				b = restarted
+				var err error
+				cursor, _, err = b.bootInit(context.Background())
+				require.NoError(t, err)
+				require.Equal(t, uint64(3), cursor)
+			}
 
-	b := newTestBuilderWithStore(t)
-	b.batchSize = DefaultBatchSize
-	b.notifications = signal.NewNotifications()
-	const ledger = "control-dates"
-	id := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
-	writeLogToFSM(t, b, &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
-		CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
-	}}})
-	writeLogToFSM(t, b, ledgerPayloadLog(2, ledger, 1, &commonpb.LedgerLogPayload_AddedAccountType{
-		AddedAccountType: &commonpb.AddedAccountTypeLog{},
-	}, 100))
-	writeLogToFSM(t, b, ledgerPayloadLog(3, ledger, 2, &commonpb.LedgerLogPayload_AddedAccountType{
-		AddedAccountType: &commonpb.AddedAccountTypeLog{},
-	}, 200))
-	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
-	require.NoError(t, err)
-	require.Equal(t, uint64(3), cursor)
+			writeLogToFSM(t, b, ledgerPayloadLog(4, ledger, 3, &commonpb.LedgerLogPayload_CreateIndex{
+				CreateIndex: &commonpb.CreatedIndexLog{Id: id},
+			}, 300))
+			cursor, err := b.processLogs(context.Background(), cursor, time.Time{})
+			require.NoError(t, err)
+			require.Equal(t, uint64(4), cursor)
+			assert.Empty(t, b.backfillTasks)
+			current, pending := b.versionFor(ledger, indexes.Canonical(id))
+			assert.NotZero(t, current)
+			assert.Zero(t, pending)
 
-	writeLogToFSM(t, b, ledgerPayloadLog(4, ledger, 3, &commonpb.LedgerLogPayload_CreateIndex{
-		CreateIndex: &commonpb.CreatedIndexLog{Id: id},
-	}, 300))
-	cursor, err = b.processLogs(context.Background(), cursor, time.Time{})
-	require.NoError(t, err)
-	require.Equal(t, uint64(4), cursor)
-	assert.Empty(t, b.backfillTasks)
-	current, pending := b.versionFor(ledger, indexes.Canonical(id))
-	assert.NotZero(t, current)
-	assert.Zero(t, pending)
-
-	prefix := readstore.LedgerLogDateRangePrefix(dal.NewKeyBuilder(), ledger)
-	iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: readstore.IncrementBytes(prefix)})
-	require.NoError(t, err)
-	defer func() { require.NoError(t, iter.Close()) }()
-	count := 0
-	for iter.First(); iter.Valid(); iter.Next() {
-		count++
+			assert.Equal(t, [][2]uint64{{100, 1}, {200, 2}, {300, 3}}, scanLogDates(t, b.readStore, ledger),
+				"fast promotion must retain earlier CONTROL dates and index CreateIndex itself")
+		})
 	}
-	require.NoError(t, iter.Error())
-	assert.Equal(t, 3, count, "fast promotion must retain earlier CONTROL dates and index CreateIndex itself")
 }
 
 func TestSpeculativeLogDatesArePurgedOnFirstHistory(t *testing.T) {
@@ -1187,6 +1204,81 @@ func TestSpeculativeLogDatesArePurgedOnFirstHistory(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), cursor)
 	assert.Zero(t, countReadstorePrefix(t, b, prefix))
+}
+
+func TestEmptyLogDateDropRecreateRetainsControlDates(t *testing.T) {
+	t.Parallel()
+	b := newTestBuilderWithStore(t)
+	b.batchSize = DefaultBatchSize
+	b.notifications = signal.NewNotifications()
+	const ledger = "date-recreate"
+	id := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+	writeLogToFSM(t, b, &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger}},
+	}})
+	payloads := []any{
+		&commonpb.LedgerLogPayload_AddedAccountType{AddedAccountType: &commonpb.AddedAccountTypeLog{}},
+		&commonpb.LedgerLogPayload_CreateIndex{CreateIndex: &commonpb.CreatedIndexLog{Id: id}},
+		&commonpb.LedgerLogPayload_DropIndex{DropIndex: &commonpb.DroppedIndexLog{Id: id}},
+		&commonpb.LedgerLogPayload_AddedAccountType{AddedAccountType: &commonpb.AddedAccountTypeLog{}},
+		&commonpb.LedgerLogPayload_CreateIndex{CreateIndex: &commonpb.CreatedIndexLog{Id: id}},
+	}
+	var cursor uint64
+	for i, payload := range payloads {
+		seq := uint64(i + 2)
+		writeLogToFSM(t, b, ledgerPayloadLog(seq, ledger, seq-1, payload, seq*100))
+		var err error
+		cursor, err = b.processLogs(context.Background(), cursor, time.Time{})
+		require.NoError(t, err)
+	}
+	assert.Equal(t, [][2]uint64{{200, 1}, {300, 2}, {400, 3}, {500, 4}, {600, 5}}, scanLogDates(t, b.readStore, ledger))
+	assert.Empty(t, b.backfillTasks)
+	current, pending := b.versionFor(ledger, indexes.Canonical(id))
+	assert.Equal(t, uint32(2), current)
+	assert.Zero(t, pending)
+}
+
+func TestEmptyLogDateCancelledFoldRetry(t *testing.T) {
+	t.Parallel()
+	b := newTestBuilderWithStore(t)
+	const ledger = "date-cancel"
+	id := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+	attempts := 0
+	for attempts < 2 {
+		attempts++
+		batch := b.readStore.NewBatch()
+		b.initFoldBatch(batch)
+		require.NoError(t, b.observeCreatedLedger(ledger))
+		require.NoError(t, b.wb.WriteLedgerLogDateIndex(b.kb, ledger, 100, 1))
+		require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id}))
+		require.NoError(t, b.readStore.WriteProgress(batch, 2))
+		if attempts == 1 {
+			require.NoError(t, batch.Cancel())
+			b.rollbackFoldBatch()
+			assert.Empty(t, scanLogDates(t, b.readStore, ledger))
+			_, exists := b.historyStateFor(ledger)
+			assert.False(t, exists)
+			_, exists, err := b.readStore.ReadIndexVersionState(ledger, indexes.Canonical(id))
+			require.NoError(t, err)
+			assert.False(t, exists)
+			cursor, err := b.readStore.LastIndexedSequence()
+			require.NoError(t, err)
+			assert.Zero(t, cursor)
+
+			continue
+		}
+		require.NoError(t, b.wb.Flush())
+		b.commitFoldBatch()
+	}
+	assert.Equal(t, 2, attempts)
+	assert.Equal(t, [][2]uint64{{100, 1}}, scanLogDates(t, b.readStore, ledger))
+	assert.Empty(t, b.backfillTasks)
+	current, pending := b.versionFor(ledger, indexes.Canonical(id))
+	assert.Equal(t, uint32(1), current)
+	assert.Zero(t, pending)
+	cursor, err := b.readStore.LastIndexedSequence()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), cursor)
 }
 
 func TestHistoricalDeletePreservesCurrentGenerationBuildStateAcrossRestart(t *testing.T) {
@@ -1299,6 +1391,8 @@ func ledgerPayloadLog(sequence uint64, ledger string, ledgerLogID uint64, payloa
 	case *commonpb.LedgerLogPayload_AddedAccountType:
 		data.Payload = payload
 	case *commonpb.LedgerLogPayload_CreateIndex:
+		data.Payload = payload
+	case *commonpb.LedgerLogPayload_DropIndex:
 		data.Payload = payload
 	case *commonpb.LedgerLogPayload_FillGap:
 		data.Payload = payload
