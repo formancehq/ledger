@@ -15,6 +15,7 @@ version at that pin, and ignores membership events committed after it.
 |----------|-------------|
 | [indexes.md](indexes.md) | Strict index creation, index definition (`commonpb.Index`), durable EMPTY/NON_EMPTY ledger-history classification, per-replica `IndexVersionState`, on-demand statistics, and checker coverage. |
 | [indexer.md](indexer.md) | Indexer pipeline: builder loop, atomic tracker/version/task/cursor commits, boot recovery, handlers, event-GC scheduling, read-store and field/version-first reverse-map key layouts, atomic switch, schema rewrite. |
+| [operator-ownership.md](operator-ownership.md) | Recover operator index attribution from audit, including the accepted manual-replacement race. |
 
 ## Related
 

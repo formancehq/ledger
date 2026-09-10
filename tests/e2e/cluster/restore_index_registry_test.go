@@ -16,6 +16,7 @@ import (
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -64,8 +65,11 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		// delta, so its index must take the NON_EMPTY backfill path. emptyKey
 		// is indexed while emptyLedger still has only CONTROL logs, so it must
 		// take the EMPTY fast path and then receive later writes live.
-		historyKey = "history"
-		emptyKey   = "live"
+		historyKey         = "history"
+		emptyKey           = "live"
+		ownedCheckpointKey = "owned-before"
+		ownedDeltaKey      = "owned-after"
+		creationPrefix     = "ledger-operator/index/restore-cr/"
 	)
 
 	// One logical node stops and returns across the three phases, so every
@@ -110,6 +114,16 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		}
 
 		return nil
+	}
+
+	createAttributed := func(client servicepb.BucketServiceClient, key string) {
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+			actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, commonpb.MetadataType_METADATA_TYPE_STRING)))
+		Expect(err).To(Succeed())
+		// The attribution proof requires a singleton creation batch.
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest(creationPrefix+key,
+			actions.CreateAccountMetadataIndexAction(ledgerName, key)))
+		Expect(err).To(Succeed())
 	}
 
 	storage := func() *commonpb.BackupStorage {
@@ -227,6 +241,8 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			))
 			Expect(err).To(Succeed())
 
+			createAttributed(client, ownedCheckpointKey)
+
 			// The full checkpoint carries both rows; everything after this
 			// backup reaches the restored store only through the delta fold.
 			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
@@ -235,6 +251,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		})
 
 		It("mutates the registry in the delta", func() {
+			createAttributed(client, ownedDeltaKey)
 			// Retype: the delta must fold a version bump onto a checkpoint row.
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
 				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, retypedKey, commonpb.MetadataType_METADATA_TYPE_UINT64),
@@ -309,9 +326,11 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			Expect(incResp.GetAuditEntriesExported()).To(BeNumerically(">", 0), "delta must include the failed duplicate creations")
 
 			sourceRows = map[string]*commonpb.Index{
-				retypedKey: registryRow(client, ledgerName, retypedKey),
-				removedKey: registryRow(client, ledgerName, removedKey),
-				deltaKey:   registryRow(client, ledgerName, deltaKey),
+				retypedKey:         registryRow(client, ledgerName, retypedKey),
+				removedKey:         registryRow(client, ledgerName, removedKey),
+				deltaKey:           registryRow(client, ledgerName, deltaKey),
+				ownedCheckpointKey: registryRow(client, ledgerName, ownedCheckpointKey),
+				ownedDeltaKey:      registryRow(client, ledgerName, ownedDeltaKey),
 			}
 			historyVersion, err := actions.MetadataIndexCurrentVersion(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)
 			Expect(err).To(Succeed())
@@ -443,6 +462,8 @@ var _ = Describe("Restore index registry", Ordered, func() {
 
 			expectSameRow(retypedKey)
 			expectSameRow(deltaKey)
+			expectSameRow(ownedCheckpointKey)
+			expectSameRow(ownedDeltaKey)
 
 			Expect(registryRow(client, ledgerName, removedKey)).To(BeNil(), "the cascade-deleted checkpoint row must not resurrect")
 		})
@@ -477,6 +498,44 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			result, err := actions.CollectCheckStoreEvents(ctx, client)
 			Expect(err).To(Succeed())
 			Expect(result.Errors).To(BeEmpty(), "CheckStore errors on the restored store: %v", result.Errors)
+		})
+
+		It("preserves singleton audit attribution across checkpoint and delta", func() {
+			entries, err := actions.ListAuditEntries(ctx, client, false)
+			Expect(err).To(Succeed())
+			for _, key := range []string{ownedCheckpointKey, ownedDeltaKey} {
+				row := registryRow(client, ledgerName, key)
+				Expect(row).NotTo(BeNil())
+				found := 0
+				for _, entry := range entries {
+					if entry.GetIdempotency().GetKey() != creationPrefix+key {
+						continue
+					}
+					found++
+					full, err := client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{Sequence: entry.GetSequence()})
+					Expect(err).To(Succeed())
+					Expect(full.GetSuccess()).NotTo(BeNil())
+					Expect(full.GetOrderCount()).To(Equal(uint32(1)))
+					Expect(full.GetItems()).To(HaveLen(1))
+					Expect(full.GetTimestamp().GetData()).To(Equal(row.GetCreatedAt().GetData()))
+					item := full.GetItems()[0]
+					Expect(item.GetLogSequence()).To(BeNumerically(">", 0))
+					Expect(item.GetLogSequence()).To(Equal(full.GetSuccess().GetMinLogSequence()))
+					Expect(item.GetLogSequence()).To(Equal(full.GetSuccess().GetMaxLogSequence()))
+					order := &raftcmdpb.Order{}
+					Expect(order.UnmarshalVT(item.GetSerializedOrder())).To(Succeed())
+					Expect(order.GetLedgerScoped().GetLedger()).To(Equal(ledgerName))
+					Expect(proto.Equal(order.GetLedgerScoped().GetApply().GetCreateIndex().GetId(), row.GetId())).To(BeTrue())
+				}
+				Expect(found).To(Equal(1), "attributed creation must survive restore: %s", key)
+				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+					&servicepb.Request{Type: &servicepb.Request_DropIndex{DropIndex: &servicepb.DropIndexRequest{Ledger: ledgerName, Id: row.GetId()}}}))
+				Expect(err).To(Succeed())
+				Expect(registryRow(client, ledgerName, key)).To(BeNil())
+			}
+			result, err := actions.CollectCheckStoreEvents(ctx, client)
+			Expect(err).To(Succeed())
+			Expect(result.Errors).To(BeEmpty())
 		})
 
 		It("retains duplicate failure audits and rejects fresh creates after restore", func() {
