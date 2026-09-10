@@ -55,7 +55,7 @@ func TestHTTPPublicDetailsPreserveOtherWrappedErrors(t *testing.T) {
 	w := httptest.NewRecorder()
 	handleError(w, httptest.NewRequest(http.MethodGet, "/", nil), err)
 	require.Equal(t, http.StatusNotFound, w.Code)
-	require.Equal(t, err.Error(), decodeResponse[ErrorResponse](t, w).ErrorMessage)
+	require.Equal(t, "ledger does not exist: test", decodeResponse[ErrorResponse](t, w).ErrorMessage)
 }
 
 func TestHTTPPublicDetailsPreserveNumscriptDiagnostics(t *testing.T) {
@@ -66,5 +66,5 @@ func TestHTTPPublicDetailsPreserveNumscriptDiagnostics(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 	response := decodeResponse[ErrorResponse](t, w)
 	require.Equal(t, domain.ErrReasonNumscriptRuntime, response.ErrorCode)
-	require.Equal(t, err.Error(), response.ErrorMessage)
+	require.Equal(t, "numscript runtime error: negative posting amount", response.ErrorMessage)
 }

@@ -97,7 +97,7 @@ Three paths need correlated server-side diagnostics because the raw value can co
 
 1. **Panic recovery** (`jsonRecoverer`) — a panic in any handler.
 2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Describable` or a known sentinel.
-3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply public messages (`index is inconsistent` and `preload coverage miss`) that omit internal identifiers and storage details, including when wrapped. Other recognized error presentations are unchanged.
+3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply public messages (`index is inconsistent` and `preload coverage miss`) that omit internal identifiers and storage details, including when wrapped. Other recognized errors retain their type-owned message, with outer diagnostic prefixes omitted.
 
 Type-owned public details are selected through `domain.PublicErrorDetails` at the response boundary. Diagnostic `Error()` and `Metadata()` values remain unchanged, including the coverage failure context in the authoritative audit chain.
 
@@ -216,13 +216,15 @@ kind would yield `KindInternal` and answer `500` for what the sender classified
 as a caller error.
 
 `Message` and `Metadata` are the client-safe presentation, not the diagnostic
-identity: a locally raised failure is read through `domain.PublicErrorDetails`,
-so a type that owns a separate public presentation (EN-1623) reaches a surface
-redacted, and `Descriptor.PublicOverride` tells the surface to render `Message`
-in place of the wrapped chain that presentation exists to withhold. A decoded
-failure needs no such selection — the sender applied it before serialising — so
-`PublicOverride` is false for an `*apierr.Remote` and the consumer keeps
-rendering its own outer context, exactly as it did before the hop.
+identity. A locally raised failure uses `domain.PublicErrorDetails` when its
+type owns a separate public presentation (EN-1623); otherwise its describable
+message is used. A decoded failure already contains the sender's selection.
+Both unitary and bulk HTTP responses render the descriptor's message rather
+than outer routing or Raft context, so local and forwarded failures have the
+same public text. `Descriptor.PublicOverride` still identifies a separate
+type-owned public presentation. Recognized internal failures retain their
+status and reason; unmapped errors, invalid wire pairs and panics retain the
+generic correlation-ID response.
 
 `apierr` imports `internal/domain` and nothing else, so HTTP reads a decoded
 failure without linking any gRPC detail. The reverse direction is a layering

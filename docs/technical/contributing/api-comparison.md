@@ -946,6 +946,9 @@ original code, public message, and every status detail survive the hop; raw
 transport cancellation still follows the caller-context policy. Regression
 tests cover both production cursor types, wrapped repeated hops, exact REST/bulk
 message parity, and complete gRPC status parity between leader and followers.
+Unitary and bulk HTTP responses use the descriptor message for recognized
+public errors, omitting outer routing or Raft prefixes on both local and
+forwarded paths; internal-error sanitization remains in force.
 
 **Client-side usage (Go):**
 
