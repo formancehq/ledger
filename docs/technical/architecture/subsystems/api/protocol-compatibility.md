@@ -65,10 +65,9 @@ Revision 8 (EN-1771) removes `CreatedIndexLog.initial` and renumbers the
 remaining exposed fields. Clients and servers built against revision 7 would
 therefore decode the same varint fields with different meanings.
 
-Revision 11 (EN-1926) requires an explicit per-deployment JWT audience for both
-OIDC and Ed25519 authentication. Tokens missing that audience are rejected
-before scope authorization. Servers require `--auth-audience`; CLI token
-issuance requires `--audience`. This changes authentication semantics without
+Revision 11 (EN-1926) requires an explicit per-deployment JWT audience for
+OIDC authentication. Static Ed25519 tokens are exempt. Tokens missing that audience are rejected
+before scope authorization. Servers with an OIDC issuer require `--auth-audience`. This changes authentication semantics without
 changing protobuf fields. Configure every node and issuer consistently and
 mint tokens with the deployment audience.
 

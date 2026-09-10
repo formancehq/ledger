@@ -40,7 +40,7 @@ Creates two files:
 			fmt.Printf("  {\"keyId\": \"%s\", \"publicKeyFile\": \"%s\", \"scopes\": [\"ledger:read\", \"ledger:write\"]}\n", keyID, pubKeyPath)
 			fmt.Println()
 			fmt.Println("Generate a token:")
-			fmt.Printf("  ledgerctl auth generate-token --signing-key %s --key-id %s --subject my-service --audience <deployment-audience>\n", seedPath, keyID)
+			fmt.Printf("  ledgerctl auth generate-token --signing-key %s --key-id %s --subject my-service\n", seedPath, keyID)
 
 			return nil
 		},

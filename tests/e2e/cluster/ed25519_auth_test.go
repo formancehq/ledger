@@ -60,7 +60,6 @@ func signEdDSAJWT(privKey ed25519.PrivateKey, keyID string, claims *oidc.AccessT
 func makeEdDSAClaims(scopes ...string) *oidc.AccessTokenClaims {
 	now := time.Now()
 	claims := &oidc.AccessTokenClaims{}
-	claims.Audience = oidc.Audience{"urn:formance:ledger:test"}
 	claims.Subject = "ed25519-test-user"
 	claims.IssuedAt = oidc.FromTime(oidc.Time(now.Unix()).AsTime())
 	claims.Expiration = oidc.FromTime(oidc.Time(now.Add(1 * time.Hour).Unix()).AsTime())
@@ -159,7 +158,6 @@ var _ = Describe("Ed25519 Auth", Ordered, func() {
 		instruments = append(instruments,
 			testserver.WithBootstrap(),
 			testserver.WithAuthEnabled(),
-			testserver.WithAuthAudience("urn:formance:ledger:test"),
 			testserver.WithAuthEd25519Keys(configPath),
 			testserver.WithAuthService("ledger"),
 			testserver.WithTLSMode("required"),
@@ -362,7 +360,6 @@ var _ = Describe("Ed25519 Auth Scope Restrictions", Ordered, func() {
 		instruments = append(instruments,
 			testserver.WithBootstrap(),
 			testserver.WithAuthEnabled(),
-			testserver.WithAuthAudience("urn:formance:ledger:test"),
 			testserver.WithAuthEd25519Keys(configPath),
 			testserver.WithAuthService("ledger"),
 			testserver.WithTLSMode("required"),
@@ -550,7 +547,6 @@ var _ = Describe("Ed25519 Auth God Mode", Ordered, func() {
 		instruments = append(instruments,
 			testserver.WithBootstrap(),
 			testserver.WithAuthEnabled(),
-			testserver.WithAuthAudience("urn:formance:ledger:test"),
 			testserver.WithAuthEd25519Keys(configPath),
 			testserver.WithAuthService("ledger"),
 			testserver.WithTLSMode("required"),
