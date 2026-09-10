@@ -11,7 +11,9 @@ This document compares the POC's API with the original Formance ledger API and d
 HTTP typed metadata preserves exact integer values, including signed 64-bit
 bounds and values above 2^53, for metadata writes, transaction creation and
 reversal (unitary and bulk). Integral decimal/exponent spellings are accepted;
-fractions and out-of-range values are rejected before submission. See
+fractions and out-of-range values are rejected before submission. The OpenAPI
+integer schema spans `-9223372036854775808` through `18446744073709551615`,
+matching signed negative and unsigned nonnegative metadata values. See
 [Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
 
 ## Summary

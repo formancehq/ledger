@@ -3175,7 +3175,9 @@ components:
           pattern: '^[^\u0000]*$'
           description: Metadata string value without NUL bytes
         - type: integer
-          format: int64
+          minimum: -9223372036854775808
+          maximum: 18446744073709551615
+          description: Negative values fit int64; nonnegative values fit uint64.
         - type: boolean
 
     MetadataFieldTypeCommand:

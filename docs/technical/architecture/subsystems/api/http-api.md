@@ -406,9 +406,11 @@ bulk reversals. For example, `9007199254740993` and `-9007199254740993` reach
 `Apply` unchanged, including beyond the exact-integer range of IEEE-754 doubles.
 
 Nonnegative values use unsigned 64-bit metadata; negative values use signed
-64-bit metadata. All signed 64-bit integers are supported. Integral decimal and
-exponent spellings (`1.0`, `1e3`, `10e-1`) are accepted, while fractions and
-out-of-range values return `400 INVALID_REQUEST` before `Apply`. Fractions are
+64-bit metadata. The accepted range is `-9223372036854775808` through
+`18446744073709551615`. OpenAPI declares an integer with these explicit bounds
+and no `int64` format, which would exclude the upper unsigned range. Integral
+decimal and exponent spellings (`1.0`, `1e3`, `10e-1`) are accepted, while
+fractions and out-of-range values return `400 INVALID_REQUEST` before `Apply`. Fractions are
 checked exactly, including values that a floating-point decoder would round to
 an integer or underflow to zero. Numeric strings remain strings; null and other
 metadata types retain their existing handling.
