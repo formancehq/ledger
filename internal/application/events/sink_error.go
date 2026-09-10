@@ -147,6 +147,7 @@ func (s sinkErrorSanitizer) sanitize(err error) error {
 	if message == err.Error() {
 		return err
 	}
+
 	return &sinkDiagnosticError{message: message, cause: err}
 }
 
