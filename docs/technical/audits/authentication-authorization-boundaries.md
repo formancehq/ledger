@@ -76,6 +76,16 @@ are not an inventory of the current executable surface.
 Paths in the manifest exist at preparation time. New policy/attribution packages
 or changed response types introduced by the pending PRs must be discovered and
 reflected in the manifest before the later audit, not silently assumed present.
+The Raft-plane inventory includes `rafttransportpb`, `snapshotpb` and
+`clusterbootstrappb` descriptors and their source protos. Bootstrap registers
+these services on `RaftServer`; `internal/infra/node/transport.go` implements
+the transport service, while snapshot/bootstrap implementations are already
+covered by `internal/adapter/grpc/**`. Inspect these paths only for registration,
+unary/streaming coverage and the installed authentication boundary, not transport
+algorithms, snapshot correctness or membership semantics. Health/reflection
+descriptors supplied by dependencies still require separate inventory from the
+actual server registration and pinned dependency versions.
+
 Tests under `tests/e2e/cluster/` are supporting authentication/forwarding evidence,
 not authorization for a repository-wide E2E or lifecycle campaign.
 
