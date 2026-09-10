@@ -4,12 +4,9 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
-	"path/filepath"
 	"testing"
-	"time"
 
 	jose "github.com/go-jose/go-jose/v4"
-	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -77,76 +74,4 @@ func TestGenerateToken_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "test-bot", verifiedClaims.GetSubject())
 	assert.Equal(t, oidc.SpaceDelimitedArray{"ledger:read", "ledger:write"}, verifiedClaims.Scopes)
-}
-
-func TestTokenCommands_Audience(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	keyID, err := signing.GenerateKeyPair(dir)
-	require.NoError(t, err)
-	pubKey, err := signing.LoadPublicKeyFromFile(filepath.Join(dir, "pubkey.hex"))
-	require.NoError(t, err)
-
-	for _, command := range []struct {
-		name   string
-		newCmd func() *cobra.Command
-		params func(*cobra.Command) (tokenParams, error)
-	}{
-		{name: "generate-token", newCmd: NewGenerateTokenCommand, params: tokenParamsFromFlags},
-		{name: "login", newCmd: NewLoginCommand, params: resolveLoginParams},
-	} {
-		t.Run(command.name, func(t *testing.T) {
-			t.Parallel()
-
-			for _, audience := range []string{"", " \t", "https://ledger.example.com/prod"} {
-				t.Run(audience, func(t *testing.T) {
-					t.Parallel()
-
-					cmd := command.newCmd()
-					cmd.Flags().String("server", "https://ledger.example.com/prod", "")
-					require.NoError(t, cmd.ParseFlags([]string{
-						"--signing-key", filepath.Join(dir, "seed.hex"),
-						"--key-id", keyID,
-						"--subject", "test-bot",
-					}))
-					if audience != "" {
-						require.NoError(t, cmd.Flags().Set("audience", audience))
-					}
-					params, err := command.params(cmd)
-					if audience != "https://ledger.example.com/prod" {
-						require.EqualError(t, err, "required flag \"audience\" must not be empty")
-
-						return
-					}
-					require.NoError(t, err)
-
-					token, err := signToken(params)
-					require.NoError(t, err)
-					parsed, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.EdDSA})
-					require.NoError(t, err)
-					payload, err := parsed.Verify(pubKey)
-					require.NoError(t, err)
-					var claims oidc.AccessTokenClaims
-					require.NoError(t, json.Unmarshal(payload, &claims))
-					require.Equal(t, []string{audience}, claims.GetAudience())
-				})
-			}
-		})
-	}
-}
-
-func TestSignToken_RejectsEmptyAudience(t *testing.T) {
-	t.Parallel()
-
-	for _, audience := range []string{"", " \t"} {
-		t.Run(audience, func(t *testing.T) {
-			t.Parallel()
-			token, err := signToken(tokenParams{
-				seed: make([]byte, ed25519.SeedSize), audience: audience, expiration: time.Hour,
-			})
-			require.EqualError(t, err, "required flag \"audience\" must not be empty")
-			require.Empty(t, token)
-		})
-	}
 }

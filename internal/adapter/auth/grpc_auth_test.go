@@ -327,11 +327,11 @@ func TestAuthenticate_EdDSA_Valid(t *testing.T) {
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-key")
 	cfg := AuthConfig{
-		Enabled:      true,
-		Audience:     "urn:formance:ledger:test",
-		KeySet:       edKeySet,
-		Service:      "ledger",
-		ScopeMapping: DefaultMapping("ledger"),
+		Enabled:       true,
+		Audience:      "urn:formance:ledger:test",
+		Ed25519KeySet: edKeySet,
+		Service:       "ledger",
+		ScopeMapping:  DefaultMapping("ledger"),
 		Ed25519AllowedScopes: map[string][]string{
 			"ed-key": {"ledger:read", "ledger:write"},
 		},
@@ -355,11 +355,11 @@ func TestAuthenticate_EdDSA_ExcessiveScopes(t *testing.T) {
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-key")
 	cfg := AuthConfig{
-		Enabled:      true,
-		Audience:     "urn:formance:ledger:test",
-		KeySet:       edKeySet,
-		Service:      "ledger",
-		ScopeMapping: DefaultMapping("ledger"),
+		Enabled:       true,
+		Audience:      "urn:formance:ledger:test",
+		Ed25519KeySet: edKeySet,
+		Service:       "ledger",
+		ScopeMapping:  DefaultMapping("ledger"),
 		Ed25519AllowedScopes: map[string][]string{
 			"ed-key": {"ledger:read"},
 		},
@@ -387,10 +387,10 @@ func TestAuthenticate_EdDSA_UnknownKey(t *testing.T) {
 	_, edKeySet := ed25519TestKeyPair(t, "known-key")
 
 	cfg := AuthConfig{
-		Enabled:  true,
-		Audience: "urn:formance:ledger:test",
-		KeySet:   edKeySet,
-		Service:  "ledger",
+		Enabled:       true,
+		Audience:      "urn:formance:ledger:test",
+		Ed25519KeySet: edKeySet,
+		Service:       "ledger",
 	}
 
 	claims := newTestClaims("ledger:read")
@@ -410,10 +410,10 @@ func TestAuthenticate_EdDSA_Expired(t *testing.T) {
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-key")
 	cfg := AuthConfig{
-		Enabled:  true,
-		Audience: "urn:formance:ledger:test",
-		KeySet:   edKeySet,
-		Service:  "ledger",
+		Enabled:       true,
+		Audience:      "urn:formance:ledger:test",
+		Ed25519KeySet: edKeySet,
+		Service:       "ledger",
 	}
 
 	claims := newTestClaims("ledger:read")
@@ -437,11 +437,11 @@ func TestAuthenticate_EdDSA_NoIssuerCheck(t *testing.T) {
 	// EdDSA tokens should not fail due to issuer mismatch
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-key")
 	cfg := AuthConfig{
-		Enabled:  true,
-		Audience: "urn:formance:ledger:test",
-		KeySet:   edKeySet,
-		Issuer:   "https://oidc-issuer.example.com", // OIDC issuer configured but should be ignored for EdDSA
-		Service:  "ledger",
+		Enabled:       true,
+		Audience:      "urn:formance:ledger:test",
+		Ed25519KeySet: edKeySet,
+		Issuer:        "https://oidc-issuer.example.com", // OIDC issuer configured but should be ignored for EdDSA
+		Service:       "ledger",
 	}
 
 	claims := newTestClaims("ledger:read")
@@ -499,11 +499,11 @@ func TestAuthenticate_GodMode_EdDSA_Allowed(t *testing.T) {
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "admin-key")
 	cfg := AuthConfig{
-		Enabled:      true,
-		Audience:     "urn:formance:ledger:test",
-		KeySet:       edKeySet,
-		Service:      "ledger",
-		ScopeMapping: DefaultMapping("ledger"),
+		Enabled:       true,
+		Audience:      "urn:formance:ledger:test",
+		Ed25519KeySet: edKeySet,
+		Service:       "ledger",
+		ScopeMapping:  DefaultMapping("ledger"),
 		Ed25519AllowedScopes: map[string][]string{
 			"admin-key": {},
 		},
@@ -530,11 +530,11 @@ func TestAuthenticate_GodMode_EdDSA_NotAllowed(t *testing.T) {
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "bot-key")
 	cfg := AuthConfig{
-		Enabled:      true,
-		Audience:     "urn:formance:ledger:test",
-		KeySet:       edKeySet,
-		Service:      "ledger",
-		ScopeMapping: DefaultMapping("ledger"),
+		Enabled:       true,
+		Audience:      "urn:formance:ledger:test",
+		Ed25519KeySet: edKeySet,
+		Service:       "ledger",
+		ScopeMapping:  DefaultMapping("ledger"),
 		Ed25519AllowedScopes: map[string][]string{
 			"bot-key": {"ledger:read"},
 		},

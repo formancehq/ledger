@@ -467,10 +467,10 @@ func TestHTTPAuthMiddleware_EdDSA_ValidToken(t *testing.T) {
 	})
 
 	cfg := AuthConfig{
-		Enabled:  true,
-		Audience: "urn:formance:ledger:test",
-		KeySet:   edKeySet,
-		Service:  "ledger",
+		Enabled:       true,
+		Audience:      "urn:formance:ledger:test",
+		Ed25519KeySet: edKeySet,
+		Service:       "ledger",
 		Ed25519AllowedScopes: map[string][]string{
 			"ed-http-key": {"ledger:read", "ledger:write"},
 		},
@@ -495,10 +495,10 @@ func TestHTTPAuthMiddleware_EdDSA_ExcessiveScopes(t *testing.T) {
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-http-key")
 	cfg := AuthConfig{
-		Enabled:  true,
-		Audience: "urn:formance:ledger:test",
-		KeySet:   edKeySet,
-		Service:  "ledger",
+		Enabled:       true,
+		Audience:      "urn:formance:ledger:test",
+		Ed25519KeySet: edKeySet,
+		Service:       "ledger",
 		Ed25519AllowedScopes: map[string][]string{
 			"ed-http-key": {"ledger:read"},
 		},
@@ -526,10 +526,10 @@ func TestHTTPAuthMiddleware_EdDSA_UnknownKey(t *testing.T) {
 	_, edKeySet := ed25519TestKeyPair(t, "known-key")
 
 	cfg := AuthConfig{
-		Enabled:  true,
-		Audience: "urn:formance:ledger:test",
-		KeySet:   edKeySet,
-		Service:  "ledger",
+		Enabled:       true,
+		Audience:      "urn:formance:ledger:test",
+		Ed25519KeySet: edKeySet,
+		Service:       "ledger",
 	}
 	handler := HTTPAuthMiddleware(cfg)(ok200)
 
@@ -549,11 +549,11 @@ func TestRequireScope_EdDSA_MatchingScope(t *testing.T) {
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-http-key")
 	cfg := AuthConfig{
-		Enabled:      true,
-		Audience:     "urn:formance:ledger:test",
-		KeySet:       edKeySet,
-		Service:      "ledger",
-		ScopeMapping: DefaultMapping("ledger"),
+		Enabled:       true,
+		Audience:      "urn:formance:ledger:test",
+		Ed25519KeySet: edKeySet,
+		Service:       "ledger",
+		ScopeMapping:  DefaultMapping("ledger"),
 		Ed25519AllowedScopes: map[string][]string{
 			"ed-http-key": {"ledger:read", "ledger:write"},
 		},
@@ -737,11 +737,11 @@ func TestRequireScope_EdDSA_WrongScope(t *testing.T) {
 
 	edPriv, edKeySet := ed25519TestKeyPair(t, "ed-http-key")
 	cfg := AuthConfig{
-		Enabled:      true,
-		Audience:     "urn:formance:ledger:test",
-		KeySet:       edKeySet,
-		Service:      "ledger",
-		ScopeMapping: DefaultMapping("ledger"),
+		Enabled:       true,
+		Audience:      "urn:formance:ledger:test",
+		Ed25519KeySet: edKeySet,
+		Service:       "ledger",
+		ScopeMapping:  DefaultMapping("ledger"),
 		Ed25519AllowedScopes: map[string][]string{
 			"ed-http-key": {"ledger:read", "ledger:write"},
 		},
