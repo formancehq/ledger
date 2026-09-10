@@ -20,8 +20,8 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"6"`. Revision 6 requires a 16-byte `instance_id` for administrative
-`ClusterService.AddLearner` requests (EN-1874); revision 5 clients that omit
+`"7"`. Revision 7 requires a 16-byte `instance_id` for administrative
+`ClusterService.AddLearner` requests (EN-1874); revision 6 clients that omit
 the identity are incompatible. `pkg/grpcprotocol.MetadataKey` is
 `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
