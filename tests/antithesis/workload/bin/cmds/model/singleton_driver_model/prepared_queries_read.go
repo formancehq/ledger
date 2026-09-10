@@ -500,29 +500,13 @@ func unresolvedParamRejectionLegal(
 }
 
 // preparedNeededIndexes names the indexes a bound filter needs on its target.
-//
-// LOGS is classified here rather than by neededIndexCanonicals: every log
-// condition falls through that function's default arm to the never-built
-// sentinel, which is right for an accounts/transactions filter (a log leaf
-// there really is unservable) but wrong on the LOGS target, where the ledger
-// and log-id leaves are served straight off the log stream with no read-store
-// index. The one genuine need is the log-date builtin, an opt-in index this
-// driver never creates — so a stored filter reading the date is permanently
-// refused, exactly as the ad-hoc log query path expects (hasDateLeaf +
-// isIndexNotFound in runLogQuery). Mapping it onto the never-built sentinel
-// makes that rejection always legal and results never legal, with no separate
-// branch in the verdict.
+// Log leaves use the same stream and opt-in date index as ordinary log queries.
 func preparedNeededIndexes(bound *commonpb.QueryFilter, target commonpb.QueryTarget) map[string]struct{} {
-	needed := map[string]struct{}{}
-
 	if target == commonpb.QueryTarget_QUERY_TARGET_LOGS {
-		if hasDateLeaf(bound) {
-			needed[neverBuiltIndexCanonical] = struct{}{}
-		}
-
-		return needed
+		return neededLogIndexes(bound)
 	}
 
+	needed := map[string]struct{}{}
 	neededIndexCanonicals(bound, target, needed)
 
 	return needed
@@ -610,9 +594,8 @@ func preparedAccountPageMatches(
 	return true
 }
 
-// preparedLogPageMatches checks the log ids and has_more; log rows carry
-// server-assigned dates, so the row content itself is not predicted (the same
-// limit validateLogQuery works under).
+// preparedLogPageMatches checks the same row facts as ordinary log queries,
+// plus the prepared cursor's has_more flag.
 func preparedLogPageMatches(
 	ls oracle.LedgerState,
 	call preparedCall,
@@ -620,16 +603,37 @@ func preparedLogPageMatches(
 	afterSeq uint64,
 	cur *commonpb.PreparedQueryCursor,
 ) bool {
-	ids := serverLogIDs(cur.GetLogData())
+	return preparedLogWindowMatches(ls, call, bound, afterSeq, serverLogRows(cur.GetLogData()), cur.GetHasMore())
+}
 
-	probe := logWindow(ls, call.ledger, bound, afterSeq, call.pageSize+1)
-
-	want := probe
-	if len(want) > call.pageSize {
-		want = want[:call.pageSize]
+// preparedLogWindowMatches permits unknown-date rows to match or not, while
+// requiring every known match. The suffix must explain has_more on that same
+// page: a required row forces it, and any possible row can justify it.
+func preparedLogWindowMatches(ls oracle.LedgerState, call preparedCall, bound *commonpb.QueryFilter, afterSeq uint64, page []serverLogRow, hasMore bool) bool {
+	if !logWindowMatches(ls, call.ledger, bound, afterSeq, call.pageSize, page) {
+		return false
 	}
 
-	return equalUint64(want, ids) && cur.GetHasMore() == (len(probe) > call.pageSize)
+	if hasMore && len(page) != call.pageSize {
+		return false
+	}
+
+	if len(page) > 0 {
+		afterSeq = page[len(page)-1].id
+	}
+
+	remaining := logWindowRows(ls, call.ledger, bound, afterSeq)
+	if hasMore {
+		return len(remaining) > 0
+	}
+
+	for _, row := range remaining {
+		if row.required {
+			return false
+		}
+	}
+
+	return true
 }
 
 // parseAfterUint reads the model-side cursor for the id-keyed targets; "" means
