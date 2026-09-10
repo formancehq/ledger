@@ -81,7 +81,10 @@ func runModelTestFixture(t *testing.T, scenario string) (string, string, error) 
 	require.NoError(t, err)
 	runner := filepath.Join(packageDir, "run_model_test.sh")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	// This is a deadlock guard for startup, reporting and cleanup, not a
+	// performance assertion. Concurrent repository validations can delay real
+	// shell utilities beyond 15 seconds even after scenario evidence is ready.
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "bash", runner, "2")
 	cmd.Env = append(modelFixtureEnvironment(os.Environ()),

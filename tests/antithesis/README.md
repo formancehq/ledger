@@ -206,7 +206,9 @@ delays of newly generated executable shell scripts on macOS.
 
 A pipe gates the fixture clock until the driver has emitted its scenario evidence.
 The early-exit scenario keeps its test clock before the deadline until the runner
-observes process exit; all scenarios retain the outer 15-second failure bound.
+observes process exit. A one-minute outer deadlock guard covers startup, reporting
+and cleanup under concurrent repository validation; it is separate from the
+runner's two-second scenario window and does not assert host execution speed.
 The production runner and its verified-model-outcome requirement are unchanged.
 Cancellation kills the runner's process group, including its helpers, and bounds
 pipe draining. The fixture environment excludes inherited model settings and shell
