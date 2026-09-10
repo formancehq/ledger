@@ -268,10 +268,42 @@ func serverTxFromRec(rec txRecordView) *commonpb.Transaction {
 		RevertsTransaction:    rec.RevertsTransaction(),
 		Timestamp:             rec.Timestamp(),
 		InsertedAt:            rec.InsertedAt(),
-		RevertedAt:            rec.RevertedAt(),
-		Postings:              rec.Postings(),
-		Metadata:              rec.Metadata(),
+		// Stamped from the same proposal date as inserted_at and never bumped.
+		UpdatedAt:         rec.InsertedAt(),
+		RevertedAt:        rec.RevertedAt(),
+		Postings:          rec.Postings(),
+		Metadata:          rec.Metadata(),
+		PostCommitVolumes: serverPCVFromRec(rec),
 	}
+}
+
+// serverPCVFromRec renders the model's frozen snapshot the way the server
+// sends it, so a row built from the record is the row the server owes.
+func serverPCVFromRec(rec txRecordView) *commonpb.PostCommitVolumes {
+	model := rec.PostCommitVolumes()
+	if len(model) == 0 {
+		return nil
+	}
+
+	byAccount := map[string]*commonpb.VolumesByAssets{}
+
+	for key, vp := range model {
+		entry := byAccount[key.Address]
+		if entry == nil {
+			entry = &commonpb.VolumesByAssets{}
+			byAccount[key.Address] = entry
+		}
+
+		entry.Volumes = append(entry.Volumes, &commonpb.VolumeEntry{
+			Asset:   key.Asset,
+			Volumes: &commonpb.Volumes{Input: vp.Input.Dec(), Output: vp.Output.Dec()},
+		})
+	}
+
+	out := &commonpb.PostCommitVolumes{VolumesByAccount: byAccount}
+	out.SortVolumes()
+
+	return out
 }
 
 func TestMatchTxFilter_TxBuiltinLeaves(t *testing.T) {
@@ -590,13 +622,105 @@ func TestTxRecordMatches_LearnedInsertedAt(t *testing.T) {
 	require.True(t, txRecordMatches(rec, serverTxFromRec(rec)))
 
 	mismatched := serverTxFromRec(rec)
-	mismatched.InsertedAt = stamp(999)
+	mismatched.InsertedAt, mismatched.UpdatedAt = stamp(999), stamp(999)
 	require.False(t, txRecordMatches(rec, mismatched),
 		"a learned inserted_at must reject a row serving a different value")
 
 	unlearned := buildGlobal(t, oracletest.TxReqL("L", "world", "acc:1", "USD", 5)).Ledger("L").Txs().Get(0)
 	anyStamp := serverTxFromRec(unlearned)
-	anyStamp.InsertedAt = stamp(123)
+	anyStamp.InsertedAt, anyStamp.UpdatedAt = stamp(123), stamp(123)
 	require.True(t, txRecordMatches(unlearned, anyStamp),
 		"an unlearned inserted_at stays server-dated and unchecked")
+}
+
+// updated_at is stamped from the same proposal date as inserted_at and nothing
+// bumps it afterwards, so a row where the two disagree is corrupt regardless of
+// what the model learned.
+func TestTxRecordMatches_UpdatedAtTracksInsertedAt(t *testing.T) {
+	t.Parallel()
+
+	gs := buildGlobal(t, oracletest.TxReqL("L", "world", "acc:1", "USD", 5))
+	gs.LearnTxStamps("L", 1, stamp(100), stamp(110), nil)
+
+	rec := gs.Ledger("L").Txs().Get(0)
+	require.True(t, txRecordMatches(rec, serverTxFromRec(rec)))
+
+	drifted := serverTxFromRec(rec)
+	drifted.UpdatedAt = stamp(111)
+	require.False(t, txRecordMatches(rec, drifted), "a bumped updated_at is a finding")
+
+	missing := serverTxFromRec(rec)
+	missing.UpdatedAt = nil
+	require.False(t, txRecordMatches(rec, missing), "so is dropping it")
+}
+
+// The post-commit snapshot is frozen at the transaction's own sequence, so a
+// read must echo it whatever the balances have done since. It is compared in
+// both directions: a missing cell and an invented one are equally wrong.
+func TestTxRecordMatches_ComparesPostCommitVolumes(t *testing.T) {
+	t.Parallel()
+
+	// The second transaction moves acc:1 again, so the first one's snapshot no
+	// longer equals any current balance.
+	gs := buildGlobal(t,
+		oracletest.TxReqL("L", "world", "acc:1", "USD", 5),
+		oracletest.TxReqL("L", "world", "acc:1", "USD", 7),
+	)
+
+	rec := gs.Ledger("L").Txs().Get(0)
+	require.NotEmpty(t, rec.PostCommitVolumes(), "the model froze a snapshot")
+	require.True(t, txRecordMatches(rec, serverTxFromRec(rec)))
+
+	current := serverTxFromRec(rec)
+	current.PostCommitVolumes.GetVolumesByAccount()["acc:1"].Volumes[0].Volumes.Input = "12"
+	require.False(t, txRecordMatches(rec, current),
+		"serving the current balance instead of the snapshot is a finding")
+
+	dropped := serverTxFromRec(rec)
+	delete(dropped.PostCommitVolumes.GetVolumesByAccount(), "acc:1")
+	require.False(t, txRecordMatches(rec, dropped), "a missing cell is a finding")
+
+	invented := serverTxFromRec(rec)
+	invented.PostCommitVolumes.GetVolumesByAccount()["ghost:1"] = &commonpb.VolumesByAssets{
+		Volumes: []*commonpb.VolumeEntry{{Asset: "USD", Volumes: &commonpb.Volumes{Input: "1", Output: "0"}}},
+	}
+	require.False(t, txRecordMatches(rec, invented), "an invented cell is a finding")
+
+	coloured := serverTxFromRec(rec)
+	coloured.PostCommitVolumes.GetVolumesByAccount()["acc:1"].Volumes[0].Color = "red"
+	require.True(t, txRecordMatches(rec, coloured),
+		"colour is a dimension the model's key cannot address, so the snapshot is not compared")
+}
+
+// assembleAccount never stamps these, so the oracle pins them absent rather
+// than waving through whatever a future change starts sending.
+func TestAccountMatches_RejectsUnmodelledTimestamps(t *testing.T) {
+	t.Parallel()
+
+	ls := buildGlobal(t, oracletest.TxReqL("L", "world", "acc:1", "USD", 5)).Ledger("L")
+
+	base := func() *commonpb.Account {
+		return &commonpb.Account{
+			Address: "acc:1",
+			Volumes: []*commonpb.AccountVolume{
+				{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: "5", Output: "0", Balance: "5"}},
+			},
+		}
+	}
+
+	require.True(t, accountMatches(ls, "acc:1", base()))
+
+	for name, mutate := range map[string]func(*commonpb.Account){
+		"first_usage":    func(a *commonpb.Account) { a.FirstUsage = stamp(1) },
+		"insertion_date": func(a *commonpb.Account) { a.InsertionDate = stamp(1) },
+		"updated_at":     func(a *commonpb.Account) { a.UpdatedAt = stamp(1) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			acct := base()
+			mutate(acct)
+			require.False(t, accountMatches(ls, "acc:1", acct))
+		})
+	}
 }

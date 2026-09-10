@@ -407,6 +407,14 @@ func txTerm(idx int, tx *txRecord) Digest {
 	t.boolean(tx.revertedAt != nil)
 	t.u64(tx.revertedAt.GetData())
 
+	// The snapshot is frozen at the transaction's own sequence, so two states
+	// agreeing on current balances can still disagree on it.
+	for _, key := range sortedVolumeKeys(tx.pcv) {
+		vp := tx.pcv[key]
+		t.str(key.Address, key.Asset)
+		t.str(vp.Input.Dec(), vp.Output.Dec())
+	}
+
 	// indexedAddrs is derived at end of bulk, but two partial foldings can
 	// stamp the same postings differently (exclusion depends on the chart and
 	// balances at the stamping bulk's end), and the stamps drive address-query
@@ -647,6 +655,11 @@ type txRecord struct {
 	revertedBy         uint64
 	revertedAt         *commonpb.Timestamp
 	revertsTransaction uint64
+	// pcv is the transaction's post-commit volumes: for every cell its own
+	// postings touched, the running volume once they had all applied. An
+	// immutable historical snapshot, so a read must echo it unchanged however
+	// far the balances have since moved. Derived, never learned.
+	pcv map[VolumeKey]VolumePair
 	// indexedAddrs is the transaction's account→tx index membership: per
 	// posting-side account, which role rows (AddrIndexedSource /
 	// AddrIndexedDestination bits) the index builder writes for this
@@ -1125,6 +1138,18 @@ func (s *LedgerState) classifyVolumes(base *LedgerState, touched, purged map[Vol
 	return out
 }
 
+// sortedVolumeKeys orders a cell map for stable hashing and rendering.
+func sortedVolumeKeys[V any](cells map[VolumeKey]V) []VolumeKey {
+	keys := make([]VolumeKey, 0, len(cells))
+	for key := range cells {
+		keys = append(keys, key)
+	}
+
+	sort.Slice(keys, func(a, b int) bool { return CompareVolumeKey(keys[a], keys[b]) < 0 })
+
+	return keys
+}
+
 // renderTouchedVolumes names a set of cells the way the FSM orders them on a
 // log: deduplicated, ascending by account then asset. Colour is a dimension of
 // the server's key that the model does not carry, so a colour split cannot be
@@ -1134,12 +1159,7 @@ func renderTouchedVolumes(cells map[VolumeKey]bool) string {
 		return ""
 	}
 
-	keys := make([]VolumeKey, 0, len(cells))
-	for key := range cells {
-		keys = append(keys, key)
-	}
-
-	sort.Slice(keys, func(a, b int) bool { return CompareVolumeKey(keys[a], keys[b]) < 0 })
+	keys := sortedVolumeKeys(cells)
 
 	parts := make([]string, 0, len(keys))
 	for _, key := range keys {
@@ -1290,6 +1310,7 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 		postings:  postings,
 		metadata:  ct.GetMetadata(),
 		timestamp: ct.GetTimestamp(),
+		pcv:       pcv,
 	})
 	if ref != "" {
 		s.txByRef = s.txByRef.Set(ref, int(id))
@@ -1363,7 +1384,14 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 	reverted.revertedAt = revertTS
 	s.txs = s.txs.Set(int(id-1), &reverted)
 
-	s.txs = s.txs.Append(&txRecord{id: revertID, postings: reversed, metadata: rt.GetMetadata(), timestamp: revertTS, revertsTransaction: orig.id})
+	s.txs = s.txs.Append(&txRecord{
+		id:                 revertID,
+		postings:           reversed,
+		metadata:           rt.GetMetadata(),
+		timestamp:          revertTS,
+		revertsTransaction: orig.id,
+		pcv:                pcv,
+	})
 
 	return OrderResult{
 		OK:     true,

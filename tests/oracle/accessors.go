@@ -54,6 +54,10 @@ func (t *txRecord) RevertsTransaction() uint64                   { return t.reve
 // txRecord.indexedAddrs. Read-only, like the other map accessors.
 func (t *txRecord) IndexedAddrs() map[string]uint8 { return t.indexedAddrs }
 
+// PostCommitVolumes returns the transaction's frozen post-commit snapshot,
+// keyed by the cell its postings touched.
+func (t *txRecord) PostCommitVolumes() map[VolumeKey]VolumePair { return t.pcv }
+
 // HasAccount reports whether the account currently holds a volume cell or a
 // metadata entry — membership in the merged V+M attributes universe the
 // server's address matching scans (pebbleAccountExists / the account prefix
