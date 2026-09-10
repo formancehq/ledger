@@ -49,7 +49,7 @@ func newBackupSchedulingFixture(t *testing.T) *backupSchedulingFixture {
 
 func (f *backupSchedulingFixture) reconcile(t *testing.T, now time.Time) {
 	t.Helper()
-	r := &BackupReconciler{Client: f.client, Scheme: f.scheme}
+	r := &BackupReconciler{Client: f.client, APIReader: f.client, Scheme: f.scheme}
 	_, err := r.reconcile(context.Background(), ctrl.Request{NamespacedName: f.key}, now)
 	require.NoError(t, err)
 }
@@ -157,7 +157,7 @@ func TestBackupScheduling_PersistBeforePruning(t *testing.T) {
 					return c.Delete(ctx, obj, opts...)
 				},
 			})
-			r := &BackupReconciler{Client: f.client, Scheme: f.scheme}
+			r := &BackupReconciler{Client: f.client, APIReader: f.client, Scheme: f.scheme}
 			_, err := r.reconcile(context.Background(), ctrl.Request{NamespacedName: f.key}, now.Add(2*time.Minute))
 			require.ErrorIs(t, err, failure)
 			require.Len(t, f.runs(t), 1, "failed status/pruning attempt preserves the terminal child")
@@ -287,4 +287,63 @@ func TestBackupScheduling_DisabledScheduleAndOlderHistory(t *testing.T) {
 	require.True(t, now.Add(time.Minute).Equal(backup.Status.LastFullRunCompletionTime.Time))
 	f.reconcile(t, now.Add(2*time.Hour))
 	require.Len(t, f.runs(t), 2, "new cron deadline must create a run alongside retained history")
+}
+
+func TestBackupScheduling_StaleParentCacheAfterPruning(t *testing.T) {
+	t.Parallel()
+	for _, phase := range []ledgerv1alpha1.BackupRunPhase{ledgerv1alpha1.BackupRunPhaseSucceeded, ledgerv1alpha1.BackupRunPhaseFailed} {
+		t.Run(string(phase), func(t *testing.T) {
+			t.Parallel()
+			f := newBackupSchedulingFixture(t)
+			now := time.Date(2026, 9, 10, 2, 0, 0, 0, time.UTC)
+			f.reconcile(t, now)
+			staleBackup := f.backup(t)
+			f.complete(t, f.runs(t)[0], phase, now.Add(time.Minute))
+			f.reconcile(t, now.Add(2*time.Minute))
+			require.Empty(t, f.runs(t))
+			// Child deletion has reached its informer, but the Backup informer still
+			// exposes the object from before the completion cursor was persisted.
+			staleClient := interceptor.NewClient(f.client, interceptor.Funcs{
+				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if backup, ok := obj.(*ledgerv1alpha1.Backup); ok {
+						*backup = *staleBackup.DeepCopy()
+
+						return nil
+					}
+
+					return c.Get(ctx, key, obj, opts...)
+				},
+			})
+			r := &BackupReconciler{Client: staleClient, APIReader: f.client, Scheme: f.scheme}
+			_, err := r.reconcile(context.Background(), ctrl.Request{NamespacedName: f.key}, now.Add(3*time.Minute))
+			require.Empty(t, f.runs(t), "a stale parent cache must not create a run before discovering the status conflict")
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestBackupScheduling_APIReadFailureDoesNotSchedule(t *testing.T) {
+	t.Parallel()
+	f := newBackupSchedulingFixture(t)
+	failure := errors.New("injected uncached read failure")
+	attempts := 0
+	reader := interceptor.NewClient(f.client, interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			attempts++
+			if attempts == 1 {
+				return failure
+			}
+
+			return c.Get(ctx, key, obj, opts...)
+		},
+	})
+	r := &BackupReconciler{Client: f.client, APIReader: reader, Scheme: f.scheme}
+	now := time.Date(2026, 9, 10, 2, 0, 0, 0, time.UTC)
+	_, err := r.reconcile(context.Background(), ctrl.Request{NamespacedName: f.key}, now)
+	require.ErrorIs(t, err, failure)
+	require.Empty(t, f.runs(t), "must not fall back to cached state on an API read failure")
+	_, err = r.reconcile(context.Background(), ctrl.Request{NamespacedName: f.key}, now)
+	require.NoError(t, err)
+	require.Equal(t, 2, attempts)
+	require.Len(t, f.runs(t), 1)
 }

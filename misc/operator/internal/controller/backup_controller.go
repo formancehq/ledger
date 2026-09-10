@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -41,6 +42,10 @@ const (
 type BackupReconciler struct {
 	client.Client
 
+	// APIReader reads Backup status directly from the API server. Child deletion
+	// events can reach the cache before the status write that preserved its cursor.
+	APIReader client.Reader
+
 	Scheme    *runtime.Scheme
 	Config    *rest.Config
 	Clientset kubernetes.Interface
@@ -53,8 +58,12 @@ func (r *BackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 func (r *BackupReconciler) reconcile(ctx context.Context, req ctrl.Request, now time.Time) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
+	if r.APIReader == nil {
+		return ctrl.Result{}, errors.New("APIReader not configured")
+	}
+
 	var backup ledgerv1alpha1.Backup
-	if err := r.Get(ctx, req.NamespacedName, &backup); err != nil {
+	if err := r.APIReader.Get(ctx, req.NamespacedName, &backup); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 

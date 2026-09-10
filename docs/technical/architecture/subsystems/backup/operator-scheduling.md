@@ -33,7 +33,9 @@ cron occurrence after the current reconciliation time.
 
 ## Reconciliation and failure ordering
 
-1. Read the Backup, validate the Cluster and cron expressions, then list child runs.
+1. Read the Backup directly from the API server, validate the Cluster and cron
+   expressions, then list child runs through the cached client. A failed direct
+   read stops reconciliation before any scheduling or pruning.
 2. Refresh completion cursors monotonically and successful-result summaries in
    memory from the observed children.
 3. Evaluate schedules and create due runs. A same-type Pending, Running, or
@@ -50,6 +52,11 @@ runs remain available to reconstruct the cursor on retry. If pruning fails or
 the controller stops during pruning, the status is already durable and any
 remaining excess children are retried on the next reconciliation. Restarting
 a controller after successful pruning recovers the cursor from Backup status.
+The uncached Backup read is required: the child informer may observe deletion
+before the Backup informer observes the status write. Reading a stale nil cursor
+from that cache would create a run before the eventual status conflict, even
+though the cursor is durable in the API server.
+
 This ordering protects controller-managed history deletion; it does not make
 external deletion of execution evidence transactional with reconciliation.
 
@@ -63,4 +70,5 @@ legacy-format fallback. It changes no Ledger service RPC or protocol revision.
 scheduling, zero retention, successful and failed completion, and fresh
 reconciler instances before and at the next deadline. Additional cases cover
 write/delete failures, active runs, independent incremental progress, disabled
-and changed schedules, and older retained history.
+and changed schedules, older retained history, and a parent informer lagging
+behind child deletion.
