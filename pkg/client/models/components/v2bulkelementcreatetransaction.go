@@ -10,7 +10,9 @@ type V2BulkElementCreateTransaction struct {
 	// The bulk action this element performs
 	Action string `json:"action"`
 	// Idempotency key scoped to this element, making it safe to retry the bulk request
-	Ik   *string            `json:"ik,omitempty"`
+	Ik *string `json:"ik,omitempty"`
+	// Transaction and account metadata are limited to 256 KiB in total for one command.
+	//
 	Data *V2PostTransaction `json:"data,omitempty"`
 }
 

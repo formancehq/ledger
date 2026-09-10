@@ -63,8 +63,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
 	payload := CreateTransactionRequest{}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		api.BadRequest(w, common.ErrValidation, errors.New("invalid transaction format"))
+	if !common.DecodeBody(w, r, &payload) {
 		return
 	}
 

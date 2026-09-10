@@ -1,7 +1,6 @@
 package v2
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -29,11 +28,8 @@ func revertTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	x := request{}
-	if r.ContentLength > 0 {
-		if err := json.NewDecoder(r.Body).Decode(&x); err != nil {
-			api.BadRequest(w, common.ErrValidation, errors.New("expected JSON body with metadata"))
-			return
-		}
+	if !common.DecodeOptionalBody(w, r, &x) {
+		return
 	}
 
 	_, ret, idempotencyHit, err := l.RevertTransaction(
