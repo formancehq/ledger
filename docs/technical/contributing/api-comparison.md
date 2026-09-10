@@ -13,7 +13,7 @@ This document compares the POC's API with the original Formance ledger API and d
 ### Service protocol compatibility (EN-1851)
 
 The v3 gRPC service requires one `ledger-protocol-version` metadata value per
-business RPC, equal to `pkg/grpcprotocol.Version` (currently `"4"`). Missing,
+business RPC, equal to `pkg/grpcprotocol.Version`. Missing,
 invalid, duplicate, or different revisions fail with `FailedPrecondition` before
 business handler execution. This applies to unary and streaming Bucket, Cluster,
 and Restore operations, including internal forwarding. Discovery, gRPC health,
@@ -621,7 +621,12 @@ See [Idempotency](../architecture/subsystems/admission/idempotency.md) for detai
 local `IndexVersionState` (`current_version`, `pending_version`), not
 by a cluster-wide flag.
 
-- `CreateIndex` registers the index at `forward_encoding_version = 1`
+- `CreateIndex` is strict: an existing `(ledger, canonical IndexID)` fails
+  with `INDEX_ALREADY_EXISTS` (HTTP `409`, gRPC `AlreadyExists`), including
+  while building or retyping. The registry and local build state remain
+  unchanged. Retained batch-idempotency replay keeps returning its original
+  result.
+- `CreateIndex` registers a new index at `forward_encoding_version = 1`
   and each replica starts a local backfill. When the backfill catches
   up to the global indexer cursor, the replica performs a local atomic
   switch (`current_version` 0 → 1) in a single Pebble batch. There is

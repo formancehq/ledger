@@ -13,7 +13,7 @@ version at that pin, and ignores membership events committed after it.
 
 | Document | Description |
 |----------|-------------|
-| [indexes.md](indexes.md) | Index definition (`commonpb.Index`), per-replica `IndexVersionState`, on-demand statistics, and checker coverage. |
+| [indexes.md](indexes.md) | Strict index creation, index definition (`commonpb.Index`), per-replica `IndexVersionState`, on-demand statistics, and checker coverage. |
 | [indexer.md](indexer.md) | Indexer pipeline: builder loop, two-pass commit, handlers, event-GC scheduling, read-store and field/version-first reverse-map key layouts, atomic switch, schema rewrite. |
 
 ## Related

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -193,4 +194,24 @@ func TestHandleCreateIndex_BackendError(t *testing.T) {
 	srv.handleCreateIndex(w, r)
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestHandleCreateIndex_AlreadyExists(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil,
+		&domain.ErrIndexAlreadyExists{Index: "tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP"})
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	body := strings.NewReader(`{"id":"tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP"}`)
+	r := newRequest(t, http.MethodPost, "/ledger1/indexes", body, map[string]string{
+		"ledgerName": "ledger1",
+	})
+
+	srv.handleCreateIndex(w, r)
+
+	require.Equal(t, http.StatusConflict, w.Code)
+	require.JSONEq(t, `{"errorCode":"INDEX_ALREADY_EXISTS","errorMessage":"index already exists: tx_builtin:TX_BUILTIN_INDEX_TIMESTAMP"}`, w.Body.String())
 }

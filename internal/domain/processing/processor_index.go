@@ -14,6 +14,14 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 	}
 
 	id := order.GetId()
+	existing, err := indexes.Find(ctx.Scope.Indexes(), ledger, id)
+	if err != nil {
+		return nil, domain.StoreFailure("loading index", err)
+	}
+	if existing != nil {
+		return nil, &domain.ErrIndexAlreadyExists{Index: indexes.Canonical(id)}
+	}
+
 	if err := validateIndexTarget(info, id); err != nil {
 		return nil, err
 	}
@@ -22,9 +30,8 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 	// projection's mutable name field, so a divergent LedgerInfo.name cannot
 	// redirect the write to another ledger's index keys. The Ledger field
 	// below carries the same envelope value, keeping key and payload
-	// consistent. A duplicate CreateIndex overwrites the row; the
-	// indexbuilder's handleCreatedIndexLog guards against re-scheduling a
-	// backfill by consulting its per-replica IndexVersionState.
+	// consistent. The existence check above rejects a fresh duplicate before
+	// any registry mutation or CreatedIndexLog is produced.
 	boundType, boundTypeDeclared := indexBoundType(info, id)
 
 	indexes.Put(ctx.Scope.Indexes(), ledger, &commonpb.Index{

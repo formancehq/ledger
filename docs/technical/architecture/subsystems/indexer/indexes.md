@@ -26,6 +26,30 @@ Source: `internal/proto/commonpb/common.pb.go:2527-2550`.
 
 Build progress is deliberately absent from the registry row: it is a per-replica concern. Queries consult the per-replica `IndexVersionState.CurrentVersion`, and the status API derives its display from that state next to the row's cluster-wide `forward_encoding_version`.
 
+## Strict creation
+
+[EN-2009](https://formance-team.atlassian.net/browse/EN-2009) requires a
+successful fresh creation to mean that an index was actually created. This
+keeps creation audit records unambiguous and avoids resetting a live registry
+row. Strict rejection follows named-resource creation semantics; there is no
+ensure/upsert mode or automatic skip. Operator ownership recovery and
+conditional deletion of a replaced index remain separate concerns.
+
+`CreateIndex` creates one registry entry per `(ledger, canonical IndexID)`.
+The FSM reads that entry through its declared, scoped coverage before writing;
+read or coverage failures propagate. An existing entry returns
+`INDEX_ALREADY_EXISTS` (HTTP `409`, gRPC `AlreadyExists`) regardless of local
+build progress or an in-flight schema rewrite. It does not reset `created_at`,
+`forward_encoding_version`, bindings, or per-replica state, and emits no
+`CreatedIndexLog` or new skipped-order log. A duplicate inside one atomic batch
+fails the batch, rolling back earlier orders in that batch.
+
+A retained batch idempotency key still replays the original batch result before
+executing orders. This is distinct from a new create request, including one
+with a different key. A committed drop or metadata-field removal deletes the
+registry entry and permits a later fresh creation. Recreate starts the registry
+version at 1; local version allocation retains its existing high-water guard.
+
 ## Per-Replica Version State
 
 `readstore.IndexVersionState` is the only state that decides which keyspace queries scan on this replica. It lives under `SubInternalIndexVersion` in Pebble and is **not part of the audit chain** — it is a projection (a per-replica view of cluster-wide rewrite progress).
@@ -113,7 +137,7 @@ The classification is deliberately conservative: only the same-atomic-batch-befo
 
 The index registry (the bucket-scoped `Index` rows under `SubAttrIndex`) is a persisted projection of the audited order stream, so a cross-cluster restore must reproduce it the same way the live apply path built it: the checkpoint's attribute zone carries the rows as of the checkpoint, and `RebuildDelta` (`internal/infra/backup/rebuild.go`, shared with `ledgerctl store bootstrap`) folds every post-checkpoint ledger log into them. The replay evidence is the exported logs themselves — each registry mutation is derived from a log payload alone, never from state the source cluster held outside the export:
 
-- **`CreateIndex`** writes the same fresh registry row the live `processCreateIndex` writes, at `forward_encoding_version` 1, stamped with the enclosing `LedgerLog`'s date (the apply-time effective date). A duplicate `CreateIndex` overwrites the row, matching the live handler.
+- **`CreateIndex`** writes the same fresh registry row the live `processCreateIndex` writes, at `forward_encoding_version` 1, stamped with the enclosing `LedgerLog`'s date (the apply-time effective date). The live FSM rejects duplicate creation, so a failed duplicate contributes no creation log to replay. Replay continues to fold accepted creation logs into fresh registry rows. The indexbuilder retains its guards against repeated log processing.
 - **`SetMetadataFieldType`** applies the retype cascade: when a registry row covers the retyped `(target, key)`, its `forward_encoding_version` is bumped, mirroring the live `processSetMetadataFieldType`. A field with no covering index is a registry no-op.
 - **`DropIndex`** deletes the registry row.
 - **`RemovedMetadataFieldType`** carries the removal cascade in the log itself: the payload names the index the removal dropped (`dropped_index`), and the row is deleted from the log alone — the replay never re-derives which index a removal covered.

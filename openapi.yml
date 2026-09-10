@@ -2587,8 +2587,12 @@ paths:
     post:
       summary: Create an index on a ledger
       description: |
-        Registers a new index on the ledger. The FSM begins the backfill on
-        the next apply. The request body carries the target `IndexID` in
+        Registers a new index on the ledger. An existing canonical index on
+        this ledger is rejected with `INDEX_ALREADY_EXISTS` (HTTP 409), even
+        while building or retyping, without changing its definition or progress.
+        Replaying an identical batch with its retained `Idempotency-Key` returns
+        the original result. The indexbuilder processes the accepted creation.
+        The request body carries the target `IndexID` in
         canonical form (see `DELETE /v3/{ledgerName}/indexes/{canonicalId}`
         for the format). Requires `ledger:LedgerWrite` scope.
       operationId: createIndex
@@ -2639,7 +2643,13 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          description: |
+            Conflict: `INDEX_ALREADY_EXISTS` when the canonical index already
+            exists on this ledger, or an idempotency key conflict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '503':
