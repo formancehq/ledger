@@ -605,3 +605,82 @@ func TestHasAccount_MetadataOnlyMembership(t *testing.T) {
 	require.True(t, ls.HasAccount("m:1"))
 	require.False(t, ls.HasAccount("z:9"))
 }
+
+// The three end-of-bulk volume annotations must land on exactly the logs whose
+// order touched the cell, split into the same classes partitionVolumes and
+// splitPurged produce.
+func TestGlobalState_Apply_VolumeAnnotations(t *testing.T) {
+	t.Parallel()
+
+	base := NewGlobalState().Apply(bulkOf(
+		oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
+		oracletest.AddTypeReqP("t", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+		oracletest.AddTypeReqP("n", commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
+		oracletest.TxReq("world", "e:1", "USD", 7),
+	))
+	require.True(t, base.OK)
+
+	got := base.State.Apply(bulkOf(
+		oracletest.TxReq("e:1", "world", "USD", 7), // drains a funded ephemeral
+		oracletest.TxReqMulti(false, // three first writes in one order
+			commonpb.NewPosting("world", "n:3", "USD", big.NewInt(1)),
+			commonpb.NewPosting("world", "n:1", "USD", big.NewInt(1)),
+			commonpb.NewPosting("world", "n:2", "USD", big.NewInt(1)),
+		),
+		oracletest.TxReq("world", "e:2", "USD", 4), // creates...
+		oracletest.TxReq("e:2", "world", "USD", 4), // ...and drains it in the same bulk
+		oracletest.TxReq("world", "t:1", "USD", 2), // steady-state transient:
+		oracletest.TxReq("t:1", "world", "USD", 2), // never persisted, never annotated
+	))
+	require.True(t, got.OK)
+
+	type ann struct{ purged, newKept, ephemeral string }
+
+	have := map[uint64]ann{}
+	for _, row := range got.State.Ledger("L").LogRows() {
+		have[row.ID] = ann{row.PurgedVolumes, row.NewKeptVolumes, row.EphemeralVolumes}
+	}
+
+	require.Equal(t, map[uint64]ann{
+		1:  {},                                   // added_account_type: no cells
+		2:  {},                                   //
+		3:  {},                                   //
+		4:  {newKept: "e:1:USD,world:USD"},       // both cells born here, both survive
+		5:  {purged: "e:1:USD"},                  // drained a cell that held 7
+		6:  {newKept: "n:1:USD,n:2:USD,n:3:USD"}, // sorted, and world was already recorded
+		7:  {ephemeral: "e:2:USD"},               // born and zeroed inside the bulk,
+		8:  {ephemeral: "e:2:USD"},               // so both its orders carry it
+		9:  {},                                   // transient, absent before the bulk
+		10: {},                                   //
+	}, have)
+}
+
+// The volume annotations are part of a state's identity: the same transactions
+// grouped into different bulks leave identical volumes and identical logs, yet
+// the FSM annotates them differently. A fingerprint that collapsed the two
+// would let the checker substitute one candidate base for the other.
+func TestGlobalState_Fingerprint_DistinguishesVolumeAnnotations(t *testing.T) {
+	t.Parallel()
+
+	one := NewGlobalState().
+		Apply(bulkOf(oracletest.TxReq("world", "a:1", "USD", 5))).State.
+		Apply(bulkOf(oracletest.TxReq("world", "a:2", "USD", 5)))
+	require.True(t, one.OK)
+
+	together := NewGlobalState().Apply(bulkOf(
+		oracletest.TxReq("world", "a:1", "USD", 5),
+		oracletest.TxReq("world", "a:2", "USD", 5),
+	))
+	require.True(t, together.OK)
+
+	// Everything else about the two ledgers agrees.
+	require.Equal(t, one.State.Ledger("L").LogKinds(), together.State.Ledger("L").LogKinds())
+	require.Equal(t, one.State.Ledger("L").volumes.Fingerprint(), together.State.Ledger("L").volumes.Fingerprint())
+
+	// world is born inside the second bulk, so its second order is annotated
+	// too; across two bulks it is already old by then.
+	require.Equal(t, "a:2:USD", one.State.Ledger("L").LogRows()[1].NewKeptVolumes)
+	require.Equal(t, "a:2:USD,world:USD", together.State.Ledger("L").LogRows()[1].NewKeptVolumes)
+
+	require.NotEqual(t, hashState(one.State), hashState(together.State))
+}

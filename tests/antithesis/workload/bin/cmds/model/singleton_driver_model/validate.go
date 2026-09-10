@@ -400,6 +400,7 @@ func learnTxStamps(gs oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Log
 		// derive; its id is derived, so it is checked against the server
 		// rather than copied from it.
 		gs.LearnLogDate(ledger, entry.GetId(), entry.GetDate())
+		gs.LearnLogSequence(ledger, entry.GetId(), logs[i].GetSequence())
 
 		switch {
 		case data.GetCreatedTransaction() != nil:

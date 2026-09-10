@@ -160,12 +160,119 @@ func matchLogFilter(ledger string, id uint64, date *commonpb.Timestamp, f *commo
 	return v.match, v.known
 }
 
-// logWindowRow is one row a ListLogs page may draw. required=false marks a log
-// whose date this base has not learned, so a date leaf cannot be decided for
-// it: the page may or may not carry it.
+// logWindowRow is one row a ListLogs page may draw, with the fields the model
+// pins on it. required=false marks a log whose date this base has not learned,
+// so a date leaf cannot be decided for it: the page may or may not carry it.
 type logWindowRow struct {
-	id       uint64
-	required bool
+	id        uint64
+	kind      string
+	payload   string
+	date      *commonpb.Timestamp
+	sequence  uint64
+	purged    string
+	newKept   string
+	ephemeral string
+	required  bool
+}
+
+// serverLogRow is one log of a page, reduced to what the model can pin: the
+// ledger it belongs to, its per-ledger id, its payload kind, the date the
+// server assigned it, its end-of-bulk volume annotations, and whether it
+// arrived signed. volumesKnown is false when an annotation names a colour, a
+// dimension the model's volume key does not carry.
+type serverLogRow struct {
+	ledger       string
+	id           uint64
+	kind         string
+	payload      string
+	date         uint64
+	hasDate      bool
+	sequence     uint64
+	purged       string
+	newKept      string
+	ephemeral    string
+	volumesKnown bool
+	signed       bool
+}
+
+// serverLogRows reads a page into comparable rows.
+func serverLogRows(logs []*commonpb.Log) []serverLogRow {
+	out := make([]serverLogRow, 0, len(logs))
+
+	for _, l := range logs {
+		entry := l.GetPayload().GetApply().GetLog()
+
+		purged, purgedOK := renderServedVolumes(entry.GetPurgedVolumes())
+		newKept, newKeptOK := renderServedVolumes(entry.GetNewKeptVolumes())
+		ephemeral, ephemeralOK := renderServedVolumes(entry.GetEphemeralVolumes())
+
+		out = append(out, serverLogRow{
+			ledger:       l.GetPayload().GetApply().GetLedgerName(),
+			id:           entry.GetId(),
+			kind:         serverLogKind(l),
+			payload:      oracle.CanonicalServedLogPayload(entry.GetData()),
+			date:         entry.GetDate().GetData(),
+			hasDate:      entry.GetDate() != nil,
+			sequence:     l.GetSequence(),
+			purged:       purged,
+			newKept:      newKept,
+			ephemeral:    ephemeral,
+			volumesKnown: purgedOK && newKeptOK && ephemeralOK,
+			signed:       l.GetResponseSignature() != nil,
+		})
+	}
+
+	return out
+}
+
+// renderServedVolumes names a served annotation list the way the oracle names
+// its own: "account:asset" entries joined by commas, verbatim in the order the
+// server sent them, so a mis-sorted or duplicated list is a mismatch. The
+// second result is false when an entry carries a colour.
+func renderServedVolumes(vols []*commonpb.TouchedVolume) (string, bool) {
+	if len(vols) == 0 {
+		return "", true
+	}
+
+	parts := make([]string, 0, len(vols))
+	for _, v := range vols {
+		if v.GetColor() != "" {
+			return "", false
+		}
+
+		parts = append(parts, v.GetAccount()+":"+v.GetAsset())
+	}
+
+	return strings.Join(parts, ","), true
+}
+
+// serverLogKind names a log's payload the way the model names it from the
+// request that produced it (oracle logKindOf), so the two are comparable.
+func serverLogKind(l *commonpb.Log) string {
+	switch d := l.GetPayload().GetApply().GetLog().GetData(); {
+	case d.GetCreatedTransaction() != nil:
+		return "created_transaction"
+	case d.GetRevertedTransaction() != nil:
+		return "reverted_transaction"
+	case d.GetSavedMetadata() != nil:
+		return "saved_metadata"
+	case d.GetDeletedMetadata() != nil:
+		return "deleted_metadata"
+	case d.GetSetMetadataFieldType() != nil:
+		return "set_metadata_field_type"
+	case d.GetRemovedMetadataFieldType() != nil:
+		return "removed_metadata_field_type"
+	case d.GetCreateIndex() != nil:
+		return "create_index"
+	case d.GetDropIndex() != nil:
+		return "drop_index"
+	case d.GetAddedAccountType() != nil:
+		return "added_account_type"
+	case d.GetRemovedAccountType() != nil:
+		return "removed_account_type"
+	default:
+		return "other"
+	}
 }
 
 // logWindowRows is the ordered, cursor-filtered, UNTRUNCATED row sequence a
@@ -178,7 +285,7 @@ type logWindowRow struct {
 func logWindowRows(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64) []logWindowRow {
 	var rows []logWindowRow
 
-	for _, row := range ls.LogDates() {
+	for _, row := range ls.LogRows() {
 		if row.ID <= afterSeq {
 			continue
 		}
@@ -188,7 +295,12 @@ func logWindowRows(ls oracle.LedgerState, ledger string, filter *commonpb.QueryF
 			continue
 		}
 
-		rows = append(rows, logWindowRow{id: row.ID, required: known})
+		rows = append(rows, logWindowRow{
+			id: row.ID, kind: row.Kind, payload: row.Payload,
+			date: row.Date, sequence: row.Sequence,
+			purged: row.PurgedVolumes, newKept: row.NewKeptVolumes, ephemeral: row.EphemeralVolumes,
+			required: known,
+		})
 	}
 
 	return rows
@@ -198,16 +310,16 @@ func logWindowRows(ls oracle.LedgerState, ledger string, filter *commonpb.QueryF
 // candidate's row sequence: required rows appear in order, optional rows may,
 // nothing else does, and a required row may only be missing past a full
 // (truncated) page.
-func logWindowMatches(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, ids []uint64) bool {
-	if len(ids) > pageSize {
+func logWindowMatches(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, page []serverLogRow) bool {
+	if len(page) > pageSize {
 		return false
 	}
 
 	j := 0
 
 	for _, row := range logWindowRows(ls, ledger, filter, afterSeq) {
-		if j == len(ids) {
-			if len(ids) == pageSize {
+		if j == len(page) {
+			if len(page) == pageSize {
 				return true // full page — the remaining rows were truncated
 			}
 
@@ -218,14 +330,55 @@ func logWindowMatches(ls oracle.LedgerState, ledger string, filter *commonpb.Que
 			continue
 		}
 
-		if ids[j] == row.id {
+		if page[j].id == row.id {
+			if !logRowMatches(ledger, row, page[j]) {
+				return false
+			}
+
 			j++
 		} else if row.required {
 			return false
 		}
 	}
 
-	return j == len(ids)
+	return j == len(page)
+}
+
+// logRowMatches compares a served log against the model's record of it, field
+// by field. The date is compared once the model has learned it from the commit
+// response; before that the row is optional and its date says nothing. Every
+// other field the model derives itself, so a mismatch is the server's.
+func logRowMatches(ledger string, row logWindowRow, got serverLogRow) bool {
+	if got.ledger != ledger || got.kind != row.kind {
+		return false
+	}
+
+	// The payload rendering is empty for a transaction log, whose content the
+	// ListTransactions path validates against the model's own records.
+	if row.payload != "" && got.payload != row.payload {
+		return false
+	}
+
+	// The global sequence counts every ledger's logs and the technical entries
+	// between them, so the model holds it only for a bulk whose response it
+	// folded; before that it says nothing.
+	if row.sequence != 0 && got.sequence != row.sequence {
+		return false
+	}
+
+	// The three volume annotations are derived, never learned: the model runs
+	// the same end-of-bulk partition, so all three are pinned exactly — an
+	// empty list included.
+	if got.volumesKnown &&
+		(got.purged != row.purged || got.newKept != row.newKept || got.ephemeral != row.ephemeral) {
+		return false
+	}
+
+	if row.date == nil {
+		return true
+	}
+
+	return got.hasDate && got.date == row.date.GetData()
 }
 
 // logWindow is the page the model predicts when every row is decided: the
@@ -352,6 +505,7 @@ func serverLogIDs(logs []*commonpb.Log) []uint64 {
 //     base — so a refusal of a filter needing no index is a finding, and so is
 //     a page served for an index no base holds.
 func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketServiceClient, maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, serverLogs []*commonpb.Log, needed map[string]struct{}, errKind indexedErrKind, err error) {
+	page := serverLogRows(serverLogs)
 	ids := serverLogIDs(serverLogs)
 
 	// A page must always be ascending, within the cursor, and no longer than
@@ -370,8 +524,21 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 		}
 	}
 
+	// Nothing in this workload configures a signing key, so a signed log on a
+	// read means the server signed something this driver cannot account for.
+	for _, row := range page {
+		if row.signed {
+			assert.Unreachable("singleton_driver_model: log page carries a response signature", internal.Details{
+				"ledger": ledger,
+				"logId":  row.id,
+			})
+
+			return
+		}
+	}
+
 	if c.matchesModel(maxTicket, "LOGQUERY", func(base oracle.GlobalState) bool {
-		return logOutcomeLegal(base.Ledger(ledger), ledger, filter, needed, errKind, ids, afterSeq, pageSize)
+		return logOutcomeLegal(base.Ledger(ledger), ledger, filter, needed, errKind, page, afterSeq, pageSize)
 	}) {
 		if errKind == indexedErrNotReady {
 			assert.Reachable("singleton_driver_model: log query gated on a missing index", internal.Details{"ledger": ledger})
@@ -392,6 +559,7 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 		"pageSize":    pageSize,
 		"rows":        len(ids),
 		"serverIds":   joinUint64(ids),
+		"serverRows":  describeServerLogRows(page),
 		"modelIds":    joinUint64(c.modelLogWindow(ledger, filter, afterSeq, pageSize)),
 		"modelIdx":    c.describeLogIndexStates(ledger, needed),
 		"modelDates":  c.describeLogDates(ledger),
@@ -406,12 +574,31 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 	assert.Unreachable("singleton_driver_model: log query outside model", details)
 }
 
+// describeServerLogRows renders every pinned field of a served page, the shape
+// a field mismatch is read from: id:kind@date/seq[payload]{volume annotations}.
+func describeServerLogRows(page []serverLogRow) string {
+	parts := make([]string, 0, len(page))
+
+	for _, row := range page {
+		date := "?"
+		if row.hasDate {
+			date = strconv.FormatUint(row.date, 10)
+		}
+
+		parts = append(parts, strconv.FormatUint(row.id, 10)+":"+row.kind+"@"+date+
+			"/seq"+strconv.FormatUint(row.sequence, 10)+"["+row.payload+"]"+
+			"{purged="+row.purged+";newKept="+row.newKept+";ephemeral="+row.ephemeral+"}")
+	}
+
+	return strings.Join(parts, ",")
+}
+
 // logOutcomeLegal is the per-candidate verdict for one ListLogs outcome: the
 // shared index-lifecycle legality, with the base's ordered log window as the
 // result check.
-func logOutcomeLegal(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, errKind indexedErrKind, ids []uint64, afterSeq uint64, pageSize int) bool {
+func logOutcomeLegal(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, errKind indexedErrKind, page []serverLogRow, afterSeq uint64, pageSize int) bool {
 	return indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed, errKind, "", func(view oracle.LedgerState) bool {
-		return logWindowMatches(view, ledger, filter, afterSeq, pageSize, ids)
+		return logWindowMatches(view, ledger, filter, afterSeq, pageSize, page)
 	})
 }
 
