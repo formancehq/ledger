@@ -9,10 +9,11 @@ import (
 )
 
 const (
-	// Version must change when the client-facing wire format or semantics break.
+	// Version tracks breaking changes to exposed protobuf messages and RPCs.
+	// Response-value changes alone do not require a new revision.
 	// See docs/technical/architecture/subsystems/api/protocol-compatibility.md.
 	// A compiled constant also identifies local builds without release ldflags.
-	Version = "6"
+	Version = "5"
 	// MetadataKey carries the protocol version, not authentication credentials.
 	MetadataKey = "ledger-protocol-version"
 )

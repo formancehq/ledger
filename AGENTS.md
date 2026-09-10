@@ -12,8 +12,12 @@ This file is the always-loaded entry point for AI agents working on Ledger v3. K
 
 ### Service protocol revision — required during pre-release
 
-Every incompatible service gRPC contract change must increment
-`pkg/grpcprotocol.Version` in the same PR, including during pre-release. Read the
+Increment `pkg/grpcprotocol.Version` primarily for breaking changes to exposed
+protobuf messages or RPC definitions, including during pre-release. Compatible
+response-value changes (such as credential redaction or sanitized diagnostics)
+do not automatically require a bump. Any non-schema bump must identify the
+concrete client/server incompatibility that requires rejecting older clients.
+Read the
 [protocol maintenance rules](docs/technical/architecture/subsystems/api/protocol-compatibility.md#maintaining-the-revision)
 before modifying this contract.
 

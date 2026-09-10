@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"6"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"5"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -55,9 +55,10 @@ codes. Internal read failures in restore validation retain `Internal` with a
 sanitized correlation message. AuditFailure records retain their original
 diagnostic message and context.
 
-Revision 6 (EN-1632, EN-1634, EN-1635) projects sink/mirror credentials and
-transport status diagnostics out of public reads. Redacted audit payloads no
-longer constitute verifiable original evidence; unmodified envelopes retain
+Credential read projections (EN-1632, EN-1634, EN-1635) retain revision 5:
+the exposed protobuf messages and RPC definitions remain compatible. They mask
+sink/mirror credentials and transport status diagnostics in public reads.
+Redacted audit payloads no longer constitute verifiable original evidence; unmodified envelopes retain
 their original bytes. See [credential read projections](secret-redaction.md).
 
 ## Client and deployment scope
@@ -72,10 +73,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 6:
+leader. For example, with a schema implementing revision 5:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 6' \
+grpcurl -plaintext -H 'ledger-protocol-version: 5' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -99,15 +100,29 @@ their own contracts.
 
 ## Maintaining the revision
 
-The author of a service contract change must determine whether an existing
-client or server would interpret requests, responses, or operations differently.
-Increment the decimal counter `pkg/grpcprotocol.Version` by one in the same PR
-for an incompatible wire or semantic change (for example, `"1"` to `"2"`), and
-rebuild every service client and server that will communicate. This includes
-renumbering or changing the interpretation of exposed
-protobuf fields, and incompatible semantics even when the `.proto` text stays
-unchanged. Reviewers must check this classification; the revision is not inferred
-from a release tag or automatically negotiated from a schema hash.
+The revision primarily protects against breaking changes to exposed protobuf
+messages and RPC definitions. Increment `pkg/grpcprotocol.Version` by one in the
+same PR when old and new peers cannot safely exchange those messages: for
+example, field renumbering/reuse, incompatible field types or oneof layouts,
+removed RPCs, or changed request/response message types. Rebuild the clients and
+servers that will communicate. A textual `.proto` change alone is not proof of
+incompatibility: compatible additions do not automatically require a bump.
+
+Do not use this counter as a general API behavior version. Changes to response
+values, credential redaction, sanitized diagnostics, validation bug fixes, and
+compatible additions do not automatically require rejecting every older client.
+Document observable behavior changes and their client impact in the relevant
+API contract and PR. In particular, credential read projections retain the
+revision even though consumers of redacted audit evidence must account for the
+loss of direct hash/signature verification.
+
+A change without a schema break may exceptionally require a bump if peers can
+no longer safely communicate under the existing protocol (for example, changing
+the unit of a numeric wire field, or introducing a mandatory handshake). The PR
+must identify the affected RPC/field, a concrete old-client/new-server or
+new-client/old-server failure, and why rejecting older clients is necessary.
+A generic claim of changed semantics is insufficient. Reviewers check this
+assessment; revisions are not inferred from release tags or schema hashes.
 
 This obligation applies to AI agents throughout pre-release development, even
 though older Ledger versions and storage formats are not supported. Before

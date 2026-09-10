@@ -87,8 +87,11 @@ it was read. The checker continues to verify original store records. Consumers
 needing original evidence must use the protected original store/backup workflow;
 these read endpoints do not offer a scope-dependent raw bypass.
 
-This changes public response semantics and increments service protocol revision
-5 to 6. Deploy matching service clients and servers.
+This changes public response values while preserving the protobuf messages and
+RPC definitions. Service protocol revision remains 5: existing revision-5 clients
+can still decode and call these APIs. Consumers verifying audit evidence must
+account for the display-projection contract above; this behavior change does
+not require rejecting all existing clients.
 
 ## Validation
 
