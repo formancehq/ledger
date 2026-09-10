@@ -30,6 +30,10 @@ import (
 const volumeBindRequeueInterval = 10 * time.Second
 
 func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *ledgerv1alpha1.Cluster, specHash string, credentials []credentialsKeyInfo) (ctrl.Result, error) {
+	return r.reconcileStatefulSetWithExec(ctx, ledger, specHash, credentials, podExecWithTimeout)
+}
+
+func (r *ClusterReconciler) reconcileStatefulSetWithExec(ctx context.Context, ledger *ledgerv1alpha1.Cluster, specHash string, credentials []credentialsKeyInfo, exec ledgerctlExec) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	name := resourceName(ledger.Name)
 
@@ -111,7 +115,7 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, ledger *le
 			// taken before the CreateOrUpdate above): the rolling update has not yet
 			// started, so pod-0's gRPC server is still on the old TLS_MODE.
 			runningTLSMode := currentTLSModeFromStatefulSet(existingForTLS)
-			if err := raftScaleDown(ctx, r.Config, r.Clientset, ledger, previousReplicas, desiredReplicas, runningTLSMode); err != nil {
+			if err := raftScaleDown(ctx, r.Config, r.Clientset, ledger, previousReplicas, desiredReplicas, runningTLSMode, exec); err != nil {
 				return ctrl.Result{}, fmt.Errorf("removing Raft nodes before scale-down: %w", err)
 			}
 		}
