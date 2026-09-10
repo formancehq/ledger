@@ -111,6 +111,10 @@ func main() {
 
 	checker := NewChecker(names, schemas)
 
+	// Declared before the first query so an index the run never exercises shows
+	// up as an unsatisfied property rather than as no output at all.
+	registerCoverage()
+
 	// No seed type — workers fill the chart organically; early txs at
 	// untyped prefixes fail ACCOUNT_NOT_MATCHING_TYPE and validate fine.
 
