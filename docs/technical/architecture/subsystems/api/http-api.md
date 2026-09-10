@@ -817,7 +817,7 @@ This was EN-1622: the transactions list and single-log routes sent marshaller-ca
 
 **Before adding a `MarshalJSON` to a proto type, check the blast radius.** `cmd/ledgerctl/cmdutil/output.go` also prefers a custom marshaller when one exists, so adding one changes CLI output too — and `misc/operator` parses `ledgerctl indexes list --json` with a struct that hard-codes the protojson shape, in a separate Go module that a root `go build ./...` never compiles. For types that need a clean HTTP shape without moving the CLI, use an HTTP-local response DTO instead.
 
-### Ledger-log JSON hydration
+### Ledger-log JSON output
 
 Single-log responses, ledger-log lists, prepared-query `logData`, JSON event
 sinks, and `ledgerctl` JSON/YAML output share the same nested `LedgerLog`
@@ -845,11 +845,8 @@ identifies the payload, so clients need only one discriminator dispatch.
 
 Metadata logs use `targetType` (`ACCOUNT` or `TRANSACTION`) and `targetId`: a
 string account address or an unsigned integer transaction ID, including zero.
-`LedgerLog.UnmarshalJSON` and `HydrateLog` select the payload by `type` and
-decode its nested transaction fields, typed metadata, targets, and post-commit
-volumes. EN-1790 replaces the earlier unreleased v3 wrappers and shared
-`SET_METADATA` fallback discriminator; the decoder accepts the current format
-only.
+EN-1790 replaces the earlier unreleased v3 wrappers and shared
+`SET_METADATA` fallback discriminator.
 
 The alignment with v2 is limited to the ledger-log envelope and metadata target
 shape. V3 retains typed metadata, colored volumes, and
@@ -857,12 +854,11 @@ shape. V3 retains typed metadata, colored volumes, and
 events retain their enclosing global-log structure. These JSON changes do not
 change protobuf messages, persisted data, or audit hashes.
 
-The round-trip contract preserves the JSON projection. Metadata numbers are
-hydrated without floating-point rounding, and null-valued keys remain present.
-The emitted JSON does not retain positive-integer signedness, the distinction
-between datetime values and strings, or `NullValue.original`; hydration does not
-reconstruct those protobuf-only details. This decoder is not an audit replay or
-backup format.
+This contract defines an output projection, with no guarantee that the internal
+Go log types can decode it back. Metadata integers are emitted as JSON numbers,
+and null-valued keys remain present. The emitted JSON does not retain
+positive-integer signedness, the distinction between datetime values and
+strings, or `NullValue.original`. It is not an audit replay or backup format.
 
 ## OpenAPI Documentation
 

@@ -213,32 +213,3 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 
 	return json.Marshal(aux)
 }
-
-// UnmarshalJSON decodes the public transaction response, including its typed
-// metadata, revert links and flattened post-commit volume snapshots.
-func (tx *Transaction) UnmarshalJSON(data []byte) error {
-	var aux struct {
-		Postings                []*Posting         `json:"postings"`
-		Metadata                logMetadataJSON    `json:"metadata"`
-		Timestamp               *Timestamp         `json:"timestamp"`
-		Reference               string             `json:"reference"`
-		ID                      uint64             `json:"id"`
-		InsertedAt              *Timestamp         `json:"insertedAt"`
-		UpdatedAt               *Timestamp         `json:"updatedAt"`
-		RevertedAt              *Timestamp         `json:"revertedAt"`
-		RevertedByTransactionID uint64             `json:"revertedByTransactionId"`
-		RevertsTransactionID    uint64             `json:"revertsTransactionId"`
-		Reverted                bool               `json:"reverted"`
-		PostCommitVolumes       *PostCommitVolumes `json:"postCommitVolumes"`
-	}
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-	tx.Postings, tx.Metadata = aux.Postings, aux.Metadata
-	tx.Timestamp, tx.Reference, tx.Id = aux.Timestamp, aux.Reference, aux.ID
-	tx.InsertedAt, tx.UpdatedAt, tx.RevertedAt = aux.InsertedAt, aux.UpdatedAt, aux.RevertedAt
-	tx.RevertedByTransaction, tx.RevertsTransaction = aux.RevertedByTransactionID, aux.RevertsTransactionID
-	tx.Reverted, tx.PostCommitVolumes = aux.Reverted, aux.PostCommitVolumes
-
-	return nil
-}

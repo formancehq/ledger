@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
@@ -236,7 +235,7 @@ func TestSerializeEvent_JSON(t *testing.T) {
 	require.Equal(t, "orders", decoded["ledger"])
 }
 
-func TestSerializeEvent_JSONLedgerLogRoundTrip(t *testing.T) {
+func TestSerializeEvent_JSONLedgerLogOutput(t *testing.T) {
 	t.Parallel()
 
 	wantLog := &commonpb.LedgerLog{
@@ -275,13 +274,21 @@ func TestSerializeEvent_JSONLedgerLogRoundTrip(t *testing.T) {
 		Log struct {
 			Payload struct {
 				Apply struct {
-					Log *commonpb.LedgerLog `json:"log"`
+					Log json.RawMessage `json:"log"`
 				} `json:"apply"`
 			} `json:"payload"`
 		} `json:"log"`
 	}
 	require.NoError(t, json.Unmarshal(data, &response))
-	require.True(t, proto.Equal(wantLog, response.Log.Payload.Apply.Log), "JSON event consumers must rehydrate the complete ledger log")
+	require.JSONEq(t, `{
+		"id":7,"date":"2023-11-14T22:13:20Z","type":"NEW_TRANSACTION",
+		"data":{
+			"transaction":{"id":9,"reference":"order-456","reverted":false,
+				"postings":[{"source":"world","destination":"alice","asset":"USD/2","color":"pending","amount":1000}],
+				"metadata":{"note":"checkout"}},
+			"accountMetadata":{"alice":{"tier":"gold"}}
+		}
+	}`, string(response.Log.Payload.Apply.Log))
 }
 
 func TestSerializeEvent_Proto(t *testing.T) {

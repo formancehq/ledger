@@ -110,7 +110,7 @@ When `format=json` in the events config, the event is serialized as JSON via `in
 ```
 
 The nested ledger-log JSON follows the same
-[hydration contract](../api/http-api.md#ledger-log-json-hydration) as HTTP log
+[output contract](../api/http-api.md#ledger-log-json-output) as HTTP log
 responses, prepared-query `logData`, and `ledgerctl` JSON/YAML output. Each
 ledger-log variant has a distinct `type`, and `data` holds the payload directly,
 as in v2. Metadata logs use `targetType` and `targetId`. The enclosing v3 event

@@ -1,16 +1,16 @@
 package commonpb
 
 import (
+	stdjson "encoding/json"
 	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
-func TestPreparedQueryCursor_LogDataRoundTrip(t *testing.T) {
+func TestPreparedQueryCursor_LogDataOutput(t *testing.T) {
 	t.Parallel()
 
 	wantLog := &LedgerLog{
@@ -52,14 +52,22 @@ func TestPreparedQueryCursor_LogDataRoundTrip(t *testing.T) {
 		LogData []struct {
 			Payload struct {
 				Apply struct {
-					Log *LedgerLog `json:"log"`
+					Log stdjson.RawMessage `json:"log"`
 				} `json:"apply"`
 			} `json:"payload"`
 		} `json:"logData"`
 	}
-	require.NoError(t, json.Unmarshal(data, &response))
+	require.NoError(t, stdjson.Unmarshal(data, &response))
 	require.Len(t, response.LogData, 1)
-	require.True(t, proto.Equal(wantLog, response.LogData[0].Payload.Apply.Log), "prepared-query logData must preserve the complete payload during hydration")
+	require.JSONEq(t, `{
+		"id":7,"date":"2023-11-14T22:13:20Z","type":"NEW_TRANSACTION",
+		"data":{
+			"transaction":{"id":9,"reference":"order-789","reverted":false,
+				"postings":[{"source":"world","destination":"alice","asset":"USD/2","color":"pending","amount":1000}],
+				"metadata":{"note":"checkout"}},
+			"accountMetadata":{"alice":{"tier":"gold"}}
+		}
+	}`, string(response.LogData[0].Payload.Apply.Log))
 }
 
 // TestPreparedQuery_MarshalJSON_CamelCaseAndEnumString guards two regressions:

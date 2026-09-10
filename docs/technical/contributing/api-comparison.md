@@ -158,9 +158,10 @@ remain specific to v3. Protobuf RPCs, persisted data, audit hashing, and the
 separate ClickHouse/Databricks analytical projection are unchanged.
 
 This replaces the earlier unreleased v3 payload wrappers and shared
-`SET_METADATA` fallback discriminator without an old-format decoder. See the
-[ledger-log JSON hydration contract](../architecture/subsystems/api/http-api.md#ledger-log-json-hydration)
-for the full discriminator list and the limits of metadata round-tripping.
+`SET_METADATA` fallback discriminator. This is an output contract; decoding the
+projection back into internal Go log types is not supported by this contract.
+See the [ledger-log JSON output contract](../architecture/subsystems/api/http-api.md#ledger-log-json-output)
+for the full discriminator list and the information retained in the projection.
 
 ---
 

@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -40,7 +39,7 @@ func TestHandleListLedgerLogs_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestHandleListLedgerLogs_JSONRoundTrip(t *testing.T) {
+func TestHandleListLedgerLogs_JSONOutput(t *testing.T) {
 	t.Parallel()
 	wantLog := &commonpb.LedgerLog{Id: 3, Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
 		Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "alice"}}},
@@ -64,14 +63,14 @@ func TestHandleListLedgerLogs_JSONRoundTrip(t *testing.T) {
 		Data []struct {
 			Payload struct {
 				Apply struct {
-					Log *commonpb.LedgerLog `json:"log"`
+					Log json.RawMessage `json:"log"`
 				} `json:"apply"`
 			} `json:"payload"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 	require.Len(t, response.Data, 1)
-	require.True(t, proto.Equal(wantLog, response.Data[0].Payload.Apply.Log))
+	require.JSONEq(t, `{"id":3,"type":"SET_METADATA","data":{"targetType":"ACCOUNT","targetId":"alice","metadata":{"tier":"gold"}}}`, string(response.Data[0].Payload.Apply.Log))
 }
 
 func TestHandleListLedgerLogs_Empty(t *testing.T) {

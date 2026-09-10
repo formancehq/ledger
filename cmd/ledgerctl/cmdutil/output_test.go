@@ -287,9 +287,12 @@ func TestEncodeStructured_LedgerLog(t *testing.T) {
 			})
 
 			var response struct {
-				Payload struct {
+				Sequence uint64 `json:"sequence" yaml:"sequence"`
+				Payload  struct {
 					Apply struct {
-						Log struct {
+						LedgerName string `json:"ledgerName" yaml:"ledgerName"`
+						Log        struct {
+							ID   uint64         `json:"id"   yaml:"id"`
 							Type string         `json:"type" yaml:"type"`
 							Data map[string]any `json:"data" yaml:"data"`
 						} `json:"log" yaml:"log"`
@@ -301,7 +304,10 @@ func TestEncodeStructured_LedgerLog(t *testing.T) {
 			} else {
 				require.NoError(t, yaml.Unmarshal([]byte(out), &response))
 			}
+			require.Equal(t, uint64(7), response.Sequence)
+			require.Equal(t, "orders", response.Payload.Apply.LedgerName)
 			gotLog := response.Payload.Apply.Log
+			require.Equal(t, uint64(3), gotLog.ID)
 			require.Equal(t, "DELETE_METADATA", gotLog.Type)
 			require.Len(t, gotLog.Data, 3)
 			require.Equal(t, "TRANSACTION", gotLog.Data["targetType"])

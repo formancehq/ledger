@@ -14,7 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-func TestLedgerLogJSONRoundTrip(t *testing.T) {
+func TestLedgerLogJSONOutput(t *testing.T) {
 	t.Parallel()
 	timestamp := &commonpb.Timestamp{Data: 1_700_000_000_123_456}
 	metadata := map[string]*commonpb.MetadataValue{
@@ -95,10 +95,9 @@ func TestLedgerLogJSONRoundTrip(t *testing.T) {
 			t.Parallel()
 			original := &commonpb.LedgerLog{Id: 9007199254740995, Date: timestamp, Data: tc.payload}
 			for name, codec := range map[string]struct {
-				marshal   func(any) ([]byte, error)
-				unmarshal func([]byte, any) error
+				marshal func(any) ([]byte, error)
 			}{
-				"standard": {json.Marshal, json.Unmarshal}, "sonic": {ledgerjson.Marshal, ledgerjson.Unmarshal},
+				"standard": {json.Marshal}, "sonic": {ledgerjson.Marshal},
 			} {
 				t.Run(name, func(t *testing.T) {
 					encoded, err := codec.marshal(original)
@@ -106,9 +105,13 @@ func TestLedgerLogJSONRoundTrip(t *testing.T) {
 					var envelope struct {
 						Type commonpb.LogType `json:"type"`
 						Data json.RawMessage  `json:"data"`
+						ID   json.RawMessage  `json:"id"`
+						Date string           `json:"date"`
 					}
 					require.NoError(t, json.Unmarshal(encoded, &envelope))
 					require.Equal(t, tc.kind, envelope.Type)
+					require.Equal(t, "9007199254740995", string(envelope.ID))
+					require.Equal(t, "2023-11-14T22:13:20.123456Z", envelope.Date)
 					var wireData map[string]json.RawMessage
 					require.NoError(t, json.Unmarshal(envelope.Data, &wireData))
 					field := tc.payload.ProtoReflect().WhichOneof(tc.payload.ProtoReflect().Descriptor().Oneofs().Get(0))
@@ -122,70 +125,50 @@ func TestLedgerLogJSONRoundTrip(t *testing.T) {
 					}
 					require.NoError(t, err)
 					require.JSONEq(t, string(expected), string(envelope.Data))
+					if tc.name == "created" || tc.name == "reverted" {
+						transactionField := "transaction"
+						wantID := "9007199254740993"
+						if tc.name == "reverted" {
+							transactionField, wantID = "revertTransaction", "9007199254740994"
+							require.Equal(t, "9007199254740993", string(wireData["revertedTransactionId"]))
+						}
+						var tx map[string]json.RawMessage
+						require.NoError(t, json.Unmarshal(wireData[transactionField], &tx))
+						require.Equal(t, wantID, string(tx["id"]))
+						if tc.name == "reverted" {
+							require.Equal(t, "9007199254740993", string(tx["revertsTransactionId"]))
+						} else {
+							require.Equal(t, "9007199254740994", string(tx["revertedByTransactionId"]))
+						}
+						var postings []map[string]json.RawMessage
+						require.NoError(t, json.Unmarshal(tx["postings"], &postings))
+						require.Len(t, postings, 1)
+						require.Equal(t, "1267650600228229401496703205376", string(postings[0]["amount"]))
+						require.Equal(t, `"GOLD"`, string(postings[0]["color"]))
+						require.JSONEq(t, `{"users:alice":[{"asset":"USD/2","color":"","input":"123","output":"0"},{"asset":"USD/2","color":"GOLD","input":"1267650600228229401496703205376","output":"0"}]}`, string(tx["postCommitVolumes"]))
+					}
 					if tc.kind == commonpb.SetMetadataLogType || tc.kind == commonpb.DeleteMetadataLogType {
 						require.Contains(t, wireData, "targetId")
 						require.NotContains(t, wireData, "accountId")
 						require.NotContains(t, wireData, "transactionId")
+						switch tc.name {
+						case "saved-zero", "deleted-zero":
+							require.Equal(t, "0", string(wireData["targetId"]))
+						case "saved-transaction", "deleted-transaction":
+							require.Equal(t, "9007199254740993", string(wireData["targetId"]))
+						case "saved-account", "deleted-account":
+							require.Equal(t, `"users:alice"`, string(wireData["targetId"]))
+						}
 					}
-
-					t.Run("hydrate", func(t *testing.T) {
-						hydrated, err := commonpb.HydrateLog(envelope.Type, envelope.Data)
-						require.NoError(t, err)
-						field := tc.payload.ProtoReflect().WhichOneof(tc.payload.ProtoReflect().Descriptor().Oneofs().Get(0))
-						require.True(t, proto.Equal(tc.payload.ProtoReflect().Get(field).Message().Interface(), hydrated), "payload lost: %s", hydrated)
-					})
-					var decoded commonpb.LedgerLog
-					require.NoError(t, codec.unmarshal(encoded, &decoded))
-					require.True(t, proto.Equal(original, &decoded), "payload lost: %s", &decoded)
-					reencoded, err := codec.marshal(&decoded)
-					require.NoError(t, err)
-					require.JSONEq(t, string(encoded), string(reencoded))
+					if tc.kind == commonpb.SetMetadataLogType {
+						var values map[string]json.RawMessage
+						require.NoError(t, json.Unmarshal(wireData["metadata"], &values))
+						require.Equal(t, "18446744073709551615", string(values["count"]))
+						require.Equal(t, "-9223372036854775808", string(values["debt"]))
+						require.Equal(t, "null", string(values["null"]))
+						require.Equal(t, "true", string(values["active"]))
+					}
 				})
-			}
-		})
-	}
-}
-
-func TestHydrateLogRejectsMalformedPayload(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		name    string
-		kind    commonpb.LogType
-		data    string
-		message string
-	}{
-		{"unknown type", 99, `{}`, "unknown log type"},
-		{"invalid JSON", commonpb.NewTransactionLogType, `{`, ""},
-		{"null data", commonpb.NewTransactionLogType, `null`, "log data must be an object"},
-		{"wrapped payload", commonpb.NewTransactionLogType, `{"createdTransaction":{"transaction":{}}}`, "unknown field"},
-		{"null wrapped payload", commonpb.NewTransactionLogType, `{"createdTransaction":null}`, "unknown field"},
-		{"two variants", commonpb.NewTransactionLogType, `{"createdTransaction":{},"revertedTransaction":{}}`, "unknown field"},
-		{"wrong discriminator", commonpb.NewTransactionLogType, `{"revertTransaction":{}}`, "unknown field"},
-		{"wrapped skip", commonpb.OrderSkippedLogType, `{"orderSkipped":{"reason":"TRANSACTION_REFERENCE_CONFLICT"}}`, "must contain a reason"},
-		{"invalid skip reason", commonpb.OrderSkippedLogType, `{"reason":"INVALID"}`, "unknown ErrorReason"},
-		{"null skip reason", commonpb.OrderSkippedLogType, `{"reason":null}`, "must contain a reason"},
-		{"unknown target", commonpb.SetMetadataLogType, `{"targetType":"UNKNOWN","targetId":"a"}`, "unknown type"},
-		{"missing target ID", commonpb.SetMetadataLogType, `{"targetType":"TRANSACTION"}`, "targetId is required"},
-		{"null target ID", commonpb.DeleteMetadataLogType, `{"targetType":"ACCOUNT","targetId":null}`, "targetId is required"},
-		{"bad account ID", commonpb.SetMetadataLogType, `{"targetType":"ACCOUNT","targetId":123}`, "account targetId"},
-		{"bad target ID", commonpb.DeleteMetadataLogType, `{"targetType":"TRANSACTION","targetId":"x"}`, "transaction targetId"},
-		{"overflow target ID", commonpb.SetMetadataLogType, `{"targetType":"TRANSACTION","targetId":18446744073709551616}`, "transaction targetId"},
-		{"obsolete account ID", commonpb.SetMetadataLogType, `{"targetType":"ACCOUNT","accountId":"a"}`, "unknown field"},
-		{"obsolete transaction ID", commonpb.DeleteMetadataLogType, `{"targetType":"TRANSACTION","transactionId":1}`, "unknown field"},
-		{"bad schema enum", commonpb.SetMetadataFieldTypeLogType, `{"type":"NOT_A_TYPE"}`, `invalid value for enum field type: "NOT_A_TYPE"`},
-		{"bad nested index", commonpb.RemovedMetadataFieldTypeLogType, `{"droppedIndex":{"unknown":true}}`, "unknown field"},
-		{"metadata overflow", commonpb.SetMetadataLogType, `{"targetType":"ACCOUNT","targetId":"a","metadata":{"n":18446744073709551616}}`, "metadata key"},
-		{"metadata fractional", commonpb.NewTransactionLogType, `{"accountMetadata":{"a":{"n":1.5}}}`, "metadata key"},
-		{"metadata object", commonpb.NewTransactionLogType, `{"transaction":{"metadata":{"n":{}}}}`, "metadata key"},
-		{"bad volumes", commonpb.RevertedTransactionLogType, `{"revertTransaction":{"postCommitVolumes":{"a":{}}}}`, "[]*commonpb.VolumeEntry"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			value, err := commonpb.HydrateLog(tc.kind, []byte(tc.data))
-			require.Error(t, err)
-			require.Nil(t, value)
-			if tc.message != "" {
-				require.ErrorContains(t, err, tc.message)
 			}
 		})
 	}
@@ -203,14 +186,7 @@ func TestLedgerLogJSONMetadataProjection(t *testing.T) {
 	}}}}
 	encoded, err := json.Marshal(original)
 	require.NoError(t, err)
-	var decoded commonpb.LedgerLog
-	require.NoError(t, json.Unmarshal(encoded, &decoded))
-	reencoded, err := json.Marshal(&decoded)
-	require.NoError(t, err)
-	require.JSONEq(t, string(encoded), string(reencoded))
-	require.Equal(t, uint64(42), decoded.GetData().GetSavedMetadata().GetMetadata()["signed"].GetUintValue())
-	require.Equal(t, "2023-11-14T22:13:20.123456Z", decoded.GetData().GetSavedMetadata().GetMetadata()["datetime"].GetStringValue())
-	require.Contains(t, decoded.GetData().GetSavedMetadata().GetMetadata(), "null")
+	require.JSONEq(t, `{"type":"SET_METADATA","data":{"targetType":"TRANSACTION","targetId":0,"metadata":{"signed":42,"datetime":"2023-11-14T22:13:20.123456Z","null":null}}}`, string(encoded))
 }
 
 func TestLedgerLogJSONNullAccountMetadata(t *testing.T) {
@@ -220,9 +196,5 @@ func TestLedgerLogJSONNullAccountMetadata(t *testing.T) {
 	}}}}
 	encoded, err := json.Marshal(original)
 	require.NoError(t, err)
-	var decoded commonpb.LedgerLog
-	require.NoError(t, json.Unmarshal(encoded, &decoded))
-	reencoded, err := json.Marshal(&decoded)
-	require.NoError(t, err)
-	require.JSONEq(t, string(encoded), string(reencoded))
+	require.JSONEq(t, `{"type":"NEW_TRANSACTION","data":{"accountMetadata":{"nil":null,"nil-values":null,"empty":{}}}}`, string(encoded))
 }

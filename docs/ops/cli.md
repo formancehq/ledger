@@ -2481,7 +2481,7 @@ uniquely identifies the ledger-log variant and `data` contains its payload
 directly. For example, read a created transaction at
 `payload.apply.log.data.transaction`; metadata targets use `targetType` and
 `targetId`. This is the same
-[ledger-log JSON contract](../technical/architecture/subsystems/api/http-api.md#ledger-log-json-hydration)
+[ledger-log JSON contract](../technical/architecture/subsystems/api/http-api.md#ledger-log-json-output)
 as HTTP responses and JSON events. The transport remains gRPC and the enclosing
 system-log fields remain present in structured output.
 

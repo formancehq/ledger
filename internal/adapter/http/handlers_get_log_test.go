@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -69,8 +68,8 @@ func TestHandleGetLog_Success(t *testing.T) {
 	// change the body carried no discriminator and disagreed with the logs-list
 	// route, which has always used sonic for the same commonpb.Log type.
 	//
-	// Hydration consumes the direct data payload selected by type. The same wire
-	// is shared by the logs-list route, prepared queries, and JSON event sinks.
+	// The direct data payload is shared by the logs-list route, prepared
+	// queries, and JSON event sinks.
 	body := w.Body.String()
 	require.Contains(t, body, `"type":"NEW_TRANSACTION"`)
 	require.Contains(t, body, `"sequence":7`)
@@ -82,13 +81,21 @@ func TestHandleGetLog_Success(t *testing.T) {
 		Data struct {
 			Payload struct {
 				Apply struct {
-					Log *commonpb.LedgerLog `json:"log"`
+					Log json.RawMessage `json:"log"`
 				} `json:"apply"`
 			} `json:"payload"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
-	require.True(t, proto.Equal(wantLog, response.Data.Payload.Apply.Log), "HTTP log must preserve the complete payload during hydration")
+	require.JSONEq(t, `{
+		"id":3,"date":"2023-11-14T22:13:20Z","type":"NEW_TRANSACTION",
+		"data":{
+			"transaction":{"id":1,"reference":"order-123","reverted":false,
+				"postings":[{"source":"world","destination":"alice","asset":"USD/2","color":"pending","amount":1000}],
+				"metadata":{"note":"checkout"}},
+			"accountMetadata":{"alice":{"tier":"gold"}}
+		}
+	}`, string(response.Data.Payload.Apply.Log))
 }
 
 // TestHandleGetLog_SerializesThroughMarshalJSON pins the property EN-1622 is

@@ -159,37 +159,9 @@ func FuzzTimestampUnmarshalJSON(f *testing.F) {
 }
 
 // FuzzLedgerLogUnmarshalJSON fuzzes the LedgerLog JSON decoder.
-// This targets all 13 payload variants and malformed envelopes.
+// This targets the polymorphic log hydration with 8 different payload types.
 func FuzzLedgerLogUnmarshalJSON(f *testing.F) {
-	// Seed corpus: all 13 direct payloads with distinct discriminators.
-	f.Add([]byte(`{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[],"metadata":{"n":18446744073709551615},"postCommitVolumes":{"a":[{"asset":"USD","color":"","input":"1","output":"0"}]}},"accountMetadata":{"a":null}}}`))
-	f.Add([]byte(`{"type":"REVERTED_TRANSACTION","data":{"revertedTransactionId":1,"revertTransaction":{"id":2,"revertsTransactionId":1}}}`))
-	f.Add([]byte(`{"type":"SET_METADATA","data":{"targetType":"ACCOUNT","metadata":{"key":null},"targetId":"a"}}`))
-	f.Add([]byte(`{"type":"DELETE_METADATA","data":{"targetType":"TRANSACTION","key":"key","targetId":1}}`))
-	f.Add([]byte(`{"type":"SET_METADATA_FIELD_TYPE","data":{"key":"key","type":"METADATA_TYPE_UINT64"}}`))
-	f.Add([]byte(`{"type":"REMOVED_METADATA_FIELD_TYPE","data":{"key":"key"}}`))
-	f.Add([]byte(`{"type":"FILL_GAP","data":{"originalId":"1"}}`))
-	f.Add([]byte(`{"type":"CREATE_INDEX","data":{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}}`))
-	f.Add([]byte(`{"type":"DROP_INDEX","data":{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}}`))
-	f.Add([]byte(`{"type":"ADDED_ACCOUNT_TYPE","data":{"accountType":{"name":"a"}}}`))
-	f.Add([]byte(`{"type":"REMOVED_ACCOUNT_TYPE","data":{"name":"a"}}`))
-	f.Add([]byte(`{"type":"UPDATED_DEFAULT_ENFORCEMENT_MODE","data":{"enforcementMode":"CHART_ENFORCEMENT_AUDIT"}}`))
-	f.Add([]byte(`{"type":"ORDER_SKIPPED","data":{"reason":"TRANSACTION_REFERENCE_CONFLICT","context":{"reference":"ref"}}}`))
-	// Obsolete wrapped payloads remain useful malformed inputs.
-	f.Add([]byte(`{"type":"NEW_TRANSACTION","data":{"createdTransaction":{"transaction":{"postings":[],"metadata":{"n":18446744073709551615},"postCommitVolumes":{"a":[{"asset":"USD","color":"","input":"1","output":"0"}]}},"accountMetadata":{"a":null}}}}`))
-	f.Add([]byte(`{"type":"REVERTED_TRANSACTION","data":{"revertedTransaction":{"revertedTransactionId":1,"revertTransaction":{"id":2,"revertsTransactionId":1}}}}`))
-	f.Add([]byte(`{"type":"SET_METADATA","data":{"savedMetadata":{"targetType":"ACCOUNT","accountId":"a","metadata":{"key":null}}}}`))
-	f.Add([]byte(`{"type":"DELETE_METADATA","data":{"deletedMetadata":{"targetType":"TRANSACTION","transactionId":1,"key":"key"}}}`))
-	f.Add([]byte(`{"type":"SET_METADATA_FIELD_TYPE","data":{"setMetadataFieldType":{"key":"key","type":"METADATA_TYPE_UINT64"}}}`))
-	f.Add([]byte(`{"type":"REMOVED_METADATA_FIELD_TYPE","data":{"removedMetadataFieldType":{"key":"key"}}}`))
-	f.Add([]byte(`{"type":"SET_METADATA","data":{"fillGap":{"originalId":"1"}}}`))
-	f.Add([]byte(`{"type":"SET_METADATA","data":{"createIndex":{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}}}`))
-	f.Add([]byte(`{"type":"SET_METADATA","data":{"dropIndex":{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}}}`))
-	f.Add([]byte(`{"type":"SET_METADATA","data":{"addedAccountType":{"accountType":{"name":"a"}}}}`))
-	f.Add([]byte(`{"type":"SET_METADATA","data":{"removedAccountType":{"name":"a"}}}`))
-	f.Add([]byte(`{"type":"SET_METADATA","data":{"updatedDefaultEnforcementMode":{"enforcementMode":"CHART_ENFORCEMENT_AUDIT"}}}`))
-	f.Add([]byte(`{"type":"ORDER_SKIPPED","data":{"reason":"TRANSACTION_REFERENCE_CONFLICT","context":{"reference":"ref"}}}`))
-	// Additional direct payloads, malformed fields and removed types.
+	// Seed corpus: one valid entry per log type.
 	f.Add([]byte(`{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[],"metadata":{}}}}`))
 	f.Add([]byte(`{"type":"SET_METADATA","data":{"targetType":"ACCOUNT","targetId":"users:alice","metadata":{"key":"value"}}}`))
 	f.Add([]byte(`{"type":"DELETE_METADATA","data":{"targetType":"ACCOUNT","targetId":"users:alice","key":"key"}}`))
