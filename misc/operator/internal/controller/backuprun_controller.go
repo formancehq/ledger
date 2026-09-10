@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -77,6 +78,10 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		Name:      run.Spec.BackupRef,
 		Namespace: run.Namespace,
 	}, &backup); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("reading Backup %q: %w", run.Spec.BackupRef, err)
+		}
+
 		return r.setRunFailed(ctx, &run, fmt.Sprintf("Backup %q not found: %v", run.Spec.BackupRef, err))
 	}
 
@@ -85,6 +90,10 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		Name:      backup.Spec.ClusterRef,
 		Namespace: backup.Namespace,
 	}, &cluster); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("reading Cluster %q: %w", backup.Spec.ClusterRef, err)
+		}
+
 		return r.setRunFailed(ctx, &run, fmt.Sprintf("Cluster %q not found: %v", backup.Spec.ClusterRef, err))
 	}
 
@@ -103,13 +112,8 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{RequeueAfter: concurrencyRequeue}, nil
 	}
 
-	// Ensure the backing Job exists.
-	job, err := r.ensureBackupJob(ctx, &run, &backup, &cluster)
-	if err != nil {
-		return r.setRunFailed(ctx, &run, fmt.Sprintf("provisioning backup Job: %v", err))
-	}
-
-	// Transition to Running on the first reconcile after Job creation.
+	// Reserve this run before creating the Job. A lost Create response must
+	// still exclude siblings even when the Job is not yet visible in the cache.
 	if run.Status.Phase != ledgerv1alpha1.BackupRunPhaseRunning {
 		now := metav1.Now()
 		run.Status.Phase = ledgerv1alpha1.BackupRunPhaseRunning
@@ -121,6 +125,17 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if err := r.Status().Update(ctx, &run); err != nil {
 			return ctrl.Result{}, err
 		}
+	}
+
+	// Ensure the backing Job exists.
+	job, err := r.ensureBackupJob(ctx, &run, &backup, &cluster)
+	if err != nil {
+		if _, ok := errors.AsType[*permanentBackupJobError](err); ok {
+			return r.setRunFailed(ctx, &run, fmt.Sprintf("provisioning backup Job: %v", err))
+		}
+		// A transport error does not prove Create failed. Keep the reservation
+		// and retry the deterministic name, including after AlreadyExists.
+		return ctrl.Result{}, fmt.Errorf("provisioning backup Job: %w", err)
 	}
 
 	succeeded, terminal, jobMsg := jobTerminalCondition(job)
@@ -161,6 +176,12 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
+// permanentBackupJobError identifies a definitive validation failure before
+// execution, rather than an unknown outcome of an API operation.
+type permanentBackupJobError struct {
+	error
+}
+
 // ensureBackupJob creates the Job for the run on first reconcile and returns
 // the live Job afterwards. The Job is owner-referenced by the BackupRun
 // so deletion cascades.
@@ -173,6 +194,10 @@ func (r *BackupRunReconciler) ensureBackupJob(
 	existing := &batchv1.Job{}
 	err := r.Get(ctx, types.NamespacedName{Name: backupJobName(run), Namespace: run.Namespace}, existing)
 	if err == nil {
+		if !metav1.IsControlledBy(existing, run) {
+			return nil, fmt.Errorf("job %q is not controlled by BackupRun %q (UID %s)", existing.Name, run.Name, run.UID)
+		}
+
 		return existing, nil
 	}
 
@@ -187,14 +212,18 @@ func (r *BackupRunReconciler) ensureBackupJob(
 
 	desired, err := buildBackupJob(run, backup, ls, tlsMode)
 	if err != nil {
-		return nil, err
+		return nil, &permanentBackupJobError{err}
 	}
 
 	if err := controllerutil.SetControllerReference(run, desired, r.Scheme); err != nil {
-		return nil, fmt.Errorf("setting owner reference on Job: %w", err)
+		return nil, &permanentBackupJobError{fmt.Errorf("setting owner reference on Job: %w", err)}
 	}
 
 	if err := r.Create(ctx, desired); err != nil {
+		if apierrors.IsInvalid(err) || apierrors.IsBadRequest(err) {
+			return nil, &permanentBackupJobError{fmt.Errorf("creating Job: %w", err)}
+		}
+
 		return nil, fmt.Errorf("creating Job: %w", err)
 	}
 
