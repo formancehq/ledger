@@ -569,6 +569,15 @@ func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Acc
 		return false
 	}
 
+	// assembleAccount fills address, metadata and volumes and nothing else, so
+	// these three carry no value the model could be held to. Pinned as absent:
+	// once the server starts stamping them, the oracle must learn to predict
+	// them rather than keep waving whatever arrives through.
+	if serverAcct.GetFirstUsage() != nil || serverAcct.GetInsertionDate() != nil ||
+		serverAcct.GetUpdatedAt() != nil {
+		return false
+	}
+
 	model := map[string]oracle.VolumePair{}
 	for k, vp := range ls.Volumes().All() {
 		if k.Address == addr {
@@ -622,6 +631,7 @@ type txRecordView interface {
 	RevertedAt() *commonpb.Timestamp
 	RevertsTransaction() uint64
 	IndexedAddrs() map[string]uint8
+	PostCommitVolumes() map[oracle.VolumeKey]oracle.VolumePair
 }
 
 // txRecordMatches reports whether the model record rec is consistent with the
@@ -648,6 +658,20 @@ func txRecordMatches(rec txRecordView, serverTx *commonpb.Transaction) bool {
 		raOK = serverTx.GetRevertedAt() == nil
 	}
 
+	// updated_at is stamped once, from the same proposal date as inserted_at
+	// (processor_transaction.go, processor_revert_transaction.go), and nothing
+	// bumps it afterwards — not a metadata save, not being reverted. So the
+	// two must agree on every served row, whether or not the model learned the
+	// value.
+	if serverTx.GetUpdatedAt().GetData() != serverTx.GetInsertedAt().GetData() ||
+		(serverTx.GetUpdatedAt() == nil) != (serverTx.GetInsertedAt() == nil) {
+		return false
+	}
+
+	if !pcvSnapshotMatches(rec.PostCommitVolumes(), serverTx.GetPostCommitVolumes()) {
+		return false
+	}
+
 	return rec.Id() == serverTx.GetId() &&
 		rec.Reference() == serverTx.GetReference() &&
 		rec.Reverted() == serverTx.GetReverted() &&
@@ -656,6 +680,37 @@ func txRecordMatches(rec txRecordView, serverTx *commonpb.Transaction) bool {
 		tsOK && insOK && raOK &&
 		postingsEqual(rec.Postings(), serverTx.GetPostings()) &&
 		metaMapEqual(rec.Metadata(), serverTx.GetMetadata())
+}
+
+// pcvSnapshotMatches compares a served post-commit snapshot against the
+// model's cell for cell, in both directions: an absent cell and a fabricated
+// one are equally wrong. A coloured entry is a cell the model's volume key
+// cannot address, so the whole snapshot is left uncompared for that row.
+func pcvSnapshotMatches(model map[oracle.VolumeKey]oracle.VolumePair, server *commonpb.PostCommitVolumes) bool {
+	served := map[oracle.VolumeKey]struct{}{}
+
+	for account, byAssets := range server.GetVolumesByAccount() {
+		for _, entry := range byAssets.GetVolumes() {
+			if entry.GetColor() != "" {
+				return true
+			}
+
+			served[oracle.VolumeKey{Address: account, Asset: entry.GetAsset()}] = struct{}{}
+		}
+	}
+
+	if len(served) != len(model) {
+		return false
+	}
+
+	for key, vp := range model {
+		gotIn, gotOut, ok := postCommitVolume(server, key)
+		if !ok || vp.Input.Cmp(&gotIn) != 0 || vp.Output.Cmp(&gotOut) != 0 {
+			return false
+		}
+	}
+
+	return true
 }
 
 // --- Filter generation --------------------------------------------------
