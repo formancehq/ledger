@@ -211,6 +211,8 @@ The production runner and its verified-model-outcome requirement are unchanged.
 Cancellation kills the runner's process group, including its helpers, and bounds
 pipe draining. The fixture environment excludes inherited model settings and shell
 startup hooks. All six outcome scenarios remain independent regression cases.
+They run sequentially within the test to avoid multiplying subprocess contention
+during the repository-wide race suite.
 
 ## Adding a new driver
 

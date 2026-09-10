@@ -31,8 +31,8 @@ func TestRunModelTestRequiresVerifiedOutcome(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
+			// Each runner starts many subprocesses. Keep scenarios sequential so
+			// they do not contend for their bounded execution window under -race.
 			output, driverLog, err := runModelTestFixture(t, tt.scenario)
 			if tt.wantPass {
 				require.NoError(t, err, output)
