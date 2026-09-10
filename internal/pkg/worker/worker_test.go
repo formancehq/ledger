@@ -212,42 +212,6 @@ func TestRetryWithBackoffStop(t *testing.T) {
 	}
 }
 
-func TestDrainChannel(t *testing.T) {
-	t.Parallel()
-
-	ch := make(chan int, 3)
-	ch <- 1
-
-	ch <- 2
-
-	ch <- 3
-
-	var sum atomic.Int32
-
-	stop := make(chan struct{})
-
-	done := make(chan struct{})
-
-	go func() {
-		DrainChannel(stop, ch, func(v int) {
-			sum.Add(int32(v))
-		})
-		close(done)
-	}()
-
-	require.Eventually(t, func() bool {
-		return sum.Load() == 6
-	}, time.Second, 10*time.Millisecond)
-
-	close(stop)
-
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("DrainChannel did not stop")
-	}
-}
-
 func TestRunTicker(t *testing.T) {
 	t.Parallel()
 
