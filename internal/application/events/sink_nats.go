@@ -35,6 +35,7 @@ type NATSSinkConfig struct {
 
 // NATSSink publishes events to NATS JetStream.
 type NATSSink struct {
+	errors sinkErrorSanitizer
 	conn   *nats.Conn
 	js     jetstream.JetStream
 	topic  string
@@ -42,7 +43,9 @@ type NATSSink struct {
 }
 
 // NewNATSSink creates a new NATS JetStream sink.
-func NewNATSSink(cfg NATSSinkConfig) (*NATSSink, error) {
+func NewNATSSink(cfg NATSSinkConfig) (result *NATSSink, retErr error) {
+	sanitizer := newSinkErrorSanitizer(strings.Split(cfg.URL, ","))
+	defer sanitizer.finish(&retErr)
 	conn, err := nats.Connect(cfg.URL)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to NATS: %w", err)
@@ -56,6 +59,7 @@ func NewNATSSink(cfg NATSSinkConfig) (*NATSSink, error) {
 	}
 
 	return &NATSSink{
+		errors: sanitizer,
 		conn:   conn,
 		js:     js,
 		topic:  cfg.Topic,
@@ -63,7 +67,8 @@ func NewNATSSink(cfg NATSSinkConfig) (*NATSSink, error) {
 	}, nil
 }
 
-func (s *NATSSink) Publish(ctx context.Context, events []*eventspb.Event) error {
+func (s *NATSSink) Publish(ctx context.Context, events []*eventspb.Event) (retErr error) {
+	defer s.errors.finish(&retErr)
 	for _, event := range events {
 		data, err := SerializeEvent(event, s.format)
 		if err != nil {
@@ -79,7 +84,8 @@ func (s *NATSSink) Publish(ctx context.Context, events []*eventspb.Event) error 
 	return nil
 }
 
-func (s *NATSSink) Close() error {
+func (s *NATSSink) Close() (retErr error) {
+	defer s.errors.finish(&retErr)
 	s.conn.Close()
 
 	return nil

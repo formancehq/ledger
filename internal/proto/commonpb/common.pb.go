@@ -5037,7 +5037,7 @@ func (x *SinkStatus) GetError() *SinkError {
 	return nil
 }
 
-// SinkError records a sink failure.
+// SinkError records a sink failure. Drivers must remove credentials before returning errors.
 type SinkError struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Message       string                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
@@ -12695,9 +12695,9 @@ const file_common_proto_rawDesc = "" +
 	"SinkStatus\x12\x1b\n" +
 	"\tsink_name\x18\x01 \x01(\tR\bsinkName\x12\x16\n" +
 	"\x06cursor\x18\x02 \x01(\x06R\x06cursor\x12'\n" +
-	"\x05error\x18\x03 \x01(\v2\x11.common.SinkErrorR\x05error\"_\n" +
-	"\tSinkError\x12\x1e\n" +
-	"\amessage\x18\x01 \x01(\tB\x04\xe8\xbc\x18\x01R\amessage\x122\n" +
+	"\x05error\x18\x03 \x01(\v2\x11.common.SinkErrorR\x05error\"Y\n" +
+	"\tSinkError\x12\x18\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\x122\n" +
 	"\voccurred_at\x18\x02 \x01(\v2\x11.common.TimestampR\n" +
 	"occurredAt\"8\n" +
 	"\x0eNatsSinkConfig\x12\x10\n" +

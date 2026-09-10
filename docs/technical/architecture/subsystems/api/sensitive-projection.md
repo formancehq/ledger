@@ -22,3 +22,9 @@ output can carry annotations because projection acts only on the explicit copy.
 
 Adding the field option and helper does not change the service wire contract;
 the service protocol revision remains unchanged.
+
+Sink status messages are already sanitized by their producing adaptor and remain
+visible through this projector. `SinkError.message` deliberately has no sensitive
+annotation: masking the entire diagnostic would prevent operators from diagnosing
+failures. This contract does not extend to mirror or audit diagnostics, whose
+sensitive annotations remain independent.
