@@ -25,6 +25,9 @@ import (
 var _ = DescribeTable("Rejected learner registration routing preserves active peer routing and identity",
 	func(administrative, sameIdentity bool) {
 		ctx, servers, _, leaderID := testutil.SetupMultiNodeCluster(3)
+		DeferCleanup(func() {
+			testutil.StopServers(ctx, servers)
+		})
 		lid := *leaderID
 		targetID := lid%3 + 1
 		leader := servers[lid-1]
