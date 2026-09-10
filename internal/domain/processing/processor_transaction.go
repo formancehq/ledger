@@ -221,6 +221,19 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		return nil, metaErr
 	}
 
+	// Admission can only count caller input. Replace this transaction's input
+	// contribution with its merged output in the proposal-wide budget, retaining
+	// every other order's input and the output of earlier scripts.
+	inputBytes := transactionMetadataSize(order.GetMetadata(), order.GetAccountMetadata())
+	if ctx.metadataBudget == nil {
+		// Direct handler callers execute a single transaction.
+		ctx.metadataBudget = &commandMetadataBudget{bytes: inputBytes}
+	}
+	total := ctx.metadataBudget.bytes + transactionMetadataSize(finalMetadata, accountMetadata) - inputBytes
+	if metaErr := limits.ValidateCommandBytes(total); metaErr != nil {
+		return nil, metaErr
+	}
+
 	// Stored values are immutable; the FSM does not coerce on write and no
 	// longer captures previous values into the log. The indexer resolves
 	// the old encoded value via the reverse map on overwrite.
@@ -254,6 +267,8 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	if pcvErr != nil {
 		return nil, pcvErr
 	}
+
+	ctx.metadataBudget.bytes = total
 
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
@@ -362,4 +377,20 @@ func (p *stdPostingProducer) produce(s Scope, ledger string, order *raftcmdpb.Cr
 		Postings:            order.GetPostings(),
 		TransactionMetadata: nil, // No script metadata for standard postings
 	}, nil
+}
+
+// commandMetadataBudget starts with all caller-supplied metadata in a proposal.
+// Successful transaction merges add only their generated contribution: caller
+// values win collisions, so the merged map never removes caller bytes.
+type commandMetadataBudget struct {
+	bytes uint64
+}
+
+func transactionMetadataSize(metadata map[string]*commonpb.MetadataValue, accounts map[string]*commonpb.MetadataMap) uint64 {
+	total := domain.MetadataMapSize(metadata)
+	for _, mm := range accounts {
+		total += domain.MetadataMapSize(mm.GetValues())
+	}
+
+	return total
 }

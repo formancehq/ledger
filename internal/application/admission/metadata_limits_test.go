@@ -314,17 +314,17 @@ func TestValidateCommandMetadata_PerCommandTotalAcrossOrders(t *testing.T) {
 func TestOrderMetadataBytes(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, uint64(1+5), orderMetadataBytes(
+	require.Equal(t, uint64(1+5), domain.OrderMetadataSize(
 		metadataAddOrder(map[string]*commonpb.MetadataValue{"k": metadataStringValue("value")})))
 
-	require.Equal(t, uint64(3), orderMetadataBytes(metadataApplyOrder(&raftcmdpb.LedgerApplyOrder{
+	require.Equal(t, uint64(3), domain.OrderMetadataSize(metadataApplyOrder(&raftcmdpb.LedgerApplyOrder{
 		Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 			DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{Key: "abc"},
 		},
 	})))
 
 	// An order carrying no metadata contributes nothing.
-	require.Zero(t, orderMetadataBytes(&raftcmdpb.Order{}))
+	require.Zero(t, domain.OrderMetadataSize(&raftcmdpb.Order{}))
 }
 
 // A committed policy without ceilings must reject rather than admit unbounded
@@ -365,7 +365,7 @@ func TestMetadataWalkCoversTheSamePayloadForSizeAndShape(t *testing.T) {
 	})
 
 	// (2 + 5) for the transaction map, (3 + 3) for the account map.
-	require.Equal(t, uint64(7+6), orderMetadataBytes(order))
+	require.Equal(t, uint64(7+6), domain.OrderMetadataSize(order))
 
 	// The shape gate reaches both maps as well: a NUL byte in the account map is
 	// rejected even though the transaction map is clean.
@@ -396,5 +396,51 @@ func TestValidateCommandMetadata_NilAccountMapIsSkipped(t *testing.T) {
 	})
 
 	require.NoError(t, validateCommandMetadata([]*raftcmdpb.Order{order}, metadataTestLimits()))
-	require.Zero(t, orderMetadataBytes(order))
+	require.Zero(t, domain.OrderMetadataSize(order))
+}
+
+func TestMirrorDeletedMetadataValidation(t *testing.T) {
+	t.Parallel()
+
+	orderWithKey := func(key string) *raftcmdpb.Order {
+		return metadataMirrorOrder(&raftcmdpb.MirrorLogEntry{
+			Data: &raftcmdpb.MirrorLogEntry_DeletedMetadata{
+				DeletedMetadata: &raftcmdpb.MirrorDeletedMetadata{Key: key},
+			},
+		})
+	}
+
+	for _, key := range []string{"", "bad\x00key"} {
+		t.Run("invalid key "+key, func(t *testing.T) {
+			t.Parallel()
+			err := validateOrder(orderWithKey(key))
+			require.ErrorIs(t, err, domain.ValidateMetadataKey(key))
+		})
+	}
+
+	limits := metadataTestLimits()
+	atLimit := orderWithKey(strings.Repeat("k", int(limits.MaxKeyBytes)))
+	require.NoError(t, validateOrder(atLimit))
+	require.NoError(t, validateCommandMetadata([]*raftcmdpb.Order{atLimit}, limits))
+	require.Equal(t, limits.MaxKeyBytes, domain.OrderMetadataSize(atLimit))
+
+	err := validateCommandMetadata([]*raftcmdpb.Order{
+		orderWithKey(strings.Repeat("k", int(limits.MaxKeyBytes)+1)),
+	}, limits)
+	var failure domain.Describable
+	require.ErrorAs(t, err, &failure)
+	require.Equal(t, domain.ErrReasonMetadataLimitExceeded, failure.Reason())
+	require.Equal(t, domain.MetadataLimitDimensionKey, failure.Metadata()["dimension"])
+
+	// Each deletion fits the key ceiling; the batch must still count all keys.
+	orders := make([]*raftcmdpb.Order, 8)
+	for i := range orders {
+		orders[i] = atLimit
+	}
+	require.NoError(t, validateCommandMetadata(orders[:7], limits))
+	err = validateCommandMetadata(orders, limits)
+	require.ErrorAs(t, err, &failure)
+	require.Equal(t, domain.ErrReasonMetadataLimitExceeded, failure.Reason())
+	require.Equal(t, domain.MetadataLimitDimensionCommand, failure.Metadata()["dimension"])
+	require.Equal(t, "64", failure.Metadata()["actual"])
 }
