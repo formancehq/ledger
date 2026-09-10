@@ -24,7 +24,7 @@ This matters for correctness, not only for tidiness:
   other, because there is only one place to change.
 - **The directions stay distinct types.** `Iterator[Asc]` is not assignable to
   `Iterator[Desc]`, so an ascending consumer cannot be handed a descending
-  iterator. This is the guard the separate `Seek`/`SeekLE` method names used
+  iterator. This is the guard the separate `SeekGE`/`SeekLE` method names used
   to provide.
 
 Only leaves whose *physical* traversal differs — a Pebble cursor walked with
