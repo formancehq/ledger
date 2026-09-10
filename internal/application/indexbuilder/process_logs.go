@@ -109,6 +109,13 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		return nil
 	}
 
+	// A checkpoint log is always the only log of its batch: the indexed cursor
+	// passes it only once the checkpoint action has run (see the commit
+	// below), so a builder that dies in between re-crosses this log alone and
+	// re-indexes nothing. A checkpoint log met while the batch already holds
+	// other logs is carried over and heads the next batch.
+	var carried *checkpointLogFields
+
 	for cursor < targetSequence {
 		var (
 			batchCount                int
@@ -120,6 +127,28 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			pendingCheckpointDelete   uint64
 		)
 
+		noteCheckpointCreate := func(id, appliedIndex uint64) error {
+			pendingCheckpointCreate = id
+			checkpointState, err := query.ReadQueryCheckpoint(handle, id)
+			if err != nil {
+				return fmt.Errorf("reading query checkpoint %d restore provenance: %w", id, err)
+			}
+			// The fixed target snapshot can already contain a later delete. In that
+			// case there is no live checkpoint to certify, so conservatively withhold
+			// an intermediate certificate until the complete target is folded.
+			pendingCheckpointRestored = checkpointState == nil || checkpointState.GetRestoredFromBackup()
+			if pendingCheckpointRestored {
+				// A restored checkpoint's source Raft number has no ordering in the
+				// destination domain. Wait for the fixed destination target, whose
+				// audit certificate covers the complete restored audit head.
+				pendingCheckpointHorizon = targetAppliedIndex
+			} else {
+				pendingCheckpointHorizon = appliedIndex
+			}
+
+			return nil
+		}
+
 		// Create a batch up front so write methods have a valid target.
 		batch := b.readStore.NewBatch()
 		b.initFoldBatch(batch)
@@ -130,6 +159,31 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		batchLimit := b.batchSize
 		if remaining := targetSequence - cursor; remaining < uint64(batchLimit) {
 			batchLimit = int(remaining)
+		}
+
+		if carried != nil {
+			lastSeq = carried.sequence
+			batchCount = 1
+			if carried.createID > 0 {
+				if err := noteCheckpointCreate(carried.createID, carried.appliedIndex); err != nil {
+					_ = batch.Cancel()
+
+					return cursor, err
+				}
+			} else {
+				pendingCheckpointDelete = carried.deleteID
+			}
+			carried = nil
+			// The carried checkpoint log fills this batch on its own.
+			batchLimit = batchCount
+		}
+
+		// Ends the batch at the log before a checkpoint log met mid-batch; the
+		// checkpoint log itself heads the next batch.
+		carry := func(fields checkpointLogFields, previousSeq uint64) {
+			carried = &fields
+			lastSeq = previousSeq
+			batchCount--
 		}
 
 		// Iterate logs from Pebble and buffer index writes into the batch.
@@ -147,6 +201,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				return cursor, err
 			}
 
+			previousSeq := lastSeq
 			lastSeq = log.GetSequence()
 			batchCount++
 
@@ -175,37 +230,43 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				continue
 			}
 
-			// Handle query checkpoint creation: break batch so we can commit
-			// pending writes, then create a physical Pebble checkpoint of the
-			// read index at this exact point.
+			// A query checkpoint creation ends the batch: the read index is
+			// materialized at this exact point once the batch is committed.
 			if cqc, ok := log.GetPayload().GetType().(*commonpb.LogPayload_CreatedQueryCheckpoint); ok {
-				pendingCheckpointCreate = cqc.CreatedQueryCheckpoint.GetCheckpointId()
-				checkpointState, err := query.ReadQueryCheckpoint(handle, pendingCheckpointCreate)
-				if err != nil {
+				fields := checkpointLogFields{
+					sequence:     log.GetSequence(),
+					createID:     cqc.CreatedQueryCheckpoint.GetCheckpointId(),
+					appliedIndex: cqc.CreatedQueryCheckpoint.GetAppliedIndex(),
+				}
+				if batchCount > 1 {
+					carry(fields, previousSeq)
+
+					break
+				}
+
+				if err := noteCheckpointCreate(fields.createID, fields.appliedIndex); err != nil {
 					_ = batch.Cancel()
 
-					return cursor, fmt.Errorf("reading query checkpoint %d restore provenance: %w", pendingCheckpointCreate, err)
-				}
-				// The fixed target snapshot can already contain a later delete. In that
-				// case there is no live checkpoint to certify, so conservatively withhold
-				// an intermediate certificate until the complete target is folded.
-				pendingCheckpointRestored = checkpointState == nil || checkpointState.GetRestoredFromBackup()
-				if pendingCheckpointRestored {
-					// A restored checkpoint's source Raft number has no ordering in the
-					// destination domain. Wait for the fixed destination target, whose
-					// audit certificate covers the complete restored audit head.
-					pendingCheckpointHorizon = targetAppliedIndex
-				} else {
-					pendingCheckpointHorizon = cqc.CreatedQueryCheckpoint.GetAppliedIndex()
+					return cursor, err
 				}
 
 				break
 			}
 
-			// Handle query checkpoint deletion: break batch so we can commit
-			// pending writes, then remove the physical checkpoint files.
+			// A query checkpoint deletion ends the batch the same way; the
+			// physical checkpoint files are removed once it is committed.
 			if dqc, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeletedQueryCheckpoint); ok {
-				pendingCheckpointDelete = dqc.DeletedQueryCheckpoint.GetCheckpointId()
+				fields := checkpointLogFields{
+					sequence: log.GetSequence(),
+					deleteID: dqc.DeletedQueryCheckpoint.GetCheckpointId(),
+				}
+				if batchCount > 1 {
+					carry(fields, previousSeq)
+
+					break
+				}
+
+				pendingCheckpointDelete = fields.deleteID
 
 				break
 			}
@@ -265,18 +326,24 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		hasCheckpointAction := pendingCheckpointCreate > 0 || pendingCheckpointDelete > 0
 		completesTarget := lastSeq >= targetSequence
 		if !b.wb.Empty() || hasCheckpointAction || completesTarget {
-			// Write progress into the same batch before Flush commits it.
-			if err := b.readStore.WriteProgress(batch, lastSeq); err != nil {
-				_ = batch.Cancel()
+			// The cursors move in the same commit as the rows they cover. A
+			// checkpoint action holds them back until it has run: its log is
+			// the batch's only log and writes no rows, so a builder that dies
+			// before the action resumes at this log and runs it again.
+			if !hasCheckpointAction {
+				// Write progress into the same batch before Flush commits it.
+				if err := b.readStore.WriteProgress(batch, lastSeq); err != nil {
+					_ = batch.Cancel()
 
-				return cursor, err
-			}
+					return cursor, err
+				}
 
-			// Persist only AppliedProposal entries whose log range is fully behind lastSeq.
-			if err := persistAppliedProposalProgress(batch, lastSeq); err != nil {
-				_ = batch.Cancel()
+				// Persist only AppliedProposal entries whose log range is fully behind lastSeq.
+				if err := persistAppliedProposalProgress(batch, lastSeq); err != nil {
+					_ = batch.Cancel()
 
-				return cursor, err
+					return cursor, err
+				}
 			}
 
 			certifiedHorizon := uint64(0)
@@ -319,14 +386,16 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		// independently maintained audit projection may already be ahead; audit
 		// queries trim its candidates to the main checkpoint's audit sequence.
 		// The materialization is atomic (temp dir + fsync + rename + .ready marker
-		// last), so a reader never observes a partial checkpoint. There is no
-		// reconciler: this inline point is already exactly point-in-time. A live
-		// audit rebuild is waited through here, and a lifecycle transition during
-		// materialization retries the snapshot under the new ready generation. A
-		// node that crashes between rename and marker will never have a marker
-		// for this checkpoint; the checkpoint stays registered, so reads there
-		// return the retryable ErrCheckpointNotReady (Unavailable) until the
-		// client deletes and recreates it (see openCheckpointStores).
+		// last), so a reader never observes a partial checkpoint. A live audit
+		// rebuild is waited through here, and a lifecycle transition during
+		// materialization retries the snapshot under the new ready generation.
+		// The indexed cursor is committed only after this block, so a builder
+		// that dies anywhere in it resumes at this same log and materializes
+		// again; a marked directory makes that a no-op. Until then reads on this
+		// replica return the retryable ErrCheckpointNotReady (Unavailable). Only
+		// a disabled or failed audit projection leaves the checkpoint behind for
+		// good: the cursor then moves on and the client deletes and recreates it
+		// (see openCheckpointStores).
 		if cpID := pendingCheckpointCreate; cpID > 0 {
 			for {
 				err := b.readStore.WaitForAuditRaftProgress(ctx, pendingCheckpointHorizon)
@@ -364,14 +433,36 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			}
 		}
 
+		if cpID := pendingCheckpointDelete; cpID > 0 {
+			b.deleteReadIndexCheckpoint(cpID)
+		}
+
+		// The checkpoint action has run: the cursors may now pass its log.
+		if hasCheckpointAction {
+			cursorBatch := b.readStore.NewBatch()
+			if err := b.readStore.WriteProgress(cursorBatch, lastSeq); err != nil {
+				_ = cursorBatch.Cancel()
+
+				return cursor, fmt.Errorf("writing progress past checkpoint log %d: %w", lastSeq, err)
+			}
+
+			if err := persistAppliedProposalProgress(cursorBatch, lastSeq); err != nil {
+				_ = cursorBatch.Cancel()
+
+				return cursor, fmt.Errorf("writing applied proposal progress past checkpoint log %d: %w", lastSeq, err)
+			}
+
+			if err := cursorBatch.Commit(); err != nil {
+				_ = cursorBatch.Cancel()
+
+				return cursor, fmt.Errorf("committing progress past checkpoint log %d: %w", lastSeq, err)
+			}
+		}
+
 		cursor = lastSeq
 		b.lastIndexedSeq.Store(cursor)
 		b.logsIndexed.Add(uint64(batchCount))
 		b.readStore.NotifyProgress()
-
-		if cpID := pendingCheckpointDelete; cpID > 0 {
-			b.deleteReadIndexCheckpoint(cpID)
-		}
 
 		// Sample pebble last sequence from the cached atomic (written by the FSM
 		// before signalling LogCommitted). This avoids opening a Pebble iterator
@@ -497,6 +588,17 @@ func (b *Builder) indexPayload(
 	return nil
 }
 
+// checkpointLogFields is a CreatedQueryCheckpoint or DeletedQueryCheckpoint log
+// reduced to what the builder acts on. Exactly one of createID/deleteID is set.
+// The log cursor reuses a single message, so a log met ahead of its turn is kept
+// as these fields rather than as the message itself.
+type checkpointLogFields struct {
+	sequence     uint64
+	createID     uint64
+	deleteID     uint64
+	appliedIndex uint64
+}
+
 // checkpointLinkRetries bounds the retries of a read-index checkpoint whose
 // SST hard-link raced a concurrent compaction ("link ... no such file or
 // directory"). Pebble hard-links live SSTs last; if one is compacted away
@@ -517,7 +619,9 @@ const checkpointLinkRetries = 5
 // readers (openCheckpointStores). A half-written temp directory is never visible
 // under the final path. Called only from the inline indexing path, at the moment
 // the builder crosses the CreatedQueryCheckpoint log (so the snapshot is exactly
-// MaxSequence). There is no background reconciler.
+// MaxSequence). The indexed cursor passes that log only once the marker exists,
+// so a restarted builder crosses it again and lands here: an unmarked residue is
+// discarded and rebuilt, a marked directory is left as is.
 func (b *Builder) createReadIndexCheckpoint(checkpointID, auditGeneration uint64) (err error) {
 	finalDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
 
