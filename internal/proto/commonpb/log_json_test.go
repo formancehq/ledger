@@ -68,7 +68,7 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 		wire string
 	}{
 		{commonpb.FillGapLogType, `{"fillGap":{"originalId":"18446744073709551615"}}`},
-		{commonpb.CreateIndexLogType, `{"createIndex":{"id":{"metadata":{"target":"TARGET_TYPE_TRANSACTION","key":"label"}},"initial":true,"boundType":"METADATA_TYPE_UINT64","boundTypeDeclared":true}}`},
+		{commonpb.CreateIndexLogType, `{"createIndex":{"id":{"metadata":{"target":"TARGET_TYPE_TRANSACTION","key":"label"}},"boundType":"METADATA_TYPE_UINT64","boundTypeDeclared":true}}`},
 		{commonpb.DropIndexLogType, `{"dropIndex":{"id":{"metadata":{"target":"TARGET_TYPE_ACCOUNT","key":"label"}}}}`},
 		{commonpb.AddedAccountTypeLogType, `{"addedAccountType":{"accountType":{"name":"users","pattern":"users:{id}","persistence":"ACCOUNT_TYPE_EPHEMERAL","segmentTypes":{"id":{"uint64":{}}}}}}`},
 		{commonpb.RemovedAccountTypeLogType, `{"removedAccountType":{"name":"users"}}`},
