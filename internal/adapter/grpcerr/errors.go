@@ -38,8 +38,9 @@
 //     reason this build knows arriving under it is a contradiction, and
 //     letting the passthrough run first would hand the client the untrusted
 //     message of a pair the validation exists to reject. A reconstructed
-//     value keeps answering GRPCStatus() with the received Canceled status,
-//     so cursor termination is unaffected either way.
+//     value keeps answering GRPCStatus() with the received Canceled status;
+//     cursors preserve that decoded failure before applying raw transport
+//     cancellation policy.
 //   - A *bare* status of any code — no ledger ErrorInfo to decode, and no
 //     reason to recover. Bare codes.Unavailable (no leader yet, peer missing
 //     from the pool, stream torn down) already reaches the right outcome:
@@ -245,10 +246,21 @@ func (e *reconstructedError) Unwrap() error { return e.inner }
 
 // GRPCStatus keeps the original status reachable through status.FromError, so
 // the code survives reconstruction unchanged — the transport axis is preserved
-// exactly as received, independently of the semantic kind. cursor.go's
-// end-of-stream check and convertToGRPCError's "already a status, return
-// as-is" shortcut both depend on it.
+// exactly as received, independently of the semantic kind. Forwarding uses
+// OriginalStatus below so outer wrappers cannot replace its public message.
 func (e *reconstructedError) GRPCStatus() *status.Status { return e.st }
+
+// OriginalStatus returns the status retained by this decoder, even through
+// additional error wrappers. Unlike status.FromError, it does not replace the
+// upstream message with the outer error's diagnostic text. Raw transport
+// statuses and rejected wire pairs have no reconstructed status here.
+func OriginalStatus(err error) *status.Status {
+	if reconstructed, ok := errors.AsType[*reconstructedError](err); ok {
+		return reconstructed.st
+	}
+
+	return nil
+}
 
 // Decode reads the boundary view out of a gRPC status error. It returns:
 //

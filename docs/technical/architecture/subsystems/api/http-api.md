@@ -146,13 +146,15 @@ of excluded codes: **everything else passes through unchanged**. That covers
 three groups.
 
 - A **bare** `codes.Canceled`, because the cursor layer keys end-of-stream
-  detection off it and normalises it to `io.EOF`. The ledger `ErrorInfo` is
+  detection off it: caller cancellation becomes `io.EOF`, while a live caller
+  sees `Unavailable` for a failed transfer. The ledger `ErrorInfo` is
   still decoded first: no `ErrorKind` maps to `codes.Canceled`, so a reason
   this build knows arriving under it is a contradiction, and answering the
   status before the decode would exempt the one code with no legitimate reason
   from the mismatch policy below and hand the peer's message to the client.
-  Pagination is unaffected either way — a reconstructed value keeps answering
-  `GRPCStatus()` with the received `Canceled` status.
+  A decoded unknown reason carried by `Canceled` retains its full status through
+  both cursor implementations, even after caller teardown. `grpcerr.OriginalStatus`
+  identifies that decoded failure before the raw cancellation policy runs.
 - A **bare** status of any code — no ledger `ErrorInfo`, so no reason to
   recover. A bare `codes.Unavailable` already reaches the right outcome
   (`handleError` answers that code with `503` + `Retry-After` on its own);
@@ -175,6 +177,13 @@ The HTTP layer needs no status-code branch of its own: both mappers read the
 failure through `apierr.Describe`, which answers identically for a locally
 raised error and a decoded one, so a follower answers with the same status and
 `errorCode` as the leader and the bulk path is repaired by the same change.
+
+At a subsequent gRPC hop, the server uses `grpcerr.OriginalStatus` before generic
+status conversion. This preserves the sender's message and all status details
+even when routing has wrapped the error with diagnostic context. The helper
+recognizes only this decoder's reconstructed errors; invalid pairs and foreign
+or raw transport statuses retain their existing handling. The originating
+server's `PublicErrorDetails` selection is preserved rather than re-created.
 
 The decorator wraps the connection rather than the generated client's 37
 methods (11 of them server-streaming), because six of the `BucketGrpcClient`

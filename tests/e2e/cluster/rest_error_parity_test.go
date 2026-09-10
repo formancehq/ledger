@@ -16,6 +16,10 @@ import (
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // restOutcome is the client-visible part of a REST error: what a caller
@@ -45,8 +49,8 @@ type restOutcome struct {
 // wrongly, which a leader-only expectation would miss.
 //
 // Only writes are covered here, deliberately. Reads are served locally behind a
-// ReadIndex barrier and forward to the leader only while a node is syncing,
-// which is not reachable deterministically in a healthy cluster; the HTTP
+// ReadIndex barrier and forward on syncing or an in-flight leadership change,
+// which are not deterministic routes in a healthy cluster; the HTTP
 // surface exposes no consistency header to force it. The forwarded-read and
 // list-stream paths run through the same seam and are covered at the unit level
 // by internal/adapter/grpcerr (TestConn_StreamErrorIsReconstructed).
@@ -135,7 +139,8 @@ var _ = Describe("REST error parity across cluster nodes (EN-1636)", Ordered, fu
 	}
 
 	// expectParity sends the same rejected request to the leader and to every
-	// follower and asserts they answer identically, with the expected outcome.
+	// follower and asserts all public REST error fields are identical. REST does
+	// not expose structured metadata; the gRPC spec below checks that separately.
 	expectParity := func(path, body string, wantStatus int, wantCode string) {
 		GinkgoHelper()
 
@@ -147,6 +152,7 @@ var _ = Describe("REST error parity across cluster nodes (EN-1636)", Ordered, fu
 
 		Expect(onLeader.StatusCode).To(Equal(wantStatus), "leader body: %s", onLeader.ErrorMessage)
 		Expect(onLeader.ErrorCode).To(Equal(wantCode))
+		Expect(onLeader.ErrorMessage).NotTo(BeEmpty())
 
 		for _, follower := range followers {
 			onFollower := post(follower, path, body)
@@ -157,6 +163,9 @@ var _ = Describe("REST error parity across cluster nodes (EN-1636)", Ordered, fu
 			Expect(onFollower.ErrorCode).To(Equal(wantCode),
 				"node %d answered errorCode %q where the leader answered %q",
 				follower.NodeID, onFollower.ErrorCode, onLeader.ErrorCode)
+			Expect(onFollower.ErrorMessage).To(Equal(onLeader.ErrorMessage),
+				"node %d changed the leader's safe error message: got %q, want %q",
+				follower.NodeID, onFollower.ErrorMessage, onLeader.ErrorMessage)
 
 			// The sanitizer's fingerprints. Asserted separately from the
 			// equality above so a failure says which contract broke.
@@ -183,6 +192,36 @@ var _ = Describe("REST error parity across cluster nodes (EN-1636)", Ordered, fu
 		// here for the errorCode half of the contract: before the fix a follower
 		// dropped LEDGER_ALREADY_EXISTS entirely.
 		expectParity("/"+ledgerName, `{}`, http.StatusConflict, "LEDGER_ALREADY_EXISTS")
+	})
+
+	It("preserves the gRPC reason, safe message, and metadata through a follower (EN-1980)", func() {
+		leader, followers := splitByRole()
+		apply := func(node *testutil.ServiceWithClient) *status.Status {
+			GinkgoHelper()
+			_, err := node.Client.Apply(ctx,
+				servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(HaveOccurred())
+			st, ok := status.FromError(err)
+			Expect(ok).To(BeTrue())
+			return st
+		}
+
+		onLeader := apply(leader)
+		Expect(onLeader.Code()).To(Equal(codes.AlreadyExists))
+		Expect(onLeader.Message()).To(Equal("ledger already exists: " + ledgerName))
+		Expect(onLeader.Details()).To(HaveLen(1))
+		info, ok := onLeader.Details()[0].(*errdetails.ErrorInfo)
+		Expect(ok).To(BeTrue())
+		Expect(info.Reason).To(Equal("LEDGER_ALREADY_EXISTS"))
+		Expect(info.Domain).To(Equal("ledger"))
+		Expect(info.Metadata).To(Equal(map[string]string{"name": ledgerName}))
+
+		for _, follower := range followers {
+			onFollower := apply(follower)
+			Expect(proto.Equal(onFollower.Proto(), onLeader.Proto())).To(BeTrue(),
+				"node %d changed the leader's gRPC error: got %v, want %v",
+				follower.NodeID, onFollower.Proto(), onLeader.Proto())
+		}
 	})
 
 	It("returns the same 409 and errorCode on every node for a write to a deleted ledger", func() {
@@ -215,7 +254,7 @@ var _ = Describe("REST error parity across cluster nodes (EN-1636)", Ordered, fu
 		expectParity("/"+deletedLedger, `{}`, http.StatusConflict, "LEDGER_DELETED")
 	})
 
-	It("returns the same per-element errorCode on every node for a failing bulk element", func() {
+	It("returns the same per-element reason and safe message on every node for a failing bulk element", func() {
 		// Bulk has its own error mapper (perElementStatus / bulkErrorCode), which
 		// dispatches on the same Describable contract. Before the fix it lacked
 		// even the InvalidArgument consolation the single-request path had, so
@@ -225,7 +264,7 @@ var _ = Describe("REST error parity across cluster nodes (EN-1636)", Ordered, fu
 
 		leader, followers := splitByRole()
 
-		elementCode := func(node *testutil.ServiceWithClient) string {
+		elementOutcome := func(node *testutil.ServiceWithClient) restOutcome {
 			GinkgoHelper()
 
 			url := fmt.Sprintf("http://localhost:%d/v3/%s/bulk", node.HTTPPort, ledgerName)
@@ -244,7 +283,9 @@ var _ = Describe("REST error parity across cluster nodes (EN-1636)", Ordered, fu
 			var decoded struct {
 				ErrorCode string `json:"errorCode"`
 				Data      []struct {
-					ErrorCode string `json:"errorCode"`
+					ErrorCode        string `json:"errorCode"`
+					ErrorDescription string `json:"errorDescription"`
+					ResponseType     string `json:"responseType"`
 				} `json:"data"`
 			}
 			Expect(json.Unmarshal(raw, &decoded)).To(Succeed(), "unparseable bulk body: %s", raw)
@@ -260,21 +301,29 @@ var _ = Describe("REST error parity across cluster nodes (EN-1636)", Ordered, fu
 			Expect(decoded.Data).To(HaveLen(1),
 				"the rejection must be per-element, not request-level; top-level errorCode was %q, body: %s",
 				decoded.ErrorCode, raw)
+			Expect(decoded.ErrorCode).To(BeEmpty())
+			Expect(decoded.Data[0].ResponseType).To(Equal("ERROR"))
 
-			return decoded.Data[0].ErrorCode
+			return restOutcome{
+				StatusCode:   resp.StatusCode,
+				ErrorCode:    decoded.Data[0].ErrorCode,
+				ErrorMessage: decoded.Data[0].ErrorDescription,
+			}
 		}
 
 		// The posting's source is an account with no balance, so admission
 		// rejects the single element with INSUFFICIENT_FUNDS (KindPrecondition,
 		// 400). Pinning the expected code rather than only "non-empty and equal"
 		// means the spec fails if the element stops reaching the FSM at all.
-		onLeader := elementCode(leader)
-		Expect(onLeader).To(Equal("INSUFFICIENT_FUNDS"),
+		onLeader := elementOutcome(leader)
+		Expect(onLeader.ErrorCode).To(Equal("INSUFFICIENT_FUNDS"),
 			"the leader must name the business reason of the element rejection")
+		Expect(onLeader.StatusCode).To(Equal(http.StatusBadRequest))
+		Expect(onLeader.ErrorMessage).NotTo(BeEmpty())
 
 		for _, follower := range followers {
-			Expect(elementCode(follower)).To(Equal(onLeader),
-				"node %d reported a different per-element errorCode than the leader", follower.NodeID)
+			Expect(elementOutcome(follower)).To(Equal(onLeader),
+				"node %d reported a different per-element error than the leader", follower.NodeID)
 		}
 	})
 })

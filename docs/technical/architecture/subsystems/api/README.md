@@ -12,6 +12,10 @@ Client-facing transport layers (`internal/adapter/grpc`, `internal/adapter/http`
 | [http-api.md](http-api.md) | HTTP REST API endpoints, response formats, error handling, and the `apierr`/`grpcerr` error boundary crossed by a forwarded write. |
 | [auth.md](auth.md) | Client JWT authentication (OIDC + Ed25519), scope-based authorization, and the Raft inter-node cluster-secret auth layer. |
 
+Decoded leader errors retain their exact gRPC status through routing wrappers
+and streaming cursors. See [forwarding and cancellation](http-api.md#forwarded-writes-and-the-transport-seam)
+for the distinction between a decoded rejection and raw transport cancellation.
+
 ## Related
 
 - [Admission](../admission/) — what every write request enters next.

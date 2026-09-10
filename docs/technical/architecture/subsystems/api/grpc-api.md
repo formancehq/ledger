@@ -562,6 +562,13 @@ Each business error response includes:
 
 ### gRPC Status Codes
 
+Forwarded decoded errors are re-emitted from `grpcerr.OriginalStatus` before
+generic status conversion, so outer routing context cannot replace the public
+message. All status details are preserved, including details beyond `ErrorInfo`.
+Streaming cursors also preserve these decoded statuses before interpreting raw
+`Canceled` as EOF or a retryable transport failure. An unknown Ledger reason
+carried by `Canceled` remains an error with its original details.
+
 | Code | Condition |
 |------|-----------|
 | `OK` | Request succeeded |
