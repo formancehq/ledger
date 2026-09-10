@@ -55,11 +55,35 @@ func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Mac
 	return machine, dataStore, attrs
 }
 
-// newTestMachine creates a Machine backed by a real Pebble store for testing.
+// installTestClusterPolicy gives a machine the committed policy that apply of a
+// business entry needs: it reads the metadata ceilings from it. This mirrors the
+// production precondition rather than relaxing it — admission holds business
+// writes until a policy is committed, so apply never sees a business entry
+// before the policy is in place.
+//
+// Kept separate from the harness so a test about recovery itself can observe a
+// genuinely fresh machine (see TestRecoverState_ClusterPolicyRoundtrip).
+func installTestClusterPolicy(machine *Machine) {
+	machine.State.UpdateClusterPolicy(&commonpb.ClusterPolicy{
+		Revision:                    1,
+		QueryCheckpointLimit:        10,
+		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
+		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
+		MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
+		MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
+		MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
+	})
+}
+
+// newTestMachine creates a Machine backed by a real Pebble store for testing,
+// carrying the committed cluster policy a business apply requires.
 func newTestMachine(t *testing.T) (*Machine, *dal.Store, *attributes.Attributes) {
 	t.Helper()
 
-	return newTestMachineWithThreshold(t, 1000)
+	machine, store, attrs := newTestMachineWithThreshold(t, 1000)
+	installTestClusterPolicy(machine)
+
+	return machine, store, attrs
 }
 
 // makeProposal builds a Proposal protobuf with the given orders.

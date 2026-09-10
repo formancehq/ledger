@@ -3168,11 +3168,14 @@ components:
         numbers are decoded exactly, including int64 bounds and values beyond
         2^53. Integral decimal and exponent spellings are accepted; fractions
         and out-of-range values are rejected. String values must not contain
-        NUL bytes.
+        NUL bytes. A value is limited to 16384 bytes by default; the effective
+        ceiling comes from the cluster policy (`--metadata-max-value-bytes`).
+        Exceeding it returns 400 with reason `METADATA_LIMIT_EXCEEDED`.
       nullable: true
       oneOf:
         - type: string
           pattern: '^[^\u0000]*$'
+          maxLength: 16384
           description: Metadata string value without NUL bytes
         - type: integer
           minimum: -9223372036854775808
@@ -3207,9 +3210,11 @@ components:
       properties:
         metadata:
           type: object
+          maxProperties: 128
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Optional metadata for the ledger (supports typed values)
+          description: >-
+            Optional metadata for the ledger (supports typed values) Metadata keys are limited to 256 bytes; the total per entity is limited to 65536 bytes and per request to 262144 bytes (cluster policy defaults).
         mode:
           type: string
           enum:
@@ -3406,18 +3411,23 @@ components:
           type: object
           additionalProperties:
             type: object
+            maxProperties: 128
             additionalProperties:
               $ref: '#/components/schemas/MetadataValue'
-          description: Metadata for accounts involved in the transaction (supports typed values)
+          description: >-
+            Metadata for accounts involved in the transaction (supports typed
+            values). Each account's map is bounded independently. Metadata keys are limited to 256 bytes; the total per entity is limited to 65536 bytes and per request to 262144 bytes (cluster policy defaults).
         timestamp:
           type: string
           format: date-time
           description: Transaction timestamp (ISO 8601 format). If not provided, current time is used.
         metadata:
           type: object
+          maxProperties: 128
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Transaction metadata (supports typed values)
+          description: >-
+            Transaction metadata (supports typed values) Metadata keys are limited to 256 bytes; the total per entity is limited to 65536 bytes and per request to 262144 bytes (cluster policy defaults).
         reference:
           type: string
           description: Transaction reference
@@ -3578,9 +3588,11 @@ components:
             ID of the target (account address or transaction ID). Required.
         metadata:
           type: object
+          maxProperties: 128
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Metadata to add (supports typed values)
+          description: >-
+            Metadata to add (supports typed values) Metadata keys are limited to 256 bytes; the total per entity is limited to 65536 bytes and per request to 262144 bytes (cluster policy defaults).
 
     RevertTransactionRequest:
       type: object
@@ -3601,9 +3613,11 @@ components:
           description: Set the timestamp of the reverted transaction to the original transaction timestamp
         metadata:
           type: object
+          maxProperties: 128
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Metadata for the revert transaction (supports typed values)
+          description: >-
+            Metadata for the revert transaction (supports typed values) Metadata keys are limited to 256 bytes; the total per entity is limited to 65536 bytes and per request to 262144 bytes (cluster policy defaults).
 
     RevertTransactionRequestBody:
       type: object
@@ -3618,9 +3632,11 @@ components:
           description: Set the timestamp of the reverted transaction to the original transaction timestamp
         metadata:
           type: object
+          maxProperties: 128
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Metadata for the revert transaction (supports typed values)
+          description: >-
+            Metadata for the revert transaction (supports typed values) Metadata keys are limited to 256 bytes; the total per entity is limited to 65536 bytes and per request to 262144 bytes (cluster policy defaults).
 
     DeleteMetadataRequest:
       type: object

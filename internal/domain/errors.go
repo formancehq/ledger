@@ -252,6 +252,7 @@ const (
 	ErrReasonCheckpointLimitReached        = "CHECKPOINT_LIMIT_REACHED"
 	ErrReasonCheckpointNotFound            = "CHECKPOINT_NOT_FOUND"
 	ErrReasonSequenceExhausted             = "SEQUENCE_EXHAUSTED"
+	ErrReasonMetadataLimitExceeded         = "METADATA_LIMIT_EXCEEDED"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -1438,6 +1439,64 @@ func (*ErrCheckpointLimitReached) Reason() string { return ErrReasonCheckpointLi
 func (e *ErrCheckpointLimitReached) Metadata() map[string]string {
 	return map[string]string{"limit": strconv.FormatUint(e.Limit, 10)}
 }
+
+// ErrMetadataLimitExceeded — metadata carried by a command, or produced by a
+// Numscript program, exceeded a ceiling of the canonical metadata size contract
+// (see MetadataLimits). Dimension names which ceiling was hit so a client can
+// tell "too many entries" from "one value too large" without parsing the
+// message. KindValidation: the caller must send less metadata, so retrying the
+// same payload cannot succeed.
+//
+// Raised at admission for every public entry path and inside the FSM for the
+// metadata a Numscript program merges into the caller's — the FSM-side
+// rejection is freezable, so a keyed retry replays it from the audit chain.
+type ErrMetadataLimitExceeded struct {
+	// Dimension is one of the MetadataLimitDimension* constants.
+	Dimension string
+	// Limit is the effective ceiling, and Actual the measured value. Both are
+	// counts for the entry-count dimension and byte totals otherwise.
+	Limit  uint64
+	Actual uint64
+}
+
+func (e *ErrMetadataLimitExceeded) Error() string {
+	if e.Dimension == MetadataLimitDimensionEntries {
+		return fmt.Sprintf("metadata carries %d entries, limit is %d per entity", e.Actual, e.Limit)
+	}
+
+	return fmt.Sprintf("metadata %s size is %d bytes, limit is %d", e.Dimension, e.Actual, e.Limit)
+}
+func (*ErrMetadataLimitExceeded) Reason() string { return ErrReasonMetadataLimitExceeded }
+func (e *ErrMetadataLimitExceeded) Metadata() map[string]string {
+	return map[string]string{
+		"dimension": e.Dimension,
+		"limit":     strconv.FormatUint(e.Limit, 10),
+		"actual":    strconv.FormatUint(e.Actual, 10),
+	}
+}
+
+// ErrMetadataLimitsUnconfigured — a metadata size check ran against a committed
+// cluster policy that carries no metadata ceilings. Zero is the absence of
+// configuration, never "unlimited": admitting the write would silently disable
+// the protection, so the write is rejected instead.
+//
+// Three guards make this unreachable in a correctly operated cluster: boot
+// validation refuses to start against a policy without ceilings, the FSM
+// refuses to commit such a policy, and admission holds business writes until a
+// policy is committed. It reuses ERROR_REASON_CLUSTER_POLICY_INVALID because
+// that is exactly what it reports — the committed policy is invalid, not the
+// caller's request.
+type errMetadataLimitsUnconfigured struct{}
+
+func (errMetadataLimitsUnconfigured) Error() string {
+	return "the committed cluster policy carries no metadata size limits; bump --cluster-policy-revision to commit one"
+}
+func (errMetadataLimitsUnconfigured) Reason() string { return ErrReasonClusterPolicyInvalid }
+func (errMetadataLimitsUnconfigured) Metadata() map[string]string {
+	return nil
+}
+
+var ErrMetadataLimitsUnconfigured Describable = errMetadataLimitsUnconfigured{}
 
 // ErrCheckpointNotFound — a DeleteQueryCheckpoint targeted a checkpoint ID that
 // is not live (never created, or already deleted). KindNotFound.

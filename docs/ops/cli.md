@@ -1858,7 +1858,7 @@ ledgerctl version
 
 The **server** exposes the same build metadata over two unauthenticated channels:
 
-- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"5"}`.
+- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"6"}`.
 - **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same information, including `protocol_version`.
 
 This is useful for monitoring deployed nodes and spotting version skew across a cluster (the per-node `version` is also surfaced on each `NodeInfo` in `GetClusterState`).
@@ -3853,12 +3853,27 @@ The cluster policy is a Raft-replicated record of settings that must apply ident
 |------|------|---------|-------------|
 | `--cluster-policy-revision` | uint64 | `1` | Desired revision of the replicated cluster policy. The leader proposes the policy only when this exceeds the applied revision. Must be greater than zero. |
 | `--query-checkpoint-limit` | uint64 | `10` | Maximum number of live query checkpoints, carried in the cluster policy. Must be greater than zero. |
+| `--metadata-max-entries` | uint64 | `128` | Maximum metadata entries one command may carry for a single entity (transaction, account or ledger). Must be greater than zero. |
+| `--metadata-max-key-bytes` | uint64 | `256` | Maximum metadata key size in bytes. Must be greater than zero and not exceed `--metadata-max-entity-bytes`. |
+| `--metadata-max-value-bytes` | uint64 | `16384` | Maximum metadata value size in bytes. Must be greater than zero and not exceed `--metadata-max-entity-bytes`. |
+| `--metadata-max-entity-bytes` | uint64 | `65536` | Maximum total metadata bytes one command may carry for a single entity. Must be greater than zero and not exceed `--metadata-max-command-bytes`. |
+| `--metadata-max-command-bytes` | uint64 | `262144` | Maximum total metadata bytes one command may carry across every entity it touches. Must be greater than zero. |
 
 To change a policy value, raise `--cluster-policy-revision` so the new policy supersedes the applied one:
 
 ```bash
 ledger run --cluster-policy-revision 2 --query-checkpoint-limit 20 [other flags...]
 ```
+
+The metadata ceilings follow the same rule: raising one without bumping
+`--cluster-policy-revision` logs a payload-divergence error and changes nothing.
+They are enforced for HTTP, public gRPC, bulk and mirror admission, and for the
+metadata a Numscript program merges in; a violation returns HTTP 400 / gRPC
+`InvalidArgument` with reason `METADATA_LIMIT_EXCEEDED`. Zero is rejected at
+boot rather than treated as unlimited, and a node refuses to start against a
+committed policy carrying no ceilings when `--cluster-policy-revision` cannot
+supersede it. See the [metadata size limits
+contract](../technical/architecture/subsystems/admission/metadata-limits.md).
 
 ---
 

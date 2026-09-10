@@ -365,18 +365,20 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrClusterPolicyInvalid":          &ErrClusterPolicyInvalid{},
 		"ErrCheckpointLimitReached":        &ErrCheckpointLimitReached{},
 		"ErrCheckpointNotFound":            &ErrCheckpointNotFound{},
+		"ErrMetadataLimitExceeded":         &ErrMetadataLimitExceeded{},
 		// Unexported sentinel struct types; each is exposed once via a
 		// package-level Describable var (ErrAuditDisabled, etc.)
 		// and must implement the interface.
-		"validationSentinel":        &validationSentinel{},
-		"errValidation":             &errValidation{},
-		"errAuditDisabled":          errAuditDisabled{},
-		"errMaintenanceMode":        errMaintenanceMode{},
-		"errStaleProposal":          errStaleProposal{},
-		"errStaleInputsResolution":  errStaleInputsResolution{},
-		"errPreloadUnavailable":     errPreloadUnavailable{},
-		"errWritesBlockedDiskFull":  errWritesBlockedDiskFull{},
-		"errWritesBlockedClockSkew": errWritesBlockedClockSkew{},
+		"validationSentinel":            &validationSentinel{},
+		"errValidation":                 &errValidation{},
+		"errMetadataLimitsUnconfigured": errMetadataLimitsUnconfigured{},
+		"errAuditDisabled":              errAuditDisabled{},
+		"errMaintenanceMode":            errMaintenanceMode{},
+		"errStaleProposal":              errStaleProposal{},
+		"errStaleInputsResolution":      errStaleInputsResolution{},
+		"errPreloadUnavailable":         errPreloadUnavailable{},
+		"errWritesBlockedDiskFull":      errWritesBlockedDiskFull{},
+		"errWritesBlockedClockSkew":     errWritesBlockedClockSkew{},
 	}
 
 	// Walk the AST to discover every type declaration that starts with

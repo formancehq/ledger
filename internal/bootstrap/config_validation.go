@@ -7,7 +7,9 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -173,7 +175,50 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		return mismatches[0]
 	}
 
-	return nil
+	return validateCommittedMetadataLimits(store, cfg)
+}
+
+// validateCommittedMetadataLimits refuses to boot against a committed cluster
+// policy that carries no metadata size ceilings when this node cannot replace
+// it.
+//
+// The reconciler proposes a policy only when the desired revision is strictly
+// higher than the applied one, so a node whose binary knows about the ceilings
+// but whose --cluster-policy-revision is not ahead would run indefinitely
+// against a policy without them. Admission and FSM apply both reject business
+// writes in that state, so the deployment is broken either way: failing at boot
+// names the remedy instead of surfacing a per-request error, and the protection
+// is never silently degraded into "unlimited metadata".
+//
+// Not bypassable by --unsafe-skip-config-validation: that flag overrides
+// node/cluster identity mismatches, not a policy this binary must enforce.
+func validateCommittedMetadataLimits(store *dal.Store, cfg Config) error {
+	applied, err := query.ReadClusterPolicy(store)
+	if err != nil {
+		return fmt.Errorf("reading committed cluster policy: %w", err)
+	}
+
+	// No policy committed yet: the leader's reconciler commits the first one,
+	// and admission holds business writes until it does.
+	if applied.GetRevision() == 0 {
+		return nil
+	}
+
+	if domain.MetadataLimitsFromPolicy(applied).Configured() {
+		return nil
+	}
+
+	if cfg.ClusterPolicyRevision > applied.GetRevision() {
+		// The reconciler supersedes it on this leader term.
+		return nil
+	}
+
+	return fmt.Errorf(
+		"the committed cluster policy (revision %d) carries no metadata size limits and "+
+			"--cluster-policy-revision=%d cannot supersede it: raise --cluster-policy-revision above %d "+
+			"so the metadata limits are committed",
+		applied.GetRevision(), cfg.ClusterPolicyRevision, applied.GetRevision(),
+	)
 }
 
 // validateHealthThresholds enforces 0 < resume < block <= 1 (both strictly

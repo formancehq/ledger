@@ -50,9 +50,17 @@ func commitClusterPolicy(t *testing.T, store *dal.Store, revision uint64) {
 	t.Helper()
 
 	batch := store.OpenWriteSession()
+	// The metadata ceilings are part of every committed policy: admission
+	// rejects a business write when they are absent, so a seed without them
+	// would fail every write path rather than the behaviour under test.
 	require.NoError(t, state.SaveClusterPolicy(batch, &commonpb.ClusterPolicy{
-		Revision:             revision,
-		QueryCheckpointLimit: 10,
+		Revision:                    revision,
+		QueryCheckpointLimit:        10,
+		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
+		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
+		MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
+		MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
+		MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
 	}))
 	require.NoError(t, batch.Commit())
 }

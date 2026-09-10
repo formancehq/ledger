@@ -571,3 +571,35 @@ func (f constantScopeFactory) NewProposalScope() (Scope, error) { return f.scope
 func mockFactory(s Scope) ScopeFactory {
 	return constantScopeFactory{scope: s}
 }
+
+// expectDefaultMetadataLimits lets a scope serve a committed cluster policy
+// carrying the default metadata ceilings. processCreateTransaction reads them to
+// bound the metadata merged from the caller and from Numscript, so any test that
+// creates a transaction needs the policy available.
+//
+// AnyTimes because the call count is an implementation detail of the processor,
+// not the behaviour under test; a test asserting on the ceilings themselves sets
+// its own expectation with the values it needs.
+func expectDefaultMetadataLimits(mockStore *MockScope) {
+	mockStore.EXPECT().GetClusterPolicy().Return(defaultTestClusterPolicy()).AnyTimes()
+}
+
+// defaultTestClusterPolicy is a committed policy carrying the production default
+// ceilings — the shape the reconciler proposes and the FSM accepts.
+func defaultTestClusterPolicy() *commonpb.ClusterPolicy {
+	return withMetadataLimits(&commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 1})
+}
+
+// withMetadataLimits fills in the default metadata ceilings and returns the
+// policy. Any policy a test PROPOSES needs them: processSetClusterPolicy refuses
+// a policy whose ceilings are missing, before it reaches the revision behaviour
+// most of those tests are about.
+func withMetadataLimits(policy *commonpb.ClusterPolicy) *commonpb.ClusterPolicy {
+	policy.MetadataMaxEntriesPerEntity = domain.DefaultMetadataMaxEntriesPerEntity
+	policy.MetadataMaxKeyBytes = domain.DefaultMetadataMaxKeyBytes
+	policy.MetadataMaxValueBytes = domain.DefaultMetadataMaxValueBytes
+	policy.MetadataMaxEntityBytes = domain.DefaultMetadataMaxEntityBytes
+	policy.MetadataMaxCommandBytes = domain.DefaultMetadataMaxCommandBytes
+
+	return policy
+}

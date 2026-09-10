@@ -3284,6 +3284,11 @@ type ClusterPolicyReader interface {
 	GetRevision() uint64
 	GetIdempotencyTtlMicros() uint64
 	GetQueryCheckpointLimit() uint64
+	GetMetadataMaxEntriesPerEntity() uint64
+	GetMetadataMaxKeyBytes() uint64
+	GetMetadataMaxValueBytes() uint64
+	GetMetadataMaxEntityBytes() uint64
+	GetMetadataMaxCommandBytes() uint64
 	Mutate() *ClusterPolicy
 }
 
@@ -3299,6 +3304,26 @@ func (r *clusterPolicyReadonly) GetIdempotencyTtlMicros() uint64 {
 
 func (r *clusterPolicyReadonly) GetQueryCheckpointLimit() uint64 {
 	return (*ClusterPolicy)(r).GetQueryCheckpointLimit()
+}
+
+func (r *clusterPolicyReadonly) GetMetadataMaxEntriesPerEntity() uint64 {
+	return (*ClusterPolicy)(r).GetMetadataMaxEntriesPerEntity()
+}
+
+func (r *clusterPolicyReadonly) GetMetadataMaxKeyBytes() uint64 {
+	return (*ClusterPolicy)(r).GetMetadataMaxKeyBytes()
+}
+
+func (r *clusterPolicyReadonly) GetMetadataMaxValueBytes() uint64 {
+	return (*ClusterPolicy)(r).GetMetadataMaxValueBytes()
+}
+
+func (r *clusterPolicyReadonly) GetMetadataMaxEntityBytes() uint64 {
+	return (*ClusterPolicy)(r).GetMetadataMaxEntityBytes()
+}
+
+func (r *clusterPolicyReadonly) GetMetadataMaxCommandBytes() uint64 {
+	return (*ClusterPolicy)(r).GetMetadataMaxCommandBytes()
 }
 
 func (r *clusterPolicyReadonly) Mutate() *ClusterPolicy {

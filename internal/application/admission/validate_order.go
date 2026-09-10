@@ -117,9 +117,33 @@ func validateOrderLedgerName(order *raftcmdpb.Order) domain.Describable {
 	return nil
 }
 
-// validateOrderMetadata validates that all metadata keys and values in the order
-// are safe for Pebble key encoding.
-func validateOrderMetadata(order *raftcmdpb.Order) domain.Describable {
+// metadataWalk carries the visitors walkOrderMetadata invokes. Declared before
+// its consumer.
+//
+// Each visitor returns the failure it wants to surface; a non-nil return stops
+// the walk. Neither may mutate what it is handed: the maps are aliased straight
+// out of the order, and an accepted order is immutable business intent
+// (invariant #10).
+type metadataWalk struct {
+	// visitMap receives one entity's metadata map. account is the account
+	// address for account-scoped maps and "" for the transaction- and
+	// ledger-scoped ones, so a visitor can add the account context itself.
+	visitMap func(account string, m map[string]*commonpb.MetadataValue) domain.Describable
+	// visitKey receives a bare metadata key: the delete-metadata and
+	// metadata-field-type orders carry a key with no value.
+	visitKey func(key string) domain.Describable
+}
+
+// walkOrderMetadata invokes walk's visitors for every place an order can carry
+// metadata: the ledger-apply variants, the ledger-metadata orders, and the
+// mirror-ingest entries.
+//
+// This is the single source of truth for *where* metadata lives in an order.
+// The shape validation, the size validation, and the per-command byte
+// accounting all traverse through it, so the three can never disagree about
+// which maps count — a drift would either let a map through unvalidated or make
+// the per-command total exclude bytes the per-entity check already saw.
+func walkOrderMetadata(order *raftcmdpb.Order, walk metadataWalk) domain.Describable {
 	ls := order.GetLedgerScoped()
 	if ls == nil {
 		return nil
@@ -127,35 +151,27 @@ func validateOrderMetadata(order *raftcmdpb.Order) domain.Describable {
 
 	switch p := ls.GetPayload().(type) {
 	case *raftcmdpb.LedgerScopedOrder_Apply:
-		return validateApplyMetadata(p.Apply)
+		return walkApplyMetadata(p.Apply, walk)
 	case *raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata:
-		return validateMetadataMap(p.SaveLedgerMetadata.GetMetadata())
+		return walk.visitMap("", p.SaveLedgerMetadata.GetMetadata())
 	case *raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata:
-		return domain.ValidateMetadataKey(p.DeleteLedgerMetadata.GetKey())
+		return walk.visitKey(p.DeleteLedgerMetadata.GetKey())
 	case *raftcmdpb.LedgerScopedOrder_MirrorIngest:
-		return validateMirrorMetadata(p.MirrorIngest.GetEntry())
+		return walkMirrorMetadata(p.MirrorIngest.GetEntry(), walk)
 	default:
 		return nil
 	}
 }
 
-// validateApplyMetadata validates metadata within a LedgerApplyOrder.
-func validateApplyMetadata(apply *raftcmdpb.LedgerApplyOrder) domain.Describable {
+// walkApplyMetadata walks the metadata carried by a LedgerApplyOrder.
+func walkApplyMetadata(apply *raftcmdpb.LedgerApplyOrder, walk metadataWalk) domain.Describable {
 	switch d := apply.GetData().(type) {
 	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
-		if err := validateMetadataMap(d.CreateTransaction.GetMetadata()); err != nil {
+		if err := walk.visitMap("", d.CreateTransaction.GetMetadata()); err != nil {
 			return err
 		}
 
-		for account, mm := range d.CreateTransaction.GetAccountMetadata() {
-			if mm != nil {
-				if err := validateMetadataMap(mm.GetValues()); err != nil {
-					return &domain.ErrAccountValidation{Account: account, Cause: err}
-				}
-			}
-		}
-
-		return nil
+		return walkAccountMetadata(d.CreateTransaction.GetAccountMetadata(), walk)
 	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
 		// processRevertTransaction stores order.GetMetadata() straight into
 		// the revert log payload, so the metadata-key invariants (non-empty,
@@ -163,44 +179,70 @@ func validateApplyMetadata(apply *raftcmdpb.LedgerApplyOrder) domain.Describable
 		// client-supplied empty or NUL-bearing key reaches the canonical
 		// Pebble key layout via the revert log and corrupts read-index
 		// entries (#322).
-		return validateMetadataMap(d.RevertTransaction.GetMetadata())
+		return walk.visitMap("", d.RevertTransaction.GetMetadata())
 	case *raftcmdpb.LedgerApplyOrder_AddMetadata:
-		return validateMetadataMap(d.AddMetadata.GetMetadata())
+		return walk.visitMap("", d.AddMetadata.GetMetadata())
 	case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
-		return domain.ValidateMetadataKey(d.DeleteMetadata.GetKey())
+		return walk.visitKey(d.DeleteMetadata.GetKey())
 	case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType:
-		return domain.ValidateMetadataKey(d.SetMetadataFieldType.GetKey())
+		return walk.visitKey(d.SetMetadataFieldType.GetKey())
 	case *raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType:
-		return domain.ValidateMetadataKey(d.RemoveMetadataFieldType.GetKey())
+		return walk.visitKey(d.RemoveMetadataFieldType.GetKey())
 	default:
 		return nil
 	}
 }
 
-// validateMirrorMetadata validates metadata supplied by mirror ingest orders.
-func validateMirrorMetadata(entry *raftcmdpb.MirrorLogEntry) domain.Describable {
+// walkMirrorMetadata walks the metadata supplied by mirror ingest orders.
+func walkMirrorMetadata(entry *raftcmdpb.MirrorLogEntry, walk metadataWalk) domain.Describable {
 	switch d := entry.GetData().(type) {
 	case *raftcmdpb.MirrorLogEntry_CreatedTransaction:
-		if err := validateMetadataMap(d.CreatedTransaction.GetMetadata()); err != nil {
+		if err := walk.visitMap("", d.CreatedTransaction.GetMetadata()); err != nil {
 			return err
 		}
 
-		for account, mm := range d.CreatedTransaction.GetAccountMetadata() {
-			if mm != nil {
-				if err := validateMetadataMap(mm.GetValues()); err != nil {
-					return &domain.ErrAccountValidation{Account: account, Cause: err}
-				}
-			}
-		}
-
-		return nil
+		return walkAccountMetadata(d.CreatedTransaction.GetAccountMetadata(), walk)
 	case *raftcmdpb.MirrorLogEntry_SavedMetadata:
-		return validateMetadataMap(d.SavedMetadata.GetMetadata())
+		return walk.visitMap("", d.SavedMetadata.GetMetadata())
 	case *raftcmdpb.MirrorLogEntry_RevertedTransaction:
-		return validateMetadataMap(d.RevertedTransaction.GetMetadata())
+		return walk.visitMap("", d.RevertedTransaction.GetMetadata())
 	default:
 		return nil
 	}
+}
+
+// walkAccountMetadata walks the per-account maps of a transaction order. A nil
+// map value carries nothing and is skipped rather than reported: an absent map
+// is not a validation failure.
+func walkAccountMetadata(accountMetadata map[string]*commonpb.MetadataMap, walk metadataWalk) domain.Describable {
+	for account, mm := range accountMetadata {
+		if mm == nil {
+			continue
+		}
+
+		if err := walk.visitMap(account, mm.GetValues()); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateOrderMetadata validates that all metadata keys and values in the order
+// are safe for Pebble key encoding. Shape only — the size contract is enforced
+// per command by validateCommandMetadata, which needs the replicated ceilings.
+func validateOrderMetadata(order *raftcmdpb.Order) domain.Describable {
+	return walkOrderMetadata(order, metadataWalk{
+		visitMap: func(account string, m map[string]*commonpb.MetadataValue) domain.Describable {
+			err := validateMetadataMap(m)
+			if err == nil || account == "" {
+				return err
+			}
+
+			return &domain.ErrAccountValidation{Account: account, Cause: err}
+		},
+		visitKey: domain.ValidateMetadataKey,
+	})
 }
 
 // validateOrderAccountAddresses validates account addresses in non-transaction orders
@@ -483,4 +525,75 @@ func validateMetadataMap(m map[string]*commonpb.MetadataValue) domain.Describabl
 	}
 
 	return nil
+}
+
+// validateCommandMetadata enforces the metadata size contract over a whole
+// command — the batch of orders that becomes one atomic, signed Raft proposal.
+//
+// It is the single admission-side gate for the size ceilings, so direct HTTP,
+// public gRPC, bulk and mirror ingest are all bounded by the same numbers: they
+// converge on requestsToOrders, and every metadata-bearing order shape is
+// reached through walkOrderMetadata.
+//
+// The per-entity ceilings are checked order by order, then the accumulated total
+// against the per-command ceiling — so a caller cannot defeat the per-entity
+// bound by spreading one large payload across many entities in a single command.
+// The limits come from the committed cluster policy, which the FSM reads too, so
+// admission and apply agree on every node.
+func validateCommandMetadata(orders []*raftcmdpb.Order, limits domain.MetadataLimits) error {
+	var total uint64
+
+	for _, order := range orders {
+		if err := validateOrderMetadataLimits(order, limits); err != nil {
+			return &domain.BusinessError{Err: err}
+		}
+
+		total += orderMetadataBytes(order)
+	}
+
+	if err := limits.ValidateCommandBytes(total); err != nil {
+		return &domain.BusinessError{Err: err}
+	}
+
+	return nil
+}
+
+// validateOrderMetadataLimits checks one order's metadata against the per-entity
+// ceilings and the per-key ceiling.
+func validateOrderMetadataLimits(order *raftcmdpb.Order, limits domain.MetadataLimits) domain.Describable {
+	return walkOrderMetadata(order, metadataWalk{
+		visitMap: func(account string, m map[string]*commonpb.MetadataValue) domain.Describable {
+			err := limits.ValidateMap(m)
+			if err == nil || account == "" {
+				return err
+			}
+
+			return &domain.ErrAccountValidation{Account: account, Cause: err}
+		},
+		visitKey: limits.ValidateKey,
+	})
+}
+
+// orderMetadataBytes is the measured metadata size of one order, summed over
+// every map and bare key it carries. Summation is order-independent, so the
+// result does not depend on Go map iteration order.
+func orderMetadataBytes(order *raftcmdpb.Order) uint64 {
+	var total uint64
+
+	// The visitors only accumulate and never fail, so the walk cannot return an
+	// error here.
+	_ = walkOrderMetadata(order, metadataWalk{
+		visitMap: func(_ string, m map[string]*commonpb.MetadataValue) domain.Describable {
+			total += domain.MetadataMapSize(m)
+
+			return nil
+		},
+		visitKey: func(key string) domain.Describable {
+			total += uint64(len(key))
+
+			return nil
+		},
+	})
+
+	return total
 }

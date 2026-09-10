@@ -229,6 +229,7 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -280,6 +281,7 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -401,6 +403,7 @@ func TestProcessOrders_OrdersResultAccumulator(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -465,6 +468,7 @@ func TestProcessOrders_SkipOnReferenceConflict(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -575,6 +579,7 @@ func TestProcessOrders_OrdersResultEmpty(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -602,6 +607,7 @@ func TestProcessOrders_MirrorReplayEmitsNoLog(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 

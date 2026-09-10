@@ -19,8 +19,10 @@ The complementary rule is in [`feedback_admission_structural_fsm_invariant`](../
 |------|-----------|-----|-------|
 | Account address shape (length, allowed chars) | ✅ | — | `ValidateAccountAddress` (`internal/domain/validation.go`). |
 | Asset code shape and precision range | ✅ | — | `ValidateAsset`. Precision encoded as `uint8` in Pebble keys; admission ensures it fits. |
-| Metadata key shape (no null byte, ≤ size limit) | ✅ | — | `ValidateMetadataKey`. Null bytes would break Pebble key boundaries. |
-| Metadata value shape | ✅ | — | `ValidateMetadataValue`. |
+| Metadata key shape (non-empty, charset `[a-zA-Z0-9._:/-]`) | ✅ | — | `ValidateMetadataKey`. Characters outside the set — a null byte above all — would break Pebble key boundaries. Shape only: the key's *size* is a separate rule, below. |
+| Metadata value shape (no null byte) | ✅ | — | `ValidateMetadataValue`. |
+| Metadata size: entry count, key bytes, value bytes, per-entity bytes, per-command bytes | ✅ | — | `validateCommandMetadata` against the ceilings in the committed cluster policy (`domain.MetadataLimits`). Covers HTTP, public gRPC, bulk and mirror ingest — they all converge on the same gate. See [metadata limits](metadata-limits.md). |
+| Metadata size of the map Numscript merges into the caller's | — | ✅ | `processCreateTransaction` re-checks the *merged* transaction and per-account maps. Admission cannot: the union of caller metadata and `set_tx_meta` / `set_account_meta` output only exists after the script runs. |
 | Ledger name shape (no null, printable ASCII, ≤ `dal.LedgerNameFixedSize`) | ✅ | — | `ValidateLedgerName`. The fixed size matters because ledger names pad into Pebble keys. |
 | Idempotency key (UTF-8, ≤ 256 bytes) | ✅ | — | The *uniqueness* of the key is checked at FSM time against `SubIdempKeys`; the *shape* is checked at admission. |
 | Numscript parses + dependency analysis | ✅ | — | `DiscoverNumscriptDependencies` in admission. Syntax errors caught here. |

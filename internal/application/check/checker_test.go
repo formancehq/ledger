@@ -688,12 +688,25 @@ func (s *scopeImpl) PutReverted(key domain.TransactionKey, reverted bool) {
 	s.reverted[string(key.Bytes())] = reverted
 }
 
-func (s *scopeImpl) AddSigningKey(_ string, _ []byte, _ string)                {}
-func (s *scopeImpl) RemoveSigningKey(_ string)                                 {}
-func (s *scopeImpl) GetSigningKeyChildren(_ string) []string                   { return nil }
-func (s *scopeImpl) SetRequireSignatures(_ bool)                               {}
-func (s *scopeImpl) SetMaintenanceMode(_ bool)                                 {}
-func (s *scopeImpl) GetClusterPolicy() *commonpb.ClusterPolicy                 { return &commonpb.ClusterPolicy{} }
+func (s *scopeImpl) AddSigningKey(_ string, _ []byte, _ string) {}
+func (s *scopeImpl) RemoveSigningKey(_ string)                  {}
+func (s *scopeImpl) GetSigningKeyChildren(_ string) []string    { return nil }
+func (s *scopeImpl) SetRequireSignatures(_ bool)                {}
+func (s *scopeImpl) SetMaintenanceMode(_ bool)                  {}
+
+// Replay applies the same orders the FSM applied, so it needs the same
+// committed policy: apply reads the metadata ceilings from it.
+func (s *scopeImpl) GetClusterPolicy() *commonpb.ClusterPolicy {
+	return &commonpb.ClusterPolicy{
+		Revision:                    1,
+		QueryCheckpointLimit:        10,
+		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
+		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
+		MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
+		MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
+		MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
+	}
+}
 func (s *scopeImpl) SetClusterPolicy(_ *commonpb.ClusterPolicy)                {}
 func (s *scopeImpl) GetSinkConfig(_ string) (commonpb.SinkConfigReader, error) { return nil, nil }
 
