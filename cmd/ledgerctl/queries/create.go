@@ -92,9 +92,13 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return cmdutil.Displayed(err)
 	}
 
-	_, err = client.Apply(ctx, applyReq)
+	resp, err := client.Apply(ctx, applyReq)
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to create prepared query", err)
+	}
+
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
+		return fmt.Errorf("response signature verification failed: %w", err)
 	}
 
 	pterm.Success.Printfln("Prepared query %q created for ledger %q", name, ledgerName)

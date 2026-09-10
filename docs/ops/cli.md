@@ -3963,6 +3963,11 @@ ledger run --response-signing-key ./response-keys/seed.hex [other flags...]
 ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create --ledger my-ledger --posting "world,bank,1000,USD"
 ```
 
+With `--response-verify-key`, prepared query create/update/delete and query
+checkpoint create/delete verify the returned Apply log signatures before
+reporting success or reading the created checkpoint ID. Missing or invalid
+signatures cause the command to fail.
+
 Clients can also discover the server's public key via the `Discovery` RPC.
 
 ---
