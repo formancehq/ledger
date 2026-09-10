@@ -97,7 +97,7 @@ Three paths need correlated server-side diagnostics because the raw value can co
 
 1. **Panic recovery** (`jsonRecoverer`) — a panic in any handler.
 2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Describable` or a known sentinel.
-3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply public messages (`index is inconsistent` and `preload coverage miss`) that omit internal identifiers and storage details, including when wrapped. Other recognized error presentations are unchanged.
+3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply public messages (`index is inconsistent` and `preload coverage miss`) that omit internal identifiers and storage details, including when wrapped. Other recognized errors retain their type-owned message, with outer diagnostic prefixes omitted.
 
 Type-owned public details are selected through `domain.PublicErrorDetails` at the response boundary. Diagnostic `Error()` and `Metadata()` values remain unchanged, including the coverage failure context in the authoritative audit chain.
 
@@ -146,13 +146,15 @@ of excluded codes: **everything else passes through unchanged**. That covers
 three groups.
 
 - A **bare** `codes.Canceled`, because the cursor layer keys end-of-stream
-  detection off it and normalises it to `io.EOF`. The ledger `ErrorInfo` is
+  detection off it: caller cancellation becomes `io.EOF`, while a live caller
+  sees `Unavailable` for a failed transfer. The ledger `ErrorInfo` is
   still decoded first: no `ErrorKind` maps to `codes.Canceled`, so a reason
   this build knows arriving under it is a contradiction, and answering the
   status before the decode would exempt the one code with no legitimate reason
   from the mismatch policy below and hand the peer's message to the client.
-  Pagination is unaffected either way — a reconstructed value keeps answering
-  `GRPCStatus()` with the received `Canceled` status.
+  A decoded unknown reason carried by `Canceled` retains its full status through
+  both cursor implementations, even after caller teardown. `grpcerr.OriginalStatus`
+  identifies that decoded failure before the raw cancellation policy runs.
 - A **bare** status of any code — no ledger `ErrorInfo`, so no reason to
   recover. A bare `codes.Unavailable` already reaches the right outcome
   (`handleError` answers that code with `503` + `Retry-After` on its own);
@@ -175,6 +177,13 @@ The HTTP layer needs no status-code branch of its own: both mappers read the
 failure through `apierr.Describe`, which answers identically for a locally
 raised error and a decoded one, so a follower answers with the same status and
 `errorCode` as the leader and the bulk path is repaired by the same change.
+
+At a subsequent gRPC hop, the server uses `grpcerr.OriginalStatus` before generic
+status conversion. This preserves the sender's message and all status details
+even when routing has wrapped the error with diagnostic context. The helper
+recognizes only this decoder's reconstructed errors; invalid pairs and foreign
+or raw transport statuses retain their existing handling. The originating
+server's `PublicErrorDetails` selection is preserved rather than re-created.
 
 The decorator wraps the connection rather than the generated client's 37
 methods (11 of them server-streaming), because six of the `BucketGrpcClient`
@@ -207,13 +216,15 @@ kind would yield `KindInternal` and answer `500` for what the sender classified
 as a caller error.
 
 `Message` and `Metadata` are the client-safe presentation, not the diagnostic
-identity: a locally raised failure is read through `domain.PublicErrorDetails`,
-so a type that owns a separate public presentation (EN-1623) reaches a surface
-redacted, and `Descriptor.PublicOverride` tells the surface to render `Message`
-in place of the wrapped chain that presentation exists to withhold. A decoded
-failure needs no such selection — the sender applied it before serialising — so
-`PublicOverride` is false for an `*apierr.Remote` and the consumer keeps
-rendering its own outer context, exactly as it did before the hop.
+identity. A locally raised failure uses `domain.PublicErrorDetails` when its
+type owns a separate public presentation (EN-1623); otherwise its describable
+message is used. A decoded failure already contains the sender's selection.
+Both unitary and bulk HTTP responses render the descriptor's message rather
+than outer routing or Raft context, so local and forwarded failures have the
+same public text. `Descriptor.PublicOverride` still identifies a separate
+type-owned public presentation. Recognized internal failures retain their
+status and reason; unmapped errors, invalid wire pairs and panics retain the
+generic correlation-ID response.
 
 `apierr` imports `internal/domain` and nothing else, so HTTP reads a decoded
 failure without linking any gRPC detail. The reverse direction is a layering

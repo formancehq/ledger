@@ -58,8 +58,9 @@ type clientStream struct {
 }
 
 // RecvMsg converts the receive error. io.EOF (a normal stream end) is not a
-// status and passes through untouched, as does the codes.Canceled that
-// internal/adapter/grpc/cursor.go normalises into io.EOF.
+// status and passes through untouched. Bare Canceled statuses also remain raw
+// for the cursor's caller-cancellation policy; decoded Ledger failures retain
+// their original status through that policy.
 func (s *clientStream) RecvMsg(m any) error {
 	return FromStatusError(s.ClientStream.RecvMsg(m))
 }

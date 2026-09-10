@@ -31,6 +31,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apitrace"
+	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
@@ -515,6 +516,12 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 }
 
 func convertToGRPCErrorWithContext(ctx context.Context, err error, logger logging.Logger) error {
+	// Re-emit decoded statuses verbatim: outer routing context is diagnostic,
+	// not part of the upstream public message.
+	if st := grpcerr.OriginalStatus(err); st != nil {
+		return st.Err()
+	}
+
 	// Already a gRPC status error, return as-is
 	if _, ok := status.FromError(err); ok {
 		return err

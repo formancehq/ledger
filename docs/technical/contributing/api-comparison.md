@@ -976,7 +976,18 @@ The decoded representation lives at the adapter boundary by design, not in `inte
 
 **Mismatch policy.** A reason ledger knows is a reason whose legitimate wire codes it knows: `CodeForKind(KindForReason(reason))`, today exactly one code, since every enum reason is encoded through `describableToGRPCStatus` and nothing else. Validation stays reason-keyed rather than kind-keyed so a reason that must travel under a second code can be widened alone. A known reason arriving under a code outside that set is a protocol fault, not a business outcome: every consumer branches on `apierr.InvalidWire` and answers its own internal-error representation — `500 INTERNAL_ERROR` + correlation ID on REST (unitary *and* per bulk element), `codes.Unknown` + correlation ID on gRPC, the invalid-pair message on `ledgerctl` — so the received message and metadata are dropped rather than echoed as trusted business information. An unknown reason cannot be validated and is preserved verbatim — reason, message, metadata and exact status.
 
+On internal forwarding hops, `grpcerr.OriginalStatus` preserves decoded statuses
+through outer error wrappers and before cursor cancellation normalization. The
+original code, public message, and every status detail survive the hop; raw
+transport cancellation still follows the caller-context policy. Regression
+tests cover both production cursor types, wrapped repeated hops, exact REST/bulk
+message parity, and complete gRPC status parity between leader and followers.
+Unitary and bulk HTTP responses use the descriptor message for recognized
+public errors, omitting outer routing or Raft prefixes on both local and
+forwarded paths; internal-error sanitization remains in force.
+
 **Client-side usage (Go):**
+
 ```go
 import (
     "google.golang.org/genproto/googleapis/rpc/errdetails"
