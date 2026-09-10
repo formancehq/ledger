@@ -395,7 +395,7 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 // declared on a born-empty ledger), there is no local history to replay — the
 // index is promoted straight to live at HighWater+1 and NO backfill is scheduled.
 //
-// Idempotency: when the same CreateIndex is replayed (or re-submitted) against
+// Log replay idempotency: when the same CreatedIndexLog is folded again against
 // an index this replica has already promoted to live, we skip the reset and
 // backfill scheduling so the builder does not redo work that has already
 // completed — and, more importantly, does not knock a live index back into
@@ -410,12 +410,12 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 
 	// The per-replica readiness signal is IndexVersionState.CurrentVersion
 	// (EN-1323). If this replica has already promoted the index to live
-	// (current != 0), a repeated CreatedIndexLog — a duplicate CreateIndex
-	// re-emitted by the processor, or an apply replay — must be a no-op:
-	// allocating a new pending version and rescheduling a backfill would
+	// (current != 0), a repeated CreatedIndexLog during replay must be a no-op.
+	// Allocating a new pending version and rescheduling a backfill would
 	// flip an already-live index back to ErrIndexBuilding. This mirrors the
 	// loadIndexRegistry boot guard and covers both the EN-1564 initial fast
-	// path and the normal post-backfill live state.
+	// path and the normal post-backfill live state. Fresh duplicate requests
+	// are rejected by the FSM before emitting a log.
 	if current, pending := b.versionFor(ledgerName, indexes.Canonical(id)); current != 0 {
 		return nil
 	} else if pending != 0 {

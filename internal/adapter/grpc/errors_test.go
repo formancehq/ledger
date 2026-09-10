@@ -86,6 +86,24 @@ func TestBusinessErrorToGRPCStatus_LedgerAlreadyExists(t *testing.T) {
 	require.Equal(t, "my-ledger", info.GetMetadata()["name"])
 }
 
+func TestBusinessErrorToGRPCStatus_IndexAlreadyExists(t *testing.T) {
+	t.Parallel()
+
+	const canonical = "metadata:TARGET_TYPE_ACCOUNT:category"
+	st := businessErrorToGRPCStatus(&domain.BusinessError{Err: &domain.ErrIndexAlreadyExists{Index: canonical}})
+	require.Equal(t, codes.AlreadyExists, st.Code())
+	info := extractErrorInfo(t, st)
+	require.Equal(t, domain.ErrReasonIndexAlreadyExists, info.GetReason())
+	require.Equal(t, errorDomain, info.GetDomain())
+	require.Equal(t, map[string]string{"index": canonical}, info.GetMetadata())
+
+	remote := grpcerr.FromStatusError(st.Err())
+	var describable interface{ Reason() string }
+	require.ErrorAs(t, remote, &describable)
+	require.Equal(t, domain.ErrReasonIndexAlreadyExists, describable.Reason())
+	require.Equal(t, codes.AlreadyExists, status.Code(remote))
+}
+
 func TestBusinessErrorToGRPCStatus_SequenceExhausted(t *testing.T) {
 	t.Parallel()
 

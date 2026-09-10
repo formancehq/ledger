@@ -456,6 +456,12 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"ledger": "main", "name": "missing-query"},
 		},
 		{
+			name:        "IndexAlreadyExists",
+			err:         &domain.ErrIndexAlreadyExists{Index: "metadata:account:invoice"},
+			wantReason:  domain.ErrReasonIndexAlreadyExists,
+			wantContext: map[string]string{"index": "metadata:account:invoice"},
+		},
+		{
 			name:        "IndexNotFound",
 			err:         &domain.ErrIndexNotFound{Index: "main/TRANSACTION/invoice"},
 			wantReason:  domain.ErrReasonIndexNotFound,

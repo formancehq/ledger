@@ -721,7 +721,8 @@ ledgerctl indexes create [flags]
 **Behavior:**
 - The index starts building in the background immediately
 - Queries using the index will be rejected until the index reaches READY status
-- Creating an index that already exists and is READY is idempotent (no error)
+- Creating an index that already exists fails with `INDEX_ALREADY_EXISTS` (gRPC `AlreadyExists`), whether it is building, ready, or being retyped. The existing registry row and build progress remain unchanged.
+- Replaying an identical batch with its retained idempotency key returns the original result; a new create request or a different key is subject to the existence check.
 - `--target` and `--key` are only valid with `--type metadata`; passing them with any other type is rejected. In particular, there is no builtin address index scoped to accounts — `address`, `source-address`, and `destination-address` all index transactions.
 
 **Example:**

@@ -79,12 +79,9 @@ func (r *LedgerReconciler) handleIndexReconcile(ctx context.Context, ledger *led
 // Each ledgerctl invocation runs under its own exec timeout (ledgerExecTimeout)
 // since the reconcile issues several sequential commands.
 func (r *LedgerReconciler) reconcileIndexes(ctx context.Context, ledger *ledgerv1alpha1.Ledger, grpcPort int32) (bool, error) {
-	log := ctrl.LoggerFrom(ctx)
-
 	ns := ledger.Namespace
 	svc := ledger.Spec.ClusterRef
 	pod0 := podName(svc, 0)
-	ledgerName := ledger.Spec.Name
 
 	exec := func(args ...string) (string, error) {
 		execCtx, cancel := context.WithTimeout(ctx, ledgerExecTimeout)
@@ -92,6 +89,13 @@ func (r *LedgerReconciler) reconcileIndexes(ctx context.Context, ledger *ledgerv
 
 		return r.ledgerctlExecOutput(execCtx, ns, svc, pod0, grpcPort, args...)
 	}
+
+	return reconcileIndexesWithExec(ctx, ledger, exec)
+}
+
+func reconcileIndexesWithExec(ctx context.Context, ledger *ledgerv1alpha1.Ledger, exec func(...string) (string, error)) (bool, error) {
+	log := ctrl.LoggerFrom(ctx)
+	ledgerName := ledger.Spec.Name
 
 	// Persist ownership from the changes that actually succeeded, on every
 	// return path. If a create succeeds and a later command fails, the created
@@ -153,7 +157,7 @@ func (r *LedgerReconciler) reconcileIndexes(ctx context.Context, ledger *ledgerv
 	diff := diffIndexes(desired, actual, ledger.Status.AppliedIndexes)
 
 	for _, mi := range diff.toCreate {
-		if _, createErr := exec(mi.createArgs(ledgerName)...); createErr != nil && !isAlreadyExists(createErr) {
+		if _, createErr := exec(mi.createArgs(ledgerName)...); createErr != nil {
 			return false, createErr
 		}
 

@@ -621,7 +621,12 @@ See [Idempotency](../architecture/subsystems/admission/idempotency.md) for detai
 local `IndexVersionState` (`current_version`, `pending_version`), not
 by a cluster-wide flag.
 
-- `CreateIndex` registers the index at `forward_encoding_version = 1`
+- `CreateIndex` is strict: an existing `(ledger, canonical IndexID)` fails
+  with `INDEX_ALREADY_EXISTS` (HTTP `409`, gRPC `AlreadyExists`), including
+  while building or retyping. The registry and local build state remain
+  unchanged. Retained batch-idempotency replay keeps returning its original
+  result.
+- `CreateIndex` registers a new index at `forward_encoding_version = 1`
   and each replica starts a local backfill. When the backfill catches
   up to the global indexer cursor, the replica performs a local atomic
   switch (`current_version` 0 → 1) in a single Pebble batch. There is

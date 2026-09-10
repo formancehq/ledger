@@ -1504,8 +1504,9 @@ func TestHandleCreatedIndexLog_DuplicateAfterLive_IsIdempotent(t *testing.T) {
 	require.Equal(t, uint32(1), current)
 	require.Equal(t, uint32(0), pending)
 
-	// A duplicate CreateIndex — re-emitted by the processor as initial=false once
-	// the ledger is no longer born-empty — must be a no-op on this live replica.
+	// A repeated CreatedIndexLog with initial=false must be a no-op on this
+	// live replica. Fresh duplicate requests are rejected by the FSM; this
+	// regression retains the builder guard for repeated log processing.
 	second := b.readStore.NewBatch()
 	b.initBatch(second)
 	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: false}))

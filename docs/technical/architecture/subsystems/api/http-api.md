@@ -646,7 +646,7 @@ Content-Type: application/json
 }
 ```
 
-Returns `201 Created` once the FSM has queued the backfill. Poll `GET /v3/{ledgerName}/indexes/{canonicalId}/status` and wait for `currentVersion > 0` with `pendingVersion == 0` before running queries that need it. After a *retype*, the pre-retype keyspace stays live, so capture `currentVersion` before issuing the change and wait until it has advanced past that value with `pendingVersion == 0` (per-replica version numbers are local and not comparable to `forwardEncodingVersion`).
+Returns `201 Created` once the FSM has accepted creation. If the canonical index already exists on the ledger, returns `409 Conflict` with `errorCode: "INDEX_ALREADY_EXISTS"`, including while building or retyping. The existing index remains unchanged. An identical batch replay using its retained `Idempotency-Key` returns the original result. Poll `GET /v3/{ledgerName}/indexes/{canonicalId}/status` and wait for `currentVersion > 0` with `pendingVersion == 0` before running queries that need it. After a *retype*, the pre-retype keyspace stays live, so capture `currentVersion` before issuing the change and wait until it has advanced past that value with `pendingVersion == 0` (per-replica version numbers are local and not comparable to `forwardEncodingVersion`).
 
 #### List indexes on a ledger
 

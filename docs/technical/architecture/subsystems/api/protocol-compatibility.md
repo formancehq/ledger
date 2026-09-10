@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"5"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"6"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -49,6 +49,12 @@ Restore mode does not register Discovery: its service gate provides the
 compatibility error without requiring a preliminary Discovery call, while
 health and reflection remain exempt.
 
+Revision 6 (EN-2009) makes fresh `CreateIndex` requests strict: an existing
+ledger/canonical index identity returns `INDEX_ALREADY_EXISTS` (`AlreadyExists`)
+instead of overwriting the registry. Retained batch idempotency retries still
+return the frozen outcome. This incompatible semantic change requires matching
+clients and servers; apply semantics must agree across every replica.
+
 Revision 5 (EN-1623) removes internal index/coverage details from public
 error messages and ErrorInfo metadata while retaining their reasons and status
 codes. Internal read failures in restore validation retain `Internal` with a
@@ -67,10 +73,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 5:
+leader. For example, with a schema implementing revision 6:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 5' \
+grpcurl -plaintext -H 'ledger-protocol-version: 6' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 

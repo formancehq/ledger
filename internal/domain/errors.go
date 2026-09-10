@@ -214,6 +214,7 @@ const (
 	ErrReasonLedgerNotInMirrorMode         = "LEDGER_NOT_IN_MIRROR_MODE"
 	ErrReasonPreparedQueryAlreadyExists    = "PREPARED_QUERY_ALREADY_EXISTS"
 	ErrReasonPreparedQueryNotFound         = "PREPARED_QUERY_NOT_FOUND"
+	ErrReasonIndexAlreadyExists            = "INDEX_ALREADY_EXISTS"
 	ErrReasonIndexNotFound                 = "INDEX_NOT_FOUND"
 	ErrReasonIndexBuilding                 = "INDEX_BUILDING"
 	ErrReasonIndexInconsistent             = "INDEX_INCONSISTENT"
@@ -933,6 +934,17 @@ func (e *ErrPreparedQueryNotFound) Error() string {
 func (*ErrPreparedQueryNotFound) Reason() string { return ErrReasonPreparedQueryNotFound }
 func (e *ErrPreparedQueryNotFound) Metadata() map[string]string {
 	return map[string]string{"ledger": e.Ledger, "name": e.Name}
+}
+
+// ErrIndexAlreadyExists — a fresh creation targets an existing index.
+type ErrIndexAlreadyExists struct {
+	Index string
+}
+
+func (e *ErrIndexAlreadyExists) Error() string { return "index already exists: " + e.Index }
+func (*ErrIndexAlreadyExists) Reason() string  { return ErrReasonIndexAlreadyExists }
+func (e *ErrIndexAlreadyExists) Metadata() map[string]string {
+	return map[string]string{"index": e.Index}
 }
 
 // ErrIndexNotFound — query references an index that does not exist.

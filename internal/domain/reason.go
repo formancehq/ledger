@@ -99,6 +99,7 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_FOUND:
 		return KindNotFound
 	case commonpb.ErrorReason_ERROR_REASON_LEDGER_ALREADY_EXISTS,
+		commonpb.ErrorReason_ERROR_REASON_INDEX_ALREADY_EXISTS,
 		commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT,
 		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 		commonpb.ErrorReason_ERROR_REASON_SINK_ALREADY_EXISTS,
