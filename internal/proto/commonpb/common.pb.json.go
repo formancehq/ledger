@@ -335,6 +335,9 @@ func logMetadataTargetID(target *Target) (any, error) {
 
 		return v.Account.GetAddr(), nil
 	case *Target_TransactionId:
+		if v == nil {
+			return nil, errors.New("missing metadata transaction target")
+		}
 		return v.TransactionId, nil
 	default:
 		return nil, errors.New("missing metadata target")

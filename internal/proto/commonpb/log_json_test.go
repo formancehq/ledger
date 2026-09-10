@@ -213,3 +213,18 @@ func TestMetadataJSONRejectsNilAccount(t *testing.T) {
 		})
 	}
 }
+
+func TestMetadataJSONRejectsNilTransaction(t *testing.T) {
+	t.Parallel()
+	target := &commonpb.Target{Target: (*commonpb.Target_TransactionId)(nil)}
+	for name, message := range map[string]json.Marshaler{
+		"saved":   &commonpb.SavedMetadata{Target: target},
+		"deleted": &commonpb.DeletedMetadata{Target: target},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := message.MarshalJSON()
+			require.EqualError(t, err, "missing metadata transaction target")
+		})
+	}
+}
