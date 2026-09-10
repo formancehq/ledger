@@ -46,6 +46,7 @@ type KafkaSinkConfig struct {
 
 // KafkaSink publishes events to Apache Kafka.
 type KafkaSink struct {
+	errors   sinkErrorSanitizer
 	producer sarama.AsyncProducer
 	topic    string
 	format   Format
@@ -58,7 +59,9 @@ type KafkaSink struct {
 }
 
 // NewKafkaSink creates a new Kafka sink.
-func NewKafkaSink(cfg KafkaSinkConfig) (*KafkaSink, error) {
+func NewKafkaSink(cfg KafkaSinkConfig) (result *KafkaSink, retErr error) {
+	sanitizer := newSinkErrorSanitizer(nil, cfg.SASLPassword)
+	defer sanitizer.finish(&retErr)
 	saramaCfg := sarama.NewConfig()
 	saramaCfg.Producer.Return.Successes = true
 	saramaCfg.Producer.Return.Errors = true
@@ -80,6 +83,7 @@ func NewKafkaSink(cfg KafkaSinkConfig) (*KafkaSink, error) {
 	}
 
 	sink := &KafkaSink{
+		errors:   sanitizer,
 		producer: producer,
 		topic:    cfg.Topic,
 		format:   cfg.Format,
@@ -92,7 +96,8 @@ func NewKafkaSink(cfg KafkaSinkConfig) (*KafkaSink, error) {
 	return sink, nil
 }
 
-func (s *KafkaSink) Publish(ctx context.Context, events []*eventspb.Event) error {
+func (s *KafkaSink) Publish(ctx context.Context, events []*eventspb.Event) (retErr error) {
+	defer s.errors.finish(&retErr)
 	if !s.beginPublish() {
 		return kafkaSinkClosedError()
 	}
@@ -140,13 +145,19 @@ func (s *KafkaSink) Publish(ctx context.Context, events []*eventspb.Event) error
 	}
 
 	if len(producerErrs) > 0 {
-		return producerErrs
+		messages := make([]string, 0, len(producerErrs))
+		for _, failure := range producerErrs {
+			messages = append(messages, fmt.Sprintf("delivering to topic %s: %v", failure.Msg.Topic, failure.Err))
+		}
+
+		return &sinkDiagnosticError{message: strings.Join(messages, "; "), cause: producerErrs}
 	}
 
 	return nil
 }
 
-func (s *KafkaSink) Close() error {
+func (s *KafkaSink) Close() (retErr error) {
+	defer s.errors.finish(&retErr)
 	shouldClose := false
 
 	s.closeMu.Lock()
