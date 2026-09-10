@@ -289,11 +289,15 @@ func (fsm *Machine) applyIdempotencyEviction(batch *dal.WriteSession, eviction *
 	}
 
 	// Advance the eviction high-water cutoff and persist it in the same batch as
-	// the deletions above. Every outcome with expires_at <= this cutoff has been
-	// evicted (across ticks), so the preload re-injection gate reads it to reject
-	// a resurrected outcome. Written even when this batch deleted nothing (a
-	// scheduler retry): the frontier reflects what the leader has scanned, not
-	// what this single apply removed.
+	// the deletions above. This cutoff is the leader's wall-clock scan horizon,
+	// not a frontier below which every outcome is already evicted: a tick that
+	// finds more than maxEvictionBatchSize expired entries advances it to the
+	// full "now" but evicts only the first batch, leaving the rest live below the
+	// cutoff until a later tick. The preload re-injection gate consults it only
+	// as a skip hint; its correctness rests on the map-superset invariant (a
+	// still-live outcome is always present in Registry.Idempotency), not on this
+	// cutoff being an exact eviction frontier. Written even when this batch
+	// deleted nothing (a scheduler retry).
 	if cutoff := eviction.GetCutoffMicros(); cutoff > fsm.State.LastIdempotencyEvictionCutoff {
 		fsm.State.LastIdempotencyEvictionCutoff = cutoff
 

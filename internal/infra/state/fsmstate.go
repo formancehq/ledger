@@ -26,11 +26,14 @@ type FSMState struct {
 	LastAppliedTimestamp uint64
 	SnapshotIndex        uint64
 
-	// LastIdempotencyEvictionCutoff is the monotonic high-water cutoff
+	// LastIdempotencyEvictionCutoff is the monotonic high-water scan horizon
 	// (wall-clock microseconds — the leader's eviction cutoff, not an HLC
-	// timestamp) of every applied IdempotencyEviction. An outcome whose
-	// expires_at is at or below it has been evicted; the preload re-injection
-	// gate reads it to avoid resurrecting an evicted outcome.
+	// timestamp) of every applied IdempotencyEviction. It bounds what the leader
+	// has scanned, not what is provably evicted: entries beyond one tick's
+	// maxEvictionBatchSize stay live below the cutoff until a later tick. The
+	// preload re-injection gate reads it only to skip re-injecting an
+	// already-scanned outcome; a still-live one is always in Registry.Idempotency,
+	// so that skip is a no-op (see applyIdempotencyEviction).
 	LastIdempotencyEvictionCutoff uint64
 
 	// Sequence counters bumped on every apply.
