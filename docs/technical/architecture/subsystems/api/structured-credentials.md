@@ -79,9 +79,10 @@ repeated messages and message-valued maps. Empty secrets stay empty. Unknown
 wire fields are discarded from the public copy because their confidentiality
 cannot be established from the schema. Original values remain unchanged.
 
-Sensitivity is declared on credential fields and diagnostic messages that may
-embed credentials. Types used exclusively as inputs carry no sensitivity
-annotations:
+Sensitivity is declared on credential fields and mirror diagnostics that may
+embed credentials. Sink adapters sanitize their errors before persistence;
+`SinkError.message` remains visible so clients retain useful failure diagnostics.
+Types used exclusively as inputs carry no sensitivity annotations:
 configuration responses use operational messages before masking. Shared
 input/output types, such as Kafka and Databricks configurations, retain their
 annotations because they are also exposed in public views. URL query values and
@@ -109,6 +110,7 @@ original evidence. Configuration and log masking alone do not close this path.
 - Normalization is deterministic and leaves accepted input and signed bytes
   unchanged; live logs and stored configs contain structured values.
 - Binary gRPC, HTTP and CLI structured output mask annotated secrets, including
-  nested options, diagnostic messages and checkpoint reads.
+  nested options, mirror diagnostics and checkpoint reads. Sanitized sink
+  diagnostics remain visible.
 - A non-empty post-checkpoint delta proves logical live/restore parity, including
   sink removal, and passes the current checker without claiming its future scope.
