@@ -830,9 +830,14 @@ func (c *Checker) sampleTxFilterSeeds(ledger string) txFilterSeeds {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	return txFilterSeedsOf(c.modelState.Ledger(ledger))
+}
+
+// txFilterSeedsOf is the lock-free core of sampleTxFilterSeeds, for callers
+// that already hold a committed state snapshot (the bulk generator).
+func txFilterSeedsOf(ls oracle.LedgerState) txFilterSeeds {
 	var seeds txFilterSeeds
 
-	ls := c.modelState.Ledger(ledger)
 	for ref := range ls.TxByRef().All() {
 		seeds.refs = append(seeds.refs, ref)
 		if len(seeds.refs) == 4 {

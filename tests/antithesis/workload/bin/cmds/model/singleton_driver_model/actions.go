@@ -140,6 +140,16 @@ func generateBulk(g oracle.GlobalState, ledgers []string) oracle.Bulk {
 		}
 	}
 
+	// A prepared-query registry op is likewise its own single-request bulk: the
+	// registry is ledger-scoped, and keeping the lifecycle a clean sequence of
+	// committed create/update/delete orders is what lets an execution read
+	// validate against a candidate base's stored definition.
+	if len(picks) == 1 && rollPreparedQueryOp() {
+		if req := generatePreparedQueryOp(g, picks[0]); req != nil {
+			return oracle.Bulk{Requests: []*servicepb.Request{req}}
+		}
+	}
+
 	size := bulkSize()
 	requests := make([]*servicepb.Request, 0, size)
 

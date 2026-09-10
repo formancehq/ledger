@@ -95,6 +95,13 @@ type LedgerState struct {
 	// linearizable read issued after the drop's response observes it gone).
 	indexes Map[string, bool]
 
+	// preparedQueries is the ledger's prepared-query registry, keyed by name.
+	// The value is the stored definition (name, target, filter) — the exact
+	// shape ListPreparedQueries returns and ExecutePreparedQuery compiles. The
+	// registry is part of the state's identity: two bases differing only in a
+	// query's stored filter predict different execution windows.
+	preparedQueries Map[string, *commonpb.PreparedQuery]
+
 	// logs is the ledger's log stream: index i holds the log with ledger-local
 	// id i+1, dense from 1, mirroring the server's LedgerBoundaries.NextLogId
 	// (initialised to 1 at CreateLedger, so the first apply lands on 1). Every
@@ -155,10 +162,11 @@ func NewLedgerState() LedgerState {
 		txByRef:               NewMap[string, int](stringComparer{}, txRefTerm),
 		transactionFieldTypes: NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("TF")),
 
-		indexes:       NewMap[string, bool](stringComparer{}, indexTerm),
-		retypeWindows: NewMap[string, uint32](stringComparer{}, retypeWindowTerm),
-		logs:          NewList[*logRecord](logTerm),
-		everAsset:     NewMap[assetTouch, struct{}](assetTouchComparer{}, assetTouchTerm),
+		indexes:         NewMap[string, bool](stringComparer{}, indexTerm),
+		preparedQueries: NewMap[string, *commonpb.PreparedQuery](stringComparer{}, preparedQueryTerm),
+		retypeWindows:   NewMap[string, uint32](stringComparer{}, retypeWindowTerm),
+		logs:            NewList[*logRecord](logTerm),
+		everAsset:       NewMap[assetTouch, struct{}](assetTouchComparer{}, assetTouchTerm),
 	}
 }
 
@@ -176,7 +184,7 @@ func (s *LedgerState) collections() []interface {
 	}{
 		s.types, s.volumes, s.metadata, s.ledgerMeta,
 		s.accountFieldTypes, s.ledgerFieldTypes, s.transactionFieldTypes,
-		s.txs, s.indexes, s.everAsset, s.logs, s.retypeWindows,
+		s.txs, s.indexes, s.preparedQueries, s.everAsset, s.logs, s.retypeWindows,
 	}
 }
 
@@ -288,6 +296,17 @@ func indexTerm(canonical string, active bool) Digest {
 	t := newTerm("IX")
 	t.str(canonical)
 	t.boolean(active)
+
+	return t.sum()
+}
+
+// preparedQueryTerm fingerprints one prepared-query registry entry over the
+// stored definition's deterministic encoding, so a filter rewrite (the only
+// thing an update changes) yields a different term. Two bases differing only
+// in a stored filter predict different execution windows and must not dedup.
+func preparedQueryTerm(name string, pq *commonpb.PreparedQuery) Digest {
+	t := newTerm("PQ")
+	t.str(name, string(pq.MarshalDeterministicVT(nil)))
 
 	return t.sum()
 }
@@ -720,6 +739,12 @@ func LedgerOf(req *servicepb.Request) string {
 		return r.CreateIndex.GetLedger()
 	case *servicepb.Request_DropIndex:
 		return r.DropIndex.GetLedger()
+	case *servicepb.Request_CreatePreparedQuery:
+		return r.CreatePreparedQuery.GetLedger()
+	case *servicepb.Request_UpdatePreparedQuery:
+		return r.UpdatePreparedQuery.GetLedger()
+	case *servicepb.Request_DeletePreparedQuery:
+		return r.DeletePreparedQuery.GetLedger()
 	default:
 		panic(fmt.Sprintf("LedgerOf: unmodeled request type %T", req.GetType()))
 	}
@@ -951,6 +976,15 @@ func logKindFor(req *servicepb.Request) string {
 		return "create_index"
 	case *servicepb.Request_DropIndex:
 		return "drop_index"
+	case *servicepb.Request_CreatePreparedQuery,
+		*servicepb.Request_UpdatePreparedQuery,
+		*servicepb.Request_DeletePreparedQuery:
+		// Prepared-query orders return a TOP-LEVEL LogPayload arm
+		// (created/updated/deleted_prepared_query), not the Apply arm, so like
+		// ledger metadata they take no ledger-local log id and never appear in
+		// ListLogs. Naming a kind here would consume an id and shift every
+		// subsequent log's id past the server's.
+		return ""
 	case *servicepb.Request_Apply:
 		switch r.Apply.GetAction().GetData().(type) {
 		case *servicepb.LedgerAction_CreateTransaction:
@@ -1234,6 +1268,15 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 
 	case *servicepb.Request_DropIndex:
 		return s.applyDropIndex(r.DropIndex)
+
+	case *servicepb.Request_CreatePreparedQuery:
+		return s.applyCreatePreparedQuery(r.CreatePreparedQuery)
+
+	case *servicepb.Request_UpdatePreparedQuery:
+		return s.applyUpdatePreparedQuery(r.UpdatePreparedQuery)
+
+	case *servicepb.Request_DeletePreparedQuery:
+		return s.applyDeletePreparedQuery(r.DeletePreparedQuery)
 
 	case *servicepb.Request_Apply:
 		switch a := r.Apply.GetAction().GetData().(type) {
@@ -1733,6 +1776,98 @@ func (s *LedgerState) fieldTypes(target commonpb.TargetType) Map[string, commonp
 	default:
 		return NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("XF"))
 	}
+}
+
+// applyCreatePreparedQuery registers a new prepared query, mirroring
+// processCreatePreparedQuery: payload validation, then ledger load (the caller
+// already routed to an existing ledger), then the duplicate-name check. The
+// validation gates call the very functions the FSM calls, and surface their own
+// Reason, so the two cannot drift.
+//
+// A nil filter is accepted here exactly as the FSM accepts it — only the update
+// path requires one — and executes as the unfiltered universe.
+//
+// The stored definition is cloned so the model never aliases the request
+// message: a later mutation of the submitted proto must not reach committed
+// state.
+func (s *LedgerState) applyCreatePreparedQuery(req *servicepb.CreatePreparedQueryRequest) OrderResult {
+	q := req.GetQuery()
+	if q == nil {
+		return OrderResult{Reason: domain.ErrPreparedQueryRequired.Reason()}
+	}
+
+	if err := domain.ValidatePreparedQueryName(q.GetName()); err != nil {
+		return OrderResult{Reason: err.Reason()}
+	}
+
+	if !domain.IsPreparedQueryExecutableTarget(q.GetTarget()) {
+		return OrderResult{Reason: domain.ErrPreparedQueryTargetUnsupported.Reason()}
+	}
+
+	if err := domain.ValidateFilterForTarget(q.GetFilter(), q.GetTarget()); err != nil {
+		return OrderResult{Reason: err.Reason()}
+	}
+
+	if s.preparedQueries.Has(q.GetName()) {
+		return OrderResult{Reason: domain.ErrReasonPreparedQueryAlreadyExists}
+	}
+
+	s.preparedQueries = s.preparedQueries.Set(q.GetName(), q.CloneVT())
+
+	return OrderResult{OK: true}
+}
+
+// applyUpdatePreparedQuery replaces a stored query's filter, mirroring
+// processUpdatePreparedQuery's order: name validation, existence, then the
+// filter gates. The target is fixed at creation — an update carries no target
+// field and the FSM validates the new filter against the STORED target — so the
+// model keeps it and swaps only the filter.
+func (s *LedgerState) applyUpdatePreparedQuery(req *servicepb.UpdatePreparedQueryRequest) OrderResult {
+	if err := domain.ValidatePreparedQueryName(req.GetName()); err != nil {
+		return OrderResult{Reason: err.Reason()}
+	}
+
+	existing, ok := s.preparedQueries.Get(req.GetName())
+	if !ok {
+		return OrderResult{Reason: domain.ErrReasonPreparedQueryNotFound}
+	}
+
+	// An update replaces the stored filter, so a nil one would silently erase
+	// the definition; the FSM rejects it rather than persisting it.
+	if req.GetFilter() == nil {
+		return OrderResult{Reason: domain.ErrPreparedQueryFilterRequired.Reason()}
+	}
+
+	if !domain.IsPreparedQueryExecutableTarget(existing.GetTarget()) {
+		return OrderResult{Reason: domain.ErrPreparedQueryTargetUnsupported.Reason()}
+	}
+
+	if err := domain.ValidateFilterForTarget(req.GetFilter(), existing.GetTarget()); err != nil {
+		return OrderResult{Reason: err.Reason()}
+	}
+
+	updated := existing.CloneVT()
+	updated.Filter = req.GetFilter().CloneVT()
+	s.preparedQueries = s.preparedQueries.Set(req.GetName(), updated)
+
+	return OrderResult{OK: true}
+}
+
+// applyDeletePreparedQuery removes a stored query, mirroring
+// processDeletePreparedQuery. Unlike DropIndex, deleting an absent query is NOT
+// a no-op: the FSM rejects it with PREPARED_QUERY_NOT_FOUND.
+func (s *LedgerState) applyDeletePreparedQuery(req *servicepb.DeletePreparedQueryRequest) OrderResult {
+	if err := domain.ValidatePreparedQueryName(req.GetName()); err != nil {
+		return OrderResult{Reason: err.Reason()}
+	}
+
+	if !s.preparedQueries.Has(req.GetName()) {
+		return OrderResult{Reason: domain.ErrReasonPreparedQueryNotFound}
+	}
+
+	s.preparedQueries = s.preparedQueries.Delete(req.GetName())
+
+	return OrderResult{OK: true}
 }
 
 // applyDropIndex removes an index. Drop is instantaneous: once this order is in
