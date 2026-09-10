@@ -515,6 +515,8 @@ default. A successful run also requires at least one
 `singleton_driver_model: model outcome verified` assertion hit, emitted only
 after a definitive server outcome reaches model validation. Driver liveness,
 assertion registration, and ledger-setup assertions do not satisfy that gate.
+
+It also requires every coverage sonde to have been satisfied (see below).
 Common tunables (full list in the script header):
 
 | Variable | Meaning |
@@ -526,6 +528,35 @@ Common tunables (full list in the script header):
 | `RESTART_INTERVAL` / `DEAD_TIME` | Cluster restart cadence and how long a killed node stays down. |
 | `COMPACTION_MARGIN` | Raft entries between snapshots; low values force snapshot recovery. |
 | `RESTORE_INTERVAL` | Seconds between backup/restore cycles with `--restore`. |
+
+#### Coverage sondes
+
+A green run proves nothing about a query path it never took. `coverage.go`
+registers one `Sometimes` per index the oracle models — the nine the generator
+churns, plus one per entity target for the metadata-field indexes and one for
+the retype window — and the runner fails when any of them was never satisfied.
+A sonde is satisfied only by a page that the index was needed for AND that the
+oracle verified; a refusal the model predicted proves the lifecycle gate, not
+that the index can answer.
+
+They are `Sometimes` rather than `Reachable` because a `Reachable` hard-wires
+its condition to true and so never produces a failing evaluation for
+Antithesis to steer on. On the platform this gate is redundant: the run
+branches and biases toward unsatisfied sondes, so a reachable path is reached.
+Locally there is one linear trajectory and no guidance, which is what the gate
+covers. A full 300s three-node run satisfies all twelve.
+
+Sonde names are data-driven, so the instrumentor cannot catalogue them; they
+are registered through `assert.AssertRaw`, as `internal/block/block.go` does.
+
+Because these sondes are false by design on most queries, the runner treats
+assertion classes differently: a false `Always` / `AlwaysOrUnreachable` /
+`Unreachable` is a finding, a false `Sometimes` is not. The exception is
+`STRICT_SOMETIMES`, the shared helpers whose `assert.Sometimes(IsTolerated(err),
+...)` probes are invariants wearing the wrong primitive; locally there is no
+fault injection and transients are retried to a definitive outcome, so those
+must hold on every call. `check-repo-invariants` pins that list against its
+call sites.
 
 #### Restore cycles (`--restore`, single node)
 

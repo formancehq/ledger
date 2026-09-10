@@ -537,9 +537,14 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 		}
 	}
 
-	if c.matchesModel(maxTicket, "LOGQUERY", func(base oracle.GlobalState) bool {
+	matched := c.matchesModel(maxTicket, "LOGQUERY", func(base oracle.GlobalState) bool {
 		return logOutcomeLegal(base.Ledger(ledger), ledger, filter, needed, errKind, page, afterSeq, pageSize)
-	}) {
+	})
+
+	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed,
+		matched && errKind == indexedErrNone)
+
+	if matched {
 		if errKind == indexedErrNotReady {
 			assert.Reachable("singleton_driver_model: log query gated on a missing index", internal.Details{"ledger": ledger})
 		} else {

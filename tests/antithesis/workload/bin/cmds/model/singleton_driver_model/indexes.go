@@ -255,7 +255,7 @@ func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, fil
 
 	gotResults := err == nil
 
-	if c.matchesModel(maxTicket, "AQUERY-IDX", func(cand oracle.GlobalState) bool {
+	matched := c.matchesModel(maxTicket, "AQUERY-IDX", func(cand oracle.GlobalState) bool {
 		ls := cand.Ledger(ledger)
 		exists, active := ls.IndexState(assetIndexCanonical)
 
@@ -280,7 +280,12 @@ func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, fil
 		}
 
 		return true
-	}) {
+	})
+
+	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter,
+		map[string]struct{}{assetIndexCanonical: {}}, matched && gotResults)
+
+	if matched {
 		if gotResults {
 			assert.Reachable("singleton_driver_model: asset-index account query served results", internal.Details{"ledger": ledger})
 		} else {
@@ -786,11 +791,16 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 	}
 
 	rejectedIndex := rejectedIndexLabel(err)
-	if c.matchesModel(maxTicket, "TXQUERY-IDX", func(cand oracle.GlobalState) bool {
+	matched := c.matchesModel(maxTicket, "TXQUERY-IDX", func(cand oracle.GlobalState) bool {
 		return indexedQueryOutcomeLegal(cand.Ledger(ledger), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
 			return txWindowMatches(ls, filter, afterID, pageSize, reverse, serverTxs)
 		})
-	}) {
+	})
+
+	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed,
+		matched && errKind == indexedErrNone)
+
+	if matched {
 		switch errKind {
 		case indexedErrNone:
 			assert.Reachable("singleton_driver_model: indexed transaction query served results", internal.Details{"ledger": ledger})
@@ -1157,7 +1167,7 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 	}
 
 	rejectedIndex := rejectedIndexLabel(err)
-	if c.matchesModel(maxTicket, "AQUERY-IDX", func(cand oracle.GlobalState) bool {
+	matched := c.matchesModel(maxTicket, "AQUERY-IDX", func(cand oracle.GlobalState) bool {
 		return indexedQueryOutcomeLegal(cand.Ledger(ledger), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
 			want := accountWindow(ls, filter, cursor, pageSize, reverse)
 			if len(want) != len(serverAccts) {
@@ -1172,7 +1182,12 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 
 			return true
 		})
-	}) {
+	})
+
+	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed,
+		matched && errKind == indexedErrNone)
+
+	if matched {
 		switch errKind {
 		case indexedErrNone:
 			assert.Reachable("singleton_driver_model: indexed account query served results", internal.Details{"ledger": ledger})
