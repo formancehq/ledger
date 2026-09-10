@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -58,8 +59,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to get event sinks", err)
 	}
 
-	resp = redactGetEventsSinksResponse(resp)
-	if handled, err := cmdutil.EncodeStructured(cmd, resp); handled || err != nil {
+	if handled, err := cmdutil.EncodeStructured(cmd, redactGetEventsSinksResponse(resp)); handled || err != nil {
 		return err
 	}
 
@@ -118,19 +118,19 @@ func runList(cmd *cobra.Command, _ []string) error {
 		case *commonpb.SinkConfig_Nats:
 			data = append(data,
 				[]string{"Type", "NATS"},
-				[]string{"URL", s.Nats.GetUrl()},
+				[]string{"Connection", protoCompact(sensitive.Clone(s.Nats))},
 				[]string{"Topic", s.Nats.GetTopic()},
 			)
 		case *commonpb.SinkConfig_Http:
 			data = append(data,
 				[]string{"Type", "HTTP"},
-				[]string{"Endpoint", s.Http.GetEndpoint()},
-				[]string{"Secret", s.Http.GetSecret()},
+				[]string{"Endpoint", protoCompact(sensitive.Clone(s.Http.GetEndpoint()))},
+				[]string{"Secret", redactSecret(s.Http.GetSecret())},
 			)
 		case *commonpb.SinkConfig_Clickhouse:
 			data = append(data,
 				[]string{"Type", "ClickHouse"},
-				[]string{"DSN", s.Clickhouse.GetDsn()},
+				[]string{"Connection", protoCompact(sensitive.Clone(s.Clickhouse.GetConnection()))},
 				[]string{"Table", s.Clickhouse.GetTable()},
 			)
 		case *commonpb.SinkConfig_Kafka:
@@ -144,7 +144,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 				rows = append(rows,
 					[]string{"SASL Mechanism", mech},
 					[]string{"SASL Username", s.Kafka.GetSaslUsername()},
-					[]string{"SASL Password", s.Kafka.GetSaslPassword()},
+					[]string{"SASL Password", redactSecret(s.Kafka.GetSaslPassword())},
 				)
 			}
 
@@ -165,14 +165,14 @@ func runList(cmd *cobra.Command, _ []string) error {
 			case *commonpb.DatabricksSinkConfig_Token:
 				rows = append(rows,
 					[]string{"Auth Mode", "PAT"},
-					[]string{"Token", a.Token},
+					[]string{"Token", redactSecret(a.Token)},
 				)
 			case *commonpb.DatabricksSinkConfig_OauthM2M:
 				rows = append(rows, []string{"Auth Mode", "OAuth M2M"})
 				if a.OauthM2M != nil {
 					rows = append(rows,
 						[]string{"Client ID", a.OauthM2M.GetClientId()},
-						[]string{"Client Secret", a.OauthM2M.GetClientSecret()},
+						[]string{"Client Secret", redactSecret(a.OauthM2M.GetClientSecret())},
 					)
 				}
 			default:

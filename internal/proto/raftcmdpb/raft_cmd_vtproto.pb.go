@@ -14522,7 +14522,7 @@ func (m *AddEventsSinkOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Config == nil {
-				m.Config = &commonpb.SinkConfig{}
+				m.Config = &commonpb.SinkConfigInput{}
 			}
 			if err := m.Config.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -15756,7 +15756,7 @@ func (m *CreateLedgerOrder) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.MirrorSource == nil {
-				m.MirrorSource = &commonpb.MirrorSourceConfig{}
+				m.MirrorSource = &commonpb.MirrorSourceConfigInput{}
 			}
 			if err := m.MirrorSource.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err

@@ -44,14 +44,14 @@ func quietV2Source(t *testing.T) string {
 }
 
 // mirrorLedgerInfo builds a LedgerInfo for a mirror ledger sourced from baseURL.
-func mirrorLedgerInfo(name, baseURL string) *commonpb.LedgerInfo {
+func mirrorLedgerInfo(t *testing.T, name, baseURL string) *commonpb.LedgerInfo {
 	return &commonpb.LedgerInfo{
 		Name: name,
 		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 		MirrorSource: &commonpb.MirrorSourceConfig{
 			LedgerName: "source-ledger",
 			Type: &commonpb.MirrorSourceConfig_Http{
-				Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: baseURL},
+				Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: connectionTestURL(t, baseURL)},
 			},
 		},
 	}
@@ -136,7 +136,7 @@ func TestManager_ReconcileStartsWorkerForMirrorLedger(t *testing.T) {
 	t.Parallel()
 
 	builder, store := newTestBuilder(t)
-	saveLedgerInfo(t, store, mirrorLedgerInfo("mirrored", quietV2Source(t)))
+	saveLedgerInfo(t, store, mirrorLedgerInfo(t, "mirrored", quietV2Source(t)))
 
 	m := newTestManager(t, store, builder)
 	m.OnLeadershipChange(true)
@@ -153,7 +153,7 @@ func TestManager_ReconcileStopsWorkerOnPromotion(t *testing.T) {
 
 	builder, store := newTestBuilder(t)
 	sourceURL := quietV2Source(t)
-	saveLedgerInfo(t, store, mirrorLedgerInfo("promoted", sourceURL))
+	saveLedgerInfo(t, store, mirrorLedgerInfo(t, "promoted", sourceURL))
 
 	m := newTestManager(t, store, builder)
 	m.OnLeadershipChange(true)
@@ -182,13 +182,13 @@ func TestManager_ReconcileStopsWorkerOnDeletion(t *testing.T) {
 
 	builder, store := newTestBuilder(t)
 	sourceURL := quietV2Source(t)
-	saveLedgerInfo(t, store, mirrorLedgerInfo("deleted", sourceURL))
+	saveLedgerInfo(t, store, mirrorLedgerInfo(t, "deleted", sourceURL))
 
 	m := newTestManager(t, store, builder)
 	m.OnLeadershipChange(true)
 	requireWorkerNames(t, m, "deleted")
 
-	info := mirrorLedgerInfo("deleted", sourceURL)
+	info := mirrorLedgerInfo(t, "deleted", sourceURL)
 	info.DeletedAt = &commonpb.Timestamp{Data: 1}
 	saveLedgerInfo(t, store, info)
 
@@ -202,7 +202,7 @@ func TestManager_ReconcileTearsDownOnLeadershipLoss(t *testing.T) {
 	t.Parallel()
 
 	builder, store := newTestBuilder(t)
-	saveLedgerInfo(t, store, mirrorLedgerInfo("mirrored", quietV2Source(t)))
+	saveLedgerInfo(t, store, mirrorLedgerInfo(t, "mirrored", quietV2Source(t)))
 
 	m := newTestManager(t, store, builder)
 	m.OnLeadershipChange(true)
@@ -288,7 +288,7 @@ func TestManager_CoalescedLeadershipFlapReplacesPriorGenerationWorker(t *testing
 	t.Parallel()
 
 	builder, store := newTestBuilder(t)
-	saveLedgerInfo(t, store, mirrorLedgerInfo("mirrored", quietV2Source(t)))
+	saveLedgerInfo(t, store, mirrorLedgerInfo(t, "mirrored", quietV2Source(t)))
 
 	m := newTestManager(t, store, builder)
 	m.OnLeadershipChange(true)

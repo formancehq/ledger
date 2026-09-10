@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -72,7 +73,7 @@ func TestRedactSinkConfig_Databricks_OAuthM2M(t *testing.T) {
 	assert.Equal(t, secretSet, redacted.GetDatabricks().GetOauthM2M().GetClientSecret())
 }
 
-func TestRedactSinkConfig_Databricks_EmptySecretsReportedNone(t *testing.T) {
+func TestRedactSinkConfig_Databricks_EmptySecretsRemainEmpty(t *testing.T) {
 	t.Parallel()
 
 	cfg := &commonpb.SinkConfig{
@@ -83,7 +84,7 @@ func TestRedactSinkConfig_Databricks_EmptySecretsReportedNone(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, secretNone, redactSinkConfig(cfg).GetDatabricks().GetToken())
+	assert.Empty(t, redactSinkConfig(cfg).GetDatabricks().GetToken())
 }
 
 func TestRedactSinkConfig_Http(t *testing.T) {
@@ -92,7 +93,7 @@ func TestRedactSinkConfig_Http(t *testing.T) {
 	cfg := &commonpb.SinkConfig{
 		Type: &commonpb.SinkConfig_Http{
 			Http: &commonpb.HttpSinkConfig{
-				Endpoint: "https://operator:http-password@example.com/hook",
+				Endpoint: &commonpb.ConnectionURL{Scheme: "https", Address: &commonpb.ConnectionAddress{Host: "example.com"}, EscapedPath: "/hook"},
 				Secret:   "hmac-key",
 			},
 		},
@@ -100,20 +101,9 @@ func TestRedactSinkConfig_Http(t *testing.T) {
 
 	redacted := redactSinkConfig(cfg)
 
-	assert.Equal(t, "https://operator:****@example.com/hook", redacted.GetHttp().GetEndpoint())
+	assert.Equal(t, "example.com", redacted.GetHttp().GetEndpoint().GetAddress().GetHost())
+	assert.Equal(t, "/hook", redacted.GetHttp().GetEndpoint().GetEscapedPath())
 	assert.Equal(t, secretSet, redacted.GetHttp().GetSecret())
-}
-
-func TestRedactSinkConfig_HTTPUsernameOnly(t *testing.T) {
-	t.Parallel()
-
-	cfg := &commonpb.SinkConfig{
-		Type: &commonpb.SinkConfig_Http{
-			Http: &commonpb.HttpSinkConfig{Endpoint: "https://operator@example.com/hook"},
-		},
-	}
-
-	assert.Equal(t, "https://operator@example.com/hook", redactSinkConfig(cfg).GetHttp().GetEndpoint())
 }
 
 func TestRedactSinkConfig_Kafka_SASL(t *testing.T) {
@@ -138,46 +128,39 @@ func TestRedactSinkConfig_Kafka_SASL(t *testing.T) {
 	assert.Equal(t, secretSet, redacted.GetKafka().GetSaslPassword())
 }
 
-func TestRedactSinkConfig_ClickHouse_DSNObfuscated(t *testing.T) {
+func TestRedactSinkConfig_ClickHouse_StructuredPasswordRedacted(t *testing.T) {
 	t.Parallel()
 
 	cfg := &commonpb.SinkConfig{
 		Type: &commonpb.SinkConfig_Clickhouse{
 			Clickhouse: &commonpb.ClickHouseSinkConfig{
-				Dsn:   "clickhouse://user:secretpw@host:9000/db?password=query-secret&secure=true",
-				Table: "events",
+				Connection: &commonpb.DatabaseConnection{Scheme: "clickhouse", Username: new("user"), Password: new("secretpw"), Database: new("db"), Addresses: []*commonpb.ConnectionAddress{{Host: "host", Port: proto.Uint32(9000)}}},
+				Table:      "events",
 			},
 		},
 	}
 
 	redacted := redactSinkConfig(cfg)
 
-	dsn := redacted.GetClickhouse().GetDsn()
-	assert.NotContains(t, dsn, "secretpw")
-	assert.NotContains(t, dsn, "query-secret")
-	assert.Contains(t, dsn, "user")
-	assert.Contains(t, dsn, "host:9000")
-	assert.Contains(t, dsn, "secure=true")
+	connection := redacted.GetClickhouse().GetConnection()
+	assert.Equal(t, secretSet, connection.GetPassword())
+	assert.Equal(t, "user", connection.GetUsername())
+	assert.Equal(t, "host", connection.GetAddresses()[0].GetHost())
+	assert.Equal(t, uint32(9000), connection.GetAddresses()[0].GetPort())
 }
 
-func TestRedactSinkConfig_NATSCredentials(t *testing.T) {
+func TestRedactSinkConfig_NatsHasNoSecret(t *testing.T) {
 	t.Parallel()
 
 	cfg := &commonpb.SinkConfig{
 		Type: &commonpb.SinkConfig_Nats{
-			Nats: &commonpb.NatsSinkConfig{
-				Url:   "nats://operator:nats-password@one:4222, nats://nats-token@two:4222,nats://three:4222",
-				Topic: "evt",
-			},
+			Nats: &commonpb.NatsSinkConfig{Servers: []*commonpb.ConnectionURL{{Scheme: "nats", Address: &commonpb.ConnectionAddress{Host: "localhost", Port: proto.Uint32(4222)}}}, Topic: "evt"},
 		},
 	}
 
 	redacted := redactSinkConfig(cfg)
 
-	assert.Equal(t,
-		"nats://operator:****@one:4222, nats://****@two:4222,nats://three:4222",
-		redacted.GetNats().GetUrl(),
-	)
+	assert.Equal(t, "localhost", redacted.GetNats().GetServers()[0].GetAddress().GetHost())
 	assert.Equal(t, "evt", redacted.GetNats().GetTopic())
 }
 
@@ -191,7 +174,7 @@ func TestRedactSinkConfig_NilSafe(t *testing.T) {
 // check: it serializes the whole response through protojson (what
 // EncodeStructured uses for --json and --yaml) and asserts that no plaintext
 // secret survives. Any future field added to a SinkConfig that carries a
-// secret must be added to redactSinkConfigInPlace, or this test will catch the
+// secret must carry a sensitive protobuf annotation, or this test will catch the
 // regression.
 func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 	t.Parallel()
@@ -202,10 +185,6 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 		"http-hmac-leak",
 		"kafka-sasl-leak",
 		"clickhouse-dsn-leak",
-		"nats-password-leak",
-		"nats-token-leak",
-		"http-userinfo-leak",
-		"clickhouse-query-leak",
 	}
 
 	resp := &servicepb.GetEventsSinksResponse{
@@ -235,10 +214,7 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 			{
 				Name: "hook",
 				Type: &commonpb.SinkConfig_Http{
-					Http: &commonpb.HttpSinkConfig{
-						Endpoint: "https://operator:" + secrets[7] + "@example.com",
-						Secret:   secrets[2],
-					},
+					Http: &commonpb.HttpSinkConfig{Endpoint: &commonpb.ConnectionURL{Scheme: "https", Address: &commonpb.ConnectionAddress{Host: "example.com"}}, Secret: secrets[2]},
 				},
 			},
 			{
@@ -256,15 +232,7 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 				Name: "ch",
 				Type: &commonpb.SinkConfig_Clickhouse{
 					Clickhouse: &commonpb.ClickHouseSinkConfig{
-						Dsn: "clickhouse://user:" + secrets[4] + "@host:9000/db?password=" + secrets[8],
-					},
-				},
-			},
-			{
-				Name: "nats",
-				Type: &commonpb.SinkConfig_Nats{
-					Nats: &commonpb.NatsSinkConfig{
-						Url: "nats://operator:" + secrets[5] + "@one:4222,nats://" + secrets[6] + "@two:4222",
+						Connection: &commonpb.DatabaseConnection{Scheme: "clickhouse", Username: new("user"), Password: new(secrets[4]), Database: new("db"), Addresses: []*commonpb.ConnectionAddress{{Host: "host", Port: proto.Uint32(9000)}}},
 					},
 				},
 			},
@@ -289,7 +257,7 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 		"adb-2.azuredatabricks.net",
 		"example.com",
 		"b:9092",
-		"host:9000",
+		"host",
 	} {
 		assert.Contains(t, string(b), want)
 	}

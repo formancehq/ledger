@@ -7,6 +7,16 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
+// mirrorSourceLedgerName extracts the ledger name from a MirrorSourceConfigInput
+// for lifecycle comparison. The log carries the normalized output form (MirrorSourceConfig);
+// only the ledger name is structurally stable across input/output normalization.
+func mirrorSourceLedgerName(src *commonpb.MirrorSourceConfigInput) string {
+	if src == nil {
+		return ""
+	}
+	return src.GetLedgerName()
+}
+
 // validateLifecycleLog checks the top-level payloads that carry no ledger-local
 // log. An absent payload is never equivalent to a false maintenance toggle.
 func validateLifecycleLog(req *servicepb.Request, expectedPreparedQuery, payload *commonpb.LogPayload) error {
@@ -18,7 +28,7 @@ func validateLifecycleLog(req *servicepb.Request, expectedPreparedQuery, payload
 	case *servicepb.Request_CreateLedger:
 		log := payload.GetCreateLedger()
 		if log == nil || log.GetId() == 0 || log.GetCreatedAt() == nil || log.GetName() != r.CreateLedger.GetName() ||
-			log.GetMode() != r.CreateLedger.GetMode() || !log.GetMirrorSource().EqualVT(r.CreateLedger.GetMirrorSource()) ||
+			log.GetMode() != r.CreateLedger.GetMode() || log.GetMirrorSource().GetLedgerName() != mirrorSourceLedgerName(r.CreateLedger.GetMirrorSource()) ||
 			!log.GetMetadataSchema().EqualVT(lifecycleMetadataSchema(r.CreateLedger.GetInitialSchema())) ||
 			!accountTypesEqual(log.GetAccountTypes(), r.CreateLedger.GetAccountTypes()) ||
 			log.GetDefaultEnforcementMode() != r.CreateLedger.GetDefaultEnforcementMode() {

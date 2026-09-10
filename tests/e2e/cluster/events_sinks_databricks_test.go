@@ -74,11 +74,11 @@ var _ = Describe("Events Sinks Databricks", Ordered, func() {
 
 	It("Should deliver events to Databricks when transactions are created", func() {
 		// Add Databricks sink via Apply
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfigInput{
 			Name:         "databricks-e2e",
 			BatchSize:    10,
 			BatchDelayMs: 500,
-			Type: &commonpb.SinkConfig_Databricks{
+			Type: &commonpb.SinkConfigInput_Databricks{
 				Databricks: &commonpb.DatabricksSinkConfig{
 					ServerHostname: dbHost,
 					HttpPath:       dbHTTPPath,
