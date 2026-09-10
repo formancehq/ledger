@@ -1357,14 +1357,6 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 				return err
 			}
 
-			// Skip config-mutation log types during backfill.
-			if !isDataLog(log) {
-				lastSeq = log.GetSequence()
-				batchCount++
-
-				continue
-			}
-
 			// This task only builds task.ledger's index, but the cursor
 			// replays the GLOBAL log and indexLogEntry keys writes by the
 			// log's own ledger — a foreign log would pass the task config's
@@ -1454,14 +1446,10 @@ func (b *Builder) buildBackfillConfig(task *backfillTask) *ledgerIndexConfig {
 	return cfg
 }
 
-// isDataLog returns true if the log entry is a real ledger log the
-// backfill path must process: transactions, metadata, and OrderSkipped.
-// OrderSkipped carries its own log id and date (assigned by
-// assignSkipLogIDAndDate in the FSM apply path), so it participates in
-// the per-ledger LedgerLogIndex and the log-date builtin index just
-// like any other ledger log. Returns false for config-mutation logs
-// (CreateIndex, DropIndex, etc.) which the live path
-// already applied in-memory and never need re-indexing on backfill.
+// isDataLog identifies payloads whose entity effects can be replayed during
+// backfill: transactions, metadata, and OrderSkipped. Configuration mutations
+// belong exclusively to the live fold. Every ledger log still participates in
+// the identity and date indexes, independently of this payload classification.
 func isDataLog(log *commonpb.Log) bool {
 	if log.GetPayload() == nil {
 		return false

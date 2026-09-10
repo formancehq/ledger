@@ -389,11 +389,12 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 
 // handleCreatedIndexLog updates the index config cache when a CreateIndex log is processed.
 // A non-initial index starts locally unbuilt and gets a backfill task that
-// replays historical logs. An initial index takes the fast path below.
+// replays historical logs. An initial entity index takes the fast path below.
 //
 // Initial fast path (EN-1564): when the log carries the initial flag (index
-// declared on a born-empty ledger), there is no local history to replay — the
-// index is promoted straight to live at HighWater+1 and NO backfill is scheduled.
+// declared on a born-empty ledger), there is no entity history to replay, so
+// entity indexes are promoted straight to live at HighWater+1 without backfill.
+// Log-date indexes still backfill earlier configuration logs before promotion.
 //
 // Log replay idempotency: when the same CreatedIndexLog is folded again against
 // an index this replica has already promoted to live, we skip the reset and
@@ -432,7 +433,7 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 		ForwardEncodingVersion: 1,
 	}
 
-	// EN-1564: an index declared on a born-empty ledger has no local history to
+	// EN-1564: an entity index on a born-empty ledger has no entity history to
 	// replay. Promote it straight to live at HighWater+1 and skip the backfill;
 	// the live indexing path maintains it from ledger birth. Persist so a reboot
 	// sees current!=0 and loadIndexRegistry skips scheduling a backfill.
@@ -448,7 +449,10 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	// the log folds during a backfill or a rebuild replay.
 	boundType, declared := log.GetBoundType(), log.GetBoundTypeDeclared()
 
-	if log.GetInitial() {
+	// Born-empty excludes entity data, but not earlier configuration logs or
+	// this CreateIndex log itself. A log-date index must backfill that history
+	// before it can serve the complete ListLogs universe.
+	if log.GetInitial() && id.GetLogBuiltin() != commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
 		state := readstore.IndexVersionState{
 			CurrentVersion:      next,
 			PendingVersion:      0,
