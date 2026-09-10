@@ -1209,8 +1209,9 @@ paths:
         Reverts a transaction by creating a reverse transaction that undoes its effects. Requires `ledger:write` scope.
         The body is optional; an absent or empty body uses default options. Supplied
         options and metadata are decoded for both known-length and HTTP/1.1 chunked
-        requests. Malformed or truncated JSON returns 400 before applying the revert.
-        Bodies exceeding the 4 MiB limit return 413, including chunked bodies.
+        requests. Malformed or truncated JSON, extra values and trailing non-whitespace
+        return 400 before applying the revert. The complete body, including trailing
+        whitespace, counts towards the 4 MiB limit; exceeding it returns 413.
       operationId: revertTransaction
       tags:
         - Transactions

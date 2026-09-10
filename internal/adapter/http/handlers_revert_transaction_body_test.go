@@ -33,6 +33,9 @@ func TestHandleRevertTransaction_BodyFraming(t *testing.T) {
 		TransactionId: 1, Force: true, AtEffectiveDate: true, Metadata: metadata,
 	}
 	defaults := &servicepb.RevertTransactionPayload{TransactionId: 1}
+	controlMetadata, err := commonpb.MetadataFromAnyMap(map[string]any{"reason": "a\x00b"})
+	require.NoError(t, err)
+	escapedControl := &servicepb.RevertTransactionPayload{TransactionId: 1, Metadata: controlMetadata}
 
 	for _, tc := range []struct {
 		name   string
@@ -43,6 +46,15 @@ func TestHandleRevertTransaction_BodyFraming(t *testing.T) {
 		{"options", `{"force":true,"atEffectiveDate":true,"metadata":{"reason":"duplicate","count":42,"negative":-7,"active":true}}`, http.StatusCreated, options},
 		{"empty", "", http.StatusCreated, defaults},
 		{"empty object", `{}`, http.StatusCreated, defaults},
+		{"raw control", "{\"metadata\":{\"reason\":\"a\x00b\"}}", http.StatusBadRequest, nil},
+		{"escaped control", `{"metadata":{"reason":"a\u0000b"}}`, http.StatusCreated, escapedControl},
+		{"trailing junk", `{"force":true}garbage`, http.StatusBadRequest, nil},
+		{"second value", `{"force":true}{}`, http.StatusBadRequest, nil},
+		{"truncated second value", `{"force":true}{`, http.StatusBadRequest, nil},
+		{"trailing whitespace", "{} \t\r\n", http.StatusCreated, defaults},
+		{"exact size with whitespace", `{}` + strings.Repeat(" ", int(defaultMaxBodySize)-2), http.StatusCreated, defaults},
+		{"oversized whitespace", `{}` + strings.Repeat(" ", int(defaultMaxBodySize)-1), http.StatusRequestEntityTooLarge, nil},
+		{"oversized trailing junk", `{}` + strings.Repeat("x", int(defaultMaxBodySize)-1), http.StatusRequestEntityTooLarge, nil},
 		{"malformed", `{"force":!}`, http.StatusBadRequest, nil},
 		{"truncated", `{"force":true`, http.StatusBadRequest, nil},
 		{"oversized", `{"metadata":{"reason":"` + strings.Repeat("x", int(defaultMaxBodySize)) + `"}}`, http.StatusRequestEntityTooLarge, nil},
@@ -108,7 +120,7 @@ func TestHandleRevertTransaction_BodyFraming(t *testing.T) {
 				require.Equal(t, tc.status, status, "%s", responseBody)
 				if tc.want == nil {
 					require.Empty(t, calls, "invalid bodies must not reach Apply")
-					if tc.name == "oversized" {
+					if tc.status == http.StatusRequestEntityTooLarge {
 						require.Contains(t, string(responseBody), `"errorCode":"BODY_TOO_LARGE"`)
 						require.Contains(t, string(responseBody), "http: request body too large")
 					} else {

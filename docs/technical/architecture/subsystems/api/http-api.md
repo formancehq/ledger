@@ -64,10 +64,12 @@ same guarantee for the `Request` oneof.
 `POST /v3/{ledgerName}/transactions/{transactionId}/revert` accepts an absent
 or empty body. When supplied, the JSON body carries `force`, `atEffectiveDate`
 and `metadata`, independently of HTTP framing: a chunked request is decoded
-even though its content length is unknown. Only EOF before reading any body byte
-is accepted as an empty body; malformed or truncated JSON returns
-`400 INVALID_REQUEST` before submitting Apply. The request remains subject to
-the 4 MiB body limit, with `413 BODY_TOO_LARGE` when exceeded.
+even though its content length is unknown. The complete body is read through
+the 4 MiB limit before decoding a single JSON document. Only a zero-byte body
+uses default options. Malformed or truncated JSON, extra JSON values and
+trailing non-whitespace return `400 INVALID_REQUEST` before submitting Apply.
+Trailing JSON whitespace is allowed, but counts towards the limit; exceeding
+it returns `413 BODY_TOO_LARGE`, including when only the suffix is oversized.
 
 ### Response Format
 

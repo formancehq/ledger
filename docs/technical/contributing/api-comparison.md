@@ -232,8 +232,9 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 A supplied JSON body is decoded regardless of `Content-Length`, including
 HTTP/1.1 chunked requests; `force`, `atEffectiveDate` and `metadata` reach the
 same Apply payload for known and unknown lengths. Malformed or truncated JSON
-returns `400 INVALID_REQUEST` before Apply. The existing 4 MiB body limit also
-applies to chunked bodies (`413 BODY_TOO_LARGE`).
+returns `400 INVALID_REQUEST` before Apply, including extra values or non-whitespace
+after the first value. The complete body, including trailing whitespace, counts
+towards the 4 MiB limit (`413 BODY_TOO_LARGE`), independently of framing.
 
 **Navigable revert relationship.** The revert link is a first-class part of the
 transaction representation (`GET`/list), not metadata — the platform never writes
