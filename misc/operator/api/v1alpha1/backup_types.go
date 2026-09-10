@@ -190,6 +190,16 @@ type BackupStatus struct {
 	// +optional
 	LastIncrementalBackup *IncrementalBackupStatus `json:"lastIncrementalBackup,omitempty"`
 
+	// LastFullRunCompletionTime is the latest observed terminal full run completion,
+	// successful or failed. It is preserved independently of run history retention.
+	// +optional
+	LastFullRunCompletionTime *metav1.Time `json:"lastFullRunCompletionTime,omitempty"`
+
+	// LastIncrementalRunCompletionTime is the latest observed terminal incremental
+	// run completion, successful or failed, independent of run history retention.
+	// +optional
+	LastIncrementalRunCompletionTime *metav1.Time `json:"lastIncrementalRunCompletionTime,omitempty"`
+
 	// NextFullBackupTime is the next scheduled time for a full backup.
 	// +optional
 	NextFullBackupTime *metav1.Time `json:"nextFullBackupTime,omitempty"`
