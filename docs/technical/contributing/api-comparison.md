@@ -299,6 +299,10 @@ The effective limits are fields of the Raft-replicated `common.ClusterPolicy`:
 | `metadata_max_entity_bytes` | 65536 | Key and value bytes per entity |
 | `metadata_max_command_bytes` | 262144 | Key and value bytes across the command |
 
+OpenAPI documents these configurable ceilings in descriptions rather than fixed
+`maxLength` or `maxProperties` constraints, so clients can use the effective
+replicated policy even when operators raise the defaults.
+
 String and null-original values use their UTF-8 byte length; integer, unsigned
 integer and datetime values count as 8 bytes, and booleans as 1 byte. These are
 accounting weights, not protobuf or JSON wire sizes. Zero does not mean unlimited:
