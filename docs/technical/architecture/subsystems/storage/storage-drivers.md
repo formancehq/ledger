@@ -303,7 +303,10 @@ The `Batch` (`internal/storage/dal/batch.go`) provides atomic write operations:
 `Commit` first applies the batch with `NoSync` (without waiting for an fsync),
 then marks the session committed, calls `Close` exactly once, and clears the
 batch reference. Pebble may defer pool reuse while its WAL pipeline retains a
-reference. Code must never inspect the batch after `Close` returns.
+reference. Code must never inspect the batch after `Close` returns. If `Close`
+reports an error, the batch reference is still cleared before reporting an
+invariant violation and panicking. The data is already applied, so this cannot
+be reported as an ordinary commit failure.
 
 If the underlying commit fails, the session retains the batch so the caller can
 `Cancel` it; this does not imply rollback.
@@ -312,7 +315,9 @@ If the underlying commit fails, the session retains the batch so the caller can
 error. Further cancellations are no-ops after either terminal state. Mutators
 and repeated commits return a terminal-state error without touching the released
 batch. Tests assert the cleared session reference and committed data without
-reading Pebble's pooled object.
+reading Pebble's pooled object. Removing only `Close` still leaves those tests
+green; the allocation benchmark is comparative evidence, not an automated
+regression guard for pool release.
 
 ### Source Files
 

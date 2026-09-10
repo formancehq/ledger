@@ -40,6 +40,10 @@ func TestBatch_CommitAndCancel(t *testing.T) {
 	require.NoError(t, closer.Close())
 }
 
+// TestBatch_CommitFinalizesBatch checks session state and data visibility, not
+// pool release: deleting only Close still leaves these assertions passing.
+// BenchmarkBatch_Commit provides comparative allocation evidence, without a
+// production test hook or access to the returned pooled batch.
 func TestBatch_CommitFinalizesBatch(t *testing.T) {
 	t.Parallel()
 

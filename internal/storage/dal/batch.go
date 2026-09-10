@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
 )
@@ -130,7 +131,8 @@ func (b *WriteSession) Cancel() error {
 // holds a reference under NoSync), and the session enters the committed terminal
 // state. If the underlying commit fails, the batch remains owned by the session
 // so the caller can Cancel it to release resources; a failed commit is not
-// described as rolled back.
+// described as rolled back. A Close error after commit violates ownership: the
+// batch reference is cleared before an invariant panic, not a normal commit error.
 func (b *WriteSession) Commit() error {
 	if err := b.checkActive(); err != nil {
 		return err
@@ -142,10 +144,16 @@ func (b *WriteSession) Commit() error {
 
 	b.committed = true
 
-	// Close only reports ErrClosed when ownership was already violated; the
-	// active-state guard and exclusive ownership prevent that here.
-	_ = b.batch.Close()
+	err := b.batch.Close()
 	b.batch = nil
+	if err != nil {
+		assert.Unreachable("committed write session batch failed to close", map[string]any{
+			"error": err.Error(),
+		})
+		// Unreachable is a no-op in production; data is already applied, so
+		// fail loudly instead of returning a misleading ordinary commit error.
+		panic(fmt.Errorf("write session ownership invariant: closing committed batch: %w", err))
+	}
 
 	return nil
 }
