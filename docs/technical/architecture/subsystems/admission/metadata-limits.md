@@ -68,7 +68,7 @@ disagree about whether the same payload fits.
 **Admission** — `validateCommandMetadata`
 (`internal/application/admission/validate_order.go`), called from `Admit` once
 the orders exist. It walks every metadata-bearing order shape through
-`walkOrderMetadata`, the single source of truth for *where* metadata lives in an
+`domain.WalkOrderMetadata` (`internal/domain/order_metadata.go`), the single source of truth for *where* metadata lives in an
 order; the shape validation, the size validation and the byte accounting all
 traverse it, so they cannot drift apart. All four public entry paths converge on
 `requestsToOrders`, so one gate covers them.
@@ -81,6 +81,15 @@ script runs, and two individually-legal halves can exceed the entity ceiling
 together. The FSM reads the ceilings from the committed policy through the Scope
 — never from node-local configuration, which would make one committed entry
 apply differently per node (invariant #2).
+
+`ProcessOrders` seeds a proposal-wide budget with every order's input metadata,
+including bare keys in deletion and schema orders. Each transaction replaces
+its input contribution with the merged transaction and account maps, then
+checks `ValidateCommandBytes`. This includes earlier scripts' output and later
+orders' input, so splitting generated metadata across accounts or orders cannot
+bypass the command ceiling. Caller values win collisions and are counted once.
+The budget is local to one proposal; a rejected proposal discards its staged
+writes through the existing FSM rollback path.
 
 Both layers reject deterministically. `ValidateMap` checks the entry count and
 the entity total before the per-entry rules, and reports the lexicographically
@@ -116,7 +125,8 @@ loudly at three points rather than silently removing the protection:
 The ceilings must also be mutually satisfiable: `key ≤ entity`,
 `value ≤ entity`, `entity ≤ command`. A wider contradictory ceiling is
 unreachable, so an operator raising it would observe no effect; both
-`Config.Validate` and the FSM reject the combination instead.
+`Config.Validate` and the FSM reject the combination instead. Both use
+the shared `MetadataLimits.Validate` helper for configuration diagnostics.
 
 ## Client contract
 
