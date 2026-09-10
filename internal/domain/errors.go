@@ -977,7 +977,13 @@ func (e *ErrIndexBuilding) Metadata() map[string]string { return map[string]stri
 // checkpoint ID once both are marked on the creator node; on any other replica
 // either half may still be catching up to the checkpoint's log sequence. All of
 // it is transient: the caller should retry until both directories are marked
-// ready. Mirrors
+// ready. A replica that crashes mid-materialization finishes the half it was
+// building on restart (the applier rebuilds the main store from the live store,
+// still at the checkpoint's applied index; the index builder re-crosses the
+// checkpoint log, which its cursor had not yet passed). Only a replica that
+// never applied the checkpoint's creation, or whose audit projection is
+// disabled or failed, keeps answering this until the checkpoint is deleted and
+// recreated. Mirrors
 // ErrIndexBuilding — maps to KindUnavailable so gRPC clients retry deterministically
 // instead of receiving an opaque, non-retryable Unknown.
 type ErrCheckpointNotReady struct {
