@@ -27,7 +27,7 @@ The cooperative cache policy does not relax publication identity:
 
 | Variable | Shared location |
 | --- | --- |
-| `GOCACHE` | `go-build/` |
+| `GOCACHE` | managed generation under `go-build-generations/` |
 | `GOMODCACHE` | `go-mod/` |
 | `GOPATH` | `go-path/` |
 | `GOLANGCI_LINT_CACHE` | `golangci-lint/` |
@@ -40,6 +40,40 @@ adapters may still isolate `HOME`/`CODEX_HOME` to exclude personal reviewer
 configuration, while their Go and lint caches use the shared root. `TMPDIR`
 remains per run because temporary filenames and cleanup are process lifecycle
 state rather than reusable cache state.
+
+### Bounded Go build-cache generations
+
+Go build entries have high cardinality across candidate SHAs, race builds,
+coverage and build tags. `agent-validation-env` therefore binds each run to a
+managed `GOCACHE` generation. Runs that start together reuse the same current
+generation. When its measured size exceeds the soft budget, a later run
+atomically selects a fresh generation; processes already running keep using the
+retired generation through a PID lease. A retired generation is removed only
+after none of its lease processes exists.
+
+Cache size measurement happens before acquiring the selection lock and is used
+only if the current generation has not changed. Retirement detaches idle
+generations under the lock; recursive deletion runs after unlocking. A marked
+retirement directory retains its cleaner's process identity outside the payload
+so a later run can resume deletion if that cleaner dies. Ephemeral supervisors
+launch an exec-based wrapper: the workload has its own lease and remains
+protected if the supervisor receives SIGKILL. Future check timestamps (for
+example after clock rollback) trigger a fresh measurement rather than delaying
+rotation until the clock catches up.
+
+The defaults are a 32 GiB soft budget and a five-minute size-check interval.
+Set `LEDGER_AI_GOCACHE_MAX_MIB` or
+`LEDGER_AI_GOCACHE_CHECK_INTERVAL_SECONDS` to tune them for a workstation.
+The budget is intentionally soft: a single run may grow beyond it, and leased
+retired generations temporarily count in addition to the current generation.
+This preserves concurrent validation and never deletes a cache used by a live
+cooperative run.
+
+`GOMODCACHE`, `GOPATH`, `GOLANGCI_LINT_CACHE`, and `XDG_CACHE_HOME` remain
+stable shared directories. Legacy `go-build/` data created by older workflow
+versions is not adopted or deleted automatically because older live processes
+cannot hold generation leases; remove it only during an explicitly coordinated
+cache cleanup.
 
 ### golangci-lint cross-worktree safety
 

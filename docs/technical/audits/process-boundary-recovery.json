@@ -73,7 +73,8 @@
     "docs/technical/contributing/getting-started.md",
     "docs/technical/contributing/testing.md",
     "docs/ops/cluster-operations.md",
-    "docs/ops/deployment.md"
+    "docs/ops/deployment.md",
+    "docs/technical/audits/configuration-startup-contracts.md"
   ],
   "invariants": [
     "Each execution of the production Ledger binary must reconstruct the intended node identity, cluster role, network addresses, storage locations, and supported runtime settings from the documented CLI, environment, and deployment inputs plus durable state; correctness after exec must not depend on memory or process-local state from an earlier execution.",
@@ -83,7 +84,8 @@
     "After abrupt process death, acknowledged durable state must be recoverable by a newly executed process opening the same node-local WAL and data paths without relying on shutdown hooks or in-memory cleanup; crash-torn WAL, spool, Pebble, marker, and checkpoint state must be repaired or rejected according to their documented local recovery contracts. Generic durability, replay, snapshot, and restore correctness remains owned by persistence-restore-replay.",
     "Graceful exit, failed startup unwind, and OS-enforced process death must leave kernel-managed listeners and application-managed files, locks, temporary artifacts, and ownership markers in a state that permits a safe immediate re-exec on the same configured endpoints and durable paths, or produces a clear fail-closed error.",
     "Evidence for process restart recovery must prove that a different OS process reopened and validated the intended node-local state. Cluster forwarding, leader reads, snapshot installation, peer repair, or orchestrator replacement may be part of a distributed recovery scenario but must not be accepted as proof of local reopen correctness; Raft quorum, membership, routing, and leadership safety themselves remain owned by raft-membership-leadership, while collection and validation-layer enforcement of process tests remain owned by test-reachability-enforcement.",
-    "If process death interrupts persistence-affecting background work, every externally meaningful durable progress state must let a newly executed process resume, retry, roll back, or fail closed without silently publishing incomplete work. This domain owns the hard-death and re-exec boundary; normal cancellation, Stop joining, and worker-generation ownership remain owned by concurrency-lifecycle-shutdown, while the underlying persistence transition remains owned by its subsystem audit."
+    "If process death interrupts persistence-affecting background work, every externally meaningful durable progress state must let a newly executed process resume, retry, roll back, or fail closed without silently publishing incomplete work. This domain owns the hard-death and re-exec boundary; normal cancellation, Stop joining, and worker-generation ownership remain owned by concurrency-lifecycle-shutdown, while the underlying persistence transition remains owned by its subsystem audit.",
+    "Configuration resolution, static operator value translation, validation predicates and constructor-to-consumer wiring are owned by configuration-startup-contracts. This domain retains real-exec reconstruction, readiness/exit sequencing and recovery after rejected startup or process death. Attribute shared symptoms by root cause and required correction; do not duplicate a parameter defect merely because its consequence is visible in a subprocess."
   ],
   "adversarial_questions": [
     "Which production behaviors are exercised only by main.go and the pinned service.Execute/service.App implementation, and which tests instead call Cobra ExecuteContext in a goroutine and stop by cancelling a context? What signal, environment-binding, deferred-cleanup, or exit-code behavior is bypassed in the latter case?",

@@ -1742,10 +1742,15 @@ func (s *LedgerState) applyDeleteLedgerMetadata(req *servicepb.DeleteLedgerMetad
 }
 
 // applyCreateIndex records a newly created index as ambiguous (readiness unknown
-// until the driver's poller confirms it READY). CreateIndex is idempotent on the
-// server (a duplicate on a present index is a no-op, no AlreadyExists), so an
-// existing entry keeps its current readiness flag.
+// until the driver's poller confirms it READY). Creating one that already
+// exists is rejected (EN-2009); the checks run in processCreateIndex's order,
+// existence before target validation.
 func (s *LedgerState) applyCreateIndex(req *servicepb.CreateIndexRequest) OrderResult {
+	canonical := indexes.Canonical(req.GetId())
+	if s.indexes.Has(canonical) {
+		return OrderResult{Reason: domain.ErrReasonIndexAlreadyExists}
+	}
+
 	// A metadata index targets a declared schema field; creating one for an
 	// undeclared (target, key) is rejected (validateIndexTarget).
 	if meta, ok := req.GetId().GetKind().(*commonpb.IndexID_Metadata); ok {
@@ -1754,10 +1759,7 @@ func (s *LedgerState) applyCreateIndex(req *servicepb.CreateIndexRequest) OrderR
 		}
 	}
 
-	canonical := indexes.Canonical(req.GetId())
-	if !s.indexes.Has(canonical) {
-		s.indexes = s.indexes.Set(canonical, false) // ambiguous: created, readiness not yet confirmed
-	}
+	s.indexes = s.indexes.Set(canonical, false) // ambiguous: created, readiness not yet confirmed
 
 	return OrderResult{OK: true}
 }

@@ -13,7 +13,7 @@ This document compares the POC's API with the original Formance ledger API and d
 ### Service protocol compatibility (EN-1851)
 
 The v3 gRPC service requires one `ledger-protocol-version` metadata value per
-business RPC, equal to `pkg/grpcprotocol.Version` (currently `"4"`). Missing,
+business RPC, equal to `pkg/grpcprotocol.Version`. Missing,
 invalid, duplicate, or different revisions fail with `FailedPrecondition` before
 business handler execution. This applies to unary and streaming Bucket, Cluster,
 and Restore operations, including internal forwarding. Discovery, gRPC health,
@@ -131,6 +131,37 @@ for client setup, restore behavior, failure limitations, and revision changes.
 | preCommitEffectiveVolumes | ❌ | ✅ | Intentionally removed |
 
 **Legend:** ✅ Implemented | ⚠️ Partially/Not implemented | ❌ Absent
+
+---
+
+## Ledger-log JSON contract
+
+EN-1790 aligns the nested ledger-log JSON with v2 where the existing v3 data
+model permits a simple projection. Both use `type` to identify a payload held
+directly in `data`, and metadata logs use `targetType` with `targetId` (string
+for an account, unsigned integer for a transaction, including zero). V3 gives
+each of its 13 ledger-log variants a distinct discriminator; clients do not
+need to inspect a second oneof wrapper inside `data`.
+
+| Aspect | V2 | V3 |
+|--------|----|----|
+| Created transaction | `data.transaction` | `data.transaction` |
+| Metadata target | `targetType` + `targetId` | `targetType` + `targetId` |
+| Metadata values | Strings | Typed values, including integers, booleans and null |
+| Reversal | Original transaction and compensation | `revertedTransactionId` and `revertTransaction` |
+| Post-commit volumes | Account → asset → volumes | Account → volume entries with asset and color |
+| Enclosing response | Ledger log | System log containing a ledger log under `payload.apply.log` |
+
+The same v3 projection is used by HTTP get/list logs, prepared-query `logData`,
+JSON events, and `ledgerctl` JSON/YAML output. Global-log and event envelopes
+remain specific to v3. Protobuf RPCs, persisted data, audit hashing, and the
+separate ClickHouse/Databricks analytical projection are unchanged.
+
+This replaces the earlier unreleased v3 payload wrappers and shared
+`SET_METADATA` fallback discriminator. This is an output contract; decoding the
+projection back into internal Go log types is not supported by this contract.
+See the [ledger-log JSON output contract](../architecture/subsystems/api/http-api.md#ledger-log-json-output)
+for the full discriminator list and the information retained in the projection.
 
 ---
 
@@ -590,7 +621,12 @@ See [Idempotency](../architecture/subsystems/admission/idempotency.md) for detai
 local `IndexVersionState` (`current_version`, `pending_version`), not
 by a cluster-wide flag.
 
-- `CreateIndex` registers the index at `forward_encoding_version = 1`
+- `CreateIndex` is strict: an existing `(ledger, canonical IndexID)` fails
+  with `INDEX_ALREADY_EXISTS` (HTTP `409`, gRPC `AlreadyExists`), including
+  while building or retyping. The registry and local build state remain
+  unchanged. Retained batch-idempotency replay keeps returning its original
+  result.
+- `CreateIndex` registers a new index at `forward_encoding_version = 1`
   and each replica starts a local backfill. When the backfill catches
   up to the global indexer cursor, the replica performs a local atomic
   switch (`current_version` 0 → 1) in a single Pebble batch. There is
@@ -928,9 +964,30 @@ The `UNAVAILABLE` row is the forwarded-stream error shape: a syncing follower fo
 
 **Breaking change in #432**: HTTP `errorCode` JSON field previously used HTTP-specific codes (`"CONFLICT"`, `"NOT_FOUND"`, `"SCRIPT_PARSE_ERROR"`, `"INSUFFICIENT_FUNDS"`, ...) that were sometimes the same as the gRPC Reason and sometimes different. After the Describable refactor (#432) it is uniformly `Reason()` from the table above — e.g. `"LEDGER_ALREADY_EXISTS"` (was `"CONFLICT"`), `"NUMSCRIPT_PARSE_ERROR"` (was `"SCRIPT_PARSE_ERROR"`). Update REST clients to widen pattern matching accordingly.
 
-**Client-side Kind reconstruction is lossy — match on `Reason`, not `Kind`.** The server-side `Kind` enum has two values (`KindConflict` and `KindPrecondition`) that both serialise to `codes.FailedPrecondition` on the wire. Client SDKs that reconstruct a `RemoteError` from a gRPC status (see `cmd/ledgerctl/cmdutil`) conservatively pick `KindPrecondition` for every `FailedPrecondition` response — so a server-side `KindConflict` (e.g. ledger deleted, transaction already reverted) reads as `KindPrecondition` client-side. Branching on `RemoteError.Kind()` will therefore misclassify conflict responses. Match on `Reason()` (`LEDGER_DELETED`, `TRANSACTION_ALREADY_REVERTED`, etc.) instead — it is preserved end-to-end and is the reliable discriminator.
+**`Reason` is the reliable discriminator; `Kind` is only as good as the client's reason table.** The server-side `Kind` enum has two values (`KindConflict` and `KindPrecondition`) that both serialise to `codes.FailedPrecondition` on the wire, so the status code alone cannot separate them. Ledger's own reconstruction (`internal/adapter/grpcerr`, used by both `ledgerctl` and the follower-to-leader forwarding path) resolves this by deriving the kind from the **reason** first — `KindForReason(ReasonCode(reason))` — and falling back to the status code only for a reason the build's `ErrorReason` enum does not know. A `KindConflict` response therefore reads back as `KindConflict`, provided the client recognises the reason.
+
+That proviso is the catch for third-party SDKs: a client older than the server, or one that derives the kind from the status code alone, still reports `KindPrecondition` for every `FailedPrecondition` response and will misclassify a conflict (e.g. ledger deleted, transaction already reverted). Match on `Reason()` (`LEDGER_DELETED`, `TRANSACTION_ALREADY_REVERTED`, etc.) rather than on the reconstructed `Kind()` — the reason is preserved end-to-end and never depends on the client's version.
+
+**The normalized boundary contract.** Inside ledger, every business-facing surface — the HTTP error handler, the bulk per-element mapper and `ledgerctl` — reads a failure through one contract, `internal/adapter/apierr`. `apierr.Describe(err)` returns a `Descriptor` (semantic `Kind`, stable `Reason`, client-safe `Message`, structured `Metadata`) and hides which of two provenances the failure had: raised locally, where the kind is `domain.Kind(d)` and therefore a pure function of the reason; or decoded from a peer, where the kind is the one the wire carried. There is no second mapping table per surface — HTTP maps `Kind` to a status through `kindToHTTPStatus`, gRPC through `grpcerr.CodeForKind`, and the decoder reverses that same table. `apierr` imports `internal/domain` and nothing else, so HTTP is not coupled to any gRPC detail.
+
+The decoded representation lives at the adapter boundary by design, not in `internal/domain`. A decoded failure carries a reason and message belonging to the *sending* build, and the audit chain hashes an error's `Error()` string, so a message that varies with a peer's version would break the chain. No package under `internal/domain`, `internal/application/admission`, `internal/infra/state`, `internal/infra/plan` or `internal/infra/preload` may import `apierr`; `scripts/check-repo-invariants` enforces that as a dependency rule.
+
+**Two axes, deliberately separate.** The semantic `ErrorKind` answers the client; the gRPC status code is a transport-behaviour signal that drives retry and hop behaviour. The receiver preserves both: the kind through the `Descriptor`, the exact original status through the decoder's carrier (`GRPCStatus()`). Do not reconstruct a status from a `Kind`; it is lossy in both directions — `CodeForKind` sends both `KindConflict` and `KindPrecondition` as `codes.FailedPrecondition`, so a code cannot name a kind, and a reason from a newer build carries a kind this enum cannot derive at all. The axes may also disagree deliberately: the removed `READ_INDEX_NOT_CAUGHT_UP` was semantically `KindUnavailable` (`503` + `Retry-After` on REST) while travelling as `codes.FailedPrecondition`, because `actions.GRPCRetryPolicy` retries `codes.Unavailable` fifty times at 0.2s and the semantic code would have turned a read-index lag into a ten-second client-side hang.
+
+**Mismatch policy.** A reason ledger knows is a reason whose legitimate wire codes it knows: `CodeForKind(KindForReason(reason))`, today exactly one code, since every enum reason is encoded through `describableToGRPCStatus` and nothing else. Validation stays reason-keyed rather than kind-keyed so a reason that must travel under a second code can be widened alone. A known reason arriving under a code outside that set is a protocol fault, not a business outcome: every consumer branches on `apierr.InvalidWire` and answers its own internal-error representation — `500 INTERNAL_ERROR` + correlation ID on REST (unitary *and* per bulk element), `codes.Unknown` + correlation ID on gRPC, the invalid-pair message on `ledgerctl` — so the received message and metadata are dropped rather than echoed as trusted business information. An unknown reason cannot be validated and is preserved verbatim — reason, message, metadata and exact status.
+
+On internal forwarding hops, `grpcerr.OriginalStatus` preserves decoded statuses
+through outer error wrappers and before cursor cancellation normalization. The
+original code, public message, and every status detail survive the hop; raw
+transport cancellation still follows the caller-context policy. Regression
+tests cover both production cursor types, wrapped repeated hops, exact REST/bulk
+message parity, and complete gRPC status parity between leader and followers.
+Unitary and bulk HTTP responses use the descriptor message for recognized
+public errors, omitting outer routing or Raft prefixes on both local and
+forwarded paths; internal-error sanitization remains in force.
 
 **Client-side usage (Go):**
+
 ```go
 import (
     "google.golang.org/genproto/googleapis/rpc/errdetails"

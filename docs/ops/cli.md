@@ -721,7 +721,8 @@ ledgerctl indexes create [flags]
 **Behavior:**
 - The index starts building in the background immediately
 - Queries using the index will be rejected until the index reaches READY status
-- Creating an index that already exists and is READY is idempotent (no error)
+- Creating an index that already exists fails with `INDEX_ALREADY_EXISTS` (gRPC `AlreadyExists`), whether it is building, ready, or being retyped. The existing registry row and build progress remain unchanged.
+- Replaying an identical batch with its retained idempotency key returns the original result; a new create request or a different key is subject to the existence check.
 - `--target` and `--key` are only valid with `--type metadata`; passing them with any other type is rejected. In particular, there is no builtin address index scoped to accounts — `address`, `source-address`, and `destination-address` all index transactions.
 
 **Example:**
@@ -2474,6 +2475,16 @@ ledgerctl audit get 5 --json
 ### logs
 
 View system logs. System logs record every state change (ledger creation/deletion, transactions, metadata, signing keys, etc.) in the global log.
+
+`logs list` and `logs get` use the public JSON codec for `--json`, `--yaml`,
+and `--result-file`. Within each system log's `payload.apply.log`, `type`
+uniquely identifies the ledger-log variant and `data` contains its payload
+directly. For example, read a created transaction at
+`payload.apply.log.data.transaction`; metadata targets use `targetType` and
+`targetId`. This is the same
+[ledger-log JSON contract](../technical/architecture/subsystems/api/http-api.md#ledger-log-json-output)
+as HTTP responses and JSON events. The transport remains gRPC and the enclosing
+system-log fields remain present in structured output.
 
 **Aliases:** `log`
 

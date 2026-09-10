@@ -173,6 +173,15 @@ func CreateIndexReq(id *commonpb.IndexID) *servicepb.Request {
 	}
 }
 
+// DropIndexReq drops an index on ledger "L".
+func DropIndexReq(id *commonpb.IndexID) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_DropIndex{
+			DropIndex: &servicepb.DropIndexRequest{Ledger: "L", Id: id},
+		},
+	}
+}
+
 // AddAccountMetaReq writes one metadata value on an account of ledger "L".
 func AddAccountMetaReq(addr, key string, v *commonpb.MetadataValue) *servicepb.Request {
 	return &servicepb.Request{

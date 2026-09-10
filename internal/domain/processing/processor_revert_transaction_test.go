@@ -29,7 +29,7 @@ func TestProcessRevertTransactionRejectsExhaustedIDBeforeWrites(t *testing.T) {
 	payload, err := processRevertTransaction(
 		"test-ledger",
 		&raftcmdpb.RevertTransactionOrder{TransactionId: 3},
-		&Context{Scope: mockStore, Boundaries: boundaries, LedgerInfo: &commonpb.LedgerInfo{}},
+		&Context{Scope: mockStore, Boundaries: boundaries, LedgerInfo: (&commonpb.LedgerInfo{}).AsReader()},
 	)
 	require.Nil(t, payload)
 	var exhausted *domain.ErrSequenceExhausted

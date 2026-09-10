@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Shared producer/consumer contract for managed Go build-cache generations.
+go_cache_generation_pattern='^gen-[0-9]+-[0-9]+-[0-9]+$'
+go_cache_generation_marker='ledger-ai-go-cache-generation-v1'
+
+managed_go_cache_valid() {
+    local root=$1 path=$2 resolved generation_root generation marker
+    resolved=$(cd "$path" 2>/dev/null && pwd -P) || return 1
+    [[ "$resolved" == "$path" && "$path" == */cache ]] || return 1
+    generation_root=${path%/cache}
+    generation=${generation_root##*/}
+    [[ "$generation" =~ $go_cache_generation_pattern && "${generation_root%/*}" == "$root/go-build-generations/generations" ]] || return 1
+    marker="$generation_root/.ledger-ai-go-cache-generation"
+    [[ -f "$marker" && ! -L "$marker" && "$(<"$marker")" == "$go_cache_generation_marker" ]]
+}

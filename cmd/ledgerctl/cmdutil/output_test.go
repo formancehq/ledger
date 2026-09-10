@@ -2,6 +2,7 @@ package cmdutil_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -255,6 +257,65 @@ func TestEncodeStructured(t *testing.T) {
 		require.Contains(t, out, `"createdAt"`)
 		require.NotContains(t, out, `"created_at"`)
 	})
+}
+
+// Sequential because captureStdout mutates os.Stdout, like TestEncodeStructured.
+func TestEncodeStructured_LedgerLog(t *testing.T) {
+	for _, format := range []string{"json", "yaml"} {
+		t.Run(format, func(t *testing.T) {
+			log := &commonpb.Log{
+				Sequence: 7,
+				Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+					Apply: &commonpb.ApplyLedgerLog{
+						LedgerName: "orders",
+						Log: &commonpb.LedgerLog{Id: 3, Data: &commonpb.LedgerLogPayload{
+							Payload: &commonpb.LedgerLogPayload_DeletedMetadata{DeletedMetadata: &commonpb.DeletedMetadata{
+								Target: &commonpb.Target{Target: &commonpb.Target_TransactionId{TransactionId: 0}},
+								Key:    "note",
+							}},
+						}},
+					},
+				}},
+			}
+			cmd := &cobra.Command{}
+			cmdutil.AddOutputFlags(cmd)
+			require.NoError(t, cmd.Flags().Set(format, "true"))
+			out := captureStdout(t, func() {
+				handled, err := cmdutil.EncodeStructured(cmd, log)
+				require.NoError(t, err)
+				require.True(t, handled)
+			})
+
+			var response struct {
+				Sequence uint64 `json:"sequence" yaml:"sequence"`
+				Payload  struct {
+					Apply struct {
+						LedgerName string `json:"ledgerName" yaml:"ledgerName"`
+						Log        struct {
+							ID   uint64         `json:"id"   yaml:"id"`
+							Type string         `json:"type" yaml:"type"`
+							Data map[string]any `json:"data" yaml:"data"`
+						} `json:"log" yaml:"log"`
+					} `json:"apply" yaml:"apply"`
+				} `json:"payload" yaml:"payload"`
+			}
+			if format == "json" {
+				require.NoError(t, json.Unmarshal([]byte(out), &response))
+			} else {
+				require.NoError(t, yaml.Unmarshal([]byte(out), &response))
+			}
+			require.Equal(t, uint64(7), response.Sequence)
+			require.Equal(t, "orders", response.Payload.Apply.LedgerName)
+			gotLog := response.Payload.Apply.Log
+			require.Equal(t, uint64(3), gotLog.ID)
+			require.Equal(t, "DELETE_METADATA", gotLog.Type)
+			require.Len(t, gotLog.Data, 3)
+			require.Equal(t, "TRANSACTION", gotLog.Data["targetType"])
+			require.Equal(t, "note", gotLog.Data["key"])
+			require.Contains(t, gotLog.Data, "targetId", "transaction ID zero must remain present")
+			require.Zero(t, gotLog.Data["targetId"])
+		})
+	}
 }
 
 func TestIsStructuredOutput(t *testing.T) {

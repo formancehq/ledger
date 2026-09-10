@@ -13,7 +13,46 @@ The Ledger Operator manages `Cluster` custom resources to automate the lifecycle
 - **Backups** to S3-compatible backends
 - **Credentials** for application-level access control
 
-During StatefulSet scale-down, the operator queries `ledgerctl cluster status --json` before each Raft removal. An already-absent node satisfies the postcondition and is not removed again. If `remove-node` fails after its Raft change committed—even with an opaque or sanitized CLI error—the operator queries membership again and continues when the target is absent; it does not match human-readable error substrings.
+During StatefulSet scale-down, every removed ordinal must satisfy the Raft
+membership removal postcondition (EN-1999). A replacement Pod can be Pending,
+missing, or have no container status while its stable node ID is still a voter;
+none of those Pod states proves absence from Raft. Skipping such an ordinal can
+leave a one-replica StatefulSet with a two-voter membership and no write quorum.
+
+The operator first updates the StatefulSet template while retaining the current
+replica count, then transfers leadership to node 1 (pod-0). Pod health selects
+only the removal mode: crashed or missing Pods use the existing force-removal
+path first. Other Pods, including Pending or running Pods without a crash
+indicator, use normal consensus removal in descending ordinal order. Before
+**each** removal it queries structured
+`ledgerctl cluster status --json` and requires a leader response. Force removal
+uses `--node-id 1` to read the retained leader's local membership without a
+quorum-backed route. An already-absent node is not removed again. A present node
+must be removed successfully; if `remove-node` returns an error, the operator
+queries membership again and continues only when the target is absent. This
+recovers committed removals whose response was lost, without matching CLI error
+substrings.
+
+Only after all removed ordinals satisfy that postcondition does the operator
+persist the reduced StatefulSet replica count and issue PVC deletions. The
+StatefulSet update requests Pod termination; it does not wait for termination to
+finish. If a membership check or removal fails, replicas and PVCs are retained,
+although the template update and earlier membership removals may already have
+succeeded. A later reconciliation checks membership again and skips ordinals
+already removed.
+
+## Declarative ledger indexes
+
+For a Ledger with `spec.indexes`, reconciliation lists the current registry and
+creates only missing indexes. Creation is strict: if another writer creates the
+index after the list, `INDEX_ALREADY_EXISTS` is reported through
+`IndexesSynced=False` and reconciliation is retried. The failed creation adds
+no entry to `status.appliedIndexes`; successful earlier operations in the same
+pass remain recorded. For an identity that was not previously tracked, the next
+pass lists the registry again and leaves the external index unowned. Existing
+ownership entries are retained: replacement of a previously tracked index and
+recovery after a lost successful create response or status update remain
+separate ownership concerns.
 
 ## Custom Resources
 

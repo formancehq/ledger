@@ -16,8 +16,31 @@ const errorReasonPrefix = "ERROR_REASON_"
 // enum. An unknown reason yields ERROR_REASON_UNSPECIFIED — only reachable for
 // a non-Describable error that escaped the typed pipeline (see
 // state.buildAuditFailure).
+//
+// The zero value it returns for an unknown reason is indistinguishable from
+// the enum's explicit UNSPECIFIED member. That is harmless for a locally
+// raised Describable, whose Reason() is always an enum name
+// (TestEveryDomainErrorImplementsDescribable pins it), but a decoder reading a
+// reason off the wire must tell the two apart: use LookupReasonCode.
 func ReasonCode(reason string) commonpb.ErrorReason {
-	return commonpb.ErrorReason(commonpb.ErrorReason_value[errorReasonPrefix+reason])
+	code, _ := LookupReasonCode(reason)
+
+	return code
+}
+
+// LookupReasonCode maps a Reason() string to its wire-bound ErrorReason enum
+// and reports whether the enum knows that name at all.
+//
+// It separates the two conditions ReasonCode collapses onto
+// ERROR_REASON_UNSPECIFIED: a reason this build's enum does not know (a newer
+// sender), and the explicit UNSPECIFIED member. No ledger error emits the
+// latter — every Describable's Reason() names a real reason — so a decoder
+// that receives it received something no ledger server sends, which is a
+// protocol fault rather than a reason from the future.
+func LookupReasonCode(reason string) (commonpb.ErrorReason, bool) {
+	code, ok := commonpb.ErrorReason_value[errorReasonPrefix+reason]
+
+	return commonpb.ErrorReason(code), ok
 }
 
 // ReasonString is the inverse of ReasonCode: the stable, client-facing Reason()
@@ -29,14 +52,15 @@ func ReasonString(code commonpb.ErrorReason) string {
 // Kind returns the semantic ErrorKind of a Describable. Kind is a function of
 // the error's reason — KindForReason(ReasonCode(d.Reason())) — so it lives in
 // exactly one place (the KindForReason switch) and is never duplicated per
-// type. A BusinessError is unwrapped to its inner error. A type that observed
-// its kind off the wire instead of deriving it (RemoteError, reconstructed from
-// a gRPC status on the client) overrides via kindOverride.
+// type. A BusinessError is unwrapped to its inner error.
+//
+// It is strictly reason-based, with no escape hatch. A failure decoded from a
+// peer may carry a reason this build's enum does not know, whose kind must
+// therefore come off the wire rather than from this switch; that is not a
+// domain concern and is not represented here. Read such a failure through
+// apierr.Describe (internal/adapter/apierr), the boundary contract that reads
+// either provenance.
 func Kind(d Describable) ErrorKind {
-	if o, ok := d.(interface{ kindOverride() ErrorKind }); ok {
-		return o.kindOverride()
-	}
-
 	if be, ok := d.(*BusinessError); ok {
 		return Kind(be.Err)
 	}
@@ -75,6 +99,7 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_NOT_FOUND:
 		return KindNotFound
 	case commonpb.ErrorReason_ERROR_REASON_LEDGER_ALREADY_EXISTS,
+		commonpb.ErrorReason_ERROR_REASON_INDEX_ALREADY_EXISTS,
 		commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT,
 		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 		commonpb.ErrorReason_ERROR_REASON_SINK_ALREADY_EXISTS,

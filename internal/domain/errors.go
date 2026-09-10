@@ -214,6 +214,7 @@ const (
 	ErrReasonLedgerNotInMirrorMode         = "LEDGER_NOT_IN_MIRROR_MODE"
 	ErrReasonPreparedQueryAlreadyExists    = "PREPARED_QUERY_ALREADY_EXISTS"
 	ErrReasonPreparedQueryNotFound         = "PREPARED_QUERY_NOT_FOUND"
+	ErrReasonIndexAlreadyExists            = "INDEX_ALREADY_EXISTS"
 	ErrReasonIndexNotFound                 = "INDEX_NOT_FOUND"
 	ErrReasonIndexBuilding                 = "INDEX_BUILDING"
 	ErrReasonIndexInconsistent             = "INDEX_INCONSISTENT"
@@ -947,6 +948,17 @@ func (e *ErrPreparedQueryNotFound) Metadata() map[string]string {
 	return map[string]string{"ledger": e.Ledger, "name": e.Name}
 }
 
+// ErrIndexAlreadyExists — a fresh creation targets an existing index.
+type ErrIndexAlreadyExists struct {
+	Index string
+}
+
+func (e *ErrIndexAlreadyExists) Error() string { return "index already exists: " + e.Index }
+func (*ErrIndexAlreadyExists) Reason() string  { return ErrReasonIndexAlreadyExists }
+func (e *ErrIndexAlreadyExists) Metadata() map[string]string {
+	return map[string]string{"index": e.Index}
+}
+
 // ErrIndexNotFound — query references an index that does not exist.
 type ErrIndexNotFound struct {
 	Index string
@@ -1258,39 +1270,6 @@ func (e *ErrTransientAccountNonZero) joinedAccounts() string {
 
 	return strings.Join(parts, ", ")
 }
-
-// RemoteError is the client-side Describable produced by cmdutil's
-// BusinessErrorFromGRPC: it transports the wire contract (Reason + Metadata
-// + Message + the gRPC-derived Kind) without committing the client to any
-// specific Go type. Replaces the 14-case hand-maintained reconstruction
-// switch — new server-side error types automatically reach the CLI with
-// full structured info (Reason, all Metadata keys, original Message).
-//
-// Server code must NOT use RemoteError; it is the boundary representation
-// for errors arriving FROM the network. Use the specific Describable types
-// in this file on the server side.
-type RemoteError struct {
-	KindValue   ErrorKind
-	ReasonValue string
-	Message     string
-	Meta        map[string]string
-}
-
-// Compile-time assertion: RemoteError sits outside the Err* naming pattern
-// that TestEveryDomainErrorImplementsDescribable scans, so we pin the
-// contract here explicitly.
-var _ Describable = (*RemoteError)(nil)
-
-func (e *RemoteError) Error() string               { return e.Message }
-func (e *RemoteError) Reason() string              { return e.ReasonValue }
-func (e *RemoteError) Metadata() map[string]string { return e.Meta }
-
-// kindOverride makes domain.Kind return the kind observed off the wire
-// (derived from the gRPC status code) rather than re-deriving it from Reason.
-// This matters for forward compatibility: a client older than the server may
-// receive a reason its ErrorReason enum does not know, which would otherwise
-// collapse to KindInternal and lose the status the wire already carried.
-func (e *RemoteError) kindOverride() ErrorKind { return e.KindValue }
 
 // ErrFilterCompilation — query-filter compilation failure: schema-type
 // mismatches (e.g. string condition on an int64 field) and prepared-query

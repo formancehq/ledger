@@ -158,7 +158,7 @@ func strictLedgerInfoWithCompiledAccountType(
 		},
 	}
 
-	require.Len(t, compiledTypesFor(processor.compiledTypesCache, ledger, info), 1)
+	require.Len(t, compiledTypesFor(processor.compiledTypesCache, ledger, info.AsReader()), 1)
 
 	return info
 }

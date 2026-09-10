@@ -444,7 +444,7 @@ ledgerctl cluster status
 - The removed node should be stopped by the operator after the removal is confirmed
 - Retrying an already-committed removal returns gRPC `NotFound` with reason `RAFT_NODE_NOT_IN_CLUSTER`; verify `cluster status` and treat absence as the successful postcondition
 - If the caller stops waiting after the ConfChange commits but before its FSM batch is durable, the RPC returns `Unavailable` with reason `RAFT_NODE_REMOVAL_COMMITTED` and the committed Raft index. A removed member with an instance ID remains blocked from rejoining while apply catches up.
-- During Kubernetes scale-down, the operator checks structured `cluster status --json` before removal and again after any removal error. It continues when the node is absent and never relies on CLI error-message substrings.
+- During Kubernetes scale-down, the operator checks structured `cluster status --json` for every removed ordinal, including Pending or missing replacement Pods, and again after any removal error. Pod state never proves that a stable node ID is absent. Replicas are reduced and PVC deletions are issued only after each ordinal is already absent or its removal succeeds; an unresolved membership check/removal retains replicas and PVCs. Earlier removals may already have committed and are recognized on retry. See the [operator scale-down contract](../../misc/operator/README.md#overview).
 - Removing a voter reduces the cluster quorum size; ensure the remaining cluster can still form a majority
 - For a 3-node cluster, removing one voter leaves a 2-node cluster where both nodes must be available for writes
 

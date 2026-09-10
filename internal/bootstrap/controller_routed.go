@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
+	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
@@ -49,7 +50,21 @@ func (b *RoutedController) getLeaderCtrl() (ctrl.Controller, error) {
 		return nil, commonpb.ErrNoLeader
 	}
 
-	return grpcadp.NewLedgerGrpcClient(servicepb.NewBucketServiceClient(grpcConn)), nil
+	// grpcerr.NewConn is the seam that keeps a forwarded error typed. The
+	// leader answers a business rejection with a status carrying an
+	// errdetails.ErrorInfo, but a *status.Error carries no semantic
+	// classification, so without this decorator every consumer that dispatches
+	// on the apierr boundary contract — handleError, the bulk per-element
+	// mapper — sees an unrecognised error and sanitises a legitimate 4xx into a
+	// 500 (EN-1636). Wrapping the connection rather than the generated client's
+	// 37 methods also covers the list endpoints, whose error surfaces at Recv()
+	// after the method already returned nil.
+	//
+	// This is the only production site that builds a leader-forwarding client,
+	// so it is the only place that needs the wrapper.
+	conn := grpcerr.NewConn(grpcConn)
+
+	return grpcadp.NewLedgerGrpcClient(servicepb.NewBucketServiceClient(conn)), nil
 }
 
 // readCtrl returns the controller to use for a read operation, along with

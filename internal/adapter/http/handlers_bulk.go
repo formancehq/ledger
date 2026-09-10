@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"runtime/pprof"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -262,6 +263,25 @@ func writeBulkResponse(w http.ResponseWriter, r *http.Request, elements []*servi
 				}
 			}
 
+			// A contradicting reason/code pair is a protocol fault, not a
+			// per-element business outcome. bulkErrorCode already withholds
+			// the claimed reason, but result.err.Error() would still put the
+			// received reason and code in the client-visible description, so
+			// this element carries the same generic correlated internal error
+			// the unitary path answers through writeInternalServerError.
+			if _, ok := apierr.InvalidWire(result.err); ok {
+				id := correlationID(r)
+				recordHTTPInternalError(r, id, result.err)
+
+				apiResults[i] = bulkAPIResult{
+					ResponseType:     "ERROR",
+					ErrorCode:        "INTERNAL_ERROR",
+					ErrorDescription: fmt.Sprintf("internal server error (correlation ID: %s)", id),
+				}
+
+				continue
+			}
+
 			apiResults[i] = bulkAPIResult{
 				ResponseType:     "ERROR",
 				ErrorCode:        bulkErrorCode(result.err),
@@ -337,8 +357,8 @@ func perElementStatus(err error) int {
 		return http.StatusServiceUnavailable
 	}
 
-	if d, ok := errors.AsType[domain.Describable](err); ok {
-		return kindToHTTPStatus(domain.Kind(d))
+	if d, ok := apierr.Describe(err); ok {
+		return kindToHTTPStatus(d.Kind)
 	}
 
 	// Unknown error: 500. Can't be masked as 200 under continueOnFailure.
@@ -348,29 +368,29 @@ func perElementStatus(err error) int {
 // bulkErrorDescription applies the same diagnostics and public presentation as
 // single-request errors while preserving the bulk envelope, reasons and rollup.
 func bulkErrorDescription(r *http.Request, err error) string {
-	message := err.Error()
-	if perElementStatus(err) != http.StatusInternalServerError {
-		return message
+	internal := perElementStatus(err) == http.StatusInternalServerError
+	var id string
+	if internal {
+		id = correlationID(r)
+		recordHTTPInternalError(r, id, err)
 	}
-	id := correlationID(r)
-	recordHTTPInternalError(r, id, err)
-	if d, ok := errors.AsType[domain.Describable](err); ok {
-		if public, _, overridden := domain.PublicErrorDetails(d); overridden {
-			return public
-		}
-
-		return message
+	if d, ok := apierr.Describe(err); ok {
+		return d.Message
+	}
+	if internal {
+		return fmt.Sprintf("internal server error (correlation ID: %s)", id)
 	}
 
-	return fmt.Sprintf("internal server error (correlation ID: %s)", id)
+	return err.Error()
 }
 
 // bulkErrorCode returns a machine-readable code for a per-element bulk failure.
-// Domain-typed errors expose it through the Describable contract; anything else
-// keeps the generic "ERROR" fallback rather than leaking a raw string.
+// Domain-typed errors and failures decoded from the leader both expose it
+// through the apierr boundary contract; anything else keeps the generic
+// "ERROR" fallback rather than leaking a raw string.
 func bulkErrorCode(err error) string {
-	if d, ok := errors.AsType[domain.Describable](err); ok {
-		return d.Reason()
+	if d, ok := apierr.Describe(err); ok {
+		return d.Reason
 	}
 
 	return "ERROR"

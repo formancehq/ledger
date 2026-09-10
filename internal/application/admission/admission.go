@@ -1457,9 +1457,9 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			}
 
 		case *raftcmdpb.LedgerApplyOrder_CreateIndex:
-			// processCreateIndex overwrites the registry row; keep the key
-			// inside the declared preload set so the cache is seeded
-			// consistently with the drop / retype paths below.
+			// processCreateIndex reads the registry to reject duplicates.
+			// Declare and preload the key for deterministic existence checks,
+			// including when another creation commits before this proposal.
 			p.Add(dal.SubAttrIndex, domain.IndexKey{LedgerName: ledgerName, Canonical: indexes.Canonical(applyData.CreateIndex.GetId())}.Bytes())
 
 		case *raftcmdpb.LedgerApplyOrder_DropIndex:

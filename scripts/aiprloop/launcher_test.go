@@ -55,6 +55,7 @@ func TestLauncherUsesUniqueWorktreesImmutableBaseAndDirectReview(t *testing.T) {
 	require.Equal(t, fixture.baseSHA, baseArgument(t, firstCapture))
 	require.Equal(t, fixture.baseSHA, baseArgument(t, secondCapture))
 	require.Contains(t, capturedArgument(t, firstCapture, "--review-cmd"), "trusted-tools/scripts/ai-review-codex")
+	require.Contains(t, capturedArgument(t, firstCapture, "--review-cmd"), "trusted-tools/scripts/agent-validation-env")
 	require.NotContains(t, readCapturedFile(t, firstCapture), "--binding-file")
 	require.NotContains(t, readCapturedFile(t, firstCapture), "--git-guard")
 	require.Equal(t, 1, strings.Count(firstOutput, "ROOT_PROTECTION_ARMED"))

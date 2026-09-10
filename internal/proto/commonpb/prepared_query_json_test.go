@@ -1,12 +1,74 @@
 package commonpb
 
 import (
+	stdjson "encoding/json"
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
+
+func TestPreparedQueryCursor_LogDataOutput(t *testing.T) {
+	t.Parallel()
+
+	wantLog := &LedgerLog{
+		Id:   7,
+		Date: &Timestamp{Data: 1_700_000_000_000_000},
+		Data: &LedgerLogPayload{Payload: &LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &CreatedTransaction{
+				Transaction: &Transaction{
+					Id:        9,
+					Reference: "order-789",
+					Postings: []*Posting{
+						NewColoredPosting("world", "alice", "USD/2", "pending", big.NewInt(1000)),
+					},
+					Metadata: map[string]*MetadataValue{"note": NewStringValue("checkout")},
+				},
+				AccountMetadata: map[string]*MetadataMap{
+					"alice": {Values: map[string]*MetadataValue{"tier": NewStringValue("gold")}},
+				},
+			},
+		}},
+	}
+	cursor := &PreparedQueryCursor{
+		PageSize: 10,
+		LogData: []*Log{{
+			Sequence: 42,
+			Payload: &LogPayload{Type: &LogPayload_Apply{
+				Apply: &ApplyLedgerLog{LedgerName: "orders", Log: wantLog},
+			}},
+		}},
+	}
+
+	data, err := json.Marshal(cursor)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"logData":`)
+	require.NotContains(t, string(data), `"createdTransaction":`)
+	require.Contains(t, string(data), `"data":{"transaction":`)
+	require.Contains(t, string(data), `"type":"NEW_TRANSACTION"`)
+	var response struct {
+		LogData []struct {
+			Payload struct {
+				Apply struct {
+					Log stdjson.RawMessage `json:"log"`
+				} `json:"apply"`
+			} `json:"payload"`
+		} `json:"logData"`
+	}
+	require.NoError(t, stdjson.Unmarshal(data, &response))
+	require.Len(t, response.LogData, 1)
+	require.JSONEq(t, `{
+		"id":7,"date":"2023-11-14T22:13:20Z","type":"NEW_TRANSACTION",
+		"data":{
+			"transaction":{"id":9,"reference":"order-789","reverted":false,
+				"postings":[{"source":"world","destination":"alice","asset":"USD/2","color":"pending","amount":1000}],
+				"metadata":{"note":"checkout"}},
+			"accountMetadata":{"alice":{"tier":"gold"}}
+		}
+	}`, string(response.LogData[0].Payload.Apply.Log))
+}
 
 // TestPreparedQuery_MarshalJSON_CamelCaseAndEnumString guards two regressions:
 //   - #478: default encoding/json emitted PascalCase oneof keys

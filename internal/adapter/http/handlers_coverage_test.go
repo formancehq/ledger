@@ -931,6 +931,13 @@ func TestRunBulk_Sequential(t *testing.T) {
 	require.NoError(t, results[0].err)
 }
 
+// testBulkRequest is the request writeBulkResponse reads correlation and
+// logging context from. The bulk mapper only needs a request for the
+// internal-error path, so a bare one is enough.
+func testBulkRequest() *http.Request {
+	return httptest.NewRequest(http.MethodPost, "/", nil)
+}
+
 func TestWriteBulkResponse_WithErrors(t *testing.T) {
 	t.Parallel()
 
@@ -964,7 +971,7 @@ func TestWriteBulkResponse_WithErrors(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, httptest.NewRequest(http.MethodPost, "/ledger1/bulk", nil), elements, results, false)
+	writeBulkResponse(w, testBulkRequest(), elements, results, false)
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
@@ -1004,7 +1011,7 @@ func TestWriteBulkResponse_KindDispatch(t *testing.T) {
 			}}}
 
 			w := httptest.NewRecorder()
-			writeBulkResponse(w, httptest.NewRequest(http.MethodPost, "/ledger1/bulk", nil), elements, []bulkResult{{err: tc.err}}, true)
+			writeBulkResponse(w, testBulkRequest(), elements, []bulkResult{{err: tc.err}}, true)
 
 			require.Equal(t, tc.wantStatus, w.Code, "unexpected top-level status for %q", tc.name)
 
@@ -1051,7 +1058,7 @@ func TestWriteBulkResponse_ContinueOnFailure(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, httptest.NewRequest(http.MethodPost, "/ledger1/bulk", nil), elements, results, true)
+	writeBulkResponse(w, testBulkRequest(), elements, results, true)
 
 	require.Equal(t, http.StatusOK, w.Code)
 }
@@ -1083,7 +1090,7 @@ func TestWriteBulkResponse_AllSuccess(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, httptest.NewRequest(http.MethodPost, "/ledger1/bulk", nil), elements, results, false)
+	writeBulkResponse(w, testBulkRequest(), elements, results, false)
 
 	require.Equal(t, http.StatusOK, w.Code)
 }
@@ -1102,7 +1109,7 @@ func TestWriteBulkResponse_NilLog(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, httptest.NewRequest(http.MethodPost, "/ledger1/bulk", nil), elements, results, false)
+	writeBulkResponse(w, testBulkRequest(), elements, results, false)
 
 	require.Equal(t, http.StatusOK, w.Code)
 }
@@ -1240,7 +1247,7 @@ func TestWriteBulkResponse_AbortedElementsDontEscalate(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, httptest.NewRequest(http.MethodPost, "/ledger1/bulk", nil), elements, results, false)
+	writeBulkResponse(w, testBulkRequest(), elements, results, false)
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
@@ -1459,7 +1466,7 @@ func TestWriteBulkResponse_LogWithCreatedTransaction(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, httptest.NewRequest(http.MethodPost, "/ledger1/bulk", nil), elements, results, false)
+	writeBulkResponse(w, testBulkRequest(), elements, results, false)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), "CREATE_TRANSACTION")
@@ -1484,7 +1491,7 @@ func TestWriteBulkResponse_LogWithoutData(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	writeBulkResponse(w, httptest.NewRequest(http.MethodPost, "/ledger1/bulk", nil), elements, results, false)
+	writeBulkResponse(w, testBulkRequest(), elements, results, false)
 
 	require.Equal(t, http.StatusOK, w.Code)
 }

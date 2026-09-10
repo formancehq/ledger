@@ -19,7 +19,7 @@ import (
 func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
 
-	info, loadErr := loadLedger(s, ledger)
+	info, loadErr := loadLedgerReader(s, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}
@@ -40,10 +40,9 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
 	}
 
-	// Contiguous-applied-prefix guard — evaluated BEFORE any mutation (no ledger
-	// re-touch, no cache write) so a rejected/replayed ingest leaves no side
-	// effect. LastMirrorV2LogId is the highest source v2LogId already applied to
-	// this ledger and, because the worker ingests contiguously (including FillGap
+	// Contiguous-applied-prefix guard — evaluated BEFORE any cache write, so
+	// a rejected/replayed ingest leaves no side effect. LastMirrorV2LogId is the
+	// highest source v2LogId already applied to this ledger and, because the worker ingests contiguously (including FillGap
 	// orders for source gaps — see adapter/v2/translator.go: TranslateBatch), it
 	// is a TRUE contiguous prefix: every id in [1, LastMirrorV2LogId] has been
 	// applied. v2 log ids are 1-based and strictly increasing per source.
@@ -108,7 +107,7 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 	}
 
 	// Every fresh mirror entry emits one per-ledger log. Reject exhaustion
-	// before re-touching the ledger or dispatching a child handler.
+	// before dispatching a child handler.
 	nextLogID := boundaries.GetNextLogId()
 	advancedLogID, exhausted := domain.CheckedNextSequence(nextLogID, domain.SequenceCounterLedgerLogID)
 	if exhausted != nil {
@@ -165,13 +164,6 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 	default:
 		return nil, &domain.ErrLedgerNotInMirrorMode{Name: ledger}
 	}
-
-	// Re-touch ledger info so it enters the Merge buffer and gets propagated
-	// back to Gen0 on commit. Do this only after the child handler succeeds so
-	// sequence exhaustion cannot leave even a staged ledger mutation behind.
-	// Without the touch, ledger info is evicted after two cache rotations because
-	// mirror proposals bypass the admission preloader.
-	s.Ledgers().Put(domain.LedgerKey{Name: ledger}, info)
 
 	// Assign per-ledger log ID and advance boundaries
 	boundaries.NextLogId = advancedLogID

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
@@ -881,4 +882,46 @@ func TestGlobalState_Apply_PreparedQueryNoAliasing(t *testing.T) {
 	stored, ok := created.State.Ledger("L").PreparedQuery("q")
 	require.True(t, ok)
 	require.Equal(t, "a:", stored.GetFilter().GetAddress().GetHardcodedPrefix())
+}
+
+// A second creation of a live index is rejected (EN-2009).
+func TestGlobalState_Apply_CreateIndexRejectsDuplicates(t *testing.T) {
+	t.Parallel()
+
+	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
+
+	first := NewGlobalState().Apply(bulkOf(oracletest.CreateIndexReq(id)))
+	require.True(t, first.OK)
+
+	dup := first.State.Apply(bulkOf(oracletest.CreateIndexReq(id)))
+	require.False(t, dup.OK)
+	require.Equal(t, domain.ErrReasonIndexAlreadyExists, dup.Reason)
+
+	// Dropping frees the name again.
+	dropped := first.State.Apply(bulkOf(oracletest.DropIndexReq(id)))
+	require.True(t, dropped.OK)
+	require.True(t, dropped.State.Apply(bulkOf(oracletest.CreateIndexReq(id))).OK)
+
+	// The schema check still owns a first creation over an undeclared field.
+	metaID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "undeclared")
+	require.Equal(t, domain.ErrReasonMetadataFieldNotInSchema,
+		NewGlobalState().Apply(bulkOf(oracletest.CreateIndexReq(metaID))).Reason)
+
+	// A metadata index is duplicable exactly like a builtin one, and dropping
+	// its declaration takes the index with it, so the name frees up again.
+	declared := NewGlobalState().Apply(bulkOf(
+		oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "undeclared", commonpb.MetadataType_METADATA_TYPE_STRING),
+		oracletest.CreateIndexReq(metaID),
+	))
+	require.True(t, declared.OK)
+	require.Equal(t, domain.ErrReasonIndexAlreadyExists,
+		declared.State.Apply(bulkOf(oracletest.CreateIndexReq(metaID))).Reason)
+
+	removed := declared.State.Apply(bulkOf(
+		oracletest.RemoveFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "undeclared"),
+	))
+	require.True(t, removed.OK)
+	require.Equal(t, domain.ErrReasonMetadataFieldNotInSchema,
+		removed.State.Apply(bulkOf(oracletest.CreateIndexReq(metaID))).Reason,
+		"the index died with its declaration, so this is a fresh creation again")
 }

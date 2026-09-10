@@ -2,9 +2,9 @@ package grpc
 
 import (
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
@@ -28,46 +28,15 @@ func (*validationError) Metadata() map[string]string { return nil }
 // review).
 var errEnvelopesRequired = &validationError{msg: "at least one envelope is required"}
 
-// kindToGRPCCode maps a semantic ErrorKind to a gRPC status code. Adding a
-// new Kind without a branch fails the `exhaustive` golangci-lint rule, which
-// is the whole point of this design (#431): a new domain error cannot reach
-// the API without a declared mapping.
-func kindToGRPCCode(k domain.ErrorKind) codes.Code {
-	switch k { //exhaustive:enforce
-	case domain.KindValidation:
-		return codes.InvalidArgument
-	case domain.KindNotFound:
-		return codes.NotFound
-	case domain.KindAlreadyExists:
-		return codes.AlreadyExists
-	case domain.KindConflict:
-		return codes.FailedPrecondition
-	case domain.KindPrecondition:
-		return codes.FailedPrecondition
-	case domain.KindUnavailable:
-		return codes.Unavailable
-	case domain.KindUnauthenticated:
-		return codes.Unauthenticated
-	case domain.KindPermissionDenied:
-		return codes.PermissionDenied
-	case domain.KindInternal:
-		return codes.Internal
-	case domain.KindResourceExhausted:
-		return codes.ResourceExhausted
-	}
-
-	// Unreachable: every Kind defined in domain has a branch above, and
-	// adding a new one without updating this switch fails CI.
-	return codes.Internal
-}
-
 // describableToGRPCStatus converts a Describable to a gRPC status with the
-// ErrorInfo detail clients pattern-match on. The Kind selects the status
-// code via the exhaustive switch above; the Reason and type-owned public
-// presentation carry the wire contract without exposing diagnostic context.
+// ErrorInfo detail clients pattern-match on. The Kind selects the status code
+// through grpcerr.CodeForKind — the one encode table, shared with the decoder
+// that reverses it, so the two directions cannot drift; the Reason and the
+// type-owned public presentation carry the wire contract without exposing
+// diagnostic context.
 func describableToGRPCStatus(d domain.Describable) *status.Status {
 	message, metadata, _ := domain.PublicErrorDetails(d)
-	st := status.New(kindToGRPCCode(domain.Kind(d)), message)
+	st := status.New(grpcerr.CodeForKind(domain.Kind(d)), message)
 
 	detailed, err := st.WithDetails(&errdetails.ErrorInfo{
 		Reason:   d.Reason(),

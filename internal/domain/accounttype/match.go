@@ -7,11 +7,14 @@ import (
 )
 
 // CompiledType holds an account type with its pre-parsed pattern segments,
-// avoiding repeated ParsePattern calls in the hot path.
+// avoiding repeated ParsePattern calls in the hot path. Original is the
+// read-only account type view (never the cached mutable pointer), so a
+// compiled result cannot mutate the source ledger configuration through an
+// alias.
 type CompiledType struct {
 	Segments    []PatternSegment
 	Specificity int
-	Original    *commonpb.AccountType
+	Original    commonpb.AccountTypeReader
 }
 
 // CompileTypes pre-parses all account types into CompiledType entries.
@@ -27,16 +30,51 @@ func CompileTypes(types map[string]*commonpb.AccountType) []CompiledType {
 
 	slices.Sort(names)
 
-	compiled := make([]CompiledType, 0, len(types))
+	return compileTypes(names, func(name string) (commonpb.AccountTypeReader, bool) {
+		at := types[name]
+		if at == nil {
+			return nil, false
+		}
+
+		return at.AsReader(), true
+	})
+}
+
+// CompileTypesReader pre-parses account types without cloning the owning
+// ledger. It consumes the immutable LedgerInfo account-types reader directly,
+// so read-only validation paths never materialise a mutable AccountTypes map.
+func CompileTypesReader(types commonpb.LedgerInfo_AccountTypesMapReader) []CompiledType {
+	if types == nil {
+		return nil
+	}
+
+	names := make([]string, 0, types.Len())
+	types.Range(func(name string, _ commonpb.AccountTypeReader) bool {
+		names = append(names, name)
+
+		return true
+	})
+
+	slices.Sort(names)
+
+	return compileTypes(names, types.Get)
+}
+
+func compileTypes(names []string, get func(name string) (commonpb.AccountTypeReader, bool)) []CompiledType {
+	compiled := make([]CompiledType, 0, len(names))
 
 	for _, name := range names {
-		at := types[name]
+		at, ok := get(name)
+		if !ok || at == nil {
+			continue
+		}
+
 		segments, err := ParsePattern(at.GetPattern())
 		if err != nil {
 			continue
 		}
 
-		if err := ValidateSegmentTypes(segments, at.GetSegmentTypes()); err != nil {
+		if err := validateSegmentTypesReader(segments, at.GetSegmentTypes()); err != nil {
 			continue
 		}
 
@@ -82,9 +120,9 @@ func PatternsConflict(a, b []PatternSegment) bool {
 func FindMatchingType(
 	address string,
 	compiled []CompiledType,
-) *commonpb.AccountType {
+) commonpb.AccountTypeReader {
 	var (
-		best     *commonpb.AccountType
+		best     commonpb.AccountTypeReader
 		bestSpec = -1
 		bestLen  = 0
 	)
