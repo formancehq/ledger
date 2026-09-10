@@ -96,10 +96,8 @@ independently declared set at a pin, which is what separates them; comparing
 the two drains to each other cannot, since a gate missing from both still
 agrees.
 
-One leaf is exempt by construction: `RangeIterator` emits rows in
-`(value, entity)` order across index-value buckets, so an entity-space
-`Seek` is undefined on the raw scan. It only supports forward draining;
-every construction site materializes it into a sorted `SliceIterator` before
+One leaf is exempt: `RangeIterator` only supports forward draining. Every
+construction site materializes it into a sorted `SliceIterator` before
 composing, and a direct `Seek` call fails the query with an invariant
 error.
 
@@ -181,7 +179,7 @@ point.
 The observable requirement is on the *exposed* slice, not on how it is built:
 
 - Before any positioning call returns, the slice is **sorted and unique**.
-  `addressTxUnion.ensure` is the single gate in front of `Next` and `Seek` in
+  `addressTxUnion.ensureMaterialized` is the single gate in front of `Next` and `Seek` in
   both directions, and it returns only after the sort.
 - The order **during** materialization is unspecified. IDs are appended as
   they are scanned, deduplicated through a `uint64` set, and the completed
