@@ -59,6 +59,16 @@ the request reaches the endpoint — so the test asserts the matched pattern on 
 The gRPC analogue is `internal/adapter/auth/request_scope_exhaustiveness_test.go`, which gives the
 same guarantee for the `Request` oneof.
 
+### Optional transaction revert body
+
+`POST /v3/{ledgerName}/transactions/{transactionId}/revert` accepts an absent
+or empty body. When supplied, the JSON body carries `force`, `atEffectiveDate`
+and `metadata`, independently of HTTP framing: a chunked request is decoded
+even though its content length is unknown. Only EOF before reading any body byte
+is accepted as an empty body; malformed or truncated JSON returns
+`400 INVALID_REQUEST` before submitting Apply. The request remains subject to
+the 4 MiB body limit, with `413 BODY_TOO_LARGE` when exceeded.
+
 ### Response Format
 
 #### Success

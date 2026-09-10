@@ -1,7 +1,10 @@
 package http
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
@@ -21,10 +24,18 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Decode request body (optional - can be empty or contain metadata, force, atEffectiveDate)
+	// Check actual emptiness, independent of ContentLength (chunked HTTP).
+	// Sonic also returns EOF for truncated JSON, so only EOF before the first
+	// byte is a valid empty body; every decoding error must reject the request.
 	var reqBody map[string]any
-	if r.ContentLength > 0 {
-		err := json.UnmarshalRead(r.Body, &reqBody)
+	if r.Body != nil {
+		body := bufio.NewReader(r.Body)
+		_, err := body.Peek(1)
+		if err == nil {
+			err = json.UnmarshalRead(body, &reqBody)
+		} else if errors.Is(err, io.EOF) {
+			err = nil
+		}
 		if err != nil {
 			writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
 

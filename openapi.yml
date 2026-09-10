@@ -1205,7 +1205,12 @@ paths:
   /v3/{ledgerName}/transactions/{transactionId}/revert:
     post:
       summary: Revert a transaction
-      description: Reverts a transaction by creating a reverse transaction that undoes its effects. Requires `ledger:write` scope.
+      description: |
+        Reverts a transaction by creating a reverse transaction that undoes its effects. Requires `ledger:write` scope.
+        The body is optional; an absent or empty body uses default options. Supplied
+        options and metadata are decoded for both known-length and HTTP/1.1 chunked
+        requests. Malformed or truncated JSON returns 400 before applying the revert.
+        Bodies exceeding the 4 MiB limit return 413, including chunked bodies.
       operationId: revertTransaction
       tags:
         - Transactions
@@ -1239,6 +1244,12 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           description: Conflict (e.g. transaction already reverted)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Request body exceeds the 4 MiB limit
           content:
             application/json:
               schema:
