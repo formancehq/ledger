@@ -517,6 +517,16 @@ after a definitive server outcome reaches model validation. Driver liveness,
 assertion registration, and ledger-setup assertions do not satisfy that gate.
 
 It also requires every coverage sonde to have been satisfied (see below).
+
+The local runner's shell-fixture tests use a logical clock. Time remains before
+its deadline until the fake driver has written the scenario's assertions and
+installed its shutdown handler; the runner then gets one live monitor iteration
+before expiration. The early-exit case holds time before the deadline so the
+runner must detect actual process termination. Fixture events and clock replies
+use blocking pipes, with process-group cancellation and collected server/driver
+logs on infrastructure failure. The outer timeout is a watchdog, never evidence
+that the intended model state was reached.
+
 Common tunables (full list in the script header):
 
 | Variable | Meaning |
