@@ -28,6 +28,7 @@ import (
 // only the existing voter contributes to the registration's commit quorum.
 func newMembershipServiceNode(t *testing.T) *Service {
 	t.Helper()
+	require.Equal(t, wal.InstanceIDLen, inframembership.InstanceIDLen, "WAL and membership must agree on persisted identity length")
 
 	logger := logging.Testing()
 	meters := noop.NewMeterProvider()
@@ -82,7 +83,10 @@ func newMembershipServiceNode(t *testing.T) *Service {
 	require.NoError(t, err)
 	n, err := node.NewNode(node.NodeConfig{
 		NodeID: 1, AdvertiseAddr: "self:7777", ServiceAdvertiseAddr: "self:8888",
-		InstanceID: []byte("self-instance-id"), TickInterval: time.Millisecond,
+		// Keep the ConfChange retry window above the 500ms floor so package
+		// co-scheduling does not turn a committed registration into a retry.
+		InstanceID: []byte("self-instance-id"), TickInterval: 100 * time.Millisecond,
+		ElectionTick: 15, HeartbeatTick: 10,
 		ProcessingTickInterval: time.Millisecond, MaintenanceInterval: time.Hour,
 	}, raftTransport, applier, logger, meter, w, fsm, recovery, synchronizer, m, responses)
 	require.NoError(t, err)
