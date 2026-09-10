@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"encoding/json"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -48,8 +49,9 @@ func TestChartValidation(t *testing.T) {
 			expectedChart: ChartOfAccounts{
 				"banks": {
 					VariableSegment: &ChartVariableSegment{
-						Label:   "iban",
-						Pattern: pointer.For("^[0-9]{10}$"),
+						Label:    "iban",
+						Pattern:  pointer.For("^[0-9]{10}$"),
+						compiled: regexp.MustCompile(`^[0-9]{10}$`),
 						ChartSegment: ChartSegment{
 							FixedSegments: map[string]ChartSegment{
 								"main": {

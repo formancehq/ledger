@@ -29,8 +29,9 @@ type ChartSegment struct {
 type ChartVariableSegment struct {
 	ChartSegment
 
-	Pattern *string
-	Label   string
+	Pattern  *string
+	compiled *regexp.Regexp
+	Label    string
 }
 
 const PROPERTY_PREFIX = "."
@@ -106,6 +107,7 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 				return fmt.Errorf("invalid address segment: %v", key)
 			}
 			var pattern *string
+			var compiled *regexp.Regexp
 			{
 				var segment map[string]any
 				err := json.Unmarshal(value, &segment)
@@ -114,11 +116,12 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 				}
 				if pat, ok := segment[PATTERN_KEY]; ok {
 					if pat, ok := pat.(string); ok {
-						_, err := regexp.Compile(pat)
+						re, err := regexp.Compile(pat)
 						if err != nil {
 							return fmt.Errorf("invalid pattern regex: %v", err)
 						}
 						pattern = &pat
+						compiled = re
 					} else {
 						return fmt.Errorf("pattern must be a string")
 					}
@@ -136,6 +139,7 @@ func (s *ChartSegment) UnmarshalJSON(data []byte) error {
 				variableSegment = &ChartVariableSegment{
 					ChartSegment: segment,
 					Pattern:      pattern,
+					compiled:     compiled,
 					Label:        key[1:],
 				}
 			} else if pattern != nil {
@@ -248,6 +252,16 @@ func (s ChartVariableSegment) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
+func (s *ChartVariableSegment) matchPattern(v string) (bool, error) {
+	if s.Pattern == nil {
+		return true, nil
+	}
+	if s.compiled != nil {
+		return s.compiled.MatchString(v), nil
+	}
+	return regexp.Match(*s.Pattern, []byte(v))
+}
+
 func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, variableSegment *ChartVariableSegment, account []string) (*ChartAccount, error) {
 	nextSegment := account[0]
 	if segment, ok := fixedSegments[nextSegment]; ok {
@@ -265,13 +279,9 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 		}
 	}
 	if variableSegment != nil {
-		matches := true
-		if variableSegment.Pattern != nil {
-			var err error
-			matches, err = regexp.Match(*variableSegment.Pattern, []byte(nextSegment))
-			if err != nil {
-				return nil, fmt.Errorf("invalid pattern regex: %v", err)
-			}
+		matches, err := variableSegment.matchPattern(nextSegment)
+		if err != nil {
+			return nil, fmt.Errorf("invalid pattern regex: %v", err)
 		}
 		if matches {
 			if len(account) > 1 {
