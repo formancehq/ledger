@@ -893,13 +893,15 @@ func newTestBuilderWithStore(t *testing.T) *Builder {
 	t.Cleanup(func() { _ = fsm.Close() })
 
 	return &Builder{
-		indexConfig: make(map[string]*ledgerIndexConfig),
-		readStore:   store,
-		pebbleStore: fsm,
-		attrs:       attributes.New(),
-		kb:          dal.NewKeyBuilder(),
-		wb:          readstore.NewWriteBatch(),
-		logger:      noopLogger{},
+		indexConfig:    make(map[string]*ledgerIndexConfig),
+		readStore:      store,
+		pebbleStore:    fsm,
+		attrs:          attributes.New(),
+		kb:             dal.NewKeyBuilder(),
+		wb:             readstore.NewWriteBatch(),
+		accounts:       make(map[string]struct{}, 64),
+		ledgerFirstSeq: make(map[string]uint64, 8),
+		logger:         noopLogger{},
 	}
 }
 

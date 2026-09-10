@@ -106,7 +106,7 @@ The atomic switch is a single Pebble batch commit that flips `Pending → Curren
 
 A rewrite is driven by `indexbuilder.Builder` (`internal/application/indexbuilder/`). The relevant entry points:
 
-- `handleCreatedIndexLog` — allocates `next = HighWater + 1`. An initial index is promoted directly to `CurrentVersion=next`; a later index gets `CurrentVersion=0`, `PendingVersion=next`, a persisted version-state row, and a `backfillTask` (`internal/application/indexbuilder/index_config.go`).
+- `handleCreatedIndexLog` — allocates `next = HighWater + 1`. An initial index, the log-date builtin aside, is promoted directly to `CurrentVersion=next`; a later index gets `CurrentVersion=0`, `PendingVersion=next`, a persisted version-state row, and a `backfillTask` (`internal/application/indexbuilder/index_config.go`).
 - `backfillTask` — opaque cursor that replays historical logs into `v_pending`, persisting progress in Pebble so a node restart resumes mid-rewrite (`internal/application/indexbuilder/backfill.go:21-32`).
 - `completeBackfill` — when the cursor reaches the global indexer cursor, the **atomic switch** runs: `CurrentVersion ← PendingVersion`, `PendingVersion ← 0`, in one Pebble batch (`backfill.go:1197+`).
 - `handleDroppedIndexLog` — removes the index from the in-memory config, cancels in-flight work, tombstones `IndexVersionState` while preserving `HighWater`, and purges metadata forward (`0x01`), existence (`0x02`), and reverse-map (`0x03`) rows in the same fold batch (`index_config.go`).
@@ -128,10 +128,12 @@ stateDiagram-v2
 
 An index gets a fast path when it is declared in the **same atomic apply batch** as the `CreateLedger` that creates its ledger, before any indexable data log for that ledger. The FSM classifies this per-proposal — a ledger is treated as "born empty" until it emits its first indexable data log — and stamps the result on a new `CreatedIndexLog.initial` boolean.
 
-- **Initial index** (`CreatedIndexLog.initial == true`): there is no history to replay, so the indexbuilder allocates `next = HighWater + 1`, promotes it straight to `CurrentVersion=next`, and schedules **no** historical backfill. On the first incarnation `next` is 1; after a drop/recreate it is higher. `GetIndexStatus` immediately reports `current_version > 0` and carries no backfill cursor.
+- **Initial index** (`CreatedIndexLog.initial == true`, the log-date builtin excepted — see below): there is no *entity* history to replay, so the indexbuilder allocates `next = HighWater + 1`, promotes it straight to `CurrentVersion=next`, and schedules **no** historical backfill. On the first incarnation `next` is 1; after a drop/recreate it is higher. `GetIndexStatus` immediately reports `current_version > 0` and carries no backfill cursor.
 - **Later index** (`CreatedIndexLog.initial == false`): this covers an index added to a ledger that already holds data, **and** an index created in a separate apply batch even if the ledger is still empty. It is seeded with `CurrentVersion=0` and `PendingVersion=HighWater+1`, backfilled from cursor `0`, and gated by `current_version == 0` (queries get `ErrIndexBuilding`) until the backfill completes and the atomic switch flips the served version.
 
 The classification is deliberately conservative: only the same-atomic-batch-before-any-data case qualifies as initial. A separate-batch index on a still-empty ledger backfills exactly as before — safe (it replays an empty history and completes immediately), just not routed through the zero-cost promotion.
+
+The log-date builtin is the exception to the fast path: born-empty means no indexable *data* log, and such a ledger can already carry configuration logs — the `CreateIndex` log itself among them — whose dates belong in the index. It therefore backfills in both classifications (`isLogDateIndex`, EN-1987).
 
 ## Restore Lifecycle
 

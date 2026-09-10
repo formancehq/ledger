@@ -1565,7 +1565,10 @@ func checkIndexed(ctx *compileCtx, id *commonpb.IndexID, label string) error {
 //     EVERY index kind — builtin (reference, timestamp, inserted_at,
 //     address, log_date) and metadata alike. Non-initial indexes allocate
 //     PendingVersion=HighWater+1 and completeBackfill promotes it; indexes
-//     declared on a born-empty ledger take the direct-ready fast path.
+//     declared on a born-empty ledger take the direct-ready fast path,
+//     the log-date builtin aside — it covers every log of the ledger, so
+//     it backfills from either classification and is refused until its
+//     switch (EN-1987).
 //   - A wrapped error on Pebble I/O failure (per CLAUDE.md invariant
 //     #7 the silent "treat as building" fallback is forbidden).
 //
