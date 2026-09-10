@@ -197,6 +197,21 @@ just k8s-push-images
 property drivers under `main/` are tested exclusively by the Antithesis
 hypervisor.
 
+## Local runner regression tests
+
+`go test -race ./tests/antithesis` tests the local runner with fake server and
+model-driver processes. The fixtures reuse the running Go test executable via
+symlinks and invoke the runner through Bash explicitly. This avoids cold startup
+delays of newly generated executable shell scripts on macOS.
+
+A pipe gates the fixture clock until the driver has emitted its scenario evidence.
+The early-exit scenario keeps its test clock before the deadline until the runner
+observes process exit; all scenarios retain the outer 15-second failure bound.
+The production runner and its verified-model-outcome requirement are unchanged.
+Cancellation kills the runner's process group, including its helpers, and bounds
+pipe draining. The fixture environment excludes inherited model settings and shell
+startup hooks. All six outcome scenarios remain independent regression cases.
+
 ## Adding a new driver
 
 1. Create `bin/cmds/main/<prefix>_<name>/main.go`.
