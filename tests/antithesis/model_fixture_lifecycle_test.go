@@ -152,5 +152,6 @@ func runModelFixtureCancellationParent() error {
 	if err := ready.Close(); err != nil {
 		return err
 	}
+
 	return child.Wait()
 }
