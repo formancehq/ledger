@@ -92,7 +92,13 @@ func registryMatches(ls oracle.LedgerState, served []*commonpb.PreparedQuery) bo
 		return false
 	}
 
+	seen := make(map[string]struct{}, len(served))
 	for _, q := range served {
+		if _, duplicate := seen[q.GetName()]; duplicate {
+			return false
+		}
+		seen[q.GetName()] = struct{}{}
+
 		stored, ok := ls.PreparedQuery(q.GetName())
 		if !ok || stored.GetTarget() != q.GetTarget() || !stored.GetFilter().EqualVT(q.GetFilter()) {
 			return false

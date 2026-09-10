@@ -133,6 +133,7 @@ func TestRegistryMatches(t *testing.T) {
 		served []*commonpb.PreparedQuery
 	}{
 		{"missing entry", served[:1]},
+		{"duplicate hides missing entry", []*commonpb.PreparedQuery{served[1], served[1].CloneVT()}},
 		{"extra entry", append(append([]*commonpb.PreparedQuery{}, served...),
 			&commonpb.PreparedQuery{Name: "c", Filter: filterAddrPrefix("y:")})},
 		{"stale filter", []*commonpb.PreparedQuery{
