@@ -59,7 +59,14 @@ siblings continue waiting. Reconciliation retries the same name and accepts an
 existing Job only when its controller owner UID matches the run. `AlreadyExists`
 (including while the read cache catches up) is retryable; it never causes creation
 under another name. A foreign or unowned Job is left untouched and reported as a
-retryable ownership error. Definitive local construction errors and API
+retryable ownership error in `BackupRun.status.message`. The run remains Running
+and keeps siblings waiting; an operator must resolve the conflicting Job's
+ownership or remove that Job before provisioning can resume. The controller never
+adopts or deletes a foreign Job automatically. Retryable provisioning errors are
+persisted in the message without rewriting unchanged diagnostics. If that status
+write fails, the run stays nonterminal and reconciliation retries. The message is
+cleared after the owned Job becomes available, before processing its outcome.
+Definitive local construction errors and API
 `Invalid`/`BadRequest` creation rejections mark the run Failed; other provisioning
 errors retry. Transient reads of the parent Backup or Cluster also retry rather
 than ending the run during recovery. Once the owned Job completes, its outcome
