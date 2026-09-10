@@ -283,7 +283,7 @@ func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, fil
 	})
 
 	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter,
-		map[string]struct{}{assetIndexCanonical: {}}, matched && gotResults)
+		map[string]struct{}{assetIndexCanonical: {}}, matched && gotResults, len(serverAccts))
 
 	if matched {
 		if gotResults {
@@ -798,7 +798,7 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 	})
 
 	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed,
-		matched && errKind == indexedErrNone)
+		matched && errKind == indexedErrNone, len(serverTxs))
 
 	if matched {
 		switch errKind {
@@ -1185,7 +1185,7 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 	})
 
 	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed,
-		matched && errKind == indexedErrNone)
+		matched && errKind == indexedErrNone, len(serverAccts))
 
 	if matched {
 		switch errKind {

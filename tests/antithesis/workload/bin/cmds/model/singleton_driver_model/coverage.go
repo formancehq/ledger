@@ -101,33 +101,47 @@ func emitCoverage(cond bool, msg string, details internal.Details, hit bool) {
 		hit, true, "sometimes", "Sometimes", msg)
 }
 
-// noteQueryCoverage records what one validated query outcome proves. served is
-// true only when the oracle accepted the outcome AND the server returned rows:
-// a refusal the model predicted shows the lifecycle gate works, not that the
-// index can answer. needed is the filter's index requirement, so a sonde can
-// only be satisfied by a query that genuinely depended on that index.
-//
-// Every sonde is evaluated on every call, not only the satisfied one — the
-// false evaluations are what let Antithesis bias toward a starved index. The
-// caller must not hold c.mu.
-func (c *Checker) noteQueryCoverage(ledger string, target commonpb.QueryTarget, filter *commonpb.QueryFilter, needed map[string]struct{}, served bool) {
+// noteQueryCoverage records what one validated query outcome proves. Every
+// sonde is evaluated on every call, not only the satisfied one — the false
+// evaluations are what let Antithesis bias toward a starved index. The caller
+// must not hold c.mu.
+func (c *Checker) noteQueryCoverage(ledger string, target commonpb.QueryTarget, filter *commonpb.QueryFilter, needed map[string]struct{}, verified bool, rows int) {
 	details := internal.Details{"ledger": ledger}
+
+	for msg, cond := range coverageHits(target, filter, needed, verified, rows,
+		c.retypeWindowOpenFor(ledger, needed)) {
+		emitCoverage(cond, msg, details, coverageHit)
+	}
+}
+
+// coverageHits is the per-sonde verdict for one query outcome: message to
+// whether this outcome satisfies it.
+//
+// A sonde needs three things at once. The oracle must have ACCEPTED the
+// outcome; the server must have returned at least one ROW, because a verified
+// empty page proves the index was consulted but never that it can produce a
+// matching record — and the generator emits deliberately unmatchable filters,
+// so empty pages are the common case; and the filter must have NEEDED that
+// index, so a page served through one index cannot vouch for another.
+func coverageHits(target commonpb.QueryTarget, filter *commonpb.QueryFilter, needed map[string]struct{}, verified bool, rows int, retypeOpen bool) map[string]bool {
+	served := verified && rows > 0
+	out := make(map[string]bool, len(coverageIndexes)+2)
 
 	for _, wi := range coverageIndexes {
 		_, want := needed[wi.canonical]
-		emitCoverage(served && want, coverageIndexMessage(wi.canonical), details, coverageHit)
+		out[coverageIndexMessage(wi.canonical)] = served && want
 	}
 
 	// Only the entity targets have metadata fields; a LOGS filter cannot need a
 	// metadata index, so folding it in would report against an entity sonde it
 	// can never satisfy.
 	if target != commonpb.QueryTarget_QUERY_TARGET_LOGS {
-		emitCoverage(served && filterNeedsMetadataIndex(filter),
-			coverageMetadataMessage(target), details, coverageHit)
+		out[coverageMetadataMessage(target)] = served && filterNeedsMetadataIndex(filter)
 	}
 
-	emitCoverage(served && c.retypeWindowOpenFor(ledger, needed),
-		coverageRetypeMessage, details, coverageHit)
+	out[coverageRetypeMessage] = served && retypeOpen
+
+	return out
 }
 
 // filterNeedsMetadataIndex reports whether any leaf is a metadata-field

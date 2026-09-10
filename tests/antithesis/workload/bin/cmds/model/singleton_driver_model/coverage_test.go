@@ -119,3 +119,53 @@ func TestRetypeWindowOpenFor(t *testing.T) {
 	require.False(t, c.retypeWindowOpenFor("L", map[string]struct{}{assetIndexCanonical: {}}),
 		"a query that did not need the retyped index proves nothing about the window")
 }
+
+// A sonde needs an accepted outcome, a returned row, and the filter to have
+// needed that index. Any one missing and it stays unsatisfied — an empty page
+// in particular proves the index was consulted, never that it can produce a
+// matching record, and the generator emits unmatchable filters on purpose.
+func TestCoverageHits_NeedsAcceptedNonEmptyAndNeeded(t *testing.T) {
+	t.Parallel()
+
+	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	assetSonde := coverageIndexMessage(assetIndexCanonical)
+	needed := map[string]struct{}{assetIndexCanonical: {}}
+	filter := filterMetaExists("k1")
+
+	hits := coverageHits(accounts, filter, needed, true, 3, true)
+	require.True(t, hits[assetSonde], "accepted, non-empty, and needed")
+	require.True(t, hits[coverageMetadataMessage(accounts)])
+	require.True(t, hits[coverageRetypeMessage])
+
+	require.False(t, coverageHits(accounts, filter, needed, true, 0, true)[assetSonde],
+		"a verified but empty page must not satisfy a sonde")
+	require.False(t, coverageHits(accounts, filter, needed, false, 3, true)[assetSonde],
+		"an outcome the oracle rejected proves nothing")
+
+	other := map[string]struct{}{logDateIndexCanonical: {}}
+	require.False(t, coverageHits(accounts, filter, other, true, 3, true)[assetSonde],
+		"a page served through another index cannot vouch for this one")
+
+	require.False(t, coverageHits(accounts, filter, needed, true, 3, false)[coverageRetypeMessage],
+		"no open window, nothing to prove")
+	require.False(t, coverageHits(accounts, filterReverted(true), needed, true, 3, true)[coverageMetadataMessage(accounts)],
+		"no metadata leaf, no metadata-index claim")
+}
+
+// Every registered sonde must be decided on every call, or one could never be
+// evaluated false and Antithesis would get no gradient for it.
+func TestCoverageHits_DecidesEveryEntitySonde(t *testing.T) {
+	t.Parallel()
+
+	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+
+	hits := coverageHits(accounts, filterMetaExists("k1"), nil, true, 1, false)
+	for _, msg := range coverageMessages() {
+		if msg == coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS) {
+			continue // the other target's sonde is decided by its own queries
+		}
+
+		_, decided := hits[msg]
+		require.True(t, decided, "%q was not evaluated", msg)
+	}
+}

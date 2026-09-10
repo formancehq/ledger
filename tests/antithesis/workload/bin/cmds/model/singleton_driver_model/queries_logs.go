@@ -542,7 +542,7 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 	})
 
 	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed,
-		matched && errKind == indexedErrNone)
+		matched && errKind == indexedErrNone, len(page))
 
 	if matched {
 		if errKind == indexedErrNotReady {
