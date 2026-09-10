@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/google/uuid"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -25,7 +27,8 @@ import (
 // leaves nothing listening on it, which is exactly what a peer that never starts
 // needs.
 func phantomPeer() (raftAddr, serviceAddr string, instanceID []byte) {
-	return testserver.AllocateDeadAddress(), testserver.AllocateDeadAddress(), []byte("phantom-peer-id!")
+	identity := uuid.New()
+	return testserver.AllocateDeadAddress(), testserver.AllocateDeadAddress(), identity[:]
 }
 
 // waitForLearner polls the cluster state on the leader until the given node appears as a learner.
