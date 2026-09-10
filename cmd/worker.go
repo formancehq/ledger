@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/formancehq/go-libs/v5/pkg/cloud/aws/iam"
 	"github.com/formancehq/go-libs/v5/pkg/fx/storagefx"
 	"github.com/formancehq/go-libs/v5/pkg/observe/metrics"
 	"github.com/formancehq/go-libs/v5/pkg/observe/traces"
@@ -93,6 +94,23 @@ func NewWorkerCommand() *cobra.Command {
 		Use:          "worker",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Fail fast if the operator combines --postgres-aws-enable-iam with
+			// --aws-role-arn. iam.LoadOptionFromFlags does not yet consume
+			// AWSRoleArnFlag, so role assumption would silently not occur and
+			// the worker would fall back to the default credential chain instead
+			// of the intended role. Return an explicit error rather than
+			// misleading the operator.
+			if iamEnabled, _ := cmd.Flags().GetBool(connect.PostgresAWSEnableIAMFlag); iamEnabled {
+				if roleArn, _ := cmd.Flags().GetString(iam.AWSRoleArnFlag); roleArn != "" {
+					return fmt.Errorf(
+						"--%s is not yet supported: iam.LoadOptionFromFlags does not "+
+							"consume the role ARN and role assumption will silently not occur; "+
+							"remove --%s or add role-assumption support to go-libs first",
+						iam.AWSRoleArnFlag, iam.AWSRoleArnFlag,
+					)
+				}
+			}
+
 			connectionOptions, err := connect.ConnectionOptionsFromFlags(cmd.Flags(), cmd.Context())
 			if err != nil {
 				return err
@@ -132,6 +150,10 @@ func NewWorkerCommand() *cobra.Command {
 	connect.AddFlags(cmd.Flags())
 	metrics.AddFlags(cmd.Flags())
 	traces.AddFlags(cmd.Flags())
+	iam.AddFlags(cmd.Flags())
+	// Hide --aws-role-arn until go-libs consumes it; exposing a no-op flag
+	// would silently mislead operators configuring RDS IAM role assumption.
+	_ = cmd.Flags().MarkHidden(iam.AWSRoleArnFlag)
 
 	return cmd
 }
