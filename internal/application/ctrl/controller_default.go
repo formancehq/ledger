@@ -1056,10 +1056,10 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 	// CurrentVersion is servable only when its ActivationSequence is at or
 	// below mainSeq. Resolve both through the same snapshot the Inspect scan
 	// uses, so a concurrent atomic version switch cannot make the gate select a
-	// keyspace that was not yet active at the main horizon. The resolver also
-	// reports version zero for a promotion committed but not yet flushed
-	// (readstore.Store.PromotionInFlight), so the scan never reads a keyspace a
-	// kill could still take away.
+	// keyspace that was not yet active at the main horizon. For a promotion
+	// committed but not yet flushed the resolver serves the version it
+	// replaced while the state retains one, and version zero otherwise, so
+	// the scan never reads a keyspace a kill could still take away.
 	version, primed, err := ctrl.readStore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq)(indexes.Canonical(indexID))
 	if err != nil {
 		return nil, fmt.Errorf("reading index version state: %w", err)

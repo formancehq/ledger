@@ -74,19 +74,17 @@ func (b *Builder) gcReverseMapVersion(batch *dal.WriteSession, kb *dal.KeyBuilde
 // metadata field. Called once at boot, after IndexVersionState is
 // restored from disk.
 //
-// The atomic switch (processSchemaRewrite) does an inline GC of v_old
-// in the same batch as the version promotion, so steady-state operation
-// never leaves orphans behind. This sweep handles the crash window:
-// a node that died after the switch committed but before its
-// follow-up activity (re-retypes, snapshot installs that left stale
-// version data, etc.) can reboot with orphan v_n keyspaces. Each
-// orphan version is purged via gcVersionAt — DeleteRange is a cheap
-// tombstone even when the range is already empty, so the scan is
+// A version the state still names — current, pending, or the retained
+// previous one (retirePrevious purges that one once its gate opens) — is
+// live and skipped. Everything else is an orphan: a re-retype that bumped
+// pending past an in-flight rewrite, a snapshot install that left stale
+// version data. Each orphan version is purged via gcVersionAt — DeleteRange
+// is a cheap tombstone even when the range is already empty, so the scan is
 // safe to run unconditionally.
 //
-// Cost: iterate versions 1..max(current, pending), skipping the live pair, and
-// queue three range tombstones for each orphan version. It is independent of
-// the number of reverse-map rows in the ledger.
+// Cost: iterate versions 1..max(current, pending, previous), skipping the
+// live ones, and queue three range tombstones for each orphan version. It is
+// independent of the number of reverse-map rows in the ledger.
 func (b *Builder) purgeOrphanVersions() error {
 	if b.indexVersions == nil {
 		return nil
@@ -121,7 +119,7 @@ func (b *Builder) purgeOrphanVersions() error {
 
 			metaKey := meta.Metadata.GetKey()
 
-			maxV := max(state.CurrentVersion, state.PendingVersion)
+			maxV := max(state.CurrentVersion, state.PendingVersion, state.PreviousVersion)
 			if maxV == 0 {
 				continue
 			}
@@ -131,7 +129,7 @@ func (b *Builder) purgeOrphanVersions() error {
 			var purged []uint32
 
 			for v := uint32(1); v <= maxV; v++ {
-				if v == state.CurrentVersion || v == state.PendingVersion {
+				if v == state.CurrentVersion || v == state.PendingVersion || v == state.PreviousVersion {
 					continue
 				}
 
@@ -155,11 +153,12 @@ func (b *Builder) purgeOrphanVersions() error {
 			}
 
 			b.logger.WithFields(map[string]any{
-				"ledger":  ledgerName,
-				"field":   metaKey,
-				"current": state.CurrentVersion,
-				"pending": state.PendingVersion,
-				"purged":  purged,
+				"ledger":   ledgerName,
+				"field":    metaKey,
+				"current":  state.CurrentVersion,
+				"pending":  state.PendingVersion,
+				"previous": state.PreviousVersion,
+				"purged":   purged,
 			}).Infof("Purged orphan index versions")
 		}
 	}

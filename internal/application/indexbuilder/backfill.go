@@ -399,19 +399,15 @@ func (b *Builder) bumpPendingVersion(ledgerName string, indexID *commonpb.IndexI
 	// sequence and its bound type both belong to the version still being
 	// served, and dropping them here would let a stale pin resolve the
 	// promoted keyspace as complete (activation) or re-encode live writes
-	// under the wrong type mid-window (bound type). Only the pending slot
-	// is new: the rewrite's target version, bound to the retype's target
-	// type, with a fresh cursor.
-	newState := readstore.IndexVersionState{
-		CurrentVersion:      prior.CurrentVersion,
-		PendingVersion:      base + 1,
-		ActivationSequence:  prior.ActivationSequence,
-		HighWater:           base + 1,
-		CurrentType:         prior.CurrentType,
-		CurrentTypeDeclared: prior.CurrentTypeDeclared,
-		PendingType:         toType,
-		PendingTypeDeclared: true,
-	}
+	// under the wrong type mid-window (bound type). A retained previous
+	// version stays too — its keyspace is on disk until retirePrevious
+	// purges it, and a queued retirement matches on it. Only the pending
+	// slot is new: the rewrite's target version, bound to the retype's
+	// target type, with a fresh cursor.
+	newState := prior
+	newState.PendingVersion = base + 1
+	newState.HighWater = base + 1
+	newState.PendingType, newState.PendingTypeDeclared = toType, true
 
 	batch := b.wb.Batch()
 	if batch == nil {
@@ -625,7 +621,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	// "scan, then maybe switch later" split forced by the requiredIndexedSeq
 	// gate: once the gate fires, the task can finally retire.
 	if task.scanComplete {
-		return b.tryCommitScanCompleteSwitch(task, kb, ns, canonical, currentVersion, pendingVersion)
+		return b.tryCommitScanCompleteSwitch(task, canonical, currentVersion, pendingVersion)
 	}
 
 	done := false
@@ -854,23 +850,21 @@ scan:
 	}
 
 	// Atomic switch: when the rewrite has just finished its last entry,
-	// promote v_pending to local_current_version *and* GC the v_old
-	// keyspaces in the same batch. Single-batch atomicity means a
-	// crash mid-commit leaves the read store either fully pre-switch
-	// (v_old serves queries, rewrite resumes) or fully post-switch
-	// (v_pending serves queries, v_old is gone). No intermediate
-	// state where queries land on a switched current_version while
-	// stale v_old keys still sit on disk.
+	// promote v_pending to local_current_version. v_old stays on disk,
+	// named by the state as the retained previous version, so a read the
+	// promotion cannot yet serve — its flush is pending, or the read is
+	// pinned below the activation — is answered from v_old; retirePrevious
+	// purges it once neither applies.
 	//
 	// The switch is GATED on `LastIndexedSequence >= requiredIndexedSeq`
-	// (the FSM watermark accumulated during the scan above). If the
-	// read store hasn't caught up yet, freeze the task in the
+	// (the FSM watermark accumulated during the scan above) and on no
+	// earlier promotion of the index still being unflushed or retained
+	// (promotionBlocked). If either holds, freeze the task in the
 	// scanComplete state — the next call to processSchemaRewrite will
 	// route through tryCommitScanCompleteSwitch and fire the switch
-	// once the gate releases. Splitting the switch into its own batch
-	// in the laggy case is safe: v_pending is fully populated, v_current
-	// keeps serving queries, and the switch itself is still a single
-	// atomic batch (WriteIndexVersionState + gcVersionAt together).
+	// once the gates release. Splitting the switch into its own batch
+	// in the laggy case is safe: v_pending is fully populated and
+	// v_current keeps serving queries.
 	var (
 		didSwitch bool
 		newState  readstore.IndexVersionState
@@ -884,29 +878,19 @@ scan:
 			return false, fmt.Errorf("reading indexer progress for schema-rewrite gate: %w", seqErr)
 		}
 
-		if lastSeq < task.requiredIndexedSeq {
-			// Read store is behind the FSM we observed — defer the switch.
+		if lastSeq < task.requiredIndexedSeq || b.promotionBlocked(task.ledger, canonical) {
+			// Read store is behind the FSM we observed, or an earlier
+			// promotion is still in flight or retained — defer the switch.
 			// Commit only what's in `batch` (cursor + v_pending writes
 			// from this scan iteration). The task survives to the next
 			// tick via the scanComplete branch at the top of the function.
 			done = false
 		} else {
 			prior, _ := b.versionStateFor(task.ledger, canonical)
-			newState = readstore.IndexVersionState{
-				CurrentVersion:      pendingVersion,
-				PendingVersion:      0,
-				ActivationSequence:  task.requiredIndexedSeq,
-				HighWater:           pendingVersion,
-				CurrentType:         prior.PendingType,
-				CurrentTypeDeclared: prior.PendingTypeDeclared,
-			}
+			newState = promotedState(prior, pendingVersion, task.requiredIndexedSeq, lastSeq)
 
 			if err := b.writePromotion(batch, task.ledger, canonical, newState); err != nil {
 				return false, fmt.Errorf("persisting atomic version switch: %w", err)
-			}
-
-			if err := b.gcVersionAt(batch, kb, task.ledger, ns, task.key, currentVersion); err != nil {
-				return false, fmt.Errorf("gc v_old keyspace: %w", err)
 			}
 
 			didSwitch = true
@@ -915,7 +899,7 @@ scan:
 
 	var commitErr error
 	if didSwitch {
-		commitErr = b.commitPromotion(task.ledger, canonical, b.flushWriteBatch)
+		commitErr = b.commitPromotion(task.ledger, canonical, pendingVersion, b.flushWriteBatch)
 	} else {
 		commitErr = b.flushWriteBatch()
 	}
@@ -929,13 +913,13 @@ scan:
 	if didSwitch {
 		b.finishPromotion(task.ledger, canonical, newState)
 		b.logger.WithFields(map[string]any{
-			"ledger":         task.ledger,
-			"key":            task.key,
-			"toType":         task.toType.String(),
-			"fromVersion":    currentVersion,
-			"toVersion":      pendingVersion,
-			"gcedVersion":    currentVersion,
-			"processedCount": task.processedCount,
+			"ledger":          task.ledger,
+			"key":             task.key,
+			"toType":          task.toType.String(),
+			"fromVersion":     currentVersion,
+			"toVersion":       pendingVersion,
+			"retainedVersion": currentVersion,
+			"processedCount":  task.processedCount,
 		}).Infof("Schema rewrite atomic switch — local_current_version advanced")
 	}
 
@@ -945,17 +929,16 @@ scan:
 // tryCommitScanCompleteSwitch handles the second half of a rewrite
 // whose rmap scan exhausted in a prior batch (task.scanComplete=true)
 // but whose atomic switch was deferred because the read-store cursor
-// hadn't caught up to the FSM log seq the rewrite observed. Each tick
-// re-checks the gate; once `LastIndexedSequence() >= task.requiredIndexedSeq`
-// it opens a small batch with just `WriteIndexVersionState` +
-// `gcVersionAt` and commits — the switch is still a single atomic
-// batch, just decoupled from the scan-completion batch.
+// hadn't caught up to the FSM log seq the rewrite observed, or an
+// earlier promotion of the index was still in flight or retained. Each
+// tick re-checks the gates; once both release it opens a small batch
+// with just `WriteIndexVersionState` and commits.
 //
 // Returns (true, nil) when the switch committed and the task can be
-// retired; (false, nil) when the gate hasn't released yet (keep the
+// retired; (false, nil) when a gate hasn't released yet (keep the
 // task alive); (false, err) on commit failure.
 func (b *Builder) tryCommitScanCompleteSwitch(
-	task *schemaRewriteTask, kb *dal.KeyBuilder, ns, canonical string,
+	task *schemaRewriteTask, canonical string,
 	currentVersion, pendingVersion uint32,
 ) (bool, error) {
 	lastSeq, err := b.readStore.LastIndexedSequence()
@@ -963,7 +946,7 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 		return false, fmt.Errorf("reading indexer progress for schema-rewrite gate: %w", err)
 	}
 
-	if lastSeq < task.requiredIndexedSeq {
+	if lastSeq < task.requiredIndexedSeq || b.promotionBlocked(task.ledger, canonical) {
 		// Gate still closed — task survives, retry next tick.
 		return false, nil
 	}
@@ -979,24 +962,13 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 	}()
 
 	prior, _ := b.versionStateFor(task.ledger, canonical)
-	newState := readstore.IndexVersionState{
-		CurrentVersion:      pendingVersion,
-		PendingVersion:      0,
-		ActivationSequence:  task.requiredIndexedSeq,
-		HighWater:           pendingVersion,
-		CurrentType:         prior.PendingType,
-		CurrentTypeDeclared: prior.PendingTypeDeclared,
-	}
+	newState := promotedState(prior, pendingVersion, task.requiredIndexedSeq, lastSeq)
 
 	if err := b.writePromotion(batch, task.ledger, canonical, newState); err != nil {
 		return false, fmt.Errorf("persisting atomic version switch: %w", err)
 	}
 
-	if err := b.gcVersionAt(batch, kb, task.ledger, ns, task.key, currentVersion); err != nil {
-		return false, fmt.Errorf("gc v_old keyspace: %w", err)
-	}
-
-	if err := b.commitPromotion(task.ledger, canonical, b.flushWriteBatch); err != nil {
+	if err := b.commitPromotion(task.ledger, canonical, pendingVersion, b.flushWriteBatch); err != nil {
 		return false, fmt.Errorf("committing deferred schema-rewrite switch: %w", err)
 	}
 
@@ -1009,13 +981,33 @@ func (b *Builder) tryCommitScanCompleteSwitch(
 		"toType":             task.toType.String(),
 		"fromVersion":        currentVersion,
 		"toVersion":          pendingVersion,
-		"gcedVersion":        currentVersion,
+		"retainedVersion":    currentVersion,
 		"processedCount":     task.processedCount,
 		"requiredIndexedSeq": task.requiredIndexedSeq,
 		"lastIndexedSeq":     lastSeq,
 	}).Infof("Schema rewrite deferred atomic switch — gate released, local_current_version advanced")
 
 	return true, nil
+}
+
+// promotedState is the version state after a rewrite switch: pending becomes
+// current under its bound type, and the version it replaces is retained with
+// its own binding and activation until retirePrevious purges it. validThrough
+// is the fold cursor at the switch — the last log the replaced keyspace
+// received, past which PinnedVersionResolver refuses to serve it.
+func promotedState(prior readstore.IndexVersionState, pending uint32, activation, validThrough uint64) readstore.IndexVersionState {
+	return readstore.IndexVersionState{
+		CurrentVersion:             pending,
+		ActivationSequence:         activation,
+		HighWater:                  pending,
+		CurrentType:                prior.PendingType,
+		CurrentTypeDeclared:        prior.PendingTypeDeclared,
+		PreviousVersion:            prior.CurrentVersion,
+		PreviousType:               prior.CurrentType,
+		PreviousTypeDeclared:       prior.CurrentTypeDeclared,
+		PreviousActivationSequence: prior.ActivationSequence,
+		PreviousValidThrough:       validThrough,
+	}
 }
 
 // metadataReverseMapKeyV returns the reverse-map key for an entity at a
@@ -1059,7 +1051,7 @@ func (b *Builder) processBackgroundTasks(ctx context.Context, stop <-chan struct
 //
 // A task lives in the slice while the rmap scan is still consuming
 // entries. processSchemaRewrite returns done==true on the final batch,
-// in which the atomic switch (current ← pending) and v_old GC have
+// in which the atomic switch (current ← pending, v_old retained) has
 // already landed. We remove the task immediately on that same iteration
 // — no cluster-wide IndexReady proposal, no waiting, no Phase 2/3.
 // The local replica's IndexVersionState is the source of truth for
@@ -1099,10 +1091,11 @@ func (b *Builder) processSchemaRewrites(ctx context.Context, stop <-chan struct{
 		now := time.Now()
 		if task.lastProgressLog.IsZero() || now.Sub(task.lastProgressLog) >= 10*time.Second {
 			b.logger.WithFields(map[string]any{
-				"ledger":    task.ledger,
-				"key":       task.key,
-				"toType":    task.toType.String(),
-				"processed": task.processedCount,
+				"ledger":       task.ledger,
+				"key":          task.key,
+				"toType":       task.toType.String(),
+				"processed":    task.processedCount,
+				"scanComplete": task.scanComplete,
 			}).Infof("Schema rewrite progress")
 
 			task.lastProgressLog = now
@@ -1249,10 +1242,10 @@ const backfillBatchSize = 10_000
 // (tx/account/log) — the unified IndexVersionState is the per-replica
 // "this index is ready to serve queries" signal.
 //
-// Note: there's no v_old GC here because a backfill builds v_pending
-// from scratch — there's no v_old to reclaim on this replica. (The
-// only versioned predecessor that exists is the never-built v=0
-// sentinel, which has no on-disk keyspace.)
+// Note: nothing is retained here because a backfill builds v_pending
+// from scratch — there's no v_old on this replica. (The only versioned
+// predecessor that exists is the never-built v=0 sentinel, which has no
+// on-disk keyspace.)
 func (b *Builder) completeBackfill(task *backfillTask) error {
 	canonical := indexes.Canonical(task.index)
 	_, pending := b.versionFor(task.ledger, canonical)
@@ -1283,7 +1276,7 @@ func (b *Builder) completeBackfill(task *backfillTask) error {
 		return fmt.Errorf("persisting backfill atomic switch: %w", err)
 	}
 
-	if err := b.commitPromotion(task.ledger, canonical, batch.Commit); err != nil {
+	if err := b.commitPromotion(task.ledger, canonical, pending, batch.Commit); err != nil {
 		b.discardBatch(batch)
 
 		return fmt.Errorf("committing backfill atomic switch: %w", err)

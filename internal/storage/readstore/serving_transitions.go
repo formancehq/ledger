@@ -24,9 +24,10 @@ import (
 // that completes it runs beside the fold, so after a rewind the fold catches
 // up while the promotion is still being redone, and the old binding serves
 // at states past the new one. Hence a promotion is made durable before it is
-// served: the builder marks the index in flight before committing, readers
-// refuse a marked index as still building, and Flush clears the marks once
-// the flush has completed.
+// served: the builder marks the promoted version in flight before committing,
+// readers do not serve a marked version (PinnedVersionResolver falls back to
+// the version it replaced while the state retains one), and Flush clears the
+// marks once the flush has completed.
 //
 // Marks live in memory only. After a restart nothing is in flight: whatever
 // the reopened store holds was flushed by construction.
@@ -38,9 +39,10 @@ import (
 // without its data on disk. Readers (InFlight) may run from any goroutine.
 type servingTransitions struct {
 	mu sync.Mutex
-	// inFlight counts, per index, the promotions staged or committed since
-	// the last completed flush, so withdrawing a later promotion that never
-	// committed cannot lift the gate an earlier, committed one still needs.
+	// inFlight counts, per index and version, the promotions staged or
+	// committed since the last completed flush, so withdrawing a later
+	// promotion that never committed cannot lift the gate an earlier,
+	// committed one still needs.
 	inFlight map[servingTransitionKey]int
 	// flush makes the owning store's memtable durable. A store built with
 	// WithPromotionFlushForTest wraps it, which is how a test drives the
@@ -52,16 +54,17 @@ type servingTransitions struct {
 type servingTransitionKey struct {
 	ledger    string
 	canonical string
+	version   uint32
 }
 
 func newServingTransitions(flush func() error) *servingTransitions {
 	return &servingTransitions{flush: flush}
 }
 
-// Mark records that a serving transition for the index is about to be
-// committed. Call from the writer goroutine, before the commit; readers refuse
-// the index from this point until Flush clears it.
-func (t *servingTransitions) Mark(ledgerName, canonicalID string) {
+// Mark records that version is about to be promoted to current. Call from
+// the writer goroutine, before the commit; readers do not serve the version
+// from this point until Flush clears it.
+func (t *servingTransitions) Mark(ledgerName, canonicalID string, version uint32) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -69,17 +72,17 @@ func (t *servingTransitions) Mark(ledgerName, canonicalID string) {
 		t.inFlight = make(map[servingTransitionKey]int, 1)
 	}
 
-	t.inFlight[servingTransitionKey{ledgerName, canonicalID}]++
+	t.inFlight[servingTransitionKey{ledgerName, canonicalID, version}]++
 }
 
 // Unmark withdraws one mark whose transition was never committed (the batch
 // carrying it was cancelled). Marks of other transitions on the same index
 // stay.
-func (t *servingTransitions) Unmark(ledgerName, canonicalID string) {
+func (t *servingTransitions) Unmark(ledgerName, canonicalID string, version uint32) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	t.release(servingTransitionKey{ledgerName, canonicalID}, 1)
+	t.release(servingTransitionKey{ledgerName, canonicalID, version}, 1)
 }
 
 // release drops n marks from key. Caller holds mu.
@@ -93,19 +96,19 @@ func (t *servingTransitions) release(key servingTransitionKey, n int) {
 	t.inFlight[key] -= n
 }
 
-// InFlight reports whether the index has a committed but not yet flushed
-// serving transition.
-func (t *servingTransitions) InFlight(ledgerName, canonicalID string) bool {
+// InFlight reports whether version has a committed but not yet flushed
+// promotion.
+func (t *servingTransitions) InFlight(ledgerName, canonicalID string, version uint32) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	return t.inFlight[servingTransitionKey{ledgerName, canonicalID}] > 0
+	return t.inFlight[servingTransitionKey{ledgerName, canonicalID, version}] > 0
 }
 
 // Flush makes every marked transition durable and clears its mark. A no-op
 // when nothing is marked, so callers can invoke it freely without paying for
 // a flush when no promotion is pending. On failure the marks stay, so the
-// indexes keep refusing until a later call succeeds.
+// marked versions stay unserved until a later call succeeds.
 func (t *servingTransitions) Flush() error {
 	t.mu.Lock()
 	pending := make(map[servingTransitionKey]int, len(t.inFlight))

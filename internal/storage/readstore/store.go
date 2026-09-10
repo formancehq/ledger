@@ -78,17 +78,17 @@ type Store struct {
 // Leases returns the read-lease registry gating the event GC.
 func (s *Store) Leases() *LeaseRegistry { return s.leases }
 
-// MarkPromotion records that an index's serving transition is about to be
-// committed, so readers refuse the index as still building until the commit
-// has been flushed. Call it from the writer goroutine immediately before the
-// commit (see servingTransitions for the single-writer contract).
-func (s *Store) MarkPromotion(ledgerName, canonicalID string) {
-	s.serving.Mark(ledgerName, canonicalID)
+// MarkPromotion records that version is about to be promoted to current, so
+// readers do not serve it until the commit has been flushed. Call it from the
+// writer goroutine immediately before the commit (see servingTransitions for
+// the single-writer contract).
+func (s *Store) MarkPromotion(ledgerName, canonicalID string, version uint32) {
+	s.serving.Mark(ledgerName, canonicalID, version)
 }
 
 // UnmarkPromotion withdraws a mark whose commit never landed.
-func (s *Store) UnmarkPromotion(ledgerName, canonicalID string) {
-	s.serving.Unmark(ledgerName, canonicalID)
+func (s *Store) UnmarkPromotion(ledgerName, canonicalID string, version uint32) {
+	s.serving.Unmark(ledgerName, canonicalID, version)
 }
 
 // FlushPromotions makes every committed promotion durable and lifts the marks
@@ -97,10 +97,10 @@ func (s *Store) FlushPromotions() error {
 	return s.serving.Flush()
 }
 
-// PromotionInFlight reports whether the index has a promotion committed but
-// not yet flushed. Safe from any goroutine.
-func (s *Store) PromotionInFlight(ledgerName, canonicalID string) bool {
-	return s.serving.InFlight(ledgerName, canonicalID)
+// PromotionInFlight reports whether version's promotion is committed but not
+// yet flushed. Safe from any goroutine.
+func (s *Store) PromotionInFlight(ledgerName, canonicalID string, version uint32) bool {
+	return s.serving.InFlight(ledgerName, canonicalID, version)
 }
 
 // Frozen reports whether this store is an immutable read-only view (a query
@@ -578,6 +578,24 @@ type IndexVersionState struct {
 	// bound type.
 	PendingType         commonpb.MetadataType
 	PendingTypeDeclared bool
+
+	// PreviousVersion is the version CurrentVersion replaced, retained until
+	// the promotion is flushed and no live read is pinned below
+	// ActivationSequence, so a reader that cannot use CurrentVersion — the
+	// promotion is still in flight, or the reader's pin is below its
+	// activation — is served from it. Zero when nothing is
+	// retained: an initial build has no predecessor, and a retirement
+	// (retirePrevious) zeroes these fields in the batch that purges the
+	// keyspace. PreviousType/PreviousTypeDeclared and
+	// PreviousActivationSequence are the retained version's own binding and
+	// activation; PreviousValidThrough is the fold cursor at the switch, the
+	// last log the retained keyspace received, so the fallback is refused
+	// to a pin beyond it.
+	PreviousVersion            uint32
+	PreviousType               commonpb.MetadataType
+	PreviousTypeDeclared       bool
+	PreviousActivationSequence uint64
+	PreviousValidThrough       uint64
 }
 
 // Tombstoned reports whether the record marks a dropped index: no servable
@@ -598,7 +616,8 @@ type IndexVersionStateEntry struct {
 
 // encodeIndexVersionState packs the state to a single byte slice.
 // Layout: [current(4B BE)][pending(4B BE)][activation(8B BE)][high_water(4B BE)]
-// [current_type(1B)][pending_type(1B)][opaque_tail…].
+// [current_type(1B)][pending_type(1B)][previous(4B BE)][previous_activation(8B BE)]
+// [previous_type(1B)][previous_valid_through(8B BE)][opaque_tail…].
 // A type byte holds 0 for "no declared type bound" and 1+MetadataType
 // otherwise, so undeclared stays distinct from METADATA_TYPE_STRING (0).
 func encodeIndexVersionState(s IndexVersionState) []byte {
@@ -609,12 +628,16 @@ func encodeIndexVersionState(s IndexVersionState) []byte {
 	binary.BigEndian.PutUint32(out[16:20], s.HighWater)
 	out[20] = encodeBoundType(s.CurrentType, s.CurrentTypeDeclared)
 	out[21] = encodeBoundType(s.PendingType, s.PendingTypeDeclared)
+	binary.BigEndian.PutUint32(out[22:26], s.PreviousVersion)
+	binary.BigEndian.PutUint64(out[26:34], s.PreviousActivationSequence)
+	out[34] = encodeBoundType(s.PreviousType, s.PreviousTypeDeclared)
+	binary.BigEndian.PutUint64(out[35:43], s.PreviousValidThrough)
 	copy(out[indexVersionStateHeaderLen:], s.RewriteProgress)
 
 	return out
 }
 
-const indexVersionStateHeaderLen = 22
+const indexVersionStateHeaderLen = 43
 
 func encodeBoundType(t commonpb.MetadataType, declared bool) byte {
 	if !declared {
@@ -644,14 +667,18 @@ func decodeIndexVersionState(v []byte) (IndexVersionState, bool) {
 	copy(progress, v[indexVersionStateHeaderLen:])
 
 	st := IndexVersionState{
-		CurrentVersion:     binary.BigEndian.Uint32(v[0:4]),
-		PendingVersion:     binary.BigEndian.Uint32(v[4:8]),
-		ActivationSequence: binary.BigEndian.Uint64(v[8:16]),
-		HighWater:          binary.BigEndian.Uint32(v[16:20]),
-		RewriteProgress:    progress,
+		CurrentVersion:             binary.BigEndian.Uint32(v[0:4]),
+		PendingVersion:             binary.BigEndian.Uint32(v[4:8]),
+		ActivationSequence:         binary.BigEndian.Uint64(v[8:16]),
+		HighWater:                  binary.BigEndian.Uint32(v[16:20]),
+		PreviousVersion:            binary.BigEndian.Uint32(v[22:26]),
+		PreviousActivationSequence: binary.BigEndian.Uint64(v[26:34]),
+		PreviousValidThrough:       binary.BigEndian.Uint64(v[35:43]),
+		RewriteProgress:            progress,
 	}
 	st.CurrentType, st.CurrentTypeDeclared = decodeBoundType(v[20])
 	st.PendingType, st.PendingTypeDeclared = decodeBoundType(v[21])
+	st.PreviousType, st.PreviousTypeDeclared = decodeBoundType(v[34])
 
 	return st, true
 }
@@ -727,8 +754,9 @@ func (s *Store) SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName stri
 // two legitimately differ.
 type ResolvedIndexVersion struct {
 	Version uint32
-	// Type/TypeDeclared mirror IndexVersionState.CurrentType*: the type
-	// Version's rows carry, or "none was declared when it was built".
+	// Type/TypeDeclared are the resolved version's binding
+	// (IndexVersionState.CurrentType* or PreviousType*): the type Version's
+	// rows carry, or "none was declared when it was built".
 	Type         commonpb.MetadataType
 	TypeDeclared bool
 	// BindingKnown is true for every resolution built from a stored version
@@ -758,10 +786,19 @@ type IndexVersionResolver func(canonical string) (ResolvedIndexVersion, bool, er
 //
 // The state is read through reader (a snapshot) but the in-flight check
 // consults the live tracker: a promotion whose state the snapshot holds is
-// either still in flight — refused — or flushed, and a snapshot taken
-// before the mark is refused for the same mark-to-flush window even though
-// its v_old was still servable. Callers take the snapshot immediately before
-// resolving, so that over-refusal is confined to the window itself.
+// either still in flight or flushed, and a snapshot taken before the commit
+// holds a current version that is not the marked one and serves as it did.
+//
+// When the current version cannot serve the read — its promotion is in
+// flight, or the pin is below its activation — the version it replaced is
+// served in its place while the state still retains it (PreviousVersion):
+// its rows are still on disk, under their own binding, and the promotion
+// that supersedes them is either not yet durable or not yet active at this
+// pin. The fallback is itself refused when the retained version is in
+// flight (it was never flushed either), when the pin is below its own
+// activation or past the last log it received, and for a pin-less read,
+// which nothing bounds to that keyspace. An initial build retains nothing
+// and is refused while in flight, as it always was before it first served.
 func (s *Store) PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint64) IndexVersionResolver {
 	return func(canonical string) (ResolvedIndexVersion, bool, error) {
 		state, present, err := ReadIndexVersionStateFrom(reader, ledgerName, canonical)
@@ -783,20 +820,30 @@ func (s *Store) PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string
 			return ResolvedIndexVersion{}, false, nil
 		}
 
-		if s.serving.InFlight(ledgerName, canonical) {
-			return ResolvedIndexVersion{}, true, nil
+		currentServable := !s.serving.InFlight(ledgerName, canonical, state.CurrentVersion) &&
+			(pin == 0 || state.ActivationSequence <= pin)
+		if currentServable {
+			return ResolvedIndexVersion{
+				Version:      state.CurrentVersion,
+				Type:         state.CurrentType,
+				TypeDeclared: state.CurrentTypeDeclared,
+				BindingKnown: true,
+			}, true, nil
 		}
 
-		if pin > 0 && state.ActivationSequence > pin {
-			return ResolvedIndexVersion{}, true, nil
+		previousServable := pin > 0 && state.PreviousVersion != 0 &&
+			!s.serving.InFlight(ledgerName, canonical, state.PreviousVersion) &&
+			state.PreviousActivationSequence <= pin && pin <= state.PreviousValidThrough
+		if previousServable {
+			return ResolvedIndexVersion{
+				Version:      state.PreviousVersion,
+				Type:         state.PreviousType,
+				TypeDeclared: state.PreviousTypeDeclared,
+				BindingKnown: true,
+			}, true, nil
 		}
 
-		return ResolvedIndexVersion{
-			Version:      state.CurrentVersion,
-			Type:         state.CurrentType,
-			TypeDeclared: state.CurrentTypeDeclared,
-			BindingKnown: true,
-		}, true, nil
+		return ResolvedIndexVersion{}, true, nil
 	}
 }
 

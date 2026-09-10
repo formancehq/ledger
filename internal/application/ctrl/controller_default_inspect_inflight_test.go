@@ -20,7 +20,8 @@ import (
 
 // InspectIndex scans the served version directly, so it must apply the same
 // hold-off as the query resolver: a promotion whose flush has not completed
-// is not yet servable and reads as INDEX_BUILDING.
+// is not yet servable and, with no replaced version retained, reads as
+// INDEX_BUILDING.
 func TestDefaultController_InspectIndex_RefusesAPromotionInFlight(t *testing.T) {
 	t.Parallel()
 
@@ -57,7 +58,7 @@ func TestDefaultController_InspectIndex_RefusesAPromotionInFlight(t *testing.T) 
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = rs.Close() })
 
-	rs.MarkPromotion(ledger, canonical)
+	rs.MarkPromotion(ledger, canonical, 1)
 
 	rsBatch := rs.NewBatch()
 	require.NoError(t, rs.WriteIndexVersionState(rsBatch, ledger, canonical, readstore.IndexVersionState{

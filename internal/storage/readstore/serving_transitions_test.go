@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 const (
@@ -75,14 +77,14 @@ func TestServingTransition_CheckpointFlushLiftsTheMark(t *testing.T) {
 	commitVersionState(t, s, IndexVersionState{CurrentVersion: 1, PendingVersion: 2, HighWater: 2})
 	require.NoError(t, s.db.Flush())
 
-	s.serving.Mark(servingLedger, servingCanonical)
+	s.serving.Mark(servingLedger, servingCanonical, 2)
 	commitVersionState(t, s, IndexVersionState{CurrentVersion: 2, HighWater: 2})
-	require.True(t, s.serving.InFlight(servingLedger, servingCanonical))
+	require.True(t, s.serving.InFlight(servingLedger, servingCanonical, 2))
 
 	image := t.TempDir()
 	require.NoError(t, s.CreateCheckpoint(filepath.Join(image, "readindex")))
 
-	assert.False(t, s.serving.InFlight(servingLedger, servingCanonical), "the checkpoint's flush made the promotion durable")
+	assert.False(t, s.serving.InFlight(servingLedger, servingCanonical, 2), "the checkpoint's flush made the promotion durable")
 
 	reopened, err := New(image, logging.NopZap(), DefaultConfig())
 	require.NoError(t, err)
@@ -102,7 +104,7 @@ func TestServingTransition_FlushedPromotionSurvivesAKill(t *testing.T) {
 	commitVersionState(t, s, IndexVersionState{CurrentVersion: 1, PendingVersion: 2, HighWater: 2})
 	require.NoError(t, s.db.Flush())
 
-	s.serving.Mark(servingLedger, servingCanonical)
+	s.serving.Mark(servingLedger, servingCanonical, 2)
 	commitVersionState(t, s, IndexVersionState{CurrentVersion: 2, HighWater: 2})
 	require.NoError(t, s.serving.Flush())
 
@@ -112,18 +114,18 @@ func TestServingTransition_FlushedPromotionSurvivesAKill(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, present)
 	assert.Equal(t, uint32(2), state.CurrentVersion)
-	assert.False(t, reopened.serving.InFlight(servingLedger, servingCanonical), "marks are in-memory; a reopened store has nothing in flight")
+	assert.False(t, reopened.serving.InFlight(servingLedger, servingCanonical, 2), "marks are in-memory; a reopened store has nothing in flight")
 }
 
 // Between the commit and the flush the promoted state is visible in Pebble
-// but not durable, so readers must refuse the index as building rather than
-// serve a binding a kill could take back.
-func TestServingTransition_InFlightReadsAsBuildingUntilFlushed(t *testing.T) {
+// but not durable. An initial build retains nothing, so readers must refuse
+// the index as building rather than serve a binding a kill could take back.
+func TestServingTransition_InFlightInitialBuildReadsAsBuildingUntilFlushed(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
 
-	s.serving.Mark(servingLedger, servingCanonical)
+	s.serving.Mark(servingLedger, servingCanonical, 2)
 	commitVersionState(t, s, IndexVersionState{CurrentVersion: 2, HighWater: 2})
 
 	snap := s.NewSnapshot()
@@ -135,12 +137,139 @@ func TestServingTransition_InFlightReadsAsBuildingUntilFlushed(t *testing.T) {
 	assert.Zero(t, resolved.Version)
 
 	require.NoError(t, s.serving.Flush())
-	assert.False(t, s.serving.InFlight(servingLedger, servingCanonical))
+	assert.False(t, s.serving.InFlight(servingLedger, servingCanonical, 2))
 
 	resolved, primed, err = s.PinnedVersionResolver(snap, servingLedger, 10)(servingCanonical)
 	require.NoError(t, err)
 	assert.True(t, primed)
 	assert.Equal(t, uint32(2), resolved.Version)
+}
+
+// retypedInFlight is the state a rewrite switch commits: v2 current under its
+// new binding, v1 retained under the old one, activation at 8 and the
+// replaced keyspace complete through log 12.
+func retypedInFlight() IndexVersionState {
+	return IndexVersionState{
+		CurrentVersion:             2,
+		HighWater:                  2,
+		ActivationSequence:         8,
+		CurrentType:                commonpb.MetadataType_METADATA_TYPE_INT64,
+		CurrentTypeDeclared:        true,
+		PreviousVersion:            1,
+		PreviousType:               commonpb.MetadataType_METADATA_TYPE_STRING,
+		PreviousTypeDeclared:       true,
+		PreviousActivationSequence: 3,
+		PreviousValidThrough:       12,
+	}
+}
+
+// A retype retains the replaced version, so while the promotion is in flight
+// readers are served from it under its own binding instead of refused; the
+// flush switches them to the promoted version.
+func TestServingTransition_InFlightRetypeServesTheRetainedVersion(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	s.serving.Mark(servingLedger, servingCanonical, 2)
+	commitVersionState(t, s, retypedInFlight())
+
+	snap := s.NewSnapshot()
+	defer func() { _ = snap.Close() }()
+
+	resolved, primed, err := s.PinnedVersionResolver(snap, servingLedger, 10)(servingCanonical)
+	require.NoError(t, err)
+	require.True(t, primed)
+	assert.Equal(t, uint32(1), resolved.Version, "served from the retained version while the promotion is unflushed")
+	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING, resolved.Type, "under the retained version's own binding")
+	assert.True(t, resolved.TypeDeclared)
+	assert.True(t, resolved.BindingKnown)
+
+	require.NoError(t, s.serving.Flush())
+
+	resolved, _, err = s.PinnedVersionResolver(snap, servingLedger, 10)(servingCanonical)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(2), resolved.Version)
+	assert.Equal(t, commonpb.MetadataType_METADATA_TYPE_INT64, resolved.Type)
+}
+
+// The retained version is only good for the logs its keyspace received. A
+// pin past that, or below its own activation, is refused; and a retained
+// version whose own promotion is still in flight was never flushed either.
+func TestServingTransition_RetainedVersionBounds(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	s.serving.Mark(servingLedger, servingCanonical, 2)
+	commitVersionState(t, s, retypedInFlight())
+
+	resolve := func(pin uint64) uint32 {
+		resolved, primed, err := s.PinnedVersionResolver(s.db, servingLedger, pin)(servingCanonical)
+		require.NoError(t, err)
+		require.True(t, primed)
+
+		return resolved.Version
+	}
+
+	assert.Equal(t, uint32(1), resolve(12), "the last log the retained keyspace received")
+	assert.Zero(t, resolve(13), "past it the retained keyspace is incomplete: refused")
+	assert.Equal(t, uint32(1), resolve(3), "at the retained version's own activation")
+	assert.Zero(t, resolve(2), "below it the retained keyspace resolves empty: refused")
+	assert.Zero(t, resolve(0), "no pin: nothing bounds a read to the retained keyspace, refused")
+
+	s.serving.Mark(servingLedger, servingCanonical, 1)
+	assert.Zero(t, resolve(10), "a retained version that is itself unflushed is refused")
+}
+
+// A pin below the promoted version's activation cannot use it; while the
+// replaced version is retained it is served instead, at any point of the
+// promotion's life.
+func TestServingTransition_PinBelowActivationServesTheRetainedVersion(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	commitVersionState(t, s, retypedInFlight())
+
+	resolved, primed, err := s.PinnedVersionResolver(s.db, servingLedger, 7)(servingCanonical)
+	require.NoError(t, err)
+	require.True(t, primed)
+	assert.Equal(t, uint32(1), resolved.Version, "pinned below v2's activation, served from v1")
+
+	resolved, _, err = s.PinnedVersionResolver(s.db, servingLedger, 8)(servingCanonical)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(2), resolved.Version, "at the activation v2 serves")
+
+	retired := retypedInFlight()
+	retired.PreviousVersion = 0
+	commitVersionState(t, s, retired)
+
+	resolved, primed, err = s.PinnedVersionResolver(s.db, servingLedger, 7)(servingCanonical)
+	require.NoError(t, err)
+	require.True(t, primed)
+	assert.Zero(t, resolved.Version, "once retired there is nothing to fall back to")
+}
+
+// Marks name the version they promote, so a snapshot that predates the commit
+// still holds the standing version and keeps serving it.
+func TestServingTransition_SnapshotBeforeTheCommitIsNotRefused(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	commitVersionState(t, s, IndexVersionState{CurrentVersion: 1, PendingVersion: 2, HighWater: 2})
+
+	snap := s.NewSnapshot()
+	defer func() { _ = snap.Close() }()
+
+	s.serving.Mark(servingLedger, servingCanonical, 2)
+	commitVersionState(t, s, IndexVersionState{CurrentVersion: 2, HighWater: 2})
+
+	resolved, primed, err := s.PinnedVersionResolver(snap, servingLedger, 10)(servingCanonical)
+	require.NoError(t, err)
+	require.True(t, primed)
+	assert.Equal(t, uint32(1), resolved.Version, "the snapshot's current version is not the one in flight")
 }
 
 func TestServingTransition_UnmarkWithdrawsACancelledPromotion(t *testing.T) {
@@ -150,8 +279,8 @@ func TestServingTransition_UnmarkWithdrawsACancelledPromotion(t *testing.T) {
 
 	commitVersionState(t, s, IndexVersionState{CurrentVersion: 1, PendingVersion: 2, HighWater: 2})
 
-	s.serving.Mark(servingLedger, servingCanonical)
-	s.serving.Unmark(servingLedger, servingCanonical)
+	s.serving.Mark(servingLedger, servingCanonical, 2)
+	s.serving.Unmark(servingLedger, servingCanonical, 2)
 
 	resolved, primed, err := s.PinnedVersionResolver(s.db, servingLedger, 10)(servingCanonical)
 	require.NoError(t, err)
@@ -166,12 +295,12 @@ func TestServingTransitions_FlushFailureKeepsTheMarks(t *testing.T) {
 
 	s := newTestStore(t)
 
-	s.serving.Mark(servingLedger, servingCanonical)
+	s.serving.Mark(servingLedger, servingCanonical, 2)
 	commitVersionState(t, s, IndexVersionState{CurrentVersion: 2, HighWater: 2})
 
 	s.serving.flush = func() error { return errors.New("disk on fire") }
 	require.Error(t, s.serving.Flush())
-	assert.True(t, s.serving.InFlight(servingLedger, servingCanonical))
+	assert.True(t, s.serving.InFlight(servingLedger, servingCanonical, 2))
 
 	resolved, primed, err := s.PinnedVersionResolver(s.db, servingLedger, 10)(servingCanonical)
 	require.NoError(t, err)
@@ -180,7 +309,7 @@ func TestServingTransitions_FlushFailureKeepsTheMarks(t *testing.T) {
 
 	s.serving.flush = s.db.Flush
 	require.NoError(t, s.serving.Flush())
-	assert.False(t, s.serving.InFlight(servingLedger, servingCanonical))
+	assert.False(t, s.serving.InFlight(servingLedger, servingCanonical, 2))
 }
 
 // A promotion committed but not yet flushed keeps its gate even when a later
@@ -192,19 +321,19 @@ func TestServingTransitions_WithdrawingALaterMarkKeepsTheEarlierOne(t *testing.T
 	s := newTestStore(t)
 	st := s.serving
 
-	st.Mark(servingLedger, servingCanonical)
+	st.Mark(servingLedger, servingCanonical, 2)
 	commitVersionState(t, s, IndexVersionState{CurrentVersion: 2, HighWater: 2})
 
 	s.serving.flush = func() error { return errors.New("disk on fire") }
 	require.Error(t, st.Flush())
 
-	st.Mark(servingLedger, servingCanonical)
-	st.Unmark(servingLedger, servingCanonical)
-	assert.True(t, st.InFlight(servingLedger, servingCanonical), "the committed promotion's mark must survive the later withdrawal")
+	st.Mark(servingLedger, servingCanonical, 2)
+	st.Unmark(servingLedger, servingCanonical, 2)
+	assert.True(t, st.InFlight(servingLedger, servingCanonical, 2), "the committed promotion's mark must survive the later withdrawal")
 
 	s.serving.flush = s.db.Flush
 	require.NoError(t, st.Flush())
-	assert.False(t, st.InFlight(servingLedger, servingCanonical))
+	assert.False(t, st.InFlight(servingLedger, servingCanonical, 2))
 }
 
 // A mark added while a flush is running belongs to the memtable that flush
@@ -215,22 +344,22 @@ func TestServingTransitions_FlushReleasesOnlyTheMarksItCaptured(t *testing.T) {
 	s := newTestStore(t)
 	st := s.serving
 
-	st.Mark(servingLedger, servingCanonical)
+	st.Mark(servingLedger, servingCanonical, 2)
 	st.flush = func() error {
-		st.Mark(servingLedger, servingCanonical)
-		st.Mark(servingLedger, "metadata:account:other")
+		st.Mark(servingLedger, servingCanonical, 2)
+		st.Mark(servingLedger, "metadata:account:other", 1)
 
 		return nil
 	}
 
 	require.NoError(t, st.Flush())
-	assert.True(t, st.InFlight(servingLedger, servingCanonical), "the mark added mid-flush survives")
-	assert.True(t, st.InFlight(servingLedger, "metadata:account:other"))
+	assert.True(t, st.InFlight(servingLedger, servingCanonical, 2), "the mark added mid-flush survives")
+	assert.True(t, st.InFlight(servingLedger, "metadata:account:other", 1))
 
 	s.serving.flush = s.db.Flush
 	require.NoError(t, st.Flush())
-	assert.False(t, st.InFlight(servingLedger, servingCanonical))
-	assert.False(t, st.InFlight(servingLedger, "metadata:account:other"))
+	assert.False(t, st.InFlight(servingLedger, servingCanonical, 2))
+	assert.False(t, st.InFlight(servingLedger, "metadata:account:other", 1))
 }
 
 // Ordinary fold commits carry no serving transition and must not pay for a
@@ -246,7 +375,49 @@ func TestServingTransitions_FlushesOnlyWhenMarked(t *testing.T) {
 	require.NoError(t, s.serving.Flush())
 	assert.Equal(t, before, s.db.Metrics().Flush.Count, "nothing marked, nothing flushed")
 
-	s.serving.Mark(servingLedger, servingCanonical)
+	s.serving.Mark(servingLedger, servingCanonical, 1)
 	require.NoError(t, s.serving.Flush())
 	assert.Equal(t, before+1, s.db.Metrics().Flush.Count)
+}
+
+// The retained fields round-trip through the encoding.
+func TestIndexVersionState_RetainedFieldsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	want := retypedInFlight()
+	want.RewriteProgress = []byte{7, 7}
+	commitVersionState(t, s, want)
+
+	got, present, err := s.ReadIndexVersionState(servingLedger, servingCanonical)
+	require.NoError(t, err)
+	require.True(t, present)
+	assert.Equal(t, want, got)
+}
+
+// AnyLiveIn sees reservations and pins alike, at the sequence each was taken
+// at, and reports nothing once every lease is released.
+func TestLeaseRegistry_AnyLiveIn(t *testing.T) {
+	t.Parallel()
+
+	r := NewLeaseRegistry()
+
+	assert.False(t, r.AnyLiveIn(0, 100))
+
+	hold := r.Reserve(5)
+	pinned, ok := r.Pin(9)
+	require.True(t, ok)
+
+	assert.True(t, r.AnyLiveIn(5, 6), "the reservation counts at its reserved sequence")
+	assert.True(t, r.AnyLiveIn(9, 10))
+	assert.False(t, r.AnyLiveIn(6, 9), "the range is [lo, hi)")
+	assert.False(t, r.AnyLiveIn(10, 100))
+
+	hold.Release()
+	assert.False(t, r.AnyLiveIn(0, 9))
+	assert.True(t, r.AnyLiveIn(0, 10))
+
+	pinned.Release()
+	assert.False(t, r.AnyLiveIn(0, 100))
 }
