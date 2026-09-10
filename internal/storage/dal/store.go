@@ -922,24 +922,28 @@ const queryCheckpointsDir = "query-checkpoints"
 // {dataDir}/query-checkpoints/{id}/main/. These are self-contained snapshots
 // created by the FSM when a CreateQueryCheckpointOrder is applied via Raft.
 //
-// The directory is materialized the same way the read index half is
-// (indexbuilder.createReadIndexCheckpoint), and for the same reason: readers
-// poll the final path concurrently, so it must never hold an intermediate
-// state. pebble.DB.Checkpoint writes the MANIFEST — which is what makes a
-// directory openable — before it copies the WAL files, and WithFlushedWAL syncs
-// the WAL rather than flushing the memtable, so a directory caught between
-// those steps opens cleanly while missing every memtable-resident write. So:
-// build under a temp path, rename atomically, and vouch for the result with the
-// readiness marker last. A crash leaves either no final directory or an
-// unmarked one, and both are discarded and rebuilt.
+// Readers poll the final path concurrently, so it must never hold an
+// intermediate state. pebble.DB.Checkpoint writes the MANIFEST — which is what
+// makes a directory openable — before it copies the WAL files, and
+// WithFlushedWAL syncs the WAL rather than flushing the memtable, so a
+// directory caught between those steps opens cleanly while missing every
+// memtable-resident write. So: build under a temp path, write the readiness
+// marker into it, then rename atomically. The final path therefore appears
+// complete and marked in one step.
+//
+// Durable-write order: temp directory content → its fsync → the marker (fsynced
+// with the temp directory) → the rename → the parent fsync. A crash leaves
+// nothing, a temp directory (unmarked or marked), or the finished result; every
+// caller that re-crosses the checkpoint — the applier replaying the spool or
+// the WAL, or RecoverAndReplay on restart — reaches this function again, which
+// discards any temp directory and rebuilds, and is a no-op on a marked result.
 func (s *Store) CreateQueryCheckpoint(id uint64) (string, error) {
 	base := filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10))
 	dir := filepath.Join(base, "main")
 	tmpDir := dir + ".tmp"
 
-	// Already materialized here. The applier re-runs this while replaying the
-	// spool or the WAL after a restart, and pebble.Checkpoint refuses an
-	// existing destination, so the redundant call must be a no-op.
+	// pebble.Checkpoint refuses an existing destination, so the redundant call
+	// must be a no-op.
 	if CheckpointDirReady(dir) {
 		return dir, nil
 	}
@@ -948,9 +952,9 @@ func (s *Store) CreateQueryCheckpoint(id uint64) (string, error) {
 		return "", fmt.Errorf("creating query checkpoint directory: %w", err)
 	}
 
-	// An unmarked final directory is a prior attempt that died before vouching
-	// for itself — never trusted, so discard it. Same for a leftover temp dir,
-	// which pebble.Checkpoint would otherwise reject as already existing.
+	// An unmarked directory is never trusted, wherever it sits: the final path
+	// cannot hold one by this function's own ordering, and a temp directory is
+	// an attempt that died before the rename. Both are discarded.
 	if err := os.RemoveAll(dir); err != nil {
 		return "", fmt.Errorf("clearing unmarked query checkpoint %d: %w", id, err)
 	}
@@ -965,30 +969,32 @@ func (s *Store) CreateQueryCheckpoint(id uint64) (string, error) {
 		return "", err
 	}
 
-	// fsync the fully-built temp directory before the rename so its content is
-	// durable independent of the rename.
+	// fsync the fully-built temp directory before the marker vouches for it.
 	if err := FsyncDir(tmpDir); err != nil {
 		_ = os.RemoveAll(tmpDir) // best-effort cleanup of the failed attempt
 
 		return "", fmt.Errorf("fsync temp query checkpoint %d: %w", id, err)
 	}
 
-	// Atomic rename into the final location: a reader never sees a partial dir.
+	// The marker is written while the directory is still under its temp name,
+	// so the rename below publishes content and marker together.
+	if err := MarkCheckpointReady(tmpDir); err != nil {
+		_ = os.RemoveAll(tmpDir) // best-effort cleanup of the failed attempt
+
+		return "", fmt.Errorf("marking query checkpoint %d ready: %w", id, err)
+	}
+
+	// Atomic rename into the final location: a reader sees either nothing or a
+	// complete, marked directory.
 	if err := os.Rename(tmpDir, dir); err != nil {
 		_ = os.RemoveAll(tmpDir) // best-effort cleanup of the failed attempt
 
 		return "", fmt.Errorf("renaming query checkpoint %d into place: %w", id, err)
 	}
 
-	// fsync the parent so the rename is durable before we vouch for it.
+	// fsync the parent so the rename itself is durable.
 	if err := FsyncDir(base); err != nil {
 		return "", fmt.Errorf("fsync query checkpoint %d parent: %w", id, err)
-	}
-
-	// The marker goes last: until it exists, openCheckpointStores treats the
-	// directory as not materialized here and answers retryably.
-	if err := MarkCheckpointReady(dir); err != nil {
-		return "", fmt.Errorf("marking query checkpoint %d ready: %w", id, err)
 	}
 
 	return dir, nil
