@@ -92,7 +92,8 @@ func podExecWithTimeout(ctx context.Context, cfg *rest.Config, clientset kuberne
 }
 
 // raftScaleDown removes Raft nodes before StatefulSet scale-down.
-// It removes nodes from highest ordinal to desired, sequentially.
+// Every removed ordinal must pass the Raft membership check, regardless of
+// its current Pod incarnation. Nodes are removed sequentially within each group.
 // Leadership is transferred to node 1 (pod-0) first to ensure the leader isn't being removed.
 //
 // Crashed pods are force-removed first (bypassing Raft consensus) to restore
@@ -103,7 +104,7 @@ func podExecWithTimeout(ctx context.Context, cfg *rest.Config, clientset kuberne
 // configured accordingly so its connection matches what the pod's gRPC server
 // expects.
 func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
-	ledger *ledgerv1alpha1.Cluster, currentReplicas, desiredReplicas int32, tlsMode string,
+	ledger *ledgerv1alpha1.Cluster, currentReplicas, desiredReplicas int32, tlsMode string, exec ledgerctlExec,
 ) error {
 	logger := log.FromContext(ctx)
 	grpcPort := ledger.Spec.GrpcPort
@@ -113,7 +114,7 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 
 	// Transfer leadership to node 1 (pod-0) so the leader is never among the removed nodes.
 	logger.Info("transferring Raft leadership to node 1 before scale-down")
-	result, err := podExecWithTimeout(ctx, cfg, clientset, ledger.Namespace, pod0, container,
+	result, err := exec(ctx, cfg, clientset, ledger.Namespace, pod0, container,
 		ledgerctlCommand(serverAddr, tlsMode, "cluster", "transfer-leader", strconv.Itoa(int(scaleDownLeaderNodeID))),
 	)
 	if err != nil {
@@ -125,8 +126,9 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 		}
 	}
 
-	// Partition nodes-to-remove into never-joined, crashed (force), and alive (normal).
-	// Never-joined nodes (Pending, not scheduled) are skipped entirely.
+	// Partition nodes-to-remove into crashed (force) and alive (normal).
+	// Pod status selects the removal mode; only Raft membership can establish
+	// absence. A missing or Pending replacement may reuse a joined ordinal.
 	// Force-removing crashed nodes first restores quorum for subsequent
 	// consensus-based removals.
 	type nodeToRemove struct {
@@ -142,15 +144,6 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 	for ordinal := currentReplicas - 1; ordinal >= desiredReplicas; ordinal-- {
 		nodeID := ordinal + 1
 		pod := podName(ledger.Name, int(ordinal))
-
-		if neverJoined := isPodNeverReady(ctx, clientset, ledger.Namespace, pod); neverJoined {
-			logger.Info("pod was never ready, skipping Raft removal (node never joined cluster)",
-				"nodeID", nodeID,
-				"podOrdinal", ordinal,
-			)
-
-			continue
-		}
 
 		crashed := isPodCrashed(ctx, clientset, ledger.Namespace, pod)
 		n := nodeToRemove{ordinal: ordinal, nodeID: nodeID, crashed: crashed}
@@ -168,14 +161,14 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 
 	// Remove crashed nodes first with --force.
 	for _, n := range crashedNodes {
-		if err := removeNode(ctx, cfg, clientset, ledger.Namespace, pod0, container, serverAddr, tlsMode, n.nodeID, true); err != nil {
+		if err := removeNodeWithExec(ctx, cfg, clientset, ledger.Namespace, pod0, container, serverAddr, tlsMode, n.nodeID, true, exec); err != nil {
 			return err
 		}
 	}
 
 	// Remove alive nodes normally (highest ordinal first, already sorted).
 	for _, n := range aliveNodes {
-		if err := removeNode(ctx, cfg, clientset, ledger.Namespace, pod0, container, serverAddr, tlsMode, n.nodeID, false); err != nil {
+		if err := removeNodeWithExec(ctx, cfg, clientset, ledger.Namespace, pod0, container, serverAddr, tlsMode, n.nodeID, false, exec); err != nil {
 			return err
 		}
 	}
@@ -183,18 +176,8 @@ func raftScaleDown(ctx context.Context, cfg *rest.Config, clientset kubernetes.I
 	return nil
 }
 
-// removeNode executes ledgerctl cluster remove-node via pod exec. If force is
-// true, --force is appended to bypass Raft consensus.
-func removeNode(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
-	namespace, pod0, container, serverAddr, tlsMode string, nodeID int32, force bool,
-) error {
-	return removeNodeWithExec(
-		ctx, cfg, clientset,
-		namespace, pod0, container, serverAddr, tlsMode, nodeID, force,
-		podExecWithTimeout,
-	)
-}
-
+// removeNodeWithExec executes ledgerctl cluster remove-node via pod exec. If force
+// is true, --force is appended to bypass Raft consensus.
 func removeNodeWithExec(ctx context.Context, cfg *rest.Config, clientset kubernetes.Interface,
 	namespace, pod0, container, serverAddr, tlsMode string, nodeID int32, force bool,
 	exec ledgerctlExec,
@@ -422,35 +405,10 @@ func ledgerctlTLSFlag(tlsMode string) string {
 	return "--insecure"
 }
 
-// isPodNeverReady returns true if the pod has never been ready: not found,
-// still Pending (not scheduled), or no container has ever started.
-// These pods could never have joined the Raft cluster.
-func isPodNeverReady(ctx context.Context, clientset kubernetes.Interface, namespace, podName string) bool {
-	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
-	if err != nil {
-		// Not found → never existed, never joined.
-		return kerrors.IsNotFound(err)
-	}
-
-	// Pending pods have never started.
-	if pod.Status.Phase == corev1.PodPending {
-		return true
-	}
-
-	// If the pod exists but no container has ever started, it never joined.
-	for _, cs := range pod.Status.ContainerStatuses {
-		if cs.RestartCount > 0 || cs.Ready || cs.State.Running != nil || cs.State.Terminated != nil || cs.LastTerminationState.Running != nil || cs.LastTerminationState.Terminated != nil {
-			return false
-		}
-	}
-
-	// No container statuses at all means the pod was never scheduled.
-	return len(pod.Status.ContainerStatuses) == 0
-}
-
 // isPodCrashed returns true if the pod is permanently unreachable: not found,
 // in Failed phase, or has a container in CrashLoopBackOff/Error/OOMKilled state.
-// Pending and Running pods are considered alive (they may recover).
+// Pending and Running pods without a crash indicator are considered alive
+// (they may recover).
 func isPodCrashed(ctx context.Context, clientset kubernetes.Interface, namespace, podName string) bool {
 	pod, err := clientset.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
