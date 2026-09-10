@@ -19,10 +19,10 @@ This page covers both. The cryptographic request-signing layer (Ed25519, used to
 
 | Format | Use case |
 |--------|---------|
-| **OIDC** (RS256, ES256, PS256) | Production. Tokens issued by a configured OIDC provider; signing keys discovered via JWKS. |
+| **OIDC** (RS256, ES256, PS256, EdDSA) | Production. Tokens issued by a configured OIDC provider; signing keys discovered via JWKS. |
 | **Ed25519** (EdDSA, self-signed) | Dev / CI / scripts. Static keyset loaded from a JSON file at boot. |
 
-Both formats coexist via a **composite keyset** (`internal/bootstrap/module.go:1626`). EdDSA tokens skip issuer verification (they're self-signed); OIDC tokens go through full issuer + JWKS verification.
+Both trust sources coexist through separate keysets configured by `internal/bootstrap/module.go:buildAuthConfig`. Only successful verification against the dedicated static keyset exempts a token from issuer and audience checks. OIDC tokens require both checks, including when the issuer signs with EdDSA.
 
 ### Wire shape
 
@@ -39,12 +39,15 @@ If no bearer is present, the request is treated as **anonymous** and given whate
 
 1. Decode the token (`grpc_auth.go:189`).
 2. Parse claims (`oidc.AccessTokenClaims`).
-3. Verify signature against the composite keyset (OIDC JWKS + Ed25519 statics).
-4. For EdDSA, enforce configured key scopes and god-mode restrictions; for OIDC,
-   verify issuer.
+3. Verify EdDSA signatures against the dedicated static keyset when configured;
+   otherwise verify against the OIDC keyset. The successful verification source
+   determines the trust contract, not the algorithm or key ID alone.
+4. For static keys, enforce configured scopes and god-mode restrictions; for OIDC,
+   verify issuer, including for OIDC tokens signed with Ed25519.
 5. Verify expiration.
 6. Require the configured deployment audience in `aud` (exact, case-sensitive
-   membership), for both OIDC and EdDSA. Only then may either transport expand
+   membership), for OIDC tokens. Static-key tokens are exempt. Only then may
+   either transport expand
    scopes, grant god mode, or capture caller identity.
 
 The lack of cache is deliberate at this stage — JWKS lookups are local to the in-memory keyset (the OIDC discovery is done once at boot, see below).
@@ -60,18 +63,25 @@ cluster. Use distinct identifiers for deployments that must reject each
 other's tokens. There is no global default and no derivation from a ledger
 name, node address, cluster ID, or `--auth-service` (which only maps scopes).
 
-Authentication-enabled startup rejects an absent or whitespace-only audience.
+OIDC-enabled startup rejects an absent or whitespace-only audience.
 The shared validator also rejects an empty expected audience when called
-outside bootstrap. A missing, empty, or mismatching token `aud` yields
+outside bootstrap for OIDC tokens. A missing, empty, or mismatching OIDC `aud` yields
 `Unauthenticated` / HTTP 401, without falling back to anonymous scopes. A
 matching JSON string or member of a string array is accepted; issuer,
 signature, expiry and scope/key restrictions still apply.
 
-Ed25519 development tokens follow exactly the same audience rule. Both
-`ledgerctl auth generate-token` and `ledgerctl auth login` require `--audience`;
-a key bundle does not infer a deployment. God-mode tokens also require a
-matching audience. The existing anonymous, authentication-disabled, public
-health/discovery and inter-node shared-secret paths are separate trust paths.
+Static Ed25519 tokens deliberately do not require or validate `aud`, including
+in mixed OIDC/Ed25519 deployments and for god-mode tokens. `ledgerctl auth generate-token` and `ledgerctl auth login` need no audience. Their trust contract
+requires keys dedicated to one deployment and to authentication JWTs, separate
+from request-signing keys and other token usages. The configured public key
+establishes the deployment boundary. Reusing a key across deployments allows a
+token to be reused wherever that key is trusted, subject to expiry and scopes;
+Ledger cannot enforce key separation across independent deployments. Audience
+validation would constrain an issued token, but not its private-key holder.
+Signature, expiry, key scope allowlists and god-key restrictions still apply.
+OIDC god-mode tokens still require the configured audience. The existing
+anonymous, authentication-disabled, public health/discovery and inter-node
+shared-secret paths are separate trust paths.
 
 This is an API admission check only. The configured audience is not persisted
 in business state or consulted by FSM apply, checker replay, or restore.

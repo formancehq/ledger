@@ -1457,12 +1457,30 @@ func TestBuildEnvVars_AuthAudience(t *testing.T) {
 
 func TestBuildEnvVars_CredentialsAudience(t *testing.T) {
 	t.Parallel()
-
-	cluster := newMinimalCluster()
-	enabled := true
-	cluster.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled, Audience: "ledger-production"}
-	envs := buildEnvVars(cluster, "required", []credentialsKeyInfo{{KeyID: "test-key"}})
-	assertEnv(t, envs, "AUTH_ENABLED", "true")
-	assertEnv(t, envs, "AUTH_AUDIENCE", "ledger-production")
-	assertEnv(t, envs, "AUTH_ED25519_KEYS", "/auth-keys/auth-keys.json")
+	for _, tc := range []struct {
+		name     string
+		issuer   string
+		audience string
+	}{
+		{name: "static only without audience"},
+		{name: "mixed with OIDC audience", issuer: "https://issuer.example.com", audience: "ledger-production"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cluster := newMinimalCluster()
+			enabled := true
+			cluster.Spec.TLS = &ledgerv1alpha1.TLSConfig{Enabled: true}
+			cluster.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled, Issuer: tc.issuer, Audience: tc.audience}
+			require.NoError(t, validateClusterConfig(&cluster.Spec))
+			envs := buildEnvVars(cluster, "required", []credentialsKeyInfo{{KeyID: "test-key"}})
+			assertEnv(t, envs, "AUTH_ENABLED", "true")
+			if tc.audience == "" {
+				assertNoEnv(t, envs, "AUTH_AUDIENCE")
+			} else {
+				assertEnv(t, envs, "AUTH_AUDIENCE", tc.audience)
+				assertEnv(t, envs, "AUTH_ISSUER", tc.issuer)
+			}
+			assertEnv(t, envs, "AUTH_ED25519_KEYS", "/auth-keys/auth-keys.json")
+		})
+	}
 }
