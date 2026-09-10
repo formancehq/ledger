@@ -117,15 +117,16 @@ all communicating service clients and nodes must use the matching revision.
 
 ## Maintaining the revision
 
-The author of a service contract change must determine whether an existing
-client or server would interpret requests, responses, or operations differently.
-Increment the decimal counter `pkg/grpcprotocol.Version` by one in the same PR
-for an incompatible wire or semantic change (for example, `"1"` to `"2"`), and
-rebuild every service client and server that will communicate. This includes
-renumbering or changing the interpretation of exposed
-protobuf fields, and incompatible semantics even when the `.proto` text stays
-unchanged. Reviewers must check this classification; the revision is not inferred
-from a release tag or automatically negotiated from a schema hash.
+The primary trigger is a breaking change in the client-facing protobuf contract:
+removing or renumbering exposed fields, changing their types, or replacing a
+response or RPC shape incompatibly. Increment `pkg/grpcprotocol.Version` in the
+same PR and rebuild communicating clients and servers.
+
+A change without a schema break warrants a revision only when its author can
+identify a concrete interoperability failure with the existing client/server
+contract. Ordinary secret masking, diagnostic wording, internal behavior and
+compatible additions do not automatically require a bump. Record the assessment
+in the PR; do not infer incompatibility merely because output differs.
 
 This obligation applies to AI agents throughout pre-release development, even
 though older Ledger versions and storage formats are not supported. Before

@@ -7,6 +7,12 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/commonpb";
 import "signature.proto";
 import "google/protobuf/descriptor.proto";
 
+// Marks fields that must not appear verbatim in a detached public projection.
+// Strings are replaced with a marker; other field kinds are cleared.
+extend google.protobuf.FieldOptions {
+  bool sensitive = 50125;
+}
+
 // ============================================================================
 // Core Data Types
 // ============================================================================
@@ -308,7 +314,7 @@ message Log {
   LogPayload payload = 2;
   // Batch identity (idempotency key + signature) lives on AppliedProposal
   // (proposal.proto), not on the log.
-  signature.SignedLog response_signature = 3;
+  signature.SignedLog response_signature = 3 [(sensitive) = true];
 }
 
 message LogPayload {
@@ -570,7 +576,7 @@ message SinkStatus {
 
 // SinkError records a sink failure.
 message SinkError {
-  string message = 1;
+  string message = 1 [(sensitive) = true];
   Timestamp occurred_at = 2;
 }
 
@@ -593,13 +599,13 @@ message KafkaSinkConfig {
   bool tls = 3;                 // Enable TLS
   string sasl_mechanism = 4;    // SASL mechanism: "", "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"
   string sasl_username = 5;
-  string sasl_password = 6;
+  string sasl_password = 6 [(sensitive) = true];
 }
 
 // HttpSinkConfig holds HTTP webhook sink configuration.
 message HttpSinkConfig {
   string endpoint = 1;          // Target URL (e.g. "https://example.com/webhooks/ledger")
-  string secret = 2;            // Optional HMAC-SHA256 secret for X-Webhook-Signature header
+  string secret = 2 [(sensitive) = true];            // Optional HMAC-SHA256 secret for X-Webhook-Signature header
 }
 
 // DatabricksSinkConfig holds Databricks SQL Warehouse sink configuration.
@@ -612,7 +618,7 @@ message DatabricksSinkConfig {
   string table = 5;            // Table name (default: "ledger_events")
   int32 port = 6;              // Port number (default: 443)
   oneof auth {
-    string token = 7;                  // Personal Access Token (PAT)
+    string token = 7 [(sensitive) = true];                  // Personal Access Token (PAT)
     DatabricksOAuthM2M oauth_m2m = 8;  // OAuth M2M / service principal
   }
 }
@@ -620,7 +626,7 @@ message DatabricksSinkConfig {
 // DatabricksOAuthM2M holds OAuth M2M (client credentials) for a Databricks service principal.
 message DatabricksOAuthM2M {
   string client_id = 1;
-  string client_secret = 2;
+  string client_secret = 2 [(sensitive) = true];
 }
 
 // CreatedLedgerLog captures the creation-time parameters of a ledger.
@@ -1001,7 +1007,7 @@ message HttpMirrorSourceConfig {
 
 message OAuth2ClientCredentials {
   string client_id = 1;
-  string client_secret = 2;
+  string client_secret = 2 [(sensitive) = true];
   string token_endpoint = 3;
   repeated string scopes = 4;
 }
@@ -1028,7 +1034,7 @@ message PostgresAwsIamAuth {
 }
 
 message MirrorSyncError {
-  string message = 1;
+  string message = 1 [(sensitive) = true];
   Timestamp occurred_at = 2;
 }
 
