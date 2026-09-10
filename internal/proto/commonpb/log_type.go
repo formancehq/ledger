@@ -7,6 +7,23 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
+// LogType constants for log payload types.
+const (
+	SetMetadataLogType                   LogType = 0  // "SET_METADATA"
+	NewTransactionLogType                LogType = 1  // "NEW_TRANSACTION"
+	RevertedTransactionLogType           LogType = 2  // "REVERTED_TRANSACTION"
+	DeleteMetadataLogType                LogType = 3  // "DELETE_METADATA"
+	SetMetadataFieldTypeLogType          LogType = 4  // "SET_METADATA_FIELD_TYPE"
+	RemovedMetadataFieldTypeLogType      LogType = 5  // "REMOVED_METADATA_FIELD_TYPE"
+	OrderSkippedLogType                  LogType = 6  // "ORDER_SKIPPED"
+	FillGapLogType                       LogType = 7  // "FILL_GAP"
+	CreateIndexLogType                   LogType = 8  // "CREATE_INDEX"
+	DropIndexLogType                     LogType = 9  // "DROP_INDEX"
+	AddedAccountTypeLogType              LogType = 10 // "ADDED_ACCOUNT_TYPE"
+	RemovedAccountTypeLogType            LogType = 11 // "REMOVED_ACCOUNT_TYPE"
+	UpdatedDefaultEnforcementModeLogType LogType = 12 // "UPDATED_DEFAULT_ENFORCEMENT_MODE"
+)
+
 type LogType int16
 
 func (lt LogType) Value() (driver.Value, error) {

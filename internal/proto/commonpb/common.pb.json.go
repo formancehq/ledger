@@ -143,8 +143,8 @@ func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
 // ErrorReason as the SHORT identifier (e.g. "TRANSACTION_REFERENCE_CONFLICT")
 // matching the wire convention used by the REST API surface
 // (skippableReasons, OrderSkippedResponse.reason, gRPC ErrorInfo.reason).
-// Standard encoding/json would emit the int enum value, breaking the
-// HydrateLog round-trip through LedgerLog's JSON layer.
+// Default struct encoding would emit the integer enum value instead of
+// the public reason identifier.
 func (x *OrderSkippedLog) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Reason  string            `json:"reason"`

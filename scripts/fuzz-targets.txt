@@ -2,7 +2,6 @@
 ./internal/pkg/semver/ FuzzSemverParse
 ./internal/pkg/semver/ FuzzSemverParsePartial
 ./internal/proto/commonpb/ FuzzConvertMetadataValue
-./internal/proto/commonpb/ FuzzLedgerLogUnmarshalJSON
 ./internal/proto/commonpb/ FuzzMetadataMapUnmarshalJSON
 ./internal/proto/commonpb/ FuzzTimestampUnmarshalJSON
 ./internal/proto/commonpb/ FuzzUint256UnmarshalJSON

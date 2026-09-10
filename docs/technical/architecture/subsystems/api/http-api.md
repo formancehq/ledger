@@ -854,8 +854,8 @@ shape. V3 retains typed metadata, colored volumes, and
 events retain their enclosing global-log structure. These JSON changes do not
 change protobuf messages, persisted data, or audit hashes.
 
-This contract defines an output projection, with no guarantee that the internal
-Go log types can decode it back. Metadata integers are emitted as JSON numbers,
+This contract defines an output projection. The internal ledger-log type has
+no custom JSON decoder. Metadata integers are emitted as JSON numbers,
 and null-valued keys remain present. The emitted JSON does not retain
 positive-integer signedness, the distinction between datetime values and
 strings, or `NullValue.original`. It is not an audit replay or backup format.
