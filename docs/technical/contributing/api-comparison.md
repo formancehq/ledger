@@ -21,9 +21,9 @@ matching signed negative and unsigned nonnegative metadata values. See
 ### Service protocol compatibility (EN-1851)
 
 The v3 gRPC service requires one `ledger-protocol-version` metadata value per
-business RPC, equal to `pkg/grpcprotocol.Version` (currently `"6"`). Revision 6
+business RPC, equal to `pkg/grpcprotocol.Version` (currently `"7"`). Revision 7
 requires the target's 16-byte `instance_id` on administrative `AddLearner`
-requests; revision 5 clients that omit it are incompatible. Missing,
+requests; revision 6 clients that omit it are incompatible. Missing,
 invalid, duplicate, or different revisions fail with `FailedPrecondition` before
 business handler execution. This applies to unary and streaming Bucket, Cluster,
 and Restore operations, including internal forwarding. Discovery, gRPC health,
