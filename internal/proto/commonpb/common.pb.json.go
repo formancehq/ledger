@@ -17,7 +17,7 @@ import (
 // protoFieldJSON marshals a proto.Message field to json.RawValue using protojson,
 // preserving camelCase field names. Returns nil for nil/zero messages.
 func protoFieldJSON(msg proto.Message) json.RawValue {
-	if msg == nil {
+	if msg == nil || !msg.ProtoReflect().IsValid() {
 		return nil
 	}
 

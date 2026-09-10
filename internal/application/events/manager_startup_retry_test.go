@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -61,8 +62,8 @@ func TestManager_RetriesTransientSinkConstructorFailure(t *testing.T) {
 		Name: "transient-constructor-failure",
 		Type: &commonpb.SinkConfig_Nats{
 			Nats: &commonpb.NatsSinkConfig{
-				Url:   "nats://dependency.invalid:4222",
-				Topic: "ledger.events",
+				Servers: []*commonpb.ConnectionURL{{Scheme: "nats", Address: &commonpb.ConnectionAddress{Host: "dependency.invalid", Port: proto.Uint32(4222)}}},
+				Topic:   "ledger.events",
 			},
 		},
 	}
@@ -110,8 +111,8 @@ func TestManager_StopCancelsSinkConstructorRetry(t *testing.T) {
 		Name: "constructor-failure-during-stop",
 		Type: &commonpb.SinkConfig_Nats{
 			Nats: &commonpb.NatsSinkConfig{
-				Url:   "nats://dependency.invalid:4222",
-				Topic: "ledger.events",
+				Servers: []*commonpb.ConnectionURL{{Scheme: "nats", Address: &commonpb.ConnectionAddress{Host: "dependency.invalid", Port: proto.Uint32(4222)}}},
+				Topic:   "ledger.events",
 			},
 		},
 	}

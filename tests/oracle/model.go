@@ -13,6 +13,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/domain/connectionconfig"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -2181,7 +2182,12 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 		for _, field := range r.CreateLedger.GetInitialSchema() {
 			ls.applySetMetadataFieldType(&servicepb.SetMetadataFieldTypeRequest{Ledger: name, TargetType: field.GetTargetType(), Key: field.GetKey(), Type: field.GetType()})
 		}
-		g.lifecycle = g.lifecycle.Set(name, LedgerLifecycle{Mode: r.CreateLedger.GetMode(), MirrorSource: r.CreateLedger.GetMirrorSource().CloneVT()})
+		mirrorSourceForLifecycle, _ := connectionconfig.Mirror(r.CreateLedger.GetMirrorSource())
+		if mirrorSourceForLifecycle == nil && r.CreateLedger.GetMirrorSource() != nil {
+			// Connection type may be absent in model fixtures; preserve available lifecycle metadata.
+			mirrorSourceForLifecycle = &commonpb.MirrorSourceConfig{LedgerName: r.CreateLedger.GetMirrorSource().GetLedgerName(), BatchSize: r.CreateLedger.GetMirrorSource().GetBatchSize()}
+		}
+		g.lifecycle = g.lifecycle.Set(name, LedgerLifecycle{Mode: r.CreateLedger.GetMode(), MirrorSource: mirrorSourceForLifecycle})
 		g.ledgers[name] = ls
 
 		return OrderResult{OK: true}, true

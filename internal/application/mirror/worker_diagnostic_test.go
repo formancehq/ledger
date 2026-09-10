@@ -82,19 +82,19 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	writeGate := health.NewMockWriteGate(gomock.NewController(t))
 	writeGate.EXPECT().CheckWritesAllowed().Return(nil)
 	adm := admission.NewAdmission(store, logger, proposer, builder, meters, writeGate, keys, shared, attrs, numscript.NewNumscriptCache(0), func(context.Context) error { return nil })
-	config := &commonpb.MirrorSourceConfig{
+	configInput := &commonpb.MirrorSourceConfigInput{
 		LedgerName: "source-ledger",
-		Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{
+		Type: &commonpb.MirrorSourceConfigInput_Http{Http: &commonpb.HttpMirrorSourceConfigInput{
 			BaseUrl: "https://audit-user:" + password + "@localhost/%zz",
 		}},
 	}
 	_, err = adm.Admit(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: ledgerName, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: config}},
+		Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: ledgerName, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: configInput}},
 	}))
 	require.ErrorIs(t, err, admission.ErrMirrorHTTPURLInvalid)
 	require.Equal(t, uint64(1), tracker.Next(), "rejection must not propose to Raft")
 	key := domain.LedgerKey{Name: ledgerName}
-	info := &commonpb.LedgerInfo{Name: ledgerName, Id: 1, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: config}
+	info := &commonpb.LedgerInfo{Name: ledgerName, Id: 1, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: configInput.GetLedgerName()}}
 	session := store.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(session, ledgerName, info))
 	_, _, err = registry.Ledgers.PutWithCache(session, 0, key.Bytes(), info)
@@ -107,7 +107,7 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_MIRROR, ledger.GetMode())
 	require.Nil(t, ledger.GetMirrorSyncProgress().GetError())
-	source := v2.NewHTTPSource(ledger.GetMirrorSource().GetHttp().GetBaseUrl(), config.GetLedgerName(), &http.Client{Transport: rejectingHTTPMirrorTransport{t: t}})
+	source := v2.NewHTTPSource("https://audit-user:"+password+"@localhost/%zz", configInput.GetLedgerName(), &http.Client{Transport: rejectingHTTPMirrorTransport{t: t}})
 	t.Cleanup(func() { require.NoError(t, source.Close()) })
 	w := NewWorker(ledgerName, 100, source, nil, store, proposer, builder, logger, meters)
 	proposed := 0

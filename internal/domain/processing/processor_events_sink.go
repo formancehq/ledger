@@ -2,9 +2,12 @@ package processing
 
 import (
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/connectionconfig"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+var errInvalidSinkConnection = domain.NewValidationSentinel("invalid events sink connection configuration")
 
 func processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	cfg := order.GetConfig()
@@ -26,10 +29,16 @@ func processAddEventsSink(order *raftcmdpb.AddEventsSinkOrder, ctx *Context) (*c
 		return nil, &domain.ErrSinkAlreadyExists{Name: cfg.GetName()}
 	}
 
+	// Normalize into owned operational state without changing the accepted audit intent.
+	normalized, err := connectionconfig.Sink(cfg)
+	if err != nil {
+		return nil, errInvalidSinkConnection
+	}
+
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_AddedEventsSink{
 			AddedEventsSink: &commonpb.AddedEventsSinkLog{
-				Config: cfg,
+				Config: normalized,
 			},
 		},
 	}, nil

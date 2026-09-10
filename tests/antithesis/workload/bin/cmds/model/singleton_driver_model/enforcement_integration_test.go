@@ -69,7 +69,7 @@ func TestMirrorBulkRejectsFirstFailingRequest(t *testing.T) {
 	create := &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
 		Name:         "L",
 		Mode:         commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-		MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "source"},
+		MirrorSource: &commonpb.MirrorSourceConfigInput{LedgerName: "source"},
 		AccountTypes: map[string]*commonpb.AccountType{
 			"known": {Name: "known", Pattern: "known:{id}"},
 		},

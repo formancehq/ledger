@@ -45,8 +45,8 @@ func TestValidateOrder_MirrorHTTPURL(t *testing.T) {
 				Ledger: "mirror",
 				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: &raftcmdpb.CreateLedgerOrder{
 					Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-					MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Http{
-						Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: tc.baseURL},
+					MirrorSource: &commonpb.MirrorSourceConfigInput{LedgerName: "source", Type: &commonpb.MirrorSourceConfigInput_Http{
+						Http: &commonpb.HttpMirrorSourceConfigInput{BaseUrl: tc.baseURL},
 					}},
 				}},
 			}}}
@@ -82,8 +82,8 @@ func TestAdmission_MalformedHTTPMirrorRejectedBeforeProposal(t *testing.T) {
 	_, err := a.Admit(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{Type: &servicepb.Request_CreateLedger{
 		CreateLedger: &servicepb.CreateLedgerRequest{
 			Name: ledgerName, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-			MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "source", Type: &commonpb.MirrorSourceConfig_Http{
-				Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "https://user:" + password + "@localhost/%zz"},
+			MirrorSource: &commonpb.MirrorSourceConfigInput{LedgerName: "source", Type: &commonpb.MirrorSourceConfigInput_Http{
+				Http: &commonpb.HttpMirrorSourceConfigInput{BaseUrl: "https://user:" + password + "@localhost/%zz"},
 			}},
 		},
 	}}))

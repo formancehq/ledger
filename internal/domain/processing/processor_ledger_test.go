@@ -259,3 +259,55 @@ func TestProcessDeleteLedger_NotFound(t *testing.T) {
 	require.Nil(t, result)
 	require.Contains(t, err.Error(), "ledger does not exist")
 }
+
+func TestProcessCreateLedger_NormalizesMirrorWithoutMutatingAuditIntent(t *testing.T) {
+	t.Parallel()
+	mockStore := NewMockScope(gomock.NewController(t))
+	order := &raftcmdpb.CreateLedgerOrder{
+		Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+		MirrorSource: &commonpb.MirrorSourceConfigInput{
+			LedgerName: "upstream", BatchSize: 23,
+			Type: &commonpb.MirrorSourceConfigInput_Http{Http: &commonpb.HttpMirrorSourceConfigInput{
+				BaseUrl: "https://reader:password@ledger.example/v2?token=private",
+				Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentialsInput{
+					ClientId: "client", ClientSecret: "oauth-secret", TokenEndpoint: "https://auth.example/token", Scopes: []string{"read"},
+				},
+			}},
+		},
+	}
+	fullOrder := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: "mirror", Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{CreateLedger: order},
+	}}}
+	before := fullOrder.MarshalDeterministicVT(nil)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror"}, nil, domain.ErrNotFound)
+	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
+	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234}).AsReader())
+	var stored *commonpb.LedgerInfo
+	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "mirror"}, nil, func(_ string, info *commonpb.LedgerInfo) { stored = info })
+	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "mirror"}, nil)
+	log, err := processCreateLedger("mirror", order, &Context{Scope: mockStore})
+	require.Nil(t, err)
+	require.Equal(t, before, fullOrder.MarshalDeterministicVT(nil))
+	require.Equal(t, "ledger.example", stored.GetMirrorSource().GetHttp().GetBaseUrl().GetAddress().GetHost())
+	require.Equal(t, "password", stored.GetMirrorSource().GetHttp().GetBaseUrl().GetPassword())
+	require.True(t, stored.GetMirrorSource().EqualVT(log.GetCreateLedger().GetMirrorSource()))
+	require.NotSame(t, stored.GetMirrorSource(), log.GetCreateLedger().GetMirrorSource())
+	stored.GetMirrorSource().GetHttp().GetBaseUrl().Username = "changed"
+	stored.GetMirrorSource().GetHttp().GetOauth2ClientCredentials().Scopes[0] = "changed"
+	require.Equal(t, "reader", log.GetCreateLedger().GetMirrorSource().GetHttp().GetBaseUrl().GetUsername())
+	require.Equal(t, []string{"read"}, log.GetCreateLedger().GetMirrorSource().GetHttp().GetOauth2ClientCredentials().GetScopes())
+	require.Equal(t, before, fullOrder.MarshalDeterministicVT(nil))
+}
+
+func TestProcessCreateLedger_InvalidMirrorDoesNotMutateState(t *testing.T) {
+	t.Parallel()
+	mockStore := NewMockScope(gomock.NewController(t))
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror"}, nil, domain.ErrNotFound)
+	order := &raftcmdpb.CreateLedgerOrder{MirrorSource: &commonpb.MirrorSourceConfigInput{
+		Type: &commonpb.MirrorSourceConfigInput_Http{Http: &commonpb.HttpMirrorSourceConfigInput{BaseUrl: "https://secret%zz@example.com"}},
+	}}
+	log, err := processCreateLedger("mirror", order, &Context{Scope: mockStore})
+	require.Nil(t, log)
+	require.ErrorIs(t, err, errInvalidMirrorConnection)
+	require.NotContains(t, err.Error(), "secret")
+}

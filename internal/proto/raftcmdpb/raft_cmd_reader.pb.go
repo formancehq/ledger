@@ -517,13 +517,13 @@ func NewDeletePreparedQueryOrderListReader(s []*DeletePreparedQueryOrder) Delete
 // AddEventsSinkOrderReader provides read-only access to AddEventsSinkOrder.
 // Call Mutate() to obtain a mutable clone.
 type AddEventsSinkOrderReader interface {
-	GetConfig() commonpb.SinkConfigReader
+	GetConfig() commonpb.SinkConfigInputReader
 	Mutate() *AddEventsSinkOrder
 }
 
 type addEventsSinkOrderReadonly AddEventsSinkOrder
 
-func (r *addEventsSinkOrderReadonly) GetConfig() commonpb.SinkConfigReader {
+func (r *addEventsSinkOrderReadonly) GetConfig() commonpb.SinkConfigInputReader {
 	v := (*AddEventsSinkOrder)(r).GetConfig()
 	if v == nil {
 		return nil
@@ -1437,7 +1437,7 @@ func NewDeleteQueryCheckpointScheduleOrderListReader(s []*DeleteQueryCheckpointS
 type CreateLedgerOrderReader interface {
 	GetInitialSchema() commonpb.SetMetadataFieldTypeCommandListReader
 	GetMode() commonpb.LedgerMode
-	GetMirrorSource() commonpb.MirrorSourceConfigReader
+	GetMirrorSource() commonpb.MirrorSourceConfigInputReader
 	GetAccountTypes() CreateLedgerOrder_AccountTypesMapReader
 	GetDefaultEnforcementMode() commonpb.ChartEnforcementMode
 	Mutate() *CreateLedgerOrder
@@ -1453,7 +1453,7 @@ func (r *createLedgerOrderReadonly) GetMode() commonpb.LedgerMode {
 	return (*CreateLedgerOrder)(r).GetMode()
 }
 
-func (r *createLedgerOrderReadonly) GetMirrorSource() commonpb.MirrorSourceConfigReader {
+func (r *createLedgerOrderReadonly) GetMirrorSource() commonpb.MirrorSourceConfigInputReader {
 	v := (*CreateLedgerOrder)(r).GetMirrorSource()
 	if v == nil {
 		return nil

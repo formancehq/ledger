@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"10"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"11"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 10:
+leader. For example, with a schema implementing revision 11:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 10' \
+grpcurl -plaintext -H 'ledger-protocol-version: 11' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -155,7 +155,7 @@ A change without a schema break warrants a revision only when its author can
 identify a concrete interoperability failure with the existing client/server
 contract. Ordinary secret masking, diagnostic wording, internal behavior and
 compatible additions do not automatically require a bump. Record the assessment
-in the PR; do not infer incompatibility merely because output differs.
+in the PR; do not infer incompatibility merely because output differs. See the revision-specific sections below for the assessment behind each bump.
 
 This obligation applies to AI agents throughout pre-release development, even
 though older Ledger versions and storage formats are not supported. Before
@@ -185,3 +185,15 @@ cannot enter unary or streaming business handlers, while the matching revision
 does. Keep diagnostic exemptions usable without a revision. Exercise the real
 client/server paths, restoration without Discovery, and internal service
 forwarding so the gate cannot make the repository's own clients incompatible.
+
+Structured connection input/output messages require revision 11 on top of the
+revision 10 gate: existing connection configuration fields changed to structured message types.
+
+
+## Structured connection input/output messages (revision 11)
+
+Revision 11 is required when the client uses structured connection configuration
+messages (SinkConfigInput, MirrorSourceConfigInput) for write requests and reads
+structured SinkConfig/MirrorSourceConfig output from GetEventsSinks, GetLedger,
+ListLedgers, GetLog, and ListLogs. Existing configuration fields changed message
+types; clients and servers at different revisions decode them incorrectly.
