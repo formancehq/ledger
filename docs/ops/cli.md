@@ -1868,7 +1868,7 @@ ledgerctl version
 
 The **server** exposes the same build metadata over two unauthenticated channels:
 
-- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"8"}`.
+- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"11"}`.
 - **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same information, including `protocol_version`.
 
 This is useful for monitoring deployed nodes and spotting version skew across a cluster (the per-node `version` is also surfaced on each `NodeInfo` in `GetClusterState`).
