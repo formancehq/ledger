@@ -288,14 +288,14 @@ var _ = Describe("Restore index registry", Ordered, func() {
 
 		It("audits rejected duplicate creations in the delta without resetting registry rows", func() {
 			for _, key := range []string{retypedKey, deltaKey} {
-				before := registryRow(client, key)
+				before := registryRow(client, ledgerName, key)
 				Expect(before).NotTo(BeNil())
 				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("idxreg-duplicate-"+key,
 					actions.CreateAccountMetadataIndexAction(ledgerName, key)))
 				Expect(status.Code(err)).To(Equal(codes.AlreadyExists))
 				Expect(actions.ExtractGRPCErrorInfo(err)).NotTo(BeNil())
 				Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("INDEX_ALREADY_EXISTS"))
-				Expect(proto.Equal(registryRow(client, key), before)).To(BeTrue())
+				Expect(proto.Equal(registryRow(client, ledgerName, key), before)).To(BeTrue())
 			}
 			result, err := actions.CollectCheckStoreEvents(ctx, client)
 			Expect(err).To(Succeed())
@@ -500,7 +500,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 				Expect(status.Code(err)).To(Equal(codes.AlreadyExists))
 				Expect(actions.ExtractGRPCErrorInfo(err)).NotTo(BeNil())
 				Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("INDEX_ALREADY_EXISTS"))
-				Expect(proto.Equal(registryRow(client, key), sourceRows[key])).To(BeTrue())
+				Expect(proto.Equal(registryRow(client, ledgerName, key), sourceRows[key])).To(BeTrue())
 			}
 			result, err := actions.CollectCheckStoreEvents(ctx, client)
 			Expect(err).To(Succeed())
