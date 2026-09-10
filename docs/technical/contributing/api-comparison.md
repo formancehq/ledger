@@ -8,6 +8,12 @@ This document compares the POC's API with the original Formance ledger API and d
 > intentionally unversioned. The original ledger's `/v2` is **not** preserved
 > by this POC — there is no compatibility shim.
 
+HTTP typed metadata preserves exact integer values, including signed 64-bit
+bounds and values above 2^53, for metadata writes, transaction creation and
+reversal (unitary and bulk). Integral decimal/exponent spellings are accepted;
+fractions and out-of-range values are rejected before submission. See
+[Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
+
 ## Summary
 
 ### Service protocol compatibility (EN-1851)

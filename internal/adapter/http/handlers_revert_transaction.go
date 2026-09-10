@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,7 +30,13 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	if r.Body != nil {
 		body, err := io.ReadAll(r.Body)
 		if err == nil && len(body) != 0 {
-			err = json.Unmarshal(body, &reqBody)
+			if !json.Valid(body) {
+				err = fmt.Errorf("expected a single valid JSON value")
+			} else {
+				decoder := json.NewDecoder(bytes.NewReader(body))
+				decoder.UseNumber()
+				err = decoder.Decode(&reqBody)
+			}
 		}
 		if err != nil {
 			writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))

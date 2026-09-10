@@ -3163,7 +3163,12 @@ components:
           description: The account address that caused the violation
 
     MetadataValue:
-      description: A typed metadata value (string, integer, boolean, or null). String values must not contain NUL bytes.
+      description: >-
+        A typed metadata value (string, integer, boolean, or null). Integer
+        numbers are decoded exactly, including int64 bounds and values beyond
+        2^53. Integral decimal and exponent spellings are accepted; fractions
+        and out-of-range values are rejected. String values must not contain
+        NUL bytes.
       nullable: true
       oneOf:
         - type: string

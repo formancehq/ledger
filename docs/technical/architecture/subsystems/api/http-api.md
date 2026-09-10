@@ -397,6 +397,29 @@ Clients should:
 - **Idempotency**: Ensure write operations are idempotent to safely retry after leader election
 - **Monitoring**: Track `503` responses to monitor cluster health and leader election frequency
 
+## Metadata number decoding
+
+HTTP metadata numbers retain their exact decimal value before conversion to
+protobuf metadata. This applies to account, transaction and ledger metadata
+updates, transaction creation (including `accountMetadata`), and unitary and
+bulk reversals. For example, `9007199254740993` and `-9007199254740993` reach
+`Apply` unchanged, including beyond the exact-integer range of IEEE-754 doubles.
+
+Nonnegative values use unsigned 64-bit metadata; negative values use signed
+64-bit metadata. All signed 64-bit integers are supported. Integral decimal and
+exponent spellings (`1.0`, `1e3`, `10e-1`) are accepted, while fractions and
+out-of-range values return `400 INVALID_REQUEST` before `Apply`. Fractions are
+checked exactly, including values that a floating-point decoder would round to
+an integer or underflow to zero. Numeric strings remain strings; null and other
+metadata types retain their existing handling.
+
+The JSON adapter exposes explicit number-preserving decode helpers for these
+metadata consumers. Its ordinary decoders retain their existing behavior.
+Custom metadata JSON decoders opt in themselves, since an outer decoder's
+configuration does not propagate into a custom `UnmarshalJSON` method. This
+changes input conversion only; protobuf contracts, stored representations,
+FSM behavior and audit replay formats are unchanged.
+
 ## Main Endpoints
 
 ### Ledgers

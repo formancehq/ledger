@@ -145,7 +145,7 @@ func parsePageSize(w http.ResponseWriter, r *http.Request) (uint32, bool) {
 // Returns the parsed metadata map and true on success; writes a 400 response and returns false on failure.
 func parseMetadataBody(w http.ResponseWriter, r *http.Request) (map[string]*commonpb.MetadataValue, bool) {
 	var inputMetadata map[string]any
-	if err := json.UnmarshalRead(r.Body, &inputMetadata); err != nil {
+	if err := json.UnmarshalReadUseNumber(r.Body, &inputMetadata); err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
 
 		return nil, false

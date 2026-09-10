@@ -404,7 +404,7 @@ func (sm *SavedMetadata) UnmarshalJSON(data []byte) error {
 
 	x := X{}
 
-	err := json.Unmarshal(data, &x)
+	err := json.UnmarshalUseNumber(data, &x)
 	if err != nil {
 		return err
 	}

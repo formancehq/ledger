@@ -67,7 +67,7 @@ func (x *CreateTransactionPayload) UnmarshalJSON(data []byte) error {
 		Force           bool                      `json:"force"`
 	}
 
-	if err := json.Unmarshal(data, &aux); err != nil {
+	if err := json.UnmarshalUseNumber(data, &aux); err != nil {
 		return err
 	}
 
@@ -310,7 +310,7 @@ func unmarshalSaveMetadataCommand(data json.RawValue) (*commonpb.SaveMetadataCom
 	}
 
 	var raw rawReq
-	if err := json.Unmarshal(data, &raw); err != nil {
+	if err := json.UnmarshalUseNumber(data, &raw); err != nil {
 		return nil, err
 	}
 
@@ -340,7 +340,7 @@ func unmarshalRevertTransactionPayload(data json.RawValue) (*RevertTransactionPa
 	}
 
 	var raw rawReq
-	if err := json.Unmarshal(data, &raw); err != nil {
+	if err := json.UnmarshalUseNumber(data, &raw); err != nil {
 		return nil, err
 	}
 
