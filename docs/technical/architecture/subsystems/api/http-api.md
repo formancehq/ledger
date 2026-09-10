@@ -836,7 +836,7 @@ identifies the payload, so clients need only one discriminator dispatch.
 | `SET_METADATA_FIELD_TYPE` | Metadata field type assignment |
 | `REMOVED_METADATA_FIELD_TYPE` | Metadata field type removal |
 | `ORDER_SKIPPED` | Reason and optional context |
-| `FILL_GAP` | Fill-gap payload |
+| `FILL_GAP` | `originalId`: uint64 encoded as a decimal JSON string |
 | `CREATE_INDEX` | Index creation payload |
 | `DROP_INDEX` | Index removal payload |
 | `ADDED_ACCOUNT_TYPE` | Account type addition payload |
@@ -853,6 +853,12 @@ shape. V3 retains typed metadata, colored volumes, and
 `revertedTransactionId` plus `revertTransaction` for reversals. System logs and
 events retain their enclosing global-log structure. These JSON changes do not
 change protobuf messages, persisted data, or audit hashes.
+
+Integer rendering depends on the payload codec: `FILL_GAP.originalId` uses
+protobuf JSON and is a decimal string (for example, `"18446744073709551615"`).
+Custom transaction IDs, `revertedTransactionId`, metadata transaction
+`targetId`, and metadata integer values are JSON numbers. Clients must preserve
+full integer precision when reading these numbers.
 
 This contract defines an output projection. The internal ledger-log type has
 no custom JSON decoder. Metadata integers are emitted as JSON numbers,
