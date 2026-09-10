@@ -137,6 +137,23 @@ The protobuf oneof annotations in `common.proto` are the build-enforced classifi
 
 `log_date` covers CONTROL as well as HISTORY. While a ledger is `EMPTY`, date rows are staged for every ledger-local CONTROL log even before the index is declared, which lets an EMPTY `log_date` creation promote immediately without omitting earlier configuration logs or its own `CreateIndex` log. If the first HISTORY arrives before `log_date` exists, that speculative prefix is deleted in the same fold and a future `NON_EMPTY` creation uses the complete backfill. An incarnation that remains `EMPTY` and never declares `log_date` deliberately retains this speculative prefix: discarding it earlier would make a later direct promotion omit the preceding CONTROL logs. Its retained size is therefore `O(CONTROL logs for the incarnation)` until `log_date` is created, the first HISTORY arrives, or the ledger is deleted.
 
+### Log-date completeness (EN-1987)
+
+A date-filtered `ListLogs` must cover the same ledger-local log universe as
+the unfiltered listing, including schema/index configuration logs and the
+`CreateIndex` log itself. An all-covering date range must return that entire
+listing; its complement must be empty.
+
+EN-1987 originally satisfied this by always backfilling `log_date`, with a
+process-local ledger-creation sequence bounding replay for born-empty ledgers.
+The durable EMPTY path supersedes that exception: its speculative date rows
+and direct promotion commit with the fold cursor, including across restart.
+Keeping the exception would restore unnecessary replay work and a redundant
+in-memory creation-sequence map. NON_EMPTY date indexes still backfill every
+ledger-local log before the entity-only HISTORY dispatch gate. The retained
+EN-1987 query regressions cover both paths; EMPTY lifecycle tests additionally
+verify restart, direct readiness, and exact date rows.
+
 ## Restore Lifecycle
 
 The index registry (the bucket-scoped `Index` rows under `SubAttrIndex`) is a persisted projection of the audited order stream, so a cross-cluster restore must reproduce it the same way the live apply path built it: the checkpoint's attribute zone carries the rows as of the checkpoint, and `RebuildDelta` (`internal/infra/backup/rebuild.go`, shared with `ledgerctl store bootstrap`) folds every post-checkpoint ledger log into them. The replay evidence is the exported logs themselves — each registry mutation is derived from a log payload alone, never from state the source cluster held outside the export:

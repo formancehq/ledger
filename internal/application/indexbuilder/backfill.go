@@ -118,11 +118,7 @@ func backfillBBKey(ledgerName string, id *commonpb.IndexID) []byte {
 
 // addBackfillTask is a helper that creates a backfill task for the given IndexID,
 // avoiding duplicates by checking the precomputed progress key.
-// addBackfillTask registers a replay of the ledger's history for one index.
-// The replay starts strictly after cursor: only a caller that can prove the
-// ledger has no log at or below that sequence may pass a non-zero one, since
-// the skipped range is never revisited.
-func (b *Builder) addBackfillTask(ledgerName string, id *commonpb.IndexID, cursor uint64) {
+func (b *Builder) addBackfillTask(ledgerName string, id *commonpb.IndexID) {
 	bbKey := backfillBBKey(ledgerName, id)
 	for _, t := range b.backfillTasks {
 		if string(t.bbKey) == string(bbKey) {
@@ -133,34 +129,34 @@ func (b *Builder) addBackfillTask(ledgerName string, id *commonpb.IndexID, curso
 	b.backfillTasks = append(b.backfillTasks, &backfillTask{
 		ledger: ledgerName,
 		index:  id,
-		cursor: cursor,
+		cursor: 0,
 		bbKey:  bbKey,
 	})
 }
 
 // addBackfillTaskForTxBuiltin creates a backfill task for a transaction builtin index.
 func (b *Builder) addBackfillTaskForTxBuiltin(ledgerName string, index commonpb.TransactionBuiltinIndex) {
-	b.addBackfillTask(ledgerName, indexes.TxBuiltinID(index), 0)
+	b.addBackfillTask(ledgerName, indexes.TxBuiltinID(index))
 }
 
 // addBackfillTaskForTxMetadata creates a backfill task for a transaction metadata index.
 func (b *Builder) addBackfillTaskForTxMetadata(ledgerName string, key string) {
-	b.addBackfillTask(ledgerName, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key), 0)
+	b.addBackfillTask(ledgerName, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key))
 }
 
 // addBackfillTaskForAcctMetadata creates a backfill task for an account metadata index.
 func (b *Builder) addBackfillTaskForAcctMetadata(ledgerName string, key string) {
-	b.addBackfillTask(ledgerName, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key), 0)
+	b.addBackfillTask(ledgerName, indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key))
 }
 
 // addBackfillTaskForAccountBuiltin creates a backfill task for an account builtin index.
 func (b *Builder) addBackfillTaskForAccountBuiltin(ledgerName string, index commonpb.AccountBuiltinIndex) {
-	b.addBackfillTask(ledgerName, indexes.AccountBuiltinID(index), 0)
+	b.addBackfillTask(ledgerName, indexes.AccountBuiltinID(index))
 }
 
 // addBackfillTaskForLogBuiltin creates a backfill task for a log builtin index.
 func (b *Builder) addBackfillTaskForLogBuiltin(ledgerName string, index commonpb.LogBuiltinIndex) {
-	b.addBackfillTask(ledgerName, indexes.LogBuiltinID(index), 0)
+	b.addBackfillTask(ledgerName, indexes.LogBuiltinID(index))
 }
 
 // removeBackfillTask removes a backfill task matching (ledger, index ID)
@@ -1442,7 +1438,7 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 			// every ledger-local log, including CONTROL. Write only the date row;
 			// dispatching CONTROL payloads would replay config handlers.
 			if isLogDateIndex(task.index) {
-				if err := b.wb.WriteLedgerLogDateIndex(b.kb, task.ledger, ledgerLog.GetDate().GetData(), ledgerLog.GetId()); err != nil {
+				if err := b.backfillLogDateRow(cfg, log); err != nil {
 					_ = batch.Cancel()
 
 					return err

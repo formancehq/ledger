@@ -112,16 +112,6 @@ type Builder struct {
 	wb       *readstore.WriteBatch
 	accounts map[string]struct{}
 
-	// ledgerFirstSeq holds the global sequence of a ledger's creation log, for
-	// ledgers whose creation THIS process folded. No log of the ledger sits
-	// below it, so it bounds the replay of an index declared while the ledger
-	// was still born-empty (CreatedIndexLog.initial). Recording only the
-	// creation log is what makes the bound sound: a restart between the
-	// creation and the CreateIndex log leaves no entry, and the replay then
-	// covers the whole log instead of starting after a config log it would
-	// never index.
-	ledgerFirstSeq map[string]uint64
-
 	// seenAcctAsset deduplicates account-by-asset index writes within the
 	// in-flight batch: it holds the AccountByAssetKey bytes (as string) already
 	// written, so a repeated (account, assetBase, precision) cell in the same
@@ -561,7 +551,6 @@ func NewBuilder(
 		kb:             dal.NewKeyBuilder(),
 		wb:             readstore.NewWriteBatch(),
 		accounts:       make(map[string]struct{}, 64),
-		ledgerFirstSeq: make(map[string]uint64, 8),
 	}
 }
 
@@ -569,19 +558,6 @@ func NewBuilder(
 // per-batch account-by-asset dedup set. This is the single place a batch is
 // bound for index processing, so the dedup set can never be left stale (or
 // grow unbounded) relative to the batch it tracks.
-// recordLedgerCreation notes where a ledger's log history begins, bounding a
-// later initial index's backfill. First writer wins: a replay that re-folds
-// the creation log must not move a bound the live fold already set.
-func (b *Builder) recordLedgerCreation(ledgerName string, sequence uint64) {
-	if b.ledgerFirstSeq == nil || ledgerName == "" || sequence == 0 {
-		return
-	}
-
-	if _, seen := b.ledgerFirstSeq[ledgerName]; !seen {
-		b.ledgerFirstSeq[ledgerName] = sequence
-	}
-}
-
 func (b *Builder) initBatch(batch *dal.WriteSession) {
 	b.wb.Init(batch)
 	b.seenAcctAsset = make(map[string]struct{})

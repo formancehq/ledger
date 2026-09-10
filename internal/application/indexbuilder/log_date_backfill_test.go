@@ -31,7 +31,7 @@ func logDateConfig() *ledgerIndexConfig {
 }
 
 // makeSchemaLog builds a config-mutation log: an Apply log carrying a ledger
-// log whose payload declares a metadata field type. isDataLog rejects it, and
+// log whose payload declares a metadata field type. isHistoryLog rejects it, and
 // its date belongs in the log date index all the same.
 func makeSchemaLog(seq uint64, ledger string, logID, date uint64) *commonpb.Log {
 	return &commonpb.Log{
@@ -108,7 +108,9 @@ func TestBackfillLogDateRow(t *testing.T) {
 		{
 			name: "data log of a date task",
 			cfg:  logDateConfig(),
-			log:  makeSchemaLog(1, ledger, 8, 4243),
+			log: ledgerPayloadLog(1, ledger, 8, &commonpb.LedgerLogPayload_OrderSkipped{
+				OrderSkipped: &commonpb.OrderSkippedLog{},
+			}, 4243),
 			want: [][2]uint64{{4243, 8}},
 		},
 		{
@@ -146,95 +148,23 @@ func TestBackfillLogDateRow(t *testing.T) {
 	}
 }
 
-// A log date index declared at ledger birth has no entity history, but the
-// ledger's config-mutation logs — the CreateIndex log among them — still need
-// their dates, so it backfills instead of being promoted live immediately.
-func TestHandleCreatedIndexLog_InitialLogDateBackfills(t *testing.T) {
+// A log-date index on EMPTY can become ready immediately because the live
+// fold has staged all preceding CONTROL dates, including CreateIndex itself.
+func TestHandleCreatedIndexLog_EmptyLogDateReady(t *testing.T) {
 	t.Parallel()
-
 	b := newTestBuilderWithStore(t)
-
 	const ledger = "test"
-
 	id := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
-	canonical := indexes.Canonical(id)
-
 	batch := b.readStore.NewBatch()
-	b.initBatch(batch)
-	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id, Initial: true}))
+	b.initFoldBatch(batch)
+	require.NoError(t, b.observeCreatedLedger(ledger))
+	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{Id: id}))
 	require.NoError(t, b.wb.Flush())
-
-	require.Len(t, b.backfillTasks, 1, "an initial log date index must schedule a backfill")
-
-	current, pending := b.versionFor(ledger, canonical)
-	assert.Equal(t, uint32(0), current, "not servable until the backfill completes")
-	assert.Equal(t, uint32(1), pending)
-}
-
-// An initial index's ledger was created in the proposal being folded, so this
-// run has seen the ledger's first log and the replay starts there rather than
-// walking the whole global log.
-func TestHandleCreatedIndexLog_InitialLogDateBackfillsFromLedgerFirstLog(t *testing.T) {
-	t.Parallel()
-
-	b := newTestBuilderWithStore(t)
-
-	const ledger = "test"
-
-	b.ledgerFirstSeq[ledger] = 42
-
-	batch := b.readStore.NewBatch()
-	b.initBatch(batch)
-	require.NoError(t, b.handleCreatedIndexLog(ledger, &commonpb.CreatedIndexLog{
-		Id:      indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
-		Initial: true,
-	}))
-	require.NoError(t, b.wb.Flush())
-
-	require.Len(t, b.backfillTasks, 1)
-	assert.Equal(t, uint64(41), b.backfillTasks[0].cursor,
-		"the replay starts just below the ledger's first log, so it covers every one of them")
-}
-
-// The bound comes from the ledger's creation log alone. A restart between that
-// creation and the CreateIndex log leaves no entry, and the replay must then
-// cover the whole log: a later config log's sequence would start the replay
-// after config logs whose dates nothing else will ever write.
-func TestRecordLedgerCreation(t *testing.T) {
-	t.Parallel()
-
-	b := newTestBuilderWithStore(t)
-
-	b.recordLedgerCreation("test", 7)
-	assert.Equal(t, uint64(7), b.ledgerFirstSeq["test"])
-
-	b.recordLedgerCreation("test", 9)
-	assert.Equal(t, uint64(7), b.ledgerFirstSeq["test"], "a re-folded creation log must not move the bound")
-
-	b.recordLedgerCreation("", 3)
-	b.recordLedgerCreation("zero", 0)
-	assert.NotContains(t, b.ledgerFirstSeq, "")
-	assert.NotContains(t, b.ledgerFirstSeq, "zero")
-}
-
-// Without a recorded first log — a ledger whose creation this process never
-// folded — the replay falls back to the whole log rather than risk skipping
-// history.
-func TestHandleCreatedIndexLog_InitialLogDateWithoutFirstLogScansFromZero(t *testing.T) {
-	t.Parallel()
-
-	b := newTestBuilderWithStore(t)
-
-	batch := b.readStore.NewBatch()
-	b.initBatch(batch)
-	require.NoError(t, b.handleCreatedIndexLog("test", &commonpb.CreatedIndexLog{
-		Id:      indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
-		Initial: true,
-	}))
-	require.NoError(t, b.wb.Flush())
-
-	require.Len(t, b.backfillTasks, 1)
-	assert.Zero(t, b.backfillTasks[0].cursor)
+	b.commitFoldBatch()
+	require.Empty(t, b.backfillTasks)
+	current, pending := b.versionFor(ledger, indexes.Canonical(id))
+	assert.Equal(t, uint32(1), current)
+	assert.Zero(t, pending)
 }
 
 // The replay writes a date row for every log of its ledger, so a history of
@@ -245,6 +175,7 @@ func TestLogDateBackfillIndexesConfigMutationLogs(t *testing.T) {
 	b := newTestBuilderWithStore(t)
 
 	const ledger = "test"
+	seedCachedLedgerHistory(b, ledger, ledgerHistoryNonEmpty)
 
 	writeLogToFSM(t, b, makeSchemaLog(1, ledger, 1, 1001))
 
