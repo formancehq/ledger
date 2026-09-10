@@ -1,10 +1,7 @@
 package http
 
 import (
-	"errors"
 	"net/http"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -16,10 +13,8 @@ func (s *Server) handleDeleteLedgerMetadata(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	key := chi.URLParam(r, "key")
-	if key == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("metadata key is required"))
-
+	key, ok := requireMetadataKey(w, r)
+	if !ok {
 		return
 	}
 
