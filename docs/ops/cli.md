@@ -4849,9 +4849,10 @@ The HTTP sink sends each event as an individual POST request with headers:
 Connection inputs remain URLs/DSNs. `events list`, structured `events add-sink`
 output and ledger creation/read output display normalized connection fields.
 Nonempty credentials and opaque option values appear as `[redacted]`; known
-operational settings remain visible. Status diagnostics are also masked because
-driver errors can embed credentials. JSON/YAML output uses the same sensitivity
-annotations as the server; it does not reconstruct a credential-bearing DSN.
+operational settings remain visible. Sink adapters sanitize error messages before
+persistence, and their useful diagnostics remain visible. Mirror diagnostics are
+masked because they may embed credentials. JSON/YAML output uses the same
+sensitivity annotations as the server; it does not reconstruct a credential-bearing DSN.
 
 ### `events remove-sink`
 

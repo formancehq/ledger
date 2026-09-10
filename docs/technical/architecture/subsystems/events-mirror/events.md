@@ -388,7 +388,9 @@ configuration contain only the operational structure:
 Workers render these components for drivers that require a connection string.
 They never read the original input from the audit. Public read copies apply
 protobuf `sensitive` annotations to credentials, query values, opaque options
-and diagnostic messages. See [the projection contract](../api/structured-credentials.md)
+and mirror diagnostic messages. Sink adapters sanitize errors before they are
+recorded in `SinkError.message`; public reads preserve these useful diagnostics.
+See [the projection contract](../api/structured-credentials.md)
 for original signed evidence, checker integration and restore semantics.
 The canonical field definitions are in `misc/proto/common.proto`.
 

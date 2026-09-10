@@ -39,13 +39,16 @@ func TestCredentialProjectionLiveGRPC(t *testing.T) {
 	impl, backend := newListHandlerHarness(t)
 	impl.authCfg = credentialReadAuth(internalauth.ScopeOpsRead)
 	sink := &commonpb.SinkConfig{Name: "sink", Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{Secret: "credentialSentinel", Endpoint: &commonpb.ConnectionURL{Scheme: "https", Username: "u", Password: new("urlSentinel"), Address: &commonpb.ConnectionAddress{Host: "localhost"}}}}}
-	sinkStatus := &commonpb.SinkStatus{SinkName: "sink", Cursor: 12, Error: &commonpb.SinkError{Message: "dial https://u:credentialSentinel@localhost failed"}}
+	// Sink adapters sanitize diagnostics before persistence; public reads retain them.
+	const diagnostic = "posting event seq=1: sending request to https://localhost/events?key=[redacted]: EOF"
+	sinkStatus := &commonpb.SinkStatus{SinkName: "sink", Cursor: 12, Error: &commonpb.SinkError{Message: diagnostic}}
 	originalSink, originalStatus := sink.CloneVT(), sinkStatus.CloneVT()
 	backend.EXPECT().GetEventsSinks(gomock.Any()).Return([]*commonpb.SinkConfig{sink}, []*commonpb.SinkStatus{sinkStatus}, nil)
 	response, err := impl.GetEventsSinks(context.Background(), &servicepb.GetEventsSinksRequest{})
 	require.NoError(t, err)
 	requireCredentialFreeProto(t, response)
 	require.Equal(t, uint64(12), response.GetSinkStatuses()[0].GetCursor())
+	require.Equal(t, diagnostic, response.GetSinkStatuses()[0].GetError().GetMessage())
 	require.True(t, proto.Equal(originalSink, sink))
 	require.True(t, proto.Equal(originalStatus, sinkStatus))
 	impl.authCfg = credentialReadAuth(internalauth.ScopeLedgersRead)
