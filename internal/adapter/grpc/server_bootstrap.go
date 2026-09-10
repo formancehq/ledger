@@ -79,9 +79,8 @@ func (impl *ClusterBootstrapServiceServerImpl) checkClusterID(ctx context.Contex
 // service addresses. Called by a joining node before it starts Raft, to
 // populate its initial WAL snapshot.
 //
-// node.GetClusterState only populates the nodes slice when the local
-// node is the Raft leader (see node.go: "if status.RaftState ==
-// raft.StateLeader"). On a follower the slice is empty, so the joining
+// node.GetConfiguredPeers only returns configured peers when the local
+// node is the Raft leader. On a follower the slice is empty, so the joining
 // node would receive a useless answer. Forward the call to the leader
 // to guarantee a meaningful response.
 func (impl *ClusterBootstrapServiceServerImpl) GetPeers(ctx context.Context, req *clusterbootstrappb.GetPeersRequest) (*clusterbootstrappb.GetPeersResponse, error) {

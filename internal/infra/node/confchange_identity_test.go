@@ -37,10 +37,13 @@ func TestFinishReadyRejectsIncompleteRegistrationBeforeRawNodeMutation(t *testin
 				require.NoError(t, err)
 			}
 			err = n.finishReady(readyResult{confChanges: []committedConfChange{{index: 2, change: cc}}}, make(chan struct{}))
-			if name == "missing identity" || name == "short identity" {
+			switch name {
+			case "missing identity", "short identity":
 				require.ErrorContains(t, err, "invariant: ConfChange for peer 9 has invalid identity")
-			} else {
-				require.ErrorContains(t, err, "invariant: ConfChange registration for peer 9")
+			case "absent":
+				require.ErrorContains(t, err, "invariant: ConfChange registration for peer 9 has no payload")
+			default:
+				require.ErrorContains(t, err, "invariant: ConfChange registration for peer 9 requires raft and service addresses")
 			}
 			require.Equal(t, before, rn.Status().Config)
 			require.Equal(t, []uint64{1}, n.confState.Load().GetVoters())
@@ -141,9 +144,7 @@ func TestFinishReadyCommittedRemovalProtectsAdmissionBeforeApply(t *testing.T) {
 	pending, exists := n.pendingRemovals.Load(2)
 	require.True(t, exists)
 	require.Equal(t, uint64(42), pending.committedIndex)
-	removed, err := n.membership.IsRemoved(2, identity)
-	require.NoError(t, err)
-	require.False(t, removed, "the barrier protects the interval before the FSM tombstone is applied")
+	require.Less(t, n.fsm.LastPersistedIndex(), uint64(42), "commit observation installs the barrier before the FSM applies the removal")
 	_, persisted, err := n.wal.InitialState()
 	require.NoError(t, err)
 	require.Equal(t, []uint64{1}, persisted.GetVoters())

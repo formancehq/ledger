@@ -32,13 +32,19 @@ func TestWriteConfChangeRejectsIncompleteRegistration(t *testing.T) {
 				require.NoError(t, err)
 				session := m.store.OpenWriteSession()
 				err = m.WriteConfChange(&raftpb.Entry{Type: new(raftpb.EntryConfChangeV2), Data: data}, session)
-				require.ErrorContains(t, err, "invariant: ConfChange")
+				switch name {
+				case "absent":
+					require.EqualError(t, err, "invariant: ConfChange registration for peer 9 has no payload")
+				case "missing identity":
+					require.ErrorContains(t, err, "invariant: ConfChange for peer 9 has invalid identity: instance_id must be 16 bytes")
+				default:
+					require.EqualError(t, err, "invariant: ConfChange registration for peer 9 requires raft and service addresses")
+				}
 				// Commit even after rejection: the validator must have staged no row.
 				require.NoError(t, session.Commit())
 				rows, err := m.store.LoadAll()
 				require.NoError(t, err)
 				require.Empty(t, rows)
-				require.Empty(t, m.PeerAddresses())
 			})
 		}
 	}
