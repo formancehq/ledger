@@ -1,6 +1,8 @@
 package readstore
 
 import (
+	"encoding/binary"
+
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -54,6 +56,30 @@ const (
 // silently drop matching entities.
 func validEventOp(op byte) bool {
 	return op == MetadataEventAdd || op == MetadataEventDel
+}
+
+// parseEventKey splits an event key into (group, seq, op), where group is the
+// key bytes between prefixLen and the entity terminator. The terminator
+// position is computed from the right — the fixed suffix makes it
+// unambiguous. ok is false for anything this package would not have written,
+// unknown ops included: the caller turns that into a loud error rather than
+// resolving a group from bytes it cannot read.
+//
+// The layout does not depend on read direction, so both EventResolveIterator
+// and ReverseEventResolveIterator read their keys through this one function —
+// a key-layout fix cannot reach one direction only.
+func parseEventKey(key []byte, prefixLen int) (group []byte, seq uint64, op byte, ok bool) {
+	rest := key[prefixLen:]
+	tpos := len(rest) - metadataEventSuffixLen - 1
+	if tpos < 0 || rest[tpos] != metadataEventTerminator {
+		return nil, 0, 0, false
+	}
+
+	if op := rest[tpos+9]; !validEventOp(op) {
+		return nil, 0, 0, false
+	}
+
+	return rest[:tpos], binary.BigEndian.Uint64(rest[tpos+1 : tpos+9]), rest[tpos+9], true
 }
 
 // MetadataIndexEventKeyV builds one event key. Layout mirrors
