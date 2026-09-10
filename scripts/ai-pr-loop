@@ -313,12 +313,14 @@ nix develop "path:$trusted_tool_worktree" --command \
     'set -euo pipefail; go -C "$1" build -o "$2" ./scripts/reviewloop; go -C "$1" build -o "$3" ./scripts/rootguard' \
     bash "$trusted_tool_worktree" "$review_loop_binary" "$rootguard_binary"
 review_loop=("$review_loop_binary")
-printf -v review_cmd 'bash %q' "$trusted_tool_worktree/scripts/ai-review-codex"
-# review-loop executes validation through `bash -c`. Quote every base-pinned
-# path so spaces or shell metacharacters cannot change the command.
+# review-loop executes validation and review through `bash -c`. Quote every
+# base-pinned path so spaces or shell metacharacters cannot change a command.
 printf -v quoted_run_dir %q "$validation_run_dir"
 printf -v quoted_validation_env %q "$trusted_tool_worktree/scripts/agent-validation-env"
 printf -v quoted_validation_tool %q "$trusted_tool_worktree/scripts/agent-check-pr"
+printf -v quoted_review_tool %q "$trusted_tool_worktree/scripts/ai-review-codex"
+printf -v review_cmd 'bash %s %s bash %s' \
+    "$quoted_validation_env" "$quoted_run_dir" "$quoted_review_tool"
 printf -v validation_program \
     'env LEDGER_AGENT_CHECK_IN_NIX=1 bash %s %s bash %s' \
     "$quoted_validation_env" "$quoted_run_dir" "$quoted_validation_tool"

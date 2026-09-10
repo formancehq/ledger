@@ -244,7 +244,7 @@ if [[ -n "${VALIDATION_RUN_DIR:-}" ]]; then
         echo "SHARED_CACHE_GATE=FAIL (LEDGER_AI_CACHE_ROOT is not configured)" >&2
         exit 1
     }
-    for entry in "GOCACHE:go-build" "GOMODCACHE:go-mod" "GOPATH:go-path" "XDG_CACHE_HOME:xdg" "GOLANGCI_LINT_CACHE:golangci-lint"; do
+    for entry in "GOMODCACHE:go-mod" "GOPATH:go-path" "XDG_CACHE_HOME:xdg" "GOLANGCI_LINT_CACHE:golangci-lint"; do
         name=${entry%%:*}
         suffix=${entry#*:}
         [[ "${!name:-}" == "$cache_root/$suffix" ]] || {
@@ -252,6 +252,11 @@ if [[ -n "${VALIDATION_RUN_DIR:-}" ]]; then
             exit 1
         }
     done
+    source "$SCRIPT_DIR/agent-cache-contract"
+    managed_go_cache_valid "$cache_root" "${GOCACHE:-}" || {
+        echo "SHARED_CACHE_GATE=FAIL (GOCACHE is not a managed generation)" >&2
+        exit 1
+    }
     run_root=$(cd "$VALIDATION_RUN_DIR" 2>/dev/null && pwd -P) || {
         echo "SHARED_CACHE_GATE=FAIL (invalid VALIDATION_RUN_DIR)" >&2
         exit 1

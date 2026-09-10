@@ -29,7 +29,8 @@ The launcher:
 6. collects current unresolved GitHub findings exactly once;
 7. invokes the technical reviewer once with the exact base SHA, candidate SHA,
    complete diff/worktree fingerprint, task/PR context, bugfix evidence, and
-   GitHub findings as untrusted context; and
+   GitHub findings as untrusted context, under the same leased shared-cache
+   environment as validation; and
 8. after approval, performs one adjacent final target/head refresh and, in
    `--push` mode, publishes only with an exact `--force-with-lease`.
 
