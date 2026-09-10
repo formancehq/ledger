@@ -941,8 +941,8 @@ func (x *DeletePreparedQueryOrder) GetName() string {
 }
 
 type AddEventsSinkOrder struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Config        *commonpb.SinkConfig   `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Config        *commonpb.SinkConfigInput `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -977,7 +977,7 @@ func (*AddEventsSinkOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *AddEventsSinkOrder) GetConfig() *commonpb.SinkConfig {
+func (x *AddEventsSinkOrder) GetConfig() *commonpb.SinkConfigInput {
 	if x != nil {
 		return x.Config
 	}
@@ -1585,7 +1585,7 @@ type CreateLedgerOrder struct {
 	state                  protoimpl.MessageState                  `protogen:"open.v1"`
 	InitialSchema          []*commonpb.SetMetadataFieldTypeCommand `protobuf:"bytes,1,rep,name=initial_schema,json=initialSchema,proto3" json:"initial_schema,omitempty"`
 	Mode                   commonpb.LedgerMode                     `protobuf:"varint,2,opt,name=mode,proto3,enum=common.LedgerMode" json:"mode,omitempty"`
-	MirrorSource           *commonpb.MirrorSourceConfig            `protobuf:"bytes,3,opt,name=mirror_source,json=mirrorSource,proto3" json:"mirror_source,omitempty"`
+	MirrorSource           *commonpb.MirrorSourceConfigInput       `protobuf:"bytes,3,opt,name=mirror_source,json=mirrorSource,proto3" json:"mirror_source,omitempty"`
 	AccountTypes           map[string]*commonpb.AccountType        `protobuf:"bytes,4,rep,name=account_types,json=accountTypes,proto3" json:"account_types,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Initial account types
 	DefaultEnforcementMode commonpb.ChartEnforcementMode           `protobuf:"varint,5,opt,name=default_enforcement_mode,json=defaultEnforcementMode,proto3,enum=common.ChartEnforcementMode" json:"default_enforcement_mode,omitempty"`         // Default enforcement for unmatched accounts
 	unknownFields          protoimpl.UnknownFields
@@ -1636,7 +1636,7 @@ func (x *CreateLedgerOrder) GetMode() commonpb.LedgerMode {
 	return commonpb.LedgerMode(0)
 }
 
-func (x *CreateLedgerOrder) GetMirrorSource() *commonpb.MirrorSourceConfig {
+func (x *CreateLedgerOrder) GetMirrorSource() *commonpb.MirrorSourceConfigInput {
 	if x != nil {
 		return x.MirrorSource
 	}
@@ -5375,9 +5375,9 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12+\n" +
 	"\x06filter\x18\x02 \x01(\v2\x13.common.QueryFilterR\x06filter\".\n" +
 	"\x18DeletePreparedQueryOrder\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"@\n" +
-	"\x12AddEventsSinkOrder\x12*\n" +
-	"\x06config\x18\x01 \x01(\v2\x12.common.SinkConfigR\x06config\"+\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"E\n" +
+	"\x12AddEventsSinkOrder\x12/\n" +
+	"\x06config\x18\x01 \x01(\v2\x17.common.SinkConfigInputR\x06config\"+\n" +
 	"\x15RemoveEventsSinkOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"s\n" +
 	"\x17RegisterSigningKeyOrder\x12\x15\n" +
@@ -5410,11 +5410,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x14restored_from_backup\x18\x05 \x01(\bR\x12restoredFromBackup\"5\n" +
 	"\x1fSetQueryCheckpointScheduleOrder\x12\x12\n" +
 	"\x04cron\x18\x01 \x01(\tR\x04cron\"$\n" +
-	"\"DeleteQueryCheckpointScheduleOrder\"\xc6\x03\n" +
+	"\"DeleteQueryCheckpointScheduleOrder\"\xcb\x03\n" +
 	"\x11CreateLedgerOrder\x12J\n" +
 	"\x0einitial_schema\x18\x01 \x03(\v2#.common.SetMetadataFieldTypeCommandR\rinitialSchema\x12&\n" +
-	"\x04mode\x18\x02 \x01(\x0e2\x12.common.LedgerModeR\x04mode\x12?\n" +
-	"\rmirror_source\x18\x03 \x01(\v2\x1a.common.MirrorSourceConfigR\fmirrorSource\x12N\n" +
+	"\x04mode\x18\x02 \x01(\x0e2\x12.common.LedgerModeR\x04mode\x12D\n" +
+	"\rmirror_source\x18\x03 \x01(\v2\x1f.common.MirrorSourceConfigInputR\fmirrorSource\x12N\n" +
 	"\raccount_types\x18\x04 \x03(\v2).raft.CreateLedgerOrder.AccountTypesEntryR\faccountTypes\x12V\n" +
 	"\x18default_enforcement_mode\x18\x05 \x01(\x0e2\x1c.common.ChartEnforcementModeR\x16defaultEnforcementMode\x1aT\n" +
 	"\x11AccountTypesEntry\x12\x10\n" +
@@ -5802,12 +5802,12 @@ var file_raft_cmd_proto_goTypes = []any{
 	nil,                                          // 83: raft.SaveLedgerMetadataOrder.MetadataEntry
 	(*commonpb.PreparedQuery)(nil),               // 84: common.PreparedQuery
 	(*commonpb.QueryFilter)(nil),                 // 85: common.QueryFilter
-	(*commonpb.SinkConfig)(nil),                  // 86: common.SinkConfig
+	(*commonpb.SinkConfigInput)(nil),             // 86: common.SinkConfigInput
 	(*commonpb.ClusterPolicy)(nil),               // 87: common.ClusterPolicy
 	(*commonpb.Timestamp)(nil),                   // 88: common.Timestamp
 	(*commonpb.SetMetadataFieldTypeCommand)(nil), // 89: common.SetMetadataFieldTypeCommand
 	(commonpb.LedgerMode)(0),                     // 90: common.LedgerMode
-	(*commonpb.MirrorSourceConfig)(nil),          // 91: common.MirrorSourceConfig
+	(*commonpb.MirrorSourceConfigInput)(nil),     // 91: common.MirrorSourceConfigInput
 	(commonpb.ChartEnforcementMode)(0),           // 92: common.ChartEnforcementMode
 	(*commonpb.Posting)(nil),                     // 93: common.Posting
 	(*commonpb.Target)(nil),                      // 94: common.Target
@@ -5857,12 +5857,12 @@ var file_raft_cmd_proto_depIdxs = []int32{
 	15,  // 24: raft.SystemScopedOrder.set_cluster_policy:type_name -> raft.SetClusterPolicyOrder
 	84,  // 25: raft.CreatePreparedQueryOrder.query:type_name -> common.PreparedQuery
 	85,  // 26: raft.UpdatePreparedQueryOrder.filter:type_name -> common.QueryFilter
-	86,  // 27: raft.AddEventsSinkOrder.config:type_name -> common.SinkConfig
+	86,  // 27: raft.AddEventsSinkOrder.config:type_name -> common.SinkConfigInput
 	87,  // 28: raft.SetClusterPolicyOrder.policy:type_name -> common.ClusterPolicy
 	88,  // 29: raft.QueryCheckpointState.created_at:type_name -> common.Timestamp
 	89,  // 30: raft.CreateLedgerOrder.initial_schema:type_name -> common.SetMetadataFieldTypeCommand
 	90,  // 31: raft.CreateLedgerOrder.mode:type_name -> common.LedgerMode
-	91,  // 32: raft.CreateLedgerOrder.mirror_source:type_name -> common.MirrorSourceConfig
+	91,  // 32: raft.CreateLedgerOrder.mirror_source:type_name -> common.MirrorSourceConfigInput
 	73,  // 33: raft.CreateLedgerOrder.account_types:type_name -> raft.CreateLedgerOrder.AccountTypesEntry
 	92,  // 34: raft.CreateLedgerOrder.default_enforcement_mode:type_name -> common.ChartEnforcementMode
 	24,  // 35: raft.MirrorIngestOrder.entry:type_name -> raft.MirrorLogEntry

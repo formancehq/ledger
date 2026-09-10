@@ -12,6 +12,7 @@ import (
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
+	"github.com/formancehq/ledger/v3/internal/domain/connectionconfig"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -327,10 +328,10 @@ func createSource(ctx context.Context, cfg *commonpb.MirrorSourceConfig) (v2.Sou
 	case *commonpb.MirrorSourceConfig_Http:
 		var httpClient *http.Client
 		if cc := s.Http.GetOauth2ClientCredentials(); cc != nil {
-			httpClient = v2.NewOAuth2ClientCredentialsClient(cc.GetClientId(), cc.GetClientSecret(), cc.GetTokenEndpoint(), cc.GetScopes())
+			httpClient = v2.NewOAuth2ClientCredentialsClient(cc.GetClientId(), cc.GetClientSecret(), connectionconfig.RenderURL(cc.GetTokenEndpoint()), cc.GetScopes())
 		}
 
-		return v2.NewHTTPSource(s.Http.GetBaseUrl(), cfg.GetLedgerName(), httpClient), nil
+		return v2.NewHTTPSource(connectionconfig.RenderURL(s.Http.GetBaseUrl()), cfg.GetLedgerName(), httpClient), nil
 	case *commonpb.MirrorSourceConfig_Postgres:
 		return v2.NewPostgresSource(ctx, s.Postgres, cfg.GetLedgerName())
 	default:

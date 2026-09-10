@@ -4364,6 +4364,507 @@ func NewDeletedQueryCheckpointLogListReader(s []*DeletedQueryCheckpointLog) Dele
 	return deletedQueryCheckpointLogListReadonly(s)
 }
 
+// ConnectionAddressReader provides read-only access to ConnectionAddress.
+// Call Mutate() to obtain a mutable clone.
+type ConnectionAddressReader interface {
+	GetHost() string
+	GetPort() uint32
+	Mutate() *ConnectionAddress
+}
+
+type connectionAddressReadonly ConnectionAddress
+
+func (r *connectionAddressReadonly) GetHost() string {
+	return (*ConnectionAddress)(r).GetHost()
+}
+
+func (r *connectionAddressReadonly) GetPort() uint32 {
+	return (*ConnectionAddress)(r).GetPort()
+}
+
+func (r *connectionAddressReadonly) Mutate() *ConnectionAddress {
+	return (*ConnectionAddress)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ConnectionAddress.
+func (m *ConnectionAddress) AsReader() ConnectionAddressReader {
+	if m == nil {
+		return nil
+	}
+	return (*connectionAddressReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ConnectionAddress.
+func (m *ConnectionAddress) Mutate() *ConnectionAddress {
+	return m.CloneVT()
+}
+
+// ConnectionAddressListReader provides read-only iteration over []*ConnectionAddress.
+type ConnectionAddressListReader interface {
+	Len() int
+	Get(i int) ConnectionAddressReader
+	Range(yield func(int, ConnectionAddressReader) bool)
+}
+
+type connectionAddressListReadonly []*ConnectionAddress
+
+func (l connectionAddressListReadonly) Len() int { return len(l) }
+
+func (l connectionAddressListReadonly) Get(i int) ConnectionAddressReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l connectionAddressListReadonly) Range(yield func(int, ConnectionAddressReader) bool) {
+	for i, v := range l {
+		var r ConnectionAddressReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewConnectionAddressListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewConnectionAddressListReader(s []*ConnectionAddress) ConnectionAddressListReader {
+	return connectionAddressListReadonly(s)
+}
+
+// ConnectionQueryParameterReader provides read-only access to ConnectionQueryParameter.
+// Call Mutate() to obtain a mutable clone.
+type ConnectionQueryParameterReader interface {
+	GetEscapedName() string
+	GetEscapedValue() string
+	Mutate() *ConnectionQueryParameter
+}
+
+type connectionQueryParameterReadonly ConnectionQueryParameter
+
+func (r *connectionQueryParameterReadonly) GetEscapedName() string {
+	return (*ConnectionQueryParameter)(r).GetEscapedName()
+}
+
+func (r *connectionQueryParameterReadonly) GetEscapedValue() string {
+	return (*ConnectionQueryParameter)(r).GetEscapedValue()
+}
+
+func (r *connectionQueryParameterReadonly) Mutate() *ConnectionQueryParameter {
+	return (*ConnectionQueryParameter)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ConnectionQueryParameter.
+func (m *ConnectionQueryParameter) AsReader() ConnectionQueryParameterReader {
+	if m == nil {
+		return nil
+	}
+	return (*connectionQueryParameterReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ConnectionQueryParameter.
+func (m *ConnectionQueryParameter) Mutate() *ConnectionQueryParameter {
+	return m.CloneVT()
+}
+
+// ConnectionQueryParameterListReader provides read-only iteration over []*ConnectionQueryParameter.
+type ConnectionQueryParameterListReader interface {
+	Len() int
+	Get(i int) ConnectionQueryParameterReader
+	Range(yield func(int, ConnectionQueryParameterReader) bool)
+}
+
+type connectionQueryParameterListReadonly []*ConnectionQueryParameter
+
+func (l connectionQueryParameterListReadonly) Len() int { return len(l) }
+
+func (l connectionQueryParameterListReadonly) Get(i int) ConnectionQueryParameterReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l connectionQueryParameterListReadonly) Range(yield func(int, ConnectionQueryParameterReader) bool) {
+	for i, v := range l {
+		var r ConnectionQueryParameterReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewConnectionQueryParameterListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewConnectionQueryParameterListReader(s []*ConnectionQueryParameter) ConnectionQueryParameterListReader {
+	return connectionQueryParameterListReadonly(s)
+}
+
+// ConnectionURLReader provides read-only access to ConnectionURL.
+// Call Mutate() to obtain a mutable clone.
+type ConnectionURLReader interface {
+	GetScheme() string
+	GetAddress() ConnectionAddressReader
+	GetEscapedPath() string
+	GetUsername() string
+	GetPassword() string
+	GetQuery() ConnectionQueryParameterListReader
+	GetToken() string
+	Mutate() *ConnectionURL
+}
+
+type connectionURLReadonly ConnectionURL
+
+func (r *connectionURLReadonly) GetScheme() string {
+	return (*ConnectionURL)(r).GetScheme()
+}
+
+func (r *connectionURLReadonly) GetAddress() ConnectionAddressReader {
+	v := (*ConnectionURL)(r).GetAddress()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *connectionURLReadonly) GetEscapedPath() string {
+	return (*ConnectionURL)(r).GetEscapedPath()
+}
+
+func (r *connectionURLReadonly) GetUsername() string {
+	return (*ConnectionURL)(r).GetUsername()
+}
+
+func (r *connectionURLReadonly) GetPassword() string {
+	return (*ConnectionURL)(r).GetPassword()
+}
+
+func (r *connectionURLReadonly) GetQuery() ConnectionQueryParameterListReader {
+	return NewConnectionQueryParameterListReader((*ConnectionURL)(r).GetQuery())
+}
+
+func (r *connectionURLReadonly) GetToken() string {
+	return (*ConnectionURL)(r).GetToken()
+}
+
+func (r *connectionURLReadonly) Mutate() *ConnectionURL {
+	return (*ConnectionURL)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ConnectionURL.
+func (m *ConnectionURL) AsReader() ConnectionURLReader {
+	if m == nil {
+		return nil
+	}
+	return (*connectionURLReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ConnectionURL.
+func (m *ConnectionURL) Mutate() *ConnectionURL {
+	return m.CloneVT()
+}
+
+// ConnectionURLListReader provides read-only iteration over []*ConnectionURL.
+type ConnectionURLListReader interface {
+	Len() int
+	Get(i int) ConnectionURLReader
+	Range(yield func(int, ConnectionURLReader) bool)
+}
+
+type connectionURLListReadonly []*ConnectionURL
+
+func (l connectionURLListReadonly) Len() int { return len(l) }
+
+func (l connectionURLListReadonly) Get(i int) ConnectionURLReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l connectionURLListReadonly) Range(yield func(int, ConnectionURLReader) bool) {
+	for i, v := range l {
+		var r ConnectionURLReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewConnectionURLListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewConnectionURLListReader(s []*ConnectionURL) ConnectionURLListReader {
+	return connectionURLListReadonly(s)
+}
+
+// ConnectionOptionReader provides read-only access to ConnectionOption.
+// Call Mutate() to obtain a mutable clone.
+type ConnectionOptionReader interface {
+	GetName() string
+	GetValue() isConnectionOption_Value
+	Mutate() *ConnectionOption
+}
+
+type connectionOptionReadonly ConnectionOption
+
+func (r *connectionOptionReadonly) GetName() string {
+	return (*ConnectionOption)(r).GetName()
+}
+
+func (r *connectionOptionReadonly) GetValue() isConnectionOption_Value {
+	return (*ConnectionOption)(r).GetValue()
+}
+
+func (r *connectionOptionReadonly) Mutate() *ConnectionOption {
+	return (*ConnectionOption)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ConnectionOption.
+func (m *ConnectionOption) AsReader() ConnectionOptionReader {
+	if m == nil {
+		return nil
+	}
+	return (*connectionOptionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ConnectionOption.
+func (m *ConnectionOption) Mutate() *ConnectionOption {
+	return m.CloneVT()
+}
+
+// ConnectionOptionListReader provides read-only iteration over []*ConnectionOption.
+type ConnectionOptionListReader interface {
+	Len() int
+	Get(i int) ConnectionOptionReader
+	Range(yield func(int, ConnectionOptionReader) bool)
+}
+
+type connectionOptionListReadonly []*ConnectionOption
+
+func (l connectionOptionListReadonly) Len() int { return len(l) }
+
+func (l connectionOptionListReadonly) Get(i int) ConnectionOptionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l connectionOptionListReadonly) Range(yield func(int, ConnectionOptionReader) bool) {
+	for i, v := range l {
+		var r ConnectionOptionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewConnectionOptionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewConnectionOptionListReader(s []*ConnectionOption) ConnectionOptionListReader {
+	return connectionOptionListReadonly(s)
+}
+
+// DatabaseConnectionReader provides read-only access to DatabaseConnection.
+// Call Mutate() to obtain a mutable clone.
+type DatabaseConnectionReader interface {
+	GetScheme() string
+	GetAddresses() ConnectionAddressListReader
+	GetUsername() string
+	GetPassword() string
+	GetDatabase() string
+	GetOptions() ConnectionOptionListReader
+	Mutate() *DatabaseConnection
+}
+
+type databaseConnectionReadonly DatabaseConnection
+
+func (r *databaseConnectionReadonly) GetScheme() string {
+	return (*DatabaseConnection)(r).GetScheme()
+}
+
+func (r *databaseConnectionReadonly) GetAddresses() ConnectionAddressListReader {
+	return NewConnectionAddressListReader((*DatabaseConnection)(r).GetAddresses())
+}
+
+func (r *databaseConnectionReadonly) GetUsername() string {
+	return (*DatabaseConnection)(r).GetUsername()
+}
+
+func (r *databaseConnectionReadonly) GetPassword() string {
+	return (*DatabaseConnection)(r).GetPassword()
+}
+
+func (r *databaseConnectionReadonly) GetDatabase() string {
+	return (*DatabaseConnection)(r).GetDatabase()
+}
+
+func (r *databaseConnectionReadonly) GetOptions() ConnectionOptionListReader {
+	return NewConnectionOptionListReader((*DatabaseConnection)(r).GetOptions())
+}
+
+func (r *databaseConnectionReadonly) Mutate() *DatabaseConnection {
+	return (*DatabaseConnection)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this DatabaseConnection.
+func (m *DatabaseConnection) AsReader() DatabaseConnectionReader {
+	if m == nil {
+		return nil
+	}
+	return (*databaseConnectionReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this DatabaseConnection.
+func (m *DatabaseConnection) Mutate() *DatabaseConnection {
+	return m.CloneVT()
+}
+
+// DatabaseConnectionListReader provides read-only iteration over []*DatabaseConnection.
+type DatabaseConnectionListReader interface {
+	Len() int
+	Get(i int) DatabaseConnectionReader
+	Range(yield func(int, DatabaseConnectionReader) bool)
+}
+
+type databaseConnectionListReadonly []*DatabaseConnection
+
+func (l databaseConnectionListReadonly) Len() int { return len(l) }
+
+func (l databaseConnectionListReadonly) Get(i int) DatabaseConnectionReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l databaseConnectionListReadonly) Range(yield func(int, DatabaseConnectionReader) bool) {
+	for i, v := range l {
+		var r DatabaseConnectionReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewDatabaseConnectionListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewDatabaseConnectionListReader(s []*DatabaseConnection) DatabaseConnectionListReader {
+	return databaseConnectionListReadonly(s)
+}
+
+// SinkConfigInputReader provides read-only access to SinkConfigInput.
+// Call Mutate() to obtain a mutable clone.
+type SinkConfigInputReader interface {
+	GetName() string
+	GetFormat() string
+	GetBatchSize() int32
+	GetBatchDelayMs() int64
+	GetEventTypes() []EventType
+	GetType() isSinkConfigInput_Type
+	Mutate() *SinkConfigInput
+}
+
+type sinkConfigInputReadonly SinkConfigInput
+
+func (r *sinkConfigInputReadonly) GetName() string {
+	return (*SinkConfigInput)(r).GetName()
+}
+
+func (r *sinkConfigInputReadonly) GetFormat() string {
+	return (*SinkConfigInput)(r).GetFormat()
+}
+
+func (r *sinkConfigInputReadonly) GetBatchSize() int32 {
+	return (*SinkConfigInput)(r).GetBatchSize()
+}
+
+func (r *sinkConfigInputReadonly) GetBatchDelayMs() int64 {
+	return (*SinkConfigInput)(r).GetBatchDelayMs()
+}
+
+func (r *sinkConfigInputReadonly) GetEventTypes() []EventType {
+	return slices.Clone((*SinkConfigInput)(r).GetEventTypes())
+}
+
+func (r *sinkConfigInputReadonly) GetType() isSinkConfigInput_Type {
+	return (*SinkConfigInput)(r).GetType()
+}
+
+func (r *sinkConfigInputReadonly) Mutate() *SinkConfigInput {
+	return (*SinkConfigInput)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SinkConfigInput.
+func (m *SinkConfigInput) AsReader() SinkConfigInputReader {
+	if m == nil {
+		return nil
+	}
+	return (*sinkConfigInputReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SinkConfigInput.
+func (m *SinkConfigInput) Mutate() *SinkConfigInput {
+	return m.CloneVT()
+}
+
+// SinkConfigInputListReader provides read-only iteration over []*SinkConfigInput.
+type SinkConfigInputListReader interface {
+	Len() int
+	Get(i int) SinkConfigInputReader
+	Range(yield func(int, SinkConfigInputReader) bool)
+}
+
+type sinkConfigInputListReadonly []*SinkConfigInput
+
+func (l sinkConfigInputListReadonly) Len() int { return len(l) }
+
+func (l sinkConfigInputListReadonly) Get(i int) SinkConfigInputReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l sinkConfigInputListReadonly) Range(yield func(int, SinkConfigInputReader) bool) {
+	for i, v := range l {
+		var r SinkConfigInputReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSinkConfigInputListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSinkConfigInputListReader(s []*SinkConfigInput) SinkConfigInputListReader {
+	return sinkConfigInputListReadonly(s)
+}
+
 // SinkConfigReader provides read-only access to SinkConfig.
 // Call Mutate() to obtain a mutable clone.
 type SinkConfigReader interface {
@@ -4607,18 +5108,90 @@ func (l sinkErrorListReadonly) Range(yield func(int, SinkErrorReader) bool) {
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewSinkErrorListReader(s []*SinkError) SinkErrorListReader { return sinkErrorListReadonly(s) }
 
+// NatsSinkConfigInputReader provides read-only access to NatsSinkConfigInput.
+// Call Mutate() to obtain a mutable clone.
+type NatsSinkConfigInputReader interface {
+	GetUrl() string
+	GetTopic() string
+	Mutate() *NatsSinkConfigInput
+}
+
+type natsSinkConfigInputReadonly NatsSinkConfigInput
+
+func (r *natsSinkConfigInputReadonly) GetUrl() string {
+	return (*NatsSinkConfigInput)(r).GetUrl()
+}
+
+func (r *natsSinkConfigInputReadonly) GetTopic() string {
+	return (*NatsSinkConfigInput)(r).GetTopic()
+}
+
+func (r *natsSinkConfigInputReadonly) Mutate() *NatsSinkConfigInput {
+	return (*NatsSinkConfigInput)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this NatsSinkConfigInput.
+func (m *NatsSinkConfigInput) AsReader() NatsSinkConfigInputReader {
+	if m == nil {
+		return nil
+	}
+	return (*natsSinkConfigInputReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this NatsSinkConfigInput.
+func (m *NatsSinkConfigInput) Mutate() *NatsSinkConfigInput {
+	return m.CloneVT()
+}
+
+// NatsSinkConfigInputListReader provides read-only iteration over []*NatsSinkConfigInput.
+type NatsSinkConfigInputListReader interface {
+	Len() int
+	Get(i int) NatsSinkConfigInputReader
+	Range(yield func(int, NatsSinkConfigInputReader) bool)
+}
+
+type natsSinkConfigInputListReadonly []*NatsSinkConfigInput
+
+func (l natsSinkConfigInputListReadonly) Len() int { return len(l) }
+
+func (l natsSinkConfigInputListReadonly) Get(i int) NatsSinkConfigInputReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l natsSinkConfigInputListReadonly) Range(yield func(int, NatsSinkConfigInputReader) bool) {
+	for i, v := range l {
+		var r NatsSinkConfigInputReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewNatsSinkConfigInputListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewNatsSinkConfigInputListReader(s []*NatsSinkConfigInput) NatsSinkConfigInputListReader {
+	return natsSinkConfigInputListReadonly(s)
+}
+
 // NatsSinkConfigReader provides read-only access to NatsSinkConfig.
 // Call Mutate() to obtain a mutable clone.
 type NatsSinkConfigReader interface {
-	GetUrl() string
+	GetServers() ConnectionURLListReader
 	GetTopic() string
 	Mutate() *NatsSinkConfig
 }
 
 type natsSinkConfigReadonly NatsSinkConfig
 
-func (r *natsSinkConfigReadonly) GetUrl() string {
-	return (*NatsSinkConfig)(r).GetUrl()
+func (r *natsSinkConfigReadonly) GetServers() ConnectionURLListReader {
+	return NewConnectionURLListReader((*NatsSinkConfig)(r).GetServers())
 }
 
 func (r *natsSinkConfigReadonly) GetTopic() string {
@@ -4679,18 +5252,94 @@ func NewNatsSinkConfigListReader(s []*NatsSinkConfig) NatsSinkConfigListReader {
 	return natsSinkConfigListReadonly(s)
 }
 
+// ClickHouseSinkConfigInputReader provides read-only access to ClickHouseSinkConfigInput.
+// Call Mutate() to obtain a mutable clone.
+type ClickHouseSinkConfigInputReader interface {
+	GetDsn() string
+	GetTable() string
+	Mutate() *ClickHouseSinkConfigInput
+}
+
+type clickHouseSinkConfigInputReadonly ClickHouseSinkConfigInput
+
+func (r *clickHouseSinkConfigInputReadonly) GetDsn() string {
+	return (*ClickHouseSinkConfigInput)(r).GetDsn()
+}
+
+func (r *clickHouseSinkConfigInputReadonly) GetTable() string {
+	return (*ClickHouseSinkConfigInput)(r).GetTable()
+}
+
+func (r *clickHouseSinkConfigInputReadonly) Mutate() *ClickHouseSinkConfigInput {
+	return (*ClickHouseSinkConfigInput)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this ClickHouseSinkConfigInput.
+func (m *ClickHouseSinkConfigInput) AsReader() ClickHouseSinkConfigInputReader {
+	if m == nil {
+		return nil
+	}
+	return (*clickHouseSinkConfigInputReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this ClickHouseSinkConfigInput.
+func (m *ClickHouseSinkConfigInput) Mutate() *ClickHouseSinkConfigInput {
+	return m.CloneVT()
+}
+
+// ClickHouseSinkConfigInputListReader provides read-only iteration over []*ClickHouseSinkConfigInput.
+type ClickHouseSinkConfigInputListReader interface {
+	Len() int
+	Get(i int) ClickHouseSinkConfigInputReader
+	Range(yield func(int, ClickHouseSinkConfigInputReader) bool)
+}
+
+type clickHouseSinkConfigInputListReadonly []*ClickHouseSinkConfigInput
+
+func (l clickHouseSinkConfigInputListReadonly) Len() int { return len(l) }
+
+func (l clickHouseSinkConfigInputListReadonly) Get(i int) ClickHouseSinkConfigInputReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l clickHouseSinkConfigInputListReadonly) Range(yield func(int, ClickHouseSinkConfigInputReader) bool) {
+	for i, v := range l {
+		var r ClickHouseSinkConfigInputReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewClickHouseSinkConfigInputListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewClickHouseSinkConfigInputListReader(s []*ClickHouseSinkConfigInput) ClickHouseSinkConfigInputListReader {
+	return clickHouseSinkConfigInputListReadonly(s)
+}
+
 // ClickHouseSinkConfigReader provides read-only access to ClickHouseSinkConfig.
 // Call Mutate() to obtain a mutable clone.
 type ClickHouseSinkConfigReader interface {
-	GetDsn() string
+	GetConnection() DatabaseConnectionReader
 	GetTable() string
 	Mutate() *ClickHouseSinkConfig
 }
 
 type clickHouseSinkConfigReadonly ClickHouseSinkConfig
 
-func (r *clickHouseSinkConfigReadonly) GetDsn() string {
-	return (*ClickHouseSinkConfig)(r).GetDsn()
+func (r *clickHouseSinkConfigReadonly) GetConnection() DatabaseConnectionReader {
+	v := (*ClickHouseSinkConfig)(r).GetConnection()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *clickHouseSinkConfigReadonly) GetTable() string {
@@ -4843,18 +5492,94 @@ func NewKafkaSinkConfigListReader(s []*KafkaSinkConfig) KafkaSinkConfigListReade
 	return kafkaSinkConfigListReadonly(s)
 }
 
+// HttpSinkConfigInputReader provides read-only access to HttpSinkConfigInput.
+// Call Mutate() to obtain a mutable clone.
+type HttpSinkConfigInputReader interface {
+	GetEndpoint() string
+	GetSecret() string
+	Mutate() *HttpSinkConfigInput
+}
+
+type httpSinkConfigInputReadonly HttpSinkConfigInput
+
+func (r *httpSinkConfigInputReadonly) GetEndpoint() string {
+	return (*HttpSinkConfigInput)(r).GetEndpoint()
+}
+
+func (r *httpSinkConfigInputReadonly) GetSecret() string {
+	return (*HttpSinkConfigInput)(r).GetSecret()
+}
+
+func (r *httpSinkConfigInputReadonly) Mutate() *HttpSinkConfigInput {
+	return (*HttpSinkConfigInput)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this HttpSinkConfigInput.
+func (m *HttpSinkConfigInput) AsReader() HttpSinkConfigInputReader {
+	if m == nil {
+		return nil
+	}
+	return (*httpSinkConfigInputReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this HttpSinkConfigInput.
+func (m *HttpSinkConfigInput) Mutate() *HttpSinkConfigInput {
+	return m.CloneVT()
+}
+
+// HttpSinkConfigInputListReader provides read-only iteration over []*HttpSinkConfigInput.
+type HttpSinkConfigInputListReader interface {
+	Len() int
+	Get(i int) HttpSinkConfigInputReader
+	Range(yield func(int, HttpSinkConfigInputReader) bool)
+}
+
+type httpSinkConfigInputListReadonly []*HttpSinkConfigInput
+
+func (l httpSinkConfigInputListReadonly) Len() int { return len(l) }
+
+func (l httpSinkConfigInputListReadonly) Get(i int) HttpSinkConfigInputReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l httpSinkConfigInputListReadonly) Range(yield func(int, HttpSinkConfigInputReader) bool) {
+	for i, v := range l {
+		var r HttpSinkConfigInputReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewHttpSinkConfigInputListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewHttpSinkConfigInputListReader(s []*HttpSinkConfigInput) HttpSinkConfigInputListReader {
+	return httpSinkConfigInputListReadonly(s)
+}
+
 // HttpSinkConfigReader provides read-only access to HttpSinkConfig.
 // Call Mutate() to obtain a mutable clone.
 type HttpSinkConfigReader interface {
-	GetEndpoint() string
+	GetEndpoint() ConnectionURLReader
 	GetSecret() string
 	Mutate() *HttpSinkConfig
 }
 
 type httpSinkConfigReadonly HttpSinkConfig
 
-func (r *httpSinkConfigReadonly) GetEndpoint() string {
-	return (*HttpSinkConfig)(r).GetEndpoint()
+func (r *httpSinkConfigReadonly) GetEndpoint() ConnectionURLReader {
+	v := (*HttpSinkConfig)(r).GetEndpoint()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *httpSinkConfigReadonly) GetSecret() string {
@@ -6467,6 +7192,88 @@ func NewRemovedMetadataFieldTypeLogListReader(s []*RemovedMetadataFieldTypeLog) 
 	return removedMetadataFieldTypeLogListReadonly(s)
 }
 
+// MirrorSourceConfigInputReader provides read-only access to MirrorSourceConfigInput.
+// Call Mutate() to obtain a mutable clone.
+type MirrorSourceConfigInputReader interface {
+	GetLedgerName() string
+	GetBatchSize() uint32
+	GetRewriteRules() MirrorRewriteRuleListReader
+	GetType() isMirrorSourceConfigInput_Type
+	Mutate() *MirrorSourceConfigInput
+}
+
+type mirrorSourceConfigInputReadonly MirrorSourceConfigInput
+
+func (r *mirrorSourceConfigInputReadonly) GetLedgerName() string {
+	return (*MirrorSourceConfigInput)(r).GetLedgerName()
+}
+
+func (r *mirrorSourceConfigInputReadonly) GetBatchSize() uint32 {
+	return (*MirrorSourceConfigInput)(r).GetBatchSize()
+}
+
+func (r *mirrorSourceConfigInputReadonly) GetRewriteRules() MirrorRewriteRuleListReader {
+	return NewMirrorRewriteRuleListReader((*MirrorSourceConfigInput)(r).GetRewriteRules())
+}
+
+func (r *mirrorSourceConfigInputReadonly) GetType() isMirrorSourceConfigInput_Type {
+	return (*MirrorSourceConfigInput)(r).GetType()
+}
+
+func (r *mirrorSourceConfigInputReadonly) Mutate() *MirrorSourceConfigInput {
+	return (*MirrorSourceConfigInput)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this MirrorSourceConfigInput.
+func (m *MirrorSourceConfigInput) AsReader() MirrorSourceConfigInputReader {
+	if m == nil {
+		return nil
+	}
+	return (*mirrorSourceConfigInputReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this MirrorSourceConfigInput.
+func (m *MirrorSourceConfigInput) Mutate() *MirrorSourceConfigInput {
+	return m.CloneVT()
+}
+
+// MirrorSourceConfigInputListReader provides read-only iteration over []*MirrorSourceConfigInput.
+type MirrorSourceConfigInputListReader interface {
+	Len() int
+	Get(i int) MirrorSourceConfigInputReader
+	Range(yield func(int, MirrorSourceConfigInputReader) bool)
+}
+
+type mirrorSourceConfigInputListReadonly []*MirrorSourceConfigInput
+
+func (l mirrorSourceConfigInputListReadonly) Len() int { return len(l) }
+
+func (l mirrorSourceConfigInputListReadonly) Get(i int) MirrorSourceConfigInputReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l mirrorSourceConfigInputListReadonly) Range(yield func(int, MirrorSourceConfigInputReader) bool) {
+	for i, v := range l {
+		var r MirrorSourceConfigInputReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMirrorSourceConfigInputListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMirrorSourceConfigInputListReader(s []*MirrorSourceConfigInput) MirrorSourceConfigInputListReader {
+	return mirrorSourceConfigInputListReadonly(s)
+}
+
 // MirrorSourceConfigReader provides read-only access to MirrorSourceConfig.
 // Call Mutate() to obtain a mutable clone.
 type MirrorSourceConfigReader interface {
@@ -7895,18 +8702,98 @@ func (l dropActionListReadonly) Range(yield func(int, DropActionReader) bool) {
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewDropActionListReader(s []*DropAction) DropActionListReader { return dropActionListReadonly(s) }
 
+// HttpMirrorSourceConfigInputReader provides read-only access to HttpMirrorSourceConfigInput.
+// Call Mutate() to obtain a mutable clone.
+type HttpMirrorSourceConfigInputReader interface {
+	GetBaseUrl() string
+	GetOauth2ClientCredentials() OAuth2ClientCredentialsInputReader
+	Mutate() *HttpMirrorSourceConfigInput
+}
+
+type httpMirrorSourceConfigInputReadonly HttpMirrorSourceConfigInput
+
+func (r *httpMirrorSourceConfigInputReadonly) GetBaseUrl() string {
+	return (*HttpMirrorSourceConfigInput)(r).GetBaseUrl()
+}
+
+func (r *httpMirrorSourceConfigInputReadonly) GetOauth2ClientCredentials() OAuth2ClientCredentialsInputReader {
+	v := (*HttpMirrorSourceConfigInput)(r).GetOauth2ClientCredentials()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *httpMirrorSourceConfigInputReadonly) Mutate() *HttpMirrorSourceConfigInput {
+	return (*HttpMirrorSourceConfigInput)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this HttpMirrorSourceConfigInput.
+func (m *HttpMirrorSourceConfigInput) AsReader() HttpMirrorSourceConfigInputReader {
+	if m == nil {
+		return nil
+	}
+	return (*httpMirrorSourceConfigInputReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this HttpMirrorSourceConfigInput.
+func (m *HttpMirrorSourceConfigInput) Mutate() *HttpMirrorSourceConfigInput {
+	return m.CloneVT()
+}
+
+// HttpMirrorSourceConfigInputListReader provides read-only iteration over []*HttpMirrorSourceConfigInput.
+type HttpMirrorSourceConfigInputListReader interface {
+	Len() int
+	Get(i int) HttpMirrorSourceConfigInputReader
+	Range(yield func(int, HttpMirrorSourceConfigInputReader) bool)
+}
+
+type httpMirrorSourceConfigInputListReadonly []*HttpMirrorSourceConfigInput
+
+func (l httpMirrorSourceConfigInputListReadonly) Len() int { return len(l) }
+
+func (l httpMirrorSourceConfigInputListReadonly) Get(i int) HttpMirrorSourceConfigInputReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l httpMirrorSourceConfigInputListReadonly) Range(yield func(int, HttpMirrorSourceConfigInputReader) bool) {
+	for i, v := range l {
+		var r HttpMirrorSourceConfigInputReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewHttpMirrorSourceConfigInputListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewHttpMirrorSourceConfigInputListReader(s []*HttpMirrorSourceConfigInput) HttpMirrorSourceConfigInputListReader {
+	return httpMirrorSourceConfigInputListReadonly(s)
+}
+
 // HttpMirrorSourceConfigReader provides read-only access to HttpMirrorSourceConfig.
 // Call Mutate() to obtain a mutable clone.
 type HttpMirrorSourceConfigReader interface {
-	GetBaseUrl() string
+	GetBaseUrl() ConnectionURLReader
 	GetOauth2ClientCredentials() OAuth2ClientCredentialsReader
 	Mutate() *HttpMirrorSourceConfig
 }
 
 type httpMirrorSourceConfigReadonly HttpMirrorSourceConfig
 
-func (r *httpMirrorSourceConfigReadonly) GetBaseUrl() string {
-	return (*HttpMirrorSourceConfig)(r).GetBaseUrl()
+func (r *httpMirrorSourceConfigReadonly) GetBaseUrl() ConnectionURLReader {
+	v := (*HttpMirrorSourceConfig)(r).GetBaseUrl()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *httpMirrorSourceConfigReadonly) GetOauth2ClientCredentials() OAuth2ClientCredentialsReader {
@@ -7971,12 +8858,94 @@ func NewHttpMirrorSourceConfigListReader(s []*HttpMirrorSourceConfig) HttpMirror
 	return httpMirrorSourceConfigListReadonly(s)
 }
 
+// OAuth2ClientCredentialsInputReader provides read-only access to OAuth2ClientCredentialsInput.
+// Call Mutate() to obtain a mutable clone.
+type OAuth2ClientCredentialsInputReader interface {
+	GetClientId() string
+	GetClientSecret() string
+	GetTokenEndpoint() string
+	GetScopes() []string
+	Mutate() *OAuth2ClientCredentialsInput
+}
+
+type oAuth2ClientCredentialsInputReadonly OAuth2ClientCredentialsInput
+
+func (r *oAuth2ClientCredentialsInputReadonly) GetClientId() string {
+	return (*OAuth2ClientCredentialsInput)(r).GetClientId()
+}
+
+func (r *oAuth2ClientCredentialsInputReadonly) GetClientSecret() string {
+	return (*OAuth2ClientCredentialsInput)(r).GetClientSecret()
+}
+
+func (r *oAuth2ClientCredentialsInputReadonly) GetTokenEndpoint() string {
+	return (*OAuth2ClientCredentialsInput)(r).GetTokenEndpoint()
+}
+
+func (r *oAuth2ClientCredentialsInputReadonly) GetScopes() []string {
+	return slices.Clone((*OAuth2ClientCredentialsInput)(r).GetScopes())
+}
+
+func (r *oAuth2ClientCredentialsInputReadonly) Mutate() *OAuth2ClientCredentialsInput {
+	return (*OAuth2ClientCredentialsInput)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this OAuth2ClientCredentialsInput.
+func (m *OAuth2ClientCredentialsInput) AsReader() OAuth2ClientCredentialsInputReader {
+	if m == nil {
+		return nil
+	}
+	return (*oAuth2ClientCredentialsInputReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this OAuth2ClientCredentialsInput.
+func (m *OAuth2ClientCredentialsInput) Mutate() *OAuth2ClientCredentialsInput {
+	return m.CloneVT()
+}
+
+// OAuth2ClientCredentialsInputListReader provides read-only iteration over []*OAuth2ClientCredentialsInput.
+type OAuth2ClientCredentialsInputListReader interface {
+	Len() int
+	Get(i int) OAuth2ClientCredentialsInputReader
+	Range(yield func(int, OAuth2ClientCredentialsInputReader) bool)
+}
+
+type oAuth2ClientCredentialsInputListReadonly []*OAuth2ClientCredentialsInput
+
+func (l oAuth2ClientCredentialsInputListReadonly) Len() int { return len(l) }
+
+func (l oAuth2ClientCredentialsInputListReadonly) Get(i int) OAuth2ClientCredentialsInputReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l oAuth2ClientCredentialsInputListReadonly) Range(yield func(int, OAuth2ClientCredentialsInputReader) bool) {
+	for i, v := range l {
+		var r OAuth2ClientCredentialsInputReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewOAuth2ClientCredentialsInputListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewOAuth2ClientCredentialsInputListReader(s []*OAuth2ClientCredentialsInput) OAuth2ClientCredentialsInputListReader {
+	return oAuth2ClientCredentialsInputListReadonly(s)
+}
+
 // OAuth2ClientCredentialsReader provides read-only access to OAuth2ClientCredentials.
 // Call Mutate() to obtain a mutable clone.
 type OAuth2ClientCredentialsReader interface {
 	GetClientId() string
 	GetClientSecret() string
-	GetTokenEndpoint() string
+	GetTokenEndpoint() ConnectionURLReader
 	GetScopes() []string
 	Mutate() *OAuth2ClientCredentials
 }
@@ -7991,8 +8960,12 @@ func (r *oAuth2ClientCredentialsReadonly) GetClientSecret() string {
 	return (*OAuth2ClientCredentials)(r).GetClientSecret()
 }
 
-func (r *oAuth2ClientCredentialsReadonly) GetTokenEndpoint() string {
-	return (*OAuth2ClientCredentials)(r).GetTokenEndpoint()
+func (r *oAuth2ClientCredentialsReadonly) GetTokenEndpoint() ConnectionURLReader {
+	v := (*OAuth2ClientCredentials)(r).GetTokenEndpoint()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *oAuth2ClientCredentialsReadonly) GetScopes() []string {
@@ -8053,18 +9026,98 @@ func NewOAuth2ClientCredentialsListReader(s []*OAuth2ClientCredentials) OAuth2Cl
 	return oAuth2ClientCredentialsListReadonly(s)
 }
 
+// PostgresMirrorSourceConfigInputReader provides read-only access to PostgresMirrorSourceConfigInput.
+// Call Mutate() to obtain a mutable clone.
+type PostgresMirrorSourceConfigInputReader interface {
+	GetDsn() string
+	GetAwsIamAuth() PostgresAwsIamAuthReader
+	Mutate() *PostgresMirrorSourceConfigInput
+}
+
+type postgresMirrorSourceConfigInputReadonly PostgresMirrorSourceConfigInput
+
+func (r *postgresMirrorSourceConfigInputReadonly) GetDsn() string {
+	return (*PostgresMirrorSourceConfigInput)(r).GetDsn()
+}
+
+func (r *postgresMirrorSourceConfigInputReadonly) GetAwsIamAuth() PostgresAwsIamAuthReader {
+	v := (*PostgresMirrorSourceConfigInput)(r).GetAwsIamAuth()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *postgresMirrorSourceConfigInputReadonly) Mutate() *PostgresMirrorSourceConfigInput {
+	return (*PostgresMirrorSourceConfigInput)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this PostgresMirrorSourceConfigInput.
+func (m *PostgresMirrorSourceConfigInput) AsReader() PostgresMirrorSourceConfigInputReader {
+	if m == nil {
+		return nil
+	}
+	return (*postgresMirrorSourceConfigInputReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this PostgresMirrorSourceConfigInput.
+func (m *PostgresMirrorSourceConfigInput) Mutate() *PostgresMirrorSourceConfigInput {
+	return m.CloneVT()
+}
+
+// PostgresMirrorSourceConfigInputListReader provides read-only iteration over []*PostgresMirrorSourceConfigInput.
+type PostgresMirrorSourceConfigInputListReader interface {
+	Len() int
+	Get(i int) PostgresMirrorSourceConfigInputReader
+	Range(yield func(int, PostgresMirrorSourceConfigInputReader) bool)
+}
+
+type postgresMirrorSourceConfigInputListReadonly []*PostgresMirrorSourceConfigInput
+
+func (l postgresMirrorSourceConfigInputListReadonly) Len() int { return len(l) }
+
+func (l postgresMirrorSourceConfigInputListReadonly) Get(i int) PostgresMirrorSourceConfigInputReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l postgresMirrorSourceConfigInputListReadonly) Range(yield func(int, PostgresMirrorSourceConfigInputReader) bool) {
+	for i, v := range l {
+		var r PostgresMirrorSourceConfigInputReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewPostgresMirrorSourceConfigInputListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewPostgresMirrorSourceConfigInputListReader(s []*PostgresMirrorSourceConfigInput) PostgresMirrorSourceConfigInputListReader {
+	return postgresMirrorSourceConfigInputListReadonly(s)
+}
+
 // PostgresMirrorSourceConfigReader provides read-only access to PostgresMirrorSourceConfig.
 // Call Mutate() to obtain a mutable clone.
 type PostgresMirrorSourceConfigReader interface {
-	GetDsn() string
+	GetConnection() DatabaseConnectionReader
 	GetAwsIamAuth() PostgresAwsIamAuthReader
 	Mutate() *PostgresMirrorSourceConfig
 }
 
 type postgresMirrorSourceConfigReadonly PostgresMirrorSourceConfig
 
-func (r *postgresMirrorSourceConfigReadonly) GetDsn() string {
-	return (*PostgresMirrorSourceConfig)(r).GetDsn()
+func (r *postgresMirrorSourceConfigReadonly) GetConnection() DatabaseConnectionReader {
+	v := (*PostgresMirrorSourceConfig)(r).GetConnection()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *postgresMirrorSourceConfigReadonly) GetAwsIamAuth() PostgresAwsIamAuthReader {

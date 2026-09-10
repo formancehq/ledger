@@ -469,7 +469,7 @@ func TestExtractSystemScopedNeeds_OnlySinkConfigsContribute(t *testing.T) {
 		needs := plan.NewCoverage()
 		extractSystemScopedNeeds(needs, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-				Config: &commonpb.SinkConfig{Name: "kafka-main"},
+				Config: &commonpb.SinkConfigInput{Name: "kafka-main"},
 			}},
 		})
 		require.True(t, needs.Has(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: "kafka-main"}.Bytes()))

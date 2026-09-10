@@ -10,6 +10,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
+	"github.com/formancehq/ledger/v3/internal/domain/connectionconfig"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
@@ -19,7 +20,7 @@ func init() {
 		s := sc.GetType().(*commonpb.SinkConfig_Nats)
 
 		return NewNATSSink(NATSSinkConfig{
-			URL:    s.Nats.GetUrl(),
+			URL:    connectionconfig.RenderNATS(s.Nats),
 			Topic:  s.Nats.GetTopic(),
 			Format: format,
 		})

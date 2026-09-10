@@ -71,3 +71,21 @@ is deliberately deferred.
 - [Consensus → global-log.md](../consensus/global-log.md) — what produces the audit entries the chain links.
 - [Indexer → indexes.md](../indexer/indexes.md) — the index registry is a projection the checker verifies via `compareIndexes`.
 - [Attributes](../attributes/) — volumes / metadata / reversion / idempotency projections the checker also verifies.
+
+
+## Sink and mirror configuration verification contract
+
+The current checker does not compare the complete persisted sink configuration
+or `LedgerInfo.MirrorSource` against accepted connection inputs. Structured
+storage and adapter redaction do not discharge that integrity obligation. This
+remains an explicit gap addressed separately by checker PR 1912.
+
+That verifier must derive its expected configuration from successful chain-bound
+`AddEventsSinkOrder` and `CreateLedgerOrder` inputs through the same pure
+`internal/domain/connectionconfig.Sink` and `Mirror` functions used by apply. It
+must fold removal, replacement, promotion, and ledger deletion, then compare
+both operational log payloads and final stored projections. Neither an existing
+projection nor a public redacted audit view is an independent oracle. The
+normalizer must remain deterministic, independent of node-local defaults, and
+must not mutate the accepted order. Findings must identify the affected field or
+configuration without including credential values or raw URL/DSN text.

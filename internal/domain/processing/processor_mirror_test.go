@@ -836,7 +836,7 @@ func TestPromoteLedger_Success(t *testing.T) {
 			LedgerName: "default",
 			Type: &commonpb.MirrorSourceConfig_Http{
 				Http: &commonpb.HttpMirrorSourceConfig{
-					BaseUrl: "http://v2:3068",
+					BaseUrl: &commonpb.ConnectionURL{Scheme: "http", Address: &commonpb.ConnectionAddress{Host: "v2", Port: new(uint32(3068))}},
 				},
 			},
 		},

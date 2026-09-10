@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -104,5 +105,8 @@ func (s *Server) handleListLedgerLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for i, item := range logs {
+		logs[i] = sensitive.Clone(item)
+	}
 	writeOK(w, logs)
 }

@@ -28,7 +28,7 @@ func saveHTTPSinkConfig(t *testing.T, s *dal.Store, name, endpoint string) {
 		Name: name,
 		Type: &commonpb.SinkConfig_Http{
 			Http: &commonpb.HttpSinkConfig{
-				Endpoint: endpoint,
+				Endpoint: connectionTestURL(t, endpoint),
 			},
 		},
 		Format: "json",

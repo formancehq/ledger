@@ -21,11 +21,11 @@ func TestProcessAddEventsSink_Success(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	sinkConfig := &commonpb.SinkConfig{
+	sinkConfig := &commonpb.SinkConfigInput{
 		Name: "my-nats-sink",
-		Type: &commonpb.SinkConfig_Nats{
-			Nats: &commonpb.NatsSinkConfig{
-				Url:   "nats://localhost:4222",
+		Type: &commonpb.SinkConfigInput_Nats{
+			Nats: &commonpb.NatsSinkConfigInput{
+				Url:   "nats://publisher:secret@localhost:4222",
 				Topic: "ledger.events",
 			},
 		},
@@ -46,6 +46,7 @@ func TestProcessAddEventsSink_Success(t *testing.T) {
 		},
 	}
 
+	before := order.MarshalDeterministicVT(nil)
 	result, err := processor.ProcessOrder(order, mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -53,6 +54,13 @@ func TestProcessAddEventsSink_Success(t *testing.T) {
 	addedLog := result.GetAddedEventsSink()
 	require.NotNil(t, addedLog)
 	require.Equal(t, "my-nats-sink", addedLog.GetConfig().GetName())
+	require.Equal(t, before, order.MarshalDeterministicVT(nil))
+	server := addedLog.GetConfig().GetNats().GetServers()[0]
+	require.Equal(t, "localhost", server.GetAddress().GetHost())
+	require.Equal(t, "publisher", server.GetUsername())
+	require.Equal(t, "secret", server.GetPassword())
+	server.Username = "changed"
+	require.Equal(t, before, order.MarshalDeterministicVT(nil))
 }
 
 func TestProcessAddEventsSink_BatchSizeTooLarge(t *testing.T) {
@@ -72,7 +80,7 @@ func TestProcessAddEventsSink_BatchSizeTooLarge(t *testing.T) {
 			SystemScoped: &raftcmdpb.SystemScopedOrder{
 				Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{
 					AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-						Config: &commonpb.SinkConfig{
+						Config: &commonpb.SinkConfigInput{
 							Name:      "huge-sink",
 							BatchSize: domain.MaxSinkBatchSize + 1,
 						},
@@ -103,9 +111,10 @@ func TestProcessAddEventsSink_BatchSizeAtMaxAccepted(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	cfg := &commonpb.SinkConfig{
+	cfg := &commonpb.SinkConfigInput{
 		Name:      "max-sink",
 		BatchSize: domain.MaxSinkBatchSize,
+		Type:      &commonpb.SinkConfigInput_Http{Http: &commonpb.HttpSinkConfigInput{Endpoint: "https://sink.example/events"}},
 	}
 	mockStore.EXPECT().GetSinkConfig("max-sink").Return(nil, nil)
 
@@ -144,7 +153,7 @@ func TestProcessAddEventsSink_AlreadyExists(t *testing.T) {
 			SystemScoped: &raftcmdpb.SystemScopedOrder{
 				Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{
 					AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-						Config: &commonpb.SinkConfig{
+						Config: &commonpb.SinkConfigInput{
 							Name: "my-nats-sink",
 						},
 					},
@@ -227,4 +236,17 @@ func TestProcessRemoveEventsSink_NotFound(t *testing.T) {
 	var sinkNotFound *domain.ErrSinkNotFound
 	require.ErrorAs(t, err, &sinkNotFound)
 	require.Equal(t, "my-nats-sink", sinkNotFound.Name)
+}
+
+func TestProcessAddEventsSink_InvalidConnectionDoesNotExposeInput(t *testing.T) {
+	t.Parallel()
+	mockStore := NewMockScope(gomock.NewController(t))
+	mockStore.EXPECT().GetSinkConfig("invalid").Return(nil, nil)
+	order := &raftcmdpb.AddEventsSinkOrder{Config: &commonpb.SinkConfigInput{
+		Name: "invalid", Type: &commonpb.SinkConfigInput_Http{Http: &commonpb.HttpSinkConfigInput{Endpoint: "https://secret%zz@example.com"}},
+	}}
+	log, err := processAddEventsSink(order, &Context{Scope: mockStore})
+	require.Nil(t, log)
+	require.ErrorIs(t, err, errInvalidSinkConnection)
+	require.NotContains(t, err.Error(), "secret")
 }

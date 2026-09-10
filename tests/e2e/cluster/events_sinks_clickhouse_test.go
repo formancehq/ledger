@@ -50,12 +50,12 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 
 	It("Should deliver events to ClickHouse when transactions are created", func() {
 		// Add ClickHouse sink via Apply
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfigInput{
 			Name:         "ch-e2e",
 			BatchSize:    10,
 			BatchDelayMs: 50,
-			Type: &commonpb.SinkConfig_Clickhouse{
-				Clickhouse: &commonpb.ClickHouseSinkConfig{
+			Type: &commonpb.SinkConfigInput_Clickhouse{
+				Clickhouse: &commonpb.ClickHouseSinkConfigInput{
 					Dsn:   chDSN,
 					Table: table,
 				},

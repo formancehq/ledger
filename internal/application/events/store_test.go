@@ -4,10 +4,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/connectionconfig"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -226,8 +228,8 @@ func TestSinkConfig(t *testing.T) {
 			Name: "primary-nats",
 			Type: &commonpb.SinkConfig_Nats{
 				Nats: &commonpb.NatsSinkConfig{
-					Url:   "nats://localhost:4222",
-					Topic: "ledger.events",
+					Servers: []*commonpb.ConnectionURL{{Scheme: "nats", Address: &commonpb.ConnectionAddress{Host: "localhost", Port: proto.Uint32(4222)}}},
+					Topic:   "ledger.events",
 				},
 			},
 			Format:       "json",
@@ -249,7 +251,7 @@ func TestSinkConfig(t *testing.T) {
 		require.Equal(t, int64(50), cfg.GetBatchDelayMs())
 		natsCfg := cfg.GetNats()
 		require.NotNil(t, natsCfg)
-		require.Equal(t, "nats://localhost:4222", natsCfg.GetUrl())
+		require.Equal(t, "nats://localhost:4222", connectionconfig.RenderNATS(natsCfg))
 		require.Equal(t, "ledger.events", natsCfg.GetTopic())
 	})
 
@@ -262,14 +264,14 @@ func TestSinkConfig(t *testing.T) {
 			Name:   "sink-a",
 			Format: "json",
 			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{Url: "nats://a:4222"},
+				Nats: &commonpb.NatsSinkConfig{Servers: []*commonpb.ConnectionURL{{Scheme: "nats", Address: &commonpb.ConnectionAddress{Host: "a", Port: proto.Uint32(4222)}}}},
 			},
 		}))
 		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
 			Name:   "sink-b",
 			Format: "protobuf",
 			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{Url: "nats://b:4222"},
+				Nats: &commonpb.NatsSinkConfig{Servers: []*commonpb.ConnectionURL{{Scheme: "nats", Address: &commonpb.ConnectionAddress{Host: "b", Port: proto.Uint32(4222)}}}},
 			},
 		}))
 		require.NoError(t, batch.Commit())
@@ -293,14 +295,14 @@ func TestSinkConfig(t *testing.T) {
 			Name:   "sink-a",
 			Format: "json",
 			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{Url: "nats://a:4222"},
+				Nats: &commonpb.NatsSinkConfig{Servers: []*commonpb.ConnectionURL{{Scheme: "nats", Address: &commonpb.ConnectionAddress{Host: "a", Port: proto.Uint32(4222)}}}},
 			},
 		}))
 		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
 			Name:   "sink-b",
 			Format: "json",
 			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{Url: "nats://b:4222"},
+				Nats: &commonpb.NatsSinkConfig{Servers: []*commonpb.ConnectionURL{{Scheme: "nats", Address: &commonpb.ConnectionAddress{Host: "b", Port: proto.Uint32(4222)}}}},
 			},
 		}))
 		require.NoError(t, batch.Commit())
@@ -335,7 +337,7 @@ func TestSinkConfig(t *testing.T) {
 			Name:   "my-sink",
 			Format: "json",
 			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{Url: "nats://old:4222"},
+				Nats: &commonpb.NatsSinkConfig{Servers: []*commonpb.ConnectionURL{{Scheme: "nats", Address: &commonpb.ConnectionAddress{Host: "old", Port: proto.Uint32(4222)}}}},
 			},
 		}))
 		require.NoError(t, batch.Commit())
@@ -346,7 +348,7 @@ func TestSinkConfig(t *testing.T) {
 			Name:   "my-sink",
 			Format: "protobuf",
 			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{Url: "nats://new:4222"},
+				Nats: &commonpb.NatsSinkConfig{Servers: []*commonpb.ConnectionURL{{Scheme: "nats", Address: &commonpb.ConnectionAddress{Host: "new", Port: proto.Uint32(4222)}}}},
 			},
 		}))
 		require.NoError(t, batch.Commit())
@@ -359,7 +361,7 @@ func TestSinkConfig(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 		require.Equal(t, "protobuf", cfg.GetFormat())
-		require.Equal(t, "nats://new:4222", cfg.GetNats().GetUrl())
+		require.Equal(t, "nats://new:4222", connectionconfig.RenderNATS(cfg.GetNats()))
 
 		// Should still be only one config
 		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle)

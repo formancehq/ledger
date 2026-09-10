@@ -13,7 +13,7 @@ import (
 )
 
 // addEventsSinkAction creates a request to add a named sink configuration.
-func addEventsSinkAction(config *commonpb.SinkConfig) *servicepb.Request {
+func addEventsSinkAction(config *commonpb.SinkConfigInput) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_AddEventsSink{
 			AddEventsSink: &servicepb.AddEventsSinkRequest{
@@ -34,14 +34,14 @@ func removeEventsSinkAction(name string) *servicepb.Request {
 	}
 }
 
-func newTestSinkConfig(name, topic string) *commonpb.SinkConfig {
-	return &commonpb.SinkConfig{
+func newTestSinkConfig(name, topic string) *commonpb.SinkConfigInput {
+	return &commonpb.SinkConfigInput{
 		Name:         name,
 		Format:       "json",
 		BatchSize:    32,
 		BatchDelayMs: 50,
-		Type: &commonpb.SinkConfig_Nats{
-			Nats: &commonpb.NatsSinkConfig{
+		Type: &commonpb.SinkConfigInput_Nats{
+			Nats: &commonpb.NatsSinkConfigInput{
 				Url:   "nats://localhost:4222",
 				Topic: topic,
 			},
@@ -72,7 +72,9 @@ var _ = Describe("Events Sinks", Ordered, func() {
 
 		nats := resp.Sinks[0].GetNats()
 		Expect(nats).NotTo(BeNil())
-		Expect(nats.Url).To(Equal("nats://localhost:4222"))
+		Expect(nats.GetServers()).To(HaveLen(1))
+		Expect(nats.GetServers()[0].GetAddress().GetHost()).To(Equal("localhost"))
+		Expect(nats.GetServers()[0].GetAddress().GetPort()).To(Equal(uint32(4222)))
 		Expect(nats.Topic).To(Equal("ledger.events"))
 	})
 

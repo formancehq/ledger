@@ -126,7 +126,7 @@ message DeletePreparedQueryOrder {
 }
 
 message AddEventsSinkOrder {
-  common.SinkConfig config = 1;
+  common.SinkConfigInput config = 1;
 }
 
 message RemoveEventsSinkOrder {
@@ -198,7 +198,7 @@ message DeleteQueryCheckpointScheduleOrder {}
 message CreateLedgerOrder {
   repeated common.SetMetadataFieldTypeCommand initial_schema = 1;
   common.LedgerMode mode = 2;
-  common.MirrorSourceConfig mirror_source = 3;
+  common.MirrorSourceConfigInput mirror_source = 3;
   map<string, common.AccountType> account_types = 4;  // Initial account types
   common.ChartEnforcementMode default_enforcement_mode = 5;  // Default enforcement for unmatched accounts
 }

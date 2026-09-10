@@ -8,6 +8,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain/connectionconfig"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
@@ -368,7 +369,7 @@ func (m *Manager) createSink(sc *commonpb.SinkConfig) (Sink, error) {
 	// HTTP sink is always available (no heavy dependencies).
 	if s, ok := sc.GetType().(*commonpb.SinkConfig_Http); ok {
 		return NewHTTPSink(HTTPSinkConfig{
-			Endpoint: s.Http.GetEndpoint(),
+			Endpoint: connectionconfig.RenderURL(s.Http.GetEndpoint()),
 			Secret:   s.Http.GetSecret(),
 			Format:   format,
 		})

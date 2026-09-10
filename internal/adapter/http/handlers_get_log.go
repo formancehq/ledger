@@ -6,6 +6,8 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 )
 
 // handleGetLog handles GET /logs/{sequence} to fetch a single system log by
@@ -27,5 +29,5 @@ func (s *Server) handleGetLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeOKChecked(w, r, log)
+	writeOKChecked(w, r, sensitive.Clone(log))
 }

@@ -86,7 +86,7 @@ func TestManager_CoalescedLeadershipFlapReplacesPriorGenerationEmitter(t *testin
 	saveManagedSinkConfig(t, attrs, store, &commonpb.SinkConfig{
 		Name: "http-sink",
 		Type: &commonpb.SinkConfig_Http{
-			Http: &commonpb.HttpSinkConfig{Endpoint: server.URL},
+			Http: &commonpb.HttpSinkConfig{Endpoint: connectionTestURL(t, server.URL)},
 		},
 	})
 

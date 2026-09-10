@@ -127,3 +127,31 @@ regression fail; this falsifies a vacuous test that never reached the delta path
 Also read [Audit-Bound vs Technical State](../../audit-vs-technical-state.md)
 before deciding whether a value is authoritative, checker-verified, rebuildable,
 or deliberately excluded from cross-cluster restore.
+
+
+## Structured sink and mirror configurations
+
+Sink configurations and ledger mirror sources are **rebuilt** projections. A
+checkpoint preserves their normalized operational values at the prefix boundary.
+Post-checkpoint `AddedEventsSinkLog` assigns the complete normalized sink value;
+`RemovedEventsSinkLog` deletes the attribute by sink name. Remove followed by add
+therefore replaces credentials without retaining the old sink or losing the new
+one. A removed sink must not be treated as an informational log with no durable
+effect.
+
+`CreatedLedgerLog` carries the normalized mirror source used by live creation.
+Restore seeds `LedgerInfo` from that log, promotion clears the source and changes
+the mode to normal, and deletion preserves the same ledger tombstone as live
+apply. The raw input URL or DSN remains solely in the accepted order's protected
+audit representation, not in the operational source configuration. Delta replay
+does not reconstruct configuration from a public redacted audit view and does
+not resolve node-local connection defaults.
+
+`TestStructuredCredentials_IncrementalRestoreParity` applies real FSM orders,
+opens an actual prefix checkpoint, exports a non-empty delta, and calls
+`ApplyExportsAndRebuild`. It compares full logical sink and ledger configurations
+against the live source, covers removal, replacement, creation, promotion, and
+deletion, runs the current checker, and consumes a restored sink through a
+subsequent FSM removal after recovery. Passing the current checker does not
+certify sink or mirror configuration equality: that additional coverage belongs
+to the separate checker work in PR 1912.

@@ -282,7 +282,7 @@ ledgerctl ledgers get <name> [flags]
 
 **Behavior:**
 - Displays ledger name, creation timestamp, and mode (NORMAL or MIRROR)
-- For mirror ledgers, displays the mirror source configuration (type, URL/DSN)
+- For mirror ledgers, displays structured mirror connection fields with annotated secrets masked
 - For mirror ledgers, displays sync progress (state, cursor, source count, remaining, percentage)
 - If the ledger has a metadata schema, it is displayed as tables (Account Fields, Transaction Fields) with KEY and TYPE columns
 
@@ -4845,6 +4845,13 @@ The HTTP sink sends each event as an individual POST request with headers:
 - `X-Ledger`: ledger name
 - `X-Log-Sequence`: global log sequence number
 - `X-Webhook-Signature`: `sha256=<hex>` HMAC signature (only when `--http-secret` is set)
+
+Connection inputs remain URLs/DSNs. `events list`, structured `events add-sink`
+output and ledger creation/read output display normalized connection fields.
+Nonempty credentials and opaque option values appear as `[redacted]`; known
+operational settings remain visible. Status diagnostics are also masked because
+driver errors can embed credentials. JSON/YAML output uses the same sensitivity
+annotations as the server; it does not reconstruct a credential-bearing DSN.
 
 ### `events remove-sink`
 
