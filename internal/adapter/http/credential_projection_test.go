@@ -57,12 +57,14 @@ func TestCredentialProjectionLiveHTTP(t *testing.T) {
 	for i, sink := range sinks {
 		originals[i] = sink.CloneVT()
 	}
-	statuses := []*commonpb.SinkStatus{{SinkName: "http", Error: &commonpb.SinkError{Message: "dial https://u:statusSecret@localhost failed"}}}
+	// Sink adapters sanitize diagnostics before persistence; public reads retain them.
+	const diagnostic = "posting event seq=1: sending request to https://localhost/events?key=[redacted]: EOF"
+	statuses := []*commonpb.SinkStatus{{SinkName: "http", Error: &commonpb.SinkError{Message: diagnostic}}}
 	originalStatus := statuses[0].CloneVT()
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetEventsSinks(gomock.Any()).Return(sinks, statuses, nil)
 	response := credentialRead(t, credentialReadHandler(backend, internalauth.ScopeOpsRead), "/v3/_/events-sinks")
-	for _, secret := range []string{"natsSecret", "natsPassword", "chSecret", "chQuerySecret", "kafkaSecret", "httpBasicSecret", "httpQuerySecret", "hmacSecret", "patSecret", "dbOAuthSecret", "statusSecret"} {
+	for _, secret := range []string{"natsSecret", "natsPassword", "chSecret", "chQuerySecret", "kafkaSecret", "httpBasicSecret", "httpQuerySecret", "hmacSecret", "patSecret", "dbOAuthSecret"} {
 		require.NotContains(t, response.Body.String(), secret)
 	}
 	var body struct{ Data stdjson.RawMessage }
@@ -71,6 +73,7 @@ func TestCredentialProjectionLiveHTTP(t *testing.T) {
 	require.NoError(t, protojson.Unmarshal(body.Data, projected))
 	require.Len(t, projected.GetSinks(), len(sinks))
 	require.Equal(t, "http", projected.GetSinkStatuses()[0].GetSinkName())
+	require.Equal(t, diagnostic, projected.GetSinkStatuses()[0].GetError().GetMessage())
 	for i, sink := range sinks {
 		require.True(t, proto.Equal(originals[i], sink))
 	}

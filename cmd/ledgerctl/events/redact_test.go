@@ -263,6 +263,21 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 	}
 }
 
+// Driver-owned sanitization preserves an actionable diagnostic in structured output.
+func TestRedactGetEventsSinksResponse_PreservesSanitizedDiagnostic(t *testing.T) {
+	t.Parallel()
+	const diagnostic = "posting event seq=1: sending request to https://localhost/events?key=[redacted]: EOF"
+	response := &servicepb.GetEventsSinksResponse{SinkStatuses: []*commonpb.SinkStatus{{SinkName: "http", Error: &commonpb.SinkError{Message: diagnostic}}}}
+	projected := redactGetEventsSinksResponse(response)
+	require.Equal(t, diagnostic, projected.GetSinkStatuses()[0].GetError().GetMessage())
+	encoded, err := protojson.Marshal(projected)
+	require.NoError(t, err)
+	decoded := &servicepb.GetEventsSinksResponse{}
+	require.NoError(t, protojson.Unmarshal(encoded, decoded))
+	require.Equal(t, diagnostic, decoded.GetSinkStatuses()[0].GetError().GetMessage())
+	require.Equal(t, diagnostic, response.GetSinkStatuses()[0].GetError().GetMessage())
+}
+
 func TestRedactGetEventsSinksResponse_NilSafe(t *testing.T) {
 	t.Parallel()
 
