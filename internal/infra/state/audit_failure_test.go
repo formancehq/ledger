@@ -763,21 +763,6 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"transactionId": "91"},
 		},
 		{
-			// RemoteError is the client-side boundary representation. It never
-			// originates on the server, but it satisfies Describable, so the
-			// method-set scan finds it and the projection is pinned like any
-			// other: reason, message and metadata pass through untouched.
-			name: "RemoteError",
-			err: &domain.RemoteError{
-				KindValue:   domain.KindNotFound,
-				ReasonValue: domain.ErrReasonLedgerNotFound,
-				Message:     "ledger does not exist: remote-ledger",
-				Meta:        map[string]string{"name": "remote-ledger"},
-			},
-			wantReason:  domain.ErrReasonLedgerNotFound,
-			wantContext: map[string]string{"name": "remote-ledger"},
-		},
-		{
 			// The EN-1379 key set, pinned on the surface that matters most: an
 			// undeclared key is an admission bug, never a storage fault, and
 			// operator tooling greps these exact camelCase names out of the
@@ -826,12 +811,19 @@ var describableScanDirs = map[string]string{
 // TestBuildAuditFailureCoversEveryDescribable is the forcing function: adding a
 // Describable without adding a row to auditFailureCases fails this test.
 //
+// The table covers only types with a production path to the audit chain. A
+// failure decoded from a peer has none by construction — it lives outside
+// internal/domain, in internal/adapter/apierr, which the scan does not read
+// and which no package under internal/domain, internal/infra/state or
+// internal/admission may import (enforced by scripts/check-repo-invariants).
+// It therefore needs no unreachable row here.
+//
 // Discovery is by METHOD SET, not by type name. It collects every receiver type
 // declaring both Reason() string and Metadata() map[string]string — which is the
 // Describable contract itself. The name-prefix scan used by
 // TestEveryDomainErrorImplementsDescribable (internal/domain/errors_test.go:318)
-// would miss domain.ReplayedFailure, domain.RemoteError and domain.BusinessError,
-// all three of which do reach buildAuditFailure, and it would need a hand-maintained
+// would miss domain.ReplayedFailure and domain.BusinessError, both of which do
+// reach buildAuditFailure, and it would need a hand-maintained
 // exclusion list for the Err* types in this package that are NOT Describable
 // (ErrNodeOutOfSync, ErrInvalidEntryIndex, ErrDoubleEntryInvariantViolated,
 // ErrVolumeCachePebbleDivergence). The method-set predicate needs neither.

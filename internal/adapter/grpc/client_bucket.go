@@ -3,7 +3,6 @@ package grpc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 
@@ -35,7 +34,7 @@ func NewLedgerGrpcClient(client servicepb.BucketServiceClient) *BucketGrpcClient
 func (g *BucketGrpcClient) Barrier(ctx context.Context) (uint64, error) {
 	resp, err := g.client.Barrier(ctx, &servicepb.BarrierRequest{})
 	if err != nil {
-		return 0, fmt.Errorf("gRPC Barrier call failed: %w", err)
+		return 0, err
 	}
 
 	return resp.GetCommitIndex(), nil
@@ -51,7 +50,7 @@ func (g *BucketGrpcClient) Apply(ctx context.Context, req *servicepb.ApplyReques
 
 	resp, err := g.client.Apply(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("gRPC call failed: %w", err)
+		return nil, err
 	}
 
 	return resp.GetLogs(), nil
@@ -232,7 +231,7 @@ func (g *BucketGrpcClient) ListSigningKeys(ctx context.Context) (cursor.Cursor[*
 			Options: &commonpb.ListOptions{Cursor: nextCur},
 		})
 		if err != nil {
-			return nil, fmt.Errorf("gRPC ListSigningKeys call failed: %w", err)
+			return nil, err
 		}
 
 		for {
@@ -242,7 +241,7 @@ func (g *BucketGrpcClient) ListSigningKeys(ctx context.Context) (cursor.Cursor[*
 			}
 
 			if recvErr != nil {
-				return nil, fmt.Errorf("receiving signing key: %w", recvErr)
+				return nil, recvErr
 			}
 
 			keys = append(keys, key)
@@ -280,7 +279,7 @@ func (g *BucketGrpcClient) AnalyzeAccounts(ctx context.Context, ledgerName strin
 		VariableThreshold: variableThreshold,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("gRPC AnalyzeAccounts stream: %w", err)
+		return nil, err
 	}
 
 	for {
@@ -290,7 +289,7 @@ func (g *BucketGrpcClient) AnalyzeAccounts(ctx context.Context, ledgerName strin
 				return nil, errors.New("AnalyzeAccounts stream ended without result")
 			}
 
-			return nil, fmt.Errorf("receiving AnalyzeAccounts event: %w", err)
+			return nil, err
 		}
 
 		switch t := event.GetType().(type) {
@@ -310,7 +309,7 @@ func (g *BucketGrpcClient) AnalyzeTransactions(ctx context.Context, ledgerName s
 		VariableThreshold: variableThreshold,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("gRPC AnalyzeTransactions stream: %w", err)
+		return nil, err
 	}
 
 	for {
@@ -320,7 +319,7 @@ func (g *BucketGrpcClient) AnalyzeTransactions(ctx context.Context, ledgerName s
 				return nil, errors.New("AnalyzeTransactions stream ended without result")
 			}
 
-			return nil, fmt.Errorf("receiving AnalyzeTransactions event: %w", err)
+			return nil, err
 		}
 
 		switch t := event.GetType().(type) {
@@ -395,7 +394,7 @@ func (g *BucketGrpcClient) ListNumscripts(ctx context.Context, ledger string) ([
 			Options: &commonpb.ListOptions{Cursor: nextCur},
 		})
 		if err != nil {
-			return nil, fmt.Errorf("gRPC ListNumscripts call failed: %w", err)
+			return nil, err
 		}
 
 		for {
@@ -405,7 +404,7 @@ func (g *BucketGrpcClient) ListNumscripts(ctx context.Context, ledger string) ([
 			}
 
 			if recvErr != nil {
-				return nil, fmt.Errorf("receiving numscript: %w", recvErr)
+				return nil, recvErr
 			}
 
 			scripts = append(scripts, info)
@@ -427,7 +426,7 @@ func (g *BucketGrpcClient) ListNumscriptVersions(ctx context.Context, ledger, na
 		Name:   name,
 	})
 	if err != nil {
-		return "", nil, fmt.Errorf("gRPC ListNumscriptVersions call failed: %w", err)
+		return "", nil, err
 	}
 
 	return resp.GetLatestVersion(), resp.GetVersions(), nil
@@ -436,7 +435,7 @@ func (g *BucketGrpcClient) ListNumscriptVersions(ctx context.Context, ledger, na
 func (g *BucketGrpcClient) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
 	resp, err := g.client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
 	if err != nil {
-		return nil, nil, fmt.Errorf("gRPC GetEventsSinks call failed: %w", err)
+		return nil, nil, err
 	}
 
 	return resp.GetSinks(), resp.GetSinkStatuses(), nil
@@ -461,7 +460,7 @@ func (g *BucketGrpcClient) GetIndexEntryStatus(ctx context.Context, req *service
 func (g *BucketGrpcClient) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
 	stream, err := g.client.ListIndexes(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("gRPC ListIndexes call failed: %w", err)
+		return nil, err
 	}
 
 	// Stream lazily rather than draining the whole registry into a slice on

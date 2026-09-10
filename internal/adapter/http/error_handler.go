@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -90,11 +91,27 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 
-	// Domain Describables: every typed *Err* and sentinel in internal/domain
-	// (and transitively in admission/numscript) flows through this branch.
-	// Catches BusinessError too (it implements Describable transparently).
-	if d, ok := errors.AsType[domain.Describable](err); ok {
-		httpStatus := kindToHTTPStatus(domain.Kind(d))
+	// A reason this build knows arriving under a code it would never send that
+	// reason under: the sender is not a ledger of this contract. Answer the
+	// generic sanitizer so none of the reason, message or metadata it claimed
+	// is echoed. InvalidWireError implements neither Describable nor
+	// GRPCStatus, so it would reach writeInternalServerError below anyway;
+	// this branch states the contract instead of relying on that method set.
+	if _, ok := apierr.InvalidWire(err); ok {
+		writeInternalServerError(w, r, err)
+
+		return
+	}
+
+	// The boundary contract: every typed *Err* and sentinel in internal/domain
+	// (and transitively in admission/numscript) flows through this branch, as
+	// does a failure decoded from the leader. apierr.Describe normalises the
+	// two provenances — a locally raised Describable classifies from its
+	// reason, a decoded one keeps the kind the wire carried, which is what
+	// preserves a reason this build's enum does not know. Catches
+	// BusinessError too (it implements Describable transparently).
+	if d, ok := apierr.Describe(err); ok {
+		httpStatus := kindToHTTPStatus(d.Kind)
 
 		// An Unavailable kind is by definition a retry-now condition (a fold
 		// behind, an index still building, no leader yet); the two dedicated
@@ -106,26 +123,34 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		if httpStatus == http.StatusInternalServerError {
 			recordHTTPInternalError(r, correlationID(r), err)
 		}
-		if message, _, overridden := domain.PublicErrorDetails(d); overridden {
-			err = errors.New(message)
+		if d.PublicOverride {
+			err = errors.New(d.Message)
 		}
 
-		writeErrorResponse(w, httpStatus, d.Reason(), err)
+		writeErrorResponse(w, httpStatus, d.Reason, err)
 
 		return
 	}
 
-	// A gRPC InvalidArgument status is a caller error, not a server fault, and
-	// must not degrade to a 500. The audit-filter compiler (query.CompileAuditFilter,
+	// Statuses with nothing typed left to recover. A business error forwarded
+	// from the leader no longer reaches here: grpcerr.NewConn rebuilds it into a
+	// Describable at the transport seam (see bootstrap.getLeaderCtrl), so it is
+	// caught by the branch above with its real reason and status. What is left
+	// are statuses that never carried an ErrorInfo.
+	//
+	// A codes.InvalidArgument is a caller error, not a server fault, and must
+	// not degrade to a 500. The audit-filter compiler (query.CompileAuditFilter,
 	// shared with the gRPC surface) rejects filters that parse but are not
-	// audit-supported — `not outcome == failure`, a non-audit condition, an unknown
-	// field — as codes.InvalidArgument; surface that as a 400. A codes.Unavailable
-	// status is a retry-now transient (a forwarded stream torn down mid-transfer,
-	// a peer connection missing from the pool) and gets the same 503 + Retry-After
-	// contract as the KindUnavailable Describables above. Only these two codes are
-	// translated; the rest keep the generic 500 fallthrough deliberately, since no
-	// other HTTP handler is expected to produce them and we do not want to leak
-	// arbitrary gRPC semantics.
+	// audit-supported — `not outcome == failure`, a non-audit condition, an
+	// unknown field — as codes.InvalidArgument; surface that as a 400. A
+	// codes.Unavailable status is a retry-now transient (a forwarded stream torn
+	// down mid-transfer, a peer connection missing from the pool, no leader yet)
+	// and gets the same 503 + Retry-After contract as the KindUnavailable
+	// Describables above; that class has no reason code to recover, which is why
+	// the seam leaves it alone.
+	//
+	// Only these two codes are translated; the rest keep the generic 500
+	// fallthrough deliberately, since they denote genuine server faults.
 	if st, ok := status.FromError(err); ok {
 		switch st.Code() {
 		case codes.InvalidArgument:

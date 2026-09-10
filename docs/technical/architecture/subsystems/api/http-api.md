@@ -112,6 +112,203 @@ Every path logs the raw cause **server-side** with a `correlation_id` field. Whe
 
 The correlation ID reuses the request's `X-Request-Id` (Chi `RequestID`) when it is valid, so operators can grep the server logs for the exact ID a caller reports. Empty IDs, values longer than 128 bytes, invalid UTF-8, and values containing control characters are replaced with a generated token before they reach logs or responses. Adding a new persisted error path that reaches `handleError`'s fallthrough inherits this sanitization automatically; do not add a branch that serializes a raw non-domain error into the response body.
 
+### Forwarded Writes and the Transport Seam
+
+Every REST write is routed to the Raft leader. When the node serving the HTTP
+request is not the leader, `RoutedController.getLeaderCtrl`
+(`internal/bootstrap/controller_routed.go`) forwards it over gRPC, so the FSM
+that produces the business error runs on a different process from the handler
+that must map it to a status code.
+
+The leader serialises the error faithfully — the kind selects the gRPC status
+code and the reason plus metadata ride in an `errdetails.ErrorInfo` — but a
+`*status.Error` carries no semantic classification of its own. Without a
+decoding step, `handleError` and the bulk per-element mapper, which both
+dispatch on the error boundary contract described below, fall through to the
+sanitizer: the caller receives `500 INTERNAL_ERROR` with a correlation ID for
+what is a plain 4xx, and the stable `errorCode` and the human-readable message
+are both lost (EN-1636).
+
+`grpcerr.NewConn` (`internal/adapter/grpcerr`) decorates the leader connection
+so that decoding happens once, at the transport seam. It reconstructs exactly
+two shapes:
+
+- a status carrying a ledger-domain `ErrorInfo` — **whatever its code** —
+  becomes an `*apierr.Remote`;
+- a **bare** `codes.NotFound` — one carrying no `ErrorInfo` at all — becomes a
+  `*commonpb.NotFoundError`, which the handler already maps to `404`. A
+  `NotFound` stamped with another service's `ErrorInfo` is not bare: it is that
+  service's typed failure and is left untouched, since rewriting it as a ledger
+  `NotFoundError` would answer a foreign contract as this one.
+
+Read the rest of the rule as the complement of those two rather than as a list
+of excluded codes: **everything else passes through unchanged**. That covers
+three groups.
+
+- A **bare** `codes.Canceled`, because the cursor layer keys end-of-stream
+  detection off it and normalises it to `io.EOF`. The ledger `ErrorInfo` is
+  still decoded first: no `ErrorKind` maps to `codes.Canceled`, so a reason
+  this build knows arriving under it is a contradiction, and answering the
+  status before the decode would exempt the one code with no legitimate reason
+  from the mismatch policy below and hand the peer's message to the client.
+  Pagination is unaffected either way — a reconstructed value keeps answering
+  `GRPCStatus()` with the received `Canceled` status.
+- A **bare** status of any code — no ledger `ErrorInfo`, so no reason to
+  recover. A bare `codes.Unavailable` already reaches the right outcome
+  (`handleError` answers that code with `503` + `Retry-After` on its own);
+  bare `Internal`, `Unknown` and `DeadlineExceeded` are server faults or
+  transport conditions; and a bare `codes.Unauthenticated` or
+  `codes.PermissionDenied` from the leader denotes a cluster-secret failure
+  *between nodes*, not a caller credential problem, so it correctly stays a
+  `500` rather than telling the caller to fix something it does not control.
+- An `ErrorInfo` stamped with another service's domain, left for that
+  service's client.
+
+Note the qualifier on the second group. `codes.Unavailable` and
+`codes.Internal` are exactly the codes a `KindUnavailable` or `KindInternal`
+`Describable` is *sent* under, so those arrive **with** an `ErrorInfo` and are
+reconstructed like any other: `INDEX_BUILDING`, `BALANCE_NOT_PRELOADED` and
+`COVERAGE_MISS` all keep their reason across the hop. Only the bare form passes
+through.
+
+The HTTP layer needs no status-code branch of its own: both mappers read the
+failure through `apierr.Describe`, which answers identically for a locally
+raised error and a decoded one, so a follower answers with the same status and
+`errorCode` as the leader and the bulk path is repaired by the same change.
+
+The decorator wraps the connection rather than the generated client's 37
+methods (11 of them server-streaming), because six of the `BucketGrpcClient`
+list methods return a lazy cursor — `ListLedgers`, `ListTransactions`,
+`ListAccounts`, `ListLogs`, `ListAuditEntries`, `ListIndexes` — and surface the
+leader's error from a later `Recv()`, after the method itself already returned
+`nil`; and because every method generated in future routes through `Invoke` or
+`NewStream` regardless.
+
+Forwarded **reads** cross the same seam, but only while a node is syncing
+(`readCtrl` falls back to the leader on `ErrNodeSyncing`/`ErrNotLeader`), so
+they are not reachable deterministically from a healthy cluster.
+
+### The Error Boundary Contract
+
+`internal/adapter/apierr` is the contract every business-facing surface reads a
+failure through: `handleError`, the bulk per-element mapper and `ledgerctl`.
+`apierr.Describe(err)` returns a `Descriptor` — semantic `Kind`, stable
+`Reason`, client-safe `Message`, structured `Metadata` — and normalises the two
+provenances a failure can have:
+
+| Provenance | Classification |
+|---|---|
+| Raised locally (a `domain.Describable` from admission, the FSM, a read path) | `domain.Kind(d)`, a pure function of the reason |
+| Decoded from a peer (`*apierr.Remote`, produced only by `grpcerr`) | the kind the wire carried |
+
+The order matters. An `*apierr.Remote` is checked first, because a reason from a
+newer server is absent from this build's `ErrorReason` enum: re-deriving its
+kind would yield `KindInternal` and answer `500` for what the sender classified
+as a caller error.
+
+`Message` and `Metadata` are the client-safe presentation, not the diagnostic
+identity: a locally raised failure is read through `domain.PublicErrorDetails`,
+so a type that owns a separate public presentation (EN-1623) reaches a surface
+redacted, and `Descriptor.PublicOverride` tells the surface to render `Message`
+in place of the wrapped chain that presentation exists to withhold. A decoded
+failure needs no such selection — the sender applied it before serialising — so
+`PublicOverride` is false for an `*apierr.Remote` and the consumer keeps
+rendering its own outer context, exactly as it did before the hop.
+
+`apierr` imports `internal/domain` and nothing else, so HTTP reads a decoded
+failure without linking any gRPC detail. The reverse direction is a layering
+violation: no package under `internal/domain`, `internal/application/admission`,
+`internal/infra/state`, `internal/infra/plan` or `internal/infra/preload` may
+import it, which `scripts/check-repo-invariants` enforces. A decoded failure
+must never be raised by admission, the FSM or order processing, nor persisted,
+frozen, audited or hashed — the audit chain hashes an error's `Error()` string,
+and a message that varies with a peer's build would break the chain.
+
+### Two Classification Axes
+
+A failure crossing a gRPC hop carries two independent axes.
+
+| Axis | What it answers | Where it lives |
+|---|---|---|
+| Semantic `ErrorKind` | the client: an HTTP status, a CLI message | `apierr.Descriptor.Kind` |
+| gRPC status code | transport behaviour: retry and hop semantics | the original `*status.Status`, kept by the decoder's carrier through `GRPCStatus()` |
+
+The mapping between them is lossy in both directions, which is why the decoder
+preserves the received status verbatim instead of rebuilding it from the kind.
+`grpcerr.CodeForKind` sends both `KindConflict` and `KindPrecondition` as
+`codes.FailedPrecondition`, so a code cannot name a kind; and a reason from a
+newer build carries a kind this enum cannot derive at all. The axes may also
+disagree deliberately: the removed `READ_INDEX_NOT_CAUGHT_UP` was semantically
+`KindUnavailable` but travelled as `codes.FailedPrecondition`, because
+`actions.GRPCRetryPolicy` retries `codes.Unavailable` fifty times at 0.2s and
+the semantic code would have turned a read-index lag into a ten-second
+client-side hang. No reason needs that treatment today.
+
+**Kind derivation is reason-first.** `grpcerr` derives the `ErrorKind` from the
+reason when this build's `ErrorReason` enum knows it, and falls back to the
+status code otherwise. Neither source suffices alone: `grpcerr.CodeForKind`
+sends both `KindConflict` and `KindPrecondition` as
+`codes.FailedPrecondition`, so code-only derivation answers `400` for a
+`KindConflict` reason (such as `LEDGER_DELETED`) where the leader answers
+`409`; and reason-only derivation collapses a reason from a newer server to
+`KindInternal`, turning a caller mistake into a `500`.
+
+For an unknown reason the exact upstream code is preserved across a second hop,
+and the code still supplies the classification where it has one — an unknown
+reason carried by `codes.AlreadyExists` stays `KindAlreadyExists` and `409`,
+rather than collapsing to `500`.
+
+### Reason/Wire-Code Mismatch Policy
+
+A reason this build knows is a reason whose legitimate wire codes it knows too.
+The allowed set is `grpcerr.CodeForKind(KindForReason(reason))` — today exactly
+one code, because every enum reason reaches the wire through
+`describableToGRPCStatus`, which derives the status from `CodeForKind` and
+nothing else. The check stays reason-keyed rather than kind-keyed so a reason
+that must travel under a second code can be widened on its own, as the removed
+`READ_INDEX_NOT_CAUGHT_UP` did, without relaxing the kind mapping the encoder
+shares. The three reasons the server hand-builds an `ErrorInfo` for
+(`EXTERNAL_SERVICE_ERROR`, `RAFT_NODE_NOT_IN_CLUSTER`,
+`RAFT_NODE_REMOVAL_COMMITTED`) are not enum members, so they take the
+unknown-reason path and are never validated here.
+
+A reason arriving under a code outside its allowed set is a **protocol fault**,
+not a business outcome — the peer is not speaking this contract. The decoder
+returns an `*apierr.InvalidWireError`. It implements neither the boundary
+contract nor `GRPCStatus()`, so a surface that forgets the case still degrades
+to its internal-error path rather than answering the pair as a business
+outcome — but each consumer branches on `apierr.InvalidWire` explicitly so the
+guarantee does not rest on that method set:
+
+| Surface | Client-visible answer |
+|---|---|
+| REST, unitary (`handleError`) | `500 INTERNAL_ERROR` + correlation ID, logged server-side |
+| REST, bulk element (`writeBulkResponse`) | element `errorCode: INTERNAL_ERROR` + correlation ID, logged server-side |
+| gRPC | `codes.Unknown` + correlation ID |
+| `ledgerctl` (`FormatGRPCError`) | the invalid-pair message: the reason and codes, which are this build's own enum values |
+
+The received message and metadata are dropped on every surface rather than
+answered — without that, a contradicting `codes.InvalidArgument` pair would be
+echoed to the caller as a trusted `400`, and the peer's free-form message would
+be presented as though this build had produced it. The bulk element carries the
+same generic correlated description as the unitary path, so the claimed reason
+never reaches `errorCode` or `errorDescription`.
+
+An **unknown** reason cannot be validated — this build has no policy for it —
+so its reason, message, metadata and exact status are preserved verbatim.
+
+"Unknown" means the `ErrorReason` enum does not declare the name, which the
+decoder reads from `domain.LookupReasonCode`'s second result rather than from
+the `ERROR_REASON_UNSPECIFIED` zero value `domain.ReasonCode` returns for it.
+The two are not the same condition: `UNSPECIFIED` is a name this build *does*
+declare, and one no ledger error emits — every `Describable`'s `Reason()` names
+a real reason, so `describableToGRPCStatus` cannot stamp it. Its allowed set is
+therefore empty and the pair is rejected under **every** code, including the
+`codes.Internal` that `CodeForKind(KindForReason(UNSPECIFIED))` would otherwise
+license. Keying the passthrough on the zero value instead let the sentinel take
+the forward-compatibility path, which answered a client `400` with
+`errorCode: "UNSPECIFIED"` and the peer's own message.
+
 ### Retry-After Header
 
 The `Retry-After` header is used to indicate when a client should retry a request after receiving a `503 Service Unavailable` response. Every `503` the adapter emits carries it — `503` is by definition the retry-now class.
