@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/raft/v3/raftpb"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -157,9 +158,9 @@ func TestCheckAndPromoteLearnersMissingRowStopsRun(t *testing.T) {
 	// test calling checkAndPromoteLearners, must surface the invariant to Run.
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
 		armed := false
-		require.NoError(t, n.execClusterCommand(ctx, true, func() error {
+		require.NoError(collect, n.execClusterCommand(ctx, true, func() error {
 			status := n.rawNode.Status()
 			if status.Progress[1].Match == 0 {
 				// The self acknowledgement follows durable append of the
@@ -174,7 +175,7 @@ func TestCheckAndPromoteLearnersMissingRowStopsRun(t *testing.T) {
 			return n.rawNode.Step(ack)
 		}))
 
-		return armed
+		require.True(collect, armed)
 	}, 5*time.Second, time.Millisecond)
 
 	select {
