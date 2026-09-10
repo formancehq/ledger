@@ -329,6 +329,10 @@ func (x *DeletedMetadata) MarshalJSON() ([]byte, error) {
 func logMetadataTargetID(target *Target) (any, error) {
 	switch v := target.GetTarget().(type) {
 	case *Target_Account:
+		if v == nil || v.Account == nil {
+			return nil, errors.New("missing metadata account target")
+		}
+
 		return v.Account.GetAddr(), nil
 	case *Target_TransactionId:
 		return v.TransactionId, nil

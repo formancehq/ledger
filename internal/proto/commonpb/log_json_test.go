@@ -198,3 +198,18 @@ func TestLedgerLogJSONNullAccountMetadata(t *testing.T) {
 	require.NoError(t, err)
 	require.JSONEq(t, `{"type":"NEW_TRANSACTION","data":{"accountMetadata":{"nil":null,"nil-values":null,"empty":{}}}}`, string(encoded))
 }
+
+func TestMetadataJSONRejectsNilAccount(t *testing.T) {
+	t.Parallel()
+	target := &commonpb.Target{Target: &commonpb.Target_Account{}}
+	for name, message := range map[string]json.Marshaler{
+		"saved":   &commonpb.SavedMetadata{Target: target},
+		"deleted": &commonpb.DeletedMetadata{Target: target},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := message.MarshalJSON()
+			require.EqualError(t, err, "missing metadata account target")
+		})
+	}
+}
