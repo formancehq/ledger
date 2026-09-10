@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"os"
+	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
@@ -111,6 +114,25 @@ var _ = Describe("Query Checkpoints (frozen read index completeness)", Ordered, 
 			Expect(transactionIDs(txs)).To(Equal(wantTxIDs),
 				"node %d: the frozen account→transaction index must resolve every pre-checkpoint posting", i+1)
 		}
+	})
+
+	// A follower that loses its main-store half while still at the checkpoint's
+	// applied index rebuilds it during startup recovery. The cluster is idle
+	// here, so the restarted follower's live store is exactly that state.
+	It("rebuilds a follower's missing main store on restart", func() {
+		follower := servers[*leaderID%uint64(countInstances)]
+		mainDir := filepath.Join(follower.DataDir, "query-checkpoints", strconv.FormatUint(cpID, 10), "main")
+		Expect(mainDir).To(BeADirectory())
+
+		testutil.StopNode(ctx, follower)
+		Expect(os.RemoveAll(mainDir)).To(Succeed())
+		testutil.RestartNode(ctx, follower)
+
+		logs := awaitCheckpointRead(func() ([]*commonpb.Log, error) {
+			return listLogs(ctx, follower.Client, ledgerName, &commonpb.ReadOptions{CheckpointId: cpID})
+		})
+		Expect(logSequences(logs)).To(Equal(wantLogSeqs), "the rebuilt main store must serve the checkpoint's pages")
+		Expect(mainDir + ".tmp").NotTo(BeADirectory())
 	})
 
 	It("keeps serving the same pages after a post-checkpoint write", func() {
