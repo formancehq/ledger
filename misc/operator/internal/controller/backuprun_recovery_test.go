@@ -241,11 +241,31 @@ func TestBackupRunRejectsForeignJob(t *testing.T) {
 			require.ErrorContains(t, err, "is not controlled by BackupRun")
 			require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(run), run))
 			require.False(t, run.IsTerminal())
+			require.Contains(t, run.Status.Message, "is not controlled by BackupRun")
 			require.Nil(t, run.Status.Full)
 			var jobs batchv1.JobList
 			require.NoError(t, c.List(ctx, &jobs))
 			require.Len(t, jobs.Items, 1)
 			require.Equal(t, job.OwnerReferences, jobs.Items[0].OwnerReferences)
+			// Repeating the same error must not continuously update status.
+			version := run.ResourceVersion
+			_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)})
+			require.ErrorContains(t, err, "is not controlled by BackupRun")
+			require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(run), run))
+			require.Equal(t, version, run.ResourceVersion)
+
+			// An operator clears the conflict; reconciliation creates our Job
+			// and removes the stale diagnostic while retaining the reservation.
+			require.NoError(t, c.Delete(ctx, job))
+			_, err = r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)})
+			require.NoError(t, err)
+			require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(run), run))
+			require.Empty(t, run.Status.Message)
+			require.Equal(t, ledgerv1alpha1.BackupRunPhaseRunning, run.Status.Phase)
+			require.Nil(t, run.Status.Full)
+			require.NoError(t, c.List(ctx, &jobs))
+			require.Len(t, jobs.Items, 1)
+			require.True(t, metav1.IsControlledBy(&jobs.Items[0], run))
 		})
 	}
 }
@@ -323,4 +343,43 @@ func TestBackupRunCommittedCreateCacheLag(t *testing.T) {
 	require.NoError(t, c.List(ctx, &jobs))
 	require.Len(t, jobs.Items, 1)
 	require.True(t, metav1.IsControlledBy(&jobs.Items[0], run))
+}
+
+func TestBackupRunProvisioningMessageWriteRetry(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	c, run := backupRunRecoveryFixture(t)
+	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: backupJobName(run), Namespace: run.Namespace}}
+	require.NoError(t, c.Create(ctx, job))
+	writes := 0
+	wrapped := interceptor.NewClient(c, interceptor.Funcs{
+		SubResourceUpdate: func(ctx context.Context, c client.Client, name string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+			if r, ok := obj.(*ledgerv1alpha1.BackupRun); ok && r.Status.Message != "" {
+				writes++
+				if writes == 1 {
+					return io.ErrUnexpectedEOF
+				}
+			}
+
+			return c.SubResource(name).Update(ctx, obj, opts...)
+		},
+	})
+	r := &BackupRunReconciler{Client: wrapped, Scheme: c.Scheme()}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(run)}
+	_, err := r.Reconcile(ctx, req)
+	require.ErrorContains(t, err, "is not controlled by BackupRun")
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	require.NoError(t, c.Get(ctx, req.NamespacedName, run))
+	require.Equal(t, ledgerv1alpha1.BackupRunPhaseRunning, run.Status.Phase)
+	require.Empty(t, run.Status.Message)
+	_, err = r.Reconcile(ctx, req)
+	require.ErrorContains(t, err, "is not controlled by BackupRun")
+	require.NoError(t, c.Get(ctx, req.NamespacedName, run))
+	require.Contains(t, run.Status.Message, "is not controlled by BackupRun")
+	require.Equal(t, 2, writes)
+	require.False(t, run.IsTerminal())
+	var jobs batchv1.JobList
+	require.NoError(t, c.List(ctx, &jobs))
+	require.Len(t, jobs.Items, 1)
+	require.Empty(t, jobs.Items[0].OwnerReferences)
 }

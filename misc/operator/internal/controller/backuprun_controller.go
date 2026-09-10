@@ -135,7 +135,23 @@ func (r *BackupRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		// A transport error does not prove Create failed. Keep the reservation
 		// and retry the deterministic name, including after AlreadyExists.
-		return ctrl.Result{}, fmt.Errorf("provisioning backup Job: %w", err)
+		provisioningErr := fmt.Errorf("provisioning backup Job: %w", err)
+		if run.Status.Message != provisioningErr.Error() {
+			run.Status.Message = provisioningErr.Error()
+			if err := r.Status().Update(ctx, &run); err != nil {
+				return ctrl.Result{}, errors.Join(provisioningErr, fmt.Errorf("recording provisioning error: %w", err))
+			}
+		}
+
+		return ctrl.Result{}, provisioningErr
+	}
+
+	// Clear a previous provisioning diagnostic once the owned Job is available.
+	if run.Status.Message != "" {
+		run.Status.Message = ""
+		if err := r.Status().Update(ctx, &run); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	succeeded, terminal, jobMsg := jobTerminalCondition(job)
