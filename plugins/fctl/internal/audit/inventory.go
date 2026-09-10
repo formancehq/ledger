@@ -7,7 +7,9 @@
 package audit
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,28 +32,36 @@ const SigningCapability = "sign.ledger.apply-batch"
 // Command is one executable command row. The ledger-v2 inventory keys
 // inclusion off Included/ExclusionReason; the ledger-v3 inventory keys it off
 // Classification. Both shapes share this struct so one audit covers both.
+//
+// The Baseline* fields record what the historical old-fctl command actually
+// called; APIMajor/SDKMethod record what the plugin binds. The two differ for
+// every command converted from a V1 call to its V2 equivalent, so keeping them
+// apart is what makes a conversion auditable instead of a rewritten fact.
 type Command struct {
-	Path            string   `json:"path"`
-	Use             string   `json:"use,omitempty"`
-	Aliases         []string `json:"aliases"`
-	Group           string   `json:"group,omitempty"`
-	Classification  string   `json:"classification,omitempty"`
-	APIMajor        string   `json:"api_major,omitempty"`
-	SDKMethod       string   `json:"sdk_method,omitempty"`
-	OperationID     *string  `json:"operation_id,omitempty"`
-	HTTPMethod      *string  `json:"http_method,omitempty"`
-	HTTPPath        *string  `json:"http_path,omitempty"`
-	SourceFile      *string  `json:"source_file,omitempty"`
-	RPCs            []string `json:"rpcs,omitempty"`
-	StreamingRPCs   []string `json:"streaming_rpcs,omitempty"`
-	RPCNote         string   `json:"rpc_note,omitempty"`
-	Scopes          []string `json:"scopes,omitempty"`
-	Mutation        bool     `json:"mutation"`
-	Destructive     bool     `json:"destructive"`
-	Paginated       bool     `json:"paginated"`
-	IdempotencyKey  bool     `json:"idempotency_key,omitempty"`
-	Included        *bool    `json:"included,omitempty"`
-	ExclusionReason *string  `json:"exclusion_reason,omitempty"`
+	Path              string   `json:"path"`
+	Use               string   `json:"use,omitempty"`
+	Aliases           []string `json:"aliases"`
+	Group             string   `json:"group,omitempty"`
+	Classification    string   `json:"classification,omitempty"`
+	APIMajor          string   `json:"api_major,omitempty"`
+	SDKMethod         string   `json:"sdk_method,omitempty"`
+	BaselineAPIMajor  string   `json:"baseline_api_major,omitempty"`
+	BaselineSDKMethod string   `json:"baseline_sdk_method,omitempty"`
+	ConversionNote    string   `json:"conversion_note,omitempty"`
+	OperationID       *string  `json:"operation_id,omitempty"`
+	HTTPMethod        *string  `json:"http_method,omitempty"`
+	HTTPPath          *string  `json:"http_path,omitempty"`
+	SourceFile        *string  `json:"source_file,omitempty"`
+	RPCs              []string `json:"rpcs,omitempty"`
+	StreamingRPCs     []string `json:"streaming_rpcs,omitempty"`
+	RPCNote           string   `json:"rpc_note,omitempty"`
+	Scopes            []string `json:"scopes,omitempty"`
+	Mutation          bool     `json:"mutation"`
+	Destructive       bool     `json:"destructive"`
+	Paginated         bool     `json:"paginated"`
+	IdempotencyKey    bool     `json:"idempotency_key,omitempty"`
+	Included          *bool    `json:"included,omitempty"`
+	ExclusionReason   *string  `json:"exclusion_reason,omitempty"`
 }
 
 // Counts is the recorded ledger-v3 classification tally. The audit recomputes
@@ -64,16 +74,61 @@ type Counts struct {
 	SigningEventSink int `json:"signing_event_sink"`
 }
 
+// V2Counts is the recorded ledger-v2 tally. The audit recomputes it from
+// Commands rather than trusting it.
+type V2Counts struct {
+	BaselineExecutable        int `json:"baseline_executable"`
+	Included                  int `json:"included"`
+	ExcludedHostOwned         int `json:"excluded_host_owned"`
+	BaselineV1Only            int `json:"baseline_v1_only"`
+	ConvertedV1ToV2           int `json:"converted_v1_to_v2"`
+	DistinctPrimaryOperations int `json:"distinct_primary_operations"`
+}
+
 // Inventory is one plugin's command inventory.
+//
+// Counts stays raw because the two plugins record different tallies under the
+// same key. Decoding it into the wrong shape would silently yield zeros, so
+// each side asks for its own type through V2Counts/V3Counts, which reject
+// unknown fields.
 type Inventory struct {
 	SchemaVersion     int               `json:"schema_version"`
 	Plugin            string            `json:"plugin"`
 	ProductMajor      int               `json:"product_major"`
 	SigningCapability *string           `json:"signing_capability"`
 	Source            map[string]string `json:"source"`
-	Counts            *Counts           `json:"counts,omitempty"`
+	Counts            json.RawMessage   `json:"counts,omitempty"`
 	Commands          []Command         `json:"commands"`
 }
+
+// V2Counts decodes the recorded ledger-v2 tally.
+func (inv Inventory) V2Counts() (V2Counts, error) {
+	var c V2Counts
+	return c, decodeCounts(inv.Counts, &c)
+}
+
+// V3Counts decodes the recorded ledger-v3 classification tally.
+func (inv Inventory) V3Counts() (Counts, error) {
+	var c Counts
+	return c, decodeCounts(inv.Counts, &c)
+}
+
+func decodeCounts(raw []byte, into any) error {
+	if len(raw) == 0 {
+		return errNoCounts
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(into); err != nil {
+		return fmt.Errorf("decode counts: %w", err)
+	}
+
+	return nil
+}
+
+var errNoCounts = errors.New("inventory records no counts block")
 
 // Manifest is one plugin's logical manifest. Only the fields the audit
 // constrains are modelled; unknown fields are ignored on purpose so the

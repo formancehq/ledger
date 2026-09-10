@@ -56,11 +56,30 @@ is superseded by the refreshed full `origin/main` commit above.
 
 | Plugin | Denominator | Basis |
 | --- | --- | --- |
-| `ledger-v2` | **14** included of **23** baseline commands (**9** V1-only excluded) | old-fctl `cmd/ledger` at `693c58e2` |
+| `ledger-v2` | **22** included of **23** baseline commands (**1** excluded as host-owned) | old-fctl `cmd/ledger` at `693c58e2` |
 | `ledger-v3` | **54** included of **108** executable commands | `cmd/ledgerctl` at `bb0297cc` |
 
-Each count is reproduced by `internal/audit`. See each plugin's `mapping.md`
-and `exclusions.md` for the per-command evidence.
+`ledger-v2` keeps the historical user surface: the 9 commands the baseline
+implemented on `Ledger.V1` are **converted** to their V2 API equivalents, except
+`ledger server-infos`, whose `/_/info` probe is host-owned. See
+`ledger-v2/mapping.md` for the 8 conversions and their evidence.
+
+### What the audit does and does not derive
+
+`internal/audit` recomputes the tallies **from the committed inventories** and
+fails if a document disagrees with them or with itself: the v2
+included/excluded/converted counts and distinct-operation count, the v3
+four-bucket classification tally and its totality, and every recorded `counts`
+block.
+
+It does **not** re-derive the upstream figures. The 23 baseline commands, the 45
+`openapi/v2.yaml` operations and the 108 `cmd/ledgerctl` commands come from
+manual extraction at the pins, recorded as reviewed constants in
+`internal/audit/audit.go` with their evidence in each plugin's `mapping.md`.
+Re-verifying those against upstream source needs the pinned checkouts, which the
+audit deliberately does not depend on.
+
+See each plugin's `mapping.md` and `exclusions.md` for the per-command evidence.
 
 ## Layout
 

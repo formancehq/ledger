@@ -9,16 +9,39 @@ import (
 // Expected denominators and tallies, fixed by the programme plan and verified
 // against source at the pinned revisions. They are constants so that changing
 // a denominator is a reviewed edit here, not a side effect of editing data.
+//
+// The constants that describe upstream sources — V2BaselineCommands,
+// V2SpecOperations, V3ExecutableCommands — come from manual extraction at the
+// pins, recorded in each plugin's mapping.md. The audit does not re-derive them
+// from old-fctl, openapi/v2.yaml or cmd/ledgerctl; it checks that the committed
+// inventories stay consistent with them and with each other.
 const (
 	V2BaselineCommands = 23 // old-fctl cmd/ledger executable commands at 693c58e2
-	V2V1OnlyExcluded   = 9  // baseline commands whose only SDK call is V1.*
-	V2Denominator      = 14 // V2BaselineCommands - V2V1OnlyExcluded
+	V2SpecOperations   = 45 // operations declared by openapi/v2.yaml at 8cc679c9
+
+	// ledger-v2 keeps the historical user surface by binding each baseline
+	// command to its V2 equivalent. Only the host-owned /_/info probe is
+	// dropped, so the denominator is 22 of 23.
+	V2Denominator         = 22
+	V2HostOwnedExcluded   = 1
+	V2BaselineV1Only      = 9  // baseline commands whose only SDK call was V1.*
+	V2ConvertedV1ToV2     = 8  // of those, re-bound to a V2 operation
+	V2PrimaryOperations   = 21 // distinct operationIds bound by the 22 commands
+	V2SecondaryOperations = 1  // v2ListLogs, called by ledger import
 
 	V3ExecutableCommands = 108 // cmd/ledgerctl executable commands at bb0297cc
 	V3Product            = 54
 	V3Operator           = 34
 	V3HostLocal          = 13
 	V3SigningEventSink   = 7
+)
+
+// V2BoundOperations is the number of v2 operations the plugin speaks to, and
+// V2OperationsOutsideDenominator the remainder of the spec. Deriving both keeps
+// the two figures from drifting apart in the documents.
+const (
+	V2BoundOperations              = V2PrimaryOperations + V2SecondaryOperations
+	V2OperationsOutsideDenominator = V2SpecOperations - V2BoundOperations
 )
 
 // Finding is one audit result. Severity is "error" when an invariant the
@@ -100,11 +123,36 @@ func auditV2(c *collector, inv Inventory, man Manifest) {
 	c.check("denominator", len(included) == V2Denominator,
 		"got %d included, want %d", len(included), V2Denominator)
 
-	var excluded, v1Only int
+	// The arithmetic that ties the historical V1-only set to the conversion
+	// decision. Asserted here so a constant cannot be edited in isolation.
+	c.check("conversion_arithmetic",
+		V2BaselineV1Only == V2ConvertedV1ToV2+V2HostOwnedExcluded &&
+			V2Denominator == V2BaselineCommands-V2HostOwnedExcluded,
+		"constants disagree: %d V1-only, %d converted, %d excluded, denominator %d of %d",
+		V2BaselineV1Only, V2ConvertedV1ToV2, V2HostOwnedExcluded, V2Denominator, V2BaselineCommands)
+
+	var excluded, baselineV1, converted int
 
 	for _, cmd := range inv.Commands {
 		c.check("inclusion_recorded", cmd.Included != nil,
 			"%s has no explicit included flag", cmd.Path)
+		c.check("baseline_call_recorded",
+			cmd.BaselineAPIMajor != "" && cmd.BaselineSDKMethod != "",
+			"%s records no baseline SDK call", cmd.Path)
+
+		if cmd.BaselineAPIMajor == "V1" {
+			baselineV1++
+
+			if cmd.Included != nil && *cmd.Included {
+				converted++
+
+				// A conversion changes user-visible request shaping, so the row
+				// must say how, not merely that a V2 operation exists.
+				c.check("conversion_note_recorded", cmd.ConversionNote != "",
+					"%s is converted from %s but records no conversion note",
+					cmd.Path, cmd.BaselineSDKMethod)
+			}
+		}
 
 		if cmd.Included == nil || *cmd.Included {
 			continue
@@ -114,32 +162,55 @@ func auditV2(c *collector, inv Inventory, man Manifest) {
 
 		c.check("exclusion_reason_named", cmd.ExclusionReason != nil && *cmd.ExclusionReason != "",
 			"%s is excluded with no named reason", cmd.Path)
+
+		// Only a host-ownership exclusion is left. A "no v2 equivalent" or
+		// "v1_only" reason would contradict the conversion decision.
+		c.check("exclusion_is_host_owned",
+			cmd.ExclusionReason != nil && strings.Contains(*cmd.ExclusionReason, "host_owned"),
+			"%s is excluded for %q; the only permitted reason is host ownership",
+			cmd.Path, derefOr(cmd.ExclusionReason, ""))
 	}
 
-	c.check("excluded_count", excluded == V2V1OnlyExcluded,
-		"got %d excluded, want %d", excluded, V2V1OnlyExcluded)
+	c.check("excluded_count", excluded == V2HostOwnedExcluded,
+		"got %d excluded, want %d", excluded, V2HostOwnedExcluded)
+	c.check("baseline_v1_only_count", baselineV1 == V2BaselineV1Only,
+		"got %d commands calling V1.* at the baseline, want %d", baselineV1, V2BaselineV1Only)
+	c.check("converted_count", converted == V2ConvertedV1ToV2,
+		"got %d converted commands, want %d", converted, V2ConvertedV1ToV2)
 
-	for _, cmd := range inv.Commands {
-		if cmd.APIMajor == "V1" {
-			v1Only++
-
-			c.check("v1_only_not_published", cmd.Included != nil && !*cmd.Included,
-				"%s is backed only by %s but is published by the v2 plugin", cmd.Path, cmd.SDKMethod)
-		}
-	}
-
-	c.check("v1_only_count", v1Only == V2V1OnlyExcluded,
-		"got %d V1-only commands, want %d", v1Only, V2V1OnlyExcluded)
+	operations := make(map[string]bool, len(included))
 
 	for _, cmd := range included {
 		c.check("included_is_v2_backed", cmd.APIMajor == "V2",
 			"%s is published but api_major is %q", cmd.Path, cmd.APIMajor)
+		c.check("included_binds_v2_method", strings.HasPrefix(cmd.SDKMethod, "V2."),
+			"%s is published but binds %q, which is not a V2 call", cmd.Path, cmd.SDKMethod)
 		c.check("included_has_operation_id", cmd.OperationID != nil && *cmd.OperationID != "",
 			"%s has no operationId", cmd.Path)
 		c.check("included_has_http_binding", cmd.HTTPMethod != nil && cmd.HTTPPath != nil,
 			"%s has no method/path binding", cmd.Path)
 		c.check("included_has_scope", len(cmd.Scopes) > 0,
 			"%s declares no authorization scope", cmd.Path)
+
+		if cmd.OperationID != nil {
+			operations[*cmd.OperationID] = true
+		}
+	}
+
+	c.check("distinct_primary_operations", len(operations) == V2PrimaryOperations,
+		"got %d distinct operationIds, want %d", len(operations), V2PrimaryOperations)
+
+	if got, err := inv.V2Counts(); err != nil {
+		c.check("recorded_counts_present", false, "%v", err)
+	} else {
+		c.check("recorded_counts_match_data", got == V2Counts{
+			BaselineExecutable:        len(inv.Commands),
+			Included:                  len(included),
+			ExcludedHostOwned:         excluded,
+			BaselineV1Only:            baselineV1,
+			ConvertedV1ToV2:           converted,
+			DistinctPrimaryOperations: len(operations),
+		}, "recorded %+v disagrees with the commands", got)
 	}
 
 	c.check("manifest_majors", len(man.ProductMajors) == 1 && man.ProductMajors[0] == 2,
@@ -179,11 +250,11 @@ func auditV3(c *collector, inv Inventory, man Manifest) {
 	c.check("classification_totality", sum == len(inv.Commands),
 		"buckets sum to %d but there are %d commands", sum, len(inv.Commands))
 
-	if inv.Counts != nil {
-		c.check("recorded_counts_match_data", *inv.Counts == want,
-			"recorded %+v, recomputed %+v", *inv.Counts, want)
+	if recorded, err := inv.V3Counts(); err != nil {
+		c.check("recorded_counts_present", false, "%v", err)
 	} else {
-		c.check("recorded_counts_present", false, "inventory records no counts block")
+		c.check("recorded_counts_match_data", recorded == want,
+			"recorded %+v, recomputed %+v", recorded, want)
 	}
 
 	allowed := map[string]bool{
@@ -288,16 +359,31 @@ func inventoryMentions(inv Inventory, needle string) bool {
 	}
 
 	for _, cmd := range inv.Commands {
-		if strings.Contains(cmd.Path, needle) || contains(cmd.Scopes, needle) {
+		if contains(cmd.Scopes, needle) {
 			return true
 		}
 
-		if cmd.ExclusionReason != nil && strings.Contains(*cmd.ExclusionReason, needle) {
-			return true
+		// Every free-text field, not just the path: a conversion note or a
+		// recorded SDK method is as much a mention as a command name.
+		for _, field := range []string{
+			cmd.Path, cmd.Use, cmd.SDKMethod, cmd.BaselineSDKMethod,
+			cmd.ConversionNote, cmd.RPCNote, derefOr(cmd.ExclusionReason, ""),
+		} {
+			if strings.Contains(field, needle) {
+				return true
+			}
 		}
 	}
 
 	return false
+}
+
+func derefOr(s *string, fallback string) string {
+	if s == nil {
+		return fallback
+	}
+
+	return *s
 }
 
 func contains(haystack []string, needle string) bool {

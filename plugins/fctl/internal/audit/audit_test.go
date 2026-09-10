@@ -69,8 +69,8 @@ func TestV2Denominator(t *testing.T) {
 		t.Errorf("included commands = %d, want %d", got, audit.V2Denominator)
 	}
 
-	if got := len(inv.Commands) - len(included); got != audit.V2V1OnlyExcluded {
-		t.Errorf("excluded commands = %d, want %d", got, audit.V2V1OnlyExcluded)
+	if got := len(inv.Commands) - len(included); got != audit.V2HostOwnedExcluded {
+		t.Errorf("excluded commands = %d, want %d", got, audit.V2HostOwnedExcluded)
 	}
 
 	for _, c := range included {
@@ -84,21 +84,222 @@ func TestV2Denominator(t *testing.T) {
 	}
 }
 
-// TestV1OnlyCommandsNeverLeakIntoV2Catalogue is the invariant Task 7 names
-// explicitly.
-func TestV1OnlyCommandsNeverLeakIntoV2Catalogue(t *testing.T) {
-	for _, c := range load(t).V2Inventory.Commands {
-		if c.APIMajor != "V1" {
-			continue
+// TestV2KeepsTheHistoricalSurface encodes the decision that ledger-v2 converts
+// the baseline V1 commands to their V2 equivalents rather than dropping them:
+// every baseline command is published except the host-owned info probe.
+func TestV2KeepsTheHistoricalSurface(t *testing.T) {
+	inv := load(t).V2Inventory
+
+	var dropped []string
+	var converted int
+
+	for _, c := range inv.Commands {
+		if c.BaselineAPIMajor == "V1" && c.Included != nil && *c.Included {
+			converted++
 		}
 
 		if c.Included == nil || *c.Included {
-			t.Errorf("%s is V1-only (%s) but is published by ledger-v2", c.Path, c.SDKMethod)
+			continue
 		}
 
-		if c.OperationID != nil {
-			t.Errorf("%s is V1-only but records a v2 operationId %q", c.Path, *c.OperationID)
+		dropped = append(dropped, c.Path)
+
+		if c.ExclusionReason == nil || !strings.Contains(*c.ExclusionReason, "host_owned") {
+			t.Errorf("%s is dropped for a reason other than host ownership: %v",
+				c.Path, c.ExclusionReason)
 		}
+	}
+
+	if len(dropped) != 1 || dropped[0] != "ledger server-infos" {
+		t.Errorf("dropped commands = %v, want only [ledger server-infos]", dropped)
+	}
+
+	if converted != audit.V2ConvertedV1ToV2 {
+		t.Errorf("converted commands = %d, want %d", converted, audit.V2ConvertedV1ToV2)
+	}
+}
+
+// TestV1CallsNeverLeakIntoV2Catalogue is the invariant Task 7 names explicitly.
+// Converting a command re-binds it to a V2 operation; it must never leave a
+// V1.* call in the published surface.
+func TestV1CallsNeverLeakIntoV2Catalogue(t *testing.T) {
+	for _, c := range load(t).V2Inventory.IncludedCommands() {
+		if c.APIMajor == "V1" || strings.HasPrefix(c.SDKMethod, "V1.") {
+			t.Errorf("%s is published by ledger-v2 but binds %s", c.Path, c.SDKMethod)
+		}
+
+		if c.BaselineAPIMajor == "V1" && c.ConversionNote == "" {
+			t.Errorf("%s is converted from %s with no conversion note recorded",
+				c.Path, c.BaselineSDKMethod)
+		}
+	}
+}
+
+// TestV2BoundOperationsReconcileWithTheSpec keeps the two figures the documents
+// quote in step: what the plugin binds and what is left outside it.
+func TestV2BoundOperationsReconcileWithTheSpec(t *testing.T) {
+	operations := map[string]bool{}
+	for _, c := range load(t).V2Inventory.IncludedCommands() {
+		if c.OperationID != nil {
+			operations[*c.OperationID] = true
+		}
+	}
+
+	if len(operations) != audit.V2PrimaryOperations {
+		t.Errorf("distinct primary operations = %d, want %d",
+			len(operations), audit.V2PrimaryOperations)
+	}
+
+	if got := audit.V2BoundOperations + audit.V2OperationsOutsideDenominator; got != audit.V2SpecOperations {
+		t.Errorf("%d bound + %d outside = %d, want %d spec operations",
+			audit.V2BoundOperations, audit.V2OperationsOutsideDenominator,
+			got, audit.V2SpecOperations)
+	}
+}
+
+// TestAuditRejectsAReintroducedV1Binding proves the conversion invariant is
+// enforced, not merely documented.
+func TestAuditRejectsAReintroducedV1Binding(t *testing.T) {
+	in := load(t)
+
+	var idx = -1
+
+	for i, c := range in.V2Inventory.Commands {
+		if c.BaselineAPIMajor == "V1" && c.Included != nil && *c.Included {
+			idx = i
+			break
+		}
+	}
+
+	if idx < 0 {
+		t.Fatal("no converted command to mutate")
+	}
+
+	in.V2Inventory.Commands[idx].APIMajor = "V1"
+	in.V2Inventory.Commands[idx].SDKMethod = in.V2Inventory.Commands[idx].BaselineSDKMethod
+
+	report := audit.Run(in)
+	if report.OK() {
+		t.Fatal("audit passed a published command bound to a V1 call")
+	}
+
+	var found bool
+
+	for _, f := range report.Findings {
+		if f.Check == "included_is_v2_backed" || f.Check == "included_binds_v2_method" {
+			found = true
+		}
+	}
+
+	if !found {
+		t.Errorf("expected a V1-binding finding, got %v", report.Findings)
+	}
+}
+
+// TestAuditRejectsDroppingACommandForLackOfAV2Equivalent proves the exclusion
+// rule is enforced: after the conversion decision, "v1_only" is not a reason.
+func TestAuditRejectsDroppingACommandForLackOfAV2Equivalent(t *testing.T) {
+	in := load(t)
+
+	excluded := false
+	reason := "v1_only"
+	in.V2Inventory.Commands[0].Included = &excluded
+	in.V2Inventory.Commands[0].ExclusionReason = &reason
+
+	report := audit.Run(in)
+	if report.OK() {
+		t.Fatal("audit passed a command dropped as v1_only")
+	}
+
+	var found bool
+
+	for _, f := range report.Findings {
+		if f.Check == "exclusion_is_host_owned" {
+			found = true
+		}
+	}
+
+	if !found {
+		t.Errorf("expected an exclusion_is_host_owned finding, got %v", report.Findings)
+	}
+}
+
+// TestAuditRejectsAMismatchedCountsBlock proves the recorded tallies are
+// recomputed from the commands rather than trusted.
+func TestAuditRejectsAMismatchedCountsBlock(t *testing.T) {
+	in := load(t)
+	in.V2Inventory.Counts = []byte(`{"baseline_executable":23,"included":14,` +
+		`"excluded_host_owned":9,"baseline_v1_only":9,"converted_v1_to_v2":0,` +
+		`"distinct_primary_operations":14}`)
+
+	report := audit.Run(in)
+	if report.OK() {
+		t.Fatal("audit passed a counts block that disagrees with the commands")
+	}
+
+	var found bool
+
+	for _, f := range report.Findings {
+		if f.Check == "recorded_counts_match_data" {
+			found = true
+		}
+	}
+
+	if !found {
+		t.Errorf("expected a recorded_counts_match_data finding, got %v", report.Findings)
+	}
+}
+
+// TestAuditRejectsAnUnexplainedExclusion covers the degenerate case: a command
+// dropped with no reason at all must fail, not fall through the host-ownership
+// check on a nil pointer.
+func TestAuditRejectsAnUnexplainedExclusion(t *testing.T) {
+	in := load(t)
+
+	excluded := false
+	in.V2Inventory.Commands[0].Included = &excluded
+	in.V2Inventory.Commands[0].ExclusionReason = nil
+	in.V2Inventory.Counts = nil
+
+	report := audit.Run(in)
+	if report.OK() {
+		t.Fatal("audit passed an exclusion with no reason and no counts block")
+	}
+
+	want := map[string]bool{
+		"exclusion_reason_named":  false,
+		"exclusion_is_host_owned": false,
+		"recorded_counts_present": false,
+	}
+
+	for _, f := range report.Findings {
+		if _, ok := want[f.Check]; ok {
+			want[f.Check] = true
+		}
+	}
+
+	for check, found := range want {
+		if !found {
+			t.Errorf("expected a %s finding, got %v", check, report.Findings)
+		}
+	}
+}
+
+// TestV2CountsRejectsTheV3Shape guards the shared counts key: decoding one
+// plugin's tally into the other's type must fail rather than yield zeros.
+func TestV2CountsRejectsTheV3Shape(t *testing.T) {
+	in := load(t)
+
+	if _, err := in.V3Inventory.V2Counts(); err == nil {
+		t.Error("V2Counts accepted the ledger-v3 counts block")
+	}
+
+	if _, err := in.V2Inventory.V3Counts(); err == nil {
+		t.Error("V3Counts accepted the ledger-v2 counts block")
+	}
+
+	if _, err := (audit.Inventory{}).V2Counts(); err == nil {
+		t.Error("V2Counts accepted an absent counts block")
 	}
 }
 
@@ -322,6 +523,14 @@ func TestAuditRejectsSigningCapabilityOnV2(t *testing.T) {
 	report := audit.Run(in)
 	if report.OK() {
 		t.Fatal("audit allowed ledger-v2 to declare the signing capability")
+	}
+
+	// A conversion note is free text, so it is a mention route too.
+	noted := load(t)
+	noted.V2Inventory.Commands[0].ConversionNote = "would need " + audit.SigningCapability
+
+	if audit.Run(noted).OK() {
+		t.Error("audit allowed ledger-v2 to name the signing capability in a conversion note")
 	}
 
 	var found bool

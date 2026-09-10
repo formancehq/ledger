@@ -1,66 +1,78 @@
 # Ledger v2 plugin — exclusions
 
 Every exclusion below is a named, evidence-backed decision. None is a silent
-omission. `23 = 14 included + 9 excluded`.
+omission. `23 = 22 included + 1 excluded`.
 
-## A. V1-only baseline commands (9) — excluded from the v2 plugin
+## A. The single excluded baseline command (1)
 
-The programme decision is explicit: commands whose audited implementation is
-exclusively `Ledger.V1` are historical evidence, not published by the v2
-provider. Evidence is the sole SDK call in each old-fctl source file at
-`693c58e2`.
+| Command | Baseline call | V2 equivalent | Reason |
+| --- | --- | --- | --- |
+| `ledger server-infos` | `V1.GetInfo` | `v2GetInfo` — `GET /_/info`, `ledger:read`, exposed as `Ledger.GetInfo` in the generated client | The `/_/info` probe is **host-owned** in fctl-v2 and must never be a product command. |
 
-| Command | Sole SDK call |
-| --- | --- |
-| `ledger send` | `V1.CreateTransaction` |
-| `ledger server-infos` | `V1.GetInfo` |
-| `ledger stats` | `V1.ReadStats` |
-| `ledger accounts show` | `V1.GetAccountLedger` |
-| `ledger accounts set-metadata` | `V1.AddMetadataToAccount` |
-| `ledger transactions list` | `V1.ListTransactions` |
-| `ledger transactions show` | `V1.GetTransaction` |
-| `ledger transactions set-metadata` | `V1.AddMetadataOnTransaction` |
-| `ledger transactions num` | `V1.CreateTransaction` |
+The exclusion is about ownership, not availability: a faithful V2 equivalent
+exists and is recorded in `inventory.json` so the decision cannot later be
+mistaken for a coverage gap.
 
-`ledger server-infos` is doubly excluded: besides being V1-only, the `/_info`
-probe is host-owned in fctl-v2 and must never be a product command.
+Note the receiver. The generated client puts `v2GetInfo` on `Ledger`, not on
+`V2` (`pkg/client/ledger.go:40`), so it is the one bound-adjacent operation that
+is not a `V2.*` method.
 
-### Open decision — not resolved here
+## The 9 historical V1-only commands are converted, not dropped
 
-The v2 API *does* offer equivalents for most of these
-(`v2CreateTransaction`, `v2GetAccount`, `v2AddMetadataToAccount`,
-`v2ListTransactions`, `v2GetTransaction`, `v2AddMetadataOnTransaction`,
-`v2ReadStats`). Re-basing any of the nine onto its V2 operation would be a
-**new** command, not old-fctl parity, and would change the frozen 14-command
-denominator. That requires an explicit scope decision and is deliberately left
-open.
+At the baseline pin, nine commands were implemented exclusively on `Ledger.V1`.
+The programme decision is to **keep the historical user surface** by binding
+each to its V2 API equivalent. Eight are converted and published; the ninth is
+`ledger server-infos` above.
 
-## B. v2 API operations outside the denominator (30)
+| Command | Baseline call | Status |
+| --- | --- | --- |
+| `ledger send` | `V1.CreateTransaction` | converted → `v2CreateTransaction` |
+| `ledger stats` | `V1.ReadStats` | converted → `v2ReadStats` |
+| `ledger accounts show` | `V1.GetAccountLedger` | converted → `v2GetAccount` |
+| `ledger accounts set-metadata` | `V1.AddMetadataToAccount` | converted → `v2AddMetadataToAccount` |
+| `ledger transactions list` | `V1.ListTransactions` | converted → `v2ListTransactions` |
+| `ledger transactions show` | `V1.GetTransaction` | converted → `v2GetTransaction` |
+| `ledger transactions set-metadata` | `V1.AddMetadataOnTransaction` | converted → `v2AddMetadataOnTransaction` |
+| `ledger transactions num` | `V1.CreateTransaction` | converted → `v2CreateTransaction` |
+| `ledger server-infos` | `V1.GetInfo` | **excluded** — host-owned probe |
+
+Conversion binds the V2 operation and keeps the command phrase, aliases and
+arguments. It is not a new command: the per-command request-shaping obligations
+are recorded in `mapping.md` and in each row's `conversion_note`. What the
+plugin must never do is publish a command that still binds a `V1.*` call — the
+audit enforces that.
+
+## B. v2 API operations outside the denominator (23)
 
 `openapi/v2.yaml` at the pinned `origin/main` declares **45** operations. The
-14-command denominator binds **15** of them (14 primary + `v2ListLogs` as a
-secondary call). The remaining 30 are outside this plugin's frozen scope
-because no old-fctl command exercised them.
+22-command denominator binds **22** of them (21 distinct primary operations —
+`ledger send` and `ledger transactions num` share `v2CreateTransaction` — plus
+`v2ListLogs` as a secondary call). The remaining 23 are outside this plugin's
+scope because no baseline command exercised them.
 
-Recorded so the gap is visible, not to expand scope:
+Recorded so the gap is visible, not to expand scope. The list is exhaustive:
+`22 + 23 = 45`.
 
-- **Transactions/accounts reads and writes with no baseline command:**
-  `v2CreateTransaction`, `v2GetTransaction`, `v2ListTransactions`,
-  `v2CountTransactions`, `v2AddMetadataOnTransaction`, `v2GetAccount`,
-  `v2CountAccounts`, `v2AddMetadataToAccount`, `v2CreateBulk`
-- **Ledger reads:** `v2GetLedger`, `v2GetLedgerInfo`, `v2ReadStats`,
+- **Transactions/accounts operations with no baseline command (3):**
+  `v2CountTransactions`, `v2CountAccounts`, `v2CreateBulk`
+- **Ledger reads (4):** `v2GetLedger`, `v2GetLedgerInfo`,
   `v2GetBalancesAggregated`, `v2RunQuery`
-- **Info/metrics:** `v2GetInfo`, `getMetrics` — host-owned or operator concerns
-- **Bucket lifecycle:** `v2DeleteBucket`, `v2RestoreBucket` — operator concerns
-- **Exporters (4):** `v2ListExporters`, `v2CreateExporter`,
+- **Info/metrics (2):** `v2GetInfo`, `getMetrics` — host-owned or operator
+  concerns. `v2GetInfo` is the operation behind the excluded
+  `ledger server-infos` in §A.
+- **Bucket lifecycle (2):** `v2DeleteBucket`, `v2RestoreBucket` — operator
+  concerns
+- **Exporters (5):** `v2ListExporters`, `v2CreateExporter`, `v2UpdateExporter`,
   `v2GetExporterState`, `v2DeleteExporter`
 - **Pipelines (7):** `v2ListPipelines`, `v2CreatePipeline`,
   `v2GetPipelineState`, `v2DeletePipeline`, `v2ResetPipeline`,
   `v2StartPipeline`, `v2StopPipeline`
 
-The 11 exporter and pipeline operations additionally declare **no** `security:`
-block in the spec — see `auth-scopes-risks.md`. They must not be adopted before
-that is resolved.
+Of these, **11** declare **no** `security:` block in the spec: the four
+exporter operations other than `v2UpdateExporter`, plus all seven pipeline
+operations. `v2UpdateExporter` does declare `ledger:write`. See
+`auth-scopes-risks.md` D2. None of the 11 may be adopted before that is
+resolved.
 
 ## C. Capabilities the v2 plugin must never declare
 

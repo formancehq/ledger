@@ -1,9 +1,11 @@
 {
   "baseline": {
     "commit": "693c58e27865f83332e6c3199d61fed81b742f41",
-    "excluded_v1_only": 9,
+    "converted_v1_to_v2": 8,
+    "excluded_host_owned": 1,
     "executable_commands": 23,
-    "repo": "fctl"
+    "repo": "fctl",
+    "v1_only_at_baseline": 9
   },
   "capabilities_declared": [],
   "capabilities_required": [
@@ -18,7 +20,7 @@
     "repo_commit": "8cc679c9440aaf90d4b8646a013e5bd7421443d6",
     "repo_ref": "origin/main"
   },
-  "coverage_denominator": 14,
+  "coverage_denominator": 22,
   "facets": [
     "command_provider"
   ],
@@ -26,7 +28,9 @@
     "declares product major 2 and no other major",
     "declares no signing capability",
     "cannot name or invoke sign.ledger.apply-batch",
-    "publishes no command whose only implementation is Ledger.V1",
+    "publishes every baseline command that has a faithful v2 API equivalent",
+    "publishes no command that binds a Ledger.V1 operation",
+    "excludes ledger server-infos as a host-owned info probe, not as a missing equivalent",
     "shares no catalogue entry or manifest field with ledger-v3",
     "does not resolve endpoint, auth, or target"
   ],
