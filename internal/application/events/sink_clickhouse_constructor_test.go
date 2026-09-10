@@ -9,6 +9,8 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
 type clickHouseConstructorConn struct {
@@ -86,4 +88,33 @@ func TestInitializeClickHouseSink_TransfersConnectionOwnershipOnSuccess(t *testi
 
 	require.NoError(t, sink.Close())
 	require.Equal(t, 1, conn.closeCalls)
+}
+
+// The driver interface is not mockgen-managed; reuse the constructor fixture
+// to inject a database error before a batch can be allocated.
+type clickHousePublishErrorConn struct {
+	clickHouseConstructorConn
+
+	prepareErr error
+}
+
+func (c *clickHousePublishErrorConn) PrepareBatch(context.Context, string, ...driver.PrepareBatchOption) (driver.Batch, error) {
+	return nil, c.prepareErr
+}
+
+func TestClickHouseSinkPublishSanitizesDriverError(t *testing.T) {
+	t.Parallel()
+	cause := errors.New("authentication failed for password=warehouse-secret at warehouse.example")
+	sink := &ClickHouseSink{
+		conn:   &clickHousePublishErrorConn{prepareErr: cause},
+		table:  "ledger_events",
+		errors: newSinkErrorSanitizer([]string{"clickhouse://user:warehouse-secret@warehouse.example"}),
+	}
+	err := sink.Publish(t.Context(), []*eventspb.Event{{LogSequence: 42}})
+	require.Error(t, err)
+	require.ErrorIs(t, err, cause)
+	require.Contains(t, err.Error(), "preparing ClickHouse batch")
+	require.Contains(t, err.Error(), "authentication failed")
+	require.Contains(t, err.Error(), "warehouse.example")
+	require.NotContains(t, err.Error(), "warehouse-secret")
 }
