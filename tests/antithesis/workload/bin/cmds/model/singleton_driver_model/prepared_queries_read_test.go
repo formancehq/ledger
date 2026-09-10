@@ -155,3 +155,75 @@ func TestRegistryMatches(t *testing.T) {
 		})
 	}
 }
+
+func TestPreparedLogsUseActiveDateIndex(t *testing.T) {
+	t.Parallel()
+
+	filter := filterLogDateLeaf()
+	gs := buildGlobal(t, oracletest.CreateIndexReq(logDateIndexID()), createPreparedQueryReq("L", &commonpb.PreparedQuery{
+		Name: "dates", Target: commonpb.QueryTarget_QUERY_TARGET_LOGS, Filter: filter,
+	}))
+	gs.SetIndexActive("L", logDateIndexCanonical)
+
+	call := preparedCall{ledger: "L", name: "dates", pageSize: 10}
+
+	require.True(t, preparedListOutcomeLegal(gs.Ledger("L"), call, "", &commonpb.PreparedQueryCursor{}))
+	require.Equal(t, neededLogIndexes(filter), preparedNeededIndexes(filter, commonpb.QueryTarget_QUERY_TARGET_LOGS))
+
+	call.errKind = pqErrIndex
+
+	require.False(t, preparedListOutcomeLegal(gs.Ledger("L"), call, "", nil))
+}
+
+func TestPreparedLogPageUnknownDatesAndHasMore(t *testing.T) {
+	t.Parallel()
+
+	gs := buildGlobal(t, oracletest.TxReq("world", "acc:1", "USD/2", 5), oracletest.TxReq("world", "acc:2", "USD/2", 5))
+	ls := gs.Ledger("L")
+	ids := ls.LogDates()
+
+	require.Len(t, ids, 2)
+
+	first, second := ids[0].ID, ids[1].ID
+	filter := filterLogDateLeaf()
+
+	call := preparedCall{ledger: "L", pageSize: 1}
+	page := servedRows(ls, "L", first)
+	corrupt := servedRows(ls, "L", first)
+	corrupt[0].kind = "wrong-kind"
+
+	require.False(t, preparedLogWindowMatches(ls, call, filter, 0, corrupt, true))
+	require.True(t, preparedLogWindowMatches(ls, call, filter, 0, page, true), "an unknown-date suffix can supply another page")
+	require.True(t, preparedLogWindowMatches(ls, call, filter, 0, page, false), "the same suffix can fail the date filter")
+	require.True(t, preparedLogWindowMatches(ls, call, filter, first, servedRows(ls, "L", second), false))
+	require.False(t, preparedLogWindowMatches(ls, call, filter, first, servedRows(ls, "L", second), true), "no remaining row can justify hasMore")
+	require.False(t, preparedLogWindowMatches(ls, call, filter, 0, nil, true), "hasMore requires a full page")
+	require.False(t, preparedLogWindowMatches(ls, call, filter, 0, servedRows(ls, "L", 999), false))
+
+	gs.LearnLogDate("L", second, &commonpb.Timestamp{Data: 5})
+	ls = gs.Ledger("L")
+
+	require.False(t, preparedLogWindowMatches(ls, call, filter, 0, page, false), "a required suffix cannot be omitted")
+	require.True(t, preparedLogWindowMatches(ls, call, filter, 0, page, true))
+
+	call.pageSize = 2
+
+	require.False(t, preparedLogWindowMatches(ls, call, filter, 0, page, false), "a short page must include required rows")
+}
+
+func TestPreparedLogPageRejectsMissingAndInventedRows(t *testing.T) {
+	t.Parallel()
+
+	ls := buildGlobal(t, oracletest.TxReq("world", "acc:1", "USD/2", 5)).Ledger("L")
+
+	call := preparedCall{ledger: "L", pageSize: 10}
+
+	require.False(t, preparedLogPageMatches(ls, call, nil, 0, &commonpb.PreparedQueryCursor{}))
+
+	invented := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
+		LedgerName: "L", Log: &commonpb.LedgerLog{Id: 999},
+	}}}}
+
+	require.False(t, preparedLogPageMatches(ls, call, nil, 0, &commonpb.PreparedQueryCursor{LogData: []*commonpb.Log{invented}}))
+	require.True(t, preparedLogPageMatches(ls, call, nil, ls.LogRows()[0].ID, &commonpb.PreparedQueryCursor{}))
+}
