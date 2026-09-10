@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
@@ -45,15 +44,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		spinner = cmdutil.StartSpinner("Creating query checkpoint...")
 	}
 
-	requests := []*servicepb.Request{
-		{
-			Type: &servicepb.Request_CreateQueryCheckpoint{
-				CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
-			},
-		},
-	}
-
-	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, actions.CreateQueryCheckpointAction())
 	if err != nil {
 		if spinner != nil {
 			spinner.Fail("Failed to sign request")

@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // NewUpdateCommand creates the queries update command.
@@ -81,19 +81,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	requests := []*servicepb.Request{
-		{
-			Type: &servicepb.Request_UpdatePreparedQuery{
-				UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
-					Ledger: ledgerName,
-					Name:   name,
-					Filter: filter,
-				},
-			},
-		},
-	}
-
-	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, actions.UpdatePreparedQueryAction(ledgerName, name, filter))
 	if err != nil {
 		return cmdutil.Displayed(err)
 	}

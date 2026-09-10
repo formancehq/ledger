@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // NewDeleteCommand creates the queries delete command.
@@ -47,18 +47,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	requests := []*servicepb.Request{
-		{
-			Type: &servicepb.Request_DeletePreparedQuery{
-				DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
-					Ledger: ledgerName,
-					Name:   name,
-				},
-			},
-		},
-	}
-
-	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, actions.DeletePreparedQueryAction(ledgerName, name))
 	if err != nil {
 		return cmdutil.Displayed(err)
 	}

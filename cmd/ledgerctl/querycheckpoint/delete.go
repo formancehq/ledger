@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 func newDeleteCommand() *cobra.Command {
@@ -49,17 +49,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		spinner = cmdutil.StartSpinner("Deleting query checkpoint...")
 	}
 
-	requests := []*servicepb.Request{
-		{
-			Type: &servicepb.Request_DeleteQueryCheckpoint{
-				DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{
-					CheckpointId: checkpointID,
-				},
-			},
-		},
-	}
-
-	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, actions.DeleteQueryCheckpointAction(checkpointID))
 	if err != nil {
 		if spinner != nil {
 			spinner.Fail("Failed to sign request")

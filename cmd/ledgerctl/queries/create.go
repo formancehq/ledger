@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // NewCreateCommand creates the queries create command.
@@ -72,22 +72,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	requests := []*servicepb.Request{
-		{
-			Type: &servicepb.Request_CreatePreparedQuery{
-				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
-					Ledger: ledgerName,
-					Query: &commonpb.PreparedQuery{
-						Name:   name,
-						Filter: filter,
-						Target: target,
-					},
-				},
-			},
-		},
-	}
-
-	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, actions.CreatePreparedQueryAction(name, ledgerName, target, filter))
 	if err != nil {
 		return cmdutil.Displayed(err)
 	}
