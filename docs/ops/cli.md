@@ -186,6 +186,16 @@ scripting against the CLI predictable across resources.
 | Aliases | `get` | — | `g`, `show`, `describe` |
 | Aliases | `inspect` | — | `i` |
 
+Structured JSON and YAML output preserve the full precision of integer metadata,
+transaction IDs, and posting amounts, including values greater than `2^53`.
+YAML uses numeric scalars for JSON numbers and retains strings as strings. Both
+formats use the same public JSON projection and camelCase field names, including
+when responses are wrapped in lists or maps. For example, metadata values
+`9007199254740993` and `-9007199254740993` remain exact in either format.
+Use an integer-aware parser when consuming this output. The ledger-log projection
+is an output format, not an audit replay or backup format; it does not restore
+internal type distinctions omitted by the JSON projection.
+
 #### Unpaginated endpoints
 
 A few endpoints intentionally do not expose pagination because the underlying
