@@ -358,19 +358,30 @@ func txRefTerm(ref string, id int) Digest {
 // transaction.
 // logRecord is one entry of the ledger log stream. The id is DERIVED, never
 // taken from the server: the stream is dense from 1, so the model can predict
-// it, and predicting it is what lets a mis-assigned id be caught at all. Only
-// the date is learned from the commit response (LearnLogDate) — it is
-// server-assigned with no derivable value, and nil means not yet learned.
+// it, and predicting it is what lets a mis-assigned id be caught at all. The
+// date and the global sequence are learned from the commit response
+// (LearnLogDate, LearnLogSequence): both are server-assigned with no derivable
+// value — the sequence spans every ledger and the technical entries between
+// them — and a zero or nil one means not yet learned.
 type logRecord struct {
-	id   uint64
-	kind string
-	date *commonpb.Timestamp
+	id      uint64
+	kind    string
+	payload string
+	// purged, newKept and ephemeral are the volume annotations the FSM hangs
+	// on this log: the cells this order touched that the end-of-bulk partition
+	// classified as drained-to-zero, newly kept, and created-and-zeroed within
+	// the bulk. Derived, never learned — the model runs the same partition.
+	purged    string
+	newKept   string
+	ephemeral string
+	date      *commonpb.Timestamp
+	sequence  uint64
 }
 
 func logTerm(idx int, l *logRecord) Digest {
 	t := newTerm("LOG")
-	t.u64(uint64(idx), l.id)
-	t.str(l.kind)
+	t.u64(uint64(idx), l.id, l.sequence)
+	t.str(l.kind, l.payload, l.purged, l.newKept, l.ephemeral)
 
 	// A nil date (not yet learned) must not collide with any concrete value.
 	t.boolean(l.date != nil)
@@ -768,6 +779,17 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	orders := make([]OrderResult, 0, len(bulk.Requests))
 	touched := map[string]map[VolumeKey]bool{}
 
+	// Per-order cells, kept beside the per-ledger union: the FSM hangs each
+	// log's volume annotations on the cells THAT order touched, so the union
+	// alone cannot reproduce them.
+	type orderTouch struct {
+		ledger string
+		logIdx int
+		cells  map[VolumeKey]bool
+	}
+
+	var orderTouches []orderTouch
+
 	for _, req := range bulk.Requests {
 		name := LedgerOf(req)
 
@@ -783,13 +805,26 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			touched[name] = cells
 		}
 
-		oc := ls.applyOne(req, cells)
+		orderCells := map[VolumeKey]bool{}
+
+		oc := ls.applyOne(req, orderCells)
+
+		for key := range orderCells {
+			cells[key] = true
+		}
+
+		logsBefore := ls.logs.Len()
+
 		if oc.OK {
 			// Appended centrally rather than per handler: every committed
 			// ledger-scoped order produces exactly one log, so a handler that
 			// forgot would silently shorten the stream and mis-id every log
 			// after it.
 			ls.appendLog(req)
+		}
+
+		if ls.logs.Len() > logsBefore {
+			orderTouches = append(orderTouches, orderTouch{ledger: name, logIdx: ls.logs.Len() - 1, cells: orderCells})
 		}
 
 		// applyOne rebinds ls's persistent collections; write the updated value
@@ -816,7 +851,16 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 
 		ls.recordAssetTouches(&base, cells)
 		ls.recordIndexedAddrs(&base, uint64(base.Txs().Len())+1)
-		ls.purgeZeroBalance(cells)
+
+		purged := ls.purgeZeroBalance(cells)
+
+		ann := ls.classifyVolumes(&base, cells, purged)
+		for _, ot := range orderTouches {
+			if ot.ledger == name {
+				ls.annotateLog(ot.logIdx, ot.cells, ann)
+			}
+		}
+
 		next.ledgers[name] = ls
 	}
 
@@ -910,6 +954,110 @@ func logKindFor(req *servicepb.Request) string {
 	panic(fmt.Sprintf("model: no log kind for request %T", req.GetType()))
 }
 
+// logPayloadFor renders the payload a committed request implies, canonically,
+// so a served log can be held to it field for field (CanonicalServedLogPayload
+// renders the served side into the same shape — the two must agree).
+//
+// Transaction logs render empty: their content is server-assigned and is
+// validated against the model's transaction records by the ListTransactions
+// path, which compares ids, references, revert relationships and stamps.
+func logPayloadFor(req *servicepb.Request) string {
+	switch r := req.GetType().(type) {
+	case *servicepb.Request_AddAccountType:
+		at := r.AddAccountType.GetAccountType()
+
+		return "type=" + at.GetName() + "|pattern=" + at.GetPattern()
+	case *servicepb.Request_RemoveAccountType:
+		return "type=" + r.RemoveAccountType.GetName()
+	case *servicepb.Request_SetMetadataFieldType:
+		return "target=" + strconv.Itoa(int(r.SetMetadataFieldType.GetTargetType())) +
+			"|key=" + r.SetMetadataFieldType.GetKey() +
+			"|type=" + strconv.Itoa(int(r.SetMetadataFieldType.GetType()))
+	case *servicepb.Request_RemoveMetadataFieldType:
+		return "target=" + strconv.Itoa(int(r.RemoveMetadataFieldType.GetTargetType())) +
+			"|key=" + r.RemoveMetadataFieldType.GetKey()
+	case *servicepb.Request_CreateIndex:
+		return "index=" + indexes.Canonical(r.CreateIndex.GetId())
+	case *servicepb.Request_DropIndex:
+		return "index=" + indexes.Canonical(r.DropIndex.GetId())
+	case *servicepb.Request_Apply:
+		switch a := r.Apply.GetAction().GetData().(type) {
+		case *servicepb.LedgerAction_AddMetadata:
+			return "target=" + canonicalTarget(a.AddMetadata.GetTarget()) + "|" + canonicalMetadata(a.AddMetadata.GetMetadata())
+		case *servicepb.LedgerAction_DeleteMetadata:
+			return "target=" + canonicalTarget(a.DeleteMetadata.GetTarget()) + "|key=" + a.DeleteMetadata.GetKey()
+		}
+	}
+
+	return ""
+}
+
+// CanonicalServedLogPayload renders a served log's payload the way
+// logPayloadFor renders the request that produced it. Empty means the payload
+// is one this rendering does not pin (a transaction).
+func CanonicalServedLogPayload(data *commonpb.LedgerLogPayload) string {
+	switch {
+	case data.GetAddedAccountType() != nil:
+		at := data.GetAddedAccountType().GetAccountType()
+
+		return "type=" + at.GetName() + "|pattern=" + at.GetPattern()
+	case data.GetRemovedAccountType() != nil:
+		return "type=" + data.GetRemovedAccountType().GetName()
+	case data.GetSetMetadataFieldType() != nil:
+		f := data.GetSetMetadataFieldType()
+
+		return "target=" + strconv.Itoa(int(f.GetTargetType())) +
+			"|key=" + f.GetKey() +
+			"|type=" + strconv.Itoa(int(f.GetType()))
+	case data.GetRemovedMetadataFieldType() != nil:
+		f := data.GetRemovedMetadataFieldType()
+
+		return "target=" + strconv.Itoa(int(f.GetTargetType())) + "|key=" + f.GetKey()
+	case data.GetCreateIndex() != nil:
+		return "index=" + indexes.Canonical(data.GetCreateIndex().GetId())
+	case data.GetDropIndex() != nil:
+		return "index=" + indexes.Canonical(data.GetDropIndex().GetId())
+	case data.GetSavedMetadata() != nil:
+		m := data.GetSavedMetadata()
+
+		return "target=" + canonicalTarget(m.GetTarget()) + "|" + canonicalMetadata(m.GetMetadata())
+	case data.GetDeletedMetadata() != nil:
+		m := data.GetDeletedMetadata()
+
+		return "target=" + canonicalTarget(m.GetTarget()) + "|key=" + m.GetKey()
+	default:
+		return ""
+	}
+}
+
+// canonicalTarget names a metadata target: an account by address, a
+// transaction by id.
+func canonicalTarget(t *commonpb.Target) string {
+	if acct := t.GetAccount(); acct != nil {
+		return "acct:" + acct.GetAddr()
+	}
+
+	return "tx:" + strconv.FormatUint(t.GetTransactionId(), 10)
+}
+
+// canonicalMetadata renders a metadata map key-sorted, values type-tagged
+// (MetaValueString), so equality of the rendering is equality of the map.
+func canonicalMetadata(m map[string]*commonpb.MetadataValue) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+MetaValueString(m[k]))
+	}
+
+	return strings.Join(parts, ",")
+}
+
 // appendLog records the log a committed request produced, if it produced one.
 // The id is the stream's position, dense from 1.
 func (s *LedgerState) appendLog(req *servicepb.Request) {
@@ -918,7 +1066,108 @@ func (s *LedgerState) appendLog(req *servicepb.Request) {
 		return
 	}
 
-	s.logs = s.logs.Append(&logRecord{id: uint64(s.logs.Len()) + 1, kind: kind})
+	s.logs = s.logs.Append(&logRecord{id: uint64(s.logs.Len()) + 1, kind: kind, payload: logPayloadFor(req)})
+}
+
+// volumeAnnotations are the three per-log volume lists the FSM derives at end
+// of bulk (write_set_new_volumes.go): a purged cell that held a non-zero value
+// before the bulk drained to zero, one that was created and zeroed inside the
+// bulk is ephemeral, and a surviving cell that did not exist before is newly
+// kept. "Did not exist" covers an absent cell and a zero placeholder alike,
+// matching isNewVolumeUpdate.
+type volumeAnnotations struct {
+	purged    map[VolumeKey]bool
+	newKept   map[VolumeKey]bool
+	ephemeral map[VolumeKey]bool
+}
+
+// classifyVolumes runs the model's copy of that partition over the cells this
+// bulk touched in one ledger. purged names the cells purgeZeroBalance dropped;
+// s is the post-purge state and base the pre-bulk one.
+//
+// A steady-state TRANSIENT cell — one matching a transient type whose pre-bulk
+// value is absent or zero — is carved out: partitionVolumes files it under
+// `transient`, which is neither `kept` nor `purged`, and only those two feed
+// the annotation sets. Such a cell therefore carries no annotation whatever its
+// closing balance.
+func (s *LedgerState) classifyVolumes(base *LedgerState, touched, purged map[VolumeKey]bool) volumeAnnotations {
+	out := volumeAnnotations{
+		purged:    map[VolumeKey]bool{},
+		newKept:   map[VolumeKey]bool{},
+		ephemeral: map[VolumeKey]bool{},
+	}
+
+	compiled := s.compiled()
+
+	for key := range touched {
+		prior := base.vol(key)
+		newCell := prior.Input.IsZero() && prior.Output.IsZero()
+
+		if newCell {
+			if t := s.match(key.Address, compiled); t != nil &&
+				t.Persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+				continue
+			}
+		}
+
+		switch {
+		case purged[key] && newCell:
+			out.ephemeral[key] = true
+		case purged[key]:
+			out.purged[key] = true
+		case newCell:
+			// Not purged and not transient, so the cell is in the FSM's `kept`
+			// partition — the only classification left for a first write.
+			out.newKept[key] = true
+		}
+	}
+
+	return out
+}
+
+// renderTouchedVolumes names a set of cells the way the FSM orders them on a
+// log: deduplicated, ascending by account then asset. Colour is a dimension of
+// the server's key that the model does not carry, so a colour split cannot be
+// caught here.
+func renderTouchedVolumes(cells map[VolumeKey]bool) string {
+	if len(cells) == 0 {
+		return ""
+	}
+
+	keys := make([]VolumeKey, 0, len(cells))
+	for key := range cells {
+		keys = append(keys, key)
+	}
+
+	sort.Slice(keys, func(a, b int) bool { return CompareVolumeKey(keys[a], keys[b]) < 0 })
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, key.Address+":"+key.Asset)
+	}
+
+	return strings.Join(parts, ",")
+}
+
+// annotateLog hangs one order's share of the bulk's volume classification on
+// the log it produced: the cells IT touched, intersected with each class.
+func (s *LedgerState) annotateLog(idx int, cells map[VolumeKey]bool, ann volumeAnnotations) {
+	intersect := func(set map[VolumeKey]bool) map[VolumeKey]bool {
+		out := map[VolumeKey]bool{}
+		for key := range cells {
+			if set[key] {
+				out[key] = true
+			}
+		}
+
+		return out
+	}
+
+	rec := *s.logs.Get(idx)
+	rec.purged = renderTouchedVolumes(intersect(ann.purged))
+	rec.newKept = renderTouchedVolumes(intersect(ann.newKept))
+	rec.ephemeral = renderTouchedVolumes(intersect(ann.ephemeral))
+	s.logs = s.logs.Set(idx, &rec)
 }
 
 // applyOne mutates the (already-forked) working state for one request and
@@ -1571,8 +1820,10 @@ func (s *LedgerState) transientViolation(base *LedgerState, touched map[VolumeKe
 
 // purgeZeroBalance drops touched EPHEMERAL/TRANSIENT cells that landed at a zero
 // balance, mirroring the server's post-commit write-set sweep (PR #151).
-func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool) {
+func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool) map[VolumeKey]bool {
+	purged := map[VolumeKey]bool{}
 	compiled := s.compiled()
+
 	for key := range touched {
 		vp, ok := s.volumes.Get(key)
 		if !ok {
@@ -1589,7 +1840,10 @@ func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool) {
 			commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
 			if vp.Input.Cmp(&vp.Output) == 0 {
 				s.volumes = s.volumes.Delete(key)
+				purged[key] = true
 			}
 		}
 	}
+
+	return purged
 }

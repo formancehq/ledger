@@ -210,11 +210,68 @@ func (g GlobalState) LearnLogDate(ledger string, id uint64, date *commonpb.Times
 	g.ledgers[ledger] = ls
 }
 
+// LearnLogSequence fills in a log's global sequence, the second field of the
+// stream the model cannot derive: it counts every ledger's logs and the
+// technical entries among them. Fill-once, like the date.
+func (g GlobalState) LearnLogSequence(ledger string, id, sequence uint64) {
+	ls, ok := g.ledgers[ledger]
+	if !ok || id == 0 || id > uint64(ls.logs.Len()) || sequence == 0 {
+		return
+	}
+
+	rec := *ls.logs.Get(int(id - 1))
+	if rec.sequence == 0 {
+		rec.sequence = sequence
+	}
+
+	ls.logs = ls.logs.Set(int(id-1), &rec)
+	g.ledgers[ledger] = ls
+}
+
 // LogKinds returns each committed log's kind, ascending by id.
 func (s LedgerState) LogKinds() []string {
 	out := make([]string, 0, s.logs.Len())
 	for i := range s.logs.Len() {
 		out = append(out, s.logs.Get(i).kind)
+	}
+
+	return out
+}
+
+// LogRow is one committed log as the model holds it: the id it derives, the
+// kind it derives from the request, and the date and global sequence it
+// learned from the commit response. A nil date or a zero sequence is one not
+// yet learned.
+//
+// PurgedVolumes, NewKeptVolumes and EphemeralVolumes are the end-of-bulk volume
+// annotations, rendered as a comma-separated "account:asset" list ascending by
+// account then asset. Empty means the log carries none of that class.
+type LogRow struct {
+	ID               uint64
+	Kind             string
+	Payload          string
+	Date             *commonpb.Timestamp
+	Sequence         uint64
+	PurgedVolumes    string
+	NewKeptVolumes   string
+	EphemeralVolumes string
+}
+
+// LogRows returns every committed log, ascending by id.
+func (s LedgerState) LogRows() []LogRow {
+	out := make([]LogRow, 0, s.logs.Len())
+	for i := range s.logs.Len() {
+		rec := s.logs.Get(i)
+		out = append(out, LogRow{
+			ID:               rec.id,
+			Kind:             rec.kind,
+			Payload:          rec.payload,
+			Date:             rec.date,
+			Sequence:         rec.sequence,
+			PurgedVolumes:    rec.purged,
+			NewKeptVolumes:   rec.newKept,
+			EphemeralVolumes: rec.ephemeral,
+		})
 	}
 
 	return out
