@@ -636,8 +636,10 @@ func DeletePreparedQueryAction(ledger, name string) *servicepb.Request {
 
 // CreateQueryCheckpointAction creates an action for taking a query checkpoint.
 // The checkpoint is a batch trigger: admission accepts it only as the last
-// action of a batch, and Apply does not return until the read index checkpoint
-// is materialized on the serving node.
+// action of a batch. With response payloads enabled, Apply waits until the read
+// index checkpoint is materialized on the serving node. With skip_response,
+// only the leader is guaranteed ready; a forwarding follower skips its local
+// wait because the leader has already stripped the checkpoint ID.
 func CreateQueryCheckpointAction() *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_CreateQueryCheckpoint{
