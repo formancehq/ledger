@@ -364,17 +364,9 @@ func (c Config) Validate() error {
 // policy cannot bypass this; validating here turns the mistake into a boot
 // failure with the offending flag named.
 func (c Config) validateMetadataLimits() error {
-	limits := c.MetadataLimits()
-
-	if !limits.Configured() {
-		return errors.New("--metadata-max-entries, --metadata-max-key-bytes, --metadata-max-value-bytes, " +
-			"--metadata-max-entity-bytes and --metadata-max-command-bytes must all be greater than zero")
-	}
-
-	if !limits.Consistent() {
-		return errors.New("metadata limits must satisfy --metadata-max-key-bytes <= --metadata-max-entity-bytes, " +
-			"--metadata-max-value-bytes <= --metadata-max-entity-bytes and " +
-			"--metadata-max-entity-bytes <= --metadata-max-command-bytes")
+	if err := c.MetadataLimits().Validate(); err != nil {
+		return fmt.Errorf("invalid metadata flags (--metadata-max-entries, --metadata-max-key-bytes, "+
+			"--metadata-max-value-bytes, --metadata-max-entity-bytes, --metadata-max-command-bytes): %w", err)
 	}
 
 	return nil

@@ -70,20 +70,8 @@ func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Contex
 // proposed policy, so every node reaches the same verdict for one committed
 // entry.
 func validateClusterPolicyMetadataLimits(policy *commonpb.ClusterPolicy) domain.Describable {
-	limits := domain.MetadataLimitsFromPolicy(policy)
-
-	if !limits.Configured() {
-		return &domain.ErrClusterPolicyInvalid{
-			Detail: "every metadata_max_* limit must be at least 1",
-		}
-	}
-
-	if !limits.Consistent() {
-		return &domain.ErrClusterPolicyInvalid{
-			Detail: "metadata limits must satisfy metadata_max_key_bytes <= metadata_max_entity_bytes, " +
-				"metadata_max_value_bytes <= metadata_max_entity_bytes and " +
-				"metadata_max_entity_bytes <= metadata_max_command_bytes",
-		}
+	if err := domain.MetadataLimitsFromPolicy(policy).Validate(); err != nil {
+		return &domain.ErrClusterPolicyInvalid{Detail: err.Error()}
 	}
 
 	return nil

@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"errors"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -113,6 +115,21 @@ func (l MetadataLimits) Consistent() bool {
 	return l.MaxKeyBytes <= l.MaxTotalBytesPerEntity &&
 		l.MaxValueBytes <= l.MaxTotalBytesPerEntity &&
 		l.MaxTotalBytesPerEntity <= l.MaxTotalBytesPerCommand
+}
+
+// Validate checks that the ceilings form a usable policy. Bootstrap and FSM
+// policy updates share this validation so their acceptance rules cannot drift.
+func (l MetadataLimits) Validate() error {
+	if !l.Configured() {
+		return errors.New("every metadata_max_* limit must be at least 1")
+	}
+	if !l.Consistent() {
+		return errors.New("metadata limits must satisfy metadata_max_key_bytes <= metadata_max_entity_bytes, " +
+			"metadata_max_value_bytes <= metadata_max_entity_bytes and " +
+			"metadata_max_entity_bytes <= metadata_max_command_bytes")
+	}
+
+	return nil
 }
 
 // MetadataValueSize is the measured size of one metadata value. Unknown and nil
