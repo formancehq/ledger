@@ -51,6 +51,16 @@ atomically selects a fresh generation; processes already running keep using the
 retired generation through a PID lease. A retired generation is removed only
 after none of its lease processes exists.
 
+Cache size measurement happens before acquiring the selection lock and is used
+only if the current generation has not changed. Retirement detaches idle
+generations under the lock; recursive deletion runs after unlocking. A marked
+retirement directory retains its cleaner's process identity outside the payload
+so a later run can resume deletion if that cleaner dies. Ephemeral supervisors
+launch an exec-based wrapper: the workload has its own lease and remains
+protected if the supervisor receives SIGKILL. Future check timestamps (for
+example after clock rollback) trigger a fresh measurement rather than delaying
+rotation until the clock catches up.
+
 The defaults are a 32 GiB soft budget and a five-minute size-check interval.
 Set `LEDGER_AI_GOCACHE_MAX_MIB` or
 `LEDGER_AI_GOCACHE_CHECK_INTERVAL_SECONDS` to tune them for a workstation.

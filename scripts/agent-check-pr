@@ -252,17 +252,8 @@ if [[ -n "${VALIDATION_RUN_DIR:-}" ]]; then
             exit 1
         }
     done
-    resolved_go_cache=$(cd "${GOCACHE:-}" 2>/dev/null && pwd -P) || {
-        echo "SHARED_CACHE_GATE=FAIL (GOCACHE is not a valid directory)" >&2
-        exit 1
-    }
-    go_cache_generation_root=${resolved_go_cache%/cache}
-    go_cache_generation=${go_cache_generation_root##*/}
-    [[ "$resolved_go_cache" == "${GOCACHE:-}" && "$go_cache_generation" =~ ^gen-[0-9]+-[0-9]+-[0-9]+$ && "${go_cache_generation_root%/*}" == "$cache_root/go-build-generations/generations" ]] || {
-        echo "SHARED_CACHE_GATE=FAIL (GOCACHE does not use a managed generation under $cache_root/go-build-generations)" >&2
-        exit 1
-    }
-    [[ -f "$go_cache_generation_root/.ledger-ai-go-cache-generation" && ! -L "$go_cache_generation_root/.ledger-ai-go-cache-generation" && "$(<"$go_cache_generation_root/.ledger-ai-go-cache-generation")" == "ledger-ai-go-cache-generation-v1" ]] || {
+    source "$SCRIPT_DIR/agent-cache-contract"
+    managed_go_cache_valid "$cache_root" "${GOCACHE:-}" || {
         echo "SHARED_CACHE_GATE=FAIL (GOCACHE is not a managed generation)" >&2
         exit 1
     }

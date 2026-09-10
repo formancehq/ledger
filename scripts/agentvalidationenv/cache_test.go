@@ -147,25 +147,20 @@ func TestConcurrentGoCacheInitializersShareOneGeneration(t *testing.T) {
 	runGit(t, repository, "init")
 
 	const peers = 8
-	commands := make([]*exec.Cmd, 0, peers)
-	outputs := make([]bytes.Buffer, peers)
+	commands := make([]testenv.SynchronizedCommand, 0, peers)
 	for index := range peers {
-		command := testenv.Command(t, "bash", validationEnvPath(t), filepath.Join(root, fmt.Sprintf("run-%d", index)),
+		command := testenv.Command(t, "bash", "-euc",
+			`printf 'ready\n' >&3; IFS= read -r release <&4; exec 3>&- 4<&-; exec "$@"`,
+			"cache-barrier", "bash", validationEnvPath(t), filepath.Join(root, fmt.Sprintf("run-%d", index)),
 			"sh", "-c", "printf %s \"$GOCACHE\"")
 		command.Dir = repository
 		command.Env = testenv.Environment("HOME="+root, "LEDGER_AI_CACHE_ROOT="+cacheRoot)
-		command.Stdout = &outputs[index]
-		command.Stderr = &outputs[index]
-		commands = append(commands, command)
+		commands = append(commands, testenv.SynchronizedCommand{Name: fmt.Sprintf("peer-%d", index), Command: command})
 	}
-	for _, command := range commands {
-		require.NoError(t, command.Start())
-	}
-	for index, command := range commands {
-		require.NoError(t, command.Wait(), outputs[index].String())
-	}
+	result, err := testenv.RunSynchronized(t, 30*time.Second, commands...)
+	require.NoError(t, err)
 	for index := 1; index < peers; index++ {
-		require.Equal(t, outputs[0].String(), outputs[index].String())
+		require.Equal(t, result.Output["peer-0"], result.Output[fmt.Sprintf("peer-%d", index)])
 	}
 }
 
@@ -195,7 +190,11 @@ func TestGoCacheRecoversStaleLockAndRejectsInvalidConfiguration(t *testing.T) {
 		command.Env = testenv.Environment("HOME="+root, "LEDGER_AI_CACHE_ROOT="+cacheRoot, setting)
 		output, err := command.CombinedOutput()
 		require.Error(t, err, string(output))
-		require.Contains(t, string(output), "must be")
+		if strings.HasPrefix(setting, "LEDGER_AI_GOCACHE_MAX_MIB=") {
+			require.Contains(t, string(output), "LEDGER_AI_GOCACHE_MAX_MIB must be a positive integer")
+		} else {
+			require.Contains(t, string(output), "LEDGER_AI_GOCACHE_CHECK_INTERVAL_SECONDS must be a non-negative integer")
+		}
 	}
 }
 

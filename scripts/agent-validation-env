@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/agent-cache-contract"
 
 clean_cache=false
 ephemeral=false
@@ -79,7 +80,8 @@ if [[ "$clean_cache" == true ]]; then
     chmod -R u+w -- "$lint_cache" >/dev/null 2>&1 || true
     rm -rf -- "$lint_cache"
 fi
-printf '%s\n' "ledger-ai-cache-v1" >"$cache_marker"
+printf '%s\n' "ledger-ai-cache-v1" >"$cache_marker.$$"
+mv -f -- "$cache_marker.$$" "$cache_marker"
 
 for name in go-mod go-path golangci-lint xdg; do
     mkdir -p "$cache_root/$name"
@@ -118,14 +120,6 @@ mkdir -p "$go_cache_generations"
     exit 1
 }
 go_cache_namespace_marker="$go_cache_namespace/.ledger-ai-go-build"
-if [[ -e "$go_cache_namespace_marker" ]]; then
-    [[ -f "$go_cache_namespace_marker" && ! -L "$go_cache_namespace_marker" && "$(<"$go_cache_namespace_marker")" == "ledger-ai-go-build-v1" ]] || {
-        echo "agent-validation-env: invalid Go cache namespace marker" >&2
-        exit 1
-    }
-else
-    printf '%s\n' "ledger-ai-go-build-v1" >"$go_cache_namespace_marker"
-fi
 
 process_identity() {
     local pid=$1 boot_id start_ticks identity
@@ -156,9 +150,13 @@ lease_is_live() {
 }
 
 write_process_identity() {
-    local target=$1 identity
+    local target=$1 identity temporary_identity
     identity=$(process_identity "$$" 2>/dev/null || true)
-    printf '%s\n%s\n' "$$" "$identity" >"$target"
+    # Keep staging files outside lock/retirement directories so interrupted
+    # publication cannot prevent their later removal with rmdir.
+    temporary_identity="$go_cache_namespace/process-$$-${RANDOM}"
+    printf '%s\n%s\n' "$$" "$identity" >"$temporary_identity"
+    mv -f -- "$temporary_identity" "$target"
 }
 
 release_go_cache_lock() {
@@ -217,7 +215,7 @@ new_go_cache_generation() {
         exit 1
     }
     mkdir -p "$generation_root/cache" "$generation_root/leases"
-    printf '%s\n' "ledger-ai-go-cache-generation-v1" >"$generation_root/.ledger-ai-go-cache-generation"
+    printf '%s\n' "$go_cache_generation_marker" >"$generation_root/.ledger-ai-go-cache-generation"
     temporary_current="$go_cache_current_file.$$"
     printf '%s\n' "$generation" >"$temporary_current"
     mv -f -- "$temporary_current" "$go_cache_current_file"
@@ -226,14 +224,27 @@ new_go_cache_generation() {
     go_cache_path="$generation_root/cache"
 }
 
+retired_go_cache_paths=()
 prune_retired_go_cache_generations() {
     local generation_path generation lease live
+    # Resume interrupted deletion without competing with another live cleaner.
+    # The marker and owner sit outside the payload, surviving partial deletion.
+    local retired_path
+    for retired_path in "$go_cache_namespace"/retired-gen-*; do
+        [[ -d "$retired_path" && ! -L "$retired_path" ]] || continue
+        [[ -f "$retired_path/marker" && ! -L "$retired_path/marker" && "$(<"$retired_path/marker")" == "$go_cache_generation_marker" ]] || continue
+        [[ -f "$retired_path/owner" && ! -L "$retired_path/owner" ]] || continue
+        if ! lease_is_live "$retired_path/owner"; then
+            write_process_identity "$retired_path/owner"
+            retired_go_cache_paths+=("$retired_path")
+        fi
+    done
     for generation_path in "$go_cache_generations"/gen-*; do
         [[ -d "$generation_path" && ! -L "$generation_path" ]] || continue
         generation=${generation_path##*/}
         [[ "$generation" != "$go_cache_generation" ]] || continue
         [[ -f "$generation_path/.ledger-ai-go-cache-generation" && ! -L "$generation_path/.ledger-ai-go-cache-generation" ]] || continue
-        [[ "$(<"$generation_path/.ledger-ai-go-cache-generation")" == "ledger-ai-go-cache-generation-v1" ]] || continue
+        [[ "$(<"$generation_path/.ledger-ai-go-cache-generation")" == "$go_cache_generation_marker" ]] || continue
 
         live=false
         for lease in "$generation_path/leases"/*; do
@@ -249,23 +260,65 @@ prune_retired_go_cache_generations() {
             fi
         done
         if [[ "$live" == false ]]; then
-            find "$generation_path" -depth -delete
+            # Detach under the selection lock; potentially slow deletion runs
+            # after releasing it so other validators can acquire their leases.
+            retired_path="$go_cache_namespace/retired-$generation-$$"
+            mkdir "$retired_path"
+            printf '%s\n' "$go_cache_generation_marker" >"$retired_path/marker"
+            write_process_identity "$retired_path/owner"
+            mv -- "$generation_path" "$retired_path/payload"
+            retired_go_cache_paths+=("$retired_path")
         fi
     done
 }
 
+# Measuring a large cache must not hold the generation-selection lock. The
+# result is used only if the current pointer still names the measured cache.
+measured_generation=
+measured_size_kib=0
+measurement_failed=false
+measurement_now=$(date +%s)
+measurement_last=0
+if [[ -f "$go_cache_check_file" && ! -L "$go_cache_check_file" ]]; then
+    measurement_last=$(<"$go_cache_check_file")
+    [[ "$measurement_last" =~ ^[0-9]+$ ]] || measurement_last=0
+fi
+if ((measurement_last > measurement_now || measurement_now - measurement_last >= go_cache_check_interval)); then
+    if [[ -f "$go_cache_current_file" && ! -L "$go_cache_current_file" ]]; then
+        measured_generation=$(<"$go_cache_current_file")
+    fi
+    if [[ "$measured_generation" =~ $go_cache_generation_pattern ]]; then
+        measured_cache="$go_cache_generations/$measured_generation/cache"
+        if [[ ! -L "$go_cache_generations/$measured_generation" && ! -L "$measured_cache" ]]; then
+            # Rotation may detach this directory during measurement. Defer
+            # handling failure until the pointer is checked under the lock.
+            measured_size_kib=$(du -sk "$measured_cache" 2>/dev/null | awk '{print $1}') || measurement_failed=true
+        fi
+    fi
+fi
+
 acquire_go_cache_lock
 trap release_go_cache_lock EXIT
+# Publish the namespace marker under the selection lock: otherwise another
+# initializer can observe the file after truncation but before its contents.
+if [[ -e "$go_cache_namespace_marker" ]]; then
+    [[ -f "$go_cache_namespace_marker" && ! -L "$go_cache_namespace_marker" && "$(<"$go_cache_namespace_marker")" == "ledger-ai-go-build-v1" ]] || {
+        echo "agent-validation-env: invalid Go cache namespace marker" >&2
+        exit 1
+    }
+else
+    printf '%s\n' "ledger-ai-go-build-v1" >"$go_cache_namespace_marker.$$"
+    mv -f -- "$go_cache_namespace_marker.$$" "$go_cache_namespace_marker"
+fi
 now=$(date +%s)
 go_cache_generation=
 if [[ -f "$go_cache_current_file" && ! -L "$go_cache_current_file" ]]; then
     go_cache_generation=$(<"$go_cache_current_file")
 fi
 go_cache_generation_valid=false
-if [[ "$go_cache_generation" =~ ^gen-[0-9]+-[0-9]+-[0-9]+$ ]]; then
+if [[ "$go_cache_generation" =~ $go_cache_generation_pattern ]]; then
     go_cache_generation_root="$go_cache_generations/$go_cache_generation"
-    go_cache_marker="$go_cache_generation_root/.ledger-ai-go-cache-generation"
-    if [[ -d "$go_cache_generation_root" && ! -L "$go_cache_generation_root" && -d "$go_cache_generation_root/cache" && ! -L "$go_cache_generation_root/cache" && -d "$go_cache_generation_root/leases" && ! -L "$go_cache_generation_root/leases" && -f "$go_cache_marker" && ! -L "$go_cache_marker" ]] && [[ "$(<"$go_cache_marker")" == "ledger-ai-go-cache-generation-v1" ]]; then
+    if managed_go_cache_valid "$cache_root" "$go_cache_generation_root/cache" && [[ -d "$go_cache_generation_root/leases" && ! -L "$go_cache_generation_root/leases" ]]; then
         go_cache_generation_valid=true
     fi
 fi
@@ -280,8 +333,15 @@ if [[ -f "$go_cache_check_file" ]]; then
     last_check=$(<"$go_cache_check_file")
     [[ "$last_check" =~ ^[0-9]+$ ]] || last_check=0
 fi
-if ((now - last_check >= go_cache_check_interval)); then
-    go_cache_size_kib=$(du -sk "$go_cache_path" | awk '{print $1}')
+if ((last_check > now || now - last_check >= go_cache_check_interval)); then
+    go_cache_size_kib=0
+    if [[ "$go_cache_generation" == "$measured_generation" ]]; then
+        [[ "$measurement_failed" == false && "$measured_size_kib" =~ ^[0-9]+$ ]] || {
+            echo "agent-validation-env: could not measure current Go cache generation" >&2
+            exit 1
+        }
+        go_cache_size_kib=$measured_size_kib
+    fi
     temporary_check="$go_cache_check_file.$$"
     printf '%s\n' "$now" >"$temporary_check"
     mv -f -- "$temporary_check" "$go_cache_check_file"
@@ -295,6 +355,14 @@ go_cache_lease="$go_cache_generation_root/leases/lease-$$-${RANDOM}"
 write_process_identity "$go_cache_lease"
 release_go_cache_lock
 trap - EXIT
+
+for retired_path in ${retired_go_cache_paths[@]+"${retired_go_cache_paths[@]}"}; do
+    if [[ -e "$retired_path/payload" ]]; then
+        find "$retired_path/payload" -depth -delete
+    fi
+    rm -f -- "$retired_path/marker" "$retired_path/owner"
+    rmdir -- "$retired_path"
+done
 
 export VALIDATION_RUN_ID="$run_id"
 export VALIDATION_RUN_DIR="$run_dir"
@@ -314,7 +382,9 @@ if [[ "$ephemeral" == true ]]; then
         esac
     }
     trap cleanup EXIT
-    "$@"
+    # The inner non-ephemeral wrapper execs the workload, giving it its own
+    # PID lease even if this cleanup supervisor is killed with SIGKILL.
+    bash "$0" "$run_dir" "$@"
     exit $?
 fi
 
