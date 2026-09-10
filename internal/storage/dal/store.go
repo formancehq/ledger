@@ -309,10 +309,11 @@ const (
 	// row; revision monotonicity is validated in the FSM apply path.
 	SubGlobClusterPolicy byte = 0x13
 	// SubGlobLastIdempotencyEvictionCutoff stores the monotonic high-water cutoff
-	// of every applied IdempotencyEviction: [ZoneGlobal][…] → uint64 BE (HLC
-	// microseconds). An outcome whose expires_at is at or below it has been
-	// evicted, so the preload re-injection gate uses it — not the wall-clock-lagging
-	// HLC — to avoid resurrecting an evicted outcome into the cache.
+	// of every applied IdempotencyEviction: [ZoneGlobal][…] → uint64 BE (wall-clock
+	// microseconds — the leader's eviction cutoff, not an HLC timestamp). An outcome
+	// whose expires_at is at or below it has been evicted, so the preload
+	// re-injection gate uses it — not the wall-clock-lagging HLC — to avoid
+	// resurrecting an evicted outcome into the cache.
 	SubGlobLastIdempotencyEvictionCutoff byte = 0x14
 )
 

@@ -26,8 +26,9 @@ type FSMState struct {
 	LastAppliedTimestamp uint64
 	SnapshotIndex        uint64
 
-	// LastIdempotencyEvictionCutoff is the monotonic high-water cutoff (HLC
-	// microseconds) of every applied IdempotencyEviction. An outcome whose
+	// LastIdempotencyEvictionCutoff is the monotonic high-water cutoff
+	// (wall-clock microseconds — the leader's eviction cutoff, not an HLC
+	// timestamp) of every applied IdempotencyEviction. An outcome whose
 	// expires_at is at or below it has been evicted; the preload re-injection
 	// gate reads it to avoid resurrecting an evicted outcome.
 	LastIdempotencyEvictionCutoff uint64

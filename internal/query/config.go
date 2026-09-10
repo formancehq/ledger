@@ -19,9 +19,9 @@ func ReadLastAppliedTimestamp(reader dal.PebbleGetter) (uint64, error) {
 	return dal.ReadUint64(reader, []byte{dal.ZoneGlobal, dal.SubGlobLastAppliedTimestamp}, 0)
 }
 
-// ReadLastIdempotencyEvictionCutoff returns the high-water cutoff (HLC
-// microseconds) of every applied idempotency eviction. Returns 0 (no eviction
-// applied yet) if not found.
+// ReadLastIdempotencyEvictionCutoff returns the high-water cutoff (wall-clock
+// microseconds — the leader's eviction cutoff, not an HLC timestamp) of every
+// applied idempotency eviction. Returns 0 (no eviction applied yet) if not found.
 func ReadLastIdempotencyEvictionCutoff(reader dal.PebbleGetter) (uint64, error) {
 	return dal.ReadUint64(reader, []byte{dal.ZoneGlobal, dal.SubGlobLastIdempotencyEvictionCutoff}, 0)
 }
