@@ -347,3 +347,36 @@ func TestBackupScheduling_APIReadFailureDoesNotSchedule(t *testing.T) {
 	require.Equal(t, 2, attempts)
 	require.Len(t, f.runs(t), 1)
 }
+
+func TestBackupScheduling_ManualRunAdvancesCursor(t *testing.T) {
+	t.Parallel()
+	for _, phase := range []ledgerv1alpha1.BackupRunPhase{ledgerv1alpha1.BackupRunPhaseSucceeded, ledgerv1alpha1.BackupRunPhaseFailed} {
+		t.Run(string(phase), func(t *testing.T) {
+			t.Parallel()
+			f := newBackupSchedulingFixture(t)
+			now := time.Date(2026, 9, 10, 3, 0, 0, 0, time.UTC)
+			// Match kubectl-ledger backup trigger: the parent label and BackupRef
+			// associate the run; a scheduler-created owner reference is not required.
+			manual := &ledgerv1alpha1.BackupRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "manual-full", Namespace: f.key.Namespace, Labels: map[string]string{
+					ledgerv1alpha1.LabelBackup:        f.key.Name,
+					ledgerv1alpha1.LabelBackupRunType: string(ledgerv1alpha1.BackupRunTypeFull),
+				}},
+				Spec: ledgerv1alpha1.BackupRunSpec{BackupRef: f.key.Name, Type: ledgerv1alpha1.BackupRunTypeFull},
+			}
+			require.NoError(t, f.client.Create(context.Background(), manual))
+			f.complete(t, *manual, phase, now)
+			f.reconcile(t, now.Add(time.Minute))
+			require.Empty(t, f.runs(t), "manual terminal run is pruned without scheduling another run")
+			backup := f.backup(t)
+			require.NotNil(t, backup.Status.LastFullRunCompletionTime)
+			require.True(t, now.Equal(backup.Status.LastFullRunCompletionTime.Time))
+			next := time.Date(2026, 9, 11, 2, 0, 0, 0, time.UTC)
+			require.True(t, next.Equal(backup.Status.NextFullBackupTime.Time))
+			f.reconcile(t, next.Add(-time.Second))
+			require.Empty(t, f.runs(t), "manual completion survives pruning and restart")
+			f.reconcile(t, next)
+			require.Len(t, f.runs(t), 1, "next scheduled execution remains due at the cron deadline")
+		})
+	}
+}
