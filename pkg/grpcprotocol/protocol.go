@@ -13,7 +13,7 @@ const (
 	// A non-schema change requires a concrete client/server interoperability break.
 	// See docs/technical/architecture/subsystems/api/protocol-compatibility.md.
 	// A compiled constant also identifies local builds without release ldflags.
-	Version = "8"
+	Version = "9"
 	// MetadataKey carries the protocol version, not authentication credentials.
 	MetadataKey = "ledger-protocol-version"
 )

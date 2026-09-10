@@ -7,8 +7,8 @@
 package servicepb
 
 import (
-	auditpb "github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	publicauditpb "github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -8710,7 +8710,7 @@ var File_bucket_proto protoreflect.FileDescriptor
 
 const file_bucket_proto_rawDesc = "" +
 	"\n" +
-	"\fbucket.proto\x12\x06ledger\x1a\fcommon.proto\x1a\vaudit.proto\x1a\x0fsignature.proto\x1a google/protobuf/descriptor.proto\"\x93\x01\n" +
+	"\fbucket.proto\x12\x06ledger\x1a\fcommon.proto\x1a\x10audit_view.proto\x1a\x0fsignature.proto\x1a google/protobuf/descriptor.proto\"\x93\x01\n" +
 	"\x11GetAccountRequest\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12#\n" +
@@ -9346,7 +9346,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x10InspectIndexMode\x12&\n" +
 	"\"INSPECT_INDEX_MODE_DISTINCT_VALUES\x10\x00\x12\x1d\n" +
 	"\x19INSPECT_INDEX_MODE_FACETS\x10\x01\x12\x1e\n" +
-	"\x1aINSPECT_INDEX_MODE_SUMMARY\x10\x022\xec\x13\n" +
+	"\x1aINSPECT_INDEX_MODE_SUMMARY\x10\x022\xf8\x13\n" +
 	"\rBucketService\x12?\n" +
 	"\vListLedgers\x12\x1a.ledger.ListLedgersRequest\x1a\x12.common.LedgerInfo0\x01\x129\n" +
 	"\tGetLedger\x12\x18.ledger.GetLedgerRequest\x1a\x12.common.LedgerInfo\x128\n" +
@@ -9359,9 +9359,9 @@ const file_bucket_proto_rawDesc = "" +
 	"\x11GetPrimaryMetrics\x12 .ledger.GetPrimaryMetricsRequest\x1a!.ledger.GetPrimaryMetricsResponse\x12^\n" +
 	"\x13GetSecondaryMetrics\x12\".ledger.GetSecondaryMetricsRequest\x1a#.ledger.GetSecondaryMetricsResponse\x12B\n" +
 	"\n" +
-	"CheckStore\x12\x19.ledger.CheckStoreRequest\x1a\x17.ledger.CheckStoreEvent0\x01\x12H\n" +
-	"\x10ListAuditEntries\x12\x1f.ledger.ListAuditEntriesRequest\x1a\x11.audit.AuditEntry0\x01\x12@\n" +
-	"\rGetAuditEntry\x12\x1c.ledger.GetAuditEntryRequest\x1a\x11.audit.AuditEntry\x12O\n" +
+	"CheckStore\x12\x19.ledger.CheckStoreRequest\x1a\x17.ledger.CheckStoreEvent0\x01\x12N\n" +
+	"\x10ListAuditEntries\x12\x1f.ledger.ListAuditEntriesRequest\x1a\x17.publicaudit.AuditEntry0\x01\x12F\n" +
+	"\rGetAuditEntry\x12\x1c.ledger.GetAuditEntryRequest\x1a\x17.publicaudit.AuditEntry\x12O\n" +
 	"\x0eGetEventsSinks\x12\x1d.ledger.GetEventsSinksRequest\x1a\x1e.ledger.GetEventsSinksResponse\x122\n" +
 	"\bListLogs\x12\x17.ledger.ListLogsRequest\x1a\v.common.Log0\x01\x12,\n" +
 	"\x06GetLog\x12\x15.ledger.GetLogRequest\x1a\v.common.Log\x12G\n" +
@@ -9574,7 +9574,7 @@ var file_bucket_proto_goTypes = []any{
 	(*descriptorpb.FieldOptions)(nil),              // 170: google.protobuf.FieldOptions
 	(*commonpb.LedgerInfo)(nil),                    // 171: common.LedgerInfo
 	(*commonpb.Account)(nil),                       // 172: common.Account
-	(*auditpb.AuditEntry)(nil),                     // 173: audit.AuditEntry
+	(*publicauditpb.AuditEntry)(nil),               // 173: publicaudit.AuditEntry
 	(*commonpb.SigningKey)(nil),                    // 174: common.SigningKey
 	(*commonpb.LedgerStats)(nil),                   // 175: common.LedgerStats
 	(*commonpb.NumscriptInfo)(nil),                 // 176: common.NumscriptInfo
@@ -9778,8 +9778,8 @@ var file_bucket_proto_depIdxs = []int32{
 	60,  // 194: ledger.BucketService.GetPrimaryMetrics:output_type -> ledger.GetPrimaryMetricsResponse
 	62,  // 195: ledger.BucketService.GetSecondaryMetrics:output_type -> ledger.GetSecondaryMetricsResponse
 	75,  // 196: ledger.BucketService.CheckStore:output_type -> ledger.CheckStoreEvent
-	173, // 197: ledger.BucketService.ListAuditEntries:output_type -> audit.AuditEntry
-	173, // 198: ledger.BucketService.GetAuditEntry:output_type -> audit.AuditEntry
+	173, // 197: ledger.BucketService.ListAuditEntries:output_type -> publicaudit.AuditEntry
+	173, // 198: ledger.BucketService.GetAuditEntry:output_type -> publicaudit.AuditEntry
 	83,  // 199: ledger.BucketService.GetEventsSinks:output_type -> ledger.GetEventsSinksResponse
 	145, // 200: ledger.BucketService.ListLogs:output_type -> common.Log
 	145, // 201: ledger.BucketService.GetLog:output_type -> common.Log

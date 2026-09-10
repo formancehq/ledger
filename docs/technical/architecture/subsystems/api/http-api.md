@@ -648,11 +648,28 @@ DELETE /v3/{ledgerName}/accounts/{address}/metadata/{key}
 
 ### Audit
 
-Audit reads expose the tamper-evident audit trail over HTTP (mirroring the gRPC
+Audit reads expose structured public audit views over HTTP (mirroring the gRPC
 `BucketService.ListAuditEntries` / `GetAuditEntry`). Audit reads are
 **bucket-wide, not ledger-scoped** — a single proposal can touch several ledgers
 — so these routes sit at the top level (no `{ledgerName}`) and ledger scope is
 expressed as a filter condition. Both require the `ledger:AuditRead` scope.
+
+
+The response type is `publicaudit.AuditEntry`. Detail items expose `order` as a
+typed ledger-scoped or system-scoped message. Connection configurations use
+normalized components with annotated secrets masked. A configuration that cannot
+be normalized is omitted and its order sets `configurationUnavailable: true`;
+the remaining order details remain readable. Historical failure messages are
+masked and failure context is omitted, while the typed reason is preserved.
+
+`hash` identifies the original stored audit evidence. `signature`, when present,
+contains only the original signing `keyId`; it does not claim cryptographic
+verification. Neither field authenticates this public display. Raw
+`serializedOrder`, signed batch payloads and signature bytes are absent. Exact
+internal audit and signed evidence remain unchanged. The current server checker
+checks its implemented integrity and projection invariants; it does not verify
+client/server signatures cryptographically or certify completeness of a public
+response. See [structured credentials](structured-credentials.md).
 
 #### List Audit Entries
 

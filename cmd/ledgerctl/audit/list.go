@@ -11,9 +11,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -144,7 +143,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 }
 
 // printAuditEntry prints a single audit entry in a human-readable format.
-func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
+func printAuditEntry(entry *publicauditpb.AuditEntry, verbose bool) {
 	ts := "-"
 	if entry.GetTimestamp() != nil {
 		ts = entry.GetTimestamp().AsTime().Format(time.RFC3339)
@@ -207,28 +206,15 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 
 	// Display items if populated (GetAuditEntry), otherwise show order count summary.
 	if items := entry.GetItems(); len(items) > 0 {
-		// AuditItem stores the deterministic order bytes (what the hash
-		// chain is computed over). For display we unmarshal them back
-		// into Order — best effort, since proto evolution is forward-
-		// and backward-compatible at the unmarshal level. A failure
-		// here is a display issue only; the hash chain itself is intact.
-		orders := make([]*raftcmdpb.Order, 0, len(items))
+		// The service returns structured display orders, never original bytes.
+		orders := make([]*publicauditpb.Order, 0, len(items))
 		for _, item := range items {
-			order := &raftcmdpb.Order{}
-			if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
-				pterm.Printf("    %s order index=%d: %s\n",
-					pterm.Yellow("⚠"),
-					item.GetOrderIndex(),
-					pterm.Red(fmt.Sprintf("unable to decode (%s)", err)),
-				)
-
-				continue
+			if order := item.GetOrder(); order != nil {
+				orders = append(orders, order)
 			}
-
-			orders = append(orders, order)
 		}
 
-		printGroupedOrders(orders, verbose)
+		printGroupedOrders(orders, verbose, entry.GetSignature().GetKeyId())
 	} else if entry.GetOrderCount() > 0 {
 		pterm.Printf("    └─ %s orders\n", pterm.Cyan(strconv.FormatUint(uint64(entry.GetOrderCount()), 10)))
 	}
@@ -295,7 +281,7 @@ type orderGroup struct {
 }
 
 // printGroupedOrders groups consecutive identical orders and prints them compactly.
-func printGroupedOrders(orders []*raftcmdpb.Order, verbose bool) {
+func printGroupedOrders(orders []*publicauditpb.Order, verbose bool, signingKeyID string) {
 	if len(orders) == 0 {
 		return
 	}
@@ -305,9 +291,11 @@ func printGroupedOrders(orders []*raftcmdpb.Order, verbose bool) {
 	for _, order := range orders {
 		desc := describeOrder(order, verbose)
 
-		// Signatures are batch-level now (carried on the Log / audit entry), not
-		// per order, so the per-order grouping no longer surfaces a signing key.
+		// The batch key is identity metadata; this display is not signed evidence.
 		keyStr := pterm.Gray("unsigned")
+		if signingKeyID != "" {
+			keyStr = pterm.Gray(signingKeyID)
+		}
 
 		// Merge with previous group if same type+detail+key and no map lines
 		if len(groups) > 0 && len(desc.MapLines) == 0 {
@@ -372,7 +360,7 @@ func printGroupedOrders(orders []*raftcmdpb.Order, verbose bool) {
 // Apply payload the description bubbles up the inner data oneof (so the user
 // sees "create_transaction" rather than "apply") and prepends the ledger name
 // carried by the LedgerScopedOrder wrapper.
-func describeOrder(order *raftcmdpb.Order, verbose bool) cmdutil.OneofDescription {
+func describeOrder(order *publicauditpb.Order, verbose bool) cmdutil.OneofDescription {
 	if ls := order.GetLedgerScoped(); ls != nil {
 		if apply := ls.GetApply(); apply != nil {
 			desc := cmdutil.DescribeOneofField(apply.ProtoReflect(), "data", "LedgerScopedOrder", verbose)

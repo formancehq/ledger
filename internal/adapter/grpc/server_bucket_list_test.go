@@ -14,8 +14,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -270,12 +270,12 @@ func TestListAuditEntries(t *testing.T) {
 		impl, mockCtrl := newListHandlerHarness(t)
 		mockCtrl.EXPECT().ListAuditEntries(gomock.Any(), uint32(3), uint64(0), nil, false).
 			Return(page(
-				&auditpb.AuditEntry{Sequence: 1},
-				&auditpb.AuditEntry{Sequence: 2},
-				&auditpb.AuditEntry{Sequence: 3},
+				&publicauditpb.AuditEntry{Sequence: 1},
+				&publicauditpb.AuditEntry{Sequence: 2},
+				&publicauditpb.AuditEntry{Sequence: 3},
 			), nil)
 
-		stream := newFakeServerStream[auditpb.AuditEntry](t)
+		stream := newFakeServerStream[publicauditpb.AuditEntry](t)
 		req := &servicepb.ListAuditEntriesRequest{Options: &commonpb.ListOptions{PageSize: 2}}
 
 		require.NoError(t, impl.ListAuditEntries(req, stream))

@@ -14,9 +14,9 @@ import (
 	ctrl "github.com/formancehq/ledger/v3/internal/application/ctrl"
 	domain "github.com/formancehq/ledger/v3/internal/domain"
 	cursor "github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	auditpb "github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	clusterpb "github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	publicauditpb "github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	servicepb "github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	query "github.com/formancehq/ledger/v3/internal/query"
 	gomock "go.uber.org/mock/gomock"
@@ -320,10 +320,10 @@ func (c *MockBackendGetAccountCall) DoAndReturn(f func(context.Context, string, 
 }
 
 // GetAuditEntry mocks base method.
-func (m *MockBackend) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
+func (m *MockBackend) GetAuditEntry(ctx context.Context, sequence uint64) (*publicauditpb.AuditEntry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAuditEntry", ctx, sequence)
-	ret0, _ := ret[0].(*auditpb.AuditEntry)
+	ret0, _ := ret[0].(*publicauditpb.AuditEntry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -341,19 +341,19 @@ type MockBackendGetAuditEntryCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBackendGetAuditEntryCall) Return(arg0 *auditpb.AuditEntry, arg1 error) *MockBackendGetAuditEntryCall {
+func (c *MockBackendGetAuditEntryCall) Return(arg0 *publicauditpb.AuditEntry, arg1 error) *MockBackendGetAuditEntryCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBackendGetAuditEntryCall) Do(f func(context.Context, uint64) (*auditpb.AuditEntry, error)) *MockBackendGetAuditEntryCall {
+func (c *MockBackendGetAuditEntryCall) Do(f func(context.Context, uint64) (*publicauditpb.AuditEntry, error)) *MockBackendGetAuditEntryCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBackendGetAuditEntryCall) DoAndReturn(f func(context.Context, uint64) (*auditpb.AuditEntry, error)) *MockBackendGetAuditEntryCall {
+func (c *MockBackendGetAuditEntryCall) DoAndReturn(f func(context.Context, uint64) (*publicauditpb.AuditEntry, error)) *MockBackendGetAuditEntryCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -1020,10 +1020,10 @@ func (c *MockBackendListAccountsCall) DoAndReturn(f func(context.Context, string
 }
 
 // ListAuditEntries mocks base method.
-func (m *MockBackend) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (m *MockBackend) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*publicauditpb.AuditEntry], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAuditEntries", ctx, pageSize, afterSequence, filter, reverse)
-	ret0, _ := ret[0].(cursor.Cursor[*auditpb.AuditEntry])
+	ret0, _ := ret[0].(cursor.Cursor[*publicauditpb.AuditEntry])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1041,19 +1041,19 @@ type MockBackendListAuditEntriesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockBackendListAuditEntriesCall) Return(arg0 cursor.Cursor[*auditpb.AuditEntry], arg1 error) *MockBackendListAuditEntriesCall {
+func (c *MockBackendListAuditEntriesCall) Return(arg0 cursor.Cursor[*publicauditpb.AuditEntry], arg1 error) *MockBackendListAuditEntriesCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockBackendListAuditEntriesCall) Do(f func(context.Context, uint32, uint64, *commonpb.QueryFilter, bool) (cursor.Cursor[*auditpb.AuditEntry], error)) *MockBackendListAuditEntriesCall {
+func (c *MockBackendListAuditEntriesCall) Do(f func(context.Context, uint32, uint64, *commonpb.QueryFilter, bool) (cursor.Cursor[*publicauditpb.AuditEntry], error)) *MockBackendListAuditEntriesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockBackendListAuditEntriesCall) DoAndReturn(f func(context.Context, uint32, uint64, *commonpb.QueryFilter, bool) (cursor.Cursor[*auditpb.AuditEntry], error)) *MockBackendListAuditEntriesCall {
+func (c *MockBackendListAuditEntriesCall) DoAndReturn(f func(context.Context, uint32, uint64, *commonpb.QueryFilter, bool) (cursor.Cursor[*publicauditpb.AuditEntry], error)) *MockBackendListAuditEntriesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

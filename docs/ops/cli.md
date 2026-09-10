@@ -2314,7 +2314,9 @@ ledgerctl store rebuild-audit-index --data-dir ./data --read-index-dir ./custom-
 
 ### audit
 
-View the replicated audit log. The audit log captures every proposal (success and failure) that goes through Raft consensus, providing a complete audit trail.
+View structured details from the replicated audit log, which records proposals that go through Raft consensus. `audit get` and `audit list --expand` display typed order details. JSON and YAML use the same public response model as the API; raw serialized orders and signed payload bytes are absent.
+
+Connection credentials are masked in normalized configurations. If normalization fails, the configuration is omitted and `configurationUnavailable` is true. Historical failure messages are masked and failure context is omitted. Signing information identifies the original signing key only; the displayed hash and key do not authenticate this public view. The current server checker does not verify client/server signatures cryptographically.
 
 **Aliases:** `a`
 

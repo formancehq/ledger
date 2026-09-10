@@ -5721,7 +5721,9 @@ components:
     AuditEntry:
       type: object
       description: |
-        A single audit trail entry for a proposal (success or failure). Exactly
+        A structured public display of a proposal audit entry. Original serialized
+        orders and signed payload bytes are never returned. This display is not
+        the original hash preimage or an independently verifiable signature. Exactly
         one of `success` / `failure` is set. `items` is populated only by the
         single-entry lookup, not by the list endpoint.
       properties:
@@ -5757,7 +5759,7 @@ components:
             type: string
         hash:
           type: string
-          description: Hex-encoded batch integrity hash chaining audit entries
+          description: Hex-encoded identity of the original audit evidence; not a hash of this public display
         hashVersion:
           type: integer
           format: uint32
@@ -5770,7 +5772,10 @@ components:
           description: Batch identity / idempotency information (protobuf JSON)
         signature:
           type: object
-          description: Client signature over the ApplyBatch (protobuf JSON); absent for unsigned batches
+          description: Signing-key identity from the original signed batch; absent for unsigned batches. Presence does not assert cryptographic verification or authenticate this display.
+          properties:
+            keyId:
+              type: string
 
     AuditItem:
       type: object
@@ -5780,9 +5785,8 @@ components:
           type: integer
           format: uint32
           description: Zero-based position of this order within the proposal
-        serializedOrder:
-          type: string
-          description: Hex-encoded deterministic serialized bytes of the order at apply time
+        order:
+          $ref: '#/components/schemas/AuditOrder'
         logSequence:
           type: integer
           format: uint64
@@ -5801,16 +5805,981 @@ components:
 
     AuditFailure:
       type: object
-      description: The reason and context for a failed proposal.
+      description: Typed failure reason. Historical diagnostic messages and context are protected because they can contain connection credentials.
       properties:
         reason:
           type: string
           description: Typed error reason identifier (e.g. ERROR_REASON_INSUFFICIENT_FUNDS)
         message:
           type: string
-          description: Human-readable failure message
+          description: Redaction marker when the original failure had a message
         context:
           type: object
           additionalProperties:
             type: string
-          description: Additional structured context for the failure
+          description: Historical diagnostic context is omitted from public reads
+
+    AuditAccountHasAssetCondition:
+      properties:
+        assetBase:
+          type: string
+        precision:
+          type: integer
+      type: object
+    AuditAccountType:
+      properties:
+        name:
+          type: string
+        pattern:
+          type: string
+        persistence:
+          enum:
+            - ACCOUNT_TYPE_NORMAL
+            - ACCOUNT_TYPE_EPHEMERAL
+            - ACCOUNT_TYPE_TRANSIENT
+          type: string
+        segmentTypes:
+          additionalProperties:
+            $ref: '#/components/schemas/AuditSegmentType'
+          type: object
+      type: object
+    AuditAddAccountTypeOrder:
+      properties:
+        accountType:
+          $ref: '#/components/schemas/AuditAccountType'
+      type: object
+    AuditAddEventsSinkOrder:
+      properties:
+        config:
+          $ref: '#/components/schemas/SinkConfig'
+        configurationUnavailable:
+          description: True when the original configuration could not be normalized; the configuration field is then omitted and remaining order details stay available.
+          type: boolean
+      type: object
+    AuditAddressMatch:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        hardcodedExact:
+          type: string
+        hardcodedPrefix:
+          type: string
+        paramExact:
+          type: string
+        paramPrefix:
+          type: string
+        role:
+          enum:
+            - ADDRESS_ROLE_ANY
+            - ADDRESS_ROLE_SOURCE
+            - ADDRESS_ROLE_DESTINATION
+          type: string
+      type: object
+    AuditAndFilter:
+      properties:
+        filters:
+          items:
+            $ref: '#/components/schemas/AuditQueryFilter'
+          type: array
+      type: object
+    AuditAuditCondition:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        field:
+          enum:
+            - AUDIT_FIELD_UNSPECIFIED
+            - AUDIT_FIELD_SEQUENCE
+            - AUDIT_FIELD_PROPOSAL_ID
+            - AUDIT_FIELD_TIMESTAMP
+            - AUDIT_FIELD_LOG_SEQUENCE
+            - AUDIT_FIELD_OUTCOME
+            - AUDIT_FIELD_CALLER_SUBJECT
+            - AUDIT_FIELD_LEDGER
+            - AUDIT_FIELD_ORDER_TYPE
+          type: string
+        stringCond:
+          $ref: '#/components/schemas/AuditStringCondition'
+        uintCond:
+          $ref: '#/components/schemas/AuditUintCondition'
+      type: object
+    AuditBoolCondition:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        hardcoded:
+          type: boolean
+        param:
+          type: string
+      type: object
+    AuditBuiltinUintCondition:
+      properties:
+        cond:
+          $ref: '#/components/schemas/AuditUintCondition'
+        field:
+          enum:
+            - TX_BUILTIN_INDEX_REFERENCE
+            - TX_BUILTIN_INDEX_TIMESTAMP
+            - TX_BUILTIN_INDEX_ID
+            - TX_BUILTIN_INDEX_ADDRESS
+            - TX_BUILTIN_INDEX_SOURCE_ADDRESS
+            - TX_BUILTIN_INDEX_DESTINATION_ADDRESS
+            - TX_BUILTIN_INDEX_INSERTED_AT
+            - TX_BUILTIN_INDEX_REVERTED_AT
+          type: string
+      type: object
+    AuditBytesConstraint:
+      type: object
+    AuditClusterPolicy:
+      properties:
+        idempotencyTtlMicros:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+        queryCheckpointLimit:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+        revision:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+      type: object
+    AuditCreateIndexOrder:
+      properties:
+        id:
+          $ref: '#/components/schemas/AuditIndexID'
+      type: object
+    AuditCreateLedgerOrder:
+      properties:
+        accountTypes:
+          additionalProperties:
+            $ref: '#/components/schemas/AuditAccountType'
+          type: object
+        configurationUnavailable:
+          description: True when the original configuration could not be normalized; the configuration field is then omitted and remaining order details stay available.
+          type: boolean
+        defaultEnforcementMode:
+          enum:
+            - CHART_ENFORCEMENT_STRICT
+            - CHART_ENFORCEMENT_AUDIT
+          type: string
+        initialSchema:
+          items:
+            $ref: '#/components/schemas/AuditSetMetadataFieldTypeCommand'
+          type: array
+        mirrorSource:
+          $ref: '#/components/schemas/MirrorSourceConfig'
+        mode:
+          enum:
+            - LEDGER_MODE_NORMAL
+            - LEDGER_MODE_MIRROR
+          type: string
+      type: object
+    AuditCreatePreparedQueryOrder:
+      properties:
+        query:
+          $ref: '#/components/schemas/AuditPreparedQuery'
+      type: object
+    AuditCreateQueryCheckpointOrder:
+      type: object
+    AuditCreateTransactionOrder:
+      properties:
+        accountMetadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AuditMetadataMap'
+          type: object
+        force:
+          type: boolean
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AuditMetadataValue'
+          type: object
+        numscriptReference:
+          $ref: '#/components/schemas/AuditNumscriptReference'
+        postings:
+          items:
+            $ref: '#/components/schemas/AuditPosting'
+          type: array
+        reference:
+          type: string
+        script:
+          $ref: '#/components/schemas/AuditScript'
+        timestamp:
+          $ref: '#/components/schemas/AuditTimestamp'
+      type: object
+    AuditDeleteLedgerMetadataOrder:
+      properties:
+        key:
+          type: string
+      type: object
+    AuditDeleteLedgerOrder:
+      type: object
+    AuditDeleteMetadataOrder:
+      properties:
+        key:
+          type: string
+        target:
+          $ref: '#/components/schemas/AuditTarget'
+      type: object
+    AuditDeletePreparedQueryOrder:
+      properties:
+        name:
+          type: string
+      type: object
+    AuditDeleteQueryCheckpointOrder:
+      properties:
+        checkpointId:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+      type: object
+    AuditDeleteQueryCheckpointScheduleOrder:
+      type: object
+    AuditDropIndexOrder:
+      properties:
+        id:
+          $ref: '#/components/schemas/AuditIndexID'
+      type: object
+    AuditExistsCondition:
+      properties:
+        includeNull:
+          type: boolean
+      type: object
+    AuditFieldCondition:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        boolCond:
+          $ref: '#/components/schemas/AuditBoolCondition'
+        existsCond:
+          $ref: '#/components/schemas/AuditExistsCondition'
+        field:
+          $ref: '#/components/schemas/AuditFieldRef'
+        intCond:
+          $ref: '#/components/schemas/AuditIntCondition'
+        stringCond:
+          $ref: '#/components/schemas/AuditStringCondition'
+        uintCond:
+          $ref: '#/components/schemas/AuditUintCondition'
+      type: object
+    AuditFieldRef:
+      properties:
+        metadata:
+          type: string
+      type: object
+    AuditIndexID:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        accountBuiltin:
+          enum:
+            - ACCT_BUILTIN_INDEX_UNSPECIFIED
+            - ACCT_BUILTIN_INDEX_ASSET
+          type: string
+        logBuiltin:
+          enum:
+            - LOG_BUILTIN_INDEX_UNSPECIFIED
+            - LOG_BUILTIN_INDEX_DATE
+          type: string
+        metadata:
+          $ref: '#/components/schemas/AuditMetadataIndexID'
+        txBuiltin:
+          enum:
+            - TX_BUILTIN_INDEX_REFERENCE
+            - TX_BUILTIN_INDEX_TIMESTAMP
+            - TX_BUILTIN_INDEX_ID
+            - TX_BUILTIN_INDEX_ADDRESS
+            - TX_BUILTIN_INDEX_SOURCE_ADDRESS
+            - TX_BUILTIN_INDEX_DESTINATION_ADDRESS
+            - TX_BUILTIN_INDEX_INSERTED_AT
+            - TX_BUILTIN_INDEX_REVERTED_AT
+          type: string
+      type: object
+    AuditIntCondition:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        max:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+        maxExclusive:
+          type: boolean
+        min:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+        minExclusive:
+          type: boolean
+        paramMax:
+          type: string
+        paramMin:
+          type: string
+      type: object
+    AuditLedgerApplyOrder:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        addAccountType:
+          $ref: '#/components/schemas/AuditAddAccountTypeOrder'
+        addMetadata:
+          $ref: '#/components/schemas/AuditSaveMetadataOrder'
+        createIndex:
+          $ref: '#/components/schemas/AuditCreateIndexOrder'
+        createTransaction:
+          $ref: '#/components/schemas/AuditCreateTransactionOrder'
+        deleteMetadata:
+          $ref: '#/components/schemas/AuditDeleteMetadataOrder'
+        dropIndex:
+          $ref: '#/components/schemas/AuditDropIndexOrder'
+        removeAccountType:
+          $ref: '#/components/schemas/AuditRemoveAccountTypeOrder'
+        removeMetadataFieldType:
+          $ref: '#/components/schemas/AuditRemoveMetadataFieldTypeOrder'
+        revertTransaction:
+          $ref: '#/components/schemas/AuditRevertTransactionOrder'
+        setMetadataFieldType:
+          $ref: '#/components/schemas/AuditSetMetadataFieldTypeOrder'
+        skippableReasons:
+          items:
+            enum:
+              - ERROR_REASON_UNSPECIFIED
+              - ERROR_REASON_LEDGER_ALREADY_EXISTS
+              - ERROR_REASON_LEDGER_NOT_FOUND
+              - ERROR_REASON_LEDGER_DELETED
+              - ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT
+              - ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
+              - ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND
+              - ERROR_REASON_TRANSACTION_NOT_FOUND
+              - ERROR_REASON_TRANSACTION_ALREADY_REVERTED
+              - ERROR_REASON_INSUFFICIENT_FUNDS
+              - ERROR_REASON_VOLUME_OVERFLOW
+              - ERROR_REASON_BALANCE_NOT_PRELOADED
+              - ERROR_REASON_NUMSCRIPT_PARSE_ERROR
+              - ERROR_REASON_VALIDATION
+              - ERROR_REASON_AUDIT_DISABLED
+              - ERROR_REASON_SINK_ALREADY_EXISTS
+              - ERROR_REASON_SINK_NOT_FOUND
+              - ERROR_REASON_SINK_BATCH_SIZE_TOO_LARGE
+              - ERROR_REASON_METADATA_NOT_FOUND
+              - ERROR_REASON_MAINTENANCE_MODE
+              - ERROR_REASON_STALE_PROPOSAL
+              - ERROR_REASON_INVALID_CRON_EXPRESSION
+              - ERROR_REASON_LEDGER_IN_MIRROR_MODE
+              - ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE
+              - ERROR_REASON_PREPARED_QUERY_ALREADY_EXISTS
+              - ERROR_REASON_PREPARED_QUERY_NOT_FOUND
+              - ERROR_REASON_INDEX_NOT_FOUND
+              - ERROR_REASON_INDEX_BUILDING
+              - ERROR_REASON_INDEX_INCONSISTENT
+              - ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA
+              - ERROR_REASON_NUMSCRIPT_NOT_FOUND
+              - ERROR_REASON_NUMSCRIPT_VERSION_ALREADY_EXISTS
+              - ERROR_REASON_NUMSCRIPT_INVALID_VERSION
+              - ERROR_REASON_ACCOUNT_NOT_MATCHING_TYPE
+              - ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
+              - ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+              - ERROR_REASON_INVALID_PATTERN
+              - ERROR_REASON_ACCOUNT_TYPE_HAS_ACCOUNTS
+              - ERROR_REASON_ACCOUNT_TYPE_CONFLICT
+              - ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO
+              - ERROR_REASON_FILTER_COMPILATION_ERROR
+              - ERROR_REASON_INVALID_ORDER_TYPE
+              - ERROR_REASON_INVALID_APPLY_TYPE
+              - ERROR_REASON_INVALID_EXECUTION_PLAN
+              - ERROR_REASON_EXECUTION_PLAN_TOO_LARGE
+              - ERROR_REASON_COVERAGE_MISS
+              - ERROR_REASON_IDEMPOTENCY_CHECK_FAILED
+              - ERROR_REASON_STORAGE_OPERATION_FAILED
+              - ERROR_REASON_TRANSACTION_STATE_INCONSISTENT
+              - ERROR_REASON_CHECKPOINT_ID_REQUIRED
+              - ERROR_REASON_NUMSCRIPT_RUNTIME
+              - ERROR_REASON_VOLUME_NOT_MATERIALIZED
+              - ERROR_REASON_CLUSTER_UNHEALTHY
+              - ERROR_REASON_WRITES_BLOCKED_DISK_FULL
+              - ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW
+              - ERROR_REASON_CHECKPOINT_NOT_READY
+              - ERROR_REASON_MIRROR_V2_LOG_ID_GAP
+              - ERROR_REASON_MIRROR_V2_LOG_ID_INVALID
+              - ERROR_REASON_STALE_INPUTS_RESOLUTION
+              - ERROR_REASON_PRELOAD_UNAVAILABLE
+              - ERROR_REASON_AGGREGATE_OVERFLOW
+              - ERROR_REASON_BALANCE_NOT_FOUND
+              - ERROR_REASON_STALE_CLUSTER_POLICY
+              - ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT
+              - ERROR_REASON_CLUSTER_POLICY_INVALID
+              - ERROR_REASON_CHECKPOINT_LIMIT_REACHED
+              - ERROR_REASON_CHECKPOINT_NOT_FOUND
+              - ERROR_REASON_SEQUENCE_EXHAUSTED
+            type: string
+          type: array
+        updateDefaultEnforcementMode:
+          $ref: '#/components/schemas/AuditUpdateDefaultEnforcementModeOrder'
+      type: object
+    AuditLedgerCondition:
+      properties:
+        cond:
+          $ref: '#/components/schemas/AuditStringCondition'
+      type: object
+    AuditLedgerScopedOrder:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        apply:
+          $ref: '#/components/schemas/AuditLedgerApplyOrder'
+        createLedger:
+          $ref: '#/components/schemas/AuditCreateLedgerOrder'
+        createPreparedQuery:
+          $ref: '#/components/schemas/AuditCreatePreparedQueryOrder'
+        deleteLedger:
+          $ref: '#/components/schemas/AuditDeleteLedgerOrder'
+        deleteLedgerMetadata:
+          $ref: '#/components/schemas/AuditDeleteLedgerMetadataOrder'
+        deletePreparedQuery:
+          $ref: '#/components/schemas/AuditDeletePreparedQueryOrder'
+        ledger:
+          type: string
+        mirrorIngest:
+          $ref: '#/components/schemas/AuditMirrorIngestOrder'
+        promoteLedger:
+          $ref: '#/components/schemas/AuditPromoteLedgerOrder'
+        saveLedgerMetadata:
+          $ref: '#/components/schemas/AuditSaveLedgerMetadataOrder'
+        saveNumscript:
+          $ref: '#/components/schemas/AuditSaveNumscriptOrder'
+        updatePreparedQuery:
+          $ref: '#/components/schemas/AuditUpdatePreparedQueryOrder'
+      type: object
+    AuditLogBuiltinUintCondition:
+      properties:
+        cond:
+          $ref: '#/components/schemas/AuditUintCondition'
+        field:
+          enum:
+            - LOG_BUILTIN_INDEX_UNSPECIFIED
+            - LOG_BUILTIN_INDEX_DATE
+          type: string
+      type: object
+    AuditLogIdCondition:
+      properties:
+        cond:
+          $ref: '#/components/schemas/AuditUintCondition'
+      type: object
+    AuditMetadataIndexID:
+      properties:
+        key:
+          type: string
+        target:
+          enum:
+            - TARGET_TYPE_ACCOUNT
+            - TARGET_TYPE_TRANSACTION
+            - TARGET_TYPE_LEDGER
+          type: string
+      type: object
+    AuditMetadataMap:
+      properties:
+        values:
+          additionalProperties:
+            $ref: '#/components/schemas/AuditMetadataValue'
+          type: object
+      type: object
+    AuditMetadataValue:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        boolValue:
+          type: boolean
+        datetimeValue:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+        intValue:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+        nullValue:
+          $ref: '#/components/schemas/AuditNullValue'
+        stringValue:
+          type: string
+        uintValue:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+      type: object
+    AuditMirrorCreatedTransaction:
+      properties:
+        accountMetadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AuditMetadataMap'
+          type: object
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AuditMetadataValue'
+          type: object
+        postings:
+          items:
+            $ref: '#/components/schemas/AuditPosting'
+          type: array
+        reference:
+          type: string
+        timestamp:
+          $ref: '#/components/schemas/AuditTimestamp'
+        transactionId:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+      type: object
+    AuditMirrorDeletedMetadata:
+      properties:
+        key:
+          type: string
+        target:
+          $ref: '#/components/schemas/AuditTarget'
+      type: object
+    AuditMirrorFillGap:
+      properties:
+        skippedTransactionIds:
+          items:
+            description: 64-bit integer encoded as a decimal string in protobuf JSON.
+            pattern: ^-?[0-9]+$
+            type: string
+          type: array
+      type: object
+    AuditMirrorIngestOrder:
+      properties:
+        entry:
+          $ref: '#/components/schemas/AuditMirrorLogEntry'
+      type: object
+    AuditMirrorLogEntry:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        createdTransaction:
+          $ref: '#/components/schemas/AuditMirrorCreatedTransaction'
+        date:
+          $ref: '#/components/schemas/AuditTimestamp'
+        deletedMetadata:
+          $ref: '#/components/schemas/AuditMirrorDeletedMetadata'
+        fillGap:
+          $ref: '#/components/schemas/AuditMirrorFillGap'
+        revertedTransaction:
+          $ref: '#/components/schemas/AuditMirrorRevertedTransaction'
+        savedMetadata:
+          $ref: '#/components/schemas/AuditMirrorSavedMetadata'
+        v2LogId:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+      type: object
+    AuditMirrorRevertedTransaction:
+      properties:
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AuditMetadataValue'
+          type: object
+        newTransactionId:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+        reversePostings:
+          items:
+            $ref: '#/components/schemas/AuditPosting'
+          type: array
+        revertedTransactionId:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+        timestamp:
+          $ref: '#/components/schemas/AuditTimestamp'
+      type: object
+    AuditMirrorSavedMetadata:
+      properties:
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AuditMetadataValue'
+          type: object
+        target:
+          $ref: '#/components/schemas/AuditTarget'
+      type: object
+    AuditNotFilter:
+      properties:
+        filter:
+          $ref: '#/components/schemas/AuditQueryFilter'
+      type: object
+    AuditNullValue:
+      properties:
+        original:
+          type: string
+      type: object
+    AuditNumscriptReference:
+      properties:
+        name:
+          type: string
+        vars:
+          additionalProperties:
+            type: string
+          type: object
+        version:
+          type: string
+      type: object
+    AuditOrFilter:
+      properties:
+        filters:
+          items:
+            $ref: '#/components/schemas/AuditQueryFilter'
+          type: array
+      type: object
+    AuditOrder:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        ledgerScoped:
+          $ref: '#/components/schemas/AuditLedgerScopedOrder'
+        systemScoped:
+          $ref: '#/components/schemas/AuditSystemScopedOrder'
+      type: object
+    AuditPosting:
+      properties:
+        amount:
+          $ref: '#/components/schemas/AuditUint256'
+        asset:
+          type: string
+        color:
+          type: string
+        destination:
+          type: string
+        source:
+          type: string
+      type: object
+    AuditPreparedQuery:
+      properties:
+        filter:
+          $ref: '#/components/schemas/AuditQueryFilter'
+        name:
+          type: string
+        target:
+          enum:
+            - QUERY_TARGET_ACCOUNTS
+            - QUERY_TARGET_TRANSACTIONS
+            - QUERY_TARGET_LOGS
+            - QUERY_TARGET_AUDIT
+          type: string
+      type: object
+    AuditPromoteLedgerOrder:
+      type: object
+    AuditQueryFilter:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        accountHasAsset:
+          $ref: '#/components/schemas/AuditAccountHasAssetCondition'
+        address:
+          $ref: '#/components/schemas/AuditAddressMatch'
+        and:
+          $ref: '#/components/schemas/AuditAndFilter'
+        audit:
+          $ref: '#/components/schemas/AuditAuditCondition'
+        builtinUint:
+          $ref: '#/components/schemas/AuditBuiltinUintCondition'
+        field:
+          $ref: '#/components/schemas/AuditFieldCondition'
+        ledger:
+          $ref: '#/components/schemas/AuditLedgerCondition'
+        logBuiltinUint:
+          $ref: '#/components/schemas/AuditLogBuiltinUintCondition'
+        logId:
+          $ref: '#/components/schemas/AuditLogIdCondition'
+        not:
+          $ref: '#/components/schemas/AuditNotFilter'
+        or:
+          $ref: '#/components/schemas/AuditOrFilter'
+        reference:
+          $ref: '#/components/schemas/AuditReferenceCondition'
+        reverted:
+          $ref: '#/components/schemas/AuditRevertedCondition'
+      type: object
+    AuditReferenceCondition:
+      properties:
+        cond:
+          $ref: '#/components/schemas/AuditStringCondition'
+      type: object
+    AuditRegisterSigningKeyOrder:
+      properties:
+        keyId:
+          type: string
+        parentKeyId:
+          type: string
+        publicKey:
+          format: byte
+          type: string
+      type: object
+    AuditRemoveAccountTypeOrder:
+      properties:
+        name:
+          type: string
+      type: object
+    AuditRemoveEventsSinkOrder:
+      properties:
+        name:
+          type: string
+      type: object
+    AuditRemoveMetadataFieldTypeOrder:
+      properties:
+        key:
+          type: string
+        targetType:
+          enum:
+            - TARGET_TYPE_ACCOUNT
+            - TARGET_TYPE_TRANSACTION
+            - TARGET_TYPE_LEDGER
+          type: string
+      type: object
+    AuditRevertTransactionOrder:
+      properties:
+        atEffectiveDate:
+          type: boolean
+        force:
+          type: boolean
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AuditMetadataValue'
+          type: object
+        transactionId:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+      type: object
+    AuditRevertedCondition:
+      properties:
+        value:
+          type: boolean
+      type: object
+    AuditRevokeSigningKeyOrder:
+      properties:
+        cascade:
+          type: boolean
+        keyId:
+          type: string
+      type: object
+    AuditSaveLedgerMetadataOrder:
+      properties:
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AuditMetadataValue'
+          type: object
+      type: object
+    AuditSaveMetadataOrder:
+      properties:
+        metadata:
+          additionalProperties:
+            $ref: '#/components/schemas/AuditMetadataValue'
+          type: object
+        target:
+          $ref: '#/components/schemas/AuditTarget'
+      type: object
+    AuditSaveNumscriptOrder:
+      properties:
+        content:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+      type: object
+    AuditScript:
+      properties:
+        contentHash:
+          format: byte
+          type: string
+        plain:
+          type: string
+        vars:
+          additionalProperties:
+            type: string
+          type: object
+      type: object
+    AuditSegmentType:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        bytes:
+          $ref: '#/components/schemas/AuditBytesConstraint'
+        regex:
+          type: string
+        uint64:
+          $ref: '#/components/schemas/AuditUint64Constraint'
+        uuid:
+          $ref: '#/components/schemas/AuditUUIDConstraint'
+      type: object
+    AuditSetClusterPolicyOrder:
+      properties:
+        policy:
+          $ref: '#/components/schemas/AuditClusterPolicy'
+      type: object
+    AuditSetMaintenanceModeOrder:
+      properties:
+        enabled:
+          type: boolean
+      type: object
+    AuditSetMetadataFieldTypeCommand:
+      properties:
+        key:
+          type: string
+        targetType:
+          enum:
+            - TARGET_TYPE_ACCOUNT
+            - TARGET_TYPE_TRANSACTION
+            - TARGET_TYPE_LEDGER
+          type: string
+        type:
+          enum:
+            - METADATA_TYPE_STRING
+            - METADATA_TYPE_INT64
+            - METADATA_TYPE_BOOL
+            - METADATA_TYPE_UINT64
+            - METADATA_TYPE_INT8
+            - METADATA_TYPE_INT16
+            - METADATA_TYPE_INT32
+            - METADATA_TYPE_UINT8
+            - METADATA_TYPE_UINT16
+            - METADATA_TYPE_UINT32
+            - METADATA_TYPE_DATETIME
+          type: string
+      type: object
+    AuditSetMetadataFieldTypeOrder:
+      properties:
+        key:
+          type: string
+        targetType:
+          enum:
+            - TARGET_TYPE_ACCOUNT
+            - TARGET_TYPE_TRANSACTION
+            - TARGET_TYPE_LEDGER
+          type: string
+        type:
+          enum:
+            - METADATA_TYPE_STRING
+            - METADATA_TYPE_INT64
+            - METADATA_TYPE_BOOL
+            - METADATA_TYPE_UINT64
+            - METADATA_TYPE_INT8
+            - METADATA_TYPE_INT16
+            - METADATA_TYPE_INT32
+            - METADATA_TYPE_UINT8
+            - METADATA_TYPE_UINT16
+            - METADATA_TYPE_UINT32
+            - METADATA_TYPE_DATETIME
+          type: string
+      type: object
+    AuditSetQueryCheckpointScheduleOrder:
+      properties:
+        cron:
+          type: string
+      type: object
+    AuditSetSigningConfigOrder:
+      properties:
+        requireSignatures:
+          type: boolean
+      type: object
+    AuditStringCondition:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        hardcoded:
+          type: string
+        param:
+          type: string
+      type: object
+    AuditSystemScopedOrder:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        addEventsSink:
+          $ref: '#/components/schemas/AuditAddEventsSinkOrder'
+        createQueryCheckpoint:
+          $ref: '#/components/schemas/AuditCreateQueryCheckpointOrder'
+        deleteQueryCheckpoint:
+          $ref: '#/components/schemas/AuditDeleteQueryCheckpointOrder'
+        deleteQueryCheckpointSchedule:
+          $ref: '#/components/schemas/AuditDeleteQueryCheckpointScheduleOrder'
+        registerSigningKey:
+          $ref: '#/components/schemas/AuditRegisterSigningKeyOrder'
+        removeEventsSink:
+          $ref: '#/components/schemas/AuditRemoveEventsSinkOrder'
+        revokeSigningKey:
+          $ref: '#/components/schemas/AuditRevokeSigningKeyOrder'
+        setClusterPolicy:
+          $ref: '#/components/schemas/AuditSetClusterPolicyOrder'
+        setMaintenanceMode:
+          $ref: '#/components/schemas/AuditSetMaintenanceModeOrder'
+        setQueryCheckpointSchedule:
+          $ref: '#/components/schemas/AuditSetQueryCheckpointScheduleOrder'
+        setSigningConfig:
+          $ref: '#/components/schemas/AuditSetSigningConfigOrder'
+      type: object
+    AuditTarget:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        account:
+          $ref: '#/components/schemas/AuditTargetAccount'
+        transactionId:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+      type: object
+    AuditTargetAccount:
+      properties:
+        addr:
+          type: string
+      type: object
+    AuditTimestamp:
+      properties:
+        data:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+      type: object
+    AuditUUIDConstraint:
+      type: object
+    AuditUint64Constraint:
+      type: object
+    AuditUint256:
+      properties:
+        v0:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+        v1:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+        v2:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+        v3:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+      type: object
+    AuditUintCondition:
+      description: Typed protobuf JSON message; at most one field from each protobuf oneof is present.
+      properties:
+        max:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+        maxExclusive:
+          type: boolean
+        min:
+          description: 64-bit integer encoded as a decimal string in protobuf JSON.
+          pattern: ^-?[0-9]+$
+          type: string
+        minExclusive:
+          type: boolean
+        paramMax:
+          type: string
+        paramMin:
+          type: string
+      type: object
+    AuditUpdateDefaultEnforcementModeOrder:
+      properties:
+        enforcementMode:
+          enum:
+            - CHART_ENFORCEMENT_STRICT
+            - CHART_ENFORCEMENT_AUDIT
+          type: string
+      type: object
+    AuditUpdatePreparedQueryOrder:
+      properties:
+        filter:
+          $ref: '#/components/schemas/AuditQueryFilter'
+        name:
+          type: string
+      type: object

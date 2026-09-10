@@ -105,8 +105,9 @@ The signed payload format is fixed by vtprotobuf encoding rules — `internal/pk
 
 Sink and mirror input URLs/DSNs are retained in the immutable accepted order and
 original signed batch bytes. The FSM derives separate structured operational
-configurations without mutating that evidence. Read-side log copies omit
-`responseSignature`; write-response signing retains its original contract.
-Audit responses still carry the original evidence, which may contain credentials;
-this configuration change does not redact the raw audit API. See
-[structured credentials](../api/structured-credentials.md).
+configurations without mutating that evidence. Public audit responses expose
+typed redacted order views and key identity, never `serializedOrder` or a signed
+batch payload. Read-side log copies omit `responseSignature`; write-response
+signing retains its original contract. A public view's audit hash identifies the
+original evidence and is not recomputable from the view. See
+[structured credentials and public audit views](../api/structured-credentials.md).
