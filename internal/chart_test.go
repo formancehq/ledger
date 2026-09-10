@@ -454,3 +454,39 @@ func TestPostingValidation(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkFindAccountSchema(b *testing.B) {
+	chart := testChart()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if _, err := chart.FindAccountSchema("users:001:main"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkFindAccountSchemaParsed(b *testing.B) {
+	const source = `{
+    "banks": {
+        "$iban": {
+            ".pattern": "^[0-9]{10}$",
+            "main": {}
+        }
+    }
+}`
+
+	var chart ChartOfAccounts
+	require.NoError(b, json.Unmarshal([]byte(source), &chart))
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if _, err := chart.FindAccountSchema("banks:0123456789:main"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
