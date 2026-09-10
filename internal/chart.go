@@ -256,7 +256,7 @@ func (s *ChartVariableSegment) matchPattern(v string) (bool, error) {
 	if s.Pattern == nil {
 		return true, nil
 	}
-	if s.compiled != nil {
+	if s.compiled != nil && s.compiled.String() == *s.Pattern {
 		return s.compiled.MatchString(v), nil
 	}
 	return regexp.Match(*s.Pattern, []byte(v))
