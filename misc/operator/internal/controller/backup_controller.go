@@ -38,12 +38,13 @@ const (
 // When a cron schedule fires, it creates a BackupRun whose own reconciler
 // performs the actual ledgerctl invocation. It also maintains Backup status
 // summaries from the latest Succeeded child runs and prunes runs in excess of the
-// configured history limits.
+// configured history limits. Completion cursors survive pruning; parent and child
+// reads bypass informer caches to avoid restoring stale scheduling/status data.
 type BackupReconciler struct {
 	client.Client
 
-	// APIReader reads Backup status directly from the API server. Child deletion
-	// events can reach the cache before the status write that preserved its cursor.
+	// APIReader reads Backups and child runs directly from the API server.
+	// Independent informer lag must not rewind durable cursors or summaries.
 	APIReader client.Reader
 
 	Scheme    *runtime.Scheme
@@ -340,7 +341,7 @@ func (r *BackupReconciler) listChildRuns(
 	backup *ledgerv1alpha1.Backup,
 ) ([]ledgerv1alpha1.BackupRun, error) {
 	var list ledgerv1alpha1.BackupRunList
-	if err := r.List(ctx, &list,
+	if err := r.APIReader.List(ctx, &list,
 		client.InNamespace(backup.Namespace),
 		client.MatchingLabels{ledgerv1alpha1.LabelBackup: backup.Name},
 	); err != nil {

@@ -380,3 +380,47 @@ func TestBackupScheduling_ManualRunAdvancesCursor(t *testing.T) {
 		})
 	}
 }
+
+func TestBackupScheduling_StaleChildCacheDoesNotRewindSummaries(t *testing.T) {
+	t.Parallel()
+	for _, runType := range []ledgerv1alpha1.BackupRunType{ledgerv1alpha1.BackupRunTypeFull, ledgerv1alpha1.BackupRunTypeIncremental} {
+		t.Run(string(runType), func(t *testing.T) {
+			t.Parallel()
+			f := newBackupSchedulingFixture(t)
+			now := time.Date(2026, 9, 10, 2, 0, 0, 0, time.UTC)
+			older := metav1.NewTime(now.Add(-24 * time.Hour))
+			latest := metav1.NewTime(now)
+			backup := f.backup(t)
+			backup.Spec.Schedule = ledgerv1alpha1.BackupSchedule{}
+			require.NoError(t, f.client.Update(context.Background(), backup))
+			backup.Status.LastFullBackup = &ledgerv1alpha1.FullBackupStatus{Time: &latest, FilesUploaded: 7}
+			backup.Status.LastIncrementalBackup = &ledgerv1alpha1.IncrementalBackupStatus{Time: &latest}
+			require.NoError(t, f.client.Status().Update(context.Background(), backup))
+			stale := ledgerv1alpha1.BackupRun{
+				ObjectMeta: metav1.ObjectMeta{Name: "already-pruned", Namespace: f.key.Namespace},
+				Spec:       ledgerv1alpha1.BackupRunSpec{Type: runType},
+				Status: ledgerv1alpha1.BackupRunStatus{Phase: ledgerv1alpha1.BackupRunPhaseSucceeded, CompletionTime: &older,
+					Full:        &ledgerv1alpha1.FullBackupStatus{Time: &older, FilesUploaded: 1},
+					Incremental: &ledgerv1alpha1.IncrementalBackupStatus{Time: &older}},
+			}
+			cached := interceptor.NewClient(f.client, interceptor.Funcs{
+				List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+					if runs, ok := list.(*ledgerv1alpha1.BackupRunList); ok {
+						runs.Items = []ledgerv1alpha1.BackupRun{stale}
+
+						return nil
+					}
+
+					return c.List(ctx, list, opts...)
+				},
+			})
+			r := &BackupReconciler{Client: cached, APIReader: f.client, Scheme: f.scheme}
+			_, err := r.reconcile(context.Background(), ctrl.Request{NamespacedName: f.key}, now.Add(time.Minute))
+			require.NoError(t, err)
+			persisted := f.backup(t)
+			require.True(t, latest.Equal(persisted.Status.LastFullBackup.Time), "full summary must retain its latest timestamp")
+			require.Equal(t, int64(7), int64(persisted.Status.LastFullBackup.FilesUploaded))
+			require.True(t, latest.Equal(persisted.Status.LastIncrementalBackup.Time), "incremental summary must retain its latest timestamp")
+		})
+	}
+}

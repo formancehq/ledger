@@ -34,7 +34,7 @@ cron occurrence after the current reconciliation time.
 ## Reconciliation and failure ordering
 
 1. Read the Backup directly from the API server, validate the Cluster and cron
-   expressions, then list child runs through the cached client. A failed direct
+   expressions, then list child runs directly from the API server. A failed direct
    read stops reconciliation before any scheduling or pruning.
 2. Refresh completion cursors monotonically and successful-result summaries in
    memory from the observed children.
@@ -55,7 +55,11 @@ a controller after successful pruning recovers the cursor from Backup status.
 The uncached Backup read is required: the child informer may observe deletion
 before the Backup informer observes the status write. Reading a stale nil cursor
 from that cache would create a run before the eventual status conflict, even
-though the cursor is durable in the API server.
+though the cursor is durable in the API server. The child list also bypasses the
+informer cache: an older successful run still visible there must not overwrite
+a newer durable result summary read from the API server. These sequential reads
+are not a cross-resource transaction; a concurrent parent status update still
+causes the final status write to conflict and retry.
 
 This ordering protects controller-managed history deletion; it does not make
 external deletion of execution evidence transactional with reconciliation.
