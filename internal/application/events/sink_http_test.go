@@ -211,6 +211,7 @@ func TestHTTPSinkRedirectFailureSanitizesActualURL(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/events" {
 			http.Redirect(w, r, "/next?credential=EXAMPLE_CREDENTIAL", http.StatusTemporaryRedirect)
+
 			return
 		}
 		panic(http.ErrAbortHandler)
