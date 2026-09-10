@@ -2475,6 +2475,16 @@ ledgerctl audit get 5 --json
 
 View system logs. System logs record every state change (ledger creation/deletion, transactions, metadata, signing keys, etc.) in the global log.
 
+`logs list` and `logs get` use the public JSON codec for `--json`, `--yaml`,
+and `--result-file`. Within each system log's `payload.apply.log`, `type`
+uniquely identifies the ledger-log variant and `data` contains its payload
+directly. For example, read a created transaction at
+`payload.apply.log.data.transaction`; metadata targets use `targetType` and
+`targetId`. This is the same
+[ledger-log JSON contract](../technical/architecture/subsystems/api/http-api.md#ledger-log-json-output)
+as HTTP responses and JSON events. The transport remains gRPC and the enclosing
+system-log fields remain present in structured output.
+
 **Aliases:** `log`
 
 #### logs list

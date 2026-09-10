@@ -2,6 +2,8 @@ package http
 
 import (
 	"context"
+	"encoding/json"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,6 +17,25 @@ import (
 func TestHandleGetLog_Success(t *testing.T) {
 	t.Parallel()
 
+	wantLog := &commonpb.LedgerLog{
+		Id:   3,
+		Date: &commonpb.Timestamp{Data: 1_700_000_000_000_000},
+		Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{
+				Transaction: &commonpb.Transaction{
+					Id:        1,
+					Reference: "order-123",
+					Postings: []*commonpb.Posting{
+						commonpb.NewColoredPosting("world", "alice", "USD/2", "pending", big.NewInt(1000)),
+					},
+					Metadata: map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("checkout")},
+				},
+				AccountMetadata: map[string]*commonpb.MetadataMap{
+					"alice": {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")}},
+				},
+			},
+		}},
+	}
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLog(gomock.Any(), uint64(7)).DoAndReturn(
 		func(_ context.Context, _ uint64) (*commonpb.Log, error) {
@@ -24,15 +45,7 @@ func TestHandleGetLog_Success(t *testing.T) {
 					Type: &commonpb.LogPayload_Apply{
 						Apply: &commonpb.ApplyLedgerLog{
 							LedgerName: "ledger1",
-							Log: &commonpb.LedgerLog{
-								Data: &commonpb.LedgerLogPayload{
-									Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-										CreatedTransaction: &commonpb.CreatedTransaction{
-											Transaction: &commonpb.Transaction{Id: 1},
-										},
-									},
-								},
-							},
+							Log:        wantLog,
 						},
 					},
 				},
@@ -55,19 +68,34 @@ func TestHandleGetLog_Success(t *testing.T) {
 	// change the body carried no discriminator and disagreed with the logs-list
 	// route, which has always used sonic for the same commonpb.Log type.
 	//
-	// This does NOT yet round-trip: LedgerLogPayload.MarshalJSON wraps the
-	// payload in its oneof field-name key ({"createdTransaction":{...}}) while
-	// HydrateLog unmarshals `data` straight into the bare inner type, so
-	// LedgerLog.UnmarshalJSON cannot rehydrate it. That asymmetry is a separate
-	// pre-existing defect affecting the logs-list route identically, tracked on
-	// its own ticket — deliberately not fixed here, because the encode side is
-	// also the events-sink wire.
+	// The direct data payload is shared by the logs-list route, prepared
+	// queries, and JSON event sinks.
 	body := w.Body.String()
 	require.Contains(t, body, `"type":"NEW_TRANSACTION"`)
 	require.Contains(t, body, `"sequence":7`)
 	require.NotContains(t, body, `"sequence":"7"`)
-	require.Contains(t, body, `"createdTransaction":`)
+	require.NotContains(t, body, `"createdTransaction":`)
+	require.Contains(t, body, `"data":{"transaction":`)
 	require.NotContains(t, body, `"id":"1"`)
+	var response struct {
+		Data struct {
+			Payload struct {
+				Apply struct {
+					Log json.RawMessage `json:"log"`
+				} `json:"apply"`
+			} `json:"payload"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.JSONEq(t, `{
+		"id":3,"date":"2023-11-14T22:13:20Z","type":"NEW_TRANSACTION",
+		"data":{
+			"transaction":{"id":1,"reference":"order-123","reverted":false,
+				"postings":[{"source":"world","destination":"alice","asset":"USD/2","color":"pending","amount":1000}],
+				"metadata":{"note":"checkout"}},
+			"accountMetadata":{"alice":{"tier":"gold"}}
+		}
+	}`, string(response.Data.Payload.Apply.Log))
 }
 
 // TestHandleGetLog_SerializesThroughMarshalJSON pins the property EN-1622 is

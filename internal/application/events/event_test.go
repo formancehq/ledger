@@ -2,6 +2,7 @@ package events
 
 import (
 	"encoding/json"
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -232,6 +233,62 @@ func TestSerializeEvent_JSON(t *testing.T) {
 	require.Equal(t, EventVersion, decoded["version"])
 	require.Equal(t, "COMMITTED_TRANSACTION", decoded["type"])
 	require.Equal(t, "orders", decoded["ledger"])
+}
+
+func TestSerializeEvent_JSONLedgerLogOutput(t *testing.T) {
+	t.Parallel()
+
+	wantLog := &commonpb.LedgerLog{
+		Id:   7,
+		Date: &commonpb.Timestamp{Data: 1_700_000_000_000_000},
+		Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &commonpb.CreatedTransaction{
+				Transaction: &commonpb.Transaction{
+					Id:        9,
+					Reference: "order-456",
+					Postings: []*commonpb.Posting{
+						commonpb.NewColoredPosting("world", "alice", "USD/2", "pending", big.NewInt(1000)),
+					},
+					Metadata: map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("checkout")},
+				},
+				AccountMetadata: map[string]*commonpb.MetadataMap{
+					"alice": {Values: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")}},
+				},
+			},
+		}},
+	}
+	event := LogToEvent(&commonpb.Log{
+		Sequence: 42,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+			Apply: &commonpb.ApplyLedgerLog{LedgerName: "orders", Log: wantLog},
+		}},
+	})
+
+	data, err := SerializeEvent(event, FormatJSON)
+	require.NoError(t, err)
+	require.NotContains(t, string(data), `"createdTransaction":`)
+	require.Contains(t, string(data), `"data":{"transaction":`)
+	require.Contains(t, string(data), `"type":"NEW_TRANSACTION"`)
+	require.Contains(t, string(data), `"logSequence":42`)
+	var response struct {
+		Log struct {
+			Payload struct {
+				Apply struct {
+					Log json.RawMessage `json:"log"`
+				} `json:"apply"`
+			} `json:"payload"`
+		} `json:"log"`
+	}
+	require.NoError(t, json.Unmarshal(data, &response))
+	require.JSONEq(t, `{
+		"id":7,"date":"2023-11-14T22:13:20Z","type":"NEW_TRANSACTION",
+		"data":{
+			"transaction":{"id":9,"reference":"order-456","reverted":false,
+				"postings":[{"source":"world","destination":"alice","asset":"USD/2","color":"pending","amount":1000}],
+				"metadata":{"note":"checkout"}},
+			"accountMetadata":{"alice":{"tier":"gold"}}
+		}
+	}`, string(response.Log.Payload.Apply.Log))
 }
 
 func TestSerializeEvent_Proto(t *testing.T) {

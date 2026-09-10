@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -24,7 +25,8 @@ func TestHandleListLedgerLogs_Success(t *testing.T) {
 				{Sequence: 1},
 				{Sequence: 2},
 			}), nil
-		}).AnyTimes()
+		},
+	).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -37,6 +39,40 @@ func TestHandleListLedgerLogs_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestHandleListLedgerLogs_JSONOutput(t *testing.T) {
+	t.Parallel()
+	wantLog := &commonpb.LedgerLog{Id: 3, Data: &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
+		Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "alice"}}},
+		Metadata: map[string]*commonpb.MetadataValue{"tier": commonpb.NewStringValue("gold")},
+	}}}}
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(
+		cursor.NewSliceCursor([]*commonpb.Log{{Sequence: 7, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{LedgerName: "ledger1", Log: wantLog}}}}}), nil,
+	)
+	srv := newTestServer(t, backend)
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/ledger1/logs", nil, map[string]string{"ledgerName": "ledger1"})
+	srv.handleListLedgerLogs(w, r)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotContains(t, w.Body.String(), `"savedMetadata":`)
+	require.Contains(t, w.Body.String(), `"type":"SET_METADATA"`)
+	require.Contains(t, w.Body.String(), `"targetType":"ACCOUNT"`)
+	require.Contains(t, w.Body.String(), `"targetId":"alice"`)
+	require.NotContains(t, w.Body.String(), `"accountId":`)
+	var response struct {
+		Data []struct {
+			Payload struct {
+				Apply struct {
+					Log json.RawMessage `json:"log"`
+				} `json:"apply"`
+			} `json:"payload"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.Len(t, response.Data, 1)
+	require.JSONEq(t, `{"id":3,"type":"SET_METADATA","data":{"targetType":"ACCOUNT","targetId":"alice","metadata":{"tier":"gold"}}}`, string(response.Data[0].Payload.Apply.Log))
+}
+
 func TestHandleListLedgerLogs_Empty(t *testing.T) {
 	t.Parallel()
 
@@ -44,7 +80,8 @@ func TestHandleListLedgerLogs_Empty(t *testing.T) {
 	backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
-		}).AnyTimes()
+		},
+	).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -139,7 +176,8 @@ func TestHandleListLedgerLogs_WithDateFilters(t *testing.T) {
 	backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
-		}).AnyTimes()
+		},
+	).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()
@@ -269,7 +307,8 @@ func TestHandleListLedgerLogs_DateBounds(t *testing.T) {
 						capturedFilter = filter
 
 						return cursor.NewSliceCursor[*commonpb.Log](nil), nil
-					}).Times(1)
+					},
+				).Times(1)
 			} else {
 				// On a validation error the backend must never be reached: any
 				// call fails the test.
@@ -330,7 +369,8 @@ func TestHandleListLedgerLogs_WithAfterParam(t *testing.T) {
 	backend.EXPECT().ListLogs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ string, _ uint64, _ uint32, _ *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
 			return cursor.NewSliceCursor[*commonpb.Log](nil), nil
-		}).AnyTimes()
+		},
+	).AnyTimes()
 	srv := newTestServer(t, backend)
 
 	w := httptest.NewRecorder()

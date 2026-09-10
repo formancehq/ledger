@@ -7,6 +7,23 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
 )
 
+// LogType constants for log payload types.
+const (
+	SetMetadataLogType                   LogType = 0  // "SET_METADATA"
+	NewTransactionLogType                LogType = 1  // "NEW_TRANSACTION"
+	RevertedTransactionLogType           LogType = 2  // "REVERTED_TRANSACTION"
+	DeleteMetadataLogType                LogType = 3  // "DELETE_METADATA"
+	SetMetadataFieldTypeLogType          LogType = 4  // "SET_METADATA_FIELD_TYPE"
+	RemovedMetadataFieldTypeLogType      LogType = 5  // "REMOVED_METADATA_FIELD_TYPE"
+	OrderSkippedLogType                  LogType = 6  // "ORDER_SKIPPED"
+	FillGapLogType                       LogType = 7  // "FILL_GAP"
+	CreateIndexLogType                   LogType = 8  // "CREATE_INDEX"
+	DropIndexLogType                     LogType = 9  // "DROP_INDEX"
+	AddedAccountTypeLogType              LogType = 10 // "ADDED_ACCOUNT_TYPE"
+	RemovedAccountTypeLogType            LogType = 11 // "REMOVED_ACCOUNT_TYPE"
+	UpdatedDefaultEnforcementModeLogType LogType = 12 // "UPDATED_DEFAULT_ENFORCEMENT_MODE"
+)
+
 type LogType int16
 
 func (lt LogType) Value() (driver.Value, error) {
@@ -67,6 +84,18 @@ func (lt LogType) String() string {
 		return "REMOVED_METADATA_FIELD_TYPE"
 	case OrderSkippedLogType:
 		return "ORDER_SKIPPED"
+	case FillGapLogType:
+		return "FILL_GAP"
+	case CreateIndexLogType:
+		return "CREATE_INDEX"
+	case DropIndexLogType:
+		return "DROP_INDEX"
+	case AddedAccountTypeLogType:
+		return "ADDED_ACCOUNT_TYPE"
+	case RemovedAccountTypeLogType:
+		return "REMOVED_ACCOUNT_TYPE"
+	case UpdatedDefaultEnforcementModeLogType:
+		return "UPDATED_DEFAULT_ENFORCEMENT_MODE"
 	}
 
 	return ""
@@ -88,6 +117,18 @@ func LogTypeFromString(logType string) (LogType, error) {
 		return RemovedMetadataFieldTypeLogType, nil
 	case "ORDER_SKIPPED":
 		return OrderSkippedLogType, nil
+	case "FILL_GAP":
+		return FillGapLogType, nil
+	case "CREATE_INDEX":
+		return CreateIndexLogType, nil
+	case "DROP_INDEX":
+		return DropIndexLogType, nil
+	case "ADDED_ACCOUNT_TYPE":
+		return AddedAccountTypeLogType, nil
+	case "REMOVED_ACCOUNT_TYPE":
+		return RemovedAccountTypeLogType, nil
+	case "UPDATED_DEFAULT_ENFORCEMENT_MODE":
+		return UpdatedDefaultEnforcementModeLogType, nil
 	}
 
 	return 0, fmt.Errorf("invalid log type: %q", logType)
@@ -96,7 +137,7 @@ func LogTypeFromString(logType string) (LogType, error) {
 // GetLogType extracts the log type from a LedgerLogPayload.
 func GetLogType(payload *LedgerLogPayload) LogType {
 	if payload == nil {
-		return 0
+		return -1
 	}
 
 	switch payload.GetPayload().(type) {
@@ -114,15 +155,27 @@ func GetLogType(payload *LedgerLogPayload) LogType {
 		return RemovedMetadataFieldTypeLogType
 	case *LedgerLogPayload_OrderSkipped:
 		return OrderSkippedLogType
+	case *LedgerLogPayload_FillGap:
+		return FillGapLogType
+	case *LedgerLogPayload_CreateIndex:
+		return CreateIndexLogType
+	case *LedgerLogPayload_DropIndex:
+		return DropIndexLogType
+	case *LedgerLogPayload_AddedAccountType:
+		return AddedAccountTypeLogType
+	case *LedgerLogPayload_RemovedAccountType:
+		return RemovedAccountTypeLogType
+	case *LedgerLogPayload_UpdatedDefaultEnforcementMode:
+		return UpdatedDefaultEnforcementModeLogType
 	default:
-		return 0
+		return -1
 	}
 }
 
 // GetLogTypeFromLog extracts the log type from a LedgerLog.
 func GetLogTypeFromLog(log *LedgerLog) LogType {
 	if log == nil || log.GetData() == nil {
-		return 0
+		return -1
 	}
 
 	return GetLogType(log.GetData())

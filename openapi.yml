@@ -397,12 +397,7 @@ paths:
                   data:
                     type: array
                     items:
-                      type: object
-                      description: |
-                        System log entry, serialized by Log.MarshalJSON (camelCase,
-                        RFC3339 timestamps, synthetic `type` discriminator on each
-                        ledger log). A dedicated schema is tracked separately — the
-                        payload is a deeply recursive protobuf oneof.
+                      $ref: '#/components/schemas/SystemLog'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2273,12 +2268,7 @@ paths:
                   - data
                 properties:
                   data:
-                    type: object
-                    description: |
-                      System log entry, serialized by Log.MarshalJSON (camelCase,
-                      RFC3339 timestamps, synthetic `type` discriminator on each
-                      ledger log). A dedicated schema is tracked separately — the
-                      payload is a deeply recursive protobuf oneof.
+                    $ref: '#/components/schemas/SystemLog'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3051,6 +3041,94 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
 
   schemas:
+    SystemLog:
+      type: object
+      description: |
+        System log entry, shared by single-log responses, ledger-log lists,
+        prepared-query logData, and JSON events. The system payload keeps its
+        named variant (apply, createLedger, deleteLedger, etc.). A ledger log
+        inside payload.apply.log uses the flat LedgerLog contract.
+        Non-apply system payload variants are not exhaustively described here.
+      properties:
+        sequence:
+          type: integer
+          format: uint64
+          minimum: 0
+        payload:
+          type: object
+          properties:
+            apply:
+              type: object
+              properties:
+                ledgerName:
+                  type: string
+                log:
+                  $ref: '#/components/schemas/LedgerLog'
+        responseSignature:
+          type: object
+
+    LedgerLog:
+      type: object
+      description: |
+        Ledger-local log. The type selects the direct object in data, following
+        the v2 type/data structure; data has no variant-name wrapper. New v3
+        operations have distinct type values. Metadata remains typed, volumes
+        retain colors, and reversals contain the original transaction ID and
+        the reversing transaction rather than the full original transaction.
+        This JSON projection is not an audit replay or backup format.
+      required:
+        - type
+        - data
+      properties:
+        type:
+          type: string
+          enum:
+            - NEW_TRANSACTION
+            - REVERTED_TRANSACTION
+            - SET_METADATA
+            - DELETE_METADATA
+            - SET_METADATA_FIELD_TYPE
+            - REMOVED_METADATA_FIELD_TYPE
+            - ORDER_SKIPPED
+            - FILL_GAP
+            - CREATE_INDEX
+            - DROP_INDEX
+            - ADDED_ACCOUNT_TYPE
+            - REMOVED_ACCOUNT_TYPE
+            - UPDATED_DEFAULT_ENFORCEMENT_MODE
+        data:
+          type: object
+          description: |
+            Direct operation payload selected by type. NEW_TRANSACTION contains
+            transaction and optional accountMetadata. REVERTED_TRANSACTION
+            contains revertedTransactionId and revertTransaction.
+            SET_METADATA and DELETE_METADATA contain targetType (ACCOUNT or
+            TRANSACTION) and targetId: an account-address string or an unsigned
+            64-bit transaction integer, including zero. SET_METADATA also
+            contains metadata; DELETE_METADATA contains key. ORDER_SKIPPED
+            contains reason and optional context. Other types carry the fields
+            of their corresponding operation directly. FILL_GAP contains originalId,
+            a uint64 encoded as a decimal JSON string by protobuf JSON.
+            Transaction IDs, revertedTransactionId and transaction targetId
+            are JSON numbers; consumers must preserve full integer precision.
+            Metadata integers are
+            JSON numbers and null-valued keys are preserved.
+        date:
+          type: string
+          format: date-time
+        id:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Ledger-local log ID; omitted when zero.
+      example:
+        type: SET_METADATA
+        data:
+          targetType: ACCOUNT
+          targetId: users:alice
+          metadata:
+            category: premium
+
     ChartViolation:
       type: object
       description: A chart of accounts violation reported in AUDIT enforcement mode
@@ -5273,12 +5351,7 @@ components:
             logData:
               type: array
               items:
-                type: object
-                description: |
-                  System log entry, serialized by Log.MarshalJSON (camelCase,
-                  RFC3339 timestamps, synthetic `type` discriminator on each
-                  ledger log). A dedicated schema is tracked separately — the
-                  payload is a deeply recursive protobuf oneof.
+                $ref: '#/components/schemas/SystemLog'
         aggregateResult:
           $ref: '#/components/schemas/AggregateVolumesData'
 

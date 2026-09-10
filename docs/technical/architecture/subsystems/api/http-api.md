@@ -817,6 +817,55 @@ This was EN-1622: the transactions list and single-log routes sent marshaller-ca
 
 **Before adding a `MarshalJSON` to a proto type, check the blast radius.** `cmd/ledgerctl/cmdutil/output.go` also prefers a custom marshaller when one exists, so adding one changes CLI output too — and `misc/operator` parses `ledgerctl indexes list --json` with a struct that hard-codes the protojson shape, in a separate Go module that a root `go build ./...` never compiles. For types that need a clean HTTP shape without moving the CLI, use an HTTP-local response DTO instead.
 
+### Ledger-log JSON output
+
+Single-log responses, ledger-log lists, prepared-query `logData`, JSON event
+sinks, and `ledgerctl` JSON/YAML output share the same nested `LedgerLog`
+encoding: `type`, `data`, and optional `date` and `id`. As in Ledger v2, `data`
+contains the payload directly, without a protobuf oneof field-name wrapper.
+For example, a created transaction has
+`{"type":"NEW_TRANSACTION","data":{"transaction":{...}}}`. The unique `type`
+identifies the payload, so clients need only one discriminator dispatch.
+
+| `type` | Payload in `data` |
+|--------|-------------------|
+| `NEW_TRANSACTION` | Created transaction and optional account metadata |
+| `REVERTED_TRANSACTION` | Original transaction ID and compensating transaction |
+| `SET_METADATA` | Metadata target and values |
+| `DELETE_METADATA` | Metadata target and key |
+| `SET_METADATA_FIELD_TYPE` | Metadata field type assignment |
+| `REMOVED_METADATA_FIELD_TYPE` | Metadata field type removal |
+| `ORDER_SKIPPED` | Reason and optional context |
+| `FILL_GAP` | `originalId`: uint64 encoded as a decimal JSON string |
+| `CREATE_INDEX` | Index creation payload |
+| `DROP_INDEX` | Index removal payload |
+| `ADDED_ACCOUNT_TYPE` | Account type addition payload |
+| `REMOVED_ACCOUNT_TYPE` | Account type removal payload |
+| `UPDATED_DEFAULT_ENFORCEMENT_MODE` | Default enforcement mode update payload |
+
+Metadata logs use `targetType` (`ACCOUNT` or `TRANSACTION`) and `targetId`: a
+string account address or an unsigned integer transaction ID, including zero.
+EN-1790 replaces the earlier unreleased v3 wrappers and shared
+`SET_METADATA` fallback discriminator.
+
+The alignment with v2 is limited to the ledger-log envelope and metadata target
+shape. V3 retains typed metadata, colored volumes, and
+`revertedTransactionId` plus `revertTransaction` for reversals. System logs and
+events retain their enclosing global-log structure. These JSON changes do not
+change protobuf messages, persisted data, or audit hashes.
+
+Integer rendering depends on the payload codec: `FILL_GAP.originalId` uses
+protobuf JSON and is a decimal string (for example, `"18446744073709551615"`).
+Custom transaction IDs, `revertedTransactionId`, metadata transaction
+`targetId`, and metadata integer values are JSON numbers. Clients must preserve
+full integer precision when reading these numbers.
+
+This contract defines an output projection. The internal ledger-log type has
+no custom JSON decoder. Metadata integers are emitted as JSON numbers,
+and null-valued keys remain present. The emitted JSON does not retain
+positive-integer signedness, the distinction between datetime values and
+strings, or `NullValue.original`. It is not an audit replay or backup format.
+
 ## OpenAPI Documentation
 
 The OpenAPI specification is available in `openapi.yml`. It can be used for:

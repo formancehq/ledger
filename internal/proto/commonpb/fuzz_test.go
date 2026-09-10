@@ -158,31 +158,6 @@ func FuzzTimestampUnmarshalJSON(f *testing.F) {
 	})
 }
 
-// FuzzLedgerLogUnmarshalJSON fuzzes the LedgerLog JSON decoder.
-// This targets the polymorphic log hydration with 8 different payload types.
-func FuzzLedgerLogUnmarshalJSON(f *testing.F) {
-	// Seed corpus: one valid entry per log type.
-	f.Add([]byte(`{"type":"NEW_TRANSACTION","data":{"transaction":{"postings":[],"metadata":{}}}}`))
-	f.Add([]byte(`{"type":"SET_METADATA","data":{"targetType":"ACCOUNT","targetId":"users:alice","metadata":{"key":"value"}}}`))
-	f.Add([]byte(`{"type":"DELETE_METADATA","data":{"targetType":"ACCOUNT","targetId":"users:alice","key":"key"}}`))
-	f.Add([]byte(`{"type":"REVERTED_TRANSACTION","data":{"transaction":{"postings":[],"metadata":{}}}}`))
-	f.Add([]byte(`{"type":"SET_METADATA_FIELD_TYPE","data":{}}`))
-	f.Add([]byte(`{"type":"REMOVED_METADATA_FIELD_TYPE","data":{}}`))
-	f.Add([]byte(`{"type":"CONVERT_METADATA_BATCH","data":{}}`))
-	f.Add([]byte(`{"type":"METADATA_CONVERSION_COMPLETE","data":{}}`))
-	f.Add([]byte(`{"type":"NEW_TRANSACTION","data":{},"date":"2024-01-01T00:00:00Z","id":42}`))
-	// Edge cases
-	f.Add([]byte(`{"type":"UNKNOWN"}`))
-	f.Add([]byte(`{}`))
-	f.Add([]byte(`not json`))
-	f.Add([]byte(`null`))
-
-	f.Fuzz(func(t *testing.T, data []byte) {
-		var log LedgerLog
-		_ = log.UnmarshalJSON(data)
-	})
-}
-
 // FuzzConvertMetadataValue fuzzes the metadata type conversion matrix.
 // It generates arbitrary (value, target type) pairs and verifies that
 // the conversion never panics and produces a valid MetadataValue.

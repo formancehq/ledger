@@ -112,39 +112,39 @@ func (x *ApplyLedgerLog) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// MarshalJSON implements json.Marshaler for LedgerLogPayload (oneof dispatch).
-func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
-	switch p := x.GetPayload().(type) {
-	case *LedgerLogPayload_CreatedTransaction:
-		return json.Marshal(&struct {
-			CreatedTransaction *CreatedTransaction `json:"createdTransaction,omitempty"`
-		}{CreatedTransaction: p.CreatedTransaction})
-	case *LedgerLogPayload_RevertedTransaction:
-		return json.Marshal(&struct {
-			RevertedTransaction *RevertedTransaction `json:"revertedTransaction,omitempty"`
-		}{RevertedTransaction: p.RevertedTransaction})
-	case *LedgerLogPayload_SavedMetadata:
-		return json.Marshal(&struct {
-			SavedMetadata *SavedMetadata `json:"savedMetadata,omitempty"`
-		}{SavedMetadata: p.SavedMetadata})
-	case *LedgerLogPayload_DeletedMetadata:
-		return json.Marshal(&struct {
-			DeletedMetadata *DeletedMetadata `json:"deletedMetadata,omitempty"`
-		}{DeletedMetadata: p.DeletedMetadata})
-	case *LedgerLogPayload_OrderSkipped:
-		return p.OrderSkipped.MarshalJSON()
-	default:
-		// Other variants — use protojson for camelCase
-		return protojson.Marshal(x)
+// jsonMessage returns the selected payload without its protobuf oneof envelope.
+func (x *LedgerLogPayload) jsonMessage() (proto.Message, error) {
+	if x == nil || x.GetPayload() == nil {
+		return nil, errors.New("missing log payload")
 	}
+	message := x.ProtoReflect()
+	field := message.WhichOneof(message.Descriptor().Oneofs().Get(0))
+	if field == nil || !message.Get(field).Message().IsValid() {
+		return nil, errors.New("missing log payload")
+	}
+
+	return message.Get(field).Message().Interface(), nil
+}
+
+// MarshalJSON emits the direct data object; LedgerLog.type identifies its variant.
+func (x *LedgerLogPayload) MarshalJSON() ([]byte, error) {
+	message, err := x.jsonMessage()
+	if err != nil {
+		return nil, err
+	}
+	if custom, ok := message.(interface{ MarshalJSON() ([]byte, error) }); ok {
+		return custom.MarshalJSON()
+	}
+
+	return protojson.Marshal(message)
 }
 
 // MarshalJSON implements json.Marshaler for OrderSkippedLog. Renders the
 // ErrorReason as the SHORT identifier (e.g. "TRANSACTION_REFERENCE_CONFLICT")
 // matching the wire convention used by the REST API surface
 // (skippableReasons, OrderSkippedResponse.reason, gRPC ErrorInfo.reason).
-// Standard encoding/json would emit the int enum value, breaking the
-// HydrateLog round-trip through LedgerLog's JSON layer.
+// Default struct encoding would emit the integer enum value instead of
+// the public reason identifier.
 func (x *OrderSkippedLog) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Reason  string            `json:"reason"`
@@ -298,50 +298,51 @@ func (x *RevertedTransaction) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// MarshalJSON implements json.Marshaler for SavedMetadata.
+// MarshalJSON emits the v2 targetType/targetId layout with v3 typed metadata.
 func (x *SavedMetadata) MarshalJSON() ([]byte, error) {
-	aux := struct {
-		TargetType    string         `json:"targetType,omitempty"`
-		AccountId     string         `json:"accountId,omitempty"`
-		TransactionId uint64         `json:"transactionId,omitempty"`
-		Metadata      map[string]any `json:"metadata,omitempty"`
-	}{
-		TargetType: x.GetTarget().AsConst(),
-		Metadata:   MetadataToAnyMap(x.GetMetadata()),
+	targetID, err := logMetadataTargetID(x.GetTarget())
+	if err != nil {
+		return nil, err
 	}
 
-	// Handle oneof target_id
-	switch v := x.GetTarget().GetTarget().(type) {
-	case *Target_Account:
-		aux.AccountId = v.Account.GetAddr()
-	case *Target_TransactionId:
-		aux.TransactionId = v.TransactionId
-	}
-
-	return json.Marshal(aux)
+	return json.Marshal(&struct {
+		TargetType string         `json:"targetType"`
+		TargetID   any            `json:"targetId"`
+		Metadata   map[string]any `json:"metadata,omitempty"`
+	}{TargetType: x.GetTarget().AsConst(), TargetID: targetID, Metadata: MetadataToAnyMap(x.GetMetadata())})
 }
 
-// MarshalJSON implements json.Marshaler for DeletedMetadata.
+// MarshalJSON emits the v2 targetType/targetId layout.
 func (x *DeletedMetadata) MarshalJSON() ([]byte, error) {
-	aux := struct {
-		TargetType    string `json:"targetType,omitempty"`
-		AccountId     string `json:"accountId,omitempty"`
-		TransactionId uint64 `json:"transactionId,omitempty"`
-		Key           string `json:"key,omitempty"`
-	}{
-		TargetType: x.GetTarget().AsConst(),
-		Key:        x.GetKey(),
+	targetID, err := logMetadataTargetID(x.GetTarget())
+	if err != nil {
+		return nil, err
 	}
 
-	// Handle oneof target_id
-	switch v := x.GetTarget().GetTarget().(type) {
+	return json.Marshal(&struct {
+		TargetType string `json:"targetType"`
+		TargetID   any    `json:"targetId"`
+		Key        string `json:"key,omitempty"`
+	}{TargetType: x.GetTarget().AsConst(), TargetID: targetID, Key: x.GetKey()})
+}
+
+func logMetadataTargetID(target *Target) (any, error) {
+	switch v := target.GetTarget().(type) {
 	case *Target_Account:
-		aux.AccountId = v.Account.GetAddr()
-	case *Target_TransactionId:
-		aux.TransactionId = v.TransactionId
-	}
+		if v == nil || v.Account == nil {
+			return nil, errors.New("missing metadata account target")
+		}
 
-	return json.Marshal(aux)
+		return v.Account.GetAddr(), nil
+	case *Target_TransactionId:
+		if v == nil {
+			return nil, errors.New("missing metadata transaction target")
+		}
+
+		return v.TransactionId, nil
+	default:
+		return nil, errors.New("missing metadata target")
+	}
 }
 
 // UnmarshalJSON implements json.Unmarshaler for DeletedMetadata
