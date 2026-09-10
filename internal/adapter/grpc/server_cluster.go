@@ -311,7 +311,6 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 		"requestedNodeID":      req.GetNodeId(),
 		"requestedRaftAddress": req.GetRaftAddress(),
 		"requestedServiceAddr": req.GetServiceAddress(),
-		"hasInstanceID":        len(req.GetInstanceId()) > 0,
 		"isLeader":             impl.node.IsLeader(),
 		"localNodeID":          impl.node.GetNodeID(),
 	}).Infof("AddLearner: received request")

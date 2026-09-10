@@ -336,10 +336,24 @@ func TestMembership_WriteConfChange(t *testing.T) {
 
 	got, err = m.store.LoadAll()
 	require.NoError(t, err)
-	require.Equal(t, "pod-2:7777", got[2].RaftAddress, "promote must not overwrite the address")
+	require.Equal(t, "pod-2:7777", got[2].RaftAddress)
+	require.Equal(t, "pod-2:8888", got[2].ServiceAddress)
+	require.Equal(t, fixedInstanceID(2), got[2].InstanceID)
 
-	// RemoveNode → peer delete + blacklist write (EN-1045) when the target
-	// has an instance identity.
+	// Independently remove the stored projection and replay the same payload
+	// to prove AddNode writes it, rather than only preserving existing bytes.
+	require.NoError(t, m.store.Delete(2))
+	apply(t, &raftpb.ConfChangeV2{
+		Changes: []*raftpb.ConfChangeSingle{{Type: new(raftpb.ConfChangeAddNode), NodeId: proto.Uint64(2)}},
+		Context: promoteCtx,
+	}, true)
+	got, err = m.store.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, "pod-2:7777", got[2].RaftAddress)
+	require.Equal(t, "pod-2:8888", got[2].ServiceAddress)
+	require.Equal(t, fixedInstanceID(2), got[2].InstanceID)
+
+	// RemoveNode → peer delete + mandatory blacklist write (EN-1045).
 	removeCtx, err := MarshalConfChangeContext(ConfChangeContext{InstanceID: make([]byte, 16)})
 	require.NoError(t, err)
 	apply(t, &raftpb.ConfChangeV2{

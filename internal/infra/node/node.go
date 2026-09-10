@@ -2704,15 +2704,11 @@ func classifyExistingLearner(match uint64, existingInstanceID, incomingInstanceI
 // identity differs, this method proposes ConfChangeUpdateNode. Once any log
 // entry has been replicated, an identity change is rejected as stale state.
 //
-// EN-1436: if the peer already exists with a non-zero Progress.Match (the
-// leader has already replicated entries to it) AND this is a JoinAsLearner
-// boot (a real 16-byte instanceID), this returns ErrNodeStaleProgress
-// instead — such a caller boots with a fresh, empty WAL and no
-// CLUSTER_JOINED marker, so both the AlreadyExists and the UpdateNode-refresh
-// outcomes would let a "tocommit out of range" crash loop through. This check
-// precedes the identity comparison so it fires on the fresh-identity
-// (WAL-wiped) rejoin too. Administrative retries are distinguished by an
-// explicit call path, never by omitting instanceID.
+// EN-1436: the separate JoinAsLearner bootstrap path rejects any non-zero
+// Progress.Match, even for the same identity, because its caller has an empty
+// WAL. Administrative AddLearner retries with the same active identity instead
+// return ErrNodeAlreadyInCluster. Both paths require a 16-byte instanceID;
+// the explicit call path selects the admission semantics.
 //
 // Must be called on the leader.
 func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
