@@ -42,11 +42,13 @@ func runModelFixtureHelper() error {
 				}
 			}
 		}
+
 		return fmt.Errorf("unexpected fake go invocation: %v", os.Args)
 	case "seq":
 		if len(os.Args) == 3 && os.Args[1] == "1" && os.Args[2] == "0" {
 			return nil
 		}
+
 		return syscall.Exec(os.Getenv("MODEL_TEST_SEQ"), os.Args, os.Environ())
 	case "date":
 		// A token remains in the pipe for every subsequent clock read. No polling
@@ -64,14 +66,17 @@ func runModelFixtureHelper() error {
 		// termination. A stalled helper still fails the outer test deadline.
 		if os.Getenv("FAKE_MODEL_SCENARIO") == "early-exit" {
 			fmt.Println(0)
+
 			return nil
 		}
+
 		return syscall.Exec(os.Getenv("MODEL_TEST_DATE"), os.Args, os.Environ())
 	case "ledger-server":
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 		defer stop()
 		fmt.Println("Became leader")
 		<-ctx.Done()
+
 		return nil
 	case "model-driver":
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -108,6 +113,7 @@ func runModelFixtureHelper() error {
 			return nil
 		}
 		<-ctx.Done()
+
 		return nil
 	default:
 		return fmt.Errorf("unexpected helper invocation: %s", os.Args[0])
@@ -121,6 +127,7 @@ func configureModelFixtureProcess(cmd *exec.Cmd) {
 		if errors.Is(err, syscall.ESRCH) {
 			return os.ErrProcessDone
 		}
+
 		return err
 	}
 	cmd.WaitDelay = time.Second
@@ -137,5 +144,6 @@ func modelFixtureEnvironment(inherited []string) []string {
 			result = append(result, item)
 		}
 	}
+
 	return result
 }
