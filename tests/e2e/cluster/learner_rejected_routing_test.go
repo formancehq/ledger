@@ -23,7 +23,7 @@ import (
 )
 
 var _ = DescribeTable("Rejected learner registration routing preserves active peer routing and identity",
-	func(administrative bool) {
+	func(administrative, sameIdentity bool) {
 		ctx, servers, _, leaderID := testutil.SetupMultiNodeCluster(3)
 		lid := *leaderID
 		targetID := lid%3 + 1
@@ -65,8 +65,21 @@ var _ = DescribeTable("Rejected learner registration routing preserves active pe
 		}
 		Expect(originalPeer).NotTo(BeNil())
 		Expect(originalPeer.GetInstanceId()).To(HaveLen(16))
+		if sameIdentity {
+			By("rejecting malformed bootstrap identities at the gRPC boundary")
+			for _, length := range []int{0, 15, 17} {
+				_, err := bootstrapClient.JoinAsLearner(bootstrapCtx, &clusterbootstrappb.JoinAsLearnerRequest{
+					NodeId: targetID, RaftAddress: originalPeer.GetRaftAddress(),
+					ServiceAddress: originalPeer.GetServiceAddress(), InstanceId: make([]byte, length),
+				})
+				Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+				Expect(err.Error()).To(ContainSubstring("instance_id must be 16 bytes"))
+			}
+		}
 		newIdentity := slices.Clone(originalPeer.GetInstanceId())
-		newIdentity[0] ^= 0xff
+		if !sameIdentity {
+			newIdentity[0] ^= 0xff
+		}
 		deadRaftAddress := testserver.AllocateDeadAddress()
 		deadServiceAddress := testserver.AllocateDeadAddress()
 
@@ -125,6 +138,7 @@ var _ = DescribeTable("Rejected learner registration routing preserves active pe
 		Expect(err).To(Succeed())
 		Expect(forwarded.GetLocalNode()).To(Equal(uint32(targetID)))
 	},
-	Entry("after administrative AddLearner stale-progress rejection", true),
-	Entry("after boot JoinAsLearner stale-progress rejection", false),
+	Entry("after administrative AddLearner stale-progress rejection", true, false),
+	Entry("after boot JoinAsLearner stale-progress rejection", false, false),
+	Entry("after boot JoinAsLearner with the same identity and stale progress", false, true),
 )
