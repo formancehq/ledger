@@ -26,7 +26,8 @@ var authTracer = otel.Tracer("auth")
 // AuthConfig holds the configuration for gRPC and HTTP authentication.
 type AuthConfig struct {
 	Enabled              bool
-	KeySet               oidc.KeySet
+	KeySet               oidc.KeySet // trusted OIDC issuer keys
+	Ed25519KeySet        oidc.KeySet // deployment-dedicated static authentication keys
 	Issuer               string
 	Audience             string // explicit resource-server identifier, shared by all deployment nodes
 	Service              string
@@ -181,15 +182,11 @@ func bearerTokenFromContext(ctx context.Context) (string, bool) {
 	return strings.TrimSpace(authHeader[7:]), true
 }
 
-// validateToken validates a JWT token. It supports both OIDC (RS256/ES256/PS256) and
-// EdDSA tokens. For EdDSA tokens, the issuer check is skipped (self-signed) and
-// key-level scope enforcement is applied when Ed25519AllowedScopes is configured.
-// Both formats require the deployment's explicit audience before authorization.
+// validateToken validates OIDC tokens (RS256/ES256/PS256/EdDSA) with issuer and
+// deployment audience checks. Tokens verified by dedicated static Ed25519 keys
+// are exempt from issuer and audience checks, and receive key-level scope and
+// god-mode enforcement when Ed25519AllowedScopes is configured.
 func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.AccessTokenClaims, error) {
-	if strings.TrimSpace(cfg.Audience) == "" {
-		return nil, errors.New("expected token audience is not configured")
-	}
-
 	claims := &oidc.AccessTokenClaims{}
 
 	decrypted, err := oidc.DecryptToken(token)
@@ -202,19 +199,36 @@ func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.Acc
 		return nil, err
 	}
 
-	// Accept EdDSA in addition to the default algorithms (RS256, ES256, PS256).
+	// Static authentication is identified by successful verification against
+	// the dedicated key set, never by an algorithm or key ID alone: OIDC JWKS
+	// may also contain Ed25519 keys, including keys with colliding IDs.
+	staticToken := false
+	if cfg.Ed25519KeySet != nil {
+		_, err = oidc.CheckSignature(ctx, decrypted, payload, []string{string(jose.EdDSA)}, cfg.Ed25519KeySet)
+		staticToken = err == nil
+	}
+
+	// OIDC issuers may use EdDSA as well as RS256, ES256 and PS256.
 	supportedAlgs := []string{
 		string(jose.RS256), string(jose.ES256), string(jose.PS256),
 		string(jose.EdDSA),
 	}
 
-	sigAlg, err := oidc.CheckSignature(ctx, decrypted, payload, supportedAlgs, cfg.KeySet)
-	if err != nil {
-		return nil, err
+	if !staticToken {
+		if cfg.KeySet == nil {
+			if err != nil {
+				return nil, err
+			}
+
+			return nil, oidc.ErrKeyNone
+		}
+		if _, err := oidc.CheckSignature(ctx, decrypted, payload, supportedAlgs, cfg.KeySet); err != nil {
+			return nil, err
+		}
 	}
 
-	if sigAlg == jose.EdDSA {
-		// EdDSA tokens are self-signed: skip OIDC issuer check.
+	if staticToken {
+		// Dedicated static tokens are self-signed: skip OIDC issuer check.
 		// Enforce key-level scope restrictions if configured.
 		if cfg.Ed25519AllowedScopes != nil {
 			keyID := extractKeyID(decrypted)
@@ -243,8 +257,13 @@ func validateToken(ctx context.Context, token string, cfg AuthConfig) (*oidc.Acc
 		return nil, err
 	}
 
-	if !claims.Audience.Has(cfg.Audience) {
-		return nil, errors.New("token audience does not contain the expected deployment audience")
+	if !staticToken {
+		if strings.TrimSpace(cfg.Audience) == "" {
+			return nil, errors.New("expected token audience is not configured")
+		}
+		if !claims.Audience.Has(cfg.Audience) {
+			return nil, errors.New("token audience does not contain the expected deployment audience")
+		}
 	}
 
 	return claims, nil

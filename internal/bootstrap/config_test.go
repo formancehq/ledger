@@ -282,6 +282,11 @@ func TestValidateAuthConfig(t *testing.T) {
 			name:    "Ed25519 without audience",
 			auth:    AuthFlagConfig{Enabled: true, Ed25519KeysFile: "/path/to/keys"},
 			tlsMode: TLSModeRequired,
+		},
+		{
+			name:    "mixed authentication without OIDC audience",
+			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com", Ed25519KeysFile: "/path/to/keys"},
+			tlsMode: TLSModeRequired,
 			wantErr: "requires a non-empty --auth-audience",
 		},
 		{

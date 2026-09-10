@@ -195,7 +195,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 
 	// Ed25519 authentication keys
 	runCmd.Flags().String("auth-ed25519-keys", "", "Path to JSON file with Ed25519 public keys and scopes for authentication")
-	runCmd.Flags().String("auth-audience", "", "Expected JWT audience identifying this deployment (required with --auth-enabled; identical on every node)")
+	runCmd.Flags().String("auth-audience", "", "Expected OIDC JWT audience identifying this deployment (required with --auth-issuer; identical on every node)")
 
 	// Scope mapping: virtual → granular scope expansion
 	runCmd.Flags().String("auth-scope-mapping-file", "", "Path to JSON file mapping virtual scopes (e.g. ledger:read) to granular scopes")

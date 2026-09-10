@@ -1033,9 +1033,10 @@ if ok {
 
 ## JWT deployment audience (EN-1926)
 
-Both HTTP and gRPC require OIDC/Ed25519 access tokens to contain the explicit
+Both HTTP and gRPC require OIDC access tokens to contain the explicit
 deployment `--auth-audience` in `aud`, before scope expansion or god mode.
 Missing or mismatching audiences yield HTTP 401 / gRPC `Unauthenticated`;
-matching string and array forms are accepted. Server startup and `ledgerctl`
-token generation require explicit audience configuration. See the
+matching string and array forms are accepted. OIDC startup requires explicit audience configuration. Static Ed25519 tokens
+are exempt, including in mixed mode; their keys must be dedicated per deployment
+and authentication usage. `ledgerctl` token generation needs no audience. See the
 [authentication contract](../architecture/subsystems/api/auth.md#deployment-audience-en-1926).

@@ -184,10 +184,10 @@ func mutationAuthContext(t *testing.T) (internalauth.AuthConfig, context.Context
 		Use:       "sig",
 	})
 	authCfg := internalauth.AuthConfig{
-		Enabled:      true,
-		Audience:     "urn:formance:ledger:test",
-		KeySet:       keySet,
-		ScopeMapping: internalauth.DefaultMapping("ledger"),
+		Enabled:       true,
+		Audience:      "urn:formance:ledger:test",
+		Ed25519KeySet: keySet,
+		ScopeMapping:  internalauth.DefaultMapping("ledger"),
 	}
 
 	now := time.Now()

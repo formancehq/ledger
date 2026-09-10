@@ -629,8 +629,9 @@ func validateClusterConfig(spec *ledgerv1alpha1.ClusterSpec) error {
 			"enable TLS before enabling auth")
 	}
 
-	if spec.Auth != nil && spec.Auth.Enabled != nil && *spec.Auth.Enabled && strings.TrimSpace(spec.Auth.Audience) == "" {
-		return errors.New("auth.enabled requires a non-empty auth.audience for this deployment")
+	if spec.Auth != nil && spec.Auth.Enabled != nil && *spec.Auth.Enabled &&
+		(spec.Auth.Issuer != "" || len(spec.Auth.Issuers) > 0) && strings.TrimSpace(spec.Auth.Audience) == "" {
+		return errors.New("auth.enabled with an OIDC issuer requires a non-empty auth.audience for this deployment")
 	}
 
 	if spec.Cache != nil && spec.Cache.RotationThreshold != nil && *spec.Cache.RotationThreshold <= 0 {

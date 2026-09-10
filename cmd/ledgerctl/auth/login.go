@@ -310,11 +310,6 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 		return tokenParams{}, errors.New("required flag \"subject\" not set")
 	}
 
-	audience, err := tokenAudienceFromFlags(cmd)
-	if err != nil {
-		return tokenParams{}, err
-	}
-
 	god, _ := cmd.Flags().GetBool("god")
 	if !cmd.Flags().Changed("god") && bundle != nil {
 		god = bundle.God
@@ -324,7 +319,6 @@ func resolveLoginParams(cmd *cobra.Command) (tokenParams, error) {
 		seed:       seed,
 		keyID:      keyID,
 		subject:    subject,
-		audience:   audience,
 		scopes:     scopes,
 		expiration: expiration,
 		god:        god,

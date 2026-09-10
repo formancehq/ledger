@@ -21,7 +21,7 @@ import (
 type AuthFlagConfig struct {
 	Enabled          bool
 	Issuer           string
-	Audience         string // resource-server identifier shared by every deployment node
+	Audience         string // OIDC resource-server identifier shared by every deployment node
 	Service          string
 	Ed25519KeysFile  string
 	ScopeMappingFile string // path to JSON file mapping virtual scopes to granular scopes
@@ -358,8 +358,8 @@ func (c Config) validateAuthConfig() error {
 			return errors.New("--auth-enabled requires either --auth-issuer (OIDC) or --auth-ed25519-keys (Ed25519)")
 		}
 
-		if strings.TrimSpace(auth.Audience) == "" {
-			return errors.New("--auth-enabled requires a non-empty --auth-audience (the deployment's resource-server identifier)")
+		if auth.Issuer != "" && strings.TrimSpace(auth.Audience) == "" {
+			return errors.New("--auth-issuer requires a non-empty --auth-audience (the deployment's resource-server identifier)")
 		}
 
 		// Reject auth without full TLS — bearer JWT/Ed25519 tokens would be

@@ -1614,7 +1614,7 @@ func TimeoutHTTPClient(timeout time.Duration) *http.Client {
 }
 
 // buildAuthConfig constructs an AuthConfig from the server configuration and optional OIDC KeySet.
-// If Ed25519 keys are configured, it creates a composite KeySet that handles both OIDC and EdDSA tokens.
+// Ed25519 keys stay separate from OIDC keys so exemptions require static verification.
 // When auth is enabled with an issuer and no external KeySet is injected, it discovers the OIDC
 // configuration and creates a remote KeySet automatically.
 // Scope mapping is loaded from file, env var, or defaults to the backward-compatible mapping.
@@ -1647,13 +1647,14 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 		}).Infof("OIDC remote keyset configured via discovery")
 	}
 
+	authCfg.KeySet = oidcKeySet
 	if cfg.AuthConfig.Ed25519KeysFile != "" {
 		result, err := internalauth.LoadEd25519KeySet(cfg.AuthConfig.Ed25519KeysFile)
 		if err != nil {
 			return authCfg, fmt.Errorf("loading Ed25519 keys: %w", err)
 		}
 
-		authCfg.KeySet = internalauth.NewCompositeKeySet(result.KeySet, oidcKeySet)
+		authCfg.Ed25519KeySet = result.KeySet
 		authCfg.Ed25519AllowedScopes = result.AllowedScopes
 		authCfg.Ed25519GodKeys = result.GodKeys
 
@@ -1662,8 +1663,6 @@ func buildAuthConfig(cfg Config, logger logging.Logger, oidcKeySet oidc.KeySet) 
 			"god_keys":   len(result.GodKeys),
 			"enabled":    authCfg.Enabled,
 		}).Infof("Ed25519 keys loaded")
-	} else {
-		authCfg.KeySet = oidcKeySet
 	}
 
 	// Load scope mapping: file > env var > default

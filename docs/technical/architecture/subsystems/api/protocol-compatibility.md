@@ -61,10 +61,9 @@ codes. Internal read failures in restore validation retain `Internal` with a
 sanitized correlation message. AuditFailure records retain their original
 diagnostic message and context.
 
-Revision 6 (EN-1926) requires an explicit per-deployment JWT audience for both
-OIDC and Ed25519 authentication. Tokens missing that audience are rejected
-before scope authorization. Servers require `--auth-audience`; CLI token
-issuance requires `--audience`. This changes authentication semantics without
+Revision 6 (EN-1926) requires an explicit per-deployment JWT audience for
+OIDC authentication. Static Ed25519 tokens are exempt. Tokens missing that audience are rejected
+before scope authorization. Servers with an OIDC issuer require `--auth-audience`. This changes authentication semantics without
 changing protobuf fields. Configure every node and issuer consistently and
 mint tokens with the deployment audience.
 
