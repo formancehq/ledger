@@ -1,8 +1,6 @@
 package readstore
 
 import (
-	"encoding/binary"
-	"fmt"
 	"slices"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -83,19 +81,13 @@ func NewStampGatedReversePrefixIterator(
 // invariant #7 beats silently folding an unreadable row into the page.
 // See PrefixIterator.admitStamp.
 func (it *ReversePrefixIterator) admitStamp() bool {
-	if it.stampPin == 0 {
-		return true
-	}
-
-	v := it.iter.Value()
-	if len(v) != 8 {
-		it.stampErr = fmt.Errorf("stamp-gated reverse scan: row %x carries a %d-byte value (want an 8-byte fold sequence)", it.iter.Key(), len(v))
+	admitted, err := admitFoldStamp(it.iter, it.stampPin)
+	if err != nil {
+		it.stampErr = err
 		it.exhausted = true
-
-		return false
 	}
 
-	return binary.BigEndian.Uint64(v) <= it.stampPin
+	return admitted
 }
 
 func (it *ReversePrefixIterator) Next() bool {

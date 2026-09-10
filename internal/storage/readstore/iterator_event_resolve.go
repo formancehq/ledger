@@ -2,7 +2,6 @@ package readstore
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -85,25 +84,6 @@ func NewEventResolveRangeIterator(reader dal.PebbleReader, lower, upper []byte, 
 	return &EventResolveIterator{iter: iter, prefixLen: prefixLen, emitOffset: emitOffset, pin: pin, rangeMode: true}, nil
 }
 
-// parse splits an event key into (group, seq, op). The terminator position
-// is computed from the right — the fixed suffix makes it unambiguous. ok is
-// false for anything this package would not have written, unknown ops
-// included: the caller turns that into a loud error rather than resolving a
-// group from bytes it cannot read.
-func (it *EventResolveIterator) parse(key []byte) (group []byte, seq uint64, op byte, ok bool) {
-	rest := key[it.prefixLen:]
-	tpos := len(rest) - metadataEventSuffixLen - 1
-	if tpos < 0 || rest[tpos] != metadataEventTerminator {
-		return nil, 0, 0, false
-	}
-
-	if op := rest[tpos+9]; !validEventOp(op) {
-		return nil, 0, 0, false
-	}
-
-	return rest[:tpos], binary.BigEndian.Uint64(rest[tpos+1 : tpos+9]), rest[tpos+9], true
-}
-
 // settle resolves consecutive groups starting at the raw iterator's current
 // position until one is live at the pin, leaving the raw iterator at the
 // following group.
@@ -122,7 +102,7 @@ func (it *EventResolveIterator) settleFrom(seekTarget []byte) bool {
 
 func (it *EventResolveIterator) settle() bool {
 	for it.iter.Valid() {
-		g, _, _, ok := it.parse(it.iter.Key())
+		g, _, _, ok := parseEventKey(it.iter.Key(), it.prefixLen)
 		if !ok {
 			it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
 
@@ -133,7 +113,7 @@ func (it *EventResolveIterator) settle() bool {
 		live := false
 
 		for it.iter.Valid() {
-			g, seq, op, ok := it.parse(it.iter.Key())
+			g, seq, op, ok := parseEventKey(it.iter.Key(), it.prefixLen)
 			if !ok {
 				it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
 

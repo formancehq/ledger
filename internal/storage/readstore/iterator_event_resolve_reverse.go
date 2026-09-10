@@ -2,7 +2,6 @@ package readstore
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -54,23 +53,6 @@ func NewReverseEventResolveIterator(reader dal.PebbleReader, prefix []byte, pin 
 	return &ReverseEventResolveIterator{iter: iter, seekPrefix: prefix, prefixLen: len(prefix), pin: pin}, nil
 }
 
-// parse splits an event key into (group, seq, op) — identical to
-// EventResolveIterator.parse; the layout does not depend on direction.
-func (it *ReverseEventResolveIterator) parse(key []byte) (group []byte, seq uint64, op byte, ok bool) {
-	rest := key[it.prefixLen:]
-
-	tpos := len(rest) - metadataEventSuffixLen - 1
-	if tpos < 0 || rest[tpos] != metadataEventTerminator {
-		return nil, 0, 0, false
-	}
-
-	if op := rest[tpos+9]; !validEventOp(op) {
-		return nil, 0, 0, false
-	}
-
-	return rest[:tpos], binary.BigEndian.Uint64(rest[tpos+1 : tpos+9]), rest[tpos+9], true
-}
-
 // settleFrom resolves groups backwards from the raw iterator's position until
 // one is live at the pin. seekTarget is the target of the seek that led here,
 // or nil when advancing through Next: a scan that runs out while seeking
@@ -90,7 +72,7 @@ func (it *ReverseEventResolveIterator) settleFrom(seekTarget []byte) bool {
 // preceding group.
 func (it *ReverseEventResolveIterator) settle() bool {
 	for it.iter.Valid() {
-		g, _, _, ok := it.parse(it.iter.Key())
+		g, _, _, ok := parseEventKey(it.iter.Key(), it.prefixLen)
 		if !ok {
 			it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
 
@@ -102,7 +84,7 @@ func (it *ReverseEventResolveIterator) settle() bool {
 		decided := false
 
 		for it.iter.Valid() {
-			g, seq, op, ok := it.parse(it.iter.Key())
+			g, seq, op, ok := parseEventKey(it.iter.Key(), it.prefixLen)
 			if !ok {
 				it.err = fmt.Errorf("malformed metadata event key %x", it.iter.Key())
 
