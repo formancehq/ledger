@@ -81,15 +81,225 @@ if [[ "$clean_cache" == true ]]; then
 fi
 printf '%s\n' "ledger-ai-cache-v1" >"$cache_marker"
 
-for name in go-build go-mod go-path golangci-lint xdg; do
+for name in go-mod go-path golangci-lint xdg; do
     mkdir -p "$cache_root/$name"
 done
 mkdir -p "$run_dir/tmp"
 
+# GOCACHE has much higher cardinality than the module and tool caches: build
+# tags, race instrumentation, coverage and changing candidate SHAs all produce
+# distinct entries. Keep its cross-worktree warm reuse, but rotate it once the
+# current generation crosses a soft budget. Existing processes remain pinned
+# to their generation through a process-identity lease; only retired
+# generations with no live lease are removed.
+go_cache_max_mib=${LEDGER_AI_GOCACHE_MAX_MIB:-32768}
+go_cache_check_interval=${LEDGER_AI_GOCACHE_CHECK_INTERVAL_SECONDS:-300}
+[[ "$go_cache_max_mib" =~ ^[1-9][0-9]*$ ]] || {
+    echo "agent-validation-env: LEDGER_AI_GOCACHE_MAX_MIB must be a positive integer" >&2
+    exit 2
+}
+[[ "$go_cache_check_interval" =~ ^[0-9]+$ ]] || {
+    echo "agent-validation-env: LEDGER_AI_GOCACHE_CHECK_INTERVAL_SECONDS must be a non-negative integer" >&2
+    exit 2
+}
+
+go_cache_namespace="$cache_root/go-build-generations"
+go_cache_generations="$go_cache_namespace/generations"
+go_cache_current_file="$go_cache_namespace/current"
+go_cache_check_file="$go_cache_namespace/check-timestamp"
+go_cache_lock="$go_cache_namespace/lock"
+[[ ! -L "$go_cache_namespace" ]] || {
+    echo "agent-validation-env: refusing symlinked Go cache namespace: $go_cache_namespace" >&2
+    exit 1
+}
+mkdir -p "$go_cache_generations"
+[[ ! -L "$go_cache_generations" ]] || {
+    echo "agent-validation-env: refusing symlinked Go cache generations directory" >&2
+    exit 1
+}
+go_cache_namespace_marker="$go_cache_namespace/.ledger-ai-go-build"
+if [[ -e "$go_cache_namespace_marker" ]]; then
+    [[ -f "$go_cache_namespace_marker" && ! -L "$go_cache_namespace_marker" && "$(<"$go_cache_namespace_marker")" == "ledger-ai-go-build-v1" ]] || {
+        echo "agent-validation-env: invalid Go cache namespace marker" >&2
+        exit 1
+    }
+else
+    printf '%s\n' "ledger-ai-go-build-v1" >"$go_cache_namespace_marker"
+fi
+
+process_identity() {
+    local pid=$1 boot_id start_ticks identity
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    kill -0 "$pid" 2>/dev/null || return 1
+
+    if [[ -r "/proc/$pid/stat" && -r /proc/sys/kernel/random/boot_id ]]; then
+        boot_id=$(</proc/sys/kernel/random/boot_id)
+        start_ticks=$(sed 's/^.*) //' "/proc/$pid/stat" | awk '{print $20}')
+        [[ -n "$boot_id" && "$start_ticks" =~ ^[0-9]+$ ]] || return 1
+        printf 'linux:%s:%s\n' "$boot_id" "$start_ticks"
+        return
+    fi
+
+    identity=$(LC_ALL=C ps -o lstart= -p "$pid" 2>/dev/null || true)
+    [[ -n "$identity" ]] || return 1
+    printf 'ps:%s\n' "$identity"
+}
+
+lease_is_live() {
+    local lease=$1 pid expected_identity actual_identity
+    IFS= read -r pid <"$lease" || return 1
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    kill -0 "$pid" 2>/dev/null || return 1
+    expected_identity=$(sed -n '2p' "$lease")
+    actual_identity=$(process_identity "$pid" 2>/dev/null || true)
+    [[ -z "$expected_identity" || -z "$actual_identity" || "$expected_identity" == "$actual_identity" ]]
+}
+
+write_process_identity() {
+    local target=$1 identity
+    identity=$(process_identity "$$" 2>/dev/null || true)
+    printf '%s\n%s\n' "$$" "$identity" >"$target"
+}
+
+release_go_cache_lock() {
+    local owner_pid
+    [[ -d "$go_cache_lock" && ! -L "$go_cache_lock" && -f "$go_cache_lock/owner" && ! -L "$go_cache_lock/owner" ]] || return
+    IFS= read -r owner_pid <"$go_cache_lock/owner" 2>/dev/null || return
+    [[ "$owner_pid" == "$$" ]] || return
+    rm -f -- "$go_cache_lock/owner"
+    rmdir -- "$go_cache_lock" 2>/dev/null || true
+}
+
+acquire_go_cache_lock() {
+    local attempt
+    for ((attempt = 0; attempt < 200; attempt++)); do
+        [[ ! -L "$go_cache_lock" ]] || {
+            echo "agent-validation-env: refusing symlinked Go cache generation lock" >&2
+            exit 1
+        }
+        if mkdir "$go_cache_lock" 2>/dev/null; then
+            write_process_identity "$go_cache_lock/owner"
+            return
+        fi
+        if [[ -L "$go_cache_lock/owner" ]]; then
+            echo "agent-validation-env: refusing symlinked Go cache generation lock owner" >&2
+            exit 1
+        fi
+        if [[ -f "$go_cache_lock/owner" ]] && ! lease_is_live "$go_cache_lock/owner" 2>/dev/null; then
+            rm -f -- "$go_cache_lock/owner"
+            rmdir -- "$go_cache_lock" 2>/dev/null || true
+            continue
+        fi
+        # A creator can be between mkdir and the owner write. Only reap an
+        # ownerless lock after a grace period, and only if it is still empty.
+        if ((attempt >= 20)) && [[ ! -e "$go_cache_lock/owner" ]]; then
+            rmdir -- "$go_cache_lock" 2>/dev/null || true
+            continue
+        fi
+        sleep 0.05
+    done
+    echo "agent-validation-env: timed out acquiring Go cache generation lock" >&2
+    exit 1
+}
+
+new_go_cache_generation() {
+    local now=$1 generation generation_root temporary_current attempt created=false
+    for ((attempt = 0; attempt < 20; attempt++)); do
+        generation="gen-${now}-$$-${RANDOM}"
+        generation_root="$go_cache_generations/$generation"
+        if mkdir "$generation_root" 2>/dev/null; then
+            created=true
+            break
+        fi
+    done
+    [[ "$created" == true ]] || {
+        echo "agent-validation-env: could not allocate a Go cache generation" >&2
+        exit 1
+    }
+    mkdir -p "$generation_root/cache" "$generation_root/leases"
+    printf '%s\n' "ledger-ai-go-cache-generation-v1" >"$generation_root/.ledger-ai-go-cache-generation"
+    temporary_current="$go_cache_current_file.$$"
+    printf '%s\n' "$generation" >"$temporary_current"
+    mv -f -- "$temporary_current" "$go_cache_current_file"
+    go_cache_generation=$generation
+    go_cache_generation_root=$generation_root
+    go_cache_path="$generation_root/cache"
+}
+
+prune_retired_go_cache_generations() {
+    local generation_path generation lease live
+    for generation_path in "$go_cache_generations"/gen-*; do
+        [[ -d "$generation_path" && ! -L "$generation_path" ]] || continue
+        generation=${generation_path##*/}
+        [[ "$generation" != "$go_cache_generation" ]] || continue
+        [[ -f "$generation_path/.ledger-ai-go-cache-generation" && ! -L "$generation_path/.ledger-ai-go-cache-generation" ]] || continue
+        [[ "$(<"$generation_path/.ledger-ai-go-cache-generation")" == "ledger-ai-go-cache-generation-v1" ]] || continue
+
+        live=false
+        for lease in "$generation_path/leases"/*; do
+            [[ -f "$lease" ]] || continue
+            if [[ -L "$lease" ]]; then
+                rm -f -- "$lease"
+                continue
+            fi
+            if lease_is_live "$lease"; then
+                live=true
+            else
+                rm -f -- "$lease"
+            fi
+        done
+        if [[ "$live" == false ]]; then
+            find "$generation_path" -depth -delete
+        fi
+    done
+}
+
+acquire_go_cache_lock
+trap release_go_cache_lock EXIT
+now=$(date +%s)
+go_cache_generation=
+if [[ -f "$go_cache_current_file" && ! -L "$go_cache_current_file" ]]; then
+    go_cache_generation=$(<"$go_cache_current_file")
+fi
+go_cache_generation_valid=false
+if [[ "$go_cache_generation" =~ ^gen-[0-9]+-[0-9]+-[0-9]+$ ]]; then
+    go_cache_generation_root="$go_cache_generations/$go_cache_generation"
+    go_cache_marker="$go_cache_generation_root/.ledger-ai-go-cache-generation"
+    if [[ -d "$go_cache_generation_root" && ! -L "$go_cache_generation_root" && -d "$go_cache_generation_root/cache" && ! -L "$go_cache_generation_root/cache" && -d "$go_cache_generation_root/leases" && ! -L "$go_cache_generation_root/leases" && -f "$go_cache_marker" && ! -L "$go_cache_marker" ]] && [[ "$(<"$go_cache_marker")" == "ledger-ai-go-cache-generation-v1" ]]; then
+        go_cache_generation_valid=true
+    fi
+fi
+if [[ "$go_cache_generation_valid" == false ]]; then
+    new_go_cache_generation "$now"
+else
+    go_cache_path="$go_cache_generation_root/cache"
+fi
+
+last_check=0
+if [[ -f "$go_cache_check_file" ]]; then
+    last_check=$(<"$go_cache_check_file")
+    [[ "$last_check" =~ ^[0-9]+$ ]] || last_check=0
+fi
+if ((now - last_check >= go_cache_check_interval)); then
+    go_cache_size_kib=$(du -sk "$go_cache_path" | awk '{print $1}')
+    temporary_check="$go_cache_check_file.$$"
+    printf '%s\n' "$now" >"$temporary_check"
+    mv -f -- "$temporary_check" "$go_cache_check_file"
+    if ((go_cache_size_kib > go_cache_max_mib * 1024)); then
+        new_go_cache_generation "$now"
+    fi
+fi
+
+prune_retired_go_cache_generations
+go_cache_lease="$go_cache_generation_root/leases/lease-$$-${RANDOM}"
+write_process_identity "$go_cache_lease"
+release_go_cache_lock
+trap - EXIT
+
 export VALIDATION_RUN_ID="$run_id"
 export VALIDATION_RUN_DIR="$run_dir"
 export LEDGER_AI_CACHE_ROOT="$cache_root"
-export GOCACHE="$cache_root/go-build"
+export GOCACHE="$go_cache_path"
 export GOMODCACHE="$cache_root/go-mod"
 export GOPATH="$cache_root/go-path"
 export TMPDIR="$run_dir/tmp"
@@ -98,6 +308,7 @@ export GOLANGCI_LINT_CACHE="$cache_root/golangci-lint"
 
 if [[ "$ephemeral" == true ]]; then
     cleanup() {
+        rm -f -- "$go_cache_lease"
         case "$run_dir" in
             */ledger-agent-validation.??????) find "$run_dir" -depth -delete >/dev/null 2>&1 || true ;;
         esac

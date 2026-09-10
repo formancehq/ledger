@@ -47,8 +47,156 @@ func TestSharedCacheEnvironment(t *testing.T) {
 	require.Equal(t, first["GOLANGCI_LINT_CACHE"], other["GOLANGCI_LINT_CACHE"])
 	require.NotEqual(t, first["TMPDIR"], second["TMPDIR"])
 	resolvedCacheRoot := resolvedPath(t, cacheRoot)
+	require.Contains(t, first["GOCACHE"], filepath.Join(resolvedCacheRoot, "go-build-generations")+string(filepath.Separator))
+	require.FileExists(t, filepath.Join(filepath.Dir(first["GOCACHE"]), ".ledger-ai-go-cache-generation"))
 	require.Equal(t, filepath.Join(resolvedCacheRoot, "golangci-lint"), first["GOLANGCI_LINT_CACHE"])
 	require.Equal(t, resolvedCacheRoot, first["LEDGER_AI_CACHE_ROOT"])
+}
+
+func TestGoCacheRotatesAfterBudgetAndRetiresIdleGeneration(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	repository := filepath.Join(root, "candidate")
+	cacheRoot := filepath.Join(root, "shared-cache")
+	require.NoError(t, os.MkdirAll(repository, 0o755))
+	runGit(t, repository, "init")
+
+	first := captureGoCache(t, repository, cacheRoot, root, filepath.Join(root, "run-one"))
+	require.NoError(t, os.WriteFile(filepath.Join(first, "oversized"), make([]byte, 2<<20), 0o644))
+	second := captureGoCache(t, repository, cacheRoot, root, filepath.Join(root, "run-two"))
+
+	require.NotEqual(t, first, second)
+	require.NoDirExists(t, first)
+	require.DirExists(t, second)
+}
+
+func TestGoCacheRetainsLeasedGenerationUntilProcessExits(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	repository := filepath.Join(root, "candidate")
+	cacheRoot := filepath.Join(root, "shared-cache")
+	firstPathFile := filepath.Join(root, "first-cache")
+	require.NoError(t, os.MkdirAll(repository, 0o755))
+	runGit(t, repository, "init")
+
+	releaseReader, releaseWriter, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = releaseReader.Close()
+		_ = releaseWriter.Close()
+	})
+	firstCommand := testenv.Command(t, "bash", validationEnvPath(t), filepath.Join(root, "run-one"),
+		"sh", "-c", `printf %s "$GOCACHE" >"$1"; IFS= read -r release <&3`, "lease-holder", firstPathFile)
+	firstCommand.Dir = repository
+	firstCommand.Env = cacheBudgetEnvironment(root, cacheRoot)
+	firstCommand.ExtraFiles = []*os.File{releaseReader}
+	require.NoError(t, firstCommand.Start())
+	require.NoError(t, releaseReader.Close())
+
+	var first string
+	require.Eventually(t, func() bool {
+		contents, readErr := os.ReadFile(firstPathFile)
+		first = string(contents)
+
+		return readErr == nil && first != ""
+	}, 5*time.Second, 10*time.Millisecond)
+	require.NoError(t, os.WriteFile(filepath.Join(first, "oversized"), make([]byte, 2<<20), 0o644))
+
+	second := captureGoCache(t, repository, cacheRoot, root, filepath.Join(root, "run-two"))
+	require.NotEqual(t, first, second)
+	require.DirExists(t, first)
+
+	_, err = releaseWriter.WriteString("release\n")
+	require.NoError(t, err)
+	require.NoError(t, releaseWriter.Close())
+	require.NoError(t, firstCommand.Wait())
+
+	third := captureGoCache(t, repository, cacheRoot, root, filepath.Join(root, "run-three"))
+	require.Equal(t, second, third)
+	require.NoDirExists(t, first)
+}
+
+func TestGoCacheIgnoresStaleLeaseFromReusedPID(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	repository := filepath.Join(root, "candidate")
+	cacheRoot := filepath.Join(root, "shared-cache")
+	require.NoError(t, os.MkdirAll(repository, 0o755))
+	runGit(t, repository, "init")
+
+	first := captureGoCache(t, repository, cacheRoot, root, filepath.Join(root, "run-one"))
+	require.NoError(t, os.WriteFile(filepath.Join(first, "oversized"), make([]byte, 2<<20), 0o644))
+	staleLease := filepath.Join(filepath.Dir(first), "leases", "stale-reused-pid")
+	require.NoError(t, os.WriteFile(staleLease, fmt.Appendf(nil, "%d\nps:definitely-not-this-process\n", os.Getpid()), 0o644))
+
+	second := captureGoCache(t, repository, cacheRoot, root, filepath.Join(root, "run-two"))
+	require.NotEqual(t, first, second)
+	require.NoDirExists(t, first)
+}
+
+func TestConcurrentGoCacheInitializersShareOneGeneration(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	repository := filepath.Join(root, "candidate")
+	cacheRoot := filepath.Join(root, "shared-cache")
+	require.NoError(t, os.MkdirAll(repository, 0o755))
+	runGit(t, repository, "init")
+
+	const peers = 8
+	commands := make([]*exec.Cmd, 0, peers)
+	outputs := make([]bytes.Buffer, peers)
+	for index := range peers {
+		command := testenv.Command(t, "bash", validationEnvPath(t), filepath.Join(root, fmt.Sprintf("run-%d", index)),
+			"sh", "-c", "printf %s \"$GOCACHE\"")
+		command.Dir = repository
+		command.Env = testenv.Environment("HOME="+root, "LEDGER_AI_CACHE_ROOT="+cacheRoot)
+		command.Stdout = &outputs[index]
+		command.Stderr = &outputs[index]
+		commands = append(commands, command)
+	}
+	for _, command := range commands {
+		require.NoError(t, command.Start())
+	}
+	for index, command := range commands {
+		require.NoError(t, command.Wait(), outputs[index].String())
+	}
+	for index := 1; index < peers; index++ {
+		require.Equal(t, outputs[0].String(), outputs[index].String())
+	}
+}
+
+func TestGoCacheRecoversStaleLockAndRejectsInvalidConfiguration(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	repository := filepath.Join(root, "candidate")
+	cacheRoot := filepath.Join(root, "shared-cache")
+	lock := filepath.Join(cacheRoot, "go-build-generations", "lock")
+	require.NoError(t, os.MkdirAll(lock, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(lock, "owner"), []byte("999999999\nunknown\n"), 0o644))
+	require.NoError(t, os.MkdirAll(repository, 0o755))
+	runGit(t, repository, "init")
+
+	cache := captureGoCache(t, repository, cacheRoot, root, filepath.Join(root, "run"))
+	require.DirExists(t, cache)
+	require.NoDirExists(t, lock)
+
+	for _, setting := range []string{
+		"LEDGER_AI_GOCACHE_MAX_MIB=0",
+		"LEDGER_AI_GOCACHE_MAX_MIB=invalid",
+		"LEDGER_AI_GOCACHE_CHECK_INTERVAL_SECONDS=-1",
+	} {
+		command := testenv.Command(t, "bash", validationEnvPath(t), filepath.Join(root, strings.ReplaceAll(setting, "=", "-")), "true")
+		command.Dir = repository
+		command.Env = testenv.Environment("HOME="+root, "LEDGER_AI_CACHE_ROOT="+cacheRoot, setting)
+		output, err := command.CombinedOutput()
+		require.Error(t, err, string(output))
+		require.Contains(t, string(output), "must be")
+	}
 }
 
 func TestRejectsCacheInsideCandidate(t *testing.T) {
@@ -74,7 +222,7 @@ func TestCleanCacheAndRetry(t *testing.T) {
 	require.NoError(t, os.MkdirAll(repository, 0o755))
 	runGit(t, repository, "init")
 	environment := captureEnvironment(t, repository, cacheRoot, root, runDirectory)
-	goSentinel := filepath.Join(cacheRoot, "go-build", "keep")
+	goSentinel := filepath.Join(environment["GOCACHE"], "keep")
 	lintSentinel := filepath.Join(environment["GOLANGCI_LINT_CACHE"], "remove")
 	moduleSentinel := filepath.Join(cacheRoot, "go-mod", "keep")
 	pathSentinel := filepath.Join(cacheRoot, "go-path", "keep")
@@ -95,7 +243,7 @@ func TestCleanCacheAndRetry(t *testing.T) {
 	require.FileExists(t, pathSentinel)
 	require.FileExists(t, xdgSentinel)
 	require.FileExists(t, filepath.Join(cacheRoot, ".ledger-ai-cache"))
-	require.DirExists(t, filepath.Join(cacheRoot, "go-build"))
+	require.DirExists(t, environment["GOCACHE"])
 	require.DirExists(t, environment["GOLANGCI_LINT_CACHE"])
 }
 
@@ -273,6 +421,26 @@ func captureEnvironment(t *testing.T, repository, cacheRoot, userHome, runDirect
 	}
 
 	return result
+}
+
+func captureGoCache(t *testing.T, repository, cacheRoot, userHome, runDirectory string) string {
+	t.Helper()
+	command := testenv.Command(t, "bash", validationEnvPath(t), runDirectory, "sh", "-c", "printf %s \"$GOCACHE\"")
+	command.Dir = repository
+	command.Env = cacheBudgetEnvironment(userHome, cacheRoot)
+	output, err := command.CombinedOutput()
+	require.NoError(t, err, string(output))
+
+	return string(output)
+}
+
+func cacheBudgetEnvironment(userHome, cacheRoot string) []string {
+	return testenv.Environment(
+		"HOME="+userHome,
+		"LEDGER_AI_CACHE_ROOT="+cacheRoot,
+		"LEDGER_AI_GOCACHE_MAX_MIB=1",
+		"LEDGER_AI_GOCACHE_CHECK_INTERVAL_SECONDS=0",
+	)
 }
 
 func writeModule(t *testing.T, directory string) {

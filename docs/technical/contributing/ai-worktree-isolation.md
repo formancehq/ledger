@@ -13,6 +13,8 @@ from ordinary wrong-worktree, wrong-PR, and wrong-SHA mistakes.
 - `VALIDATION_RUN_DIR` is a unique non-worktree directory for temporary review
   and validation state. Shared Go and lint caches remain outside the candidate
   and validation directories as documented in [Local validation](local-validation.md).
+  Both validation and the exact reviewer enter through `agent-validation-env`,
+  so each process holds a lease on the managed Go build-cache generation it uses.
 
 `ai-pr-loop` creates
 `.<repo>-ai-worktrees/pr-<pr>.<run>/{worktree,trusted-tools,validation}`. The
