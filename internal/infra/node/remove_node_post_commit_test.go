@@ -115,7 +115,9 @@ func TestWaitForRemovalAppliedWithoutInstanceIDFailsLoudly(t *testing.T) {
 		logger:     logging.Testing(),
 	}
 
-	err := n.waitForRemovalApplied(context.Background(), 3, nil, 42)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	err := n.waitForRemovalApplied(ctx, 3, nil, 42)
 	var committedErr *RemoveNodeCommittedError
 	require.ErrorAs(t, err, &committedErr)
 	require.Equal(t, uint64(3), committedErr.NodeID)
