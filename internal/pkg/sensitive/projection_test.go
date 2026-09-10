@@ -82,3 +82,11 @@ func TestCloneRecursiveDescriptors(t *testing.T) {
 	assertChild(view.Get(desc.Fields().ByName("list")).List().Get(0))
 	assertChild(view.Get(desc.Fields().ByName("by_name")).Map().Get(protoreflect.ValueOfString("server").MapKey()))
 }
+
+func TestClonePreservesSanitizedSinkDiagnostic(t *testing.T) {
+	t.Parallel()
+	source := &commonpb.SinkError{Message: "sending request to webhook.example: connection refused"}
+	view := Clone(source)
+	require.Equal(t, source.GetMessage(), view.GetMessage())
+	require.NotSame(t, source, view)
+}
