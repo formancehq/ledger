@@ -376,11 +376,16 @@ type logRecord struct {
 	ephemeral string
 	date      *commonpb.Timestamp
 	sequence  uint64
+	// txID links a created_transaction / reverted_transaction log to the
+	// transaction it announces, so the transaction embedded in the served log
+	// can be held to the same record ListTransactions is held to. Zero for
+	// every other kind.
+	txID uint64
 }
 
 func logTerm(idx int, l *logRecord) Digest {
 	t := newTerm("LOG")
-	t.u64(uint64(idx), l.id, l.sequence)
+	t.u64(uint64(idx), l.id, l.sequence, l.txID)
 	t.str(l.kind, l.payload, l.purged, l.newKept, l.ephemeral)
 
 	// A nil date (not yet learned) must not collide with any concrete value.
@@ -833,7 +838,7 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			// ledger-scoped order produces exactly one log, so a handler that
 			// forgot would silently shorten the stream and mis-id every log
 			// after it.
-			ls.appendLog(req)
+			ls.appendLog(req, oc.TxID)
 		}
 
 		if ls.logs.Len() > logsBefore {
@@ -1073,13 +1078,18 @@ func canonicalMetadata(m map[string]*commonpb.MetadataValue) string {
 
 // appendLog records the log a committed request produced, if it produced one.
 // The id is the stream's position, dense from 1.
-func (s *LedgerState) appendLog(req *servicepb.Request) {
+func (s *LedgerState) appendLog(req *servicepb.Request, txID uint64) {
 	kind := logKindFor(req)
 	if kind == "" {
 		return
 	}
 
-	s.logs = s.logs.Append(&logRecord{id: uint64(s.logs.Len()) + 1, kind: kind, payload: logPayloadFor(req)})
+	s.logs = s.logs.Append(&logRecord{
+		id:      uint64(s.logs.Len()) + 1,
+		kind:    kind,
+		payload: logPayloadFor(req),
+		txID:    txID,
+	})
 }
 
 // volumeAnnotations are the three per-log volume lists the FSM derives at end

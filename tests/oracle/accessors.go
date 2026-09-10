@@ -247,6 +247,9 @@ func (s LedgerState) LogKinds() []string {
 // learned from the commit response. A nil date or a zero sequence is one not
 // yet learned.
 //
+// TxID names the transaction a created_transaction / reverted_transaction log
+// announces, zero for every other kind.
+//
 // PurgedVolumes, NewKeptVolumes and EphemeralVolumes are the end-of-bulk volume
 // annotations, rendered as a comma-separated "account:asset" list ascending by
 // account then asset. Empty means the log carries none of that class.
@@ -254,6 +257,7 @@ type LogRow struct {
 	ID               uint64
 	Kind             string
 	Payload          string
+	TxID             uint64
 	Date             *commonpb.Timestamp
 	Sequence         uint64
 	PurgedVolumes    string
@@ -270,6 +274,7 @@ func (s LedgerState) LogRows() []LogRow {
 			ID:               rec.id,
 			Kind:             rec.kind,
 			Payload:          rec.payload,
+			TxID:             rec.txID,
 			Date:             rec.date,
 			Sequence:         rec.sequence,
 			PurgedVolumes:    rec.purged,

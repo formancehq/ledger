@@ -29,10 +29,22 @@ func servedRows(ls oracle.LedgerState, ledger string, ids ...uint64) []serverLog
 
 	for _, id := range ids {
 		row := byID[id]
+
+		var (
+			tx        *commonpb.Transaction
+			revertsID uint64
+		)
+
+		if rec := modelTxForLog(ls, row.TxID); rec != nil {
+			tx, revertsID = serverTxFromRec(rec), rec.RevertsTransaction()
+		}
+
 		out = append(out, serverLogRow{
 			ledger:       ledger,
 			id:           id,
 			kind:         row.Kind,
+			tx:           tx,
+			revertsID:    revertsID,
 			payload:      row.Payload,
 			date:         row.Date.GetData(),
 			hasDate:      row.Date != nil,
@@ -477,20 +489,101 @@ func TestServerLogRows_ReadsVolumeAnnotations(t *testing.T) {
 	require.False(t, coloured[0].volumesKnown, "a colour splits a cell the model holds as one")
 }
 
-// With a colour on the wire the three annotations say nothing, so a page that
-// disagrees on them is still legal — every other field is still compared.
-func TestLogWindowMatches_ColouredVolumesAreNotCompared(t *testing.T) {
+// No generated posting carries a colour, so a coloured annotation is a cell
+// nothing in the run could have produced — a finding, not a reason to stop
+// comparing.
+func TestLogWindowMatches_ColouredVolumesAreRejected(t *testing.T) {
 	t.Parallel()
 
 	ls := buildGlobal(t, oracletest.TxReq("world", "acc:1", "USD/2", 5)).Ledger("L")
 	filter := filterLogIDLeaf()
 	id := ls.LogRows()[0].ID
 
+	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, servedRows(ls, "L", id)))
+
 	page := servedRows(ls, "L", id)
-	page[0].newKept, page[0].volumesKnown = "", false
-
-	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, page))
-
-	page[0].kind = "drop_index"
+	page[0].volumesKnown = false
 	require.False(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, page))
+}
+
+// A transaction log carries its own copy of the transaction. ListTransactions
+// agreeing with the model says nothing about that copy, so it is held to the
+// same record: a corrupted embedded transaction is a finding even when the
+// transaction table is right.
+func TestLogWindowMatches_ComparesTheEmbeddedTransaction(t *testing.T) {
+	t.Parallel()
+
+	gs := buildGlobal(t,
+		oracletest.TxReqRefL("L", "r1", "world", "acc:1", "USD/2", 5),
+		oracletest.RevertReqL("L", 1, true),
+	)
+
+	ls := gs.Ledger("L")
+	filter := filterLogIDLeaf()
+
+	rows := ls.LogRows()
+	require.Len(t, rows, 2)
+	require.Equal(t, uint64(1), rows[0].TxID, "the create log names its transaction")
+	require.Equal(t, uint64(2), rows[1].TxID, "the revert log names the compensating one")
+
+	ids := []uint64{rows[0].ID, rows[1].ID}
+	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, servedRows(ls, "L", ids...)))
+
+	for name, corrupt := range map[string]func(*serverLogRow){
+		"a different transaction id": func(r *serverLogRow) { r.tx.Id = 99 },
+		"a different reference":      func(r *serverLogRow) { r.tx.Reference = "elsewhere" },
+		"a dropped posting":          func(r *serverLogRow) { r.tx.Postings = nil },
+		"an invented revert link":    func(r *serverLogRow) { r.tx.RevertsTransaction = 7 },
+		"no transaction at all":      func(r *serverLogRow) { r.tx = nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			page := servedRows(ls, "L", ids...)
+			corrupt(&page[0])
+			require.False(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, page))
+		})
+	}
+
+	// The revert log's reverted_transaction_id is part of the payload too.
+	page := servedRows(ls, "L", ids...)
+	page[1].revertsID = 42
+	require.False(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, page))
+
+	// A config-mutation log announces no transaction; one appearing is a finding.
+	cfg := buildGlobal(t, oracletest.AddTypeReq("T")).Ledger("L")
+	cfgPage := servedRows(cfg, "L", cfg.LogRows()[0].ID)
+	cfgPage[0].tx = &commonpb.Transaction{Id: 1}
+	require.False(t, logWindowMatches(cfg, "L", filter, 0, logTestPageSize, cfgPage))
+}
+
+// The payload is frozen at creation while the record keeps moving, so a
+// transaction reverted or re-tagged after its log was written must not make
+// that log's own copy look wrong.
+func TestLogTxMatches_IgnoresPostCreationMutation(t *testing.T) {
+	t.Parallel()
+
+	gs := buildGlobal(t,
+		oracletest.TxReqL("L", "world", "acc:1", "USD/2", 5),
+		oracletest.RevertReqL("L", 1, true),
+		oracletest.AddTxMetaReq(1, map[string]*commonpb.MetadataValue{"k1": commonpb.NewStringValue("late")}),
+	)
+
+	ls := gs.Ledger("L")
+	rec := ls.Txs().Get(0)
+	require.True(t, rec.Reverted(), "the record moved after its log was written")
+	require.NotEmpty(t, rec.Metadata())
+
+	// The log's copy still carries the creation-time values.
+	frozen := &commonpb.Transaction{Id: rec.Id(), Postings: rec.Postings()}
+	frozen.PostCommitVolumes = serverPCVFromRec(rec)
+	require.True(t, logTxMatches(rec, frozen))
+
+	var ids []uint64
+	for _, row := range ls.LogRows() {
+		ids = append(ids, row.ID)
+	}
+
+	require.True(t, logWindowMatches(ls, "L", filterLogIDLeaf(), 0, logTestPageSize,
+		servedRows(ls, "L", ids...)))
 }

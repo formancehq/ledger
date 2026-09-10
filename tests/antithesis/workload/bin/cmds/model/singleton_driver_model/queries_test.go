@@ -688,8 +688,8 @@ func TestTxRecordMatches_ComparesPostCommitVolumes(t *testing.T) {
 
 	coloured := serverTxFromRec(rec)
 	coloured.PostCommitVolumes.GetVolumesByAccount()["acc:1"].Volumes[0].Color = "red"
-	require.True(t, txRecordMatches(rec, coloured),
-		"colour is a dimension the model's key cannot address, so the snapshot is not compared")
+	require.False(t, txRecordMatches(rec, coloured),
+		"no generated posting is coloured, so a coloured cell is unexplained data")
 }
 
 // assembleAccount never stamps these, so the oracle pins them absent rather
@@ -723,4 +723,27 @@ func TestAccountMatches_RejectsUnmodelledTimestamps(t *testing.T) {
 			require.False(t, accountMatches(ls, "acc:1", acct))
 		})
 	}
+}
+
+// No generated posting carries a colour, so a coloured bucket is a row nothing
+// in the run could have produced — dropping it would let a fabricated one
+// through the exact volume comparison untouched.
+func TestAccountMatches_RejectsColouredVolumes(t *testing.T) {
+	t.Parallel()
+
+	ls := buildGlobal(t, oracletest.TxReqL("L", "world", "acc:1", "USD", 5)).Ledger("L")
+
+	acct := &commonpb.Account{
+		Address: "acc:1",
+		Volumes: []*commonpb.AccountVolume{
+			{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: "5", Output: "0", Balance: "5"}},
+		},
+	}
+	require.True(t, accountMatches(ls, "acc:1", acct))
+
+	acct.Volumes = append(acct.Volumes, &commonpb.AccountVolume{
+		Asset: "USD", Color: "red",
+		Volumes: &commonpb.VolumesWithBalance{Input: "1", Output: "0", Balance: "1"},
+	})
+	require.False(t, accountMatches(ls, "acc:1", acct))
 }

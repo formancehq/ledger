@@ -167,6 +167,8 @@ type logWindowRow struct {
 	id        uint64
 	kind      string
 	payload   string
+	tx        txRecordView
+	revertsID uint64
 	date      *commonpb.Timestamp
 	sequence  uint64
 	purged    string
@@ -178,13 +180,15 @@ type logWindowRow struct {
 // serverLogRow is one log of a page, reduced to what the model can pin: the
 // ledger it belongs to, its per-ledger id, its payload kind, the date the
 // server assigned it, its end-of-bulk volume annotations, and whether it
-// arrived signed. volumesKnown is false when an annotation names a colour, a
-// dimension the model's volume key does not carry.
+// arrived signed. volumesKnown is false when an annotation names a colour,
+// which no generated posting produces.
 type serverLogRow struct {
 	ledger       string
 	id           uint64
 	kind         string
 	payload      string
+	tx           *commonpb.Transaction
+	revertsID    uint64
 	date         uint64
 	hasDate      bool
 	sequence     uint64
@@ -202,6 +206,8 @@ func serverLogRows(logs []*commonpb.Log) []serverLogRow {
 	for _, l := range logs {
 		entry := l.GetPayload().GetApply().GetLog()
 
+		tx, revertsID := servedLogTransaction(entry.GetData())
+
 		purged, purgedOK := renderServedVolumes(entry.GetPurgedVolumes())
 		newKept, newKeptOK := renderServedVolumes(entry.GetNewKeptVolumes())
 		ephemeral, ephemeralOK := renderServedVolumes(entry.GetEphemeralVolumes())
@@ -211,6 +217,8 @@ func serverLogRows(logs []*commonpb.Log) []serverLogRow {
 			id:           entry.GetId(),
 			kind:         serverLogKind(l),
 			payload:      oracle.CanonicalServedLogPayload(entry.GetData()),
+			tx:           tx,
+			revertsID:    revertsID,
 			date:         entry.GetDate().GetData(),
 			hasDate:      entry.GetDate() != nil,
 			sequence:     l.GetSequence(),
@@ -225,10 +233,27 @@ func serverLogRows(logs []*commonpb.Log) []serverLogRow {
 	return out
 }
 
+// servedLogTransaction pulls the transaction a log announces off its payload,
+// with the id of the transaction a revert compensates. Nil for the kinds that
+// announce none.
+func servedLogTransaction(data *commonpb.LedgerLogPayload) (*commonpb.Transaction, uint64) {
+	switch {
+	case data.GetCreatedTransaction() != nil:
+		return data.GetCreatedTransaction().GetTransaction(), 0
+	case data.GetRevertedTransaction() != nil:
+		rt := data.GetRevertedTransaction()
+
+		return rt.GetRevertTransaction(), rt.GetRevertedTransactionId()
+	default:
+		return nil, 0
+	}
+}
+
 // renderServedVolumes names a served annotation list the way the oracle names
 // its own: "account:asset" entries joined by commas, verbatim in the order the
 // server sent them, so a mis-sorted or duplicated list is a mismatch. The
-// second result is false when an entry carries a colour.
+// second result is false when an entry carries a colour — no generated posting
+// does, so such a cell is a row nothing in this run could have produced.
 func renderServedVolumes(vols []*commonpb.TouchedVolume) (string, bool) {
 	if len(vols) == 0 {
 		return "", true
@@ -297,6 +322,7 @@ func logWindowRows(ls oracle.LedgerState, ledger string, filter *commonpb.QueryF
 
 		rows = append(rows, logWindowRow{
 			id: row.ID, kind: row.Kind, payload: row.Payload,
+			tx: modelTxForLog(ls, row.TxID), revertsID: revertedIDForLog(ls, row),
 			date: row.Date, sequence: row.Sequence,
 			purged: row.PurgedVolumes, newKept: row.NewKeptVolumes, ephemeral: row.EphemeralVolumes,
 			required: known,
@@ -304,6 +330,27 @@ func logWindowRows(ls oracle.LedgerState, ledger string, filter *commonpb.QueryF
 	}
 
 	return rows
+}
+
+// modelTxForLog resolves the transaction a log announces, nil when the log
+// announces none or the id is past this base's frontier.
+func modelTxForLog(ls oracle.LedgerState, txID uint64) txRecordView {
+	if txID == 0 || txID > uint64(ls.Txs().Len()) {
+		return nil
+	}
+
+	return ls.Txs().Get(int(txID - 1))
+}
+
+// revertedIDForLog names the transaction a revert log compensates, which the
+// model holds on the revert's own record.
+func revertedIDForLog(ls oracle.LedgerState, row oracle.LogRow) uint64 {
+	tx := modelTxForLog(ls, row.TxID)
+	if tx == nil {
+		return 0
+	}
+
+	return tx.RevertsTransaction()
 }
 
 // logWindowMatches reports whether the page is exactly a legal window over the
@@ -353,9 +400,18 @@ func logRowMatches(ledger string, row logWindowRow, got serverLogRow) bool {
 		return false
 	}
 
-	// The payload rendering is empty for a transaction log, whose content the
-	// ListTransactions path validates against the model's own records.
 	if row.payload != "" && got.payload != row.payload {
+		return false
+	}
+
+	// A transaction log carries the whole transaction, and it is the log's own
+	// copy: ListTransactions agreeing with the model says nothing about what
+	// this payload holds.
+	if row.tx != nil {
+		if got.tx == nil || !logTxMatches(row.tx, got.tx) || got.revertsID != row.revertsID {
+			return false
+		}
+	} else if got.tx != nil {
 		return false
 	}
 
@@ -369,8 +425,8 @@ func logRowMatches(ledger string, row logWindowRow, got serverLogRow) bool {
 	// The three volume annotations are derived, never learned: the model runs
 	// the same end-of-bulk partition, so all three are pinned exactly — an
 	// empty list included.
-	if got.volumesKnown &&
-		(got.purged != row.purged || got.newKept != row.newKept || got.ephemeral != row.ephemeral) {
+	if !got.volumesKnown ||
+		got.purged != row.purged || got.newKept != row.newKept || got.ephemeral != row.ephemeral {
 		return false
 	}
 
@@ -379,6 +435,37 @@ func logRowMatches(ledger string, row logWindowRow, got serverLogRow) bool {
 	}
 
 	return got.hasDate && got.date == row.date.GetData()
+}
+
+// logTxMatches compares the transaction embedded in a log against the model's
+// record of it, over the fields the payload freezes at creation.
+//
+// The record keeps moving after its log is written — a later revert sets
+// reverted, reverted_by and reverted_at, and a metadata save rewrites the
+// metadata map — while the log keeps the values it was written with. Only the
+// fields that cannot move are compared here; the mutable ones are the
+// transaction table's to answer for, through txRecordMatches.
+func logTxMatches(rec txRecordView, got *commonpb.Transaction) bool {
+	if rec.Id() != got.GetId() || rec.Reference() != got.GetReference() ||
+		rec.RevertsTransaction() != got.GetRevertsTransaction() {
+		return false
+	}
+
+	if rec.Timestamp() != nil && rec.Timestamp().GetData() != got.GetTimestamp().GetData() {
+		return false
+	}
+
+	if rec.InsertedAt() != nil && rec.InsertedAt().GetData() != got.GetInsertedAt().GetData() {
+		return false
+	}
+
+	if got.GetUpdatedAt().GetData() != got.GetInsertedAt().GetData() ||
+		(got.GetUpdatedAt() == nil) != (got.GetInsertedAt() == nil) {
+		return false
+	}
+
+	return postingsEqual(rec.Postings(), got.GetPostings()) &&
+		pcvSnapshotMatches(rec.PostCommitVolumes(), got.GetPostCommitVolumes())
 }
 
 // logWindow is the page the model predicts when every row is decided: the

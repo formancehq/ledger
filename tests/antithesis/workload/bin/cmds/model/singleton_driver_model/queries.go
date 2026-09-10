@@ -587,8 +587,11 @@ func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Acc
 
 	server := map[string]struct{ in, out uint256.Int }{}
 	for _, av := range serverAcct.GetVolumes() {
+		// No generated posting carries a colour, so a coloured bucket is a row
+		// nothing in this run could have produced. Dropping it here would let a
+		// fabricated one through untouched.
 		if av.GetColor() != "" {
-			continue
+			return false
 		}
 
 		var in, out uint256.Int
@@ -684,15 +687,16 @@ func txRecordMatches(rec txRecordView, serverTx *commonpb.Transaction) bool {
 
 // pcvSnapshotMatches compares a served post-commit snapshot against the
 // model's cell for cell, in both directions: an absent cell and a fabricated
-// one are equally wrong. A coloured entry is a cell the model's volume key
-// cannot address, so the whole snapshot is left uncompared for that row.
+// one are equally wrong. A coloured entry fails outright — no generated
+// posting carries a colour, so the model's colourless key addresses every cell
+// the run can produce.
 func pcvSnapshotMatches(model map[oracle.VolumeKey]oracle.VolumePair, server *commonpb.PostCommitVolumes) bool {
 	served := map[oracle.VolumeKey]struct{}{}
 
 	for account, byAssets := range server.GetVolumesByAccount() {
 		for _, entry := range byAssets.GetVolumes() {
 			if entry.GetColor() != "" {
-				return true
+				return false
 			}
 
 			served[oracle.VolumeKey{Address: account, Asset: entry.GetAsset()}] = struct{}{}
