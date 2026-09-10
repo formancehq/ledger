@@ -701,6 +701,7 @@ ledgerctl indexes create [flags]
 | `--type` | | Index type: `address`, `source-address`, `destination-address`, `metadata`, `reference`, `timestamp`, `inserted-at`, `account-asset` |
 | `--target` | | Target type for metadata index: `account` or `transaction` |
 | `--key` | | Metadata key name (for metadata index) |
+| `--idempotency-key` | | Optional batch idempotency key, also included in signed batches and audit evidence |
 | `--timeout` | `10s` | Request timeout |
 
 **Index types:**
@@ -806,11 +807,16 @@ ledgerctl indexes list [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
+| `--creation-key-prefix` | | Select current indexes supported by a successful singleton audit creation with this key prefix and matching creation date |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
 - Shows all active indexes with their build status (BUILDING or READY)
 - If no indexes are configured, shows a hint to create one
+
+The creation-key filter reads audit history across pages and fails on read errors.
+It is attribution evidence, not an authorization check or an atomic deletion guard.
+Large histories can exceed the command timeout; no partial result is accepted.
 
 **Example:**
 
