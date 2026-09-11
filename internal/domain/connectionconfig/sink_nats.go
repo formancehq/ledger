@@ -27,19 +27,8 @@ func normalizeNatsSink(input *commonpb.NatsSinkConfigInput) (*commonpb.NatsSinkC
 		}
 		// Preserve the scheme delimiter so an empty host is rejected rather
 		// than reinterpreted as a hostname.
-		// Only strip a trailing slash when there is no non-trivial path component.
-		// A WebSocket NATS endpoint like wss://host/nats/ has a distinct path from
-		// wss://host/nats; silently dropping the trailing slash changes the target.
 		if !strings.HasSuffix(raw, "://") {
-			schemeEnd := strings.Index(raw, "://")
-			hostAndPath := raw
-			if schemeEnd >= 0 {
-				hostAndPath = raw[schemeEnd+3:]
-			}
-			pathStart := strings.Index(hostAndPath, "/")
-			if pathStart < 0 || hostAndPath[pathStart:] == "/" {
-				raw = strings.TrimSuffix(raw, "/")
-			}
+			raw = strings.TrimSuffix(raw, "/")
 		}
 		server, err := parseURL(raw, "nats")
 		if err != nil {
