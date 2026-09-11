@@ -13,7 +13,11 @@ messages are distinct from operational configuration messages. The latter store
 independent connection components, credentials and options. There is no original
 DSN fallback and no flag recording which syntax the client used. Response fields
 are structured; only driver adapters serialize connection strings for libraries
-that require them.
+that require them. HTTP, NATS and proxy URL fragments are rejected with a static
+diagnostic because
+the structured model cannot preserve them; silently dropping a fragment can
+change paths composed by a mirror adapter. Escaped `#` characters in paths or
+query values remain supported.
 
 A pure normalizer in `internal/domain/connectionconfig` derives the operational
 configuration from accepted input. It performs no environment, file, network,
@@ -22,6 +26,12 @@ same normalized projection on every node. Driver initialization is a separate
 runtime boundary: in particular pgx still performs its existing environment and
 external-file resolution when opening connections. Normalization does not claim
 to freeze those external runtime resources.
+
+IAM mirrors accept URI and libpq keyword DSNs after parsing explicit TLS options;
+quoted values cannot substitute for an `sslmode` setting. The runtime driver
+configuration is checked again before connecting. Admission distinguishes a
+malformed IAM connection from a parsed connection with insufficient TLS, using
+static diagnostics that do not echo credentials.
 
 ## Extending sink normalization
 
@@ -87,7 +97,10 @@ configuration responses use operational messages before masking. Shared
 input/output types, such as Kafka and Databricks configurations, retain their
 annotations because they are also exposed in public views. URL query values and
 unrecognized database option values are
-sensitive by default. Known operational options remain visible; nested proxy
+sensitive by default. Known operational options remain visible, including
+node-local file paths (`passfile`, `sslkey`, `sslcert`, `sslrootcert`); the
+normalizer never reads or exposes the files themselves. Passwords and private-key
+passwords remain sensitive. Nested proxy
 credentials follow the same annotations. Callers cannot choose their own
 sensitivity classification through the input schema.
 
