@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // NewCreateCommand creates the queries create command.
@@ -72,16 +72,18 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	_, err = client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
-		Ledger: ledgerName,
-		Query: &commonpb.PreparedQuery{
-			Name:   name,
-			Filter: filter,
-			Target: target,
-		},
-	})
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, actions.CreatePreparedQueryAction(name, ledgerName, target, filter))
+	if err != nil {
+		return cmdutil.Displayed(err)
+	}
+
+	resp, err := client.Apply(ctx, applyReq)
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to create prepared query", err)
+	}
+
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
+		return fmt.Errorf("response signature verification failed: %w", err)
 	}
 
 	pterm.Success.Printfln("Prepared query %q created for ledger %q", name, ledgerName)

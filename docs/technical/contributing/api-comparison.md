@@ -808,9 +808,9 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `GetEventsSinks` | Get per-sink configurations and statuses | ✅ |
 | `GetMetadataSchemaStatus` | Get the declared metadata schema for a ledger | ✅ |
 | `AnalyzeTransactions` | Discover transaction flow patterns | ✅ |
-| `CreatePreparedQuery` | Create a named prepared query | ✅ |
-| `UpdatePreparedQuery` | Update an existing prepared query | ✅ |
-| `DeletePreparedQuery` | Remove a prepared query | ✅ |
+| `Apply(CreatePreparedQuery)` | Create a named prepared query | ✅ |
+| `Apply(UpdatePreparedQuery)` | Update an existing prepared query | ✅ |
+| `Apply(DeletePreparedQuery)` | Remove a prepared query | ✅ |
 | `ListPreparedQueries` | List all prepared queries for a ledger | ✅ |
 | `ExecutePreparedQuery` | Execute a prepared query against the read index | ✅ |
 | `Barrier` | No-op Raft proposal to ensure all prior writes are applied | ✅ |
@@ -873,7 +873,7 @@ The governing rule: **a batched operation requires the same scope as its dedicat
 | `create_ledger`, `delete_ledger`, `promote_ledger`, `create_index`, `drop_index`, `save_numscript` | `ledger:LedgerWrite` | the `requireLedgersWrite` route group |
 | `save_ledger_metadata`, `delete_ledger_metadata`, `add_account_type`, `remove_account_type`, `set_default_enforcement_mode`, `set_metadata_field_type`, `remove_metadata_field_type` | `ledger:MetadataWrite` | the `requireMetadataWrite` route group |
 | `create_prepared_query`, `update_prepared_query`, `delete_prepared_query` | `ledger:QueryWrite` | the `requireQueriesWrite` route group |
-| `create_query_checkpoint`, `delete_query_checkpoint`, `set_query_checkpoint_schedule`, `delete_query_checkpoint_schedule` | `ledger:ClusterWrite` | `ClusterService.CreateQueryCheckpoint` / `DeleteQueryCheckpoint` |
+| `create_query_checkpoint`, `delete_query_checkpoint`, `set_query_checkpoint_schedule`, `delete_query_checkpoint_schedule` | `ledger:ClusterWrite` | none — `BucketService.Apply` only |
 | signing keys, events sinks, maintenance mode | `ledger:OpsWrite` | operator surface, no dedicated business route |
 | unknown / malformed / unset variant | `ledger:OpsWrite` | fail-closed default |
 
@@ -882,7 +882,9 @@ Two properties are enforced by tests rather than convention:
 - **Exhaustiveness.** `request_scope_exhaustiveness_test.go` walks the `Request.type` and `LedgerAction.data` oneof descriptors and fails when a variant has no explicit scope decision. A new proto variant cannot ship on an accidental default — CI blocks it until someone classifies it.
 - **Fail-closed is only for the unknown.** The classifier reports whether a decision was explicit, so "nobody decided" is distinguishable from a deliberate `ledger:OpsWrite`.
 
-> **Breaking change (EN-1506).** The four `*_query_checkpoint*` variants previously resolved to `ledger:OpsWrite`. Because `DefaultMapping` grants `ledger:OpsWrite` to any `ledger:write` token but `ledger:ClusterWrite` only to `ledger:admin`, a non-admin caller could create or delete query checkpoints through `Apply` — an operation the dedicated `ClusterService` RPCs restrict to admins. They now require `ledger:ClusterWrite`. Callers driving query checkpoints through `Apply` with a `ledger:write` token must move to `ledger:admin` or add the granular `ledger:ClusterWrite` scope; callers using the dedicated RPCs are unaffected.
+> **Breaking change (EN-1506).** The four `*_query_checkpoint*` variants previously resolved to `ledger:OpsWrite`. Because `DefaultMapping` grants `ledger:OpsWrite` to any `ledger:write` token but `ledger:ClusterWrite` only to `ledger:admin`, a non-admin caller could create or delete query checkpoints through `Apply` — an operation the dedicated `ClusterService` RPCs restrict to admins. They now require `ledger:ClusterWrite`. Callers driving query checkpoints through `Apply` with a `ledger:write` token must move to `ledger:admin` or add the granular `ledger:ClusterWrite` scope.
+
+> **Breaking change (EN-1954).** `BucketService.CreatePreparedQuery`, `UpdatePreparedQuery`, `DeletePreparedQuery` and `ClusterService.CreateQueryCheckpoint`, `DeleteQueryCheckpoint` are removed. Every one of these operations is a `ledger.Request` variant submitted through `BucketService.Apply`, so it is now batchable, idempotent under a batch key, signable as part of the batch, scope-checked once, and forwarded to the leader through the single Apply path. Required scopes and error semantics are unchanged. A newly executed checkpoint creation waits for local read-index readiness (leader only with `skip_response`), unless concurrent deletion supersedes it. An idempotent replay returns the historical logs immediately, including after deletion or while the original creation still materializes; it does not guarantee current existence or readiness. Server-produced response provenance preserves this distinction across follower forwarding. The HTTP prepared-query routes are unchanged — they already delegated to the same Apply backend.
 
 Note that `POST /v3/{ledgerName}/bulk` shares this classifier but can only express the four `LedgerAction` variants its JSON decoder accepts (`CREATE_TRANSACTION`, `ADD_METADATA`, `REVERT_TRANSACTION`, `DELETE_METADATA`), so the table's top-level rows are unreachable over HTTP bulk.
 

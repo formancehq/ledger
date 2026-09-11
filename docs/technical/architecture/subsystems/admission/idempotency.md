@@ -63,6 +63,21 @@ type IdempotencyKeyValue struct {
 | Same key (after TTL expiration) | Process normally (key treated as new) |
 | No idempotency key | Process normally, no idempotency tracking |
 
+## Historical outcomes and checkpoint readiness
+
+The FSM marks a replay explicitly in its transient `ApplyResult`. Admission
+resolves the historical log references and retains that `Replayed` flag in
+`domain.ApplyResult`; controllers must preserve both. The flag changes neither
+persisted state nor business intent. The gRPC forwarding response carries it
+as server-produced metadata so a follower cannot mistake a replay for a new
+execution.
+
+A replay is evidence of the original committed outcome, not a current resource
+read. In particular, checkpoint-create retries return their historical success
+after deletion and while the original call is still waiting for materialization.
+They do not wait again or recreate anything. New creations retain the
+[checkpoint lifecycle wait](../read-path/query-checkpoints.md#readiness-and-error-contract).
+
 ## Numscript Dependency-Resolution Failures
 
 Idempotency keys also govern a narrower, forward-vs-terminate decision admission has to make while *preparing* a `CreateTransaction` order that references a Numscript script. Before a script's order can be proposed, admission statically discovers the accounts, assets, and metadata it depends on (`DiscoverNumscriptDependencies`, `internal/domain/processing/numscript/discover.go` — see [Numscript Library](../scripting/numscript-library.md)) so the FSM never has to touch Pebble to resolve them. When that discovery fails, admission must decide whether the failure is **deterministic** — the script could never have succeeded, no matter how many times it is retried — or **state-dependent** — current state caused it, and a different (or later) state might not. `Admission.classifyResolutionFailure` (`internal/application/admission/admission.go`) makes this call from two signals Ledger already owns; it never inspects error strings or Numscript internals. A dedicated public Numscript resolver-error taxonomy (EN-1563) was evaluated for this purpose and cancelled as unnecessary.

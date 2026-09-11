@@ -76,12 +76,6 @@ service BucketService {
   rpc AnalyzeAccounts(AnalyzeAccountsRequest) returns (stream AnalyzeAccountsEvent);
   // AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns
   rpc AnalyzeTransactions(AnalyzeTransactionsRequest) returns (stream AnalyzeTransactionsEvent);
-  // CreatePreparedQuery creates a named prepared query for a ledger
-  rpc CreatePreparedQuery(CreatePreparedQueryRequest) returns (CreatePreparedQueryResponse);
-  // UpdatePreparedQuery updates the filter of an existing prepared query
-  rpc UpdatePreparedQuery(UpdatePreparedQueryRequest) returns (UpdatePreparedQueryResponse);
-  // DeletePreparedQuery removes a prepared query
-  rpc DeletePreparedQuery(DeletePreparedQueryRequest) returns (DeletePreparedQueryResponse);
   // ListPreparedQueries lists all prepared queries for a ledger
   rpc ListPreparedQueries(ListPreparedQueriesRequest) returns (ListPreparedQueriesResponse);
   // ExecutePreparedQuery executes a prepared query against the read index store
@@ -1082,22 +1076,16 @@ message CreatePreparedQueryRequest {
   common.PreparedQuery query = 2;
 }
 
-message CreatePreparedQueryResponse {}
-
 message UpdatePreparedQueryRequest {
   string ledger = 1;
   string name = 2;
   common.QueryFilter filter = 3;
 }
 
-message UpdatePreparedQueryResponse {}
-
 message DeletePreparedQueryRequest {
   string ledger = 1;
   string name = 2;
 }
-
-message DeletePreparedQueryResponse {}
 
 message ListPreparedQueriesRequest {
   string ledger = 1;

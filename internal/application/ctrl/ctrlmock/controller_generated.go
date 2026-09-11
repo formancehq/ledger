@@ -12,6 +12,7 @@ import (
 	reflect "reflect"
 
 	ctrl "github.com/formancehq/ledger/v3/internal/application/ctrl"
+	domain "github.com/formancehq/ledger/v3/internal/domain"
 	cursor "github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	auditpb "github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -90,10 +91,10 @@ func (mr *MockControllerMockRecorder) AnalyzeTransactions(ctx, ledgerName, varia
 }
 
 // Apply mocks base method.
-func (m *MockController) Apply(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+func (m *MockController) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Apply", ctx, req)
-	ret0, _ := ret[0].([]*commonpb.Log)
+	ret0, _ := ret[0].(*domain.ApplyResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

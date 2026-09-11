@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"6"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"7"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -73,10 +73,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 6:
+leader. For example, with a schema implementing revision 7:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 6' \
+grpcurl -plaintext -H 'ledger-protocol-version: 7' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -97,6 +97,23 @@ Nodes with different service revisions can therefore fail forwarded requests;
 this mechanism does not establish support for mixed-version clusters or rolling
 wire-format upgrades. The separate Raft transport and snapshot server retain
 their own contracts.
+
+## Apply execution provenance (revision 7)
+
+Every successful `BucketService.Apply` response carries exactly one
+`ledger-apply-replayed` trailer, either `true` or `false`. The server derives it
+from the FSM's idempotency outcome and preserves it through admission and the
+controller. The forwarding client requires this trailer from its leader and
+rejects an absent, duplicate, or invalid value. Incoming request metadata is
+never used as execution provenance. This is response transport metadata, not a
+client-controlled request field, a signed business log, or persisted state.
+
+The follower uses this provenance to skip checkpoint materialization waits for
+historical outcomes, including when the first call is still materializing or
+the checkpoint has been deleted. New creations retain the local readiness wait
+unless superseded by deletion. See the [checkpoint contract](../read-path/query-checkpoints.md#readiness-and-error-contract).
+Revision 7 is incompatible with peers that omit or ignore this distinction;
+all communicating service clients and nodes must use the matching revision.
 
 ## Maintaining the revision
 

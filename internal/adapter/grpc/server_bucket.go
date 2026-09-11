@@ -44,6 +44,7 @@ import (
 var bucketTracer = otel.Tracer("grpc.bucket")
 
 const (
+	metadataKeyApplyReplayed      = "ledger-apply-replayed"
 	metadataKeyQueryProfile       = "x-query-profile"
 	metadataKeyQueryProfileResult = "x-query-profile-result-bin"
 )
@@ -162,9 +163,24 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		impl.logger.Tracef("Apply request received with %d requests", len(batch.GetRequests()))
 	}
 
-	logs, err := impl.ctrl.Apply(ctx, req)
+	result, err := impl.ctrl.Apply(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+
+	logs := result.Logs
+	if !result.Replayed {
+		if err := impl.waitCreatedQueryCheckpoints(ctx, logs); err != nil {
+			return nil, err
+		}
+	}
+
+	// Preserve server-produced provenance across follower forwarding without
+	// adding a client-controlled request flag or a public protobuf field.
+	if ggrpc.ServerTransportStreamFromContext(ctx) != nil {
+		if err := ggrpc.SetTrailer(ctx, metadata.Pairs(metadataKeyApplyReplayed, strconv.FormatBool(result.Replayed))); err != nil {
+			return nil, fmt.Errorf("setting Apply execution provenance: %w", err)
+		}
 	}
 
 	skipResponse := req.GetSkipResponse()
@@ -189,6 +205,64 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	}
 
 	return &servicepb.ApplyResponse{Logs: logs}, nil
+}
+
+// waitCreatedQueryCheckpoints blocks until every query checkpoint created by
+// this newly executed batch is materialized in the local read index or deleted.
+// Replayed results never enter this wait: their logs describe historical state.
+//
+// A successful Apply proves the FSM applied the checkpoint order, not that THIS
+// node — the one the client is talking to — can serve a read at the returned
+// checkpoint_id. Concurrent deletion supersedes readiness without undoing the
+// committed success. We wait on the local .ready marker and not on the index
+// builder progress cursor, whose fast path was the EN-1460 root cause: the
+// cursor is persisted in the batch that precedes the physical checkpoint
+// creation, so it reaches the target sequence ~100-150ms before the directory
+// exists. The checkpoint is materialized per-replica; reads routed to another
+// node whose builder has not yet crossed the log get a typed, retryable
+// Unavailable (ErrCheckpointNotReady) until that node materializes it inline.
+//
+// Admission rejects a batch whose checkpoint trigger is not the last order, so
+// there is at most one per response. Scanning every log keeps the wait correct
+// without depending on that invariant, and without indexing a fixed position.
+//
+// Called before response payload stripping: skip_response nils out the payload
+// that carries the checkpoint id, so a later scan would find nothing to wait on.
+func (impl *BucketServiceServerImpl) waitCreatedQueryCheckpoints(ctx context.Context, logs []*commonpb.Log) error {
+	for _, log := range logs {
+		cp := log.GetPayload().GetCreatedQueryCheckpoint()
+		if cp == nil {
+			continue
+		}
+
+		readIndexDir := impl.store.QueryCheckpointReadIndexDir(cp.GetCheckpointId())
+		if err := impl.readStore.WaitForCheckpoint(ctx, readIndexDir, func() (bool, error) {
+			return impl.queryCheckpointDeleted(cp.GetCheckpointId())
+		}); err != nil {
+			return fmt.Errorf("waiting for read index checkpoint: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// queryCheckpointDeleted distinguishes deletion from follower lag using one
+// fresh snapshot. IDs below the next-ID counter have already been allocated;
+// an absent row for such an ID proves that creation was superseded by deletion.
+func (impl *BucketServiceServerImpl) queryCheckpointDeleted(id uint64) (deleted bool, err error) {
+	handle, err := impl.store.NewReadHandle()
+	if err != nil {
+		return false, fmt.Errorf("opening checkpoint lifecycle snapshot: %w", err)
+	}
+	defer func() { err = errors.Join(err, handle.Close()) }()
+
+	checkpoint, err := query.ReadQueryCheckpoint(handle, id)
+	if err != nil || checkpoint != nil {
+		return false, err
+	}
+	nextID, err := query.ReadNextQueryCheckpointID(handle)
+
+	return nextID > id, err
 }
 
 // adoptForwardedSnapshotIfTrusted attaches the request's
@@ -1041,60 +1115,6 @@ func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *servicepb.AnalyzeT
 	return stream.Send(&servicepb.AnalyzeTransactionsEvent{
 		Type: &servicepb.AnalyzeTransactionsEvent_Result{Result: resp},
 	})
-}
-
-func (impl *BucketServiceServerImpl) CreatePreparedQuery(ctx context.Context, req *servicepb.CreatePreparedQueryRequest) (*servicepb.CreatePreparedQueryResponse, error) {
-	ctx, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesWrite)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = impl.ctrl.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_CreatePreparedQuery{
-			CreatePreparedQuery: req,
-		},
-	}))
-	if err != nil {
-		return nil, err
-	}
-
-	return &servicepb.CreatePreparedQueryResponse{}, nil
-}
-
-func (impl *BucketServiceServerImpl) UpdatePreparedQuery(ctx context.Context, req *servicepb.UpdatePreparedQueryRequest) (*servicepb.UpdatePreparedQueryResponse, error) {
-	ctx, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesWrite)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = impl.ctrl.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_UpdatePreparedQuery{
-			UpdatePreparedQuery: req,
-		},
-	}))
-	if err != nil {
-		return nil, err
-	}
-
-	return &servicepb.UpdatePreparedQueryResponse{}, nil
-}
-
-func (impl *BucketServiceServerImpl) DeletePreparedQuery(ctx context.Context, req *servicepb.DeletePreparedQueryRequest) (*servicepb.DeletePreparedQueryResponse, error) {
-	ctx, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesWrite)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = impl.ctrl.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_DeletePreparedQuery{
-			DeletePreparedQuery: req,
-		},
-	}))
-	if err != nil {
-		return nil, err
-	}
-
-	return &servicepb.DeletePreparedQueryResponse{}, nil
 }
 
 func (impl *BucketServiceServerImpl) ListPreparedQueries(ctx context.Context, req *servicepb.ListPreparedQueriesRequest) (*servicepb.ListPreparedQueriesResponse, error) {

@@ -1300,6 +1300,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// duplicate the order bytes on every retry. A conflict (same key, different
 	// orders) is a fresh rejection, not a replay, so it still audits below.
 	if replayed {
+		result.Replayed = true
 		if err != nil {
 			result.Error = &domain.BusinessError{Err: err}
 		} else {
@@ -1795,6 +1796,8 @@ func (pb *PreparedBatch) Close() {
 }
 
 type ApplyResult struct {
+	// Replayed is set only by the idempotency gate for a recorded outcome.
+	Replayed     bool
 	ProposalID   uint64
 	AppliedIndex uint64 // Raft index at which this entry was applied
 	Logs         []*raftcmdpb.CreatedLogOrReference

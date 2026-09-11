@@ -9,7 +9,6 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -88,9 +87,9 @@ var _ = Describe("Query Checkpoints (frozen read index completeness)", Ordered, 
 	})
 
 	It("creates the checkpoint", func() {
-		resp, err := servers[*leaderID-1].ClusterClient.CreateQueryCheckpoint(ctx, &clusterpb.CreateQueryCheckpointRequest{})
+		id, _, err := actions.CreateQueryCheckpoint(ctx, servers[*leaderID-1].Client)
 		Expect(err).To(Succeed())
-		cpID = resp.GetCheckpointId()
+		cpID = id
 	})
 
 	It("serves every pre-checkpoint log through the checkpoint on every replica", func() {

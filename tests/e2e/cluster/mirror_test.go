@@ -421,14 +421,16 @@ var _ = Describe("Mirror", Ordered, func() {
 				commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
 			)).To(Succeed())
 
-			_, err = client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
-				Ledger: "mirror-sync",
-				Query: &commonpb.PreparedQuery{
-					Name:   "first-source-ingestion-window",
-					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-					Filter: actions.InsertedAtRangeFilter(1700000000000000, 1700000000500000),
-				},
-			})
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: "mirror-sync",
+					Query: &commonpb.PreparedQuery{
+						Name:   "first-source-ingestion-window",
+						Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+						Filter: actions.InsertedAtRangeFilter(1700000000000000, 1700000000500000),
+					},
+				}},
+			}))
 			Expect(err).To(Succeed())
 
 			result, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{

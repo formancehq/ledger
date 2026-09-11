@@ -50,6 +50,7 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, r.Results[0].Error)
 	require.Len(t, r.Results[0].Logs, 1)
+	require.False(t, r.Results[0].Replayed)
 	firstSeq := r.Results[0].Logs[0].GetCreatedLog().GetSequence()
 	require.NotZero(t, firstSeq)
 
@@ -59,6 +60,7 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, r.Results[0].Error)
 	require.Len(t, r.Results[0].Logs, 1)
+	require.True(t, r.Results[0].Replayed)
 	require.Nil(t, r.Results[0].Logs[0].GetCreatedLog(), "duplicate must not create a new log")
 	require.Equal(t, firstSeq, r.Results[0].Logs[0].GetReferenceSequence(),
 		"duplicate replays the original log sequence")
@@ -67,6 +69,7 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 4, withKey(4, "k1",
 		createTransactionOrder(ledgerName, true, newPosting("world", "bob", "EUR", 5)))))
 	require.NoError(t, err)
+	require.False(t, r.Results[0].Replayed)
 	var conflict *domain.ErrIdempotencyKeyConflict
 	require.ErrorAs(t, r.Results[0].Error, &conflict, "reused key with different content conflicts")
 
@@ -77,12 +80,14 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 5, withKey(5, "k2", badRevert())))
 	require.NoError(t, err)
 	require.Error(t, r.Results[0].Error)
+	require.False(t, r.Results[0].Replayed)
 	frozenMsg := r.Results[0].Error.Error()
 
 	// ...so a duplicate replays the SAME error instead of re-executing.
 	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 6, withKey(6, "k2", badRevert())))
 	require.NoError(t, err)
 	require.Error(t, r.Results[0].Error)
+	require.True(t, r.Results[0].Replayed)
 	var replayed *domain.ReplayedFailure
 	require.ErrorAs(t, r.Results[0].Error, &replayed, "frozen failure is replayed")
 	require.Equal(t, frozenMsg, r.Results[0].Error.Error(), "replayed failure matches the original")

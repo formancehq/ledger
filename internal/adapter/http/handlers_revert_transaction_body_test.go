@@ -15,6 +15,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -66,16 +67,16 @@ func TestHandleRevertTransaction_BodyFraming(t *testing.T) {
 				calls := make(chan *servicepb.ApplyRequest, 1)
 				backend := NewMockBackend(gomock.NewController(t))
 				backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-					func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+					func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 						calls <- req
 
-						return []*commonpb.Log{{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
+						return &domain.ApplyResult{Logs: []*commonpb.Log{{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
 							Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: &commonpb.LedgerLogPayload{
 								Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 									RevertedTransaction: &commonpb.RevertedTransaction{RevertTransaction: &commonpb.Transaction{Id: 2}},
 								},
 							}}},
-						}}}}, nil
+						}}}}}, nil
 					}).MaxTimes(1)
 				router := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
 				path := APIVersionPrefix + "/ledger1/transactions/1/revert"

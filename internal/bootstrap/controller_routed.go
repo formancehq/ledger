@@ -12,6 +12,7 @@ import (
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -170,7 +171,7 @@ func (b *RoutedController) IsHealthy() bool {
 
 // --- Write operations: routed to leader ---
 
-func (b *RoutedController) Apply(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+func (b *RoutedController) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 	leaderCtrl, err := b.getLeaderCtrl()
 	if err != nil {
 		return nil, err

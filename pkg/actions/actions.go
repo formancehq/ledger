@@ -609,6 +609,58 @@ func CreatePreparedQueryAction(name, ledger string, target commonpb.QueryTarget,
 	}
 }
 
+// UpdatePreparedQueryAction creates an action for updating a prepared query's filter.
+func UpdatePreparedQueryAction(ledger, name string, filter *commonpb.QueryFilter) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_UpdatePreparedQuery{
+			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+				Ledger: ledger,
+				Name:   name,
+				Filter: filter,
+			},
+		},
+	}
+}
+
+// DeletePreparedQueryAction creates an action for removing a prepared query.
+func DeletePreparedQueryAction(ledger, name string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_DeletePreparedQuery{
+			DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+				Ledger: ledger,
+				Name:   name,
+			},
+		},
+	}
+}
+
+// CreateQueryCheckpointAction creates an action for taking a query checkpoint.
+// The checkpoint is a batch trigger: admission accepts it only as the last
+// action of a batch. With response payloads enabled, Apply waits until the read
+// index checkpoint is materialized on the serving node, unless deleted meanwhile.
+// An idempotent replay returns the historical result without waiting or recreating
+// the checkpoint; it makes no current readiness/existence guarantee. With skip_response,
+// only the leader is guaranteed ready; a forwarding follower skips its local
+// wait because the leader has already stripped the checkpoint ID.
+func CreateQueryCheckpointAction() *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_CreateQueryCheckpoint{
+			CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
+		},
+	}
+}
+
+// DeleteQueryCheckpointAction creates an action for removing a query checkpoint.
+func DeleteQueryCheckpointAction(checkpointID uint64) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_DeleteQueryCheckpoint{
+			DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{
+				CheckpointId: checkpointID,
+			},
+		},
+	}
+}
+
 // WithReference sets the reference on a create transaction request.
 func WithReference(req *servicepb.Request, reference string) *servicepb.Request {
 	if reqType, ok := req.GetType().(*servicepb.Request_Apply); ok {
@@ -654,6 +706,24 @@ func GetCreatedTransactionID(resp *servicepb.ApplyResponse) (uint64, bool) {
 	}
 
 	return tx.GetTransaction().GetId(), true
+}
+
+// GetCreatedQueryCheckpoint extracts the checkpoint ID and the max global log
+// sequence of the checkpoint created by this batch. The checkpoint trigger is
+// always the last action of a batch, but the log carrying it is located by
+// payload type rather than by position. Returns (0, 0, false) when the batch
+// created no checkpoint, including when the caller set skip_response.
+func GetCreatedQueryCheckpoint(resp *servicepb.ApplyResponse) (checkpointID, maxSequence uint64, ok bool) {
+	for _, entry := range resp.GetLogs() {
+		cp := entry.GetPayload().GetCreatedQueryCheckpoint()
+		if cp == nil {
+			continue
+		}
+
+		return cp.GetCheckpointId(), cp.GetMaxSequence(), true
+	}
+
+	return 0, 0, false
 }
 
 // GetAllCreatedTransactionIDs extracts all created transaction IDs from a batched ApplyResponse.

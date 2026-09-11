@@ -23,10 +23,10 @@ func TestHandleCreateIndex_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedRequest = req.GetUnsigned().GetRequests()[0]
 
-			return []*commonpb.Log{{}}, nil
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -60,8 +60,8 @@ func TestHandleCreateIndex_ResponseIDIsCanonicalized(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
-			return []*commonpb.Log{{}}, nil
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -152,10 +152,10 @@ func TestHandleCreateIndex_IdempotencyKeyPropagated(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedBatch = req.GetUnsigned()
 
-			return []*commonpb.Log{{}}, nil
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -179,7 +179,7 @@ func TestHandleCreateIndex_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

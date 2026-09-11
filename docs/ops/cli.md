@@ -3521,6 +3521,9 @@ ledgerctl queries create <name> --ledger <ledger-name> [flags]
 | `--filter` | | Filter expression (same DSL as account/transaction list) |
 | `--timeout` | `10s` | Request timeout |
 
+**Behavior:**
+- Submits a `create_prepared_query` action through `BucketService.Apply`, so the batch honours `--signing-key` like any other write
+
 **Examples:**
 
 ```bash
@@ -3960,6 +3963,11 @@ ledger run --response-signing-key ./response-keys/seed.hex [other flags...]
 # Client-side: verify response signatures
 ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create --ledger my-ledger --posting "world,bank,1000,USD"
 ```
+
+With `--response-verify-key`, prepared query create/update/delete and query
+checkpoint create/delete verify the returned Apply log signatures before
+reporting success or reading the created checkpoint ID. Missing or invalid
+signatures cause the command to fail.
 
 Clients can also discover the server's public key via the `Discovery` RPC.
 
@@ -4939,8 +4947,12 @@ ledgerctl query-checkpoint create [flags]
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
+- Submits a `create_query_checkpoint` action through `BucketService.Apply`, so the batch honours `--signing-key` like any other write
 - Routes through Raft so the checkpoint is replicated to all nodes
-- The FSM commits pending state and creates a main store Pebble checkpoint; the read index checkpoint is created asynchronously by the index builder
+- The FSM commits pending state and creates a main store Pebble checkpoint; the read index checkpoint is materialized by the index builder on each replica
+- A newly executed creation waits for the serving node's read-index marker, unless concurrent deletion supersedes it. If the checkpoint remains live, a point-in-time read there succeeds immediately
+- A retry with the same `--idempotency-key` returns the historical result without waiting or recreating the checkpoint, even if the original call is still materializing or the checkpoint has been deleted
+- Reports the checkpoint id and max sequence; `--json` emits `{"checkpointId":…,"maxSequence":…}` unchanged
 - Checkpoints are stored under `{dataDir}/query-checkpoints/{id}/main/` and `{dataDir}/query-checkpoints/{id}/readindex/`
 - Not cleaned up on restart — use `query-checkpoint delete` to remove
 
@@ -4970,6 +4982,9 @@ ledgerctl query-checkpoint delete <checkpoint-id>
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Submits a `delete_query_checkpoint` action through `BucketService.Apply`, so the batch honours `--signing-key` like any other write
 
 **Example:**
 

@@ -21,6 +21,14 @@ Three Raft orders mutate the prepared-query registry, each producing a correspon
 | `UpdatePreparedQueryOrder` | `UpdatedPreparedQueryLog` (carries before + after filter) | `processUpdatePreparedQuery` |
 | `DeletePreparedQueryOrder` | `DeletedPreparedQueryLog` | `processDeletePreparedQuery` |
 
+All three are submitted as `ledger.Request` variants through
+`BucketService.Apply` — EN-1954 removed the dedicated `CreatePreparedQuery`,
+`UpdatePreparedQuery` and `DeletePreparedQuery` RPCs, so a mixed batch of
+prepared-query mutations is atomic, idempotent under one batch key, and signable
+as a whole. `ListPreparedQueries` and `ExecutePreparedQuery` are reads and stay
+dedicated RPCs. The HTTP routes are unchanged: they already delegated to the same
+Apply backend.
+
 Source: `internal/domain/processing/processor_prepared_query.go`.
 
 Storage is per-ledger under the attributes zone, keyed by `PreparedQueryKey{LedgerName, Name}` (`internal/domain/keys.go:384`). The canonical key layout is the standard 64-byte padded ledger name followed by the query name string.

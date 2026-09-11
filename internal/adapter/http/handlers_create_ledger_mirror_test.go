@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -22,10 +23,10 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
-			return []*commonpb.Log{{
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_CreateLedger{
 						CreateLedger: &commonpb.CreatedLedgerLog{
@@ -34,7 +35,7 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 						},
 					},
 				},
-			}}, nil
+			}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -72,10 +73,10 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
-			return []*commonpb.Log{{
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_CreateLedger{
 						CreateLedger: &commonpb.CreatedLedgerLog{
@@ -84,7 +85,7 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 						},
 					},
 				},
-			}}, nil
+			}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -115,10 +116,10 @@ func TestHandleCreateLedger_MirrorModeDefaultType(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
-			return []*commonpb.Log{{
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_CreateLedger{
 						CreateLedger: &commonpb.CreatedLedgerLog{
@@ -126,7 +127,7 @@ func TestHandleCreateLedger_MirrorModeDefaultType(t *testing.T) {
 						},
 					},
 				},
-			}}, nil
+			}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -258,10 +259,10 @@ func TestHandleCreateLedger_MirrorRewriteRules(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
-			return []*commonpb.Log{{
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_CreateLedger{
 						CreateLedger: &commonpb.CreatedLedgerLog{
@@ -270,7 +271,7 @@ func TestHandleCreateLedger_MirrorRewriteRules(t *testing.T) {
 						},
 					},
 				},
-			}}, nil
+			}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

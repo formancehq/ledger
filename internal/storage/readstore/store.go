@@ -945,17 +945,22 @@ func FsyncDir(dirPath string) error {
 
 // WaitForCheckpoint blocks until the query checkpoint read-index directory at
 // dirPath is materialized on THIS replica (the .ready marker is present), or the
-// context is cancelled. CreateQueryCheckpoint uses it to block on the creator
-// node's local marker so the checkpoint is immediately readable there when the
-// call returns — replacing the old WaitForSequence-on-cursor fast path, which
+// context is cancelled. If isDeleted proves that the checkpoint was deleted,
+// the wait also succeeds: deletion supersedes readiness without changing the
+// committed creation outcome. The predicate must distinguish local replication
+// lag from deletion. A nil predicate waits only for the marker.
+//
+// CreateQueryCheckpoint uses it to block on the creator node's local marker so
+// a checkpoint that remains live is immediately readable there when the call
+// returns — replacing the old WaitForSequence-on-cursor fast path, which
 // returned before the directory existed (the EN-1460 root cause: the progress
 // cursor is persisted in the batch that precedes the physical checkpoint
 // creation).
 //
 // The index builder calls NotifyProgress after each materialization, waking
 // waiters to re-check the marker.
-func (s *Store) WaitForCheckpoint(ctx context.Context, dirPath string) error {
-	if CheckpointDirReady(dirPath) {
+func (s *Store) WaitForCheckpoint(ctx context.Context, dirPath string, isDeleted func() (bool, error)) error {
+	if isDeleted == nil && CheckpointDirReady(dirPath) {
 		return nil
 	}
 
@@ -968,12 +973,25 @@ func (s *Store) WaitForCheckpoint(ctx context.Context, dirPath string) error {
 	defer close(done)
 
 	go func() {
-		select {
-		case <-ctx.Done():
-			s.progressMu.Lock()
-			s.progressCond.Broadcast()
-			s.progressMu.Unlock()
-		case <-done:
+		// Main-store deletion does not publish read-index progress. Poll only
+		// lifecycle-aware waits so deletion remains observable when indexing stalls.
+		var ticks <-chan time.Time
+		if isDeleted != nil {
+			ticker := time.NewTicker(100 * time.Millisecond)
+			defer ticker.Stop()
+			ticks = ticker.C
+		}
+		for {
+			select {
+			case <-ctx.Done():
+				s.NotifyProgress()
+
+				return
+			case <-ticks:
+				s.NotifyProgress()
+			case <-done:
+				return
+			}
 		}
 	}()
 
@@ -983,6 +1001,16 @@ func (s *Store) WaitForCheckpoint(ctx context.Context, dirPath string) error {
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+
+		if isDeleted != nil {
+			deleted, err := isDeleted()
+			if err != nil {
+				return err
+			}
+			if deleted {
+				return nil
+			}
 		}
 
 		if CheckpointDirReady(dirPath) {
