@@ -940,7 +940,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Prepared query not found | `NOT_FOUND` | `PREPARED_QUERY_NOT_FOUND` | `ledger`, `name` |
 | Filter compilation error | `INVALID_ARGUMENT` | `FILTER_COMPILATION_ERROR` | `detail` |
 | Index not found | `FAILED_PRECONDITION` | `INDEX_NOT_FOUND` | `index` |
-| Index building | `FAILED_PRECONDITION` | `INDEX_BUILDING` | `index` |
+| Index building | `UNAVAILABLE` | `INDEX_BUILDING` | `index` |
 | Index inconsistent | `INTERNAL` | `INDEX_INCONSISTENT` | *(none — internal index/storage details remain server-side)* |
 | Account not matching type | `FAILED_PRECONDITION` | `ACCOUNT_NOT_MATCHING_TYPE` | `address` |
 | Account type not found | `NOT_FOUND` | `ACCOUNT_TYPE_NOT_FOUND` | `name` |

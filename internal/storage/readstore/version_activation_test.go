@@ -41,7 +41,7 @@ func TestPinnedVersionResolver_HidesAVersionAboveThePin(t *testing.T) {
 		{"no pin skips the check", 0, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			v, primed, err := PinnedVersionResolver(snap, ledger, tc.pin)(canonical)
+			v, primed, err := s.PinnedVersionResolver(snap, ledger, tc.pin)(canonical)
 			require.NoError(t, err)
 			require.True(t, primed, "the record exists; only the version is withheld")
 			require.Equal(t, tc.want, v.Version)
@@ -71,7 +71,7 @@ func TestPinnedVersionResolver_BackfilledVersionServesAtAnyPin(t *testing.T) {
 	snap := s.NewSnapshot()
 	defer func() { _ = snap.Close() }()
 
-	v, primed, err := PinnedVersionResolver(snap, ledger, 1)(canonical)
+	v, primed, err := s.PinnedVersionResolver(snap, ledger, 1)(canonical)
 	require.NoError(t, err)
 	require.True(t, primed)
 	require.Equal(t, uint32(1), v.Version)
@@ -105,7 +105,7 @@ func TestPinnedVersionResolver_AbsentRecordReportsNotPrimed(t *testing.T) {
 	snap := s.NewSnapshot()
 	defer func() { _ = snap.Close() }()
 
-	v, primed, err := PinnedVersionResolver(snap, "l", 10)("metadata:account:gone")
+	v, primed, err := s.PinnedVersionResolver(snap, "l", 10)("metadata:account:gone")
 	require.NoError(t, err)
 	require.False(t, primed)
 	require.Zero(t, v)

@@ -786,7 +786,7 @@ func TestBuiltinCompilers_GateOnLocalReadiness(t *testing.T) {
 
 	// indexResolverZero simulates a replica whose initial backfill
 	// has not yet completed. Real production wiring uses
-	// readstore.SnapshotVersionResolver against the iteration snapshot.
+	// Store.SnapshotVersionResolver against the iteration snapshot.
 	indexResolverZero := func(string) (readstore.ResolvedIndexVersion, bool, error) {
 		return readstore.ResolvedIndexVersion{BindingKnown: true}, true, nil
 	}

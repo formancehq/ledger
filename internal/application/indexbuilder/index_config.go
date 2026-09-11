@@ -114,17 +114,14 @@ func (b *Builder) initIndexConfig(ctx context.Context) error {
 	// rewrite resumes mid-rmap-scan instead of restarting from scratch.
 	b.scheduleResumedRewrites()
 
-	// Crash-recovery sweep: the atomic switch GCs v_old in the same
-	// batch as the version promotion, so steady-state operation never
-	// leaves orphan versions on disk. A crash mid-batch leaves either
-	// a fully-pre-switch state (handled by resuming the rewrite via
-	// pending_version) or a fully-post-switch state with no orphans.
-	// What this sweep guards against is the long-tail case: a
-	// re-retype that bumped pending past an in-flight rewrite (the
-	// abandoned v_n is never the local current and never the new
-	// pending, so its keyspace lingers), or a snapshot install whose
-	// read-store delta dropped a version entry. Cheap unconditional
-	// pass — DeleteRange on an empty range is a tombstone no-op.
+	// Crash-recovery sweep for versions no state names (a version still
+	// retained as Previous is named, and retirePrevious purges it on the
+	// first loop wake): a re-retype that
+	// bumped pending past an in-flight rewrite (the abandoned v_n is never
+	// the local current and never the new pending, so its keyspace
+	// lingers), or a snapshot install whose read-store delta dropped a
+	// version entry. Cheap unconditional pass — DeleteRange on an empty
+	// range is a tombstone no-op.
 	if err := b.purgeOrphanVersions(); err != nil {
 		b.logger.Errorf("Failed to purge orphan index versions: %v", err)
 	}
