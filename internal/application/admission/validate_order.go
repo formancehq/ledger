@@ -123,12 +123,7 @@ func validateOrderLedgerName(order *raftcmdpb.Order) domain.Describable {
 func validateOrderMetadata(order *raftcmdpb.Order) domain.Describable {
 	return domain.WalkOrderMetadata(order, domain.MetadataWalk{
 		VisitMap: func(account string, m map[string]*commonpb.MetadataValue) domain.Describable {
-			err := validateMetadataMap(m)
-			if err == nil || account == "" {
-				return err
-			}
-
-			return &domain.ErrAccountValidation{Account: account, Cause: err}
+			return wrapMetadataAccountError(account, validateMetadataMap(m))
 		},
 		VisitKey: domain.ValidateMetadataKey,
 	})
@@ -420,8 +415,8 @@ func validateMetadataMap(m map[string]*commonpb.MetadataValue) domain.Describabl
 // command — the batch of orders that becomes one atomic, signed Raft proposal.
 //
 // It is the single admission-side gate for the size ceilings, so direct HTTP,
-// public gRPC, bulk and mirror ingest are all bounded by the same numbers: they
-// converge on requestsToOrders, and every metadata-bearing order shape is
+// public gRPC and bulk converge on requestsToOrders. Mirror workers use a
+// separate proposal path. Every metadata-bearing order shape is
 // reached through domain.WalkOrderMetadata.
 //
 // The per-entity ceilings are checked order by order, then the accumulated total
@@ -452,13 +447,17 @@ func validateCommandMetadata(orders []*raftcmdpb.Order, limits domain.MetadataLi
 func validateOrderMetadataLimits(order *raftcmdpb.Order, limits domain.MetadataLimits) domain.Describable {
 	return domain.WalkOrderMetadata(order, domain.MetadataWalk{
 		VisitMap: func(account string, m map[string]*commonpb.MetadataValue) domain.Describable {
-			err := limits.ValidateMap(m)
-			if err == nil || account == "" {
-				return err
-			}
-
-			return &domain.ErrAccountValidation{Account: account, Cause: err}
+			return wrapMetadataAccountError(account, limits.ValidateMap(m))
 		},
 		VisitKey: limits.ValidateKey,
 	})
+}
+
+// wrapMetadataAccountError preserves account attribution for both shape and size errors.
+func wrapMetadataAccountError(account string, err domain.Describable) domain.Describable {
+	if err == nil || account == "" {
+		return err
+	}
+
+	return &domain.ErrAccountValidation{Account: account, Cause: err}
 }
