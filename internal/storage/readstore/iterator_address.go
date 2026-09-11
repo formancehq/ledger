@@ -4,126 +4,68 @@ import (
 	"bytes"
 	"encoding/binary"
 	"slices"
-	"sort"
 
 	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// AddressTxIterator translates an address match on the TRANSACTIONS target into
-// a sorted iterator of transaction IDs. It works by:
+// entitySource is an entity producer whose ORDER IS IRRELEVANT to the
+// consumer. addressTxUnion takes one because it builds a set: it drains every
+// entity, deduplicates, and sorts the result itself, so an ascending and a
+// descending account scan produce the same union. Both Iterator[Asc] and
+// Iterator[Desc] satisfy it, which is why the union needs no direction of its
+// own (EN-1966).
+type entitySource interface {
+	Next() bool
+	Current() []byte
+	Err() error
+	Close()
+}
+
+// addressTxUnion is the account→transaction union underlying an address match
+// on the TRANSACTIONS target. It works by:
 //  1. Scanning the existence index for matching account addresses
 //  2. For each matching account, scanning the account→tx mapping
-//  3. Unioning all transaction ID sets into a single sorted output
+//  3. Unioning all transaction ID sets into a single sorted slice
 //
-// The union is built by appending each unseen ID and sorting the completed
-// slice once, so the order during materialization is unspecified; nothing
-// outside materialize may observe it. Every positioning call goes through
+// Members come from N per-account scans, each ascending but collectively
+// unordered, so "the next transaction after X" is undefined until the whole
+// union is known. The union is therefore materialized in full on first use
+// and kept for the iterator's lifetime — this is the one materializing leaf
+// on the address path, and it is materializing in BOTH directions for the
+// same reason.
+//
+// The slice is built by appending each unseen ID and sorting once at the end,
+// so the order during materialization is unspecified; nothing outside
+// materialize may observe it. Every positioning call goes through
 // ensureMaterialized, which returns only after the slice is sorted.
-//
-// The union is materialized in full on first use and kept for the iterator's
-// lifetime; Next and Seek are cursor moves over the stable sorted slice, so
-// Seek is a true absolute reposition — seekable backwards, repeatable, and
-// well-defined after exhaustion — as the EntityIterator contract requires.
-type AddressTxIterator struct {
+type addressTxUnion struct {
 	reader     dal.PebbleReader
 	kb         *dal.KeyBuilder
 	ledgerName string
-	prefix     byte           // which account→tx prefix to scan
-	addrIter   EntityIterator // iterates over matching account addresses
-	current    []byte         // current txID (8 bytes)
-	err        error          // first I/O error from materialize / addrIter
+	prefix     byte         // which account→tx prefix to scan
+	addrIter   entitySource // produces the matching account addresses
+	err        error        // first I/O error from materialize / addrIter
 
 	materialized bool
-	txns         [][]byte // all matching txIDs, sorted and deduplicated
-	pos          int      // index into txns of the entry the next Next() yields
-}
-
-// NewAddressTxIterator creates an iterator that, for each address matching
-// addrIter, looks up all associated transaction IDs in the specified
-// account→tx prefix and produces them in sorted order.
-func NewAddressTxIterator(
-	reader dal.PebbleReader,
-	kb *dal.KeyBuilder,
-	ledgerName string,
-	addrIter EntityIterator,
-	prefix byte,
-) *AddressTxIterator {
-	return &AddressTxIterator{
-		reader:     reader,
-		kb:         kb,
-		ledgerName: ledgerName,
-		prefix:     prefix,
-		addrIter:   addrIter,
-	}
-}
-
-func (it *AddressTxIterator) Next() bool {
-	if !it.ensureMaterialized() {
-		return false
-	}
-
-	if it.pos >= len(it.txns) {
-		return false
-	}
-
-	it.current = it.txns[it.pos]
-	it.pos++
-
-	return true
-}
-
-func (it *AddressTxIterator) Current() []byte {
-	return it.current
-}
-
-func (it *AddressTxIterator) Seek(target []byte) bool {
-	if !it.ensureMaterialized() {
-		return false
-	}
-
-	idx := sort.Search(len(it.txns), func(i int) bool {
-		return bytes.Compare(it.txns[i], target) >= 0
-	})
-	if idx >= len(it.txns) {
-		it.pos = len(it.txns)
-
-		return false
-	}
-
-	it.current = it.txns[idx]
-	it.pos = idx + 1
-
-	return true
-}
-
-func (it *AddressTxIterator) Err() error {
-	if it.err != nil {
-		return it.err
-	}
-
-	return it.addrIter.Err()
-}
-
-func (it *AddressTxIterator) Close() {
-	it.addrIter.Close()
+	txns         [][]byte // all matching txIDs, sorted ascending and deduplicated
 }
 
 // ensureMaterialized runs the one-time materialization, latching any I/O error
 // (an error is permanent — positioning calls after it always return false).
-func (it *AddressTxIterator) ensureMaterialized() bool {
-	if it.err != nil {
+func (u *addressTxUnion) ensureMaterialized() bool {
+	if u.err != nil {
 		return false
 	}
 
-	if it.materialized {
+	if u.materialized {
 		return true
 	}
 
-	it.materialized = true
-	if err := it.materialize(); err != nil {
-		it.err = err
+	u.materialized = true
+	if err := u.materialize(); err != nil {
+		u.err = err
 
 		return false
 	}
@@ -137,17 +79,16 @@ func (it *AddressTxIterator) ensureMaterialized() bool {
 // once. Sorting on each insertion instead (a binary search plus a tail shift)
 // moves O(U^2) elements for U unique IDs when account histories interleave,
 // because most new IDs land near the front. Surfaces I/O errors from the
-// underlying Pebble iterators and from the addrIter through addrIter.Err()
-// (checked by the caller via it.Err()).
-func (it *AddressTxIterator) materialize() error {
+// underlying Pebble iterators and from the addrIter through addrIter.Err().
+func (u *addressTxUnion) materialize() error {
 	txSeen := make(map[uint64]struct{})
 
-	for it.addrIter.Next() {
-		account := string(it.addrIter.Current())
-		prefix := AccountTxPrefix(it.kb, it.prefix, it.ledgerName, account)
+	for u.addrIter.Next() {
+		account := string(u.addrIter.Current())
+		prefix := AccountTxPrefix(u.kb, u.prefix, u.ledgerName, account)
 		upper := IncrementBytes(prefix)
 
-		iter, err := it.reader.NewIter(&pebble.IterOptions{
+		iter, err := u.reader.NewIter(&pebble.IterOptions{
 			LowerBound: prefix,
 			UpperBound: upper,
 		})
@@ -173,7 +114,7 @@ func (it *AddressTxIterator) materialize() error {
 
 			txCopy := make([]byte, 8)
 			copy(txCopy, txIDBytes)
-			it.txns = append(it.txns, txCopy)
+			u.txns = append(u.txns, txCopy)
 		}
 
 		iterErr := iter.Error()
@@ -188,10 +129,121 @@ func (it *AddressTxIterator) materialize() error {
 	// slice. IDs are unique after txSeen, so no tie can be reordered and an
 	// unstable sort is safe. bytes.Compare on the 8-byte big-endian IDs is the
 	// numeric ID order (see ReadStoreComparer).
-	slices.SortFunc(it.txns, bytes.Compare)
+	slices.SortFunc(u.txns, bytes.Compare)
 
-	return it.addrIter.Err()
+	return u.addrIter.Err()
+}
+
+// AddressTxIterator walks the account→transaction union in D's direction.
+//
+// Direction costs nothing here: the union is order-insensitive and its result
+// is a single ascending sorted slice, so both directions are a
+// SliceIterator[D] over that one slice — the descending page needs no second
+// collection. Next and Seek are cursor moves over a slice that is stable for
+// the iterator's lifetime, so Seek is a true absolute reposition — seekable
+// backwards, repeatable, and well-defined after exhaustion — as the Iterator
+// contract requires.
+type AddressTxIterator[D Direction] struct {
+	union *addressTxUnion
+	view  *SliceIterator[D]
+}
+
+func newAddressTxIterator[D Direction](
+	reader dal.PebbleReader,
+	kb *dal.KeyBuilder,
+	ledgerName string,
+	addrIter entitySource,
+	prefix byte,
+) *AddressTxIterator[D] {
+	return &AddressTxIterator[D]{
+		union: &addressTxUnion{
+			reader:     reader,
+			kb:         kb,
+			ledgerName: ledgerName,
+			prefix:     prefix,
+			addrIter:   addrIter,
+		},
+	}
+}
+
+// NewAddressTxIterator creates an iterator that, for each address produced by
+// addrIter, looks up all associated transaction IDs in the specified
+// account→tx prefix and produces them in ascending order.
+func NewAddressTxIterator(
+	reader dal.PebbleReader,
+	kb *dal.KeyBuilder,
+	ledgerName string,
+	addrIter entitySource,
+	prefix byte,
+) *AddressTxIterator[Asc] {
+	return newAddressTxIterator[Asc](reader, kb, ledgerName, addrIter, prefix)
+}
+
+// NewReverseAddressTxIterator is NewAddressTxIterator in descending order,
+// over the same union.
+func NewReverseAddressTxIterator(
+	reader dal.PebbleReader,
+	kb *dal.KeyBuilder,
+	ledgerName string,
+	addrIter entitySource,
+	prefix byte,
+) *AddressTxIterator[Desc] {
+	return newAddressTxIterator[Desc](reader, kb, ledgerName, addrIter, prefix)
+}
+
+// ensureView materializes the union and, on success, borrows its sorted slice.
+func (it *AddressTxIterator[D]) ensureView() bool {
+	if !it.union.ensureMaterialized() {
+		return false
+	}
+
+	if it.view == nil {
+		it.view = newSliceIterator[D](it.union.txns)
+	}
+
+	return true
+}
+
+func (it *AddressTxIterator[D]) Next() bool {
+	if !it.ensureView() {
+		return false
+	}
+
+	return it.view.Next()
+}
+
+func (it *AddressTxIterator[D]) Current() []byte {
+	if it.view == nil {
+		return nil
+	}
+
+	return it.view.Current()
+}
+
+func (it *AddressTxIterator[D]) Seek(target []byte) bool {
+	if !it.ensureView() {
+		return false
+	}
+
+	return it.view.Seek(target)
+}
+
+func (it *AddressTxIterator[D]) Err() error {
+	if it.union.err != nil {
+		return it.union.err
+	}
+
+	return it.union.addrIter.Err()
+}
+
+func (it *AddressTxIterator[D]) Close() {
+	it.union.addrIter.Close()
 }
 
 // Direction is the compile-time direction witness; see Iterator.Direction.
-func (it *AddressTxIterator) Direction() (d Asc) { return }
+func (it *AddressTxIterator[D]) Direction() (d D) { return }
+
+var (
+	_ EntityIterator  = (*AddressTxIterator[Asc])(nil)
+	_ ReverseIterator = (*AddressTxIterator[Desc])(nil)
+)

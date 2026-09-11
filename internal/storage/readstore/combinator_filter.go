@@ -86,6 +86,12 @@ func (it *FilterIterator[D]) Err() error {
 // future wrapper acquires of its own.
 func (it *FilterIterator[D]) Close() { it.inner.Close() }
 
+// Filter wraps inner so only entities admitted by keep surface, in inner's
+// direction. See And for why both a generic and a named spelling exist.
+func Filter[D Direction](inner Iterator[D], keep func(entity []byte) (bool, error)) *FilterIterator[D] {
+	return &FilterIterator[D]{inner: inner, keep: keep}
+}
+
 // Direction is the compile-time direction witness; see Iterator.Direction.
 func (it *FilterIterator[D]) Direction() (d D) { return }
 

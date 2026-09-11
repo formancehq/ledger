@@ -273,7 +273,7 @@ func TestPebbleReverseAccountIterator_SeekRepositioning(t *testing.T) {
 		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
 	}
 
-	it, err := newSingleTypeReverseAccountIterator(s.DB(), dal.SubAttrVolume, "l")
+	it, err := newSingleTypeReverseAccountIterator(s.DB(), dal.SubAttrVolume, "l", "")
 	require.NoError(t, err)
 	defer it.Close()
 
@@ -292,7 +292,7 @@ func TestPebbleReverseAccountIterator_SeekRepositioning(t *testing.T) {
 
 	// Last()-fails branch: an empty view records the ceil on the first seek,
 	// covering every later target below it.
-	empty, err := newSingleTypeReverseAccountIterator(s.DB(), dal.SubAttrVolume, "empty")
+	empty, err := newSingleTypeReverseAccountIterator(s.DB(), dal.SubAttrVolume, "empty", "")
 	require.NoError(t, err)
 	defer empty.Close()
 
