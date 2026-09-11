@@ -5119,3 +5119,17 @@ ledgerctl query-checkpoint get-schedule
 # Output (no schedule):
 #  SUCCESS  No query checkpoint schedule configured (automatic creation disabled)
 ```
+
+### Sink and mirror credentials in read output
+
+The server masks reusable sink/mirror credentials in ledger, event-sink, log,
+and audit reads, including structured and result-file output. Connection status
+retains its error presence and timestamp, but its diagnostic message is masked.
+Read connection strings are display projections and must not be copied back
+into configuration. The write path still accepts the original credentials.
+
+For audit reads, an unchanged signed payload retains its signature. When a
+credential is replaced, the signature bytes are omitted and the displayed
+payload cannot reproduce the original audit hash. Use protected original
+store/backup evidence for verification; see the
+[read projection contract](../technical/architecture/subsystems/api/secret-redaction.md).

@@ -60,11 +60,14 @@ go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto@v0.6.1-0.
 ## Modifying Protocol Definitions
 
 The service API has a compiled protocol revision independent of release versions.
-For every exposed wire or semantic change, assess client/server compatibility and
-bump `pkg/grpcprotocol.Version` in the same change when the contract breaks.
-Renumbering exposed fields is a breaking change even if the generated code still
-compiles. Internal persisted/Raft-only changes require an impact assessment of
-shared service types rather than an automatic service revision bump. See the
+Increment `pkg/grpcprotocol.Version` primarily for breaking changes to exposed
+protobuf messages or RPC definitions. Renumbering exposed fields is a breaking
+change even if the generated code still compiles. Response-value changes such as
+credential redaction and sanitized diagnostics do not automatically require a
+bump. A non-schema bump needs a concrete client/server incompatibility that
+justifies rejecting older clients, as described in the maintenance rules.
+Internal persisted/Raft-only changes require an impact assessment of shared
+service types rather than an automatic service revision bump. See the
 [service protocol contract](../architecture/subsystems/api/protocol-compatibility.md)
 for the gate, client obligations, and review criteria. This does not change the
 unreleased-v3 rule: remove obsolete fields and realign their numbers; do not add

@@ -2245,7 +2245,10 @@ paths:
       summary: Get a single system log by bucket-wide sequence
       description: |
         Returns the system log entry with the given bucket-wide sequence number.
-        Requires `ledger:OpsRead` scope.
+        Requires `ledger:OpsRead` scope. Sink and mirror credentials in creation
+        payloads are masked on deep clones; stored logs remain unchanged. A
+        modified signed response payload is a display projection and omits its
+        cryptographic signature.
       operationId: getLog
       tags:
         - Logs
@@ -2287,7 +2290,9 @@ paths:
       summary: List configured event sinks
       description: |
         Returns every event sink configured on the cluster. Requires
-        `ledger:OpsRead` scope.
+        `ledger:OpsRead` scope. Reusable credentials are masked in deep-cloned
+        display configurations. Sink error messages are masked because driver
+        diagnostics can contain credentials; error timestamps and cursors remain.
       operationId: getEventsSinks
       tags:
         - Ops
@@ -2314,14 +2319,14 @@ paths:
                         type: array
                         items:
                           type: object
-                          description: SinkConfig (protobuf JSON representation)
+                          description: SinkConfig display projection (protobuf JSON), with reusable credentials masked
                       sinkStatuses:
                         type: array
                         items:
                           type: object
                           description: >
                             SinkStatus (protobuf JSON representation): per-sink
-                            error status and last-emitted cursor.
+                            error status and last-emitted cursor. Error messages are masked; timestamps remain.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -3383,11 +3388,11 @@ components:
 
     MirrorSyncError:
       type: object
-      description: Most recent mirror sync error (null if healthy)
+      description: Most recent mirror sync error (null if healthy); diagnostic message is masked in read responses
       properties:
         message:
           type: string
-          description: Error message
+          description: Masked transport diagnostic; preserves error presence without exposing credentials
         occurredAt:
           type: string
           format: date-time
@@ -4493,7 +4498,11 @@ components:
 
     MirrorSourceConfig:
       type: object
-      description: Configuration for the mirror source (required when mode is MIRROR)
+      description: >
+        Configuration for the mirror source (required when mode is MIRROR).
+        Write requests accept credentials; read responses mask OAuth secrets,
+        URL userinfo/query values, and PostgreSQL passwords. Read connection
+        strings are display projections, not reusable configuration.
       required:
         - ledgerName
       properties:
@@ -5550,6 +5559,8 @@ components:
     AuditEntry:
       type: object
       description: |
+        Deep-cloned audit display projection. Persisted evidence is unchanged.
+        Sink/mirror credentials are masked inside order and signed batch bytes.
         A single audit trail entry for a proposal (success or failure). Exactly
         one of `success` / `failure` is set. `items` is populated only by the
         single-entry lookup, not by the list endpoint.
@@ -5586,7 +5597,9 @@ components:
             type: string
         hash:
           type: string
-          description: Hex-encoded batch integrity hash chaining audit entries
+          description: >
+            Hex-encoded integrity hash of the original stored audit entry.
+            It cannot be recomputed from a response containing redacted credentials.
         hashVersion:
           type: integer
           format: uint32
@@ -5599,7 +5612,11 @@ components:
           description: Batch identity / idempotency information (protobuf JSON)
         signature:
           type: object
-          description: Client signature over the ApplyBatch (protobuf JSON); absent for unsigned batches
+          description: >
+            Client signing envelope (protobuf JSON); absent for unsigned batches.
+            Payload credentials are redacted. Key identity remains, but signature
+            bytes are omitted when the signed payload changes. Unchanged payloads
+            and signatures retain their exact original bytes.
 
     AuditItem:
       type: object
@@ -5611,7 +5628,10 @@ components:
           description: Zero-based position of this order within the proposal
         serializedOrder:
           type: string
-          description: Hex-encoded deterministic serialized bytes of the order at apply time
+          description: >
+            Hex-encoded order bytes with sink/mirror credentials redacted.
+            Unchanged orders retain their exact original encoding; changed bytes
+            are display projections and cannot reproduce the original audit hash.
         logSequence:
           type: integer
           format: uint64
