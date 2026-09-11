@@ -40,9 +40,11 @@ func TestHTTPSink_PreservingRedirectThenFailure(t *testing.T) {
 	for _, status := range []int{http.StatusFound, http.StatusInternalServerError} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			t.Parallel()
-			var mu sync.Mutex
-			var methods []string
-			var bodies [][]byte
+			var (
+				mu      sync.Mutex
+				methods []string
+				bodies  [][]byte
+			)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				body, err := io.ReadAll(r.Body)
 				if err != nil {
