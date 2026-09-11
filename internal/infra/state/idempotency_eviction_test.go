@@ -510,6 +510,9 @@ func TestEviction_ReusedKeyLifecycleThroughCompaction(t *testing.T) {
 	// A, then reuse with B — a second Set on the same main key, flushed into
 	// separate SSTs (the shape under which a SingleDelete could resurrect A).
 	writeIdem(&commonpb.IdempotencyKeyValue{FirstLogSequence: 1, LogCount: 1, CreatedAt: 1, ExpiresAt: expA})
+	// Compact A to a lower level before the reuse: with A and B in the same level a
+	// single SingleDelete would merge them away, hiding the resurrection this guards.
+	require.NoError(t, store.CompactAll())
 	writeIdem(&commonpb.IdempotencyKeyValue{FirstLogSequence: 2, LogCount: 1, CreatedAt: 2, ExpiresAt: expB})
 
 	// Precondition: exactly two expiry-index rows for the reused hash (A and B).

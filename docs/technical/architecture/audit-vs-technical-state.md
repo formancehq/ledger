@@ -345,8 +345,8 @@ Idempotency outcomes are business-visible during their retention window and must
 be checked against the audited success/failure reason that froze them. Each
 outcome's retention deadline is a per-outcome absolute `expires_at`, frozen at
 apply time from the committed cluster-policy TTL and chain-bound in the audit
-header — so the checker (`compareIdempotencyOutcomes`) re-derives and verifies it
-directly from the chain, not from any node-local TTL. Eviction after that
+header — so the checker (`compareIdempotencyOutcomes`) verifies the stored
+projection against the chain-bound value, not against any node-local TTL. Eviction after that
 deadline is technical policy: the leader takes a wall-clock cutoff, scans the
 `expires_at` time index for keys at or before it, embeds the cutoff and key
 hashes in the proposal, and the FSM applies that proposal deterministically.
